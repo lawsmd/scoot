@@ -206,7 +206,7 @@ function Borders.HideAll(frame)
 end
 
 -- Apply a circular border around a frame (for portraits)
--- DISABLED: Implementation removed - see UNITFRAMES.md for failed experiment log
+-- DISABLED: Implementation removed (caused spritesheet rendering issues)
 --[[
 function Borders.ApplyCircle(frame, opts)
     if not frame or not opts then return end

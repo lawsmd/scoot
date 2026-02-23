@@ -362,7 +362,7 @@ local function hasBlizzardDebuffBorder(itemFrame)
     local debuffBorder = itemFrame.DebuffBorder
     -- Check if the Texture child is shown, not the frame itself
     -- The DebuffBorder frame is always present, but Texture is only shown for harmful auras
-    -- (see AuraUtil.SetAuraBorderAtlasFromAura in wow-ui-source)
+    -- (see AuraUtil.SetAuraBorderAtlasFromAura in Blizzard source)
     if debuffBorder and debuffBorder.Texture and debuffBorder.Texture.IsShown and debuffBorder.Texture:IsShown() then
         return true
     end

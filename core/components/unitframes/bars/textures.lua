@@ -553,7 +553,7 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
     -- `Background` texture at BACKGROUND subLevel=2 (see CastingBarFrameBaseTemplate in
     -- Blizzard source). An earlier implementation created ScooterModBG at subLevel=-8,
     -- which meant the stock Background completely covered the overlay and made Scooter
-    -- backgrounds effectively invisible even though the region existed in Framestack.
+    -- backgrounds effectively invisible even though the region existed in the frame hierarchy.
     --
     -- To keep behaviour consistent with other bars while making cast bar backgrounds
     -- visible, ScooterModBG is rendered above the stock Background (subLevel=3) but still

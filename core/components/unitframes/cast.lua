@@ -56,7 +56,7 @@ do
 		return cur
 	end
 
-	-- Resolve Health Bar for Target/Focus (deterministic paths from framestack findings)
+	-- Resolve Health Bar for Target/Focus (via deterministic paths)
 	local function resolveHealthBar(unit)
 		if unit == "Target" then
 			local root = _G.TargetFrame
@@ -67,7 +67,7 @@ do
 		end
 	end
 
-	-- Resolve Power Bar (ManaBar) for Target/Focus (deterministic paths from framestack findings)
+	-- Resolve Power Bar (ManaBar) for Target/Focus (via deterministic paths)
 	local function resolvePowerBar(unit)
 		if unit == "Target" then
 			local root = _G.TargetFrame

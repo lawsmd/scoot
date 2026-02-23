@@ -1247,7 +1247,7 @@ do
         else
             -- Default texture - try to copy from bar, with fallback chain
             -- CRITICAL: GetTexture() can return an atlas token STRING. Passing an atlas token
-            -- to SetTexture() causes the entire spritesheet to render (see UNITFRAMES.md).
+            -- to SetTexture() causes the entire spritesheet to render.
             -- We must check if the string is an atlas and use SetAtlas() instead.
             local tex = bar:GetStatusBarTexture()
             local applied = false

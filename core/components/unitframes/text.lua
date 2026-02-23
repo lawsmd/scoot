@@ -1756,7 +1756,7 @@ do
 			end
 
 			local function resolveBossNameFS(bossFrame)
-				-- Framestack exposes bossFrame.name, but fall back to the canonical nested path.
+				-- Blizzard exposes bossFrame.name, but fall back to the canonical nested path.
 				return (bossFrame and (bossFrame.name
 					or (bossFrame.TargetFrameContent
 						and bossFrame.TargetFrameContent.TargetFrameContentMain
@@ -1780,7 +1780,7 @@ do
 			end
 
 			local function resolveBossHealthBar(bossFrame)
-				-- Framestack exposes bossFrame.healthbar (preferred).
+				-- Blizzard exposes bossFrame.healthbar (preferred).
 				return bossFrame and bossFrame.healthbar
 					or (bossFrame and bossFrame.TargetFrameContent
 						and bossFrame.TargetFrameContent.TargetFrameContentMain

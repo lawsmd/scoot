@@ -261,7 +261,7 @@ local function ensureSizeHook(barFrame)
 
     -- Create an addon-owned proxy frame instead of HookScript on the Blizzard frame.
     -- HookScript modifies the frame's script handler table, permanently tainting it
-    -- in 12.0 (TAINT.md Rule 9). The proxy inherits barFrame's dimensions via
+    -- in 12.0 (taint restriction). The proxy inherits barFrame's dimensions via
     -- SetAllPoints and receives OnSizeChanged without modifying the Blizzard frame.
     -- Use sizeProxyParentRef if set (e.g., UIParent for damage meter entries to avoid taint).
     local proxyParent = borderFrameState[barFrame].sizeProxyParentRef or barFrame
