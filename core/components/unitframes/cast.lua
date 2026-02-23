@@ -766,6 +766,49 @@ do
 				end
 			end
 
+			-- Ensure cast bar text (spell name / cast time) renders above custom borders.
+			-- BarBorders creates a holder frame at barLevel + levelOffset, which causes
+			-- child FontStrings to render behind the border. We re-parent text to a thin
+			-- overlay frame at a level above the border holder.
+			do
+				local borderEnabled = not not cfg.castBarBorderEnable
+				local borderStyle = cfg.castBarBorderStyle or "square"
+				local needsOverlay = borderEnabled and borderStyle ~= "none"
+
+				if needsOverlay then
+					local overlay = frame._ScootCastTextOverlay
+					if not overlay then
+						overlay = CreateFrame("Frame", nil, frame)
+						overlay:SetAllPoints(frame)
+						frame._ScootCastTextOverlay = overlay
+					end
+					-- Determine level above the border holder.  BarBorders uses
+					-- barLevel + levelOffset (1 for cast bars); ApplySquare uses the
+					-- bar's own level.  barLevel + 3 safely clears both paths.
+					local barLevel = (frame.GetFrameLevel and frame:GetFrameLevel()) or 0
+					overlay:SetFrameLevel(barLevel + 3)
+					overlay:Show()
+
+					if frame.Text and frame.Text.SetParent then
+						pcall(frame.Text.SetParent, frame.Text, overlay)
+					end
+					if unit == "Player" and frame.CastTimeText and frame.CastTimeText.SetParent then
+						pcall(frame.CastTimeText.SetParent, frame.CastTimeText, overlay)
+					end
+				else
+					-- Borders disabled: restore text to bar frame
+					if frame._ScootCastTextOverlay then
+						if frame.Text and frame.Text.SetParent then
+							pcall(frame.Text.SetParent, frame.Text, frame)
+						end
+						if unit == "Player" and frame.CastTimeText and frame.CastTimeText.SetParent then
+							pcall(frame.CastTimeText.SetParent, frame.CastTimeText, frame)
+						end
+						frame._ScootCastTextOverlay:Hide()
+					end
+				end
+			end
+
 			-- Spell Name Text styling (Player/Target/Focus)
 			-- Targets: PlayerCastingBarFrame.Text, TargetFrameSpellBar.Text, FocusFrameSpellBar.Text
 			-- Borders: PlayerCastingBarFrame.TextBorder, TargetFrameSpellBar.TextBorder, FocusFrameSpellBar.TextBorder

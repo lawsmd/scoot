@@ -10,7 +10,7 @@ Presets:Register({
     name = "ScooterDeck",
     description = "Controller-first handheld layout optimized for Steam Deck and couch play.",
     wowBuild = "12.0.0",
-    version = "2026.02.16",
+    version = "2026.02.22",
     screenClass = "handheld",
     recommendedInput = "ConsolePort",
     requiresConsolePort = true,
@@ -19,7 +19,7 @@ Presets:Register({
     previewThumbnail = "Interface\\AddOns\\ScooterMod\\media\\presets\\ScooterDeck",
     designedFor = { "Steam Deck and 7-8 inch handhelds", "Controller gameplay" },
     recommends = { "ConsolePort" },
-    lastUpdated = "2026-02-16",
+    lastUpdated = "2026-02-22",
 
     -- Edit Mode layout payload (raw layoutInfo table).
     -- Capture/update via: /scoot debug editmode export "ScooterDeck"
@@ -1668,12 +1668,12 @@ Presets:Register({
       system = 23,
     },
   },
-    },
+},
     -- EDITMODE_LAYOUT_END
-    editModeSha256 = "298d411755dca045607edbbf9846824b21b20c51f5c55d000e4f100cade086d6",
+    editModeSha256 = "498691e2bd92fb88978a7643202f1a8158ad6cd399ff874c05fb493ad53a4255",
 
     -- ScooterMod profile snapshot (captured from authoring machine).
-    profileSha256 = "66f7bca769b2fb20e9dbed6efbba81a0fad8dec60fa01929c0ac41612a43f920",
+    profileSha256 = "bfa42c281f0baa5d4863b28843e0f0ba6cc059936198c96f981c96e5e1ee7ae1",
     -- SCOOTER_PROFILE_START
     scooterProfile = {
   __preset = true,
@@ -2232,8 +2232,8 @@ Presets:Register({
       barOpacityWithTarget = 100,
       barVisibility = "always",
       borderInset = -1,
-      borderInsetH = -1,
-      borderInsetV = -1,
+      borderInsetH = 0,
+      borderInsetV = 0,
       borderStyle = "blizzard",
       borderThickness = 4.6,
       borderTintColor = {
@@ -2579,6 +2579,105 @@ Presets:Register({
         style = "HEAVYSHADOWTHICKOUTLINE",
       },
     },
+    customGroup1 = {
+      anchorPosition = "center",
+      borderEnable = false,
+      borderInset = 0,
+      borderInsetH = 0,
+      borderInsetV = 0,
+      borderStyle = "square",
+      borderThickness = 1,
+      borderTintColor = {
+        1,
+        1,
+        1,
+        1,
+      },
+      borderTintEnable = false,
+      columns = 12,
+      direction = "right",
+      iconPadding = 2,
+      iconSize = 30,
+      opacity = 100,
+      opacityOnCooldown = 100,
+      opacityOutOfCombat = 100,
+      opacityWithTarget = 100,
+      orientation = "H",
+      supportsText = true,
+      tallWideRatio = 0,
+      textBindings = {
+      },
+      textCooldown = {
+      },
+      textStacks = {
+      },
+    },
+    customGroup2 = {
+      anchorPosition = "center",
+      borderEnable = false,
+      borderInset = 0,
+      borderInsetH = 0,
+      borderInsetV = 0,
+      borderStyle = "square",
+      borderThickness = 1,
+      borderTintColor = {
+        1,
+        1,
+        1,
+        1,
+      },
+      borderTintEnable = false,
+      columns = 12,
+      direction = "right",
+      iconPadding = 2,
+      iconSize = 30,
+      opacity = 100,
+      opacityOnCooldown = 100,
+      opacityOutOfCombat = 100,
+      opacityWithTarget = 100,
+      orientation = "H",
+      supportsText = true,
+      tallWideRatio = 0,
+      textBindings = {
+      },
+      textCooldown = {
+      },
+      textStacks = {
+      },
+    },
+    customGroup3 = {
+      anchorPosition = "center",
+      borderEnable = false,
+      borderInset = 0,
+      borderInsetH = 0,
+      borderInsetV = 0,
+      borderStyle = "square",
+      borderThickness = 1,
+      borderTintColor = {
+        1,
+        1,
+        1,
+        1,
+      },
+      borderTintEnable = false,
+      columns = 12,
+      direction = "right",
+      iconPadding = 2,
+      iconSize = 30,
+      opacity = 100,
+      opacityOnCooldown = 100,
+      opacityOutOfCombat = 100,
+      opacityWithTarget = 100,
+      orientation = "H",
+      supportsText = true,
+      tallWideRatio = 0,
+      textBindings = {
+      },
+      textCooldown = {
+      },
+      textStacks = {
+      },
+    },
     damageMeter = {
       background = 80,
       barBackgroundColor = {
@@ -2689,8 +2788,8 @@ Presets:Register({
           1,
         },
         colorMode = "default",
-        fontFace = "FRIZQT__",
-        fontStyle = "OUTLINE",
+        fontFace = "ROBOTO_SEMICOND_BLACK",
+        fontStyle = "SHADOWTHICKOUTLINE",
       },
       textTitle = {
         color = {
@@ -2770,8 +2869,8 @@ Presets:Register({
       alignGroupCenter = true,
       borderEnable = true,
       borderInset = -0,
-      borderInsetH = 0,
-      borderInsetV = 0,
+      borderInsetH = -1,
+      borderInsetV = -1,
       borderStyle = "blizzard",
       borderThickness = 2,
       borderTintColor = {
@@ -2835,10 +2934,10 @@ Presets:Register({
       barOpacityOutOfCombat = 20,
       barOpacityWithTarget = 100,
       borderInset = -2,
-      borderInsetH = -2,
-      borderInsetV = -2,
+      borderInsetH = -1,
+      borderInsetV = -1,
       borderStyle = "wowlabs",
-      borderThickness = 8,
+      borderThickness = 3,
       borderTintColor = {
         -0,
         -0,
@@ -2847,7 +2946,7 @@ Presets:Register({
       },
       borderTintEnable = true,
       hideBlizzardArt = true,
-      scale = 75,
+      scale = 70,
       textCharges = {
         color = {
           1,
@@ -3417,8 +3516,8 @@ Presets:Register({
     trackedBuffs = {
       borderEnable = true,
       borderInset = -0,
-      borderInsetH = 0,
-      borderInsetV = 0,
+      borderInsetH = -1,
+      borderInsetV = -1,
       borderStyle = "blizzard",
       borderThickness = 3,
       borderTintColor = {
@@ -3479,8 +3578,8 @@ Presets:Register({
       alignGroupCenter = true,
       borderEnable = true,
       borderInset = -0,
-      borderInsetH = 0,
-      borderInsetV = 0,
+      borderInsetH = -1,
+      borderInsetV = -1,
       borderStyle = "blizzard",
       borderThickness = 2,
       borderTintColor = {
@@ -3540,6 +3639,20 @@ Presets:Register({
       visibilityMode = "always",
     },
   },
+  customCDMGroups = {
+    {
+      entries = {
+      },
+    },
+    {
+      entries = {
+      },
+    },
+    {
+      entries = {
+      },
+    },
+  },
   damageMeterSettings = {
     enableDamageMeter = true,
   },
@@ -3549,8 +3662,6 @@ Presets:Register({
       healthBarBackgroundOpacity = 50,
       healthBarBackgroundTexture = "a3",
       healthBarBorderInset = -0,
-      healthBarBorderInsetH = -0,
-      healthBarBorderInsetV = -0,
       healthBarBorderStyle = "square",
       healthBarBorderThickness = 2,
       healthBarBorderTintColor = {
@@ -3565,6 +3676,10 @@ Presets:Register({
       healthBarTexture = "a3",
       hideHealPrediction = true,
       hideOverAbsorbGlow = true,
+      roleIconAnchor = "TOPRIGHT",
+      roleIconScale = 105,
+      roleIconSet = "pixel_white",
+      roleIconVisibility = "hideDPS",
       textPartyTitle = {
         color = {
           1,
@@ -3810,8 +3925,6 @@ Presets:Register({
         castBarBackgroundTexture = "a1",
         castBarBorderEnable = true,
         castBarBorderInset = -0,
-        castBarBorderInsetH = 0,
-        castBarBorderInsetV = 0,
         castBarBorderThickness = 1,
         castBarScale = 125,
         castBarSparkHidden = true,
@@ -4085,8 +4198,6 @@ Presets:Register({
       },
       healthBarBackgroundTexture = "a2",
       healthBarBorderInset = -0,
-      healthBarBorderInsetH = -0,
-      healthBarBorderInsetV = -0,
       healthBarBorderStyle = "mmtYBorder",
       healthBarBorderThickness = 1,
       healthBarBorderTintColor = {
@@ -4123,8 +4234,6 @@ Presets:Register({
       },
       powerBarBackgroundTexture = "a1",
       powerBarBorderInset = -0,
-      powerBarBorderInsetH = -0,
-      powerBarBorderInsetV = -0,
       powerBarBorderStyle = "square",
       powerBarBorderThickness = 1,
       powerBarCustomPositionEnabled = true,
@@ -4247,8 +4356,6 @@ Presets:Register({
         castBarBackgroundTexture = "a1",
         castBarBorderEnable = true,
         castBarBorderInset = -0,
-        castBarBorderInsetH = 0,
-        castBarBorderInsetV = 0,
         castBarBorderStyle = "mmtYBorder",
         castBarBorderThickness = 2,
         castBarBorderTintColor = {
@@ -4286,8 +4393,6 @@ Presets:Register({
       },
       healthBarBackgroundTexture = "a2",
       healthBarBorderInset = -0,
-      healthBarBorderInsetH = -0,
-      healthBarBorderInsetV = -0,
       healthBarBorderStyle = "mmtYBorder",
       healthBarBorderThickness = 1,
       healthBarBorderTintColor = {
@@ -4407,7 +4512,7 @@ Presets:Register({
       useCustomBorders = true,
     },
   },
-    },
+},
     -- SCOOTER_PROFILE_END
     -- ConsolePort profile payload (optional, user opt-in during apply).
     -- Capture/update via: /scoot debug consoleport export

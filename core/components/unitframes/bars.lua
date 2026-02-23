@@ -910,6 +910,72 @@ do
         end
     end
 
+    -- Heal prediction bar keys (children of HealthBar StatusBar)
+    local healPredBarKeys = {
+        "MyHealPredictionBar",
+        "OtherHealPredictionBar",
+        "TotalAbsorbBar",
+        "HealAbsorbBar",
+    }
+
+    -- Reparent heal prediction bars into clipping container for proper height clipping.
+    -- Without reparenting, these bars appear at full height even when height reduction is active.
+    -- Pattern mirrors reparentAnimatedLossBar() above.
+    local function reparentHealPredictionBars(bar, clipContainer, heightPct)
+        if not bar then return end
+
+        local st = getState(bar)
+        if not st then return end
+
+        if clipContainer and heightPct and heightPct < 100 then
+            -- Height reduction active: reparent into clipping container
+            if st.healPredReparented then return end
+
+            st.healPredOrigParents = st.healPredOrigParents or {}
+            st.healPredOrigPoints = st.healPredOrigPoints or {}
+
+            for _, key in ipairs(healPredBarKeys) do
+                local child = bar[key]
+                if child and not (child.IsForbidden and child:IsForbidden()) then
+                    st.healPredOrigParents[key] = child:GetParent()
+                    local points = {}
+                    for i = 1, child:GetNumPoints() do
+                        local point, relativeTo, relativePoint, xOfs, yOfs = child:GetPoint(i)
+                        points[i] = { point = point, relativeTo = relativeTo, relativePoint = relativePoint, xOfs = xOfs, yOfs = yOfs }
+                    end
+                    st.healPredOrigPoints[key] = points
+                    pcall(child.SetParent, child, clipContainer)
+                    -- Don't change anchors — Blizzard's UnitFrameHealPredictionBars_Update
+                    -- uses explicit relativeTo references that remain valid across parents.
+                end
+            end
+            st.healPredReparented = true
+        else
+            -- Height reduction disabled: restore original parents
+            if not st.healPredReparented then return end
+
+            for _, key in ipairs(healPredBarKeys) do
+                local child = bar[key]
+                if child and not (child.IsForbidden and child:IsForbidden()) then
+                    local origParent = st.healPredOrigParents and st.healPredOrigParents[key]
+                    if origParent then
+                        pcall(child.SetParent, child, origParent)
+                        local points = st.healPredOrigPoints and st.healPredOrigPoints[key]
+                        if points and #points > 0 then
+                            child:ClearAllPoints()
+                            for _, pt in ipairs(points) do
+                                child:SetPoint(pt.point, pt.relativeTo, pt.relativePoint, pt.xOfs, pt.yOfs)
+                            end
+                        end
+                    end
+                end
+            end
+            st.healPredReparented = false
+            st.healPredOrigParents = nil
+            st.healPredOrigPoints = nil
+        end
+    end
+
     -- Optional rectangular overlay for unit frame health bars when the portrait is hidden.
     -- This is used to visually "fill in" the right-side chip on Target/Focus when the
     -- circular portrait is hidden, without replacing the stock StatusBar frame.
@@ -1079,6 +1145,7 @@ do
             if unit == "Player" then
                 reparentAnimatedLossBar(bar, nil, 100)
             end
+            reparentHealPredictionBars(bar, nil, 100)
             return
         end
 
@@ -1089,6 +1156,12 @@ do
         if unit == "Player" then
             local heightPct = cfg and cfg.healthBarOverlayHeightPct or 100
             reparentAnimatedLossBar(bar, clipContainer, heightPct)
+        end
+
+        -- Reparent heal prediction bars into clipping container for all units
+        do
+            local heightPct = cfg and cfg.healthBarOverlayHeightPct or 100
+            reparentHealPredictionBars(bar, clipContainer, heightPct)
         end
 
         if not st.rectFill then

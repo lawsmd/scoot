@@ -64,6 +64,30 @@ local function enumerateExtraAbilityButtons()
     return buttons
 end
 
+-- Hover detection via polling (avoids HookScript taint on Blizzard frames)
+local hoverTicker = nil
+local function startHoverDetection(container)
+    if hoverTicker then return end
+    hoverTicker = C_Timer.NewTicker(0.15, function()
+        if not container or not container:IsShown() then return end
+        local state = getContainerState()
+        if state.desiredAlpha == nil then return end
+
+        local isOver = false
+        for _, btn in ipairs(enumerateExtraAbilityButtons()) do
+            if btn:IsMouseOver() then isOver = true; break end
+        end
+
+        if isOver and not state.isMousedOver then
+            state.isMousedOver = true
+            setContainerDesiredAlpha(container, 1)
+        elseif not isOver and state.isMousedOver then
+            state.isMousedOver = false
+            setContainerDesiredAlpha(container, state.baseOpacity or 1)
+        end
+    end)
+end
+
 -- Apply styling to extra ability buttons
 local function ApplyExtraAbilitiesStyling(self)
     local container = _G.ExtraAbilityContainer
@@ -96,44 +120,15 @@ local function ApplyExtraAbilitiesStyling(self)
     state.component = self
     state.baseOpacity = appliedOp / 100
 
-    -- Hover-to-full-opacity: hook OnEnter/OnLeave on each button
-    local function onMouseEnter()
-        local s = getContainerState()
-        s.isMousedOver = true
-        setContainerDesiredAlpha(container, 1)
-    end
-    local function onMouseLeave()
-        local s = getContainerState()
-        local isOverButton = false
-        for _, btn in ipairs(enumerateExtraAbilityButtons()) do
-            if btn.IsMouseOver and btn:IsMouseOver() then
-                isOverButton = true
-                break
-            end
-        end
-        if not isOverButton then
-            s.isMousedOver = false
-            setContainerDesiredAlpha(container, s.baseOpacity or 1)
-        end
-    end
+    -- Start hover detection ticker (replaces HookScript on Blizzard buttons)
+    startHoverDetection(container)
 
+    -- Set initial alpha based on current mouse position
+    local isOver = false
     for _, btn in ipairs(enumerateExtraAbilityButtons()) do
-        if not buttonsHooked[btn] then
-            btn:HookScript("OnEnter", onMouseEnter)
-            btn:HookScript("OnLeave", onMouseLeave)
-            buttonsHooked[btn] = true
-        end
+        if btn:IsMouseOver() then isOver = true; break end
     end
-
-    -- Preserve hover state: if mouse is currently over, keep full opacity
-    local function isMouseCurrentlyOver()
-        for _, btn in ipairs(enumerateExtraAbilityButtons()) do
-            if btn.IsMouseOver and btn:IsMouseOver() then return true end
-        end
-        return false
-    end
-
-    if isMouseCurrentlyOver() then
+    if isOver then
         state.isMousedOver = true
         setContainerDesiredAlpha(container, 1)
     else
