@@ -1164,8 +1164,8 @@ local function applyPRDBarBorder(component, statusBar)
         local fallbackColor = tintEnabled and tintColor or {0, 0, 0, 1}
         local baseY = (thickness <= 1) and 0 or 1
         local baseX = 1
-        local expandY = baseY - inset
-        local expandX = baseX - inset
+        local expandY = baseY - insetV
+        local expandX = baseX - insetH
         if expandX < -6 then expandX = -6 elseif expandX > 6 then expandX = 6 end
         if expandY < -6 then expandY = -6 elseif expandY > 6 then expandY = 6 end
         addon.Borders.ApplySquare(statusBar, {

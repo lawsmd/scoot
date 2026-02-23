@@ -22,8 +22,11 @@ local function tbTrace(message, ...)
     if not tbTraceEnabled then return end
     local ok, formatted = pcall(string.format, message, ...)
     if not ok then formatted = message end
+    -- Guard: string.format can produce secret strings if any arg is secret
+    if issecretvalue(formatted) then formatted = message .. " [SECRET]" end
     local timestamp = GetTime and GetTime() or 0
-    local line = string.format("[%.3f] %s", timestamp, formatted)
+    local ok2, line = pcall(string.format, "[%.3f] %s", timestamp, formatted)
+    if not ok2 or issecretvalue(line) then return end
     tbTraceBuffer[#tbTraceBuffer + 1] = line
     if #tbTraceBuffer > TB_TRACE_MAX_LINES then
         table.remove(tbTraceBuffer, 1)
@@ -44,7 +47,17 @@ function addon.ShowTBTraceLog()
         addon:Print("Tracked Bars trace buffer is empty.")
         return
     end
-    local text = table.concat(tbTraceBuffer, "\n")
+    -- Filter out any secret values that may have entered the buffer
+    local safeLines = {}
+    for i = 1, #tbTraceBuffer do
+        local entry = tbTraceBuffer[i]
+        if not issecretvalue(entry) then
+            safeLines[#safeLines + 1] = entry
+        else
+            safeLines[#safeLines + 1] = "[SECRET LINE SKIPPED]"
+        end
+    end
+    local text = table.concat(safeLines, "\n")
     if addon.DebugShowWindow then
         addon.DebugShowWindow("Tracked Bars Trace", text)
     else
@@ -69,17 +82,220 @@ local vertContainer = nil
 local verticalModeActive = false
 local vertRebuildPending = false
 local scheduleVerticalRebuild  -- forward declaration (defined in TrackedBars Hooks section)
+local scheduleBackgroundVerification  -- forward declaration (defined in OnShow/OnHide section)
+local onItemFrameHide  -- forward declaration (defined in OnShow/OnHide section)
+local onItemFrameShow  -- forward declaration (defined in OnShow/OnHide section)
 
 -- Alpha enforcement hooks tracking (weak keys)
 local alphaEnforcedItems = setmetatable({}, { __mode = "k" })
 local prevIsActive = setmetatable({}, { __mode = "k" })
-local recentDeactivation = setmetatable({}, { __mode = "k" })
+local prevShown = setmetatable({}, { __mode = "k" })
+local recentHide = setmetatable({}, { __mode = "k" })
 local auraRecentlyCleared = setmetatable({}, { __mode = "k" })
+local auraRemovedSpellID = setmetatable({}, { __mode = "k" })
+local barItemFirstSpellID = setmetatable({}, { __mode = "k" })
+local cachedSpellID = setmetatable({}, { __mode = "k" })     -- v14d: spellID captured OOC at acquisition
+local alphaHidden = setmetatable({}, { __mode = "k" })       -- v14/v15 compatibility with older guards
+local suppressedByRemoval = setmetatable({}, { __mode = "k" }) -- v15: force-hide until authoritative re-add
+local suppressedCooldownID = setmetatable({}, { __mode = "k" }) -- v15: suppression scoped to cooldown slot
+local pendingAuraAdd = setmetatable({}, { __mode = "k" })      -- v15b: { at=number, relevant=bool, spellID=number|nil }
+local lastKnownAuraInstance = setmetatable({}, { __mode = "k" }) -- v15: diagnostics/fallback when removal signal is missed
+local suppressedAt = setmetatable({}, { __mode = "k" })        -- v15a: last suppression timestamp for race filtering
+local cascadeTimers = setmetatable({}, { __mode = "k" })
 
 
 --------------------------------------------------------------------------------
 -- Tracked Bar Mode Helpers
 --------------------------------------------------------------------------------
+
+local function getItemCooldownID(item)
+    if not item then return nil end
+    if item.GetCooldownID then
+        local ok, id = pcall(item.GetCooldownID, item)
+        if ok and type(id) == "number" and not issecretvalue(id) then
+            return id
+        end
+    end
+    local raw = item.cooldownID
+    if type(raw) == "number" and not issecretvalue(raw) then
+        return raw
+    end
+    return nil
+end
+
+local function clearSuppressionState(item)
+    suppressedByRemoval[item] = nil
+    suppressedCooldownID[item] = nil
+    pendingAuraAdd[item] = nil
+    alphaHidden[item] = nil
+    suppressedAt[item] = nil
+end
+
+local function isItemSuppressed(item)
+    if not suppressedByRemoval[item] then
+        return false
+    end
+    local scopedCooldownID = suppressedCooldownID[item]
+    local currentCooldownID = getItemCooldownID(item)
+    if scopedCooldownID and currentCooldownID and scopedCooldownID ~= currentCooldownID then
+        if tbTraceEnabled then
+            tbTrace("Suppression: cleared on cooldown change old=%s new=%s id=%s",
+                tostring(scopedCooldownID), tostring(currentCooldownID), tostring(item):sub(-6))
+        end
+        clearSuppressionState(item)
+        auraRecentlyCleared[item] = nil
+        auraRemovedSpellID[item] = nil
+        return false
+    end
+    return true
+end
+
+local function enforceSuppressedVisibility(item)
+    pcall(item.SetAlpha, item, 0)
+    local ov = trackedBarOverlays[item]
+    if ov then ov:Hide() end
+    if verticalModeActive then
+        local comp = addon.Components and addon.Components.trackedBars
+        if comp and scheduleVerticalRebuild then
+            scheduleVerticalRebuild(comp)
+        end
+    end
+end
+
+local function suppressItem(item, reason)
+    local now = GetTime()
+    if not isItemSuppressed(item) then
+        suppressedByRemoval[item] = true
+        suppressedCooldownID[item] = getItemCooldownID(item)
+    end
+    suppressedAt[item] = now
+    auraRecentlyCleared[item] = now
+    pendingAuraAdd[item] = nil
+    alphaHidden[item] = true
+    enforceSuppressedVisibility(item)
+    if tbTraceEnabled then
+        tbTrace("Suppression: set reason=%s cooldown=%s id=%s",
+            tostring(reason or "?"), tostring(suppressedCooldownID[item]), tostring(item):sub(-6))
+    end
+end
+
+local function restoreSuppressedItem(item, reason)
+    if not isItemSuppressed(item) then
+        pendingAuraAdd[item] = nil
+        return
+    end
+    clearSuppressionState(item)
+    auraRecentlyCleared[item] = nil
+    auraRemovedSpellID[item] = nil
+    if verticalModeActive then
+        local comp = addon.Components and addon.Components.trackedBars
+        if comp and scheduleVerticalRebuild then
+            scheduleVerticalRebuild(comp)
+        end
+        if tbTraceEnabled then
+            tbTrace("Suppression: restored (vertical) reason=%s id=%s",
+                tostring(reason or "?"), tostring(item):sub(-6))
+        end
+        return
+    end
+
+    local ok, isInactive = pcall(function() return item.isActive == false end)
+    if ok and not issecretvalue(isInactive) and isInactive then
+        if tbTraceEnabled then
+            tbTrace("Suppression: cleared but item inactive reason=%s id=%s",
+                tostring(reason or "?"), tostring(item):sub(-6))
+        end
+        return
+    end
+
+    pcall(item.SetAlpha, item, 1)
+    local ov = trackedBarOverlays[item]
+    if ov and (not item.IsShown or item:IsShown()) then
+        ov:Show()
+    end
+    if tbTraceEnabled then
+        tbTrace("Suppression: restored reason=%s id=%s", tostring(reason or "?"), tostring(item):sub(-6))
+    end
+end
+
+local function addSpellToSet(spellSet, sid)
+    if type(sid) == "number" and not issecretvalue(sid) then
+        spellSet[sid] = true
+    end
+end
+
+local function hasLiveAuraInstance(item)
+    local auraInstance = item and item.auraInstanceID
+    if type(auraInstance) ~= "number" or issecretvalue(auraInstance) then
+        return false, nil
+    end
+
+    local getter = C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID
+    if type(getter) ~= "function" then
+        -- Fallback for clients without this API: cannot validate staleness, treat as live.
+        return true, nil
+    end
+
+    local ok, auraData = pcall(getter, "player", auraInstance)
+    if ok and auraData and not issecretvalue(auraData) then
+        return true, auraData
+    end
+
+    return false, nil
+end
+
+local function getRelevantAddedAuraInfo(item, unitAuraUpdateInfo)
+    if not unitAuraUpdateInfo or type(unitAuraUpdateInfo) ~= "table" then
+        return false, nil
+    end
+    local added = unitAuraUpdateInfo.addedAuras
+    if type(added) ~= "table" then
+        return false, nil
+    end
+
+    -- Build a spell relevance set from item state + cooldown metadata.
+    -- Do not rely on NeedsAddedAuraUpdate() alone because this hook runs after Blizzard's handler.
+    local relevantSpells = {}
+    addSpellToSet(relevantSpells, auraRemovedSpellID[item])
+    addSpellToSet(relevantSpells, cachedSpellID[item])
+    addSpellToSet(relevantSpells, barItemFirstSpellID[item])
+    addSpellToSet(relevantSpells, item.auraSpellID)
+    if item.GetSpellID then
+        local okSID, sid = pcall(item.GetSpellID, item)
+        if okSID then
+            addSpellToSet(relevantSpells, sid)
+        end
+    end
+    if item.GetCooldownInfo then
+        local okInfo, info = pcall(item.GetCooldownInfo, item)
+        if okInfo and type(info) == "table" then
+            addSpellToSet(relevantSpells, info.spellID)
+            addSpellToSet(relevantSpells, info.overrideSpellID)
+            addSpellToSet(relevantSpells, info.linkedSpellID)
+            if type(info.linkedSpellIDs) == "table" then
+                for _, linkedSID in ipairs(info.linkedSpellIDs) do
+                    addSpellToSet(relevantSpells, linkedSID)
+                end
+            end
+        end
+    end
+
+    for _, aura in ipairs(added) do
+        local sid = aura and aura.spellId
+        if type(sid) == "number" and not issecretvalue(sid) then
+            if relevantSpells[sid] then
+                return true, sid
+            end
+            if item.NeedsAddedAuraUpdate then
+                local okNeeds, needs = pcall(item.NeedsAddedAuraUpdate, item, sid)
+                if okNeeds and needs then
+                    return true, sid
+                end
+            end
+        end
+    end
+    return false, nil
+end
 
 local function getTrackedBarMode()
     local comp = addon.Components and addon.Components.trackedBars
@@ -231,17 +447,28 @@ local function installDataMirrorHooks(child)
     -- Hook active state changes to trigger vertical rebuild on deactivation
     if child.SetIsActive then
         hooksecurefunc(child, "SetIsActive", function(self, active)
+            local argSecret = issecretvalue(active)
             if tbTraceEnabled then
-                local argSecret = issecretvalue(active)
-                -- Compare against our own previous-value table (not self.isActive,
-                -- which is already updated by the time hooksecurefunc fires)
                 local prev = prevIsActive[self]
-                local changed = prev == nil or argSecret
-                if not changed then
-                    local okCmp, isDiff = pcall(function() return active ~= prev end)
-                    changed = not okCmp or isDiff
+                local shouldLog = false
+                if argSecret then
+                    -- Don't flood buffer with SECRET entries every frame.
+                    -- Only log if IsShown() changed since last check.
+                    local currentShown = self:IsShown()
+                    if prevShown[self] ~= currentShown then
+                        prevShown[self] = currentShown
+                        shouldLog = true
+                    end
+                else
+                    -- Non-secret: log if value changed
+                    local changed = prev == nil
+                    if not changed then
+                        local okCmp, isDiff = pcall(function() return active ~= prev end)
+                        changed = not okCmp or isDiff
+                    end
+                    shouldLog = changed
                 end
-                if changed then
+                if shouldLog then
                     tbTrace("SetIsActive: arg=%s(secret=%s) prev=%s shown=%s id=%s",
                         argSecret and "SECRET" or tostring(active), tostring(argSecret),
                         prev == nil and "nil" or tostring(prev),
@@ -250,7 +477,7 @@ local function installDataMirrorHooks(child)
                 end
             end
             -- Update tracking (only store non-secret values)
-            if not issecretvalue(active) then
+            if not argSecret then
                 prevIsActive[self] = active
             else
                 prevIsActive[self] = nil
@@ -261,20 +488,155 @@ local function installDataMirrorHooks(child)
                     scheduleVerticalRebuild(comp)
                 end
             else
-                -- Default mode: hide overlay immediately when item deactivates
-                local ok, shouldHide = pcall(function() return not active end)
-                if ok and shouldHide then
-                    recentDeactivation[self] = GetTime()
-                    local ov = trackedBarOverlays[self]
-                    if ov then ov:Hide() end
+                -- Default mode: visibility is handled by OnShow/OnHide hooks (v13)
+            end
+        end)
+    end
+
+    -- v15: Hook RefreshData to track aura-instance transitions and enforce suppression.
+    if child.RefreshData then
+        hooksecurefunc(child, "RefreshData", function(self)
+            local prevAuraInstance = lastKnownAuraInstance[self]
+            local auraInstance = self.auraInstanceID
+            local hasAuraInstance = type(auraInstance) == "number" and not issecretvalue(auraInstance)
+            local hasLiveInstance = false
+            if hasAuraInstance then
+                hasLiveInstance = hasLiveAuraInstance(self)
+            end
+            local auraSpellID = self.auraSpellID
+            local hasAuraSpellID = type(auraSpellID) == "number" and not issecretvalue(auraSpellID)
+
+            if hasLiveInstance then
+                lastKnownAuraInstance[self] = auraInstance
+            else
+                lastKnownAuraInstance[self] = nil
+            end
+
+            if isItemSuppressed(self) then
+                local addSeenAt = pendingAuraAdd[self]
+                local addRelevant = type(addSeenAt) == "table" and addSeenAt.relevant == true
+                local hasPendingAdd = type(addSeenAt) == "table"
+                local supAge = suppressedAt[self] and (GetTime() - suppressedAt[self]) or 0
+                local inCombat = InCombatLockdown and InCombatLockdown()
+                local bounceAge = recentHide[self] and (GetTime() - recentHide[self]) or math.huge
+
+                if hasLiveInstance and addRelevant then
+                    restoreSuppressedItem(self, "RefreshData+AuraAddedValidated")
+                elseif inCombat and hasLiveInstance and hasPendingAdd then
+                    -- If add metadata arrived but relevance was incomplete/secret, a live aura
+                    -- instance is enough to restore while in combat.
+                    restoreSuppressedItem(self, "RefreshData+CombatLiveAuraPendingAdd")
+                elseif inCombat and hasLiveInstance and supAge > 1.0 and bounceAge > 0.5 then
+                    -- Failsafe for missed add events: restore only if the aura instance is
+                    -- verified live for a while, only in combat, and not during a CDM layout
+                    -- bounce (OnHide→OnShow cycle from target-clear).
+                    restoreSuppressedItem(self, "RefreshData+CombatLiveAuraFallback")
+                else
+                    enforceSuppressedVisibility(self)
+                    if tbTraceEnabled and hasAuraInstance and type(addSeenAt) == "table" and addSeenAt.relevant == false then
+                        tbTrace("Suppression(v15f): ignore non-relevant add inCombat=%s supAge=%.3f hasAuraSpell=%s liveAura=%s id=%s",
+                            tostring(inCombat), supAge, tostring(hasAuraSpellID), tostring(hasLiveInstance), tostring(self):sub(-6))
+                    end
+                end
+                return
+            end
+
+            -- Fallback path for missed removal signals:
+            -- if we previously had an aura instance for this cooldown slot and now have none,
+            -- suppress immediately rather than trusting spell-ID polling.
+            local inCombat = InCombatLockdown and InCombatLockdown()
+            local okShown, isShown = pcall(self.IsShown, self)
+            local shouldCheckShown = (not okShown) or isShown
+            if (not inCombat) and shouldCheckShown and prevAuraInstance and (not hasLiveInstance) and getItemCooldownID(self) then
+                suppressItem(self, "RefreshDataLostAuraInstance")
+                if not verticalModeActive then
+                    scheduleBackgroundVerification(self) -- diagnostics only in v15
                 end
             end
         end)
     end
 
-    if child.ClearAuraInstanceInfo then
-        hooksecurefunc(child, "ClearAuraInstanceInfo", function(self)
-            auraRecentlyCleared[self] = GetTime()
+    if child.ClearAuraInfo then
+        hooksecurefunc(child, "ClearAuraInfo", function(self)
+            local hadAuraInstance = lastKnownAuraInstance[self] ~= nil
+            lastKnownAuraInstance[self] = nil
+
+            if isItemSuppressed(self) then
+                enforceSuppressedVisibility(self)
+                return
+            end
+
+            -- v15: ClearAuraInfo with an existing aura instance means the tracked aura path
+            -- was cleared; suppress immediately for this cooldown slot.
+            if hadAuraInstance and getItemCooldownID(self) then
+                suppressItem(self, "ClearAuraInfo")
+                if not verticalModeActive then
+                    scheduleBackgroundVerification(self) -- diagnostics only
+                end
+            end
+        end)
+    end
+
+    if child.OnUnitAuraRemovedEvent then
+        hooksecurefunc(child, "OnUnitAuraRemovedEvent", function(self)
+            -- v15: Capture spellID for diagnostics only; hide authority is suppression state.
+            local ok, spellID = pcall(function() return self:GetSpellID() end)
+            if ok and type(spellID) == "number" and not issecretvalue(spellID) then
+                auraRemovedSpellID[self] = spellID
+            elseif cachedSpellID[self] then
+                auraRemovedSpellID[self] = cachedSpellID[self]
+            else
+                auraRemovedSpellID[self] = nil
+            end
+
+            pendingAuraAdd[self] = nil
+            suppressItem(self, "OnUnitAuraRemovedEvent")
+
+            local spStr = auraRemovedSpellID[self] and tostring(auraRemovedSpellID[self]) or "?"
+            if tbTraceEnabled then
+                tbTrace("AuraRemoved(v15): spell=%s id=%s", spStr, tostring(self):sub(-6))
+            end
+            if not verticalModeActive then scheduleBackgroundVerification(self) end -- diagnostics only
+        end)
+    end
+
+    if child.OnUnitAuraAddedEvent then
+        hooksecurefunc(child, "OnUnitAuraAddedEvent", function(self, unitAuraUpdateInfo)
+            if not isItemSuppressed(self) then return end
+
+            local relevantAdd, matchedSpellID = getRelevantAddedAuraInfo(self, unitAuraUpdateInfo)
+            pendingAuraAdd[self] = {
+                at = GetTime(),
+                relevant = relevantAdd,
+                spellID = matchedSpellID,
+            }
+            local auraInstance = self.auraInstanceID
+            local hasAuraInstance = type(auraInstance) == "number" and not issecretvalue(auraInstance)
+            local hasLiveInstance = false
+            if hasAuraInstance then
+                hasLiveInstance = hasLiveAuraInstance(self)
+            end
+            local auraSpellID = self.auraSpellID
+            local hasAuraSpellID = type(auraSpellID) == "number" and not issecretvalue(auraSpellID)
+
+            if hasLiveInstance then
+                lastKnownAuraInstance[self] = auraInstance
+            end
+
+            if relevantAdd and hasLiveInstance then
+                restoreSuppressedItem(self, "OnUnitAuraAddedEventValidated")
+                if not verticalModeActive then scheduleBackgroundVerification(self) end -- diagnostics only
+            end
+
+            if tbTraceEnabled then
+                local addedCount = 0
+                if unitAuraUpdateInfo and type(unitAuraUpdateInfo) == "table" and type(unitAuraUpdateInfo.addedAuras) == "table" then
+                    addedCount = #unitAuraUpdateInfo.addedAuras
+                end
+                tbTrace("AuraAdded(v15e): pending addAuras=%d relevant=%s matchSpell=%s hasAuraInst=%s liveAura=%s hasAuraSpell=%s id=%s",
+                    addedCount, tostring(relevantAdd), tostring(matchedSpellID),
+                    tostring(hasAuraInstance), tostring(hasLiveInstance), tostring(hasAuraSpellID), tostring(self):sub(-6))
+            end
         end)
     end
 end
@@ -735,25 +1097,28 @@ local function applyVerticalMode(component)
             -- Install data mirror hooks (always, even for hidden items)
             installDataMirrorHooks(child)
 
-            -- Ensure SetShown hook is installed for rebuild triggers
-            -- (items acquired before hookTrackedBars may be missing this hook)
-            if not visHookedItems[child] and child.SetShown then
-                hooksecurefunc(child, "SetShown", function()
-                    if verticalModeActive then
-                        scheduleVerticalRebuild(component)
-                    end
-                end)
+            -- Ensure OnShow/OnHide hooks are installed for rebuild triggers (v13)
+            -- (items acquired before hookTrackedBars may be missing these hooks)
+            if not visHookedItems[child] then
+                child:HookScript("OnHide", function(self) onItemFrameHide(self, component) end)
+                child:HookScript("OnShow", function(self) onItemFrameShow(self, component) end)
                 visHookedItems[child] = true
             end
+
+            -- Vertical mode always hides Blizzard-owned bars; stacks are shown selectively below.
+            enforceBlizzItemAlpha(child)
 
             -- Skip hidden or inactive items
             -- With hideWhenInactive=false, inactive items stay shown but should not get stacks
             local skipItem = not child:IsShown()
             if not skipItem then
                 local ok, isInactive = pcall(function() return child.isActive == false end)
-                if ok and isInactive then
+                if ok and not issecretvalue(isInactive) and isInactive then
                     skipItem = true
                 end
+            end
+            if not skipItem and isItemSuppressed(child) then
+                skipItem = true
             end
             if skipItem then
                 -- Don't create a vertical stack for hidden or inactive items
@@ -811,9 +1176,6 @@ local function applyVerticalMode(component)
             -- Setup tooltip forwarding
             setupVertStackTooltip(stack, child)
 
-            -- Hide Blizzard bar item
-            enforceBlizzItemAlpha(child)
-
             stack:Show()
             end -- else (IsShown)
         end
@@ -836,7 +1198,11 @@ local function removeVerticalMode()
         local frame = _G[comp.frameName]
         if frame then
             for _, child in ipairs({ frame:GetChildren() }) do
-                restoreBlizzItemAlpha(child)
+                if isItemSuppressed(child) then
+                    enforceSuppressedVisibility(child)
+                else
+                    restoreBlizzItemAlpha(child)
+                end
             end
         end
     end
@@ -1013,10 +1379,14 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
                 -- Only show overlay if parent item is visible AND active
                 -- (prevents stale C_Timer.After callbacks from re-showing
                 -- overlays on items that deactivated between queueing and firing)
-                if not child.IsShown or child:IsShown() then
-                    local ok, isInactive = pcall(function() return child.isActive == false end)
-                    if not (ok and isInactive) then
-                        overlay:Show()
+                -- v15: Don't restore visibility on items suppressed by removal.
+                if not isItemSuppressed(child) then
+                    if not child.IsShown or child:IsShown() then
+                        local ok, isInactive = pcall(function() return child.isActive == false end)
+                        if not (ok and not issecretvalue(isInactive) and isInactive) then
+                            pcall(function() child:SetAlpha(1) end)
+                            overlay:Show()
+                        end
                     end
                 end
 
@@ -1297,6 +1667,147 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
 end
 
 --------------------------------------------------------------------------------
+-- OnShow/OnHide Handlers (v13 — show-first with background verification)
+--------------------------------------------------------------------------------
+
+-- Cancel any pending background verification for an item
+local function cancelCascade(self)
+    local gen = cascadeTimers[self]
+    if gen then
+        cascadeTimers[self] = gen + 1  -- increment generation to invalidate pending callbacks
+    end
+end
+
+-- v15: Background verification is diagnostics-only.
+-- Visibility authority now comes from removal/add hooks + suppression state.
+scheduleBackgroundVerification = function(self)
+    local gen = (cascadeTimers[self] or 0) + 1
+    cascadeTimers[self] = gen
+
+    local intervals = { 0, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0 }
+
+    local function checkAt(idx)
+        -- Generation check: bail if a newer verification or cancel replaced us
+        if cascadeTimers[self] ~= gen then
+            if tbTraceEnabled then
+                tbTrace("BackgroundVerify: stale gen at idx=%d id=%s", idx, tostring(self):sub(-6))
+            end
+            return
+        end
+
+        local clearTime = auraRecentlyCleared[self]
+        local clearAge = clearTime and (GetTime() - clearTime) or -1
+        local suppressed = isItemSuppressed(self)
+        local hasPendingAdd = pendingAuraAdd[self] ~= nil
+        local shown = self:IsShown()
+
+        -- Capture spell/aura snapshot for diagnostics only.
+        local spellID = nil
+        local okSpell, sid = pcall(function() return self:GetSpellID() end)
+        if okSpell and type(sid) == "number" and not issecretvalue(sid) then
+            spellID = sid
+        elseif type(cachedSpellID[self]) == "number" then
+            spellID = cachedSpellID[self]
+        end
+        local auraData = nil
+        if spellID then
+            local okAura, ad = pcall(C_UnitAuras.GetPlayerAuraBySpellID, spellID)
+            if okAura and not issecretvalue(ad) then
+                auraData = ad
+            end
+        end
+
+        if tbTraceEnabled then
+            local auraState = auraData and "present" or "nil"
+            local auraInst = auraData and tostring(auraData.auraInstanceID) or "nil"
+            local pendingText = hasPendingAdd and "yes" or "no"
+            tbTrace("BackgroundVerify(v15): idx=%d suppressed=%s pendingAdd=%s shown=%s clearAge=%.3f spell=%s aura=%s inst=%s id=%s",
+                idx, tostring(suppressed), pendingText, tostring(shown), clearAge,
+                tostring(spellID), auraState, auraInst, tostring(self):sub(-6))
+        end
+
+        if idx < #intervals then
+            local delay = intervals[idx + 1] - intervals[idx]
+            C_Timer.After(delay, function() checkAt(idx + 1) end)
+        else
+            -- End diagnostics pass.
+            cascadeTimers[self] = nil
+            if tbTraceEnabled then
+                tbTrace("BackgroundVerify(v15): complete id=%s", tostring(self):sub(-6))
+            end
+        end
+    end
+
+    -- Start first check on next frame (intervals[1] = 0)
+    C_Timer.After(0, function() checkAt(1) end)
+end
+
+onItemFrameHide = function(self, component)
+    recentHide[self] = GetTime()
+    cancelCascade(self)
+    auraRemovedSpellID[self] = nil
+    if tbTraceEnabled then
+        tbTrace("OnHide: id=%s shown=%s", tostring(self):sub(-6), tostring(self:IsShown()))
+    end
+    if verticalModeActive then
+        scheduleVerticalRebuild(component)
+    else
+        local overlay = trackedBarOverlays[self]
+        if overlay then overlay:Hide() end
+        pcall(self.SetAlpha, self, 0)
+    end
+end
+
+onItemFrameShow = function(self, component)
+    if tbTraceEnabled then
+        local ok, iActive = pcall(function() return self.isActive end)
+        tbTrace("OnShow: isActive=%s id=%s hideAge=%s",
+            ok and tostring(iActive) or "ERR",
+            tostring(self):sub(-6),
+            recentHide[self] and string.format("%.3f", GetTime() - recentHide[self]) or "none")
+    end
+    if verticalModeActive then
+        scheduleVerticalRebuild(component)
+        return
+    end
+    local overlay = trackedBarOverlays[self]
+    if not overlay then return end
+
+    local ok, isInactive = pcall(function() return self.isActive == false end)
+    if ok and not issecretvalue(isInactive) and isInactive then return end
+
+    if isItemSuppressed(self) then
+        enforceSuppressedVisibility(self)
+        if tbTraceEnabled then
+            tbTrace("OnShow(v15): suppressed, keep hidden id=%s", tostring(self):sub(-6))
+        end
+        return
+    end
+
+    -- v15: Show only when not suppressed.
+    alphaHidden[self] = nil
+    pcall(function() self:SetAlpha(1) end)
+    overlay:Show()
+
+    -- If bounce detected (recent hide), verify in background
+    local hideTime = recentHide[self]
+    if hideTime and (GetTime() - hideTime) < 0.8 then
+        scheduleBackgroundVerification(self)
+    else
+        -- v14b: Fresh show — capture spellID for cross-validation
+        -- v14d: Fall back to cachedSpellID when GetSpellID() returns SECRET
+        local okS, spellID = pcall(function() return self:GetSpellID() end)
+        if okS and type(spellID) == "number" and not issecretvalue(spellID) then
+            barItemFirstSpellID[self] = spellID
+        elseif not barItemFirstSpellID[self] and cachedSpellID[self] then
+            barItemFirstSpellID[self] = cachedSpellID[self]
+        end
+        recentHide[self] = nil
+        cancelCascade(self)
+    end
+end
+
+--------------------------------------------------------------------------------
 -- TrackedBars Hooks
 --------------------------------------------------------------------------------
 
@@ -1324,80 +1835,16 @@ local function hookTrackedBars(component)
             -- Always install data mirror hooks (needed for vertical mode)
             installDataMirrorHooks(itemFrame)
 
-            -- Hook visibility changes to refresh vertical layout when buffs activate/deactivate
-            if not visHookedItems[itemFrame] and itemFrame.SetShown then
-                hooksecurefunc(itemFrame, "SetShown", function(self, shown)
-                    if tbTraceEnabled then
-                        local shownSecret = issecretvalue(shown)
-                        local ok, iActive = pcall(function() return self.isActive end)
-                        local ok2, hwi = pcall(function() return self.hideWhenInactive end)
-                        tbTrace("SetShown: shown=%s(secret=%s) isActive=%s hwi=%s id=%s",
-                            shownSecret and "SECRET" or tostring(shown), tostring(shownSecret),
-                            ok and tostring(iActive) or "ERR",
-                            ok2 and tostring(hwi) or "ERR",
-                            tostring(self):sub(-6))
-                    end
-                    if verticalModeActive then
-                        scheduleVerticalRebuild(component)
-                    else
-                        -- Default mode: sync overlay visibility with item frame
-                        local overlay = trackedBarOverlays[self]
-                        if overlay then
-                            if shown then
-                                if recentDeactivation[self] == GetTime() then
-                                    -- Same-frame bounce: defer show and verify aura next frame
-                                    C_Timer.After(0, function()
-                                        recentDeactivation[self] = nil
-                                        local ov = trackedBarOverlays[self]
-                                        if not ov then
-                                            if tbTraceEnabled then tbTrace("BounceDefer: noOverlay id=%s", tostring(self):sub(-6)) end
-                                            return
-                                        end
-                                        local ok1, isInactive = pcall(function() return self.isActive == false end)
-                                        if ok1 and isInactive then
-                                            if tbTraceEnabled then tbTrace("BounceDefer: inactive id=%s", tostring(self):sub(-6)) end
-                                            return
-                                        end
-                                        local ok2, stillShown = pcall(function() return self:IsShown() end)
-                                        if ok2 and not stillShown then
-                                            if tbTraceEnabled then tbTrace("BounceDefer: hidden id=%s", tostring(self):sub(-6)) end
-                                            return
-                                        end
-                                        -- v7: Check ClearAuraInstanceInfo signal (direct Blizzard removal hook)
-                                        local skipShow = false
-                                        local clearTime = auraRecentlyCleared[self]
-                                        local auraResult = "no_clear"
-                                        if clearTime then
-                                            local age = GetTime() - clearTime
-                                            if age < 0.15 then
-                                                auraResult = "cleared"
-                                                skipShow = true
-                                            else
-                                                auraResult = "stale_clear"
-                                            end
-                                            auraRecentlyCleared[self] = nil
-                                        end
-                                        if tbTraceEnabled then
-                                            tbTrace("BounceDefer: id=%s result=%s skip=%s",
-                                                tostring(self):sub(-6), auraResult, tostring(skipShow))
-                                        end
-                                        if not skipShow then
-                                            ov:Show()
-                                        end
-                                    end)
-                                else
-                                    recentDeactivation[self] = nil
-                                    local ok, isInactive = pcall(function() return self.isActive == false end)
-                                    if not (ok and isInactive) then
-                                        overlay:Show()
-                                    end
-                                end
-                            else
-                                overlay:Hide()
-                            end
-                        end
-                    end
-                end)
+            -- v14d: Cache spellID for combat use (GetSpellID() returns SECRET in combat)
+            local okSID, cachedSID = pcall(function() return itemFrame:GetSpellID() end)
+            if okSID and type(cachedSID) == "number" and not issecretvalue(cachedSID) then
+                cachedSpellID[itemFrame] = cachedSID
+            end
+
+            -- Hook visibility changes via OnShow/OnHide (v13 — show-first background verification)
+            if not visHookedItems[itemFrame] then
+                itemFrame:HookScript("OnHide", function(self) onItemFrameHide(self, component) end)
+                itemFrame:HookScript("OnShow", function(self) onItemFrameShow(self, component) end)
                 visHookedItems[itemFrame] = true
             end
 
@@ -1624,14 +2071,16 @@ addon:RegisterComponentInitializer(function(self)
                 local oVis = overlay and overlay:IsVisible()
                 local bgVis = overlay and overlay.barBg and overlay.barBg:IsVisible()
                 local bgA = overlay and overlay.barBg and overlay.barBg:GetAlpha()
+                local suppressed = isItemSuppressed(child)
+                local pendingAdd = pendingAuraAdd[child] ~= nil
                 push(("[%d] shown=%s visible=%s isActive=%s(secret=%s)"):format(
                     idx, tostring(child:IsShown()), tostring(child:IsVisible()),
                     ok2 and (activeSecret and "SECRET" or tostring(iActive)) or "ERR",
                     tostring(activeSecret)))
-                push(("     hwi=%s allowHWI=%s overlay=%s bgVis=%s bgAlpha=%s"):format(
+                push(("     hwi=%s allowHWI=%s overlay=%s bgVis=%s bgAlpha=%s suppressed=%s pendingAdd=%s"):format(
                     ok3 and tostring(hwi) or "ERR",
                     ok4 and tostring(allow) or "ERR",
-                    tostring(oVis), tostring(bgVis), tostring(bgA)))
+                    tostring(oVis), tostring(bgVis), tostring(bgA), tostring(suppressed), tostring(pendingAdd)))
             end
         end
         push("")
