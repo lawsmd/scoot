@@ -69,8 +69,12 @@ core/components/unitframes/bars/resolvers.lua
 core/components/unitframes/bars/textures.lua
 core/components/unitframes/bars/alpha.lua
 core/components/unitframes/bars/preemptive.lua
-core/components/unitframes/bars/raidframes.lua
-core/components/unitframes/bars/partyframes.lua
+core/components/unitframes/bars/raidframes/core.lua
+core/components/unitframes/bars/raidframes/text.lua
+core/components/unitframes/bars/raidframes/extras.lua
+core/components/unitframes/bars/partyframes/core.lua
+core/components/unitframes/bars/partyframes/text.lua
+core/components/unitframes/bars/partyframes/extras.lua
 core/components/unitframes/bars.lua
 core/components/unitframes/portraits.lua
 core/components/unitframes/classresource.lua
