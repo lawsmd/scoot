@@ -52,7 +52,10 @@ core/components/cooldowns/keybinds.lua
 core/components/cooldowns/essential.lua
 core/components/cooldowns/utility.lua
 core/components/cooldowns/trackedbuffs.lua
-core/components/cooldowns/trackedbars.lua
+core/components/cooldowns/trackedbars/init.lua
+core/components/cooldowns/trackedbars/suppression.lua
+core/components/cooldowns/trackedbars/default.lua
+core/components/cooldowns/trackedbars/vertical.lua
 core/components/cooldowns/customgroups.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua
