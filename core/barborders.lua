@@ -252,13 +252,25 @@ local function handleSizeChanged(frame)
 end
 
 local function ensureSizeHook(barFrame)
+    if not barFrame then return end
     local bfState = borderFrameState[barFrame]
-    if not barFrame or (bfState and bfState.sizeHooked) then return end
-    if barFrame.HookScript then
-        barFrame:HookScript("OnSizeChanged", handleSizeChanged)
-        borderFrameState[barFrame] = borderFrameState[barFrame] or {}
-        borderFrameState[barFrame].sizeHooked = true
-    end
+    if bfState and bfState.sizeHooked then return end
+
+    borderFrameState[barFrame] = borderFrameState[barFrame] or {}
+    borderFrameState[barFrame].sizeHooked = true
+
+    -- Create an addon-owned proxy frame instead of HookScript on the Blizzard frame.
+    -- HookScript modifies the frame's script handler table, permanently tainting it
+    -- in 12.0 (TAINT.md Rule 9). The proxy inherits barFrame's dimensions via
+    -- SetAllPoints and receives OnSizeChanged without modifying the Blizzard frame.
+    -- Use sizeProxyParentRef if set (e.g., UIParent for damage meter entries to avoid taint).
+    local proxyParent = borderFrameState[barFrame].sizeProxyParentRef or barFrame
+    local proxy = CreateFrame("Frame", nil, proxyParent)
+    proxy:SetAllPoints(barFrame)
+    proxy:SetScript("OnSizeChanged", function()
+        handleSizeChanged(barFrame)
+    end)
+    borderFrameState[barFrame].sizeProxy = proxy
 end
 
 local function formatMenuLabel(style, options)
@@ -356,6 +368,14 @@ function BarBorders.ApplyToBarFrame(barFrame, styleKey, options)
         return false
     end
 
+    -- Initialize state BEFORE ensureSizeHook so proxy can use sizeProxyParentRef
+    local bfState = borderFrameState[barFrame] or {}
+    borderFrameState[barFrame] = bfState
+
+    if type(options) == "table" and options.sizeProxyParent then
+        bfState.sizeProxyParentRef = options.sizeProxyParent
+    end
+
     ensureSizeHook(barFrame)
 
     local thickness = tonumber(options and options.thickness) or 1
@@ -364,9 +384,10 @@ function BarBorders.ApplyToBarFrame(barFrame, styleKey, options)
 
     local color = cloneColor(options and options.color)
 
-    -- Use weak-key table to store options instead of writing to Blizzard frame
-    local bfState = borderFrameState[barFrame] or {}
-    borderFrameState[barFrame] = bfState
+    -- Re-show the size proxy if it was hidden by a previous ClearBarFrame call
+    if bfState.sizeProxy then
+        bfState.sizeProxy:Show()
+    end
 
     -- Allow callers (e.g., Unit Frames) to request a specific relative level/parent so text stays above borders
     if type(options) == "table" and options.levelOffset then
@@ -405,6 +426,13 @@ function BarBorders.ClearBarFrame(barFrame)
         if holder then
             if holder.SetBackdrop then pcall(holder.SetBackdrop, holder, nil) end
             holder:Hide()
+        end
+        -- Hide the size proxy to suppress unnecessary OnSizeChanged events
+        -- while no border is active (handleSizeChanged already early-returns
+        -- when bfState.state is nil, but hiding avoids the call entirely).
+        local proxy = bfState.sizeProxy
+        if proxy then
+            proxy:Hide()
         end
     end
 end

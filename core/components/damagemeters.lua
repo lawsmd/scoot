@@ -103,6 +103,21 @@ end
 -- Module-level hook guard for the main DamageMeter frame (avoids writing to dmFrame)
 local dmFrameHooked = false
 
+-- Overlay visibility management for UIParent-parented overlays.
+-- UIParent-parented overlays don't auto-hide when entries are hidden/recycled
+-- by the ScrollBox. Use a "hide all, then show visible" pattern.
+local allDMOverlays = {}
+
+local function registerDMOverlay(overlay)
+    allDMOverlays[#allDMOverlays + 1] = overlay
+end
+
+local function hideAllDMOverlays()
+    for _, overlay in ipairs(allDMOverlays) do
+        overlay:Hide()
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Enhanced Title Feature: Display session type alongside meter type
 -- e.g., "DPS (Current)", "HPS (Overall)", "Interrupts (Segment 3)"
@@ -286,7 +301,7 @@ local function HookSessionWindowTitleRightClick(sessionWindow)
     state.titleRightClickOverlay = overlay
 
     overlay:SetScript("OnClick", function(self, button)
-        if button == "RightButton" and dropdown.OpenMenu then
+        if button == "RightButton" and dropdown.OpenMenu and not InCombatLockdown() then
             dropdown:OpenMenu()
         end
     end)
@@ -318,10 +333,15 @@ local function ApplyJiberishIconsStyle(entry, db)
         if blizzardIcon then
             pcall(blizzardIcon.SetAlpha, blizzardIcon, 1)
         end
-        -- Hide the overlay
-        local overlay = iconFrame and getElementState(iconFrame).jiberishOverlay
-        if overlay then
-            overlay:Hide()
+        -- Hide the overlay and its UIParent-parented container
+        local elSt = iconFrame and getElementState(iconFrame)
+        if elSt then
+            if elSt.jiberishOverlay then
+                elSt.jiberishOverlay:Hide()
+            end
+            if elSt.jiberishContainer then
+                elSt.jiberishContainer:Hide()
+            end
         end
         return
     end
@@ -351,13 +371,28 @@ local function ApplyJiberishIconsStyle(entry, db)
         pcall(blizzardIcon.SetAlpha, blizzardIcon, 0)
     end
 
-    -- CREATE/UPDATE the overlay texture
+    -- CREATE/UPDATE the overlay texture (UIParent-parented to avoid tainting entry.Icon)
     local elSt = getElementState(iconFrame)
     local overlay = elSt.jiberishOverlay
     if not overlay then
-        overlay = iconFrame:CreateTexture(nil, "ARTWORK", nil, 1)
-        overlay:SetAllPoints(iconFrame)  -- Match icon frame size
+        local container = elSt.jiberishContainer
+        if not container then
+            container = CreateFrame("Frame", nil, UIParent)
+            container:SetAllPoints(iconFrame)
+            container:SetFrameStrata("MEDIUM")
+            local ok, lvl = pcall(iconFrame.GetFrameLevel, iconFrame)
+            container:SetFrameLevel(ok and type(lvl) == "number" and (lvl + 1) or 5)
+            elSt.jiberishContainer = container
+            registerDMOverlay(container)
+        end
+        overlay = container:CreateTexture(nil, "ARTWORK", nil, 1)
+        overlay:SetAllPoints(container)
         elSt.jiberishOverlay = overlay
+    end
+
+    -- Show the UIParent-parented container
+    if elSt.jiberishContainer then
+        elSt.jiberishContainer:Show()
     end
 
     -- Apply JiberishIcons to the addon overlay (not Blizzard's)
@@ -485,12 +520,15 @@ local function ApplySingleEntryStyle(entry, db)
             addon.BarBorders.ClearBarFrame(statusBar)
         end
 
-        -- Get or create square border overlay
+        -- Get or create square border overlay (UIParent-parented to avoid tainting entry.StatusBar)
         local borderOverlay = getElementState(statusBar).squareBorderOverlay
         if not borderOverlay then
-            borderOverlay = CreateFrame("Frame", nil, statusBar)
-            borderOverlay:SetFrameLevel((statusBar:GetFrameLevel() or 0) + 2)
+            borderOverlay = CreateFrame("Frame", nil, UIParent)
+            borderOverlay:SetFrameStrata("MEDIUM")
+            local ok, lvl = pcall(statusBar.GetFrameLevel, statusBar)
+            borderOverlay:SetFrameLevel(ok and type(lvl) == "number" and (lvl + 2) or 7)
             getElementState(statusBar).squareBorderOverlay = borderOverlay
+            registerDMOverlay(borderOverlay)
 
             -- Create 4 edge textures
             borderOverlay.edges = {
@@ -554,12 +592,27 @@ local function ApplySingleEntryStyle(entry, db)
             getElementState(statusBar).squareBorderOverlay:Hide()
         end
 
-        -- Apply textured border
+        -- Apply textured border (UIParent-parented to avoid tainting entry.StatusBar)
         if addon.BarBorders and addon.BarBorders.ApplyToBarFrame then
             addon.BarBorders.ApplyToBarFrame(statusBar, borderStyle, {
                 thickness = thickness,
                 color = { r, g, b, a },
+                containerParent = UIParent,
+                sizeProxyParent = UIParent,
             })
+
+            -- Register BarBorders holder and size proxy for visibility management
+            local elSt = getElementState(statusBar)
+            local holder = addon.BarBorders.GetBorderHolder(statusBar)
+            if holder and not elSt.holderRegistered then
+                registerDMOverlay(holder)
+                elSt.holderRegistered = true
+            end
+            local bState = addon.BarBorders.GetBorderState(statusBar)
+            if bState and bState.sizeProxy and not elSt.proxyRegistered then
+                registerDMOverlay(bState.sizeProxy)
+                elSt.proxyRegistered = true
+            end
         end
     end
 
@@ -638,12 +691,15 @@ local function ApplySingleEntryStyle(entry, db)
                 local insetH = tonumber(db.iconBorderInsetH) or 0  -- Horizontal inset (left/right)
                 local insetV = tonumber(db.iconBorderInsetV) or 2  -- Vertical inset (top/bottom) - default 2 for Blizzard's clipped icons
 
-                -- Get or create the border overlay frame
+                -- Get or create the border overlay frame (UIParent-parented to avoid tainting entry.Icon)
                 local borderOverlay = getElementState(iconFrame).borderOverlay
                 if not borderOverlay then
-                    borderOverlay = CreateFrame("Frame", nil, iconFrame)
-                    borderOverlay:SetFrameLevel((iconFrame:GetFrameLevel() or 0) + 2)
+                    borderOverlay = CreateFrame("Frame", nil, UIParent)
+                    borderOverlay:SetFrameStrata("MEDIUM")
+                    local ok, lvl = pcall(iconFrame.GetFrameLevel, iconFrame)
+                    borderOverlay:SetFrameLevel(ok and type(lvl) == "number" and (lvl + 2) or 7)
                     getElementState(iconFrame).borderOverlay = borderOverlay
+                    registerDMOverlay(borderOverlay)
 
                     -- Create 4 edge textures for the border
                     borderOverlay.edges = {
@@ -1228,7 +1284,9 @@ local function HookSessionWindowScrollBox(sessionWindow, component)
 
     hooksecurefunc(sessionWindow.ScrollBox, "Update", function(scrollBox)
         _G.C_Timer.After(0, function()
+            if PlayerInCombat() then return end
             if not component.db then return end
+            hideAllDMOverlays()
             ForEachVisibleEntry(sessionWindow, function(entryFrame)
                 ApplySingleEntryStyle(entryFrame, component.db)
             end)
@@ -1241,6 +1299,7 @@ local function HookSessionWindowScrollBox(sessionWindow, component)
         state.localPlayerHooked = true
         hooksecurefunc(sessionWindow, "ShowLocalPlayerEntry", function(self, earlierInList)
             C_Timer.After(0, function()
+                if PlayerInCombat() then return end
                 if not component.db then return end
                 local localPlayerEntry = self.LocalPlayerEntry
                 if localPlayerEntry then
@@ -1309,6 +1368,9 @@ local function ApplyDamageMeterStyling(self)
     if PlayerInCombat() then
         return
     end
+
+    -- Reset all UIParent-parented overlays before re-styling visible entries
+    hideAllDMOverlays()
 
     -- Style all session windows and their entries
     local windows = GetAllSessionWindows()

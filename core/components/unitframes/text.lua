@@ -302,6 +302,66 @@ do
         return false
     end
 
+    -- Targeted zero-touch check for DeadText/UnconsciousText: only fontFace and style matter
+    -- (color, alignment, offset are irrelevant — we preserve Blizzard's original values)
+    local function hasFontFaceOrStyle(styleCfg)
+        if not styleCfg then return false end
+        if styleCfg.fontFace ~= nil and styleCfg.fontFace ~= "" and styleCfg.fontFace ~= "FRIZQT__" then
+            return true
+        end
+        if styleCfg.style ~= nil then
+            return true
+        end
+        return false
+    end
+
+    -- Apply font face and outline style to DeadText/UnconsciousText FontStrings,
+    -- inheriting from the user's Health Bar > Value Text settings.
+    -- Preserves Blizzard's original size and color.
+    local function applyDeadTextFontInheritance(fs, styleCfg)
+        if not fs or not styleCfg then return end
+        if not hasFontFaceOrStyle(styleCfg) then return end
+
+        -- Read current font size to preserve it
+        local ok, currentFont, currentSize, currentFlags = pcall(fs.GetFont, fs)
+        if not ok or type(currentSize) ~= "number" then return end
+
+        local face = addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__")
+            or currentFont
+        local outline = styleCfg.style ~= nil and tostring(styleCfg.style) or (currentFlags or "")
+
+        local fstate = ensureFS()
+        if fstate then fstate.SetProp(fs, "applyingFont", true) end
+        if addon.ApplyFontStyle then
+            addon.ApplyFontStyle(fs, face, currentSize, outline)
+        elseif fs.SetFont then
+            pcall(fs.SetFont, fs, face, currentSize, outline)
+        end
+        if fstate then fstate.SetProp(fs, "applyingFont", nil) end
+    end
+
+    -- Hook Show() on DeadText/UnconsciousText so font inheritance reapplies
+    -- each time Blizzard's CheckDead() displays the text.
+    local function hookDeadTextShow(fs, unit)
+        if not fs then return end
+        local fstate = ensureFS()
+        if not fstate then return end
+        if fstate.IsHooked(fs, "deadTextFontShow") then return end
+        fstate.MarkHooked(fs, "deadTextFontShow")
+
+        if _G.hooksecurefunc then
+            _G.hooksecurefunc(fs, "Show", function(self)
+                if isEditModeActive() then return end
+                local db = addon and addon.db and addon.db.profile
+                if not db then return end
+                local unitFrames = rawget(db, "unitFrames")
+                local cfg = unitFrames and rawget(unitFrames, unit) or nil
+                if not cfg then return end
+                applyDeadTextFontInheritance(self, cfg.textHealthValue or {})
+            end)
+        end
+    end
+
     local function applyTextStyle(fs, styleCfg, baselineKey, fallbackFrame)
         if not fs or not styleCfg then return end
         if not hasTextCustomization(styleCfg) then
@@ -573,6 +633,24 @@ do
                 applyTextStyle(textStringFS, cfg.textHealthValue or {}, unit .. ":health-center", frame)
             end
         end
+
+        -- DeadText / UnconsciousText: inherit font face + style from Health Value text settings.
+        -- Only Target and Focus have these (Player/Pet do not).
+        if unit == "Target" or unit == "Focus" then
+            local root = (unit == "Target") and _G.TargetFrame or _G.FocusFrame
+            local hbContainer = root and root.TargetFrameContent
+                and root.TargetFrameContent.TargetFrameContentMain
+                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
+            if hbContainer then
+                local valueCfg = cfg.textHealthValue or {}
+                local deadText = hbContainer.DeadText
+                local unconsciousText = hbContainer.UnconsciousText
+                applyDeadTextFontInheritance(deadText, valueCfg)
+                hookDeadTextShow(deadText, unit)
+                applyDeadTextFontInheritance(unconsciousText, valueCfg)
+                hookDeadTextShow(unconsciousText, unit)
+            end
+        end
     end
 
     -- Boss frames: Apply Health % (LeftText) and Value (RightText/Center) styling.
@@ -615,6 +693,15 @@ do
                 if centerFS then
                     applyTextStyle(centerFS, cfg.textHealthValue or {}, "Boss" .. tostring(i) .. ":health-center", hbContainer)
                 end
+
+                -- DeadText / UnconsciousText: inherit font face + style from Health Value settings
+                local valueCfg = cfg.textHealthValue or {}
+                local deadText = hbContainer.DeadText
+                local unconsciousText = hbContainer.UnconsciousText
+                applyDeadTextFontInheritance(deadText, valueCfg)
+                hookDeadTextShow(deadText, "Boss")
+                applyDeadTextFontInheritance(unconsciousText, valueCfg)
+                hookDeadTextShow(unconsciousText, "Boss")
             end
         end
 
@@ -1677,6 +1764,14 @@ do
 					or nil
 			end
 
+			local function resolveBossLevelFS(bossFrame)
+				return (bossFrame
+					and bossFrame.TargetFrameContent
+					and bossFrame.TargetFrameContent.TargetFrameContentMain
+					and bossFrame.TargetFrameContent.TargetFrameContentMain.LevelText)
+					or nil
+			end
+
 			local function resolveBossContentMain(bossFrame)
 				return bossFrame
 					and bossFrame.TargetFrameContent
@@ -1994,6 +2089,15 @@ do
 
 				if nameFS then
 					applyBossTextStyle(nameFS, cfg.textName or {}, "Boss" .. tostring(i) .. ":name", bossFrame)
+				end
+
+				-- Level text
+				local levelFS = resolveBossLevelFS(bossFrame)
+				if levelFS and levelFS.SetShown and cfg.levelTextHidden ~= nil then
+					pcall(levelFS.SetShown, levelFS, not cfg.levelTextHidden)
+				end
+				if levelFS then
+					applyBossTextStyle(levelFS, cfg.textLevel or {}, "Boss" .. tostring(i) .. ":level", bossFrame)
 				end
 
 				-- Backdrop + Border: attach to the same content main frame as Target/Focus.

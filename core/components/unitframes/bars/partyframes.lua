@@ -1010,131 +1010,195 @@ function PartyFrames.installHooks()
         end)
     end
 
+    -- Named function for role icon customization (also used by safety net and fallbacks)
+    local function applyCustomRoleIcon(frame)
+        if isEditModeActive() then return end
+        if not frame then return end
+        if frame.IsForbidden and frame:IsForbidden() then return end
+
+        -- Only process frames ScooterMod styles
+        if not Utils.isPartyFrame(frame) and not Utils.isRaidFrame(frame) then return end
+
+        -- Check if ScooterMod has active overlays
+        local db = addon and addon.db and addon.db.profile
+        local groupFrames = db and rawget(db, "groupFrames") or nil
+        if not groupFrames then return end
+        local cfg = Utils.isPartyFrame(frame) and rawget(groupFrames, "party")
+                 or Utils.isRaidFrame(frame) and rawget(groupFrames, "raid")
+                 or nil
+        if not cfg then return end
+
+        local okR, roleIcon = pcall(function() return frame.roleIcon end)
+        if not okR or not roleIcon then return end
+
+        -- Track whether we need desaturation (applied at the very end)
+        local shouldDesaturate = false
+
+        -- A) Draw layer elevation (only when ScooterMod overlays active)
+        local hasOverlay = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default")
+                        or (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
+        if not hasOverlay then
+            local textCfg = rawget(cfg, "textPlayerName") or nil
+            hasOverlay = textCfg and Utils.hasCustomTextSettings(textCfg)
+        end
+        if hasOverlay and roleIcon.SetDrawLayer then
+            pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
+        end
+
+        -- B) Custom positioning (independent of icon set)
+        do
+            local anchor = rawget(cfg, "roleIconAnchor")
+            if anchor and anchor ~= "default" and roleIcon.IsShown and roleIcon:IsShown() then
+                local offsetX = tonumber(rawget(cfg, "roleIconOffsetX")) or 0
+                local offsetY = tonumber(rawget(cfg, "roleIconOffsetY")) or 0
+                pcall(roleIcon.ClearAllPoints, roleIcon)
+                pcall(roleIcon.SetPoint, roleIcon, anchor, frame, anchor, offsetX, offsetY)
+            end
+        end
+
+        -- B2) Visibility filtering (no early returns — B3 and C must always run)
+        do
+            local vis = rawget(cfg, "roleIconVisibility")
+            if vis and roleIcon.IsShown and roleIcon:IsShown() then
+                if vis == "hideAll" then
+                    pcall(roleIcon.SetAlpha, roleIcon, 0)
+                elseif vis == "hideDPS" then
+                    local unit
+                    local okU, u = pcall(function() return frame.displayedUnit or frame.unit end)
+                    if okU and u then unit = u end
+                    if unit then
+                        local okRole, role = pcall(UnitGroupRolesAssigned, unit)
+                        if okRole and type(role) == "string" and role == "DAMAGER" then
+                            pcall(roleIcon.SetAlpha, roleIcon, 0)
+                        else
+                            pcall(roleIcon.SetAlpha, roleIcon, 1)
+                        end
+                    else
+                        -- Couldn't determine unit: ensure visible
+                        pcall(roleIcon.SetAlpha, roleIcon, 1)
+                    end
+                elseif vis == "showAll" then
+                    -- Restore from previously hidden state
+                    pcall(roleIcon.SetAlpha, roleIcon, 1)
+                end
+            end
+        end
+
+        -- B3) Scale
+        do
+            local scale = tonumber(rawget(cfg, "roleIconScale"))
+            if scale then
+                local size = 17 * scale / 100
+                pcall(roleIcon.SetSize, roleIcon, size, size)
+            end
+        end
+
+        -- C) Custom icon set swap (independent of overlay state)
+        local iconSet = rawget(cfg, "roleIconSet")
+        local skipSwap = false
+        if not iconSet or iconSet == "default" then
+            skipSwap = true
+        end
+        if not skipSwap and (not roleIcon.IsShown or not roleIcon:IsShown()) then
+            skipSwap = true
+        end
+
+        if not skipSwap then
+            local unit
+            local okU, u = pcall(function() return frame.displayedUnit or frame.unit end)
+            if okU and u then unit = u end
+
+            if unit then
+                -- Don't override vehicle icons (set flag instead of returning)
+                local isVehicle = false
+                local okV, inVehicle = pcall(UnitInVehicle, unit)
+                if okV and inVehicle then
+                    local okVUI, hasVUI = pcall(UnitHasVehicleUI, unit)
+                    if okVUI and hasVUI then isVehicle = true end
+                end
+
+                if not isVehicle then
+                    local okRole, role = pcall(UnitGroupRolesAssigned, unit)
+                    if okRole and type(role) == "string" and role ~= "NONE" then
+                        -- Check texture-based sets first (custom TGA files)
+                        local textures = Utils.ROLE_ICON_TEXTURES and Utils.ROLE_ICON_TEXTURES[iconSet]
+                        if textures and textures[role] then
+                            pcall(roleIcon.SetTexture, roleIcon, textures[role])
+                            pcall(roleIcon.SetTexCoord, roleIcon, 0, 1, 0, 1)
+                            if textures.desaturated then
+                                shouldDesaturate = true
+                            end
+                        else
+                            -- Then check atlas-based sets (built-in Blizzard atlases)
+                            local atlases = Utils.ROLE_ICON_ATLASES and Utils.ROLE_ICON_ATLASES[iconSet]
+                            if atlases and atlases[role] then
+                                pcall(roleIcon.SetAtlas, roleIcon, atlases[role])
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Final: apply desaturation state (always runs, cleans up stale state too)
+        pcall(roleIcon.SetDesaturated, roleIcon, shouldDesaturate)
+    end
+
+    -- Expose for cross-file access (raidframes.lua fallback)
+    addon._applyCustomRoleIcon = applyCustomRoleIcon
+
     -- Hook CompactUnitFrame_UpdateRoleIcon to:
     -- A) Elevate roleIcon draw layer above ScooterMod overlay containers
     -- B) Swap to custom icon set if configured
     if not addon._RoleIconVisibilityHookInstalled then
         addon._RoleIconVisibilityHookInstalled = true
         if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateRoleIcon then
-            _G.hooksecurefunc("CompactUnitFrame_UpdateRoleIcon", function(frame)
+            _G.hooksecurefunc("CompactUnitFrame_UpdateRoleIcon", applyCustomRoleIcon)
+        end
+    end
+
+    -- Safety net: re-apply custom role icons on roster/role events
+    -- Needed because Blizzard's CompactUnitFrame_UpdateRoleIcon may error on
+    -- tainted roleIcon widgets (secret value from GetHeight), causing our
+    -- post-hook to never fire. This directly applies without going through
+    -- Blizzard's function.
+    if not addon._RoleIconSafetyNetInstalled then
+        addon._RoleIconSafetyNetInstalled = true
+        local safetyNetTimer = nil
+        local roleIconEventFrame = CreateFrame("Frame")
+        roleIconEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+        roleIconEventFrame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+        roleIconEventFrame:SetScript("OnEvent", function()
+            if isEditModeActive() then return end
+            local db = addon and addon.db and addon.db.profile
+            local gf = db and rawget(db, "groupFrames") or nil
+            if not gf then return end
+            local pCfg = rawget(gf, "party")
+            local rCfg = rawget(gf, "raid")
+            local hasAny = (pCfg and (rawget(pCfg, "roleIconSet") or rawget(pCfg, "roleIconAnchor") or rawget(pCfg, "roleIconVisibility")))
+                        or (rCfg and (rawget(rCfg, "roleIconSet") or rawget(rCfg, "roleIconAnchor") or rawget(rCfg, "roleIconVisibility")))
+            if not hasAny then return end
+            if safetyNetTimer then safetyNetTimer:Cancel() end
+            safetyNetTimer = C_Timer.NewTimer(0.15, function()
+                safetyNetTimer = nil
                 if isEditModeActive() then return end
-                if not frame then return end
-                if frame.IsForbidden and frame:IsForbidden() then return end
-
-                -- Only process frames ScooterMod styles
-                if not Utils.isPartyFrame(frame) and not Utils.isRaidFrame(frame) then return end
-
-                -- Check if ScooterMod has active overlays
-                local db = addon and addon.db and addon.db.profile
-                local groupFrames = db and rawget(db, "groupFrames") or nil
-                if not groupFrames then return end
-                local cfg = Utils.isPartyFrame(frame) and rawget(groupFrames, "party")
-                         or Utils.isRaidFrame(frame) and rawget(groupFrames, "raid")
-                         or nil
-                if not cfg then return end
-
-                local okR, roleIcon = pcall(function() return frame.roleIcon end)
-                if not okR or not roleIcon then return end
-
-                -- Reset desaturation (may linger from a previous texture-based set)
-                pcall(roleIcon.SetDesaturated, roleIcon, false)
-
-                -- A) Draw layer elevation (only when ScooterMod overlays active)
-                local hasOverlay = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default")
-                                or (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
-                if not hasOverlay then
-                    local textCfg = rawget(cfg, "textPlayerName") or nil
-                    hasOverlay = textCfg and Utils.hasCustomTextSettings(textCfg)
+                -- Direct apply (bypasses Blizzard's function which may error on tainted roleIcon)
+                for i = 1, 5 do
+                    local f = _G["CompactPartyFrameMember" .. i]
+                    if f then pcall(applyCustomRoleIcon, f) end
                 end
-                if hasOverlay and roleIcon.SetDrawLayer then
-                    pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
+                for i = 1, 40 do
+                    local f = _G["CompactRaidFrame" .. i]
+                    if f then pcall(applyCustomRoleIcon, f) end
                 end
-
-                -- B) Custom positioning (independent of icon set)
-                do
-                    local anchor = rawget(cfg, "roleIconAnchor")
-                    if anchor and anchor ~= "default" and roleIcon.IsShown and roleIcon:IsShown() then
-                        local offsetX = tonumber(rawget(cfg, "roleIconOffsetX")) or 0
-                        local offsetY = tonumber(rawget(cfg, "roleIconOffsetY")) or 0
-                        pcall(roleIcon.ClearAllPoints, roleIcon)
-                        pcall(roleIcon.SetPoint, roleIcon, anchor, frame, anchor, offsetX, offsetY)
+                for g = 1, 8 do
+                    for m = 1, 5 do
+                        local f = _G["CompactRaidGroup" .. g .. "Member" .. m]
+                        if f then pcall(applyCustomRoleIcon, f) end
                     end
-                end
-
-                -- B2) Visibility filtering
-                do
-                    local vis = rawget(cfg, "roleIconVisibility")
-                    if vis and roleIcon.IsShown and roleIcon:IsShown() then
-                        if vis == "hideAll" then
-                            pcall(roleIcon.SetAlpha, roleIcon, 0)
-                            return
-                        elseif vis == "hideDPS" then
-                            local unit
-                            local okU, u = pcall(function() return frame.displayedUnit or frame.unit end)
-                            if okU and u then unit = u end
-                            if unit then
-                                local okRole, role = pcall(UnitGroupRolesAssigned, unit)
-                                if okRole and type(role) == "string" and role == "DAMAGER" then
-                                    pcall(roleIcon.SetAlpha, roleIcon, 0)
-                                    return
-                                end
-                            end
-                            -- Non-DPS role or couldn't determine: ensure visible
-                            pcall(roleIcon.SetAlpha, roleIcon, 1)
-                        elseif vis == "showAll" then
-                            -- Restore from previously hidden state
-                            pcall(roleIcon.SetAlpha, roleIcon, 1)
-                        end
-                    end
-                end
-
-                -- B3) Scale
-                do
-                    local scale = tonumber(rawget(cfg, "roleIconScale"))
-                    if scale then
-                        local size = 17 * scale / 100
-                        pcall(roleIcon.SetSize, roleIcon, size, size)
-                    end
-                end
-
-                -- C) Custom icon set swap (independent of overlay state)
-                local iconSet = rawget(cfg, "roleIconSet")
-                if not iconSet or iconSet == "default" then return end
-                if not roleIcon.IsShown or not roleIcon:IsShown() then return end
-
-                local unit
-                local okU, u = pcall(function() return frame.displayedUnit or frame.unit end)
-                if okU and u then unit = u end
-                if not unit then return end
-
-                -- Don't override vehicle icons
-                local okV, inVehicle = pcall(UnitInVehicle, unit)
-                if okV and inVehicle then
-                    local okVUI, hasVUI = pcall(UnitHasVehicleUI, unit)
-                    if okVUI and hasVUI then return end
-                end
-
-                local okRole, role = pcall(UnitGroupRolesAssigned, unit)
-                if not okRole or type(role) ~= "string" or role == "NONE" then return end
-
-                -- Check texture-based sets first (custom TGA files)
-                local textures = Utils.ROLE_ICON_TEXTURES and Utils.ROLE_ICON_TEXTURES[iconSet]
-                if textures and textures[role] then
-                    pcall(roleIcon.SetTexture, roleIcon, textures[role])
-                    pcall(roleIcon.SetTexCoord, roleIcon, 0, 1, 0, 1)
-                    if textures.desaturated then
-                        pcall(roleIcon.SetDesaturated, roleIcon, true)
-                    end
-                    return
-                end
-
-                -- Then check atlas-based sets (built-in Blizzard atlases)
-                local atlases = Utils.ROLE_ICON_ATLASES and Utils.ROLE_ICON_ATLASES[iconSet]
-                if atlases and atlases[role] then
-                    pcall(roleIcon.SetAtlas, roleIcon, atlases[role])
                 end
             end)
-        end
+        end)
     end
 end
 
@@ -1146,13 +1210,18 @@ PartyFrames.installHooks()
 --------------------------------------------------------------------------------
 -- Re-triggers Blizzard's CompactUnitFrame_UpdateRoleIcon on each party frame.
 -- Blizzard sets the default atlas, then our post-hook swaps to the custom set.
+-- Falls back to direct application if Blizzard's function errors (tainted widget).
 
 function addon.ApplyPartyRoleIcons()
+    local directApply = addon._applyCustomRoleIcon
     for i = 1, 5 do
         local frame = _G["CompactPartyFrameMember" .. i]
         if frame and frame.roleIcon then
             if _G.CompactUnitFrame_UpdateRoleIcon then
-                pcall(CompactUnitFrame_UpdateRoleIcon, frame)
+                local ok = pcall(CompactUnitFrame_UpdateRoleIcon, frame)
+                if not ok and directApply then
+                    pcall(directApply, frame)
+                end
             end
         end
     end

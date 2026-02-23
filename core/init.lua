@@ -395,6 +395,14 @@ function addon:PLAYER_REGEN_ENABLED()
                 end
             end
 
+            -- Flush any cast bars that were reanchored (position-only) during combat
+            if addon.FlushPendingCastBarRefresh then
+                addon.FlushPendingCastBarRefresh()
+            end
+            if addon.FlushPendingBossCastBarRefresh then
+                addon.FlushPendingBossCastBarRefresh()
+            end
+
             -- If a spec change required a profile switch while combat-locked, prompt now (out of combat).
             if self.Profiles and self.Profiles._pendingSpecReload then
                 local pending = self.Profiles._pendingSpecReload
@@ -427,6 +435,14 @@ function addon:PLAYER_REGEN_ENABLED()
             if addon.UnitFrames_EnforcePetOverlays then
                 addon.UnitFrames_EnforcePetOverlays()
             end
+        end
+
+        -- Flush any cast bars that were reanchored (position-only) during combat
+        if addon.FlushPendingCastBarRefresh then
+            addon.FlushPendingCastBarRefresh()
+        end
+        if addon.FlushPendingBossCastBarRefresh then
+            addon.FlushPendingBossCastBarRefresh()
         end
 
         -- If a spec change required a profile switch while combat-locked, prompt now (out of combat).

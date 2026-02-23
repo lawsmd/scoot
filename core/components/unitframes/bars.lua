@@ -3126,6 +3126,11 @@ do
                             if addon.BarBorders and addon.BarBorders.ApplyToBarFrame then
 								-- Clear any prior holder/state to avoid stale tinting when toggling
 								if addon.BarBorders.ClearBarFrame then addon.BarBorders.ClearBarFrame(hb) end
+								-- Clear any stale Square borders from previous styling pass (may be on hb or clip container)
+								if addon.Borders and addon.Borders.HideAll then
+									addon.Borders.HideAll(hb)
+									if borderAnchorTarget and borderAnchorTarget ~= hb then addon.Borders.HideAll(borderAnchorTarget) end
+								end
                                 handled = addon.BarBorders.ApplyToBarFrame(hb, styleKey, {
                                     color = color,
                                     thickness = thickness,
@@ -5137,6 +5142,10 @@ function addon.RestoreAllRaidFrameOverlays()
     -- Restore name text overlays
     if addon.RestoreRaidFrameNameOverlays then
         addon.RestoreRaidFrameNameOverlays()
+    end
+    -- Restore status text overlays
+    if addon.RestoreRaidFrameStatusTextOverlays then
+        addon.RestoreRaidFrameStatusTextOverlays()
     end
 end
 

@@ -98,6 +98,64 @@ do
 	-- Baseline anchors for Spell Name text (Player only)
 	addon._ufCastSpellNameBaselines = addon._ufCastSpellNameBaselines or {}
 
+	-- Track units that were reanchored during combat and need a full re-apply after combat ends
+	local pendingPostCombatRefresh = {}
+
+	-- Lightweight reanchor: only corrects position (ClearAllPoints + SetPoint) without
+	-- going through the full apply pipeline or its combat guard.  Target/Focus cast bars
+	-- are visual StatusBars — repositioning them is safe during combat (no taint).
+	local function reanchorCastBar(frame, unit)
+		if unit ~= "Target" and unit ~= "Focus" then return end
+
+		local db = addon and addon.db and addon.db.profile
+		if not db then return end
+		local cfg = db.unitFrames and db.unitFrames[unit] and db.unitFrames[unit].castBar
+		if not cfg then return end
+
+		local anchorMode = cfg.anchorMode or "default"
+		if anchorMode == "default" then return end
+
+		local anchorBar, anchorEdge
+		if anchorMode == "healthTop" then
+			anchorBar = resolveHealthBar(unit)
+			anchorEdge = "top"
+		elseif anchorMode == "healthBottom" then
+			anchorBar = resolveHealthBar(unit)
+			anchorEdge = "bottom"
+		elseif anchorMode == "powerTop" then
+			anchorBar = resolvePowerBar(unit)
+			anchorEdge = "top"
+		elseif anchorMode == "powerBottom" then
+			anchorBar = resolvePowerBar(unit)
+			anchorEdge = "bottom"
+		end
+
+		if not anchorBar then return end
+
+		local offsetX = tonumber(cfg.offsetX) or 0
+		local offsetY = tonumber(cfg.offsetY) or 0
+		local castBarPoint = (anchorEdge == "top") and "BOTTOM" or "TOP"
+		local anchorPoint = (anchorEdge == "top") and "TOP" or "BOTTOM"
+
+		setProp(frame, "ignoreSetPoint", true)
+		frame:ClearAllPoints()
+		frame:SetPoint(castBarPoint, anchorBar, anchorPoint, offsetX, offsetY)
+		setProp(frame, "ignoreSetPoint", nil)
+
+		-- Mark for full re-apply when combat ends
+		pendingPostCombatRefresh[unit] = true
+	end
+
+	-- Flush deferred full re-applies after combat ends
+	function addon.FlushPendingCastBarRefresh()
+		for unit in pairs(pendingPostCombatRefresh) do
+			if addon.ApplyUnitFrameCastBarFor then
+				addon.ApplyUnitFrameCastBarFor(unit)
+			end
+		end
+		pendingPostCombatRefresh = {}
+	end
+
 	local function applyCastBarForUnit(unit)
 		if unit ~= "Player" and unit ~= "Target" and unit ~= "Focus" then return end
 
@@ -162,20 +220,20 @@ do
 				-- Only re-apply if a custom anchor exists mode active for this unit
 				local mode = activeAnchorModes[hookUnit]
 				if mode and mode ~= "default" then
-					-- Schedule a re-apply on the next frame to avoid recursive issues
-					-- and to let Blizzard finish its update first
-					if not pendingReapply[hookUnit] then
-						pendingReapply[hookUnit] = true
-						C_Timer.After(0, function()
-							pendingReapply[hookUnit] = nil
-							-- NOTE: Combat lockdown check removed for Target/Focus cast bars.
-							-- TargetFrameSpellBar and FocusFrameSpellBar are visual StatusBars,
-							-- not protected action frames. SetPoint on them does not taint
-							-- secure execution, to safely reposition during combat.
-							if addon and addon.ApplyUnitFrameCastBarFor then
-								addon.ApplyUnitFrameCastBarFor(hookUnit)
-							end
-						end)
+					if InCombatLockdown and InCombatLockdown() then
+						-- Lightweight reanchor during combat (position only, no full pipeline)
+						reanchorCastBar(self, hookUnit)
+					else
+						-- Out of combat: schedule full re-apply on next frame
+						if not pendingReapply[hookUnit] then
+							pendingReapply[hookUnit] = true
+							C_Timer.After(0, function()
+								pendingReapply[hookUnit] = nil
+								if addon and addon.ApplyUnitFrameCastBarFor then
+									addon.ApplyUnitFrameCastBarFor(hookUnit)
+								end
+							end)
+						end
 					end
 				end
 			end)
@@ -186,14 +244,15 @@ do
 			-- on every UNIT_AURA event, which happens frequently during combat.
 			if (hookUnit == "Target" or hookUnit == "Focus") and frame.AdjustPosition then
 				_G.hooksecurefunc(frame, "AdjustPosition", function(self)
-					-- Only re-apply if a custom anchor exists mode active
 					local mode = activeAnchorModes[hookUnit]
 					if mode and mode ~= "default" then
-						-- Re-apply immediately (synchronously) to eliminate flicker.
-						-- The _ScootIgnoreSetPoint flag prevents the SetPoint hook from re-triggering.
-						-- Target/Focus cast bars are purely visual and do not taint secure execution.
-						if addon and addon.ApplyUnitFrameCastBarFor then
-							addon.ApplyUnitFrameCastBarFor(hookUnit)
+						if InCombatLockdown and InCombatLockdown() then
+							-- Lightweight reanchor during combat (position only)
+							reanchorCastBar(self, hookUnit)
+						else
+							if addon and addon.ApplyUnitFrameCastBarFor then
+								addon.ApplyUnitFrameCastBarFor(hookUnit)
+							end
 						end
 					end
 				end)
@@ -1033,14 +1092,18 @@ do
 				if getProp(self, "ignoreSetPoint") then return end
 				local mode = activeAnchorModes[hookUnit]
 				if mode and mode ~= "default" then
-					if not pendingReapply[hookUnit] then
-						pendingReapply[hookUnit] = true
-						C_Timer.After(0, function()
-							pendingReapply[hookUnit] = nil
-							if addon and addon.ApplyUnitFrameCastBarFor then
-								addon.ApplyUnitFrameCastBarFor(hookUnit)
-							end
-						end)
+					if InCombatLockdown and InCombatLockdown() then
+						reanchorCastBar(self, hookUnit)
+					else
+						if not pendingReapply[hookUnit] then
+							pendingReapply[hookUnit] = true
+							C_Timer.After(0, function()
+								pendingReapply[hookUnit] = nil
+								if addon and addon.ApplyUnitFrameCastBarFor then
+									addon.ApplyUnitFrameCastBarFor(hookUnit)
+								end
+							end)
+						end
 					end
 				end
 			end)
@@ -1048,8 +1111,12 @@ do
 				_G.hooksecurefunc(frame, "AdjustPosition", function(self)
 					local mode = activeAnchorModes[hookUnit]
 					if mode and mode ~= "default" then
-						if addon and addon.ApplyUnitFrameCastBarFor then
-							addon.ApplyUnitFrameCastBarFor(hookUnit)
+						if InCombatLockdown and InCombatLockdown() then
+							reanchorCastBar(self, hookUnit)
+						else
+							if addon and addon.ApplyUnitFrameCastBarFor then
+								addon.ApplyUnitFrameCastBarFor(hookUnit)
+							end
 						end
 					end
 				end)
@@ -1088,6 +1155,55 @@ do
 	local bossActiveAnchorModes = {}
 	local bossPendingReapply = {}
 
+	-- Track Boss indices that were reanchored during combat and need a full re-apply after combat ends
+	local pendingBossPostCombatRefresh = {}
+
+	-- Lightweight reanchor: only corrects position (ClearAllPoints + SetPoint) without
+	-- going through the full apply pipeline or its combat guard.  Boss cast bars are visual
+	-- StatusBars — repositioning them is safe during combat (no taint).
+	local function reanchorBossCastBar(frame, index)
+		local db = addon and addon.db and addon.db.profile
+		if not db then return end
+		local cfg = db.unitFrames and db.unitFrames.Boss and db.unitFrames.Boss.castBar
+		if not cfg then return end
+
+		local anchorMode = cfg.anchorMode or "default"
+		if anchorMode == "default" then return end
+
+		if anchorMode == "centeredUnderPower" then
+			local bossFrame = _G["Boss" .. index .. "TargetFrame"]
+			local manaBar
+			if addon.BarsResolvers and addon.BarsResolvers.resolveBossManaBar then
+				manaBar = addon.BarsResolvers.resolveBossManaBar(bossFrame)
+			end
+
+			if manaBar then
+				setProp(frame, "ignoreSetPoint", true)
+				frame:ClearAllPoints()
+				frame:SetPoint("TOP", manaBar, "BOTTOM", 0, -2)
+				setProp(frame, "ignoreSetPoint", nil)
+			end
+		end
+
+		-- Mark for full re-apply when combat ends
+		pendingBossPostCombatRefresh[index] = true
+	end
+
+	-- Flush deferred full re-applies after combat ends
+	function addon.FlushPendingBossCastBarRefresh()
+		local any = false
+		for _ in pairs(pendingBossPostCombatRefresh) do
+			any = true
+			break
+		end
+		if any then
+			pendingBossPostCombatRefresh = {}
+			if addon.ApplyBossCastBarFor then
+				addon.ApplyBossCastBarFor()
+			end
+		end
+	end
+
 	-- Baseline anchors for Boss Spell Name text
 	addon._ufBossCastSpellNameBaselines = addon._ufBossCastSpellNameBaselines or {}
 
@@ -1118,20 +1234,40 @@ do
 			_G.hooksecurefunc(frame, "SetPoint", function(self, ...)
 				-- Ignore ScooterMod's SetPoint calls (flagged to prevent infinite loops)
 				if getProp(self, "ignoreSetPoint") then return end
-				-- Only re-apply if a custom anchor exists mode active for this Boss cast bar
+				-- Only re-apply if a custom anchor mode is active for this Boss cast bar
 				local mode = bossActiveAnchorModes[hookIndex]
 				if mode and mode ~= "default" then
-					if not bossPendingReapply[hookIndex] then
-						bossPendingReapply[hookIndex] = true
-						C_Timer.After(0, function()
-							bossPendingReapply[hookIndex] = nil
-							if addon and addon.ApplyBossCastBarFor then
-								addon.ApplyBossCastBarFor()
-							end
-						end)
+					if InCombatLockdown and InCombatLockdown() then
+						-- Lightweight reanchor during combat (position only)
+						reanchorBossCastBar(self, hookIndex)
+					else
+						if not bossPendingReapply[hookIndex] then
+							bossPendingReapply[hookIndex] = true
+							C_Timer.After(0, function()
+								bossPendingReapply[hookIndex] = nil
+								if addon and addon.ApplyBossCastBarFor then
+									addon.ApplyBossCastBarFor()
+								end
+							end)
+						end
 					end
 				end
 			end)
+			-- Hook AdjustPosition to catch Blizzard layout resets (aura updates, powerBarAlt, OnShow)
+			if frame.AdjustPosition then
+				_G.hooksecurefunc(frame, "AdjustPosition", function(self)
+					local mode = bossActiveAnchorModes[hookIndex]
+					if mode and mode ~= "default" then
+						if InCombatLockdown and InCombatLockdown() then
+							reanchorBossCastBar(self, hookIndex)
+						else
+							if addon and addon.ApplyBossCastBarFor then
+								addon.ApplyBossCastBarFor()
+							end
+						end
+					end
+				end)
+			end
 		end
 
 		-- Capture original width once
