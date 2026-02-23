@@ -1283,10 +1283,15 @@ local function HookSessionWindowScrollBox(sessionWindow, component)
     state.scrollHooked = true
 
     hooksecurefunc(sessionWindow.ScrollBox, "Update", function(scrollBox)
+        local state = getWindowState(sessionWindow)
+        if state._scrollUpdateQueued then return end
+        state._scrollUpdateQueued = true
         _G.C_Timer.After(0, function()
-            if PlayerInCombat() then return end
+            state._scrollUpdateQueued = nil
             if not component.db then return end
-            hideAllDMOverlays()
+            if not PlayerInCombat() then
+                hideAllDMOverlays()
+            end
             ForEachVisibleEntry(sessionWindow, function(entryFrame)
                 ApplySingleEntryStyle(entryFrame, component.db)
             end)
@@ -1299,7 +1304,6 @@ local function HookSessionWindowScrollBox(sessionWindow, component)
         state.localPlayerHooked = true
         hooksecurefunc(sessionWindow, "ShowLocalPlayerEntry", function(self, earlierInList)
             C_Timer.After(0, function()
-                if PlayerInCombat() then return end
                 if not component.db then return end
                 local localPlayerEntry = self.LocalPlayerEntry
                 if localPlayerEntry then
@@ -1364,7 +1368,15 @@ local function ApplyDamageMeterStyling(self)
     local db = self.db
     if type(db) ~= "table" then return end
 
-    -- Combat-safe: defer non-critical styling during combat
+    -- BEFORE combat guard: always install hooks and discover windows
+    -- hooksecurefunc() is always safe during combat — it doesn't modify secure state
+    local windows = GetAllSessionWindows()
+    for _, sessionWindow in ipairs(windows) do
+        HookSessionWindowScrollBox(sessionWindow, self)
+        HookSessionWindowTitleUpdates(sessionWindow)
+    end
+
+    -- Combat-safe: defer window-level styling during combat
     if PlayerInCombat() then
         return
     end
@@ -1373,13 +1385,7 @@ local function ApplyDamageMeterStyling(self)
     hideAllDMOverlays()
 
     -- Style all session windows and their entries
-    local windows = GetAllSessionWindows()
     for _, sessionWindow in ipairs(windows) do
-        -- Hook new windows' ScrollBoxes (no-op if already hooked)
-        HookSessionWindowScrollBox(sessionWindow, self)
-
-        -- Hook new windows for enhanced title updates (no-op if already hooked)
-        HookSessionWindowTitleUpdates(sessionWindow)
 
         -- Apply window styling
         ApplyWindowStyling(sessionWindow, db)

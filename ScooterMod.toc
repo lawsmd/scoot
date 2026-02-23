@@ -2,7 +2,7 @@
 ## Title: ScooterMod
 ## Notes: A modern, cosmetic-only UI addon.
 ## Author: Scooter
-## Version: 0.1.0
+## Version: 1.0
 ## IconTexture: Interface\AddOns\ScooterMod\ScooterModIcon
 ## OptionalDeps: Blizzard_Settings, Blizzard_Settings_Shared
 ## SavedVariables: ScooterModDB

@@ -10,6 +10,22 @@ local alphaHooked = {}
 local settingAlpha = {}
 local buttonsHooked = {}
 
+-- Overlay frames anchored to spell buttons (avoids tainting spell-casting buttons
+-- with CreateTexture/border ops that trigger secret value errors in combat)
+local buttonOverlays = setmetatable({}, { __mode = "k" })
+
+local function getButtonOverlay(btn)
+    if buttonOverlays[btn] then return buttonOverlays[btn] end
+    local overlay = CreateFrame("Frame", nil, UIParent)
+    overlay:SetFrameStrata("MEDIUM")
+    overlay:SetFrameLevel(btn:GetFrameLevel() + 5)
+    overlay:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    overlay:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+    overlay:EnableMouse(false)
+    buttonOverlays[btn] = overlay
+    return overlay
+end
+
 local function getContainerState()
     if not extraAbilityState.container then
         extraAbilityState.container = {}
@@ -203,6 +219,12 @@ local function ApplyExtraAbilitiesStyling(self)
         end
     end
 
+    -- Hide all existing overlays first (cleanup-first pattern)
+    -- Overlays are parented to UIParent so they don't auto-hide with Blizzard buttons
+    for btn, overlay in pairs(buttonOverlays) do
+        overlay:Hide()
+    end
+
     -- Style each button
     local buttons = enumerateExtraAbilityButtons()
     for _, btn in ipairs(buttons) do
@@ -228,19 +250,23 @@ local function ApplyExtraAbilitiesStyling(self)
             end
         end
 
-        -- Border handling
-        if styleKey == "off" then
-            -- Restore Blizzard default, remove custom borders
-            if addon.Borders and addon.Borders.HideAll then addon.Borders.HideAll(btn) end
-        elseif styleKey == "hidden" then
-            -- Hide everything
-            if addon.Borders and addon.Borders.HideAll then addon.Borders.HideAll(btn) end
+        -- Border handling (applied to addon-owned overlay to avoid tainting spell buttons)
+        local btnVisible = btn.IsShown and btn:IsShown()
+        if styleKey == "off" or styleKey == "hidden" or not btnVisible then
+            local overlay = buttonOverlays[btn]
+            if overlay then
+                overlay:Hide()
+                if addon.Borders and addon.Borders.HideAll then
+                    addon.Borders.HideAll(overlay)
+                end
+            end
         else
-            -- Apply custom border
+            local overlay = getButtonOverlay(btn)
+            overlay:Show()
             if styleKey == "square" and addon.Borders and addon.Borders.ApplySquare then
-                if addon.Borders.HideAll then addon.Borders.HideAll(btn) end
+                if addon.Borders.HideAll then addon.Borders.HideAll(overlay) end
                 local col = tintEnabled and tintColor or {0, 0, 0, 1}
-                addon.Borders.ApplySquare(btn, {
+                addon.Borders.ApplySquare(overlay, {
                     size = thickness,
                     color = col,
                     layer = "OVERLAY",
@@ -250,25 +276,8 @@ local function ApplyExtraAbilitiesStyling(self)
                     expandTop = 1 - borderInsetV,
                     expandBottom = -1 - borderInsetV,
                 })
-                local container = btn.ScootSquareBorderContainer or btn
-                local edges = (container and container.ScootSquareBorderEdges) or btn.ScootSquareBorderEdges
-                if edges and edges.Right then
-                    edges.Right:ClearAllPoints()
-                    edges.Right:SetPoint("TOPRIGHT", container or btn, "TOPRIGHT", 0 + borderInsetH, 0)
-                    edges.Right:SetPoint("BOTTOMRIGHT", container or btn, "BOTTOMRIGHT", 0 + borderInsetH, 0)
-                end
-                if edges and edges.Top then
-                    edges.Top:ClearAllPoints()
-                    edges.Top:SetPoint("TOPLEFT", container or btn, "TOPLEFT", 0 - borderInsetH, 1 - borderInsetV)
-                    edges.Top:SetPoint("TOPRIGHT", container or btn, "TOPRIGHT", 0 + borderInsetH, 1 - borderInsetV)
-                end
-                if edges and edges.Bottom then
-                    edges.Bottom:ClearAllPoints()
-                    edges.Bottom:SetPoint("BOTTOMLEFT", container or btn, "BOTTOMLEFT", 0 - borderInsetH, 0 - borderInsetV)
-                    edges.Bottom:SetPoint("BOTTOMRIGHT", container or btn, "BOTTOMRIGHT", 0 + borderInsetH, 0 - borderInsetV)
-                end
             else
-                addon.ApplyIconBorderStyle(btn, styleKey, {
+                addon.ApplyIconBorderStyle(overlay, styleKey, {
                     thickness = thickness,
                     color = tintColor,
                     tintEnabled = tintEnabled,
@@ -325,6 +334,17 @@ local function InstallDynamicHooks(comp)
                 end)
             end)
         end
+    end
+
+    -- Hook container Hide to immediately hide overlays when Extra Abilities disappear
+    local eac = _G.ExtraAbilityContainer
+    if eac and not buttonsHooked.containerHide then
+        buttonsHooked.containerHide = true
+        hooksecurefunc(eac, "Hide", function()
+            for btn, overlay in pairs(buttonOverlays) do
+                overlay:Hide()
+            end
+        end)
     end
 
     -- Hook ExtraActionBar updates
