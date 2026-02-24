@@ -622,11 +622,12 @@ end
 -- Sections whose children get a "Prefix: " in the title.
 -- Value is the display prefix (allows abbreviation vs NavModel label).
 local TITLE_PREFIX = {
-    cdm        = "CDM",
-    unitFrames = "Unit Frames",
-    prd        = "Personal Resource",
-    applyAll   = "Apply All",
-    sct        = "SCT",
+    cdm         = "CDM",
+    classAuras  = "Class Auras",
+    unitFrames  = "Unit Frames",
+    prd         = "Personal Resource",
+    applyAll    = "Apply All",
+    sct         = "SCT",
 }
 
 local TITLE_OVERRIDES = {

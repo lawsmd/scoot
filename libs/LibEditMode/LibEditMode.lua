@@ -88,6 +88,7 @@ local function onDragStart(self)
 	end
 
 	self:RegisterEvent('PLAYER_REGEN_DISABLED')
+	self.parent:SetMovable(true)
 	self.parent:StartMoving()
 end
 

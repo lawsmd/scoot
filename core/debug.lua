@@ -215,6 +215,474 @@ function addon.DebugDump(target)
 end
 
 --[[----------------------------------------------------------------------------
+    Class Auras: UNIT_AURA event counter (lightweight diagnostic)
+
+    Purpose:
+      Tracks how many UNIT_AURA events fire per unit token since login/reload.
+      Displayed in the Class Auras debug dump to confirm events are reaching us.
+----------------------------------------------------------------------------]]--
+
+local caUnitAuraCounts = {}   -- [unitToken] = count
+local caUnitAuraFrame = CreateFrame("Frame")
+caUnitAuraFrame:RegisterEvent("UNIT_AURA")
+caUnitAuraFrame:SetScript("OnEvent", function(_, _, unit)
+    if unit then
+        caUnitAuraCounts[unit] = (caUnitAuraCounts[unit] or 0) + 1
+    end
+end)
+
+--[[----------------------------------------------------------------------------
+    Class Auras debug dump
+
+    Purpose:
+      Diagnostic dump for the Class Auras system, showing registered auras,
+      CDM borrow state, and CDM Tracked Buffs probe results.
+
+    Usage:
+      /scoot debug classauras
+      /scoot debug ca
+----------------------------------------------------------------------------]]--
+
+function addon.DebugDumpClassAuras()
+    local CA = addon.ClassAuras
+    if not CA then
+        ShowDebugCopyWindow("Class Auras Debug", "Class Auras module not loaded.")
+        return
+    end
+
+    local lines = {}
+    local function push(s) table.insert(lines, s) end
+
+    push("=== Class Auras Debug ===")
+    push("")
+
+    -- Player info
+    local _, playerClass = UnitClass("player")
+    push("Player Class: " .. tostring(playerClass))
+
+    -- Target info
+    local targetName = UnitName("target")
+    local targetGUID = UnitGUID("target")
+    if targetName and targetGUID then
+        push("Current Target: " .. tostring(targetName) .. " (GUID: " .. tostring(targetGUID) .. ")")
+    else
+        push("Current Target: No Target")
+    end
+
+    -- Secret restrictions
+    local hasSecrets = C_Secrets and C_Secrets.HasSecretRestrictions and C_Secrets.HasSecretRestrictions()
+    push("Secrets Restricted: " .. tostring(hasSecrets or false))
+    push("In Combat: " .. tostring(InCombatLockdown()))
+
+    -- CDM Borrow state
+    local cdmBorrowState = CA._cdmBorrow
+    push("CDM Borrow Hooks Installed: " .. tostring(cdmBorrowState and cdmBorrowState.hookInstalled or false))
+    push("")
+
+    -- Registered auras
+    local classAuras = CA._classAuras and CA._classAuras[playerClass]
+    if not classAuras or #classAuras == 0 then
+        push("--- No Registered Auras for " .. tostring(playerClass) .. " ---")
+    else
+        push("--- Registered Auras ---")
+        push("")
+
+        for _, aura in ipairs(classAuras) do
+            push("[" .. tostring(aura.id) .. "] " .. tostring(aura.label))
+
+            -- Aura definition
+            push("  spellId: " .. tostring(aura.auraSpellId) .. " | cdmSpellId: " .. tostring(aura.cdmSpellId or "same as auraSpellId") .. " | unit: " .. tostring(aura.unit) .. " | filter: " .. tostring(aura.filter))
+
+            -- DB state
+            local comp = addon.Components and addon.Components["classAura_" .. aura.id]
+            local db = comp and comp.db
+            push("  enabled: " .. tostring(db and db.enabled))
+
+            -- Container state
+            local state = CA._activeAuras and CA._activeAuras[aura.id]
+            if state and state.container then
+                local shown = state.container:IsShown()
+                local scale = state.container:GetScale()
+                push("  container: exists, shown=" .. tostring(shown) .. ", scale=" .. tostring(scale))
+
+                -- Position
+                local ok, point, _, _, x, y = pcall(state.container.GetPoint, state.container, 1)
+                if ok and point then
+                    push("  position: " .. tostring(point) .. " " .. tostring(math.floor((x or 0) + 0.5)) .. ", " .. tostring(math.floor((y or 0) + 0.5)))
+                else
+                    push("  position: unknown")
+                end
+
+                -- Element state
+                if state.elements then
+                    for _, elem in ipairs(state.elements) do
+                        if elem.type == "text" then
+                            local textOk, text = pcall(function() return elem.widget:GetText() end)
+                            push("  text element [" .. tostring(elem.def.source or "?") .. "]: " .. (textOk and tostring(text or "") or "<secret>"))
+                        elseif elem.type == "texture" then
+                            push("  texture element: shown=" .. tostring(elem.widget:IsShown()))
+                        end
+                    end
+                end
+            else
+                push("  container: NOT created")
+            end
+
+            -- CDM Borrow state
+            push("  cdmBorrow: " .. tostring(aura.cdmBorrow or false))
+            if aura.cdmBorrow then
+                local itemFrame = CA._rescanForCDMBorrow and nil -- don't trigger rescan
+                -- Attempt to find CDM item for this spell (read-only probe)
+                pcall(function()
+                    local viewer = _G.BuffIconCooldownViewer
+                    local cdmId = aura.cdmSpellId or aura.auraSpellId
+                    if viewer then
+                        local children = { viewer:GetChildren() }
+                        for _, child in ipairs(children) do
+                            local idOk, childSpellId = pcall(function() return child:GetBaseSpellID() end)
+                            if idOk and childSpellId == cdmId then
+                                local shown = child:IsShown()
+                                push("  CDM icon found: YES (shown=" .. tostring(shown) .. ")")
+                                return
+                            end
+                        end
+                    end
+                    push("  CDM icon found: NO — Ensure the spell (or its passive) is in CDM > Tracked Buffs")
+                end)
+            end
+
+            push("")
+        end
+    end
+
+    -- safePush: guards against secret values leaking into the lines table.
+    -- In combat, tostring(secret) returns a secret; string concat with a secret
+    -- produces a secret; table.concat then fails on the tainted entry.
+    local function safePush(s)
+        local ok, safe = pcall(function()
+            if type(s) ~= "string" then return tostring(s) end
+            local _ = s .. "" -- verify string ops work (fails on secrets)
+            return s
+        end)
+        if ok and safe and type(safe) == "string" then
+            table.insert(lines, safe)
+        else
+            table.insert(lines, "<secret value>")
+        end
+    end
+
+    -- ================================================================
+    -- UNIT_AURA Event Counter
+    -- ================================================================
+    safePush("")
+    safePush("--- UNIT_AURA Event Counter (since reload) ---")
+    safePush("")
+    local hasAny = false
+    for unit, count in pairs(caUnitAuraCounts) do
+        safePush("  " .. tostring(unit) .. ": " .. tostring(count) .. " events")
+        hasAny = true
+    end
+    if not hasAny then
+        safePush("  (no UNIT_AURA events received yet)")
+    end
+
+    -- ================================================================
+    -- A. ForEachAura Probe
+    -- ================================================================
+    safePush("")
+    safePush("--- ForEachAura Probe ---")
+    safePush("")
+
+    -- Test ForEachAura directly
+    local feaOk, feaErr = pcall(function()
+        AuraUtil.ForEachAura("target", "HARMFUL", nil, function(auraData)
+            return true -- stop after first
+        end)
+    end)
+    safePush("AuraUtil.ForEachAura(target, HARMFUL): " .. (feaOk and "OK" or ("FAILED: " .. tostring(feaErr))))
+
+    -- Test GetAuraSlots directly to isolate the failure point
+    local gasOk, gasErr = pcall(function()
+        if C_UnitAuras and C_UnitAuras.GetAuraSlots then
+            local slots = C_UnitAuras.GetAuraSlots("target", "HARMFUL")
+            return slots
+        end
+        return "API not found"
+    end)
+    if gasOk then
+        safePush("C_UnitAuras.GetAuraSlots(target, HARMFUL): OK (returned: " .. type(gasErr) .. ")")
+    else
+        safePush("C_UnitAuras.GetAuraSlots(target, HARMFUL): FAILED: " .. tostring(gasErr))
+    end
+
+    -- ================================================================
+    -- B. Alternative API Probes
+    -- ================================================================
+    safePush("")
+    safePush("--- Alternative API Probes ---")
+    safePush("")
+
+    -- Probe: GetAuraDataByIndex (AllowedWhenTainted)
+    safePush("[GetAuraDataByIndex] Scanning target HARMFUL slots 1-40:")
+    local gadiFound = 0
+    local gadiSpell1221389 = false
+    for i = 1, 40 do
+        local ok, result = pcall(function()
+            return C_UnitAuras.GetAuraDataByIndex("target", i, "HARMFUL")
+        end)
+        if ok and result then
+            gadiFound = gadiFound + 1
+            local spellOk, spellId = pcall(function() return result.spellId end)
+            local nameOk, spellName = pcall(function() return result.name end)
+            local stackOk, stacks = pcall(function() return result.applications end)
+
+            local spellIdStr = spellOk and tostring(spellId) or "<secret>"
+            local nameStr = nameOk and tostring(spellName) or "<secret>"
+            local stackStr = stackOk and tostring(stacks) or "<secret>"
+
+            -- Check if spellId is secret
+            local isSecretSpell = false
+            if spellOk then
+                pcall(function()
+                    if issecretvalue and issecretvalue(spellId) then
+                        isSecretSpell = true
+                    end
+                end)
+            end
+
+            safePush("  [" .. i .. "] spellId=" .. spellIdStr .. (isSecretSpell and " (SECRET)" or "") .. " name=" .. nameStr .. " stacks=" .. stackStr)
+
+            -- Check for our target spell
+            if spellOk then
+                pcall(function()
+                    if spellId == 1221389 then gadiSpell1221389 = true end
+                end)
+            end
+        elseif ok then
+            break -- nil result = no more auras
+        else
+            safePush("  [" .. i .. "] ERROR: " .. tostring(result))
+            break
+        end
+    end
+    safePush("  Total found: " .. gadiFound .. " | Spell 1221389 found: " .. tostring(gadiSpell1221389))
+
+    -- Probe: GetDebuffDataByIndex (AllowedWhenTainted)
+    safePush("")
+    safePush("[GetDebuffDataByIndex] Scanning target PLAYER slots 1-40:")
+    local gddiFound = 0
+    local gddiSpell1221389 = false
+    for i = 1, 40 do
+        local ok, result = pcall(function()
+            return C_UnitAuras.GetDebuffDataByIndex("target", i, "PLAYER")
+        end)
+        if ok and result then
+            gddiFound = gddiFound + 1
+            local spellOk, spellId = pcall(function() return result.spellId end)
+            local nameOk, spellName = pcall(function() return result.name end)
+            local stackOk, stacks = pcall(function() return result.applications end)
+
+            local spellIdStr = spellOk and tostring(spellId) or "<secret>"
+            local nameStr = nameOk and tostring(spellName) or "<secret>"
+            local stackStr = stackOk and tostring(stacks) or "<secret>"
+
+            local isSecretSpell = false
+            if spellOk then
+                pcall(function()
+                    if issecretvalue and issecretvalue(spellId) then
+                        isSecretSpell = true
+                    end
+                end)
+            end
+
+            safePush("  [" .. i .. "] spellId=" .. spellIdStr .. (isSecretSpell and " (SECRET)" or "") .. " name=" .. nameStr .. " stacks=" .. stackStr)
+
+            if spellOk then
+                pcall(function()
+                    if spellId == 1221389 then gddiSpell1221389 = true end
+                end)
+            end
+        elseif ok then
+            break
+        else
+            safePush("  [" .. i .. "] ERROR: " .. tostring(result))
+            break
+        end
+    end
+    safePush("  Total found: " .. gddiFound .. " | Spell 1221389 found: " .. tostring(gddiSpell1221389))
+
+    -- Probe: GetUnitAuraBySpellID (AllowedWhenTainted + RequiresNonSecretAura)
+    safePush("")
+    safePush("[GetUnitAuraBySpellID] Direct lookup for spell 1221389 on target:")
+    local byIdOk, byIdResult = pcall(function()
+        return C_UnitAuras.GetUnitAuraBySpellID("target", 1221389)
+    end)
+    if byIdOk then
+        if byIdResult then
+            local nameOk, spellName = pcall(function() return byIdResult.name end)
+            local stackOk, stacks = pcall(function() return byIdResult.applications end)
+            safePush("  Result: FOUND | name=" .. (nameOk and tostring(spellName) or "<secret>") .. " stacks=" .. (stackOk and tostring(stacks) or "<secret>"))
+
+            -- Check if fields are secret
+            local fields = { "spellId", "name", "applications", "duration", "expirationTime" }
+            local secretFields = {}
+            for _, field in ipairs(fields) do
+                pcall(function()
+                    local val = byIdResult[field]
+                    if val ~= nil and issecretvalue and issecretvalue(val) then
+                        table.insert(secretFields, field)
+                    end
+                end)
+            end
+            if #secretFields > 0 then
+                safePush("  Secret fields: " .. table.concat(secretFields, ", "))
+            else
+                safePush("  Secret fields: none detected")
+            end
+        else
+            safePush("  Result: nil (aura not present or API returned nothing)")
+        end
+    else
+        safePush("  Result: FAILED: " .. tostring(byIdResult))
+    end
+
+    -- ================================================================
+    -- CDM Tracked Buffs Probe
+    -- ================================================================
+    safePush("")
+    safePush("--- CDM Tracked Buffs Probe ---")
+    safePush("")
+
+    -- Check BuffIconCooldownViewer existence
+    local cdmViewer = _G.BuffIconCooldownViewer
+    safePush("BuffIconCooldownViewer: " .. (cdmViewer and "exists" or "NOT FOUND"))
+
+    if cdmViewer then
+        -- Enumerate children
+        local cdmChildrenOk, cdmChildren = pcall(function() return { cdmViewer:GetChildren() } end)
+        if cdmChildrenOk and cdmChildren then
+            safePush("Children count: " .. tostring(#cdmChildren))
+            safePush("")
+
+            local freezingFound = false
+            for i, child in ipairs(cdmChildren) do
+                -- GetBaseSpellID() probe
+                local spellIdOk, spellId = pcall(function() return child:GetBaseSpellID() end)
+                local spellIdStr = spellIdOk and tostring(spellId) or "<error>"
+                local isSecret = false
+                if spellIdOk then
+                    pcall(function()
+                        if issecretvalue and issecretvalue(spellId) then
+                            isSecret = true
+                        end
+                    end)
+                end
+
+                -- cooldownInfo.spellID direct table access probe
+                local directOk, directSpellId = pcall(function()
+                    return child.cooldownInfo and child.cooldownInfo.spellID
+                end)
+                local directStr = directOk and tostring(directSpellId) or "<error>"
+
+                -- GetApplicationsFontString() probe
+                local fsOk, appFS = pcall(function() return child:GetApplicationsFontString() end)
+                local fsStr = fsOk and (appFS and "exists" or "nil") or "<error>"
+
+                -- Applications text GetText() probe
+                local textStr = "<N/A>"
+                if fsOk and appFS then
+                    local textOk, text = pcall(function() return appFS:GetText() end)
+                    if textOk then
+                        local textSecretCheck = false
+                        pcall(function()
+                            if issecretvalue and text and issecretvalue(text) then
+                                textSecretCheck = true
+                            end
+                        end)
+                        if textSecretCheck then
+                            textStr = "<SECRET>"
+                        else
+                            textStr = tostring(text or "")
+                        end
+                    else
+                        textStr = "<error: " .. tostring(text) .. ">"
+                    end
+                end
+
+                -- IsShown() probe
+                local shownOk, isShown = pcall(function() return child:IsShown() end)
+                local shownStr = shownOk and tostring(isShown) or "<error>"
+
+                safePush("  [" .. i .. "] GetBaseSpellID()=" .. spellIdStr .. (isSecret and " (SECRET)" or "") ..
+                    " | direct=" .. directStr ..
+                    " | AppFS=" .. fsStr ..
+                    " | text=" .. textStr ..
+                    " | shown=" .. shownStr)
+
+                -- Check for Freezing (1221389)
+                if spellIdOk and not isSecret then
+                    pcall(function()
+                        if spellId == 1221389 then
+                            freezingFound = true
+                            safePush("    ^^ FREEZING (1221389) MATCH ^^")
+                        end
+                    end)
+                end
+            end
+
+            safePush("")
+            safePush("Freezing (1221389) found in CDM: " .. tostring(freezingFound))
+        else
+            safePush("GetChildren() failed: " .. tostring(cdmChildren))
+        end
+    end
+
+    -- Mixin globals check
+    safePush("")
+    safePush("Mixin globals:")
+    safePush("  CooldownViewerBuffIconItemMixin: " .. ((_G.CooldownViewerBuffIconItemMixin and "EXISTS") or "NOT FOUND"))
+    safePush("  CooldownViewerItemMixin: " .. ((_G.CooldownViewerItemMixin and "EXISTS") or "NOT FOUND"))
+
+    local buffMixin = _G.CooldownViewerBuffIconItemMixin
+    if buffMixin then
+        safePush("  .RefreshData: " .. (buffMixin.RefreshData and "exists" or "NOT FOUND"))
+        safePush("  .GetBaseSpellID: " .. (buffMixin.GetBaseSpellID and "exists" or "NOT FOUND"))
+        safePush("  .GetApplicationsFontString: " .. (buffMixin.GetApplicationsFontString and "exists" or "NOT FOUND"))
+    end
+
+    local baseMixin = _G.CooldownViewerItemMixin
+    if baseMixin then
+        safePush("  .OnAuraInstanceInfoCleared: " .. (baseMixin.OnAuraInstanceInfoCleared and "exists" or "NOT FOUND"))
+    end
+
+    -- ================================================================
+    -- C. Secret Predicate Checks
+    -- ================================================================
+    safePush("")
+    safePush("--- Secret Predicate Checks ---")
+    safePush("")
+
+    local hasRestrictions = false
+    pcall(function()
+        hasRestrictions = C_Secrets and C_Secrets.HasSecretRestrictions and C_Secrets.HasSecretRestrictions()
+    end)
+    safePush("C_Secrets.HasSecretRestrictions(): " .. tostring(hasRestrictions))
+
+    local aurasSecret = "N/A"
+    pcall(function()
+        if C_Secrets and C_Secrets.ShouldAurasBeSecret then
+            aurasSecret = tostring(C_Secrets.ShouldAurasBeSecret())
+        end
+    end)
+    safePush("C_Secrets.ShouldAurasBeSecret(): " .. aurasSecret)
+
+    local issecretAvailable = (type(issecretvalue) == "function") and "yes" or "no"
+    safePush("issecretvalue() available: " .. issecretAvailable)
+
+    ShowDebugCopyWindow("Class Auras Debug", table.concat(lines, "\n"))
+end
+
+--[[----------------------------------------------------------------------------
     Off-screen drag debugging
 
     Purpose:

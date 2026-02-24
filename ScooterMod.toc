@@ -57,6 +57,8 @@ core/components/cooldowns/trackedbars/suppression.lua
 core/components/cooldowns/trackedbars/default.lua
 core/components/cooldowns/trackedbars/vertical.lua
 core/components/cooldowns/customgroups.lua
+core/components/classauras/core.lua
+core/components/classauras/mage.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua
 core/components/auras.lua
@@ -107,6 +109,7 @@ ui/v2/controls/Collapsible.lua
 ui/v2/controls/Selector.lua
 ui/v2/controls/Slider.lua
 ui/v2/controls/DualSlider.lua
+ui/v2/controls/DualSelector.lua
 ui/v2/controls/Tabbed.lua
 ui/v2/controls/FontSelector.lua
 ui/v2/controls/InfoIcon.lua
@@ -130,6 +133,7 @@ ui/v2/settings/cdm/TrackedBuffsRenderer.lua
 ui/v2/settings/cdm/TrackedBarsRenderer.lua
 ui/v2/settings/cdm/CustomGroupsRenderer.lua
 ui/v2/settings/cdm/CustomGroupsTab.lua
+ui/v2/settings/classauras/ClassAurasRenderer.lua
 ui/v2/settings/actionbars/ActionBarRenderer.lua
 ui/v2/settings/actionbars/MicroBarRenderer.lua
 ui/v2/settings/actionbars/ExtraAbilitiesRenderer.lua

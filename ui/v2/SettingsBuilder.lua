@@ -1225,6 +1225,68 @@ function Builder:AddDualSlider(options)
 end
 
 --------------------------------------------------------------------------------
+-- AddDualSelector: Add two compact selectors side-by-side
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Setting label text (left side, optional)
+--   description : Optional description below label
+--   selectorA   : Table with selector A options (see below)
+--   selectorB   : Table with selector B options (see below)
+--   key         : Optional unique key for dynamic updates
+--   disabled    : Function returning disabled state (optional)
+--
+-- Selector A/B options:
+--   values      : Table of { key = "Display Text" }
+--   order       : Optional array of keys for display order
+--   get         : Function returning current key
+--   set         : Function(newKey) to save value
+--   syncCooldown: Optional cooldown for sync lock
+--------------------------------------------------------------------------------
+
+function Builder:AddDualSelector(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    -- Add item spacing
+    if #self._controls > 0 then
+        self._currentY = self._currentY - ITEM_SPACING
+    end
+
+    -- Create dual selector using Controls module
+    local dualSelector = Controls:CreateDualSelector({
+        parent = scrollContent,
+        label = options.label,
+        description = options.description,
+        selectorA = options.selectorA,
+        selectorB = options.selectorB,
+        useLightDim = self._useLightDim,
+        disabled = options.disabled,
+        isDisabled = options.isDisabled,
+        name = options.name,
+        maxContainerWidth = options.maxContainerWidth,
+    })
+
+    if dualSelector then
+        -- Position the dual selector
+        dualSelector:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+        dualSelector:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+        -- Track for cleanup
+        table.insert(self._controls, dualSelector)
+
+        -- Register by key for dynamic updates
+        if options.key then
+            self._controlsByKey[options.key] = dualSelector
+        end
+
+        -- Update Y position
+        self._currentY = self._currentY - dualSelector:GetHeight()
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
 -- Future Control Methods (stubs)
 --------------------------------------------------------------------------------
 

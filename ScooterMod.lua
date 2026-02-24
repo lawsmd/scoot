@@ -133,7 +133,7 @@ function SlashCmdList.SCOOTERMOD(msg, editBox)
 
         if sub1 == "" then
             addon:Print("Usage:")
-            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|<FrameName>>")
+            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|<FrameName>>")
             addon:Print("  /scoot debug profiles export [\"Profile Name\"]")
             addon:Print("  /scoot debug consoleport export")
             return
@@ -289,9 +289,19 @@ function SlashCmdList.SCOOTERMOD(msg, editBox)
             return
         end
 
+        -- /scoot debug classauras
+        if sub1 == "classauras" or sub1 == "ca" then
+            if addon.DebugDumpClassAuras then
+                addon.DebugDumpClassAuras()
+            else
+                addon:Print("Class Auras debug not available (debug module missing).")
+            end
+            return
+        end
+
         local target = args[2]
         if not target or target == "" then
-            addon:Print("Usage: /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|<FrameName>>")
+            addon:Print("Usage: /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|<FrameName>>")
             return
         end
         if addon.DebugDump then

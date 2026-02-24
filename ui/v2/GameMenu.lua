@@ -457,9 +457,11 @@ function GameMenu:Show()
         BuildButtons()
     end
 
-    -- Re-center (in case resolution changed)
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    -- Re-center (in case resolution changed); skip during combat (frame is protected)
+    if not InCombatLockdown() then
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
 
     frame:Show()
 end
@@ -499,7 +501,14 @@ function GameMenu:InstallHook()
             GameMenuFrame:SetAlpha(0)
             GameMenuFrame:EnableMouse(false)
             blizzMenuAlphaHidden = true
-            GameMenu:Show()
+            -- Defer Show() to next frame to escape the secure FramePositionDelegate
+            -- handler chain. Show() on any frame is blocked from addon code running
+            -- within a secure handler during combat lockdown.
+            C_Timer.After(0, function()
+                if blizzMenuAlphaHidden then
+                    GameMenu:Show()
+                end
+            end)
         else
             HideUIPanel(GameMenuFrame)
             GameMenu:Show()

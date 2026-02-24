@@ -317,7 +317,10 @@ function UIPanel:CreateHeaderButtons()
     end
 
     -- Only set the guard flag; calling ApplyChanges() here would taint.
-    editModeBtn:SetScript("PreClick", function()
+    -- Use HookScript+PostClick (not SetScript+PreClick) to preserve the
+    -- secure handler chain — SetScript on a secure button corrupts the
+    -- frame handle, causing "Invalid 'self' frame handle" on click.
+    editModeBtn:HookScript("PostClick", function()
         if addon and addon.EditMode then
             if addon.EditMode.MarkOpeningEditMode then
                 addon.EditMode.MarkOpeningEditMode()
