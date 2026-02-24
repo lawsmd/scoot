@@ -255,47 +255,6 @@ function SlashCmdList.SCOOTERMOD(msg, editBox)
             return
         end
 
-        -- /scoot debug dim <trace|log|clear>
-        -- Debug tracing for cooldown dimming opacity decisions (Path 2/3)
-        if sub1 == "dim" then
-            if sub2 == "trace" then
-                local toggle = args[4]
-                if toggle == "on" then
-                    if addon.SetDimDebugTrace then
-                        addon.SetDimDebugTrace(true)
-                    else
-                        addon:Print("Dim debug trace not available (cooldowns module missing).")
-                    end
-                elseif toggle == "off" then
-                    if addon.SetDimDebugTrace then
-                        addon.SetDimDebugTrace(false)
-                    else
-                        addon:Print("Dim debug trace not available (cooldowns module missing).")
-                    end
-                else
-                    addon:Print("Usage: /scoot debug dim trace <on|off>")
-                end
-            elseif sub2 == "log" then
-                if addon.ShowDimDebugLog then
-                    addon.ShowDimDebugLog()
-                else
-                    addon:Print("Dim debug log not available (cooldowns module missing).")
-                end
-            elseif sub2 == "clear" then
-                if addon.ClearDimDebugLog then
-                    addon.ClearDimDebugLog()
-                else
-                    addon:Print("Dim debug clear not available (cooldowns module missing).")
-                end
-            else
-                addon:Print("Usage: /scoot debug dim <trace|log|clear>")
-                addon:Print("  trace on  - Start tracing cooldown dim decisions")
-                addon:Print("  trace off - Stop tracing")
-                addon:Print("  log       - Show trace buffer in copyable window")
-                addon:Print("  clear     - Clear the trace buffer")
-            end
-            return
-        end
 
         -- /scoot debug trackedbars <trace|log|clear|dump>
         if sub1 == "trackedbars" or sub1 == "tb" then

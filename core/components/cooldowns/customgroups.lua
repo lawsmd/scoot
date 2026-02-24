@@ -480,7 +480,12 @@ local function RefreshSpellCooldown(icon)
                 icon.Icon:SetDesaturated(chargeInfo.currentCharges == 0)
                 if chargeInfo.currentCharges < chargeInfo.maxCharges and chargeInfo.cooldownStartTime > 0 then
                     icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
-                    cgCooldownEndTimes[icon] = chargeInfo.cooldownStartTime + chargeInfo.cooldownDuration
+                    -- Only track as "on cooldown" for opacity dimming when ALL charges are spent
+                    if chargeInfo.currentCharges == 0 then
+                        cgCooldownEndTimes[icon] = chargeInfo.cooldownStartTime + chargeInfo.cooldownDuration
+                    else
+                        cgCooldownEndTimes[icon] = nil
+                    end
                 else
                     icon.Cooldown:Clear()
                     cgCooldownEndTimes[icon] = nil

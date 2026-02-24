@@ -303,49 +303,10 @@ local hookedSwipeColorFrames = setmetatable({}, { __mode = "k" })  -- cooldownFr
 -- Track which cooldown frames have had per-frame hooks installed (weak keys for GC)
 local hookedCooldownFrames = setmetatable({}, { __mode = "k" })
 
--- Diagnostic logging for cooldown dimming decisions
-local dimDebugEnabled = false
-local dimDebugBuffer = {}
-local DIM_DEBUG_MAX_LINES = 300
-
-local function dimDebugLog(message, ...)
-    if not dimDebugEnabled then return end
-    local ok, formatted = pcall(string.format, message, ...)
-    if not ok then formatted = message end
-    local timestamp = GetTime and GetTime() or 0
-    local line = string.format("[%.3f] %s", timestamp, formatted)
-    dimDebugBuffer[#dimDebugBuffer + 1] = line
-    if #dimDebugBuffer > DIM_DEBUG_MAX_LINES then
-        table.remove(dimDebugBuffer, 1)
-    end
-end
-
-function addon.SetDimDebugTrace(enabled)
-    dimDebugEnabled = enabled
-    if enabled then
-        addon:Print("Dim debug trace: ON")
-    else
-        addon:Print("Dim debug trace: OFF")
-    end
-end
-
-function addon.ShowDimDebugLog()
-    if #dimDebugBuffer == 0 then
-        addon:Print("Dim debug buffer is empty.")
-        return
-    end
-    local text = table.concat(dimDebugBuffer, "\n")
-    if addon.DebugShowWindow then
-        addon.DebugShowWindow("Dim Debug Trace", text)
-    else
-        addon:Print("DebugShowWindow not available. Buffer has " .. #dimDebugBuffer .. " lines.")
-    end
-end
-
-function addon.ClearDimDebugLog()
-    wipe(dimDebugBuffer)
-    addon:Print("Dim debug buffer cleared.")
-end
+-- No-op stubs for debug logging (infrastructure removed, call sites kept harmless)
+local function dimDebugLog() end
+local function chargeDebugLog() end
+local function chargeFieldDump() end
 
 -- Forward declaration (defined in Icon Sizing section, used by hookProcGlowResizing)
 local resizeProcGlow
@@ -878,9 +839,12 @@ local function setupCDMCooldownFrameHooks(cooldownFrame)
             tostring(cdmIcon), tostring(cooldownEndTimes[cdmIcon] ~= nil),
             tostring(swipeIsAuraColor[cdmIcon]))
 
+        chargeFieldDump(cdmIcon, "Path3-SetCooldown", cooldownFrame, nil, nil, nil, nil)
+
         -- Aura/duration display (gold swipe) — not a real cooldown, don't dim
         if swipeIsAuraColor[cdmIcon] then
             dimDebugLog("Path3: swipeIsAuraColor=true → skip dimming (aura/duration)")
+            chargeDebugLog("  → DECISION: swipeIsAuraColor=true → skip dimming")
             cooldownEndTimes[cdmIcon] = nil
             updateIconCooldownOpacity(cdmIcon)
             return
@@ -889,41 +853,52 @@ local function setupCDMCooldownFrameHooks(cooldownFrame)
         -- If a real cooldown is already tracked, Path 3 is unnecessary
         if cooldownEndTimes[cdmIcon] then
             dimDebugLog("Path3 SetCooldown: SKIP (cooldownEndTimes already set)")
+            chargeDebugLog("  → DECISION: cooldownEndTimes already set → skip")
             return
         end
 
         -- Fast-path via isOnGCD. CacheCooldownValues() runs BEFORE
         -- CooldownFrame_Set() in Blizzard's refresh, so isOnGCD is fresh.
         local isOnGCD = nil
-        local isOnGCDReadable = false
+        local readSucceeded = false
         pcall(function()
             isOnGCD = cdmIcon.isOnGCD
+            readSucceeded = true   -- only runs if table access didn't error
         end)
-        if isOnGCD ~= nil then
-            if issecretvalue and issecretvalue(isOnGCD) then
-                isOnGCDReadable = false
-                dimDebugLog("Path3 isOnGCD: SECRET (unexpected)")
-            else
-                isOnGCDReadable = true
-            end
-        end
 
-        if isOnGCDReadable then
-            if isOnGCD == true then
-                dimDebugLog("Path3 isOnGCD=true: GCD-only → skip dimming")
-                return
-            else
-                dimDebugLog("Path3 isOnGCD=false: real CD → dimming immediately")
+        if readSucceeded then
+            -- Check for unexpected secret value
+            if issecretvalue and issecretvalue(isOnGCD) then
+                dimDebugLog("Path3 isOnGCD: SECRET (unexpected) → fallback dim")
+                chargeDebugLog("  → DECISION: isOnGCD=SECRET → fallback dim")
                 cooldownEndTimes[cdmIcon] = math.huge
                 updateIconCooldownOpacity(cdmIcon)
                 return
             end
+
+            if isOnGCD == true then
+                dimDebugLog("Path3 isOnGCD=true: GCD-only → skip dimming")
+                chargeDebugLog("  → DECISION: isOnGCD=true → GCD-only, skip")
+                return
+            elseif isOnGCD == false then
+                dimDebugLog("Path3 isOnGCD=false: real CD → dimming immediately")
+                chargeDebugLog("  → DECISION: isOnGCD=false → real CD, dim")
+                cooldownEndTimes[cdmIcon] = math.huge
+                updateIconCooldownOpacity(cdmIcon)
+                return
+            else
+                -- isOnGCD=nil: charge-based spell with charges remaining.
+                -- Charge path requires currentCharges > 0 to run; when
+                -- currentCharges=0, spell path sets isOnGCD=false instead.
+                dimDebugLog("Path3 isOnGCD=nil: charge CD with charges remaining → skip dimming")
+                chargeDebugLog("  → DECISION: isOnGCD=nil → charge CD, skip dimming")
+                return
+            end
         end
 
-        -- isOnGCD=nil: charge-based spell (aura-display already handled above
-        -- by swipeIsAuraColor check). For charge-based: SetCooldown only fires
-        -- when charge recharge is active (not for GCD). Dimming is correct.
-        dimDebugLog("Path3 isOnGCD=nil: charge CD → dimming immediately")
+        -- pcall failed: table inaccessible (secret-tabled) → dim as fallback
+        dimDebugLog("Path3: table inaccessible → fallback dim")
+        chargeDebugLog("  → DECISION: table inaccessible → fallback dim")
         cooldownEndTimes[cdmIcon] = math.huge
         updateIconCooldownOpacity(cdmIcon)
     end)
@@ -963,7 +938,7 @@ end
 -- Path 1: Use CooldownFrame_Set hook args directly (when real, non-secret values)
 -- Path 2: Read Blizzard's pre-computed fields from the CDM item frame to refine
 --          math.huge sentinels to exact end times (Path 3 handles dimming decisions)
-local function trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, enable)
+local function trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, enable, forceShowDrawEdge)
     local cdmIcon
     pcall(function() cdmIcon = cooldownFrame:GetParent() end)
     if not cdmIcon then return end
@@ -988,6 +963,7 @@ local function trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, ena
     --   cdmIcon.isOnActualCooldown (boolean: not isOnGCD and cooldownIsActive)
     --   cdmIcon.cooldownStartTime, cdmIcon.cooldownDuration (real numbers)
     if argsAreSecrets then
+        chargeFieldDump(cdmIcon, "Path2-SecretArgs", cooldownFrame, start, duration, enable, forceShowDrawEdge)
         local canRead = true
         if issecrettable then
             pcall(function() canRead = not issecrettable(cdmIcon) end)
@@ -1027,8 +1003,19 @@ local function trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, ena
 
             if gotReal then
                 if isOnActualCD then
+                    -- isOnActualCooldown can be stale-true when charge path ran
+                    -- (spell path is skipped, so isOnActualCooldown retains old value)
+                    local wasCharges = nil
+                    pcall(function() wasCharges = cdmIcon.wasSetFromCharges end)
+                    if wasCharges then
+                        dimDebugLog("  Path2: wasSetFromCharges=true → skip dimming (charges remain)")
+                        chargeDebugLog("  → DECISION Path2: wasSetFromCharges=true → skip dimming")
+                        return
+                    end
+
                     -- Real cooldown — refine end time from math.huge to exact value
                     dimDebugLog("  Path2 SUCCESS: real CD detected, refining end time")
+                    chargeDebugLog("  → DECISION Path2: isOnActualCD=true, wasCharges=false/nil → dim (refine end time)")
                     pcall(function()
                         if cdStartTime and cdDuration
                            and type(cdStartTime) == "number" and type(cdDuration) == "number" then
@@ -1040,6 +1027,7 @@ local function trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, ena
                 else
                     -- GCD only — clear if no active CD is tracked
                     dimDebugLog("  Path2: GCD only, checking existing endTime")
+                    chargeDebugLog("  → DECISION Path2: isOnActualCD=false → GCD only")
                     local existing = cooldownEndTimes[cdmIcon]
                     if existing then
                         pcall(function()
@@ -1075,22 +1063,37 @@ local function trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, ena
         -- Path 2 failed (table is secret or fields returned secrets).
         -- Path 3 (SetCooldown/Clear timing hook) handles this case automatically.
         dimDebugLog("  Path2 FAILED: deferring to Path 3 (SetCooldown/Clear timing)")
+        chargeDebugLog("  → DECISION Path2: FAILED (secret table or fields) → defer to Path3")
         return
     end
 
     -- Aura/duration display (gold swipe) — not a real cooldown, don't dim
     if swipeIsAuraColor[cdmIcon] then
         dimDebugLog("  Path1: swipeIsAuraColor=true → skip dimming (aura/duration)")
+        chargeDebugLog("  → DECISION Path1: swipeIsAuraColor=true → skip dimming")
         cooldownEndTimes[cdmIcon] = nil
         updateIconCooldownOpacity(cdmIcon)
         return
     end
 
     -- Path 1: Hook args are real (out of combat). Use duration > 2 to filter GCD.
+    chargeFieldDump(cdmIcon, "Path1-RealArgs", cooldownFrame, start, duration, enable, forceShowDrawEdge)
+
+    -- Check if this is a charge-based spell with charges remaining
+    local wasCharges = nil
+    pcall(function() wasCharges = cdmIcon.wasSetFromCharges end)
+    if wasCharges then
+        dimDebugLog("  Path1: wasSetFromCharges=true → skip dimming (charges remain)")
+        chargeDebugLog("  → DECISION Path1: wasSetFromCharges=true → skip dimming")
+        return
+    end
+
     pcall(function()
         if enable and enable ~= 0 and start and start > 0 and duration and duration > 2 then
+            chargeDebugLog("  → DECISION Path1: real CD (dur>2) → dim, endTime=%s", tostring(start + duration))
             cooldownEndTimes[cdmIcon] = start + duration
         else
+            chargeDebugLog("  → DECISION Path1: GCD/no CD → check existing endTime")
             local existingEndTime = cooldownEndTimes[cdmIcon]
             if not existingEndTime or GetTime() >= existingEndTime then
                 cooldownEndTimes[cdmIcon] = nil
@@ -1134,7 +1137,7 @@ local function hookCooldownTextStyling()
 
             -- Track cooldown state for per-icon opacity feature
             -- (handles both real-value and secret-value scenarios)
-            trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, enable)
+            trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, enable, forceShowDrawEdge)
 
             -- Defer text styling to next frame for safety
             pcall(function()
@@ -1158,7 +1161,7 @@ local function hookCooldownTextStyling()
 
             -- Track cooldown state for per-icon opacity feature
             -- (handles both real-value and secret-value scenarios)
-            trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, enable)
+            trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, enable, forceShowDrawEdge)
 
             pcall(function()
                 C_Timer.After(0, function()
