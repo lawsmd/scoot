@@ -283,17 +283,111 @@ function UIPanel:CreateHeaderButtons()
 
     local panel = self
 
-    -- Edit Mode button
-    local editModeBtn = Controls:CreateButton({
-        parent = frame,
-        name = "ScooterUIEditModeBtn",
-        text = "Edit Mode",
-        height = HEADER_BUTTON_HEIGHT,
-        fontSize = 11,
-        template = "SecureActionButtonTemplate, SecureHandlerClickTemplate",
-        secureAction = {}, -- triggers AnyUp registration in Button.lua
-    })
+    -- Edit Mode button — manual creation with zero addon Lua table writes
+    -- on the SecureActionButton frame, preventing taint attribution that
+    -- causes intermittent "Invalid 'self' frame handle" errors in 12.0.
+    local editModeBtn = CreateFrame("Button", "ScooterUIEditModeBtn", frame,
+        "SecureActionButtonTemplate, SecureHandlerClickTemplate")
+    editModeBtn:SetHeight(HEADER_BUTTON_HEIGHT)
+    editModeBtn:EnableMouse(true)
+    editModeBtn:RegisterForClicks("AnyUp")
+    editModeBtn:SetAttribute("useOnKeyDown", false)
 
+    -- Visual state held in closure-captured locals (NOT written to frame table)
+    local borderWidth = 2
+    local borderAlpha = 1
+    local buttonText = "Edit Mode"
+    local buttonFontSize = 11
+    local buttonPadding = 12
+
+    local theme = Theme
+    local ar, ag, ab = theme:GetAccentColor()
+    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
+
+    -- Background (dark, always visible)
+    local bg = editModeBtn:CreateTexture(nil, "BACKGROUND", nil, -8)
+    bg:SetPoint("TOPLEFT", borderWidth, -borderWidth)
+    bg:SetPoint("BOTTOMRIGHT", -borderWidth, borderWidth)
+    bg:SetColorTexture(bgR, bgG, bgB, bgA)
+
+    -- Hover fill (accent color, hidden by default)
+    local hoverFill = editModeBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
+    hoverFill:SetPoint("TOPLEFT", borderWidth, -borderWidth)
+    hoverFill:SetPoint("BOTTOMRIGHT", -borderWidth, borderWidth)
+    hoverFill:SetColorTexture(ar, ag, ab, 1)
+    hoverFill:Hide()
+
+    -- Border (four edges)
+    local border = {}
+
+    local topEdge = editModeBtn:CreateTexture(nil, "BORDER", nil, -1)
+    topEdge:SetPoint("TOPLEFT", editModeBtn, "TOPLEFT", 0, 0)
+    topEdge:SetPoint("TOPRIGHT", editModeBtn, "TOPRIGHT", 0, 0)
+    topEdge:SetHeight(borderWidth)
+    topEdge:SetColorTexture(ar, ag, ab, borderAlpha)
+    border.TOP = topEdge
+
+    local bottomEdge = editModeBtn:CreateTexture(nil, "BORDER", nil, -1)
+    bottomEdge:SetPoint("BOTTOMLEFT", editModeBtn, "BOTTOMLEFT", 0, 0)
+    bottomEdge:SetPoint("BOTTOMRIGHT", editModeBtn, "BOTTOMRIGHT", 0, 0)
+    bottomEdge:SetHeight(borderWidth)
+    bottomEdge:SetColorTexture(ar, ag, ab, borderAlpha)
+    border.BOTTOM = bottomEdge
+
+    local leftEdge = editModeBtn:CreateTexture(nil, "BORDER", nil, -1)
+    leftEdge:SetPoint("TOPLEFT", editModeBtn, "TOPLEFT", 0, 0)
+    leftEdge:SetPoint("BOTTOMLEFT", editModeBtn, "BOTTOMLEFT", 0, 0)
+    leftEdge:SetWidth(borderWidth)
+    leftEdge:SetColorTexture(ar, ag, ab, borderAlpha)
+    border.LEFT = leftEdge
+
+    local rightEdge = editModeBtn:CreateTexture(nil, "BORDER", nil, -1)
+    rightEdge:SetPoint("TOPRIGHT", editModeBtn, "TOPRIGHT", 0, 0)
+    rightEdge:SetPoint("BOTTOMRIGHT", editModeBtn, "BOTTOMRIGHT", 0, 0)
+    rightEdge:SetWidth(borderWidth)
+    rightEdge:SetColorTexture(ar, ag, ab, borderAlpha)
+    border.RIGHT = rightEdge
+
+    -- Label text
+    local label = editModeBtn:CreateFontString(nil, "OVERLAY")
+    local fontPath = theme:GetFont("BUTTON")
+    label:SetFont(fontPath, buttonFontSize, "")
+    label:SetPoint("CENTER", 0, 0)
+    label:SetText(buttonText)
+    label:SetTextColor(ar, ag, ab, 1)
+
+    -- Auto-size width based on text
+    local textWidth = label:GetStringWidth()
+    if textWidth and textWidth > 0 then
+        editModeBtn:SetWidth(textWidth + (buttonPadding * 2))
+    else
+        local estimatedWidth = (#buttonText * 7) + (buttonPadding * 2)
+        editModeBtn:SetWidth(math.max(estimatedWidth, 50))
+        C_Timer.After(0, function()
+            if label then
+                local actualWidth = label:GetStringWidth()
+                if actualWidth and actualWidth > 0 then
+                    editModeBtn:SetWidth(actualWidth + (buttonPadding * 2))
+                end
+            end
+        end)
+    end
+
+    -- Hover handlers (closures capture locals, no self._xxx reads)
+    editModeBtn:SetScript("OnEnter", function()
+        local r, g, b = theme:GetAccentColor()
+        hoverFill:SetColorTexture(r, g, b, 1)
+        hoverFill:Show()
+        label:SetTextColor(0, 0, 0, 1)
+    end)
+
+    editModeBtn:SetScript("OnLeave", function()
+        hoverFill:Hide()
+        local r, g, b = theme:GetAccentColor()
+        label:SetTextColor(r, g, b, 1)
+    end)
+
+    -- Secure handler: open Edit Mode via frame ref
     local function setupSecureEditMode()
         if not C_AddOns.IsAddOnLoaded("Blizzard_EditMode") then
              C_AddOns.LoadAddOn("Blizzard_EditMode")
@@ -304,29 +398,33 @@ function UIPanel:CreateHeaderButtons()
         end
     end
 
+    -- Combat deferral uses a separate helper frame (no HookScript on the button)
     if InCombatLockdown() then
-        editModeBtn:RegisterEvent("PLAYER_REGEN_ENABLED")
-        editModeBtn:HookScript("OnEvent", function(self, event)
-             if event == "PLAYER_REGEN_ENABLED" then
-                  setupSecureEditMode()
-                  self:UnregisterEvent("PLAYER_REGEN_ENABLED")
-             end
+        local helper = CreateFrame("Frame")
+        helper:RegisterEvent("PLAYER_REGEN_ENABLED")
+        helper:SetScript("OnEvent", function(self, event)
+            setupSecureEditMode()
+            self:UnregisterAllEvents()
         end)
     else
         setupSecureEditMode()
     end
 
-    -- Only set the guard flag; calling ApplyChanges() here would taint.
-    -- Use HookScript+PostClick (not SetScript+PreClick) to preserve the
-    -- secure handler chain — SetScript on a secure button corrupts the
-    -- frame handle, causing "Invalid 'self' frame handle" on click.
-    editModeBtn:HookScript("PostClick", function()
-        if addon and addon.EditMode then
-            if addon.EditMode.MarkOpeningEditMode then
-                addon.EditMode.MarkOpeningEditMode()
-            end
+    -- Theme subscription (closures, no frame table reads)
+    local subscribeKey = "Button_ScooterUIEditModeBtn"
+    theme:Subscribe(subscribeKey, function(r, g, b)
+        for _, tex in pairs(border) do
+            tex:SetColorTexture(r, g, b, borderAlpha)
+        end
+        hoverFill:SetColorTexture(r, g, b, 1)
+        if not editModeBtn:IsMouseOver() then
+            label:SetTextColor(r, g, b, 1)
         end
     end)
+
+    -- NO PostClick hook on the button — MarkOpeningEditMode is handled
+    -- by the EnterEditMode hooksecurefunc in editmode/core.lua, which
+    -- fires for ALL Edit Mode opens (button, Game Menu, keybind).
 
     -- Cooldown Manager button
     local cdmBtn = Controls:CreateButton({

@@ -907,8 +907,8 @@ function addon.EditMode.Initialize()
         if mgr and type(mgr.EnterEditMode) == "function" then
             addon._editModeClosePanelHooked = true
             _G.hooksecurefunc(mgr, "EnterEditMode", function()
-                if addon and addon.EditMode then
-                    addon.EditMode._openingEditMode = nil
+                if addon and addon.EditMode and addon.EditMode.MarkOpeningEditMode then
+                    addon.EditMode.MarkOpeningEditMode()
                 end
                 CloseScooterSettingsPanelForEditMode()
             end)
