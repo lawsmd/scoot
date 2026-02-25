@@ -173,6 +173,9 @@ local trackedItemCount = 0
 -- Whether HUD system has been initialized
 local cgInitialized = false
 
+-- Track which FontStrings have been decoupled from parent alpha (weak keys for GC)
+local textAlphaDecoupled = setmetatable({}, { __mode = "k" })
+
 local function CreateIconFrame(parent)
     local icon = CreateFrame("Frame", nil, parent)
     icon:SetSize(30, 30)
@@ -619,47 +622,103 @@ end
 -- Uses SetAlphaFromBoolean with secret boolean from Duration Object IsZero()
 -- to dim icons that are on cooldown. GCD is filtered via isOnGCD (NeverSecret).
 -- SetAlphaFromBoolean evaluates secret booleans in C++ without Lua-side inspection.
+-- Text opacity can be controlled independently via opacityOnCooldownText.
+-- Targets the Cooldown frame (not its FontString) because Blizzard's C++ cooldown
+-- renderer resets the FontString's alpha every frame, overriding our values.
 --------------------------------------------------------------------------------
+
+local function applyCGTextAlpha(cooldownFrame, durObj, containerAlpha, textDimAlpha, isGCD)
+    if not cooldownFrame then return end
+    pcall(function() cooldownFrame:SetIgnoreParentAlpha(true) end)
+    textAlphaDecoupled[cooldownFrame] = true
+    if isGCD then
+        pcall(function() cooldownFrame:SetAlpha(containerAlpha) end)
+    else
+        local readyAlpha = containerAlpha
+        local cdAlpha = math.min(containerAlpha, textDimAlpha)
+        pcall(function() cooldownFrame:SetAlphaFromBoolean(durObj:IsZero(), readyAlpha, cdAlpha) end)
+    end
+end
+
+local function applyCGTextAlphaItem(cooldownFrame, isOnCD, containerAlpha, textDimAlpha)
+    if not cooldownFrame then return end
+    pcall(function() cooldownFrame:SetIgnoreParentAlpha(true) end)
+    textAlphaDecoupled[cooldownFrame] = true
+    local readyAlpha = containerAlpha
+    local cdAlpha = math.min(containerAlpha, textDimAlpha)
+    pcall(function() cooldownFrame:SetAlpha(isOnCD and cdAlpha or readyAlpha) end)
+end
+
+local function resetCGTextAlpha(cooldownFrame)
+    if cooldownFrame and textAlphaDecoupled[cooldownFrame] then
+        pcall(function() cooldownFrame:SetIgnoreParentAlpha(false) end)
+        pcall(function() cooldownFrame:SetAlpha(1.0) end)
+        textAlphaDecoupled[cooldownFrame] = nil
+    end
+end
 
 local function ApplyCooldownOpacity(icon, groupIndex)
     local component = addon.Components["customGroup" .. groupIndex]
     if not component or not component.db then return end
-    local setting = tonumber(component.db.opacityOnCooldown)
-    if not setting or setting >= 100 then
+
+    local iconSetting = tonumber(component.db.opacityOnCooldown) or 100
+    local textSetting = tonumber(component.db.opacityOnCooldownText) or 100
+
+    -- Nothing to do if both are at 100%
+    if iconSetting >= 100 and textSetting >= 100 then
         icon:SetAlpha(1.0)
+        if icon.Cooldown then resetCGTextAlpha(icon.Cooldown) end
         return
     end
-    local dimAlpha = setting / 100
 
-    -- Compensate for container-level opacity so the two layers don't stack
-    -- multiplicatively. Effective alpha = container × compensated, which yields
-    -- min(containerAlpha, cooldownDimAlpha) instead of container × dim.
     local containerAlpha = getGroupOpacityForState(groupIndex)
-    if containerAlpha > 0 and containerAlpha < 1.0 then
-        dimAlpha = math.min(1.0, dimAlpha / containerAlpha)
+    local needsTextOverride = (textSetting ~= iconSetting)
+
+    -- Compute icon dim alpha (compensated for container opacity)
+    local iconDimAlpha = iconSetting / 100
+    if iconSetting < 100 and containerAlpha > 0 and containerAlpha < 1.0 then
+        iconDimAlpha = math.min(1.0, iconDimAlpha / containerAlpha)
     end
 
-    if not icon.entry then icon:SetAlpha(1.0); return end
+    -- Compute text dim alpha (absolute, used with SetIgnoreParentAlpha)
+    local textDimAlpha = textSetting / 100
+
+    if not icon.entry then
+        icon:SetAlpha(1.0)
+        if icon.Cooldown then resetCGTextAlpha(icon.Cooldown) end
+        return
+    end
 
     if icon.entry.type == "spell" then
         local spellID = ResolveSpellID(icon.entry.id)
         local cdInfo = C_Spell.GetSpellCooldown(spellID)
-        if not cdInfo then icon:SetAlpha(1.0); return end
-
-        -- isOnGCD is NeverSecret — true means GCD only, not a real cooldown
-        if cdInfo.isOnGCD then
+        if not cdInfo then
             icon:SetAlpha(1.0)
+            if needsTextOverride and icon.Cooldown then resetCGTextAlpha(icon.Cooldown) end
             return
         end
 
-        -- Duration Object: IsZero() returns a secret boolean
-        -- true = zero duration = ready → full alpha
-        -- false = on cooldown → dim alpha
-        local durObj = C_Spell.GetSpellCooldownDuration(spellID)
-        if durObj and durObj.IsZero then
-            icon:SetAlphaFromBoolean(durObj:IsZero(), 1.0, dimAlpha)
+        local isGCD = cdInfo.isOnGCD
+        local durObj = not isGCD and C_Spell.GetSpellCooldownDuration(spellID) or nil
+
+        -- Icon frame opacity
+        if isGCD or iconSetting >= 100 then
+            icon:SetAlpha(1.0)
+        elseif durObj and durObj.IsZero then
+            icon:SetAlphaFromBoolean(durObj:IsZero(), 1.0, iconDimAlpha)
         else
             icon:SetAlpha(1.0)
+        end
+
+        -- Text opacity (independent when text != icon setting)
+        if needsTextOverride and icon.Cooldown then
+            if isGCD then
+                applyCGTextAlpha(icon.Cooldown, nil, containerAlpha, textDimAlpha, true)
+            elseif durObj and durObj.IsZero then
+                applyCGTextAlpha(icon.Cooldown, durObj, containerAlpha, textDimAlpha, false)
+            end
+        elseif not needsTextOverride and icon.Cooldown then
+            resetCGTextAlpha(icon.Cooldown)
         end
 
     elseif icon.entry.type == "item" then
@@ -667,10 +726,23 @@ local function ApplyCooldownOpacity(icon, groupIndex)
         local ok, isOnCD = pcall(function()
             return startTime and duration and duration > 1.5 and isEnabled and isEnabled ~= 0
         end)
+
+        -- Icon frame opacity
         if ok then
-            icon:SetAlpha(isOnCD and dimAlpha or 1.0)
+            icon:SetAlpha(isOnCD and iconDimAlpha or 1.0)
         else
             icon:SetAlpha(1.0)
+        end
+
+        -- Text opacity (independent when text != icon setting)
+        if needsTextOverride and icon.Cooldown then
+            if ok then
+                applyCGTextAlphaItem(icon.Cooldown, isOnCD, containerAlpha, textDimAlpha)
+            else
+                resetCGTextAlpha(icon.Cooldown)
+            end
+        elseif not needsTextOverride and icon.Cooldown then
+            resetCGTextAlpha(icon.Cooldown)
         end
     end
 end
@@ -1468,6 +1540,7 @@ local function CreateCustomGroupSettings()
         opacityOutOfCombat = { type = "addon", default = 100 },
         opacityWithTarget = { type = "addon", default = 100 },
         opacityOnCooldown = { type = "addon", default = 100 },
+        opacityOnCooldownText = { type = "addon", default = 100 },
     }
 end
 

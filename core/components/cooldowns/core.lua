@@ -290,6 +290,9 @@ local sizedIcons = setmetatable({}, { __mode = "k" })
 -- Using a local table instead of writing _scooterFontString to Blizzard frames avoids taint
 local scooterFontStrings = setmetatable({}, { __mode = "k" })
 
+-- Track which FontStrings have been decoupled from parent alpha (weak keys for GC)
+local textAlphaDecoupled = setmetatable({}, { __mode = "k" })
+
 -- Forward declarations
 local resizeProcGlow  -- defined in Icon Sizing section, used by hookProcGlowResizing
 local applyPerIconCooldownOpacity  -- defined in Per-Icon Cooldown Opacity section
@@ -1528,39 +1531,84 @@ end
 -- Uses SetAlphaFromBoolean with secret boolean from Duration Object IsZero()
 -- to dim individual CDM icons when their spell is on cooldown.
 -- GCD filtered via isOnGCD (NeverSecret). SetAlphaFromBoolean evaluates secret booleans in C++ without Lua-side inspection.
+-- Text opacity can be controlled independently via opacityOnCooldownText.
+-- When text differs from icon, SetIgnoreParentAlpha decouples the Cooldown frame
+-- from the icon frame's alpha chain and SetAlphaFromBoolean drives it independently.
+-- Targets the Cooldown frame (not its FontString) because Blizzard's C++ cooldown
+-- renderer resets the FontString's alpha every frame, overriding our values.
 --------------------------------------------------------------------------------
+
+local function applyTextCooldownAlpha(cooldownFrame, durObj, containerAlpha, textDimAlpha, isGCD)
+    if not cooldownFrame then return end
+    pcall(function() cooldownFrame:SetIgnoreParentAlpha(true) end)
+    textAlphaDecoupled[cooldownFrame] = true
+    if isGCD then
+        pcall(function() cooldownFrame:SetAlpha(containerAlpha) end)
+    else
+        local readyAlpha = containerAlpha
+        local cdAlpha = math.min(containerAlpha, textDimAlpha)
+        pcall(function() cooldownFrame:SetAlphaFromBoolean(durObj:IsZero(), readyAlpha, cdAlpha) end)
+    end
+end
+
+local function resetTextAlpha(cooldownFrame)
+    if cooldownFrame and textAlphaDecoupled[cooldownFrame] then
+        pcall(function() cooldownFrame:SetIgnoreParentAlpha(false) end)
+        pcall(function() cooldownFrame:SetAlpha(1.0) end)
+        textAlphaDecoupled[cooldownFrame] = nil
+    end
+end
 
 applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
     local viewer = _G[viewerFrameName]
     if not viewer then return end
     local component = addon.Components and addon.Components[componentId]
     if not component or not component.db then return end
-    local setting = tonumber(component.db.opacityOnCooldown)
-    if not setting or setting >= 100 then return end
-    local dimAlpha = setting / 100
 
-    -- Compensate for container-level opacity so the two layers don't stack
-    -- multiplicatively. Effective alpha = container × compensated, which yields
-    -- min(containerAlpha, cooldownDimAlpha) instead of container × dim.
+    local iconSetting = tonumber(component.db.opacityOnCooldown) or 100
+    local textSetting = tonumber(component.db.opacityOnCooldownText) or 100
+
+    -- Nothing to do if both are at 100%
+    if iconSetting >= 100 and textSetting >= 100 then return end
+
     local containerAlpha = getViewerOpacityForState(componentId)
-    if containerAlpha > 0 and containerAlpha < 1.0 then
-        dimAlpha = math.min(1.0, dimAlpha / containerAlpha)
+    local needsTextOverride = (textSetting ~= iconSetting)
+
+    -- Compute icon dim alpha (compensated for container opacity)
+    local iconDimAlpha = iconSetting / 100
+    if iconSetting < 100 and containerAlpha > 0 and containerAlpha < 1.0 then
+        iconDimAlpha = math.min(1.0, iconDimAlpha / containerAlpha)
     end
+
+    -- Compute text dim alpha (absolute, used with SetIgnoreParentAlpha)
+    local textDimAlpha = textSetting / 100
 
     for _, child in ipairs({ viewer:GetChildren() }) do
         if isValidCDMItemFrame(child) and isFrameVisible(child) then
             local idOk, spellId = pcall(function() return child:GetBaseSpellID() end)
             if idOk and spellId then
                 local cdInfo = C_Spell.GetSpellCooldown(spellId)
-                if cdInfo and cdInfo.isOnGCD then
+                local isGCD = cdInfo and cdInfo.isOnGCD
+                local durObj = not isGCD and C_Spell.GetSpellCooldownDuration(spellId) or nil
+
+                -- Icon frame opacity
+                if isGCD or iconSetting >= 100 then
                     pcall(function() child:SetAlpha(1.0) end)
-                else
-                    local durObj = C_Spell.GetSpellCooldownDuration(spellId)
-                    if durObj and durObj.IsZero then
-                        pcall(function()
-                            child:SetAlphaFromBoolean(durObj:IsZero(), 1.0, dimAlpha)
-                        end)
+                elseif durObj and durObj.IsZero then
+                    pcall(function()
+                        child:SetAlphaFromBoolean(durObj:IsZero(), 1.0, iconDimAlpha)
+                    end)
+                end
+
+                -- Text opacity (independent when text != icon setting)
+                if needsTextOverride and child.Cooldown then
+                    if isGCD then
+                        applyTextCooldownAlpha(child.Cooldown, nil, containerAlpha, textDimAlpha, true)
+                    elseif durObj and durObj.IsZero then
+                        applyTextCooldownAlpha(child.Cooldown, durObj, containerAlpha, textDimAlpha, false)
                     end
+                elseif not needsTextOverride and child.Cooldown then
+                    resetTextAlpha(child.Cooldown)
                 end
             end
         end

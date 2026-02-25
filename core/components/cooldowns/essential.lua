@@ -71,6 +71,7 @@ addon:RegisterComponentInitializer(function(self)
                 label = "Opacity With Target", widget = "slider", min = 0, max = 100, step = 1, section = "Misc", order = 4
             }},
             opacityOnCooldown = { type = "addon", default = 100 },
+            opacityOnCooldownText = { type = "addon", default = 100 },
             showTimer = { type = "editmode", default = true, ui = {
                 label = "Show Timer", widget = "checkbox", section = "Misc", order = 6
             }},
