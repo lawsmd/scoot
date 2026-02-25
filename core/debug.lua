@@ -1677,3 +1677,223 @@ function addon.DumpTableAttributes()
     return false
 end
 
+--------------------------------------------------------------------------------
+-- CDM Opacity Debug Snapshot (/scoot debug cdmopacity)
+--------------------------------------------------------------------------------
+
+function addon.DebugDumpCDMOpacity()
+    local lines = {}
+    local function add(s) lines[#lines + 1] = s end
+    local function addFmt(...) lines[#lines + 1] = string.format(...) end
+
+    -- Section 1: Global state
+    add("=== CDM Opacity Debug Snapshot ===")
+    addFmt("Time: %.2f", GetTime())
+    addFmt("InCombatLockdown: %s", tostring(InCombatLockdown()))
+    addFmt("UnitExists(target): %s", tostring(UnitExists("target")))
+    add("")
+
+    -- Helper: safe read of icon property
+    local function safeRead(icon, key)
+        local ok, val = pcall(function() return icon[key] end)
+        if not ok then return "ERROR" end
+        if val == nil then return "nil" end
+        if issecretvalue and issecretvalue(val) then return "SECRET" end
+        return tostring(val)
+    end
+
+    -- Helper: format end time
+    local function fmtEndTime(endTime)
+        if endTime == nil then return "nil" end
+        if endTime == math.huge then return "math.huge (sentinel)" end
+        local ok, s = pcall(function()
+            return string.format("%.2f (expires in %.1fs)", endTime, endTime - GetTime())
+        end)
+        return ok and s or "SECRET"
+    end
+
+    -- Section 2: Essential/Utility viewers
+    local cooldownEndTimes = addon._debugCooldownEndTimes or {}
+    local swipeIsAuraColor = addon._debugSwipeIsAuraColor or {}
+    local viewerNames = { "EssentialCooldownViewer", "UtilityCooldownViewer" }
+    local viewerComponentIds = {
+        EssentialCooldownViewer = "essentialCooldowns",
+        UtilityCooldownViewer = "utilityCooldowns",
+    }
+
+    for _, viewerName in ipairs(viewerNames) do
+        add("--- " .. viewerName .. " ---")
+        local viewer = _G[viewerName]
+        if not viewer then
+            add("  (viewer not found)")
+            add("")
+        else
+            local componentId = viewerComponentIds[viewerName]
+            local component = addon.Components and addon.Components[componentId]
+            local opacitySetting = component and component.db and tonumber(component.db.opacityOnCooldown) or 100
+            addFmt("  opacityOnCooldown setting: %d%%", opacitySetting)
+
+            local children = viewer.GetChildren and {viewer:GetChildren()} or {}
+            addFmt("  Children count: %d", #children)
+
+            for i, child in ipairs(children) do
+                if child and child.Cooldown then
+                    local spellID = safeRead(child, "spellID")
+                    local spellName = "?"
+                    if spellID ~= "nil" and spellID ~= "ERROR" and spellID ~= "SECRET" then
+                        local ok, name = pcall(function() return C_Spell.GetSpellName(tonumber(spellID)) end)
+                        if ok and name then spellName = name end
+                    end
+
+                    local endTime = cooldownEndTimes[child]
+                    local wasCharges = safeRead(child, "wasSetFromCharges")
+                    local isOnGCD = safeRead(child, "isOnGCD")
+                    local isOnActualCD = safeRead(child, "isOnActualCooldown")
+                    local alpha = "?"
+                    pcall(function() alpha = string.format("%.2f", child:GetAlpha()) end)
+                    local swipeAura = swipeIsAuraColor[child]
+
+                    addFmt("  [%d] spell=%s (%s)", i, spellID, spellName)
+                    addFmt("       cooldownEndTimes: %s", fmtEndTime(endTime))
+                    addFmt("       wasSetFromCharges: %s", wasCharges)
+                    addFmt("       isOnGCD: %s  isOnActualCooldown: %s", isOnGCD, isOnActualCD)
+                    addFmt("       alpha: %s  swipeIsAuraColor: %s", alpha, tostring(swipeAura))
+                end
+            end
+            add("")
+        end
+    end
+
+    -- Section 3: Custom Groups
+    local cgEndTimes = addon._debugCGCooldownEndTimes or {}
+    local cgActiveIcons = addon._debugCGActiveIcons or {}
+
+    for gi = 1, 3 do
+        add("--- Custom Group " .. gi .. " ---")
+        local component = addon.Components and addon.Components["customGroup" .. gi]
+        local opacitySetting = component and component.db and tonumber(component.db.opacityOnCooldown) or 100
+        addFmt("  opacityOnCooldown setting: %d%%", opacitySetting)
+
+        local icons = cgActiveIcons[gi] or {}
+        addFmt("  Active icons: %d", #icons)
+
+        -- GCD scan for this group
+        local gcdActive = false
+        for _, ic in ipairs(icons) do
+            if ic.entry and ic.entry.type == "spell" then
+                local cdInfo = C_Spell.GetSpellCooldown(ic.entry.id)
+                if cdInfo and cdInfo.isOnGCD then
+                    gcdActive = true
+                    break
+                end
+            end
+        end
+        addFmt("  gcdActive: %s", tostring(gcdActive))
+
+        for i, icon in ipairs(icons) do
+            local entryType = "?"
+            local entryId = "?"
+            pcall(function()
+                if icon.entry then
+                    entryType = icon.entry.type or "?"
+                    entryId = tostring(icon.entry.id or "?")
+                end
+            end)
+
+            local entryName = "?"
+            pcall(function()
+                if entryType == "spell" then
+                    entryName = C_Spell.GetSpellName(tonumber(entryId)) or "?"
+                elseif entryType == "item" then
+                    entryName = C_Item.GetItemNameByID(tonumber(entryId)) or "?"
+                end
+            end)
+
+            local endTime = cgEndTimes[icon]
+            local alpha = "?"
+            pcall(function() alpha = string.format("%.2f", icon:GetAlpha()) end)
+            local desat = "?"
+            pcall(function()
+                if icon.Icon then desat = tostring(icon.Icon:IsDesaturated()) end
+            end)
+
+            -- Charge info
+            local chargeStr = "N/A"
+            if entryType == "spell" then
+                pcall(function()
+                    local info = C_Spell.GetSpellCharges(tonumber(entryId))
+                    if info and info.maxCharges and info.maxCharges > 1 then
+                        chargeStr = string.format("%d/%d", info.currentCharges, info.maxCharges)
+                    end
+                end)
+            end
+
+            -- isOnGCD diagnostic
+            local isOnGCD = "N/A"
+            if entryType == "spell" then
+                pcall(function()
+                    local cdInfo = C_Spell.GetSpellCooldown(tonumber(entryId))
+                    if cdInfo then isOnGCD = tostring(cdInfo.isOnGCD) end
+                end)
+            end
+
+            addFmt("  [%d] %s:%s (%s)", i, entryType, entryId, entryName)
+            addFmt("       cgCooldownEndTimes: %s", fmtEndTime(endTime))
+            addFmt("       alpha: %s  desaturated: %s  charges: %s", alpha, desat, chargeStr)
+            addFmt("       isOnGCD: %s", isOnGCD)
+
+            -- Duration Object diagnostics
+            local durStr = "N/A"
+            if entryType == "spell" then
+                pcall(function()
+                    local sid = tonumber(entryId)
+                    -- Regular CD duration
+                    local cdDur = C_Spell.GetSpellCooldownDuration and C_Spell.GetSpellCooldownDuration(sid)
+                    if cdDur then
+                        local hasSecrets = cdDur:HasSecretValues()
+                        local okZ, isZStr = pcall(function()
+                            if cdDur:IsZero() then return "true" else return "false" end
+                        end)
+                        durStr = string.format("cdDur={hasSecrets=%s, isZero=%s}",
+                            tostring(hasSecrets),
+                            okZ and isZStr or "SECRET")
+                    else
+                        durStr = "cdDur=nil"
+                    end
+                    -- Charge duration (append if charge spell)
+                    local chDur = C_Spell.GetSpellChargeDuration and C_Spell.GetSpellChargeDuration(sid)
+                    if chDur then
+                        local hasSecrets = chDur:HasSecretValues()
+                        local okZ, isZStr = pcall(function()
+                            if chDur:IsZero() then return "true" else return "false" end
+                        end)
+                        durStr = durStr .. string.format(" chDur={hasSecrets=%s, isZero=%s}",
+                            tostring(hasSecrets),
+                            okZ and isZStr or "SECRET")
+                    end
+                end)
+            end
+            addFmt("       durationObj: %s", durStr)
+
+            -- Charge cache diagnostics
+            local cacheStr = "none"
+            if entryType == "spell" then
+                pcall(function()
+                    local sid = tonumber(entryId)
+                    local cached = addon._cgChargeCacheDebug and addon._cgChargeCacheDebug[sid]
+                    if cached then
+                        cacheStr = string.format("cur=%s max=%s wasZero=%s",
+                            tostring(cached.currentCharges), tostring(cached.maxCharges),
+                            tostring(addon._cgWasZeroDebug and addon._cgWasZeroDebug[sid]))
+                    end
+                end)
+            end
+            addFmt("       chargeCache: %s", cacheStr)
+        end
+        add("")
+    end
+
+    local output = table.concat(lines, "\n")
+    ShowDebugCopyWindow("CDM Opacity Debug", output)
+end
+

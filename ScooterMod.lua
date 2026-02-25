@@ -133,7 +133,7 @@ function SlashCmdList.SCOOTERMOD(msg, editBox)
 
         if sub1 == "" then
             addon:Print("Usage:")
-            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|<FrameName>>")
+            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|cdmopacity|<FrameName>>")
             addon:Print("  /scoot debug profiles export [\"Profile Name\"]")
             addon:Print("  /scoot debug consoleport export")
             return
@@ -289,6 +289,38 @@ function SlashCmdList.SCOOTERMOD(msg, editBox)
             return
         end
 
+        -- /scoot debug cg (Custom Groups trace)
+        if sub1 == "customgroups" or sub1 == "cg" then
+            local sub2 = args[3] and args[3]:lower() or ""
+            if sub2 == "trace" then
+                local sub3 = args[4] and args[4]:lower() or ""
+                if sub3 == "on" then
+                    local groupFilter = args[5] and tonumber(args[5]) or nil
+                    if addon.SetCGTrace then addon.SetCGTrace(true, groupFilter)
+                    else addon:Print("CG trace not available.") end
+                elseif sub3 == "off" then
+                    if addon.SetCGTrace then addon.SetCGTrace(false)
+                    else addon:Print("CG trace not available.") end
+                else
+                    addon:Print("Usage: /scoot debug cg trace <on [groupNum]|off>")
+                end
+            elseif sub2 == "log" then
+                if addon.ShowCGTraceLog then addon.ShowCGTraceLog()
+                else addon:Print("CG trace log not available.") end
+            elseif sub2 == "clear" then
+                if addon.ClearCGTrace then addon.ClearCGTrace()
+                else addon:Print("CG trace clear not available.") end
+            else
+                addon:Print("Usage: /scoot debug cg <trace|log|clear>")
+                addon:Print("  trace on      - Start tracing all groups")
+                addon:Print("  trace on 1    - Trace group 1 only")
+                addon:Print("  trace off     - Stop tracing")
+                addon:Print("  log           - Show trace buffer in copyable window")
+                addon:Print("  clear         - Clear the trace buffer")
+            end
+            return
+        end
+
         -- /scoot debug classauras
         if sub1 == "classauras" or sub1 == "ca" then
             if addon.DebugDumpClassAuras then
@@ -299,9 +331,19 @@ function SlashCmdList.SCOOTERMOD(msg, editBox)
             return
         end
 
+        -- /scoot debug cdmopacity
+        if sub1 == "cdmopacity" or sub1 == "cdo" then
+            if addon.DebugDumpCDMOpacity then
+                addon.DebugDumpCDMOpacity()
+            else
+                addon:Print("CDM opacity debug not available.")
+            end
+            return
+        end
+
         local target = args[2]
         if not target or target == "" then
-            addon:Print("Usage: /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|<FrameName>>")
+            addon:Print("Usage: /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|cg|classauras|cdmopacity|<FrameName>>")
             return
         end
         if addon.DebugDump then

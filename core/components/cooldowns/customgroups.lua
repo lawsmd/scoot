@@ -173,8 +173,124 @@ local trackedItemCount = 0
 -- Cooldown end times for per-icon opacity (weak keys for GC)
 local cgCooldownEndTimes = setmetatable({}, { __mode = "k" })
 
+-- Charge cache: last-known charge counts per spellID (survives secret contexts)
+local cgChargeCache = {}  -- [spellID] = { currentCharges = N, maxCharges = M }
+
+-- Duration Object IsZero tracking for transition detection
+local cgWasZero = {}  -- [spellID] = bool (was IsZero true last check?)
+
+-- Blizzard CooldownFrame_Set hook state: tracks real cooldown presence per spellID
+local cgBlizzardCDState = {}  -- [spellID] = true/false, from CooldownFrame_Set/Clear hooks
+
+-- Cast detection: last resort for spells not tracked by CDM (e.g. Alter Time)
+local cgCastDetected = {}  -- [spellID] = true, from UNIT_SPELLCAST_SUCCEEDED
+
 -- Whether HUD system has been initialized
 local cgInitialized = false
+
+--------------------------------------------------------------------------------
+-- Trace Logging (debug only — /scoot debug cg trace on)
+--------------------------------------------------------------------------------
+
+local cgTraceBuffer = {}
+local CG_TRACE_MAX_LINES = 500
+local cgTraceEnabled = false
+local cgTraceGroupFilter = nil  -- nil = all groups, number = specific group
+
+-- Resolve which group (1-3) an icon belongs to (only called when trace is active)
+local function cgGroupForIcon(icon)
+    for gi = 1, 3 do
+        for _, ic in ipairs(activeIcons[gi]) do
+            if ic == icon then return gi end
+        end
+    end
+    return nil
+end
+
+-- Safe value formatter: handles nil, secrets, and normal values
+local function safeVal(v)
+    if v == nil then return "nil" end
+    if issecretvalue(v) then return "[SECRET]" end
+    local ok, s = pcall(tostring, v)
+    if ok then return s end
+    return "[tostring failed]"
+end
+
+-- Safe spell label: "SpellName(12345)" or just "12345" if name is secret
+local function safeSpellLabel(spellID)
+    if not spellID then return "nil" end
+    local ok, name = pcall(function() return C_Spell.GetSpellName(spellID) end)
+    if ok and name and not issecretvalue(name) then
+        return name .. "(" .. spellID .. ")"
+    end
+    return tostring(spellID)
+end
+
+-- Unconditional trace (events, group-level ops) — always logs when tracing is on
+local function cgTrace(msg, ...)
+    if not cgTraceEnabled then return end
+    local ok, formatted = pcall(string.format, msg, ...)
+    if not ok then formatted = msg end
+    if issecretvalue(formatted) then formatted = msg .. " [SECRET]" end
+    local timestamp = GetTime and GetTime() or 0
+    local ok2, line = pcall(string.format, "[%.3f] %s", timestamp, formatted)
+    if not ok2 or issecretvalue(line) then return end
+    cgTraceBuffer[#cgTraceBuffer + 1] = line
+    if #cgTraceBuffer > CG_TRACE_MAX_LINES then
+        table.remove(cgTraceBuffer, 1)
+    end
+end
+
+-- Filtered trace (per-icon ops) — skips if icon not in filtered group
+local function cgTraceIcon(icon, msg, ...)
+    if not cgTraceEnabled then return end
+    if cgTraceGroupFilter then
+        local gi = cgGroupForIcon(icon)
+        if gi ~= cgTraceGroupFilter then return end
+    end
+    cgTrace(msg, ...)
+end
+
+function addon.SetCGTrace(enabled, groupFilter)
+    cgTraceEnabled = enabled
+    cgTraceGroupFilter = groupFilter
+    if enabled then
+        if groupFilter then
+            addon:Print("Custom Groups trace: ON (group " .. groupFilter .. " only)")
+        else
+            addon:Print("Custom Groups trace: ON (all groups)")
+        end
+    else
+        addon:Print("Custom Groups trace: OFF")
+    end
+end
+
+function addon.ShowCGTraceLog()
+    if #cgTraceBuffer == 0 then
+        addon:Print("Custom Groups trace buffer is empty.")
+        return
+    end
+    local safeLines = {}
+    for i = 1, #cgTraceBuffer do
+        local entry = cgTraceBuffer[i]
+        if not issecretvalue(entry) then
+            safeLines[#safeLines + 1] = entry
+        else
+            safeLines[#safeLines + 1] = "[SECRET LINE SKIPPED]"
+        end
+    end
+    local text = table.concat(safeLines, "\n")
+    if addon.DebugShowWindow then
+        addon.DebugShowWindow("Custom Groups Trace", text)
+    else
+        addon:Print("DebugShowWindow not available. Buffer has " .. #cgTraceBuffer .. " lines.")
+    end
+end
+
+function addon.ClearCGTrace()
+    wipe(cgTraceBuffer)
+    addon:Print("Custom Groups trace buffer cleared.")
+end
 
 local function CreateIconFrame(parent)
     local icon = CreateFrame("Frame", nil, parent)
@@ -188,6 +304,43 @@ local function CreateIconFrame(parent)
     icon.Cooldown:SetAllPoints(icon.Icon)
     icon.Cooldown:SetDrawEdge(false)
     icon.Cooldown:SetHideCountdownNumbers(false)
+
+    -- OnCooldownDone: C++ callback when cooldown timer expires — definitive un-dim
+    icon.Cooldown:HookScript("OnCooldownDone", function()
+        if cgTraceEnabled then
+            cgTraceIcon(icon, "OnCooldownDone: spell=%s, hadSentinel=%s, endTime=%s",
+                safeSpellLabel(icon.entry and icon.entry.id),
+                tostring(cgCooldownEndTimes[icon] ~= nil),
+                safeVal(cgCooldownEndTimes[icon]))
+        end
+        if cgCooldownEndTimes[icon] then
+            cgCooldownEndTimes[icon] = nil
+            icon.Icon:SetDesaturated(false)
+            -- Clear cast detection flag (spell CD expired)
+            local spellID = icon.entry and icon.entry.id
+            if spellID then
+                cgCastDetected[spellID] = nil
+            end
+            C_Timer.After(0, function()
+                if icon and not (icon.IsForbidden and icon:IsForbidden()) then
+                    if cgTraceEnabled then
+                        cgTraceIcon(icon, "OnCooldownDone DEFERRED: spell=%s, SetAlpha(1.0)",
+                            safeSpellLabel(icon.entry and icon.entry.id))
+                    end
+                    icon:SetAlpha(1.0)
+                end
+            end)
+        end
+    end)
+
+    -- Clear hook: trace-only (sentinel preserved — OnCooldownDone is the definitive un-dim)
+    hooksecurefunc(icon.Cooldown, "Clear", function()
+        if cgTraceEnabled and cgCooldownEndTimes[icon] then
+            cgTraceIcon(icon, "Clear hook (sentinel preserved): spell=%s, endTime=%s",
+                safeSpellLabel(icon.entry and icon.entry.id),
+                safeVal(cgCooldownEndTimes[icon]))
+        end
+    end)
 
     icon.CountText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     icon.CountText:SetDrawLayer("OVERLAY", 7)
@@ -466,6 +619,7 @@ end
 local function RefreshSpellCooldown(icon)
     if not icon.entry or icon.entry.type ~= "spell" then return end
     local spellID = icon.entry.id
+    cgTraceIcon(icon, "RefreshSpellCooldown: %s", safeSpellLabel(spellID))
 
     -- Charges (all SpellChargeInfo fields can be secret in restricted contexts)
     local chargeInfo = C_Spell.GetSpellCharges(spellID)
@@ -475,29 +629,136 @@ local function RefreshSpellCooldown(icon)
         end)
         if ok then
             if hasMultiCharges then
+                -- Cache readable charge data for secret fallback
+                cgChargeCache[spellID] = {
+                    currentCharges = chargeInfo.currentCharges,
+                    maxCharges = chargeInfo.maxCharges,
+                }
+                cgWasZero[spellID] = (chargeInfo.currentCharges >= chargeInfo.maxCharges)
+
+                cgTraceIcon(icon, "  CHARGE-READABLE: cur=%s, max=%s, dim=%s",
+                    safeVal(chargeInfo.currentCharges), safeVal(chargeInfo.maxCharges),
+                    tostring(chargeInfo.currentCharges == 0))
+
                 icon.CountText:SetText(chargeInfo.currentCharges)
                 icon.CountText:Show()
                 icon.Icon:SetDesaturated(chargeInfo.currentCharges == 0)
-                if chargeInfo.currentCharges < chargeInfo.maxCharges and chargeInfo.cooldownStartTime > 0 then
-                    icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
-                    -- Only track as "on cooldown" for opacity dimming when ALL charges are spent
-                    if chargeInfo.currentCharges == 0 then
-                        cgCooldownEndTimes[icon] = chargeInfo.cooldownStartTime + chargeInfo.cooldownDuration
-                    else
-                        cgCooldownEndTimes[icon] = nil
+
+                if chargeInfo.currentCharges == 0 then
+                    -- All charges spent — track cooldown for opacity dimming
+                    -- Set cooldown swipe from charge data if available
+                    if chargeInfo.cooldownStartTime > 0 then
+                        icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
                     end
+                    -- Set end time: prefer charge data, fall back to spell cooldown
+                    local endTime = nil
+                    if chargeInfo.cooldownStartTime > 0 and chargeInfo.cooldownDuration > 0 then
+                        endTime = chargeInfo.cooldownStartTime + chargeInfo.cooldownDuration
+                    end
+                    if not endTime or endTime <= GetTime() then
+                        local cdInfo = C_Spell.GetSpellCooldown(spellID)
+                        if cdInfo and not cdInfo.isOnGCD and cdInfo.duration and cdInfo.duration > 0 then
+                            endTime = cdInfo.startTime + cdInfo.duration
+                            -- Also set the swipe from spell cooldown if charge data didn't
+                            if not (chargeInfo.cooldownStartTime > 0) then
+                                icon.Cooldown:SetCooldown(cdInfo.startTime, cdInfo.duration, cdInfo.modRate)
+                            end
+                        end
+                    end
+                    if endTime and endTime > GetTime() then
+                        cgCooldownEndTimes[icon] = endTime
+                        cgTraceIcon(icon, "  CHARGE-0: endTime=%s", safeVal(endTime))
+                    end
+                elseif chargeInfo.currentCharges < chargeInfo.maxCharges and chargeInfo.cooldownStartTime > 0 then
+                    -- Charges available but recharging — show swipe, don't dim
+                    icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
+                    cgCooldownEndTimes[icon] = nil
+                    cgTraceIcon(icon, "  CHARGE-RECHARGING: cur=%s, no dim", safeVal(chargeInfo.currentCharges))
                 else
+                    -- All charges full — no cooldown
                     icon.Cooldown:Clear()
                     cgCooldownEndTimes[icon] = nil
+                    cgTraceIcon(icon, "  CHARGE-FULL: cleared")
                 end
                 return
             end
             icon.CountText:Hide()
         else
+            cgTraceIcon(icon, "  CHARGE-SECRET: using Duration Object path")
             -- Secret: SetCooldown + SetText both accept secret values natively
-            icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
+            -- Skip SetCooldown if already tracked — preserves C++ timer for OnCooldownDone
+            if not cgCooldownEndTimes[icon] then
+                icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
+            end
             icon.CountText:SetText(chargeInfo.currentCharges)
             icon.CountText:Show()
+
+            -- Duration Object: GetSpellChargeDuration is NOT SecretWhenSpellCooldownRestricted
+            -- IsZero() has no secret restrictions per API docs — safe even when duration has secrets
+            local chargeDur = C_Spell.GetSpellChargeDuration and C_Spell.GetSpellChargeDuration(spellID)
+            local chargeDimResolved = false
+            if chargeDur then
+                local okZero, isZero = pcall(chargeDur.IsZero, chargeDur)
+                if okZero and issecretvalue(isZero) then
+                    okZero = false  -- can't use a secret boolean
+                end
+                cgTraceIcon(icon, "  CHARGE-DUR IsZero: okZero=%s, isZero=%s",
+                    tostring(okZero), safeVal(isZero))
+                if okZero then
+                    chargeDimResolved = true
+                    if isZero then
+                        -- All charges full — definitive
+                        icon.Icon:SetDesaturated(false)
+                        cgCooldownEndTimes[icon] = nil
+                        cgTraceIcon(icon, "  CHARGE-DUR: IsZero=true → not dimmed")
+                    else
+                        -- Recharging: use cached charge count for dim decision
+                        local cached = cgChargeCache[spellID]
+                        if cached and cached.currentCharges == 0 then
+                            -- All charges spent → dim and track end time
+                            icon.Icon:SetDesaturated(true)
+                            if not chargeDur:HasSecretValues() then
+                                local okEnd, endTime = pcall(function() return chargeDur:GetEndTime() end)
+                                if okEnd and type(endTime) == "number" and endTime > GetTime() then
+                                    cgCooldownEndTimes[icon] = endTime
+                                else
+                                    cgCooldownEndTimes[icon] = math.huge
+                                end
+                            else
+                                cgCooldownEndTimes[icon] = math.huge
+                            end
+                            cgTraceIcon(icon, "  CHARGE-DUR: IsZero=false, cached.cur=0 → DIM, endTime=%s",
+                                safeVal(cgCooldownEndTimes[icon]))
+                        else
+                            -- Charges available but recharging → swipe only, no dim
+                            icon.Icon:SetDesaturated(false)
+                            cgCooldownEndTimes[icon] = nil
+                            cgTraceIcon(icon, "  CHARGE-DUR: IsZero=false, cached.cur=%s → no dim",
+                                safeVal(cached and cached.currentCharges))
+                        end
+                    end
+                end
+            end
+            -- Direct isOnGCD fallback: C_Spell.GetSpellCooldown().isOnGCD is NeverSecret
+            if not chargeDimResolved then
+                local cdInfoFallback = C_Spell.GetSpellCooldown(spellID)
+                local isOnGCDFallback = cdInfoFallback and cdInfoFallback.isOnGCD
+                if isOnGCDFallback == false then
+                    -- Real cooldown active, not GCD → all charges spent → dim
+                    if not cgCooldownEndTimes[icon] then
+                        icon.Icon:SetDesaturated(true)
+                        cgCooldownEndTimes[icon] = math.huge
+                    end
+                    cgTraceIcon(icon, "  CHARGE-GCD-FALLBACK: isOnGCD=false → DIM (endTime=%s)",
+                        safeVal(cgCooldownEndTimes[icon]))
+                else
+                    -- isOnGCD==true (GCD, charges available) or nil (no active cooldown) → no dim
+                    icon.Icon:SetDesaturated(false)
+                    cgCooldownEndTimes[icon] = nil
+                    cgTraceIcon(icon, "  CHARGE-GCD-FALLBACK: isOnGCD=%s → no dim",
+                        safeVal(isOnGCDFallback))
+                end
+            end
             return
         end
     else
@@ -508,8 +769,17 @@ local function RefreshSpellCooldown(icon)
     local cdInfo = C_Spell.GetSpellCooldown(spellID)
     if not cdInfo then return end
 
+    local isOnGCDVal = cdInfo.isOnGCD
+    cgTraceIcon(icon, "  REGULAR-CD: isOnGCD=%s (type=%s, secret=%s)",
+        safeVal(isOnGCDVal), type(isOnGCDVal), tostring(issecretvalue(isOnGCDVal)))
+
     -- isOnGCD is NeverSecret — always safe, replaces duration > MIN_CD_DURATION
-    if cdInfo.isOnGCD then return end
+    if cdInfo.isOnGCD then
+        cgCooldownEndTimes[icon] = nil
+        icon.Icon:SetDesaturated(false)
+        cgTraceIcon(icon, "  isOnGCD truthy → RETURN (cleared)")
+        return
+    end
 
     -- Try comparisons (work outside restricted contexts)
     local ok, isOnCD = pcall(function()
@@ -517,6 +787,9 @@ local function RefreshSpellCooldown(icon)
     end)
 
     if ok then
+        cgTraceIcon(icon, "  READABLE: isOnCD=%s, duration=%s, endTime=%s",
+            tostring(isOnCD), safeVal(cdInfo.duration),
+            isOnCD and safeVal(cdInfo.startTime + cdInfo.duration) or "n/a")
         if isOnCD then
             icon.Cooldown:SetCooldown(cdInfo.startTime, cdInfo.duration, cdInfo.modRate)
             icon.Icon:SetDesaturated(true)
@@ -524,14 +797,90 @@ local function RefreshSpellCooldown(icon)
         else
             icon.Cooldown:Clear()
             icon.Icon:SetDesaturated(false)
-            local existingEnd = cgCooldownEndTimes[icon]
-            if not existingEnd or GetTime() >= existingEnd then
-                cgCooldownEndTimes[icon] = nil
-            end
+            cgCooldownEndTimes[icon] = nil
+            cgCastDetected[spellID] = nil
         end
     else
+        cgTraceIcon(icon, "  SECRET path: existing endTime=%s", safeVal(cgCooldownEndTimes[icon]))
         -- Secret: pass directly to SetCooldown (C++ handles secrets natively)
-        icon.Cooldown:SetCooldown(cdInfo.startTime, cdInfo.duration, cdInfo.modRate)
+        -- Skip SetCooldown if already tracked — preserves C++ timer for OnCooldownDone
+        if not cgCooldownEndTimes[icon] then
+            icon.Cooldown:SetCooldown(cdInfo.startTime, cdInfo.duration, cdInfo.modRate)
+        end
+
+        -- Duration Object: GetSpellCooldownDuration is NOT SecretWhenSpellCooldownRestricted
+        -- IsZero() has no secret restrictions — safe even when duration has secrets
+        local cdDuration = C_Spell.GetSpellCooldownDuration and C_Spell.GetSpellCooldownDuration(spellID)
+        local dimResolved = false
+        if cdDuration then
+            local okZero, isZero = pcall(cdDuration.IsZero, cdDuration)
+            if okZero and issecretvalue(isZero) then
+                okZero = false  -- can't use a secret boolean
+            end
+            cgTraceIcon(icon, "  REGULAR-DUR IsZero: okZero=%s, isZero=%s",
+                tostring(okZero), safeVal(isZero))
+            if okZero then
+                dimResolved = true
+                if isZero then
+                    -- No active cooldown — definitive
+                    icon.Cooldown:Clear()
+                    icon.Icon:SetDesaturated(false)
+                    cgCooldownEndTimes[icon] = nil
+                    cgTraceIcon(icon, "  REGULAR-DUR: IsZero=true → not dimmed")
+                else
+                    -- On real cooldown → dim and track end time
+                    icon.Icon:SetDesaturated(true)
+                    if not cdDuration:HasSecretValues() then
+                        local okEnd, endTime = pcall(function() return cdDuration:GetEndTime() end)
+                        if okEnd and type(endTime) == "number" and endTime > GetTime() then
+                            cgCooldownEndTimes[icon] = endTime
+                        else
+                            cgCooldownEndTimes[icon] = math.huge
+                        end
+                    else
+                        cgCooldownEndTimes[icon] = math.huge
+                    end
+                    cgTraceIcon(icon, "  REGULAR-DUR: IsZero=false → DIM, endTime=%s",
+                        safeVal(cgCooldownEndTimes[icon]))
+                end
+            end
+        end
+        -- Direct isOnGCD fallback: isOnGCDVal (from L767) is NeverSecret
+        -- By this point isOnGCD==true already returned at L776, so:
+        --   false → real cooldown → DIM
+        --   nil   → no active cooldown → no dim
+        if not dimResolved then
+            if isOnGCDVal == false then
+                -- Real cooldown confirmed → dim
+                if not cgCooldownEndTimes[icon] then
+                    icon.Icon:SetDesaturated(true)
+                    cgCooldownEndTimes[icon] = math.huge
+                end
+                cgTraceIcon(icon, "  REGULAR-GCD-FALLBACK: isOnGCD=false → DIM (endTime=%s)",
+                    safeVal(cgCooldownEndTimes[icon]))
+            elseif cgBlizzardCDState[spellID] == true then
+                -- CDM hook confirms real cooldown (off-GCD spells like Alter Time)
+                if not cgCooldownEndTimes[icon] then
+                    icon.Icon:SetDesaturated(true)
+                    cgCooldownEndTimes[icon] = math.huge
+                end
+                cgTraceIcon(icon, "  REGULAR-CDM-FALLBACK: cgBlizzardCDState=true → DIM")
+            elseif cgCastDetected[spellID] then
+                -- Spell was cast (UNIT_SPELLCAST_SUCCEEDED) → on cooldown
+                -- Last resort for spells not tracked by CDM (e.g. Alter Time)
+                if not cgCooldownEndTimes[icon] then
+                    icon.Icon:SetDesaturated(true)
+                    cgCooldownEndTimes[icon] = math.huge
+                end
+                cgTraceIcon(icon, "  REGULAR-CAST-FALLBACK: cast detected → DIM")
+            elseif cgBlizzardCDState[spellID] == false then
+                -- CDM hook confirms no real cooldown
+                cgTraceIcon(icon, "  REGULAR-CDM-FALLBACK: cgBlizzardCDState=false → no dim")
+            else
+                -- nil → no CDM data available → no dim
+                cgTraceIcon(icon, "  REGULAR-CDM-FALLBACK: no CDM data → no dim")
+            end
+        end
     end
 end
 
@@ -552,10 +901,7 @@ local function RefreshItemCooldown(icon)
         else
             icon.Cooldown:Clear()
             icon.Icon:SetDesaturated(false)
-            local existingEnd = cgCooldownEndTimes[icon]
-            if not existingEnd or GetTime() >= existingEnd then
-                cgCooldownEndTimes[icon] = nil
-            end
+            cgCooldownEndTimes[icon] = nil
         end
     elseif startTime and duration then
         -- Secret fallback: pass directly to SetCooldown
@@ -624,7 +970,15 @@ local function UpdateIconCooldownOpacity(icon, opacitySetting)
 
     local endTime = cgCooldownEndTimes[icon]
     local isOnCD = endTime and GetTime() < endTime
-    icon:SetAlpha(isOnCD and (opacitySetting / 100) or 1.0)
+    local newAlpha = isOnCD and (opacitySetting / 100) or 1.0
+    local oldAlpha = icon:GetAlpha()
+    -- Only trace when alpha actually changes (reduce noise)
+    if cgTraceEnabled and oldAlpha ~= newAlpha then
+        cgTraceIcon(icon, "UpdateIconCooldownOpacity: spell=%s, endTime=%s, isOnCD=%s, alpha %.2f→%.2f",
+            safeSpellLabel(icon.entry and icon.entry.id), safeVal(endTime),
+            tostring(isOnCD), oldAlpha, newAlpha)
+    end
+    icon:SetAlpha(newAlpha)
 end
 
 local function UpdateGroupCooldownOpacities(groupIndex)
@@ -1083,7 +1437,12 @@ UpdateGroupOpacity = function(groupIndex)
         opacityValue = tonumber(db.opacityOutOfCombat) or 100
     end
 
-    container:SetAlpha(math.max(0.01, math.min(1.0, opacityValue / 100)))
+    local finalAlpha = math.max(0.01, math.min(1.0, opacityValue / 100))
+    if cgTraceEnabled and (not cgTraceGroupFilter or cgTraceGroupFilter == groupIndex) then
+        cgTrace("UpdateGroupOpacity: group=%d, inCombat=%s, hasTarget=%s, opacityValue=%d, containerAlpha=%.2f",
+            groupIndex, tostring(inCombat), tostring(hasTarget), opacityValue, finalAlpha)
+    end
+    container:SetAlpha(finalAlpha)
 end
 
 local function UpdateAllGroupOpacities()
@@ -1197,6 +1556,40 @@ local function InitializeContainers()
 end
 
 --------------------------------------------------------------------------------
+-- CooldownFrame_Set/Clear Hooks (populate cgBlizzardCDState for off-GCD spells)
+--------------------------------------------------------------------------------
+
+hooksecurefunc("CooldownFrame_Set", function(cooldownFrame)
+    local ok, err = pcall(function()
+        local cdmIcon = cooldownFrame:GetParent()
+        if not cdmIcon or not cdmIcon.CacheCooldownValues then return end
+        local spellID = cdmIcon:GetSpellID()
+        if type(spellID) ~= "number" or issecretvalue(spellID) then return end
+        -- CDM only calls CooldownFrame_Set for real active cooldowns
+        -- (CooldownFrame_Clear is called directly for expired/no-CD cases)
+        cgBlizzardCDState[spellID] = true
+        cgTrace("  CDM-HOOK-SET: spellID=%s → true", tostring(spellID))
+    end)
+    if not ok and cgTraceEnabled then
+        cgTrace("  CDM-HOOK-SET ERROR: %s", tostring(err))
+    end
+end)
+
+hooksecurefunc("CooldownFrame_Clear", function(cooldownFrame)
+    local ok, err = pcall(function()
+        local cdmIcon = cooldownFrame:GetParent()
+        if not cdmIcon or not cdmIcon.CacheCooldownValues then return end
+        local spellID = cdmIcon:GetSpellID()
+        if type(spellID) ~= "number" or issecretvalue(spellID) then return end
+        cgBlizzardCDState[spellID] = false
+        cgTrace("  CDM-HOOK-CLEAR: spellID=%s → false", tostring(spellID))
+    end)
+    if not ok and cgTraceEnabled then
+        cgTrace("  CDM-HOOK-CLEAR ERROR: %s", tostring(err))
+    end
+end)
+
+--------------------------------------------------------------------------------
 -- Event Handling
 --------------------------------------------------------------------------------
 
@@ -1216,6 +1609,7 @@ cgEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 cgEventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 cgEventFrame:RegisterEvent("ITEM_DATA_LOAD_RESULT")
 cgEventFrame:RegisterEvent("BAG_UPDATE")
+cgEventFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 
 cgEventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_ENTERING_WORLD" then
@@ -1231,7 +1625,103 @@ cgEventFrame:SetScript("OnEvent", function(self, event, ...)
             RebuildAllGroups()
         end
 
-    elseif event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_CHARGES" then
+    elseif event == "SPELL_UPDATE_COOLDOWN" then
+        cgTrace("EVENT: SPELL_UPDATE_COOLDOWN")
+        RefreshAllSpellCooldowns()
+        -- Check for expired cooldowns
+        local now = GetTime()
+        local expiredCount = 0
+        for icon, endTime in pairs(cgCooldownEndTimes) do
+            if now >= endTime then
+                cgTraceIcon(icon, "  EXPIRED sentinel: spell=%s, endTime=%s",
+                    safeSpellLabel(icon.entry and icon.entry.id), safeVal(endTime))
+                cgCooldownEndTimes[icon] = nil
+                icon:SetAlpha(1.0)
+                icon.Icon:SetDesaturated(false)
+                expiredCount = expiredCount + 1
+            end
+        end
+        if expiredCount > 0 then
+            cgTrace("  Expired %d sentinel(s)", expiredCount)
+        end
+        for i = 1, 3 do
+            UpdateGroupCooldownOpacities(i)
+        end
+
+    elseif event == "SPELL_UPDATE_CHARGES" then
+        cgTrace("EVENT: SPELL_UPDATE_CHARGES")
+        -- Detect GCD for direction heuristic (charge lost vs recovered)
+        local gcdActive = false
+        for gi = 1, 3 do
+            if gcdActive then break end
+            for _, ic in ipairs(activeIcons[gi]) do
+                if ic.entry and ic.entry.type == "spell" then
+                    local cdInfo = C_Spell.GetSpellCooldown(ic.entry.id)
+                    if cdInfo and cdInfo.isOnGCD then
+                        gcdActive = true
+                        break
+                    end
+                end
+            end
+        end
+
+        -- Update charge caches
+        for gi = 1, 3 do
+            for _, ic in ipairs(activeIcons[gi]) do
+                if ic.entry and ic.entry.type == "spell" then
+                    local spellID = ic.entry.id
+                    local cached = cgChargeCache[spellID]
+                    if cached then
+                        -- Try readable first
+                        local chargeInfo = C_Spell.GetSpellCharges(spellID)
+                        if chargeInfo then
+                            local okCur, cur = pcall(function() return chargeInfo.currentCharges end)
+                            if okCur then
+                                cached.currentCharges = cur
+                                cgWasZero[spellID] = (cur >= cached.maxCharges)
+                            else
+                                -- Secret: use Duration Object transitions
+                                -- IsZero() has no secret restrictions — safe even when duration has secrets
+                                local dur = C_Spell.GetSpellChargeDuration and C_Spell.GetSpellChargeDuration(spellID)
+                                if dur then
+                                    local okZ, isZero = pcall(function()
+                                        if dur:IsZero() then return true else return false end
+                                    end)
+                                    if okZ then
+                                        local wasZero = cgWasZero[spellID]
+
+                                        if wasZero and not isZero then
+                                            -- true→false: charge spent from full
+                                            cached.currentCharges = math.max(0, cached.currentCharges - 1)
+                                        elseif not wasZero and isZero then
+                                            -- false→true: all charges recovered
+                                            cached.currentCharges = cached.maxCharges
+                                        elseif not wasZero and not isZero then
+                                            -- false→false: charge count changed, direction from GCD
+                                            if gcdActive then
+                                                cached.currentCharges = math.max(0, cached.currentCharges - 1)
+                                            else
+                                                cached.currentCharges = math.min(cached.maxCharges, cached.currentCharges + 1)
+                                            end
+                                        end
+                                        cgWasZero[spellID] = isZero
+                                    elseif gcdActive then
+                                        -- IsZero secret + GCD active → assume charge was spent
+                                        cached.currentCharges = math.max(0, cached.currentCharges - 1)
+                                        cgWasZero[spellID] = false
+                                    else
+                                        -- IsZero secret + no GCD → assume charge recovered
+                                        cached.currentCharges = math.min(cached.maxCharges, cached.currentCharges + 1)
+                                        cgWasZero[spellID] = (cached.currentCharges >= cached.maxCharges)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
         RefreshAllSpellCooldowns()
         -- Check for expired cooldowns
         local now = GetTime()
@@ -1258,10 +1748,50 @@ cgEventFrame:SetScript("OnEvent", function(self, event, ...)
         or event == "PLAYER_EQUIPMENT_CHANGED" then
         C_Timer.After(0.2, RebuildAllGroups)
 
+    elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+        local unit, castGUID, spellID = ...
+        if unit == "player" and type(spellID) == "number" then
+            cgCastDetected[spellID] = true
+            cgTrace("  CAST-DETECTED: spellID=%s", tostring(spellID))
+        end
+
     elseif event == "PLAYER_REGEN_DISABLED"
         or event == "PLAYER_REGEN_ENABLED"
         or event == "PLAYER_TARGET_CHANGED" then
+        cgTrace("EVENT: %s", event)
         UpdateAllGroupOpacities()
+
+        if event == "PLAYER_REGEN_ENABLED" then
+            -- Post-combat: clear stale math.huge sentinels + re-evaluate
+            C_Timer.After(0.5, function()
+                cgTrace("DEFERRED: PLAYER_REGEN_ENABLED (0.5s) — clearing math.huge sentinels")
+                -- Wipe cast detection (non-secret APIs work out of combat)
+                table.wipe(cgCastDetected)
+                for icon, endTime in pairs(cgCooldownEndTimes) do
+                    if endTime == math.huge then
+                        cgTraceIcon(icon, "  Clearing math.huge sentinel: spell=%s",
+                            safeSpellLabel(icon.entry and icon.entry.id))
+                        cgCooldownEndTimes[icon] = nil
+                        icon.Icon:SetDesaturated(false)
+                    end
+                end
+                RefreshAllSpellCooldowns()
+                for i = 1, 3 do
+                    UpdateGroupCooldownOpacities(i)
+                end
+                cgTrace("DEFERRED: PLAYER_REGEN_ENABLED complete")
+            end)
+        elseif event == "PLAYER_TARGET_CHANGED" then
+            -- Target change: re-evaluate only, preserve existing sentinels
+            C_Timer.After(0.5, function()
+                cgTrace("DEFERRED: PLAYER_TARGET_CHANGED (0.5s) — re-evaluating")
+                RefreshAllSpellCooldowns()
+                for i = 1, 3 do
+                    UpdateGroupCooldownOpacities(i)
+                end
+                cgTrace("DEFERRED: PLAYER_TARGET_CHANGED complete")
+            end)
+        end
 
     elseif event == "BAG_UPDATE" then
         if not bagUpdatePending then
@@ -1423,3 +1953,11 @@ addon:RegisterComponentInitializer(function(self)
         self:RegisterComponent(comp)
     end
 end)
+
+-- Debug access to internal tables
+addon._debugCGCooldownEndTimes = cgCooldownEndTimes
+addon._debugCGActiveIcons = activeIcons
+addon._cgChargeCacheDebug = cgChargeCache
+addon._cgWasZeroDebug = cgWasZero
+addon._cgBlizzardCDStateDebug = cgBlizzardCDState
+addon._cgCastDetectedDebug = cgCastDetected

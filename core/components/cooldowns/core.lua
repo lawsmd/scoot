@@ -851,7 +851,18 @@ local function setupCDMCooldownFrameHooks(cooldownFrame)
         end
 
         -- If a real cooldown is already tracked, Path 3 is unnecessary
+        -- BUT check if charges have recovered (wasSetFromCharges) — clear stale dimming
         if cooldownEndTimes[cdmIcon] then
+            local wasChargesP3 = nil
+            pcall(function() wasChargesP3 = cdmIcon.wasSetFromCharges end)
+            if wasChargesP3 then
+                -- Charges are available — clear the stale dimming
+                cooldownEndTimes[cdmIcon] = nil
+                updateIconCooldownOpacity(cdmIcon)
+                dimDebugLog("Path3 SetCooldown: wasSetFromCharges=true → cleared stale dimming")
+                chargeDebugLog("  → DECISION: wasSetFromCharges=true → cleared stale dimming")
+                return
+            end
             dimDebugLog("Path3 SetCooldown: SKIP (cooldownEndTimes already set)")
             chargeDebugLog("  → DECISION: cooldownEndTimes already set → skip")
             return
@@ -1010,6 +1021,15 @@ local function trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, ena
                     if wasCharges then
                         dimDebugLog("  Path2: wasSetFromCharges=true → skip dimming (charges remain)")
                         chargeDebugLog("  → DECISION Path2: wasSetFromCharges=true → skip dimming")
+                        -- Clear any stale dimming from when charges were at 0
+                        if cooldownEndTimes[cdmIcon] then
+                            cooldownEndTimes[cdmIcon] = nil
+                            C_Timer.After(0, function()
+                                if cdmIcon and not (cdmIcon.IsForbidden and cdmIcon:IsForbidden()) then
+                                    pcall(function() cdmIcon:SetAlpha(1.0) end)
+                                end
+                            end)
+                        end
                         return
                     end
 
@@ -1085,6 +1105,15 @@ local function trackCooldownAndUpdateOpacity(cooldownFrame, start, duration, ena
     if wasCharges then
         dimDebugLog("  Path1: wasSetFromCharges=true → skip dimming (charges remain)")
         chargeDebugLog("  → DECISION Path1: wasSetFromCharges=true → skip dimming")
+        -- Clear any stale dimming from when charges were at 0
+        if cooldownEndTimes[cdmIcon] then
+            cooldownEndTimes[cdmIcon] = nil
+            C_Timer.After(0, function()
+                if cdmIcon and not (cdmIcon.IsForbidden and cdmIcon:IsForbidden()) then
+                    pcall(function() cdmIcon:SetAlpha(1.0) end)
+                end
+            end)
+        end
         return
     end
 
@@ -2016,6 +2045,14 @@ function addon.RefreshCDMCooldownOpacity(componentId)
         if viewer and viewer.GetChildren then
             for _, child in ipairs({viewer:GetChildren()}) do
                 if child and child.Cooldown then
+                    -- Check for charge-based spells that have recovered charges
+                    if cooldownEndTimes[child] then
+                        local wasCharges = nil
+                        pcall(function() wasCharges = child.wasSetFromCharges end)
+                        if wasCharges then
+                            cooldownEndTimes[child] = nil
+                        end
+                    end
                     updateIconCooldownOpacity(child)
                 end
             end
@@ -2032,6 +2069,7 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("UNIT_AURA")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+eventFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")  -- Combat start
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")   -- Combat end
 -- UNIT_SPELLCAST_SUCCEEDED removed: SecretWhenUnitSpellCastRestricted makes arg1=="player"
@@ -2119,7 +2157,14 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, ...)
             throttledRefresh(viewerName, componentId)
         end
 
-    elseif event == "SPELL_UPDATE_COOLDOWN" then
+        -- Also refresh per-icon cooldown opacity (charge state may have changed)
+        C_Timer.After(0.1, function()
+            if addon.RefreshCDMCooldownOpacity then
+                addon.RefreshCDMCooldownOpacity()
+            end
+        end)
+
+    elseif event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_CHARGES" then
         throttledRefresh("EssentialCooldownViewer", "essentialCooldowns")
         throttledRefresh("UtilityCooldownViewer", "utilityCooldowns")
 
@@ -2192,3 +2237,7 @@ addon:RegisterComponentInitializer(function(self)
         Overlays.Initialize()
     end)
 end)
+
+-- Debug access to internal tables
+addon._debugCooldownEndTimes = cooldownEndTimes
+addon._debugSwipeIsAuraColor = swipeIsAuraColor

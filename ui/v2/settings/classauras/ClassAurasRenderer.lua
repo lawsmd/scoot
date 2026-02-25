@@ -113,8 +113,8 @@ local function RenderClassAuras(panel, scrollContent, classToken)
 
                         tabBuilder:AddSelector({
                             label = "Icon Style",
-                            values = { default = "Default Icon", custom = "Custom Pixel Icon" },
-                            order = { "default", "custom" },
+                            values = { default = "Default Icon", custom = "Custom Pixel Icon", hidden = "Hide Icon" },
+                            order = { "default", "custom", "hidden" },
                             get = function() return getSetting("iconMode") or "default" end,
                             set = function(v)
                                 h.setAndApply("iconMode", v)
@@ -148,6 +148,21 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             order = borderStyleOrder,
                             get = function() return getSetting("borderStyle") or "none" end,
                             set = function(v) h.setAndApply("borderStyle", v) end,
+                            disabled = iconControlsDisabled,
+                        })
+
+                        tabBuilder:AddToggleColorPicker({
+                            label = "Border Tint",
+                            description = "Apply a custom tint color to the icon border.",
+                            get = function() return getSetting("borderTintEnable") or false end,
+                            set = function(val) h.setAndApply("borderTintEnable", val) end,
+                            getColor = function()
+                                local c = getSetting("borderTintColor")
+                                if c then return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end
+                                return 1, 1, 1, 1
+                            end,
+                            setColor = function(r, g, b, a) h.setAndApply("borderTintColor", {r, g, b, a}) end,
+                            hasAlpha = true,
                             disabled = iconControlsDisabled,
                         })
 

@@ -135,17 +135,23 @@ local function LayoutElements(aura, state)
     local iconW, iconH = 32, 32
     if texElem then
         local mode = db and db.iconMode or "default"
-        local baseW = texElem.def.defaultSize and texElem.def.defaultSize[1] or 32
-        local baseH = texElem.def.defaultSize and texElem.def.defaultSize[2] or 32
-        if mode == "default" then
-            local ratio = tonumber(db and db.iconShape) or 0
-            if ratio ~= 0 and addon.IconRatio and addon.IconRatio.CalculateDimensions then
-                iconW, iconH = addon.IconRatio.CalculateDimensions(baseW, ratio)
+        if mode == "hidden" then
+            iconW, iconH = 0, 0
+            texElem.widget:Hide()
+            texElem = nil  -- layout code skips Show() and text anchors to container
+        else
+            local baseW = texElem.def.defaultSize and texElem.def.defaultSize[1] or 32
+            local baseH = texElem.def.defaultSize and texElem.def.defaultSize[2] or 32
+            if mode == "default" then
+                local ratio = tonumber(db and db.iconShape) or 0
+                if ratio ~= 0 and addon.IconRatio and addon.IconRatio.CalculateDimensions then
+                    iconW, iconH = addon.IconRatio.CalculateDimensions(baseW, ratio)
+                else
+                    iconW, iconH = baseW, baseH
+                end
             else
                 iconW, iconH = baseW, baseH
             end
-        else
-            iconW, iconH = baseW, baseH
         end
     end
 
@@ -254,8 +260,11 @@ local function ApplyIconMode(aura, state)
     for _, elem in ipairs(state.elements or {}) do
         if elem.type == "texture" then
             local mode = db.iconMode or "default"
-            if mode == "custom" and elem.def.customPath then
+            if mode == "hidden" then
+                elem.widget:Hide()
+            elseif mode == "custom" and elem.def.customPath then
                 elem.widget:SetTexture(elem.def.customPath)
+                elem.widget:Show()
             else
                 -- "default": use the spell icon, fallback to customPath
                 local ok, tex = pcall(function()
@@ -266,6 +275,7 @@ local function ApplyIconMode(aura, state)
                 elseif elem.def.customPath then
                     elem.widget:SetTexture(elem.def.customPath)
                 end
+                elem.widget:Show()
             end
         end
     end
