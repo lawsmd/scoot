@@ -587,7 +587,7 @@ end
 --------------------------------------------------------------------------------
 -- Uses SetAlphaFromBoolean with secret boolean from Duration Object IsZero()
 -- to dim icons that are on cooldown. GCD is filtered via isOnGCD (NeverSecret).
--- Technique learned from TellMeWhen addon source code.
+-- SetAlphaFromBoolean evaluates secret booleans in C++ without Lua-side inspection.
 --------------------------------------------------------------------------------
 
 local function ApplyCooldownOpacity(icon, groupIndex)

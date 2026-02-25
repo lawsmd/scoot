@@ -1527,7 +1527,7 @@ end
 --------------------------------------------------------------------------------
 -- Uses SetAlphaFromBoolean with secret boolean from Duration Object IsZero()
 -- to dim individual CDM icons when their spell is on cooldown.
--- GCD filtered via isOnGCD (NeverSecret). Technique from TellMeWhen.
+-- GCD filtered via isOnGCD (NeverSecret). SetAlphaFromBoolean evaluates secret booleans in C++ without Lua-side inspection.
 --------------------------------------------------------------------------------
 
 applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
