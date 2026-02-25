@@ -1056,8 +1056,6 @@ do
 				end
 				if bossTexHidden and bossPortraitFrameTexture.Hide then
 					bossPortraitFrameTexture:Hide()
-				elseif not bossTexHidden and bossPortraitFrameTexture.Show then
-					bossPortraitFrameTexture:Show()
 				end
 			end
 
