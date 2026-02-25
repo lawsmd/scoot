@@ -29,6 +29,9 @@ local managedButtons = {}  -- Buttons currently hidden/managed by container
 local originalButtonStates = {}  -- Store original visibility states
 local buttonShowHooks = {}  -- Track which buttons have Show hooks installed
 
+-- Tracking button state
+local trackingButtonFrame = nil
+
 -- Constants
 local PVP_COLORS = {
     sanctuary = {0.41, 0.8, 0.94, 1},  -- Light blue
@@ -1471,6 +1474,96 @@ local function ApplyAddonButtonBorderStyle(db)
 end
 
 --------------------------------------------------------------------------------
+-- Custom Tracking Button
+--------------------------------------------------------------------------------
+
+local function CreateTrackingButton()
+    if trackingButtonFrame then
+        return trackingButtonFrame
+    end
+
+    local btn = CreateFrame("Button", "ScooterModTrackingButton", UIParent)
+    btn:SetSize(24, 24)
+    btn:SetFrameStrata("MEDIUM")
+    btn:SetFrameLevel(8)
+
+    -- Magnifying glass icon (Blizzard tracking atlas), desaturated white
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetAtlas("ui-hud-minimap-tracking-up")
+    icon:SetSize(24, 24)
+    icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    icon:SetDesaturated(true)
+    icon:SetVertexColor(1, 1, 1, 1)
+    btn.icon = icon
+
+    -- Click handler: open Blizzard's tracking dropdown
+    btn:SetScript("OnClick", function(self, mouseButton)
+        local trackingBtn = MinimapCluster and MinimapCluster.Tracking and MinimapCluster.Tracking.Button
+        if not trackingBtn then return end
+
+        -- Toggle: close if already open
+        if trackingBtn:IsMenuOpen() then
+            trackingBtn:CloseMenu()
+            return
+        end
+
+        -- Generate/refresh the menu description (uses generator from MiniMapTrackingButtonMixin:OnLoad)
+        trackingBtn:GenerateMenu()
+        if not trackingBtn.menuDescription then return end
+
+        -- Open with OUR button as owner so the menu stays visible.
+        -- Blizzard's Menu.lua auto-closes menus when owner:IsVisible() is false.
+        -- The Blizzard tracking button is hidden when dock is hidden, so passing it
+        -- as owner causes immediate closure. Our custom button is always visible.
+        local anchor = AnchorUtil.CreateAnchor("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
+        local menu = Menu.GetManager():OpenMenu(self, trackingBtn.menuDescription, anchor)
+
+        if menu then
+            trackingBtn.menu = menu
+            menu:SetClosedCallback(function()
+                trackingBtn.menu = nil
+            end)
+        end
+    end)
+
+    -- Tooltip
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Tracking")
+        GameTooltip:AddLine("Click to set tracking options", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+
+    btn:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
+    end)
+
+    trackingButtonFrame = btn
+    return btn
+end
+
+local function ApplyTrackingButtonStyle(db)
+    if not db or not db.trackingButtonEnabled then
+        if trackingButtonFrame then
+            trackingButtonFrame:Hide()
+        end
+        return
+    end
+
+    local btn = CreateTrackingButton()
+    local minimap = _G.Minimap
+    if not minimap then return end
+
+    local anchor = db.trackingButtonAnchor or "TOPLEFT"
+    local offsetX = tonumber(db.trackingButtonOffsetX) or 0
+    local offsetY = tonumber(db.trackingButtonOffsetY) or 0
+
+    btn:ClearAllPoints()
+    btn:SetPoint(anchor, minimap, anchor, offsetX, offsetY)
+    btn:Show()
+end
+
+--------------------------------------------------------------------------------
 -- HybridMinimap Handler
 --------------------------------------------------------------------------------
 
@@ -1537,6 +1630,9 @@ local function ApplyMinimapStyling(self)
 
     -- Apply addon button border styling
     ApplyAddonButtonBorderStyle(db)
+
+    -- Apply custom tracking button
+    ApplyTrackingButtonStyle(db)
 
     -- Apply off-screen dragging unlock
     if addon.ApplyMinimapOffscreenUnlock then
@@ -1615,6 +1711,12 @@ addon:RegisterComponentInitializer(function(self)
             hideAddonButtonBorders = { type = "addon", default = false },
             addonButtonBorderTintEnabled = { type = "addon", default = false },
             addonButtonBorderTintColor = { type = "addon", default = {1, 1, 1, 1} },
+
+            -- Tracking Button
+            trackingButtonEnabled = { type = "addon", default = false },
+            trackingButtonAnchor = { type = "addon", default = "TOPLEFT" },
+            trackingButtonOffsetX = { type = "addon", default = 0 },
+            trackingButtonOffsetY = { type = "addon", default = 0 },
 
             -- Off-Screen Dragging
             allowOffScreenDragging = { type = "addon", default = false },

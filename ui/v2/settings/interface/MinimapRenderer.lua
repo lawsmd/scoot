@@ -681,6 +681,7 @@ function Minimap.Render(panel, scrollContent)
             inner:AddTabbedSection({
                 tabs = {
                     { key = "addonButtons", label = "Addon Buttons" },
+                    { key = "tracking", label = "Tracking" },
                 },
                 componentId = "minimapStyle",
                 sectionKey = "buttonsTabs",
@@ -809,6 +810,77 @@ function Minimap.Render(panel, scrollContent)
                             hasAlpha = true,
                             isDisabled = function()
                                 return getSetting("hideAddonButtonBorders")
+                            end,
+                        })
+
+                        tabBuilder:Finalize()
+                    end,
+
+                    ----------------------------------------------------------------
+                    -- Tab: Tracking
+                    ----------------------------------------------------------------
+                    tracking = function(tabContent, tabBuilder)
+                        tabBuilder:AddToggle({
+                            label = "Enable Custom Tracking Button",
+                            description = "Show a standalone tracking button near the minimap. Useful when the dock is hidden.",
+                            get = function()
+                                return getSetting("trackingButtonEnabled") or false
+                            end,
+                            set = function(v)
+                                setSetting("trackingButtonEnabled", v)
+                                -- Re-render to update disabled states
+                                C_Timer.After(0.05, function()
+                                    if panel and Minimap.Render then
+                                        Minimap.Render(panel, scrollContent)
+                                    end
+                                end)
+                            end,
+                        })
+
+                        tabBuilder:AddSelector({
+                            label = "Button Position",
+                            description = "Where to place the tracking button relative to the minimap.",
+                            values = anchorOptions,
+                            order = anchorOrder,
+                            get = function()
+                                return getSetting("trackingButtonAnchor") or "TOPLEFT"
+                            end,
+                            set = function(v)
+                                setSetting("trackingButtonAnchor", v)
+                            end,
+                            isDisabled = function()
+                                return not getSetting("trackingButtonEnabled")
+                            end,
+                        })
+
+                        tabBuilder:AddDualSlider({
+                            label = "Button Offset",
+                            sliderA = {
+                                axisLabel = "X",
+                                min = -100,
+                                max = 100,
+                                step = 1,
+                                get = function()
+                                    return getSetting("trackingButtonOffsetX") or 0
+                                end,
+                                set = function(v)
+                                    setSetting("trackingButtonOffsetX", v)
+                                end,
+                            },
+                            sliderB = {
+                                axisLabel = "Y",
+                                min = -100,
+                                max = 100,
+                                step = 1,
+                                get = function()
+                                    return getSetting("trackingButtonOffsetY") or 0
+                                end,
+                                set = function(v)
+                                    setSetting("trackingButtonOffsetY", v)
+                                end,
+                            },
+                            isDisabled = function()
+                                return not getSetting("trackingButtonEnabled")
                             end,
                         })
 
