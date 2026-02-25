@@ -1539,6 +1539,14 @@ applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
     if not setting or setting >= 100 then return end
     local dimAlpha = setting / 100
 
+    -- Compensate for container-level opacity so the two layers don't stack
+    -- multiplicatively. Effective alpha = container × compensated, which yields
+    -- min(containerAlpha, cooldownDimAlpha) instead of container × dim.
+    local containerAlpha = getViewerOpacityForState(componentId)
+    if containerAlpha < 1.0 then
+        dimAlpha = math.min(1.0, dimAlpha / containerAlpha)
+    end
+
     for _, child in ipairs({ viewer:GetChildren() }) do
         if isValidCDMItemFrame(child) and isFrameVisible(child) then
             local idOk, spellId = pcall(function() return child:GetBaseSpellID() end)
@@ -1617,10 +1625,18 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, ...)
     elseif event == "PLAYER_REGEN_DISABLED" then
         -- Combat started: update viewer opacities to combat values
         updateAllViewerOpacities()
+        -- Re-apply per-icon cooldown opacity with new container alpha
+        for viewerName, componentId in pairs(CDM_VIEWERS) do
+            applyPerIconCooldownOpacity(viewerName, componentId)
+        end
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- Combat ended: update viewer opacities to out-of-combat values
         updateAllViewerOpacities()
+        -- Re-apply per-icon cooldown opacity with new container alpha
+        for viewerName, componentId in pairs(CDM_VIEWERS) do
+            applyPerIconCooldownOpacity(viewerName, componentId)
+        end
 
     elseif event == "UNIT_AURA" then
         if arg1 == "player" then
@@ -1630,8 +1646,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, ...)
     elseif event == "PLAYER_TARGET_CHANGED" then
         -- Update opacity for target state change
         updateAllViewerOpacities()
-
+        -- Re-apply per-icon cooldown opacity with new container alpha
         for viewerName, componentId in pairs(CDM_VIEWERS) do
+            applyPerIconCooldownOpacity(viewerName, componentId)
             throttledRefresh(viewerName, componentId)
         end
 

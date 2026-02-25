@@ -583,6 +583,33 @@ local function RefreshItemCooldown(icon)
 end
 
 --------------------------------------------------------------------------------
+-- Container Opacity State Helper
+--------------------------------------------------------------------------------
+-- Shared by both per-icon compensation and container-level opacity application.
+-- Must be defined before ApplyCooldownOpacity which references it.
+--------------------------------------------------------------------------------
+
+local function getGroupOpacityForState(groupIndex)
+    local component = addon.Components and addon.Components["customGroup" .. groupIndex]
+    if not component or not component.db then return 1.0 end
+
+    local db = component.db
+    local inCombat = InCombatLockdown and InCombatLockdown()
+    local hasTarget = UnitExists("target")
+
+    local opacityValue
+    if inCombat then
+        opacityValue = tonumber(db.opacity) or 100
+    elseif hasTarget then
+        opacityValue = tonumber(db.opacityWithTarget) or 100
+    else
+        opacityValue = tonumber(db.opacityOutOfCombat) or 100
+    end
+
+    return math.max(0.01, math.min(1.0, opacityValue / 100))
+end
+
+--------------------------------------------------------------------------------
 -- Per-Icon Cooldown Opacity
 --------------------------------------------------------------------------------
 -- Uses SetAlphaFromBoolean with secret boolean from Duration Object IsZero()
@@ -599,6 +626,15 @@ local function ApplyCooldownOpacity(icon, groupIndex)
         return
     end
     local dimAlpha = setting / 100
+
+    -- Compensate for container-level opacity so the two layers don't stack
+    -- multiplicatively. Effective alpha = container × compensated, which yields
+    -- min(containerAlpha, cooldownDimAlpha) instead of container × dim.
+    local containerAlpha = getGroupOpacityForState(groupIndex)
+    if containerAlpha < 1.0 then
+        dimAlpha = math.min(1.0, dimAlpha / containerAlpha)
+    end
+
     if not icon.entry then icon:SetAlpha(1.0); return end
 
     if icon.entry.type == "spell" then
@@ -1104,25 +1140,7 @@ end
 UpdateGroupOpacity = function(groupIndex)
     local container = containers[groupIndex]
     if not container then return end
-
-    local component = addon.Components and addon.Components["customGroup" .. groupIndex]
-    if not component or not component.db then return end
-
-    local db = component.db
-    local inCombat = InCombatLockdown and InCombatLockdown()
-    local hasTarget = UnitExists("target")
-
-    local opacityValue
-    if inCombat then
-        opacityValue = tonumber(db.opacity) or 100
-    elseif hasTarget then
-        opacityValue = tonumber(db.opacityWithTarget) or 100
-    else
-        opacityValue = tonumber(db.opacityOutOfCombat) or 100
-    end
-
-    local finalAlpha = math.max(0.01, math.min(1.0, opacityValue / 100))
-    container:SetAlpha(finalAlpha)
+    container:SetAlpha(getGroupOpacityForState(groupIndex))
 end
 
 local function UpdateAllGroupOpacities()
@@ -1289,6 +1307,10 @@ cgEventFrame:SetScript("OnEvent", function(self, event, ...)
         or event == "PLAYER_REGEN_ENABLED"
         or event == "PLAYER_TARGET_CHANGED" then
         UpdateAllGroupOpacities()
+        -- Re-apply per-icon cooldown opacity with updated container alpha
+        for gi = 1, 3 do
+            UpdateGroupCooldownOpacities(gi)
+        end
 
         if event == "PLAYER_TARGET_CHANGED" then
             C_Timer.After(0.5, function()
