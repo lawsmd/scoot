@@ -186,12 +186,16 @@ local function CreateIconFrame(parent)
     icon.Cooldown:SetDrawEdge(false)
     icon.Cooldown:SetHideCountdownNumbers(false)
 
-    icon.CountText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    icon.textFrame = CreateFrame("Frame", nil, icon)
+    icon.textFrame:SetAllPoints()
+    icon.textFrame:SetFrameLevel(icon.Cooldown:GetFrameLevel() + 1)
+
+    icon.CountText = icon.textFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     icon.CountText:SetDrawLayer("OVERLAY", 7)
     icon.CountText:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -2, 2)
     icon.CountText:Hide()
 
-    icon.keybindText = icon:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    icon.keybindText = icon.textFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     icon.keybindText:SetDrawLayer("OVERLAY", 7)
     icon.keybindText:SetPoint("TOPLEFT", icon, "TOPLEFT", 2, -2)
     icon.keybindText:Hide()
