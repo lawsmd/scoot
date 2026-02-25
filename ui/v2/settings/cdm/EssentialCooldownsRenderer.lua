@@ -721,28 +721,6 @@ function EssentialCooldowns.Render(panel, scrollContent)
         sectionKey = "misc",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            -- Opacity While on Cooldown slider (addon-only, highest priority)
-            inner:AddSlider({
-                label = "Opacity While on Cooldown",
-                description = "Opacity for icons currently on cooldown. Takes precedence over other opacity settings.",
-                min = 1,
-                max = 100,
-                step = 1,
-                get = function() return getSetting("opacityOnCooldown") or 100 end,
-                set = function(v)
-                    setSetting("opacityOnCooldown", v)
-                    if addon and addon.RefreshCDMCooldownOpacity then
-                        addon.RefreshCDMCooldownOpacity("essentialCooldowns")
-                    end
-                end,
-                minLabel = "1%",
-                maxLabel = "100%",
-                infoIcon = {
-                    tooltipTitle = "Highest Priority",
-                    tooltipText = "This setting takes precedence over all other opacity settings. When an icon is on cooldown, this opacity is applied regardless of combat state or target. Set to 100% to disable.",
-                },
-            })
-
             -- Visibility Mode selector (Edit Mode setting)
             local visibilityValues = {
                 always = "Always",

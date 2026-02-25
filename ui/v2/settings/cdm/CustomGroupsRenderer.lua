@@ -593,19 +593,6 @@ local function CreateCustomGroupRenderer(groupIndex)
             defaultExpanded = false,
             buildContent = function(contentFrame, inner)
                 inner:AddSlider({
-                    label = "Opacity While on Cooldown",
-                    description = "Opacity for icons currently on cooldown. Takes precedence over other opacity settings.",
-                    min = 1, max = 100, step = 1,
-                    get = function() return getSetting("opacityOnCooldown") or 100 end,
-                    set = function(v) h.setAndApply("opacityOnCooldown", v) end,
-                    minLabel = "1%", maxLabel = "100%",
-                    infoIcon = {
-                        tooltipTitle = "Highest Priority",
-                        tooltipText = "This setting takes precedence over all other opacity settings. When an icon is on cooldown, this opacity is applied regardless of combat state or target. Set to 100% to disable.",
-                    },
-                })
-
-                inner:AddSlider({
                     label = "Opacity in Combat",
                     description = "Opacity when in combat.",
                     min = 1, max = 100, step = 1,

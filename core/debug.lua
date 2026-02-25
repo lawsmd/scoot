@@ -1677,3 +1677,5 @@ function addon.DumpTableAttributes()
     return false
 end
 
+-- CDM Opacity Debug removed (feature removed — per-icon cooldown opacity unsolvable under 12.0 secrets)
+

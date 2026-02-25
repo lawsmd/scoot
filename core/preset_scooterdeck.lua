@@ -2599,7 +2599,7 @@ Presets:Register({
       iconPadding = 2,
       iconSize = 30,
       opacity = 100,
-      opacityOnCooldown = 100,
+
       opacityOutOfCombat = 100,
       opacityWithTarget = 100,
       orientation = "H",
@@ -2632,7 +2632,7 @@ Presets:Register({
       iconPadding = 2,
       iconSize = 30,
       opacity = 100,
-      opacityOnCooldown = 100,
+
       opacityOutOfCombat = 100,
       opacityWithTarget = 100,
       orientation = "H",
@@ -2665,7 +2665,7 @@ Presets:Register({
       iconPadding = 2,
       iconSize = 30,
       opacity = 100,
-      opacityOnCooldown = 100,
+
       opacityOutOfCombat = 100,
       opacityWithTarget = 100,
       orientation = "H",
@@ -2889,7 +2889,7 @@ Presets:Register({
       iconSize = 80,
       iconWidth = 48,
       opacity = 100,
-      opacityOnCooldown = 20,
+
       opacityOutOfCombat = 25,
       opacityWithTarget = 100,
       orientation = "H",
@@ -3599,7 +3599,7 @@ Presets:Register({
       iconSize = 70,
       iconWidth = 36,
       opacity = 100,
-      opacityOnCooldown = 20,
+
       opacityOutOfCombat = 25,
       opacityWithTarget = 100,
       orientation = "H",

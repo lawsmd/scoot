@@ -170,9 +170,6 @@ local MIN_CD_DURATION = 1.5
 local itemTicker = nil
 local trackedItemCount = 0
 
--- Cooldown end times for per-icon opacity (weak keys for GC)
-local cgCooldownEndTimes = setmetatable({}, { __mode = "k" })
-
 -- Whether HUD system has been initialized
 local cgInitialized = false
 
@@ -271,7 +268,6 @@ local function ReleaseIcon(groupIndex, icon)
     icon.atlasBorder:Hide()
     icon.entry = nil
     icon.entryIndex = nil
-    cgCooldownEndTimes[icon] = nil
     table.insert(iconPools[groupIndex], icon)
 end
 
@@ -477,18 +473,18 @@ local function RefreshSpellCooldown(icon)
             if hasMultiCharges then
                 icon.CountText:SetText(chargeInfo.currentCharges)
                 icon.CountText:Show()
-                icon.Icon:SetDesaturated(chargeInfo.currentCharges == 0)
-                if chargeInfo.currentCharges < chargeInfo.maxCharges and chargeInfo.cooldownStartTime > 0 then
-                    icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
-                    -- Only track as "on cooldown" for opacity dimming when ALL charges are spent
-                    if chargeInfo.currentCharges == 0 then
-                        cgCooldownEndTimes[icon] = chargeInfo.cooldownStartTime + chargeInfo.cooldownDuration
-                    else
-                        cgCooldownEndTimes[icon] = nil
+
+                if chargeInfo.currentCharges == 0 then
+                    -- All charges spent — show cooldown swipe
+                    if chargeInfo.cooldownStartTime > 0 then
+                        icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
                     end
+                elseif chargeInfo.currentCharges < chargeInfo.maxCharges and chargeInfo.cooldownStartTime > 0 then
+                    -- Recharging — show swipe
+                    icon.Cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate)
                 else
+                    -- All charges full
                     icon.Cooldown:Clear()
-                    cgCooldownEndTimes[icon] = nil
                 end
                 return
             end
@@ -508,8 +504,10 @@ local function RefreshSpellCooldown(icon)
     local cdInfo = C_Spell.GetSpellCooldown(spellID)
     if not cdInfo then return end
 
-    -- isOnGCD is NeverSecret — always safe, replaces duration > MIN_CD_DURATION
-    if cdInfo.isOnGCD then return end
+    -- isOnGCD is NeverSecret — always safe
+    if cdInfo.isOnGCD then
+        return
+    end
 
     -- Try comparisons (work outside restricted contexts)
     local ok, isOnCD = pcall(function()
@@ -519,15 +517,8 @@ local function RefreshSpellCooldown(icon)
     if ok then
         if isOnCD then
             icon.Cooldown:SetCooldown(cdInfo.startTime, cdInfo.duration, cdInfo.modRate)
-            icon.Icon:SetDesaturated(true)
-            cgCooldownEndTimes[icon] = cdInfo.startTime + cdInfo.duration
         else
             icon.Cooldown:Clear()
-            icon.Icon:SetDesaturated(false)
-            local existingEnd = cgCooldownEndTimes[icon]
-            if not existingEnd or GetTime() >= existingEnd then
-                cgCooldownEndTimes[icon] = nil
-            end
         end
     else
         -- Secret: pass directly to SetCooldown (C++ handles secrets natively)
@@ -547,15 +538,8 @@ local function RefreshItemCooldown(icon)
     if ok then
         if isOnCD then
             icon.Cooldown:SetCooldown(startTime, duration)
-            icon.Icon:SetDesaturated(true)
-            cgCooldownEndTimes[icon] = startTime + duration
         else
             icon.Cooldown:Clear()
-            icon.Icon:SetDesaturated(false)
-            local existingEnd = cgCooldownEndTimes[icon]
-            if not existingEnd or GetTime() >= existingEnd then
-                cgCooldownEndTimes[icon] = nil
-            end
         end
     elseif startTime and duration then
         -- Secret fallback: pass directly to SetCooldown
@@ -609,31 +593,6 @@ local function RefreshAllCooldowns(groupIndex)
                 RefreshItemCooldown(icon)
             end
         end
-    end
-end
-
---------------------------------------------------------------------------------
--- Per-Icon Cooldown Opacity
---------------------------------------------------------------------------------
-
-local function UpdateIconCooldownOpacity(icon, opacitySetting)
-    if opacitySetting >= 100 then
-        icon:SetAlpha(1.0)
-        return
-    end
-
-    local endTime = cgCooldownEndTimes[icon]
-    local isOnCD = endTime and GetTime() < endTime
-    icon:SetAlpha(isOnCD and (opacitySetting / 100) or 1.0)
-end
-
-local function UpdateGroupCooldownOpacities(groupIndex)
-    local component = addon.Components and addon.Components["customGroup" .. groupIndex]
-    if not component or not component.db then return end
-
-    local opacitySetting = tonumber(component.db.opacityOnCooldown) or 100
-    for _, icon in ipairs(activeIcons[groupIndex]) do
-        UpdateIconCooldownOpacity(icon, opacitySetting)
     end
 end
 
@@ -703,9 +662,6 @@ local function RebuildGroup(groupIndex)
     if totalItems > 0 and not itemTicker then
         itemTicker = C_Timer.NewTicker(0.25, function()
             RefreshAllItemCooldowns()
-            for i = 1, 3 do
-                UpdateGroupCooldownOpacities(i)
-            end
         end)
     elseif totalItems == 0 and itemTicker then
         itemTicker:Cancel()
@@ -747,7 +703,6 @@ local function RebuildAllGroups()
         ApplyTextToGroup(i)
         ApplyKeybindTextToGroup(i)
         UpdateGroupOpacity(i)
-        UpdateGroupCooldownOpacities(i)
     end
 end
 
@@ -1083,7 +1038,8 @@ UpdateGroupOpacity = function(groupIndex)
         opacityValue = tonumber(db.opacityOutOfCombat) or 100
     end
 
-    container:SetAlpha(math.max(0.01, math.min(1.0, opacityValue / 100)))
+    local finalAlpha = math.max(0.01, math.min(1.0, opacityValue / 100))
+    container:SetAlpha(finalAlpha)
 end
 
 local function UpdateAllGroupOpacities()
@@ -1231,26 +1187,14 @@ cgEventFrame:SetScript("OnEvent", function(self, event, ...)
             RebuildAllGroups()
         end
 
-    elseif event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_CHARGES" then
+    elseif event == "SPELL_UPDATE_COOLDOWN" then
         RefreshAllSpellCooldowns()
-        -- Check for expired cooldowns
-        local now = GetTime()
-        for icon, endTime in pairs(cgCooldownEndTimes) do
-            if now >= endTime then
-                cgCooldownEndTimes[icon] = nil
-                icon:SetAlpha(1.0)
-                icon.Icon:SetDesaturated(false)
-            end
-        end
-        for i = 1, 3 do
-            UpdateGroupCooldownOpacities(i)
-        end
+
+    elseif event == "SPELL_UPDATE_CHARGES" then
+        RefreshAllSpellCooldowns()
 
     elseif event == "BAG_UPDATE_COOLDOWN" then
         RefreshAllItemCooldowns()
-        for i = 1, 3 do
-            UpdateGroupCooldownOpacities(i)
-        end
 
     elseif event == "PLAYER_SPECIALIZATION_CHANGED"
         or event == "PLAYER_TALENT_UPDATE"
@@ -1262,6 +1206,12 @@ cgEventFrame:SetScript("OnEvent", function(self, event, ...)
         or event == "PLAYER_REGEN_ENABLED"
         or event == "PLAYER_TARGET_CHANGED" then
         UpdateAllGroupOpacities()
+
+        if event == "PLAYER_TARGET_CHANGED" then
+            C_Timer.After(0.5, function()
+                RefreshAllSpellCooldowns()
+            end)
+        end
 
     elseif event == "BAG_UPDATE" then
         if not bagUpdatePending then
@@ -1321,7 +1271,6 @@ local function CustomGroupApplyStyling(component)
     ApplyTextToGroup(groupIndex)
     ApplyKeybindTextToGroup(groupIndex)
     UpdateGroupOpacity(groupIndex)
-    UpdateGroupCooldownOpacities(groupIndex)
 end
 
 --------------------------------------------------------------------------------
@@ -1408,7 +1357,6 @@ local function CreateCustomGroupSettings()
         opacity = { type = "addon", default = 100 },
         opacityOutOfCombat = { type = "addon", default = 100 },
         opacityWithTarget = { type = "addon", default = 100 },
-        opacityOnCooldown = { type = "addon", default = 100 },
     }
 end
 
@@ -1423,3 +1371,6 @@ addon:RegisterComponentInitializer(function(self)
         self:RegisterComponent(comp)
     end
 end)
+
+-- Debug access to internal tables
+addon._debugCGActiveIcons = activeIcons
