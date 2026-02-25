@@ -290,8 +290,9 @@ local sizedIcons = setmetatable({}, { __mode = "k" })
 -- Using a local table instead of writing _scooterFontString to Blizzard frames avoids taint
 local scooterFontStrings = setmetatable({}, { __mode = "k" })
 
--- Forward declaration (defined in Icon Sizing section, used by hookProcGlowResizing)
-local resizeProcGlow
+-- Forward declarations
+local resizeProcGlow  -- defined in Icon Sizing section, used by hookProcGlowResizing
+local applyPerIconCooldownOpacity  -- defined in Per-Icon Cooldown Opacity section
 
 -- Check if Blizzard's DebuffBorder is present and visible on a CDM icon
 -- Used to avoid drawing ScooterMod borders over Blizzard's debuff-type borders
@@ -1226,6 +1227,9 @@ function Overlays.ApplyToViewer(viewerFrameName, componentId)
             end
         end
     end
+
+    -- Apply per-icon cooldown opacity (uses SetAlphaFromBoolean with secret booleans)
+    applyPerIconCooldownOpacity(viewerFrameName, componentId)
 end
 
 --------------------------------------------------------------------------------
@@ -1517,6 +1521,45 @@ function addon.RefreshCDMViewerOpacity(componentId)
         updateAllViewerOpacities()
     end
 end
+
+--------------------------------------------------------------------------------
+-- Per-Icon Cooldown Opacity (Essential/Utility CDM)
+--------------------------------------------------------------------------------
+-- Uses SetAlphaFromBoolean with secret boolean from Duration Object IsZero()
+-- to dim individual CDM icons when their spell is on cooldown.
+-- GCD filtered via isOnGCD (NeverSecret). Technique from TellMeWhen.
+--------------------------------------------------------------------------------
+
+applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
+    local viewer = _G[viewerFrameName]
+    if not viewer then return end
+    local component = addon.Components and addon.Components[componentId]
+    if not component or not component.db then return end
+    local setting = tonumber(component.db.opacityOnCooldown)
+    if not setting or setting >= 100 then return end
+    local dimAlpha = setting / 100
+
+    for _, child in ipairs({ viewer:GetChildren() }) do
+        if isValidCDMItemFrame(child) and isFrameVisible(child) then
+            local idOk, spellId = pcall(function() return child:GetBaseSpellID() end)
+            if idOk and spellId then
+                local cdInfo = C_Spell.GetSpellCooldown(spellId)
+                if cdInfo and cdInfo.isOnGCD then
+                    pcall(function() child:SetAlpha(1.0) end)
+                else
+                    local durObj = C_Spell.GetSpellCooldownDuration(spellId)
+                    if durObj and durObj.IsZero then
+                        pcall(function()
+                            child:SetAlphaFromBoolean(durObj:IsZero(), 1.0, dimAlpha)
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end
+
+addon.RefreshCDMCooldownOpacity = applyPerIconCooldownOpacity
 
 --------------------------------------------------------------------------------
 -- Event Handling

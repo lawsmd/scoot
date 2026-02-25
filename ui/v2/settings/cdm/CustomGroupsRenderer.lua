@@ -623,6 +623,15 @@ local function CreateCustomGroupRenderer(groupIndex)
                     minLabel = "1%", maxLabel = "100%",
                 })
 
+                inner:AddSlider({
+                    label = "Opacity While on Cooldown",
+                    description = "Dim individual icons when their ability is on cooldown. 100% = no dimming.",
+                    min = 1, max = 100, step = 1,
+                    get = function() return getSetting("opacityOnCooldown") or 100 end,
+                    set = function(v) h.setAndApply("opacityOnCooldown", v) end,
+                    minLabel = "1%", maxLabel = "100%",
+                })
+
                 inner:Finalize()
             end,
         })

@@ -459,9 +459,28 @@ end
 -- Cooldown Tracking
 --------------------------------------------------------------------------------
 
+-- Resolve spell override (e.g., Alter Time → Alter Time - Return).
+-- Returns the active spell ID for cooldown/charge lookups.
+local function ResolveSpellID(baseID)
+    if C_Spell.GetOverrideSpell then
+        local overrideID = C_Spell.GetOverrideSpell(baseID)
+        if overrideID and overrideID ~= 0 then
+            return overrideID
+        end
+    end
+    return baseID
+end
+
 local function RefreshSpellCooldown(icon)
     if not icon.entry or icon.entry.type ~= "spell" then return end
-    local spellID = icon.entry.id
+    local spellID = ResolveSpellID(icon.entry.id)
+
+    -- Refresh texture to match current override state
+    -- GetSpellTexture handles overrides internally via base ID
+    local currentTexture = C_Spell.GetSpellTexture(icon.entry.id)
+    if currentTexture then
+        icon.Icon:SetTexture(currentTexture)
+    end
 
     -- Charges (all SpellChargeInfo fields can be secret in restricted contexts)
     local chargeInfo = C_Spell.GetSpellCharges(spellID)
@@ -563,11 +582,73 @@ local function RefreshItemCooldown(icon)
     end
 end
 
+--------------------------------------------------------------------------------
+-- Per-Icon Cooldown Opacity
+--------------------------------------------------------------------------------
+-- Uses SetAlphaFromBoolean with secret boolean from Duration Object IsZero()
+-- to dim icons that are on cooldown. GCD is filtered via isOnGCD (NeverSecret).
+-- Technique learned from TellMeWhen addon source code.
+--------------------------------------------------------------------------------
+
+local function ApplyCooldownOpacity(icon, groupIndex)
+    local component = addon.Components["customGroup" .. groupIndex]
+    if not component or not component.db then return end
+    local setting = tonumber(component.db.opacityOnCooldown)
+    if not setting or setting >= 100 then
+        icon:SetAlpha(1.0)
+        return
+    end
+    local dimAlpha = setting / 100
+    if not icon.entry then icon:SetAlpha(1.0); return end
+
+    if icon.entry.type == "spell" then
+        local spellID = ResolveSpellID(icon.entry.id)
+        local cdInfo = C_Spell.GetSpellCooldown(spellID)
+        if not cdInfo then icon:SetAlpha(1.0); return end
+
+        -- isOnGCD is NeverSecret — true means GCD only, not a real cooldown
+        if cdInfo.isOnGCD then
+            icon:SetAlpha(1.0)
+            return
+        end
+
+        -- Duration Object: IsZero() returns a secret boolean
+        -- true = zero duration = ready → full alpha
+        -- false = on cooldown → dim alpha
+        local durObj = C_Spell.GetSpellCooldownDuration(spellID)
+        if durObj and durObj.IsZero then
+            icon:SetAlphaFromBoolean(durObj:IsZero(), 1.0, dimAlpha)
+        else
+            icon:SetAlpha(1.0)
+        end
+
+    elseif icon.entry.type == "item" then
+        local startTime, duration, isEnabled = C_Container.GetItemCooldown(icon.entry.id)
+        local ok, isOnCD = pcall(function()
+            return startTime and duration and duration > 1.5 and isEnabled and isEnabled ~= 0
+        end)
+        if ok then
+            icon:SetAlpha(isOnCD and dimAlpha or 1.0)
+        else
+            icon:SetAlpha(1.0)
+        end
+    end
+end
+
+local function UpdateGroupCooldownOpacities(groupIndex)
+    for _, icon in ipairs(activeIcons[groupIndex]) do
+        if icon.entry then
+            ApplyCooldownOpacity(icon, groupIndex)
+        end
+    end
+end
+
 local function RefreshAllSpellCooldowns()
     for gi = 1, 3 do
         for _, icon in ipairs(activeIcons[gi]) do
             if icon.entry and icon.entry.type == "spell" then
                 RefreshSpellCooldown(icon)
+                ApplyCooldownOpacity(icon, gi)
             end
         end
     end
@@ -578,6 +659,7 @@ local function RefreshAllItemCooldowns()
         for _, icon in ipairs(activeIcons[gi]) do
             if icon.entry and icon.entry.type == "item" then
                 RefreshItemCooldown(icon)
+                ApplyCooldownOpacity(icon, gi)
             end
         end
     end
@@ -592,6 +674,7 @@ local function RefreshAllCooldowns(groupIndex)
             elseif icon.entry.type == "item" then
                 RefreshItemCooldown(icon)
             end
+            ApplyCooldownOpacity(icon, groupIndex)
         end
     end
 end
@@ -1271,6 +1354,7 @@ local function CustomGroupApplyStyling(component)
     ApplyTextToGroup(groupIndex)
     ApplyKeybindTextToGroup(groupIndex)
     UpdateGroupOpacity(groupIndex)
+    UpdateGroupCooldownOpacities(groupIndex)
 end
 
 --------------------------------------------------------------------------------
@@ -1357,6 +1441,7 @@ local function CreateCustomGroupSettings()
         opacity = { type = "addon", default = 100 },
         opacityOutOfCombat = { type = "addon", default = 100 },
         opacityWithTarget = { type = "addon", default = 100 },
+        opacityOnCooldown = { type = "addon", default = 100 },
     }
 end
 

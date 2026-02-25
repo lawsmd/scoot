@@ -800,6 +800,24 @@ function EssentialCooldowns.Render(panel, scrollContent)
                 maxLabel = "100%",
             })
 
+            -- Opacity While on Cooldown slider (per-icon dimming)
+            inner:AddSlider({
+                label = "Opacity While on Cooldown",
+                description = "Dim individual icons when their ability is on cooldown. 100% = no dimming.",
+                min = 1,
+                max = 100,
+                step = 1,
+                get = function() return getSetting("opacityOnCooldown") or 100 end,
+                set = function(v)
+                    setSetting("opacityOnCooldown", v)
+                    if addon and addon.RefreshCDMCooldownOpacity then
+                        addon.RefreshCDMCooldownOpacity("EssentialCooldownViewer", "essentialCooldowns")
+                    end
+                end,
+                minLabel = "1%",
+                maxLabel = "100%",
+            })
+
             -- Show Timer toggle (Edit Mode setting)
             inner:AddToggle({
                 label = "Show Timer",

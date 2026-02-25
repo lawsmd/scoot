@@ -76,6 +76,7 @@ addon:RegisterComponentInitializer(function(self)
             opacityWithTarget = { type = "addon", default = 100, ui = {
                 label = "Opacity With Target", widget = "slider", min = 1, max = 100, step = 1, section = "Misc", order = 4
             }},
+            opacityOnCooldown = { type = "addon", default = 100 },
             hideWhenInactive = { type = "editmode", default = false, ui = {
                 label = "Hide when inactive", widget = "checkbox", section = "Misc", order = 6
             }},
