@@ -584,20 +584,18 @@ function TrackedBars.Render(panel, scrollContent)
         sectionKey = "misc",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddSelector({
-                label = "Visibility Mode",
-                values = {
-                    always = "Always",
-                    combat = "Only in Combat",
-                    never = "Hidden",
-                },
-                order = { "always", "combat", "never" },
-                get = function() return getSetting("visibilityMode") or "always" end,
+            -- Priority system header + explainer
+            inner:AddDescription("Priority System", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
+            inner:AddDescription("With Target > In Combat > Out of Combat. Only the highest active condition applies.", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
+
+            inner:AddSlider({
+                label = "Opacity With Target", min = 0, max = 100, step = 1,
+                get = function() return getSetting("opacityWithTarget") or 100 end,
                 set = function(v)
-                    setSetting("visibilityMode", v)
-                    syncEditModeSetting("visibilityMode")
+                    setSetting("opacityWithTarget", v)
+                    if addon and addon.RefreshCDMViewerOpacity then addon.RefreshCDMViewerOpacity("trackedBars") end
                 end,
-                syncCooldown = 0.5,
+                minLabel = "Hidden", maxLabel = "100%",
             })
 
             inner:AddSlider({
@@ -611,30 +609,16 @@ function TrackedBars.Render(panel, scrollContent)
                 debounceDelay = 0.3,
                 onEditModeSync = function() syncEditModeSetting("opacity") end,
                 minLabel = "50%", maxLabel = "100%",
-                infoIcon = {
-                    tooltipTitle = "Opacity Priority",
-                    tooltipText = "With Target takes precedence, then In Combat, then Out of Combat. The highest priority condition that applies determines the opacity.",
-                },
             })
 
             inner:AddSlider({
-                label = "Opacity Out of Combat", min = 1, max = 100, step = 1,
+                label = "Opacity Out of Combat", min = 0, max = 100, step = 1,
                 get = function() return getSetting("opacityOutOfCombat") or 100 end,
                 set = function(v)
                     setSetting("opacityOutOfCombat", v)
                     if addon and addon.RefreshCDMViewerOpacity then addon.RefreshCDMViewerOpacity("trackedBars") end
                 end,
-                minLabel = "1%", maxLabel = "100%",
-            })
-
-            inner:AddSlider({
-                label = "Opacity With Target", min = 1, max = 100, step = 1,
-                get = function() return getSetting("opacityWithTarget") or 100 end,
-                set = function(v)
-                    setSetting("opacityWithTarget", v)
-                    if addon and addon.RefreshCDMViewerOpacity then addon.RefreshCDMViewerOpacity("trackedBars") end
-                end,
-                minLabel = "1%", maxLabel = "100%",
+                minLabel = "Hidden", maxLabel = "100%",
             })
 
             inner:AddSelector({

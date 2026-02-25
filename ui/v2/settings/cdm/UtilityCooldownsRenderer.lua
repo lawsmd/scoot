@@ -627,6 +627,63 @@ function UtilityCooldowns.Render(panel, scrollContent)
         sectionKey = "misc",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
+            -- Priority system header + explainer
+            inner:AddDescription("Priority System", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
+            inner:AddDescription("With Target > In Combat > Out of Combat. Only the highest active condition applies. On Cooldown competes with the result \226\128\148 whichever is the stronger dim takes effect.", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
+
+            -- Opacity While on Cooldown slider (per-icon dimming) — most used
+            inner:AddSlider({
+                label = "Opacity While on Cooldown",
+                description = "Dim individual icons when their ability is on cooldown. 100% = no dimming.",
+                min = 0, max = 100, step = 1,
+                get = function() return getSetting("opacityOnCooldown") or 100 end,
+                set = function(v)
+                    setSetting("opacityOnCooldown", v)
+                    if addon and addon.RefreshCDMCooldownOpacity then
+                        addon.RefreshCDMCooldownOpacity("UtilityCooldownViewer", "utilityCooldowns")
+                    end
+                end,
+                minLabel = "Hidden", maxLabel = "100%",
+            })
+
+            inner:AddSlider({
+                label = "Opacity With Target",
+                min = 0, max = 100, step = 1,
+                get = function() return getSetting("opacityWithTarget") or 100 end,
+                set = function(v)
+                    setSetting("opacityWithTarget", v)
+                    if addon and addon.RefreshCDMViewerOpacity then
+                        addon.RefreshCDMViewerOpacity("utilityCooldowns")
+                    end
+                end,
+                minLabel = "Hidden", maxLabel = "100%",
+            })
+
+            inner:AddSlider({
+                label = "Opacity in Combat",
+                description = "Opacity when in combat (50-100%).",
+                min = 50, max = 100, step = 1,
+                get = function() return getSetting("opacity") or 100 end,
+                set = function(v) setSetting("opacity", v) end,
+                minLabel = "50%", maxLabel = "100%",
+                debounceKey = "UI_utilityCooldowns_opacity",
+                debounceDelay = 0.2,
+                onEditModeSync = function() syncEditModeSetting("opacity") end,
+            })
+
+            inner:AddSlider({
+                label = "Opacity Out of Combat",
+                min = 0, max = 100, step = 1,
+                get = function() return getSetting("opacityOutOfCombat") or 100 end,
+                set = function(v)
+                    setSetting("opacityOutOfCombat", v)
+                    if addon and addon.RefreshCDMViewerOpacity then
+                        addon.RefreshCDMViewerOpacity("utilityCooldowns")
+                    end
+                end,
+                minLabel = "Hidden", maxLabel = "100%",
+            })
+
             local visibilityValues = { always = "Always", combat = "Only in Combat", never = "Hidden" }
             local visibilityOrder = { "always", "combat", "never" }
 
@@ -641,63 +698,6 @@ function UtilityCooldowns.Render(panel, scrollContent)
                     syncEditModeSetting("visibilityMode")
                 end,
                 syncCooldown = 0.4,
-            })
-
-            inner:AddSlider({
-                label = "Opacity in Combat",
-                description = "Opacity when in combat (50-100%).",
-                min = 50, max = 100, step = 1,
-                get = function() return getSetting("opacity") or 100 end,
-                set = function(v) setSetting("opacity", v) end,
-                minLabel = "50%", maxLabel = "100%",
-                debounceKey = "UI_utilityCooldowns_opacity",
-                debounceDelay = 0.2,
-                onEditModeSync = function() syncEditModeSetting("opacity") end,
-                infoIcon = {
-                    tooltipTitle = "Opacity Priority",
-                    tooltipText = "With Target takes precedence, then In Combat, then Out of Combat. The highest priority condition that applies determines the opacity.",
-                },
-            })
-
-            inner:AddSlider({
-                label = "Opacity Out of Combat",
-                min = 1, max = 100, step = 1,
-                get = function() return getSetting("opacityOutOfCombat") or 100 end,
-                set = function(v)
-                    setSetting("opacityOutOfCombat", v)
-                    if addon and addon.RefreshCDMViewerOpacity then
-                        addon.RefreshCDMViewerOpacity("utilityCooldowns")
-                    end
-                end,
-                minLabel = "1%", maxLabel = "100%",
-            })
-
-            inner:AddSlider({
-                label = "Opacity With Target",
-                min = 1, max = 100, step = 1,
-                get = function() return getSetting("opacityWithTarget") or 100 end,
-                set = function(v)
-                    setSetting("opacityWithTarget", v)
-                    if addon and addon.RefreshCDMViewerOpacity then
-                        addon.RefreshCDMViewerOpacity("utilityCooldowns")
-                    end
-                end,
-                minLabel = "1%", maxLabel = "100%",
-            })
-
-            -- Opacity While on Cooldown slider (per-icon dimming)
-            inner:AddSlider({
-                label = "Opacity While on Cooldown",
-                description = "Dim individual icons when their ability is on cooldown. 100% = no dimming.",
-                min = 1, max = 100, step = 1,
-                get = function() return getSetting("opacityOnCooldown") or 100 end,
-                set = function(v)
-                    setSetting("opacityOnCooldown", v)
-                    if addon and addon.RefreshCDMCooldownOpacity then
-                        addon.RefreshCDMCooldownOpacity("UtilityCooldownViewer", "utilityCooldowns")
-                    end
-                end,
-                minLabel = "1%", maxLabel = "100%",
             })
 
             -- Hide when inactive (Edit Mode setting)

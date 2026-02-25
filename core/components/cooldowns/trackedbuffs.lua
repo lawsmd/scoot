@@ -60,10 +60,10 @@ addon:RegisterComponentInitializer(function(self)
                 label = "Opacity in Combat", widget = "slider", min = 50, max = 100, step = 1, section = "Misc", order = 2
             }},
             opacityOutOfCombat = { type = "addon", default = 100, ui = {
-                label = "Opacity Out of Combat", widget = "slider", min = 1, max = 100, step = 1, section = "Misc", order = 3
+                label = "Opacity Out of Combat", widget = "slider", min = 0, max = 100, step = 1, section = "Misc", order = 3
             }},
             opacityWithTarget = { type = "addon", default = 100, ui = {
-                label = "Opacity With Target", widget = "slider", min = 1, max = 100, step = 1, section = "Misc", order = 4
+                label = "Opacity With Target", widget = "slider", min = 0, max = 100, step = 1, section = "Misc", order = 4
             }},
             hideWhenInactive = { type = "editmode", default = false, ui = {
                 label = "Hide when inactive", widget = "checkbox", section = "Misc", order = 5

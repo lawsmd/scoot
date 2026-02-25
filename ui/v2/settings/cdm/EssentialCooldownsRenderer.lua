@@ -721,6 +721,82 @@ function EssentialCooldowns.Render(panel, scrollContent)
         sectionKey = "misc",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
+            -- Priority system header + explainer
+            inner:AddDescription("Priority System", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
+            inner:AddDescription("With Target > In Combat > Out of Combat. Only the highest active condition applies. On Cooldown competes with the result \226\128\148 whichever is the stronger dim takes effect.", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
+
+            -- Opacity While on Cooldown slider (per-icon dimming) — most used
+            inner:AddSlider({
+                label = "Opacity While on Cooldown",
+                description = "Dim individual icons when their ability is on cooldown. 100% = no dimming.",
+                min = 0,
+                max = 100,
+                step = 1,
+                get = function() return getSetting("opacityOnCooldown") or 100 end,
+                set = function(v)
+                    setSetting("opacityOnCooldown", v)
+                    if addon and addon.RefreshCDMCooldownOpacity then
+                        addon.RefreshCDMCooldownOpacity("EssentialCooldownViewer", "essentialCooldowns")
+                    end
+                end,
+                minLabel = "Hidden",
+                maxLabel = "100%",
+            })
+
+            -- Opacity With Target slider (addon-only) — highest priority
+            inner:AddSlider({
+                label = "Opacity With Target",
+                description = "Opacity when you have a target.",
+                min = 0,
+                max = 100,
+                step = 1,
+                get = function() return getSetting("opacityWithTarget") or 100 end,
+                set = function(v)
+                    setSetting("opacityWithTarget", v)
+                    if addon and addon.RefreshCDMViewerOpacity then
+                        addon.RefreshCDMViewerOpacity("essentialCooldowns")
+                    end
+                end,
+                minLabel = "Hidden",
+                maxLabel = "100%",
+            })
+
+            -- Opacity in Combat slider (Edit Mode setting)
+            inner:AddSlider({
+                label = "Opacity in Combat",
+                description = "Opacity when in combat (50-100%).",
+                min = 50,
+                max = 100,
+                step = 1,
+                get = function() return getSetting("opacity") or 100 end,
+                set = function(v) setSetting("opacity", v) end,
+                minLabel = "50%",
+                maxLabel = "100%",
+                debounceKey = "UI_essentialCooldowns_opacity",
+                debounceDelay = 0.2,
+                onEditModeSync = function(newValue)
+                    syncEditModeSetting("opacity")
+                end,
+            })
+
+            -- Opacity Out of Combat slider (addon-only)
+            inner:AddSlider({
+                label = "Opacity Out of Combat",
+                description = "Opacity when not in combat.",
+                min = 0,
+                max = 100,
+                step = 1,
+                get = function() return getSetting("opacityOutOfCombat") or 100 end,
+                set = function(v)
+                    setSetting("opacityOutOfCombat", v)
+                    if addon and addon.RefreshCDMViewerOpacity then
+                        addon.RefreshCDMViewerOpacity("essentialCooldowns")
+                    end
+                end,
+                minLabel = "Hidden",
+                maxLabel = "100%",
+            })
+
             -- Visibility Mode selector (Edit Mode setting)
             local visibilityValues = {
                 always = "Always",
@@ -740,82 +816,6 @@ function EssentialCooldowns.Render(panel, scrollContent)
                     syncEditModeSetting("visibilityMode")
                 end,
                 syncCooldown = 0.4,
-            })
-
-            -- Opacity in Combat slider (Edit Mode setting)
-            inner:AddSlider({
-                label = "Opacity in Combat",
-                description = "Opacity when in combat (50-100%).",
-                min = 50,
-                max = 100,
-                step = 1,
-                get = function() return getSetting("opacity") or 100 end,
-                set = function(v) setSetting("opacity", v) end,
-                minLabel = "50%",
-                maxLabel = "100%",
-                debounceKey = "UI_essentialCooldowns_opacity",
-                debounceDelay = 0.2,
-                onEditModeSync = function(newValue)
-                    syncEditModeSetting("opacity")
-                end,
-                infoIcon = {
-                    tooltipTitle = "Opacity Priority",
-                    tooltipText = "With Target takes precedence, then In Combat, then Out of Combat. The highest priority condition that applies determines the opacity.",
-                },
-            })
-
-            -- Opacity Out of Combat slider (addon-only)
-            inner:AddSlider({
-                label = "Opacity Out of Combat",
-                description = "Opacity when not in combat.",
-                min = 1,
-                max = 100,
-                step = 1,
-                get = function() return getSetting("opacityOutOfCombat") or 100 end,
-                set = function(v)
-                    setSetting("opacityOutOfCombat", v)
-                    if addon and addon.RefreshCDMViewerOpacity then
-                        addon.RefreshCDMViewerOpacity("essentialCooldowns")
-                    end
-                end,
-                minLabel = "1%",
-                maxLabel = "100%",
-            })
-
-            -- Opacity With Target slider (addon-only)
-            inner:AddSlider({
-                label = "Opacity With Target",
-                description = "Opacity when you have a target.",
-                min = 1,
-                max = 100,
-                step = 1,
-                get = function() return getSetting("opacityWithTarget") or 100 end,
-                set = function(v)
-                    setSetting("opacityWithTarget", v)
-                    if addon and addon.RefreshCDMViewerOpacity then
-                        addon.RefreshCDMViewerOpacity("essentialCooldowns")
-                    end
-                end,
-                minLabel = "1%",
-                maxLabel = "100%",
-            })
-
-            -- Opacity While on Cooldown slider (per-icon dimming)
-            inner:AddSlider({
-                label = "Opacity While on Cooldown",
-                description = "Dim individual icons when their ability is on cooldown. 100% = no dimming.",
-                min = 1,
-                max = 100,
-                step = 1,
-                get = function() return getSetting("opacityOnCooldown") or 100 end,
-                set = function(v)
-                    setSetting("opacityOnCooldown", v)
-                    if addon and addon.RefreshCDMCooldownOpacity then
-                        addon.RefreshCDMCooldownOpacity("EssentialCooldownViewer", "essentialCooldowns")
-                    end
-                end,
-                minLabel = "1%",
-                maxLabel = "100%",
             })
 
             -- Show Timer toggle (Edit Mode setting)

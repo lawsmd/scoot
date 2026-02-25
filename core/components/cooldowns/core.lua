@@ -1477,8 +1477,8 @@ local function getViewerOpacityForState(componentId)
         opacityValue = tonumber(db.opacityOutOfCombat) or 100
     end
 
-    -- Convert from percentage (1-100) to alpha (0.0-1.0)
-    return math.max(0.01, math.min(1.0, opacityValue / 100))
+    -- Convert from percentage (0-100) to alpha (0.0-1.0)
+    return math.max(0, math.min(1.0, opacityValue / 100))
 end
 
 -- Apply opacity to a single viewer frame and its overlays
@@ -1543,7 +1543,7 @@ applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
     -- multiplicatively. Effective alpha = container × compensated, which yields
     -- min(containerAlpha, cooldownDimAlpha) instead of container × dim.
     local containerAlpha = getViewerOpacityForState(componentId)
-    if containerAlpha < 1.0 then
+    if containerAlpha > 0 and containerAlpha < 1.0 then
         dimAlpha = math.min(1.0, dimAlpha / containerAlpha)
     end
 

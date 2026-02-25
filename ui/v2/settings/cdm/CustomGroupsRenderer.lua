@@ -592,44 +592,45 @@ local function CreateCustomGroupRenderer(groupIndex)
             sectionKey = "misc",
             defaultExpanded = false,
             buildContent = function(contentFrame, inner)
-                inner:AddSlider({
-                    label = "Opacity in Combat",
-                    description = "Opacity when in combat.",
-                    min = 1, max = 100, step = 1,
-                    get = function() return getSetting("opacity") or 100 end,
-                    set = function(v) h.setAndApply("opacity", v) end,
-                    minLabel = "1%", maxLabel = "100%",
-                    infoIcon = {
-                        tooltipTitle = "Opacity Priority",
-                        tooltipText = "With Target takes precedence, then In Combat, then Out of Combat. The highest priority condition that applies determines the opacity.",
-                    },
-                })
+                -- Priority system header + explainer
+                inner:AddDescription("Priority System", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
+                inner:AddDescription("With Target > In Combat > Out of Combat. Only the highest active condition applies. On Cooldown competes with the result \226\128\148 whichever is the stronger dim takes effect.", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
 
+                -- Opacity While on Cooldown slider (per-icon dimming) — most used
                 inner:AddSlider({
-                    label = "Opacity Out of Combat",
-                    description = "Opacity when not in combat.",
-                    min = 1, max = 100, step = 1,
-                    get = function() return getSetting("opacityOutOfCombat") or 100 end,
-                    set = function(v) h.setAndApply("opacityOutOfCombat", v) end,
-                    minLabel = "1%", maxLabel = "100%",
+                    label = "Opacity While on Cooldown",
+                    description = "Dim individual icons when their ability is on cooldown. 100% = no dimming.",
+                    min = 0, max = 100, step = 1,
+                    get = function() return getSetting("opacityOnCooldown") or 100 end,
+                    set = function(v) h.setAndApply("opacityOnCooldown", v) end,
+                    minLabel = "Hidden", maxLabel = "100%",
                 })
 
                 inner:AddSlider({
                     label = "Opacity With Target",
                     description = "Opacity when you have a target.",
-                    min = 1, max = 100, step = 1,
+                    min = 0, max = 100, step = 1,
                     get = function() return getSetting("opacityWithTarget") or 100 end,
                     set = function(v) h.setAndApply("opacityWithTarget", v) end,
-                    minLabel = "1%", maxLabel = "100%",
+                    minLabel = "Hidden", maxLabel = "100%",
                 })
 
                 inner:AddSlider({
-                    label = "Opacity While on Cooldown",
-                    description = "Dim individual icons when their ability is on cooldown. 100% = no dimming.",
-                    min = 1, max = 100, step = 1,
-                    get = function() return getSetting("opacityOnCooldown") or 100 end,
-                    set = function(v) h.setAndApply("opacityOnCooldown", v) end,
-                    minLabel = "1%", maxLabel = "100%",
+                    label = "Opacity in Combat",
+                    description = "Opacity when in combat.",
+                    min = 0, max = 100, step = 1,
+                    get = function() return getSetting("opacity") or 100 end,
+                    set = function(v) h.setAndApply("opacity", v) end,
+                    minLabel = "Hidden", maxLabel = "100%",
+                })
+
+                inner:AddSlider({
+                    label = "Opacity Out of Combat",
+                    description = "Opacity when not in combat.",
+                    min = 0, max = 100, step = 1,
+                    get = function() return getSetting("opacityOutOfCombat") or 100 end,
+                    set = function(v) h.setAndApply("opacityOutOfCombat", v) end,
+                    minLabel = "Hidden", maxLabel = "100%",
                 })
 
                 inner:Finalize()

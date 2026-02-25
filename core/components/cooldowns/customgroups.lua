@@ -610,7 +610,7 @@ local function getGroupOpacityForState(groupIndex)
         opacityValue = tonumber(db.opacityOutOfCombat) or 100
     end
 
-    return math.max(0.01, math.min(1.0, opacityValue / 100))
+    return math.max(0, math.min(1.0, opacityValue / 100))
 end
 
 --------------------------------------------------------------------------------
@@ -635,7 +635,7 @@ local function ApplyCooldownOpacity(icon, groupIndex)
     -- multiplicatively. Effective alpha = container × compensated, which yields
     -- min(containerAlpha, cooldownDimAlpha) instead of container × dim.
     local containerAlpha = getGroupOpacityForState(groupIndex)
-    if containerAlpha < 1.0 then
+    if containerAlpha > 0 and containerAlpha < 1.0 then
         dimAlpha = math.min(1.0, dimAlpha / containerAlpha)
     end
 

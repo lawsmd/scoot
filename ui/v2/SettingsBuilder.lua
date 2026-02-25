@@ -235,6 +235,9 @@ function Builder:AddDescription(text, options)
     if #self._controls > 0 or #self._sections > 0 then
         self._currentY = self._currentY - ITEM_SPACING
     end
+    if options.topPadding then
+        self._currentY = self._currentY - options.topPadding
+    end
 
     -- Create description frame
     local frame = CreateFrame("Frame", nil, scrollContent)
@@ -243,7 +246,7 @@ function Builder:AddDescription(text, options)
 
     local descFS = frame:CreateFontString(nil, "OVERLAY")
     local fontPath = Theme:GetFont("VALUE")
-    descFS:SetFont(fontPath, 12, "")
+    descFS:SetFont(fontPath, options.fontSize or 12, "")
     descFS:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     descFS:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     descFS:SetText(text or "")
@@ -251,7 +254,9 @@ function Builder:AddDescription(text, options)
     descFS:SetWordWrap(true)
 
     -- Color (use lighter dim for collapsible section interiors)
-    if options.dim ~= false then
+    if options.color then
+        descFS:SetTextColor(options.color[1], options.color[2], options.color[3], 1)
+    elseif options.dim ~= false then
         local dR, dG, dB
         if self._useLightDim then
             dR, dG, dB = Theme:GetDimTextLightColor()
@@ -282,6 +287,9 @@ function Builder:AddDescription(text, options)
 
     -- Update Y position
     self._currentY = self._currentY - frame:GetHeight()
+    if options.bottomPadding then
+        self._currentY = self._currentY - options.bottomPadding
+    end
 
     return self
 end
