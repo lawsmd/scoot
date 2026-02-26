@@ -85,6 +85,11 @@ local function cloneProfilePayload(preset, layoutName)
         return nil, "Preset Scoot profile payload missing."
     end
     local copy = CopyTable(payload)
+    -- Strip personal notes from preset payloads
+    if copy.components then
+        copy.components.notes = nil
+    end
+    copy.notePositions = nil
     copy.__preset = true
     copy.__presetSource = preset.id or preset.name or "preset"
     copy.__presetVersion = preset.version or "PENDING"

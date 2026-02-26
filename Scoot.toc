@@ -93,6 +93,7 @@ core/components/unitframes/offscreenunlock.lua
 core/components/minimap/minimap.lua
 core/components/minimap/offscreenunlock.lua
 core/components/tooltip.lua
+core/components/notes.lua
 core/qol.lua
 core/components/objectivetracker.lua
 core/components/damagemeters.lua
@@ -121,6 +122,7 @@ ui/v2/controls/BarTexturePicker.lua
 ui/v2/controls/BarBorderPicker.lua
 ui/v2/controls/Dialog.lua
 ui/v2/controls/MultiLineEditBox.lua
+ui/v2/controls/SingleLineEditBox.lua
 ui/v2/Window.lua
 ui/v2/Navigation.lua
 ui/v2/SettingsBuilder.lua
@@ -146,6 +148,7 @@ ui/v2/settings/interface/ChatRenderer.lua
 ui/v2/settings/interface/MiscRenderer.lua
 ui/v2/settings/interface/SctDamageRenderer.lua
 ui/v2/settings/interface/TooltipRenderer.lua
+ui/v2/settings/interface/NotesRenderer.lua
 ui/v2/settings/interface/DamageMeterRenderer.lua
 ui/v2/settings/interface/ObjectiveTrackerRenderer.lua
 ui/v2/settings/qol/LootVendorsRenderer.lua

@@ -1587,6 +1587,13 @@ applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
         if isValidCDMItemFrame(child) and isFrameVisible(child) then
             local idOk, spellId = pcall(function() return child:GetBaseSpellID() end)
             if idOk and spellId then
+                -- Resolve override (e.g., Blink → Shimmer) for cooldown lookups
+                if C_Spell.GetOverrideSpell then
+                    local overrideId = C_Spell.GetOverrideSpell(spellId)
+                    if overrideId and overrideId ~= 0 then
+                        spellId = overrideId
+                    end
+                end
                 local cdInfo = C_Spell.GetSpellCooldown(spellId)
                 local isGCD = cdInfo and cdInfo.isOnGCD
                 local durObj = not isGCD and C_Spell.GetSpellCooldownDuration(spellId) or nil
@@ -1598,6 +1605,8 @@ applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
                     pcall(function()
                         child:SetAlphaFromBoolean(durObj:IsZero(), 1.0, iconDimAlpha)
                     end)
+                else
+                    pcall(function() child:SetAlpha(1.0) end)
                 end
 
                 -- Text opacity (independent when text != icon setting)
@@ -1606,6 +1615,8 @@ applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
                         applyTextCooldownAlpha(child.Cooldown, nil, containerAlpha, textDimAlpha, true)
                     elseif durObj and durObj.IsZero then
                         applyTextCooldownAlpha(child.Cooldown, durObj, containerAlpha, textDimAlpha, false)
+                    else
+                        resetTextAlpha(child.Cooldown)
                     end
                 elseif not needsTextOverride and child.Cooldown then
                     resetTextAlpha(child.Cooldown)

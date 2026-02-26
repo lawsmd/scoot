@@ -1295,11 +1295,147 @@ function Builder:AddDualSelector(options)
 end
 
 --------------------------------------------------------------------------------
--- Future Control Methods (stubs)
+-- AddTextInput: Add a single-line text input
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Setting label text
+--   description : Optional description below label
+--   get         : Function returning current text string
+--   set         : Function(newText) to save text
+--   placeholder : Optional placeholder text
+--   maxLetters  : Max character count (0 = unlimited)
+--   key         : Optional unique key for dynamic updates
 --------------------------------------------------------------------------------
 
--- AddTextInput: For string entry
--- function Builder:AddTextInput(options) ... end
+function Builder:AddTextInput(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    -- Add item spacing
+    if #self._controls > 0 then
+        self._currentY = self._currentY - ITEM_SPACING
+    end
+
+    -- Create single-line edit box using Controls module
+    local textInput = Controls:CreateSingleLineEditBox({
+        parent = scrollContent,
+        label = options.label,
+        placeholder = options.placeholder,
+        maxLetters = options.maxLetters,
+        text = options.get and options.get() or "",
+        width = scrollContent:GetWidth() - (CONTENT_PADDING * 2),
+    })
+
+    if textInput then
+        -- Position the text input
+        textInput:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+        textInput:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+        -- Wire up set callback
+        textInput:SetOnChange(function(text)
+            if options.set then
+                options.set(text)
+            end
+        end)
+
+        -- Track for cleanup
+        table.insert(self._controls, textInput)
+
+        -- Register by key for dynamic updates
+        if options.key then
+            self._controlsByKey[options.key] = textInput
+        end
+
+        -- Update Y position
+        self._currentY = self._currentY - textInput:GetHeight()
+
+        -- Add description if provided
+        if options.description then
+            self._currentY = self._currentY - 4
+            local descFS = scrollContent:CreateFontString(nil, "OVERLAY")
+            local fontPath = Theme:GetFont("VALUE")
+            descFS:SetFont(fontPath, 11, "")
+            descFS:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING + 2, self._currentY)
+            descFS:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+            descFS:SetText(options.description)
+            descFS:SetJustifyH("LEFT")
+            descFS:SetWordWrap(true)
+            if self._useLightDim then
+                descFS:SetTextColor(0.55, 0.55, 0.55, 1)
+            else
+                local dimR, dimG, dimB = Theme:GetDimTextColor()
+                descFS:SetTextColor(dimR, dimG, dimB, 1)
+            end
+            table.insert(self._controls, descFS)
+            self._currentY = self._currentY - (descFS:GetStringHeight() or 14)
+        end
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- AddMultiLineEditBox: Add a multi-line text input
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Setting label text
+--   get         : Function returning current text string
+--   set         : Function(newText) to save text
+--   placeholder : Optional placeholder text
+--   height      : Edit box height (default 120)
+--   key         : Optional unique key for dynamic updates
+--------------------------------------------------------------------------------
+
+function Builder:AddMultiLineEditBox(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    -- Add item spacing
+    if #self._controls > 0 then
+        self._currentY = self._currentY - ITEM_SPACING
+    end
+
+    -- Create multi-line edit box using Controls module
+    local editBox = Controls:CreateMultiLineEditBox({
+        parent = scrollContent,
+        label = options.label,
+        placeholder = options.placeholder,
+        height = options.height or 120,
+        text = options.get and options.get() or "",
+        width = scrollContent:GetWidth() - (CONTENT_PADDING * 2),
+    })
+
+    if editBox then
+        -- Position the edit box
+        editBox:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+        editBox:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+        -- Wire up change detection on focus loss
+        local innerEditBox = editBox._editBox
+        if innerEditBox and options.set then
+            innerEditBox:HookScript("OnEditFocusLost", function(self)
+                options.set(self:GetText())
+            end)
+        end
+
+        -- Track for cleanup
+        table.insert(self._controls, editBox)
+
+        -- Register by key for dynamic updates
+        if options.key then
+            self._controlsByKey[options.key] = editBox
+        end
+
+        -- Update Y position
+        self._currentY = self._currentY - editBox:GetHeight()
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- Future Control Methods (stubs)
+--------------------------------------------------------------------------------
 
 -- AddButton: For action buttons
 -- function Builder:AddButton(options) ... end

@@ -65,6 +65,7 @@ Navigation.NavModel = {
             { key = "objectiveTracker", label = "Objective Tracker" },
             { key = "minimap", label = "Minimap" },
             { key = "chat", label = "Chat" },
+            { key = "notes", label = "Notes" },
             { key = "misc", label = "Misc." },
         },
     },
