@@ -7,8 +7,63 @@ addon.UI.Settings.Notes = {}
 
 local Notes = addon.UI.Settings.Notes
 local SettingsBuilder = addon.UI.SettingsBuilder
+local Controls = addon.UI.Controls
 
 local MAX_NOTES = 5
+
+local INSERT_CHARS = {
+    { char = "\226\128\148", label = "\226\128\148" },                                                                  -- em-dash
+    { char = "\194\183",     label = "\194\183" },                                                                       -- middle dot
+    { char = "|A:coin-gold:0:0|a",   label = "|A:coin-gold:12:12|a" },                                                  -- gold coin
+    { char = "|A:coin-silver:0:0|a", label = "|A:coin-silver:12:12|a" },                                                -- silver coin
+    { char = "|A:coin-copper:0:0|a", label = "|A:coin-copper:12:12|a" },                                                -- copper coin
+    { char = "|A:Professions-ChatIcon-Quality-Tier1:0:0|a", label = "|A:Professions-ChatIcon-Quality-Tier1:12:12|a" },  -- quality 1
+    { char = "|A:Professions-ChatIcon-Quality-Tier2:0:0|a", label = "|A:Professions-ChatIcon-Quality-Tier2:12:12|a" },  -- quality 2
+    { char = "|A:Professions-ChatIcon-Quality-Tier3:0:0|a", label = "|A:Professions-ChatIcon-Quality-Tier3:12:12|a" },  -- quality 3
+    { char = "|A:Professions-ChatIcon-Quality-Tier4:0:0|a", label = "|A:Professions-ChatIcon-Quality-Tier4:12:12|a" },  -- quality 4
+    { char = "|A:Professions-ChatIcon-Quality-Tier5:0:0|a", label = "|A:Professions-ChatIcon-Quality-Tier5:12:12|a" },  -- quality 5
+}
+local CHAR_BTN_SIZE = 20
+local CHAR_BTN_GAP = 4
+
+--------------------------------------------------------------------------------
+-- Insert-character buttons for Body Text
+--------------------------------------------------------------------------------
+
+local function CreateInsertButtons(editBoxControl, controlsList)
+    local innerEditBox = editBoxControl._editBox
+    if not innerEditBox then return end
+
+    local prevBtn
+    for i = #INSERT_CHARS, 1, -1 do
+        local info = INSERT_CHARS[i]
+        local btn = Controls:CreateButton({
+            parent = editBoxControl,
+            text = info.label,
+            width = CHAR_BTN_SIZE,
+            height = CHAR_BTN_SIZE,
+            fontSize = 11,
+            borderWidth = 1,
+            borderAlpha = 0.4,
+            onClick = function()
+                local cursorPos = innerEditBox:GetCursorPosition() or 0
+                innerEditBox:SetFocus()
+                innerEditBox:SetCursorPosition(cursorPos)
+                innerEditBox:Insert(info.char)
+            end,
+        })
+
+        btn:ClearAllPoints()
+        if not prevBtn then
+            btn:SetPoint("TOPRIGHT", editBoxControl, "TOPRIGHT", 0, 0)
+        else
+            btn:SetPoint("RIGHT", prevBtn, "LEFT", -CHAR_BTN_GAP, 0)
+        end
+        prevBtn = btn
+
+        table.insert(controlsList, btn)
+    end
+end
 
 --------------------------------------------------------------------------------
 -- Render Function
@@ -79,9 +134,15 @@ function Notes.Render(panel, scrollContent)
                                 label = "Body Text",
                                 placeholder = "Enter body text...",
                                 height = 160,
+                                key = prefix .. "BodyEdit",
                                 get = function() return h.get(prefix .. "BodyText") or "" end,
                                 set = function(text) h.setAndApply(prefix .. "BodyText", text) end,
                             })
+
+                            local editControl = tabBuilder:GetControl(prefix .. "BodyEdit")
+                            if editControl then
+                                CreateInsertButtons(editControl, tabBuilder._controls)
+                            end
 
                             tabBuilder:Finalize()
                         end,

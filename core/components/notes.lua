@@ -121,7 +121,7 @@ local function CreateNoteFrame(index)
     local indicator = frame:CreateTexture(nil, "OVERLAY")
     indicator:SetAtlas("questlog-icon-shrink")
     indicator:SetSize(12, 12)
-    indicator:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -PADDING)
+    indicator:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -(PADDING + 2))
     indicator:SetAlpha(0.6)
     frame._collapseIndicator = indicator
 
@@ -197,8 +197,8 @@ local function UpdateNoteSize(frame)
         local extraLeft = indicatorWidth + INDICATOR_GAP
 
         if frame._isCollapsed then
-            -- Collapsed: header only, no body
-            local totalH = PADDING * 2
+            -- Collapsed: header only, no body (+2 matches indicator's extra top inset)
+            local totalH = PADDING * 2 + 2
             if hasHeader then
                 totalH = totalH + hh
             else
@@ -207,13 +207,19 @@ local function UpdateNoteSize(frame)
             local collapsedContentW = headerWidth
             collapsedContentW = math.max(MIN_WIDTH, math.min(collapsedContentW, MAX_WIDTH))
             local finalWidth = collapsedContentW + extraLeft + PADDING * 2
+            local oldTop = frame:GetTop()
+            local oldLeft = frame:GetLeft()
             frame:SetSize(finalWidth, totalH)
+            if oldTop and oldLeft then
+                frame:ClearAllPoints()
+                frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", oldLeft, oldTop)
+            end
         else
-            -- Expanded: full layout
+            -- Expanded: full layout (+2 matches indicator's extra top inset)
             local bh = body:GetStringHeight() or 0
             local hasBody = body:GetText() and body:GetText() ~= ""
 
-            local totalH = PADDING * 2
+            local totalH = PADDING * 2 + 2
             if hasHeader then
                 totalH = totalH + hh
             end
@@ -225,7 +231,13 @@ local function UpdateNoteSize(frame)
             end
 
             local finalWidth = contentWidth + extraLeft + PADDING * 2
+            local oldTop = frame:GetTop()
+            local oldLeft = frame:GetLeft()
             frame:SetSize(finalWidth, totalH)
+            if oldTop and oldLeft then
+                frame:ClearAllPoints()
+                frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", oldLeft, oldTop)
+            end
         end
     end)
 end
@@ -245,15 +257,9 @@ UpdateCollapseState = function(frame, index)
     if collapsed then
         frame._body:Hide()
         frame._collapseIndicator:SetAtlas("questlog-icon-expand")
-        -- Center indicator+header vertically in collapsed frame
-        frame._collapseIndicator:ClearAllPoints()
-        frame._collapseIndicator:SetPoint("LEFT", frame, "LEFT", PADDING, 0)
     else
         frame._body:Show()
         frame._collapseIndicator:SetAtlas("questlog-icon-shrink")
-        -- Restore top-left anchoring for expanded layout
-        frame._collapseIndicator:ClearAllPoints()
-        frame._collapseIndicator:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -PADDING)
     end
 
     UpdateNoteSize(frame)
@@ -289,6 +295,40 @@ local function RestoreNotePosition(index, layoutName)
 end
 
 local editModeInitialized = false
+local editModeRegistered = {}
+
+local function RegisterNoteWithEditMode(frame, index)
+    if editModeRegistered[index] then return end
+    local lib = LibStub("LibEditMode", true)
+    if not lib then return end
+
+    frame.editModeName = "Note " .. index
+
+    local noteIndex = index
+    local yStagger = -100 + (index - 1) * 60
+    local dp = { point = "CENTER", x = 0, y = yStagger }
+
+    lib:AddFrame(frame, function(f, layoutName, point, x, y)
+        if point and x and y then
+            f:ClearAllPoints()
+            f:SetPoint(point, x, y)
+        end
+        if layoutName then
+            local savedPoint, _, _, savedX, savedY = f:GetPoint(1)
+            if savedPoint then
+                SaveNotePosition(noteIndex, layoutName, savedPoint, savedX, savedY)
+            else
+                SaveNotePosition(noteIndex, layoutName, point, x, y)
+            end
+        end
+    end, {
+        point = dp.point,
+        x = dp.x,
+        y = dp.y,
+    }, nil)
+
+    editModeRegistered[index] = true
+end
 
 local function InitializeEditMode()
     if editModeInitialized then return end
@@ -303,31 +343,7 @@ local function InitializeEditMode()
     for i = 1, MAX_NOTES do
         local frame = noteFrames[i]
         if frame then
-            frame.editModeName = "Note " .. i
-
-            local noteIndex = i
-            local yStagger = -100 + (i - 1) * 60
-            local dp = { point = "CENTER", x = 0, y = yStagger }
-
-            lib:AddFrame(frame, function(f, layoutName, point, x, y)
-                if point and x and y then
-                    f:ClearAllPoints()
-                    f:SetPoint(point, x, y)
-                end
-                if layoutName then
-                    local savedPoint, _, _, savedX, savedY = f:GetPoint(1)
-                    if savedPoint then
-                        SaveNotePosition(noteIndex, layoutName, savedPoint, savedX, savedY)
-                    else
-                        SaveNotePosition(noteIndex, layoutName, point, x, y)
-                    end
-                end
-            end, {
-                point = dp.point,
-                x = dp.x,
-                y = dp.y,
-            }, nil)
-
+            RegisterNoteWithEditMode(frame, i)
             registeredAny = true
         end
     end
@@ -387,6 +403,14 @@ local function ApplyNotesStyling(self)
             local frame = noteFrames[i]
             if not frame then
                 frame = CreateNoteFrame(i)
+            end
+
+            -- Late-register with Edit Mode if it was already initialized
+            if editModeInitialized and not editModeRegistered[i] then
+                local idx = i
+                C_Timer.After(0, function()
+                    RegisterNoteWithEditMode(noteFrames[idx], idx)
+                end)
             end
 
             -- Set text

@@ -236,7 +236,9 @@ function Controls:CreateButton(options)
             end)
         else
             btn:SetScript("OnClick", function(self, mouseButton, down)
-                options.onClick(self, mouseButton)
+                if not down then
+                    options.onClick(self, mouseButton)
+                end
             end)
         end
     end
