@@ -123,6 +123,14 @@ local function applyBackdrop(holder, style, edgeSize)
     if not holder or not holder.SetBackdrop or not style or not style.texture then
         return false
     end
+    -- Guard: when the holder inherits anchor secrecy from a StatusBar that
+    -- received SetValue(secret), GetWidth()/GetHeight() return secret values.
+    -- Blizzard's SetupTextureCoordinates uses these for arithmetic, causing
+    -- errors reported to the global error handler even inside pcall.
+    local okW, w = pcall(holder.GetWidth, holder)
+    if not okW or issecretvalue(w) then
+        return false
+    end
     local insetMultiplier = style.insetMultiplier or 0.65
     local inset = math.floor(edgeSize * insetMultiplier + 0.5)
     if inset < 0 then inset = 0 end
