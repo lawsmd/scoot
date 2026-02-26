@@ -424,7 +424,7 @@ local function storeOriginalAlpha(frame, storageKey)
     if not frame or not frame.GetAlpha then
         return
     end
-    storageKey = storageKey or "_ScooterPRDOrigAlpha"
+    storageKey = storageKey or "_ScootPRDOrigAlpha"
     if getProp(frame, storageKey) ~= nil then
         return
     end
@@ -436,7 +436,7 @@ local function applyHiddenAlpha(frame, hidden, storageKey)
     if not frame or not frame.SetAlpha then
         return
     end
-    storageKey = storageKey or "_ScooterPRDOrigAlpha"
+    storageKey = storageKey or "_ScootPRDOrigAlpha"
     if hidden then
         storeOriginalAlpha(frame, storageKey)
         pcall(frame.SetAlpha, frame, 0)
@@ -1441,7 +1441,7 @@ local function applyScaleToFrame(frame, multiplier, component)
         return
     end
 
-    if getProp(frame, "_ScooterModBaseScale") == nil then
+    if getProp(frame, "_ScootBaseScale") == nil then
         local base = 1
         if frame.GetScale then
             local ok, existing = pcall(frame.GetScale, frame)
@@ -1449,10 +1449,10 @@ local function applyScaleToFrame(frame, multiplier, component)
                 base = existing
             end
         end
-        setProp(frame, "_ScooterModBaseScale", base or 1)
+        setProp(frame, "_ScootBaseScale", base or 1)
     end
 
-    local baseScale = getProp(frame, "_ScooterModBaseScale") or 1
+    local baseScale = getProp(frame, "_ScootBaseScale") or 1
     local desired = baseScale * multiplier
 
     local current
@@ -1577,11 +1577,11 @@ local function applyHealthOffsets(component)
     end
 
     -- Sizing: apply barWidth/barHeight
-    local baseWidth = getProp(container, "_ScooterModBaseWidth")
+    local baseWidth = getProp(container, "_ScootBaseWidth")
     if not baseWidth or baseWidth <= 0 then
         local ok, w = pcall(container.GetWidth, container)
         baseWidth = (ok and w and w > 0) and w or 200
-        setProp(container, "_ScooterModBaseWidth", baseWidth)
+        setProp(container, "_ScootBaseWidth", baseWidth)
     end
 
     if component.settings and component.settings.barWidth then
@@ -1596,11 +1596,11 @@ local function applyHealthOffsets(component)
         storedWidth = clampValue(math.floor(storedWidth + 0.5), MIN_HEALTH_BAR_WIDTH, MAX_HEALTH_BAR_WIDTH)
     end
 
-    local baseHeight = getProp(container, "_ScooterModBaseHeight")
+    local baseHeight = getProp(container, "_ScootBaseHeight")
     if not baseHeight or baseHeight <= 0 then
         local ok, h = pcall(container.GetHeight, container)
         baseHeight = (ok and h and h > 0) and h or 12
-        setProp(container, "_ScooterModBaseHeight", baseHeight)
+        setProp(container, "_ScootBaseHeight", baseHeight)
     end
 
     if component.settings and component.settings.barHeight then
@@ -1683,11 +1683,11 @@ local function applyPowerOffsets(component)
     end
 
     -- Sizing: apply barHeight
-    local baseHeight = getProp(frame, "_ScooterModBaseHeight")
+    local baseHeight = getProp(frame, "_ScootBaseHeight")
     if not baseHeight or baseHeight <= 0 then
         local ok, h = pcall(frame.GetHeight, frame)
         baseHeight = (ok and h and h > 0) and h or 8
-        setProp(frame, "_ScooterModBaseHeight", baseHeight)
+        setProp(frame, "_ScootBaseHeight", baseHeight)
     end
 
     if component.settings and component.settings.barHeight then

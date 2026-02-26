@@ -6,13 +6,13 @@ local Util = addon.ComponentsUtil
 
 local function getIconBorderContainer(frame)
     local st = getState(frame)
-    return st and st.ScooterIconBorderContainer or nil
+    return st and st.ScootIconBorderContainer or nil
 end
 
 local function setIconBorderContainer(frame, container)
     local st = getState(frame)
     if st then
-        st.ScooterIconBorderContainer = container
+        st.ScootIconBorderContainer = container
     end
 end
 
@@ -65,8 +65,8 @@ local function CleanupIconBorderAttachments(icon)
 
     cleanup(icon)
     cleanup(getIconBorderContainer(icon))
-    cleanup(icon.ScooterAtlasBorderContainer)
-    cleanup(icon.ScooterTextureBorderContainer)
+    cleanup(icon.ScootAtlasBorderContainer)
+    cleanup(icon.ScootTextureBorderContainer)
 end
 Util.CleanupIconBorderAttachments = CleanupIconBorderAttachments
 

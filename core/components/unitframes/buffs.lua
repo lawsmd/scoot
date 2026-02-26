@@ -178,12 +178,12 @@ do
 								tintColor = { c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 }
 							end
 
-							-- Hard reset any existing ScooterMod borders on this icon and its wrapper
+							-- Hard reset any existing Scoot borders on this icon and its wrapper
 							-- before applying a new style to avoid any chance of layered leftovers.
 							if addon.Borders and addon.Borders.HideAll then
 								addon.Borders.HideAll(icon)
 								local iconState = getState(icon)
-								local container = iconState and iconState.ScooterIconBorderContainer
+								local container = iconState and iconState.ScootIconBorderContainer
 								if container then
 									addon.Borders.HideAll(container)
 								end
@@ -204,7 +204,7 @@ do
 							-- (SetPoint anchoring to Textures doesn't always propagate size changes)
 							if ratioWidth and ratioHeight then
 								local iconState = getState(icon)
-								local container = iconState and iconState.ScooterIconBorderContainer
+								local container = iconState and iconState.ScootIconBorderContainer
 								if container and container.SetSize then
 									container:SetSize(ratioWidth, ratioHeight)
 								end
@@ -216,7 +216,7 @@ do
 								-- Also clear any borders attached to the icon's wrapper container created
 								-- by ApplyIconBorderStyle when the icon is a Texture.
 								local iconState = getState(icon)
-								local container = iconState and iconState.ScooterIconBorderContainer
+								local container = iconState and iconState.ScootIconBorderContainer
 								if container then
 									addon.Borders.HideAll(container)
 								end
@@ -319,7 +319,7 @@ do
 		applyBuffsDebuffsForUnit("Focus")
 	end
 
-	-- Hook aura updates so ScooterMod re-applies styling after Blizzard layouts.
+	-- Hook aura updates so Scoot re-applies styling after Blizzard layouts.
 	-- During combat, visualOnly mode applies cosmetic styling (borders, sizing)
 	-- while deferring layout operations (container positioning) until combat ends.
 	if _G.TargetFrame and _G.TargetFrame.UpdateAuras and _G.hooksecurefunc then

@@ -202,7 +202,7 @@ do
 
 			-- If Blizzard sets alpha > 0, enforce hidden state immediately.
 			-- SetAlpha is not a protected function, so immediate enforcement is safe.
-			-- The _ScooterPetOverlayEnforcing flag guards against recursion.
+			-- The _ScootPetOverlayEnforcing flag guards against recursion.
 			_G.hooksecurefunc(texture, "SetAlpha", function(self, alpha)
 				local st = getState(self)
 				if st and st.petOverlayHidden and alpha and alpha > 0 then
@@ -215,7 +215,7 @@ do
 			-- CRITICAL: PetFrame:OnUpdate calls SetVertexColor EVERY FRAME to create the pulse.
 			-- Must enforce alpha=0 IMMEDIATELY (not deferred) or the texture will flash visible
 			-- for one frame before the deferred correction runs, then flash again next frame, etc.
-			-- The _ScooterPetOverlayEnforcing flag guards against infinite recursion.
+			-- The _ScootPetOverlayEnforcing flag guards against infinite recursion.
 			if texture.SetVertexColor then
 				_G.hooksecurefunc(texture, "SetVertexColor", function(self, r, g, b, a)
 					local st = getState(self)
@@ -364,7 +364,7 @@ do
 		local function enforceHiddenNow(frame)
 			if not frame then return end
 			local fs = getState(frame)
-			if not fs or not fs.portraitHiddenByScooter then return end
+			if not fs or not fs.portraitHiddenByScoot then return end
 			if fs.portraitEnforcing then return end
 			fs.portraitEnforcing = true
 
@@ -382,7 +382,7 @@ do
 		if portraitFrame.Show then
 			_G.hooksecurefunc(portraitFrame, "Show", function(self)
 				local fs = getState(self)
-				if fs and fs.portraitHiddenByScooter then
+				if fs and fs.portraitHiddenByScoot then
 					enforceHiddenNow(self)
 				end
 			end)
@@ -393,7 +393,7 @@ do
 			_G.hooksecurefunc(portraitFrame, "SetShown", function(self, shown)
 				if not shown then return end
 				local fs = getState(self)
-				if fs and fs.portraitHiddenByScooter then
+				if fs and fs.portraitHiddenByScoot then
 					enforceHiddenNow(self)
 				end
 			end)
@@ -404,7 +404,7 @@ do
 			_G.hooksecurefunc(portraitFrame, "SetAlpha", function(self, alpha)
 				if alpha == 0 then return end
 				local fs = getState(self)
-				if fs and fs.portraitHiddenByScooter then
+				if fs and fs.portraitHiddenByScoot then
 					pcall(self.SetAlpha, self, 0)
 				end
 			end)
@@ -419,7 +419,7 @@ do
 				if maskFrame.Show then
 					_G.hooksecurefunc(maskFrame, "Show", function(self)
 						local fs = getState(self)
-						if fs and fs.portraitHiddenByScooter then
+						if fs and fs.portraitHiddenByScoot then
 							enforceHiddenNow(self)
 						end
 					end)
@@ -429,7 +429,7 @@ do
 					_G.hooksecurefunc(maskFrame, "SetShown", function(self, shown)
 						if not shown then return end
 						local fs = getState(self)
-						if fs and fs.portraitHiddenByScooter then
+						if fs and fs.portraitHiddenByScoot then
 							enforceHiddenNow(self)
 						end
 					end)
@@ -439,7 +439,7 @@ do
 					_G.hooksecurefunc(maskFrame, "SetAlpha", function(self, alpha)
 						if alpha == 0 then return end
 						local fs = getState(self)
-						if fs and fs.portraitHiddenByScooter then
+						if fs and fs.portraitHiddenByScoot then
 							pcall(self.SetAlpha, self, 0)
 						end
 					end)
@@ -721,7 +721,7 @@ do
 			if not portraitTexture then
 				-- Debug: log if texture not found
 				if addon.debug then
-					print("ScooterMod: Portrait zoom - texture not found for", unit)
+					print("Scoot: Portrait zoom - texture not found for", unit)
 				end
 				return
 			end
@@ -768,7 +768,7 @@ do
 					portraitTexture:SetTexCoord(newLeft, newRight, newTop, newBottom)
 					-- Debug output
 					if addon.debug then
-						print(string.format("ScooterMod: Portrait zoom %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
+						print(string.format("Scoot: Portrait zoom %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
 					end
 				end
 			else
@@ -791,7 +791,7 @@ do
 					end
 					-- Debug output to explain limitation
 					if addon.debug then
-						print(string.format("ScooterMod: Portrait zoom out %d%% for %s - limited by full texture bounds (0,1,0,1)", zoomPct, unit))
+						print(string.format("Scoot: Portrait zoom out %d%% for %s - limited by full texture bounds (0,1,0,1)", zoomPct, unit))
 					end
 				else
 					-- Original coordinates are NOT at full bounds, so can expand within available space
@@ -807,7 +807,7 @@ do
 					if portraitTexture.SetTexCoord then
 						portraitTexture:SetTexCoord(newLeft, newRight, newTop, newBottom)
 						if addon.debug then
-							print(string.format("ScooterMod: Portrait zoom out %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
+							print(string.format("Scoot: Portrait zoom out %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
 						end
 					end
 				end
@@ -863,10 +863,10 @@ do
 			
 			-- Map style keys to texture paths
 			local textureMap = {
-				texture_c = "Interface\\AddOns\\ScooterMod\\media\\portraitborder\\texture_c.tga",
-				texture_s = "Interface\\AddOns\\ScooterMod\\media\\portraitborder\\texture_s.tga",
-				rare_c = "Interface\\AddOns\\ScooterMod\\media\\portraitborder\\rare_c.tga",
-				rare_s = "Interface\\AddOns\\ScooterMod\\media\\portraitborder\\rare_s.tga",
+				texture_c = "Interface\\AddOns\\Scoot\\media\\portraitborder\\texture_c.tga",
+				texture_s = "Interface\\AddOns\\Scoot\\media\\portraitborder\\texture_s.tga",
+				rare_c = "Interface\\AddOns\\Scoot\\media\\portraitborder\\rare_c.tga",
+				rare_s = "Interface\\AddOns\\Scoot\\media\\portraitborder\\rare_s.tga",
 			}
 			
 			local texturePath = textureMap[borderStyle]
@@ -955,7 +955,7 @@ do
 				-- Set the hidden flag in FrameState for enforcement hooks
 				local pfState = getState(portraitFrame)
 				if pfState then
-					pfState.portraitHiddenByScooter = portraitHidden
+					pfState.portraitHiddenByScoot = portraitHidden
 				end
 
 				if portraitHidden then
@@ -986,7 +986,7 @@ do
 					-- Set the hidden flag in FrameState for enforcement hooks
 					local mfState = getState(maskFrame)
 					if mfState then
-						mfState.portraitHiddenByScooter = maskHidden
+						mfState.portraitHiddenByScoot = maskHidden
 					end
 
 					if maskHidden then
@@ -1378,7 +1378,7 @@ do
 		end)
 	end
 
-	-- Keep the Player Frame status halo hidden when ScooterMod wants it hidden.
+	-- Keep the Player Frame status halo hidden when Scoot wants it hidden.
 	local function EnforcePlayerStatusTextureVisibility()
 		local db = addon and addon.db and addon.db.profile
 		if not db then
@@ -1396,7 +1396,7 @@ do
 		local useCustomBorders = ufCfg.useCustomBorders == true
 
 		if not (hidePortrait or hideStatusTexture or useCustomBorders) then
-			-- Respect Blizzard visuals when no ScooterMod rule wants it hidden.
+			-- Respect Blizzard visuals when no Scoot rule wants it hidden.
 			return
 		end
 

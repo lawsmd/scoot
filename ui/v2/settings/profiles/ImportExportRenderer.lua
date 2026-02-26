@@ -145,7 +145,7 @@ local function performImport(envelope, targetLayoutName, editModeStr)
         C_EditMode.SaveLayouts(layoutInfo)
     end
 
-    -- Write ScooterMod profile data
+    -- Write Scoot profile data
     addon.db.profiles[targetLayoutName] = CopyTable(envelope.data)
 
     -- Set pending activation token
@@ -201,7 +201,7 @@ end
 
 local function showOverwriteConfirmDialog(envelope, targetName)
     Controls:ShowDialog(nil, {
-        text = "This will overwrite the ScooterMod profile for '" .. targetName .. "'.\n\nA UI reload is required.\n\nContinue?",
+        text = "This will overwrite the Scoot profile for '" .. targetName .. "'.\n\nA UI reload is required.\n\nContinue?",
         acceptText = "Import & Reload",
         acceptWidth = 140,
         height = 200,
@@ -322,7 +322,7 @@ function ImportExport.Render(panel, scrollContent)
     infoText:SetFont(fontPath, 13, "")
     infoText:SetPoint("TOPLEFT", infoFrame, "TOPLEFT", 0, 0)
     infoText:SetPoint("TOPRIGHT", infoFrame, "TOPRIGHT", 0, 0)
-    infoText:SetText("Share ScooterMod profiles with other players, or back up your settings. Export generates a string you can copy, and Import lets you paste one in.")
+    infoText:SetText("Share Scoot profiles with other players, or back up your settings. Export generates a string you can copy, and Import lets you paste one in.")
     infoText:SetTextColor(dimR, dimG, dimB, 1)
     infoText:SetJustifyH("LEFT")
     infoText:SetWordWrap(true)
@@ -384,15 +384,15 @@ function ImportExport.Render(panel, scrollContent)
     exportDropdown:SetPoint("TOPLEFT", exportContent, "TOPLEFT", 12, exportY)
     exportY = exportY - 40
 
-    -- ScooterMod Profile String label
+    -- Scoot Profile String label
     local smStringLabel = exportContent:CreateFontString(nil, "OVERLAY")
     smStringLabel:SetFont(fontPathLabel, 12, "")
     smStringLabel:SetPoint("TOPLEFT", exportContent, "TOPLEFT", 12, exportY)
-    smStringLabel:SetText("ScooterMod Profile String")
+    smStringLabel:SetText("Scoot Profile String")
     smStringLabel:SetTextColor(dimR, dimG, dimB, 1)
     exportY = exportY - 18
 
-    -- ScooterMod Profile MultiLineEditBox (read-only)
+    -- Scoot Profile MultiLineEditBox (read-only)
     local smExportBox = Controls:CreateMultiLineEditBox({
         parent = exportContent,
         width = 100, -- will be stretched via anchors
@@ -510,7 +510,7 @@ function ImportExport.Render(panel, scrollContent)
     local importLabel = importContent:CreateFontString(nil, "OVERLAY")
     importLabel:SetFont(fontPathLabel, 12, "")
     importLabel:SetPoint("TOPLEFT", importContent, "TOPLEFT", 12, importY)
-    importLabel:SetText("Paste ScooterMod Profile Import String here:")
+    importLabel:SetText("Paste Scoot Profile Import String here:")
     importLabel:SetTextColor(dimR, dimG, dimB, 1)
     importY = importY - 18
 
@@ -566,7 +566,7 @@ function ImportExport.Render(panel, scrollContent)
     warningText:SetFont(fontPath, 11, "")
     warningText:SetPoint("TOPLEFT", importContent, "TOPLEFT", 12, importY)
     warningText:SetPoint("TOPRIGHT", importContent, "TOPRIGHT", -12, importY)
-    warningText:SetText("Imported ScooterMod profiles can either be attached to an existing Edit Mode profile, or you can use an Edit Mode export string to create a new one in the next step.")
+    warningText:SetText("Imported Scoot profiles can either be attached to an existing Edit Mode profile, or you can use an Edit Mode export string to create a new one in the next step.")
     warningText:SetTextColor(1, 0.82, 0, 0.9) -- yellow warning
     warningText:SetJustifyH("LEFT")
     warningText:SetWordWrap(true)

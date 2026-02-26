@@ -2,14 +2,14 @@ local addonName, addon = ...
 
 addon.Media = addon.Media or {}
 
-local BAR_MEDIA_PREFIX = "Interface\\AddOns\\ScooterMod\\media\\bar\\"
+local BAR_MEDIA_PREFIX = "Interface\\AddOns\\Scoot\\media\\bar\\"
 
 -- Track foreground/background state per StatusBar frame (weak keys for GC)
 -- Using a local table instead of writing to Blizzard frames avoids taint
 -- that causes secret value errors when Edit Mode iterates system frames
 local barFrameState = setmetatable({}, { __mode = "k" })
 
--- Registry of bar textures bundled with ScooterMod. Keys are stable identifiers.
+-- Registry of bar textures bundled with Scoot. Keys are stable identifiers.
 local BAR_TEXTURES = {
 	-- Flat series (legacy "A1-A3", renamed for clarity)
 	a1                     = BAR_MEDIA_PREFIX .. "a1.tga",
@@ -178,7 +178,7 @@ function addon.Media.GetBarTextureMenuEntries()
 	return entries
 end
 
--- Apply ScooterMod bar textures to a StatusBar frame (foreground fill) and a background texture.
+-- Apply Scoot bar textures to a StatusBar frame (foreground fill) and a background texture.
 -- This does not rely on Blizzard parentKeys and is safe to call repeatedly.
 function addon.Media.ApplyBarTexturesToBarFrame(barFrame, foregroundKey, backgroundKey, backgroundOpacity)
 	if not barFrame or type(barFrame.GetObjectType) ~= "function" then return end

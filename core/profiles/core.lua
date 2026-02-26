@@ -5,7 +5,7 @@ local Profiles = addon.Profiles
 
 local LEO = LibStub and LibStub("LibEditModeOverride-1.0")
 
-local DEBUG_PREFIX = "|cffa0ff00ScooterProfiles|r"
+local DEBUG_PREFIX = "|cffa0ff00ScootProfiles|r"
 
 local function Debug(...)
     if not addon or not addon._dbgProfiles then return end
@@ -72,7 +72,7 @@ end
 
 -- Apply the profile's CDM override (if explicitly set) to the Blizzard CVar.
 -- This is character-scoped in Blizzard, so we enforce per-profile by setting it
--- when the active ScooterMod profile changes.
+-- when the active Scoot profile changes.
 local function ApplyCooldownViewerEnabledForActiveProfile(reason)
     local profile = addon and addon.db and addon.db.profile
     local q = profile and profile.cdmQoL
@@ -350,7 +350,7 @@ function Profiles:RecordCurrentSpec()
 end
 
 local function buildDefaultProfile()
-    -- Zero‑Touch policy: new profiles should start empty so ScooterMod does not
+    -- Zero‑Touch policy: new profiles should start empty so Scoot does not
     -- implicitly "force defaults" into SavedVariables. AceDB defaults still exist
     -- via metatable fallback when reading unset keys.
     return {}
@@ -369,7 +369,7 @@ end
 
 local function notifyUI()
     -- NOTE (2025-11-17): Layout/profile mutations no longer force a structural
-    -- re-render of the ScooterMod settings list. The Profiles page is built to
+    -- re-render of the Scoot settings list. The Profiles page is built to
     -- update its own rows and dropdowns in place, so we avoid calling
     -- RefreshCurrentCategoryDeferred here to prevent right-pane flicker.
 end
@@ -627,7 +627,7 @@ function Profiles:RequestReloadToProfile(layoutName, meta)
     -- IMPORTANT:
     -- ReloadUI() is a protected action and is not safe from arbitrary event handlers
     -- (e.g. spec-change, edit mode callbacks). Calling it directly can produce:
-    --   [ADDON_ACTION_BLOCKED] AddOn 'ScooterMod' tried to call the protected function 'Reload()'.
+    --   [ADDON_ACTION_BLOCKED] AddOn 'Scoot' tried to call the protected function 'Reload()'.
     --
     -- All reloads MUST be initiated from a hardware event (typically a click).
     -- Therefore this API now delegates to PromptReloadToProfile().
@@ -652,9 +652,9 @@ function Profiles:PromptReloadToProfile(layoutName, meta)
     -- Stash pending activation now; the actual ReloadUI() must come from a hardware event.
     self.db.global.pendingProfileActivation = buildPendingActivation(layoutName, meta)
     -- Choose appropriate dialog based on reason
-    local dialogName = "SCOOTERMOD_PROFILE_RELOAD"
+    local dialogName = "SCOOT_PROFILE_RELOAD"
     if meta and meta.reason == "SpecChanged" then
-        dialogName = "SCOOTERMOD_SPEC_PROFILE_RELOAD"
+        dialogName = "SCOOT_SPEC_PROFILE_RELOAD"
     end
     addon.Dialogs:Show(dialogName, {
         data = { layoutName = layoutName },

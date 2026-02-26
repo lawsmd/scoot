@@ -135,7 +135,7 @@ local function CreateBarTexturePicker()
     local contentWidth = (TEXTURE_BUTTON_WIDTH * TEXTURES_PER_ROW) + (TEXTURE_BUTTON_SPACING * (TEXTURES_PER_ROW - 1)) + (PADDING * 2)
     local totalWidth = TAB_WIDTH + contentWidth + 24 -- Extra for scrollbar
 
-    local frame = CreateFrame("Frame", "ScooterBarTexturePickerFrame", UIParent)
+    local frame = CreateFrame("Frame", "ScootBarTexturePickerFrame", UIParent)
     frame:SetSize(totalWidth, PICKER_HEIGHT)
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetFrameLevel(100)
@@ -302,7 +302,7 @@ local function CreateBarTexturePicker()
     end
 
     -- Content area (scroll frame, right of tabs)
-    local scrollFrame = CreateFrame("ScrollFrame", "ScooterBarTexturePickerScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    local scrollFrame = CreateFrame("ScrollFrame", "ScootBarTexturePickerScrollFrame", frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 12, 0)
     scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(PADDING + 20), PADDING)
     frame.ScrollFrame = scrollFrame

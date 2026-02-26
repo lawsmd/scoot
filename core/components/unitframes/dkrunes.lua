@@ -29,7 +29,7 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local RUNE_MEDIA_PREFIX = "Interface\\AddOns\\ScooterMod\\media\\textures\\runes\\pixel-skull-"
+local RUNE_MEDIA_PREFIX = "Interface\\AddOns\\Scoot\\media\\textures\\runes\\pixel-skull-"
 
 local RUNE_MEDIA_EXT = ".tga"
 

@@ -1,6 +1,6 @@
 -- Copyright 2022-2023 plusmouse. Licensed under terms found in LICENSE file.
 
--- NOTE (ScooterMod local modifications):
+-- NOTE (Scoot local modifications):
 -- We embed a lightly customized copy of this library. Changes include:
 --  1) A per-setting compatibility flag to force index-based slider semantics
 --     (some client builds appear to store Cooldown Viewer Opacity as index-from-min).
@@ -52,11 +52,11 @@ local function GetParameterRestrictions(frame, setting)
   return nil
 end
 
--- Optional per-setting compatibility override (ScooterMod local):
+-- Optional per-setting compatibility override (Scoot local):
 -- Allow callers to force index-based handling for specific (system, setting) pairs.
 lib._forceIndexBased = lib._forceIndexBased or {}
 
--- Optional per-setting compatibility override (ScooterMod local):
+-- Optional per-setting compatibility override (Scoot local):
 -- Some sliders use Edit Mode's ConvertValueDiffFromMin conversion:
 --   stored = raw - minValue
 -- rather than raw storage or index-based storage.
@@ -64,7 +64,7 @@ lib._forceIndexBased = lib._forceIndexBased or {}
 -- When enabled for (system, setting):
 --   - SetFrameSetting accepts raw values within [min,max] and stores (raw - min)
 --   - GetFrameSetting converts stored back to raw via (min + stored)
--- This keeps ScooterMod and other callers working purely in UI-facing raw values.
+-- This keeps Scoot and other callers working purely in UI-facing raw values.
 lib._forceDiffFromMin = lib._forceDiffFromMin or {}
 
 
@@ -74,7 +74,7 @@ lib._forceDiffFromMin = lib._forceDiffFromMin or {}
 -- duplicate conversions. When true:
 --   - SetFrameSetting accepts raw and normalizes to index 0..N (based on step/min/max)
 --   - GetFrameSetting converts the stored index back to raw for callers
--- Notes for ScooterMod maintainers:
+-- Notes for Scoot maintainers:
 --   - We only force index mode for Cooldown Viewer Opacity (compat flag below) and Icon Size (allowlist),
 --     plus Aura Frame Icon Size where the client behaves like an index slider.
 --   - Do not re-convert in addon code; rely on this function + overrides to perform all translations
@@ -86,7 +86,7 @@ local function SliderIsIndexBased(frame, setting, restrictions)
   --  - SetFrameSetting: raw inputs within [min,max] are normalized to index 0..N
   --  - GetFrameSetting: stored index is converted back to raw via min + idx*step
   local sys = frame and frame.system
-  -- Allow ScooterMod to force index-based handling (used for Cooldown Viewer Opacity on affected clients)
+  -- Allow Scoot to force index-based handling (used for Cooldown Viewer Opacity on affected clients)
   if sys and lib._forceIndexBased and lib._forceIndexBased[sys] and lib._forceIndexBased[sys][setting] then
     return true
   end
@@ -318,13 +318,13 @@ end
 -- - The deferred callback isn't executing
 -- - Blizzard's SetActiveLayout no longer triggers refresh (would need alternative approach)
 --
--- Debug logging: Enable with `/run ScooterMod._dbgEditMode = true` to trace the full flow.
--- ScooterMod-specific modification.
+-- Debug logging: Enable with `/run Scoot._dbgEditMode = true` to trace the full flow.
+-- Scoot-specific modification.
 function lib:SaveOnly()
   assert(layoutInfo, LOAD_ERROR)
 
-  -- DEBUG: Log entry (when ScooterMod debug is enabled)
-  local dbgEM = _G.ScooterMod and _G.ScooterMod._dbgEditMode
+  -- DEBUG: Log entry (when Scoot debug is enabled)
+  local dbgEM = _G.Scoot and _G.Scoot._dbgEditMode
   if dbgEM then
     print("|cFF00FF00[LEO:SaveOnly]|r Called")
   end
@@ -355,7 +355,7 @@ function lib:SaveOnly()
 
   C_Timer.After(0, function()
     -- DEBUG: Log deferred callback execution
-    local dbg = _G.ScooterMod and _G.ScooterMod._dbgEditMode
+    local dbg = _G.Scoot and _G.Scoot._dbgEditMode
     if dbg then
       print("|cFF00FF00[LEO:SaveOnly]|r Deferred callback executing, calling SetActiveLayout(", activeLayout, ")")
     end

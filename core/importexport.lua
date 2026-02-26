@@ -110,7 +110,7 @@ function IE:ImportProfile(importStr)
 
     -- Validate and strip prefix
     if importStr:sub(1, #PREFIX) ~= PREFIX then
-        return false, "Invalid import string. Expected ScooterMod profile string starting with '" .. PREFIX .. "'."
+        return false, "Invalid import string. Expected Scoot profile string starting with '" .. PREFIX .. "'."
     end
 
     local encoded = importStr:sub(#PREFIX + 1)
@@ -144,7 +144,7 @@ function IE:ImportProfile(importStr)
     end
 
     if envelope.version > VERSION then
-        return false, "This profile was created with a newer version of ScooterMod. Please update your addon."
+        return false, "This profile was created with a newer version of Scoot. Please update your addon."
     end
 
     if type(envelope.data) ~= "table" then

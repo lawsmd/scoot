@@ -63,7 +63,7 @@ end
 AppendWorldTextFontLog("fonts.lua:load", { init = true })
 
 -- Build a container compatible with Settings dropdown options for font faces.
--- This mirrors RIP's behavior but keeps ScooterMod self-contained. We rely on
+-- This mirrors RIP's behavior but keeps Scoot self-contained. We rely on
 -- stock fonts available in all clients and allow future extension via media.
 function addon.BuildFontOptionsContainer()
     local create = _G.Settings and _G.Settings.CreateControlTextContainer
@@ -194,7 +194,7 @@ local FONT_BUTTON_SPACING = 4
 local PICKER_PADDING = 12
 local PICKER_TITLE_HEIGHT = 30
 
--- Scooter theme colors
+-- Scoot theme colors
 local BRAND_R, BRAND_G, BRAND_B = 0.20, 0.90, 0.30
 
 local function CloseFontPicker()
@@ -221,7 +221,7 @@ local function CreateFontPicker()
     local popupWidth = contentWidth + 24 -- Extra for scrollbar
     local popupHeight = 420
 
-    local frame = CreateFrame("Frame", "ScooterFontPickerFrame", UIParent)
+    local frame = CreateFrame("Frame", "ScootFontPickerFrame", UIParent)
     frame:SetSize(popupWidth, popupHeight)
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetFrameLevel(100)
@@ -313,7 +313,7 @@ local function CreateFontPicker()
     frame.CloseButton = closeBtn
 
     -- Scroll frame for content (minimal template, we'll style the scrollbar)
-    local scrollFrame = CreateFrame("ScrollFrame", "ScooterFontPickerScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    local scrollFrame = CreateFrame("ScrollFrame", "ScootFontPickerScrollFrame", frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", PICKER_PADDING, -(PICKER_TITLE_HEIGHT + 4))
     scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(PICKER_PADDING + 20), PICKER_PADDING)
     frame.ScrollFrame = scrollFrame
@@ -587,7 +587,7 @@ end
 
 -- Apply font preview to a Settings dropdown by using our custom font picker popup
 function addon.InitFontDropdown(dropdown, setting, optionsProvider)
-    if not dropdown or dropdown._ScooterFontPickerInit then return end
+    if not dropdown or dropdown._ScootFontPickerInit then return end
 
     -- Function to update dropdown display text
     local function updateDropdownText()
@@ -636,12 +636,12 @@ function addon.InitFontDropdown(dropdown, setting, optionsProvider)
     overlay:EnableMouse(true)
 
     -- Store reference so we can access it later if needed
-    dropdown._ScooterFontPickerOverlay = overlay
+    dropdown._ScootFontPickerOverlay = overlay
 
     -- Initial text update
     C_Timer.After(0, updateDropdownText)
 
-    dropdown._ScooterFontPickerInit = true
+    dropdown._ScootFontPickerInit = true
 end
 
 -- Register stock faces and bundled font variants (paths are relative to the WoW root)
@@ -653,7 +653,7 @@ do
     f.MORPHEUS = "Fonts\\MORPHEUS.TTF"
     f.SKURRI   = "Fonts\\SKURRI.TTF"
 
-    local base = "Interface\\AddOns\\ScooterMod\\media\\fonts\\"
+    local base = "Interface\\AddOns\\Scoot\\media\\fonts\\"
 
     -- Fira Sans family
     f.FIRASANS_REG             = base .. "FiraSans-Regular.ttf"

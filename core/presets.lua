@@ -35,7 +35,7 @@ function Presets:Register(data)
     entry.version = data.version or "PENDING"
     entry.wowBuild = tostring(data.wowBuild or "")
     entry.description = data.description or ""
-    entry.previewTexture = data.previewTexture or "Interface\\AddOns\\ScooterMod\\Scooter"
+    entry.previewTexture = data.previewTexture or "Interface\\AddOns\\Scoot\\media\\presets\\Scoot"
     entry.previewThumbnail = data.previewThumbnail or entry.previewTexture
     entry.tags = data.tags or {}
     entry.comingSoon = not not data.comingSoon
@@ -46,7 +46,7 @@ function Presets:Register(data)
     entry.editModeExport = data.editModeExport
     entry.editModeSha256 = data.editModeSha256
     entry.sourceLayoutName = data.sourceLayoutName
-    entry.scooterProfile = data.scooterProfile
+    entry.scootProfile = data.scootProfile
     entry.profileSha256 = data.profileSha256
     entry.consolePortProfile = data.consolePortProfile
     entry.consolePortSha256 = data.consolePortSha256
@@ -88,7 +88,7 @@ end
 
 function Presets:IsPayloadReady(preset)
     if not preset then return false end
-    if not preset.scooterProfile then
+    if not preset.scootProfile then
         return false
     end
     local hasEditMode = (type(preset.editModeLayout) == "table")
@@ -161,7 +161,7 @@ local function showExistingLayoutSelector(preset, onSelect, onCancel)
         table.insert(listOptions, { value = name, label = name })
     end
 
-    addon.Dialogs:Show("SCOOTERMOD_SELECT_EXISTING_LAYOUT", {
+    addon.Dialogs:Show("SCOOT_SELECT_EXISTING_LAYOUT", {
         formatArgs = { presetName },
         listOptions = listOptions,
         selectedValue = layouts[1],
@@ -191,7 +191,7 @@ function Presets:ApplyPresetFromUI(preset)
 
     -- Flow for creating a NEW profile (existing behavior)
     local function promptCreateNew(nameSuggestion)
-        addon.Dialogs:Show("SCOOTERMOD_APPLY_PRESET", {
+        addon.Dialogs:Show("SCOOT_APPLY_PRESET", {
             formatArgs = { presetName },
             editBoxText = nameSuggestion or defaultName,
             data = { preset = preset },
@@ -219,7 +219,7 @@ function Presets:ApplyPresetFromUI(preset)
 
                 local wantsConsolePortPrompt = (d.preset and d.preset.consolePortProfile ~= nil) or (d.preset and d.preset.requiresConsolePort)
                 if wantsConsolePortPrompt then
-                    addon.Dialogs:Show("SCOOTERMOD_IMPORT_CONSOLEPORT", {
+                    addon.Dialogs:Show("SCOOT_IMPORT_CONSOLEPORT", {
                         onAccept = function() apply(true) end,
                         onCancel = function() apply(false) end,
                     })
@@ -235,7 +235,7 @@ function Presets:ApplyPresetFromUI(preset)
     local function promptApplyToExisting()
         showExistingLayoutSelector(preset, function(selectedLayout)
             -- Show overwrite confirmation
-            addon.Dialogs:Show("SCOOTERMOD_PRESET_OVERWRITE_CONFIRM", {
+            addon.Dialogs:Show("SCOOT_PRESET_OVERWRITE_CONFIRM", {
                 formatArgs = { selectedLayout, presetName },
                 data = { preset = preset, targetLayout = selectedLayout },
                 onAccept = function(d)
@@ -265,7 +265,7 @@ function Presets:ApplyPresetFromUI(preset)
 
     -- Show the target selection dialog
     -- Accept = Create New, Cancel = Apply to Existing (Cancel button repurposed)
-    addon.Dialogs:Show("SCOOTERMOD_PRESET_TARGET_CHOICE", {
+    addon.Dialogs:Show("SCOOT_PRESET_TARGET_CHOICE", {
         formatArgs = { presetName },
         data = { preset = preset },
         onAccept = function()

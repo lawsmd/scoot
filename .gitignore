@@ -14,4 +14,4 @@ Thumbs.db
 *.slugo
 
 # Ignore game data mirror, keep addon
-!/_retail_/Interface/AddOns/ScooterMod/**
+!/_retail_/Interface/AddOns/Scoot/**

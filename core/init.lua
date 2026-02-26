@@ -18,8 +18,14 @@ function addon:OnInitialize()
     -- but we ensure its initializer runs if it used the RegisterComponent pattern
 
 
+    -- One-time migration: ScooterModDB → ScootDB
+    if ScooterModDB and not ScootDB then
+        ScootDB = ScooterModDB
+        ScooterModDB = nil
+    end
+
     -- 2. Create the database, using the component list to build defaults
-    self.db = LibStub("AceDB-3.0"):New("ScooterModDB", self:GetDefaults(), true)
+    self.db = LibStub("AceDB-3.0"):New("ScootDB", self:GetDefaults(), true)
 
     -- Migrate legacy "tui" prefixed global keys to new names (one release cycle)
     if self.db and self.db.global then
@@ -34,6 +40,25 @@ function addon:OnInitialize()
             g.windowSize = g.tuiWindowSize
         end
         -- Keep old keys for one release cycle, then remove in a follow-up
+    end
+
+    -- Migrate profile-level keys: scooterModButtonSeparate → scootButtonSeparate, scooterProfile → scootProfile
+    if self.db and self.db.sv and self.db.sv.profiles then
+        for _, profileData in pairs(self.db.sv.profiles) do
+            -- Minimap component setting
+            if profileData.components and profileData.components.minimapStyle then
+                local mm = profileData.components.minimapStyle
+                if mm.scooterModButtonSeparate ~= nil and mm.scootButtonSeparate == nil then
+                    mm.scootButtonSeparate = mm.scooterModButtonSeparate
+                    mm.scooterModButtonSeparate = nil
+                end
+            end
+            -- Preset profile snapshot key
+            if profileData.scooterProfile ~= nil and profileData.scootProfile == nil then
+                profileData.scootProfile = profileData.scooterProfile
+                profileData.scooterProfile = nil
+            end
+        end
     end
 
     if self.Profiles and self.Profiles.Initialize then

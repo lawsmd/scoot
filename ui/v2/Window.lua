@@ -10,7 +10,7 @@ local Theme = addon.UI.Theme
 -- Noise Overlay Constants
 --------------------------------------------------------------------------------
 
-local NOISE_TEXTURE_PATH = "Interface\\AddOns\\ScooterMod\\media\\textures\\frosted-noise"
+local NOISE_TEXTURE_PATH = "Interface\\AddOns\\Scoot\\media\\textures\\frosted-noise"
 local NOISE_TEXTURE_SIZE = 2048  -- Matches the 2048x2048 frosted-noise.tga
 local NOISE_ALPHA = 0.25       -- Very subtle (0.05-0.15 range)
 

@@ -3,7 +3,7 @@ local addonName, addon = ...
 addon.BarBorders = addon.BarBorders or {}
 local BarBorders = addon.BarBorders
 
-local MEDIA_PATH_PREFIX = "Interface\\AddOns\\ScooterMod\\media\\barborder\\"
+local MEDIA_PATH_PREFIX = "Interface\\AddOns\\Scoot\\media\\barborder\\"
 
 -- Track border state per barFrame using weak keys to avoid tainting Blizzard system frames.
 -- Writing properties directly to CDM StatusBar frames causes taint that propagates to

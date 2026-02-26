@@ -3,7 +3,7 @@ local addonName, addon = ...
 -- Lightweight copy window for debug dumps (separate from Table Inspector copy)
 local function ShowDebugCopyWindow(title, text)
     if not addon.DebugCopyWindow then
-        local f = CreateFrame("Frame", "ScooterDebugCopyWindow", UIParent, "BasicFrameTemplateWithInset")
+        local f = CreateFrame("Frame", "ScootDebugCopyWindow", UIParent, "BasicFrameTemplateWithInset")
         f:SetSize(780, 540)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
@@ -37,7 +37,7 @@ local function ShowDebugCopyWindow(title, text)
         addon.DebugCopyWindow = f
     end
     local f = addon.DebugCopyWindow
-    if f.title then f.title:SetText(title or "Scooter Debug") end
+    if f.title then f.title:SetText(title or "Scoot Debug") end
     if f.EditBox then f.EditBox:SetText(text or "") end
     f:Show()
     -- Defer focus/highlight to avoid scroll system taint.
@@ -158,11 +158,11 @@ local function DumpEditModeSettingsForFrame(frame, frameName)
                 push("  Dir  enum -> "..mapDirEnum(dirVal))
             end
 
-            -- Also dump ScooterMod DB snapshot for Buffs component if present.
+            -- Also dump Scoot DB snapshot for Buffs component if present.
             if addon.Components and addon.Components.buffs then
                 local c = addon.Components.buffs
                 push("")
-                push("ScooterMod Buffs DB snapshot:")
+                push("Scoot Buffs DB snapshot:")
                 push("  orientation = "..tostring(c.db and c.db.orientation))
                 push("  iconWrap    = "..tostring(c.db and c.db.iconWrap))
                 push("  direction   = "..tostring(c.db and c.db.direction))
@@ -789,7 +789,7 @@ function addon.DebugOffscreenUnlockDump()
 
     local profile = addon and addon.db and addon.db.profile
     local uf = profile and rawget(profile, "unitFrames")
-    push("ScooterMod Off-screen Unlock Debug")
+    push("Scoot Off-screen Unlock Debug")
     push("Note: This is a diagnostic dump. Copy/paste into chat with your agent if needed.")
     push("")
 
@@ -813,7 +813,7 @@ function addon.DebugOffscreenUnlockDump()
             push("       hasSetClampedToScreen="..tostring(hasClamp).."  hasSetClampRectInsets="..tostring(hasInsets))
             push("       IsClampedToScreen="..tostring(_SafeBoolCall(f, "IsClampedToScreen")))
             push("       ClampInsets="..tostring(_SafeClampInsets(f)))
-            -- ScooterMod runtime flags (if any)
+            -- Scoot runtime flags (if any)
             local active = f and rawget(f, "_ScootOffscreenUnclampActive")
             local enforce = f and rawget(f, "_ScootOffscreenEnforceEnabled")
             push("       ScootFlags: active="..tostring(active).." enforce="..tostring(enforce))
@@ -960,7 +960,7 @@ end
 
 function addon.DebugExportProfile(profileName)
     if not addon or not addon.db then
-        ShowDebugCopyWindow("ScooterMod Profile Export", "AceDB not initialized.")
+        ShowDebugCopyWindow("Scoot Profile Export", "AceDB not initialized.")
         return
     end
 
@@ -984,20 +984,20 @@ function addon.DebugExportProfile(profileName)
     end
 
     if type(profile) ~= "table" then
-        ShowDebugCopyWindow("ScooterMod Profile Export - " .. tostring(key), "Profile table not found.")
+        ShowDebugCopyWindow("Scoot Profile Export - " .. tostring(key), "Profile table not found.")
         return
     end
 
     local snapshot = CopyTable(profile)
     local header = table.concat({
-        "-- ScooterMod profile export",
+        "-- Scoot profile export",
         "-- Profile: " .. tostring(key),
         "-- Captured: " .. (date and date("%Y-%m-%d %H:%M:%S") or "unknown"),
         "",
     }, "\n")
 
     local payload = _SerializeLuaValue(snapshot, 0, {}, 0)
-    ShowDebugCopyWindow("ScooterMod Profile Export - " .. tostring(key), header .. payload)
+    ShowDebugCopyWindow("Scoot Profile Export - " .. tostring(key), header .. payload)
 
     -- Persist the last export into SavedVariables so preset ingestion can be
     -- performed without manual copy/paste (run export, then /reload or logout).
@@ -1512,7 +1512,7 @@ end
 -- Separate copy window for Table Inspector (reuse pattern from ShowDebugCopyWindow)
 local function ShowTableInspectorCopyWindow(title, text)
     if not addon.TableInspectorCopyWindow then
-        local f = CreateFrame("Frame", "ScooterTableInspectorCopyWindow", UIParent, "BasicFrameTemplateWithInset")
+        local f = CreateFrame("Frame", "ScootTableInspectorCopyWindow", UIParent, "BasicFrameTemplateWithInset")
         f:SetSize(740, 520)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
@@ -1637,7 +1637,7 @@ local function AttachTableInspectorCopyButton()
 
     tableInspectorCopyButtonAttached = true
 
-    local btn = CreateFrame("Button", "ScooterAttrCopyButton", parent, "UIPanelButtonTemplate")
+    local btn = CreateFrame("Button", "ScootAttrCopyButton", parent, "UIPanelButtonTemplate")
     btn:SetSize(60, 22)
     btn:SetText("Copy")
     btn:SetPoint("TOPRIGHT", parent, "BOTTOMRIGHT", 0, -2)

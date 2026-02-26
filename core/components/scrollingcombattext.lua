@@ -9,11 +9,11 @@ local sctDamageState = {
     damageTextFontApplied = false, -- Track if DAMAGE_TEXT_FONT has been set this session
 }
 
--- Show combat font restart warning using ScooterMod's custom dialog system
+-- Show combat font restart warning using Scoot's custom dialog system
 -- (Avoids tainting StaticPopupDialogs which can block protected functions like ForceQuit)
 local function showCombatFontRestartWarning()
     if addon.Dialogs and addon.Dialogs.Show then
-        addon.Dialogs:Show("SCOOTERMOD_COMBAT_FONT_RESTART")
+        addon.Dialogs:Show("SCOOT_COMBAT_FONT_RESTART")
     end
 end
 

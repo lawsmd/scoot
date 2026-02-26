@@ -84,7 +84,7 @@ local function ShowSpecPicker(anchor, rule, callback)
 
     -- Create frame if needed
     if not rulesSpecPickerFrame then
-        local frame = CreateFrame("Frame", "ScooterSpecPicker", UIParent, "BackdropTemplate")
+        local frame = CreateFrame("Frame", "ScootSpecPicker", UIParent, "BackdropTemplate")
         frame:SetFrameStrata("FULLSCREEN_DIALOG")
         frame:SetFrameLevel(200)
         frame:SetClampedToScreen(true)
@@ -731,7 +731,7 @@ local function RenderRulesCardEditMode(card, rule, refreshCallback, ar, ag, ab)
         borderAlpha = 0.6,
         onClick = function()
             if addon.Dialogs and addon.Dialogs.Show then
-                addon.Dialogs:Show("SCOOTERMOD_DELETE_RULE", {
+                addon.Dialogs:Show("SCOOT_DELETE_RULE", {
                     onAccept = function()
                         if rule.id and addon.Rules and addon.Rules.DeleteRule then
                             state.editingRules[rule.id] = nil

@@ -1868,7 +1868,7 @@ do
 
 			local function applyBossBackdrop(main, hb, index)
 				-- Reuse the same DB keys as other unit frames (nameBackdrop*).
-				local holderKey = "ScooterNameBackdrop_Boss" .. tostring(index)
+				local holderKey = "ScootNameBackdrop_Boss" .. tostring(index)
 				local mainState = getState(main)
 				local existingTex = mainState and mainState[holderKey] or nil
 
@@ -1947,7 +1947,7 @@ do
 			end
 
 			local function applyBossBackdropBorder(main, hb, index)
-				local borderKey = "ScooterNameBackdropBorder_Boss" .. tostring(index)
+				local borderKey = "ScootNameBackdropBorder_Boss" .. tostring(index)
 				local mainState = getState(main)
 				local existingBorderFrame = mainState and mainState[borderKey] or nil
 
@@ -2533,7 +2533,7 @@ do
 		do
 			local main = resolveUFContentMain_NLT(unit)
 			local hb = resolveHealthBar_NLT(unit)
-			local holderKey = "ScooterNameBackdrop_" .. tostring(unit)
+			local holderKey = "ScootNameBackdrop_" .. tostring(unit)
 			local mainState = getState(main)
 			local existingTex = mainState and mainState[holderKey] or nil
 
@@ -2624,7 +2624,7 @@ do
 		do
 			local main = resolveUFContentMain_NLT(unit)
 			local hb = resolveHealthBar_NLT(unit)
-			local borderKey = "ScooterNameBackdropBorder_" .. tostring(unit)
+			local borderKey = "ScootNameBackdropBorder_" .. tostring(unit)
 			local mainState = getState(main)
 			local existingBorderFrame = mainState and mainState[borderKey] or nil
 

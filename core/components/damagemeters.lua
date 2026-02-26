@@ -79,7 +79,7 @@ end
 addon.IsJiberishIconsAvailable = IsJiberishIconsAvailable
 addon.GetJiberishIconsStyles = GetJiberishIconsStyles
 
--- Per-window state storage (avoids tainting Blizzard frames with _Scooter* properties)
+-- Per-window state storage (avoids tainting Blizzard frames with _Scoot* properties)
 local windowState = setmetatable({}, { __mode = "k" })  -- Weak keys for GC
 
 local function getWindowState(sessionWindow)
@@ -1001,7 +1001,7 @@ local function ApplyButtonTintStyling(sessionWindow, db)
     end
 end
 
--- Create a ScooterMod-owned overlay texture for a button icon
+-- Create a Scoot-owned overlay texture for a button icon
 -- Uses SetAtlas with built-in WoW graphics for consistent styling
 -- @param parent - The frame to create the texture on
 -- @param atlasName - The atlas to use
@@ -1021,7 +1021,7 @@ local function CreateButtonIconOverlay(parent, atlasName, anchorTo, size, yOffse
     -- Set the atlas
     overlay:SetAtlas(atlasName, false)  -- false = don't use atlas size, we set it manually
 
-    getElementState(overlay).isScooterOverlay = true
+    getElementState(overlay).isScootOverlay = true
     overlay:Hide()  -- Start hidden
     return overlay
 end
@@ -1326,10 +1326,10 @@ local function HookEntryAcquisition(component)
 
     -- Coalesce re-application to one per frame
     local function requestApply()
-        if component._ScooterDMApplyQueued then return end
-        component._ScooterDMApplyQueued = true
+        if component._ScootDMApplyQueued then return end
+        component._ScootDMApplyQueued = true
         _G.C_Timer.After(0, function()
-            component._ScooterDMApplyQueued = nil
+            component._ScootDMApplyQueued = nil
             if component and component.ApplyStyling then
                 component:ApplyStyling()
             end

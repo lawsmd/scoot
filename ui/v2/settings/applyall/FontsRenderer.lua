@@ -43,7 +43,7 @@ function Fonts.Render(panel, scrollContent)
     info:SetPoint("TOP", container, "TOP", 0, 0)
     info:SetWidth(420)
     info:SetJustifyH("CENTER")
-    info:SetText("Select a font below, then click Apply. This will overwrite every ScooterMod font face and force a UI reload. Sizes, colors, offsets, and outlines remain unchanged.\n\nScrolling Combat Text fonts are excluded (require game restart).")
+    info:SetText("Select a font below, then click Apply. This will overwrite every Scoot font face and force a UI reload. Sizes, colors, offsets, and outlines remain unchanged.\n\nScrolling Combat Text fonts are excluded (require game restart).")
     info:SetTextColor(0.6, 0.6, 0.6, 1)
 
     -- Font selector row (larger, minimal label)
@@ -86,7 +86,7 @@ function Fonts.Render(panel, scrollContent)
             local displayName = addon.FontDisplayNames and addon.FontDisplayNames[pending] or pending
 
             if addon.Dialogs and addon.Dialogs.Show then
-                addon.Dialogs:Show("SCOOTERMOD_APPLYALL_FONTS", {
+                addon.Dialogs:Show("SCOOT_APPLYALL_FONTS", {
                     formatArgs = { displayName },
                     data = { fontKey = pending },
                     onAccept = function(data)

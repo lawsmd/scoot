@@ -20,7 +20,7 @@ local function isAddonLoaded(name)
 end
 
 local ICON_BORDER_DEFINITIONS = {
-    -- Scooter defaults
+    -- Scoot defaults
     { key = "square", label = "Square", type = "square", order = 10, defaultColor = {0, 0, 0, 1} },
 
     -- Blizzard atlas selections (always available)

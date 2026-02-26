@@ -241,7 +241,7 @@ Utils.ROLE_ICON_SETS = {
 }
 
 -- Texture file mappings for custom TGA-based sets
-local ROLE_ICON_PATH = "Interface\\AddOns\\ScooterMod\\media\\textures\\role-icons\\"
+local ROLE_ICON_PATH = "Interface\\AddOns\\Scoot\\media\\textures\\role-icons\\"
 
 Utils.ROLE_ICON_TEXTURES = {
     pixel = {

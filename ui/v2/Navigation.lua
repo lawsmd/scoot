@@ -395,7 +395,7 @@ function Navigation:Create(parent)
     if not parent then return nil end
 
     -- Create main navigation frame (no background - inherits from parent)
-    local navFrame = CreateFrame("Frame", "ScooterNavFrame", parent)
+    local navFrame = CreateFrame("Frame", "ScootNavFrame", parent)
     navFrame:SetWidth(NAV_WIDTH)
     navFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", Theme.BORDER_WIDTH, -(80 + Theme.BORDER_WIDTH))
     navFrame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", Theme.BORDER_WIDTH, Theme.BORDER_WIDTH)
@@ -410,7 +410,7 @@ function Navigation:Create(parent)
     navFrame._separator = separator
 
     -- Custom scroll frame (no template - built from scratch)
-    local scrollFrame = CreateFrame("ScrollFrame", "ScooterNavScrollFrame", navFrame)
+    local scrollFrame = CreateFrame("ScrollFrame", "ScootNavScrollFrame", navFrame)
     scrollFrame:SetPoint("TOPLEFT", navFrame, "TOPLEFT", PADDING_LEFT, -PADDING_TOP)
     scrollFrame:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -(SCROLLBAR_RIGHT_MARGIN + SCROLLBAR_WIDTH + 4), PADDING_TOP)
     scrollFrame:EnableMouseWheel(true)
@@ -436,7 +436,7 @@ function Navigation:Create(parent)
     end)
 
     -- Content frame that will hold all nav items
-    local contentFrame = CreateFrame("Frame", "ScooterNavContent", scrollFrame)
+    local contentFrame = CreateFrame("Frame", "ScootNavContent", scrollFrame)
     contentFrame:SetWidth(scrollFrame:GetWidth() or (NAV_WIDTH - PADDING_LEFT - SCROLLBAR_RIGHT_MARGIN - SCROLLBAR_WIDTH - 4))
     scrollFrame:SetScrollChild(contentFrame)
     navFrame._content = contentFrame

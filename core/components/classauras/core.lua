@@ -718,7 +718,7 @@ CA._rescanForCDMBorrow = function() RescanForCDMBorrow() end
 local containersInitialized = false
 
 local function CreateAuraContainer(aura)
-    local frameName = "ScooterModClassAura_" .. aura.id
+    local frameName = "ScootClassAura_" .. aura.id
     local container = CreateFrame("Frame", frameName, UIParent)
     container:SetSize(64, 32) -- initial size, auto-resized by layout
     container:SetMovable(true)

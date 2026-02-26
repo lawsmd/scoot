@@ -1,11 +1,11 @@
--- CustomGroupsTab.lua - Inject a ScooterMod tab into Blizzard's Cooldown Manager window
+-- CustomGroupsTab.lua - Inject a Scoot tab into Blizzard's Cooldown Manager window
 -- with full custom groups management UI (3 collapsible groups, drag-and-drop, reorder)
 local addonName, addon = ...
 
 local CG = addon.CustomGroups
 
-local SCOOTERMOD_ICON = "Interface\\AddOns\\ScooterMod\\ScooterModIcon"
-local DISPLAY_MODE = "scootermod"
+local SCOOT_ICON = "Interface\\AddOns\\Scoot\\ScootIcon"
+local DISPLAY_MODE = "scoot"
 local ICON_SIZE = 38
 local ICON_PADDING = 8
 local GRID_STRIDE = 7
@@ -13,7 +13,7 @@ local CATEGORY_SPACING = 18
 local DROP_TARGET_ICON = "Interface\\PaperDollInfoFrame\\Character-Plus"
 
 local injected = false
-local isScooterTabActive = false
+local isScootTabActive = false
 
 --------------------------------------------------------------------------------
 -- Utility: Resolve icon texture for a spell or item
@@ -259,7 +259,7 @@ end
 local function GetOrCreateDragCursor()
     if DragState.cursorFrame then return DragState.cursorFrame end
 
-    local f = CreateFrame("Frame", "ScooterModCDMDragCursor", UIParent)
+    local f = CreateFrame("Frame", "ScootCDMDragCursor", UIParent)
     f:SetSize(ICON_SIZE, ICON_SIZE)
     f:SetFrameStrata("TOOLTIP")
     f:SetFrameLevel(100)
@@ -493,7 +493,7 @@ end
 local HEADER_HEIGHT = 26  -- matches ListHeaderThreeSliceTemplate
 
 local function CreateCategoryFrame(parent, groupIndex)
-    local cat = CreateFrame("Frame", "ScooterModCDMCategory" .. groupIndex, parent)
+    local cat = CreateFrame("Frame", "ScootCDMCategory" .. groupIndex, parent)
     cat:SetWidth(parent:GetWidth() or 300)
     cat._groupIndex = groupIndex
     cat._collapsed = false
@@ -794,14 +794,14 @@ end
 --------------------------------------------------------------------------------
 
 local function CreateContentFrame(cdmFrame)
-    local f = CreateFrame("ScrollFrame", "ScooterModCDMContent", cdmFrame)
+    local f = CreateFrame("ScrollFrame", "ScootCDMContent", cdmFrame)
     f:SetPoint("TOPLEFT", 17, -72)
     f:SetPoint("BOTTOMRIGHT", -30, 29)
     f:Hide()
     f:EnableMouseWheel(true)
 
     -- Scroll child
-    local scrollChild = CreateFrame("Frame", "ScooterModCDMScrollChild", f)
+    local scrollChild = CreateFrame("Frame", "ScootCDMScrollChild", f)
     scrollChild:SetWidth(f:GetWidth() or 300)
     f:SetScrollChild(scrollChild)
     f._scrollChild = scrollChild
@@ -915,7 +915,7 @@ end
 --------------------------------------------------------------------------------
 
 local function CreateTabButton(cdmFrame)
-    local tab = CreateFrame("Frame", "ScooterModCDMTab", cdmFrame)
+    local tab = CreateFrame("Frame", "ScootCDMTab", cdmFrame)
     tab:SetSize(43, 55)
     tab:EnableMouse(true)
     Mixin(tab, SidePanelTabButtonMixin)
@@ -925,9 +925,9 @@ local function CreateTabButton(cdmFrame)
     tab.Background:SetAtlas("questlog-tab-side", true)
     tab.Background:SetPoint("CENTER")
 
-    -- ARTWORK layer: ScooterMod icon
+    -- ARTWORK layer: Scoot icon
     tab.Icon = tab:CreateTexture(nil, "ARTWORK")
-    tab.Icon:SetTexture(SCOOTERMOD_ICON)
+    tab.Icon:SetTexture(SCOOT_ICON)
     tab.Icon:SetSize(28, 28)
     tab.Icon:SetPoint("CENTER", -2, 0)
 
@@ -944,7 +944,7 @@ local function CreateTabButton(cdmFrame)
 
     -- Properties expected by the tab system
     tab.displayMode = DISPLAY_MODE
-    tab.tooltipText = "ScooterMod"
+    tab.tooltipText = "Scoot"
 
     -- Override SetChecked: the mixin calls SetAtlas on Icon, but we use a .tga file.
     function tab:SetChecked(checked)
@@ -975,9 +975,9 @@ end
 -- no Blizzard array mutation, no method calls on system frames)
 --------------------------------------------------------------------------------
 
-local function ActivateScooterTab(cdmFrame, contentFrameRef, blizzElements, tab)
-    if isScooterTabActive then return end
-    isScooterTabActive = true
+local function ActivateScootTab(cdmFrame, contentFrameRef, blizzElements, tab)
+    if isScootTabActive then return end
+    isScootTabActive = true
 
     -- Uncheck all Blizzard tabs (C-side widget ops — safe)
     for _, btn in ipairs(cdmFrame.TabButtons) do
@@ -994,10 +994,10 @@ local function ActivateScooterTab(cdmFrame, contentFrameRef, blizzElements, tab)
     contentFrameRef:Show()
 
     -- Set portrait (C-side texture op — safe, avoids calling frame method)
-    cdmFrame.PortraitContainer.portrait:SetTexture(SCOOTERMOD_ICON)
+    cdmFrame.PortraitContainer.portrait:SetTexture(SCOOT_ICON)
 end
 
-local function InjectScooterModTab()
+local function InjectScootTab()
     if injected then return end
 
     local cdmFrame = CooldownViewerSettings
@@ -1024,7 +1024,7 @@ local function InjectScooterModTab()
     -- Tab click: activate our tab (NO call to cdmFrame:SetDisplayMode — avoids taint)
     tab:SetCustomOnMouseUpHandler(function(t, button, upInside)
         if button == "LeftButton" and upInside then
-            ActivateScooterTab(cdmFrame, content, blizzElements, tab)
+            ActivateScootTab(cdmFrame, content, blizzElements, tab)
         end
     end)
 
@@ -1033,8 +1033,8 @@ local function InjectScooterModTab()
 
     -- Hook SetDisplayMode for deactivation (replaces method override — taint-safe)
     hooksecurefunc(cdmFrame, "SetDisplayMode", function(self, displayMode)
-        if isScooterTabActive then
-            isScooterTabActive = false
+        if isScootTabActive then
+            isScootTabActive = false
             content:Hide()
             tab:SetChecked(false)
             -- Blizzard's SetDisplayMode already ran and restored its content.
@@ -1047,15 +1047,15 @@ local function InjectScooterModTab()
 
     -- Hook RefreshLayout for portrait (taint-safe)
     hooksecurefunc(cdmFrame, "RefreshLayout", function(self)
-        if isScooterTabActive then
-            cdmFrame.PortraitContainer.portrait:SetTexture(SCOOTERMOD_ICON)
+        if isScootTabActive then
+            cdmFrame.PortraitContainer.portrait:SetTexture(SCOOT_ICON)
         end
     end)
 
     -- Cleanup on CDM window close
     cdmFrame:HookScript("OnHide", function()
-        if isScooterTabActive then
-            isScooterTabActive = false
+        if isScootTabActive then
+            isScootTabActive = false
             content:Hide()
             tab:SetChecked(false)
             for _, el in ipairs(blizzElements) do
@@ -1070,22 +1070,22 @@ end
 --------------------------------------------------------------------------------
 
 -- 1. When Blizzard_CooldownViewer loads, and also hook OpenCooldownManagerSettings
---    once it exists (ScooterMod.lua loads after this file in the TOC)
+--    once it exists (Scoot.lua loads after this file in the TOC)
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
 loader:SetScript("OnEvent", function(self, event, loadedAddon)
     if loadedAddon == "Blizzard_CooldownViewer" then
-        C_Timer.After(0, InjectScooterModTab)
+        C_Timer.After(0, InjectScootTab)
     end
     if loadedAddon == addonName and addon.OpenCooldownManagerSettings then
         self:UnregisterEvent("ADDON_LOADED")
         hooksecurefunc(addon, "OpenCooldownManagerSettings", function()
-            C_Timer.After(0, InjectScooterModTab)
+            C_Timer.After(0, InjectScootTab)
         end)
     end
 end)
 
 -- 3. Immediate check (e.g., after /reload when addon is already loaded)
 if CooldownViewerSettings then
-    C_Timer.After(0, InjectScooterModTab)
+    C_Timer.After(0, InjectScootTab)
 end

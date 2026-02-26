@@ -42,7 +42,7 @@ local function debugPrint(...)
     if DEBUG_TOT_SCALE and addon and addon.DebugPrint then
         addon.DebugPrint("[ToTScale]", ...)
     elseif DEBUG_TOT_SCALE then
-        print("[ScooterMod ToTScale]", ...)
+        print("[Scoot ToTScale]", ...)
     end
 end
 

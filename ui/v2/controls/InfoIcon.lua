@@ -29,16 +29,16 @@ local BORDER_WIDTH = 1
 
 -- Custom TUI Tooltip Frame (themed border, dark background, monospace fonts)
 
-local ScooterTooltip = nil
+local ScootTooltip = nil
 
 local function GetOrCreateTooltip()
-    if ScooterTooltip then return ScooterTooltip end
+    if ScootTooltip then return ScootTooltip end
 
     local theme = GetTheme()
     local ar, ag, ab = theme:GetAccentColor()
     local bgR, bgG, bgB = theme:GetBackgroundSolidColor()
 
-    local tooltip = CreateFrame("Frame", "ScooterInfoTooltip", UIParent)
+    local tooltip = CreateFrame("Frame", "ScootInfoTooltip", UIParent)
     tooltip:SetFrameStrata("TOOLTIP")
     tooltip:SetFrameLevel(100)
     tooltip:Hide()
@@ -105,7 +105,7 @@ local function GetOrCreateTooltip()
     bodyText:SetWordWrap(true)
     tooltip._bodyText = bodyText
 
-    theme:Subscribe("ScooterInfoTooltip", function(r, g, b)
+    theme:Subscribe("ScootInfoTooltip", function(r, g, b)
         for _, tex in pairs(tooltip._border) do
             tex:SetColorTexture(r, g, b, 1)
         end
@@ -143,7 +143,7 @@ local function GetOrCreateTooltip()
         self:Show()
     end
 
-    ScooterTooltip = tooltip
+    ScootTooltip = tooltip
     return tooltip
 end
 

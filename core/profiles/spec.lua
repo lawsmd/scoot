@@ -66,7 +66,7 @@ function Profiles:PruneSpecAssignments()
 end
 
 -- Auto-heal: remove AceDB profiles that no longer have a corresponding Edit Mode layout.
--- This can happen when layouts are deleted outside ScooterMod, or when SavedVariables are
+-- This can happen when layouts are deleted outside Scoot, or when SavedVariables are
 -- moved between machines but Blizzard's Edit Mode layout list does not match.
 function Profiles:CleanupOrphanedProfiles()
     if not self.db or not self.db.profiles or not self._layoutLookup then
@@ -157,7 +157,7 @@ function Profiles:CheckForExternalDeletion()
         -- Defer the dialog slightly to allow any pending UI updates to complete
         C_Timer.After(0.1, function()
             if addon and addon.Dialogs and addon.Dialogs.Show then
-                addon.Dialogs:Show("SCOOTERMOD_EXTERNAL_LAYOUT_DELETED", {
+                addon.Dialogs:Show("SCOOT_EXTERNAL_LAYOUT_DELETED", {
                     formatArgs = { currentProfile },
                     onAccept = function()
                         ReloadUI()

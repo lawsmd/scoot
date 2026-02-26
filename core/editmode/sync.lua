@@ -792,7 +792,7 @@ function addon.EditMode.SyncEditModeSettingToComponent(component, settingId)
         -- Decode Icon Wrap 0/1 index back into semantic value based on orientation:
         --  Horizontal: 0=Down, 1=Up
         --  Vertical:   0=Left, 1=Right
-        -- NOTE: For Aura Frame we may have just performed a Scooter-initiated
+        -- NOTE: For Aura Frame we may have just performed a Scoot-initiated
         -- orientation remap in AceDB. In that narrow case, the settings panel
         -- marks component._skipNextAuraBackSync and we skip this readback once
         -- to avoid clobbering the freshly remapped DB state with a stale EM snapshot.
@@ -1119,7 +1119,7 @@ function addon.EditMode.SyncComponentPositionFromEditMode(component)
 
     if offsetX == nil or offsetY == nil then return false end
 
-    -- If this position matches a very recent Scooter-authored write (e.g., from
+    -- If this position matches a very recent Scoot-authored write (e.g., from
     -- the X/Y numeric text inputs), skip writing it back into the DB. This
     -- avoids a redundant Settings row reinitialization that would otherwise
     -- steal focus from the text box shortly after the user edits it.
@@ -1298,6 +1298,6 @@ function addon.EditMode.RefreshSyncAndNotify(origin)
     -- via control bindings and per-row helpers to avoid right-pane flicker.
 
     if addon._dbgSync and origin then
-        print("ScooterMod RefreshSyncAndNotify origin=" .. tostring(origin))
+        print("Scoot RefreshSyncAndNotify origin=" .. tostring(origin))
     end
 end

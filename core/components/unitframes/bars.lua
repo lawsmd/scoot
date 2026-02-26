@@ -95,18 +95,18 @@ local POWERBAR_TRACE_MAX_LINES = 500 -- Max lines to keep in buffer
 addon.SetPowerBarDebugTrace = function(enabled)
     powerBarDebugTraceEnabled = enabled
     if enabled then
-        print("|cff00ff00[ScooterMod]|r Power bar trace ENABLED (buffering to log)")
-        print("|cff00ff00[ScooterMod]|r Use '/scoot debug powerbar log' to view, '/scoot debug powerbar clear' to clear")
+        print("|cff00ff00[Scoot]|r Power bar trace ENABLED (buffering to log)")
+        print("|cff00ff00[Scoot]|r Use '/scoot debug powerbar log' to view, '/scoot debug powerbar clear' to clear")
         table.insert(powerBarTraceBuffer, "=== Trace started at " .. date("%Y-%m-%d %H:%M:%S") .. " ===")
     else
-        print("|cff00ff00[ScooterMod]|r Power bar trace DISABLED")
+        print("|cff00ff00[Scoot]|r Power bar trace DISABLED")
         table.insert(powerBarTraceBuffer, "=== Trace stopped at " .. date("%Y-%m-%d %H:%M:%S") .. " ===")
     end
 end
 
 addon.ShowPowerBarTraceLog = function()
     if #powerBarTraceBuffer == 0 then
-        print("|cff00ff00[ScooterMod]|r Power bar trace buffer is empty")
+        print("|cff00ff00[Scoot]|r Power bar trace buffer is empty")
         return
     end
     
@@ -114,14 +114,14 @@ addon.ShowPowerBarTraceLog = function()
     if addon.DebugShowWindow then
         addon.DebugShowWindow("Power Bar Trace Log (" .. #powerBarTraceBuffer .. " lines)", text)
     else
-        print("|cff00ff00[ScooterMod]|r Debug window not available. Buffer has " .. #powerBarTraceBuffer .. " lines.")
+        print("|cff00ff00[Scoot]|r Debug window not available. Buffer has " .. #powerBarTraceBuffer .. " lines.")
     end
 end
 
 addon.ClearPowerBarTraceLog = function()
     local count = #powerBarTraceBuffer
     powerBarTraceBuffer = {}
-    print("|cff00ff00[ScooterMod]|r Cleared " .. count .. " lines from power bar trace buffer")
+    print("|cff00ff00[Scoot]|r Cleared " .. count .. " lines from power bar trace buffer")
 end
 
 local function debugTracePowerBar(message, ...)
@@ -155,7 +155,7 @@ end
 
 -- Debug helper:
 -- /scoot debug powerbarpos [simulate]
--- Shows current Player ManaBar points + ScooterMod custom-position state.
+-- Shows current Player ManaBar points + Scoot custom-position state.
 function addon.DebugPowerBarPosition(simulateReset)
     if not (addon and addon.DebugShowWindow) then
         return
@@ -540,7 +540,7 @@ do
         -- Place the textured border holder between bar and text
         do
             local holderLevel = math.max(1, desiredTextLevel - 1, barLevel + 1)
-            local hHolder = hb and hb.ScooterStyledBorder or nil
+            local hHolder = hb and hb.ScootStyledBorder or nil
             if hHolder and hHolder.SetFrameLevel then
                 -- Lock desired level so internal size hooks won't raise it above text later
                 setProp(hb, "borderFixedLevel", holderLevel)
@@ -554,7 +554,7 @@ do
                     or "MEDIUM"
                 pcall(hHolder.SetFrameStrata, hHolder, s)
             end
-            local pHolder = pb and pb.ScooterStyledBorder or nil
+            local pHolder = pb and pb.ScootStyledBorder or nil
             if pHolder and pHolder.SetFrameLevel then
                 setProp(pb, "borderFixedLevel", holderLevel)
                 pcall(pHolder.SetFrameLevel, pHolder, holderLevel)
@@ -627,7 +627,7 @@ do
         -- Boss overlays activate when useCustomBorders is enabled (fills chips created by frame art masks)
         local shouldActivate = (ufCfg.useCustomBorders == true)
         
-        local overlayKey = (barType == "health") and "ScooterRectFillHealth" or "ScooterRectFillPower"
+        local overlayKey = (barType == "health") and "ScootRectFillHealth" or "ScootRectFillPower"
         local st = getState(bar)
         if not st then return end
         st.rectActive = shouldActivate
@@ -791,10 +791,10 @@ do
             if st.heightClipContainer then
                 st.heightClipContainer:Hide()
             end
-            -- Restore original background (ScooterModBG via FrameState, not st.backgroundTex)
-            local scooterBG_r = getProp(bar, "ScooterModBG")
-            if st.heightClipBackgroundHidden and scooterBG_r then
-                scooterBG_r:Show()
+            -- Restore original background (ScootBG via FrameState, not st.backgroundTex)
+            local scootBG_r = getProp(bar, "ScootBG")
+            if st.heightClipBackgroundHidden and scootBG_r then
+                scootBG_r:Show()
                 st.heightClipBackgroundHidden = false
             end
             st.heightClipActive = false
@@ -834,8 +834,8 @@ do
         bg:ClearAllPoints()
         bg:SetAllPoints(container)  -- Match container, NOT full bar
 
-        -- Copy from original background (ScooterModBG via FrameState) OR use sensible default
-        local origBg = getProp(bar, "ScooterModBG")
+        -- Copy from original background (ScootBG via FrameState) OR use sensible default
+        local origBg = getProp(bar, "ScootBG")
         if origBg then
             local tex = origBg:GetTexture()
             if tex then
@@ -1134,10 +1134,10 @@ do
             if st.heightClipContainer then
                 st.heightClipContainer:Hide()
             end
-            -- Restore original background if it was hidden (ScooterModBG via FrameState, not st.backgroundTex)
-            local scooterBG_rst = getProp(bar, "ScooterModBG")
-            if st.heightClipBackgroundHidden and scooterBG_rst then
-                scooterBG_rst:Show()
+            -- Restore original background if it was hidden (ScootBG via FrameState, not st.backgroundTex)
+            local scootBG_rst = getProp(bar, "ScootBG")
+            if st.heightClipBackgroundHidden and scootBG_rst then
+                scootBG_rst:Show()
                 st.heightClipBackgroundHidden = false
             end
             st.heightClipActive = false
@@ -1175,7 +1175,7 @@ do
 
             -- Drive overlay width from the health bar's own value/size changes.
             -- NOTE: No combat guard needed here because updateRectHealthOverlay() only
-            -- operates on ScooterRectFill (our own child texture), not Blizzard's
+            -- operates on ScootRectFill (our own child texture), not Blizzard's
             -- protected StatusBar. Cosmetic operations on our own textures are safe.
             if _G.hooksecurefunc and not st.rectHooksInstalled then
                 st.rectHooksInstalled = true
@@ -2673,7 +2673,7 @@ do
 
                             if powerBarHidden then
                                 if pb.SetAlpha then pcall(pb.SetAlpha, pb, 0) end
-                                do local bg = getProp(pb, "ScooterModBG"); if bg and bg.SetAlpha then pcall(bg.SetAlpha, bg, 0) end end
+                                do local bg = getProp(pb, "ScootBG"); if bg and bg.SetAlpha then pcall(bg.SetAlpha, bg, 0) end end
                                 if addon.BarBorders and addon.BarBorders.ClearBarFrame then addon.BarBorders.ClearBarFrame(pb) end
                                 if addon.Borders and addon.Borders.HideAll then addon.Borders.HideAll(pb) end
                                 if Util and Util.SetPowerBarTextureOnlyHidden then Util.SetPowerBarTextureOnlyHidden(pb, false) end
@@ -3003,7 +3003,7 @@ do
                 end
             end
 
-            -- Re-apply texture-only hide after styling (ensures newly created ScooterModBG is also hidden)
+            -- Re-apply texture-only hide after styling (ensures newly created ScootBG is also hidden)
             if healthBarHideTextureOnly then
                 if Util and Util.SetHealthBarTextureOnlyHidden then
                     Util.SetHealthBarTextureOnlyHidden(hb, true)
@@ -3198,7 +3198,7 @@ do
                     setProp(hb, "healthTextureHooked", true)
                     _G.hooksecurefunc(hb, "SetStatusBarTexture", function(self, ...)
                         if isEditModeActive() then return end
-                        -- Ignore ScooterMod's own writes to avoid recursion.
+                        -- Ignore Scoot's own writes to avoid recursion.
                         if getProp(self, "ufInternalTextureWrite") then
                             return
                         end
@@ -3272,7 +3272,7 @@ do
                     setProp(hb, "toTHealthTextureHooked", true)
                     _G.hooksecurefunc(hb, "SetStatusBarTexture", function(self, ...)
                         if isEditModeActive() then return end
-                        -- Ignore ScooterMod's own writes to avoid feedback loops.
+                        -- Ignore Scoot's own writes to avoid feedback loops.
                         if getProp(self, "ufInternalTextureWrite") then
                             return
                         end
@@ -3367,7 +3367,7 @@ do
                     setProp(hb, "foTHealthTextureHooked", true)
                     _G.hooksecurefunc(hb, "SetStatusBarTexture", function(self, ...)
                         if isEditModeActive() then return end
-                        -- Ignore ScooterMod's own writes to avoid feedback loops.
+                        -- Ignore Scoot's own writes to avoid feedback loops.
                         if getProp(self, "ufInternalTextureWrite") then
                             return
                         end
@@ -3471,12 +3471,12 @@ do
 
 			-- When the user chooses to hide the Power Bar:
 			-- - Fade the StatusBar frame to alpha 0 so the fill/background vanish.
-			-- - Hide any ScooterMod-drawn borders/backgrounds associated with this bar.
+			-- - Hide any Scoot-drawn borders/backgrounds associated with this bar.
 			if powerBarHidden then
 				if pb.SetAlpha then
 					pcall(pb.SetAlpha, pb, 0)
 				end
-				do local bg = getProp(pb, "ScooterModBG"); if bg and bg.SetAlpha then pcall(bg.SetAlpha, bg, 0) end end
+				do local bg = getProp(pb, "ScootBG"); if bg and bg.SetAlpha then pcall(bg.SetAlpha, bg, 0) end end
 				if addon.BarBorders and addon.BarBorders.ClearBarFrame then
 					addon.BarBorders.ClearBarFrame(pb)
 				end
@@ -3570,7 +3570,7 @@ do
                 end
             end
             
-            -- Re-apply texture-only hide after styling (ensures newly created ScooterModBG is also hidden)
+            -- Re-apply texture-only hide after styling (ensures newly created ScootBG is also hidden)
             if powerBarHideTextureOnly and not powerBarHidden then
                 if Util and Util.SetPowerBarTextureOnlyHidden then
                     Util.SetPowerBarTextureOnlyHidden(pb, true)
@@ -3622,7 +3622,7 @@ do
                     setProp(pb, "powerTextureHooked", true)
                     _G.hooksecurefunc(pb, "SetStatusBarTexture", function(self, ...)
                         if isEditModeActive() then return end
-                        -- Ignore ScooterMod's own writes to avoid recursion.
+                        -- Ignore Scoot's own writes to avoid recursion.
                         if getProp(self, "ufInternalTextureWrite") then
                             return
                         end
@@ -4837,7 +4837,7 @@ do
         
         -- Hide static visual elements when Use Custom Borders is enabled.
         -- Rationale: These elements (ReputationColor for Target/Focus, FrameFlash for Player, Flash for Target) have
-        -- fixed positions that cannot be adjusted. Since ScooterMod allows users to reposition and
+        -- fixed positions that cannot be adjusted. Since Scoot allows users to reposition and
         -- resize health/power bars independently, these static overlays would remain in their original
         -- positions while the bars they're meant to surround/backdrop move elsewhere. This creates
         -- visual confusion, so we disable them when custom borders are active.

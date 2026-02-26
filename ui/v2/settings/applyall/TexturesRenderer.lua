@@ -43,7 +43,7 @@ function Textures.Render(panel, scrollContent)
     info:SetPoint("TOP", container, "TOP", 0, 0)
     info:SetWidth(420)
     info:SetJustifyH("CENTER")
-    info:SetText("Select a texture below, then click Apply. This will overwrite every ScooterMod bar texture (foreground and background) and force a UI reload. Tint, opacity, and color settings remain unchanged.")
+    info:SetText("Select a texture below, then click Apply. This will overwrite every Scoot bar texture (foreground and background) and force a UI reload. Tint, opacity, and color settings remain unchanged.")
     info:SetTextColor(0.6, 0.6, 0.6, 1)
 
     -- Bar texture selector row (larger, minimal label)
@@ -87,7 +87,7 @@ function Textures.Render(panel, scrollContent)
                 and addon.Media.GetBarTextureDisplayName(pending) or pending
 
             if addon.Dialogs and addon.Dialogs.Show then
-                addon.Dialogs:Show("SCOOTERMOD_APPLYALL_TEXTURES", {
+                addon.Dialogs:Show("SCOOT_APPLYALL_TEXTURES", {
                     formatArgs = { displayName or pending },
                     data = { textureKey = pending },
                     onAccept = function(data)

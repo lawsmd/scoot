@@ -7,9 +7,9 @@ local Borders = addon.Borders
 -- (which would taint them and cause secret value errors during Edit Mode operations)
 local borderContainers = setmetatable({}, { __mode = "k" })   -- frame -> ScootSquareBorderContainer
 local borderEdges = setmetatable({}, { __mode = "k" })        -- container/frame -> ScootSquareBorderEdges
-local atlasContainers = setmetatable({}, { __mode = "k" })    -- frame -> ScooterAtlasBorderContainer
+local atlasContainers = setmetatable({}, { __mode = "k" })    -- frame -> ScootAtlasBorderContainer
 local atlasBorders = setmetatable({}, { __mode = "k" })       -- frame -> ScootAtlasBorder
-local textureContainers = setmetatable({}, { __mode = "k" })  -- frame -> ScooterTextureBorderContainer
+local textureContainers = setmetatable({}, { __mode = "k" })  -- frame -> ScootTextureBorderContainer
 local textureBorders = setmetatable({}, { __mode = "k" })     -- frame -> ScootTextureBorder
 local tintOverlays = setmetatable({}, { __mode = "k" })       -- frame -> { atlas = texture, texture = texture }
 

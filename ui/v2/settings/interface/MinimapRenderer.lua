@@ -708,15 +708,15 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        -- Keep ScooterMod Button Separate toggle
+                        -- Keep Scoot Button Separate toggle
                         tabBuilder:AddToggle({
-                            label = "Keep ScooterMod Button Separate",
-                            description = "Keep ScooterMod's minimap button visible outside the container.",
+                            label = "Keep Scoot Button Separate",
+                            description = "Keep Scoot's minimap button visible outside the container.",
                             get = function()
-                                return getSetting("scooterModButtonSeparate") or false
+                                return getSetting("scootButtonSeparate") or false
                             end,
                             set = function(v)
-                                setSetting("scooterModButtonSeparate", v)
+                                setSetting("scootButtonSeparate", v)
                             end,
                             isDisabled = function()
                                 return not getSetting("addonButtonContainerEnabled")

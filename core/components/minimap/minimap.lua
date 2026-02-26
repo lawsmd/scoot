@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- ScooterMod Minimap Component
+-- Scoot Minimap Component
 --
 -- Provides cosmetic styling for the Minimap including:
 -- - Shape customization (circle/square)
@@ -1050,7 +1050,7 @@ local function CreateButtonContainer()
         return buttonContainerFrame
     end
 
-    local container = CreateFrame("Button", "ScooterModMinimapButtonContainer", UIParent)
+    local container = CreateFrame("Button", "ScootMinimapButtonContainer", UIParent)
     container:SetSize(24, 24)  -- Hitbox matches icon size
     container:SetFrameStrata("MEDIUM")
     container:SetFrameLevel(8)
@@ -1178,7 +1178,7 @@ local function CreateButtonContainerMenu()
         return buttonContainerMenu
     end
 
-    local menu = CreateFrame("Frame", "ScooterModMinimapButtonMenu", UIParent, "BackdropTemplate")
+    local menu = CreateFrame("Frame", "ScootMinimapMenu", UIParent, "BackdropTemplate")
     menu:SetFrameStrata("DIALOG")
     menu:SetFrameLevel(100)
     menu:SetClampedToScreen(true)
@@ -1352,17 +1352,17 @@ local function ApplyButtonContainerStyle(db)
 
     -- Collect and manage buttons
     local allButtons = CollectMinimapAddonButtons()
-    local keepScooterSeparate = db.scooterModButtonSeparate
+    local keepScootSeparate = db.scootButtonSeparate
     local keepBugSackSeparate = addon.db and addon.db.profile and addon.db.profile.bugSackButtonSeparate
 
     wipe(managedButtons)
 
     for name, info in pairs(allButtons) do
-        -- Check if this is ScooterMod's or BugSack's button
-        local isScooterMod = name:lower():match("scooter") or name == "LibDBIcon10_ScooterMod"
+        -- Check if this is Scoot's or BugSack's button
+        local isScoot = name:lower():match("scoot") or name == "LibDBIcon10_Scoot"
         local isBugSack = name:lower():match("bugsack") or name == "LibDBIcon10_BugSack"
 
-        if (isScooterMod and keepScooterSeparate) or (isBugSack and keepBugSackSeparate) then
+        if (isScoot and keepScootSeparate) or (isBugSack and keepBugSackSeparate) then
             -- Keep this button visible
             if info.button then
                 info.button:Show()
@@ -1382,11 +1382,11 @@ local function ApplyButtonContainerStyle(db)
                         local db = getMinimapDB()
                         if db and db.addonButtonContainerEnabled then
                             -- Check if this button should still be hidden
-                            local keepScooterSeparate = db.scooterModButtonSeparate
+                            local keepScootSeparate = db.scootButtonSeparate
                             local keepBugSackSeparate = addon.db and addon.db.profile and addon.db.profile.bugSackButtonSeparate
-                            local isScooterMod = name:lower():match("scooter") or name == "LibDBIcon10_ScooterMod"
+                            local isScoot = name:lower():match("scoot") or name == "LibDBIcon10_Scoot"
                             local isBugSack = name:lower():match("bugsack") or name == "LibDBIcon10_BugSack"
-                            if not ((isScooterMod and keepScooterSeparate) or (isBugSack and keepBugSackSeparate)) then
+                            if not ((isScoot and keepScootSeparate) or (isBugSack and keepBugSackSeparate)) then
                                 self:Hide()
                             end
                         end
@@ -1482,7 +1482,7 @@ local function CreateTrackingButton()
         return trackingButtonFrame
     end
 
-    local btn = CreateFrame("Button", "ScooterModTrackingButton", UIParent)
+    local btn = CreateFrame("Button", "ScootTrackingButton", UIParent)
     btn:SetSize(24, 24)
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)
@@ -1707,7 +1707,7 @@ addon:RegisterComponentInitializer(function(self)
             addonButtonContainerAnchor = { type = "addon", default = "BOTTOMLEFT" },
             addonButtonContainerOffsetX = { type = "addon", default = 0 },
             addonButtonContainerOffsetY = { type = "addon", default = 0 },
-            scooterModButtonSeparate = { type = "addon", default = false },
+            scootButtonSeparate = { type = "addon", default = false },
             hideAddonButtonBorders = { type = "addon", default = false },
             addonButtonBorderTintEnabled = { type = "addon", default = false },
             addonButtonBorderTintColor = { type = "addon", default = {1, 1, 1, 1} },

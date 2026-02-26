@@ -1,4 +1,4 @@
--- Taint Debugging Module for ScooterMod
+-- Taint Debugging Module for Scoot
 -- Tracks all Edit Mode operations and captures stack traces when taint errors occur
 local addonName, addon = ...
 
@@ -35,7 +35,7 @@ local function GetShortStack(skipLevels)
     local lines = {}
     for line in stack:gmatch("[^\n]+") do
         -- Simplify paths: keep just filename:line
-        local simplified = line:gsub(".*/Interface/AddOns/ScooterMod/", "ScooterMod/")
+        local simplified = line:gsub(".*/Interface/AddOns/Scoot/", "Scoot/")
         simplified = simplified:gsub(".*/Interface/AddOns/", "")
         simplified = simplified:gsub("^%s+", "")  -- trim leading whitespace
         if simplified ~= "" and not simplified:match("taintdebug%.lua") then
@@ -84,7 +84,7 @@ end
 -- Custom Error Handler
 --------------------------------------------------------------------------------
 
-local function ScooterErrorHandler(msg)
+local function ScootErrorHandler(msg)
     -- Always capture taint-related errors, even if full logging is disabled
     local isTaintError = msg and (
         msg:find(TAINT_ERROR_PATTERN) or
@@ -166,7 +166,7 @@ function TD.Enable()
     
     -- Install custom error handler
     TD._originalErrorHandler = geterrorhandler()
-    seterrorhandler(ScooterErrorHandler)
+    seterrorhandler(ScootErrorHandler)
     
     -- Enable WoW's built-in taint logging (persists in Config.wtf)
     if SetCVar then
@@ -292,7 +292,7 @@ function TD.GetFormattedLog()
     local lines = {}
     
     table.insert(lines, "==========================================")
-    table.insert(lines, "SCOOTERMOD TAINT DEBUG LOG")
+    table.insert(lines, "SCOOT TAINT DEBUG LOG")
     table.insert(lines, "==========================================")
     table.insert(lines, "")
     table.insert(lines, string.format("Logging enabled: %s", tostring(TD._enabled)))
@@ -379,11 +379,11 @@ end
 function TD.ShowLog()
     local logText = TD.GetFormattedLog()
     if addon.DebugShowWindow then
-        addon.DebugShowWindow("ScooterMod Taint Debug Log", logText)
+        addon.DebugShowWindow("Scoot Taint Debug Log", logText)
     elseif addon.DebugCopyWindow then
         -- Fallback to existing debug window
         local f = addon.DebugCopyWindow
-        if f.title then f.title:SetText("ScooterMod Taint Debug Log") end
+        if f.title then f.title:SetText("Scoot Taint Debug Log") end
         if f.EditBox then f.EditBox:SetText(logText) end
         f:Show()
         if f.EditBox then f.EditBox:HighlightText(); f.EditBox:SetFocus() end

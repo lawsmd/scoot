@@ -55,7 +55,7 @@ local function debugPrint(...)
 	if DEBUG_CLASS_RESOURCE and addon and addon.DebugPrint then
 		addon.DebugPrint("[ClassResource]", ...)
 	elseif DEBUG_CLASS_RESOURCE then
-		print("[ScooterMod ClassResource]", ...)
+		print("[Scoot ClassResource]", ...)
 	end
 end
 

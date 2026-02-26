@@ -296,7 +296,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                 set = function(v) setSetting("borderStyle", v) end,
                 infoIcon = {
                     tooltipTitle = "Border Style",
-                    tooltipText = "\"Off\" shows the default Blizzard border, which ScooterMod does not customize. \"Hidden\" removes all borders entirely.",
+                    tooltipText = "\"Off\" shows the default Blizzard border, which Scoot does not customize. \"Hidden\" removes all borders entirely.",
                 },
             })
 

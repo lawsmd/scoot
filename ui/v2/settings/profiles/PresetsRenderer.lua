@@ -182,7 +182,7 @@ function Presets.Render(panel, scrollContent)
     local heroTexture = heroContainer:CreateTexture(nil, "ARTWORK")
     heroTexture:SetPoint("TOPLEFT", heroContainer, "TOPLEFT", 3, -3)
     heroTexture:SetPoint("BOTTOMRIGHT", heroContainer, "BOTTOMRIGHT", -3, 3)
-    heroTexture:SetTexture(currentPreset.previewTexture or "Interface\\AddOns\\ScooterMod\\Scooter")
+    heroTexture:SetTexture(currentPreset.previewTexture or "Interface\\AddOns\\Scoot\\media\\presets\\Scoot")
 
     -- "Coming Soon" overlay if applicable
     if currentPreset.comingSoon then

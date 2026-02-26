@@ -17,7 +17,7 @@ local function debugPrint(...)
     if DEBUG_SCALE_MULT and addon and addon.DebugPrint then
         addon.DebugPrint("[ScaleMult]", ...)
     elseif DEBUG_SCALE_MULT then
-        print("[ScooterMod ScaleMult]", ...)
+        print("[Scoot ScaleMult]", ...)
     end
 end
 

@@ -400,7 +400,7 @@ function addon.EditMode.GetSetting(frame, settingId)
 end
 
 -- Write a setting to Edit Mode via LibEditModeOverride.
--- Debug logging: Enable with `/run ScooterMod._dbgEditMode = true` to trace writes.
+-- Debug logging: Enable with `/run Scoot._dbgEditMode = true` to trace writes.
 function addon.EditMode.SetSetting(frame, settingId, value)
     if not LEO or not LEO.SetFrameSetting then
         if addon._dbgEditMode then print("|cFFFF0000[EM.SetSetting]|r LEO not available") end
@@ -553,8 +553,8 @@ function addon.EditMode.LoadLayouts()
 end
 
 -- Persist Edit Mode settings and trigger visual refresh via deferred SetActiveLayout.
--- This is the primary "apply settings visually" entry point for ScooterMod writes.
--- Debug logging: Enable with `/run ScooterMod._dbgEditMode = true` to trace save calls.
+-- This is the primary "apply settings visually" entry point for Scoot writes.
+-- Debug logging: Enable with `/run Scoot._dbgEditMode = true` to trace save calls.
 --
 -- IMPORTANT: The visual refresh depends on LEO:SaveOnly() calling SetActiveLayout in a
 -- deferred context. If settings save but don't apply visually, check:
@@ -575,7 +575,7 @@ function addon.EditMode.SaveOnly()
 end
 
 -- Centralized write helper for Edit Mode–controlled settings.
--- All ScooterMod-initiated writes to Edit Mode should flow through this helper
+-- All Scoot-initiated writes to Edit Mode should flow through this helper
 -- so that SaveOnly and panel refresh suppression behave
 -- consistently across systems (Cooldown Viewer, Action Bars, Unit Frames, etc.).
 --
@@ -586,7 +586,7 @@ end
 -- IMPORTANT (taint/combat lockdown):
 -- UnitFrames/ActionBars/etc are protected systems. Writing Edit Mode settings during combat can
 -- trigger Blizzard layout code that calls protected functions (e.g. PartyFrame:SetSize()) and
--- surface as ADDON_ACTION_BLOCKED blaming ScooterMod.
+-- surface as ADDON_ACTION_BLOCKED blaming Scoot.
 --
 -- Policy: If we are in combat, queue the write and apply it immediately after combat ends.
 local function _EnsureEditModeCombatWriteWatcher()
@@ -775,8 +775,8 @@ addon.EditMode._GetUnitFrameForUnit = _GetUnitFrameForUnit
 
 -- Initialize Edit Mode integration
 function addon.EditMode.Initialize()
-    local function CloseScooterSettingsPanelForEditMode()
-        -- Invariant: ScooterMod's settings panel must not remain open while Edit Mode is open.
+    local function CloseScootSettingsPanelForEditMode()
+        -- Invariant: Scoot's settings panel must not remain open while Edit Mode is open.
         -- Keeping both UIs visible creates sync churn (recycled Settings rows, back-sync passes, etc.).
         local panel = addon and addon.UI and addon.UI.SettingsPanel
         if panel then
@@ -799,7 +799,7 @@ function addon.EditMode.Initialize()
 
     -- Compatibility: Objective Tracker Height (system 12) appears to be stored as an index internally
     -- (0..N) even though the UI presents raw values (400..1000). Force index-based translation in LEO
-    -- so ScooterMod always reads/writes raw values without bespoke conversions elsewhere.
+    -- so Scoot always reads/writes raw values without bespoke conversions elsewhere.
     do
         local LEO_ot = LibStub and LibStub("LibEditModeOverride-1.0")
         if LEO_ot then
@@ -827,7 +827,7 @@ function addon.EditMode.Initialize()
                         end
                         -- Text Size slider is observed as 12..20, step 1 in retail.
                         -- Some clients persist this slider as an index (0..8) internally. Force
-                        -- index-based translation so ScooterMod always reads/writes RAW values.
+                        -- index-based translation so Scoot always reads/writes RAW values.
                         if minV == 12 and maxV == 20 and step == 1 then
                             force(setup.setting)
                         end
@@ -897,7 +897,7 @@ function addon.EditMode.Initialize()
     -- IMPORTANT: Hook EnterEditMode (not OnShow) so we don't accidentally close the panel
     -- during our own "bounce EditModeManagerFrame" taint-clearing work.
     --
-    -- Also handles per-system settings refresh: when ScooterMod changes Edit Mode
+    -- Also handles per-system settings refresh: when Scoot changes Edit Mode
     -- settings (via SaveOnly/skipApply), the C-side storage is updated but the
     -- system frames' internal settingMaps are stale. We read fresh data from C-side
     -- and call UpdateSystem on each registered frame with the correct per-system
@@ -910,7 +910,7 @@ function addon.EditMode.Initialize()
                 if addon and addon.EditMode then
                     addon.EditMode._openingEditMode = nil
                 end
-                CloseScooterSettingsPanelForEditMode()
+                CloseScootSettingsPanelForEditMode()
             end)
         end
     end

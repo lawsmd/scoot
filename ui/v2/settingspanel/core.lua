@@ -60,7 +60,7 @@ function UIPanel:Initialize()
         savedHeight = size.height or PANEL_HEIGHT
     end
 
-    local frame = Window:Create("ScooterUISettingsFrame", UIParent, savedWidth, savedHeight)
+    local frame = Window:Create("ScootSettingsFrame", UIParent, savedWidth, savedHeight)
     frame:SetPoint("CENTER")
     frame:Hide()
     self.frame = frame
@@ -75,7 +75,7 @@ function UIPanel:Initialize()
     self:CreateNavigation()
     self:CreateContentPane()
 
-    tinsert(UISpecialFrames, "ScooterUISettingsFrame")
+    tinsert(UISpecialFrames, "ScootSettingsFrame")
 
     Window:RestorePosition(frame)
 
@@ -111,7 +111,7 @@ function UIPanel:CreateTitleBar()
         end
     end)
 
-    local logoBtn = CreateFrame("Button", "ScooterUILogoBtn", titleBar)
+    local logoBtn = CreateFrame("Button", "ScootLogoBtn", titleBar)
     logoBtn:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 10, -6)
     logoBtn:EnableMouse(true)
     logoBtn:RegisterForClicks("AnyUp")
@@ -220,7 +220,7 @@ function UIPanel:CreateCloseButton()
     local frame = self.frame
     if not frame then return end
 
-    local closeBtn = CreateFrame("Button", "ScooterUICloseButton", frame)
+    local closeBtn = CreateFrame("Button", "ScootCloseButton", frame)
     closeBtn:SetSize(CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE)
     closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -10)
     closeBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
@@ -286,7 +286,7 @@ function UIPanel:CreateHeaderButtons()
     -- Edit Mode button
     local editModeBtn = Controls:CreateButton({
         parent = frame,
-        name = "ScooterUIEditModeBtn",
+        name = "ScootEditModeBtn",
         text = "Edit Mode",
         height = HEADER_BUTTON_HEIGHT,
         fontSize = 11,
@@ -331,7 +331,7 @@ function UIPanel:CreateHeaderButtons()
     -- Cooldown Manager button
     local cdmBtn = Controls:CreateButton({
         parent = frame,
-        name = "ScooterUICdmBtn",
+        name = "ScootCdmBtn",
         text = "Cooldown Manager",
         height = HEADER_BUTTON_HEIGHT,
         fontSize = 11,
@@ -373,7 +373,7 @@ function UIPanel:CreateResizeHandle()
     local frame = self.frame
     if not frame then return end
 
-    local resizeHandle = CreateFrame("Button", "ScooterUIResizeHandle", frame)
+    local resizeHandle = CreateFrame("Button", "ScootResizeHandle", frame)
     resizeHandle:SetSize(RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE)
     resizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
     resizeHandle:SetFrameLevel(frame:GetFrameLevel() + 10)
@@ -649,7 +649,7 @@ function UIPanel:CreateContentPane()
     local frame = self.frame
     if not frame then return end
 
-    local contentPane = CreateFrame("Frame", "ScooterUIContentPane", frame)
+    local contentPane = CreateFrame("Frame", "ScootContentPane", frame)
     contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", NAV_WIDTH + Theme.BORDER_WIDTH + 1, -(TITLE_BAR_HEIGHT))
     contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Theme.BORDER_WIDTH, Theme.BORDER_WIDTH)
 
@@ -676,7 +676,7 @@ function UIPanel:CreateContentPane()
     local panel = self
     local collapseAllBtn = Controls:CreateButton({
         parent = header,
-        name = "ScooterUICollapseAllBtn",
+        name = "ScootCollapseAllBtn",
         text = "Collapse All",
         height = 22,
         fontSize = 11,
@@ -692,7 +692,7 @@ function UIPanel:CreateContentPane()
 
     local copyFromDropdown = Controls:CreateDropdown({
         parent = header,
-        name = "ScooterUICopyFromDropdown",
+        name = "ScootCopyFromDropdown",
         values = {},  -- Will be populated dynamically
         placeholder = "Select...",
         width = 140,
@@ -724,7 +724,7 @@ function UIPanel:CreateContentPane()
     contentPane._headerSep = headerSep
     contentPane._header = header
 
-    local scrollFrame = CreateFrame("ScrollFrame", "ScooterUIContentScrollFrame", contentPane)
+    local scrollFrame = CreateFrame("ScrollFrame", "ScootContentScrollFrame", contentPane)
     scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", CONTENT_PADDING, -CONTENT_PADDING)
     scrollFrame:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -(CONTENT_SCROLLBAR_MARGIN + CONTENT_SCROLLBAR_WIDTH + CONTENT_PADDING), CONTENT_PADDING)
     scrollFrame:EnableMouseWheel(true)
@@ -747,7 +747,7 @@ function UIPanel:CreateContentPane()
         end
     end)
 
-    local scrollContent = CreateFrame("Frame", "ScooterUIContentScrollContent", scrollFrame)
+    local scrollContent = CreateFrame("Frame", "ScootContentScrollContent", scrollFrame)
     scrollContent:SetWidth(scrollFrame:GetWidth() or 400)
     scrollFrame:SetScrollChild(scrollContent)
     contentPane._scrollFrame = scrollFrame
@@ -773,7 +773,7 @@ function UIPanel:CreateContentPane()
     placeholder:Hide()  -- Start hidden (Home page is blank)
     contentPane._placeholder = placeholder
 
-    local homeContent = CreateFrame("Frame", "ScooterUIHomeContent", contentPane)
+    local homeContent = CreateFrame("Frame", "ScootHomeContent", contentPane)
     homeContent:SetAllPoints(contentPane)
 
     local homeContainer = CreateFrame("Frame", nil, homeContent)
@@ -960,7 +960,7 @@ combatFrame:SetScript("OnEvent", function(self, event)
             UIPanel._closedByCombat = true
             UIPanel.frame:Hide()
             if addon and addon.Print then
-                addon:Print("ScooterMod settings will reopen when combat ends.")
+                addon:Print("Scoot settings will reopen when combat ends.")
             end
         end
     elseif event == "PLAYER_REGEN_ENABLED" then

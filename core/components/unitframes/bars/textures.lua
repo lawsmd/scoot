@@ -551,15 +551,15 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
     --
     -- For CastingBarFrame-based bars (Player/Target/Focus cast bars), Blizzard defines a
     -- `Background` texture at BACKGROUND subLevel=2 (see CastingBarFrameBaseTemplate in
-    -- Blizzard source). An earlier implementation created ScooterModBG at subLevel=-8,
-    -- which meant the stock Background completely covered the overlay and made Scooter
+    -- Blizzard source). An earlier implementation created ScootBG at subLevel=-8,
+    -- which meant the stock Background completely covered the overlay and made Scoot
     -- backgrounds effectively invisible even though the region existed in the frame hierarchy.
     --
     -- To keep behaviour consistent with other bars while making cast bar backgrounds
-    -- visible, ScooterModBG is rendered above the stock Background (subLevel=3) but still
+    -- visible, ScootBG is rendered above the stock Background (subLevel=3) but still
     -- on the BACKGROUND layer so the status bar fill and FX remain on top.
-    local scooterBG = getProp(bar, "ScooterModBG")
-    if not scooterBG then
+    local scootBG = getProp(bar, "ScootBG")
+    if not scootBG then
         local layer = "BACKGROUND"
         local sublevel = -8
         if barKind == "cast" then
@@ -569,21 +569,21 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
             -- Use sublevel 1 to draw above it (combined with hiding parent bg).
             sublevel = 1
         end
-        scooterBG = bar:CreateTexture(nil, layer, nil, sublevel)
-        setProp(bar, "ScooterModBG", scooterBG)
-        scooterBG:SetAllPoints(bar)
+        scootBG = bar:CreateTexture(nil, layer, nil, sublevel)
+        setProp(bar, "ScootBG", scootBG)
+        scootBG:SetAllPoints(bar)
     elseif barKind == "cast" then
-        -- If ScooterModBG was created earlier (e.g., before cast styling was enabled),
+        -- If ScootBG was created earlier (e.g., before cast styling was enabled),
         -- make sure it sits above the stock Background for CastingBarFrame.
-        local _, currentSub = scooterBG:GetDrawLayer()
+        local _, currentSub = scootBG:GetDrawLayer()
         if currentSub == nil or currentSub < 3 then
-            scooterBG:SetDrawLayer("BACKGROUND", 3)
+            scootBG:SetDrawLayer("BACKGROUND", 3)
         end
     elseif unit == "Party" or unit == "Raid" then
         -- Ensure party/raid frames use the correct sublevel
-        local _, currentSub = scooterBG:GetDrawLayer()
+        local _, currentSub = scootBG:GetDrawLayer()
         if currentSub == nil or currentSub < 1 then
-            scooterBG:SetDrawLayer("BACKGROUND", 1)
+            scootBG:SetDrawLayer("BACKGROUND", 1)
         end
     end
     
@@ -597,7 +597,7 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
     
     if isCustomTexture and resolvedPath then
         -- Apply custom texture
-        pcall(scooterBG.SetTexture, scooterBG, resolvedPath)
+        pcall(scootBG.SetTexture, scootBG, resolvedPath)
 
         -- Apply color based on mode
         local r, g, b, a = 1, 1, 1, 1
@@ -612,22 +612,22 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
 
         -- Multiply tint alpha by opacity for correct transparency
         local finalAlpha = (a or 1) * opacity
-        if scooterBG.SetVertexColor then
-            pcall(scooterBG.SetVertexColor, scooterBG, r, g, b, finalAlpha)
+        if scootBG.SetVertexColor then
+            pcall(scootBG.SetVertexColor, scootBG, r, g, b, finalAlpha)
         end
-        scooterBG:Show()
+        scootBG:Show()
         
         -- Hide Blizzard's stock Background texture when using a custom texture.
         -- CastingBarFrame-based bars (Player/Target/Focus cast bars) have a stock
         -- Background texture at BACKGROUND sublevel 2. Without hiding it, the stock
-        -- background shows through since ScooterModBG sits at sublevel 3.
+        -- background shows through since ScootBG sits at sublevel 3.
         -- Use SetAlpha(0) instead of Hide() to avoid fighting Blizzard's internal logic.
         if bar.Background and bar.Background.SetAlpha then
             pcall(bar.Background.SetAlpha, bar.Background, 0)
         end
         -- CompactUnitFrame-style health bars (party/raid frames) have the background
         -- on the PARENT frame (frame.background), not on the health bar itself.
-        -- That must be hidden too, otherwise it covers ScooterModBG.
+        -- That must be hidden too, otherwise it covers ScootBG.
         local parentFrame = bar.GetParent and bar:GetParent()
         if parentFrame and parentFrame.background and parentFrame.background.SetAlpha then
             pcall(parentFrame.background.SetAlpha, parentFrame.background, 0)
@@ -635,7 +635,7 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
     else
         -- Default: always show the addon background with default black color
         -- Blizzard's stock Background texture is not relied upon since it's hidden by default
-        pcall(scooterBG.SetTexture, scooterBG, nil)
+        pcall(scootBG.SetTexture, scootBG, nil)
 
         local r, g, b, a = Utils.getDefaultBackgroundColor(unit, barKind)
         if backgroundColorMode == "custom" and type(backgroundTint) == "table" then
@@ -644,13 +644,13 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
 
         -- Multiply tint alpha by opacity for correct transparency
         local finalAlpha = (a or 1) * opacity
-        if scooterBG.SetColorTexture then
-            pcall(scooterBG.SetColorTexture, scooterBG, r, g, b, finalAlpha)
+        if scootBG.SetColorTexture then
+            pcall(scootBG.SetColorTexture, scootBG, r, g, b, finalAlpha)
         end
-        scooterBG:Show()
+        scootBG:Show()
 
         -- Hide Blizzard's stock Background textures when applying custom opacity.
-        -- Even with "default" texture, ScooterModBG provides the background with
+        -- Even with "default" texture, ScootBG provides the background with
         -- the user's configured opacity - Blizzard's opaque backgrounds must not
         -- cover it.
         if bar.Background and bar.Background.SetAlpha then

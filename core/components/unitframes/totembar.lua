@@ -36,7 +36,7 @@ local function debugPrint(...)
     if DEBUG_TOTEM_BAR and addon and addon.DebugPrint then
         addon.DebugPrint("[TotemBar]", ...)
     elseif DEBUG_TOTEM_BAR then
-        print("[ScooterMod TotemBar]", ...)
+        print("[Scoot TotemBar]", ...)
     end
 end
 

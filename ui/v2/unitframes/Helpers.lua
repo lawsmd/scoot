@@ -203,7 +203,7 @@ end
 UF.TOOLTIPS = {
     hideBlizzardArt = {
         title = "Required Setting",
-        text = "Hides Blizzard's default frame borders, overlays, and flash effects (aggro glow, reputation color, etc.). Required for ScooterMod's custom bar borders to display.",
+        text = "Hides Blizzard's default frame borders, overlays, and flash effects (aggro glow, reputation color, etc.). Required for Scoot's custom bar borders to display.",
     },
     frameSize = {
         title = "Edit Mode Scale",

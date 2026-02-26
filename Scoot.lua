@@ -1,8 +1,8 @@
 local addonName, addon = ...
 
-LibStub("AceAddon-3.0"):NewAddon(addon, "ScooterMod", "AceEvent-3.0")
-_G.ScooterModAddon = addon
-_G.ScooterMod = addon
+LibStub("AceAddon-3.0"):NewAddon(addon, "Scoot", "AceEvent-3.0")
+_G.ScootAddon = addon
+_G.Scoot = addon
 
 local function PrintScootMessage(text)
     if not text or text == "" then return end
@@ -54,8 +54,8 @@ function addon:OpenCooldownManagerSettings()
     return opened and true or false
 end
 
-SLASH_SCOOTERMOD1 = "/scoot"
-function SlashCmdList.SCOOTERMOD(msg, editBox)
+SLASH_SCOOT1 = "/scoot"
+function SlashCmdList.SCOOT(msg, editBox)
     local function trim(s)
         if type(s) ~= "string" then return "" end
         return (s:gsub("^%s+", ""):gsub("%s+$", ""))
@@ -364,13 +364,13 @@ function SlashCmdList.SCOOTERMOD(msg, editBox)
 end
 
 -- /cdm (optional, gated by profile setting)
-SLASH_SCOOTERCDM1 = "/cdm"
-function SlashCmdList.SCOOTERCDM(msg, editBox)
+SLASH_SCOOTCDM1 = "/cdm"
+function SlashCmdList.SCOOTCDM(msg, editBox)
     local profile = addon and addon.db and addon.db.profile
     local enabled = profile and profile.cdmQoL and profile.cdmQoL.enableSlashCDM
     if not enabled then
         if addon and addon.Print then
-            addon:Print("Enable /cdm in ScooterMod → Cooldown Manager → Quality of Life.")
+            addon:Print("Enable /cdm in Scoot → Cooldown Manager → Quality of Life.")
         end
         return
     end

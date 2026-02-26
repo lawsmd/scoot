@@ -22,7 +22,7 @@ local RaidFrames = addon.BarsRaidFrames
 -- Writing properties directly to CompactRaidFrame/CompactRaidGroup
 -- frames (or their children) can mark them as "addon-touched". This causes
 -- Blizzard field reads (e.g., frame.unit/outOfRange) to return secret values.
--- Store all ScooterMod state in a separate lookup table keyed by frame.
+-- Store all Scoot state in a separate lookup table keyed by frame.
 --------------------------------------------------------------------------------
 local RaidFrameState = setmetatable({}, { __mode = "k" }) -- Weak keys for GC
 
@@ -415,7 +415,7 @@ function RaidFrames.ensureHealthOverlay(bar, cfg)
         end)
     end
 
-    -- Raise DispelOverlay above ScooterMod's overlay so dispel indicators remain visible.
+    -- Raise DispelOverlay above Scoot's overlay so dispel indicators remain visible.
     -- DispelOverlay uses useParentLevel="true", which means the parent's own regions
     -- (including our BORDER sublevel 7 overlay) render on top of it. SetFrameLevel
     -- is a C-side widget operation (taint-safe per Rule 4).
@@ -432,7 +432,7 @@ function RaidFrames.ensureHealthOverlay(bar, cfg)
             pcall(dispelOverlay.SetFrameLevel, dispelOverlay, parentLevel + 11)
         end
 
-        -- Elevate roleIcon above ScooterMod overlay layers (OVERLAY 6, below name text at OVERLAY 7)
+        -- Elevate roleIcon above Scoot overlay layers (OVERLAY 6, below name text at OVERLAY 7)
         local okR, roleIcon = pcall(function() return unitFrame.roleIcon end)
         if okR and roleIcon and roleIcon.SetDrawLayer then
             pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
@@ -513,7 +513,7 @@ end
 --------------------------------------------------------------------------------
 -- Health Bar Borders
 --------------------------------------------------------------------------------
--- Applies ScooterMod bar borders to raid frame health bars.
+-- Applies Scoot bar borders to raid frame health bars.
 -- Uses addon-owned anchor frames to avoid taint.
 --------------------------------------------------------------------------------
 
@@ -873,7 +873,7 @@ end
 --------------------------------------------------------------------------------
 
 -- EDIT MODE GUARD: Skip all CompactUnitFrame hooks when Edit Mode is active.
--- When ScooterMod triggers ApplyChanges (which bounces Edit Mode), Blizzard sets up
+-- When Scoot triggers ApplyChanges (which bounces Edit Mode), Blizzard sets up
 -- Arena/Party/Raid frames. If hooks run during this flow (even just to check
 -- frame type), addon code in the execution context can cause UnitInRange() and
 -- similar APIs to return secret values, breaking Blizzard's own code.

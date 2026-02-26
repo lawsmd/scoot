@@ -1,4 +1,4 @@
--- dialogs.lua - Base dialog module for ScooterMod
+-- dialogs.lua - Base dialog module for Scoot
 -- The TUI Dialog.lua wraps these methods when the v2 UI is active
 local addonName, addon = ...
 
@@ -24,7 +24,7 @@ function addon.Dialogs:Show(name, options)
     end
 
     -- Use StaticPopup as fallback
-    StaticPopupDialogs["SCOOTERMOD_FALLBACK"] = {
+    StaticPopupDialogs["SCOOT_FALLBACK"] = {
         text = text,
         button1 = options.acceptText or def.acceptText or OKAY,
         button2 = options.cancelText or def.cancelText or CANCEL,
@@ -46,7 +46,7 @@ function addon.Dialogs:Show(name, options)
         hideOnEscape = true,
         preferredIndex = 3,
     }
-    StaticPopup_Show("SCOOTERMOD_FALLBACK", nil, nil, options.data)
+    StaticPopup_Show("SCOOT_FALLBACK", nil, nil, options.data)
 end
 
 function addon.Dialogs:Confirm(message, onAccept, onCancel)
@@ -66,5 +66,5 @@ function addon.Dialogs:Info(message, onDismiss)
 end
 
 function addon.Dialogs:Hide()
-    StaticPopup_Hide("SCOOTERMOD_FALLBACK")
+    StaticPopup_Hide("SCOOT_FALLBACK")
 end

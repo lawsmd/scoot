@@ -80,9 +80,9 @@ local function buildPresetInstanceName(preset)
 end
 
 local function cloneProfilePayload(preset, layoutName)
-    local payload = preset and preset.scooterProfile
+    local payload = preset and preset.scootProfile
     if type(payload) ~= "table" then
-        return nil, "Preset ScooterMod profile payload missing."
+        return nil, "Preset Scoot profile payload missing."
     end
     local copy = CopyTable(payload)
     copy.__preset = true
@@ -120,7 +120,7 @@ local function importConsolePortProfile(preset, profileName)
     end
 
     -- ConsolePort is an external addon suite. If it's not loaded, we do not fail
-    -- the preset import (ScooterMod profile + Edit Mode layout are still valid).
+    -- the preset import (Scoot profile + Edit Mode layout are still valid).
     if not _G.ConsolePort and not _G.ConsolePortSettings then
         return false, "ConsolePort is not loaded. Enable ConsolePort and reload, then try importing the preset again."
     end
@@ -291,7 +291,7 @@ function addon.EditMode:ImportPresetLayout(preset, opts)
             return false, "AceDB not initialized."
         end
         
-        -- OVERWRITE the ScooterMod profile data
+        -- OVERWRITE the Scoot profile data
         if type(profileCopy) == "table" then
             profileCopy.__presetLayout = targetName
         end
@@ -336,7 +336,7 @@ function addon.EditMode:ImportPresetLayout(preset, opts)
             return false, "A layout with that name already exists."
         end
         if addon and addon.db and addon.db.profiles and addon.db.profiles[newLayoutName] then
-            return false, "A ScooterMod profile with that name already exists."
+            return false, "A Scoot profile with that name already exists."
         end
     else
         newLayoutName = buildPresetInstanceName(preset)

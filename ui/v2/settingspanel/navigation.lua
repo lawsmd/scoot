@@ -404,9 +404,9 @@ function UIPanel:HandleCopyFrom(sourceKey)
 
     if addon.Dialogs and addon.Dialogs.Show then
         local panel = self
-        local dialogKey = isUnitFrame and "SCOOTERMOD_COPY_UF_CONFIRM"
-                       or isCustomGroup and "SCOOTERMOD_COPY_CUSTOMGROUP_CONFIRM"
-                       or "SCOOTERMOD_COPY_ACTIONBAR_CONFIRM"
+        local dialogKey = isUnitFrame and "SCOOT_COPY_UF_CONFIRM"
+                       or isCustomGroup and "SCOOT_COPY_CUSTOMGROUP_CONFIRM"
+                       or "SCOOT_COPY_ACTIONBAR_CONFIRM"
         addon.Dialogs:Show(dialogKey, {
             formatArgs = { sourceName, destName },
             data = {
@@ -444,7 +444,7 @@ function UIPanel:ExecuteCopyFrom(sourceKey, destKey, isUnitFrame, isCustomGroup)
                 PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
             else
                 if addon.Dialogs and addon.Dialogs.Show then
-                    addon.Dialogs:Show("SCOOTERMOD_COPY_UF_ERROR", {
+                    addon.Dialogs:Show("SCOOT_COPY_UF_ERROR", {
                         formatArgs = { err or "Unknown error" },
                     })
                 elseif addon.Print then

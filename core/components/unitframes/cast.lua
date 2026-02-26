@@ -28,7 +28,7 @@ end
 
 local function getIconBorderContainer(frame)
     local st = getState(frame)
-    return st and st.ScooterIconBorderContainer or nil
+    return st and st.ScootIconBorderContainer or nil
 end
 
 -- Unit Frames: Cast Bar positioning (Target/Focus only, addon-managed offsets)
@@ -174,7 +174,7 @@ do
 
 		-- For the Player cast bar, read the current Edit Mode "Lock to Player Frame" setting so
 		-- only overrides position when the bar is locked underneath the Player frame. When the
-		-- bar is unlocked and freely positioned in Edit Mode, ScooterMod should not fight that.
+		-- bar is unlocked and freely positioned in Edit Mode, Scoot should not fight that.
 		local isLockedToPlayerFrame = false
 		if isPlayer and addon and addon.EditMode and addon.EditMode.GetSetting then
 			local mgr = _G.EditModeManagerFrame
@@ -195,7 +195,7 @@ do
 			setProp(frame, "castHooksInstalled", true)
 			local hookUnit = unit
 			_G.hooksecurefunc(frame, "SetStatusBarTexture", function(self, ...)
-				-- Ignore ScooterMod's own internal texture writes
+				-- Ignore Scoot's own internal texture writes
 				if getProp(self, "ufInternalTextureWrite") then return end
 				if addon and addon.ApplyUnitFrameCastBarFor then
 					-- Mark this as a visual-only refresh to safely reapply
@@ -215,7 +215,7 @@ do
 			-- Hook SetPoint to detect when Blizzard re-anchors the cast bar and re-apply
 			-- custom anchoring if there is a non-default anchor mode active.
 			_G.hooksecurefunc(frame, "SetPoint", function(self, ...)
-				-- Ignore ScooterMod's SetPoint calls (flagged to prevent infinite loops)
+				-- Ignore Scoot's SetPoint calls (flagged to prevent infinite loops)
 				if getProp(self, "ignoreSetPoint") then return end
 				-- Only re-apply if a custom anchor exists mode active for this unit
 				local mode = activeAnchorModes[hookUnit]
@@ -261,7 +261,7 @@ do
 
 		-- Capture baseline anchor:
 		-- - Player: capture a baseline that represents the Edit Mode "under Player" layout,
-		--   but avoid rebasing while ScooterMod offsets are non-zero to avoid compounding
+		--   but avoid rebasing while Scoot offsets are non-zero to avoid compounding
 		--   offsets on every apply. This keeps slider behaviour linear.
 		-- - Target/Focus: capture once so offsets remain relative to stock layout.
 		if frame.GetPoint then
@@ -335,7 +335,7 @@ do
 		-- Offsets:
 		-- - Target/Focus always use addon-managed X/Y offsets (relative to stock layout or custom anchor).
 		-- - Player uses offsets only when locked to the Player frame; when unlocked, Edit Mode
-		--   owns the free position and ScooterMod must not re-anchor.
+		--   owns the free position and Scoot must not re-anchor.
 		local offsetX, offsetY = 0, 0
 		if unit == "Target" or unit == "Focus" then
 			offsetX = tonumber(cfg.offsetX) or 0
@@ -795,7 +795,7 @@ do
 
 					-- Never draw a border when the icon itself is disabled.
 					if iconBorderEnabled and not iconDisabled then
-						-- Defensive cleanup: if any legacy Scooter borders were drawn directly on the
+						-- Defensive cleanup: if any legacy Scoot borders were drawn directly on the
 						-- icon texture (pre-wrapper versions), hide them once so only the current
 						-- wrapper/container-based border remains visible.
 						if ((addon.Borders.GetAtlasBorder and addon.Borders.GetAtlasBorder(icon)) or (addon.Borders.GetTextureBorder and addon.Borders.GetTextureBorder(icon)) or icon.ScootSquareBorderContainer or icon.ScootSquareBorderEdges)
@@ -1073,7 +1073,7 @@ do
 			setProp(frame, "castHooksInstalled", true)
 			local hookUnit = unit
 			_G.hooksecurefunc(frame, "SetStatusBarTexture", function(self, ...)
-				-- Ignore ScooterMod's own internal texture writes
+				-- Ignore Scoot's own internal texture writes
 				if getProp(self, "ufInternalTextureWrite") then return end
 				if addon and addon.ApplyUnitFrameCastBarFor then
 					setProp(self, "castVisualOnly", true)
@@ -1232,7 +1232,7 @@ do
 			end)
 			-- Hook SetPoint to re-apply custom anchoring when Blizzard overrides it
 			_G.hooksecurefunc(frame, "SetPoint", function(self, ...)
-				-- Ignore ScooterMod's SetPoint calls (flagged to prevent infinite loops)
+				-- Ignore Scoot's SetPoint calls (flagged to prevent infinite loops)
 				if getProp(self, "ignoreSetPoint") then return end
 				-- Only re-apply if a custom anchor mode is active for this Boss cast bar
 				local mode = bossActiveAnchorModes[hookIndex]

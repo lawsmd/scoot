@@ -59,7 +59,7 @@ local function _DbgPrint(...)
 	if addon and addon.DebugPrint then
 		addon.DebugPrint("[OffscreenUnlock]", ...)
 	else
-		print("[ScooterMod OffscreenUnlock]", ...)
+		print("[Scoot OffscreenUnlock]", ...)
 	end
 end
 

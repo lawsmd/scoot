@@ -288,7 +288,7 @@ local sizedIcons = setmetatable({}, { __mode = "k" })
 
 -- Track cached FontString references per cooldown frame (weak keys for GC)
 -- Using a local table instead of writing _scooterFontString to Blizzard frames avoids taint
-local scooterFontStrings = setmetatable({}, { __mode = "k" })
+local scootFontStrings = setmetatable({}, { __mode = "k" })
 
 -- Track which FontStrings have been decoupled from parent alpha (weak keys for GC)
 local textAlphaDecoupled = setmetatable({}, { __mode = "k" })
@@ -298,7 +298,7 @@ local resizeProcGlow  -- defined in Icon Sizing section, used by hookProcGlowRes
 local applyPerIconCooldownOpacity  -- defined in Per-Icon Cooldown Opacity section
 
 -- Check if Blizzard's DebuffBorder is present and visible on a CDM icon
--- Used to avoid drawing ScooterMod borders over Blizzard's debuff-type borders
+-- Used to avoid drawing Scoot borders over Blizzard's debuff-type borders
 -- (Magic, Poison, Bleed, Curse, Disease) which have special colored atlases and
 -- pandemic timer animations. Only affects trackedBuffs (BuffIconCooldownViewer).
 local function hasBlizzardDebuffBorder(itemFrame)
@@ -563,15 +563,15 @@ local function getCooldownFontString(cooldownFrame)
     if not cooldownFrame then return nil end
 
     -- Use cached reference if available
-    if scooterFontStrings[cooldownFrame] then
-        return scooterFontStrings[cooldownFrame]
+    if scootFontStrings[cooldownFrame] then
+        return scootFontStrings[cooldownFrame]
     end
 
     -- Search regions for FontString
     if cooldownFrame.GetRegions then
         for _, region in ipairs({cooldownFrame:GetRegions()}) do
             if region and region.GetObjectType and region:GetObjectType() == "FontString" then
-                scooterFontStrings[cooldownFrame] = region
+                scootFontStrings[cooldownFrame] = region
                 return region
             end
         end
@@ -728,7 +728,7 @@ local function applyCooldownTextStyle(cooldownFrame)
     local cfg = getCooldownTextSettings(componentId)
     if cfg then
         -- Clear cached FontString reference to force re-scan
-        scooterFontStrings[cooldownFrame] = nil
+        scootFontStrings[cooldownFrame] = nil
 
         local fontString = getCooldownFontString(cooldownFrame)
         if fontString then
@@ -1190,7 +1190,7 @@ function Overlays.ApplyToViewer(viewerFrameName, componentId)
                         tintColor = db.borderTintColor,
                     })
                 elseif hasBlizzardDebuffBorder(child) then
-                    -- Hide ScooterMod border when Blizzard's DebuffBorder is visible
+                    -- Hide Scoot border when Blizzard's DebuffBorder is visible
                     Overlays.HideBorder(child)
                 else
                     Overlays.HideBorder(child)
@@ -1281,7 +1281,7 @@ function Overlays.HookViewer(viewerFrameName, componentId)
                             tintColor = component.db.borderTintColor,
                         })
                     elseif hasBlizzardDebuffBorder(itemFrame) then
-                        -- Hide ScooterMod border when Blizzard's DebuffBorder is visible
+                        -- Hide Scoot border when Blizzard's DebuffBorder is visible
                         Overlays.HideBorder(itemFrame)
                     end
 

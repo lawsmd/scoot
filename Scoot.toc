@@ -1,11 +1,11 @@
 ## Interface: 120000
-## Title: ScooterMod
+## Title: Scoot
 ## Notes: A modern, cosmetic-only UI addon.
 ## Author: Scooter
 ## Version: 1.0
-## IconTexture: Interface\AddOns\ScooterMod\ScooterModIcon
+## IconTexture: Interface\AddOns\Scoot\ScootIcon
 ## OptionalDeps: Blizzard_Settings, Blizzard_Settings_Shared
-## SavedVariables: ScooterModDB
+## SavedVariables: ScootDB
 ## SlashCmd: /scoot
 
 libs/LibStub/LibStub.lua
@@ -180,4 +180,4 @@ core/init.lua
 core/minimap.lua
 core/chat.lua
 
-ScooterMod.lua
+Scoot.lua

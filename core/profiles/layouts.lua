@@ -47,7 +47,7 @@ function Profiles:PromptClonePreset(presetName, dropdown, displayText, previousK
         previousText = self:GetLayoutDisplayText(previousKey),
     }
     local defaultName = suggested or ((presetName or "Preset") .. " Copy")
-    addon.Dialogs:Show("SCOOTERMOD_CLONE_PRESET", {
+    addon.Dialogs:Show("SCOOT_CLONE_PRESET", {
         formatArgs = { displayText or presetName or "Preset" },
         editBoxText = defaultName,
         data = data,
@@ -73,7 +73,7 @@ function Profiles:PromptRenameLayout(currentName, dropdown, suggested)
         currentText = self:GetLayoutDisplayText(currentName),
         dropdown = dropdown,
     }
-    addon.Dialogs:Show("SCOOTERMOD_RENAME_LAYOUT", {
+    addon.Dialogs:Show("SCOOT_RENAME_LAYOUT", {
         editBoxText = suggested or currentName or "",
         data = data,
         onAccept = function(d, newName)
@@ -99,7 +99,7 @@ function Profiles:PromptCopyLayout(sourceName, dropdown, suggested)
         dropdown = dropdown,
     }
     local defaultName = suggested or ((sourceName or "Layout") .. " Copy")
-    addon.Dialogs:Show("SCOOTERMOD_COPY_LAYOUT", {
+    addon.Dialogs:Show("SCOOT_COPY_LAYOUT", {
         formatArgs = { sourceName or "" },
         editBoxText = defaultName,
         data = data,
@@ -129,7 +129,7 @@ function Profiles:PromptCreateLayout(dropdown, suggested)
         dropdown = dropdown,
     }
     local defaultName = suggested or "New Layout"
-    addon.Dialogs:Show("SCOOTERMOD_CREATE_LAYOUT", {
+    addon.Dialogs:Show("SCOOT_CREATE_LAYOUT", {
         editBoxText = defaultName,
         data = data,
         onAccept = function(d, newName)
@@ -157,7 +157,7 @@ function Profiles:ConfirmDeleteLayout(layoutName, dropdown)
         layoutText = self:GetLayoutDisplayText(layoutName),
         dropdown = dropdown,
     }
-    addon.Dialogs:Show("SCOOTERMOD_DELETE_LAYOUT", {
+    addon.Dialogs:Show("SCOOT_DELETE_LAYOUT", {
         formatArgs = { layoutName or "" },
         data = data,
         onAccept = function(d)

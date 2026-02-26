@@ -34,7 +34,7 @@ Theme.GLOW_WIDTH = 6     -- Reserved for future use
 -- Font Registration (JetBrains Mono)
 --------------------------------------------------------------------------------
 
-local FONT_BASE = "Interface\\AddOns\\ScooterMod\\media\\fonts\\"
+local FONT_BASE = "Interface\\AddOns\\Scoot\\media\\fonts\\"
 
 -- Register JetBrains Mono in addon.Fonts alongside existing fonts
 -- NOTE: Font files must be bundled in media/fonts/
@@ -58,7 +58,7 @@ Theme.Fonts = {
 --------------------------------------------------------------------------------
 
 Theme.Textures = {
-    NOISE_OVERLAY = "Interface\\AddOns\\ScooterMod\\media\\textures\\noise-overlay",
+    NOISE_OVERLAY = "Interface\\AddOns\\Scoot\\media\\textures\\noise-overlay",
 }
 
 --------------------------------------------------------------------------------
@@ -174,7 +174,7 @@ end
 local function FontExists(path)
     if not path then return false end
     -- Create a temporary font object to test
-    local testFont = CreateFont("ScooterUIFontTest_" .. math.random(100000))
+    local testFont = CreateFont("ScootFontTest_" .. math.random(100000))
     local ok = pcall(testFont.SetFont, testFont, path, 12, "")
     return ok
 end

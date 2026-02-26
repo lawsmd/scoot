@@ -1319,7 +1319,7 @@ end
 
 local function InitializeContainers()
     for i = 1, 3 do
-        local container = CreateFrame("Frame", "ScooterModCustomGroup" .. i, UIParent)
+        local container = CreateFrame("Frame", "ScootCustomGroup" .. i, UIParent)
         container:SetSize(1, 1)
         container:SetMovable(true)
         container:SetClampedToScreen(true)

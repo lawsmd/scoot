@@ -50,10 +50,10 @@ local function HideDefaultBarTextures(barFrame, restore)
         return false
     end
     local mediaState = addon.Media and addon.Media.GetBarFrameState and addon.Media.GetBarFrameState(barFrame)
-    local scooterModBG = (mediaState and mediaState.bg) or getProp(barFrame, "ScooterModBG")
-    local borderHolder = (addon.BarBorders and addon.BarBorders.GetBorderHolder and addon.BarBorders.GetBorderHolder(barFrame)) or barFrame.ScooterStyledBorder
+    local scootBG = (mediaState and mediaState.bg) or getProp(barFrame, "ScootBG")
+    local borderHolder = (addon.BarBorders and addon.BarBorders.GetBorderHolder and addon.BarBorders.GetBorderHolder(barFrame)) or barFrame.ScootStyledBorder
     for _, region in ipairs({ barFrame:GetRegions() }) do
-        if region and region ~= scooterModBG and region ~= borderHolder and region ~= (borderHolder and borderHolder.Texture) then
+        if region and region ~= scootBG and region ~= borderHolder and region ~= (borderHolder and borderHolder.Texture) then
             if region.GetObjectType and region:GetObjectType() == "Texture" then
                 local layer = region:GetDrawLayer()
                 if layer == "OVERLAY" or layer == "ARTWORK" or layer == "BORDER" then
@@ -565,7 +565,7 @@ local function SetPowerBarTextureOnlyHidden(ownerFrame, hidden)
         end
 
         do
-            local scBG = getProp(ownerFrame, "ScooterModBG")
+            local scBG = getProp(ownerFrame, "ScootBG")
             if scBG then
                 setProp(scBG, "powerBarScootBGHidden", true)
                 if scBG.SetAlpha then pcall(scBG.SetAlpha, scBG, 0) end
@@ -597,7 +597,7 @@ local function SetPowerBarTextureOnlyHidden(ownerFrame, hidden)
         end
 
         do
-            local scBG = getProp(ownerFrame, "ScooterModBG")
+            local scBG = getProp(ownerFrame, "ScootBG")
             if scBG then
                 setProp(scBG, "powerBarScootBGHidden", false)
                 -- Don't restore alpha here - let the background styling code handle it
@@ -669,7 +669,7 @@ local function SetHealthBarTextureOnlyHidden(ownerFrame, hidden)
         end
 
         do
-            local scBG = getProp(ownerFrame, "ScooterModBG")
+            local scBG = getProp(ownerFrame, "ScootBG")
             if scBG then
                 setProp(scBG, "healthBarScootBGHidden", true)
                 if scBG.SetAlpha then pcall(scBG.SetAlpha, scBG, 0) end
@@ -688,7 +688,7 @@ local function SetHealthBarTextureOnlyHidden(ownerFrame, hidden)
         end
 
         do
-            local scBG = getProp(ownerFrame, "ScooterModBG")
+            local scBG = getProp(ownerFrame, "ScootBG")
             if scBG then
                 setProp(scBG, "healthBarScootBGHidden", false)
             end

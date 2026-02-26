@@ -627,7 +627,7 @@ local function CreateDialogFrame()
     local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Modal backdrop (fullscreen dimmer)
-    modalBackdrop = CreateFrame("Frame", "ScooterDialogBackdrop", UIParent)
+    modalBackdrop = CreateFrame("Frame", "ScootDialogBackdrop", UIParent)
     modalBackdrop:SetFrameStrata("FULLSCREEN_DIALOG")
     modalBackdrop:SetFrameLevel(0)
     modalBackdrop:SetAllPoints(UIParent)
@@ -640,7 +640,7 @@ local function CreateDialogFrame()
     modalBackdrop._dimmer = dimmer
 
     -- Dialog frame
-    local f = CreateFrame("Frame", "ScooterDialog", modalBackdrop)
+    local f = CreateFrame("Frame", "ScootDialog", modalBackdrop)
     f:SetSize(DIALOG_WIDTH, DIALOG_HEIGHT)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -677,7 +677,7 @@ local function CreateDialogFrame()
     local fontPath = theme:GetFont("HEADER")
     title:SetFont(fontPath, 14, "")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", CONTENT_PADDING, -12)
-    title:SetText("ScooterMod")
+    title:SetText("Scoot")
     title:SetTextColor(ar, ag, ab, 1)
     f._title = title
 
@@ -1128,53 +1128,53 @@ end)
 -- Pre-register common dialogs (mirrors dialogs.lua registrations)
 --------------------------------------------------------------------------------
 
-Controls:RegisterDialog("SCOOTERMOD_DELETE_RULE", {
+Controls:RegisterDialog("SCOOT_DELETE_RULE", {
     text = "Are you sure you want to delete this rule?",
     acceptText = YES or "Yes",
     cancelText = NO or "No",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_RESET_DEFAULTS", {
+Controls:RegisterDialog("SCOOT_RESET_DEFAULTS", {
     text = "Are you sure you want to reset %s to all default settings and location?",
     acceptText = YES or "Yes",
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_COPY_UF_CONFIRM", {
+Controls:RegisterDialog("SCOOT_COPY_UF_CONFIRM", {
     text = "Copy supported Unit Frame settings from %s to %s?",
     acceptText = "Copy",
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_COPY_UF_ERROR", {
+Controls:RegisterDialog("SCOOT_COPY_UF_ERROR", {
     text = "%s",
     infoOnly = true,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_COPY_ACTIONBAR_CONFIRM", {
+Controls:RegisterDialog("SCOOT_COPY_ACTIONBAR_CONFIRM", {
     text = "Copy settings from %s to %s?\nThis will overwrite all settings on the destination.",
     acceptText = "Copy",
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_COPY_CUSTOMGROUP_CONFIRM", {
+Controls:RegisterDialog("SCOOT_COPY_CUSTOMGROUP_CONFIRM", {
     text = "Copy settings from %s to %s?\nThis will overwrite all settings on the destination.",
     acceptText = "Copy",
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_COMBAT_FONT_RESTART", {
+Controls:RegisterDialog("SCOOT_COMBAT_FONT_RESTART", {
     text = "In order for Combat Font changes to take effect, you'll need to fully exit and re-open World of Warcraft.",
     infoOnly = true,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_DELETE_LAYOUT", {
+Controls:RegisterDialog("SCOOT_DELETE_LAYOUT", {
     text = "Delete layout '%s'?",
     acceptText = OKAY or "OK",
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_CLONE_PRESET", {
+Controls:RegisterDialog("SCOOT_CLONE_PRESET", {
     text = "Enter a name for the new layout based on %s:",
     hasEditBox = true,
     maxLetters = 32,
@@ -1182,7 +1182,7 @@ Controls:RegisterDialog("SCOOTERMOD_CLONE_PRESET", {
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_RENAME_LAYOUT", {
+Controls:RegisterDialog("SCOOT_RENAME_LAYOUT", {
     text = "Rename layout:",
     hasEditBox = true,
     maxLetters = 32,
@@ -1190,7 +1190,7 @@ Controls:RegisterDialog("SCOOTERMOD_RENAME_LAYOUT", {
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_COPY_LAYOUT", {
+Controls:RegisterDialog("SCOOT_COPY_LAYOUT", {
     text = "Copy layout %s:",
     hasEditBox = true,
     maxLetters = 32,
@@ -1198,7 +1198,7 @@ Controls:RegisterDialog("SCOOTERMOD_COPY_LAYOUT", {
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_CREATE_LAYOUT", {
+Controls:RegisterDialog("SCOOT_CREATE_LAYOUT", {
     text = "Create layout:",
     hasEditBox = true,
     maxLetters = 32,
@@ -1206,21 +1206,21 @@ Controls:RegisterDialog("SCOOTERMOD_CREATE_LAYOUT", {
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_SPEC_PROFILE_RELOAD", {
+Controls:RegisterDialog("SCOOT_SPEC_PROFILE_RELOAD", {
     text = "Switching profiles for a spec change requires a UI reload so Blizzard can rebuild a clean baseline.\n\nReload now?",
     acceptText = "Reload",
     cancelText = CANCEL or "Cancel",
     height = 200,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_PROFILE_RELOAD", {
+Controls:RegisterDialog("SCOOT_PROFILE_RELOAD", {
     text = "Switching profiles requires a UI reload so Blizzard can rebuild a clean baseline.\n\nReload now?",
     acceptText = "Reload",
     cancelText = CANCEL or "Cancel",
     height = 200,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_APPLY_PRESET", {
+Controls:RegisterDialog("SCOOT_APPLY_PRESET", {
     text = "Enter a name for the new profile/layout based on %s:",
     hasEditBox = true,
     maxLetters = 32,
@@ -1228,7 +1228,7 @@ Controls:RegisterDialog("SCOOTERMOD_APPLY_PRESET", {
     cancelText = CANCEL or "Cancel",
 })
 
-Controls:RegisterDialog("SCOOTERMOD_PRESET_TARGET_CHOICE", {
+Controls:RegisterDialog("SCOOT_PRESET_TARGET_CHOICE", {
     text = "How would you like to apply the %s preset?",
     acceptText = "Create New Profile",
     cancelText = "Apply to Existing",
@@ -1237,44 +1237,44 @@ Controls:RegisterDialog("SCOOTERMOD_PRESET_TARGET_CHOICE", {
     height = 160,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_PRESET_OVERWRITE_CONFIRM", {
-    text = "This will overwrite both the Edit Mode layout settings AND the ScooterMod profile for '%s'.\n\nAll existing customizations will be replaced with %s preset data.\n\nContinue?",
+Controls:RegisterDialog("SCOOT_PRESET_OVERWRITE_CONFIRM", {
+    text = "This will overwrite both the Edit Mode layout settings AND the Scoot profile for '%s'.\n\nAll existing customizations will be replaced with %s preset data.\n\nContinue?",
     acceptText = "Overwrite",
     cancelText = CANCEL or "Cancel",
     height = 200,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_IMPORT_CONSOLEPORT", {
+Controls:RegisterDialog("SCOOT_IMPORT_CONSOLEPORT", {
     text = "This preset includes a ConsolePort profile.\n\nImport it too?\n\n(If you select Yes, your current ConsolePort profile/settings may be overwritten.)",
     acceptText = YES or "Yes",
     cancelText = NO or "No",
     height = 210,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_EXTERNAL_LAYOUT_DELETED", {
-    text = "The Edit Mode layout '%s' was deleted outside of ScooterMod.\n\nA UI reload is required to properly sync your profile state.",
+Controls:RegisterDialog("SCOOT_EXTERNAL_LAYOUT_DELETED", {
+    text = "The Edit Mode layout '%s' was deleted outside of Scoot.\n\nA UI reload is required to properly sync your profile state.",
     acceptText = "Reload UI",
     locked = true,
     height = 180,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_APPLYALL_FONTS", {
-    text = "Apply '%s' to ALL ScooterMod font settings?\n\nThis will overwrite every font face across all components. A UI reload is required to apply the changes.",
+Controls:RegisterDialog("SCOOT_APPLYALL_FONTS", {
+    text = "Apply '%s' to ALL Scoot font settings?\n\nThis will overwrite every font face across all components. A UI reload is required to apply the changes.",
     acceptText = "Apply & Reload",
     acceptWidth = 130,
     cancelText = CANCEL or "Cancel",
     height = 180,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_APPLYALL_TEXTURES", {
-    text = "Apply '%s' to ALL ScooterMod bar textures?\n\nThis will overwrite every bar texture across all components. A UI reload is required to apply the changes.",
+Controls:RegisterDialog("SCOOT_APPLYALL_TEXTURES", {
+    text = "Apply '%s' to ALL Scoot bar textures?\n\nThis will overwrite every bar texture across all components. A UI reload is required to apply the changes.",
     acceptText = "Apply & Reload",
     acceptWidth = 130,
     cancelText = CANCEL or "Cancel",
     height = 180,
 })
 
-Controls:RegisterDialog("SCOOTERMOD_SELECT_EXISTING_LAYOUT", {
+Controls:RegisterDialog("SCOOT_SELECT_EXISTING_LAYOUT", {
     text = "Select an existing layout to apply the %s preset to:",
     acceptText = "Apply",
     cancelText = CANCEL or "Cancel",

@@ -32,7 +32,7 @@ function Misc.Render(panel, scrollContent)
 
     builder:AddToggle({
         label = "Custom Game Menu",
-        description = "Replace the default Escape menu with a ScooterMod-themed version.",
+        description = "Replace the default Escape menu with a Scoot-themed version.",
         get = function()
             return getMiscSetting("customGameMenu") or false
         end,
@@ -41,7 +41,7 @@ function Misc.Render(panel, scrollContent)
         end,
         infoIcon = {
             tooltipTitle = "Custom Game Menu",
-            tooltipText = "When enabled, pressing Escape will open a ScooterMod-styled game menu instead of the default Blizzard menu. Disable this toggle to restore the original menu.",
+            tooltipText = "When enabled, pressing Escape will open a Scoot-styled game menu instead of the default Blizzard menu. Disable this toggle to restore the original menu.",
         },
     })
 

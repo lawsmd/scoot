@@ -2,7 +2,7 @@ local addonName, addon = ...
 
 local Presets = addon.Presets
 if not Presets or not Presets.Register then
-    error("ScooterMod preset payload loaded before Presets API (core/presets.lua). Check ScooterMod.toc load order: core/presets.lua must load before core/preset_*.lua.", 2)
+    error("Scoot preset payload loaded before Presets API (core/presets.lua). Check Scoot.toc load order: core/presets.lua must load before core/preset_*.lua.", 2)
 end
 
 Presets:Register({
@@ -15,8 +15,8 @@ Presets:Register({
     recommendedInput = "ConsolePort",
     requiresConsolePort = true,
     tags = { "Handheld", "Steam Deck", "Controller" },
-    previewTexture = "Interface\\AddOns\\ScooterMod\\media\\presets\\ScooterDeck",
-    previewThumbnail = "Interface\\AddOns\\ScooterMod\\media\\presets\\ScooterDeck",
+    previewTexture = "Interface\\AddOns\\Scoot\\media\\presets\\ScooterDeck",
+    previewThumbnail = "Interface\\AddOns\\Scoot\\media\\presets\\ScooterDeck",
     designedFor = { "Steam Deck and 7-8 inch handhelds", "Controller gameplay" },
     recommends = { "ConsolePort" },
     lastUpdated = "2026-02-22",
@@ -1672,10 +1672,10 @@ Presets:Register({
     -- EDITMODE_LAYOUT_END
     editModeSha256 = "498691e2bd92fb88978a7643202f1a8158ad6cd399ff874c05fb493ad53a4255",
 
-    -- ScooterMod profile snapshot (captured from authoring machine).
+    -- Scoot profile snapshot (captured from authoring machine).
     profileSha256 = "bfa42c281f0baa5d4863b28843e0f0ba6cc059936198c96f981c96e5e1ee7ae1",
-    -- SCOOTER_PROFILE_START
-    scooterProfile = {
+    -- SCOOT_PROFILE_START
+    scootProfile = {
   __preset = true,
   __presetLayout = "ScooterDeck",
   __presetSource = "scooterui",
@@ -3032,7 +3032,7 @@ Presets:Register({
       dockHide = true,
       hideAddonButtonBorders = true,
       mapShape = "square",
-      scooterModButtonSeparate = true,
+      scootButtonSeparate = true,
       systemDataAnchor = "BOTTOMRIGHT",
       systemDataColorMode = "default",
       systemDataCustomColor = {
@@ -4513,7 +4513,7 @@ Presets:Register({
     },
   },
 },
-    -- SCOOTER_PROFILE_END
+    -- SCOOT_PROFILE_END
     -- ConsolePort profile payload (optional, user opt-in during apply).
     -- Capture/update via: /scoot debug consoleport export
     consolePortSha256 = "533ee820d508f15e7f6a0ec7326956e030b8516da30f117b8d13a589868b3e48",

@@ -24,7 +24,7 @@ local PartyFrames = addon.BarsPartyFrames
 -- This causes ALL field accesses to return secret values in protected contexts
 -- (like Edit Mode), breaking Blizzard's own code (frame.outOfRange becomes secret).
 --
--- Solution: Store all ScooterMod state in a separate lookup table keyed by frame.
+-- Solution: Store all Scoot state in a separate lookup table keyed by frame.
 -- This avoids modifying Blizzard's frames while preserving overlay functionality.
 --------------------------------------------------------------------------------
 local PartyFrameState = setmetatable({}, { __mode = "k" }) -- Weak keys for GC
@@ -418,7 +418,7 @@ function PartyFrames.ensureHealthOverlay(bar, cfg)
         end)
     end
 
-    -- Raise DispelOverlay above ScooterMod's overlay so dispel indicators remain visible.
+    -- Raise DispelOverlay above Scoot's overlay so dispel indicators remain visible.
     -- DispelOverlay uses useParentLevel="true", which means the parent's own regions
     -- (including our BORDER sublevel 7 overlay) render on top of it. SetFrameLevel
     -- is a C-side widget operation (taint-safe per Rule 4).
@@ -434,7 +434,7 @@ function PartyFrames.ensureHealthOverlay(bar, cfg)
             pcall(dispelOverlay.SetFrameLevel, dispelOverlay, parentLevel + 11)
         end
 
-        -- Elevate roleIcon above ScooterMod overlay layers (OVERLAY 6, below name text at OVERLAY 7)
+        -- Elevate roleIcon above Scoot overlay layers (OVERLAY 6, below name text at OVERLAY 7)
         local okR, roleIcon = pcall(function() return unitFrame.roleIcon end)
         if okR and roleIcon and roleIcon.SetDrawLayer then
             pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
@@ -538,7 +538,7 @@ end
 --------------------------------------------------------------------------------
 -- Health Bar Borders
 --------------------------------------------------------------------------------
--- Applies ScooterMod bar borders to party frame health bars.
+-- Applies Scoot bar borders to party frame health bars.
 --
 -- IMPORTANT: Uses explicit edge textures on the parent CompactUnitFrame (not a
 -- child frame) to ensure correct draw order with Blizzard's selection highlight.
@@ -546,7 +546,7 @@ end
 -- Layer order on a single frame:
 -- 1. Health bar (StatusBar)
 -- 2. Health overlay texture (BORDER sublevel 7)
--- 3. ScooterMod border textures (OVERLAY sublevel -8)
+-- 3. Scoot border textures (OVERLAY sublevel -8)
 -- 4. Selection highlight (OVERLAY sublevel 0+) <- Blizzard's highlight draws on top
 --
 -- Note: OVERLAY layer with the lowest sublevel (-8) is used so borders appear
@@ -565,7 +565,7 @@ local function clearHealthBarBorder(bar)
 
     -- Hide edge textures if they exist (stored in PartyFrameState, not on frame)
     local ufState = getState(unitFrame)
-    local edges = ufState and ufState.ScooterModBorderEdges
+    local edges = ufState and ufState.ScootBorderEdges
     if edges then
         for _, tex in pairs(edges) do
             if tex and tex.Hide then
@@ -601,7 +601,7 @@ local function applyHealthBarBorder(bar, cfg)
     -- content but below selection highlight (which uses higher sublevels)
     -- Stored in PartyFrameState (not on unitFrame) to avoid tainting the system frame.
     local ufState = ensureState(unitFrame)
-    local edges = ufState.ScooterModBorderEdges
+    local edges = ufState.ScootBorderEdges
     if not edges then
         edges = {
             Top = unitFrame:CreateTexture(nil, "OVERLAY", nil, -8),
@@ -618,7 +618,7 @@ local function applyHealthBarBorder(bar, cfg)
                 tex:SetTexelSnappingBias(0)
             end
         end
-        ufState.ScooterModBorderEdges = edges
+        ufState.ScootBorderEdges = edges
     end
 
     -- Get border settings
@@ -820,7 +820,7 @@ end
 --------------------------------------------------------------------------------
 
 -- EDIT MODE GUARD: Skip all CompactUnitFrame hooks when Edit Mode is active.
--- When ScooterMod triggers ApplyChanges (which bounces Edit Mode), Blizzard sets up
+-- When Scoot triggers ApplyChanges (which bounces Edit Mode), Blizzard sets up
 -- Arena/Party/Raid frames. If hooks run during this flow (even just to check
 -- frame type), addon code in the execution context can cause UnitInRange() and
 -- similar APIs to return secret values, breaking Blizzard's own code.
@@ -1020,10 +1020,10 @@ function PartyFrames.installHooks()
         if not frame then return end
         if frame.IsForbidden and frame:IsForbidden() then return end
 
-        -- Only process frames ScooterMod styles
+        -- Only process frames Scoot styles
         if not Utils.isPartyFrame(frame) and not Utils.isRaidFrame(frame) then return end
 
-        -- Check if ScooterMod has active overlays
+        -- Check if Scoot has active overlays
         local db = addon and addon.db and addon.db.profile
         local groupFrames = db and rawget(db, "groupFrames") or nil
         if not groupFrames then return end
@@ -1038,7 +1038,7 @@ function PartyFrames.installHooks()
         -- Track whether we need desaturation (applied at the very end)
         local shouldDesaturate = false
 
-        -- A) Draw layer elevation (only when ScooterMod overlays active)
+        -- A) Draw layer elevation (only when Scoot overlays active)
         local hasOverlay = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default")
                         or (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
         if not hasOverlay then
@@ -1152,7 +1152,7 @@ function PartyFrames.installHooks()
     addon._applyCustomRoleIcon = applyCustomRoleIcon
 
     -- Hook CompactUnitFrame_UpdateRoleIcon to:
-    -- A) Elevate roleIcon draw layer above ScooterMod overlay containers
+    -- A) Elevate roleIcon draw layer above Scoot overlay containers
     -- B) Swap to custom icon set if configured
     if not addon._RoleIconVisibilityHookInstalled then
         addon._RoleIconVisibilityHookInstalled = true

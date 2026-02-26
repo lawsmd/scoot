@@ -16,7 +16,7 @@ CA.RegisterAuras("MAGE", {
         defaultPosition = { point = "CENTER", x = 0, y = -200 },
         elements = {
             { type = "text",    key = "stacks", source = "applications", baseSize = 24, justifyH = "RIGHT" },
-            { type = "texture", key = "icon",   customPath = "Interface\\AddOns\\ScooterMod\\media\\classauras\\PixelSnowflake", defaultSize = { 32, 32 } },
+            { type = "texture", key = "icon",   customPath = "Interface\\AddOns\\Scoot\\media\\classauras\\PixelSnowflake", defaultSize = { 32, 32 } },
         },
         settings = {
             enabled         = { type = "addon", default = false },

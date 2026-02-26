@@ -147,7 +147,7 @@ local function CreateBarBorderPicker()
     local contentWidth = (BORDER_BUTTON_WIDTH * BORDERS_PER_ROW) + (BORDER_BUTTON_SPACING * (BORDERS_PER_ROW - 1)) + (PADDING * 2)
     local totalWidth = TAB_WIDTH + contentWidth + 24 -- Extra for scrollbar
 
-    local frame = CreateFrame("Frame", "ScooterBarBorderPickerFrame", UIParent)
+    local frame = CreateFrame("Frame", "ScootBarBorderPickerFrame", UIParent)
     frame:SetSize(totalWidth, PICKER_HEIGHT)
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetFrameLevel(100)
@@ -314,7 +314,7 @@ local function CreateBarBorderPicker()
     end
 
     -- Content area (scroll frame, right of tabs)
-    local scrollFrame = CreateFrame("ScrollFrame", "ScooterBarBorderPickerScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    local scrollFrame = CreateFrame("ScrollFrame", "ScootBarBorderPickerScrollFrame", frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 12, 0)
     scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(PADDING + 20), PADDING)
     frame.ScrollFrame = scrollFrame

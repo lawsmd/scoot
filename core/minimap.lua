@@ -1,8 +1,8 @@
 --------------------------------------------------------------------------------
--- ScooterMod Minimap Button
+-- Scoot Minimap Button
 --
 -- Creates a minimap button using LibDataBroker and LibDBIcon.
--- Left-click opens the ScooterMod settings panel (same as /scoot).
+-- Left-click opens the Scoot settings panel (same as /scoot).
 -- Right-click also opens settings.
 -- Drag to reposition around the minimap.
 --------------------------------------------------------------------------------
@@ -17,10 +17,10 @@ if not LDB or not LDBIcon then
 end
 
 -- Create the data broker object
-local ScooterLDB = LDB:NewDataObject("ScooterMod", {
+local ScootLDB = LDB:NewDataObject("Scoot", {
     type = "launcher",
-    text = "ScooterMod",
-    icon = "Interface\\AddOns\\ScooterMod\\ScooterModIcon",
+    text = "Scoot",
+    icon = "Interface\\AddOns\\Scoot\\ScootIcon",
     OnClick = function(self, button)
         -- Both left and right click open settings panel
         if addon.UI and addon.UI.SettingsPanel and addon.UI.SettingsPanel.Toggle then
@@ -28,7 +28,7 @@ local ScooterLDB = LDB:NewDataObject("ScooterMod", {
         end
     end,
     OnTooltipShow = function(tooltip)
-        tooltip:AddLine("|cff00ff00ScooterMod|r")
+        tooltip:AddLine("|cff00ff00Scoot|r")
         tooltip:AddLine(" ")
         tooltip:AddLine("|cffffffffClick|r to open settings")
         tooltip:AddLine("|cffffffffDrag|r to move this button")
@@ -49,10 +49,10 @@ frame:SetScript("OnEvent", function(self, event)
                     minimapPos = 220,
                 }
             end
-            LDBIcon:Register("ScooterMod", ScooterLDB, db.profile.minimap)
+            LDBIcon:Register("Scoot", ScootLDB, db.profile.minimap)
         else
             -- Fallback if DB isn't ready yet (shouldn't happen with proper load order)
-            LDBIcon:Register("ScooterMod", ScooterLDB, { hide = false, minimapPos = 220 })
+            LDBIcon:Register("Scoot", ScootLDB, { hide = false, minimapPos = 220 })
         end
         self:UnregisterEvent("PLAYER_LOGIN")
     end
@@ -63,7 +63,7 @@ addon.MinimapButton = {}
 
 function addon.MinimapButton:Show()
     if LDBIcon then
-        LDBIcon:Show("ScooterMod")
+        LDBIcon:Show("Scoot")
         if addon.db and addon.db.profile and addon.db.profile.minimap then
             addon.db.profile.minimap.hide = false
         end
@@ -72,7 +72,7 @@ end
 
 function addon.MinimapButton:Hide()
     if LDBIcon then
-        LDBIcon:Hide("ScooterMod")
+        LDBIcon:Hide("Scoot")
         if addon.db and addon.db.profile and addon.db.profile.minimap then
             addon.db.profile.minimap.hide = true
         end
@@ -91,7 +91,7 @@ end
 
 function addon.MinimapButton:IsShown()
     if LDBIcon then
-        local button = LDBIcon:GetMinimapButton("ScooterMod")
+        local button = LDBIcon:GetMinimapButton("Scoot")
         return button and button:IsShown()
     end
     return false

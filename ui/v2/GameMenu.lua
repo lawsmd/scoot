@@ -1,4 +1,4 @@
--- GameMenu.lua - Custom ScooterMod-styled game menu (ESC menu replacement)
+-- GameMenu.lua - Custom Scoot-styled game menu (ESC menu replacement)
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -16,7 +16,7 @@ local Controls = addon.UI.Controls
 local MENU_WIDTH = 290
 local BUTTON_WIDTH = 240
 local BUTTON_HEIGHT = 32
-local SCOOTER_BUTTON_HEIGHT = 36
+local SCOOT_BUTTON_HEIGHT = 36
 local BUTTON_SPACING = 4
 local SECTION_BREAK = 16
 local HEADER_HEIGHT = 40
@@ -75,18 +75,18 @@ local function CleanupButtons()
 end
 
 --------------------------------------------------------------------------------
--- ScooterMod Button (inverted accent style)
+-- Scoot Button (inverted accent style)
 --------------------------------------------------------------------------------
 
-local function CreateScooterButton(parent)
+local function CreateScootButton(parent)
     local theme = Theme
     local ar, ag, ab = theme:GetAccentColor()
 
     local btn = Controls:CreateButton({
         parent = parent,
-        text = "ScooterMod",
+        text = "Scoot",
         width = BUTTON_WIDTH,
-        height = SCOOTER_BUTTON_HEIGHT,
+        height = SCOOT_BUTTON_HEIGHT,
         fontSize = 14,
         onClick = function()
             pcall(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION)
@@ -103,7 +103,7 @@ local function CreateScooterButton(parent)
     btn._label:SetTextColor(0, 0, 0, 1)
 
     -- Store the inverted flag so theme updates can maintain it
-    btn._scooterInverted = true
+    btn._scootInverted = true
 
     -- Scanline sweep texture (2px tall white line for CRT refresh effect)
     local borderInset = btn._borderWidth or 2
@@ -145,7 +145,7 @@ local function CreateScooterButton(parent)
     if btn._subscribeKey then
         theme:Unsubscribe(btn._subscribeKey)
     end
-    local subscribeKey = "GameMenu_ScooterBtn_" .. tostring(btn)
+    local subscribeKey = "GameMenu_ScootBtn_" .. tostring(btn)
     btn._subscribeKey = subscribeKey
     theme:Subscribe(subscribeKey, function(r, g, b)
         -- Update border
@@ -191,8 +191,8 @@ local function BuildButtons()
         yOffset = yOffset - SECTION_BREAK
     end
 
-    -- 1. ScooterMod (inverted accent button)
-    AddButton(CreateScooterButton(frame))
+    -- 1. Scoot (inverted accent button)
+    AddButton(CreateScootButton(frame))
 
     AddSectionBreak()
 
@@ -399,7 +399,7 @@ local function InitializeFrame()
     if initialized then return end
     initialized = true
 
-    frame = Window:Create("ScooterGameMenuFrame", UIParent, MENU_WIDTH, 1)
+    frame = Window:Create("ScootGameMenuFrame", UIParent, MENU_WIDTH, 1)
     frame:SetMovable(false)
     frame:EnableMouse(true)
     frame:Hide()
@@ -409,7 +409,7 @@ local function InitializeFrame()
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 
     -- Register for ESC-to-close
-    tinsert(UISpecialFrames, "ScooterGameMenuFrame")
+    tinsert(UISpecialFrames, "ScootGameMenuFrame")
 
     -- Header: "Game Menu" title
     local title = frame:CreateFontString(nil, "OVERLAY")
@@ -421,8 +421,8 @@ local function InitializeFrame()
     -- Info icon to the right of title
     Controls:CreateInfoIconForLabel({
         label = title,
-        tooltipTitle = "ScooterMod Game Menu",
-        tooltipText = "To switch back to the default menu, go to ScooterMod > Interface > Misc.",
+        tooltipTitle = "Scoot Game Menu",
+        tooltipText = "To switch back to the default menu, go to Scoot > Interface > Misc.",
         size = 14,
         position = "right",
         offsetX = 8,

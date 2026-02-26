@@ -366,7 +366,7 @@ local function ApplyObjectiveTrackerTextStyling(self)
     if type(modules) ~= "table" then return end
 
     -- Use the Edit Mode Text Size (live) rather than the fontstring's current size.
-    -- Important: ScooterMod uses SetFont which detaches from FontObjects; by explicitly using the
+    -- Important: Scoot uses SetFont which detaches from FontObjects; by explicitly using the
     -- Edit Mode size here, preserving live behavior when Edit Mode updates the system.
     local textSize = GetObjectiveTrackerTextSize(self)
 
@@ -788,7 +788,7 @@ local function InstallObjectiveTrackerHooks(self)
         end
     end
 
-    -- IMPORTANT: `ObjectiveTrackerFrame.modules` can be nil or incomplete if ScooterMod installs hooks
+    -- IMPORTANT: `ObjectiveTrackerFrame.modules` can be nil or incomplete if Scoot installs hooks
     -- before the ObjectiveTrackerManager assigns modules (e.g., early in the login flow on some clients).
     -- When modules are later added to the container, the EndLayout hook must be attached then too.
     if type(tracker.AddModule) == "function" then
@@ -799,11 +799,11 @@ local function InstallObjectiveTrackerHooks(self)
         end)
     end
 
-    -- Text Size changes are applied via UpdateSystemSettingTextSize(). If ScooterMod has
+    -- Text Size changes are applied via UpdateSystemSettingTextSize(). If Scoot has
     -- detached fontstrings from FontObjects (via SetFont), styling must be re-applied with the new size.
     --
     -- This hook fires for BOTH:
-    -- - ScooterMod slider changes (flag is set)
+    -- - Scoot slider changes (flag is set)
     -- - Edit Mode live preview (flag is NOT set, but FontObject has the live size)
     --
     -- The live size is read from the captured FontObject (which Blizzard just updated) and
