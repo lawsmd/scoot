@@ -251,7 +251,7 @@ local function ApplyExtraAbilitiesStyling(self)
         end
 
         -- Border handling (applied to addon-owned overlay to avoid tainting spell buttons)
-        local btnVisible = btn.IsShown and btn:IsShown()
+        local btnVisible = btn.IsVisible and btn:IsVisible()
         if styleKey == "off" or styleKey == "hidden" or not btnVisible then
             local overlay = buttonOverlays[btn]
             if overlay then
@@ -343,6 +343,9 @@ local function InstallDynamicHooks(comp)
         hooksecurefunc(eac, "Hide", function()
             for btn, overlay in pairs(buttonOverlays) do
                 overlay:Hide()
+                if addon.Borders and addon.Borders.HideAll then
+                    addon.Borders.HideAll(overlay)
+                end
             end
         end)
     end
