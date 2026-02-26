@@ -97,17 +97,135 @@ local function onLootReady(autoLoot)
 end
 
 --------------------------------------------------------------------------------
+-- Quest Log Count
+--------------------------------------------------------------------------------
+
+addon.QoL = addon.QoL or {}
+
+local questCountLabel
+local questCountInitialized = false
+
+local NON_STANDARD_CLASSIFICATIONS = {
+    [Enum.QuestClassification.BonusObjective] = true,
+    [Enum.QuestClassification.WorldQuest] = true,
+    [Enum.QuestClassification.Calling] = true,
+    [Enum.QuestClassification.Meta] = true,
+    [Enum.QuestClassification.Recurring] = true,
+    [Enum.QuestClassification.Campaign] = true,  -- tracked separately, doesn't count toward cap
+}
+
+local function countStandardQuests()
+    local ok, numEntries = pcall(C_QuestLog.GetNumQuestLogEntries)
+    if not ok or type(numEntries) ~= "number" then return nil, nil end
+
+    local ok2, maxQuests = pcall(C_QuestLog.GetMaxNumQuestsCanAccept)
+    if not ok2 or type(maxQuests) ~= "number" then return nil, nil end
+
+    local count = 0
+    for i = 1, numEntries do
+        local info = C_QuestLog.GetInfo(i)
+        if info and not info.isHeader and not info.isHidden
+            and not info.isBounty and not info.isTask then
+            if not C_QuestLog.IsWorldQuest(info.questID)
+                and not C_QuestLog.IsQuestTask(info.questID) then
+                if not NON_STANDARD_CLASSIFICATIONS[info.questClassification] then
+                    count = count + 1
+                end
+            end
+        end
+    end
+    return count, maxQuests
+end
+
+local function updateQuestCount()
+    if not questCountLabel then return end
+
+    local qol = getQoL()
+    if not qol or not qol.showQuestLogCount then
+        questCountLabel:Hide()
+        return
+    end
+
+    if not QuestScrollFrame or not QuestScrollFrame:IsShown() then
+        questCountLabel:Hide()
+        return
+    end
+
+    local numQuests, maxQuests = countStandardQuests()
+    if not numQuests or not maxQuests then return end
+
+    questCountLabel:SetText(numQuests .. "/" .. maxQuests .. " Quests")
+
+    local remaining = maxQuests - numQuests
+    if remaining <= 0 then
+        questCountLabel:SetTextColor(1, 0.2, 0.2)
+    elseif remaining <= 3 then
+        questCountLabel:SetTextColor(1, 0.82, 0)
+    else
+        questCountLabel:SetTextColor(0.82, 0.82, 0.82)
+    end
+
+    questCountLabel:Show()
+end
+
+addon.QoL.updateQuestCount = updateQuestCount
+
+local function initQuestCount()
+    if questCountInitialized then return end
+    if not QuestScrollFrame then return end
+
+    -- Own overlay frame on the world map title bar, high strata to sit above decorations
+    local titleBar = WorldMapFrame and WorldMapFrame.BorderFrame
+    if not titleBar then return end
+
+    local holder = CreateFrame("Frame", nil, titleBar)
+    holder:SetFrameStrata("DIALOG")
+    holder:SetSize(1, 1)
+    holder:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", -55, -12)
+
+    questCountLabel = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    questCountLabel:SetFont(questCountLabel:GetFont(), 11, "OUTLINE")
+    questCountLabel:SetPoint("RIGHT")
+
+    questCountInitialized = true
+
+    hooksecurefunc(QuestScrollFrame, "Show", function() updateQuestCount() end)
+    QuestScrollFrame:HookScript("OnShow", function() updateQuestCount() end)
+    QuestScrollFrame:HookScript("OnHide", function()
+        if questCountLabel then questCountLabel:Hide() end
+    end)
+
+    updateQuestCount()
+end
+
+--------------------------------------------------------------------------------
 -- Event Frame
 --------------------------------------------------------------------------------
 
 local qolEventFrame = CreateFrame("Frame")
 qolEventFrame:RegisterEvent("MERCHANT_SHOW")
 qolEventFrame:RegisterEvent("LOOT_READY")
+qolEventFrame:RegisterEvent("ADDON_LOADED")
+qolEventFrame:RegisterEvent("QUEST_LOG_UPDATE")
+qolEventFrame:RegisterEvent("QUEST_ACCEPTED")
+qolEventFrame:RegisterEvent("QUEST_REMOVED")
+qolEventFrame:RegisterEvent("QUEST_TURNED_IN")
 
 qolEventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "MERCHANT_SHOW" then
         onMerchantShow()
     elseif event == "LOOT_READY" then
         onLootReady(...)
+    elseif event == "ADDON_LOADED" then
+        local loadedAddon = ...
+        if loadedAddon == "Blizzard_UIPanels_Game" then
+            initQuestCount()
+        end
+    elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_ACCEPTED"
+        or event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN" then
+        if not questCountInitialized and QuestScrollFrame then
+            initQuestCount()
+        end
+        updateQuestCount()
     end
 end)

@@ -133,7 +133,7 @@ function SlashCmdList.SCOOT(msg, editBox)
 
         if sub1 == "" then
             addon:Print("Usage:")
-            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|<FrameName>>")
+            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|quests|<FrameName>>")
             addon:Print("  /scoot debug profiles export [\"Profile Name\"]")
             addon:Print("  /scoot debug consoleport export")
             return
@@ -150,6 +150,15 @@ function SlashCmdList.SCOOT(msg, editBox)
                 return
             end
             addon:Print("Usage: /scoot debug profiles export [\"Profile Name\"]")
+            return
+        end
+
+        if sub1 == "quests" then
+            if addon.DebugDumpQuests then
+                addon.DebugDumpQuests()
+            else
+                addon:Print("Quest debug not available.")
+            end
             return
         end
 

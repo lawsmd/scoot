@@ -207,12 +207,11 @@ local function UpdateNoteSize(frame)
             local collapsedContentW = headerWidth
             collapsedContentW = math.max(MIN_WIDTH, math.min(collapsedContentW, MAX_WIDTH))
             local finalWidth = collapsedContentW + extraLeft + PADDING * 2
-            local oldTop = frame:GetTop()
-            local oldLeft = frame:GetLeft()
+            local point, relativeTo, relativePoint, xOfs, yOfs = frame:GetPoint(1)
             frame:SetSize(finalWidth, totalH)
-            if oldTop and oldLeft then
+            if point then
                 frame:ClearAllPoints()
-                frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", oldLeft, oldTop)
+                frame:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
             end
         else
             -- Expanded: full layout (+2 matches indicator's extra top inset)
@@ -231,12 +230,11 @@ local function UpdateNoteSize(frame)
             end
 
             local finalWidth = contentWidth + extraLeft + PADDING * 2
-            local oldTop = frame:GetTop()
-            local oldLeft = frame:GetLeft()
+            local point, relativeTo, relativePoint, xOfs, yOfs = frame:GetPoint(1)
             frame:SetSize(finalWidth, totalH)
-            if oldTop and oldLeft then
+            if point then
                 frame:ClearAllPoints()
-                frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", oldLeft, oldTop)
+                frame:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
             end
         end
     end)
@@ -439,8 +437,7 @@ local function ApplyNotesStyling(self)
             local scale = GetNoteSetting(db, i, "Scale") or 1.0
             frame:SetScale(math.max(0.25, math.min(2.0, scale)))
 
-            -- Update size, restore collapse state, and show
-            UpdateNoteSize(frame)
+            -- Restore collapse state (calls UpdateNoteSize internally) and show
             frame:Show()
             UpdateCollapseState(frame, i)
         end

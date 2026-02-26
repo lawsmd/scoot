@@ -75,6 +75,7 @@ Navigation.NavModel = {
         collapsible = true,
         children = {
             { key = "qolLootVendors", label = "Loot & Vendors" },
+            { key = "qolQuests", label = "Quests" },
         },
     },
     {

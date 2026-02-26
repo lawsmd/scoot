@@ -1677,5 +1677,87 @@ function addon.DumpTableAttributes()
     return false
 end
 
--- CDM Opacity Debug removed (feature removed — per-icon cooldown opacity unsolvable under 12.0 secrets)
+--------------------------------------------------------------------------------
+-- Quest Log Debug Dump
+--------------------------------------------------------------------------------
+
+function addon.DebugDumpQuests()
+    local ok, numEntries, numQuests = pcall(C_QuestLog.GetNumQuestLogEntries)
+    if not ok or type(numEntries) ~= "number" then
+        ShowDebugCopyWindow("Quest Debug", "Failed to get quest log entries")
+        return
+    end
+    local ok2, maxQuests = pcall(C_QuestLog.GetMaxNumQuestsCanAccept)
+
+    local classNames = {}
+    if Enum and Enum.QuestClassification then
+        for k, v in pairs(Enum.QuestClassification) do
+            classNames[v] = k
+        end
+    end
+
+    local lines = {}
+    local countAll, countFiltered = 0, 0
+    table.insert(lines, "== Quest Log Debug ==")
+    table.insert(lines, string.format("numEntries=%s  numQuests(API)=%s  maxCanAccept=%s", tostring(numEntries), tostring(numQuests), tostring(maxQuests)))
+    table.insert(lines, "")
+    table.insert(lines, "idx | questID | classification | flags | title")
+    table.insert(lines, string.rep("-", 90))
+
+    for i = 1, numEntries do
+        local info = C_QuestLog.GetInfo(i)
+        if info and not info.isHeader then
+            countAll = countAll + 1
+
+            local apiIsTask = C_QuestLog.IsQuestTask(info.questID)
+            local apiIsWorld = C_QuestLog.IsWorldQuest(info.questID)
+            local apiIsBounty = C_QuestLog.IsQuestBounty(info.questID)
+            local apiIsCalling = C_QuestLog.IsQuestCalling and C_QuestLog.IsQuestCalling(info.questID)
+
+            local flags = {}
+            if info.isHidden then table.insert(flags, "hidden") end
+            if info.isBounty then table.insert(flags, "bounty") end
+            if info.isTask then table.insert(flags, "task") end
+            if info.isInternalOnly then table.insert(flags, "internal") end
+            if info.startEvent then table.insert(flags, "startEvent") end
+            if apiIsWorld then table.insert(flags, "API:world") end
+            if apiIsTask and not info.isTask then table.insert(flags, "API:task") end
+            if apiIsBounty and not info.isBounty then table.insert(flags, "API:bounty") end
+            if apiIsCalling then table.insert(flags, "API:calling") end
+            if info.frequency and info.frequency > 0 then
+                table.insert(flags, "freq=" .. info.frequency)
+            end
+
+            local excluded = info.isHidden or info.isBounty or info.isTask or apiIsWorld or apiIsTask
+            if not excluded and info.questClassification then
+                local class = info.questClassification
+                if class == Enum.QuestClassification.BonusObjective
+                    or class == Enum.QuestClassification.WorldQuest
+                    or class == Enum.QuestClassification.Calling
+                    or class == Enum.QuestClassification.Meta
+                    or class == Enum.QuestClassification.Recurring
+                    or class == Enum.QuestClassification.Campaign then
+                    excluded = true
+                end
+            end
+            if not excluded then countFiltered = countFiltered + 1 end
+            local mark = excluded and "[EXCLUDED]" or "[COUNTED]"
+
+            local className = classNames[info.questClassification] or tostring(info.questClassification or "?")
+
+            table.insert(lines, string.format(
+                "%3d | %6d | %-16s | %-40s | %s %s",
+                i, info.questID or 0, className,
+                #flags > 0 and table.concat(flags, ", ") or "-",
+                info.title or "???", mark
+            ))
+        end
+    end
+
+    table.insert(lines, "")
+    table.insert(lines, string.format("Total non-header: %d | Current filter count: %d | Cap: %s",
+        countAll, countFiltered, tostring(maxQuests)))
+
+    ShowDebugCopyWindow("Quest Log Debug", table.concat(lines, "\n"))
+end
 

@@ -142,7 +142,7 @@ function UIPanel:CreateTitleBar()
             end
         end
     end)
-    logoBtn:SetSize(420, 45)  -- Fallback
+    logoBtn:SetSize(220, 45)  -- Fallback
 
     local hoverBg = logoBtn:CreateTexture(nil, "BACKGROUND")
     hoverBg:SetPoint("TOPLEFT", 0, 0)
@@ -782,24 +782,23 @@ function UIPanel:CreateContentPane()
     local labelFont2 = Theme:GetFont("LABEL")
 
     local homeAscii = homeContainer:CreateFontString(nil, "OVERLAY")
-    homeAscii:SetFont(labelFont2, 10, "")  -- Larger than title bar (6pt -> 10pt)
+    homeAscii:SetFont(labelFont2, 13, "")  -- 30% larger than old 10pt to compensate for shorter "SCOOT" text
     homeAscii:SetText(ASCII_LOGO)
-    homeAscii:SetJustifyH("CENTER")
+    homeAscii:SetJustifyH("LEFT")  -- LEFT keeps ASCII art internally aligned (CENTER shifts rows with different Unicode char widths)
     homeAscii:SetTextColor(ar, ag, ab, 1)
-    homeAscii:SetPoint("LEFT", homeContainer, "LEFT", 0, 0)
+    homeAscii:SetPoint("CENTER", homeContainer, "CENTER", 0, 0)
 
     local homeMascot = homeContainer:CreateFontString(nil, "OVERLAY")
     homeMascot:SetFont(labelFont2, 7.5, "")  -- 25% larger than 6pt
     homeMascot:SetText(ASCII_MASCOT)
     homeMascot:SetJustifyH("LEFT")  -- LEFT keeps ASCII art internally aligned
     homeMascot:SetTextColor(ar, ag, ab, 1)
-    homeMascot:SetPoint("BOTTOM", homeAscii, "TOP", 65, 8)  -- Above title, offset right 65px
-
     local welcomeText = homeContainer:CreateFontString(nil, "OVERLAY")
     welcomeText:SetFont(labelFont2, 16, "")
     welcomeText:SetText("Welcome to")
     welcomeText:SetTextColor(1, 1, 1, 1)
-    welcomeText:SetPoint("BOTTOMLEFT", homeAscii, "TOPLEFT", 65, 8)
+    homeMascot:SetPoint("BOTTOM", homeAscii, "TOP", 40, 8)  -- Mascot above ASCII art, shifted right
+    welcomeText:SetPoint("BOTTOMRIGHT", homeMascot, "BOTTOMLEFT", 17, 0)  -- "Welcome to" at bottom-left of mascot
 
     C_Timer.After(0.05, function()
         if homeAscii and homeMascot and homeContainer then
@@ -810,7 +809,7 @@ function UIPanel:CreateContentPane()
             homeContainer:SetSize(math.max(titleW, mascotW), titleH + mascotH + 50)
         end
     end)
-    homeContainer:SetSize(700, 300)  -- Fallback
+    homeContainer:SetSize(450, 300)  -- Fallback
 
     homeContent._welcomeText = welcomeText
     homeContent._asciiLogo = homeAscii
