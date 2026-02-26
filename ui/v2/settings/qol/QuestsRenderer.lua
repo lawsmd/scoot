@@ -35,6 +35,23 @@ function Quests.Render(panel, scrollContent)
     panel._currentBuilder = builder
 
     builder:AddToggle({
+        label = "Show Coordinates on Map",
+        description = "Display cursor coordinates on the World Map when hovering over the map area.",
+        get = function()
+            local q = getQoL()
+            return (q and q.showMapCoordinates) or false
+        end,
+        set = function(value)
+            local q = ensureQoL()
+            if not q then return end
+            q.showMapCoordinates = value
+            if addon.QoL and addon.QoL.updateMapCoordinates then
+                addon.QoL.updateMapCoordinates()
+            end
+        end,
+    })
+
+    builder:AddToggle({
         label = "Show Quest Log Count",
         description = "Displays a quest count in the Quest Log showing how many quests you have toward the cap.",
         infoIcon = {

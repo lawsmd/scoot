@@ -264,6 +264,17 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
+                        tabBuilder:AddToggle({
+                            label = "Enable Zone Coordinates",
+                            description = "Show your current zone coordinates centered below the zone text.",
+                            get = function()
+                                return getSetting("zoneCoordinatesEnabled") or false
+                            end,
+                            set = function(v)
+                                setSetting("zoneCoordinatesEnabled", v)
+                            end,
+                        })
+
                         tabBuilder:AddSelector({
                             label = "Position",
                             description = "Where to show zone text. 'Default (Dock)' uses Blizzard's dock bar, other options use a custom overlay.",

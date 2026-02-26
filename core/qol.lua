@@ -199,6 +199,66 @@ local function initQuestCount()
 end
 
 --------------------------------------------------------------------------------
+-- World Map Hover Coordinates
+--------------------------------------------------------------------------------
+
+local mapCoordsLabel
+local mapCoordsInitialized = false
+
+local function initMapCoordinates()
+    if mapCoordsInitialized then return end
+    if not WorldMapFrame or not WorldMapFrame.ScrollContainer then return end
+
+    local scrollContainer = WorldMapFrame.ScrollContainer
+
+    local overlay = CreateFrame("Frame", nil, WorldMapFrame)
+    overlay:SetFrameStrata("HIGH")
+    overlay:SetAllPoints(scrollContainer)
+
+    mapCoordsLabel = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    addon.ApplyFontStyle(mapCoordsLabel, mapCoordsLabel:GetFont(), 16, "HEAVYOUTLINE")
+    mapCoordsLabel:SetTextColor(1, 1, 1)
+    mapCoordsLabel:SetPoint("BOTTOM", overlay, "BOTTOM", 0, 4)
+    mapCoordsLabel:Hide()
+
+    mapCoordsInitialized = true
+
+    scrollContainer:HookScript("OnUpdate", function(self)
+        local qol = getQoL()
+        if not qol or not qol.showMapCoordinates then
+            if mapCoordsLabel:IsShown() then mapCoordsLabel:Hide() end
+            return
+        end
+
+        if not self:IsMouseOver() then
+            if mapCoordsLabel:IsShown() then mapCoordsLabel:Hide() end
+            return
+        end
+
+        local ok, cx, cy = pcall(self.GetNormalizedCursorPosition, self)
+        if not ok or not cx or not cy then
+            if mapCoordsLabel:IsShown() then mapCoordsLabel:Hide() end
+            return
+        end
+
+        mapCoordsLabel:SetText(format("%.1f, %.1f", cx * 100, cy * 100))
+        if not mapCoordsLabel:IsShown() then mapCoordsLabel:Show() end
+    end)
+
+    WorldMapFrame:HookScript("OnHide", function()
+        if mapCoordsLabel then mapCoordsLabel:Hide() end
+    end)
+end
+
+function addon.QoL.updateMapCoordinates()
+    if not mapCoordsInitialized then return end
+    local qol = getQoL()
+    if not qol or not qol.showMapCoordinates then
+        if mapCoordsLabel then mapCoordsLabel:Hide() end
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Event Frame
 --------------------------------------------------------------------------------
 
@@ -221,6 +281,9 @@ qolEventFrame:SetScript("OnEvent", function(self, event, ...)
         if loadedAddon == "Blizzard_UIPanels_Game" then
             initQuestCount()
         end
+        if loadedAddon == "Blizzard_WorldMap" then
+            initMapCoordinates()
+        end
     elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_ACCEPTED"
         or event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN" then
         if not questCountInitialized and QuestScrollFrame then
@@ -229,3 +292,8 @@ qolEventFrame:SetScript("OnEvent", function(self, event, ...)
         updateQuestCount()
     end
 end)
+
+-- Fallback: if WorldMapFrame already exists (addon loaded after Blizzard_WorldMap)
+if WorldMapFrame then
+    initMapCoordinates()
+end
