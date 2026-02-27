@@ -44,6 +44,12 @@ local function setContainerDesiredAlpha(container, alpha)
         settingAlpha[container] = true
         pcall(container.SetAlpha, container, alpha)
         settingAlpha[container] = nil
+        -- Sync border overlays (parented to UIParent, don't inherit container alpha)
+        for _, overlay in pairs(buttonOverlays) do
+            if overlay:IsShown() then
+                overlay:SetAlpha(alpha)
+            end
+        end
     end)
 end
 
@@ -76,6 +82,12 @@ local function startAlphaEnforcement(container)
                     settingAlpha[container] = true
                     pcall(container.SetAlpha, container, state.desiredAlpha)
                     settingAlpha[container] = nil
+                    -- Sync border overlays on enforcement correction
+                    for _, overlay in pairs(buttonOverlays) do
+                        if overlay:IsShown() then
+                            overlay:SetAlpha(state.desiredAlpha)
+                        end
+                    end
                 end)
             end
         end
@@ -219,6 +231,7 @@ local function ApplyExtraAbilitiesStyling(self)
     -- Text settings
     local chargesCfg = self.db and self.db.textCharges or { size = 16, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }
     local cooldownCfg = self.db and self.db.textCooldown or { size = 16, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }
+    local hotkeyCfg = self.db and self.db.textHotkey or { size = 14, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }
     local defaultFace = (select(1, GameFontNormal:GetFont()))
 
     local function applyTextToFontString(fs, cfg, justify, anchorPoint, relTo)
@@ -302,6 +315,10 @@ local function ApplyExtraAbilitiesStyling(self)
         else
             local overlay = getButtonOverlay(btn)
             overlay:Show()
+            local cState = extraAbilityState.container
+            if cState and cState.desiredAlpha then
+                overlay:SetAlpha(cState.desiredAlpha)
+            end
             if styleKey == "square" and addon.Borders and addon.Borders.ApplySquare then
                 if addon.Borders.HideAll then addon.Borders.HideAll(overlay) end
                 local col = tintEnabled and tintColor or {0, 0, 0, 1}
@@ -354,6 +371,20 @@ local function ApplyExtraAbilitiesStyling(self)
         end
         if cdText then
             applyTextToFontString(cdText, cooldownCfg, "CENTER", "CENTER", btn)
+        end
+
+        -- Text styling - Hotkey (ExtraActionButton1 only; ZoneAbility buttons lack HotKey)
+        if btn.HotKey then
+            local txt = (btn.HotKey.GetText and btn.HotKey:GetText()) or nil
+            local rangeIndicator = (_G and _G.RANGE_INDICATOR) or "RANGE_INDICATOR"
+            local isEmpty = (txt == nil or txt == "")
+            local isRange = (txt == rangeIndicator or txt == "\226\128\162")
+            local hiddenByUser = self.db and self.db.textHotkeyHidden
+            local shouldShow = (not hiddenByUser) and (not isEmpty) and (not isRange)
+            pcall(btn.HotKey.SetShown, btn.HotKey, shouldShow)
+            if shouldShow then
+                applyTextToFontString(btn.HotKey, hotkeyCfg, "RIGHT", "TOPRIGHT", btn)
+            end
         end
     end
 end
@@ -410,6 +441,9 @@ addon:RegisterComponentInitializer(function(self)
             textCharges = { type = "addon", default = { size = 16, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }, ui = { hidden = true }},
             -- Text - Cooldown
             textCooldown = { type = "addon", default = { size = 16, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }, ui = { hidden = true }},
+            -- Text - Hotkey
+            textHotkeyHidden = { type = "addon", default = false, ui = { hidden = true }},
+            textHotkey = { type = "addon", default = { size = 14, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }, ui = { hidden = true }},
             -- Border
             borderStyle = { type = "addon", default = "off", ui = {
                 label = "Border Style", widget = "dropdown", section = "Border", order = 1,

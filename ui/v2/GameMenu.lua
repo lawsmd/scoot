@@ -30,7 +30,6 @@ local frame = nil       -- The menu frame
 local buttons = {}      -- Created button references (for cleanup)
 local initialized = false
 local hookInstalled = false
-local blizzMenuAlphaHidden = false
 
 --------------------------------------------------------------------------------
 -- Helpers
@@ -39,13 +38,6 @@ local blizzMenuAlphaHidden = false
 local function IsSettingEnabled()
     return addon.db and addon.db.profile and addon.db.profile.misc
         and addon.db.profile.misc.customGameMenu
-end
-
-local function RestoreBlizzardGameMenu()
-    if not blizzMenuAlphaHidden then return end
-    blizzMenuAlphaHidden = false
-    GameMenuFrame:SetAlpha(1)
-    GameMenuFrame:EnableMouse(true)
 end
 
 -- Wrap a callback in pcall for combat safety, play sound, and hide menu
@@ -290,19 +282,8 @@ local function BuildButtons()
                 if frame then frame:Hide() end
             end,
         })
-        if InCombatLockdown() then
-            editModeBtn:RegisterEvent("PLAYER_REGEN_ENABLED")
-            editModeBtn:HookScript("OnEvent", function(self, event)
-                if event == "PLAYER_REGEN_ENABLED" then
-                    SecureHandlerSetFrameRef(self, "em", EditModeManagerFrame)
-                    self:SetAttribute("_onclick", [[ self:GetFrameRef("em"):Show() ]])
-                    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
-                end
-            end)
-        else
-            SecureHandlerSetFrameRef(editModeBtn, "em", EditModeManagerFrame)
-            editModeBtn:SetAttribute("_onclick", [[ self:GetFrameRef("em"):Show() ]])
-        end
+        SecureHandlerSetFrameRef(editModeBtn, "em", EditModeManagerFrame)
+        editModeBtn:SetAttribute("_onclick", [[ self:GetFrameRef("em"):Show() ]])
         AddButton(editModeBtn)
     end
 
@@ -428,15 +409,6 @@ local function InitializeFrame()
         offsetX = 8,
     })
 
-    -- When custom menu is closed out of combat, restore GameMenuFrame if alpha-hidden
-    frame:HookScript("OnHide", function()
-        if blizzMenuAlphaHidden and not InCombatLockdown() then
-            RestoreBlizzardGameMenu()
-            if GameMenuFrame:IsShown() then
-                pcall(HideUIPanel, GameMenuFrame)
-            end
-        end
-    end)
 end
 
 --------------------------------------------------------------------------------
@@ -444,6 +416,7 @@ end
 --------------------------------------------------------------------------------
 
 function GameMenu:Show()
+    if InCombatLockdown() then return end
     InitializeFrame()
 
     -- Re-entrancy guard: if already shown, toggle off
@@ -452,16 +425,11 @@ function GameMenu:Show()
         return
     end
 
-    -- Skip rebuild during combat if buttons already exist (button set is stable mid-combat)
-    if not InCombatLockdown() or #buttons == 0 then
-        BuildButtons()
-    end
+    BuildButtons()
 
-    -- Re-center (in case resolution changed); skip during combat (frame is protected)
-    if not InCombatLockdown() then
-        frame:ClearAllPoints()
-        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    end
+    -- Re-center (in case resolution changed)
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 
     frame:Show()
 end
@@ -488,59 +456,19 @@ function GameMenu:InstallHook()
 
     GameMenuFrame:HookScript("OnShow", function(self)
         if not IsSettingEnabled() then return end
+        if InCombatLockdown() then return end
 
-        if blizzMenuAlphaHidden then
-            -- Re-shown while already alpha-hidden (e.g., sub-panel closed), re-suppress
-            GameMenuFrame:SetAlpha(0)
-            GameMenuFrame:EnableMouse(false)
-            return
-        end
-
-        if InCombatLockdown() then
-            -- HideUIPanel is blocked during combat; visually hide instead
-            GameMenuFrame:SetAlpha(0)
-            GameMenuFrame:EnableMouse(false)
-            blizzMenuAlphaHidden = true
-            -- Defer Show() to next frame to escape the secure FramePositionDelegate
-            -- handler chain. Show() on any frame is blocked from addon code running
-            -- within a secure handler during combat lockdown.
-            C_Timer.After(0, function()
-                if blizzMenuAlphaHidden then
-                    GameMenu:Show()
-                end
-            end)
-        else
-            HideUIPanel(GameMenuFrame)
-            GameMenu:Show()
-        end
-    end)
-
-    -- When GameMenuFrame hides during alpha-hidden state (ESC in combat),
-    -- also close the custom menu for single-ESC-press behavior
-    GameMenuFrame:HookScript("OnHide", function()
-        if blizzMenuAlphaHidden then
-            RestoreBlizzardGameMenu()
-            if frame and frame:IsShown() then
-                frame:Hide()
-            end
-        end
+        HideUIPanel(GameMenuFrame)
+        GameMenu:Show()
     end)
 end
 
--- Register hook installation on PLAYER_ENTERING_WORLD + combat-end cleanup
+-- Register hook installation on PLAYER_ENTERING_WORLD
 local hookFrame = CreateFrame("Frame")
 hookFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-hookFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 hookFrame:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
         GameMenu:InstallHook()
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        if blizzMenuAlphaHidden then
-            RestoreBlizzardGameMenu()
-            if GameMenuFrame:IsShown() then
-                pcall(HideUIPanel, GameMenuFrame)
-            end
-        end
     end
 end)

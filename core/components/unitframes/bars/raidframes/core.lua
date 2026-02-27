@@ -407,6 +407,14 @@ function RaidFrames.ensureHealthOverlay(bar, cfg)
         if okR and roleIcon and roleIcon.SetDrawLayer then
             pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
         end
+
+        -- Raise DispelOverlay above healthBar in the useParentLevel stacking order.
+        -- Both are useParentLevel="true" siblings; rendering order among same-level
+        -- siblings depends on stacking order (not draw layers across frames).
+        local okD, dispelOverlay = pcall(function() return unitFrame.DispelOverlay end)
+        if okD and dispelOverlay and dispelOverlay.Raise then
+            pcall(dispelOverlay.Raise, dispelOverlay)
+        end
     end
 
     -- Build a config fingerprint to detect if settings have actually changed.

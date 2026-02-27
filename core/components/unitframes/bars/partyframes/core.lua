@@ -410,6 +410,14 @@ function PartyFrames.ensureHealthOverlay(bar, cfg)
         if okR and roleIcon and roleIcon.SetDrawLayer then
             pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
         end
+
+        -- Raise DispelOverlay above healthBar in the useParentLevel stacking order.
+        -- Both are useParentLevel="true" siblings; rendering order among same-level
+        -- siblings depends on stacking order (not draw layers across frames).
+        local okD, dispelOverlay = pcall(function() return unitFrame.DispelOverlay end)
+        if okD and dispelOverlay and dispelOverlay.Raise then
+            pcall(dispelOverlay.Raise, dispelOverlay)
+        end
     end
 
     -- Build a config fingerprint to detect if settings have actually changed.
@@ -798,6 +806,23 @@ addon.BarsPartyFrames._isEditModeActive = isEditModeActive
 function PartyFrames.installHooks()
     if addon._PartyFrameHooksInstalled then return end
     addon._PartyFrameHooksInstalled = true
+
+    -- Raise DispelOverlay above healthBar in the useParentLevel stacking order.
+    -- Both are useParentLevel="true" siblings; rendering order among same-level
+    -- siblings depends on stacking order (not draw layers across frames).
+    -- Show()/Hide() cycles in CompactUnitFrame_SetDispelOverlayAura can flip
+    -- stacking order, so we re-Raise after every show.
+    if not addon._DispelOverlayRaiseHookInstalled then
+        addon._DispelOverlayRaiseHookInstalled = true
+        if _G.hooksecurefunc and _G.CompactUnitFrame_SetDispelOverlayAura then
+            _G.hooksecurefunc("CompactUnitFrame_SetDispelOverlayAura", function(frame, aura)
+                if not frame or not frame.DispelOverlay then return end
+                if aura and aura.dispelName and frame.DispelOverlay.Raise then
+                    frame.DispelOverlay:Raise()
+                end
+            end)
+        end
+    end
 
     -- Hook CompactUnitFrame_UpdateAll
     if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateAll then
@@ -1224,7 +1249,7 @@ function PartyFrames.installHooks()
         -- Lazy creation — stored in state table, NOT on frame (taint-safe)
         if not state then return end
         if not state.groupLeadIcon then
-            local okC, tex = pcall(frame.CreateTexture, frame, nil, "OVERLAY", 7)
+            local okC, tex = pcall(frame.CreateTexture, frame, nil, "OVERLAY", nil, 7)
             if not okC or not tex then return end
             pcall(tex.SetAtlas, tex, "UI-HUD-UnitFrame-Player-Group-LeaderIcon")
             state.groupLeadIcon = tex

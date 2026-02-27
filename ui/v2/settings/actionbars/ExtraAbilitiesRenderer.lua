@@ -73,6 +73,7 @@ function ExtraAbilities.Render(panel, scrollContent)
             local tabs = {
                 { key = "charges", label = "Charges" },
                 { key = "cooldowns", label = "Cooldowns" },
+                { key = "hotkey", label = "Keybind" },
             }
 
             inner:AddTabbedSection({
@@ -263,6 +264,115 @@ function ExtraAbilities.Render(panel, scrollContent)
                                         comp.db.textCooldown = comp.db.textCooldown or {}
                                         comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
                                         comp.db.textCooldown.offset.y = v
+                                    end
+                                    applyText()
+                                end,
+                            },
+                        })
+
+                        tabBuilder:Finalize()
+                    end,
+
+                    -------------------------------------------------------
+                    -- Hotkey (textHotkey) Tab
+                    -------------------------------------------------------
+                    hotkey = function(tabContent, tabBuilder)
+                        local function getHotkeySetting(key, default)
+                            local th = getSetting("textHotkey")
+                            if th and th[key] ~= nil then return th[key] end
+                            return default
+                        end
+                        local function setHotkeySetting(key, value)
+                            local comp = getComponent()
+                            if comp and comp.db then
+                                if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
+                                comp.db.textHotkey = comp.db.textHotkey or {}
+                                comp.db.textHotkey[key] = value
+                            end
+                            applyText()
+                        end
+
+                        tabBuilder:AddToggle({
+                            label = "Hide Hotkey Text",
+                            get = function() return getSetting("textHotkeyHidden") or false end,
+                            set = function(v)
+                                local comp = getComponent()
+                                if comp and comp.db then
+                                    if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
+                                    comp.db.textHotkeyHidden = v
+                                end
+                                applyText()
+                            end,
+                        })
+
+                        tabBuilder:AddFontSelector({
+                            label = "Font",
+                            get = function() return getHotkeySetting("fontFace", "FRIZQT__") end,
+                            set = function(v) setHotkeySetting("fontFace", v) end,
+                        })
+
+                        tabBuilder:AddSlider({
+                            label = "Font Size",
+                            min = 6, max = 32, step = 1,
+                            get = function() return getHotkeySetting("size", 14) end,
+                            set = function(v) setHotkeySetting("size", v) end,
+                            minLabel = "6", maxLabel = "32",
+                        })
+
+                        tabBuilder:AddSelector({
+                            label = "Font Style",
+                            values = fontStyleValues,
+                            order = fontStyleOrder,
+                            get = function() return getHotkeySetting("style", "OUTLINE") end,
+                            set = function(v) setHotkeySetting("style", v) end,
+                        })
+
+                        tabBuilder:AddColorPicker({
+                            label = "Font Color",
+                            get = function()
+                                local c = getHotkeySetting("color", {1,1,1,1})
+                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
+                            end,
+                            set = function(r, g, b, a)
+                                setHotkeySetting("color", {r, g, b, a})
+                            end,
+                            hasAlpha = true,
+                        })
+
+                        tabBuilder:AddDualSlider({
+                            label = "Offset",
+                            sliderA = {
+                                axisLabel = "X",
+                                min = -50, max = 50, step = 1,
+                                get = function()
+                                    local offset = getHotkeySetting("offset", {x=0, y=0})
+                                    return (type(offset) == "table" and offset.x) or 0
+                                end,
+                                set = function(v)
+                                    local comp = getComponent()
+                                    if comp and comp.db then
+                                        if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
+                                        comp.db.textHotkey = comp.db.textHotkey or {}
+                                        comp.db.textHotkey.offset = comp.db.textHotkey.offset or {}
+                                        comp.db.textHotkey.offset.x = v
+                                    end
+                                    applyText()
+                                end,
+                            },
+                            sliderB = {
+                                axisLabel = "Y",
+                                min = -50, max = 50, step = 1,
+                                get = function()
+                                    local offset = getHotkeySetting("offset", {x=0, y=0})
+                                    return (type(offset) == "table" and offset.y) or 0
+                                end,
+                                set = function(v)
+                                    local comp = getComponent()
+                                    if comp and comp.db then
+                                        if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
+                                        comp.db.textHotkey = comp.db.textHotkey or {}
+                                        comp.db.textHotkey.offset = comp.db.textHotkey.offset or {}
+                                        comp.db.textHotkey.offset.y = v
                                     end
                                     applyText()
                                 end,
