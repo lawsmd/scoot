@@ -164,7 +164,7 @@ local function buildStyleTab(inner, barPrefix, applyFn)
     inner:Finalize()
 end
 
-local function buildTextTab(inner, textKey, applyFn, includeHideToggle, hideLabel)
+local function buildTextTab(inner, textKey, applyFn, includeHideToggle, hideLabel, defaultAnchor)
     if includeHideToggle then
         inner:AddToggle({
             label = hideLabel or "Hide",
@@ -286,19 +286,20 @@ local function buildTextTab(inner, textKey, applyFn, includeHideToggle, hideLabe
     })
 
     -- Alignment (9-way anchor)
+    local anchorDefault = defaultAnchor or "TOPLEFT"
     inner:AddSelector({
         label = "Alignment",
         values = GF.anchorValues,
         order = GF.anchorOrder,
         get = function()
             local s = ensureTextDB(textKey) or {}
-            return s.anchor or "TOPLEFT"
+            return s.anchor or anchorDefault
         end,
         set = function(v)
             local t = ensureDB()
             if not t then return end
             t[textKey] = t[textKey] or {}
-            t[textKey].anchor = v or "TOPLEFT"
+            t[textKey].anchor = v or anchorDefault
             applyFn()
         end,
     })
@@ -699,6 +700,7 @@ function GF.RenderParty(panel, scrollContent)
             inner:AddTabbedSection({
                 tabs = {
                     { key = "playerName", label = "Player Name" },
+                    { key = "statusText", label = "Health/Status" },
                     { key = "partyTitle", label = "Party Title" },
                 },
                 componentId = COMPONENT_ID,
@@ -706,6 +708,9 @@ function GF.RenderParty(panel, scrollContent)
                 buildContent = {
                     playerName = function(cf, tabInner)
                         buildTextTab(tabInner, "textPlayerName", applyText, false)
+                    end,
+                    statusText = function(cf, tabInner)
+                        buildTextTab(tabInner, "textStatusText", applyText, false, nil, "CENTER")
                     end,
                     partyTitle = function(cf, tabInner)
                         buildTextTab(tabInner, "textPartyTitle", applyText, true, "Hide Party Title")
@@ -857,7 +862,124 @@ function GF.RenderParty(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     groupLead = function(cf, tabInner)
-                        tabInner:AddDescription("Coming soon...")
+                        -- Icon Set selector
+                        tabInner:AddSelector({
+                            label = "Icon Set",
+                            values = {
+                                default = "Blizzard Default",
+                                desaturated = "Blizzard Default (White)",
+                            },
+                            order = { "default", "desaturated" },
+                            get = function()
+                                local db = GF.ensurePartyDB()
+                                return db and db.groupLeadIconSet or "default"
+                            end,
+                            set = function(v)
+                                local db = GF.ensurePartyDB()
+                                if db then
+                                    db.groupLeadIconSet = v
+                                    GF.applyPartyGroupLeadIcons()
+                                end
+                            end,
+                        })
+
+                        -- Show toggle
+                        tabInner:AddToggle({
+                            label = "Show Group Lead Icon",
+                            description = "Displays a crown icon on the group/raid leader's frame.",
+                            get = function()
+                                local db = GF.ensurePartyDB()
+                                return db and db.groupLeadIconShow or false
+                            end,
+                            set = function(v)
+                                local db = GF.ensurePartyDB()
+                                if db then
+                                    db.groupLeadIconShow = v
+                                    GF.applyPartyGroupLeadIcons()
+                                end
+                            end,
+                        })
+
+                        -- Scale slider
+                        tabInner:AddSlider({
+                            label = "Scale",
+                            min = 25,
+                            max = 200,
+                            step = 5,
+                            displaySuffix = "%",
+                            get = function()
+                                local db = GF.ensurePartyDB()
+                                return db and db.groupLeadIconScale or 100
+                            end,
+                            set = function(v)
+                                local db = GF.ensurePartyDB()
+                                if db then
+                                    db.groupLeadIconScale = v
+                                    GF.applyPartyGroupLeadIcons()
+                                end
+                            end,
+                        })
+
+                        -- Position selector (9-point)
+                        local leadAnchorValues = {
+                            TOPLEFT = "Top-Left", TOP = "Top-Center", TOPRIGHT = "Top-Right",
+                            LEFT = "Left", CENTER = "Center", RIGHT = "Right",
+                            BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom-Center", BOTTOMRIGHT = "Bottom-Right",
+                        }
+                        local leadAnchorOrder = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
+
+                        tabInner:AddSelector({
+                            label = "Position",
+                            values = leadAnchorValues,
+                            order = leadAnchorOrder,
+                            get = function()
+                                local db = GF.ensurePartyDB()
+                                return db and db.groupLeadIconAnchor or "TOPLEFT"
+                            end,
+                            set = function(v)
+                                local db = GF.ensurePartyDB()
+                                if db then
+                                    db.groupLeadIconAnchor = v
+                                    GF.applyPartyGroupLeadIcons()
+                                end
+                            end,
+                        })
+
+                        -- Offset dual slider (X and Y)
+                        tabInner:AddDualSlider({
+                            label = "Offset",
+                            sliderA = {
+                                axisLabel = "X",
+                                min = -50, max = 50, step = 1,
+                                get = function()
+                                    local db = GF.ensurePartyDB()
+                                    return db and db.groupLeadIconOffsetX or 0
+                                end,
+                                set = function(v)
+                                    local db = GF.ensurePartyDB()
+                                    if db then
+                                        db.groupLeadIconOffsetX = v
+                                        GF.applyPartyGroupLeadIcons()
+                                    end
+                                end,
+                            },
+                            sliderB = {
+                                axisLabel = "Y",
+                                min = -50, max = 50, step = 1,
+                                get = function()
+                                    local db = GF.ensurePartyDB()
+                                    return db and db.groupLeadIconOffsetY or 0
+                                end,
+                                set = function(v)
+                                    local db = GF.ensurePartyDB()
+                                    if db then
+                                        db.groupLeadIconOffsetY = v
+                                        GF.applyPartyGroupLeadIcons()
+                                    end
+                                end,
+                            },
+                        })
+
                         tabInner:Finalize()
                     end,
                 },

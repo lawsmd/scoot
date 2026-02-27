@@ -957,9 +957,7 @@ local function ensureRaidStatusTextOverlay(frame, cfg)
         local isVisible = false
         if blizzST.IsShown then
             local okV, vis = pcall(blizzST.IsShown, blizzST)
-            -- If hidden flag is set, Blizzard might still think it's shown
-            local stState = getState(blizzST)
-            isVisible = okV and (vis or (stState and stState.hidden))
+            isVisible = okV and vis
         end
 
         if blizzST.GetText then

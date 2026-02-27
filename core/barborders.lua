@@ -82,6 +82,14 @@ local function ensureBorderFrame(barFrame)
         holder = CreateFrame("Frame", nil, parentOverride or barFrame, template)
         holder:SetClipsChildren(false)
         holder:SetIgnoreParentAlpha(false)
+        holder:SetScript("OnSizeChanged", function(self, w, h)
+            if self.backdropInfo and self.SetupTextureCoordinates then
+                if type(w) == "number" and type(h) == "number"
+                   and not issecretvalue(w) and not issecretvalue(h) then
+                    self:SetupTextureCoordinates()
+                end
+            end
+        end)
         bfState.holder = holder
     end
     local containerRef = bfState.containerParentRef or barFrame

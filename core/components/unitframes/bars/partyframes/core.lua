@@ -1165,6 +1165,185 @@ function PartyFrames.installHooks()
             end)
         end)
     end
+
+    --------------------------------------------------------------------------
+    -- Group Lead Icon
+    --------------------------------------------------------------------------
+
+    local function applyGroupLeadIcon(frame)
+        if isEditModeActive() then return end
+        if not frame then return end
+        if frame.IsForbidden and frame:IsForbidden() then return end
+
+        local isParty = Utils.isPartyFrame(frame)
+        local isRaid  = Utils.isRaidFrame(frame)
+        if not isParty and not isRaid then return end
+
+        -- DB read via rawget (no AceDB metamethods)
+        local db = addon and addon.db and addon.db.profile
+        local groupFrames = db and rawget(db, "groupFrames") or nil
+        if not groupFrames then return end
+        local cfg = isParty and rawget(groupFrames, "party")
+                 or isRaid  and rawget(groupFrames, "raid")
+                 or nil
+        if not cfg then return end
+
+        -- Feature disabled? Hide existing icon and bail
+        local show = rawget(cfg, "groupLeadIconShow")
+        local state = isParty and ensureState(frame)
+                   or isRaid  and addon.BarsRaidFrames._ensureState(frame)
+                   or nil
+
+        if not show then
+            if state and state.groupLeadIcon then
+                pcall(state.groupLeadIcon.Hide, state.groupLeadIcon)
+            end
+            return
+        end
+
+        -- Unit detection (secret-safe)
+        local unit
+        local okU, u = pcall(function() return frame.displayedUnit or frame.unit end)
+        if okU and u then unit = u end
+        if not unit then
+            if state and state.groupLeadIcon then
+                pcall(state.groupLeadIcon.Hide, state.groupLeadIcon)
+            end
+            return
+        end
+
+        -- Leader check (secret-safe: guard type)
+        local okL, isLeader = pcall(UnitIsGroupLeader, unit)
+        if not okL or type(isLeader) ~= "boolean" or not isLeader then
+            if state and state.groupLeadIcon then
+                pcall(state.groupLeadIcon.Hide, state.groupLeadIcon)
+            end
+            return
+        end
+
+        -- Lazy creation — stored in state table, NOT on frame (taint-safe)
+        if not state then return end
+        if not state.groupLeadIcon then
+            local okC, tex = pcall(frame.CreateTexture, frame, nil, "OVERLAY", 7)
+            if not okC or not tex then return end
+            pcall(tex.SetAtlas, tex, "UI-HUD-UnitFrame-Player-Group-LeaderIcon")
+            state.groupLeadIcon = tex
+        end
+
+        local icon = state.groupLeadIcon
+
+        -- Icon set (desaturation)
+        local iconSet = rawget(cfg, "groupLeadIconSet") or "default"
+        pcall(icon.SetDesaturated, icon, iconSet == "desaturated")
+
+        -- Scale (base 16px)
+        local scale = tonumber(rawget(cfg, "groupLeadIconScale")) or 100
+        local size = 16 * scale / 100
+        pcall(icon.SetSize, icon, size, size)
+
+        -- Position
+        local anchor = rawget(cfg, "groupLeadIconAnchor") or "TOPLEFT"
+        local offsetX = tonumber(rawget(cfg, "groupLeadIconOffsetX")) or 0
+        local offsetY = tonumber(rawget(cfg, "groupLeadIconOffsetY")) or 0
+        pcall(icon.ClearAllPoints, icon)
+        pcall(icon.SetPoint, icon, anchor, frame, anchor, offsetX, offsetY)
+
+        -- Show
+        pcall(icon.Show, icon)
+    end
+
+    -- Expose for cross-file access
+    addon._applyGroupLeadIcon = applyGroupLeadIcon
+
+    -- Hook CompactUnitFrame_UpdateRoleIcon to also apply group lead icon.
+    -- This fires during CompactUnitFrame_UpdateAll for every compact frame,
+    -- providing reliable timing after unit assignment.
+    if not addon._GroupLeadIconRoleIconHookInstalled then
+        addon._GroupLeadIconRoleIconHookInstalled = true
+        if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateRoleIcon then
+            _G.hooksecurefunc("CompactUnitFrame_UpdateRoleIcon", function(frame)
+                if isEditModeActive() then return end
+                if not frame then return end
+                local isParty = Utils.isPartyFrame(frame)
+                local isRaid  = Utils.isRaidFrame(frame)
+                if not isParty and not isRaid then return end
+                local db = addon and addon.db and addon.db.profile
+                local gf = db and rawget(db, "groupFrames") or nil
+                if not gf then return end
+                local cfg = isParty and rawget(gf, "party")
+                         or isRaid  and rawget(gf, "raid")
+                         or nil
+                if not cfg or not rawget(cfg, "groupLeadIconShow") then return end
+                pcall(applyGroupLeadIcon, frame)
+            end)
+        end
+    end
+
+    -- Event frame: PARTY_LEADER_CHANGED / GROUP_ROSTER_UPDATE
+    if not addon._GroupLeadIconEventInstalled then
+        addon._GroupLeadIconEventInstalled = true
+        local leadIconTimer = nil
+        local leadIconEventFrame = CreateFrame("Frame")
+        leadIconEventFrame:RegisterEvent("PARTY_LEADER_CHANGED")
+        leadIconEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+        leadIconEventFrame:SetScript("OnEvent", function()
+            if isEditModeActive() then return end
+            -- Early-out if feature is off in both party and raid
+            local db = addon and addon.db and addon.db.profile
+            local gf = db and rawget(db, "groupFrames") or nil
+            if not gf then return end
+            local pCfg = rawget(gf, "party")
+            local rCfg = rawget(gf, "raid")
+            local hasAny = (pCfg and rawget(pCfg, "groupLeadIconShow"))
+                        or (rCfg and rawget(rCfg, "groupLeadIconShow"))
+            if not hasAny then return end
+            -- Debounce 0.15s
+            if leadIconTimer then leadIconTimer:Cancel() end
+            leadIconTimer = C_Timer.NewTimer(0.15, function()
+                leadIconTimer = nil
+                if isEditModeActive() then return end
+                for i = 1, 5 do
+                    local f = _G["CompactPartyFrameMember" .. i]
+                    if f then pcall(applyGroupLeadIcon, f) end
+                end
+                for i = 1, 40 do
+                    local f = _G["CompactRaidFrame" .. i]
+                    if f then pcall(applyGroupLeadIcon, f) end
+                end
+                for g = 1, 8 do
+                    for m = 1, 5 do
+                        local f = _G["CompactRaidGroup" .. g .. "Member" .. m]
+                        if f then pcall(applyGroupLeadIcon, f) end
+                    end
+                end
+            end)
+        end)
+    end
+
+    -- SetUnit hook: deferred to avoid taint
+    if not addon._GroupLeadSetUnitHookInstalled then
+        addon._GroupLeadSetUnitHookInstalled = true
+        if _G.hooksecurefunc and _G.CompactUnitFrame_SetUnit then
+            _G.hooksecurefunc("CompactUnitFrame_SetUnit", function(frame)
+                if isEditModeActive() then return end
+                if not frame then return end
+                -- Only fire if feature is active for this frame type
+                local isParty = Utils.isPartyFrame(frame)
+                local isRaid  = Utils.isRaidFrame(frame)
+                if not isParty and not isRaid then return end
+                local db = addon and addon.db and addon.db.profile
+                local gf = db and rawget(db, "groupFrames") or nil
+                if not gf then return end
+                local cfg = isParty and rawget(gf, "party")
+                         or isRaid  and rawget(gf, "raid")
+                         or nil
+                if not cfg or not rawget(cfg, "groupLeadIconShow") then return end
+                C_Timer.After(0, function()
+                    pcall(applyGroupLeadIcon, frame)
+                end)
+            end)
+        end
+    end
 end
 
 -- Install hooks on load

@@ -46,6 +46,19 @@ function addon.ApplyPartyRoleIcons()
 end
 
 --------------------------------------------------------------------------------
+-- Apply Group Lead Icons for Party Frames
+--------------------------------------------------------------------------------
+
+function addon.ApplyPartyGroupLeadIcons()
+    local directApply = addon._applyGroupLeadIcon
+    if not directApply then return end
+    for i = 1, 5 do
+        local frame = _G["CompactPartyFrameMember" .. i]
+        if frame then pcall(directApply, frame) end
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Event-Based Color Updates for Party Frames (Value Mode)
 --------------------------------------------------------------------------------
 -- The SetValue hook handles most color updates, but some edge cases require

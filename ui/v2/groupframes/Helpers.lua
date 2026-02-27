@@ -85,6 +85,9 @@ function GF.applyPartyStyles()
     if addon.ApplyPartyFrameTitleStyle then
         addon.ApplyPartyFrameTitleStyle()
     end
+    if addon.ApplyPartyFrameStatusTextStyle then
+        addon.ApplyPartyFrameStatusTextStyle()
+    end
     if addon.ApplyPartyOverAbsorbGlowVisibility then
         addon.ApplyPartyOverAbsorbGlowVisibility()
     end
@@ -96,6 +99,9 @@ function GF.applyPartyStyles()
     end
     if addon.ApplyPartyHealPredictionClipping then
         addon.ApplyPartyHealPredictionClipping()
+    end
+    if addon.ApplyPartyGroupLeadIcons then
+        addon.ApplyPartyGroupLeadIcons()
     end
 end
 
@@ -136,6 +142,9 @@ function GF.applyRaidStyles()
     if addon.ApplyRaidHealPredictionClipping then
         addon.ApplyRaidHealPredictionClipping()
     end
+    if addon.ApplyRaidGroupLeadIcons then
+        addon.ApplyRaidGroupLeadIcons()
+    end
 end
 
 function GF.applyPartyText()
@@ -160,6 +169,14 @@ end
 
 function GF.applyRaidRoleIcons()
     if addon.ApplyRaidRoleIcons then addon.ApplyRaidRoleIcons() end
+end
+
+function GF.applyPartyGroupLeadIcons()
+    if addon.ApplyPartyGroupLeadIcons then addon.ApplyPartyGroupLeadIcons() end
+end
+
+function GF.applyRaidGroupLeadIcons()
+    if addon.ApplyRaidGroupLeadIcons then addon.ApplyRaidGroupLeadIcons() end
 end
 
 function GF.applyPartyHealthBarBorders()

@@ -13,6 +13,7 @@ local Component = addon.ComponentPrototype
 CA._registry = {}       -- [auraId] = auraDef (flat lookup)
 CA._classAuras = {}     -- [classToken] = { auraDef, auraDef, ... }
 CA._activeAuras = {}    -- [auraId] = { container, elements, component }
+CA._trackedUnits = {}   -- [unitToken] = true — built from registered auras
 
 local editModeActive = false
 
@@ -44,6 +45,9 @@ function CA.RegisterAuras(classToken, auras)
         aura.classToken = classToken
         CA._registry[aura.id] = aura
         table.insert(CA._classAuras[classToken], aura)
+        if aura.unit then
+            CA._trackedUnits[aura.unit] = true
+        end
     end
 end
 
@@ -927,11 +931,12 @@ caEventFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "UNIT_AURA" then
         -- CDM refreshes its icons on UNIT_AURA; our RefreshData mixin hook
         -- catches that. This rescan is a safety net.
-        -- Filter to "target" only — Class Auras only tracks target unit,
-        -- and unfiltered UNIT_AURA fires dozens of times per second in raids.
+        -- Filter to units actually tracked by registered auras —
+        -- unfiltered UNIT_AURA fires dozens of times per second in raids.
         local unit = ...
-        if unit == "target" then
+        if CA._trackedUnits[unit] then
             RescanForCDMBorrow()
+            ScanAllAurasForUnit(unit)
         end
 
     elseif event == "PLAYER_TARGET_CHANGED" then

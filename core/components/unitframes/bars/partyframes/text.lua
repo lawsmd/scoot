@@ -919,12 +919,416 @@ local function installPartyTitleHooks()
 end
 
 --------------------------------------------------------------------------------
+-- Text Overlay (Status Text - Combat-Safe Persistence)
+--------------------------------------------------------------------------------
+-- Creates addon-owned FontString overlays on party frames that visually replace
+-- Blizzard's statusText. These overlays persist during combat because only
+-- addon-owned FontStrings are manipulated. Blizzard can reset its own
+-- statusText all it wants -- our overlay stays styled.
+--
+-- Pattern: Mirror text via SetText/SetFormattedText hooks, style on setup,
+-- hide Blizzard's element via SetAlpha(0).
+--------------------------------------------------------------------------------
+
+local function stylePartyStatusTextOverlay(frame, cfg)
+    if not frame or not cfg then return end
+    local state = getState(frame)
+    if not state or not state.statusTextOverlay then return end
+
+    local overlay = state.statusTextOverlay
+    local container = state.overlayContainer or frame
+
+    local fontFace = cfg.fontFace or "FRIZQT__"
+    local resolvedFace
+    if addon and addon.ResolveFontFace then
+        resolvedFace = addon.ResolveFontFace(fontFace)
+    else
+        local defaultFont = _G.GameFontNormal and _G.GameFontNormal:GetFont()
+        resolvedFace = defaultFont or "Fonts\\FRIZQT__.TTF"
+    end
+
+    local fontSize = tonumber(cfg.size) or 12
+    local fontStyle = cfg.style or "OUTLINE"
+    local anchor = cfg.anchor or "CENTER"
+    local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
+    local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
+
+    local success = pcall(overlay.SetFont, overlay, resolvedFace, fontSize, fontStyle)
+    if not success then
+        local fallback = _G.GameFontNormal and select(1, _G.GameFontNormal:GetFont())
+        if fallback then
+            pcall(overlay.SetFont, overlay, fallback, fontSize, fontStyle)
+        end
+    end
+
+    -- Apply color (direct color only, no colorMode for status text)
+    local color = cfg.color or { 1, 1, 1, 1 }
+    pcall(overlay.SetTextColor, overlay, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
+
+    -- Justify based on anchor
+    pcall(overlay.SetJustifyH, overlay, Utils.getJustifyHFromAnchor(anchor))
+    if overlay.SetJustifyV then
+        local justV = "MIDDLE"
+        if anchor == "TOPLEFT" or anchor == "TOP" or anchor == "TOPRIGHT" then
+            justV = "TOP"
+        elseif anchor == "BOTTOMLEFT" or anchor == "BOTTOM" or anchor == "BOTTOMRIGHT" then
+            justV = "BOTTOM"
+        end
+        pcall(overlay.SetJustifyV, overlay, justV)
+    end
+    if overlay.SetWordWrap then
+        pcall(overlay.SetWordWrap, overlay, false)
+    end
+    if overlay.SetNonSpaceWrap then
+        pcall(overlay.SetNonSpaceWrap, overlay, false)
+    end
+    if overlay.SetMaxLines then
+        pcall(overlay.SetMaxLines, overlay, 1)
+    end
+
+    -- Position within the clipping container
+    overlay:ClearAllPoints()
+    overlay:SetPoint(anchor, container, anchor, offsetX, offsetY)
+
+    -- Store alignment params for fingerprint checks
+    if state then
+        state.statusTextAnchor = anchor
+        state.statusTextOffsetX = offsetX
+        state.statusTextOffsetY = offsetY
+    end
+end
+
+local function hideBlizzardPartyStatusText(frame)
+    if not frame or not frame.statusText then return end
+    local blizzST = frame.statusText
+
+    local stState = ensureState(blizzST)
+    if stState then stState.hidden = true end
+    if blizzST.SetAlpha then
+        pcall(blizzST.SetAlpha, blizzST, 0)
+    end
+
+    if _G.hooksecurefunc and stState and not stState.alphaHooked then
+        stState.alphaHooked = true
+        _G.hooksecurefunc(blizzST, "SetAlpha", function(self, alpha)
+            local st = getState(self)
+            if alpha > 0 and st and st.hidden then
+                if _G.C_Timer and _G.C_Timer.After then
+                    _G.C_Timer.After(0, function()
+                        local st2 = getState(self)
+                        if st2 and st2.hidden then
+                            self:SetAlpha(0)
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+
+    if _G.hooksecurefunc and stState and not stState.showHooked then
+        stState.showHooked = true
+        _G.hooksecurefunc(blizzST, "Show", function(self)
+            local st = getState(self)
+            if not (st and st.hidden) then return end
+            -- Kill visibility immediately (avoid flicker), then defer Hide.
+            if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
+            if _G.C_Timer and _G.C_Timer.After then
+                _G.C_Timer.After(0, function()
+                    local st2 = getState(self)
+                    if self and st2 and st2.hidden then
+                        if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
+                    end
+                end)
+            else
+                if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
+            end
+        end)
+    end
+end
+
+local function showBlizzardPartyStatusText(frame)
+    if not frame or not frame.statusText then return end
+    local stState = getState(frame.statusText)
+    if stState then stState.hidden = nil end
+    if frame.statusText.SetAlpha then
+        pcall(frame.statusText.SetAlpha, frame.statusText, 1)
+    end
+end
+
+local function ensurePartyStatusTextOverlay(frame, cfg)
+    if not frame then return end
+
+    local hasCustom = Utils.hasCustomTextSettings(cfg)
+    local frameState = ensureState(frame)
+    if frameState then
+        frameState.statusTextOverlayActive = hasCustom
+    end
+
+    if not hasCustom then
+        if frameState and frameState.statusTextOverlay then
+            frameState.statusTextOverlay:Hide()
+        end
+        showBlizzardPartyStatusText(frame)
+        return
+    end
+
+    -- Ensure shared clipping container (reuse the same container as name overlay)
+    if not frameState.overlayContainer then
+        local container = CreateFrame("Frame", nil, frame)
+        container:SetClipsChildren(true)
+
+        container:ClearAllPoints()
+        container:SetPoint("TOPLEFT", frame, "TOPLEFT", 3, -3)
+        container:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -3, 3)
+
+        -- Elevate roleIcon when creating overlay container
+        local okR, roleIcon = pcall(function() return frame.roleIcon end)
+        if okR and roleIcon and roleIcon.SetDrawLayer then
+            pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
+        end
+
+        frameState.overlayContainer = container
+    end
+
+    -- Create overlay FontString if it doesn't exist
+    if frameState and not frameState.statusTextOverlay then
+        local parentForText = frameState.overlayContainer or frame
+        local overlay = parentForText:CreateFontString(nil, "OVERLAY", nil)
+        overlay:SetDrawLayer("OVERLAY", 5) -- Below name text (7) and role icon (6)
+        frameState.statusTextOverlay = overlay
+
+        -- Install mirroring hooks on Blizzard's statusText
+        local stState = frame.statusText and ensureState(frame.statusText) or nil
+        if frame.statusText and _G.hooksecurefunc and stState and not stState.textMirrorHooked then
+            stState.textMirrorHooked = true
+            local ownerState = frameState
+
+            _G.hooksecurefunc(frame.statusText, "SetText", function(_, text)
+                if not (ownerState and ownerState.statusTextOverlay and ownerState.statusTextOverlayActive) then return end
+                -- text may be a secret value in 12.0; pcall for safety
+                if type(text) == "string" then
+                    ownerState.statusTextOverlay:SetText(text)
+                else
+                    pcall(ownerState.statusTextOverlay.SetText, ownerState.statusTextOverlay, text)
+                end
+                -- Mirror visibility: if Blizzard is showing status text, show our overlay
+                if ownerState.statusTextOverlay.Show then
+                    ownerState.statusTextOverlay:Show()
+                end
+            end)
+
+            _G.hooksecurefunc(frame.statusText, "SetFormattedText", function(self, fmt, ...)
+                if not (ownerState and ownerState.statusTextOverlay and ownerState.statusTextOverlayActive) then return end
+                -- Forward formatted text via pcall (args may contain secrets)
+                local ok, result = pcall(string.format, fmt, ...)
+                if ok and type(result) == "string" then
+                    ownerState.statusTextOverlay:SetText(result)
+                else
+                    -- Fallback: try GetText after the format has been applied
+                    local okGet, currentText = pcall(self.GetText, self)
+                    if okGet then
+                        pcall(ownerState.statusTextOverlay.SetText, ownerState.statusTextOverlay, currentText)
+                    end
+                end
+                if ownerState.statusTextOverlay.Show then
+                    ownerState.statusTextOverlay:Show()
+                end
+            end)
+
+            _G.hooksecurefunc(frame.statusText, "Show", function()
+                if ownerState and ownerState.statusTextOverlay and ownerState.statusTextOverlayActive then
+                    ownerState.statusTextOverlay:Show()
+                end
+            end)
+
+            _G.hooksecurefunc(frame.statusText, "Hide", function()
+                if ownerState and ownerState.statusTextOverlay then
+                    ownerState.statusTextOverlay:Hide()
+                end
+            end)
+        end
+    end
+
+    -- Build fingerprint to detect config changes
+    local fingerprint = string.format("%s|%s|%s|%s|%s|%s",
+        tostring(cfg.fontFace or ""),
+        tostring(cfg.size or ""),
+        tostring(cfg.style or ""),
+        tostring(cfg.anchor or ""),
+        cfg.color and string.format("%.2f,%.2f,%.2f,%.2f",
+            cfg.color[1] or 1, cfg.color[2] or 1, cfg.color[3] or 1, cfg.color[4] or 1) or "",
+        cfg.offset and string.format("%.1f,%.1f", cfg.offset.x or 0, cfg.offset.y or 0) or ""
+    )
+
+    -- Skip re-styling if config hasn't changed and overlay is visible
+    if frameState.lastStatusTextFingerprint == fingerprint and frameState.statusTextOverlay and frameState.statusTextOverlay:IsShown() then
+        return
+    end
+    frameState.lastStatusTextFingerprint = fingerprint
+
+    stylePartyStatusTextOverlay(frame, cfg)
+    hideBlizzardPartyStatusText(frame)
+
+    -- Copy current text from Blizzard's statusText to the overlay
+    if frameState and frameState.statusTextOverlay and frame.statusText then
+        local blizzST = frame.statusText
+        -- Check if Blizzard's statusText is currently shown
+        local isVisible = false
+        if blizzST.IsShown then
+            local okV, vis = pcall(blizzST.IsShown, blizzST)
+            isVisible = okV and vis
+        end
+
+        if blizzST.GetText then
+            local ok, currentText = pcall(blizzST.GetText, blizzST)
+            if ok and type(currentText) == "string" and currentText ~= "" then
+                frameState.statusTextOverlay:SetText(currentText)
+            elseif ok then
+                -- Secret or non-string -- forward directly
+                pcall(frameState.statusTextOverlay.SetText, frameState.statusTextOverlay, currentText)
+            end
+        end
+
+        -- Match Blizzard's visibility state
+        if isVisible then
+            frameState.statusTextOverlay:Show()
+        else
+            frameState.statusTextOverlay:Hide()
+        end
+    end
+end
+
+local function disablePartyStatusTextOverlay(frame)
+    if not frame then return end
+    local frameState = getState(frame)
+    if frameState then
+        frameState.statusTextOverlayActive = false
+        if frameState.statusTextOverlay then
+            frameState.statusTextOverlay:Hide()
+        end
+    end
+    showBlizzardPartyStatusText(frame)
+end
+
+function addon.ApplyPartyFrameStatusTextStyle()
+    local db = addon and addon.db and addon.db.profile
+    if not db then return end
+
+    local groupFrames = rawget(db, "groupFrames")
+    local partyCfg = groupFrames and rawget(groupFrames, "party") or nil
+    local cfg = partyCfg and rawget(partyCfg, "textStatusText") or nil
+    if not cfg then
+        return
+    end
+
+    if not Utils.hasCustomTextSettings(cfg) then
+        return
+    end
+
+    for i = 1, 5 do
+        local frame = _G["CompactPartyFrameMember" .. i]
+        if frame and frame.statusText then
+            if not (InCombatLockdown and InCombatLockdown()) then
+                ensurePartyStatusTextOverlay(frame, cfg)
+            else
+                -- During combat: only re-style existing overlays (no frame creation)
+                local state = getState(frame)
+                if state and state.statusTextOverlay then
+                    stylePartyStatusTextOverlay(frame, cfg)
+                end
+            end
+        end
+    end
+end
+
+function addon.RestorePartyFrameStatusTextOverlays()
+    for i = 1, 5 do
+        local frame = _G["CompactPartyFrameMember" .. i]
+        if frame then
+            disablePartyStatusTextOverlay(frame)
+        end
+    end
+end
+
+local function installPartyStatusTextHooks()
+    if addon._PartyStatusTextHooksInstalled then return end
+    addon._PartyStatusTextHooksInstalled = true
+
+    local function getCfg()
+        local db = addon and addon.db and addon.db.profile
+        local gf = db and rawget(db, "groupFrames") or nil
+        local partyCfg = gf and rawget(gf, "party") or nil
+        return partyCfg and rawget(partyCfg, "textStatusText") or nil
+    end
+
+    -- Hook CompactUnitFrame_UpdateAll for overlay setup on full refresh
+    if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateAll then
+        _G.hooksecurefunc("CompactUnitFrame_UpdateAll", function(frame)
+            if isEditModeActive() then return end
+            if not (frame and frame.statusText and Utils.isPartyFrame(frame)) then return end
+            local cfg = getCfg()
+            if not Utils.hasCustomTextSettings(cfg) then return end
+
+            local frameRef = frame
+            local cfgRef = cfg
+            if _G.C_Timer and _G.C_Timer.After then
+                _G.C_Timer.After(0, function()
+                    if not frameRef then return end
+                    if InCombatLockdown and InCombatLockdown() then
+                        Combat.queuePartyFrameReapply()
+                        return
+                    end
+                    ensurePartyStatusTextOverlay(frameRef, cfgRef)
+                end)
+            else
+                if InCombatLockdown and InCombatLockdown() then
+                    Combat.queuePartyFrameReapply()
+                    return
+                end
+                ensurePartyStatusTextOverlay(frameRef, cfgRef)
+            end
+        end)
+    end
+
+    -- Hook CompactUnitFrame_SetUnit for overlay setup on unit assignment
+    if _G.hooksecurefunc and _G.CompactUnitFrame_SetUnit then
+        _G.hooksecurefunc("CompactUnitFrame_SetUnit", function(frame, unit)
+            if isEditModeActive() then return end
+            if not unit then return end
+            if not (frame and frame.statusText and Utils.isPartyFrame(frame)) then return end
+            local cfg = getCfg()
+            if not Utils.hasCustomTextSettings(cfg) then return end
+
+            local frameRef = frame
+            local cfgRef = cfg
+            if _G.C_Timer and _G.C_Timer.After then
+                _G.C_Timer.After(0, function()
+                    if not frameRef then return end
+                    if InCombatLockdown and InCombatLockdown() then
+                        Combat.queuePartyFrameReapply()
+                        return
+                    end
+                    ensurePartyStatusTextOverlay(frameRef, cfgRef)
+                end)
+            else
+                if InCombatLockdown and InCombatLockdown() then
+                    Combat.queuePartyFrameReapply()
+                    return
+                end
+                ensurePartyStatusTextOverlay(frameRef, cfgRef)
+            end
+        end)
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Text Hook Installation
 --------------------------------------------------------------------------------
 
 function PartyFrames.installTextHooks()
     installPartyFrameTextHooks()
     installPartyNameOverlayHooks()
+    installPartyStatusTextHooks()
     installPartyTitleHooks()
 end
 

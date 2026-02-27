@@ -829,7 +829,124 @@ function GF.RenderRaid(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     groupLead = function(cf, tabInner)
-                        tabInner:AddDescription("Coming soon...")
+                        -- Icon Set selector
+                        tabInner:AddSelector({
+                            label = "Icon Set",
+                            values = {
+                                default = "Blizzard Default",
+                                desaturated = "Blizzard Default (White)",
+                            },
+                            order = { "default", "desaturated" },
+                            get = function()
+                                local db = GF.ensureRaidDB()
+                                return db and db.groupLeadIconSet or "default"
+                            end,
+                            set = function(v)
+                                local db = GF.ensureRaidDB()
+                                if db then
+                                    db.groupLeadIconSet = v
+                                    GF.applyRaidGroupLeadIcons()
+                                end
+                            end,
+                        })
+
+                        -- Show toggle
+                        tabInner:AddToggle({
+                            label = "Show Group Lead Icon",
+                            description = "Displays a crown icon on the group/raid leader's frame.",
+                            get = function()
+                                local db = GF.ensureRaidDB()
+                                return db and db.groupLeadIconShow or false
+                            end,
+                            set = function(v)
+                                local db = GF.ensureRaidDB()
+                                if db then
+                                    db.groupLeadIconShow = v
+                                    GF.applyRaidGroupLeadIcons()
+                                end
+                            end,
+                        })
+
+                        -- Scale slider
+                        tabInner:AddSlider({
+                            label = "Scale",
+                            min = 25,
+                            max = 200,
+                            step = 5,
+                            displaySuffix = "%",
+                            get = function()
+                                local db = GF.ensureRaidDB()
+                                return db and db.groupLeadIconScale or 100
+                            end,
+                            set = function(v)
+                                local db = GF.ensureRaidDB()
+                                if db then
+                                    db.groupLeadIconScale = v
+                                    GF.applyRaidGroupLeadIcons()
+                                end
+                            end,
+                        })
+
+                        -- Position selector (9-point)
+                        local leadAnchorValues = {
+                            TOPLEFT = "Top-Left", TOP = "Top-Center", TOPRIGHT = "Top-Right",
+                            LEFT = "Left", CENTER = "Center", RIGHT = "Right",
+                            BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom-Center", BOTTOMRIGHT = "Bottom-Right",
+                        }
+                        local leadAnchorOrder = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
+
+                        tabInner:AddSelector({
+                            label = "Position",
+                            values = leadAnchorValues,
+                            order = leadAnchorOrder,
+                            get = function()
+                                local db = GF.ensureRaidDB()
+                                return db and db.groupLeadIconAnchor or "TOPLEFT"
+                            end,
+                            set = function(v)
+                                local db = GF.ensureRaidDB()
+                                if db then
+                                    db.groupLeadIconAnchor = v
+                                    GF.applyRaidGroupLeadIcons()
+                                end
+                            end,
+                        })
+
+                        -- Offset dual slider (X and Y)
+                        tabInner:AddDualSlider({
+                            label = "Offset",
+                            sliderA = {
+                                axisLabel = "X",
+                                min = -50, max = 50, step = 1,
+                                get = function()
+                                    local db = GF.ensureRaidDB()
+                                    return db and db.groupLeadIconOffsetX or 0
+                                end,
+                                set = function(v)
+                                    local db = GF.ensureRaidDB()
+                                    if db then
+                                        db.groupLeadIconOffsetX = v
+                                        GF.applyRaidGroupLeadIcons()
+                                    end
+                                end,
+                            },
+                            sliderB = {
+                                axisLabel = "Y",
+                                min = -50, max = 50, step = 1,
+                                get = function()
+                                    local db = GF.ensureRaidDB()
+                                    return db and db.groupLeadIconOffsetY or 0
+                                end,
+                                set = function(v)
+                                    local db = GF.ensureRaidDB()
+                                    if db then
+                                        db.groupLeadIconOffsetY = v
+                                        GF.applyRaidGroupLeadIcons()
+                                    end
+                                end,
+                            },
+                        })
+
                         tabInner:Finalize()
                     end,
                 },

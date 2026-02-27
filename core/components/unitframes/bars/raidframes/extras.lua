@@ -377,4 +377,27 @@ function addon.ApplyRaidRoleIcons()
     end
 end
 
+--------------------------------------------------------------------------------
+-- Apply Group Lead Icons for Raid Frames
+--------------------------------------------------------------------------------
+
+function addon.ApplyRaidGroupLeadIcons()
+    local directApply = addon._applyGroupLeadIcon
+    if not directApply then return end
+
+    -- Combined layout: CompactRaidFrame1..40
+    for i = 1, 40 do
+        local frame = _G["CompactRaidFrame" .. i]
+        if frame then pcall(directApply, frame) end
+    end
+
+    -- Group layout: CompactRaidGroup1Member1..CompactRaidGroup8Member5
+    for group = 1, 8 do
+        for member = 1, 5 do
+            local frame = _G["CompactRaidGroup" .. group .. "Member" .. member]
+            if frame then pcall(directApply, frame) end
+        end
+    end
+end
+
 return RaidFrames

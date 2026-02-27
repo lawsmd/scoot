@@ -261,9 +261,9 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             get = function()
                                 local c = getSetting("textColor")
                                 if c and type(c) == "table" then
-                                    return c[1] or 0.68, c[2] or 0.85, c[3] or 1.0, c[4] or 1.0
+                                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
                                 end
-                                return 0.68, 0.85, 1.0, 1.0
+                                return 1, 1, 1, 1
                             end,
                             set = function(r, g, b, a)
                                 h.setAndApply("textColor", { r, g, b, a })
