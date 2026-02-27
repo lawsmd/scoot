@@ -28,6 +28,16 @@ local function getButtonOverlay(btn)
     return overlay
 end
 
+local function getOverlayHotkeyFS(overlay)
+    if overlay.hotkeyText then return overlay.hotkeyText end
+    local fs = overlay:CreateFontString(nil, "OVERLAY", nil, 10)  -- sublevel 10, above borders at 7
+    fs:SetFontObject(GameFontNormalSmall)  -- default font so SetText() doesn't error before deferred styling
+    fs:SetPoint("TOPRIGHT", overlay, "TOPRIGHT", -2, -2)
+    fs:SetJustifyH("RIGHT")
+    overlay.hotkeyText = fs
+    return fs
+end
+
 local function getContainerState()
     if not extraAbilityState.container then
         extraAbilityState.container = {}
@@ -64,6 +74,7 @@ local function startAlphaEnforcement(container)
             for btn, overlay in pairs(buttonOverlays) do
                 if overlay:IsShown() then
                     overlay:Hide()
+                    if overlay.hotkeyText then overlay.hotkeyText:Hide() end
                     if addon.Borders and addon.Borders.HideAll then
                         addon.Borders.HideAll(overlay)
                     end
@@ -308,6 +319,7 @@ local function ApplyExtraAbilitiesStyling(self)
             local overlay = buttonOverlays[btn]
             if overlay then
                 overlay:Hide()
+                if overlay.hotkeyText then overlay.hotkeyText:Hide() end
                 if addon.Borders and addon.Borders.HideAll then
                     addon.Borders.HideAll(overlay)
                 end
@@ -381,9 +393,25 @@ local function ApplyExtraAbilitiesStyling(self)
             local isRange = (txt == rangeIndicator or txt == "\226\128\162")
             local hiddenByUser = self.db and self.db.textHotkeyHidden
             local shouldShow = (not hiddenByUser) and (not isEmpty) and (not isRange)
-            pcall(btn.HotKey.SetShown, btn.HotKey, shouldShow)
-            if shouldShow then
+
+            local overlay = buttonOverlays[btn]
+            if shouldShow and overlay and overlay:IsShown() then
+                -- Border overlay is active: use overlay FontString so text renders above borders
+                pcall(btn.HotKey.SetAlpha, btn.HotKey, 0)  -- hide native (SetAlpha avoids taint vs SetShown)
+                local fs = getOverlayHotkeyFS(overlay)
+                fs:SetText(txt)
+                fs:Show()
+                applyTextToFontString(fs, hotkeyCfg, "RIGHT", "TOPRIGHT", overlay)
+            elseif shouldShow then
+                -- No border overlay: style the native HotKey directly
+                pcall(btn.HotKey.SetAlpha, btn.HotKey, 1)
+                pcall(btn.HotKey.SetShown, btn.HotKey, true)
                 applyTextToFontString(btn.HotKey, hotkeyCfg, "RIGHT", "TOPRIGHT", btn)
+                -- Clean up overlay FS if it exists
+                if overlay and overlay.hotkeyText then overlay.hotkeyText:Hide() end
+            else
+                pcall(btn.HotKey.SetShown, btn.HotKey, false)
+                if overlay and overlay.hotkeyText then overlay.hotkeyText:Hide() end
             end
         end
     end
