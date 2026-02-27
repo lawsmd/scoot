@@ -98,38 +98,30 @@ local function buildStyleTab(inner, barPrefix, applyFn, colorValues, colorOrder,
     colorOrder = colorOrder or UF.healthColorOrder
     colorInfoIcons = colorInfoIcons or UF.healthColorInfoIcons
 
-    inner:AddBarTextureSelector({
-        label = "Foreground Texture",
-        get = function() local t = ensureUFDB() or {}; return t[barPrefix .. "Texture"] or "default" end,
-        set = function(v) local t = ensureUFDB(); if t then t[barPrefix .. "Texture"] = v or "default"; applyFn() end end,
-    })
-
-    inner:AddSelectorColorPicker({
-        label = "Foreground Color",
-        values = colorValues, order = colorOrder, optionInfoIcons = colorInfoIcons,
-        get = function() local t = ensureUFDB() or {}; return t[barPrefix .. "ColorMode"] or "default" end,
-        set = function(v) local t = ensureUFDB(); if t then t[barPrefix .. "ColorMode"] = v or "default"; applyFn() end end,
+    inner:AddDualBarStyleRow({
+        label = "Foreground",
+        getTexture = function() local t = ensureUFDB() or {}; return t[barPrefix .. "Texture"] or "default" end,
+        setTexture = function(v) local t = ensureUFDB(); if t then t[barPrefix .. "Texture"] = v or "default"; applyFn() end end,
+        colorValues = colorValues, colorOrder = colorOrder, colorInfoIcons = colorInfoIcons,
+        getColorMode = function() local t = ensureUFDB() or {}; return t[barPrefix .. "ColorMode"] or "default" end,
+        setColorMode = function(v) local t = ensureUFDB(); if t then t[barPrefix .. "ColorMode"] = v or "default"; applyFn() end end,
         getColor = function() local t = ensureUFDB() or {}; local c = t[barPrefix .. "Tint"] or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
         setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t[barPrefix .. "Tint"] = {r or 1, g or 1, b or 1, a or 1}; applyFn() end end,
-        customValue = "custom", hasAlpha = true,
+        customColorValue = "custom", hasAlpha = true,
     })
 
     inner:AddSpacer(8)
 
-    inner:AddBarTextureSelector({
-        label = "Background Texture",
-        get = function() local t = ensureUFDB() or {}; return t[barPrefix .. "BackgroundTexture"] or "default" end,
-        set = function(v) local t = ensureUFDB(); if t then t[barPrefix .. "BackgroundTexture"] = v or "default"; applyFn() end end,
-    })
-
-    inner:AddSelectorColorPicker({
-        label = "Background Color",
-        values = UF.bgColorValues, order = UF.bgColorOrder,
-        get = function() local t = ensureUFDB() or {}; return t[barPrefix .. "BackgroundColorMode"] or "default" end,
-        set = function(v) local t = ensureUFDB(); if t then t[barPrefix .. "BackgroundColorMode"] = v or "default"; applyFn() end end,
+    inner:AddDualBarStyleRow({
+        label = "Background",
+        getTexture = function() local t = ensureUFDB() or {}; return t[barPrefix .. "BackgroundTexture"] or "default" end,
+        setTexture = function(v) local t = ensureUFDB(); if t then t[barPrefix .. "BackgroundTexture"] = v or "default"; applyFn() end end,
+        colorValues = UF.bgColorValues, colorOrder = UF.bgColorOrder,
+        getColorMode = function() local t = ensureUFDB() or {}; return t[barPrefix .. "BackgroundColorMode"] or "default" end,
+        setColorMode = function(v) local t = ensureUFDB(); if t then t[barPrefix .. "BackgroundColorMode"] = v or "default"; applyFn() end end,
         getColor = function() local t = ensureUFDB() or {}; local c = t[barPrefix .. "BackgroundTint"] or {0,0,0,1}; return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1 end,
         setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t[barPrefix .. "BackgroundTint"] = {r or 0, g or 0, b or 0, a or 1}; applyFn() end end,
-        customValue = "custom", hasAlpha = true,
+        customColorValue = "custom", hasAlpha = true,
     })
 
     inner:AddSlider({

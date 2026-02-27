@@ -77,29 +77,26 @@ end
 --------------------------------------------------------------------------------
 
 local function buildHealthStyleTab(inner)
-    inner:AddBarTextureSelector({
-        label = "Foreground Texture",
-        get = function()
+    inner:AddDualBarStyleRow({
+        label = "Foreground",
+        getTexture = function()
             local t = ensureUFDB() or {}
             return t.healthBarTexture or "default"
         end,
-        set = function(v)
+        setTexture = function(v)
             local t = ensureUFDB()
             if not t then return end
             t.healthBarTexture = v or "default"
             applyBarTextures()
         end,
-    })
-
-    inner:AddSelectorColorPicker({
-        label = "Foreground Color",
-        values = UF.healthColorValues,
-        order = UF.healthColorOrder,
-        get = function()
+        colorValues = UF.healthColorValues,
+        colorOrder = UF.healthColorOrder,
+        colorInfoIcons = UF.healthColorInfoIcons,
+        getColorMode = function()
             local t = ensureUFDB() or {}
             return t.healthBarColorMode or "default"
         end,
-        set = function(v)
+        setColorMode = function(v)
             local t = ensureUFDB()
             if not t then return end
             t.healthBarColorMode = v or "default"
@@ -116,36 +113,31 @@ local function buildHealthStyleTab(inner)
             t.healthBarTint = {r or 1, g or 1, b or 1, a or 1}
             applyBarTextures()
         end,
-        customValue = "custom",
+        customColorValue = "custom",
         hasAlpha = true,
-        optionInfoIcons = UF.healthColorInfoIcons,
     })
 
     inner:AddSpacer(8)
 
-    inner:AddBarTextureSelector({
-        label = "Background Texture",
-        get = function()
+    inner:AddDualBarStyleRow({
+        label = "Background",
+        getTexture = function()
             local t = ensureUFDB() or {}
             return t.healthBarBackgroundTexture or "default"
         end,
-        set = function(v)
+        setTexture = function(v)
             local t = ensureUFDB()
             if not t then return end
             t.healthBarBackgroundTexture = v or "default"
             applyBarTextures()
         end,
-    })
-
-    inner:AddSelectorColorPicker({
-        label = "Background Color",
-        values = UF.bgColorValues,
-        order = UF.bgColorOrder,
-        get = function()
+        colorValues = UF.bgColorValues,
+        colorOrder = UF.bgColorOrder,
+        getColorMode = function()
             local t = ensureUFDB() or {}
             return t.healthBarBackgroundColorMode or "default"
         end,
-        set = function(v)
+        setColorMode = function(v)
             local t = ensureUFDB()
             if not t then return end
             t.healthBarBackgroundColorMode = v or "default"
@@ -162,7 +154,7 @@ local function buildHealthStyleTab(inner)
             t.healthBarBackgroundTint = {r or 0, g or 0, b or 0, a or 1}
             applyBarTextures()
         end,
-        customValue = "custom",
+        customColorValue = "custom",
         hasAlpha = true,
     })
 

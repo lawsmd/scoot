@@ -127,22 +127,18 @@ function HealthBar.Render(panel, scrollContent)
         sectionKey = "style",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddBarTextureSelector({
-                label = "Foreground Texture",
-                get = function() return getSetting("styleForegroundTexture") or "default" end,
-                set = function(v) setSetting("styleForegroundTexture", v) end,
-            })
-
-            inner:AddSelectorColorPicker({
-                label = "Foreground Color",
-                values = {
+            inner:AddDualBarStyleRow({
+                label = "Foreground",
+                getTexture = function() return getSetting("styleForegroundTexture") or "default" end,
+                setTexture = function(v) setSetting("styleForegroundTexture", v) end,
+                colorValues = {
                     default = "Default",
                     class = "Class Color",
                     custom = "Custom",
                 },
-                order = { "default", "class", "custom" },
-                get = function() return getSetting("styleForegroundColorMode") or "default" end,
-                set = function(v) setSetting("styleForegroundColorMode", v) end,
+                colorOrder = { "default", "class", "custom" },
+                getColorMode = function() return getSetting("styleForegroundColorMode") or "default" end,
+                setColorMode = function(v) setSetting("styleForegroundColorMode", v) end,
                 getColor = function()
                     local c = getSetting("styleForegroundTint") or {1, 1, 1, 1}
                     return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
@@ -150,27 +146,23 @@ function HealthBar.Render(panel, scrollContent)
                 setColor = function(r, g, b, a)
                     setSetting("styleForegroundTint", {r, g, b, a})
                 end,
-                customValue = "custom",
+                customColorValue = "custom",
                 hasAlpha = true,
             })
 
             inner:AddSpacer(8)
 
-            inner:AddBarTextureSelector({
-                label = "Background Texture",
-                get = function() return getSetting("styleBackgroundTexture") or "default" end,
-                set = function(v) setSetting("styleBackgroundTexture", v) end,
-            })
-
-            inner:AddSelectorColorPicker({
-                label = "Background Color",
-                values = {
+            inner:AddDualBarStyleRow({
+                label = "Background",
+                getTexture = function() return getSetting("styleBackgroundTexture") or "default" end,
+                setTexture = function(v) setSetting("styleBackgroundTexture", v) end,
+                colorValues = {
                     default = "Default",
                     custom = "Custom",
                 },
-                order = { "default", "custom" },
-                get = function() return getSetting("styleBackgroundColorMode") or "default" end,
-                set = function(v) setSetting("styleBackgroundColorMode", v) end,
+                colorOrder = { "default", "custom" },
+                getColorMode = function() return getSetting("styleBackgroundColorMode") or "default" end,
+                setColorMode = function(v) setSetting("styleBackgroundColorMode", v) end,
                 getColor = function()
                     local c = getSetting("styleBackgroundTint") or {0, 0, 0, 1}
                     return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
@@ -178,7 +170,7 @@ function HealthBar.Render(panel, scrollContent)
                 setColor = function(r, g, b, a)
                     setSetting("styleBackgroundTint", {r, g, b, a})
                 end,
-                customValue = "custom",
+                customColorValue = "custom",
                 hasAlpha = true,
             })
 

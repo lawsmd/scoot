@@ -1295,6 +1295,73 @@ function Builder:AddDualSelector(options)
 end
 
 --------------------------------------------------------------------------------
+-- AddDualBarStyleRow: Texture + Color compact row
+--------------------------------------------------------------------------------
+-- Options:
+--   label              : Row label text (e.g. "Foreground", "Background")
+--   description        : Optional description below label
+--   getTexture / setTexture : Texture get/set callbacks
+--   colorValues / colorOrder / colorInfoIcons : Color selector options
+--   getColorMode / setColorMode : Color mode get/set callbacks
+--   getColor / setColor : Custom color get/set callbacks
+--   customColorValue   : Key that triggers swatch (default "custom")
+--   hasAlpha           : Whether color picker supports alpha
+--   disabled / isDisabled : Function returning disabled state
+--   key                : Optional unique key for dynamic updates
+--------------------------------------------------------------------------------
+
+function Builder:AddDualBarStyleRow(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    -- Add item spacing
+    if #self._controls > 0 then
+        self._currentY = self._currentY - ITEM_SPACING
+    end
+
+    -- Create dual bar style row using Controls module
+    local dualBarStyle = Controls:CreateDualBarStyleRow({
+        parent = scrollContent,
+        label = options.label,
+        description = options.description,
+        getTexture = options.getTexture,
+        setTexture = options.setTexture,
+        colorValues = options.colorValues,
+        colorOrder = options.colorOrder,
+        colorInfoIcons = options.colorInfoIcons,
+        getColorMode = options.getColorMode,
+        setColorMode = options.setColorMode,
+        getColor = options.getColor,
+        setColor = options.setColor,
+        customColorValue = options.customColorValue,
+        hasAlpha = options.hasAlpha,
+        useLightDim = self._useLightDim,
+        disabled = options.disabled,
+        isDisabled = options.isDisabled,
+        name = options.name,
+    })
+
+    if dualBarStyle then
+        -- Position the dual bar style row
+        dualBarStyle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+        dualBarStyle:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+        -- Track for cleanup
+        table.insert(self._controls, dualBarStyle)
+
+        -- Register by key for dynamic updates
+        if options.key then
+            self._controlsByKey[options.key] = dualBarStyle
+        end
+
+        -- Update Y position
+        self._currentY = self._currentY - dualBarStyle:GetHeight()
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
 -- AddTextInput: Add a single-line text input
 --------------------------------------------------------------------------------
 -- Options:

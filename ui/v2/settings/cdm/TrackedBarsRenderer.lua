@@ -121,22 +121,18 @@ function TrackedBars.Render(panel, scrollContent)
                 set = function(v) setSetting("styleEnableCustom", v) end,
             })
 
-            inner:AddBarTextureSelector({
-                label = "Foreground Texture",
-                get = function() return getSetting("styleForegroundTexture") or "bevelled" end,
-                set = function(v) setSetting("styleForegroundTexture", v) end,
-            })
-
-            inner:AddSelectorColorPicker({
-                label = "Foreground Color",
-                values = {
+            inner:AddDualBarStyleRow({
+                label = "Foreground",
+                getTexture = function() return getSetting("styleForegroundTexture") or "bevelled" end,
+                setTexture = function(v) setSetting("styleForegroundTexture", v) end,
+                colorValues = {
                     default = "Default",
                     class = "Class Color",
                     custom = "Custom",
                 },
-                order = { "default", "class", "custom" },
-                get = function() return getSetting("styleForegroundColorMode") or "default" end,
-                set = function(v) setSetting("styleForegroundColorMode", v) end,
+                colorOrder = { "default", "class", "custom" },
+                getColorMode = function() return getSetting("styleForegroundColorMode") or "default" end,
+                setColorMode = function(v) setSetting("styleForegroundColorMode", v) end,
                 getColor = function()
                     local c = getSetting("styleForegroundTint") or {1, 1, 1, 1}
                     return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
@@ -144,26 +140,22 @@ function TrackedBars.Render(panel, scrollContent)
                 setColor = function(r, g, b, a)
                     setSetting("styleForegroundTint", {r, g, b, a})
                 end,
-                customValue = "custom",
+                customColorValue = "custom",
                 hasAlpha = true,
             })
 
-            inner:AddBarTextureSelector({
-                label = "Background Texture",
-                get = function() return getSetting("styleBackgroundTexture") or "bevelled" end,
-                set = function(v) setSetting("styleBackgroundTexture", v) end,
-            })
-
-            inner:AddSelectorColorPicker({
-                label = "Background Color",
-                values = {
+            inner:AddDualBarStyleRow({
+                label = "Background",
+                getTexture = function() return getSetting("styleBackgroundTexture") or "bevelled" end,
+                setTexture = function(v) setSetting("styleBackgroundTexture", v) end,
+                colorValues = {
                     default = "Default",
                     class = "Class Color",
                     custom = "Custom",
                 },
-                order = { "default", "class", "custom" },
-                get = function() return getSetting("styleBackgroundColorMode") or "default" end,
-                set = function(v) setSetting("styleBackgroundColorMode", v) end,
+                colorOrder = { "default", "class", "custom" },
+                getColorMode = function() return getSetting("styleBackgroundColorMode") or "default" end,
+                setColorMode = function(v) setSetting("styleBackgroundColorMode", v) end,
                 getColor = function()
                     local c = getSetting("styleBackgroundTint") or {0, 0, 0, 1}
                     return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
@@ -171,7 +163,7 @@ function TrackedBars.Render(panel, scrollContent)
                 setColor = function(r, g, b, a)
                     setSetting("styleBackgroundTint", {r, g, b, a})
                 end,
-                customValue = "custom",
+                customColorValue = "custom",
                 hasAlpha = true,
             })
 

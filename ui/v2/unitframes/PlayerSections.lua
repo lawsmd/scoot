@@ -105,29 +105,25 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
                         tabInner:Finalize()
                     end,
                     style = function(cf, tabInner)
-                        tabInner:AddBarTextureSelector({
-                            label = "Foreground Texture",
-                            get = function()
+                        tabInner:AddDualBarStyleRow({
+                            label = "Foreground",
+                            getTexture = function()
                                 local apb = ensureAltPowerBarDB() or {}
                                 return apb.texture or "default"
                             end,
-                            set = function(v)
+                            setTexture = function(v)
                                 local apb = ensureAltPowerBarDB()
                                 if not apb then return end
                                 apb.texture = v or "default"
                                 applyBarTexturesFn()
                             end,
-                        })
-
-                        tabInner:AddSelectorColorPicker({
-                            label = "Foreground Color",
-                            values = UF.healthColorValues,
-                            order = UF.healthColorOrder,
-                            get = function()
+                            colorValues = UF.healthColorValues,
+                            colorOrder = UF.healthColorOrder,
+                            getColorMode = function()
                                 local apb = ensureAltPowerBarDB() or {}
                                 return apb.colorMode or "default"
                             end,
-                            set = function(v)
+                            setColorMode = function(v)
                                 local apb = ensureAltPowerBarDB()
                                 if not apb then return end
                                 apb.colorMode = v or "default"
@@ -144,35 +140,31 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
                                 apb.tint = {r or 1, g or 1, b or 1, a or 1}
                                 applyBarTexturesFn()
                             end,
-                            customValue = "custom",
+                            customColorValue = "custom",
                             hasAlpha = true,
                         })
 
                         tabInner:AddSpacer(8)
 
-                        tabInner:AddBarTextureSelector({
-                            label = "Background Texture",
-                            get = function()
+                        tabInner:AddDualBarStyleRow({
+                            label = "Background",
+                            getTexture = function()
                                 local apb = ensureAltPowerBarDB() or {}
                                 return apb.backgroundTexture or "default"
                             end,
-                            set = function(v)
+                            setTexture = function(v)
                                 local apb = ensureAltPowerBarDB()
                                 if not apb then return end
                                 apb.backgroundTexture = v or "default"
                                 applyBarTexturesFn()
                             end,
-                        })
-
-                        tabInner:AddSelectorColorPicker({
-                            label = "Background Color",
-                            values = UF.bgColorValues,
-                            order = UF.bgColorOrder,
-                            get = function()
+                            colorValues = UF.bgColorValues,
+                            colorOrder = UF.bgColorOrder,
+                            getColorMode = function()
                                 local apb = ensureAltPowerBarDB() or {}
                                 return apb.backgroundColorMode or "default"
                             end,
-                            set = function(v)
+                            setColorMode = function(v)
                                 local apb = ensureAltPowerBarDB()
                                 if not apb then return end
                                 apb.backgroundColorMode = v or "default"
@@ -189,7 +181,7 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
                                 apb.backgroundTint = {r or 0, g or 0, b or 0, a or 1}
                                 applyBarTexturesFn()
                             end,
-                            customValue = "custom",
+                            customColorValue = "custom",
                             hasAlpha = true,
                         })
 
@@ -762,7 +754,7 @@ function UF.PlayerSections.buildClassResource(builder, COMPONENT_ID, ensureUFDBF
 
             crBuildContent.textures = function(cf, tabInner)
                 local textureLabel = (playerClass == "DEATHKNIGHT") and "Rune Style"
-                    or (playerClass == "MAGE") and "Charge Style"
+                    or (playerClass == "MAGE") and "Arcane Charge Style"
                     or "Texture Style"
                 local textureKey = "textureStyle_" .. playerClass
                 tabInner:AddSelector({

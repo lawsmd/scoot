@@ -55,30 +55,26 @@ end
 --------------------------------------------------------------------------------
 
 local function buildStyleTab(inner, barPrefix, applyFn)
-    inner:AddBarTextureSelector({
-        label = "Foreground Texture",
-        get = function()
+    inner:AddDualBarStyleRow({
+        label = "Foreground",
+        getTexture = function()
             local t = ensureDB() or {}
             return t[barPrefix .. "Texture"] or "default"
         end,
-        set = function(v)
+        setTexture = function(v)
             local t = ensureDB()
             if not t then return end
             t[barPrefix .. "Texture"] = v or "default"
             applyFn()
         end,
-    })
-
-    inner:AddSelectorColorPicker({
-        label = "Foreground Color",
-        values = GF.healthColorValues,
-        order = GF.healthColorOrder,
-        optionInfoIcons = GF.healthColorInfoIcons,
-        get = function()
+        colorValues = GF.healthColorValues,
+        colorOrder = GF.healthColorOrder,
+        colorInfoIcons = GF.healthColorInfoIcons,
+        getColorMode = function()
             local t = ensureDB() or {}
             return t[barPrefix .. "ColorMode"] or "default"
         end,
-        set = function(v)
+        setColorMode = function(v)
             local t = ensureDB()
             if not t then return end
             t[barPrefix .. "ColorMode"] = v or "default"
@@ -95,35 +91,31 @@ local function buildStyleTab(inner, barPrefix, applyFn)
             t[barPrefix .. "Tint"] = {r or 1, g or 1, b or 1, a or 1}
             applyFn()
         end,
-        customValue = "custom",
+        customColorValue = "custom",
         hasAlpha = true,
     })
 
     inner:AddSpacer(8)
 
-    inner:AddBarTextureSelector({
-        label = "Background Texture",
-        get = function()
+    inner:AddDualBarStyleRow({
+        label = "Background",
+        getTexture = function()
             local t = ensureDB() or {}
             return t[barPrefix .. "BackgroundTexture"] or "default"
         end,
-        set = function(v)
+        setTexture = function(v)
             local t = ensureDB()
             if not t then return end
             t[barPrefix .. "BackgroundTexture"] = v or "default"
             applyFn()
         end,
-    })
-
-    inner:AddSelectorColorPicker({
-        label = "Background Color",
-        values = GF.bgColorValues,
-        order = GF.bgColorOrder,
-        get = function()
+        colorValues = GF.bgColorValues,
+        colorOrder = GF.bgColorOrder,
+        getColorMode = function()
             local t = ensureDB() or {}
             return t[barPrefix .. "BackgroundColorMode"] or "default"
         end,
-        set = function(v)
+        setColorMode = function(v)
             local t = ensureDB()
             if not t then return end
             t[barPrefix .. "BackgroundColorMode"] = v or "default"
@@ -140,7 +132,7 @@ local function buildStyleTab(inner, barPrefix, applyFn)
             t[barPrefix .. "BackgroundTint"] = {r or 0, g or 0, b or 0, a or 1}
             applyFn()
         end,
-        customValue = "custom",
+        customColorValue = "custom",
         hasAlpha = true,
     })
 

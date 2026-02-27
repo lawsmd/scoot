@@ -30,7 +30,7 @@ function ClassResource.Render(panel, scrollContent)
     local _, playerClass = UnitClass("player")
     if playerClass == "DEATHKNIGHT" or playerClass == "MAGE" then
         local textureLabel = (playerClass == "DEATHKNIGHT") and "Rune Style"
-            or (playerClass == "MAGE") and "Charge Style"
+            or (playerClass == "MAGE") and "Arcane Charge Style"
             or "Texture Style"
         builder:AddCollapsibleSection({
             title = "Textures",
