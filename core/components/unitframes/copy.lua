@@ -242,6 +242,7 @@ local copyKeysRoot = {
     -- Misc
     "hideRoleIcon",
     "hideGroupNumber",
+    "hidePvPIcons",
 }
 
 local preserveXOffsetKeys = {

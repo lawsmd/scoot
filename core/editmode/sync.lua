@@ -1161,7 +1161,11 @@ function addon.EditMode.ResetComponentPositionToDefault(component)
     end
 
     local usedSystemReset = false
-    if type(frame.ResetToDefaultPosition) == "function" then
+    -- Skip ResetToDefaultPosition on Edit Mode system frames — the method internally
+    -- calls SetPointOverride which writes snappedToFrame (Rule 1 violation, Rule 10).
+    -- Detect system frames by presence of SetScaleBase (set by EditModeSystemTemplate).
+    local isSystemFrame = frame.SetScaleBase ~= nil
+    if not isSystemFrame and type(frame.ResetToDefaultPosition) == "function" then
         local ok = pcall(frame.ResetToDefaultPosition, frame)
         if ok then
             usedSystemReset = true
@@ -1225,7 +1229,9 @@ function addon.EditMode.ResetUnitFramePosition(unit)
     end
 
     local resetOk = false
-    if type(frame.ResetToDefaultPosition) == "function" then
+    -- Skip ResetToDefaultPosition on Edit Mode system frames (Rule 10/11)
+    local isSystemFrame = frame.SetScaleBase ~= nil
+    if not isSystemFrame and type(frame.ResetToDefaultPosition) == "function" then
         resetOk = pcall(frame.ResetToDefaultPosition, frame) or false
     end
 

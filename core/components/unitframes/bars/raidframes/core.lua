@@ -302,34 +302,19 @@ function RaidFrames.ensureHealthOverlay(bar, cfg)
             state.healthOverlay:Hide()
         end
         showBlizzardFill(bar)
-        -- Restore DispelOverlay to stock frame level (useParentLevel behavior)
-        local unitFrame = bar.GetParent and bar:GetParent()
-        if unitFrame then
-            local parentLevel = 0
-            local okL, lvl = pcall(unitFrame.GetFrameLevel, unitFrame)
-            if okL and type(lvl) == "number" then parentLevel = lvl end
-
-            local okD, dispelOverlay = pcall(function() return unitFrame.DispelOverlay end)
-            if okD and dispelOverlay and dispelOverlay.SetFrameLevel then
-                pcall(dispelOverlay.SetFrameLevel, dispelOverlay, parentLevel)
-            end
-        end
         return
     end
 
     if state and not state.healthOverlay then
-        -- IMPORTANT: This overlay must NOT be parented to the StatusBar.
-        -- WoW draws all parent frame layers first, then all child frame layers.
-        -- If parented to the health bar (child), the overlay can draw *above*
-        -- CompactUnitFrame parent-layer elements like roleIcon (ARTWORK) and
-        -- readyCheckIcon (OVERLAY), effectively hiding them.
-        --
-        -- Fix: parent the overlay to the CompactUnitFrame (the health bar's parent)
-        -- and draw it in BORDER sublevel 7 so it stays above heal-prediction layers
-        -- but below role/ready-check indicators.
-        local unitFrame = (bar.GetParent and bar:GetParent()) or nil
-        local overlayParent = unitFrame or bar
-        local overlay = overlayParent:CreateTexture(nil, "BORDER", nil, 7)
+        -- Parent the overlay to the healthBar StatusBar (a useParentLevel="true" child).
+        -- This places the overlay in the same rendering pass as DispelOverlay.
+        -- Within that pass, draw layers compare normally: our BORDER sublevel 7
+        -- renders before DispelOverlay's ARTWORK sublevel -5/-6, so the dispel
+        -- gradient/highlight renders on top of our overlay.
+        -- roleIcon, readyCheckIcon, selectionHighlight live on the parent
+        -- CompactUnitFrame and render in a later pass (parent after children),
+        -- so they remain visible above the overlay.
+        local overlay = bar:CreateTexture(nil, "BORDER", nil, 7)
         overlay:SetVertTile(false)
         overlay:SetHorizTile(false)
         overlay:SetTexCoord(0, 1, 0, 1)
@@ -415,24 +400,9 @@ function RaidFrames.ensureHealthOverlay(bar, cfg)
         end)
     end
 
-    -- Raise DispelOverlay above Scoot's overlay so dispel indicators remain visible.
-    -- DispelOverlay uses useParentLevel="true", which means the parent's own regions
-    -- (including our BORDER sublevel 7 overlay) render on top of it. SetFrameLevel
-    -- is a C-side widget operation (taint-safe per Rule 4).
-    -- Uses parentLevel + 11 to also clear the raid border frame (at barLevel + 10).
-    -- Runs before the fingerprint check so it re-applies every call.
+    -- Elevate roleIcon above Scoot overlay layers (OVERLAY 6, below name text at OVERLAY 7)
     local unitFrame = bar.GetParent and bar:GetParent()
     if unitFrame then
-        local parentLevel = 0
-        local okL, lvl = pcall(unitFrame.GetFrameLevel, unitFrame)
-        if okL and type(lvl) == "number" then parentLevel = lvl end
-
-        local okD, dispelOverlay = pcall(function() return unitFrame.DispelOverlay end)
-        if okD and dispelOverlay and dispelOverlay.SetFrameLevel then
-            pcall(dispelOverlay.SetFrameLevel, dispelOverlay, parentLevel + 11)
-        end
-
-        -- Elevate roleIcon above Scoot overlay layers (OVERLAY 6, below name text at OVERLAY 7)
         local okR, roleIcon = pcall(function() return unitFrame.roleIcon end)
         if okR and roleIcon and roleIcon.SetDrawLayer then
             pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
@@ -490,19 +460,9 @@ function RaidFrames.disableHealthOverlay(bar)
         state.healthOverlay:Hide()
     end
     showBlizzardFill(bar)
-    -- Restore DispelOverlay to stock frame level (useParentLevel behavior)
+    -- Restore roleIcon to stock draw layer
     local unitFrame = bar.GetParent and bar:GetParent()
     if unitFrame then
-        local parentLevel = 0
-        local okL, lvl = pcall(unitFrame.GetFrameLevel, unitFrame)
-        if okL and type(lvl) == "number" then parentLevel = lvl end
-
-        local okD, dispelOverlay = pcall(function() return unitFrame.DispelOverlay end)
-        if okD and dispelOverlay and dispelOverlay.SetFrameLevel then
-            pcall(dispelOverlay.SetFrameLevel, dispelOverlay, parentLevel)
-        end
-
-        -- Restore roleIcon to stock draw layer
         local okR, roleIcon = pcall(function() return unitFrame.roleIcon end)
         if okR and roleIcon and roleIcon.SetDrawLayer then
             pcall(roleIcon.SetDrawLayer, roleIcon, "ARTWORK", 0)

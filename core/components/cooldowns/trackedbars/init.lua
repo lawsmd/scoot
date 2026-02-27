@@ -299,10 +299,10 @@ local function hookTrackedBars(component)
                 TB.cachedSpellID[itemFrame] = cachedSID
             end
 
-            -- Hook visibility changes via OnShow/OnHide
+            -- Hook visibility changes via hooksecurefunc (avoids HookScript taint on system children)
             if not TB.visHookedItems[itemFrame] then
-                itemFrame:HookScript("OnHide", function(self) onItemFrameHide(self, component) end)
-                itemFrame:HookScript("OnShow", function(self) onItemFrameShow(self, component) end)
+                hooksecurefunc(itemFrame, "Hide", function(self) onItemFrameHide(self, component) end)
+                hooksecurefunc(itemFrame, "Show", function(self) onItemFrameShow(self, component) end)
                 TB.visHookedItems[itemFrame] = true
             end
 

@@ -6,9 +6,11 @@ local Util = addon.ComponentsUtil
 
 -- State for alpha management
 local extraAbilityState = {}
-local alphaHooked = {}
 local settingAlpha = {}
 local buttonsHooked = {}
+
+-- Cached button references (refreshed on styling, avoids EnumerateActive in tickers)
+local cachedButtons = {}
 
 -- Overlay frames anchored to spell buttons (avoids tainting spell-casting buttons
 -- with CreateTexture/border ops that trigger secret value errors in combat)
@@ -37,36 +39,60 @@ local function setContainerDesiredAlpha(container, alpha)
     if not container or not container.SetAlpha then return end
     local state = getContainerState()
     state.desiredAlpha = alpha
-    settingAlpha[container] = true
-    pcall(container.SetAlpha, container, alpha)
-    settingAlpha[container] = nil
+    C_Timer.After(0, function()
+        if not container or container:IsForbidden() then return end
+        settingAlpha[container] = true
+        pcall(container.SetAlpha, container, alpha)
+        settingAlpha[container] = nil
+    end)
 end
 
-local function hookContainerAlpha(container)
-    if not container or alphaHooked[container] then return end
-    alphaHooked[container] = true
-    hooksecurefunc(container, "SetAlpha", function(self, alpha)
-        if settingAlpha[self] then return end
+local alphaEnforceTicker = nil
+local function startAlphaEnforcement(container)
+    if alphaEnforceTicker then return end
+    alphaEnforceTicker = C_Timer.NewTicker(0.25, function()
+        if not container or container:IsForbidden() then return end
+
+        -- Hide overlays when container is not shown (replaces hooksecurefunc on eac.Hide)
+        if not container:IsShown() then
+            for btn, overlay in pairs(buttonOverlays) do
+                if overlay:IsShown() then
+                    overlay:Hide()
+                    if addon.Borders and addon.Borders.HideAll then
+                        addon.Borders.HideAll(overlay)
+                    end
+                end
+            end
+            return
+        end
+
         local state = extraAbilityState.container
         if not state or state.desiredAlpha == nil then return end
-        if math.abs(alpha - state.desiredAlpha) > 0.001 then
-            settingAlpha[self] = true
-            pcall(self.SetAlpha, self, state.desiredAlpha)
-            settingAlpha[self] = nil
+        local ok, cur = pcall(container.GetAlpha, container)
+        if ok and type(cur) == "number" and not issecretvalue(cur) then
+            if math.abs(cur - state.desiredAlpha) > 0.001 and not settingAlpha[container] then
+                C_Timer.After(0, function()
+                    if not container or container:IsForbidden() then return end
+                    settingAlpha[container] = true
+                    pcall(container.SetAlpha, container, state.desiredAlpha)
+                    settingAlpha[container] = nil
+                end)
+            end
         end
     end)
 end
 
 -- Enumerate all extra ability buttons (Zone Ability + Extra Action Button)
+-- Also refreshes the cachedButtons table for use by tickers
 local function enumerateExtraAbilityButtons()
-    local buttons = {}
+    wipe(cachedButtons)
 
     -- ZoneAbilityFrame buttons
     local zaf = _G.ZoneAbilityFrame
     if zaf and zaf.SpellButtonContainer and zaf.SpellButtonContainer.EnumerateActive then
         for btn in zaf.SpellButtonContainer:EnumerateActive() do
             if btn then
-                table.insert(buttons, btn)
+                table.insert(cachedButtons, btn)
             end
         end
     end
@@ -74,10 +100,10 @@ local function enumerateExtraAbilityButtons()
     -- ExtraActionButton
     local eab = _G.ExtraActionBarFrame
     if eab and eab.button then
-        table.insert(buttons, eab.button)
+        table.insert(cachedButtons, eab.button)
     end
 
-    return buttons
+    return cachedButtons
 end
 
 -- Hover detection via polling (avoids HookScript taint on Blizzard frames)
@@ -90,7 +116,9 @@ local function startHoverDetection(container)
         if state.desiredAlpha == nil then return end
 
         local isOver = false
-        for _, btn in ipairs(enumerateExtraAbilityButtons()) do
+        -- Use cachedButtons instead of enumerateExtraAbilityButtons() to avoid
+        -- calling EnumerateActive() on a system frame child every 0.15s
+        for _, btn in ipairs(cachedButtons) do
             if btn:IsMouseOver() then isOver = true; break end
         end
 
@@ -113,9 +141,11 @@ local function ApplyExtraAbilitiesStyling(self)
     local scale = tonumber(self.db.scale) or 100
     if scale < 25 then scale = 25 elseif scale > 150 then scale = 150 end
     local scaleValue = scale / 100
-    -- SetScale is protected on Edit Mode-managed frames during combat
+    -- Use C-level SetScaleBase to bypass SetScaleOverride's Lua table writes
+    -- (SetScaleOverride calls SetPointOverride which writes snappedToFrame — Rule 1 violation)
     if not InCombatLockdown() then
-        pcall(container.SetScale, container, scaleValue)
+        local fn = container.SetScaleBase or container.SetScale
+        pcall(fn, container, scaleValue)
     end
 
     -- Apply opacity
@@ -131,7 +161,7 @@ local function ApplyExtraAbilitiesStyling(self)
     local hasTarget = (UnitExists and UnitExists("target")) and true or false
     local appliedOp = hasTarget and tgtOp or (Util.PlayerInCombat() and baseOp or oocOp)
 
-    hookContainerAlpha(container)
+    startAlphaEnforcement(container)
     local state = getContainerState()
     state.component = self
     state.baseOpacity = appliedOp / 100
@@ -196,27 +226,31 @@ local function ApplyExtraAbilitiesStyling(self)
         local size = tonumber(cfg.size) or 14
         local style = cfg.style or "OUTLINE"
         local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace or "FRIZQT__") or defaultFace
-        pcall(fs.SetDrawLayer, fs, "OVERLAY", 10)
-        if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, style) else fs:SetFont(face, size, style) end
         local c = cfg.color or {1,1,1,1}
-        if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1) end
-        if justify and fs.SetJustifyH then pcall(fs.SetJustifyH, fs, justify) end
         local ox = (cfg.offset and cfg.offset.x) or 0
         local oy = (cfg.offset and cfg.offset.y) or 0
-        if (ox ~= 0 or oy ~= 0) and fs.ClearAllPoints and fs.SetPoint then
-            fs:ClearAllPoints()
-            fs:SetPoint(anchorPoint or "CENTER", relTo or fs:GetParent(), anchorPoint or "CENTER", ox, oy)
-        end
+        C_Timer.After(0, function()
+            if not fs or fs:IsForbidden() then return end
+            pcall(fs.SetDrawLayer, fs, "OVERLAY", 10)
+            if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, style) else pcall(fs.SetFont, fs, face, size, style) end
+            if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1) end
+            if justify and fs.SetJustifyH then pcall(fs.SetJustifyH, fs, justify) end
+            if (ox ~= 0 or oy ~= 0) and fs.ClearAllPoints and fs.SetPoint then
+                fs:ClearAllPoints()
+                fs:SetPoint(anchorPoint or "CENTER", relTo or fs:GetParent(), anchorPoint or "CENTER", ox, oy)
+            end
+        end)
     end
 
     -- Hide/show ZoneAbilityFrame.Style (the decorative frame around zone abilities)
     local zaf = _G.ZoneAbilityFrame
     if zaf and zaf.Style then
-        if hideBlizzardArt then
-            pcall(zaf.Style.SetAlpha, zaf.Style, 0)
-        else
-            pcall(zaf.Style.SetAlpha, zaf.Style, 1)
-        end
+        local targetAlpha = hideBlizzardArt and 0 or 1
+        C_Timer.After(0, function()
+            if zaf and zaf.Style and not zaf:IsForbidden() then
+                pcall(zaf.Style.SetAlpha, zaf.Style, targetAlpha)
+            end
+        end)
     end
 
     -- Hide all existing overlays first (cleanup-first pattern)
@@ -228,25 +262,30 @@ local function ApplyExtraAbilitiesStyling(self)
     -- Style each button
     local buttons = enumerateExtraAbilityButtons()
     for _, btn in ipairs(buttons) do
-        -- Hide Blizzard art
-        if hideBlizzardArt then
-            -- Hide NormalTexture on buttons
-            if btn.GetNormalTexture then
-                local nt = btn:GetNormalTexture()
-                if nt and nt.SetAlpha then pcall(nt.SetAlpha, nt, 0) end
+        -- Hide Blizzard art (deferred to avoid tainting system frame tree)
+        do
+            local artOps = {}
+            if hideBlizzardArt then
+                if btn.GetNormalTexture then
+                    local nt = btn:GetNormalTexture()
+                    if nt then table.insert(artOps, {nt, 0}) end
+                end
+                if btn.style then table.insert(artOps, {btn.style, 0}) end
+            else
+                if btn.GetNormalTexture then
+                    local nt = btn:GetNormalTexture()
+                    if nt then table.insert(artOps, {nt, 1}) end
+                end
+                if btn.style then table.insert(artOps, {btn.style, 1}) end
             end
-            -- Hide style texture on ExtraActionButton
-            if btn.style then
-                pcall(btn.style.SetAlpha, btn.style, 0)
-            end
-        else
-            -- Restore
-            if btn.GetNormalTexture then
-                local nt = btn:GetNormalTexture()
-                if nt and nt.SetAlpha then pcall(nt.SetAlpha, nt, 1) end
-            end
-            if btn.style then
-                pcall(btn.style.SetAlpha, btn.style, 1)
+            if #artOps > 0 then
+                C_Timer.After(0, function()
+                    for _, op in ipairs(artOps) do
+                        if op[1] and not op[1]:IsForbidden() then
+                            pcall(op[1].SetAlpha, op[1], op[2])
+                        end
+                    end
+                end)
             end
         end
 
@@ -321,36 +360,30 @@ end
 
 -- Install hooks for dynamic button creation
 local function InstallDynamicHooks(comp)
-    -- Hook ZoneAbilityFrame button creation
-    local zaf = _G.ZoneAbilityFrame
-    if zaf and zaf.SpellButtonContainer and zaf.SpellButtonContainer.SetContents then
-        if not buttonsHooked.zoneAbility then
-            buttonsHooked.zoneAbility = true
-            hooksecurefunc(zaf.SpellButtonContainer, "SetContents", function()
-                C_Timer.After(0, function()
-                    if comp and comp.ApplyStyling then
-                        comp:ApplyStyling()
-                    end
-                end)
-            end)
-        end
-    end
-
-    -- Hook container Hide to immediately hide overlays when Extra Abilities disappear
-    local eac = _G.ExtraAbilityContainer
-    if eac and not buttonsHooked.containerHide then
-        buttonsHooked.containerHide = true
-        hooksecurefunc(eac, "Hide", function()
-            for btn, overlay in pairs(buttonOverlays) do
-                overlay:Hide()
-                if addon.Borders and addon.Borders.HideAll then
-                    addon.Borders.HideAll(overlay)
+    -- Zone ability button changes: use events instead of hooksecurefunc on
+    -- zaf.SpellButtonContainer.SetContents (Rule 11: avoid hooksecurefunc on
+    -- system frame tree members — may cause table-level taint in 12.0)
+    if not buttonsHooked.zoneAbilityEvents then
+        buttonsHooked.zoneAbilityEvents = true
+        local zoneEventFrame = CreateFrame("Frame")
+        zoneEventFrame:RegisterEvent("SPELLS_CHANGED")
+        local pendingRestyle = false
+        zoneEventFrame:SetScript("OnEvent", function()
+            if pendingRestyle then return end
+            pendingRestyle = true
+            C_Timer.After(0.5, function()
+                pendingRestyle = false
+                if comp and comp.ApplyStyling then
+                    comp:ApplyStyling()
                 end
-            end
+            end)
         end)
     end
 
-    -- Hook ExtraActionBar updates
+    -- Container Hide: handled by alpha enforcement ticker visibility check
+    -- (no hooksecurefunc on system frame — Rule 11)
+
+    -- Hook ExtraActionBar updates (GLOBAL function hook — safe, no frame table modification)
     if not buttonsHooked.extraAction and _G.ExtraActionBar_Update then
         buttonsHooked.extraAction = true
         hooksecurefunc("ExtraActionBar_Update", function()

@@ -721,6 +721,180 @@ do
     end
 end
 
+-- Player Misc.: Hide PvP Icons (PrestigeBadge + PrestigePortrait)
+-- Frame paths:
+--   PlayerFrame.PlayerFrameContent.PlayerFrameContentContextual.PrestigeBadge
+--   PlayerFrame.PlayerFrameContent.PlayerFrameContentContextual.PrestigePortrait
+do
+    local _pvpIconsHooked = false
+    local _originalPrestigeBadgeAlpha = nil
+    local _originalPrestigePortraitAlpha = nil
+
+    local function getPrestigeBadge()
+        local pf = _G.PlayerFrame
+        if not pf then return nil end
+        local content = pf.PlayerFrameContent
+        if not content then return nil end
+        local contextual = content.PlayerFrameContentContextual
+        if not contextual then return nil end
+        return contextual.PrestigeBadge
+    end
+
+    local function getPrestigePortrait()
+        local pf = _G.PlayerFrame
+        if not pf then return nil end
+        local content = pf.PlayerFrameContent
+        if not content then return nil end
+        local contextual = content.PlayerFrameContentContextual
+        if not contextual then return nil end
+        return contextual.PrestigePortrait
+    end
+
+    local function applyPvPIconVisibility()
+        local prestigeBadge = getPrestigeBadge()
+        local prestigePortrait = getPrestigePortrait()
+
+        local db = addon and addon.db and addon.db.profile
+        if not db then return end
+
+        local unitFrames = rawget(db, "unitFrames")
+        local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
+        local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
+        if not miscCfg then
+            return
+        end
+        if miscCfg.hidePvPIcons == nil then
+            return
+        end
+        local hidePvPIcons = (miscCfg.hidePvPIcons == true)
+
+        -- Apply to PrestigeBadge
+        if prestigeBadge then
+            if _originalPrestigeBadgeAlpha == nil then
+                _originalPrestigeBadgeAlpha = prestigeBadge:GetAlpha() or 1
+            end
+
+            if hidePvPIcons then
+                if prestigeBadge.SetAlpha then
+                    pcall(prestigeBadge.SetAlpha, prestigeBadge, 0)
+                end
+            else
+                if prestigeBadge.SetAlpha then
+                    pcall(prestigeBadge.SetAlpha, prestigeBadge, _originalPrestigeBadgeAlpha)
+                end
+            end
+        end
+
+        -- Apply to PrestigePortrait
+        if prestigePortrait then
+            if _originalPrestigePortraitAlpha == nil then
+                _originalPrestigePortraitAlpha = prestigePortrait:GetAlpha() or 1
+            end
+
+            if hidePvPIcons then
+                if prestigePortrait.SetAlpha then
+                    pcall(prestigePortrait.SetAlpha, prestigePortrait, 0)
+                end
+            else
+                if prestigePortrait.SetAlpha then
+                    pcall(prestigePortrait.SetAlpha, prestigePortrait, _originalPrestigePortraitAlpha)
+                end
+            end
+        end
+    end
+
+    local function installPvPIconHooks()
+        if _pvpIconsHooked then return end
+        _pvpIconsHooked = true
+
+        local prestigeBadge = getPrestigeBadge()
+        local prestigePortrait = getPrestigePortrait()
+
+        -- Hook PrestigeBadge
+        if prestigeBadge then
+            if prestigeBadge.Show then
+                hooksecurefunc(prestigeBadge, "Show", function(self)
+                    local db = addon and addon.db and addon.db.profile
+                    if not db then return end
+                    local unitFrames = rawget(db, "unitFrames")
+                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
+                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
+                    if miscCfg and miscCfg.hidePvPIcons == true then
+                        if self.SetAlpha then
+                            pcall(self.SetAlpha, self, 0)
+                        end
+                    end
+                end)
+            end
+
+            if prestigeBadge.SetAlpha then
+                hooksecurefunc(prestigeBadge, "SetAlpha", function(self, alpha)
+                    local db = addon and addon.db and addon.db.profile
+                    if not db then return end
+                    local unitFrames = rawget(db, "unitFrames")
+                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
+                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
+                    if miscCfg and miscCfg.hidePvPIcons == true and alpha and alpha > 0 then
+                        if not getProp(self, "prestigeBadgeAlphaDeferred") then
+                            setProp(self, "prestigeBadgeAlphaDeferred", true)
+                            C_Timer.After(0, function()
+                                setProp(self, "prestigeBadgeAlphaDeferred", nil)
+                                if miscCfg and miscCfg.hidePvPIcons == true and self.SetAlpha then
+                                    pcall(self.SetAlpha, self, 0)
+                                end
+                            end)
+                        end
+                    end
+                end)
+            end
+        end
+
+        -- Hook PrestigePortrait
+        if prestigePortrait then
+            if prestigePortrait.Show then
+                hooksecurefunc(prestigePortrait, "Show", function(self)
+                    local db = addon and addon.db and addon.db.profile
+                    if not db then return end
+                    local unitFrames = rawget(db, "unitFrames")
+                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
+                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
+                    if miscCfg and miscCfg.hidePvPIcons == true then
+                        if self.SetAlpha then
+                            pcall(self.SetAlpha, self, 0)
+                        end
+                    end
+                end)
+            end
+
+            if prestigePortrait.SetAlpha then
+                hooksecurefunc(prestigePortrait, "SetAlpha", function(self, alpha)
+                    local db = addon and addon.db and addon.db.profile
+                    if not db then return end
+                    local unitFrames = rawget(db, "unitFrames")
+                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
+                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
+                    if miscCfg and miscCfg.hidePvPIcons == true and alpha and alpha > 0 then
+                        if not getProp(self, "prestigePortraitAlphaDeferred") then
+                            setProp(self, "prestigePortraitAlphaDeferred", true)
+                            C_Timer.After(0, function()
+                                setProp(self, "prestigePortraitAlphaDeferred", nil)
+                                if miscCfg and miscCfg.hidePvPIcons == true and self.SetAlpha then
+                                    pcall(self.SetAlpha, self, 0)
+                                end
+                            end)
+                        end
+                    end
+                end)
+            end
+        end
+    end
+
+    function addon.ApplyPlayerPvPIconVisibility()
+        installPvPIconHooks()
+        applyPvPIconVisibility()
+    end
+end
+
 -- Apply all Player Misc. visibility settings
 function addon.ApplyAllPlayerMiscVisibility()
     if addon.ApplyPlayerRoleIconVisibility then
@@ -728,6 +902,9 @@ function addon.ApplyAllPlayerMiscVisibility()
     end
     if addon.ApplyPlayerGroupNumberVisibility then
         addon.ApplyPlayerGroupNumberVisibility()
+    end
+    if addon.ApplyPlayerPvPIconVisibility then
+        addon.ApplyPlayerPvPIconVisibility()
     end
 end
 

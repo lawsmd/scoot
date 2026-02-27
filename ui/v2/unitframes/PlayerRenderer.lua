@@ -1661,6 +1661,20 @@ function UF.RenderPlayer(panel, scrollContent)
             })
 
             inner:AddToggle({
+                label = "Hide PvP Icons",
+                get = function()
+                    local t = ensureMiscDB() or {}
+                    return not not t.hidePvPIcons
+                end,
+                set = function(v)
+                    local t = ensureMiscDB()
+                    if not t then return end
+                    t.hidePvPIcons = v and true or false
+                    applyStyles()
+                end,
+            })
+
+            inner:AddToggle({
                 label = "Allow Off-Screen Dragging",
                 description = "Allows moving frames closer to screen edges.",
                 get = function()

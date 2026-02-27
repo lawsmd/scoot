@@ -655,8 +655,8 @@ function TB.applyVerticalMode(component)
             TB.installDataMirrorHooks(child)
 
             if not TB.visHookedItems[child] then
-                child:HookScript("OnHide", function(self) TB.onItemFrameHide(self, component) end)
-                child:HookScript("OnShow", function(self) TB.onItemFrameShow(self, component) end)
+                hooksecurefunc(child, "Hide", function(self) TB.onItemFrameHide(self, component) end)
+                hooksecurefunc(child, "Show", function(self) TB.onItemFrameShow(self, component) end)
                 TB.visHookedItems[child] = true
             end
 
