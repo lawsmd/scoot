@@ -99,9 +99,37 @@ local function CreateTextureElement(container, elemDef)
     return { type = "texture", widget = tex, def = elemDef }
 end
 
+local function CreateBarElement(container, elemDef)
+    local barRegion = CreateFrame("Frame", nil, container)
+    local size = elemDef.defaultSize or { 120, 12 }
+    barRegion:SetSize(size[1], size[2])
+
+    -- Background texture
+    local barBg = barRegion:CreateTexture(nil, "BACKGROUND", nil, -1)
+    barBg:SetAllPoints(barRegion)
+
+    -- StatusBar fill
+    local barFill = CreateFrame("StatusBar", nil, barRegion)
+    barFill:SetAllPoints(barRegion)
+    barFill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+    barFill:SetMinMaxValues(0, elemDef.maxValue or 20)
+    barFill:SetValue(0)
+
+    barRegion:Hide()
+
+    return {
+        type = "bar",
+        widget = barRegion,
+        barFill = barFill,
+        barBg = barBg,
+        def = elemDef,
+    }
+end
+
 local elementCreators = {
     text = CreateTextElement,
     texture = CreateTextureElement,
+    bar = CreateBarElement,
 }
 
 --------------------------------------------------------------------------------
@@ -128,22 +156,33 @@ local function LayoutElements(aura, state)
 
     local db = GetDB(aura)
 
-    -- Find text and texture elements
-    local textElem, texElem
+    -- Find text, texture, and bar elements
+    local textElem, texElem, barElem
     for _, elem in ipairs(state.elements) do
         if elem.type == "text" then textElem = elem end
         if elem.type == "texture" then texElem = elem end
+        if elem.type == "bar" then barElem = elem end
+    end
+
+    -- Mode-based visibility
+    local displayMode = (db and db.mode) or "icon"
+    local showIcon = (displayMode == "icon" or displayMode == "iconbar")
+    local showBar  = (displayMode == "bar" or displayMode == "iconbar")
+    local showText = true  -- text always visible (per text settings)
+
+    -- Backward compat: treat iconMode "hidden" as mode override
+    if db and db.iconMode == "hidden" then
+        showIcon = false
     end
 
     -- Compute icon dimensions from settings (avoids secret-value issues from GetWidth/GetHeight)
     local iconW, iconH = 32, 32
     if texElem then
-        local mode = db and db.iconMode or "default"
-        if mode == "hidden" then
+        if not showIcon then
             iconW, iconH = 0, 0
             texElem.widget:Hide()
-            texElem = nil  -- layout code skips Show() and text anchors to container
         else
+            local mode = db and db.iconMode or "default"
             local baseW = texElem.def.defaultSize and texElem.def.defaultSize[1] or 32
             local baseH = texElem.def.defaultSize and texElem.def.defaultSize[2] or 32
             if mode == "default" then
@@ -159,6 +198,24 @@ local function LayoutElements(aura, state)
         end
     end
 
+    -- Bar dimensions from settings
+    local barW = tonumber(db and db.barWidth) or 120
+    local barH = tonumber(db and db.barHeight) or 12
+
+    -- Size and show/hide bar element
+    if barElem then
+        if showBar then
+            barElem.widget:SetSize(barW, barH)
+        else
+            barElem.widget:Hide()
+        end
+    end
+
+    -- Hide text if mode is text-only and there's no icon anchor — text still shows
+    if not showText and textElem then
+        textElem.widget:Hide()
+    end
+
     local textPosition = (db and db.textPosition) or "inside"
 
     if textPosition == "outside" then
@@ -166,17 +223,17 @@ local function LayoutElements(aura, state)
         local txOff = tonumber(db and db.textOffsetX) or 0
         local tyOff = tonumber(db and db.textOffsetY) or 0
 
-        if texElem then
+        if texElem and showIcon then
             texElem.widget:ClearAllPoints()
             texElem.widget:Show()
         end
-        if textElem then
+        if textElem and showText then
             textElem.widget:ClearAllPoints()
             textElem.widget:Show()
         end
 
         local textW, textH = 0, 0
-        if textElem then
+        if textElem and showText then
             local ok, w = pcall(textElem.widget.GetStringWidth, textElem.widget)
             if ok and type(w) == "number" and not issecretvalue(w) then textW = w end
             local ok2, h = pcall(textElem.widget.GetHeight, textElem.widget)
@@ -184,10 +241,10 @@ local function LayoutElements(aura, state)
         end
 
         if anchor == "RIGHT" then
-            if texElem then texElem.widget:SetPoint("LEFT", state.container, "LEFT", 0, 0) end
-            if textElem then
+            if texElem and showIcon then texElem.widget:SetPoint("LEFT", state.container, "LEFT", 0, 0) end
+            if textElem and showText then
                 textElem.widget:SetJustifyH("LEFT")
-                if texElem then
+                if texElem and showIcon then
                     textElem.widget:SetPoint("LEFT", texElem.widget, "RIGHT", GAP + txOff, tyOff)
                 else
                     textElem.widget:SetPoint("LEFT", state.container, "LEFT", txOff, tyOff)
@@ -196,10 +253,10 @@ local function LayoutElements(aura, state)
             state.container:SetSize(math.max(iconW + GAP + textW, 1), math.max(iconH, 1))
 
         elseif anchor == "LEFT" then
-            if texElem then texElem.widget:SetPoint("RIGHT", state.container, "RIGHT", 0, 0) end
-            if textElem then
+            if texElem and showIcon then texElem.widget:SetPoint("RIGHT", state.container, "RIGHT", 0, 0) end
+            if textElem and showText then
                 textElem.widget:SetJustifyH("RIGHT")
-                if texElem then
+                if texElem and showIcon then
                     textElem.widget:SetPoint("RIGHT", texElem.widget, "LEFT", -GAP + txOff, tyOff)
                 else
                     textElem.widget:SetPoint("RIGHT", state.container, "RIGHT", txOff, tyOff)
@@ -208,10 +265,10 @@ local function LayoutElements(aura, state)
             state.container:SetSize(math.max(textW + GAP + iconW, 1), math.max(iconH, 1))
 
         elseif anchor == "ABOVE" then
-            if texElem then texElem.widget:SetPoint("BOTTOM", state.container, "BOTTOM", 0, 0) end
-            if textElem then
+            if texElem and showIcon then texElem.widget:SetPoint("BOTTOM", state.container, "BOTTOM", 0, 0) end
+            if textElem and showText then
                 textElem.widget:SetJustifyH("CENTER")
-                if texElem then
+                if texElem and showIcon then
                     textElem.widget:SetPoint("BOTTOM", texElem.widget, "TOP", txOff, GAP + tyOff)
                 else
                     textElem.widget:SetPoint("BOTTOM", state.container, "BOTTOM", txOff, tyOff)
@@ -220,10 +277,10 @@ local function LayoutElements(aura, state)
             state.container:SetSize(math.max(iconW, 1), math.max(iconH + GAP + textH, 1))
 
         elseif anchor == "BELOW" then
-            if texElem then texElem.widget:SetPoint("TOP", state.container, "TOP", 0, 0) end
-            if textElem then
+            if texElem and showIcon then texElem.widget:SetPoint("TOP", state.container, "TOP", 0, 0) end
+            if textElem and showText then
                 textElem.widget:SetJustifyH("CENTER")
-                if texElem then
+                if texElem and showIcon then
                     textElem.widget:SetPoint("TOP", texElem.widget, "BOTTOM", txOff, -GAP + tyOff)
                 else
                     textElem.widget:SetPoint("TOP", state.container, "TOP", txOff, tyOff)
@@ -235,13 +292,13 @@ local function LayoutElements(aura, state)
     else -- "inside" mode
         local innerAnchor = (db and db.textInnerAnchor) or "CENTER"
 
-        if texElem then
+        if texElem and showIcon then
             texElem.widget:ClearAllPoints()
             texElem.widget:SetAllPoints(state.container)
             texElem.widget:Show()
         end
 
-        if textElem then
+        if textElem and showText then
             textElem.widget:ClearAllPoints()
             local offsets = INSIDE_OFFSETS[innerAnchor] or { 0, 0 }
             textElem.widget:SetPoint(innerAnchor, state.container, innerAnchor, offsets[1], offsets[2])
@@ -250,6 +307,34 @@ local function LayoutElements(aura, state)
         end
 
         state.container:SetSize(math.max(iconW, 1), math.max(iconH, 1))
+    end
+
+    -- Position bar relative to icon/container
+    if barElem and showBar then
+        barElem.widget:ClearAllPoints()
+        local barPos = (db and db.barPosition) or "LEFT"
+        local bxOff = tonumber(db and db.barOffsetX) or 0
+        local byOff = tonumber(db and db.barOffsetY) or 0
+
+        if showIcon and iconW > 0 then
+            -- Anchor bar relative to icon
+            if barPos == "LEFT" then
+                barElem.widget:SetPoint("RIGHT", state.container, "LEFT", -GAP + bxOff, byOff)
+            else -- "RIGHT"
+                barElem.widget:SetPoint("LEFT", state.container, "RIGHT", GAP + bxOff, byOff)
+            end
+        else
+            -- No icon visible: bar at container center
+            barElem.widget:SetPoint("CENTER", state.container, "CENTER", bxOff, byOff)
+            -- Resize container to fit bar when bar is the primary element
+            if displayMode == "bar" then
+                state.container:SetSize(math.max(barW, 1), math.max(barH, 1))
+            elseif displayMode == "text" then
+                -- text mode: container stays icon-sized for text anchor
+            end
+        end
+
+        barElem.widget:Show()
     end
 end
 
@@ -261,10 +346,14 @@ local function ApplyIconMode(aura, state)
     local db = GetDB(aura)
     if not db then return end
 
+    -- Check if icon should be hidden by display mode
+    local displayMode = db.mode or "icon"
+    local showIcon = (displayMode == "icon" or displayMode == "iconbar")
+
     for _, elem in ipairs(state.elements or {}) do
         if elem.type == "texture" then
             local mode = db.iconMode or "default"
-            if mode == "hidden" then
+            if not showIcon or mode == "hidden" then
                 elem.widget:Hide()
             elseif mode == "custom" and elem.def.customPath then
                 elem.widget:SetTexture(elem.def.customPath)
@@ -427,6 +516,153 @@ local function ApplyBorders(aura, state)
     end
 end
 
+local function ApplyBarStyling(aura, state)
+    local db = GetDB(aura)
+    if not db then return end
+
+    for _, elem in ipairs(state.elements or {}) do
+        if elem.type == "bar" then
+            -- Dimensions
+            local w = tonumber(db.barWidth) or 120
+            local h = tonumber(db.barHeight) or 12
+            elem.widget:SetSize(w, h)
+
+            -- Foreground texture
+            local fgTexKey = db.barForegroundTexture or "bevelled"
+            local fgPath = addon.Media.ResolveBarTexturePath(fgTexKey)
+            if fgPath then
+                elem.barFill:SetStatusBarTexture(fgPath)
+            else
+                elem.barFill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+            end
+
+            -- Foreground color
+            local fgColorMode = db.barForegroundColorMode or "custom"
+            local fgR, fgG, fgB, fgA = 1, 1, 1, 1
+            if fgColorMode == "original" then
+                fgR, fgG, fgB, fgA = 1, 1, 1, 1  -- no tint, show texture's native color
+            elseif fgColorMode == "class" then
+                local classColor = RAID_CLASS_COLORS[playerClassToken]
+                if classColor then
+                    fgR, fgG, fgB, fgA = classColor.r, classColor.g, classColor.b, 1
+                end
+            else -- "custom" (or any fallback)
+                local c = db.barForegroundTint or aura.defaultBarColor or { 1, 1, 1, 1 }
+                fgR, fgG, fgB, fgA = c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
+            end
+            local fillTex = elem.barFill:GetStatusBarTexture()
+            if fillTex then
+                fillTex:SetVertexColor(fgR, fgG, fgB, fgA)
+            end
+
+            -- Background texture
+            local bgTexKey = db.barBackgroundTexture or "bevelled"
+            local bgPath = addon.Media.ResolveBarTexturePath(bgTexKey)
+            if bgPath then
+                elem.barBg:SetTexture(bgPath)
+            else
+                elem.barBg:SetColorTexture(0.1, 0.1, 0.1, 1)
+            end
+
+            -- Background color
+            local bgColorMode = db.barBackgroundColorMode or "custom"
+            if bgColorMode == "original" then
+                elem.barBg:SetVertexColor(1, 1, 1, 1)
+            else -- "custom"
+                local c = db.barBackgroundTint or { 0, 0, 0, 1 }
+                elem.barBg:SetVertexColor(c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1)
+            end
+
+            -- Background opacity
+            elem.barBg:SetAlpha((db.barBackgroundOpacity or 50) / 100)
+
+            -- Border
+            local borderStyle = db.barBorderStyle or "none"
+            local borderThickness = math.max(1, tonumber(db.barBorderThickness) or 1)
+            local borderInsetH = tonumber(db.barBorderInsetH) or 0
+            local borderInsetV = tonumber(db.barBorderInsetV) or 0
+            local borderColor = { 0, 0, 0, 1 }
+            if db.barBorderTintEnable and db.barBorderTintColor then
+                borderColor = db.barBorderTintColor
+            end
+            local bR, bG, bB, bA = borderColor[1] or 0, borderColor[2] or 0, borderColor[3] or 0, borderColor[4] or 1
+
+            if borderStyle == "square" then
+                -- Square border: draw edge textures ourselves (BarBorders.ApplyToBarFrame
+                -- treats "square" as a clear since it's not a backdrop-template style)
+                if addon.BarBorders then
+                    addon.BarBorders.ClearBarFrame(elem.barFill)
+                end
+
+                -- Ensure edge textures exist on the bar region
+                if not elem.squareBorder then
+                    local bf = CreateFrame("Frame", nil, elem.widget)
+                    bf:SetFrameLevel(elem.widget:GetFrameLevel() + 2)
+                    bf.edges = {
+                        Top = bf:CreateTexture(nil, "OVERLAY", nil, 1),
+                        Bottom = bf:CreateTexture(nil, "OVERLAY", nil, 1),
+                        Left = bf:CreateTexture(nil, "OVERLAY", nil, 1),
+                        Right = bf:CreateTexture(nil, "OVERLAY", nil, 1),
+                    }
+                    elem.squareBorder = bf
+                end
+
+                local bf = elem.squareBorder
+                bf:ClearAllPoints()
+                bf:SetAllPoints(elem.widget)
+                bf:Show()
+
+                local edges = bf.edges
+                for _, tex in pairs(edges) do tex:SetColorTexture(bR, bG, bB, bA) end
+
+                edges.Top:ClearAllPoints()
+                edges.Top:SetPoint("TOPLEFT", bf, "TOPLEFT", -borderInsetH, borderInsetV)
+                edges.Top:SetPoint("TOPRIGHT", bf, "TOPRIGHT", borderInsetH, borderInsetV)
+                edges.Top:SetHeight(borderThickness)
+
+                edges.Bottom:ClearAllPoints()
+                edges.Bottom:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -borderInsetH, -borderInsetV)
+                edges.Bottom:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", borderInsetH, -borderInsetV)
+                edges.Bottom:SetHeight(borderThickness)
+
+                edges.Left:ClearAllPoints()
+                edges.Left:SetPoint("TOPLEFT", bf, "TOPLEFT", -borderInsetH, borderInsetV - borderThickness)
+                edges.Left:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -borderInsetH, -borderInsetV + borderThickness)
+                edges.Left:SetWidth(borderThickness)
+
+                edges.Right:ClearAllPoints()
+                edges.Right:SetPoint("TOPRIGHT", bf, "TOPRIGHT", borderInsetH, borderInsetV - borderThickness)
+                edges.Right:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", borderInsetH, -borderInsetV + borderThickness)
+                edges.Right:SetWidth(borderThickness)
+
+                for _, tex in pairs(edges) do tex:Show() end
+
+            elseif borderStyle ~= "none" and addon.BarBorders and addon.BarBorders.ApplyToBarFrame then
+                -- Custom asset border via BarBorders module
+                if elem.squareBorder then
+                    for _, tex in pairs(elem.squareBorder.edges) do tex:Hide() end
+                    elem.squareBorder:Hide()
+                end
+                addon.BarBorders.ApplyToBarFrame(elem.barFill, borderStyle, {
+                    thickness = borderThickness,
+                    insetH = borderInsetH,
+                    insetV = borderInsetV,
+                    color = borderColor,
+                })
+            else
+                -- "none": clear everything
+                if elem.squareBorder then
+                    for _, tex in pairs(elem.squareBorder.edges) do tex:Hide() end
+                    elem.squareBorder:Hide()
+                end
+                if addon.BarBorders then
+                    addon.BarBorders.ClearBarFrame(elem.barFill)
+                end
+            end
+        end
+    end
+end
+
 local function ApplyStyling(aura)
     local state = CA._activeAuras[aura.id]
     if not state then return end
@@ -450,11 +686,14 @@ local function ApplyStyling(aura)
     -- Icon shape (adjusts dimensions based on ratio slider)
     ApplyIconShape(aura, state)
 
-    -- Borders
+    -- Borders (icon borders)
     ApplyBorders(aura, state)
 
     -- Text styling
     ApplyTextStyling(aura, state)
+
+    -- Bar styling
+    ApplyBarStyling(aura, state)
 
     -- Re-layout elements
     LayoutElements(aura, state)
@@ -557,6 +796,20 @@ BindCDMBorrowTarget = function(itemFrame, aura)
                 if elem.type == "text" and elem.def.source == "applications" then
                     pcall(elem.widget.SetText, elem.widget, displayText)
                 end
+                -- Forward to bar elements: SetValue accepts secrets (AllowedWhenTainted)
+                if elem.type == "bar" and elem.def.source == "applications" then
+                    if not issecretvalue(text) and (not text or text == "") then
+                        pcall(elem.barFill.SetValue, elem.barFill, 1)
+                    elseif type(text) == "number" or issecretvalue(text) then
+                        pcall(elem.barFill.SetValue, elem.barFill, text)
+                    else
+                        -- String number from Blizzard (e.g. "5")
+                        local num = tonumber(text)
+                        if num then
+                            pcall(elem.barFill.SetValue, elem.barFill, num)
+                        end
+                    end
+                end
             end
         end)
     end
@@ -628,6 +881,19 @@ BindCDMBorrowTarget = function(itemFrame, aura)
             for _, elem in ipairs(state.elements) do
                 if elem.type == "text" and elem.def.source == "applications" then
                     pcall(elem.widget.SetText, elem.widget, displayText)
+                end
+                -- Sync bar initial value
+                if elem.type == "bar" and elem.def.source == "applications" then
+                    if not issecretvalue(text) and (not text or text == "") then
+                        pcall(elem.barFill.SetValue, elem.barFill, 1)
+                    elseif type(text) == "number" or issecretvalue(text) then
+                        pcall(elem.barFill.SetValue, elem.barFill, text)
+                    else
+                        local num = tonumber(text)
+                        if num then
+                            pcall(elem.barFill.SetValue, elem.barFill, num)
+                        end
+                    end
                 end
             end
         end
@@ -845,13 +1111,19 @@ local function InitializeEditMode()
                 if db and db.enabled then
                     ApplyIconMode(aura, st)
                     ApplyTextStyling(aura, st)
+                    ApplyBarStyling(aura, st)
                     LayoutElements(aura, st)
                     st.container:Show()
-                    -- Set preview text for applications text elements
+                    -- Set preview for applications elements
                     for _, elem in ipairs(st.elements) do
                         if elem.type == "text" and elem.def.source == "applications" then
                             pcall(elem.widget.SetText, elem.widget, "#")
                             pcall(elem.widget.Show, elem.widget)
+                        end
+                        -- Bar preview: ~60% fill
+                        if elem.type == "bar" and elem.def.source == "applications" then
+                            local maxVal = elem.def.maxValue or 20
+                            pcall(elem.barFill.SetValue, elem.barFill, math.floor(maxVal * 0.6))
                         end
                     end
                 end
@@ -864,12 +1136,15 @@ local function InitializeEditMode()
         local classAuras = CA._classAuras[playerClassToken]
         if not classAuras then return end
         for _, aura in ipairs(classAuras) do
-            -- Clear preview text before rescan
+            -- Clear preview text and bar before rescan
             local st = CA._activeAuras[aura.id]
             if st then
                 for _, elem in ipairs(st.elements) do
                     if elem.type == "text" and elem.def.source == "applications" then
                         pcall(elem.widget.SetText, elem.widget, "")
+                    end
+                    if elem.type == "bar" and elem.def.source == "applications" then
+                        pcall(elem.barFill.SetValue, elem.barFill, 0)
                     end
                 end
             end

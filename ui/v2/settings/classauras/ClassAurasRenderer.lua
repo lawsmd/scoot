@@ -90,7 +90,37 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                     set = function(val) h.setAndApply("enabled", val) end,
                 })
 
-                -- Tabbed section: 3 tabs
+                -- Mode selector (emphasized)
+                local hasBarElement = false
+                for _, elemDef in ipairs(aura.elements or {}) do
+                    if elemDef.type == "bar" then hasBarElement = true; break end
+                end
+                if hasBarElement then
+                    inner:AddSelector({
+                        label = "Mode",
+                        emphasized = true,
+                        values = {
+                            icon    = "Icon",
+                            bar     = "Bar",
+                            iconbar = "Icon & Bar",
+                            text    = "Text Only",
+                        },
+                        order = { "icon", "bar", "iconbar", "text" },
+                        get = function() return getSetting("mode") or "icon" end,
+                        set = function(v)
+                            h.setAndApply("mode", v)
+                            C_Timer.After(0, function()
+                                if panel and panel._currentBuilder and panel._currentBuilder.RefreshAll then
+                                    panel._currentBuilder:RefreshAll()
+                                else
+                                    RenderClassAuras(panel, scrollContent, classToken)
+                                end
+                            end)
+                        end,
+                    })
+                end
+
+                -- Tabbed section
                 local tabs = {}
                 local buildContent = {}
 
@@ -113,8 +143,8 @@ local function RenderClassAuras(panel, scrollContent, classToken)
 
                         tabBuilder:AddSelector({
                             label = "Icon Style",
-                            values = { default = "Default Icon", custom = "Custom Pixel Icon", hidden = "Hide Icon" },
-                            order = { "default", "custom", "hidden" },
+                            values = { default = "Default Icon", custom = "Custom Pixel Icon" },
+                            order = { "default", "custom" },
                             get = function() return getSetting("iconMode") or "default" end,
                             set = function(v)
                                 h.setAndApply("iconMode", v)
@@ -197,7 +227,183 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                     end
                 end
 
-                -- Tab 2: Sizing
+                -- Tab 2: Bar (only if aura has bar elements)
+                if hasBarElement then
+                    local currentMode = getSetting("mode") or "icon"
+                    local barTabDisabled = (currentMode == "icon" or currentMode == "text")
+
+                    table.insert(tabs, { key = "bar", label = "Bar" })
+                    buildContent.bar = function(tabContent, tabBuilder)
+                        local function barControlsDisabled()
+                            local m = getSetting("mode") or "icon"
+                            return (m == "icon" or m == "text")
+                        end
+
+                        -- Bar Size
+                        tabBuilder:AddDualSlider({
+                            label = "Bar Size",
+                            disabled = barControlsDisabled,
+                            sliderA = {
+                                axisLabel = "W", min = 20, max = 300, step = 1,
+                                get = function() return getSetting("barWidth") or 120 end,
+                                set = function(v) h.setAndApply("barWidth", v) end,
+                                minLabel = "20", maxLabel = "300",
+                            },
+                            sliderB = {
+                                axisLabel = "H", min = 4, max = 40, step = 1,
+                                get = function() return getSetting("barHeight") or 12 end,
+                                set = function(v) h.setAndApply("barHeight", v) end,
+                                minLabel = "4", maxLabel = "40",
+                            },
+                        })
+
+                        -- Foreground
+                        tabBuilder:AddDualBarStyleRow({
+                            label = "Foreground",
+                            disabled = barControlsDisabled,
+                            getTexture = function() return getSetting("barForegroundTexture") or "bevelled" end,
+                            setTexture = function(v) h.setAndApply("barForegroundTexture", v) end,
+                            colorValues = {
+                                custom = "Custom",
+                                class = "Class Color",
+                                original = "Texture Original",
+                            },
+                            colorOrder = { "custom", "class", "original" },
+                            getColorMode = function() return getSetting("barForegroundColorMode") or "custom" end,
+                            setColorMode = function(v) h.setAndApply("barForegroundColorMode", v) end,
+                            getColor = function()
+                                local c = getSetting("barForegroundTint") or { 0.68, 0.85, 1.0, 1.0 }
+                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
+                            end,
+                            setColor = function(r, g, b, a)
+                                h.setAndApply("barForegroundTint", { r, g, b, a })
+                            end,
+                            customColorValue = "custom",
+                            hasAlpha = true,
+                        })
+
+                        tabBuilder:AddSpacer(8)
+
+                        -- Background
+                        tabBuilder:AddDualBarStyleRow({
+                            label = "Background",
+                            disabled = barControlsDisabled,
+                            getTexture = function() return getSetting("barBackgroundTexture") or "bevelled" end,
+                            setTexture = function(v) h.setAndApply("barBackgroundTexture", v) end,
+                            colorValues = {
+                                custom = "Custom",
+                                original = "Texture Original",
+                            },
+                            colorOrder = { "custom", "original" },
+                            getColorMode = function() return getSetting("barBackgroundColorMode") or "custom" end,
+                            setColorMode = function(v) h.setAndApply("barBackgroundColorMode", v) end,
+                            getColor = function()
+                                local c = getSetting("barBackgroundTint") or { 0, 0, 0, 1 }
+                                return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
+                            end,
+                            setColor = function(r, g, b, a)
+                                h.setAndApply("barBackgroundTint", { r, g, b, a })
+                            end,
+                            customColorValue = "custom",
+                            hasAlpha = true,
+                        })
+
+                        -- Background Opacity
+                        tabBuilder:AddSlider({
+                            label = "Background Opacity",
+                            disabled = barControlsDisabled,
+                            min = 0, max = 100, step = 1,
+                            get = function() return getSetting("barBackgroundOpacity") or 50 end,
+                            set = function(v) h.setAndApply("barBackgroundOpacity", v) end,
+                            minLabel = "0%", maxLabel = "100%",
+                        })
+
+                        -- Border Style
+                        tabBuilder:AddBarBorderSelector({
+                            label = "Border Style",
+                            disabled = barControlsDisabled,
+                            includeNone = true,
+                            get = function() return getSetting("barBorderStyle") or "none" end,
+                            set = function(v) h.setAndApply("barBorderStyle", v) end,
+                        })
+
+                        -- Border Tint
+                        tabBuilder:AddToggleColorPicker({
+                            label = "Border Tint",
+                            disabled = barControlsDisabled,
+                            getToggle = function() return getSetting("barBorderTintEnable") or false end,
+                            setToggle = function(v) h.setAndApply("barBorderTintEnable", v) end,
+                            getColor = function()
+                                local c = getSetting("barBorderTintColor") or { 1, 1, 1, 1 }
+                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
+                            end,
+                            setColor = function(r, g, b, a)
+                                h.setAndApply("barBorderTintColor", { r, g, b, a })
+                            end,
+                            hasAlpha = true,
+                        })
+
+                        -- Border Thickness
+                        tabBuilder:AddSlider({
+                            label = "Border Thickness",
+                            disabled = barControlsDisabled,
+                            min = 1, max = 8, step = 0.5, precision = 1,
+                            get = function() return getSetting("barBorderThickness") or 1 end,
+                            set = function(v) h.setAndApply("barBorderThickness", v) end,
+                            minLabel = "1", maxLabel = "8",
+                        })
+
+                        -- Border Inset
+                        tabBuilder:AddDualSlider({
+                            label = "Border Inset",
+                            disabled = barControlsDisabled,
+                            sliderA = {
+                                axisLabel = "H", min = -4, max = 4, step = 1,
+                                get = function() return getSetting("barBorderInsetH") or 0 end,
+                                set = function(v) h.setAndApply("barBorderInsetH", v) end,
+                                minLabel = "-4", maxLabel = "+4",
+                            },
+                            sliderB = {
+                                axisLabel = "V", min = -4, max = 4, step = 1,
+                                get = function() return getSetting("barBorderInsetV") or 0 end,
+                                set = function(v) h.setAndApply("barBorderInsetV", v) end,
+                                minLabel = "-4", maxLabel = "+4",
+                            },
+                        })
+
+                        -- Position
+                        tabBuilder:AddSelector({
+                            label = "Position",
+                            disabled = barControlsDisabled,
+                            values = { LEFT = "Left of Icon", RIGHT = "Right of Icon" },
+                            order = { "LEFT", "RIGHT" },
+                            get = function() return getSetting("barPosition") or "LEFT" end,
+                            set = function(v) h.setAndApply("barPosition", v) end,
+                        })
+
+                        -- Offset
+                        tabBuilder:AddDualSlider({
+                            label = "Offset",
+                            disabled = barControlsDisabled,
+                            sliderA = {
+                                axisLabel = "X", min = -50, max = 50, step = 1,
+                                get = function() return getSetting("barOffsetX") or 0 end,
+                                set = function(v) h.setAndApply("barOffsetX", v) end,
+                                minLabel = "-50", maxLabel = "+50",
+                            },
+                            sliderB = {
+                                axisLabel = "Y", min = -50, max = 50, step = 1,
+                                get = function() return getSetting("barOffsetY") or 0 end,
+                                set = function(v) h.setAndApply("barOffsetY", v) end,
+                                minLabel = "-50", maxLabel = "+50",
+                            },
+                        })
+
+                        tabBuilder:Finalize()
+                    end
+                end
+
+                -- Tab 3: Sizing
                 table.insert(tabs, { key = "sizing", label = "Sizing" })
                 buildContent.sizing = function(tabContent, tabBuilder)
                     tabBuilder:AddSlider({
@@ -215,7 +421,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                     tabBuilder:Finalize()
                 end
 
-                -- Tab 3: Text (only if aura has text elements)
+                -- Tab 4: Text (only if aura has text elements)
                 local hasText = false
                 for _, elemDef in ipairs(aura.elements or {}) do
                     if elemDef.type == "text" then

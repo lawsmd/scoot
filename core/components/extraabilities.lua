@@ -84,7 +84,28 @@ local function startAlphaEnforcement(container)
         end
 
         local state = extraAbilityState.container
-        if not state or state.desiredAlpha == nil then return end
+        if not state then return end
+
+        -- Enforce art hiding (Blizzard resets texture alpha on frame updates/reload)
+        if state.hideBlizzardArt then
+            local zaf = _G.ZoneAbilityFrame
+            if zaf and zaf.Style and not zaf:IsForbidden() then
+                pcall(zaf.Style.SetAlpha, zaf.Style, 0)
+            end
+            for _, btn in ipairs(cachedButtons) do
+                if btn.GetNormalTexture then
+                    local nt = btn:GetNormalTexture()
+                    if nt and not nt:IsForbidden() then
+                        pcall(nt.SetAlpha, nt, 0)
+                    end
+                end
+                if btn.style and not btn.style:IsForbidden() then
+                    pcall(btn.style.SetAlpha, btn.style, 0)
+                end
+            end
+        end
+
+        if state.desiredAlpha == nil then return end
         local ok, cur = pcall(container.GetAlpha, container)
         if ok and type(cur) == "number" and not issecretvalue(cur) then
             if math.abs(cur - state.desiredAlpha) > 0.001 and not settingAlpha[container] then
@@ -188,6 +209,7 @@ local function ApplyExtraAbilitiesStyling(self)
     local state = getContainerState()
     state.component = self
     state.baseOpacity = appliedOp / 100
+    state.hideBlizzardArt = hideBlizzardArt
 
     -- Start hover detection ticker (replaces HookScript on Blizzard buttons)
     startHoverDetection(container)
