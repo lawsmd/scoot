@@ -816,6 +816,7 @@ do
         -- Position container at reduced height (centered vertically)
         local container = st.heightClipContainer
         local barHeight = bar:GetHeight()
+        if issecretvalue(barHeight) then return nil end
         local targetHeight = barHeight * (heightPct / 100)
         local inset = pixelFloor((barHeight - targetHeight) / 2, bar)
 
@@ -1207,6 +1208,7 @@ do
                         local ufCfg = unitFrames and rawget(unitFrames, unit)
                         local heightPct = ufCfg and ufCfg.healthBarOverlayHeightPct or 100
                         local barHeight = self:GetHeight()
+                        if issecretvalue(barHeight) then return end
                         local targetHeight = barHeight * (heightPct / 100)
                         local inset = pixelFloor((barHeight - targetHeight) / 2, self)
                         s.heightClipContainer:ClearAllPoints()
