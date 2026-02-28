@@ -31,9 +31,12 @@ local hookedFontStrings = setmetatable({}, { __mode = "k" })
 local hookedItemFrames = setmetatable({}, { __mode = "k" })
 -- Track CDM item frames we've hidden via SetAlpha(0) — itemFrame → auraId
 local hiddenItemFrames = setmetatable({}, { __mode = "k" })
+-- CDM item frames for duration-source auras: [auraId] = itemFrame (weak values)
+local durationCDMItems = setmetatable({}, { __mode = "v" })
 
 -- Forward declarations (defined after Layout/Styling sections)
 local FindCDMItemForSpell, BindCDMBorrowTarget, InstallMixinHooks, RescanForCDMBorrow
+local StartDurationTracking, StopDurationTracking
 
 -- Expose for debug command
 CA._cdmBorrow = cdmBorrow
@@ -725,7 +728,21 @@ function CA.ScanAura(aura)
 
     -- For cdmBorrow auras, visibility is driven by CDM borrow hooks
     -- (BindCDMBorrowTarget installs Show/Hide hooks on CDM icons).
-    -- For non-cdmBorrow auras (future), direct scanning would go here.
+    if aura.cdmBorrow then return end
+
+    -- Direct scanning for non-CDM auras (e.g. target debuffs)
+    local auraData
+    local ok, result = pcall(C_UnitAuras.GetAuraDataBySpellID, aura.unit, aura.auraSpellId)
+    if ok and result then auraData = result end
+
+    if auraData then
+        LayoutElements(aura, state)
+        state.container:Show()
+        StartDurationTracking(aura, state, auraData)
+    elseif not editModeActive then
+        state.container:Hide()
+        StopDurationTracking(aura.id)
+    end
 end
 
 local function ScanAllAurasForUnit(unit)
@@ -749,6 +766,74 @@ local function ScanAllAuras()
 end
 
 --------------------------------------------------------------------------------
+-- Duration Tracking (used by both direct scanning and CDM Borrow duration auras)
+--------------------------------------------------------------------------------
+
+-- Per-aura duration state: [auraId] = { expirationTime, totalDuration }
+local durationState = {}
+
+StopDurationTracking = function(auraId)
+    durationState[auraId] = nil
+    local state = CA._activeAuras[auraId]
+    if state and state.container then
+        state.container:SetScript("OnUpdate", nil)
+    end
+end
+
+StartDurationTracking = function(aura, state, auraData)
+    -- Extract timing data with secret-safety
+    local expirationTime, totalDuration
+    local ok1, exp = pcall(function() return auraData.expirationTime end)
+    if ok1 and type(exp) == "number" and not issecretvalue(exp) then
+        expirationTime = exp
+    end
+    local ok2, dur = pcall(function() return auraData.duration end)
+    if ok2 and type(dur) == "number" and not issecretvalue(dur) then
+        totalDuration = dur
+    end
+
+    if not expirationTime or not totalDuration or totalDuration <= 0 then
+        StopDurationTracking(aura.id)
+        return
+    end
+
+    durationState[aura.id] = {
+        expirationTime = expirationTime,
+        totalDuration = totalDuration,
+    }
+
+    -- Install OnUpdate for smooth countdown
+    state.container:SetScript("OnUpdate", function()
+        local ds = durationState[aura.id]
+        if not ds then
+            state.container:SetScript("OnUpdate", nil)
+            return
+        end
+
+        local remaining = ds.expirationTime - GetTime()
+        if remaining <= 0 then
+            -- Aura expired
+            StopDurationTracking(aura.id)
+            if not editModeActive then
+                state.container:Hide()
+            end
+            return
+        end
+
+        -- Update text and bar elements with source = "duration"
+        for _, elem in ipairs(state.elements) do
+            if elem.type == "text" and elem.def.source == "duration" then
+                pcall(elem.widget.SetText, elem.widget, string.format("%.1f", remaining))
+            end
+            if elem.type == "bar" and elem.def.source == "duration" then
+                pcall(elem.barFill.SetMinMaxValues, elem.barFill, 0, ds.totalDuration)
+                pcall(elem.barFill.SetValue, elem.barFill, remaining)
+            end
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
 -- CDM Borrow: Hook Blizzard's CDM Tracked Buffs icons
 --------------------------------------------------------------------------------
 -- Prerequisite: User must add the tracked spell to CDM > Tracked Buffs.
@@ -756,19 +841,23 @@ end
 -- (including secret values) to our Class Aura overlay.
 
 FindCDMItemForSpell = function(spellId)
-    local viewer = _G.BuffIconCooldownViewer
-    if not viewer then return nil end
-    local ok, children = pcall(function() return { viewer:GetChildren() } end)
-    if not ok or not children then return nil end
-    for _, child in ipairs(children) do
-        -- GetBaseSpellID() is a plain Lua table read (self.cooldownInfo.spellID),
-        -- populated by Blizzard's untainted code — returns real data even in combat.
-        local idOk, childSpellId = pcall(function() return child:GetBaseSpellID() end)
-        if idOk and childSpellId == spellId then
-            return child
+    local function searchViewer(viewer)
+        if not viewer then return nil end
+        local ok, children = pcall(function() return { viewer:GetChildren() } end)
+        if not ok or not children then return nil end
+        for _, child in ipairs(children) do
+            -- SpellIDMatchesAnyAssociatedSpellIDs checks all associated IDs:
+            -- base spellID, linkedSpellID, linkedSpellIDs[], overrideSpellID, auraSpellID
+            local matchOk, matches = pcall(child.SpellIDMatchesAnyAssociatedSpellIDs, child, spellId)
+            if matchOk and matches then
+                return child
+            end
         end
+        return nil
     end
-    return nil
+
+    return searchViewer(_G.BuffIconCooldownViewer)
+        or searchViewer(_G.BuffBarCooldownViewer)
 end
 
 BindCDMBorrowTarget = function(itemFrame, aura)
@@ -811,6 +900,19 @@ BindCDMBorrowTarget = function(itemFrame, aura)
                     end
                 end
             end
+            -- Duration capture: SetText fires on every CDM refresh (even for non-stacking auras).
+            -- Piggyback on this as a "CDM data changed" signal to re-capture timing for pandemic refreshes.
+            local cdmItem = durationCDMItems[auraId]
+            if cdmItem then
+                local auraDef = CA._registry[auraId]
+                if auraDef then
+                    local cvOk, expTime, dur = pcall(cdmItem.GetCooldownValues, cdmItem)
+                    if cvOk and type(expTime) == "number" and not issecretvalue(expTime)
+                       and type(dur) == "number" and not issecretvalue(dur) and dur > 0 then
+                        StartDurationTracking(auraDef, state, { expirationTime = expTime, duration = dur })
+                    end
+                end
+            end
         end)
     end
 
@@ -827,6 +929,7 @@ BindCDMBorrowTarget = function(itemFrame, aura)
             if state and not editModeActive then
                 state.container:Hide()
             end
+            StopDurationTracking(auraId)
         end)
 
         hooksecurefunc(itemFrame, "Show", function(self)
@@ -842,6 +945,18 @@ BindCDMBorrowTarget = function(itemFrame, aura)
             end
             if hiddenItemFrames[self] then
                 self:SetAlpha(0)
+            end
+            -- Capture duration data on show
+            if auraId and durationCDMItems[auraId] then
+                local cvOk, expTime, dur = pcall(self.GetCooldownValues, self)
+                if cvOk and type(expTime) == "number" and not issecretvalue(expTime)
+                   and type(dur) == "number" and not issecretvalue(dur) and dur > 0 then
+                    local aDef = CA._registry[auraId]
+                    local aState = CA._activeAuras[auraId]
+                    if aDef and aState then
+                        StartDurationTracking(aDef, aState, { expirationTime = expTime, duration = dur })
+                    end
+                end
             end
         end)
 
@@ -863,8 +978,19 @@ BindCDMBorrowTarget = function(itemFrame, aura)
                 if hiddenItemFrames[self] then
                     self:SetAlpha(0)
                 end
+                -- Capture duration data on show
+                if durationCDMItems[auraId] then
+                    local cvOk, expTime, dur = pcall(self.GetCooldownValues, self)
+                    if cvOk and type(expTime) == "number" and not issecretvalue(expTime)
+                       and type(dur) == "number" and not issecretvalue(dur) and dur > 0 then
+                        if auraDef then
+                            StartDurationTracking(auraDef, state, { expirationTime = expTime, duration = dur })
+                        end
+                    end
+                end
             elseif not editModeActive then
                 state.container:Hide()
+                StopDurationTracking(auraId)
             end
         end)
     end
@@ -899,6 +1025,27 @@ BindCDMBorrowTarget = function(itemFrame, aura)
         end
     end
 
+    -- Duration CDM borrow: register item frame for auras with source = "duration" elements
+    local hasDurationSource = false
+    for _, elem in ipairs(aura.elements or {}) do
+        if elem.source == "duration" then
+            hasDurationSource = true
+            break
+        end
+    end
+    if hasDurationSource then
+        durationCDMItems[aura.id] = itemFrame
+        -- Capture initial duration data
+        local state = CA._activeAuras[aura.id]
+        if state then
+            local cvOk, expTime, dur = pcall(itemFrame.GetCooldownValues, itemFrame)
+            if cvOk and type(expTime) == "number" and not issecretvalue(expTime)
+               and type(dur) == "number" and not issecretvalue(dur) and dur > 0 then
+                StartDurationTracking(aura, state, { expirationTime = expTime, duration = dur })
+            end
+        end
+    end
+
     -- Hide CDM icon via alpha if hideFromCDM is enabled
     local db = GetDB(aura)
     if db and db.enabled and (db.hideFromCDM ~= false) then
@@ -918,6 +1065,14 @@ InstallMixinHooks = function()
     if buffMixin and buffMixin.RefreshData then
         hooksecurefunc(buffMixin, "RefreshData", function()
             -- Defer to avoid re-entrancy during Blizzard's refresh cycle
+            C_Timer.After(0, function() RescanForCDMBorrow() end)
+        end)
+    end
+
+    -- Hook bar mixin RefreshData (CDM bar layout uses a different mixin)
+    local buffBarMixin = _G.CooldownViewerBuffBarItemMixin
+    if buffBarMixin and buffBarMixin.RefreshData then
+        hooksecurefunc(buffBarMixin, "RefreshData", function()
             C_Timer.After(0, function() RescanForCDMBorrow() end)
         end)
     end
@@ -959,6 +1114,10 @@ RescanForCDMBorrow = function()
                 else
                     local cdmId = aura.cdmSpellId or aura.auraSpellId
                     local itemFrame = FindCDMItemForSpell(cdmId)
+                    -- Fallback: try auraSpellId if cdmSpellId didn't match
+                    if not itemFrame and aura.cdmSpellId and aura.auraSpellId then
+                        itemFrame = FindCDMItemForSpell(aura.auraSpellId)
+                    end
                     if itemFrame then
                         BindCDMBorrowTarget(itemFrame, aura)
                         local showOk, isShown = pcall(itemFrame.IsShown, itemFrame)
@@ -1114,9 +1273,13 @@ local function InitializeEditMode()
                     ApplyBarStyling(aura, st)
                     LayoutElements(aura, st)
                     st.container:Show()
-                    -- Set preview for applications elements
+                    -- Set preview for elements
                     for _, elem in ipairs(st.elements) do
                         if elem.type == "text" and elem.def.source == "applications" then
+                            pcall(elem.widget.SetText, elem.widget, "#")
+                            pcall(elem.widget.Show, elem.widget)
+                        end
+                        if elem.type == "text" and elem.def.source == "duration" then
                             pcall(elem.widget.SetText, elem.widget, "#")
                             pcall(elem.widget.Show, elem.widget)
                         end
@@ -1125,7 +1288,14 @@ local function InitializeEditMode()
                             local maxVal = elem.def.maxValue or 20
                             pcall(elem.barFill.SetValue, elem.barFill, math.floor(maxVal * 0.6))
                         end
+                        if elem.type == "bar" and elem.def.source == "duration" then
+                            local maxVal = elem.def.maxValue or 18
+                            pcall(elem.barFill.SetMinMaxValues, elem.barFill, 0, maxVal)
+                            pcall(elem.barFill.SetValue, elem.barFill, math.floor(maxVal * 0.6))
+                        end
                     end
+                    -- Stop any active duration tracking while in Edit Mode
+                    StopDurationTracking(aura.id)
                 end
             end
         end
@@ -1143,7 +1313,13 @@ local function InitializeEditMode()
                     if elem.type == "text" and elem.def.source == "applications" then
                         pcall(elem.widget.SetText, elem.widget, "")
                     end
+                    if elem.type == "text" and elem.def.source == "duration" then
+                        pcall(elem.widget.SetText, elem.widget, "")
+                    end
                     if elem.type == "bar" and elem.def.source == "applications" then
+                        pcall(elem.barFill.SetValue, elem.barFill, 0)
+                    end
+                    if elem.type == "bar" and elem.def.source == "duration" then
                         pcall(elem.barFill.SetValue, elem.barFill, 0)
                     end
                 end
@@ -1221,12 +1397,17 @@ caEventFrame:SetScript("OnEvent", function(self, event, ...)
         -- The SetShown hook (above) should handle most cases instantly, but
         -- these deferred rescans are a cheap safety net.
         RescanForCDMBorrow()
-        C_Timer.After(0, function() RescanForCDMBorrow() end)
+        ScanAllAurasForUnit("target")
+        C_Timer.After(0, function()
+            RescanForCDMBorrow()
+            ScanAllAurasForUnit("target")
+        end)
         C_Timer.After(0.1, function() RescanForCDMBorrow() end)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- Leaving combat: rescan in case CDM state changed while restricted
         RescanForCDMBorrow()
+        ScanAllAuras()
 
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         if not rebuildPending then

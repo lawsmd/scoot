@@ -59,6 +59,7 @@ core/components/cooldowns/trackedbars/vertical.lua
 core/components/cooldowns/customgroups.lua
 core/components/classauras/core.lua
 core/components/classauras/mage.lua
+core/components/classauras/shaman.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua
 core/components/auras.lua

@@ -24,6 +24,12 @@ local function getButtonOverlay(btn)
     overlay:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
     overlay:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
     overlay:EnableMouse(false)
+    overlay:SetScript("OnUpdate", function(self)
+        if not btn:IsVisible() then
+            self:Hide()
+            if self.hotkeyText then self.hotkeyText:Hide() end
+        end
+    end)
     buttonOverlays[btn] = overlay
     return overlay
 end
