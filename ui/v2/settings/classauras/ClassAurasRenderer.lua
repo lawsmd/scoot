@@ -63,6 +63,10 @@ local function RenderClassAuras(panel, scrollContent, classToken)
     local fontStyleValues = Helpers.fontStyleValues
     local fontStyleOrder = Helpers.fontStyleOrder
 
+    -- Explainer note
+    builder:AddDescription("PLEASE NOTE:", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
+    builder:AddDescription("Class Auras require the Buff/Debuff they track to be added to your Cooldown Manager > Tracked Buffs. Scoot will HIDE the icon from that group and use its info to power our Class Aura. This means it will still hold an empty spot in your Tracked Buffs list, so put it either in the first or last slot(s).", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
+
     for _, aura in ipairs(auras) do
         local componentId = "classAura_" .. aura.id
         local h = Helpers.CreateComponentHelpers(componentId)
@@ -83,8 +87,8 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                 -- Enable toggle (emphasized, off by default)
                 inner:AddToggle({
                     key = "enabled",
-                    label = "Enable " .. aura.label,
-                    description = "Show the " .. aura.label .. " aura on your HUD.",
+                    label = aura.enableLabel or ("Enable " .. aura.label),
+                    description = aura.enableDescription or ("Show the " .. aura.label .. " aura on your HUD."),
                     emphasized = true,
                     get = function() return getSetting("enabled") or false end,
                     set = function(val) h.setAndApply("enabled", val) end,
@@ -109,16 +113,47 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                         get = function() return getSetting("mode") or "icon" end,
                         set = function(v)
                             h.setAndApply("mode", v)
-                            C_Timer.After(0, function()
-                                if panel and panel._currentBuilder and panel._currentBuilder.RefreshAll then
-                                    panel._currentBuilder:RefreshAll()
-                                else
-                                    RenderClassAuras(panel, scrollContent, classToken)
-                                end
-                            end)
+                            builder:DeferredRefreshAll()
                         end,
                     })
                 end
+
+                -- Preview
+                local currentMode = getSetting("mode") or "icon"
+
+                -- Resolve icon texture from aura elements
+                local previewIconTex
+                local iconMode = getSetting("iconMode") or "default"
+                if iconMode == "custom" then
+                    for _, elemDef in ipairs(aura.elements or {}) do
+                        if elemDef.type == "texture" and elemDef.customPath then
+                            previewIconTex = elemDef.customPath
+                            break
+                        end
+                    end
+                end
+                -- Default mode: use spell icon if available
+                if not previewIconTex and aura.auraSpellId then
+                    local spellInfo = C_Spell and C_Spell.GetSpellInfo(aura.auraSpellId)
+                    if spellInfo and spellInfo.iconID then
+                        previewIconTex = spellInfo.iconID
+                    end
+                end
+
+                -- Determine if this aura has text elements
+                local auraHasText = false
+                for _, elemDef in ipairs(aura.elements or {}) do
+                    if elemDef.type == "text" then auraHasText = true; break end
+                end
+
+                inner:AddPreview({
+                    componentId = componentId,
+                    mode = currentMode,
+                    iconTexture = previewIconTex,
+                    auraDefaultBarColor = aura.defaultBarColor,
+                    settingKeys = auraHasText and { _showCAText = true } or nil,
+                    rowHeight = 152,
+                })
 
                 -- Tabbed section
                 local tabs = {}
@@ -148,14 +183,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             get = function() return getSetting("iconMode") or "default" end,
                             set = function(v)
                                 h.setAndApply("iconMode", v)
-                                -- Refresh to update disabled state of gated controls
-                                C_Timer.After(0, function()
-                                    if panel and panel._currentBuilder and panel._currentBuilder.RefreshAll then
-                                        panel._currentBuilder:RefreshAll()
-                                    else
-                                        RenderClassAuras(panel, scrollContent, classToken)
-                                    end
-                                end)
+                                builder:DeferredRefreshAll()
                             end,
                         })
 
@@ -164,7 +192,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             description = "Adjust icon aspect ratio. Center = square icons.",
                             min = -67, max = 67, step = 1,
                             get = function() return getSetting("iconShape") or 0 end,
-                            set = function(v) h.setAndApply("iconShape", v) end,
+                            set = function(v) h.setAndApply("iconShape", v) builder:DeferredRefreshAll() end,
                             minLabel = "Wide", maxLabel = "Tall",
                             disabled = iconControlsDisabled,
                         })
@@ -177,7 +205,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             values = borderStyleValues,
                             order = borderStyleOrder,
                             get = function() return getSetting("borderStyle") or "none" end,
-                            set = function(v) h.setAndApply("borderStyle", v) end,
+                            set = function(v) h.setAndApply("borderStyle", v) builder:DeferredRefreshAll() end,
                             disabled = iconControlsDisabled,
                         })
 
@@ -185,13 +213,13 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             label = "Border Tint",
                             description = "Apply a custom tint color to the icon border.",
                             get = function() return getSetting("borderTintEnable") or false end,
-                            set = function(val) h.setAndApply("borderTintEnable", val) end,
+                            set = function(val) h.setAndApply("borderTintEnable", val) builder:DeferredRefreshAll() end,
                             getColor = function()
                                 local c = getSetting("borderTintColor")
                                 if c then return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end
                                 return 1, 1, 1, 1
                             end,
-                            setColor = function(r, g, b, a) h.setAndApply("borderTintColor", {r, g, b, a}) end,
+                            setColor = function(r, g, b, a) h.setAndApply("borderTintColor", {r, g, b, a}) builder:DeferredRefreshAll() end,
                             hasAlpha = true,
                             disabled = iconControlsDisabled,
                         })
@@ -201,7 +229,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             description = "Thickness of the border in pixels.",
                             min = 1, max = 8, step = 0.5, precision = 1,
                             get = function() return getSetting("borderThickness") or 1 end,
-                            set = function(v) h.setAndApply("borderThickness", v) end,
+                            set = function(v) h.setAndApply("borderThickness", v) builder:DeferredRefreshAll() end,
                             minLabel = "1", maxLabel = "8",
                             disabled = iconControlsDisabled,
                         })
@@ -212,13 +240,13 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             sliderA = {
                                 axisLabel = "H", min = -4, max = 4, step = 1,
                                 get = function() return getSetting("borderInsetH") or 0 end,
-                                set = function(v) h.setAndApply("borderInsetH", v) end,
+                                set = function(v) h.setAndApply("borderInsetH", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                             sliderB = {
                                 axisLabel = "V", min = -4, max = 4, step = 1,
                                 get = function() return getSetting("borderInsetV") or 0 end,
-                                set = function(v) h.setAndApply("borderInsetV", v) end,
+                                set = function(v) h.setAndApply("borderInsetV", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                         })
@@ -246,13 +274,13 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             sliderA = {
                                 axisLabel = "W", min = 20, max = 300, step = 1,
                                 get = function() return getSetting("barWidth") or 120 end,
-                                set = function(v) h.setAndApply("barWidth", v) end,
+                                set = function(v) h.setAndApply("barWidth", v) builder:DeferredRefreshAll() end,
                                 minLabel = "20", maxLabel = "300",
                             },
                             sliderB = {
                                 axisLabel = "H", min = 4, max = 40, step = 1,
                                 get = function() return getSetting("barHeight") or 12 end,
-                                set = function(v) h.setAndApply("barHeight", v) end,
+                                set = function(v) h.setAndApply("barHeight", v) builder:DeferredRefreshAll() end,
                                 minLabel = "4", maxLabel = "40",
                             },
                         })
@@ -262,7 +290,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             label = "Foreground",
                             disabled = barControlsDisabled,
                             getTexture = function() return getSetting("barForegroundTexture") or "bevelled" end,
-                            setTexture = function(v) h.setAndApply("barForegroundTexture", v) end,
+                            setTexture = function(v) h.setAndApply("barForegroundTexture", v) builder:DeferredRefreshAll() end,
                             colorValues = {
                                 custom = "Custom",
                                 class = "Class Color",
@@ -270,13 +298,14 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             },
                             colorOrder = { "custom", "class", "original" },
                             getColorMode = function() return getSetting("barForegroundColorMode") or "custom" end,
-                            setColorMode = function(v) h.setAndApply("barForegroundColorMode", v) end,
+                            setColorMode = function(v) h.setAndApply("barForegroundColorMode", v) builder:DeferredRefreshAll() end,
                             getColor = function()
                                 local c = getSetting("barForegroundTint") or { 0.68, 0.85, 1.0, 1.0 }
                                 return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
                             end,
                             setColor = function(r, g, b, a)
                                 h.setAndApply("barForegroundTint", { r, g, b, a })
+                                builder:DeferredRefreshAll()
                             end,
                             customColorValue = "custom",
                             hasAlpha = true,
@@ -289,20 +318,21 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             label = "Background",
                             disabled = barControlsDisabled,
                             getTexture = function() return getSetting("barBackgroundTexture") or "bevelled" end,
-                            setTexture = function(v) h.setAndApply("barBackgroundTexture", v) end,
+                            setTexture = function(v) h.setAndApply("barBackgroundTexture", v) builder:DeferredRefreshAll() end,
                             colorValues = {
                                 custom = "Custom",
                                 original = "Texture Original",
                             },
                             colorOrder = { "custom", "original" },
                             getColorMode = function() return getSetting("barBackgroundColorMode") or "custom" end,
-                            setColorMode = function(v) h.setAndApply("barBackgroundColorMode", v) end,
+                            setColorMode = function(v) h.setAndApply("barBackgroundColorMode", v) builder:DeferredRefreshAll() end,
                             getColor = function()
                                 local c = getSetting("barBackgroundTint") or { 0, 0, 0, 1 }
                                 return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
                             end,
                             setColor = function(r, g, b, a)
                                 h.setAndApply("barBackgroundTint", { r, g, b, a })
+                                builder:DeferredRefreshAll()
                             end,
                             customColorValue = "custom",
                             hasAlpha = true,
@@ -314,7 +344,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             disabled = barControlsDisabled,
                             min = 0, max = 100, step = 1,
                             get = function() return getSetting("barBackgroundOpacity") or 50 end,
-                            set = function(v) h.setAndApply("barBackgroundOpacity", v) end,
+                            set = function(v) h.setAndApply("barBackgroundOpacity", v) builder:DeferredRefreshAll() end,
                             minLabel = "0%", maxLabel = "100%",
                         })
 
@@ -324,7 +354,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             disabled = barControlsDisabled,
                             includeNone = true,
                             get = function() return getSetting("barBorderStyle") or "none" end,
-                            set = function(v) h.setAndApply("barBorderStyle", v) end,
+                            set = function(v) h.setAndApply("barBorderStyle", v) builder:DeferredRefreshAll() end,
                         })
 
                         -- Border Tint
@@ -332,13 +362,14 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             label = "Border Tint",
                             disabled = barControlsDisabled,
                             getToggle = function() return getSetting("barBorderTintEnable") or false end,
-                            setToggle = function(v) h.setAndApply("barBorderTintEnable", v) end,
+                            setToggle = function(v) h.setAndApply("barBorderTintEnable", v) builder:DeferredRefreshAll() end,
                             getColor = function()
                                 local c = getSetting("barBorderTintColor") or { 1, 1, 1, 1 }
                                 return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
                             end,
                             setColor = function(r, g, b, a)
                                 h.setAndApply("barBorderTintColor", { r, g, b, a })
+                                builder:DeferredRefreshAll()
                             end,
                             hasAlpha = true,
                         })
@@ -349,7 +380,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             disabled = barControlsDisabled,
                             min = 1, max = 8, step = 0.5, precision = 1,
                             get = function() return getSetting("barBorderThickness") or 1 end,
-                            set = function(v) h.setAndApply("barBorderThickness", v) end,
+                            set = function(v) h.setAndApply("barBorderThickness", v) builder:DeferredRefreshAll() end,
                             minLabel = "1", maxLabel = "8",
                         })
 
@@ -360,13 +391,13 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             sliderA = {
                                 axisLabel = "H", min = -4, max = 4, step = 1,
                                 get = function() return getSetting("barBorderInsetH") or 0 end,
-                                set = function(v) h.setAndApply("barBorderInsetH", v) end,
+                                set = function(v) h.setAndApply("barBorderInsetH", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                             sliderB = {
                                 axisLabel = "V", min = -4, max = 4, step = 1,
                                 get = function() return getSetting("barBorderInsetV") or 0 end,
-                                set = function(v) h.setAndApply("barBorderInsetV", v) end,
+                                set = function(v) h.setAndApply("barBorderInsetV", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                         })
@@ -378,7 +409,10 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             values = { LEFT = "Left of Icon", RIGHT = "Right of Icon" },
                             order = { "LEFT", "RIGHT" },
                             get = function() return getSetting("barPosition") or "LEFT" end,
-                            set = function(v) h.setAndApply("barPosition", v) end,
+                            set = function(v)
+                                h.setAndApply("barPosition", v)
+                                builder:DeferredRefreshAll()
+                            end,
                         })
 
                         -- Offset
@@ -388,13 +422,13 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             sliderA = {
                                 axisLabel = "X", min = -50, max = 50, step = 1,
                                 get = function() return getSetting("barOffsetX") or 0 end,
-                                set = function(v) h.setAndApply("barOffsetX", v) end,
+                                set = function(v) h.setAndApply("barOffsetX", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-50", maxLabel = "+50",
                             },
                             sliderB = {
                                 axisLabel = "Y", min = -50, max = 50, step = 1,
                                 get = function() return getSetting("barOffsetY") or 0 end,
-                                set = function(v) h.setAndApply("barOffsetY", v) end,
+                                set = function(v) h.setAndApply("barOffsetY", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-50", maxLabel = "+50",
                             },
                         })
@@ -437,7 +471,10 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             label = "Font",
                             description = "The font used for aura text.",
                             get = function() return getSetting("textFont") or "FRIZQT__" end,
-                            set = function(v) h.setAndApply("textFont", v) end,
+                            set = function(v)
+                                h.setAndApply("textFont", v)
+                                builder:DeferredRefreshAll()
+                            end,
                         })
 
                         tabBuilder:AddSelector({
@@ -446,7 +483,10 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             values = fontStyleValues,
                             order = fontStyleOrder,
                             get = function() return getSetting("textStyle") or "OUTLINE" end,
-                            set = function(v) h.setAndApply("textStyle", v) end,
+                            set = function(v)
+                                h.setAndApply("textStyle", v)
+                                builder:DeferredRefreshAll()
+                            end,
                         })
 
                         tabBuilder:AddSlider({
@@ -456,7 +496,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             max = 48,
                             step = 1,
                             get = function() return getSetting("textSize") or 24 end,
-                            set = function(v) h.setAndApply("textSize", v) end,
+                            set = function(v) h.setAndApply("textSize", v) builder:DeferredRefreshAll() end,
                             minLabel = "6pt",
                             maxLabel = "48pt",
                         })
@@ -473,6 +513,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             end,
                             set = function(r, g, b, a)
                                 h.setAndApply("textColor", { r, g, b, a })
+                                builder:DeferredRefreshAll()
                             end,
                             hasAlpha = true,
                         })
@@ -500,6 +541,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                                             dualSelector:SetOptionsB(INSIDE_ANCHOR_VALUES, INSIDE_ANCHOR_ORDER)
                                         end
                                     end
+                                    builder:DeferredRefreshAll()
                                 end,
                             },
                             selectorB = {
@@ -520,6 +562,7 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                                     else
                                         h.setAndApply("textInnerAnchor", v)
                                     end
+                                    builder:DeferredRefreshAll()
                                 end,
                             },
                         })
@@ -529,13 +572,13 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             sliderA = {
                                 axisLabel = "X", min = -50, max = 50, step = 1,
                                 get = function() return getSetting("textOffsetX") or 0 end,
-                                set = function(v) h.setAndApply("textOffsetX", v) end,
+                                set = function(v) h.setAndApply("textOffsetX", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-50", maxLabel = "+50",
                             },
                             sliderB = {
                                 axisLabel = "Y", min = -50, max = 50, step = 1,
                                 get = function() return getSetting("textOffsetY") or 0 end,
-                                set = function(v) h.setAndApply("textOffsetY", v) end,
+                                set = function(v) h.setAndApply("textOffsetY", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-50", maxLabel = "+50",
                             },
                         })

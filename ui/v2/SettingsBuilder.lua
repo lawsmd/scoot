@@ -518,6 +518,20 @@ function Builder:SetOnRefresh(callback)
     return self
 end
 
+function Builder:RefreshAll()
+    if self._onRefresh then
+        self._onRefresh()
+    end
+end
+
+function Builder:DeferredRefreshAll()
+    local onRefresh = self._onRefresh
+    if not onRefresh then return end
+    C_Timer.After(0, function()
+        onRefresh()
+    end)
+end
+
 --------------------------------------------------------------------------------
 -- AddSelector: Add a selector/dropdown setting
 --------------------------------------------------------------------------------
@@ -1495,6 +1509,51 @@ function Builder:AddMultiLineEditBox(options)
 
         -- Update Y position
         self._currentY = self._currentY - editBox:GetHeight()
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- AddPreview: Inline preview row for Custom Groups / Class Auras
+--------------------------------------------------------------------------------
+
+function Builder:AddPreview(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    -- Add item spacing
+    if #self._controls > 0 then
+        self._currentY = self._currentY - ITEM_SPACING
+    end
+
+    -- Create preview using Controls module
+    local preview = Controls:CreatePreview({
+        parent = scrollContent,
+        componentId = options.componentId,
+        mode = options.mode,
+        settingKeys = options.settingKeys,
+        iconTexture = options.iconTexture,
+        auraDefaultBarColor = options.auraDefaultBarColor,
+        useLightDim = self._useLightDim,
+        rowHeight = options.rowHeight,
+    })
+
+    if preview then
+        -- Position the preview
+        preview:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+        preview:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+        -- Track for cleanup
+        table.insert(self._controls, preview)
+
+        -- Register by key for dynamic updates
+        if options.key then
+            self._controlsByKey[options.key] = preview
+        end
+
+        -- Update Y position
+        self._currentY = self._currentY - preview:GetHeight()
     end
 
     return self

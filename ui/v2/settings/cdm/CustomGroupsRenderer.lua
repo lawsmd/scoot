@@ -32,6 +32,16 @@ local function CreateCustomGroupRenderer(groupIndex)
         local getComponent, getSetting, setSetting = h.getComponent, h.get, h.set
         local textColorValues, textColorOrder = Helpers.textColorValues, Helpers.textColorOrder
 
+        -- Preview
+        builder:AddPreview({
+            componentId = componentId,
+            mode = "icon",
+            settingKeys = {
+                iconShape = "tallWideRatio",
+                _showCDMText = true,
+            },
+        })
+
         --------------------------------------------------------------------
         -- Layout
         --------------------------------------------------------------------
@@ -160,7 +170,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                     max = 67,
                     step = 1,
                     get = function() return getSetting("tallWideRatio") or 0 end,
-                    set = function(v) h.setAndApply("tallWideRatio", v) end,
+                    set = function(v) h.setAndApply("tallWideRatio", v) builder:DeferredRefreshAll() end,
                     minLabel = "Wide",
                     maxLabel = "Tall",
                 })
@@ -183,14 +193,14 @@ local function CreateCustomGroupRenderer(groupIndex)
                     label = "Use Custom Border",
                     description = "Enable custom border styling for cooldown icons.",
                     get = function() return getSetting("borderEnable") or false end,
-                    set = function(val) h.setAndApply("borderEnable", val) end,
+                    set = function(val) h.setAndApply("borderEnable", val) builder:DeferredRefreshAll() end,
                 })
 
                 inner:AddToggleColorPicker({
                     label = "Border Tint",
                     description = "Apply a custom tint color to the icon border.",
                     get = function() return getSetting("borderTintEnable") or false end,
-                    set = function(val) h.setAndApply("borderTintEnable", val) end,
+                    set = function(val) h.setAndApply("borderTintEnable", val) builder:DeferredRefreshAll() end,
                     getColor = function()
                         local c = getSetting("borderTintColor")
                         if c then
@@ -200,6 +210,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                     end,
                     setColor = function(r, g, b, a)
                         h.setAndApply("borderTintColor", {r, g, b, a})
+                        builder:DeferredRefreshAll()
                     end,
                     hasAlpha = true,
                 })
@@ -213,7 +224,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                     values = borderStyleValues,
                     order = borderStyleOrder,
                     get = function() return getSetting("borderStyle") or "square" end,
-                    set = function(v) h.setAndApply("borderStyle", v) end,
+                    set = function(v) h.setAndApply("borderStyle", v) builder:DeferredRefreshAll() end,
                 })
 
                 inner:AddSlider({
@@ -224,7 +235,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                     step = 0.5,
                     precision = 1,
                     get = function() return getSetting("borderThickness") or 1 end,
-                    set = function(v) h.setAndApply("borderThickness", v) end,
+                    set = function(v) h.setAndApply("borderThickness", v) builder:DeferredRefreshAll() end,
                     minLabel = "1",
                     maxLabel = "8",
                 })
@@ -234,13 +245,13 @@ local function CreateCustomGroupRenderer(groupIndex)
                     sliderA = {
                         axisLabel = "H", min = -4, max = 4, step = 1,
                         get = function() return getSetting("borderInsetH") or getSetting("borderInset") or 0 end,
-                        set = function(v) h.setAndApply("borderInsetH", v) end,
+                        set = function(v) h.setAndApply("borderInsetH", v) builder:DeferredRefreshAll() end,
                         minLabel = "-4", maxLabel = "+4",
                     },
                     sliderB = {
                         axisLabel = "V", min = -4, max = 4, step = 1,
                         get = function() return getSetting("borderInsetV") or getSetting("borderInset") or 0 end,
-                        set = function(v) h.setAndApply("borderInsetV", v) end,
+                        set = function(v) h.setAndApply("borderInsetV", v) builder:DeferredRefreshAll() end,
                         minLabel = "-4", maxLabel = "+4",
                     },
                 })
@@ -283,6 +294,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                             end
                             local function setStacksSetting(key, value)
                                 h.setSubSetting("textStacks", key, value)
+                                builder:DeferredRefreshAll()
                             end
 
                             tabBuilder:AddFontSelector({
@@ -342,6 +354,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                                             comp.db.textStacks.offset.x = v
                                         end
                                         applyText()
+                                        builder:DeferredRefreshAll()
                                     end,
                                     minLabel = "-100", maxLabel = "+100",
                                 },
@@ -360,6 +373,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                                             comp.db.textStacks.offset.y = v
                                         end
                                         applyText()
+                                        builder:DeferredRefreshAll()
                                     end,
                                     minLabel = "-100", maxLabel = "+100",
                                 },
@@ -374,6 +388,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                             end
                             local function setCooldownSetting(key, value)
                                 h.setSubSetting("textCooldown", key, value)
+                                builder:DeferredRefreshAll()
                             end
 
                             tabBuilder:AddFontSelector({
@@ -433,6 +448,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                                             comp.db.textCooldown.offset.x = v
                                         end
                                         applyText()
+                                        builder:DeferredRefreshAll()
                                     end,
                                     minLabel = "-100", maxLabel = "+100",
                                 },
@@ -451,6 +467,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                                             comp.db.textCooldown.offset.y = v
                                         end
                                         applyText()
+                                        builder:DeferredRefreshAll()
                                     end,
                                     minLabel = "-100", maxLabel = "+100",
                                 },
@@ -470,6 +487,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                                     comp.db.textBindings[key] = value
                                 end
                                 applyText()
+                                builder:DeferredRefreshAll()
                             end
 
                             tabBuilder:AddToggle({
@@ -551,6 +569,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                                             comp.db.textBindings.offset.x = v
                                         end
                                         applyText()
+                                        builder:DeferredRefreshAll()
                                     end,
                                     minLabel = "-100", maxLabel = "+100",
                                 },
@@ -569,6 +588,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                                             comp.db.textBindings.offset.y = v
                                         end
                                         applyText()
+                                        builder:DeferredRefreshAll()
                                     end,
                                     minLabel = "-100", maxLabel = "+100",
                                 },

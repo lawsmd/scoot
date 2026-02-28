@@ -12,6 +12,8 @@ CA.RegisterAuras("MAGE", {
         cdmBorrow = true,
         unit = "target",
         filter = "HARMFUL|PLAYER",
+        enableLabel = "Enable Freezing Stacks Tracker",
+        enableDescription = "Show your target's Freezing stacks as a dedicated, customizable aura.",
         editModeName = "Freezing",
         defaultPosition = { point = "CENTER", x = 0, y = -200 },
         defaultBarColor = { 0.68, 0.85, 1.0, 1.0 },  -- frost blue
