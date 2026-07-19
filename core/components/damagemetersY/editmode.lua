@@ -38,7 +38,8 @@ function DMY._RestorePosition(windowIndex, layoutName)
     if not win or not win.frame then return end
 
     win.frame:ClearAllPoints()
-    win.frame:SetPoint(pos.point or "BOTTOMLEFT", UIParent, pos.point or "BOTTOMLEFT", pos.x or 0, pos.y or 0)
+    win.frame:SetPoint(pos.point or "BOTTOMLEFT", UIParent, pos.point or "BOTTOMLEFT",
+        DMY._SnapToPixels(pos.x or 0, win.frame), DMY._SnapToPixels(pos.y or 0, win.frame))
 end
 
 --------------------------------------------------------------------------------
@@ -57,7 +58,7 @@ function DMY._InitializeEditMode()
             lib:AddFrame(win.frame, function(frame, layoutName, point, x, y)
                 if point and x and y then
                     frame:ClearAllPoints()
-                    frame:SetPoint(point, UIParent, point, x, y)
+                    frame:SetPoint(point, UIParent, point, DMY._SnapToPixels(x, frame), DMY._SnapToPixels(y, frame))
                 end
                 if layoutName then
                     local savedPoint, _, _, savedX, savedY = frame:GetPoint(1)

@@ -201,7 +201,7 @@ function DMY._UpdateTimerText(windowIndex)
             win.titleText:SetText("")
             win.titleText:SetWidth(0)
         end
-        win.header:SetHeight(DMY.HEADER_HEIGHT)
+        win.header:SetHeight(DMY._SnapToPixels(DMY.HEADER_HEIGHT, win.frame))
     else
         if win.verticalTitle then win.verticalTitle:Hide() end
         if win.titleText then
@@ -250,15 +250,15 @@ function DMY._UpdateTimerText(windowIndex)
                 -- Expand header height if title wrapped to 2 lines
                 local titleH = win.titleText:GetStringHeight() or 15
                 if titleH > 20 then
-                    win.header:SetHeight(math.max(DMY.HEADER_HEIGHT, titleH + 8))
+                    win.header:SetHeight(DMY._SnapToPixels(math.max(DMY.HEADER_HEIGHT, titleH + 8), win.frame))
                 else
-                    win.header:SetHeight(DMY.HEADER_HEIGHT)
+                    win.header:SetHeight(DMY._SnapToPixels(DMY.HEADER_HEIGHT, win.frame))
                 end
             else
                 -- Overall/Current: standard single-line layout
                 win.titleText:SetWidth(0)
                 win.titleText:SetText(label)
-                win.header:SetHeight(DMY.HEADER_HEIGHT)
+                win.header:SetHeight(DMY._SnapToPixels(DMY.HEADER_HEIGHT, win.frame))
             end
         end
     end

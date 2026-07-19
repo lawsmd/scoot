@@ -308,8 +308,10 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     local cfg = DMY._GetWindowConfig(windowIndex)
     local fw = tonumber(cfg and cfg.frameWidth or db.frameWidth) or 350
     local fh = tonumber(cfg and cfg.frameHeight or db.frameHeight) or 250
-    win.frame:SetSize(fw, fh)
+    -- Scale first: the pixel snap below reads the resulting effective scale
     win.frame:SetScale(tonumber(cfg and cfg.windowScale or db.windowScale) or 1.0)
+    local snap = DMY._SnapToPixels
+    win.frame:SetSize(snap(fw, win.frame), snap(fh, win.frame))
 
     -- Title bar backdrop
     if win.header and win.header._bg then
@@ -355,9 +357,15 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     local barTexPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(db.barTexture or "default") or nil
     local barMode = db.barMode or "default"
     local fillAlpha = (barMode == "hollow") and 0 or 1
+    -- Rank numbers follow the Names font (one point smaller) but keep their
+    -- muted color, so ApplyFontStyle directly instead of ApplyTextStyle
+    local nameFace = addon.ResolveFontFace(db.textNames and db.textNames.fontFace or "FRIZQT__")
+    local nameStyle = db.textNames and db.textNames.fontStyle or "OUTLINE"
+    local rankSize = math.max(6, (db.textNames and db.textNames.fontSize or 12) - 1)
     for r = 1, DMY.MAX_POOL do
         local row = win.barRows[r]
         ApplyTextStyle(row.nameText, db.textNames)
+        if row.rankText then addon.ApplyFontStyle(row.rankText, nameFace, rankSize, nameStyle) end
         -- Single full-width bar texture
         if row.bar and barTexPath then
             pcall(row.bar.SetStatusBarTexture, row.bar, barTexPath)
@@ -375,6 +383,7 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     -- Pinned row styling
     local pinnedRow = win.pinnedRow
     ApplyTextStyle(pinnedRow.nameText, db.textNames)
+    if pinnedRow.rankText then addon.ApplyFontStyle(pinnedRow.rankText, nameFace, rankSize, nameStyle) end
     if pinnedRow.bar and barTexPath then
         pcall(pinnedRow.bar.SetStatusBarTexture, pinnedRow.bar, barTexPath)
     end

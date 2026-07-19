@@ -13,6 +13,12 @@ local resetPending = false
 local function OnEvent(self, event, ...)
     if not DMY._initialized then return end
 
+    -- Resolution/UI-scale changed: pixel-snapped layout offsets are stale
+    if event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
+        if DMY._comp then DMY._ApplyStyling(DMY._comp) end
+        return
+    end
+
     if event == "DAMAGE_METER_RESET" then
         resetPending = true
         if DMY._CloseDrilldown then DMY._CloseDrilldown() end
@@ -133,6 +139,8 @@ function DMY._InitializeEvents(comp)
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    eventFrame:RegisterEvent("UI_SCALE_CHANGED")
+    eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
     eventFrame:SetScript("OnEvent", OnEvent)
 
     -- Timer ticker

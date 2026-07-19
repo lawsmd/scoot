@@ -2,6 +2,19 @@
 local _, addon = ...
 local DMY = addon.DamageMetersY
 
+-- DMY windows carry a fractional effective scale (windowScale x UIParent scale),
+-- so integer frame-space offsets land between physical pixels and each row
+-- rasterizes its font outline at a different sub-pixel phase (some rows look
+-- bolder). Snapping layout offsets to whole physical pixels gives every row
+-- the same phase.
+local function SnapToPixels(value, region, minPixels)
+    if not (PixelUtil and PixelUtil.GetNearestPixelSize) then return value end
+    local es = region and region:GetEffectiveScale()
+    if not es or es <= 0 then return value end
+    return PixelUtil.GetNearestPixelSize(value, es, minPixels)
+end
+DMY._SnapToPixels = SnapToPixels
+
 --------------------------------------------------------------------------------
 -- Uses DMY._UnifiedAbbreviate (defined in data.lua) for consistent formatting
 -- in both combat (secret values) and OOC (plain values).
@@ -174,10 +187,12 @@ function DMY._LayoutBarRows(windowIndex, comp)
         end
     end
 
+    local rowStep = barHeight + barSpacing
+    local snappedBarHeight = SnapToPixels(barHeight, win.frame)
     for r = 1, DMY.MAX_POOL do
         local row = win.barRows[r]
-        row:SetHeight(barHeight)
-        row:SetPoint("TOPLEFT", win.scrollContent, "TOPLEFT", 0, -((r - 1) * (barHeight + barSpacing)))
+        row:SetHeight(snappedBarHeight)
+        row:SetPoint("TOPLEFT", win.scrollContent, "TOPLEFT", 0, -SnapToPixels((r - 1) * rowStep, win.frame))
         row:SetPoint("RIGHT", win.scrollContent, "RIGHT", 0, 0)
 
         -- Icon size matches bar height
@@ -194,7 +209,7 @@ function DMY._LayoutBarRows(windowIndex, comp)
 
     -- Layout pinned row
     local pinnedRow = win.pinnedRow
-    pinnedRow:SetHeight(barHeight)
+    pinnedRow:SetHeight(snappedBarHeight)
     local iconSz = math.min(barHeight, DMY.ICON_SIZE)
     pinnedRow.icon:SetSize(iconSz, iconSz)
     if pinnedRow.nameContainer then pinnedRow.nameContainer:SetHeight(barHeight) end
@@ -204,7 +219,8 @@ function DMY._LayoutBarRows(windowIndex, comp)
 
     -- Adjust scroll area bottom to leave room for pinned row
     local showPinned = db.showLocalPlayer ~= false
-    win.scrollArea:SetPoint("BOTTOMRIGHT", win.frame, "BOTTOMRIGHT", 0, showPinned and (barHeight + 1) or 0)
+    win.scrollArea:SetPoint("TOPLEFT", win.header, "BOTTOMLEFT", 0, -SnapToPixels(1, win.frame, 1))
+    win.scrollArea:SetPoint("BOTTOMRIGHT", win.frame, "BOTTOMRIGHT", 0, showPinned and SnapToPixels(barHeight + 1, win.frame) or 0)
 end
 
 --------------------------------------------------------------------------------
