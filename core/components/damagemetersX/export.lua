@@ -216,6 +216,73 @@ end
 -- Shared Export Helpers
 --------------------------------------------------------------------------------
 
+-- Build a GUID -> non-secret display-name map from the current group roster.
+-- In 12.0 the damage-meter API's source.name is a secret string for non-local
+-- players, but UnitName on group/self units is never secret. Gather always runs
+-- out of combat (export paths bail on InCombatLockdown), so roster reads are safe.
+local function BuildRosterNameMap()
+    local map = {}
+
+    -- Always include the local player: party units exclude self, and solo has no group units.
+    local pOk, pGuid = pcall(UnitGUID, "player")
+    local nOk, pName = pcall(UnitName, "player")
+    if pOk and pGuid and nOk and pName then
+        map[pGuid] = pName:match("^([^%-]+)") or pName
+    end
+
+    local prefix, count
+    if IsInRaid() then
+        prefix, count = "raid", GetNumGroupMembers()
+    elseif IsInGroup() then
+        prefix, count = "party", GetNumGroupMembers() - 1
+    end
+    if prefix then
+        for i = 1, count do
+            local unit = prefix .. i
+            local gOk, guid = pcall(UnitGUID, unit)
+            local unOk, uName = pcall(UnitName, unit)
+            if gOk and guid and unOk and uName then
+                map[guid] = uName:match("^([^%-]+)") or uName
+            end
+        end
+    end
+
+    return map
+end
+
+-- Resolve a combat-source's display name to a plain (non-secret) string.
+-- Priority: live roster -> inspect cache -> shared ilvl cache -> guarded source.name -> "Unknown".
+-- source.name is never operated on (index/match/compare) unless issecretvalue proves it is not secret.
+local function ResolveExportName(guid, source, rosterNames)
+    -- 1) Live group roster (non-secret UnitName; covers self + present members)
+    if guid and rosterNames then
+        local n = rosterNames[guid]
+        if n then return n end
+    end
+    -- 2) Background inspect cache (non-secret UnitName captured at inspect time)
+    if guid then
+        local c = inspectCache[guid]
+        if c and c.name then return c.name end
+    end
+    -- 3) Shared ilvl cache (non-secret UnitName)
+    if guid and addon._sharedIlvlCache then
+        local s = addon._sharedIlvlCache[guid]
+        if s and s.name then return s.name end
+    end
+    -- 4) source.name ONLY if provably non-secret (local player / readable NPC).
+    if issecretvalue then                       -- if global absent, skip this tier entirely
+        local sname = source.name               -- reading a secret into a local is safe
+        if not issecretvalue(sname) then         -- detection is safe; false for nil too
+            if type(sname) == "string" then
+                local stripped = sname:match("^([^%-]+)")
+                if stripped and stripped ~= "" then return stripped end
+            end
+        end
+    end
+    -- 5) Give up
+    return "Unknown"
+end
+
 function addon.FormatPlayerSpecInfo(player)
     local parts = {}
     if player.specName then
@@ -304,6 +371,9 @@ function addon.GatherDamageMeterExportData(sessionType, primaryMeterType, sessio
         end
     end
 
+    -- Resolve display names from non-secret sources (source.name is secret for non-local players in 12.0)
+    local rosterNames = BuildRosterNameMap()
+
     -- Build player table keyed by GUID, preserving primary sort order
     local players = {}
     local playerOrder = {}
@@ -311,7 +381,7 @@ function addon.GatherDamageMeterExportData(sessionType, primaryMeterType, sessio
         local guid = source.sourceGUID
         if guid and not players[guid] then
             players[guid] = {
-                name = (source.name and source.name:match("^([^%-]+)")) or "Unknown",
+                name = ResolveExportName(guid, source, rosterNames),
                 classFilename = source.classFilename or "",
                 specIconID = source.specIconID,
                 isLocalPlayer = source.isLocalPlayer,

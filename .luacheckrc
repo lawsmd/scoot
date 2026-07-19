@@ -34,6 +34,7 @@ read_globals = {
     "UnitHealth",
     "UnitHealthMax",
     "UnitInRange",
+    "UnitName",
 
     -- WoW frame methods/mixins (accessed as globals in some patterns)
     "GameTooltip",
