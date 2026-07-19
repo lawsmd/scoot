@@ -91,6 +91,16 @@ function ClassResource.Render(panel, scrollContent)
                 set = function(v) setSetting("hideBar", v) end,
             })
 
+            inner:AddToggle({
+                label = "Hide on Player Frame",
+                get = function() return getSetting("hideClassInfoOnPlayerFrame") or false end,
+                set = function(v) setSetting("hideClassInfoOnPlayerFrame", v) end,
+                infoIcon = {
+                    tooltipTitle = "Hide on Player Frame",
+                    tooltipText = "Removes the class resource (combo points, runes, holy power, etc.) shown beneath your regular Player unit frame. This is separate from the Personal Resource Display above and does not affect it.",
+                },
+            })
+
             inner:AddSpacer(12)
 
             inner:AddSlider({

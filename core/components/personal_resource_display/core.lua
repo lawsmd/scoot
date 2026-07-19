@@ -453,6 +453,9 @@ addon:RegisterComponentInitializer(function(self)
             hideTextureOnly = { type = "addon", default = false, ui = {
                 label = "Hide the Bar but not its Text", widget = "checkbox", section = "Misc", order = 2,
             }},
+            -- Hides Blizzard's 12.0.7 bar backdrop art (UI-HUD-CoolDownManager-Bar-BG)
+            -- while keeping the bar fill visible. Rendered manually by HealthBarRenderer.
+            hideBarBackground = { type = "addon", default = false, ui = { hidden = true }},
             hideHealthLossAnimation = { type = "addon", default = false, ui = {
                 label = "Hide Health Loss Animation", widget = "checkbox", section = "Misc", order = 3,
             }},
@@ -528,6 +531,9 @@ addon:RegisterComponentInitializer(function(self)
             hideTextureOnly = { type = "addon", default = false, ui = {
                 label = "Hide the Bar but not its Text", widget = "checkbox", section = "Misc", order = 2,
             }},
+            -- Hides Blizzard's 12.0.7 bar backdrop art (UI-HUD-CoolDownManager-Bar-BG)
+            -- while keeping the bar fill visible. Rendered manually by PowerBarRenderer.
+            hideBarBackground = { type = "addon", default = false, ui = { hidden = true }},
             hideSpikeAnimations = { type = "addon", default = false, ui = {
                 label = "Hide Full Bar Animations", widget = "checkbox", section = "Misc", order = 3,
             }},
@@ -598,6 +604,9 @@ addon:RegisterComponentInitializer(function(self)
             hideBar = { type = "addon", default = false, ui = {
                 label = "Hide Class Resource", widget = "checkbox", section = "Misc", order = 1,
             }},
+            -- 12.0.7 native toggle: hides the class resource shown under the regular
+            -- Player Frame (independent of the PRD). Rendered manually by ClassResourceRenderer.
+            hideClassInfoOnPlayerFrame = { type = "addon", default = false, ui = { hidden = true }},
             -- Opacity settings (addon-only, 1-100 percentage)
             opacityInCombat = { type = "addon", default = 100, ui = { hidden = true }},
             opacityWithTarget = { type = "addon", default = 100, ui = { hidden = true }},

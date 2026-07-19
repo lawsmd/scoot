@@ -472,6 +472,16 @@ function PowerBar.Render(panel, scrollContent)
             })
 
             inner:AddToggle({
+                label = "Hide Bar Background",
+                get = function() return getSetting("hideBarBackground") or false end,
+                set = function(v) setSetting("hideBarBackground", v) end,
+                infoIcon = {
+                    tooltipTitle = "Hide Bar Background",
+                    tooltipText = "Hides the Blizzard backdrop art behind the bar (the dark background and its frame edge added in patch 12.0.7), while keeping the bar fill visible. To add your own border instead, use the Border section.",
+                },
+            })
+
+            inner:AddToggle({
                 label = "Hide Full Bar Animations",
                 get = function() return getSetting("hideSpikeAnimations") or false end,
                 set = function(v) setSetting("hideSpikeAnimations", v) end,
