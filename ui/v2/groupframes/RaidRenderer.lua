@@ -653,6 +653,42 @@ function GF.RenderRaid(panel, scrollContent)
     })
 
     ----------------------------------------------------------------------------
+    -- Collapsible Section: Debuffs
+    ----------------------------------------------------------------------------
+
+    builder:AddCollapsibleSection({
+        title = "Debuffs",
+        componentId = COMPONENT_ID,
+        sectionKey = "debuffs",
+        defaultExpanded = false,
+        buildContent = function(contentFrame, inner)
+            inner:AddToggle({
+                label = "Enlarge Dispellable / Boss Debuffs",
+                description = "Blizzard enlarges dispellable and boss/role-specific debuffs on raid frames (Blizzard default: on). Turn this off to render all raid debuffs at the same small size. Also applies to raid-style party frames.",
+                get = function()
+                    local t = ensureDB() or {}
+                    if t.enlargeRoleDebuffs ~= nil then return t.enlargeRoleDebuffs end
+                    -- Unset: reflect the live CVar so the checkbox matches reality (Blizzard default "1").
+                    local cur = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("raidFramesDisplayLargerRoleSpecificDebuffs")
+                    return cur ~= "0"
+                end,
+                set = function(v)
+                    local t = ensureDB()
+                    if not t then return end
+                    t.enlargeRoleDebuffs = v and true or false
+                    if addon.ApplyRaidLargerRoleDebuffs then
+                        addon.ApplyRaidLargerRoleDebuffs("toggle")
+                    end
+                end,
+            })
+
+            inner:AddDescription("Raid-frame debuffs are rendered by Blizzard's protected private-aura system, so their icons and borders can't be restyled by addons. This toggle controls Blizzard's own enlargement of dispellable/boss debuffs.")
+
+            inner:Finalize()
+        end,
+    })
+
+    ----------------------------------------------------------------------------
     -- Collapsible Section: Text
     ----------------------------------------------------------------------------
 
