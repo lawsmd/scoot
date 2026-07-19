@@ -1,7 +1,10 @@
 --------------------------------------------------------------------------------
 -- personal_resource_display/text.lua
 -- Text overlay system: FontString creation, hook installation, text caching,
--- styling. Mirrors Player UF text onto PRD bars via hooks.
+-- styling. Mirrors the PRD's own native bar text (12.0.7+) onto Scoot-owned
+-- overlay FontStrings via hooks. Blizzard's native bar text is force-shown via
+-- the Edit Mode "Show Bar Text" setting (so it populates in a clean context),
+-- harvested, then hidden in favor of our styled overlay.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -27,6 +30,79 @@ PRD._textOverlays = textOverlays
 
 -- Hook installation tracking
 local textHooksInstalled = { power = false, health = false }
+
+--------------------------------------------------------------------------------
+-- Native Bar Text (Blizzard 12.0.7+)
+--------------------------------------------------------------------------------
+-- The PRD bars (PersonalResourceStatusBar) carry their own native value/percent
+-- FontStrings: LeftText (percent), RightText (value), TextString (center).
+-- We harvest those, render our own styled overlay on top, and keep the native
+-- FontStrings hidden (alpha 0). The native text only populates while Blizzard's
+-- Edit Mode "Show Bar Text" setting is on, which we drive Edit-Mode-first.
+
+local NATIVE_TEXT_KEYS = { "LeftText", "RightText", "TextString" }
+
+local function hideNativeBarTextOn(bar)
+    if not bar then return end
+    for _, key in ipairs(NATIVE_TEXT_KEYS) do
+        local fs = bar[key]
+        if fs then pcall(fs.SetAlpha, fs, 0) end
+    end
+end
+
+-- Hide Blizzard's native PRD bar text across health, power, and alternate power
+-- bars. (We only overlay health/power; the alt-power bar simply shows no text,
+-- which matches pre-12.0.7 behavior.)
+local function hidePRDNativeBarText()
+    local prd = PersonalResourceDisplayFrame
+    if not prd then return end
+    local healthBar = prd.HealthBarsContainer and prd.HealthBarsContainer.healthBar
+    hideNativeBarTextOn(healthBar)
+    hideNativeBarTextOn(prd.PowerBar)
+    hideNativeBarTextOn(prd.AlternatePowerBar)
+end
+
+-- Last ShowBarText state Scoot requested via Edit Mode.
+-- nil = never requested (fresh/default profile — leave the layout untouched).
+local nativeBarTextRequested = nil
+
+-- True if the user has configured any PRD bar text (value or percent) on either bar.
+local function anyPRDTextConfigured()
+    local comps = addon.Components
+    if not comps then return false end
+    if comps.prdHealth and comps.prdHealth.db
+        and (comps.prdHealth.db.valueTextShow or comps.prdHealth.db.percentTextShow) then
+        return true
+    end
+    if comps.prdPower and comps.prdPower.db
+        and (comps.prdPower.db.valueTextShow or comps.prdPower.db.percentTextShow) then
+        return true
+    end
+    return false
+end
+
+-- Drive Blizzard's native "Show Bar Text" Edit Mode setting so the PRD's own bar
+-- FontStrings get populated. Edit-Mode-first: never write the frame directly.
+-- Zero-touch: we never disable a setting we never enabled, so default profiles
+-- are left untouched.
+local function setNativeBarTextEnabled(enabled)
+    enabled = enabled and true or false
+    if not enabled and nativeBarTextRequested ~= true then
+        nativeBarTextRequested = false
+        return
+    end
+    if nativeBarTextRequested ~= enabled then
+        if addon.EditMode and addon.EditMode.WritePRDSetting then
+            addon.EditMode.WritePRDSetting("show_bar_text", enabled and 1 or 0)
+        end
+        nativeBarTextRequested = enabled
+    end
+    -- Re-assert hidden native text whenever it should be on (idempotent).
+    if enabled then hidePRDNativeBarText() end
+end
+
+PRD._setNativeBarTextEnabled = setNativeBarTextEnabled
+PRD._anyPRDTextConfigured = anyPRDTextConfigured
 
 --------------------------------------------------------------------------------
 -- Font Resolution
@@ -284,103 +360,81 @@ end
 -- Hook Installation
 --------------------------------------------------------------------------------
 
--- Install hooks on Player UF Power Bar text (ManaBar.LeftText / .RightText)
-local function installPowerTextHooks()
-    if textHooksInstalled.power then return end
+-- Install hooks on a native PRD bar's own text FontStrings (LeftText = percent,
+-- RightText = value). Blizzard populates these via SetText in its own clean
+-- context; we mirror onto our overlay and keep the native FontStrings hidden.
+local function installNativeBarTextHooks(overlayType, bar)
+    if not bar then return false end
 
-    local manaBar = PlayerFrame
-        and PlayerFrame.PlayerFrameContent
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
-    if not manaBar then return end
-
-    local leftSource = manaBar.LeftText
-    local rightSource = manaBar.RightText
+    local leftSource = bar.LeftText
+    local rightSource = bar.RightText
 
     if leftSource then
+        pcall(leftSource.SetAlpha, leftSource, 0)
         hooksecurefunc(leftSource, "SetText", function(self, text)
-            onSourceTextChanged("power", "left", text)
+            pcall(self.SetAlpha, self, 0)
+            onSourceTextChanged(overlayType, "left", text)
         end)
         if leftSource.SetFormattedText then
             hooksecurefunc(leftSource, "SetFormattedText", function(self, ...)
+                pcall(self.SetAlpha, self, 0)
                 local ok, text = pcall(self.GetText, self)
-                if ok then onSourceTextChanged("power", "left", text) end
+                if ok then onSourceTextChanged(overlayType, "left", text) end
             end)
         end
         -- Capture initial value (may be secret value; SetText(secret) is allowed)
         local ok, text = pcall(leftSource.GetText, leftSource)
         if ok then
-            textOverlays.power.lastLeft = text
+            textOverlays[overlayType].lastLeft = text
         end
     end
 
     if rightSource then
+        pcall(rightSource.SetAlpha, rightSource, 0)
         hooksecurefunc(rightSource, "SetText", function(self, text)
-            onSourceTextChanged("power", "right", text)
+            pcall(self.SetAlpha, self, 0)
+            onSourceTextChanged(overlayType, "right", text)
         end)
         if rightSource.SetFormattedText then
             hooksecurefunc(rightSource, "SetFormattedText", function(self, ...)
+                pcall(self.SetAlpha, self, 0)
                 local ok, text = pcall(self.GetText, self)
-                if ok then onSourceTextChanged("power", "right", text) end
+                if ok then onSourceTextChanged(overlayType, "right", text) end
             end)
         end
         local ok, text = pcall(rightSource.GetText, rightSource)
         if ok then
-            textOverlays.power.lastRight = text
+            textOverlays[overlayType].lastRight = text
         end
     end
 
-    textHooksInstalled.power = true
+    return true
 end
 
--- Install hooks on Player UF Health Bar text (HealthBar.LeftText / .RightText)
+-- Install hooks on the PRD Power Bar's own native text (PowerBar.LeftText/.RightText)
+local function installPowerTextHooks()
+    if textHooksInstalled.power then return end
+
+    local powerBar = PersonalResourceDisplayFrame and PersonalResourceDisplayFrame.PowerBar
+    if not powerBar then return end
+
+    if installNativeBarTextHooks("power", powerBar) then
+        textHooksInstalled.power = true
+    end
+end
+
+-- Install hooks on the PRD Health Bar's own native text (healthBar.LeftText/.RightText)
 local function installHealthTextHooks()
     if textHooksInstalled.health then return end
 
-    local healthBar = PlayerFrame
-        and PlayerFrame.PlayerFrameContent
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
+    local healthBar = PersonalResourceDisplayFrame
+        and PersonalResourceDisplayFrame.HealthBarsContainer
+        and PersonalResourceDisplayFrame.HealthBarsContainer.healthBar
     if not healthBar then return end
 
-    local leftSource = healthBar.LeftText
-    local rightSource = healthBar.RightText
-
-    if leftSource then
-        hooksecurefunc(leftSource, "SetText", function(self, text)
-            onSourceTextChanged("health", "left", text)
-        end)
-        if leftSource.SetFormattedText then
-            hooksecurefunc(leftSource, "SetFormattedText", function(self, ...)
-                local ok, text = pcall(self.GetText, self)
-                if ok then onSourceTextChanged("health", "left", text) end
-            end)
-        end
-        local ok, text = pcall(leftSource.GetText, leftSource)
-        if ok then
-            textOverlays.health.lastLeft = text
-        end
+    if installNativeBarTextHooks("health", healthBar) then
+        textHooksInstalled.health = true
     end
-
-    if rightSource then
-        hooksecurefunc(rightSource, "SetText", function(self, text)
-            onSourceTextChanged("health", "right", text)
-        end)
-        if rightSource.SetFormattedText then
-            hooksecurefunc(rightSource, "SetFormattedText", function(self, ...)
-                local ok, text = pcall(self.GetText, self)
-                if ok then onSourceTextChanged("health", "right", text) end
-            end)
-        end
-        local ok, text = pcall(rightSource.GetText, rightSource)
-        if ok then
-            textOverlays.health.lastRight = text
-        end
-    end
-
-    textHooksInstalled.health = true
 end
 
 --------------------------------------------------------------------------------
@@ -392,6 +446,11 @@ local function applyPowerTextOverlay(comp)
     if not comp or not comp.db then return end
 
     local db = comp.db
+
+    -- Drive Blizzard's native bar text (PRD-wide) based on whether either bar
+    -- wants text. This also re-hides the native FontStrings on all PRD bars.
+    setNativeBarTextEnabled(anyPRDTextConfigured())
+
     local showValue = db.valueTextShow
     local showPercent = db.percentTextShow
 
@@ -430,6 +489,11 @@ local function applyHealthTextOverlay(comp)
     if not comp or not comp.db then return end
 
     local db = comp.db
+
+    -- Drive Blizzard's native bar text (PRD-wide) based on whether either bar
+    -- wants text. This also re-hides the native FontStrings on all PRD bars.
+    setNativeBarTextEnabled(anyPRDTextConfigured())
+
     local showValue = db.valueTextShow
     local showPercent = db.percentTextShow
 

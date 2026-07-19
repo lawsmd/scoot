@@ -38,6 +38,19 @@ local MAX_CLASS_RESOURCE_SCALE_PERCENT = PRD._MAX_CLASS_RESOURCE_SCALE_PERCENT
 -- PRD._applyHealthTextOverlay, PRD._applyPowerTextOverlay, PRD._hideTextOverlay
 -- accessed inside function bodies at runtime
 
+-- 12.0.7: drive a native Personal Resource Display Edit Mode setting (by logical key)
+-- through the centralized, combat-safe, Edit-Mode-first write path. Used to re-point
+-- per-part hides onto Blizzard's own SetHide* handlers, which SetShown() the bar and
+-- reflow the layout in an untainted context. Safe no-op until the Edit Mode layer is
+-- ready, and skips redundant writes (so it never triggers a layout rebuild on a value
+-- that already matches — preserving the zero-touch policy on fresh profiles).
+local function writePRDNative(logicalKey, enabled)
+    local EM = addon.EditMode
+    if EM and EM.WritePRDSetting then
+        EM.WritePRDSetting(logicalKey, enabled and 1 or 0)
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Border Management
 --------------------------------------------------------------------------------
@@ -559,6 +572,82 @@ local function hidePRDBarTextures(bar, barType, hidden)
 end
 
 --------------------------------------------------------------------------------
+-- Native Bar Backdrop (12.0.7+)
+--------------------------------------------------------------------------------
+-- Patch 12.0.7 gave each PRD bar a backdrop texture (the dark background plus a
+-- baked-in frame/border edge) using the atlas "UI-HUD-CoolDownManager-Bar-BG".
+-- It is an anonymous BACKGROUND-layer texture (no parentKey), so we locate it by
+-- scanning the bar's regions. Hidden via the same recursion-guard alpha pattern.
+local PRD_BG_ATLAS = "UI-HUD-CoolDownManager-Bar-BG"
+
+local function findNativeBarBackground(bar)
+    if not bar then return nil end
+    local cached = getProp(bar, "_ScootPRDBGArt")
+    if cached then return cached end
+    if not bar.GetRegions then return nil end
+    local fallback
+    for _, region in ipairs({ bar:GetRegions() }) do
+        if region and region.GetObjectType and region:GetObjectType() == "Texture" then
+            local okLayer, layer = pcall(region.GetDrawLayer, region)
+            if okLayer and layer == "BACKGROUND" then
+                local okAtlas, atlas = pcall(region.GetAtlas, region)
+                if okAtlas and atlas == PRD_BG_ATLAS then
+                    setProp(bar, "_ScootPRDBGArt", region)
+                    return region
+                end
+                fallback = fallback or region
+            end
+        end
+    end
+    if fallback then setProp(bar, "_ScootPRDBGArt", fallback) end
+    return fallback
+end
+
+-- Hide/restore the native bar backdrop art. Used by both the dedicated
+-- "Hide Bar Background" toggle and the "Hide the Bar but not its Text" mode.
+local function setNativeBarBackgroundHidden(bar, barType, hidden)
+    if not bar then return end
+    local bgTex = findNativeBarBackground(bar)
+    if not bgTex then return end
+
+    local flagName = "_ScootPRDBGArtHidden_" .. barType
+    local st = getState(bgTex)
+    if st and not st[flagName .. "Hooked"] then
+        st[flagName .. "Hooked"] = true
+        if _G.hooksecurefunc and bgTex.SetAlpha then
+            _G.hooksecurefunc(bgTex, "SetAlpha", function(self, alpha)
+                if getProp(self, flagName) and alpha and alpha > 0 then
+                    if not getProp(self, "_ScootPRDSettingAlpha") then
+                        setProp(self, "_ScootPRDSettingAlpha", true)
+                        pcall(self.SetAlpha, self, 0)
+                        setProp(self, "_ScootPRDSettingAlpha", nil)
+                    end
+                end
+            end)
+        end
+        if _G.hooksecurefunc and bgTex.Show then
+            _G.hooksecurefunc(bgTex, "Show", function(self)
+                if getProp(self, flagName) and self.SetAlpha then
+                    if not getProp(self, "_ScootPRDSettingAlpha") then
+                        setProp(self, "_ScootPRDSettingAlpha", true)
+                        pcall(self.SetAlpha, self, 0)
+                        setProp(self, "_ScootPRDSettingAlpha", nil)
+                    end
+                end
+            end)
+        end
+    end
+
+    if hidden then
+        setProp(bgTex, flagName, true)
+        pcall(bgTex.SetAlpha, bgTex, 0)
+    else
+        setProp(bgTex, flagName, false)
+        pcall(bgTex.SetAlpha, bgTex, 1)
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Health Loss Animation
 --------------------------------------------------------------------------------
 
@@ -610,24 +699,17 @@ local function applyPRDHealthVisuals(component, container)
     if not statusBar then
         return
     end
-    local hide = ensureSettingValue(component, "hideBar") and true or false
-    setSettingValue(component, "hideBar", hide)
-    if hide then
-        pcall(container.SetAlpha, container, 0)
-        pcall(statusBar.SetAlpha, statusBar, 0)
-    else
-        -- Apply state-based opacity instead of restoring to 1
-        local alpha = PRD._getPRDOpacityForState("prdHealth")
-        pcall(container.SetAlpha, container, alpha)
-        pcall(statusBar.SetAlpha, statusBar, alpha)
-    end
-    if hide then
-        clearBarBorder(statusBar)
-        hidePRDBarOverlay("health")
-        PRD._hideTextOverlay("health")
-        return
-    end
+    -- Bar visibility is driven natively in applyHealthOffsets (Edit Mode HideHealth,
+    -- which SetShown()s the container and reflows the rest of the PRD). This path runs
+    -- only when the bar is shown; apply Scoot's state-based opacity on top.
+    local alpha = PRD._getPRDOpacityForState("prdHealth")
+    pcall(container.SetAlpha, container, alpha)
+    pcall(statusBar.SetAlpha, statusBar, alpha)
     local hideTextureOnly = ensureSettingValue(component, "hideTextureOnly") and true or false
+    local hideBarBackground = ensureSettingValue(component, "hideBarBackground") and true or false
+    -- The 12.0.7 backdrop art is hidden when either the texture-only mode or the
+    -- dedicated background toggle is on (texture-only implies the backdrop too).
+    setNativeBarBackgroundHidden(statusBar, "health", hideTextureOnly or hideBarBackground)
     if hideTextureOnly then
         hidePRDBarTextures(statusBar, "health", true)
         hidePRDBarOverlay("health")
@@ -648,24 +730,15 @@ local function applyPRDPowerVisuals(component, frame)
     if not component or not frame then
         return
     end
-    local hide = ensureSettingValue(component, "hideBar") and true or false
-    setSettingValue(component, "hideBar", hide)
-    if hide then
-        pcall(frame.SetAlpha, frame, 0)
-    else
-        -- Apply state-based opacity instead of restoring to 1
-        local alpha = PRD._getPRDOpacityForState("prdPower")
-        pcall(frame.SetAlpha, frame, alpha)
-    end
-    if hide then
-        clearBarBorder(frame)
-        setBlizzardBorderVisible(frame, false)
-        hidePRDManaCostPrediction(frame, true)
-        hidePRDBarOverlay("power")
-        PRD._hideTextOverlay("power")
-        return
-    end
+    -- Bar visibility is driven natively in applyPowerOffsets (Edit Mode HidePower).
+    -- This path runs only when the bar is shown; apply Scoot's state-based opacity.
+    local alpha = PRD._getPRDOpacityForState("prdPower")
+    pcall(frame.SetAlpha, frame, alpha)
     local hideTextureOnly = ensureSettingValue(component, "hideTextureOnly") and true or false
+    local hideBarBackground = ensureSettingValue(component, "hideBarBackground") and true or false
+    -- The 12.0.7 backdrop art is hidden when either the texture-only mode or the
+    -- dedicated background toggle is on (texture-only implies the backdrop too).
+    setNativeBarBackgroundHidden(frame, "power", hideTextureOnly or hideBarBackground)
     if hideTextureOnly then
         hidePRDBarTextures(frame, "power", true)
         hidePRDManaCostPrediction(frame, true)
@@ -691,13 +764,18 @@ local function applyPRDClassResourceVisibility(component, frame)
     end
     local hide = ensureSettingValue(component, "hideBar") and true or false
     setSettingValue(component, "hideBar", hide)
+    -- 12.0.7: native HideClassInfo SetShown()s + reflows the ClassFrameContainer.
+    writePRDNative("hide_class_info", hide)
+    -- 12.0.7: independent native toggle that removes the class resource from the
+    -- regular Player Frame (not the PRD). Event-driven on Blizzard's side.
+    local hideOnPlayer = ensureSettingValue(component, "hideClassInfoOnPlayerFrame") and true or false
+    writePRDNative("hide_class_info_on_player_frame", hideOnPlayer)
     if hide then
-        pcall(frame.SetAlpha, frame, 0)
-    else
-        -- Apply state-based opacity instead of restoring to 1
-        local alpha = PRD._getPRDOpacityForState("prdClassResource")
-        pcall(frame.SetAlpha, frame, alpha)
+        return
     end
+    -- Shown: apply Scoot's state-based opacity to the class resource frame.
+    local alpha = PRD._getPRDOpacityForState("prdClassResource")
+    pcall(frame.SetAlpha, frame, alpha)
 end
 
 --------------------------------------------------------------------------------
@@ -754,42 +832,12 @@ local function resolveClassResourceScale(component)
 end
 
 --------------------------------------------------------------------------------
--- Health Container Show Hook
---------------------------------------------------------------------------------
-
--- Hook to keep HealthBarsContainer hidden when hideBar is enabled.
--- Intercepts Blizzard's Show() calls (e.g., after closing Trading Post UI)
--- and re-hides the container if the user has "Hide Health Bar" enabled.
-local healthContainerShowHookInstalled = false
-
-local function ensureHealthContainerShowHook()
-    if healthContainerShowHookInstalled then return end
-
-    local container = getHealthContainer()
-    if not container or not container.Show then return end
-
-    healthContainerShowHookInstalled = true
-
-    hooksecurefunc(container, "Show", function(self)
-        -- Check if hideBar is enabled for prdHealth
-        local component = addon.Components and addon.Components.prdHealth
-        local hide = component and component.db and component.db.hideBar
-        if hide then
-            -- Defer to next frame to avoid re-entrancy issues
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0, function()
-                    if self and self.Hide then
-                        pcall(self.Hide, self)
-                    end
-                end)
-            end
-        end
-    end)
-end
-
---------------------------------------------------------------------------------
 -- Applicators
 --------------------------------------------------------------------------------
+-- NOTE: The old HealthBarsContainer Show-hook (which re-hid the container after
+-- Blizzard reshowed it) was retired in 12.0.7. Hiding now flows through the native
+-- HideHealth Edit Mode setting, so Blizzard's own clean rebuild owns the container's
+-- shown state — removing a hook on a system-frame-tree member (taint risk, Rule 11).
 
 local function applyHealthOffsets(component)
     -- PRD is PersonalResourceDisplayFrame (parented to UIParent), not a nameplate.
@@ -811,13 +859,13 @@ local function applyHealthOffsets(component)
         return
     end
 
-    -- Install hook to intercept Blizzard's Show() calls (e.g., after closing Trading Post)
-    ensureHealthContainerShowHook()
-
-    -- Hide bar via Hide()/Show() — frame is IsProtected: false
+    -- 12.0.7: drive Blizzard's native HideHealth via Edit Mode. It SetShown()s the
+    -- HealthBarsContainer and reflows the rest of the PRD (power moves up to fill the
+    -- gap) in an untainted context — replacing the old container:Hide() + Show-hook,
+    -- which touched the system-frame tree.
     local hide = ensureSettingValue(component, "hideBar") and true or false
+    writePRDNative("hide_health", hide)
     if hide then
-        pcall(container.Hide, container)
         local statusBar = container.healthBar or container.HealthBar
         if statusBar then
             clearBarBorder(statusBar)
@@ -825,8 +873,6 @@ local function applyHealthOffsets(component)
         hidePRDBarOverlay("health")
         PRD._hideTextOverlay("health")
         return
-    else
-        pcall(container.Show, container)
     end
 
     -- Sizing: apply barWidth/barHeight
@@ -905,14 +951,10 @@ local function applyPowerOffsets(component)
         return
     end
 
-    -- Hide bar via Hide()/Show()
+    -- 12.0.7: drive Blizzard's native HidePower via Edit Mode (PowerBar:SetShown() +
+    -- layout reflow), replacing the direct Hide()/SetAlpha(0).
     local hide = ensureSettingValue(component, "hideBar") and true or false
-    if hide then
-        pcall(frame.Hide, frame)
-        pcall(frame.SetAlpha, frame, 0)  -- Alpha fallback: ensures bar stays hidden even if Blizzard shows it
-    else
-        pcall(frame.Show, frame)
-    end
+    writePRDNative("hide_power", hide)
 
     -- Child frame features (operates on child frames: FullPowerFrame, FeedbackFrame)
     if Util then
