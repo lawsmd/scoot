@@ -1,8 +1,8 @@
-## Interface: 120005
+## Interface: 120007
 ## Title: Scoot
 ## Notes: A modern, cosmetic-only UI addon.
 ## Author: Scooter
-## Version: 1.2.4
+## Version: 1.2.5
 ## IconTexture: Interface\AddOns\Scoot\ScootIcon
 ## OptionalDeps: Blizzard_Settings, Blizzard_Settings_Shared, LibSharedMedia-3.0
 ## SavedVariables: ScootDB
