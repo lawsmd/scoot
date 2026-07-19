@@ -183,6 +183,29 @@ local function ResolveSettingId(frame, logicalKey)
         -- Tracked Bars specific (bar content/display mode)
         if logicalKey == "bar_content" then return EM.BarContent end
     end
+
+    -- Personal Resource Display: stable enum constants (12.0.7+). The PRD exposes
+    -- a single system frame (PersonalResourceDisplayFrame) with no index, so a
+    -- straight logical-key → enum mapping is sufficient.
+    local prdEM = _G.Enum and _G.Enum.EditModePersonalResourceDisplaySetting
+    if prdEM and frame and frame.system == (_G.Enum and _G.Enum.EditModeSystem and _G.Enum.EditModeSystem.PersonalResourceDisplay) then
+        local lk = _lower(logicalKey)
+        if lk == "show_bar_text" or lk == "showbartext" then return prdEM.ShowBarText end
+        if lk == "show_class_color" or lk == "showclasscolor" then return prdEM.ShowClassColor end
+        if lk == "hide_health" or lk == "hidehealth" then return prdEM.HideHealth end
+        if lk == "hide_power" or lk == "hidepower" then return prdEM.HidePower end
+        if lk == "hide_alt_power" or lk == "hidealtpower" then return prdEM.HideAltPower end
+        if lk == "hide_class_info" or lk == "hideclassinfo" then return prdEM.HideClassInfo end
+        if lk == "hide_class_info_on_player_frame" or lk == "hideclassinfoonplayerframe" then return prdEM.HideClassInfoOnPlayerFrame end
+        if lk == "health_bar_height" or lk == "healthbarheight" then return prdEM.HealthBarHeight end
+        if lk == "power_bar_height" or lk == "powerbarheight" then return prdEM.PowerBarHeight end
+        if lk == "bar_width" or lk == "barwidth" then return prdEM.BarWidth end
+        if lk == "size" then return prdEM.Size end
+        if lk == "padding" then return prdEM.Padding end
+        if lk == "opacity" then return prdEM.Opacity end
+        if lk == "visibility" or lk == "visible_setting" then return prdEM.VisibleSetting end
+    end
+
     local sys = frame.system
     if not sys then return nil end
 
@@ -719,6 +742,25 @@ function addon.EditMode.WriteSetting(frame, settingId, value, opts)
     if not opts.skipSave and addon.EditMode.SaveOnly then
         addon.EditMode.SaveOnly()
     end
+end
+
+-- Convenience: write a Personal Resource Display Edit Mode setting by logical key
+-- (e.g. "show_bar_text", "hide_health", "show_class_color"). Resolves
+-- PersonalResourceDisplayFrame + the stable enum id, then routes through the
+-- centralized, combat-safe WriteSetting path. Skips the write (and its layout
+-- rebuild) when the stored value already matches. Returns true if a write was
+-- issued or unnecessary, false if the setting could not be resolved.
+function addon.EditMode.WritePRDSetting(logicalKey, value, opts)
+    local prd = _G.PersonalResourceDisplayFrame
+    if not prd or not prd.system then return false end
+    if not addon.EditMode.WriteSetting then return false end
+    local settingId = ResolveSettingId(prd, logicalKey)
+    if settingId == nil then return false end
+    -- Avoid a redundant layout rebuild when the value is already what we want.
+    local current = addon.EditMode.GetSetting(prd, settingId)
+    if current ~= nil and tonumber(current) == tonumber(value) then return true end
+    addon.EditMode.WriteSetting(prd, settingId, value, opts)
+    return true
 end
 
 function addon.EditMode.IsReady()
