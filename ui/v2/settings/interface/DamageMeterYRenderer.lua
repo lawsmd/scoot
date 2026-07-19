@@ -247,7 +247,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
 
         -- Name
         local nameText = container:CreateFontString(nil, "OVERLAY")
-        nameText:SetFont(nameFontPath, fontNames.fontSize or 10, fontNames.fontStyle or "OUTLINE")
+        nameText:SetFont(nameFontPath, fontNames.fontSize or 12, fontNames.fontStyle or "OUTLINE")
         nameText:SetPoint("LEFT", icon, "RIGHT", 3, 0)
         nameText:SetWidth(PREVIEW_NAME_WIDTH)
         nameText:SetJustifyH("LEFT"); nameText:SetWordWrap(false)
@@ -351,7 +351,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
 
                 local textParent = showBars and bar or container
                 local valText = textParent:CreateFontString(nil, "OVERLAY")
-                valText:SetFont(valueFontPath, fontValues.fontSize or 9, fontValues.fontStyle or "OUTLINE")
+                valText:SetFont(valueFontPath, fontValues.fontSize or 11, fontValues.fontStyle or "OUTLINE")
                 valText:SetWidth(colWidth - 8)
                 valText:SetTextColor(1, 1, 1, 1)
                 valText:SetText(FormatPlayerValue(player, colDef.format))
