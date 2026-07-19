@@ -115,6 +115,14 @@ core/components/unitframes/portraits.lua
 core/components/unitframes/classresource.lua
 core/components/unitframes/dkrunes.lua
 core/components/unitframes/magearcanecharges.lua
+# >>> SCOOT-DEV-ONLY >>> (avatar prototype; stripped from CurseForge releases by export-curseforge.ps1)
+core/components/unitframes/avatar/defaults.lua
+core/components/unitframes/avatar/manifest_generated.lua
+core/components/unitframes/avatar/manifestloader.lua
+core/components/unitframes/avatar/compositor.lua
+core/components/unitframes/avatar/placement.lua
+core/components/unitframes/avatar/core.lua
+# <<< SCOOT-DEV-ONLY <<<
 core/components/unitframes/totembar.lua
 core/components/unitframes/cast/core.lua
 core/components/unitframes/cast/textfill.lua
@@ -168,6 +176,9 @@ core/debug/misc.lua
 core/debug/cdmlayers.lua
 core/debug/dmY.lua
 core/debug/widget.lua
+# >>> SCOOT-DEV-ONLY >>> (avatar barbershop probe; stripped from CurseForge releases by export-curseforge.ps1)
+core/debug/avatarprobe.lua
+# <<< SCOOT-DEV-ONLY <<<
 core/taintdebug.lua
 core/dialogs.lua
 core/importexport.lua
@@ -252,6 +263,10 @@ ui/v2/settings/auras/DebuffsRenderer.lua
 ui/v2/unitframes/Helpers.lua
 ui/v2/unitframes/Builders.lua
 ui/v2/unitframes/PlayerSections.lua
+# >>> SCOOT-DEV-ONLY >>> (avatar lab UI; stripped from CurseForge releases by export-curseforge.ps1)
+ui/v2/debug/AvatarLabSection.lua
+ui/v2/debug/AvatarLabRenderer.lua
+# <<< SCOOT-DEV-ONLY <<<
 ui/v2/unitframes/ToTRenderer.lua
 ui/v2/unitframes/FocusTargetRenderer.lua
 ui/v2/unitframes/PetRenderer.lua

@@ -1883,6 +1883,9 @@ function UF.RenderPlayer(panel, scrollContent)
         end,
     })
 
+    -- Note: the pixel-art avatar prototype was moved out of the player menu and
+    -- now lives under Debug > Avatar Lab (dev-only, stripped from release builds).
+
     --------------------------------------------------------------------------------
     -- Collapsible Section: Visibility (moved before Misc)
     --------------------------------------------------------------------------------

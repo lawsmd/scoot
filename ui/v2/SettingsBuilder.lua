@@ -1732,3 +1732,48 @@ function Builder:AddPreview(options)
 
     return self
 end
+
+-- Live avatar preview row. Creates a host frame the avatar compositor renders
+-- into; the editor calls frame.Render(settings) to refresh it. The preview uses
+-- the same addon.Avatar.BuildLayerList + Render as the live unit frame, so it is
+-- pixel-identical.
+function Builder:AddAvatarPreview(options)
+    options = options or {}
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    if #self._controls > 0 then
+        self._currentY = self._currentY - ITEM_SPACING
+    end
+
+    local height = options.height or 150
+    local hostSize = options.hostSize or 96
+
+    local f = CreateFrame("Frame", nil, scrollContent)
+    f:SetHeight(height)
+    f:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+    f:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+    local bg = f:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0, 0, 0.25)
+
+    local host = CreateFrame("Frame", nil, f)
+    host:SetSize(hostSize, hostSize)
+    host:SetPoint("CENTER", f, "CENTER", 0, 0)
+    f.host = host
+
+    f.Render = function(settings)
+        local A = addon.Avatar
+        if A and A.Render and A.BuildLayerList then
+            A.Render(host, settings and A.BuildLayerList(settings) or nil)
+        end
+    end
+
+    table.insert(self._controls, f)
+    self._currentY = self._currentY - height
+
+    if options.onCreate then options.onCreate(f) end
+
+    return self
+end

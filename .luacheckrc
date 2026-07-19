@@ -34,6 +34,8 @@ read_globals = {
     "UnitHealth",
     "UnitHealthMax",
     "UnitInRange",
+    "UnitRace",
+    "UnitSex",
 
     -- WoW frame methods/mixins (accessed as globals in some patterns)
     "GameTooltip",
@@ -43,6 +45,7 @@ read_globals = {
 
     -- Blizzard addon APIs
     "C_AddOns",
+    "C_BarberShop",
     "C_ClassColor",
     "C_Covenants",
     "C_Spell",

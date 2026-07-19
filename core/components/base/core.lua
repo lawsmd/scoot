@@ -358,6 +358,9 @@ function addon:ApplyStyles()
         if addon.ApplyAllUnitFramePortraits then
             addon.ApplyAllUnitFramePortraits()
         end
+        if addon.ApplyAllUnitFrameAvatars then
+            addon.ApplyAllUnitFrameAvatars()
+        end
         if addon.ApplyAllUnitFrameClassResources then
             addon.ApplyAllUnitFrameClassResources()
         end

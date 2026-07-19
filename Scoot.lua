@@ -148,6 +148,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug dmY drilldata")
             addon:Print("  /scoot debug dmY multicol")
             addon:Print("  /scoot debug widget <spawnchild|releaseall|state>")
+            addon:Print("  /scoot debug avatar [arm|dump|disarm]")
             return
         end
 
@@ -491,6 +492,24 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("       /scoot debug dmY drilldown")
             addon:Print("       /scoot debug dmY drilldata")
             addon:Print("       /scoot debug dmY multicol")
+            return
+        end
+
+        -- /scoot debug avatar [arm|dump|disarm]
+        -- Barbershop customization probe (dev-only avatar prototype).
+        if sub1 == "avatar" then
+            local ap = addon.AvatarProbe
+            if not ap then
+                addon:Print("Avatar probe not loaded.")
+                return
+            end
+            if sub2 == "dump" then
+                ap.ShowReport()
+            elseif sub2 == "disarm" or sub2 == "off" then
+                ap.Disarm()
+            else
+                ap.Arm()
+            end
             return
         end
 

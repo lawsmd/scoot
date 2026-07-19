@@ -61,7 +61,7 @@ local function ShouldSkipRenderer(key)
         local _, playerClass = UnitClass("player")
         return classToken ~= playerClass
     end
-    if key == "debugMenu" then
+    if key == "debugMenu" or key == "avatarLab" then
         local debugEnabled = addon.db and addon.db.profile and addon.db.profile.debugMenuEnabled
         return not debugEnabled
     end
