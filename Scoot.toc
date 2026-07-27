@@ -183,6 +183,7 @@ ui/v2/controls/DualSlider.lua
 ui/v2/controls/DualSelector.lua
 ui/v2/controls/RankSelector.lua
 ui/v2/controls/SelectorToggleRow.lua
+ui/v2/controls/ToggleSliderRow.lua
 ui/v2/controls/Tabbed.lua
 ui/v2/controls/FontSelector.lua
 ui/v2/controls/InfoIcon.lua

@@ -1494,6 +1494,65 @@ function Builder:AddSelectorToggleRow(options)
 end
 
 --------------------------------------------------------------------------------
+-- AddToggleSliderRow: Toggle + Slider compact row
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Row label text
+--   description : Optional description below label
+--   toggle      : Table with toggle options (get, set, label)
+--   slider      : Table with slider options (get, set, min, max, step, suffix, label)
+--   disabled / isDisabled : Function returning disabled state
+--   key         : Optional unique key for dynamic updates
+--------------------------------------------------------------------------------
+
+function Builder:AddToggleSliderRow(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    if Builder._scanMode and options.label then
+        table.insert(Builder._scanEntries, {
+            type = "toggle slider",
+            label = options.label,
+            description = options.description or "",
+            rendererKey = Builder._scanRendererKey,
+            section = Builder._scanSectionStack[#Builder._scanSectionStack],
+        })
+        return self
+    end
+
+    if #self._controls > 0 then
+        self._currentY = self._currentY - ITEM_SPACING
+    end
+
+    local toggleSlider = Controls:CreateToggleSliderRow({
+        parent = scrollContent,
+        label = options.label,
+        description = options.description,
+        toggle = options.toggle,
+        slider = options.slider,
+        useLightDim = self._useLightDim,
+        disabled = options.disabled,
+        isDisabled = options.isDisabled,
+        name = options.name,
+    })
+
+    if toggleSlider then
+        toggleSlider:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+        toggleSlider:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+        table.insert(self._controls, toggleSlider)
+
+        if options.key then
+            self._controlsByKey[options.key] = toggleSlider
+        end
+
+        self._currentY = self._currentY - toggleSlider:GetHeight()
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
 -- AddDualBarStyleRow: Texture + Color compact row
 --------------------------------------------------------------------------------
 -- Options:

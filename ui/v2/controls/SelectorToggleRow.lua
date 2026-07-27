@@ -176,6 +176,9 @@ local function CreateMiniToggle(opts, parentContainer, theme, useLightDim)
     return toggle
 end
 
+-- Export for reuse by ToggleSliderRow
+Controls._CreateMiniToggle = CreateMiniToggle
+
 --------------------------------------------------------------------------------
 -- SelectorToggleRow: Compact selector + toggle side-by-side
 --------------------------------------------------------------------------------
