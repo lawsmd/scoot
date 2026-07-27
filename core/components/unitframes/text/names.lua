@@ -256,9 +256,10 @@ do
 					or nil
 			end
 
-			-- Baselines for Boss name text are stored per-boss-index.
-			addon._ufNameLevelTextBaselines = addon._ufNameLevelTextBaselines or {}
+			-- Baselines for Boss name text are stored per-boss-index. Guard on every call:
+			-- the style revert in base/core.lua nils this table out from under us.
 			local function ensureBossBaseline(fs, key, fallbackFrame)
+				addon._ufNameLevelTextBaselines = addon._ufNameLevelTextBaselines or {}
 				addon._ufNameLevelTextBaselines[key] = addon._ufNameLevelTextBaselines[key] or {}
 				local b = addon._ufNameLevelTextBaselines[key]
 				if b.point == nil then

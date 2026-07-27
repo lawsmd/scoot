@@ -309,15 +309,18 @@ function addon:ClearFrameLevelState()
     clearTextFlags(_G.PetFrameManaBarTextLeft)
     clearTextFlags(_G.PetFrameManaBarTextRight)
 
-    self._ufTextBaselines = nil
-    self._ufPowerTextBaselines = nil
-    self._ufNameLevelTextBaselines = nil
-    self._ufNameContainerBaselines = nil
-    self._ufNameBackdropBaseWidth = nil
-    self._ufToTNameTextBaseline = nil
+    -- Empty these rather than nil them out. Several consumers guard their container
+    -- once at load time (inside a `do` block) and index it directly thereafter, so
+    -- removing the table entirely makes every later apply error on a nil index.
+    self._ufTextBaselines = {}
+    self._ufPowerTextBaselines = {}
+    self._ufNameLevelTextBaselines = {}
+    self._ufNameContainerBaselines = {}
+    self._ufNameBackdropBaseWidth = {}
+    self._ufToTNameTextBaseline = {}
 
-    self._ufHealthTextFonts = nil
-    self._ufPowerTextFonts = nil
+    self._ufHealthTextFonts = {}
+    self._ufPowerTextFonts = {}
 end
 
 function addon:ApplyStyles()
