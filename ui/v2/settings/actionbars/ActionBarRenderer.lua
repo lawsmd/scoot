@@ -59,7 +59,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
     if isBar2to8 then
         local barNum = tonumber(componentId:match("actionBar(%d)"))
 
-        -- Settings API helpers
+        -- Live-state fallback, used only before the profile has been backfilled.
         local function getBarEnabledFromSettings()
             if not Settings or not Settings.GetSetting then return true end
             local ok, setting = pcall(Settings.GetSetting, "PROXY_SHOW_ACTIONBAR_" .. barNum)
@@ -68,14 +68,6 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                 if vOk then return val end
             end
             return true
-        end
-
-        local function setBarEnabledInSettings(enabled)
-            if not Settings or not Settings.GetSetting then return end
-            local ok, setting = pcall(Settings.GetSetting, "PROXY_SHOW_ACTIONBAR_" .. barNum)
-            if ok and setting and setting.SetValue then
-                pcall(setting.SetValue, setting, enabled)
-            end
         end
 
         -- Profile data helpers
@@ -104,7 +96,11 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                 local s = ensureProfileActionBarSettings()
                 if not s then return end
                 s["enableBar" .. barNum] = value
-                setBarEnabledInSettings(value)
+                -- Delegate the actual write: the reconciler carries the combat guard,
+                -- the settings-readiness check and the deferred verify pass.
+                if addon and addon.ReconcileActionBarsEnabled then
+                    addon.ReconcileActionBarsEnabled("UIToggleBar" .. barNum)
+                end
                 if addon and addon.ApplyStyles then
                     if C_Timer and C_Timer.After then
                         C_Timer.After(0, function()

@@ -303,62 +303,245 @@ for i = 2, 8 do
     AB_ENABLE_KEYS[i] = "enableBar" .. i
 end
 
--- OPT-24: Lazy-cache setting objects (session-stable registry entries)
-local settingObjectCache = {} -- [barNum] = setting object or false
-local function getCachedSettingObject(barNum)
+-- OPT-24: Lazy-cache setting objects (session-stable registry entries).
+--
+-- Only successful lookups are cached. Blizzard creates the PROXY_SHOW_ACTIONBAR_*
+-- settings from a registrar that waits on both VARIABLES_LOADED and
+-- PLAYER_ENTERING_WORLD (Blizzard_SettingsRegistrar.lua), which is strictly after
+-- our OnInitialize. Caching a failed lookup would poison every later apply for the
+-- rest of the session -- see ensureBarSettingsArrivalHook below.
+local settingObjectCache = {} -- [barNum] = setting object (never false)
+local function getSettingObject(barNum)
     local cached = settingObjectCache[barNum]
-    if cached ~= nil then
-        return cached  -- false means "looked up but not found"
-    end
-    if not Settings or not Settings.GetSetting then
-        return false
-    end
+    if cached then return cached end
+    if not Settings or not Settings.GetSetting then return nil end
     local ok, setting = pcall(Settings.GetSetting, AB_SETTING_KEYS[barNum])
-    local result = (ok and setting) or false
-    settingObjectCache[barNum] = result
-    return result
+    if ok and setting then
+        settingObjectCache[barNum] = setting
+        return setting
+    end
+    return nil
 end
+
+-- Bars 2-8 are registered in a single loop, so bar 2 is a valid proxy for all seven.
+local function areBarSettingsReady()
+    return getSettingObject(2) ~= nil
+end
+
+-- Set while we are writing a bar setting, so our own back-sync callback can tell
+-- our writes apart from the user's. Sound because SettingMixin:TriggerValueChanged
+-- runs synchronously inside ApplyValue, on this same call stack.
+local abWriting = false
 
 -- OPT-24: Module-level helper with value-check (skips SetValue when already matching)
 local function applyBarSettingsAPI(barNum, desired)
-    local setting = getCachedSettingObject(barNum)
-    if not setting or not setting.SetValue then return end
+    local setting = getSettingObject(barNum)
+    if not setting or not setting.SetValue then return false end
 
     if setting.GetValue then
         local ok, current = pcall(setting.GetValue, setting)
-        if ok and current == desired then return end
+        if ok and current == desired then return true end
     end
 
-    pcall(setting.SetValue, setting, desired)
+    abWriting = true
+    -- immediate=true so the write is applied now rather than parked as a pending
+    -- value awaiting a commit step (SettingMixin:SetValue).
+    local ok = pcall(setting.SetValue, setting, desired, true)
+    abWriting = false
+    return ok
 end
 
-local function ApplyActionBarsEnabledForActiveProfile(reason)
-    if not addon:IsModuleEnabled("actionBars") then return end
-    local profile = addon and addon.db and addon.db.profile
-    local s = profile and profile.actionBarSettings
-    if not s then
-        return  -- Zero-touch: no actionBarSettings subtable at all
-    end
+-- Reconciler state. One shared frame for combat deferral (the old code created one
+-- frame per bar per apply and closed over stale values, so two profile switches in
+-- one combat resolved in arbitrary order).
+local abCombatFrame          -- lazily created, registered for PLAYER_REGEN_ENABLED
+local abReconcilePending     -- reason string queued while in combat
+local abArrivalHookInstalled -- SETTINGS_LOADED hook installed once per session
+local abBackSyncInstalled    -- value-changed callbacks installed once per session
+local abVerifyScheduled      -- collapses parallel reconciles into one verify pass
 
+local ReconcileActionBarsEnabled  -- forward declaration (mutual recursion below)
+local ensureBarSettingsArrivalHook
+local installActionBarBackSync
+
+-- Seed any unset enableBarN from the live value, once per profile, so a profile
+-- switch fully determines bar visibility instead of leaving unset bars wherever the
+-- previous profile left them. Must only run once the settings registry is live.
+local function BackfillActionBarEnableState(profile)
+    -- rawget/rawset throughout, matching the zero-touch convention in
+    -- core/components/base/core.lua, so we never read or write through an
+    -- AceDB-materialized defaults table.
+    local s = rawget(profile, "actionBarSettings")
+    if s and s.__backfilledV1 then return s end
+
+    local seeded = {}
     for barNum = 2, 8 do
-        local desired = s[AB_ENABLE_KEYS[barNum]]
-        if desired ~= nil then
-            if InCombatLockdown and InCombatLockdown() then
-                local bn, d = barNum, desired
-                local f = CreateFrame("Frame")
-                f:RegisterEvent("PLAYER_REGEN_ENABLED")
-                f:SetScript("OnEvent", function(self)
-                    self:UnregisterAllEvents()
-                    applyBarSettingsAPI(bn, d)
-                end)
-            else
-                applyBarSettingsAPI(barNum, desired)
+        if not s or s[AB_ENABLE_KEYS[barNum]] == nil then
+            local setting = getSettingObject(barNum)
+            if setting and setting.GetValue then
+                local ok, current = pcall(setting.GetValue, setting)
+                if ok and current ~= nil then
+                    seeded[AB_ENABLE_KEYS[barNum]] = current and true or false
+                end
             end
         end
     end
 
-    Debug("Applied actionBarSettings from profile", reason and ("reason=" .. tostring(reason)) or "")
+    if not s and not next(seeded) then
+        return nil  -- nothing to write; don't materialize a table the pruner would drop
+    end
+
+    if not s then
+        s = {}
+        rawset(profile, "actionBarSettings", s)
+    end
+    for k, v in pairs(seeded) do
+        s[k] = v
+    end
+    s.__backfilledV1 = true
+    Debug("Backfilled actionBarSettings enable state", "seeded=" .. tostring(next(seeded) ~= nil))
+    return s
 end
+
+-- Re-read the profile and re-assert every bar's enable state. Idempotent; safe to
+-- call from any entry point (login, profile switch, preset apply, Edit Mode change).
+function ReconcileActionBarsEnabled(reason)
+    reason = reason or "unspecified"
+
+    local profile = addon and addon.db and addon.db.profile
+    if not profile then return end
+
+    if not addon:IsModuleEnabled("actionBars") then
+        Debug("Skipped action bar reconcile: actionBars module disabled", "reason=" .. reason)
+        return
+    end
+
+    -- Writing these settings shows/hides the secure MultiBar frames, so it is
+    -- forbidden in combat. Queue and re-read the profile when combat ends.
+    if InCombatLockdown and InCombatLockdown() then
+        abReconcilePending = reason
+        if not abCombatFrame then
+            abCombatFrame = CreateFrame("Frame")
+            abCombatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+            abCombatFrame:SetScript("OnEvent", function()
+                local queued = abReconcilePending
+                abReconcilePending = nil
+                if queued then
+                    ReconcileActionBarsEnabled(queued .. "+PostCombat")
+                end
+            end)
+        end
+        Debug("Deferred action bar reconcile until combat ends", "reason=" .. reason)
+        return
+    end
+
+    if not areBarSettingsReady() then
+        ensureBarSettingsArrivalHook()
+        Debug("Deferred action bar reconcile: settings registry not ready", "reason=" .. reason)
+        return
+    end
+
+    installActionBarBackSync()
+
+    local s = BackfillActionBarEnableState(profile)
+    if not s then
+        Debug("Skipped action bar reconcile: no actionBarSettings", "reason=" .. reason)
+        return
+    end
+
+    local written = 0
+    for barNum = 2, 8 do
+        local desired = s[AB_ENABLE_KEYS[barNum]]
+        if desired ~= nil then
+            if applyBarSettingsAPI(barNum, desired) then
+                written = written + 1
+            end
+        end
+    end
+
+    Debug("Reconciled action bars", "reason=" .. reason, "written=" .. written)
+
+    -- Verify late. SetActionBarToggles round-trips the server and GetActionBarToggles
+    -- lags behind it (Blizzard keeps its own 10s cache for this reason), so a write
+    -- issued right after login can be dropped by ApplyValue's equality check against
+    -- stale mirror data. Re-check once and re-write once; never loop.
+    if written > 0 and not abVerifyScheduled and C_Timer and C_Timer.After then
+        abVerifyScheduled = true
+        C_Timer.After(1.5, function()
+            abVerifyScheduled = false
+            if InCombatLockdown and InCombatLockdown() then return end
+            local p = addon and addon.db and addon.db.profile
+            local ps = p and rawget(p, "actionBarSettings")
+            if not ps then return end
+            for barNum = 2, 8 do
+                local desired = ps[AB_ENABLE_KEYS[barNum]]
+                if desired ~= nil then
+                    local setting = getSettingObject(barNum)
+                    if setting and setting.GetValue then
+                        local ok, current = pcall(setting.GetValue, setting)
+                        if ok and current ~= desired then
+                            Debug("Action bar verify mismatch; re-writing", "bar=" .. barNum,
+                                "want=" .. tostring(desired), "got=" .. tostring(current))
+                            applyBarSettingsAPI(barNum, desired)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- The settings we need do not exist at OnInitialize. SETTINGS_LOADED fires
+-- immediately after Blizzard's registrants run (Blizzard_SettingsRegistrar.lua), and
+-- is what Blizzard's own ActionBarController uses to wire up these same seven
+-- settings. Note that registration itself does NOT fire a value-changed event, so
+-- Settings.CallWhenRegistered is not a usable arrival hook here.
+function ensureBarSettingsArrivalHook()
+    if abArrivalHookInstalled then return end
+    abArrivalHookInstalled = true
+
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("SETTINGS_LOADED")
+    f:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        ReconcileActionBarsEnabled("SettingsLoaded")
+    end)
+end
+
+-- Mirror changes the user makes in Blizzard's own Options/Edit Mode UI back into the
+-- active Scoot profile, so an in-combat fix there sticks instead of being reverted by
+-- the next reconcile.
+function installActionBarBackSync()
+    if abBackSyncInstalled then return end
+    if not Settings or not Settings.SetOnValueChangedCallback then return end
+    abBackSyncInstalled = true
+
+    for barNum = 2, 8 do
+        local bn = barNum
+        pcall(Settings.SetOnValueChangedCallback, AB_SETTING_KEYS[bn], function(_, _, value)
+            if abWriting then return end  -- our own write, not the user's
+            local profile = addon and addon.db and addon.db.profile
+            if not profile then return end
+            if not addon:IsModuleEnabled("actionBars") then return end
+
+            local s = rawget(profile, "actionBarSettings")
+            if not s then
+                s = {}
+                rawset(profile, "actionBarSettings", s)
+            end
+
+            local newValue = value and true or false
+            if s[AB_ENABLE_KEYS[bn]] == newValue then return end
+            s[AB_ENABLE_KEYS[bn]] = newValue
+
+            Debug("Back-synced action bar from Blizzard UI", "bar=" .. bn,
+                "value=" .. tostring(newValue), "profile=" .. tostring(addon.db:GetCurrentProfile()))
+        end)
+    end
+
+    Debug("Installed action bar back-sync callbacks")
+end
+
 
 -- Raid frames: Blizzard renders raid-frame debuffs as private auras (forbidden,
 -- secure environment) and enlarges boss/role-specific ones when its
@@ -400,6 +583,10 @@ end
 
 -- Expose for the Raid Frames renderer toggle so it reuses the one combat-guarded implementation.
 addon.ApplyRaidLargerRoleDebuffs = ApplyRaidLargerRoleDebuffsForActiveProfile
+
+-- Expose for the Action Bars renderer toggle and the Edit Mode / world entry hooks in
+-- core/init.lua so they reuse the one combat- and readiness-guarded implementation.
+addon.ReconcileActionBarsEnabled = ReconcileActionBarsEnabled
 
 local function getLayouts()
     if not C_EditMode or not C_EditMode.GetLayouts then return nil end
@@ -888,7 +1075,12 @@ function Profiles:Initialize()
     ApplyCooldownViewerEnabledForActiveProfile("Initialize")
     ApplyPRDEnabledForActiveProfile("Initialize")
     ApplyDamageMeterEnabledForActiveProfile("Initialize")
-    ApplyActionBarsEnabledForActiveProfile("Initialize")
+    -- Bar enable settings do not exist yet at Initialize (ADDON_LOADED); Blizzard
+    -- registers them only after VARIABLES_LOADED + PLAYER_ENTERING_WORLD. Arm the
+    -- SETTINGS_LOADED hook unconditionally -- it is what actually applies the profile
+    -- on login. The call below is a harmless no-op until then.
+    ensureBarSettingsArrivalHook()
+    ReconcileActionBarsEnabled("Initialize")
     ApplyRaidLargerRoleDebuffsForActiveProfile("Initialize")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:Initialize")
@@ -913,7 +1105,7 @@ function Profiles:OnProfileChanged(_, _, newProfileKey)
     ApplyCooldownViewerEnabledForActiveProfile("OnProfileChanged")
     ApplyPRDEnabledForActiveProfile("OnProfileChanged")
     ApplyDamageMeterEnabledForActiveProfile("OnProfileChanged")
-    ApplyActionBarsEnabledForActiveProfile("OnProfileChanged")
+    ReconcileActionBarsEnabled("OnProfileChanged")
     ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileChanged")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileChanged")
@@ -928,7 +1120,7 @@ function Profiles:OnProfileCopied(_, _, sourceKey)
     ApplyCooldownViewerEnabledForActiveProfile("OnProfileCopied")
     ApplyPRDEnabledForActiveProfile("OnProfileCopied")
     ApplyDamageMeterEnabledForActiveProfile("OnProfileCopied")
-    ApplyActionBarsEnabledForActiveProfile("OnProfileCopied")
+    ReconcileActionBarsEnabled("OnProfileCopied")
     ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileCopied")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileCopied")
@@ -942,7 +1134,7 @@ function Profiles:OnProfileReset()
     ApplyCooldownViewerEnabledForActiveProfile("OnProfileReset")
     ApplyPRDEnabledForActiveProfile("OnProfileReset")
     ApplyDamageMeterEnabledForActiveProfile("OnProfileReset")
-    ApplyActionBarsEnabledForActiveProfile("OnProfileReset")
+    ReconcileActionBarsEnabled("OnProfileReset")
     ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileReset")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileReset")
@@ -1083,7 +1275,7 @@ function Profiles:_setActiveProfile(profileKey, opts)
     ApplyCooldownViewerEnabledForActiveProfile("_setActiveProfile")
     ApplyPRDEnabledForActiveProfile("_setActiveProfile")
     ApplyDamageMeterEnabledForActiveProfile("_setActiveProfile")
-    ApplyActionBarsEnabledForActiveProfile("_setActiveProfile")
+    ReconcileActionBarsEnabled("_setActiveProfile")
     ApplyRaidLargerRoleDebuffsForActiveProfile("_setActiveProfile")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:_setActiveProfile")

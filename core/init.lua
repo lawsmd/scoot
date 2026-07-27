@@ -477,6 +477,11 @@ function addon:PLAYER_ENTERING_WORLD(event, isInitialLogin, isReloadingUi)
     if addon.EditMode and addon.EditMode.Initialize then
         pcall(addon.EditMode.Initialize)
     end
+    -- Re-assert per-bar enable state on zone changes; the SETTINGS_LOADED arrival hook
+    -- only fires once per session. Idempotent and self-deferring, so cheap.
+    if addon.ReconcileActionBarsEnabled then
+        addon.ReconcileActionBarsEnabled("PLAYER_ENTERING_WORLD")
+    end
     -- Ensure fonts are preloaded even if initialization order changes
     if addon.PreloadFonts then addon.PreloadFonts() end
     -- Force index-mode for Opacity on Cooldown Viewer systems (compat path); safe no-op if already set
@@ -888,6 +893,11 @@ function addon:EDIT_MODE_LAYOUTS_UPDATED()
 	if addon.OnUnitFrameOffscreenUnlockLayoutsUpdated then
 		addon.OnUnitFrameOffscreenUnlockLayoutsUpdated()
 	end
+    -- Layout swaps made through Blizzard's own Edit Mode dropdown bypass our profile
+    -- callbacks entirely, so re-assert per-bar enable state here too.
+    if addon.ReconcileActionBarsEnabled then
+        addon.ReconcileActionBarsEnabled("EDIT_MODE_LAYOUTS_UPDATED")
+    end
     self:ApplyStyles()
 end
 
