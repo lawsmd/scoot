@@ -90,6 +90,21 @@ local function cloneProfilePayload(preset, layoutName)
         copy.components.notes = nil
     end
     copy.notePositions = nil
+    -- Backfill module toggles. Preset payloads captured before the module-toggle
+    -- feature existed carry no moduleEnabled table at all, and the AceDB defaults
+    -- are all false (core/init.lua) -- so without this the applied profile comes
+    -- up with every Scoot module disabled. Only absent categories are filled, so
+    -- a preset can still deliberately ship a module OFF.
+    -- NOTE: core/modules.lua loads after this file, so MODULE_CATEGORY_ORDER is
+    -- only safe to read here because this runs at apply time, not at load time.
+    if type(copy.moduleEnabled) ~= "table" then
+        copy.moduleEnabled = {}
+    end
+    for _, category in ipairs(addon.MODULE_CATEGORY_ORDER) do
+        if copy.moduleEnabled[category] == nil then
+            copy.moduleEnabled[category] = true
+        end
+    end
     copy.__preset = true
     copy.__presetSource = preset.id or preset.name or "preset"
     copy.__presetVersion = preset.version or "PENDING"
