@@ -351,6 +351,10 @@ function DMY._Initialize(comp)
         DMY._CreateWindow(i, comp)
     end
 
+    -- Build the abbreviation config eagerly so DMY._abbrevError is
+    -- inspectable right after login (/scoot debug dmY abbrev)
+    DMY._RebuildAbbrevConfig()
+
     -- Initialize event handling
     DMY._InitializeEvents(comp)
 

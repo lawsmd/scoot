@@ -1646,3 +1646,100 @@ function addon.DebugDMYDrilldata()
     local lines = RunDrilldataTest()
     addon.DebugShowWindow("DMY Drill-Down Data Shape Test", table.concat(lines, "\n"))
 end
+
+--------------------------------------------------------------------------------
+-- /scoot debug dmY abbrev — Abbreviation config + formatter battery
+-- Runs OOC on plain numbers (secrecy gates access, not formatting), so it
+-- fully characterizes the C-side formatters without needing combat values.
+--------------------------------------------------------------------------------
+
+function addon.DebugDMYAbbrev()
+    local DMY = addon.DamageMetersY
+    if not (DMY and DMY._BuildBreakpointTable) then
+        addon:Print("DMY abbreviation module not available.")
+        return
+    end
+
+    local lines = { "== DMY Abbreviation Battery ==", "" }
+    local function add(s) table.insert(lines, s) end
+
+    -- [1] Engine default breakpoints
+    add("[1] C_StringUtil.GetDefaultAbbreviationBreakpoints():")
+    if C_StringUtil and C_StringUtil.GetDefaultAbbreviationBreakpoints then
+        local ok, bps = pcall(C_StringUtil.GetDefaultAbbreviationBreakpoints)
+        if ok and type(bps) == "table" then
+            for i, bp in ipairs(bps) do
+                add(string.format("  [%d] breakpoint=%s abbrev=%q sigDiv=%s fracDiv=%s isGlobal=%s",
+                    i, tostring(bp.breakpoint), tostring(bp.abbreviation),
+                    tostring(bp.significandDivisor), tostring(bp.fractionDivisor),
+                    tostring(bp.abbreviationIsGlobal)))
+            end
+        else
+            add("  ERROR: " .. tostring(bps))
+        end
+    else
+        add("  API not present")
+    end
+    add("")
+
+    -- [2] Config creation attempts (pcall keeps the exact error text)
+    local bp10 = DMY._BuildBreakpointTable()
+    bp10[#bp10].breakpoint = 10
+    local candidates = {
+        { label = "(a) fixed table (production, base bp=1)", data = DMY._BuildBreakpointTable() },
+        { label = "(b) OLD broken table (no significandDivisor)", data = {
+            { breakpoint = 1000000000, abbreviation = "B", fractionDivisor = 100000000 },
+            { breakpoint = 1000000, abbreviation = "M", fractionDivisor = 100000 },
+            { breakpoint = 1000, abbreviation = "K", fractionDivisor = 100 },
+            { breakpoint = 1, abbreviation = "", fractionDivisor = 1, abbreviationIsGlobal = false },
+        }},
+        { label = "(c) fixed table, base bp=10", data = bp10 },
+    }
+
+    add("[2] CreateAbbreviateConfig attempts:")
+    local working = {}
+    if CreateAbbreviateConfig then
+        for _, cand in ipairs(candidates) do
+            local ok, result = pcall(CreateAbbreviateConfig, cand.data)
+            if ok and result then
+                table.insert(working, { label = cand.label, opts = { config = result } })
+                add("  " .. cand.label .. ": OK")
+            else
+                add("  " .. cand.label .. ": FAILED -> " .. tostring(result))
+            end
+        end
+    else
+        add("  CreateAbbreviateConfig API not present")
+    end
+    add("  production config: " .. (DMY._RebuildAbbrevConfig() and "LIVE" or "NIL"))
+    add("  DMY._abbrevError: " .. tostring(DMY._abbrevError))
+    add("")
+
+    -- [3] Formatting matrix
+    local values = { 0.4, 5.5, 999.989898989898, 1234, 9999, 12345, 999999, 1234567, 1.23e9 }
+    local rawOpts = { breakpointData = DMY._BuildBreakpointTable() }
+    add("[3] Formatting matrix:")
+    local function try(label, fn, ...)
+        if not fn then
+            add(string.format("    %-38s = (API missing)", label))
+            return
+        end
+        local ok, r = pcall(fn, ...)
+        add(string.format("    %-38s = %s", label, ok and tostring(r) or ("ERR: " .. tostring(r))))
+    end
+    for _, v in ipairs(values) do
+        add(string.format("  v = %s", tostring(v)))
+        for _, w in ipairs(working) do
+            try("AbbreviateNumbers " .. w.label, AbbreviateNumbers, v, w.opts)
+        end
+        try("AbbreviateNumbers (defaults)", AbbreviateNumbers, v)
+        try("AbbreviateNumbers (breakpointData)", AbbreviateNumbers, v, rawOpts)
+        try("AbbreviateLargeNumbers", AbbreviateLargeNumbers, v)
+        try("AbbrevLarge (breakpointData)", AbbreviateLargeNumbers, v, rawOpts)
+        try("BreakUpLargeNumbers (natural=true)", BreakUpLargeNumbers, v, true)
+        try("BreakUpLargeNumbers (natural=false)", BreakUpLargeNumbers, v, false)
+        try("DMY._FormatCompact", DMY._FormatCompact, v)
+    end
+
+    addon.DebugShowWindow("DMY Abbrev Battery", lines)
+end

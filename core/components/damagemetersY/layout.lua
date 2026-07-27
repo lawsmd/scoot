@@ -139,6 +139,10 @@ function DMY._LayoutBarRows(windowIndex, comp)
             local vt = row.valueTexts[c]
             if c <= numColumns then
                 vt:ClearAllPoints()
+                -- Fixed width (matching header SetWidth in _CalculateColumnWidths)
+                -- so over-long strings truncate on the right instead of
+                -- overflowing leftward across the player name
+                vt:SetWidth(math.max(colWidth - 8, 1))
                 local rightEdge = fw - (numColumns - c) * colWidth
                 if numColumns == 1 then
                     vt:SetJustifyH("RIGHT")

@@ -265,6 +265,9 @@ function DMY._CreateFlyoutMenu(menuWidth)
 
             local valueFS = bar:CreateFontString(nil, "OVERLAY")
             valueFS:SetFont(GetDefaultFont(), 10, "OUTLINE")
+            -- Two-point anchor bounds the value region (name reserves up to
+            -- -72) so over-long values truncate instead of overlapping the name
+            valueFS:SetPoint("LEFT", bar, "RIGHT", -70, 0)
             valueFS:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
             valueFS:SetJustifyH("RIGHT")
             valueFS:SetWordWrap(false)
