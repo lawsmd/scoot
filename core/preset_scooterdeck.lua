@@ -4255,7 +4255,6 @@ Presets:Register({
       healthBarHideHealPrediction = true,
       healthBarHideOverAbsorbGlow = true,
       healthBarHideTextureOnly = false,
-      healthBarOverlayHeightPct = 65,
       healthBarTexture = "a2",
       levelTextHidden = true,
       misc = {
@@ -4445,7 +4444,6 @@ Presets:Register({
       healthBarHideBorder = false,
       healthBarHideHealPrediction = true,
       healthBarHideOverAbsorbGlow = true,
-      healthBarOverlayHeightPct = 65,
       healthBarTexture = "a2",
       levelTextHidden = true,
       misc = {

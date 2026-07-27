@@ -602,9 +602,7 @@ do
                                     anchorFrame:SetPoint("TOPLEFT", hbContainer, "TOPLEFT", 0, 0)
                                     anchorFrame:SetPoint("BOTTOMRIGHT", hbContainer, "BOTTOMRIGHT", 0, 0)
                                 else
-                                    local st = getState(hb)
-                                    local borderTarget = (st and st.heightClipContainer and st.heightClipActive) and st.heightClipContainer or hb
-                                    anchorFrame:SetAllPoints(borderTarget)
+                                    anchorFrame:SetAllPoints(hb)
                                 end
                                 anchorFrame:Show()
 
@@ -1272,12 +1270,9 @@ do
                             -- otherwise a union frame spanning HealthBar + HealthBarsContainer so the border
                             -- matches the overlay on "minus" mobs (shrunken container) AND still wraps
                             -- TempMaxHealthLoss when active.
-                            local st = getState(hb)
                             local hbContainer = resolveHealthContainer(frame, unit)
                             local borderAnchorTarget
-                            if st and st.heightClipContainer and st.heightClipActive then
-                                borderAnchorTarget = st.heightClipContainer
-                            elseif addon.BarsOverlays and addon.BarsOverlays._ensureBorderUnionAnchor then
+                            if addon.BarsOverlays and addon.BarsOverlays._ensureBorderUnionAnchor then
                                 borderAnchorTarget = addon.BarsOverlays._ensureBorderUnionAnchor(hb, hbContainer, unit) or hbContainer
                             else
                                 borderAnchorTarget = hbContainer

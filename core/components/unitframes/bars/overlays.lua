@@ -274,23 +274,16 @@ local function ensureTextAndBorderOrdering(unit)
     else
         manaContainer = root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain and root.TargetFrameContent.TargetFrameContentMain.ManaBar or nil
     end
-    -- Determine bar level and desired ordering: bar < clipContainer < holder < text
+    -- Determine bar level and desired ordering: bar < holder < text
     local barLevel = (hb and hb.GetFrameLevel and hb:GetFrameLevel()) or 0
     if pb and pb.GetFrameLevel then
         local pbl = pb:GetFrameLevel() or 0
         if pbl > barLevel then barLevel = pbl end
     end
-    -- Account for height clip container if active (text must be above it)
-    local clipContainerLevel = 0
-    local st = hb and getState(hb)
-    if st and st.heightClipContainer and st.heightClipActive then
-        local ccLevel = st.heightClipContainer.GetFrameLevel and st.heightClipContainer:GetFrameLevel()
-        if ccLevel then clipContainerLevel = ccLevel end
-    end
     local curTextLevel = 0
     if hbContainer and hbContainer.GetFrameLevel then curTextLevel = math.max(curTextLevel, hbContainer:GetFrameLevel() or 0) end
     if manaContainer and manaContainer.GetFrameLevel then curTextLevel = math.max(curTextLevel, manaContainer:GetFrameLevel() or 0) end
-    local desiredTextLevel = math.max(curTextLevel, barLevel + 2, clipContainerLevel + 1)
+    local desiredTextLevel = math.max(curTextLevel, barLevel + 2)
     -- Raise text containers above holder
     if hbContainer and hbContainer.SetFrameLevel then pcall(hbContainer.SetFrameLevel, hbContainer, desiredTextLevel) end
     if manaContainer and manaContainer.SetFrameLevel then pcall(manaContainer.SetFrameLevel, manaContainer, desiredTextLevel) end
@@ -574,95 +567,6 @@ local function ensureBossRectOverlay(bossFrame, bar, cfg, barType, unitId)
 end
 BO._ensureBossRectOverlay = ensureBossRectOverlay
 
---------------------------------------------------------------------------------
--- Height Clipping
---------------------------------------------------------------------------------
-
--- The overlay remains at full height to occlude Blizzard's bar.
--- A clipping container with SetClipsChildren(true) crops the visible portion.
--- All reduced-height elements (background, rectFill) parent to the clip container.
-local function ensureHeightClipContainer(bar, unit, cfg)
-    local st = getState(bar)
-    if not st then return nil end
-
-    local heightPct = cfg and cfg.healthBarOverlayHeightPct
-    if not heightPct or heightPct >= 100 then
-        -- No height reduction - hide container and restore original elements
-        if st.heightClipContainer then
-            st.heightClipContainer:Hide()
-        end
-        -- Restore original background (ScootBG via FrameState, not st.backgroundTex)
-        local scootBG_r = getProp(bar, "ScootBG")
-        if st.heightClipBackgroundHidden and scootBG_r then
-            scootBG_r:Show()
-            st.heightClipBackgroundHidden = false
-        end
-        st.heightClipActive = false
-        return nil
-    end
-
-    -- Create clipping container (once per bar)
-    if not st.heightClipContainer then
-        local container = CreateFrame("Frame", nil, bar:GetParent() or bar)
-        container:SetClipsChildren(true)
-        -- Frame level BELOW bar so text (which is on the bar) renders above the custom overlay.
-        -- Blizzard's fill texture is hidden (alpha 0), so even though it's "above" the custom
-        -- overlay in frame level terms, the custom overlay still shows through.
-        -- Ensures: background < the custom overlay < Blizzard's hidden fill < text
-        container:SetFrameLevel(math.max(1, (bar:GetFrameLevel() or 1) - 1))
-        st.heightClipContainer = container
-    end
-
-    -- Position container at reduced height (centered vertically)
-    local container = st.heightClipContainer
-    local barHeight = bar:GetHeight()
-    if issecretvalue(barHeight) then return nil end
-    local targetHeight = barHeight * (heightPct / 100)
-    local inset = pixelFloor((barHeight - targetHeight) / 2, bar)
-
-    container:ClearAllPoints()
-    -- Anchor to HealthBarsContainer (bar's parent) so the clip region spans
-    -- both HealthBar and TempMaxHealthLoss when temp max health loss is active
-    local clipAnchor = bar:GetParent() or bar
-    container:SetPoint("TOPLEFT", clipAnchor, "TOPLEFT", 0, -inset)
-    container:SetPoint("BOTTOMRIGHT", clipAnchor, "BOTTOMRIGHT", 0, inset)
-    container:Show()
-
-    -- Create/update background that matches CONTAINER size (not full bar)
-    if not st.heightClipBackground then
-        local bg = container:CreateTexture(nil, "BACKGROUND", nil, -1)
-        st.heightClipBackground = bg
-    end
-
-    local bg = st.heightClipBackground
-    bg:ClearAllPoints()
-    bg:SetAllPoints(container)  -- Match container, NOT full bar
-
-    -- Copy from original background (ScootBG via FrameState) OR use sensible default
-    local origBg = getProp(bar, "ScootBG")
-    if origBg then
-        local tex = origBg:GetTexture()
-        if tex then
-            bg:SetTexture(tex)
-        else
-            -- Copy color texture - use typical background opacity, not dark overlay
-            bg:SetColorTexture(0, 0, 0, 0.5)
-        end
-        local r, g, b, a = origBg:GetVertexColor()
-        if r then bg:SetVertexColor(r, g, b, a) end
-        -- Hide original to prevent showing at full size
-        origBg:Hide()
-        st.heightClipBackgroundHidden = true
-    else
-        -- No custom background - use transparent (let parent show through)
-        bg:SetColorTexture(0, 0, 0, 0)
-    end
-    bg:Show()
-
-    st.heightClipActive = true
-    return container
-end
-BO._ensureHeightClipContainer = ensureHeightClipContainer
 
 -- Border anchor that spans the union of HealthBar and HealthBarsContainer bounds.
 -- Needed because Blizzard's CheckClassification() shrinks HealthBarsContainer for
@@ -709,125 +613,6 @@ local function ensureBorderUnionAnchor(hb, hbContainer, unit)
     return union
 end
 BO._ensureBorderUnionAnchor = ensureBorderUnionAnchor
-
--- Reparent AnimatedLossBar into clipping container for proper height clipping (Player only).
--- The AnimatedLossBar shows health lost as a dark red bar that fades out. Without reparenting,
--- it appears at full height even when height reduction is active, and renders in the wrong z-order.
-local function reparentAnimatedLossBar(bar, clipContainer, heightPct)
-    -- Get the animated loss bar (sibling of HealthBar in HealthBarsContainer)
-    local parent = bar and bar:GetParent()
-    local animatedLossBar = parent and parent.PlayerFrameHealthBarAnimatedLoss
-
-    if not animatedLossBar then return end
-
-    local st = getState(bar)
-    if not st then return end
-
-    if clipContainer and heightPct and heightPct < 100 then
-        -- Height reduction active: reparent into clipping container
-        if animatedLossBar:GetParent() ~= clipContainer then
-            st.animLossOrigParent = animatedLossBar:GetParent()
-            st.animLossOrigPoints = {}
-            -- Save original anchor points
-            for i = 1, animatedLossBar:GetNumPoints() do
-                local point, relativeTo, relativePoint, xOfs, yOfs = animatedLossBar:GetPoint(i)
-                st.animLossOrigPoints[i] = { point = point, relativeTo = relativeTo, relativePoint = relativePoint, xOfs = xOfs, yOfs = yOfs }
-            end
-            animatedLossBar:SetParent(clipContainer)
-            -- Re-anchor to match the bar position within the clip container
-            animatedLossBar:ClearAllPoints()
-            animatedLossBar:SetAllPoints(bar)
-            -- Ensure it renders behind the Scoot overlay (lower sublevel in OVERLAY layer)
-            if animatedLossBar.SetDrawLayer then
-                pcall(animatedLossBar.SetDrawLayer, animatedLossBar, "OVERLAY", 1)
-            end
-        end
-    else
-        -- Height reduction disabled: restore original parent
-        if st.animLossOrigParent and animatedLossBar:GetParent() ~= st.animLossOrigParent then
-            animatedLossBar:SetParent(st.animLossOrigParent)
-            -- Restore original anchor points
-            animatedLossBar:ClearAllPoints()
-            if st.animLossOrigPoints and #st.animLossOrigPoints > 0 then
-                for _, pt in ipairs(st.animLossOrigPoints) do
-                    animatedLossBar:SetPoint(pt.point, pt.relativeTo, pt.relativePoint, pt.xOfs, pt.yOfs)
-                end
-            else
-                -- Fallback: re-anchor to sibling HealthBar
-                animatedLossBar:SetAllPoints(bar)
-            end
-            -- Let Blizzard manage draw layer naturally
-        end
-    end
-end
-BO._reparentAnimatedLossBar = reparentAnimatedLossBar
-
--- Heal prediction bar keys (children of HealthBar StatusBar)
-local healPredBarKeys = {
-    "MyHealPredictionBar",
-    "OtherHealPredictionBar",
-    "TotalAbsorbBar",
-    "HealAbsorbBar",
-}
-
--- Reparent heal prediction bars into clipping container for proper height clipping.
--- Without reparenting, these bars appear at full height even when height reduction is active.
--- Pattern mirrors reparentAnimatedLossBar() above.
-local function reparentHealPredictionBars(bar, clipContainer, heightPct)
-    if not bar then return end
-
-    local st = getState(bar)
-    if not st then return end
-
-    if clipContainer and heightPct and heightPct < 100 then
-        -- Height reduction active: reparent into clipping container
-        if st.healPredReparented then return end
-
-        st.healPredOrigParents = st.healPredOrigParents or {}
-        st.healPredOrigPoints = st.healPredOrigPoints or {}
-
-        for _, key in ipairs(healPredBarKeys) do
-            local child = bar[key]
-            if child and not (child.IsForbidden and child:IsForbidden()) then
-                st.healPredOrigParents[key] = child:GetParent()
-                local points = {}
-                for i = 1, child:GetNumPoints() do
-                    local point, relativeTo, relativePoint, xOfs, yOfs = child:GetPoint(i)
-                    points[i] = { point = point, relativeTo = relativeTo, relativePoint = relativePoint, xOfs = xOfs, yOfs = yOfs }
-                end
-                st.healPredOrigPoints[key] = points
-                pcall(child.SetParent, child, clipContainer)
-                -- Don't change anchors — Blizzard's UnitFrameHealPredictionBars_Update
-                -- uses explicit relativeTo references that remain valid across parents.
-            end
-        end
-        st.healPredReparented = true
-    else
-        -- Height reduction disabled: restore original parents
-        if not st.healPredReparented then return end
-
-        for _, key in ipairs(healPredBarKeys) do
-            local child = bar[key]
-            if child and not (child.IsForbidden and child:IsForbidden()) then
-                local origParent = st.healPredOrigParents and st.healPredOrigParents[key]
-                if origParent then
-                    pcall(child.SetParent, child, origParent)
-                    local points = st.healPredOrigPoints and st.healPredOrigPoints[key]
-                    if points and #points > 0 then
-                        child:ClearAllPoints()
-                        for _, pt in ipairs(points) do
-                            child:SetPoint(pt.point, pt.relativeTo, pt.relativePoint, pt.xOfs, pt.yOfs)
-                        end
-                    end
-                end
-            end
-        end
-        st.healPredReparented = false
-        st.healPredOrigParents = nil
-        st.healPredOrigPoints = nil
-    end
-end
-BO._reparentHealPredictionBars = reparentHealPredictionBars
 
 --------------------------------------------------------------------------------
 -- Health Rect Overlay
@@ -1047,43 +832,11 @@ local function ensureRectHealthOverlay(unit, bar, cfg)
                 end
             end
         end
-        if st.heightClipContainer then
-            st.heightClipContainer:Hide()
-        end
-        -- Restore original background if it was hidden (ScootBG via FrameState, not st.backgroundTex)
-        local scootBG_rst = getProp(bar, "ScootBG")
-        if st.heightClipBackgroundHidden and scootBG_rst then
-            scootBG_rst:Show()
-            st.heightClipBackgroundHidden = false
-        end
-        st.heightClipActive = false
-        -- Restore AnimatedLossBar to original parent for Player unit
-        if unit == "Player" then
-            reparentAnimatedLossBar(bar, nil, 100)
-        end
-        reparentHealPredictionBars(bar, nil, 100)
         return
     end
 
-    -- Get or create clipping container for height reduction
-    local clipContainer = ensureHeightClipContainer(bar, unit, cfg)
-
-    -- Reparent AnimatedLossBar into clipping container for Player unit
-    if unit == "Player" then
-        local heightPct = cfg and cfg.healthBarOverlayHeightPct or 100
-        reparentAnimatedLossBar(bar, clipContainer, heightPct)
-    end
-
-    -- Reparent heal prediction bars into clipping container for all units
-    do
-        local heightPct = cfg and cfg.healthBarOverlayHeightPct or 100
-        reparentHealPredictionBars(bar, clipContainer, heightPct)
-    end
-
     if not st.rectFill then
-        -- Create overlay as child of clipping container (or bar if no height reduction)
-        local overlayParent = clipContainer or bar
-        local overlay = overlayParent:CreateTexture(nil, "OVERLAY", nil, 2)
+        local overlay = bar:CreateTexture(nil, "OVERLAY", nil, 2)
         overlay:SetVertTile(false)
         overlay:SetHorizTile(false)
         overlay:SetTexCoord(0, 1, 0, 1)
@@ -1108,43 +861,6 @@ local function ensureRectHealthOverlay(unit, bar, cfg)
                     if isEditModeActive() then return end
                     updateRectHealthOverlay(unit, self)
                 end)
-            end
-        end
-
-        -- Hook bar size changes to update clipping container dimensions
-        if clipContainer and bar.HookScript and not st.heightClipSizeHooked then
-            st.heightClipSizeHooked = true
-            bar:HookScript("OnSizeChanged", function(self)
-                if isEditModeActive() then return end
-                local s = getState(self)
-                if s and s.heightClipContainer and s.heightClipContainer:IsShown() then
-                    local db = addon and addon.db and addon.db.profile
-                    local unitFrames = db and rawget(db, "unitFrames")
-                    local ufCfg = unitFrames and rawget(unitFrames, unit)
-                    local heightPct = ufCfg and ufCfg.healthBarOverlayHeightPct or 100
-                    local barHeight = self:GetHeight()
-                    if issecretvalue(barHeight) then return end
-                    local targetHeight = barHeight * (heightPct / 100)
-                    local inset = pixelFloor((barHeight - targetHeight) / 2, self)
-                    s.heightClipContainer:ClearAllPoints()
-                    local clipAnchor = self:GetParent() or self
-                    s.heightClipContainer:SetPoint("TOPLEFT", clipAnchor, "TOPLEFT", 0, -inset)
-                    s.heightClipContainer:SetPoint("BOTTOMRIGHT", clipAnchor, "BOTTOMRIGHT", 0, inset)
-                end
-            end)
-        end
-    elseif st.rectFill then
-        -- Overlay already exists - ensure it's parented correctly
-        local currentParent = st.rectFill:GetParent()
-        if clipContainer then
-            -- Height reduction enabled: reparent to clipping container if needed
-            if currentParent ~= clipContainer then
-                st.rectFill:SetParent(clipContainer)
-            end
-        else
-            -- Height reduction disabled: reparent back to bar if needed
-            if currentParent ~= bar and st.heightClipContainer then
-                st.rectFill:SetParent(bar)
             end
         end
     end
@@ -1296,11 +1012,6 @@ local function ensureRectHealthOverlay(unit, bar, cfg)
         if overlay and overlay.SetVertexColor then
             overlay:SetVertexColor(r, g, b, a)
         end
-    end
-
-    -- Ensure text containers are raised above the clipping container when height reduction is active
-    if st.heightClipActive then
-        ensureTextAndBorderOrdering(unit)
     end
 
     updateRectHealthOverlay(unit, bar)

@@ -289,29 +289,6 @@ function UF.RenderPlayer(panel, scrollContent)
                 componentId = COMPONENT_ID,
                 sectionKey = "healthBar_tabs",
                 buildContent = {
-                    sizing = function(cf, tabInner)
-                        tabInner:AddSlider({
-                            label = "Height %",
-                            min = 10,
-                            max = 100,
-                            step = 5,
-                            get = function()
-                                local t = getUFDB() or {}
-                                return tonumber(t.healthBarOverlayHeightPct) or 100
-                            end,
-                            set = function(v)
-                                local t = ensureUFDB()
-                                if not t then return end
-                                t.healthBarOverlayHeightPct = tonumber(v) or 100
-                                applyBarTextures()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Health Bar Height",
-                                tooltipText = "Reduces the visible height of the health bar. The bar fill still tracks health correctly, but is cropped to this percentage of its normal height (centered vertically).",
-                            },
-                        })
-                        tabInner:Finalize()
-                    end,
                     style = function(cf, tabInner)
                         UF.Builders.buildBarStyleContent(tabInner, "healthBar", ensureUFDB, applyBarTextures, nil, nil, nil, getUFDB)
                         tabInner:Finalize()

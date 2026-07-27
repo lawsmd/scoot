@@ -482,7 +482,6 @@ end
 function UF.getHealthBarTabs(componentId)
     if componentId == "ufTarget" or componentId == "ufFocus" then
         return {
-            { key = "sizing", label = "Sizing" },
             { key = "style", label = "Style" },
             { key = "border", label = "Border" },
             { key = "visibility", label = "Visibility" },
@@ -491,7 +490,6 @@ function UF.getHealthBarTabs(componentId)
         }
     elseif componentId == "ufPlayer" then
         return {
-            { key = "sizing", label = "Sizing" },
             { key = "style", label = "Style" },
             { key = "border", label = "Border" },
             { key = "visibility", label = "Visibility" },
@@ -560,7 +558,6 @@ function UF.getCastBarTabs(componentId, options)
         -- Player has Cast Time tab
         return {
             { key = "positioning", label = "Positioning" },
-            { key = "sizing", label = "Sizing" },
             { key = "style", label = "Style" },
             sparkTab,
             { key = "border", label = "Border" },
@@ -574,7 +571,6 @@ function UF.getCastBarTabs(componentId, options)
         -- Target/Focus/Boss
         return {
             { key = "positioning", label = "Positioning" },
-            { key = "sizing", label = "Sizing" },
             { key = "style", label = "Style" },
             sparkTab,
             { key = "border", label = "Border" },

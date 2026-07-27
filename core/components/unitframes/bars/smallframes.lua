@@ -208,11 +208,8 @@ function SF.applyForSmallUnit(unit, frame, cfg)
                 anchorFrame = CreateFrame("Frame", nil, hb)
                 setProp(hb, borderAnchorKey, anchorFrame)
             end
-            -- Anchor to clipping container if height reduction active, else health bar
             anchorFrame:ClearAllPoints()
-            local hbState = getState(hb)
-            local borderTarget = (hbState and hbState.heightClipContainer and hbState.heightClipActive) and hbState.heightClipContainer or hb
-            anchorFrame:SetAllPoints(borderTarget)
+            anchorFrame:SetAllPoints(hb)
             -- Set frame level above the health bar so borders draw on top
             local parentLevel = 10 -- fallback if GetFrameLevel returns secret
             local ok, level = pcall(function() return hb:GetFrameLevel() end)
