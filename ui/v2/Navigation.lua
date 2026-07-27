@@ -88,6 +88,15 @@ Navigation.NavModel = {
         },
     },
     {
+        key = "reports",
+        label = "Reports",
+        collapsible = true,
+        children = {
+            { key = "reportsWidget", label = "Widget", module = "widget" },
+            { key = "reportsStyle", label = "Report Style", module = "widget" },
+        },
+    },
+    {
         key = "qol",
         label = "Quality of Life",
         collapsible = true,
@@ -95,7 +104,6 @@ Navigation.NavModel = {
             { key = "qolEditMode", label = "Edit Mode" },
             { key = "qolLootVendors", label = "Loot & Vendors" },
             { key = "qolQuests", label = "Map & Quests" },
-            { key = "qolWidget", label = "Widget", module = "widget" },
             { key = "qolDungeonJournal", label = "Dungeon Journal" },
         },
     },

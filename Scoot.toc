@@ -240,10 +240,11 @@ ui/v2/settings/interface/ObjectiveTrackerRenderer.lua
 ui/v2/settings/bosswarnings/BossWarningsRenderer.lua
 ui/v2/settings/bosswarnings/BossTimelineRenderer.lua
 ui/v2/settings/bosswarnings/BossBarsRenderer.lua
+ui/v2/settings/reports/WidgetRenderer.lua
+ui/v2/settings/reports/ReportStyleRenderer.lua
 ui/v2/settings/qol/EditModeRenderer.lua
 ui/v2/settings/qol/LootVendorsRenderer.lua
 ui/v2/settings/qol/QuestsRenderer.lua
-ui/v2/settings/qol/WidgetRenderer.lua
 ui/v2/settings/qol/DungeonJournalRenderer.lua
 ui/v2/settings/profiles/ManageRenderer.lua
 ui/v2/settings/profiles/PresetsRenderer.lua

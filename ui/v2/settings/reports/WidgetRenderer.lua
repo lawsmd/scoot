@@ -1,12 +1,12 @@
--- WidgetRenderer.lua - Quality of Life: Widget settings renderer
+-- WidgetRenderer.lua - Reports: Widget settings renderer
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
 addon.UI.Settings = addon.UI.Settings or {}
-addon.UI.Settings.QoL = addon.UI.Settings.QoL or {}
-addon.UI.Settings.QoL.Widget = {}
+addon.UI.Settings.Reports = addon.UI.Settings.Reports or {}
+addon.UI.Settings.Reports.Widget = {}
 
-local WidgetUI = addon.UI.Settings.QoL.Widget
+local WidgetUI = addon.UI.Settings.Reports.Widget
 local SettingsBuilder = addon.UI.SettingsBuilder
 local Helpers = addon.UI.Settings.Helpers
 
@@ -123,7 +123,7 @@ end
 -- Register Renderer
 --------------------------------------------------------------------------------
 
-addon.UI.SettingsPanel:RegisterRenderer("qolWidget", function(panel, scrollContent)
+addon.UI.SettingsPanel:RegisterRenderer("reportsWidget", function(panel, scrollContent)
     WidgetUI.Render(panel, scrollContent)
 end)
 

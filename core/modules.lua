@@ -46,7 +46,7 @@ local COMPONENT_TO_CATEGORY = {
     sctDamage = "sct",
     -- Tooltip
     tooltip = "tooltip",
-    -- Widget (QoL launchpad)
+    -- Widget (Reports launchpad)
     widget = "widget",
 }
 
@@ -79,10 +79,10 @@ addon.MODULE_CATEGORY_ORDER = {
     "notes",
     "objectiveTracker",
     "prd",
+    "widget",  -- label "Reports/Widget" — sorted alphabetically by label
     "sct",
     "tooltip",
     "unitFrames",
-    "widget",
 }
 
 addon.MODULE_CATEGORIES = {
@@ -170,7 +170,7 @@ addon.MODULE_CATEGORIES = {
         label = "Tooltip",
     },
     widget = {
-        label = "Widget",
+        label = "Reports/Widget",
     },
     unitFrames = {
         label = "Unit Frames",
