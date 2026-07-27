@@ -446,6 +446,18 @@ function SlashCmdList.SCOOT(msg, editBox)
             return
         end
 
+        -- /scoot debug rosteroverlay
+        if sub1 == "rosteroverlay" or sub1 == "roster" then
+            if sub2 == "rows" then
+                if addon.DebugRosterOverlayRows then addon.DebugRosterOverlayRows()
+                else addon:Print("Roster overlay debug not available.") end
+                return
+            end
+            if addon.DebugRosterOverlay then addon.DebugRosterOverlay()
+            else addon:Print("Roster overlay debug not available.") end
+            return
+        end
+
         -- /scoot debug dmY cvar
         -- /scoot debug dmY api
         if sub1 == "dmy" then

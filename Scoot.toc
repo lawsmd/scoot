@@ -169,6 +169,7 @@ core/debug/inspector.lua
 core/debug/misc.lua
 core/debug/cdmlayers.lua
 core/debug/dmY.lua
+core/debug/rosteroverlay.lua
 core/debug/widget.lua
 core/taintdebug.lua
 core/dialogs.lua

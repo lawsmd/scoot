@@ -102,5 +102,76 @@ UIPanel:RegisterRenderer("debugMenu", function(self, scrollContent)
 
     yOffset = yOffset - 70
 
+    --------------------------------------------------------------------------
+    -- TEMP: Roster Overlay diagnostics
+    --------------------------------------------------------------------------
+    -- Remove this whole block once the blank-rows investigation is closed.
+    -- These exist because the overlay wraps every name transfer in pcall, so a
+    -- failure is completely silent, and because chat is disabled on ScooterDeck
+    -- -- output has to land in the copyable dialog, not in a print().
+    --------------------------------------------------------------------------
+
+    local tempHeader = scrollContent:CreateFontString(nil, "OVERLAY")
+    Theme:ApplyLabelFont(tempHeader, 13)
+    tempHeader:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 0, yOffset)
+    tempHeader:SetText("TEMP - Roster Overlay")
+    tempHeader:SetTextColor(ar, ag, ab, 1)
+    table.insert(self._debugMenuControls, tempHeader)
+
+    yOffset = yOffset - 24
+
+    local tempDesc = scrollContent:CreateFontString(nil, "OVERLAY")
+    Theme:ApplyValueFont(tempDesc, 11)
+    tempDesc:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 0, yOffset)
+    tempDesc:SetPoint("RIGHT", scrollContent, "RIGHT", -20, 0)
+    tempDesc:SetText("Run these while in a raid group. Output opens in a copyable window. Temporary - will be removed.")
+    tempDesc:SetTextColor(0.7, 0.7, 0.7, 1)
+    tempDesc:SetJustifyH("LEFT")
+    tempDesc:SetWordWrap(true)
+    table.insert(self._debugMenuControls, tempDesc)
+
+    yOffset = yOffset - 40
+
+    local debugButtons = {
+        {
+            text = "Probe Raid Name Frames",
+            fn = function()
+                if addon.DebugRosterOverlay then
+                    addon.DebugRosterOverlay()
+                elseif addon.DebugShowWindow then
+                    addon.DebugShowWindow("Roster Overlay Probe",
+                        "Probe module not loaded.\n\nThis needs a full client restart, not a /reload -- it was added as a new .toc entry.")
+                end
+            end,
+        },
+        {
+            text = "Dump Overlay Row State",
+            fn = function()
+                if addon.DebugRosterOverlayRows then
+                    addon.DebugRosterOverlayRows()
+                elseif addon.DebugShowWindow then
+                    addon.DebugShowWindow("Roster Overlay Rows",
+                        "Probe module not loaded.\n\nThis needs a full client restart, not a /reload -- it was added as a new .toc entry.")
+                end
+            end,
+        },
+    }
+
+    for _, spec in ipairs(debugButtons) do
+        local btn = Controls:CreateButton({
+            parent = scrollContent,
+            text = spec.text,
+            width = 220,
+            onClick = spec.fn,
+        })
+        if btn then
+            btn:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 0, yOffset)
+            table.insert(self._debugMenuControls, btn)
+            yOffset = yOffset - 34
+        end
+    end
+
+    yOffset = yOffset - 20
+
     scrollContent:SetHeight(math.abs(yOffset) + 20)
 end)
