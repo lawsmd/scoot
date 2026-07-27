@@ -109,12 +109,28 @@ local function createWidgetFrame()
 
     -- Drag handlers: click-drag always works. No modifier, no lock.
     frame:SetScript("OnDragStart", function(self)
+        self._scootDragging = true
         self:StartMoving()
     end)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         W:_SavePosition()
         W:_ReflowFlyoutChildren()
+        -- Cleared next frame: the engine's OnMouseUp/OnDragStop firing order
+        -- on release is not guaranteed, and a drag must never read as a click.
+        C_Timer.After(0, function()
+            self._scootDragging = nil
+        end)
+    end)
+
+    -- Plain left-click (not a drag) dispatches to the registered handler.
+    frame:SetScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" then return end
+        if self._scootDragging then return end
+        if not self:IsMouseOver() then return end
+        if W._clickHandler then
+            pcall(W._clickHandler)
+        end
     end)
 
     -- Hover reveal
@@ -304,6 +320,13 @@ function W:GetFlyoutDirection()
     return getSetting("flyoutDirection", FLY_DOWN)
 end
 
+-- Registers the plain-left-click handler (the reports menu today). One slot:
+-- consumers own multiplexing if they ever need it, so future features never
+-- have to touch the widget core again.
+function W:SetClickHandler(fn)
+    W._clickHandler = fn
+end
+
 --------------------------------------------------------------------------------
 -- ApplyStyling
 --------------------------------------------------------------------------------
@@ -371,6 +394,12 @@ addon:RegisterComponentInitializer(function(self)
     })
 
     self:RegisterComponent(widgetComponent)
+
+    -- Warm the shared inspect service only when a report is enabled: the
+    -- widget alone (no reports) must not generate background inspects.
+    if addon.Reports and addon.Reports:HasAnyEnabled() and addon.Inspect then
+        addon.Inspect:EnsureStarted()
+    end
 
     -- Module-enabled means widget-visible. addon:ApplyStyles only iterates
     -- components with a materialized DB (zero-touch), which won't be true for

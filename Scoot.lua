@@ -149,6 +149,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug dmY multicol")
             addon:Print("  /scoot debug dmY abbrev")
             addon:Print("  /scoot debug widget <spawnchild|releaseall|state>")
+            addon:Print("  /scoot debug inspect <state|cache>")
             return
         end
 
@@ -178,6 +179,27 @@ function SlashCmdList.SCOOT(msg, editBox)
                 return
             end
             addon:Print("Usage: /scoot debug widget <spawnchild|releaseall|state>")
+            return
+        end
+
+        if sub1 == "inspect" then
+            if sub2 == "cache" then
+                if addon.DebugInspectCache then
+                    addon.DebugInspectCache()
+                else
+                    addon:Print("Inspect debug not loaded.")
+                end
+                return
+            end
+            if sub2 == "state" or sub2 == "" then
+                if addon.DebugInspectState then
+                    addon.DebugInspectState()
+                else
+                    addon:Print("Inspect debug not loaded.")
+                end
+                return
+            end
+            addon:Print("Usage: /scoot debug inspect <state|cache>")
             return
         end
 

@@ -93,7 +93,7 @@ Navigation.NavModel = {
         collapsible = true,
         children = {
             { key = "reportsWidget", label = "Widget", module = "widget" },
-            { key = "reportsStyle", label = "Report Style", module = "widget" },
+            { key = "reportsList", label = "Reports", module = "widget" },
         },
     },
     {

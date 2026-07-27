@@ -38,183 +38,10 @@ local function GetSpecNameFromIconID(iconID)
 end
 
 --------------------------------------------------------------------------------
--- Background Inspect Cache (conservative, OOC-only)
---------------------------------------------------------------------------------
-
-local inspectCache = {}           -- GUID → { specName, itemLevel, time }
-local INSPECT_CACHE_TTL = 300     -- 5 minutes
-local inspectQueue = {}           -- array of { guid, unit }
-local inspectBusy = false
-local inspectTicker = nil
-local inspectEventFrame = nil
-local pendingInspectEntry = nil   -- the { guid, unit } currently being inspected
-
-local function RebuildInspectQueue()
-    wipe(inspectQueue)
-    local now = GetTime()
-
-    local prefix, count
-    if IsInRaid() then
-        prefix, count = "raid", GetNumGroupMembers()
-    elseif IsInGroup() then
-        prefix, count = "party", GetNumGroupMembers() - 1
-    else
-        return
-    end
-
-    for i = 1, count do
-        local unit = prefix .. i
-        local guidOk, guid = pcall(UnitGUID, unit)
-        if guidOk and guid then
-            local isSelfOk, isSelf = pcall(UnitIsUnit, unit, "player")
-            if not (isSelfOk and isSelf) then
-                local cached = inspectCache[guid]
-                if not cached or (now - cached.time) > INSPECT_CACHE_TTL then
-                    local canOk, canInspect = pcall(CanInspect, unit, false)
-                    if canOk and canInspect then
-                        table.insert(inspectQueue, { guid = guid, unit = unit })
-                    end
-                end
-            end
-        end
-    end
-end
-
-local function ProcessNextInspect()
-    if InCombatLockdown() or inspectBusy or #inspectQueue == 0 then return end
-
-    local entry = table.remove(inspectQueue, 1)
-    local canOk, canInspect = pcall(CanInspect, entry.unit, false)
-    if not canOk or not canInspect then return end
-
-    inspectBusy = true
-    pendingInspectEntry = entry
-    pcall(NotifyInspect, entry.unit)
-end
-
-local function OnExportInspectReady(self, event, inspecteeGUID)
-    if not inspecteeGUID then return end
-
-    -- Only process if this matches our pending request
-    if not pendingInspectEntry or pendingInspectEntry.guid ~= inspecteeGUID then return end
-
-    local unit = pendingInspectEntry.unit
-    inspectBusy = false
-    pendingInspectEntry = nil
-
-    local entry = inspectCache[inspecteeGUID] or {}
-    entry.time = GetTime()
-
-    local ilvlOk, ilvl = pcall(C_PaperDollInfo.GetInspectItemLevel, unit)
-    if ilvlOk and ilvl and type(ilvl) == "number" and ilvl > 0 then
-        entry.itemLevel = math.floor(ilvl)
-    end
-
-    local specOk, specID = pcall(GetInspectSpecialization, unit)
-    if specOk and specID and specID > 0 then
-        local nameOk, specName = pcall(GetSpecializationNameForSpecID, specID)
-        if nameOk and specName then
-            entry.specName = specName
-        end
-    end
-
-    -- Store player name for name-based fallback lookups at export time
-    local uNameOk, uName = pcall(UnitName, unit)
-    if uNameOk and uName then
-        entry.name = uName:match("^([^%-]+)") or uName
-    end
-
-    inspectCache[inspecteeGUID] = entry
-
-    -- Publish to shared cache so tooltip hovers and export ticker cross-populate
-    if entry.itemLevel then
-        if not addon._sharedIlvlCache then addon._sharedIlvlCache = {} end
-        addon._sharedIlvlCache[inspecteeGUID] = {
-            ilvl = entry.itemLevel,
-            name = entry.name,
-            time = entry.time,
-        }
-    end
-
-    -- Don't clear inspect data if the inspect window is open
-    local inspFrame = _G["InspectFrame"]
-    local inspOpen = false
-    if inspFrame then
-        local okShown, shown = pcall(inspFrame.IsShown, inspFrame)
-        inspOpen = okShown and shown or false
-    end
-    if not inspOpen then
-        pcall(ClearInspectPlayer)
-    end
-end
-
-local function StartInspectTicker()
-    if inspectTicker then return end
-    inspectTicker = C_Timer.NewTicker(2.5, function()
-        if InCombatLockdown() then return end
-        if #inspectQueue == 0 then
-            RebuildInspectQueue()
-        end
-        ProcessNextInspect()
-    end)
-end
-
-local function StopInspectTicker()
-    if inspectTicker then
-        inspectTicker:Cancel()
-        inspectTicker = nil
-    end
-    inspectBusy = false
-    pendingInspectEntry = nil
-end
-
-local function InitInspectCache()
-    if inspectEventFrame then return end
-    inspectEventFrame = CreateFrame("Frame")
-    inspectEventFrame:RegisterEvent("INSPECT_READY")
-    inspectEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    inspectEventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    inspectEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    inspectEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    inspectEventFrame:SetScript("OnEvent", function(self, event, ...)
-        if event == "INSPECT_READY" then
-            OnExportInspectReady(self, event, ...)
-        elseif event == "GROUP_ROSTER_UPDATE" then
-            RebuildInspectQueue()
-            if IsInGroup() and not InCombatLockdown() then
-                StartInspectTicker()
-            elseif not IsInGroup() then
-                StopInspectTicker()
-            end
-        elseif event == "PLAYER_REGEN_DISABLED" then
-            StopInspectTicker()
-            wipe(inspectQueue)
-        elseif event == "PLAYER_REGEN_ENABLED" then
-            C_Timer.After(2, function()
-                if not InCombatLockdown() and IsInGroup() then
-                    RebuildInspectQueue()
-                    StartInspectTicker()
-                end
-            end)
-        elseif event == "PLAYER_ENTERING_WORLD" then
-            C_Timer.After(5, function()
-                if not InCombatLockdown() and IsInGroup() then
-                    RebuildInspectQueue()
-                    StartInspectTicker()
-                end
-            end)
-        end
-    end)
-
-    if IsInGroup() and not InCombatLockdown() then
-        RebuildInspectQueue()
-        StartInspectTicker()
-    end
-end
-
---------------------------------------------------------------------------------
 -- Shared Export Helpers
 --------------------------------------------------------------------------------
+-- Group member spec/item level comes from the centralized passive inspect
+-- service (core/inspect.lua, addon.Inspect); the DM cores call EnsureStarted.
 
 -- Build a GUID -> non-secret display-name map from the current group roster.
 -- In 12.0 the damage-meter API's source.name is a secret string for non-local
@@ -251,7 +78,7 @@ local function BuildRosterNameMap()
 end
 
 -- Resolve a combat-source's display name to a plain (non-secret) string.
--- Priority: live roster -> inspect cache -> shared ilvl cache -> guarded source.name -> "Unknown".
+-- Priority: live roster -> inspect service cache -> guarded source.name -> "Unknown".
 -- source.name is never operated on (index/match/compare) unless issecretvalue proves it is not secret.
 local function ResolveExportName(guid, source, rosterNames)
     -- 1) Live group roster (non-secret UnitName; covers self + present members)
@@ -259,17 +86,12 @@ local function ResolveExportName(guid, source, rosterNames)
         local n = rosterNames[guid]
         if n then return n end
     end
-    -- 2) Background inspect cache (non-secret UnitName captured at inspect time)
-    if guid then
-        local c = inspectCache[guid]
+    -- 2) Inspect service cache (non-secret UnitName captured at inspect time)
+    if guid and addon.Inspect then
+        local c = addon.Inspect:GetUnitInfo(guid)
         if c and c.name then return c.name end
     end
-    -- 3) Shared ilvl cache (non-secret UnitName)
-    if guid and addon._sharedIlvlCache then
-        local s = addon._sharedIlvlCache[guid]
-        if s and s.name then return s.name end
-    end
-    -- 4) source.name ONLY if provably non-secret (local player / readable NPC).
+    -- 3) source.name ONLY if provably non-secret (local player / readable NPC).
     if issecretvalue then                       -- if global absent, skip this tier entirely
         local sname = source.name               -- reading a secret into a local is safe
         if not issecretvalue(sname) then         -- detection is safe; false for nil too
@@ -279,7 +101,7 @@ local function ResolveExportName(guid, source, rosterNames)
             end
         end
     end
-    -- 5) Give up
+    -- 4) Give up
     return "Unknown"
 end
 
@@ -478,32 +300,11 @@ function addon.GatherDamageMeterExportData(sessionType, primaryMeterType, sessio
                 p.itemLevel = math.floor(equipped)
             end
         else
-            -- Three-tier fallback: export cache by GUID → shared cache by GUID → name match
-            local cached = inspectCache[guid]
-            if not cached and addon._sharedIlvlCache then
-                local shared = addon._sharedIlvlCache[guid]
-                if shared then
-                    cached = { itemLevel = shared.ilvl }
-                end
-            end
-            if not cached then
-                local targetName = p.name
-                if targetName and targetName ~= "Unknown" then
-                    for _, entry in pairs(inspectCache) do
-                        if entry.name == targetName and entry.itemLevel then
-                            cached = entry
-                            break
-                        end
-                    end
-                    if not cached and addon._sharedIlvlCache then
-                        for _, entry in pairs(addon._sharedIlvlCache) do
-                            if entry.name == targetName and entry.ilvl then
-                                cached = { itemLevel = entry.ilvl }
-                                break
-                            end
-                        end
-                    end
-                end
+            -- Inspect service by GUID, then by name (historic segments can
+            -- outlive the roster GUID mapping)
+            local cached = addon.Inspect and addon.Inspect:GetUnitInfo(guid)
+            if not cached and addon.Inspect and p.name and p.name ~= "Unknown" then
+                cached = addon.Inspect:FindByName(p.name)
             end
             if cached then
                 if cached.itemLevel then p.itemLevel = cached.itemLevel end
@@ -1165,4 +966,3 @@ end
 --------------------------------------------------------------------------------
 
 DMX._ApplyExportButtonStyling = ApplyExportButtonStyling
-DMX._InitInspectCache = InitInspectCache

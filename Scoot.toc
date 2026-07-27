@@ -49,6 +49,7 @@ core/rules.lua
 core/apply_all.lua
 core/iconratio.lua
 core/modules.lua
+core/inspect.lua
 core/components/base/core.lua
 core/components/base/utilities.lua
 core/components/base/iconborders.lua
@@ -138,6 +139,8 @@ core/components/tooltip.lua
 core/components/notes.lua
 core/qol.lua
 core/components/widget/core.lua
+core/reports/core.lua
+core/reports/groupanalysis.lua
 core/components/dungeonjournal/core.lua
 core/components/dungeonjournal/season.lua
 core/components/dungeonjournal/overlay.lua
@@ -171,6 +174,7 @@ core/debug/cdmlayers.lua
 core/debug/dmY.lua
 core/debug/rosteroverlay.lua
 core/debug/widget.lua
+core/debug/inspect.lua
 core/taintdebug.lua
 core/dialogs.lua
 core/importexport.lua
@@ -205,6 +209,8 @@ ui/v2/controls/MultiLineEditBox.lua
 ui/v2/controls/SingleLineEditBox.lua
 ui/v2/controls/Flyout.lua
 ui/v2/HighScoreWindow.lua
+ui/v2/reports/WidgetMenu.lua
+ui/v2/reports/GroupAnalysisPanel.lua
 ui/v2/Window.lua
 ui/v2/Navigation.lua
 ui/v2/JumpingLetters.lua
@@ -241,7 +247,7 @@ ui/v2/settings/bosswarnings/BossWarningsRenderer.lua
 ui/v2/settings/bosswarnings/BossTimelineRenderer.lua
 ui/v2/settings/bosswarnings/BossBarsRenderer.lua
 ui/v2/settings/reports/WidgetRenderer.lua
-ui/v2/settings/reports/ReportStyleRenderer.lua
+ui/v2/settings/reports/ReportsRenderer.lua
 ui/v2/settings/qol/EditModeRenderer.lua
 ui/v2/settings/qol/LootVendorsRenderer.lua
 ui/v2/settings/qol/QuestsRenderer.lua

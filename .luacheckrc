@@ -46,10 +46,25 @@ read_globals = {
     "C_AddOns",
     "C_ClassColor",
     "C_Covenants",
+    "C_PaperDollInfo",
     "C_Spell",
     "C_SpecializationInfo",
     "GetSpecialization",
     "GetSpecializationInfo",
+
+    -- Inspect service (core/inspect.lua)
+    "CanInspect",
+    "ClearInspectPlayer",
+    "GetAverageItemLevel",
+    "GetInspectSpecialization",
+    "GetNumGroupMembers",
+    "GetSpecializationInfoByID",
+    "InspectFrame",
+    "NotifyInspect",
+    "UnitInParty",
+    "UnitInRaid",
+    "UnitIsUnit",
+    "UnitTokenFromGUID",
 
     -- Standard Lua globals WoW provides
     "string", "table", "math", "pairs", "ipairs", "type", "tostring", "tonumber",

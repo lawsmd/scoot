@@ -604,9 +604,9 @@ addon:RegisterComponentInitializer(function(self)
 
     self:RegisterComponent(damageMeter)
 
-    -- Initialize background inspect cache for export spec/ilvl data
-    if DMX._InitInspectCache then
-        DMX._InitInspectCache()
+    -- Start the shared passive inspect service for export spec/ilvl data
+    if addon.Inspect then
+        addon.Inspect:EnsureStarted()
     end
 
     -- Zone snapshot: track where data started

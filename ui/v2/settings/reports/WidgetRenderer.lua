@@ -28,6 +28,12 @@ function WidgetUI.Render(panel, scrollContent)
     local h = Helpers.CreateComponentHelpers("widget")
     local get, setApply = h.get, h.setAndApply
 
+    -- Pane-wide explanation: the widget can be enabled alone from the
+    -- Features page, and a lone diamond needs explaining.
+    if addon.Reports and addon.Reports.WIDGET_EXPLANATION then
+        builder:AddDescription(addon.Reports.WIDGET_EXPLANATION)
+    end
+
     -- Appearance
     builder:AddCollapsibleSection({
         title = "Appearance",

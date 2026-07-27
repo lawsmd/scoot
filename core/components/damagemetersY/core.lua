@@ -242,12 +242,11 @@ addon:RegisterComponentInitializer(function(self)
     self:RegisterComponent(comp)
     DMY._comp = comp
 
-    -- Start the background inspect ticker that populates ilvl/spec caches for
-    -- export. The ticker lives on the X namespace but its init is idempotent,
-    -- and X is disabled whenever Y is active, so Y owns the call here.
-    local DMX = addon.DamageMetersX
-    if DMX and DMX._InitInspectCache then
-        DMX._InitInspectCache()
+    -- Start the shared passive inspect service that populates ilvl/spec
+    -- caches for export. Idempotent; X is disabled whenever Y is active,
+    -- so Y owns the call here.
+    if addon.Inspect then
+        addon.Inspect:EnsureStarted()
     end
 
     -- Bootstrap Y on first PLAYER_ENTERING_WORLD.
