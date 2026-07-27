@@ -99,6 +99,8 @@ core/components/unitframes/bars/overlays.lua
 core/components/unitframes/bars/raidframes/core.lua
 core/components/unitframes/bars/raidframes/text.lua
 core/components/unitframes/bars/raidframes/extras.lua
+core/components/unitframes/bars/raidframes/visibility.lua
+core/components/unitframes/bars/raidframes/rosteroverlay.lua
 core/components/unitframes/bars/partyframes/core.lua
 core/components/unitframes/bars/partyframes/text.lua
 core/components/unitframes/bars/partyframes/extras.lua

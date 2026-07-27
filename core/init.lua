@@ -107,6 +107,15 @@ function addon:OnInitialize()
     if self.Chat and self.Chat.Initialize then
         self.Chat:Initialize()
     end
+    -- Raid frame hiding is likewise combat-safe and enforced outside ApplyStyles().
+    if self.RaidVisibility and self.RaidVisibility.Initialize then
+        self.RaidVisibility:Initialize()
+    end
+    -- The roster overlay is a Scoot-owned frame, so it is likewise safe to
+    -- build and show outside ApplyStyles().
+    if self.RaidRosterOverlay and self.RaidRosterOverlay.Initialize then
+        self.RaidRosterOverlay:Initialize()
+    end
 
     -- Apply pending preset activation (set during preset import).
     -- Runs on the next load to avoid "Interface action failed because of an AddOn"

@@ -238,6 +238,12 @@ function GF.applyRaidStyles()
     if addon.ApplyRaidGroupLeadIcons then
         addon.ApplyRaidGroupLeadIcons()
     end
+    if addon.ApplyRaidContainerVisibility then
+        addon.ApplyRaidContainerVisibility()
+    end
+    if addon.ApplyRaidRosterOverlay then
+        addon.ApplyRaidRosterOverlay()
+    end
 end
 
 function GF.applyPartyText()
