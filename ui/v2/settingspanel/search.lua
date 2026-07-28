@@ -33,7 +33,6 @@ Search._debounceTimer = nil
 -- Maps built during index construction
 Search._breadcrumbMap = nil
 Search._moduleCategoryMap = nil
-Search._parentKeyMap = nil
 
 --------------------------------------------------------------------------------
 -- Class Aura Filtering
@@ -108,10 +107,11 @@ local MANUAL_ENTRIES = {
 -- Breadcrumb Computation
 --------------------------------------------------------------------------------
 
+-- Child -> parent lookups live in deeplink.lua now; navigation goes through
+-- addon.UI:OpenToPage.
 local function BuildBreadcrumbMap()
     local breadcrumbs = {}
     local moduleCategories = {}
-    local parentKeyMap = {}
 
     for _, parent in ipairs(Navigation.NavModel) do
         if parent.children then
@@ -120,17 +120,14 @@ local function BuildBreadcrumbMap()
                 if child.module then
                     moduleCategories[child.key] = child.module
                 end
-                parentKeyMap[child.key] = parent.key
             end
         elseif parent.key ~= "search" then
             breadcrumbs[parent.key] = parent.label
-            parentKeyMap[parent.key] = nil
         end
     end
 
     Search._breadcrumbMap = breadcrumbs
     Search._moduleCategoryMap = moduleCategories
-    Search._parentKeyMap = parentKeyMap
 end
 
 --------------------------------------------------------------------------------
@@ -355,47 +352,22 @@ end
 
 function Search:NavigateToResult(entry)
     if IsModuleDisabled(entry) then
-        -- Navigate to Features page so user can enable the module
-        local parentKey = Search._parentKeyMap and Search._parentKeyMap["startHere"]
-        if parentKey then
-            Navigation._expandedSections[parentKey] = true
-        end
-        Navigation:SelectItem("startHere")
+        -- Send the user to Features so they can enable the module.
+        addon.UI:OpenToPage("startHere")
         return
     end
 
-    local rendererKey = entry.rendererKey
-    local parentKey = Search._parentKeyMap and Search._parentKeyMap[rendererKey]
+    local sectionInfo = (type(entry.section) == "table") and entry.section or nil
 
-    -- Step 1: Expand parent nav section if needed
-    if parentKey and not Navigation._expandedSections[parentKey] then
-        Navigation._expandedSections[parentKey] = true
-        if Navigation._frame and Navigation._frame._content then
-            Navigation:BuildRows(Navigation._frame._content)
-        end
-    end
+    local ok = addon.UI:OpenToPage(entry.rendererKey, sectionInfo and {
+        componentId = sectionInfo.componentId,
+        sectionKey  = sectionInfo.sectionKey,
+        tab         = sectionInfo.tab,
+    } or nil)
+    if not ok then return end
 
-    -- Step 2: Force-expand collapsible section if needed
-    local sectionInfo = entry.section
-    if sectionInfo and type(sectionInfo) == "table" then
-        if sectionInfo.componentId and sectionInfo.sectionKey then
-            addon.UI._sectionStates = addon.UI._sectionStates or {}
-            addon.UI._sectionStates[sectionInfo.componentId] = addon.UI._sectionStates[sectionInfo.componentId] or {}
-            addon.UI._sectionStates[sectionInfo.componentId][sectionInfo.sectionKey] = true
-        end
-        -- If it's a tab inside a section, select the correct tab
-        if sectionInfo.tab and sectionInfo.componentId and sectionInfo.sectionKey then
-            addon.UI._tabStates = addon.UI._tabStates or {}
-            addon.UI._tabStates[sectionInfo.componentId] = addon.UI._tabStates[sectionInfo.componentId] or {}
-            addon.UI._tabStates[sectionInfo.componentId][sectionInfo.sectionKey] = sectionInfo.tab
-        end
-    end
-
-    -- Step 3: Select nav item (triggers page render)
-    Navigation:SelectItem(rendererKey)
-
-    -- Step 4: After render, find and scroll to the target control
-    local delay = (sectionInfo and type(sectionInfo) == "table") and 0.15 or 0.05
+    -- Search-only: scroll the matched control into view and flash it.
+    local delay = sectionInfo and 0.15 or 0.05
     C_Timer.After(delay, function()
         Search:FindAndScrollToControl(entry)
     end)

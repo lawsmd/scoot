@@ -471,6 +471,9 @@ local function CreateWindowSelector(parentFrame, builder)
 
         btn:SetScript("OnClick", function()
             selectedWindow = i
+            -- Mirrored onto the panel so deep links can target a window, the
+            -- same way _actionBarSelectedBar works.
+            addon.UI.SettingsPanel._damageMeterYSelectedWindow = i
             if builder then builder:DeferredRefreshAll() end
         end)
     end
@@ -550,6 +553,9 @@ end
 --------------------------------------------------------------------------------
 
 function DMYSettings.Render(panel, scrollContent)
+    -- Honour a window chosen by a deep link (addon.UI:OpenToPage pageState).
+    selectedWindow = panel._damageMeterYSelectedWindow or selectedWindow
+
     panel:ClearContent()
     local builder = SettingsBuilder:CreateFor(scrollContent)
     panel._currentBuilder = builder

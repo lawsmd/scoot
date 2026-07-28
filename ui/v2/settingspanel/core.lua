@@ -1167,7 +1167,13 @@ function UIPanel:Show()
         if currentKey and currentKey ~= "home" then
             self._pendingBackSync[currentKey] = nil
             C_Timer.After(0, function()
-                if self.frame and self.frame:IsShown() then
+                -- Self-cancel if something navigated away in the meantime.
+                -- addon.UI:OpenToPage calls Show() then SelectItem() in the same
+                -- frame; OnNavigationSelect sets _currentCategoryKey synchronously,
+                -- so this guard has already flipped by the time the timer runs.
+                -- Removing it makes every deep link land on the previous page.
+                if self.frame and self.frame:IsShown()
+                    and self._currentCategoryKey == currentKey then
                     self:OnNavigationSelect(currentKey, currentKey)
                 end
             end)
