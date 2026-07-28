@@ -171,7 +171,9 @@ end
 --   width      : number  panel width (default 200)
 --   height     : number  panel height (default 150)
 --   padding    : number  content inset (default 8)
---   gap        : number  trigger-to-panel spacing (default 6)
+--   gap        : number  trigger-to-panel spacing (default 6). Negative values
+--                        overlap the panel onto the trigger, so the trigger
+--                        reads as the panel's head (see WidgetMenu.lua)
 --   nubOffset  : number  nub offset along panel edge, 0 = centered on anchor (default 0)
 --   showNub    : boolean show the triangle nub (default true)
 --   onShow     : function(panel) callback when opened
@@ -232,6 +234,7 @@ function Controls:CreateFlyout(options)
     bg:SetPoint("BOTTOMRIGHT", -FLYOUT_BORDER_WIDTH, FLYOUT_BORDER_WIDTH)
     bg:SetColorTexture(bgR, bgG, bgB, FLYOUT_BG_ALPHA)
     panel._bg = bg
+    panel._bgAlpha = FLYOUT_BG_ALPHA
 
     ---------------------------------------------------------------------------
     -- Border (4 edges, matching Dropdown.lua pattern)
@@ -393,6 +396,30 @@ function Controls:CreateFlyout(options)
             PositionPanel(self)
             PositionNub(self)
         end
+    end
+
+    -- Trigger-to-panel spacing. Negative values overlap the panel onto the
+    -- trigger, letting the trigger read as the panel's head.
+    function panel:SetGap(newGap)
+        self._gap = newGap
+        if self._isOpen then
+            PositionPanel(self)
+            PositionNub(self)
+        end
+    end
+
+    -- Backdrop opacity, 0-1. The panel fill and the nub's fill are the same
+    -- surface seen from two angles, so they always move together; the border
+    -- and the nub's outline are deliberately left alone, so a near-transparent
+    -- panel still reads as a panel.
+    function panel:SetBackdropAlpha(alpha)
+        alpha = tonumber(alpha)
+        if not alpha then return end
+        alpha = math.max(0, math.min(1, alpha))
+        self._bgAlpha = alpha
+        local r, g, b = GetTheme():GetBackgroundSolidColor()
+        self._bg:SetColorTexture(r, g, b, alpha)
+        self._nubFill:SetVertexColor(r, g, b, alpha)
     end
 
     function panel:SetNubOffset(offset)

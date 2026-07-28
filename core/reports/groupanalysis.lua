@@ -15,19 +15,54 @@ Reports.GroupAnalysis = GA
 --------------------------------------------------------------------------------
 
 -- Identity can be secret in instanced content; a blank cell beats an error.
+-- Returns name, realm. UnitName's second return is already nil/"" for units
+-- on our own realm, so cross-realm detection needs no comparison of our own.
 local function safeUnitName(unit)
-    local ok, n = pcall(UnitName, unit)
+    local ok, n, r = pcall(UnitName, unit)
     if not ok or n == nil then return nil end
     if issecretvalue and issecretvalue(n) then return nil end
     if type(n) ~= "string" then return nil end
-    return n:match("^([^%-]+)") or n
+
+    -- Order matters. type() is safe on secrets and on nil, so it screens
+    -- first; issecretvalue only ever sees a string; and `r ~= ""` only runs
+    -- on a confirmed non-secret. Comparing a secret throws "attempt to
+    -- compare a secret value", which would take out localPlayerEntry and
+    -- with it the entire snapshot.
+    local realm
+    if type(r) == "string" and not (issecretvalue and issecretvalue(r)) and r ~= "" then
+        realm = r
+    end
+
+    -- A "Name-Realm" string still turns up from cached/backfilled sources.
+    local shortName, suffix = n:match("^([^%-]+)%-(.+)$")
+    if shortName then
+        return shortName, realm or suffix
+    end
+    return n, realm
+end
+
+-- Assigned group role, for the panel's role icon. Same guard ordering as
+-- safeUnitName: type() screens first (safe on secrets and nil), issecretvalue
+-- second, and only then the comparison — role is one of the values that comes
+-- back secret in instanced content. "NONE" folds to nil so the panel has a
+-- single "no icon" case instead of two.
+local function safeUnitRole(unit)
+    local ok, role = pcall(UnitGroupRolesAssigned, unit)
+    if not ok then return nil end
+    if type(role) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(role) then return nil end
+    if role == "NONE" then return nil end
+    return role
 end
 
 local function localPlayerEntry()
+    local name, realm = safeUnitName("player")
     local entry = {
         unit = "player",
         isPlayer = true,
-        name = safeUnitName("player"),
+        name = name,
+        realm = realm,
+        role = safeUnitRole("player"),
     }
 
     local gOk, guid = pcall(UnitGUID, "player")
@@ -64,22 +99,33 @@ local function buildMemberEntry(unit)
     local gOk, guid = pcall(UnitGUID, unit)
     if gOk then entry.guid = guid end
 
-    entry.name = safeUnitName(unit)
+    entry.name, entry.realm = safeUnitName(unit)
+    entry.role = safeUnitRole(unit)
 
     local cached = getInspectInfo(entry.guid)
     if cached then
         entry.specName = cached.specName
         entry.itemLevel = cached.itemLevel
         -- Inspect-time name backfills a live read blocked by identity secrecy.
-        if not entry.name then entry.name = cached.name end
+        -- Cached names can carry a "Name-Realm" suffix, so split it here too.
+        local cachedName = cached.name
+        if not entry.name
+            and type(cachedName) == "string"
+            and not (issecretvalue and issecretvalue(cachedName)) then
+            local shortName, realm = cachedName:match("^([^%-]+)%-(.+)$")
+            entry.name = shortName or cachedName
+            entry.realm = entry.realm or realm
+        end
     end
 
     return entry
 end
 
 -- Returns { mode = "solo"|"party"|"raid", entries = { entry } } where entry =
--- { unit, guid?, name?, classR/classG/classB?, specName?, itemLevel?, isPlayer? }.
--- nil fields render as blank cells.
+-- { unit, guid?, name?, realm?, classR/classG/classB?, specName?, itemLevel?,
+-- role?, isPlayer? }. realm is nil for same-realm players. specName is the
+-- full spec name ("Beast Mastery"), not an abbreviation. role is
+-- TANK/HEALER/DAMAGER or nil. nil fields render as blank.
 function GA.BuildSnapshot()
     local snapshot = { entries = {} }
 
@@ -119,8 +165,9 @@ end
 --------------------------------------------------------------------------------
 -- Change subscription
 --------------------------------------------------------------------------------
--- The panel subscribes while open: roster changes and combat drop trigger a
--- rebuild; each inspect-service update fills newly available cells.
+-- The panel subscribes while open: roster changes, role assignments and combat
+-- drop trigger a rebuild; each inspect-service update fills newly available
+-- cells.
 --------------------------------------------------------------------------------
 
 local subscriberCallback = nil
@@ -139,6 +186,8 @@ function GA.Subscribe(cb)
     end
     eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    -- Role is a live read, not inspect-cache data, so it needs its own event.
+    eventFrame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
 
     addon:RegisterMessage("SCOOT_INSPECT_UPDATED", function(_, guid)
         if subscriberCallback then

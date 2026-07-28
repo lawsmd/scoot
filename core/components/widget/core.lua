@@ -25,6 +25,9 @@ local DEFAULT_Y = -200
 
 local FLY_DOWN, FLY_UP, FLY_LEFT, FLY_RIGHT = "down", "up", "left", "right"
 
+-- Breathing room between the diamond's intruding half and a panel's content.
+local HEAD_CLEARANCE = 3
+
 --------------------------------------------------------------------------------
 -- Module-Level State
 --------------------------------------------------------------------------------
@@ -222,21 +225,27 @@ end
 --   up    -> child BOTTOM anchors to anchorTarget TOP    (panel grows up)
 --   right -> child LEFT   anchors to anchorTarget RIGHT  (panel extends right)
 --   left  -> child RIGHT  anchors to anchorTarget LEFT   (panel extends left)
+--
+-- The head child (the one anchored to the diamond itself) is pulled back by
+-- GetHeadOffset() so its near edge runs through the diamond's two side
+-- corners. Children further down the chain anchor to their predecessor with
+-- no offset, so only the first one wears the diamond.
 
-local function getDirectionAnchors(direction)
+local function getDirectionAnchors(direction, isHead)
+    local off = isHead and W:GetHeadOffset() or 0
     if direction == FLY_UP then
-        return "BOTTOM", "TOP", 0, 0
+        return "BOTTOM", "TOP", 0, -off
     elseif direction == FLY_LEFT then
-        return "RIGHT", "LEFT", 0, 0
+        return "RIGHT", "LEFT", off, 0
     elseif direction == FLY_RIGHT then
-        return "LEFT", "RIGHT", 0, 0
+        return "LEFT", "RIGHT", -off, 0
     end
-    return "TOP", "BOTTOM", 0, 0  -- down (default)
+    return "TOP", "BOTTOM", 0, off  -- down (default)
 end
 
-local function anchorChildToTarget(childFrame, anchorTarget, direction)
+local function anchorChildToTarget(childFrame, anchorTarget, direction, isHead)
     if not childFrame or not anchorTarget then return end
-    local childPt, parentPt, xOfs, yOfs = getDirectionAnchors(direction)
+    local childPt, parentPt, xOfs, yOfs = getDirectionAnchors(direction, isHead)
     childFrame:ClearAllPoints()
     childFrame:SetPoint(childPt, anchorTarget, parentPt, xOfs, yOfs)
 end
@@ -249,8 +258,23 @@ function W:_ReflowFlyoutChildren()
     if not widgetFrame then return end
     local direction = getSetting("flyoutDirection", FLY_DOWN)
     local anchorTarget = widgetFrame
-    for _, entry in ipairs(flyoutChain) do
-        anchorChildToTarget(entry.frame, anchorTarget, direction)
+
+    -- Half the diamond sits inside the head child, and children draw above
+    -- their parent by default, so without this the panel swallows the lower
+    -- half of the icon. Dropping the child a level lets the diamond draw on
+    -- top without touching the widget's configured strata.
+    local level = widgetFrame:GetFrameLevel()
+    if level < 1 then
+        widgetFrame:SetFrameLevel(1)
+        level = 1
+    end
+
+    for i, entry in ipairs(flyoutChain) do
+        local isHead = (i == 1)
+        anchorChildToTarget(entry.frame, anchorTarget, direction, isHead)
+        if isHead then
+            pcall(entry.frame.SetFrameLevel, entry.frame, level - 1)
+        end
         anchorTarget = entry.frame
     end
 end
@@ -293,6 +317,14 @@ function W:ReleaseAllFlyoutChildren()
             pcall(opts.onRelease, entry.frame)
         end
     end
+    self:_ReflowFlyoutChildren()
+end
+
+-- True while any persistent surface (a report panel, a future notification)
+-- is attached. Callers that want to take over the diamond's flyout space ask
+-- this first — see WidgetMenu's "clicking again returns to the list".
+function W:HasFlyoutChildren()
+    return #flyoutChain > 0
 end
 
 --------------------------------------------------------------------------------
@@ -302,7 +334,8 @@ end
 function W:GetAnchorForFlyout()
     if not widgetFrame then return nil end
     local direction = getSetting("flyoutDirection", FLY_DOWN)
-    local childPt, parentPt, xOfs, yOfs = getDirectionAnchors(direction)
+    -- Anchors straight to the diamond, so it is a head by definition.
+    local childPt, parentPt, xOfs, yOfs = getDirectionAnchors(direction, true)
     return childPt, widgetFrame, parentPt, xOfs, yOfs
 end
 
@@ -318,6 +351,51 @@ end
 
 function W:GetFlyoutDirection()
     return getSetting("flyoutDirection", FLY_DOWN)
+end
+
+-- Clamped edge length of the diamond's container. The diamond is inscribed in
+-- it, so half this value is the distance from the container's centre to any
+-- corner: consumers anchoring to the diamond's corners need that number.
+function W:GetIconSize()
+    local size = tonumber(getSetting("iconSize", DEFAULT_SIZE)) or DEFAULT_SIZE
+    return math.max(MIN_SIZE, math.min(MAX_SIZE, size))
+end
+
+--------------------------------------------------------------------------------
+-- Head geometry
+--------------------------------------------------------------------------------
+-- Every surface the widget spawns wears the diamond as its head: the panel's
+-- near edge runs exactly through the diamond's two side corners, so the icon
+-- reads as part of the panel rather than a separate thing floating beside it.
+-- Both numbers live here so current and future surfaces stay consistent.
+
+-- Centre-to-corner distance of the diamond. Exact, not tuned: the frame is a
+-- square with the diamond inscribed and centred, so the side corners land on
+-- the container's midline.
+function W:GetHeadOffset()
+    return self:GetIconSize() / 2
+end
+
+-- Layout numbers for a panel wearing the diamond as its head, in the given
+-- direction. contentInset is the panel's own padding on the overlapped edge
+-- (the diamond only has to clear whatever that padding does not already).
+--
+-- Returns padTop, padLeft (shift content clear of the intruding half) and
+-- extraH, extraW (grow the panel by the same amount, so the usable content
+-- box is identical in all four directions).
+-- Accepts either case: the widget stores "down", the flyout control uses "DOWN".
+function W:GetHeadInset(direction, contentInset)
+    direction = direction or self:GetFlyoutDirection()
+    if type(direction) == "string" then direction = direction:lower() end
+    local depth = math.max(0, math.ceil(self:GetHeadOffset() - (contentInset or 0)) + HEAD_CLEARANCE)
+    if direction == FLY_DOWN then
+        return depth, 0, 0, 0        -- diamond on the top edge
+    elseif direction == FLY_UP then
+        return 0, 0, depth, 0        -- diamond on the bottom edge
+    elseif direction == FLY_RIGHT then
+        return 0, depth, 0, depth    -- diamond on the left edge
+    end
+    return 0, 0, 0, depth            -- left: diamond on the right edge
 end
 
 -- Registers the plain-left-click handler (the reports menu today). One slot:

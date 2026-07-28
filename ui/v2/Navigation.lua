@@ -88,15 +88,6 @@ Navigation.NavModel = {
         },
     },
     {
-        key = "reports",
-        label = "Reports",
-        collapsible = true,
-        children = {
-            { key = "reportsWidget", label = "Widget", module = "widget" },
-            { key = "reportsList", label = "Reports", module = "widget" },
-        },
-    },
-    {
         key = "qol",
         label = "Quality of Life",
         collapsible = true,
@@ -206,6 +197,17 @@ Navigation.NavModel = {
         collapsible = true,
         children = {
             { key = "sctDamage", label = "Damage Numbers", module = "sct" },
+        },
+    },
+    -- Reports sits last among real sections; Debug is hidden by default and
+    -- only appears below it via /scoot debugmenu.
+    {
+        key = "reports",
+        label = "Reports",
+        collapsible = true,
+        children = {
+            { key = "reportsWidget", label = "Widget", module = "widget" },
+            { key = "reportsList", label = "Config", module = "widget" },
         },
     },
     {

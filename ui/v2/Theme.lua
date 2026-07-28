@@ -51,6 +51,9 @@ Theme.Fonts = {
     BUTTON = addon.Fonts.JETBRAINS_MED,
     -- Fallback to Roboto if JetBrains not available
     PROPORTIONAL = addon.Fonts.ROBOTO_REG or FONT_BASE .. "Roboto-Regular.ttf",
+    -- Heavier proportional face for text read against the game world rather
+    -- than a panel background.
+    PROPORTIONAL_MED = addon.Fonts.ROBOTO_MED or FONT_BASE .. "Roboto-Medium.ttf",
 }
 
 --------------------------------------------------------------------------------
