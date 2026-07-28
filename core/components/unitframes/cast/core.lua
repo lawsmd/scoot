@@ -117,6 +117,12 @@ function CB._installGradientHook(spellFS, cfgResolver, parentFrame)
 				if els and els.filledText then
 					pcall(els.filledText.SetText, els.filledText, text)
 				end
+				-- Re-fit for the new name. Indexed at call time: textfill.lua loads
+				-- AFTER this file (TOC 123 vs 122), so CB._fitTextFillScale does not
+				-- exist yet at definition time and must never be cached in a local.
+				if CB._fitTextFillScale then
+					CB._fitTextFillScale(parentFrame, CB._getProp(parentFrame, "textFillSpellNameCfg"), text)
+				end
 			end
 			return
 		end
@@ -140,6 +146,11 @@ function CB._installGradientHook(spellFS, cfgResolver, parentFrame)
 			CB._rampApplying = true
 			pcall(self.SetText, self, gradientStr)
 			CB._rampApplying = false
+			-- Re-fit against the gradient bytes (|cff hex values affect kerning,
+			-- so the gradient string's natural width differs from the plain one's)
+			if CB._fitTextFillScale then
+				CB._fitTextFillScale(parentFrame, styleCfg, gradientStr)
+			end
 			return
 		end
 		-- Normal mode: apply gradient to frame.Text
@@ -174,6 +185,11 @@ function CB._applySpellNameColor(spellFS, styleCfg, parentFrame)
 				CB._rampApplying = true
 				pcall(spellFS.SetText, spellFS, rampText)
 				CB._rampApplying = false
+				-- Re-fit: a colorMode change alters the |cff bytes and therefore
+				-- the measured natural width
+				if CB._fitTextFillScale then
+					CB._fitTextFillScale(parentFrame, styleCfg, rampText)
+				end
 			else
 				-- Normal mode: gradient on frame.Text, white base color
 				if spellFS.SetTextColor then

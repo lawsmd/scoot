@@ -179,3 +179,64 @@ function addon.BuildColorRampString(text, r1, g1, b1, r2, g2, b2)
 
     return table.concat(parts)
 end
+
+-- Build a multi-line ramped string from pre-split lines, joined with explicit "\n".
+--
+-- `lines` is the array returned by addon.DiscoverTextLines / addon.WrapTextGreedy
+-- (entries with a .text field), or a plain array of strings.
+--
+-- opts.mode:
+--   "line"  (default) each line runs the full start->end ramp on its own
+--   "block"           one continuous ramp across the whole name, split at the
+--                     line breaks -- for A/B comparison against "line"
+--
+-- Returns nil when any line is secret or unusable, so callers can fall back to a
+-- solid color instead of rendering half a gradient.
+--
+-- Callers should SetWordWrap(false) before applying the result. The breaks are
+-- already baked in as "\n", and per-character |cff codes shift sub-pixel kerning by
+-- 1-2px (castbarX pitfall #28) -- enough to re-flow a line that sat on the boundary.
+function addon.BuildPerLineRampString(lines, r1, g1, b1, r2, g2, b2, opts)
+    if type(lines) ~= "table" or #lines == 0 then return nil end
+    opts = opts or {}
+    local blockMode = (opts.mode == "block")
+
+    local texts, counts, total = {}, {}, 0
+    for idx = 1, #lines do
+        local entry = lines[idx]
+        local text = (type(entry) == "table") and entry.text or entry
+        if type(text) ~= "string" or text == "" then return nil end
+        if issecretvalue and issecretvalue(text) then return nil end
+        texts[idx] = text
+        counts[idx] = #utf8Chars(text)
+        total = total + counts[idx]
+    end
+    if total == 0 then return nil end
+
+    if not blockMode then
+        local parts = {}
+        for idx = 1, #texts do
+            parts[idx] = addon.BuildColorRampString(texts[idx], r1, g1, b1, r2, g2, b2)
+        end
+        return table.concat(parts, "\n")
+    end
+
+    -- Block mode: give each line the slice of the global ramp its characters occupy.
+    -- BuildColorRampString is linear in character index within a line, and the global
+    -- ramp is linear in the same index, so slicing the endpoints reproduces it exactly.
+    local denom = math.max(total - 1, 1)
+    local function lerp(t)
+        return r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t
+    end
+
+    local parts = {}
+    local consumed = 0
+    for idx = 1, #texts do
+        local n = counts[idx]
+        local sr, sg, sb = lerp(consumed / denom)
+        local er, eg, eb = lerp((consumed + math.max(n - 1, 0)) / denom)
+        parts[idx] = addon.BuildColorRampString(texts[idx], sr, sg, sb, er, eg, eb)
+        consumed = consumed + n
+    end
+    return table.concat(parts, "\n")
+end

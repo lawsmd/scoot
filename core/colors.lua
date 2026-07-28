@@ -146,7 +146,13 @@ end
 -- to misinterpret "player" as a class token (which doesn't exist in the color tables).
 local _playerClassTokenCache = select(2, UnitClass("player"))
 
-function addon.GetClassColorRGB(unitOrClassToken)
+-- Resolve a unit token (or a class token passed through) to a class token string.
+-- Returns nil when the class cannot be resolved -- callers decide the fallback.
+--
+-- Split out of GetClassColorRGB because the gradient endpoint tables
+-- (addon.CLASS_GRADIENT_ENDPOINTS, addon.SPEC_GRADIENT_COLORS) are keyed by token,
+-- and the RGB triple alone can't be turned back into one.
+function addon.GetClassTokenForUnit(unitOrClassToken)
 	local classToken = nil
 	if type(unitOrClassToken) == "string" then
 		-- Fast path: "player" uses load-time cache (immune to taint/secrets)
@@ -176,6 +182,14 @@ function addon.GetClassColorRGB(unitOrClassToken)
 		end
 	end
 	if type(classToken) ~= "string" or issecretvalue(classToken) then
+		return nil
+	end
+	return classToken
+end
+
+function addon.GetClassColorRGB(unitOrClassToken)
+	local classToken = addon.GetClassTokenForUnit(unitOrClassToken)
+	if not classToken then
 		return nil, nil, nil -- no class resolved; callers decide fallback
 	end
 	-- Use our static table first; fall back to RAID_CLASS_COLORS when available

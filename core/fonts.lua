@@ -186,6 +186,524 @@ function addon.ApplyFontStyle(fs, font, size, style)
 end
 
 --------------------------------------------------------------------------------
+-- Shrink-to-Fit Text Helper
+--------------------------------------------------------------------------------
+-- Fit a string into a fixed box: wrap at spaces first, and only shrink the text
+-- when wrapping is not enough. Truncates with "..." only after hitting minSize.
+--
+-- Does NOT work on secret strings, and cannot be made to. IsAnchoringSecret is
+-- misnamed: its annotation is SecretReturnsForAspect = { ObjectSecrets }
+-- (SimpleScriptRegionAPIDocumentation.lua:367), so it reports "does this object
+-- hold any secret aspect", not "is it anchored to something secret". SetText
+-- carries SecretArgumentsAddAspect = { Text }, so pouring a secret name into a
+-- FontString stamps the aspect onto that FontString and flips the flag. By
+-- extension SecretWhenAnchoringSecret means "secret when the OBJECT has secrets",
+-- which takes GetStringWidth / GetUnboundedStringWidth / GetStringHeight /
+-- GetWrappedWidth / GetNumLines / IsTruncated / GetWidth / GetHeight with it.
+-- Measured live: fs:IsAnchoringSecret() true while its parent frame reads false.
+--
+-- There is no anchor-based escape hatch, because anchoring was never the
+-- mechanism -- the UIParent-anchored ruler below goes secret the same way. A
+-- caller that may be handed a secret string must pass opts.fallbackSize and use
+-- the engine's own wrapping and ellipsis, both of which still work fine on text
+-- nobody can read.
+--
+-- The gate cannot be folded into a pcall around the measurement: reading a
+-- dimension on a dirty layout forces a layout flush that fires OnSizeChanged as
+-- a side effect, so the error surfaces in the callback rather than in our call.
+--
+-- Addon-owned FontStrings only: "blizzard" mode writes baseLineHeight/minLineHeight
+-- onto the FontString's Lua table, which would taint a Blizzard-owned one.
+--
+-- opts: width, height   -- box size; omit to read them off a two-point-anchored fs
+--       maxLines        -- line budget, further clamped by height
+--       maxSize         -- the ideal size, used when the text already fits
+--       minSize         -- floor; below this we accept "..." truncation
+--       mode            -- "font" (step point size) | "scale" (SetTextScale)
+--                          | "blizzard" (Blizzard's ScaleTextToFit verbatim)
+--       face, style     -- as passed to addon.ApplyFontStyle
+--       wordWrap, nonSpaceWrap
+--       fallbackSize    -- size to apply when the geometry cannot be read at all
+--                          (secret text, unsettled layout). Defaults to maxSize.
+--
+-- returns { size, scale, lines, maxLines, truncated, iterations, measurable,
+--           fallback, reason }
+--   measurable == false means the geometry could not be read. size/maxLines are
+--   still populated -- from fallbackSize -- and have still been APPLIED to the
+--   FontString, so the caller always knows what is on screen. fallback == true
+--   marks that case explicitly: never treat an unmeasured fit as a measured one.
+
+local FIT_DEFAULT_MIN_SIZE = 8
+
+local function fitSafeNumber(obj, method, ...)
+    local fn = obj and obj[method]
+    if type(fn) ~= "function" then return nil end
+    local ok, v = pcall(fn, obj, ...)
+    if not ok then return nil end
+    if type(v) ~= "number" then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v
+end
+
+local function fitSafeBool(obj, method, ...)
+    local fn = obj and obj[method]
+    if type(fn) ~= "function" then return nil end
+    local ok, v = pcall(fn, obj, ...)
+    if not ok then return nil end
+    if type(v) ~= "boolean" then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v
+end
+
+addon.FitSafeNumber = fitSafeNumber
+addon.FitSafeBool = fitSafeBool
+
+function addon.FitTextToBox(fs, opts)
+    opts = opts or {}
+    local result = { scale = 1, iterations = 0, measurable = false }
+
+    if not fs or type(fs.SetFont) ~= "function" then
+        result.reason = "not a FontString"
+        return result
+    end
+
+    local face    = opts.face or (select(1, _G.GameFontNormal:GetFont()))
+    local style   = opts.style or ""
+    local mode    = opts.mode or "font"
+    local maxSize = tonumber(opts.maxSize) or 14
+    local minSize = math.max(1, tonumber(opts.minSize) or FIT_DEFAULT_MIN_SIZE)
+    if minSize > maxSize then minSize = maxSize end
+    local maxLines = math.max(1, math.floor(tonumber(opts.maxLines) or 1))
+    local fallbackSize = tonumber(opts.fallbackSize) or maxSize
+
+    local function applyLayout()
+        if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, opts.wordWrap ~= false) end
+        if fs.SetNonSpaceWrap then pcall(fs.SetNonSpaceWrap, fs, opts.nonSpaceWrap == true) end
+        if fs.SetMaxLines then pcall(fs.SetMaxLines, fs, maxLines) end
+        if opts.width then pcall(fs.SetWidth, fs, opts.width) end
+        if opts.height then pcall(fs.SetHeight, fs, opts.height) end
+        -- Reset to the unscaled base font before measuring anything.
+        if fs.SetTextScale then pcall(fs.SetTextScale, fs, 1) end
+        -- Smooth scaling stops line height snapping to whole numbers while scaled.
+        if fs.SetSmoothScaling then pcall(fs.SetSmoothScaling, fs, mode ~= "font") end
+    end
+
+    -- Every exit that could not measure lands here. Leaving the FontString at
+    -- whatever font it happened to be carrying is how a creation-default size and a
+    -- caller's max size both end up on screen looking like deliberate behaviour --
+    -- the fit reads as "worked" because something rendered. Apply a defined size
+    -- instead and say so, so a bail is visible as a bail.
+    local function bail(reason)
+        result.reason = reason
+        result.measurable = false
+        result.fallback = true
+        applyLayout()
+        addon.ApplyFontStyle(fs, face, fallbackSize, style)
+        result.size = fallbackSize
+        result.scale = 1
+        result.maxLines = maxLines
+        return result
+    end
+
+    -- Gate 1: the FontString holds a secret aspect. Proceed only on a definitive
+    -- false. A secret string poisons its own FontString via SetText, so this fires
+    -- for every restricted unit name -- see the header above.
+    if type(fs.IsAnchoringSecret) == "function" then
+        local objSecret = fitSafeBool(fs, "IsAnchoringSecret")
+        if objSecret ~= false then
+            -- Distinguish "will never be measurable" from "not settled yet". Callers
+            -- that retry an unsettled layout must not burn frames retrying this one.
+            result.secretText = (objSecret == true) or nil
+            return bail((objSecret == nil)
+                and "IsAnchoringSecret unreadable"
+                or "object holds a secret aspect (text is secret)")
+        end
+    end
+
+    applyLayout()
+    addon.ApplyFontStyle(fs, face, maxSize, style)
+    result.maxLines = maxLines
+
+    local boxW = tonumber(opts.width) or fitSafeNumber(fs, "GetWidth")
+    local boxH = tonumber(opts.height) or fitSafeNumber(fs, "GetHeight")
+    if not boxW or not boxH or boxW <= 0 or boxH <= 0 then
+        return bail("box dimensions unreadable")
+    end
+
+    local unbounded = fitSafeNumber(fs, "GetUnboundedStringWidth")
+    if not unbounded then
+        return bail("GetUnboundedStringWidth unreadable")
+    end
+
+    -- Past this point the geometry is readable, which is the whole question.
+    result.measurable = true
+
+    -- Control case: run Blizzard's own shrink-to-fit verbatim.
+    if mode == "blizzard" then
+        local mixin = _G.AutoScalingFontStringMixin
+        if not mixin or type(mixin.ScaleTextToFit) ~= "function" then
+            return bail("AutoScalingFontStringMixin unavailable")
+        end
+        -- Blizzard's floor is a line height, not a point size. Convert minSize so
+        -- all three modes bottom out at the same visual size.
+        addon.ApplyFontStyle(fs, face, minSize, style)
+        local minLineHeight = fitSafeNumber(fs, "GetLineHeight") or minSize
+        addon.ApplyFontStyle(fs, face, maxSize, style)
+        fs.baseLineHeight = nil -- force a re-cache against the current base font
+        fs.minLineHeight = minLineHeight
+        local ok, err = pcall(mixin.ScaleTextToFit, fs)
+        if not ok then
+            return bail("ScaleTextToFit error: " .. tostring(err))
+        end
+        result.scale = fitSafeNumber(fs, "GetTextScale") or 1
+        result.size = maxSize * result.scale
+        result.truncated = fitSafeBool(fs, "IsTruncated")
+        result.lines = fitSafeNumber(fs, "GetNumLines")
+        return result
+    end
+
+    local function applyCandidate(size)
+        if mode == "scale" then
+            pcall(fs.SetTextScale, fs, size / maxSize)
+        else
+            addon.ApplyFontStyle(fs, face, size, style)
+        end
+    end
+
+    -- Analytic first guess. Unbounded width scales linearly with point size, so the
+    -- largest size that could fit across maxLines lines is
+    --   maxSize * boxW * maxLines / unboundedAtMaxSize
+    -- That is an upper bound (wrapping wastes space at line ends), so walk down from
+    -- it. In practice this lands within a couple of steps of the answer.
+    --
+    -- A zero unbounded width means either genuinely empty text or a layout that has
+    -- not settled since the last SetText. Never accept maxSize on the strength of it:
+    -- start there and let the descent loop decide. Empty text is never truncated so it
+    -- exits on the first iteration, while a stale zero recovers instead of silently
+    -- rendering at full size and spilling out of the box.
+    local size
+    if unbounded > 0 then
+        size = math.floor(maxSize * boxW * maxLines / unbounded)
+    else
+        size = maxSize
+        result.zeroWidth = true
+    end
+    if size > maxSize then size = maxSize end
+    if size < minSize then size = minSize end
+
+    while size >= minSize do
+        result.iterations = result.iterations + 1
+        applyCandidate(size)
+
+        -- maxLines and a fixed height can disagree: n lines may not physically fit,
+        -- in which case IsTruncated() would report false while text spills out of the
+        -- box. Clamp the budget to what this size can actually show.
+        local lineHeight = fitSafeNumber(fs, "GetLineHeight")
+        if lineHeight and lineHeight > 0 and fs.SetMaxLines then
+            local spacing = fitSafeNumber(fs, "GetSpacing") or 0
+            local allowed = math.floor(boxH / (lineHeight + spacing))
+            if allowed < 1 then allowed = 1 end
+            local clamped = (allowed < maxLines) and allowed or maxLines
+            pcall(fs.SetMaxLines, fs, clamped)
+            -- Report the clamp rather than leaving callers to read it back off the
+            -- FontString: GetMaxLines is plain today, but a caller replaying this fit
+            -- onto copies should be told what was applied, not have to ask.
+            result.maxLines = clamped
+        end
+
+        local truncated = fitSafeBool(fs, "IsTruncated")
+        if truncated == nil then
+            -- The descent validated nothing, so the size it happens to be sitting at
+            -- is not a fit. Drop to the declared fallback like any other bail.
+            return bail("IsTruncated unreadable")
+        end
+        if not truncated then
+            result.truncated = false
+            break
+        end
+        if size == minSize then
+            -- Hit the floor: accept ellipsis truncation.
+            result.truncated = true
+            break
+        end
+        size = size - 1
+    end
+
+    result.size = size
+    result.scale = (mode == "scale") and (size / maxSize) or 1
+    result.lines = fitSafeNumber(fs, "GetNumLines")
+    return result
+end
+
+--------------------------------------------------------------------------------
+-- Off-Frame Text Measurement Ruler
+--------------------------------------------------------------------------------
+-- Measure a string's natural width without ever touching the FontString that will
+-- display it.
+--
+-- The geometry getters are annotated SecretWhenAnchoringSecret (see the header on
+-- FitTextToBox above), so measuring a FontString anchored into a Blizzard frame
+-- returns a secret on exactly the tainted frames we care about. Anchoring is
+-- secret-safe for *writing* geometry, never for *reading* it, and there is no
+-- anchor-based escape hatch -- a proxy region anchored to the same frame inherits
+-- the same secret chain.
+--
+-- The ruler sidesteps this entirely: it is parented and anchored only to UIParent,
+-- a chain that can never be secret. SetText is AllowedWhenTainted, so a secret
+-- string can be poured in and measured even though its content is unreadable.
+--
+-- Held permanently at SetTextScale(1), so GetUnboundedStringWidth() is the raw
+-- natural width with no normalisation needed. That getter is scale-INCLUSIVE --
+-- Blizzard's AutoScalingFontStringMixin divides by GetTextScale() precisely
+-- because of that (Blizzard_SharedXML/SecureUtil.lua).
+
+local measureRuler
+
+local function ensureMeasureRuler()
+    if measureRuler then return measureRuler end
+
+    local holder = CreateFrame("Frame", nil, UIParent)
+    holder:SetSize(1, 1)
+    holder:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    holder:Hide()
+
+    local fs = holder:CreateFontString(nil, "OVERLAY")
+    fs:SetPoint("CENTER", holder, "CENTER", 0, 0)  -- single point => natural width
+    fs:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
+    if fs.SetWidth then fs:SetWidth(0) end
+    if fs.SetWordWrap then fs:SetWordWrap(false) end
+    if fs.SetTextScale then fs:SetTextScale(1) end
+
+    -- Warm the layout once: a never-laid-out FontString under-reports its width.
+    fs:SetText("The quick brown fox 0123456789")
+    pcall(fs.GetUnboundedStringWidth, fs)
+    fs:SetText("")
+
+    measureRuler = fs
+    return fs
+end
+
+-- Natural (unwrapped, untruncated, unscaled) pixel width of `text` rendered in the
+-- given face/size/style. `text` may be a secret string. Returns nil when the
+-- geometry could not be read, in which case the caller must not shrink anything.
+function addon.MeasureTextWidth(text, face, size, style)
+    local fs = ensureMeasureRuler()
+    if not fs then return nil end
+
+    -- Same gate as FitTextToBox. Always false here (UIParent chain), so this is an
+    -- assertion rather than a real branch -- but it documents why the ruler exists.
+    if type(fs.IsAnchoringSecret) == "function" then
+        if fitSafeBool(fs, "IsAnchoringSecret") ~= false then return nil end
+    end
+
+    addon.ApplyFontStyle(fs, face, size, style)
+    if not pcall(fs.SetText, fs, text) then return nil end
+    local w = fitSafeNumber(fs, "GetUnboundedStringWidth")
+    pcall(fs.SetText, fs, "")  -- don't retain a secret string on a live FontString
+
+    if not w or w <= 0 then return nil end
+    return w
+end
+
+--------------------------------------------------------------------------------
+-- Line Discovery
+--------------------------------------------------------------------------------
+-- Recover where a wrapped FontString actually broke its lines, so each line can be
+-- treated independently (per-line color ramps, per-line alignment, etc.).
+--
+-- Primary path asks the engine: CalculateScreenAreaFromCharacterSpan returns one
+-- uiBoundsRect { left, bottom, width, height } per wrapped row that a character span
+-- covers. Blizzard uses it for selection highlighting in ScrollingMessageFrame for
+-- exactly that reason. So we never reimplement WoW's line-breaking -- we ask it.
+--
+-- It is gated on RequiresFontStringTextAccess, which fails for tainted callers once
+-- the FontString carries the Text secret aspect. Pushing one secret name through
+-- SetText stamps that aspect on, so run this on plain text only and call ClearText()
+-- between targets. WrapTextGreedy below is the fallback that never needs the engine.
+
+local FIT_MAX_DISCOVERY_CHARS = 200
+
+-- Byte offsets of each UTF-8 character start, plus each one's byte length.
+local function utf8Offsets(s)
+    local offsets, i, n = {}, 1, #s
+    while i <= n do
+        local b = s:byte(i)
+        local len = 1
+        if b >= 240 then len = 4
+        elseif b >= 224 then len = 3
+        elseif b >= 192 then len = 2 end
+        if i + len - 1 > n then len = 1 end
+        offsets[#offsets + 1] = { first = i, last = i + len - 1 }
+        i = i + len
+    end
+    return offsets
+end
+
+local function spanRect(fs, first, last)
+    local fn = fs.CalculateScreenAreaFromCharacterSpan
+    if type(fn) ~= "function" then return nil end
+    local ok, areas = pcall(fn, fs, first, last)
+    if not ok or type(areas) ~= "table" then return nil end
+    if issecretvalue and issecretvalue(areas) then return nil end
+    return areas
+end
+
+-- Returns an array of { text, first, last, left, width } in reading order, or nil
+-- when the lines could not be determined (secret text, secret anchoring, or the
+-- span API returning nothing). `first`/`last` are byte offsets into `plainText`.
+function addon.DiscoverTextLines(fs, plainText)
+    if not fs or type(plainText) ~= "string" or plainText == "" then return nil end
+    if issecretvalue and issecretvalue(plainText) then return nil end
+
+    -- Same gate as FitTextToBox: the span API is SecretWhenAnchoringSecret too.
+    if type(fs.IsAnchoringSecret) == "function" then
+        if fitSafeBool(fs, "IsAnchoringSecret") ~= false then return nil end
+    end
+
+    local areas = spanRect(fs, 1, #plainText)
+    if not areas or #areas == 0 then return nil end
+
+    local function row(first, last, rect)
+        local text = plainText:sub(first, last):match("^%s*(.-)%s*$")
+        if text == "" then return nil end
+        return {
+            text  = text,
+            first = first,
+            last  = last,
+            left  = rect and rect.left,
+            width = rect and rect.width,
+        }
+    end
+
+    -- Overwhelmingly the common case, and it costs exactly one engine call.
+    if #areas == 1 then
+        local only = row(1, #plainText, areas[1])
+        return only and { only } or nil
+    end
+
+    local chars = utf8Offsets(plainText)
+    if #chars > FIT_MAX_DISCOVERY_CHARS then return nil end
+
+    -- Bucket every character onto the row whose baseline it sits closest to.
+    -- Float coordinates, so never compare bottoms with ==.
+    local buckets = {}
+    for idx = 1, #areas do buckets[idx] = { rect = areas[idx] } end
+
+    for _, c in ipairs(chars) do
+        local r = spanRect(fs, c.first, c.last)
+        local bottom = r and r[1] and r[1].bottom
+        if type(bottom) == "number" and not (issecretvalue and issecretvalue(bottom)) then
+            local best, bestDist
+            for idx = 1, #areas do
+                local ab = areas[idx].bottom
+                if type(ab) == "number" then
+                    local d = math.abs(ab - bottom)
+                    if not bestDist or d < bestDist then best, bestDist = idx, d end
+                end
+            end
+            local b = best and buckets[best]
+            if b then
+                if not b.first or c.first < b.first then b.first = c.first end
+                if not b.last or c.last > b.last then b.last = c.last end
+            end
+        end
+    end
+
+    local lines = {}
+    for idx = 1, #buckets do
+        local b = buckets[idx]
+        if b.first and b.last then
+            local ln = row(b.first, b.last, b.rect)
+            if ln then lines[#lines + 1] = ln end
+        end
+    end
+    -- The engine already told us how many rows there are. If bucketing recovered a
+    -- different number, the per-character probe disagreed with the row probe and the
+    -- breaks can't be trusted -- report failure rather than a plausible wrong answer.
+    if #lines ~= #areas then return nil end
+
+    -- Reading order by byte offset -- independent of the coordinate convention.
+    table.sort(lines, function(a, b) return a.first < b.first end)
+
+    -- Coverage invariant: every character has to land on some line. A per-character
+    -- probe that returns nothing for most characters still yields plausible-looking
+    -- buckets -- one stray hit makes a whole line read as "C" instead of "Custodian"
+    -- -- and nothing downstream can tell that apart from a genuinely short line. So
+    -- rebuild the string from the lines and require it back, whitespace-normalised.
+    local rebuilt = {}
+    for i = 1, #lines do rebuilt[i] = lines[i].text end
+    local normalized = plainText:gsub("%s+", " "):match("^%s*(.-)%s*$")
+    if table.concat(rebuilt, " ") ~= normalized then return nil end
+
+    return lines
+end
+
+-- Fallback wrap: greedy fill at spaces, measured on the off-frame ruler. Never
+-- touches the display FontString and never needs the span API, so this is the
+-- version to rely on unconditionally. Returns the same array shape as
+-- DiscoverTextLines (no `left`), or nil.
+--
+-- opts: width (required), face, size, style
+function addon.WrapTextGreedy(text, opts)
+    opts = opts or {}
+    if type(text) ~= "string" or text == "" then return nil end
+    if issecretvalue and issecretvalue(text) then return nil end
+
+    local width = tonumber(opts.width)
+    if not width or width <= 0 then return nil end
+
+    local face  = opts.face or (select(1, _G.GameFontNormal:GetFont()))
+    local size  = tonumber(opts.size) or 12
+    local style = opts.style or ""
+
+    -- Measure through MeasureTextWidth rather than GetUnboundedStringWidthForText.
+    -- That newer getter looks ideal (no SetText round trip) but has zero callers in
+    -- Blizzard's source, and more importantly a raw getter can hand back 0 on a
+    -- layout that has not settled. Zero is a number, so it sails past a type check
+    -- and reads as "this line fits" -- which silently concatenates the entire name
+    -- onto one line. MeasureTextWidth is the production-proven path and already
+    -- rejects <= 0.
+    local function widthOf(s)
+        return addon.MeasureTextWidth(s, face, size, style)
+    end
+
+    local lines = {}
+    local cur, curFirst, curLast
+
+    for s, word in text:gmatch("()(%S+)") do
+        local wordLast = s + #word - 1
+        if not cur then
+            cur, curFirst, curLast = word, s, wordLast
+        else
+            local candidate = cur .. " " .. word
+            local w = widthOf(candidate)
+            -- Unmeasurable: bail out entirely. Treating nil as "it fits" quietly
+            -- concatenates the whole name onto one line, which then renders
+            -- ellipsized -- worse than admitting we could not wrap it.
+            if not w then return nil end
+            if w <= width then
+                cur, curLast = candidate, wordLast
+            else
+                lines[#lines + 1] = { text = cur, first = curFirst, last = curLast }
+                cur, curFirst, curLast = word, s, wordLast
+            end
+        end
+    end
+    if cur then lines[#lines + 1] = { text = cur, first = curFirst, last = curLast } end
+    if #lines == 0 then return nil end
+
+    -- A single word wider than the box has nowhere to break; flag it so callers can
+    -- report the "shrink to the floor, then ellipsize" case rather than guess.
+    for _, ln in ipairs(lines) do
+        ln.width = widthOf(ln.text)
+        if ln.width and ln.width > width then ln.overflow = true end
+    end
+
+    -- No ruler cleanup needed: MeasureTextWidth clears it after every call.
+    return lines
+end
+
+--------------------------------------------------------------------------------
 -- Custom Font Picker Popup (Tabbed 3-Column Scrollable Grid)
 --------------------------------------------------------------------------------
 

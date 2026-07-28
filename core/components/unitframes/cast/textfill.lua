@@ -32,6 +32,24 @@ local TIER_COLORS_NORMAL = CB._TIER_COLORS_NORMAL
 local TIER_COLORS_DISABLED = CB._TIER_COLORS_DISABLED
 local MAX_EMPOWERED_TIERS = 5
 
+-- Shrink-to-fit tuning (core/fonts.lua is TOC 31, this file 123 — safe to cache)
+local measureTextWidth = addon.MeasureTextWidth
+local FIT_MIN_POINT_SIZE = 7     -- never render the spell name smaller than this
+local FIT_MIN_SCALE = 0.55       -- absolute floor regardless of configured size
+local FIT_H_OVERFLOW = 200       -- clipFrame left-edge overflow, px
+
+-- Stock template widths, used only when frame:GetWidth() is unreadable (secret on
+-- tainted target/boss cast bars — see pitfall #13).
+--   Player 208 : PlayerCastingBarFrame,   CastingBarFrame.xml
+--   Target 150 : TargetSpellBarTemplate,  TargetFrame.xml
+--   Focus  150 : same template
+--   Boss   120 : BossSpellBarTemplate,    TargetFrame.xml
+-- Target/Focus/Boss stay correct because Scoot scales them with frame:SetScale
+-- (castBarScale), which GetWidth is independent of. Player is the exception: its
+-- width is a real SetWidth of origWidth * widthPct/100 (styling.lua), so the
+-- constant is scaled to match.
+local FIT_BAR_WIDTH_BY_UNIT = { Player = 208, Target = 150, Focus = 150, Boss = 120 }
+
 -- Resolve the fill color from cast bar color settings (mirrors bars/textures.lua logic)
 -- frame: the cast bar frame (used to read interruptibility state for default color mode)
 local function resolveBarFillColor(cfg, unit, frame)
@@ -52,6 +70,103 @@ local function resolveBarFillColor(cfg, unit, frame)
 		return 1, 1, 1, 1
 	end
 	return 1, 0.7, 0, 1
+end
+
+-- Resolve the cast bar's width in pixels.
+-- Ladder: live GetWidth cached at apply time -> stock template constant -> nil.
+-- Returns nil when the width is unknowable, in which case callers must not shrink.
+local function resolveBarWidth(frame)
+	local bw = getProp(frame, "textFillBarWidth")
+	if bw and bw > 0 then return bw end
+
+	local unit = getProp(frame, "textFillUnit")
+	bw = unit and FIT_BAR_WIDTH_BY_UNIT[unit] or nil
+	if bw and unit == "Player" then
+		-- Player is the one unit whose width Scoot changes with a real SetWidth
+		local d = addon and addon.db and addon.db.profile
+		local uf = d and d.unitFrames and d.unitFrames.Player
+		local pct = tonumber(uf and uf.castBar and uf.castBar.widthPct) or 100
+		if pct < 50 then pct = 50 elseif pct > 150 then pct = 150 end
+		bw = bw * (pct / 100)
+	end
+	if not bw or bw <= 0 then return nil end
+	return bw
+end
+
+-- Shrink the spell name so it always fits inside the bar, by applying an IDENTICAL
+-- text scale to filledText and frame.Text.
+--
+-- Why scale and not SetWidth: pitfalls #25/#28 were caused by WoW's TRUNCATION
+-- engine, which re-shapes per-character |cff strings differently depending on their
+-- hex values. SetTextScale never invokes it, so it cannot reintroduce that drift,
+-- and it does not fight the SetWidth-to-0 guard hooks. Byte-identical strings +
+-- identical scale + identical font => identical glyph positions by construction.
+--
+-- SetSmoothScaling(true) is REQUIRED, not cosmetic: without it WoW snaps the scaled
+-- line height to a whole number and re-rasterises, which IS a shaper input and would
+-- put the drift straight back.
+--
+-- Measurement happens on an off-frame UIParent-anchored ruler (addon.MeasureTextWidth),
+-- never on filledText: the geometry getters are SecretWhenAnchoringSecret, and
+-- filledText anchors through the Blizzard cast bar — the same chain that made
+-- GetHeight() secret in pitfall #13. Measuring there would silently no-op on exactly
+-- the tainted target/boss bars where this matters most.
+--
+-- Always recomputes from scratch and never reads the current scale as state, so it
+-- is idempotent and self-correcting across mid-cast text changes (channel -> new
+-- cast, "Interrupted", the empowered plain-text swap).
+--
+-- Returns the applied scale (1 when the fit could not run).
+local function fitTextFillScale(frame, styleCfg, text)
+	local elements = getProp(frame, "textFillElements")
+	if not elements or not elements.filledText then return 1 end
+	styleCfg = styleCfg or {}
+
+	local baseSize = tonumber(styleCfg.size) or 10
+	local s = 1
+
+	-- Keep the name clear of the end caps (capW mirrors applyTextFillMode)
+	local barW = resolveBarWidth(frame)
+	local capSize = tonumber(elements.capSize) or 6
+	local avail = barW and (barW - (2 * math.max(2, capSize * 0.3) + 4)) or nil
+	if avail and avail <= 0 then avail = nil end
+
+	if avail and measureTextWidth then
+		local face = (addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__"))
+			or (select(1, _G.GameFontNormal:GetFont()))
+		local outline = tostring(styleCfg.style or "OUTLINE")
+		-- Measure the EXACT bytes that were set, gradient codes included: |cff hex
+		-- values participate in kerning resolution (pitfall #28), so the gradient
+		-- string's natural width genuinely differs from the plain string's.
+		local natural = measureTextWidth(text, face, baseSize, outline)
+		if natural and natural > avail then
+			s = avail / natural
+			-- Floor expressed in point size, not raw scale: 0.5 of a 10pt name is
+			-- unreadable. Clamp rather than give up — a partial shrink plus the
+			-- clipFrame horizontal overflow strictly beats no shrink at all.
+			local minScale = math.min(1, math.max(FIT_MIN_SCALE, FIT_MIN_POINT_SIZE / baseSize))
+			if s < minScale then s = minScale end
+		end
+	end
+
+	local ft = elements.filledText
+	if ft.SetSmoothScaling then pcall(ft.SetSmoothScaling, ft, true) end
+	if ft.SetTextScale then pcall(ft.SetTextScale, ft, s) end
+
+	local spellFS = frame.Text
+	if spellFS then
+		if spellFS.SetSmoothScaling then
+			if getProp(frame, "textFillSmoothWas") == nil then
+				local was = addon.FitSafeBool and addon.FitSafeBool(spellFS, "GetSmoothScaling")
+				setProp(frame, "textFillSmoothWas", was == true)
+			end
+			pcall(spellFS.SetSmoothScaling, spellFS, true)
+		end
+		if spellFS.SetTextScale then pcall(spellFS.SetTextScale, spellFS, s) end
+	end
+
+	setProp(frame, "textFillTextScale", s)
+	return s
 end
 
 -- Lazily create all text-fill visual elements for a cast bar frame
@@ -510,6 +625,22 @@ local function applyTextFillMode(frame, cfg, unit, empowered)
 	-- Flag for Show() guards and shake hook to check
 	setProp(frame, "textFillActive", true)
 
+	-- Cache the state the shrink-to-fit needs. The SetText hooks that drive the fit
+	-- fire without a cfg in scope, so it has to come from here.
+	setProp(frame, "textFillUnit", unit)
+	setProp(frame, "textFillSpellNameCfg", cfg.spellNameText or {})
+	-- Bar width is read HERE rather than in the fit itself: a dimension read on a
+	-- dirty layout forces a flush that fires OnSizeChanged, where pcall cannot reach
+	-- the error (see the FitTextToBox header in core/fonts.lua). Secret on tainted
+	-- target/boss frames — resolveBarWidth falls back to template constants there.
+	do
+		local ok_bw, raw_bw = pcall(frame.GetWidth, frame)
+		if ok_bw and type(raw_bw) == "number"
+			and not (issecretvalue and issecretvalue(raw_bw)) and raw_bw > 0 then
+			setProp(frame, "textFillBarWidth", raw_bw)
+		end
+	end
+
 	-- Install one-time Show() hooks so Blizzard can't re-show hidden chrome textures
 	installTextFillShowGuards(frame)
 
@@ -561,11 +692,14 @@ local function applyTextFillMode(frame, cfg, unit, empowered)
 				if els then
 					if els.sparkTex then els.sparkTex:Hide() end
 					if els.sparkFrame then els.sparkFrame:Hide() end
-					-- Lock clipFrame to full width for clean fade-out
+					-- Lock clipFrame to full width for clean fade-out.
+					-- TOPLEFT keeps the same -FIT_H_OVERFLOW as the live anchor, or any
+					-- left-spill text would snap bright -> dim at cast end. BOTTOMRIGHT
+					-- stays at the bar's RIGHT so text the sweep never reached stays dim.
 					if els.clipFrame and els.clipFrame:IsShown() then
 						els.clipFrame:ClearAllPoints()
 						local textOverflow = 20
-						els.clipFrame:SetPoint("TOPLEFT", self, "TOPLEFT", 0, textOverflow)
+						els.clipFrame:SetPoint("TOPLEFT", self, "TOPLEFT", -FIT_H_OVERFLOW, textOverflow)
 						els.clipFrame:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, -textOverflow)
 					end
 					-- Lock filledLine to full bar width (no longer clipped by clipFrame)
@@ -605,6 +739,7 @@ local function applyTextFillMode(frame, cfg, unit, empowered)
 	-- End cap dimensions (tick style: narrow width, full height)
 	local capW = math.max(2, capSize * 0.3)
 	local capH = capSize
+	elements.capSize = capSize  -- shrink-to-fit reads this for cap padding
 
 	-- Gray color for unfilled elements (solid, no opacity reduction)
 	local grayR, grayG, grayB = 0.5, 0.5, 0.5
@@ -669,13 +804,23 @@ local function applyTextFillMode(frame, cfg, unit, empowered)
 	clipFrame:ClearAllPoints()
 	-- Anchor vertically to bar frame with overflow for text taller than bar.
 	-- Uses anchor-based height (secret-safe) instead of SetHeight(GetHeight()).
+	-- Horizontal overflow on the LEFT lets a name wider than the bar reveal whole
+	-- glyphs instead of being sliced mid-glyph at the bar edge. It does not change
+	-- the sweep rate (the right edge tracks fillTex, which spans exactly the bar):
+	-- left spill is lit from t=0, right spill never lights. Shrink-to-fit is the
+	-- real fix; this is the floor for names that hit the scale clamp.
+	-- Safe because every OTHER clipFrame child is anchored to the bar or to
+	-- StagePips, never to clipFrame — so widening it reveals only filledText.
 	local textOverflow = 20
-	clipFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, textOverflow)
+	clipFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", -FIT_H_OVERFLOW, textOverflow)
 	if fillTex then
 		clipFrame:SetPoint("BOTTOMRIGHT", fillTex, "BOTTOMRIGHT", 0, -textOverflow)
 	else
-		clipFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, -textOverflow)
-		clipFrame:SetWidth(0.1)
+		-- No fill texture to track: park the right edge at the bar's left, i.e. zero
+		-- progress. The left anchor must match the TOPLEFT above or the two would
+		-- disagree on where the frame starts.
+		clipFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -FIT_H_OVERFLOW, -textOverflow)
+		clipFrame:SetWidth(FIT_H_OVERFLOW + 0.1)
 	end
 	clipFrame:Show()
 
@@ -887,12 +1032,20 @@ local function applyTextFillMode(frame, cfg, unit, empowered)
 					-- immediately after and applies matching escape codes to filledText.
 					-- Setting raw text here creates a brief mismatch that can cause
 					-- kerning differences around thin characters like apostrophes.
+					--
+					-- The re-fit below is what makes shrink-to-fit correct at all:
+					-- syncTextFillText always runs BEFORE Blizzard's SetText (its
+					-- SetStatusBarTexture fires first — pitfall #27), so without this
+					-- the scale would be computed for the PREVIOUS spell name. No
+					-- reentrancy risk: the fit calls SetTextScale, never SetText.
 					if not getProp(frame, "textFillGradientActive") then
 						els.filledText:SetText(text)
+						fitTextFillScale(frame, getProp(frame, "textFillSpellNameCfg"), text)
 					elseif issecretvalue and issecretvalue(text) then
 						-- Gradient mode + secret: can't apply gradient to secrets, but
 						-- correct plain text is better than stale gradient text
 						els.filledText:SetText(text)
+						fitTextFillScale(frame, getProp(frame, "textFillSpellNameCfg"), text)
 					end
 				end
 			end)
@@ -935,6 +1088,7 @@ local function hideTextFillElements(frame)
 	if elements.sparkTex then elements.sparkTex:Hide() end
 	-- Clear stored dimensions
 	elements.lineHeight = nil
+	elements.capSize = nil
 	elements.effectiveTextHeight = nil
 	elements.textLeftEdge = nil
 	elements.textRightEdge = nil
@@ -961,6 +1115,22 @@ local function hideTextFillElements(frame)
 	if frame.Text and frame.Text.SetAlpha then
 		pcall(frame.Text.SetAlpha, frame.Text, 1)
 	end
+	-- Undo shrink-to-fit. Without this the Blizzard FontString stays shrunk after
+	-- switching back to castBarMode = "default". This function is the complete exit
+	-- surface — it is called only from styling.lua and boss.lua, both the else-branch
+	-- of the castBarMode check.
+	if frame.Text then
+		if frame.Text.SetTextScale then pcall(frame.Text.SetTextScale, frame.Text, 1) end
+		if frame.Text.SetSmoothScaling then
+			pcall(frame.Text.SetSmoothScaling, frame.Text, getProp(frame, "textFillSmoothWas") == true)
+		end
+	end
+	if elements.filledText and elements.filledText.SetTextScale then
+		pcall(elements.filledText.SetTextScale, elements.filledText, 1)
+	end
+	setProp(frame, "textFillTextScale", nil)
+	setProp(frame, "textFillSmoothWas", nil)
+	setProp(frame, "textFillBarWidth", nil)
 	-- Clear text-fill flag so Show() guards and shake hook become inactive
 	setProp(frame, "textFillActive", nil)
 
@@ -977,13 +1147,21 @@ local function syncTextFillText(frame, cfg)
 	local spellFS = frame.Text
 	if not spellFS then return end
 
-	-- Copy font properties from styled original text (guard against secrets on tainted frames)
-	local ok_gf, face, size, flags = pcall(spellFS.GetFont, spellFS)
-	if not ok_gf then face = nil end
-	if face and (issecretvalue and issecretvalue(face)) then face = nil end
-	if size and (issecretvalue and issecretvalue(size)) then size = nil end
-	if flags and (issecretvalue and issecretvalue(flags)) then flags = nil end
-	if face then pcall(elements.filledText.SetFont, elements.filledText, face, size or 12, flags) end
+	-- Font: resolve from config directly (same three values styling.lua applies to
+	-- frame.Text). Copying via GetFont() means that on tainted frames — where it
+	-- returns secrets — filledText silently keeps its creation-time FRIZQT__ 12,
+	-- and the shrink-to-fit below, which measures with the CONFIGURED font, would
+	-- compute a scale for a font that is not the one being rendered.
+	local styleCfg = cfg.spellNameText or {}
+	local face = (addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__"))
+		or (select(1, _G.GameFontNormal:GetFont()))
+	local size = tonumber(styleCfg.size) or 10
+	local flags = tostring(styleCfg.style or "OUTLINE")
+	if addon.ApplyFontStyle then
+		addon.ApplyFontStyle(elements.filledText, face, size, flags)
+	else
+		pcall(elements.filledText.SetFont, elements.filledText, face, size, flags)
+	end
 	-- Copy shadow properties so filled text has identical visual bounds
 	do
 		local ok_sc, sr, sg, sb, sa = pcall(spellFS.GetShadowColor, spellFS)
@@ -1020,7 +1198,7 @@ local function syncTextFillText(frame, cfg)
 	-- During empowered text-fill, skip gradient coloring — stage updater manages filled text color.
 	-- Use plain text so SetTextColor from the stage updater is the sole color source.
 	local isEmpoweredTF = elements.empowered and elements.empowered.active
-	local styleCfg_tf = cfg.spellNameText or {}
+	local styleCfg_tf = styleCfg
 	local colorMode_tf = styleCfg_tf.colorMode or "default"
 	-- Store gradient-active flag for the SetText hook to skip raw text copies
 	local isGradientActive = not isEmpoweredTF and (colorMode_tf == "classGradient" or colorMode_tf == "specGradient" or colorMode_tf == "customGradient")
@@ -1029,13 +1207,16 @@ local function syncTextFillText(frame, cfg)
 	-- secret, pass it directly to filledText (SetText is AllowedWhenTainted).  Gradient
 	-- processing is skipped (can't do string operations on secrets) and the gradient-
 	-- active flag is cleared so the SetText hook can update filledText on subsequent calls.
+	local appliedText = nil  -- the exact bytes set on filledText, for the shrink-to-fit
 	if (rawText == "") and secretText then
 		elements.filledText:SetText(secretText)
+		appliedText = secretText
 		setProp(frame, "textFillGradientActive", nil)
 	elseif isGradientActive and addon.BuildColorRampString then
 		local r1, g1, b1, r2, g2, b2 = CB._resolveGradientColors(colorMode_tf, styleCfg_tf)
 		local gradientStr = addon.BuildColorRampString(rawText, r1, g1, b1, r2, g2, b2)
 		elements.filledText:SetText(gradientStr)
+		appliedText = gradientStr
 		-- Identical |cff codes on frame.Text eliminate per-character shaper-run
 		-- kerning drift that caused ~1-2px apostrophe ghost (see pitfall #28).
 		CB._rampApplying = true
@@ -1043,6 +1224,7 @@ local function syncTextFillText(frame, cfg)
 		CB._rampApplying = false
 	else
 		elements.filledText:SetText(rawText)
+		appliedText = rawText
 		-- Ensure frame.Text has raw text (no inline |cff codes) so unfilled color works
 		if rawText and getProp(spellFS, "_rampRawText") then
 			local ok_gt, currentText = pcall(spellFS.GetText, spellFS)
@@ -1057,33 +1239,43 @@ local function syncTextFillText(frame, cfg)
 	if elements.filledText.SetJustifyH then elements.filledText:SetJustifyH("CENTER") end
 	-- Position to match original text (read from config, not from current anchor)
 	elements.filledText:ClearAllPoints()
-	local styleCfg = cfg.spellNameText or {}
 	local ox = (styleCfg.offset and tonumber(styleCfg.offset.x)) or 0
 	local oy = (styleCfg.offset and tonumber(styleCfg.offset.y)) or 0
 	elements.filledText:SetPoint("CENTER", frame, "CENTER", ox, oy)
+	-- No SetWidth constraint on either text — both render at natural width.
+	-- WoW's truncation engine can produce different centering for per-character
+	-- |cff codes with different color values, causing ~1-2px offset on long names.
+	-- Long names are handled by scaling instead (see fitTextFillScale).
+	-- Clear any previously set width constraint (from prior apply cycles).
+	-- Must precede every measurement below.
+	if elements.filledText.SetWidth then pcall(elements.filledText.SetWidth, elements.filledText, 0) end
+	if spellFS.SetWidth then pcall(spellFS.SetWidth, spellFS, 0) end
+	-- Shrink long names to fit the bar. Runs here — after the text and font are set,
+	-- before the measurements below — because GetStringHeight/GetStringWidth return
+	-- SCALED values, so fitting first makes them correct with no adjustment.
+	local tfScale = fitTextFillScale(frame, styleCfg, appliedText) or 1
 	-- Expand clip frame height to contain text taller than the bar
 	local clipFrame = elements.clipFrame
 	if clipFrame then
 		local ok_th, raw_th = pcall(elements.filledText.GetStringHeight, elements.filledText)
-		local textH = (ok_th and type(raw_th) == "number") and raw_th or nil
+		local textH = (ok_th and type(raw_th) == "number"
+			and not (issecretvalue and issecretvalue(raw_th))) and raw_th or nil
 		if (not textH or textH <= 0) and size then
-			textH = size * 1.15
+			-- Fallback is in unscaled points, so it needs the scale applied by hand
+			textH = size * 1.15 * tfScale
 		end
 		elements.effectiveTextHeight = textH
 	end
-	-- No SetWidth constraint on either text — both render at natural width.
-	-- WoW's truncation engine can produce different centering for per-character
-	-- |cff codes with different color values, causing ~1-2px offset on long names.
-	-- The clip frame handles progressive reveal; overflow beyond bar edges is
-	-- acceptable in the minimalist text-fill aesthetic.
-	-- Clear any previously set width constraint (from prior apply cycles)
-	if elements.filledText.SetWidth then pcall(elements.filledText.SetWidth, elements.filledText, 0) end
-	if spellFS.SetWidth then pcall(spellFS.SetWidth, spellFS, 0) end
-	-- Store text horizontal bounds for spark height calculation
-	local ok_bw, raw_bw = pcall(frame.GetWidth, frame)
-	local bw = (ok_bw and type(raw_bw) == "number" and not (issecretvalue and issecretvalue(raw_bw))) and raw_bw or 0
+	-- Store text horizontal bounds for spark height calculation.
+	-- Same width ladder as the fit, so these stay meaningful on tainted frames
+	-- where GetWidth is secret (previously they collapsed to a 0-width bar).
+	local bw = resolveBarWidth(frame) or 0
 	local ok_sw, raw_sw = pcall(elements.filledText.GetStringWidth, elements.filledText)
-	local sw = (ok_sw and type(raw_sw) == "number") and raw_sw or 0
+	-- issecretvalue guard is load-bearing (pitfall #12): type() passes secret numbers,
+	-- and a secret reaching the comparison below throws, aborting this function inside
+	-- the caller's pcall — silently skipping the visibility and unfilled-dim blocks.
+	local sw = (ok_sw and type(raw_sw) == "number"
+		and not (issecretvalue and issecretvalue(raw_sw))) and raw_sw or 0
 	if sw > 0 then
 		-- Cap to bar width since clip frame clips at bar edge anyway
 		if bw > 0 and sw > bw then sw = bw end
@@ -1114,8 +1306,11 @@ local function syncTextFillText(frame, cfg)
 	end
 end
 
--- Export text-fill helpers to namespace for styling.lua and boss.lua
+-- Export text-fill helpers to namespace for styling.lua and boss.lua.
+-- cast/core.lua loads BEFORE this file (TOC 122 vs 123), so it must index
+-- CB._fitTextFillScale at call time rather than caching it in a local.
 CB._applyTextFillMode = applyTextFillMode
 CB._hideTextFillElements = hideTextFillElements
 CB._syncTextFillText = syncTextFillText
 CB._deactivateEmpoweredTextFill = deactivateEmpoweredTextFill
+CB._fitTextFillScale = fitTextFillScale
