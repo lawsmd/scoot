@@ -231,24 +231,28 @@ function Buffs.Render(panel, scrollContent)
                 set = function(v)
                     setSetting("borderStyle", v)
                     applyStyles()
+                    builder:DeferredRefreshAll()
                 end,
             })
 
-            inner:AddSlider({
-                label = "Border Thickness",
-                description = "Thickness of the border in pixels.",
-                min = 1,
-                max = 8,
-                step = 0.5,
-                precision = 1,
-                get = function() return getSetting("borderThickness") or 1 end,
-                set = function(v)
-                    setSetting("borderThickness", v)
-                    applyStyles()
-                end,
-                minLabel = "1",
-                maxLabel = "8",
-            })
+            -- Thickness is square-style only; atlas art has no independent edge width
+            if addon.IconBorders.SupportsThickness(getSetting("borderStyle") or "square") then
+                inner:AddSlider({
+                    label = "Border Thickness",
+                    description = "Thickness of the border in pixels.",
+                    min = 1,
+                    max = 8,
+                    step = 0.5,
+                    precision = 1,
+                    get = function() return getSetting("borderThickness") or 1 end,
+                    set = function(v)
+                        setSetting("borderThickness", v)
+                        applyStyles()
+                    end,
+                    minLabel = "1",
+                    maxLabel = "8",
+                })
+            end
 
             inner:Finalize()
         end,

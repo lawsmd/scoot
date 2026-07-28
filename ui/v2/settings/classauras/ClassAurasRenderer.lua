@@ -232,27 +232,30 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                             disabled = iconControlsDisabled,
                         })
 
-                        tabBuilder:AddSlider({
-                            label = "Border Thickness",
-                            description = "Thickness of the border in pixels.",
-                            min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() return getSetting("borderThickness") or 1 end,
-                            set = function(v) h.setAndApply("borderThickness", v) builder:DeferredRefreshAll() end,
-                            minLabel = "1", maxLabel = "8",
-                            disabled = iconControlsDisabled,
-                        })
+                        -- Thickness is square-style only; atlas art has no independent edge width
+                        if addon.IconBorders.SupportsThickness(getSetting("borderStyle") or "none") then
+                            tabBuilder:AddSlider({
+                                label = "Border Thickness",
+                                description = "Thickness of the border in pixels.",
+                                min = 1, max = 8, step = 0.5, precision = 1,
+                                get = function() return getSetting("borderThickness") or 1 end,
+                                set = function(v) h.setAndApply("borderThickness", v) builder:DeferredRefreshAll() end,
+                                minLabel = "1", maxLabel = "8",
+                                disabled = iconControlsDisabled,
+                            })
+                        end
 
                         tabBuilder:AddDualSlider({
                             label = "Border Inset",
                             disabled = iconControlsDisabled,
                             sliderA = {
-                                axisLabel = "H", min = -4, max = 4, step = 1,
+                                axisLabel = "H", min = -4, max = 4, step = 0.5, precision = 1,
                                 get = function() return getSetting("borderInsetH") or 0 end,
                                 set = function(v) h.setAndApply("borderInsetH", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                             sliderB = {
-                                axisLabel = "V", min = -4, max = 4, step = 1,
+                                axisLabel = "V", min = -4, max = 4, step = 0.5, precision = 1,
                                 get = function() return getSetting("borderInsetV") or 0 end,
                                 set = function(v) h.setAndApply("borderInsetV", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-4", maxLabel = "+4",

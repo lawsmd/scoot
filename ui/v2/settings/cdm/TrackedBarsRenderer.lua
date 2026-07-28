@@ -566,27 +566,33 @@ function TrackedBars.Render(panel, scrollContent)
                         setSetting("iconBorderEnable", true)
                         setSetting("iconBorderStyle", v)
                     end
+                    builder:DeferredRefreshAll()
                 end,
             })
 
-            inner:AddSlider({
-                label = "Border Thickness", min = 1, max = 8, step = 0.5,
-                precision = 1,
-                get = function() local v = getSetting("iconBorderThickness") or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                set = function(v) setSetting("iconBorderThickness", math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2))) end,
-                minLabel = "1", maxLabel = "8",
-            })
+            -- Thickness is square-style only; atlas art has no independent edge width
+            local currentIconBorderStyle = (not getSetting("iconBorderEnable")) and "none"
+                or (getSetting("iconBorderStyle") or "square")
+            if addon.IconBorders.SupportsThickness(currentIconBorderStyle) then
+                inner:AddSlider({
+                    label = "Border Thickness", min = 1, max = 8, step = 0.5,
+                    precision = 1,
+                    get = function() local v = getSetting("iconBorderThickness") or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
+                    set = function(v) setSetting("iconBorderThickness", math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2))) end,
+                    minLabel = "1", maxLabel = "8",
+                })
+            end
 
             inner:AddDualSlider({
                 label = "Border Inset",
                 sliderA = {
-                    axisLabel = "H", min = -4, max = 4, step = 1,
+                    axisLabel = "H", min = -4, max = 4, step = 0.5, precision = 1,
                     get = function() return getSetting("iconBorderInsetH") or getSetting("iconBorderInset") or 0 end,
                     set = function(v) setSetting("iconBorderInsetH", v) end,
                     minLabel = "-4", maxLabel = "+4",
                 },
                 sliderB = {
-                    axisLabel = "V", min = -4, max = 4, step = 1,
+                    axisLabel = "V", min = -4, max = 4, step = 0.5, precision = 1,
                     get = function() return getSetting("iconBorderInsetV") or getSetting("iconBorderInset") or 0 end,
                     set = function(v) setSetting("iconBorderInsetV", v) end,
                     minLabel = "-4", maxLabel = "+4",

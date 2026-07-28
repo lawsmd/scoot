@@ -217,23 +217,27 @@ function TrackedBuffs.Render(panel, scrollContent)
                 set = function(v)
                     setSetting("borderStyle", v)
                     if addon and addon.ApplyStyles then C_Timer.After(0, function() addon:ApplyStyles() end) end
+                    builder:DeferredRefreshAll()
                 end,
             })
 
-            inner:AddSlider({
-                label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
-                get = function() return getSetting("borderThickness") or 1 end,
-                set = function(v)
-                    setSetting("borderThickness", v)
-                    if addon and addon.ApplyStyles then C_Timer.After(0, function() addon:ApplyStyles() end) end
-                end,
-                minLabel = "1", maxLabel = "8",
-            })
+            -- Thickness is square-style only; atlas art has no independent edge width
+            if addon.IconBorders.SupportsThickness(getSetting("borderStyle") or "square") then
+                inner:AddSlider({
+                    label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
+                    get = function() return getSetting("borderThickness") or 1 end,
+                    set = function(v)
+                        setSetting("borderThickness", v)
+                        if addon and addon.ApplyStyles then C_Timer.After(0, function() addon:ApplyStyles() end) end
+                    end,
+                    minLabel = "1", maxLabel = "8",
+                })
+            end
 
             inner:AddDualSlider({
                 label = "Border Inset",
                 sliderA = {
-                    axisLabel = "H", min = -4, max = 4, step = 1,
+                    axisLabel = "H", min = -4, max = 4, step = 0.5, precision = 1,
                     get = function() return getSetting("borderInsetH") or getSetting("borderInset") or -1 end,
                     set = function(v)
                         setSetting("borderInsetH", v)
@@ -242,7 +246,7 @@ function TrackedBuffs.Render(panel, scrollContent)
                     minLabel = "-4", maxLabel = "+4",
                 },
                 sliderB = {
-                    axisLabel = "V", min = -4, max = 4, step = 1,
+                    axisLabel = "V", min = -4, max = 4, step = 0.5, precision = 1,
                     get = function() return getSetting("borderInsetV") or getSetting("borderInset") or -1 end,
                     set = function(v)
                         setSetting("borderInsetV", v)

@@ -479,6 +479,14 @@ local function applySquareBorder(overlay, opts)
     local insetH = tonumber(opts.insetH) or tonumber(opts.inset) or 0
     local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
 
+    -- Fractional insets need pixel-grid snapping relaxed or they round back to whole pixels
+    if addon.SetBorderTexturePixelSnap then
+        local subPixel = addon.BorderInsetIsSubPixel(insetH, insetV)
+        for _, tex in pairs(edges) do
+            addon.SetBorderTexturePixelSnap(tex, subPixel)
+        end
+    end
+
     -- Horizontal edges span full width; vertical edges trimmed to avoid corner overlap
     edges.Top:ClearAllPoints()
     edges.Top:SetPoint("TOPLEFT", overlay, "TOPLEFT", -insetH, insetV)
@@ -538,6 +546,11 @@ local function applyAtlasBorder(overlay, opts, styleDef)
     local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
     local expandX = baseExpandX - insetH
     local expandY = baseExpandY - insetV
+
+    -- Fractional insets need pixel-grid snapping relaxed or they round back to whole pixels
+    if addon.SetBorderTexturePixelSnap then
+        addon.SetBorderTexturePixelSnap(atlasTex, addon.BorderInsetIsSubPixel(insetH, insetV))
+    end
 
     -- Position the atlas texture
     atlasTex:ClearAllPoints()

@@ -1774,6 +1774,7 @@ function Builder:AddPreview(options)
         auraDefaultBarColor = options.auraDefaultBarColor,
         useLightDim = self._useLightDim,
         rowHeight = options.rowHeight,
+        borderPath = options.borderPath,
     })
 
     if preview then

@@ -20,6 +20,31 @@ local ICON_TEXCOORD_INSET = 0.07  -- crop outer ~7% to hide baked-in border art
 -- Icon Creation
 --------------------------------------------------------------------------------
 
+-- Border texture setup, split out so the settings-panel preview can build an icon frame that
+-- CG.ApplyBorderToIcon accepts. Idempotent: safe to call on a frame that already has them.
+function CG.EnsureIconBorderTextures(frame)
+    if not frame then return frame end
+
+    if not frame.borderEdges then
+        frame.borderEdges = {
+            Top = frame:CreateTexture(nil, "OVERLAY", nil, 1),
+            Bottom = frame:CreateTexture(nil, "OVERLAY", nil, 1),
+            Left = frame:CreateTexture(nil, "OVERLAY", nil, 1),
+            Right = frame:CreateTexture(nil, "OVERLAY", nil, 1),
+        }
+        for _, tex in pairs(frame.borderEdges) do
+            tex:Hide()
+        end
+    end
+
+    if not frame.atlasBorder then
+        frame.atlasBorder = frame:CreateTexture(nil, "OVERLAY", nil, 1)
+        frame.atlasBorder:Hide()
+    end
+
+    return frame
+end
+
 local function CreateIconFrame(parent)
     local icon = CreateFrame("Frame", nil, parent)
     icon:SetSize(30, 30)
@@ -63,20 +88,7 @@ local function CreateIconFrame(parent)
         GameTooltip:Hide()
     end)
 
-    -- Square border edges
-    icon.borderEdges = {
-        Top = icon:CreateTexture(nil, "OVERLAY", nil, 1),
-        Bottom = icon:CreateTexture(nil, "OVERLAY", nil, 1),
-        Left = icon:CreateTexture(nil, "OVERLAY", nil, 1),
-        Right = icon:CreateTexture(nil, "OVERLAY", nil, 1),
-    }
-    for _, tex in pairs(icon.borderEdges) do
-        tex:Hide()
-    end
-
-    -- Atlas border
-    icon.atlasBorder = icon:CreateTexture(nil, "OVERLAY", nil, 1)
-    icon.atlasBorder:Hide()
+    CG.EnsureIconBorderTextures(icon)
 
     return icon
 end
@@ -119,6 +131,9 @@ local function ReleaseIcon(groupIndex, icon)
         tex:Hide()
     end
     icon.atlasBorder:Hide()
+    if addon.ClearIconMask then
+        addon.ClearIconMask(icon.Icon)
+    end
     icon:SetScript("OnUpdate", nil)
     icon.entry = nil
     icon.entryIndex = nil
@@ -175,6 +190,9 @@ local function HideIconBorder(icon)
         tex:Hide()
     end
     icon.atlasBorder:Hide()
+    if addon.ClearIconMask then
+        addon.ClearIconMask(icon.Icon)
+    end
 end
 
 local function ApplySquareBorder(icon, opts)
@@ -186,9 +204,13 @@ local function ApplySquareBorder(icon, opts)
     local r, g, b, a = col[1] or 0, col[2] or 0, col[3] or 0, col[4] or 1
     local insetH = tonumber(opts.insetH) or tonumber(opts.inset) or 0
     local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
+    local subPixel = addon.BorderInsetIsSubPixel and addon.BorderInsetIsSubPixel(insetH, insetV)
 
     for _, tex in pairs(edges) do
         tex:SetColorTexture(r, g, b, a)
+        if addon.SetBorderTexturePixelSnap then
+            addon.SetBorderTexturePixelSnap(tex, subPixel)
+        end
     end
 
     edges.Top:ClearAllPoints()
@@ -214,6 +236,9 @@ local function ApplySquareBorder(icon, opts)
     for _, tex in pairs(edges) do
         tex:Show()
     end
+
+    -- How far the art reaches outside the icon frame, for callers that need to reserve room.
+    return insetH, insetV
 end
 
 local function ApplyAtlasBorder(icon, opts, styleDef)
@@ -244,6 +269,10 @@ local function ApplyAtlasBorder(icon, opts, styleDef)
     local expandX = baseExpandX - insetH
     local expandY = baseExpandY - insetV
 
+    if addon.SetBorderTexturePixelSnap then
+        addon.SetBorderTexturePixelSnap(atlasTex, addon.BorderInsetIsSubPixel(insetH, insetV))
+    end
+
     local adjL = styleDef.adjustLeft or 0
     local adjR = styleDef.adjustRight or 0
     local adjT = styleDef.adjustTop or 0
@@ -253,21 +282,33 @@ local function ApplyAtlasBorder(icon, opts, styleDef)
     atlasTex:SetPoint("TOPLEFT", icon, "TOPLEFT", -expandX - adjL, expandY + adjT)
     atlasTex:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", expandX + adjR, -expandY - adjB)
     atlasTex:Show()
+
+    -- How far the art reaches outside the icon frame, for callers that need to reserve room.
+    return expandX + math.max(adjL, adjR), expandY + math.max(adjT, adjB)
 end
 
-local function ApplyBorderToIcon(icon, opts)
+-- Exported so the settings-panel preview draws its border through the same code the HUD does.
+-- Returns the outward reach of the applied art on each axis.
+function CG.ApplyBorderToIcon(icon, opts)
     local style = opts.style or "square"
     local styleDef = nil
     if style ~= "square" and addon.IconBorders and addon.IconBorders.GetStyle then
         styleDef = addon.IconBorders.GetStyle(style)
     end
 
+    -- Round the icon to match rounded frame art, so its square corners can't poke out
+    -- past the arc. These are addon-owned textures, so masking them is always safe.
+    if addon.ApplyIconMask then
+        addon.ApplyIconMask(icon.Icon, icon, style)
+    end
+
     if styleDef and styleDef.type == "atlas" and styleDef.atlas then
-        ApplyAtlasBorder(icon, opts, styleDef)
+        return ApplyAtlasBorder(icon, opts, styleDef)
     else
-        ApplySquareBorder(icon, opts)
+        return ApplySquareBorder(icon, opts)
     end
 end
+local ApplyBorderToIcon = CG.ApplyBorderToIcon
 
 --------------------------------------------------------------------------------
 -- Text Styling Helper
@@ -299,6 +340,22 @@ end
 -- Border Application for Groups
 --------------------------------------------------------------------------------
 
+-- Single source of truth for how a group's DB becomes border options. Exported so the
+-- settings-panel preview resolves the same keys the HUD does, including the legacy
+-- borderInset fallback for profiles saved before the H/V split.
+function CG.BuildBorderOpts(db)
+    if not db then return nil end
+    return {
+        style = db.borderStyle or "square",
+        thickness = tonumber(db.borderThickness) or 1,
+        insetH = tonumber(db.borderInsetH) or tonumber(db.borderInset) or 0,
+        insetV = tonumber(db.borderInsetV) or tonumber(db.borderInset) or 0,
+        color = db.borderTintEnable and db.borderTintColor or {0, 0, 0, 1},
+        tintEnabled = db.borderTintEnable,
+        tintColor = db.borderTintColor,
+    }
+end
+
 function CG._ApplyBordersToGroup(groupIndex)
     local component = addon.Components and addon.Components["customGroup" .. groupIndex]
     if not component or not component.db then return end
@@ -307,15 +364,7 @@ function CG._ApplyBordersToGroup(groupIndex)
     local icons = activeIcons[groupIndex]
 
     if db.borderEnable then
-        local opts = {
-            style = db.borderStyle or "square",
-            thickness = tonumber(db.borderThickness) or 1,
-            insetH = tonumber(db.borderInsetH) or tonumber(db.borderInset) or 0,
-            insetV = tonumber(db.borderInsetV) or tonumber(db.borderInset) or 0,
-            color = db.borderTintEnable and db.borderTintColor or {0, 0, 0, 1},
-            tintEnabled = db.borderTintEnable,
-            tintColor = db.borderTintColor,
-        }
+        local opts = CG.BuildBorderOpts(db)
         for _, icon in ipairs(icons) do
             ApplyBorderToIcon(icon, opts)
         end

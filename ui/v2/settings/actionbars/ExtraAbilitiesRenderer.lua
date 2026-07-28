@@ -403,7 +403,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                 values = borderValues,
                 order = borderOrder,
                 get = function() return getSetting("borderStyle") or "off" end,
-                set = function(v) setSetting("borderStyle", v) end,
+                set = function(v) setSetting("borderStyle", v) builder:DeferredRefreshAll() end,
                 infoIcon = {
                     tooltipTitle = "Border Style",
                     tooltipText = "\"Off\" shows the default Blizzard border, which Scoot does not customize. \"Hidden\" removes all borders entirely.",
@@ -421,26 +421,29 @@ function ExtraAbilities.Render(panel, scrollContent)
                 setColor = function(r, g, b, a) setSetting("borderTintColor", {r, g, b, a}) end,
             })
 
-            inner:AddSlider({
-                label = "Border Thickness", min = 1, max = 8, step = 0.5,
-                precision = 1,
-                get = function() return getSetting("borderThickness") or 1 end,
-                set = function(v) setSetting("borderThickness", v) end,
-                minLabel = "1", maxLabel = "8",
-            })
+            -- Thickness is square-style only; atlas art has no independent edge width
+            if addon.IconBorders.SupportsThickness(getSetting("borderStyle") or "off") then
+                inner:AddSlider({
+                    label = "Border Thickness", min = 1, max = 8, step = 0.5,
+                    precision = 1,
+                    get = function() return getSetting("borderThickness") or 1 end,
+                    set = function(v) setSetting("borderThickness", v) end,
+                    minLabel = "1", maxLabel = "8",
+                })
+            end
 
             inner:AddDualSlider({
                 label = "Border Inset",
                 sliderA = {
                     axisLabel = "H",
-                    min = -4, max = 4, step = 1,
+                    min = -4, max = 4, step = 0.5, precision = 1,
                     get = function() return getSetting("borderInsetH") or getSetting("borderInset") or 0 end,
                     set = function(v) setSetting("borderInsetH", v) end,
                     minLabel = "-4", maxLabel = "4",
                 },
                 sliderB = {
                     axisLabel = "V",
-                    min = -4, max = 4, step = 1,
+                    min = -4, max = 4, step = 0.5, precision = 1,
                     get = function() return getSetting("borderInsetV") or getSetting("borderInset") or 0 end,
                     set = function(v) setSetting("borderInsetV", v) end,
                     minLabel = "-4", maxLabel = "4",

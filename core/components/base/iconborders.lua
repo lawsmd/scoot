@@ -5,6 +5,109 @@ local getState = addon.ComponentsUtil._getState
 
 local Util = addon.ComponentsUtil
 
+--------------------------------------------------------------------------------
+-- Sub-pixel border insets
+--------------------------------------------------------------------------------
+-- Textures snap to the physical pixel grid by default, which quantises fractional
+-- anchor offsets straight back to whole pixels: a 0.5 inset would render identically
+-- to 0 or 1. Snapping is relaxed only when the requested inset actually carries a
+-- fractional part, so whole-number insets keep their crisp, grid-aligned edges.
+
+local DEFAULT_TEXEL_SNAPPING_BIAS = 0.51
+
+function addon.BorderInsetIsSubPixel(insetH, insetV)
+    local h = tonumber(insetH)
+    local v = tonumber(insetV)
+    return (h ~= nil and h % 1 ~= 0) or (v ~= nil and v % 1 ~= 0)
+end
+
+function addon.SetBorderTexturePixelSnap(texture, subPixel)
+    if not texture then return end
+    if texture.SetSnapToPixelGrid then
+        pcall(texture.SetSnapToPixelGrid, texture, not subPixel)
+    end
+    if texture.SetTexelSnappingBias then
+        pcall(texture.SetTexelSnappingBias, texture, subPixel and 0 or DEFAULT_TEXEL_SNAPPING_BIAS)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Rounded icon masks
+--------------------------------------------------------------------------------
+-- Styles whose frame art has rounded corners need the icon rounded to match,
+-- otherwise the icon's square corners poke out past the arc and no inset value can
+-- hide them (see the note above ICON_BORDER_DEFINITIONS in core/iconborders.lua).
+-- Both registries are weak-keyed so nothing is ever written onto the target frames.
+
+local iconMasks = setmetatable({}, { __mode = "k" })      -- owner frame   -> MaskTexture
+local maskedTextures = setmetatable({}, { __mode = "k" }) -- icon texture  -> MaskTexture
+
+function addon.ClearIconMask(iconTexture)
+    if not iconTexture then return end
+    local existing = maskedTextures[iconTexture]
+    if existing and iconTexture.RemoveMaskTexture then
+        pcall(iconTexture.RemoveMaskTexture, iconTexture, existing)
+    end
+    maskedTextures[iconTexture] = nil
+end
+
+-- Applies (or removes) the rounded mask a border style calls for. `ownerFrame` must be
+-- a frame we own — the MaskTexture is created on it. Safe to call every restyle; the
+-- mask is created once per owner and re-anchored thereafter.
+function addon.ApplyIconMask(iconTexture, ownerFrame, styleKey, iconW, iconH)
+    if not iconTexture or not iconTexture.AddMaskTexture then return end
+
+    local atlas, scale
+    if addon.IconBorders and addon.IconBorders.GetMaskAtlas then
+        atlas, scale = addon.IconBorders.GetMaskAtlas(styleKey)
+    end
+
+    if not atlas then
+        addon.ClearIconMask(iconTexture)
+        return
+    end
+
+    local owner = ownerFrame or (iconTexture.GetParent and iconTexture:GetParent())
+    if not owner or not owner.CreateMaskTexture then return end
+
+    -- The mask is drawn larger than the icon (see GetMaskAtlas), so it needs real
+    -- dimensions rather than edge anchors. Prefer the caller's values, then the icon,
+    -- then the owner frame; bail rather than apply a wrongly-sized mask that would
+    -- crop the icon.
+    local w = tonumber(iconW) or (iconTexture.GetWidth and iconTexture:GetWidth()) or 0
+    local h = tonumber(iconH) or (iconTexture.GetHeight and iconTexture:GetHeight()) or 0
+    if w <= 0 or h <= 0 then
+        w = (owner.GetWidth and owner:GetWidth()) or 0
+        h = (owner.GetHeight and owner:GetHeight()) or 0
+    end
+    if w <= 0 or h <= 0 then
+        addon.ClearIconMask(iconTexture)
+        return
+    end
+
+    local mask = iconMasks[owner]
+    if not mask then
+        local ok, created = pcall(owner.CreateMaskTexture, owner)
+        if not ok or not created then return end
+        mask = created
+        iconMasks[owner] = mask
+    end
+
+    if not pcall(mask.SetAtlas, mask, atlas, false) then return end
+
+    scale = scale or 1.5
+    mask:ClearAllPoints()
+    mask:SetPoint("CENTER", iconTexture, "CENTER", 0, 0)
+    mask:SetSize(w * scale, h * scale)
+    mask:Show()
+
+    if maskedTextures[iconTexture] ~= mask then
+        addon.ClearIconMask(iconTexture)
+        pcall(iconTexture.AddMaskTexture, iconTexture, mask)
+        maskedTextures[iconTexture] = mask
+    end
+end
+
 local function getIconBorderContainer(frame)
     local st = getState(frame)
     return st and st.ScootIconBorderContainer or nil
@@ -206,6 +309,14 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
     local insetValueV = tonumber(opts and opts.insetV) or tonumber(opts and opts.inset) or 0
     local expandX = clamp(baseExpandX + (-insetValueH), -8, 8)
     local expandY = clamp(baseExpandY + (-insetValueV), -8, 8)
+    local subPixel = addon.BorderInsetIsSubPixel(insetValueH, insetValueV)
+
+    -- Round the icon to match rounded frame art. Only callers that own their icon
+    -- texture pass maskTarget; Blizzard-owned icons (action buttons, CooldownViewer)
+    -- already ship their own mask and must not be touched from addon context.
+    if opts and opts.maskTarget then
+        addon.ApplyIconMask(opts.maskTarget, opts.maskOwner or targetFrame, key)
+    end
 
     local appliedTexture
 
@@ -247,6 +358,7 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
                 if edge and edge.SetColorTexture then
                     edge:SetColorTexture(baseApplyColor[1] or 0, baseApplyColor[2] or 0, baseApplyColor[3] or 0, (baseApplyColor[4] == nil and 1) or baseApplyColor[4])
                 end
+                addon.SetBorderTexturePixelSnap(edge, subPixel)
             end
         end
         local atlasOverlay = addon.Borders.GetAtlasTintOverlay(targetFrame)
@@ -256,6 +368,7 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
     end
 
     if appliedTexture then
+        addon.SetBorderTexturePixelSnap(appliedTexture, subPixel)
         if styleDef.type == "square" and baseApplyColor then
             appliedTexture:SetVertexColor(baseApplyColor[1] or 0, baseApplyColor[2] or 0, baseApplyColor[3] or 0, baseApplyColor[4] or 1)
         else
@@ -292,6 +405,7 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
 
         if tintEnabled then
             overlay = ensureOverlay()
+            addon.SetBorderTexturePixelSnap(overlay, subPixel)
             local layer, sublevel = appliedTexture:GetDrawLayer()
             local desiredSub = clampSublevel((sublevel or 0) + 1)
             if layer then overlay:SetDrawLayer(layer, desiredSub or clampSublevel(sublevel) or 0) end
@@ -363,6 +477,7 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             end
 
             if appliedTexture then
+                addon.SetBorderTexturePixelSnap(appliedTexture, subPixel)
                 appliedTexture:SetAlpha(baseColor[4] or 1)
                 if appliedTexture.SetDesaturated then pcall(appliedTexture.SetDesaturated, appliedTexture, false) end
                 if appliedTexture.SetBlendMode then pcall(appliedTexture.SetBlendMode, appliedTexture, styleDef.baseBlendMode or styleDef.layerBlendMode or "BLEND") end
@@ -371,5 +486,7 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
         end
     end
 
-    return styleDef.type
+    -- expandX/expandY are the outward reach of the applied art, for callers that need to
+    -- reserve room around the icon (the settings preview sizes its clip box from these).
+    return styleDef.type, expandX, expandY
 end
