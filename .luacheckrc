@@ -42,6 +42,15 @@ read_globals = {
     "TargetFrame",
     "FocusFrame",
 
+    -- Edit Mode branding (ui/v2/editmode/)
+    "EditModeManagerFrame",
+    "EventRegistry",
+    "GameFontNormal",
+    "GetCursorPosition",
+    "HUD_EDIT_MODE_RESET_POSITION",
+    "NineSliceUtil",
+    "securecallfunction",
+
     -- Blizzard addon APIs
     "C_AddOns",
     "C_ClassColor",

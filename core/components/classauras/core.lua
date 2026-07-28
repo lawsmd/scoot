@@ -10,6 +10,24 @@ local Component = addon.ComponentPrototype
 -- Registry
 --------------------------------------------------------------------------------
 
+-- Class token -> settings nav key. A map is unavoidable: "DEATHKNIGHT" cannot be
+-- transformed into "classAurasDeathKnight" by string munging.
+CA.NAV_KEY_BY_CLASS = {
+    DEATHKNIGHT = "classAurasDeathKnight",
+    DEMONHUNTER = "classAurasDemonHunter",
+    DRUID       = "classAurasDruid",
+    EVOKER      = "classAurasEvoker",
+    HUNTER      = "classAurasHunter",
+    MAGE        = "classAurasMage",
+    MONK        = "classAurasMonk",
+    PALADIN     = "classAurasPaladin",
+    PRIEST      = "classAurasPriest",
+    ROGUE       = "classAurasRogue",
+    SHAMAN      = "classAurasShaman",
+    WARLOCK     = "classAurasWarlock",
+    WARRIOR     = "classAurasWarrior",
+}
+
 CA._registry = {}       -- [auraId] = auraDef (flat lookup)
 CA._classAuras = {}     -- [classToken] = { auraDef, auraDef, ... }
 CA._activeAuras = {}    -- [auraId] = { container, elements, component }

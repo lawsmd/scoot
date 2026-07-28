@@ -80,6 +80,18 @@ local function InitializeEditMode()
                     x = dp.x or 0,
                     y = dp.y or 0,
                 }, nil)
+
+                local Brand = addon.EditMode and addon.EditMode.Brand
+                if Brand then
+                    -- An aura hidden from settings has no section to expand, so
+                    -- the link falls back to the class page.
+                    local visible = not aura.hideFromSettings
+                    Brand:Register(state.container, {
+                        navKey      = CA.NAV_KEY_BY_CLASS[playerClassToken],
+                        componentId = visible and ("classAura_" .. aura.id) or nil,
+                        sectionKey  = visible and "main" or nil,
+                    })
+                end
             end
         end
     end

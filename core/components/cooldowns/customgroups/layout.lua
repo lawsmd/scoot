@@ -268,6 +268,12 @@ function CG._InitializeEditMode()
                 x = 0,
                 y = -100 + (i - 1) * -60,
             }, nil)
+
+            local Brand = addon.EditMode and addon.EditMode.Brand
+            if Brand then
+                -- Each group is its own nav page, so the page is the item.
+                Brand:Register(container, { navKey = "customGroup" .. i })
+            end
         end
     end
 

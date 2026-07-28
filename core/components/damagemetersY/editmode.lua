@@ -73,6 +73,16 @@ function DMY._InitializeEditMode()
                 x = 20,
                 y = 200 + (i - 1) * 60,
             }, nil)
+
+            local Brand = addon.EditMode and addon.EditMode.Brand
+            if Brand then
+                -- No per-window settings section exists; the window selector's
+                -- state carries the target instead.
+                Brand:Register(win.frame, {
+                    navKey    = "damageMeterV2",
+                    pageState = { key = "_damageMeterYSelectedWindow", value = i },
+                })
+            end
         end
     end
 

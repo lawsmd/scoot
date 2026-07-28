@@ -59,6 +59,7 @@ Theme.Fonts = {
 
 Theme.Textures = {
     NOISE_OVERLAY = "Interface\\AddOns\\Scoot\\media\\textures\\noise-overlay",
+    SCOOT_ICON    = "Interface\\AddOns\\Scoot\\ScootIcon",
 }
 
 --------------------------------------------------------------------------------

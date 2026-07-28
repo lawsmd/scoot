@@ -326,6 +326,15 @@ local function RegisterNoteWithEditMode(frame, index)
         y = dp.y,
     }, nil)
 
+    local Brand = addon.EditMode and addon.EditMode.Brand
+    if Brand then
+        Brand:Register(frame, {
+            navKey      = "notes",
+            componentId = "notes",
+            sectionKey  = "note" .. index,
+        })
+    end
+
     editModeRegistered[index] = true
 end
 
