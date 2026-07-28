@@ -150,6 +150,9 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug dmY abbrev")
             addon:Print("  /scoot debug widget <spawnchild|releaseall|state>")
             addon:Print("  /scoot debug inspect <state|cache>")
+            addon:Print("  /scoot debug nametext [size|lines|range|fallback|mode|font|sample|gradient|slices|class|treatment|scan|lengthprobe|fitprobe|report]")
+            addon:Print("  /scoot debug castz [player|pet|target|focus|boss1..5]")
+            addon:Print("  /scoot debug castz petevents   (toggle pet cast-event watch)")
             return
         end
 
@@ -481,6 +484,20 @@ function SlashCmdList.SCOOT(msg, editBox)
             return
         end
 
+        -- /scoot debug castz [unit] - Cast Bar Z phase 0 API probe
+        -- /scoot debug castz petevents
+        if sub1 == "castz" then
+            -- "petevents", not "pet" — "pet" is a valid unit to probe.
+            if sub2 == "petevents" then
+                if addon.DebugCastZPet then addon.DebugCastZPet()
+                else addon:Print("Cast Bar Z debug not available.") end
+                return
+            end
+            if addon.DebugCastZProbe then addon.DebugCastZProbe(sub2)
+            else addon:Print("Cast Bar Z debug not available.") end
+            return
+        end
+
         -- /scoot debug dmY cvar
         -- /scoot debug dmY api
         if sub1 == "dmy" then
@@ -532,6 +549,102 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("       /scoot debug dmY drilldata")
             addon:Print("       /scoot debug dmY multicol")
             addon:Print("       /scoot debug dmY abbrev")
+            return
+        end
+
+        -- /scoot debug nametext - auto-fit name box feasibility harness
+        if sub1 == "nametext" then
+            if not addon.DebugNameTextToggle then
+                addon:Print("Name text debug not loaded.")
+                return
+            end
+            if sub2 == "" then
+                addon.DebugNameTextToggle()
+                return
+            end
+            if sub2 == "size" then
+                addon.DebugNameTextSetSize(args[4], args[5])
+                return
+            end
+            if sub2 == "lines" then
+                addon.DebugNameTextSetLines(args[4])
+                return
+            end
+            if sub2 == "range" then
+                addon.DebugNameTextSetRange(args[4], args[5])
+                return
+            end
+            if sub2 == "fallback" then
+                addon.DebugNameTextSetFallback(args[4])
+                return
+            end
+            if sub2 == "mode" then
+                addon.DebugNameTextSetMode(args[4])
+                return
+            end
+            if sub2 == "font" then
+                -- args[4] raw: font keys are case-sensitive (e.g. ROBOTO_REG)
+                addon.DebugNameTextSetFont(args[4])
+                return
+            end
+            if sub2 == "sample" then
+                addon.DebugNameTextSample(args[4])
+                return
+            end
+            if sub2 == "gradient" then
+                addon.DebugNameTextSetGradient(args[4])
+                return
+            end
+            if sub2 == "slices" then
+                addon.DebugNameTextSetSlices(args[4])
+                return
+            end
+            if sub2 == "class" then
+                -- args[4] raw: class tokens are uppercase (DEATHKNIGHT, DEMONHUNTER)
+                addon.DebugNameTextSetClass(args[4])
+                return
+            end
+            if sub2 == "treatment" then
+                addon.DebugNameTextSetTreatment(args[4])
+                return
+            end
+            if sub2 == "identity" then
+                addon.DebugNameTextSetIdentity(args[4])
+                return
+            end
+            if sub2 == "scan" then
+                addon.DebugNameTextScan()
+                return
+            end
+            if sub2 == "lengthprobe" then
+                addon.DebugNameTextLengthProbe()
+                return
+            end
+            if sub2 == "fitprobe" then
+                addon.DebugNameTextFitProbe(args[4])
+                return
+            end
+            if sub2 == "report" then
+                addon.DebugNameTextReport()
+                return
+            end
+            addon:Print("Usage: /scoot debug nametext            (show/hide)")
+            addon:Print("       /scoot debug nametext size <w> <h>")
+            addon:Print("       /scoot debug nametext lines <n>")
+            addon:Print("       /scoot debug nametext range <min> <max>")
+            addon:Print("       /scoot debug nametext fallback <n>   (size when unmeasurable)")
+            addon:Print("       /scoot debug nametext mode <font|scale|blizzard>")
+            addon:Print("       /scoot debug nametext font <FACE>")
+            addon:Print("       /scoot debug nametext sample <n>")
+            addon:Print("       /scoot debug nametext gradient <off|line|block|slice|auto>")
+            addon:Print("       /scoot debug nametext slices <n>")
+            addon:Print("       /scoot debug nametext class <TOKEN|auto>")
+            addon:Print("       /scoot debug nametext treatment <cast|raw>")
+            addon:Print("       /scoot debug nametext identity <player|class>")
+            addon:Print("       /scoot debug nametext scan")
+            addon:Print("       /scoot debug nametext lengthprobe")
+            addon:Print("       /scoot debug nametext fitprobe [steps]  (does D(size) settle?)")
+            addon:Print("       /scoot debug nametext report")
             return
         end
 

@@ -33,7 +33,9 @@ read_globals = {
     "UnitGUID",
     "UnitHealth",
     "UnitHealthMax",
+    "UnitExists",
     "UnitInRange",
+    "UnitIsPlayer",
     "UnitName",
 
     -- WoW frame methods/mixins (accessed as globals in some patterns)
