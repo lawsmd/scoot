@@ -58,16 +58,16 @@ local function applyTextStyling(fontString)
     local fontStyle = db.textFontStyle
     if not fontFace and not fontStyle then return end
 
-    local currentFace, currentSize, currentFlags = fontString:GetFont()
-    if not currentSize then return end
+    local ok, currentFace, currentSize = pcall(fontString.GetFont, fontString)
+    if not ok or type(currentSize) ~= "number" then return end
 
     local newFace = fontFace and addon.ResolveFontFace(fontFace) or currentFace
-    local newFlags = fontStyle or currentFlags
-
-    local ok = pcall(fontString.SetFont, fontString, newFace, currentSize, newFlags)
-    if not ok and newFace ~= currentFace then
-        pcall(fontString.SetFont, fontString, currentFace, currentSize, newFlags)
-    end
+    -- Saved styles are Scoot pseudo-styles (SHADOW*/HEAVY*/NONE); ApplyFontStyle
+    -- decodes them into engine flags + shadow calls. Never feed GetFont() flags
+    -- back into SetFont: they can contain SLUG, which SetFont rejects as of
+    -- 12.0.7 (invalid flags now error instead of no-op). "OUTLINE" matches all
+    -- three Blizzard warning fonts when no style is saved.
+    addon.ApplyFontStyle(fontString, newFace, currentSize, fontStyle or "OUTLINE")
 end
 
 --- Find all FontStrings under a warning system frame (children → regions).
@@ -88,7 +88,7 @@ local function findWarningFontStrings(systemFrame)
 end
 
 --------------------------------------------------------------------------------
--- Hook Installation (Blizzard_EncounterWarnings is load-on-demand)
+-- Hook Installation (Blizzard_EncounterWarnings loads at startup as of 12.0.7)
 --------------------------------------------------------------------------------
 
 local hooksInstalled = false
@@ -97,15 +97,22 @@ local function tryInstallHooks()
     if hooksInstalled then return end
     if not ensureWarningsLoaded() then return end
 
-    local mixin = _G.EncounterWarningsTextElementMixin
+    local mixin = _G.EncounterWarningsViewElementMixin
     if not mixin then return end
 
-    -- Hook Init for real encounter warnings (not just Edit Mode previews).
-    -- Deferred: Edit Mode may re-apply SetFontObject in the same frame as Init.
+    -- Hook the BASE element mixin, not EncounterWarningsTextElementMixin: the
+    -- warning frames copy derived methods at creation time (before any addon
+    -- loads), so a derived-table hook never fires for them. The derived Inits
+    -- chain to the base through this global table at call time, which is the
+    -- one interception point that reaches pre-existing instances. Fires for
+    -- text and icon elements; the FontString filter keeps only the text.
+    -- Deferred: Blizzard's SetFontObject runs after the base Init returns.
     hooksecurefunc(mixin, "Init", function(self)
-        C_Timer.After(0, function()
-            applyTextStyling(self)
-        end)
+        if self.IsObjectType and self:IsObjectType("FontString") then
+            C_Timer.After(0, function()
+                applyTextStyling(self)
+            end)
+        end
     end)
     hooksInstalled = true
 end
@@ -126,7 +133,8 @@ end
 addon:RegisterComponentInitializer(function()
     tryInstallHooks()
 
-    -- Listen for demand-load if addon isn't available yet.
+    -- Safety net: the Blizzard addon normally loads at startup, but
+    -- AllowLoadGameType can keep it out of some game modes.
     if not hooksInstalled then
         local listener = CreateFrame("Frame")
         listener:RegisterEvent("ADDON_LOADED")
