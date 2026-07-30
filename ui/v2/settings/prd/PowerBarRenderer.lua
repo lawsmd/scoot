@@ -310,10 +310,10 @@ function PowerBar.Render(panel, scrollContent)
 
                         tabInner:AddSlider({
                             label = "Font Size",
-                            min = 6, max = 24, step = 1,
+                            min = 6, max = 36, step = 1,
                             get = function() return getSetting("valueTextFontSize") or 10 end,
                             set = function(v) setSetting("valueTextFontSize", v) end,
-                            minLabel = "6", maxLabel = "24",
+                            minLabel = "6", maxLabel = "36",
                         })
 
                         tabInner:AddSelector({
@@ -382,10 +382,10 @@ function PowerBar.Render(panel, scrollContent)
 
                         tabInner:AddSlider({
                             label = "Font Size",
-                            min = 6, max = 24, step = 1,
+                            min = 6, max = 36, step = 1,
                             get = function() return getSetting("percentTextFontSize") or 10 end,
                             set = function(v) setSetting("percentTextFontSize", v) end,
-                            minLabel = "6", maxLabel = "24",
+                            minLabel = "6", maxLabel = "36",
                         })
 
                         tabInner:AddSelector({
