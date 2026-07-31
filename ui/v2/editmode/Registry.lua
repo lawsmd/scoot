@@ -49,7 +49,13 @@ end
 --- lib.frameSelections[frame] is populated, so this is a pure table read rather
 --- than a hook on a library method.
 ---
---- opts = { navKey, componentId, sectionKey, tab, tabSectionKey, pageState, label }
+--- opts = { navKey, componentId, sectionKey, tab, tabSectionKey, pageState, label,
+---          mirror }
+---
+--- `mirror` is a function(frame) returning a spec list of settings controls to show
+--- inside the Edit Mode dialog itself. Held here rather than in the dialog so the
+--- provider travels with the frame that owns it; see ui/v2/editmode/Mirror.lua for
+--- the spec format.
 function Brand:Register(frame, opts)
     if not frame or registry[frame] then return end
 
@@ -76,6 +82,7 @@ function Brand:Register(frame, opts)
         tabSectionKey = opts.tabSectionKey,
         pageState     = opts.pageState,
         label         = opts.label,
+        mirror        = opts.mirror,
         selection     = selection,
     }
 

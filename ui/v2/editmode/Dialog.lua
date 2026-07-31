@@ -46,6 +46,8 @@ local skin
 local hooked = false
 local scootHeight          -- set while the dialog is showing a Scoot frame
 local lastPositionedFor    -- selection the dialog was last anchored to
+local mirrorBuiltFor       -- selection the mirror slot was last built for
+local mirrorDirty          -- force a rebuild even for the same selection
 
 local function GetTheme()
     return addon.UI and addon.UI.Theme
@@ -183,14 +185,15 @@ local function EnsureSkin(dialog)
         dialog:Reset()
     end)
 
-    -- Reserved for mirrored settings controls. Height 0 today, and the height
-    -- formula collapses the gap around it while it is empty, so the box stays
-    -- compact until something actually lives here.
+    -- Holds mirrored settings controls, filled per selection by SyncMirror. Empty
+    -- for a frame whose registration named no provider, and the height formula
+    -- collapses the gap around it in that case so the box stays compact.
     local mirror = CreateFrame("Frame", nil, skin)
     mirror:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -EMPTY_GAP)
     mirror:SetWidth(DIALOG_W - (PAD * 2))
     mirror:SetHeight(0)
     skin.MirrorSlot = mirror
+    skin._mirrorTitle = title
     -- Tracked explicitly rather than read back via GetHeight(), so the box size
     -- can never again depend on anchor-derived geometry. Anything that puts
     -- controls in MirrorSlot must set both this and the frame's height.
@@ -269,10 +272,57 @@ local function SetLEMChromeShown(dialog, shown)
     end
 end
 
+--------------------------------------------------------------------------------
+-- Mirrored settings
+--------------------------------------------------------------------------------
+
+local function ClearMirror()
+    local M = addon.EditMode.Mirror
+    if M then M.Clear() end
+    mirrorBuiltFor = nil
+    mirrorDirty = nil
+    if skin then
+        skin.MirrorSlot:SetHeight(0)
+        skin._mirrorHeight = 0
+    end
+end
+
+--- Bring the mirror slot in step with the current selection.
+---
+--- Rebuilt only when the selection changes or a control asked for it: entering
+--- Scoot mode happens on every UpdateButtons, which includes every frame of a drag,
+--- and rebuilding there would destroy a control the user is holding. Everything
+--- else re-reads values in place.
+local function SyncMirror(selection, info)
+    local M = addon.EditMode.Mirror
+    if not M then return end
+
+    if mirrorBuiltFor == selection and not mirrorDirty then
+        M.Refresh()
+        return
+    end
+
+    mirrorBuiltFor = selection
+    mirrorDirty = nil
+
+    local height = M.Build(skin.MirrorSlot, selection and selection.parent,
+        info and info.mirror, Dialog.RefreshMirror) or 0
+
+    skin.MirrorSlot:SetHeight(height)
+    skin._mirrorHeight = height
+
+    -- The slot's own gap has to match the one ComputeHeight budgets for, or the
+    -- controls sit higher than the box was sized for and the slack lands above
+    -- the buttons instead.
+    skin.MirrorSlot:ClearAllPoints()
+    skin.MirrorSlot:SetPoint("TOPLEFT", skin._mirrorTitle, "BOTTOMLEFT", 0,
+        -((height > 0) and BLOCK_GAP or EMPTY_GAP))
+end
+
 local function ComputeHeight()
     local mirrorH = skin._mirrorHeight or 0
-    -- No mirrored settings yet, so collapse the block gap rather than leaving a
-    -- tall empty band between the title and the buttons.
+    -- Nothing mirrored for this frame, so collapse the block gap rather than
+    -- leaving an empty band between the title and the buttons.
     local gap = (mirrorH > 0) and BLOCK_GAP or EMPTY_GAP
 
     return PAD
@@ -348,6 +398,9 @@ local function EnterScootMode(dialog, selection, info)
         skin._resetBtn:SetEnabled(enabled)
     end
 
+    -- Before ComputeHeight: the slot's height is an input to it.
+    SyncMirror(selection, info)
+
     skin:Show()
 
     -- ResizeLayoutMixin:Layout() short-circuits its final SetSize when a fixed
@@ -366,6 +419,10 @@ local function EnterScootMode(dialog, selection, info)
 end
 
 local function ExitScootMode(dialog)
+    -- Cleared rather than left in place: the next Scoot frame may name a different
+    -- provider, or none, and a stale control would still be writing to the frame
+    -- that is no longer selected.
+    ClearMirror()
     if skin then skin:Hide() end
     SetLEMChromeShown(dialog, true)
     if dialog.ClearFixedSize then dialog:ClearFixedSize() end
@@ -384,6 +441,24 @@ local function OnDialogUpdateButtons(dialog)
     else
         ExitScootMode(dialog)
     end
+end
+
+--- Rebuild the mirror slot and resize the box around it.
+---
+--- Handed to Mirror as the rebuild callback, for controls whose write changes which
+--- controls exist. Routed through EnterScootMode rather than SyncMirror alone so the
+--- title and the box height come along: a snap-mode change renames the frame, and
+--- renaming is exactly the case where a stale title would be noticed.
+function Dialog.RefreshMirror()
+    local dialog = Dialog._dialog
+    if not dialog or not dialog:IsShown() then return end
+
+    local sel = dialog.selection
+    local info = sel and sel.parent and Brand:GetInfo(sel.parent)
+    if not info then return end
+
+    mirrorDirty = true
+    EnterScootMode(dialog, sel, info)
 end
 
 --------------------------------------------------------------------------------
@@ -415,6 +490,9 @@ function Dialog.EnsureHooked()
 
     d:HookScript("OnHide", function()
         lastPositionedFor = nil
+        -- Also drops any open selector dropdown, which is parented to UIParent and
+        -- would otherwise outlive the box it belongs to.
+        ClearMirror()
         local tooltip = addon.EditMode.Tooltip
         if tooltip and tooltip.Hide then tooltip.Hide() end
     end)
@@ -423,6 +501,7 @@ function Dialog.EnsureHooked()
 end
 
 function Dialog.Cleanup()
+    ClearMirror()
     if skin then
         if skin._configureBtn and skin._configureBtn.Cleanup then skin._configureBtn:Cleanup() end
         if skin._resetBtn and skin._resetBtn.Cleanup then skin._resetBtn:Cleanup() end

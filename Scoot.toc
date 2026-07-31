@@ -297,6 +297,7 @@ ui/v2/settingspanel/deeplink.lua
 ui/v2/editmode/Registry.lua
 ui/v2/editmode/SelectionSkin.lua
 ui/v2/editmode/Tooltip.lua
+ui/v2/editmode/Mirror.lua
 ui/v2/editmode/Dialog.lua
 ui/v2/GameMenu.lua
 
