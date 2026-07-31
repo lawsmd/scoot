@@ -579,7 +579,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             return
         end
 
-        -- /scoot debug nametext - auto-fit name box feasibility harness
+        -- /scoot debug nametext - the Unit Frames Z name box, built as it would ship
         if sub1 == "nametext" then
             if not addon.DebugNameTextToggle then
                 addon:Print("Name text debug not loaded.")
@@ -614,12 +614,29 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugNameTextSetFont(args[4])
                 return
             end
+            if sub2 == "case" then
+                -- args[5] raw: it is a font key, same reason as 'font' above
+                addon.DebugNameTextSetCase(args[4], args[5])
+                return
+            end
+            if sub2 == "caseprobe" then
+                addon.DebugNameTextCaseProbe()
+                return
+            end
             if sub2 == "sample" then
                 addon.DebugNameTextSample(args[4])
                 return
             end
             if sub2 == "gradient" then
                 addon.DebugNameTextSetGradient(args[4])
+                return
+            end
+            if sub2 == "chrome" then
+                addon.DebugNameTextToggleChrome()
+                return
+            end
+            if sub2 == "margin" then
+                addon.DebugNameTextSetMargin(args[4])
                 return
             end
             if sub2 == "slices" then
@@ -651,6 +668,10 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugNameTextFitProbe(args[4])
                 return
             end
+            if sub2 == "autofit" then
+                addon.DebugNameTextAutoFit()
+                return
+            end
             if sub2 == "report" then
                 addon.DebugNameTextReport()
                 return
@@ -662,8 +683,12 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("       /scoot debug nametext fallback <n>   (size when unmeasurable)")
             addon:Print("       /scoot debug nametext mode <font|scale|blizzard>")
             addon:Print("       /scoot debug nametext font <FACE>")
+            addon:Print("       /scoot debug nametext case <normal|upper|smallcaps> [FACE]")
+            addon:Print("       /scoot debug nametext caseprobe         (can string.upper touch a secret?)")
             addon:Print("       /scoot debug nametext sample <n>")
-            addon:Print("       /scoot debug nametext gradient <off|line|block|slice|auto>")
+            addon:Print("       /scoot debug nametext gradient <auto|off|white|line|block|slice>")
+            addon:Print("       /scoot debug nametext chrome            (backdrop on/off, to drag the box)")
+            addon:Print("       /scoot debug nametext margin <auto|off|px>  (blind-spot safety margin)")
             addon:Print("       /scoot debug nametext slices <n>")
             addon:Print("       /scoot debug nametext class <TOKEN|auto>")
             addon:Print("       /scoot debug nametext treatment <cast|raw>")
