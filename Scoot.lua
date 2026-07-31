@@ -518,6 +518,13 @@ function SlashCmdList.SCOOT(msg, editBox)
             return
         end
 
+        -- /scoot debug repcolor [watch] - ReputationColor banner lifecycle trace
+        if sub1 == "repcolor" then
+            if addon.DebugRepColor then addon.DebugRepColor(sub2)
+            else addon:Print("RepColor debug not available.") end
+            return
+        end
+
         -- /scoot debug dmY cvar
         -- /scoot debug dmY api
         if sub1 == "dmy" then

@@ -18,12 +18,18 @@ local Alpha = addon.BarsAlpha
 -- Direct upvalue to the event-driven guard (editmode/core.lua loads first in TOC)
 local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 
+local issecretvalue = _G.issecretvalue
+
 --------------------------------------------------------------------------------
 -- Alpha Application
 --------------------------------------------------------------------------------
 
--- Apply alpha to a frame or texture (safe wrapper)
+-- Apply alpha to a frame or texture (safe wrapper).
+-- nil alpha means "config unreadable" (see the computeAlpha closures): skip the
+-- write entirely rather than guessing. Restoring to visible must only ever
+-- happen from an explicit settings-driven pass, never from a transient window.
 function Alpha.applyAlpha(frameOrTexture, alpha)
+    if alpha == nil then return end
     if not frameOrTexture or not frameOrTexture.SetAlpha then return end
     pcall(frameOrTexture.SetAlpha, frameOrTexture, alpha)
 end
@@ -45,11 +51,23 @@ function Alpha.hookAlphaEnforcer(frameOrTexture, computeAlpha)
     -- regions/textures even in combat. Do NOT gate on InCombatLockdown(), otherwise Blizzard can
     -- Show()/SetAlpha() during combat and the element may remain visible after combat.
     local function enforce(obj)
-        if isEditModeActive() then return end
+        if isEditModeActive() then
+            if addon.RepColorTraceIfTracked then addon.RepColorTraceIfTracked(obj, "enforce", "bail: edit mode") end
+            return
+        end
         local desired = computeAlpha()
+        if desired == nil then
+            -- Config unreadable: skip rather than enforce a guess (fail closed).
+            if addon.RepColorTraceIfTracked then addon.RepColorTraceIfTracked(obj, "enforce", "skip: cfg unreadable") end
+            return
+        end
         if obj and obj.GetAlpha and type(obj.GetAlpha) == "function" then
             local ok, current = pcall(obj.GetAlpha, obj)
-            if ok and current == desired then
+            -- Guard order: type -> issecretvalue -> compare. A secret survives the
+            -- pcall'd getter, and comparing it raw would error inside this hook.
+            if ok and type(current) == "number"
+                and not (issecretvalue and issecretvalue(current))
+                and current == desired then
                 return
             end
         end
@@ -102,7 +120,8 @@ function Alpha.EnforceVehicleFrameTextureVisibility()
             local db = addon and addon.db and addon.db.profile
             local unitFrames = db and rawget(db, "unitFrames") or nil
             local cfgPlayer = unitFrames and rawget(unitFrames, "Player") or nil
-            return (cfgPlayer and cfgPlayer.useCustomBorders) and 0 or 1
+            if not cfgPlayer then return nil end -- config unreadable: skip (fail closed)
+            return cfgPlayer.useCustomBorders and 0 or 1
         end
         Alpha.applyAlpha(vehicleTex, computeVehicleAlpha())
         Alpha.hookAlphaEnforcer(vehicleTex, computeVehicleAlpha)
@@ -126,7 +145,8 @@ function Alpha.EnforceAlternatePowerFrameTextureVisibility()
                 local db = addon and addon.db and addon.db.profile
                 local unitFrames = db and rawget(db, "unitFrames") or nil
                 local cfgPlayer = unitFrames and rawget(unitFrames, "Player") or nil
-                return (cfgPlayer and cfgPlayer.useCustomBorders) and 0 or 1
+                if not cfgPlayer then return nil end -- config unreadable: skip (fail closed)
+                return cfgPlayer.useCustomBorders and 0 or 1
             end
             Alpha.applyAlpha(altTex, computeAltAlpha())
             Alpha.hookAlphaEnforcer(altTex, computeAltAlpha)

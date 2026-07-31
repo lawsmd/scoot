@@ -90,8 +90,8 @@ function SF.applyForSmallUnit(unit, frame, cfg)
             local db2 = addon and addon.db and addon.db.profile
             local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
             local cfg2 = unitFrames2 and rawget(unitFrames2, unit) or nil
-            local hide = cfg2 and (cfg2.useCustomBorders or cfg2.healthBarHideBorder)
-            return hide and 0 or 1
+            if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+            return (cfg2.useCustomBorders or cfg2.healthBarHideBorder) and 0 or 1
         end
         applyAlpha(ft, compute())
         hookAlphaEnforcer(ft, compute)

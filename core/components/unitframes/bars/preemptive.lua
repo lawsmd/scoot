@@ -39,14 +39,24 @@ function Preemptive.hideTargetElements()
     local db = addon and addon.db and addon.db.profile
     local unitFrames = db and rawget(db, "unitFrames")
     local cfg = unitFrames and rawget(unitFrames, "Target")
-    if not cfg then return end
+    if not cfg then
+        -- Post-reload the texture defaults to alpha 1, so a silently missed hide
+        -- here leaves the banner visible until the next target change. The
+        -- retries scheduled by PLAYER_ENTERING_WORLD / PLAYER_TARGET_CHANGED
+        -- cover this window; the trace records that it happened.
+        if addon.RepColorTrace then addon.RepColorTrace("hideTarget", "bail: cfg unreadable") end
+        return
+    end
 
-    -- Shared computeAlpha for enforcers - re-reads config each call
+    -- Shared computeAlpha for enforcers - re-reads config each call.
+    -- Returns nil when config is unreadable so enforcers SKIP instead of
+    -- restoring alpha 1 during transient windows (profile/layout sync).
     local function computeAlpha()
         local db2 = addon and addon.db and addon.db.profile
         local unitFrames2 = db2 and rawget(db2, "unitFrames")
         local cfg2 = unitFrames2 and rawget(unitFrames2, "Target")
-        return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+        if not cfg2 then return nil end
+        return cfg2.useCustomBorders and 0 or 1
     end
 
     -- Helper to hide ReputationColor and install enforcer
@@ -66,6 +76,7 @@ function Preemptive.hideTargetElements()
     if cfg.useCustomBorders then
         -- Immediate hide (texture may not exist yet)
         hideRepColor()
+        if addon.RepColorTrace then addon.RepColorTrace("hideTarget", "hide pass applied") end
 
         -- Hide frame texture immediately
         local ft = Resolvers.resolveUnitFrameFrameTexture("Target")
@@ -104,14 +115,19 @@ function Preemptive.hideFocusElements()
     local db = addon and addon.db and addon.db.profile
     local unitFrames = db and rawget(db, "unitFrames")
     local cfg = unitFrames and rawget(unitFrames, "Focus")
-    if not cfg then return end
+    if not cfg then
+        if addon.RepColorTrace then addon.RepColorTrace("hideFocus", "bail: cfg unreadable") end
+        return
+    end
 
-    -- Shared computeAlpha for enforcers - re-reads config each call
+    -- Shared computeAlpha for enforcers - re-reads config each call.
+    -- nil = config unreadable: enforcers skip instead of restoring alpha 1.
     local function computeAlpha()
         local db2 = addon and addon.db and addon.db.profile
         local unitFrames2 = db2 and rawget(db2, "unitFrames")
         local cfg2 = unitFrames2 and rawget(unitFrames2, "Focus")
-        return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+        if not cfg2 then return nil end
+        return cfg2.useCustomBorders and 0 or 1
     end
 
     -- Helper to hide ReputationColor and install enforcer
@@ -131,6 +147,7 @@ function Preemptive.hideFocusElements()
     if cfg.useCustomBorders then
         -- Immediate hide (texture may not exist yet)
         hideRepColor()
+        if addon.RepColorTrace then addon.RepColorTrace("hideFocus", "hide pass applied") end
 
         -- Hide frame texture immediately
         local ft = Resolvers.resolveUnitFrameFrameTexture("Focus")
@@ -169,13 +186,16 @@ end
 -- PLAYER_ENTERING_WORLD, BEFORE the first target is acquired.
 
 function Preemptive.installEarlyAlphaHooks()
-    -- Helper to compute alpha based on useCustomBorders setting
+    -- Helper to compute alpha based on useCustomBorders setting.
+    -- nil = config unreadable: enforcers skip instead of restoring alpha 1
+    -- (the explicit restore lives in the settings-driven pass in bars.lua).
     local function makeComputeAlpha(unit)
         return function()
             local db2 = addon and addon.db and addon.db.profile
             local unitFrames2 = db2 and rawget(db2, "unitFrames")
             local cfg2 = unitFrames2 and rawget(unitFrames2, unit)
-            return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+            if not cfg2 then return nil end
+            return cfg2.useCustomBorders and 0 or 1
         end
     end
 
@@ -184,8 +204,8 @@ function Preemptive.installEarlyAlphaHooks()
             local db2 = addon and addon.db and addon.db.profile
             local unitFrames2 = db2 and rawget(db2, "unitFrames")
             local cfg2 = unitFrames2 and rawget(unitFrames2, unit)
-            local hide = cfg2 and (cfg2.useCustomBorders or cfg2.healthBarHideBorder)
-            return hide and 0 or 1
+            if not cfg2 then return nil end
+            return (cfg2.useCustomBorders or cfg2.healthBarHideBorder) and 0 or 1
         end
     end
 
@@ -241,55 +261,33 @@ function Preemptive.installEarlyAlphaHooks()
     Preemptive.hideTargetElements()
     Preemptive.hideFocusElements()
 
-    -- Install hooks on Blizzard's TargetFrame_Update and FocusFrame_Update to catch
-    -- any updates that might show ReputationColor during combat or target changes.
-    -- These run AFTER Blizzard's update, so elements are re-hidden immediately.
-    if _G.hooksecurefunc and type(_G.TargetFrame_Update) == "function" then
-        if not addon._ScootTargetFrameUpdateHooked then
-            addon._ScootTargetFrameUpdateHooked = true
-            _G.hooksecurefunc("TargetFrame_Update", function()
-                if isEditModeActive() then return end
-                local db = addon and addon.db and addon.db.profile
-                local unitFrames = db and rawget(db, "unitFrames")
-                local cfg = unitFrames and rawget(unitFrames, "Target")
-                if cfg and cfg.useCustomBorders then
-                    local repColor = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-                        and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-                        and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
-                    if repColor and repColor.SetAlpha then
-                        pcall(repColor.SetAlpha, repColor, 0)
-                        -- Ensure enforcer is installed on this (possibly new) object
-                        if Alpha and Alpha.hookAlphaEnforcer then
-                            Alpha.hookAlphaEnforcer(repColor, makeComputeAlpha("Target"))
-                        end
-                    end
-                end
-            end)
-        end
-    end
+    -- Re-assert after faction updates via addon-owned unit events.
+    -- (Replaces pre-12.0 hooks on the TargetFrame_Update/FocusFrame_Update
+    -- globals, which no longer exist in 12.0 — those blocks were dead code.)
+    -- RegisterUnitEvent filters units C-side, so the handler never compares
+    -- unit tokens (frame-wide unit events can deliver secret tokens).
+    if not addon._ScootRepColorFactionWatch and _G.C_Timer and _G.C_Timer.After then
+        addon._ScootRepColorFactionWatch = true
 
-    if _G.hooksecurefunc and type(_G.FocusFrame_Update) == "function" then
-        if not addon._ScootFocusFrameUpdateHooked then
-            addon._ScootFocusFrameUpdateHooked = true
-            _G.hooksecurefunc("FocusFrame_Update", function()
+        local targetWatch = CreateFrame("Frame")
+        targetWatch:RegisterUnitEvent("UNIT_FACTION", "target", "player")
+        targetWatch:SetScript("OnEvent", function()
+            _G.C_Timer.After(0, function()
                 if isEditModeActive() then return end
-                local db = addon and addon.db and addon.db.profile
-                local unitFrames = db and rawget(db, "unitFrames")
-                local cfg = unitFrames and rawget(unitFrames, "Focus")
-                if cfg and cfg.useCustomBorders then
-                    local repColor = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-                        and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-                        and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
-                    if repColor and repColor.SetAlpha then
-                        pcall(repColor.SetAlpha, repColor, 0)
-                        -- Ensure enforcer is installed on this (possibly new) object
-                        if Alpha and Alpha.hookAlphaEnforcer then
-                            Alpha.hookAlphaEnforcer(repColor, makeComputeAlpha("Focus"))
-                        end
-                    end
-                end
+                -- A "player" faction change also drives Focus when focus is the player.
+                Preemptive.hideTargetElements()
+                Preemptive.hideFocusElements()
             end)
-        end
+        end)
+
+        local focusWatch = CreateFrame("Frame")
+        focusWatch:RegisterUnitEvent("UNIT_FACTION", "focus")
+        focusWatch:SetScript("OnEvent", function()
+            _G.C_Timer.After(0, function()
+                if isEditModeActive() then return end
+                Preemptive.hideFocusElements()
+            end)
+        end)
     end
 
     --------------------------------------------------------------------------------
@@ -487,20 +485,22 @@ function Preemptive.hideBossElements()
     local cfg = unitFrames and rawget(unitFrames, "Boss")
     if not cfg then return end
 
-    -- Shared computeAlpha for enforcers - re-reads config each call
+    -- Shared computeAlpha for enforcers - re-reads config each call.
+    -- nil = config unreadable: enforcers skip instead of restoring alpha 1.
     local function computeAlpha()
         local db2 = addon and addon.db and addon.db.profile
         local unitFrames2 = db2 and rawget(db2, "unitFrames")
         local cfg2 = unitFrames2 and rawget(unitFrames2, "Boss")
-        return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+        if not cfg2 then return nil end
+        return cfg2.useCustomBorders and 0 or 1
     end
 
     local function computeAlphaWithBorder()
         local db2 = addon and addon.db and addon.db.profile
         local unitFrames2 = db2 and rawget(db2, "unitFrames")
         local cfg2 = unitFrames2 and rawget(unitFrames2, "Boss")
-        local hide = cfg2 and (cfg2.useCustomBorders or cfg2.healthBarHideBorder)
-        return hide and 0 or 1
+        if not cfg2 then return nil end
+        return (cfg2.useCustomBorders or cfg2.healthBarHideBorder) and 0 or 1
     end
 
     -- Helper to hide ReputationColor on a specific Boss frame and install enforcer
@@ -611,12 +611,14 @@ end
 -- Install hooks on Boss frame methods to catch updates during combat.
 
 function Preemptive.installBossFrameHooks()
+    -- nil = config unreadable: enforcers skip instead of restoring alpha 1.
     local function makeComputeAlpha()
         return function()
             local db2 = addon and addon.db and addon.db.profile
             local unitFrames2 = db2 and rawget(db2, "unitFrames")
             local cfg2 = unitFrames2 and rawget(unitFrames2, "Boss")
-            return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+            if not cfg2 then return nil end
+            return cfg2.useCustomBorders and 0 or 1
         end
     end
 

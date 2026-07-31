@@ -208,8 +208,8 @@ do
                                 local db2 = addon and addon.db and addon.db.profile
                                 local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                                 local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                                local hide = cfgBoss and (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder)
-                                return hide and 0 or 1
+                                if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                                return (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder) and 0 or 1
                             end
                             applyAlpha(bossFT, computeBossFTAlpha())
                             hookAlphaEnforcer(bossFT, computeBossFTAlpha)
@@ -222,7 +222,8 @@ do
                                 local db2 = addon and addon.db and addon.db.profile
                                 local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                                 local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                                return (cfgBoss and cfgBoss.useCustomBorders) and 0 or 1
+                                if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                                return cfgBoss.useCustomBorders and 0 or 1
                             end
                             applyAlpha(bossFlash, computeBossFlashAlpha())
                             hookAlphaEnforcer(bossFlash, computeBossFlashAlpha)
@@ -237,7 +238,8 @@ do
                                 local db2 = addon and addon.db and addon.db.profile
                                 local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                                 local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                                return (cfgBoss and cfgBoss.useCustomBorders) and 0 or 1
+                                if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                                return cfgBoss.useCustomBorders and 0 or 1
                             end
                             applyAlpha(bossReputationColor, computeBossRepAlpha())
                             hookAlphaEnforcer(bossReputationColor, computeBossRepAlpha)
@@ -259,7 +261,8 @@ do
                 local db2 = addon and addon.db and addon.db.profile
                 local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                 local cfg2 = unitFrames2 and rawget(unitFrames2, unit) or nil
-                return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+                if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+                return cfg2.useCustomBorders and 0 or 1
             end
 
             local reputationColor
@@ -296,7 +299,11 @@ do
                         end
                         if repColor2 and repColor2.SetAlpha then
                             local alpha2 = computeUseCustomBordersAlpha()
-                            pcall(repColor2.SetAlpha, repColor2, alpha2)
+                            -- nil = config unreadable at this tick: skip the write
+                            -- (never restore visible from a transient window)
+                            if alpha2 ~= nil then
+                                pcall(repColor2.SetAlpha, repColor2, alpha2)
+                            end
                             -- Install enforcer on the (possibly new) object
                             hookAlphaEnforcer(repColor2, computeUseCustomBordersAlpha)
                         end
@@ -313,7 +320,8 @@ do
                 local db2 = addon and addon.db and addon.db.profile
                 local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                 local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                return (cfgBoss and cfgBoss.useCustomBorders) and 0 or 1
+                if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                return cfgBoss.useCustomBorders and 0 or 1
             end
 
             for i = 1, 5 do
@@ -341,7 +349,10 @@ do
                                     and bossFrame2.TargetFrameContent.TargetFrameContentMain.ReputationColor
                                 if repColor2 and repColor2.SetAlpha then
                                     local alpha2 = computeBossUseCustomBordersAlpha()
-                                    pcall(repColor2.SetAlpha, repColor2, alpha2)
+                                    -- nil = config unreadable at this tick: skip the write
+                                    if alpha2 ~= nil then
+                                        pcall(repColor2.SetAlpha, repColor2, alpha2)
+                                    end
                                     -- Install enforcer on the (possibly new) object
                                     hookAlphaEnforcer(repColor2, computeBossUseCustomBordersAlpha)
                                 end
@@ -1072,8 +1083,8 @@ do
                             local db2 = addon and addon.db and addon.db.profile
                             local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                             local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                            local hide = cfgBoss and (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder)
-                            return hide and 0 or 1
+                            if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                            return (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder) and 0 or 1
                         end
                         applyAlpha(bossFT, computeBossAlpha())
                         hookAlphaEnforcer(bossFT, computeBossAlpha)
@@ -1085,7 +1096,8 @@ do
                             local db2 = addon and addon.db and addon.db.profile
                             local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                             local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                            return (cfgBoss and cfgBoss.useCustomBorders) and 0 or 1
+                            if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                            return cfgBoss.useCustomBorders and 0 or 1
                         end
                         applyAlpha(bossFlash, computeBossFlashAlpha())
                         hookAlphaEnforcer(bossFlash, computeBossFlashAlpha)
@@ -2843,8 +2855,8 @@ do
                     local db2 = addon and addon.db and addon.db.profile
                     local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                     local cfg2 = unitFrames2 and rawget(unitFrames2, unit) or nil
-                    local hide = cfg2 and (cfg2.useCustomBorders or cfg2.healthBarHideBorder)
-                    return hide and 0 or 1
+                    if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+                    return (cfg2.useCustomBorders or cfg2.healthBarHideBorder) and 0 or 1
                 end
                 applyAlpha(ft, compute())
                 hookAlphaEnforcer(ft, compute)
@@ -2863,7 +2875,8 @@ do
                         local db2 = addon and addon.db and addon.db.profile
                         local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                         local cfg2 = unitFrames2 and rawget(unitFrames2, "Target") or nil
-                        return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+                        if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+                        return cfg2.useCustomBorders and 0 or 1
                     end
                     applyAlpha(prestigePortrait, computePrestigeAlpha())
                     hookAlphaEnforcer(prestigePortrait, computePrestigeAlpha)
@@ -2874,7 +2887,8 @@ do
                         local db2 = addon and addon.db and addon.db.profile
                         local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                         local cfg2 = unitFrames2 and rawget(unitFrames2, "Target") or nil
-                        return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+                        if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+                        return cfg2.useCustomBorders and 0 or 1
                     end
                     applyAlpha(prestigeBadge, computePrestigeAlpha())
                     hookAlphaEnforcer(prestigeBadge, computePrestigeAlpha)
@@ -2885,7 +2899,8 @@ do
                         local db2 = addon and addon.db and addon.db.profile
                         local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                         local cfg2 = unitFrames2 and rawget(unitFrames2, "Target") or nil
-                        return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+                        if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+                        return cfg2.useCustomBorders and 0 or 1
                     end
                     applyAlpha(pvpIcon, computePvpIconAlpha())
                     hookAlphaEnforcer(pvpIcon, computePvpIconAlpha)
@@ -2906,8 +2921,8 @@ do
                             local db2 = addon and addon.db and addon.db.profile
                             local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                             local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                            local hide = cfgBoss and (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder)
-                            return hide and 0 or 1
+                            if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                            return (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder) and 0 or 1
                         end
                         applyAlpha(bossFT, computeBossAlpha())
                         hookAlphaEnforcer(bossFT, computeBossAlpha)
@@ -2919,7 +2934,8 @@ do
                             local db2 = addon and addon.db and addon.db.profile
                             local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                             local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                            return (cfgBoss and cfgBoss.useCustomBorders) and 0 or 1
+                            if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                            return cfgBoss.useCustomBorders and 0 or 1
                         end
                         applyAlpha(bossFlash, computeBossFlashAlpha())
                         hookAlphaEnforcer(bossFlash, computeBossFlashAlpha)
@@ -2935,7 +2951,8 @@ do
                             local db2 = addon and addon.db and addon.db.profile
                             local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                             local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                            return (cfgBoss and cfgBoss.useCustomBorders) and 0 or 1
+                            if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
+                            return cfgBoss.useCustomBorders and 0 or 1
                         end
                         applyAlpha(bossReputationColor, computeBossReputationAlpha())
                         hookAlphaEnforcer(bossReputationColor, computeBossReputationAlpha)
@@ -2954,7 +2971,8 @@ do
                 local db2 = addon and addon.db and addon.db.profile
                 local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                 local cfg2 = unitFrames2 and rawget(unitFrames2, "Player") or nil
-                return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+                if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+                return cfg2.useCustomBorders and 0 or 1
             end
 
             if altTex then
@@ -2993,7 +3011,8 @@ do
                         local db2 = addon and addon.db and addon.db.profile
                         local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                         local cfg2 = unitFrames2 and rawget(unitFrames2, unit) or nil
-                        return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+                        if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+                        return cfg2.useCustomBorders and 0 or 1
                     end
                     applyAlpha(reputationColor, 0)
                     hookAlphaEnforcer(reputationColor, computeAlpha)
@@ -3018,7 +3037,8 @@ do
                         local db2 = addon and addon.db and addon.db.profile
                         local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                         local cfg2 = unitFrames2 and rawget(unitFrames2, unit) or nil
-                        return (cfg2 and cfg2.useCustomBorders) and 0 or 1
+                        if not cfg2 then return nil end -- config unreadable: skip (fail closed)
+                        return cfg2.useCustomBorders and 0 or 1
                     end
                     applyAlpha(reputationColor, 1)
                     hookAlphaEnforcer(reputationColor, computeAlpha)
@@ -3048,7 +3068,8 @@ do
                         local db2 = addon and addon.db and addon.db.profile
                         local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                         local cfgP = unitFrames2 and rawget(unitFrames2, "Player") or nil
-                        return (cfgP and cfgP.useCustomBorders) and 0 or 1
+                        if not cfgP then return nil end -- config unreadable: skip (fail closed)
+                        return cfgP.useCustomBorders and 0 or 1
                     end
                     applyAlpha(frameFlash, computeAlpha())
                     hookAlphaEnforcer(frameFlash, computeAlpha)
@@ -3065,7 +3086,8 @@ do
                         local db2 = addon and addon.db and addon.db.profile
                         local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                         local cfgT = unitFrames2 and rawget(unitFrames2, "Target") or nil
-                        return (cfgT and cfgT.useCustomBorders) and 0 or 1
+                        if not cfgT then return nil end -- config unreadable: skip (fail closed)
+                        return cfgT.useCustomBorders and 0 or 1
                     end
                     applyAlpha(targetFlash, computeAlpha())
                     hookAlphaEnforcer(targetFlash, computeAlpha)
@@ -3082,7 +3104,8 @@ do
                         local db2 = addon and addon.db and addon.db.profile
                         local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
                         local cfgF = unitFrames2 and rawget(unitFrames2, "Focus") or nil
-                        return (cfgF and cfgF.useCustomBorders) and 0 or 1
+                        if not cfgF then return nil end -- config unreadable: skip (fail closed)
+                        return cfgF.useCustomBorders and 0 or 1
                     end
                     applyAlpha(focusFlash, computeAlpha())
                     hookAlphaEnforcer(focusFlash, computeAlpha)

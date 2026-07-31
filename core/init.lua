@@ -568,7 +568,21 @@ function addon:PLAYER_ENTERING_WORLD(event, isInitialLogin, isReloadingUi)
     end
     
     self:ApplyStyles()
-    
+
+    -- Post-load belt-and-braces: profile/layout sync (TryPendingSync, spec
+    -- profiles above) can finish after the styling pass just ran, and the
+    -- pre-emptive hides bail silently while config is unreadable. Re-assert on
+    -- short delays so Target/Focus art never sits at its post-reload default
+    -- (visible) because the first passes ran too early. Idempotent SetAlpha(0).
+    if C_Timer and C_Timer.After then
+        local function reassertArtHiding()
+            if addon.PreemptiveHideTargetElements then addon.PreemptiveHideTargetElements() end
+            if addon.PreemptiveHideFocusElements then addon.PreemptiveHideFocusElements() end
+        end
+        C_Timer.After(1, reassertArtHiding)
+        C_Timer.After(3, reassertArtHiding)
+    end
+
     -- Enforce Pet overlay visibility immediately after initial styling.
     -- Ensures PetAttackModeTexture is hidden before the first frame renders if the
     -- player has a pet that's already in attack mode when logging in or reloading.
@@ -663,14 +677,27 @@ function addon:PLAYER_TARGET_CHANGED()
     -- to fail with "secret value" errors when it tries to compare StatusBar values.
     -- Skip preemptive hiding when Edit Mode is active or opening.
     if addon.EditMode.IsEditModeActiveOrOpening() then
+        if addon.RepColorTrace then addon.RepColorTrace("PTC", "bail: edit mode guard") end
         -- Defer all work to avoid taint propagation during Edit Mode
         if C_Timer and C_Timer.After then
             C_Timer.After(0, function()
                 self:RefreshOpacityState()
             end)
+            -- Self-heal: the guard has a load-time seeding false positive
+            -- (editmode/core.lua). If it was transient, re-run the preemptive
+            -- hide once it clears so a missed acquisition-time hide doesn't
+            -- leave the post-reload default (visible) art until the next
+            -- target change.
+            C_Timer.After(0.5, function()
+                if addon.EditMode.IsEditModeActiveOrOpening() then return end
+                if addon.PreemptiveHideTargetElements then
+                    addon.PreemptiveHideTargetElements()
+                end
+            end)
         end
         return
     end
+    if addon.RepColorTrace then addon.RepColorTrace("PTC", "fired") end
 
     -- =========================================================================
     -- IMMEDIATE PRE-EMPTIVE HIDING (runs BEFORE Blizzard's TargetFrame_Update)
@@ -740,15 +767,24 @@ function addon:PLAYER_FOCUS_CHANGED()
     -- Same rationale as PLAYER_TARGET_CHANGED: Edit Mode triggers FocusUnit
     -- which fires PLAYER_FOCUS_CHANGED. Skip preemptive hiding to avoid taint.
     if addon.EditMode.IsEditModeActiveOrOpening() then
+        if addon.RepColorTrace then addon.RepColorTrace("PFC", "bail: edit mode guard") end
         if C_Timer and C_Timer.After then
             C_Timer.After(0, function()
                 if addon.ApplyUnitFrameBarTexturesFor then
                     addon.ApplyUnitFrameBarTexturesFor("Focus")
                 end
             end)
+            -- Self-heal for a transient guard false positive (see PLAYER_TARGET_CHANGED)
+            C_Timer.After(0.5, function()
+                if addon.EditMode.IsEditModeActiveOrOpening() then return end
+                if addon.PreemptiveHideFocusElements then
+                    addon.PreemptiveHideFocusElements()
+                end
+            end)
         end
         return
     end
+    if addon.RepColorTrace then addon.RepColorTrace("PFC", "fired") end
 
     -- =========================================================================
     -- IMMEDIATE PRE-EMPTIVE HIDING (runs BEFORE Blizzard's FocusFrame_Update)

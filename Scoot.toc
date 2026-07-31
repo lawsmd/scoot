@@ -189,6 +189,7 @@ core/debug/widget.lua
 core/debug/inspect.lua
 core/debug/nametext.lua
 core/debug/castz.lua
+core/debug/repcolor.lua
 core/taintdebug.lua
 core/dialogs.lua
 core/importexport.lua
