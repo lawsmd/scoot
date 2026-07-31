@@ -487,6 +487,17 @@ end
 -- given face/size/style. `text` may be a secret string. Returns nil when the
 -- geometry could not be read, in which case the caller must not shrink anything.
 function addon.MeasureTextWidth(text, face, size, style)
+    -- A secret string never reaches the ruler.
+    --
+    -- SetText is AllowedWhenTainted, so pouring one in would SUCCEED -- and stamp
+    -- Enum.SecretAspect.Text onto this FontString, which every caller in the addon
+    -- shares. From then on the IsAnchoringSecret gate below answers true, this
+    -- function returns nil forever, and every shrink-to-fit in Scoot silently stops
+    -- working. No error, no stack, and the damage outlives the caller that caused
+    -- it. nil is already the documented "unmeasurable, do not shrink" answer, so
+    -- refusing here costs callers nothing.
+    if issecretvalue and issecretvalue(text) then return nil end
+
     local fs = ensureMeasureRuler()
     if not fs then return nil end
 
@@ -499,7 +510,16 @@ function addon.MeasureTextWidth(text, face, size, style)
     addon.ApplyFontStyle(fs, face, size, style)
     if not pcall(fs.SetText, fs, text) then return nil end
     local w = fitSafeNumber(fs, "GetUnboundedStringWidth")
-    pcall(fs.SetText, fs, "")  -- don't retain a secret string on a live FontString
+
+    -- ClearText, not SetText(""): only ClearText releases the Text aspect.
+    -- SetText("") clears the glyphs and leaves the aspect in place, which is the
+    -- difference between a reusable ruler and a permanently poisoned one. Belt and
+    -- braces given the guard above -- this ruler is shared, so it exits clean.
+    if fs.ClearText then
+        pcall(fs.ClearText, fs)
+    else
+        pcall(fs.SetText, fs, "")
+    end
 
     if not w or w <= 0 then return nil end
     return w
@@ -748,7 +768,7 @@ local GOOGLE_FONTS = {
     -- Poppins
     "POPPINS_REG", "POPPINS_BLACK", "POPPINS_BOLD", "POPPINS_LIGHT", "POPPINS_MED",
     -- Roboto
-    "ROBOTO_REG", "ROBOTO_BLACK", "ROBOTO_BLD", "ROBOTO_LIGHT", "ROBOTO_MED",
+    "ROBOTO_REG", "ROBOTO_BLACK", "ROBOTO_LIGHT", "ROBOTO_MED",
     -- Roboto Condensed
     "ROBOTO_COND_REG", "ROBOTO_COND_BLACK", "ROBOTO_COND_BOLD", "ROBOTO_COND_LIGHT", "ROBOTO_COND_MED",
     -- Roboto SemiCondensed
@@ -764,10 +784,24 @@ local PIXEL_FONTS = {
     "PIXELLARI", "PRESS_START_2P", "RAINYHEARTS",
 }
 
+-- Baked geometric variants of the heavy display families (see the registry
+-- block below): each family ships base + 1.2/1.5/1.8x wide + 0.9/0.8/0.7x tall.
+local MODIFIED_FONTS = {
+    "ANTON", "ANTON_WIDE_120", "ANTON_WIDE_150", "ANTON_WIDE_180",
+    "ANTON_TALL_90", "ANTON_TALL_80", "ANTON_TALL_70",
+    "RUBIK_MONO_ONE", "RUBIK_MONO_ONE_WIDE_120", "RUBIK_MONO_ONE_WIDE_150", "RUBIK_MONO_ONE_WIDE_180",
+    "RUBIK_MONO_ONE_TALL_90", "RUBIK_MONO_ONE_TALL_80", "RUBIK_MONO_ONE_TALL_70",
+    "TOMORROW_BLACK", "TOMORROW_BLACK_WIDE_120", "TOMORROW_BLACK_WIDE_150", "TOMORROW_BLACK_WIDE_180",
+    "TOMORROW_BLACK_TALL_90", "TOMORROW_BLACK_TALL_80", "TOMORROW_BLACK_TALL_70",
+    "BUNGEE", "BUNGEE_WIDE_120", "BUNGEE_WIDE_150", "BUNGEE_WIDE_180",
+    "BUNGEE_TALL_90", "BUNGEE_TALL_80", "BUNGEE_TALL_70",
+}
+
 local FONT_TABS = {
-    { key = "default", label = "Default", fonts = DEFAULT_FONTS },
-    { key = "google",  label = "Google",  fonts = GOOGLE_FONTS },
-    { key = "pixel",   label = "Pixel",   fonts = PIXEL_FONTS },
+    { key = "default",  label = "Default",  fonts = DEFAULT_FONTS },
+    { key = "google",   label = "Google",   fonts = GOOGLE_FONTS },
+    { key = "pixel",    label = "Pixel",    fonts = PIXEL_FONTS },
+    { key = "modified", label = "Modified", fonts = MODIFIED_FONTS },
 }
 
 -- Build a reverse lookup: font key -> tab key
@@ -1401,7 +1435,6 @@ do
     f.ROBOTO_REG       = base .. "Roboto-Regular.ttf"
     f.ROBOTO_LIGHT     = base .. "Roboto-Light.ttf"
     f.ROBOTO_MED       = base .. "Roboto-Medium.ttf"
-    f.ROBOTO_BLD       = base .. "Roboto-Bold.ttf"
     f.ROBOTO_BLACK     = base .. "Roboto-Black.ttf"
 
     -- Roboto Condensed family
@@ -1457,6 +1490,43 @@ do
     f.POPPINS_BOLD      = base .. "Poppins-Bold.ttf"
     f.POPPINS_BLACK     = base .. "Poppins-Black.ttf"
 
+    -- Heavy display families (the font picker's "Modified" tab). Each family
+    -- ships base + baked geometric variants (fonttools, hints stripped):
+    --   WIDE = x-only stretch (glyph x, composite x, hmtx all scaled) --
+    --   rasterises native-sharp, unlike the harness's blurry 'stretch' preview.
+    --   TALL = y-only squish, CAP-PINNED (ink top stays put, shrink happens
+    --   upward) so a TOP-anchored row keeps a constant gap to the row above;
+    --   advance widths are byte-identical to the family's base face.
+    -- Metrics: docs/unitframesZ/ufzhealthtext.md.
+    f.ANTON          = base .. "Anton-Regular.ttf"
+    f.ANTON_WIDE_120 = base .. "AntonWide120.ttf"
+    f.ANTON_WIDE_150 = base .. "AntonWide150.ttf"
+    f.ANTON_WIDE_180 = base .. "AntonWide180.ttf"
+    f.ANTON_TALL_90  = base .. "AntonTall90.ttf"
+    f.ANTON_TALL_80  = base .. "AntonTall80.ttf"
+    f.ANTON_TALL_70  = base .. "AntonTall70.ttf"
+    f.RUBIK_MONO_ONE          = base .. "RubikMonoOne-Regular.ttf"
+    f.RUBIK_MONO_ONE_WIDE_120 = base .. "RubikMonoOneWide120.ttf"
+    f.RUBIK_MONO_ONE_WIDE_150 = base .. "RubikMonoOneWide150.ttf"
+    f.RUBIK_MONO_ONE_WIDE_180 = base .. "RubikMonoOneWide180.ttf"
+    f.RUBIK_MONO_ONE_TALL_90  = base .. "RubikMonoOneTall90.ttf"
+    f.RUBIK_MONO_ONE_TALL_80  = base .. "RubikMonoOneTall80.ttf"
+    f.RUBIK_MONO_ONE_TALL_70  = base .. "RubikMonoOneTall70.ttf"
+    f.TOMORROW_BLACK          = base .. "Tomorrow-Black.ttf"
+    f.TOMORROW_BLACK_WIDE_120 = base .. "TomorrowBlackWide120.ttf"
+    f.TOMORROW_BLACK_WIDE_150 = base .. "TomorrowBlackWide150.ttf"
+    f.TOMORROW_BLACK_WIDE_180 = base .. "TomorrowBlackWide180.ttf"
+    f.TOMORROW_BLACK_TALL_90  = base .. "TomorrowBlackTall90.ttf"
+    f.TOMORROW_BLACK_TALL_80  = base .. "TomorrowBlackTall80.ttf"
+    f.TOMORROW_BLACK_TALL_70  = base .. "TomorrowBlackTall70.ttf"
+    f.BUNGEE          = base .. "Bungee-Regular.ttf"
+    f.BUNGEE_WIDE_120 = base .. "BungeeWide120.ttf"
+    f.BUNGEE_WIDE_150 = base .. "BungeeWide150.ttf"
+    f.BUNGEE_WIDE_180 = base .. "BungeeWide180.ttf"
+    f.BUNGEE_TALL_90  = base .. "BungeeTall90.ttf"
+    f.BUNGEE_TALL_80  = base .. "BungeeTall80.ttf"
+    f.BUNGEE_TALL_70  = base .. "BungeeTall70.ttf"
+
     -- Pixel fonts
     f.PIXELLARI        = base .. "Pixellari.ttf"
     f.DOGICA_REG       = base .. "dogica.ttf"
@@ -1492,7 +1562,6 @@ addon.FontDisplayNames = {
     ROBOTO_REG       = "Roboto",
     ROBOTO_LIGHT     = "Roboto Light",
     ROBOTO_MED       = "Roboto Medium",
-    ROBOTO_BLD       = "Roboto Bold",
     ROBOTO_BLACK     = "Roboto Black",
     -- Roboto Condensed
     ROBOTO_COND_REG       = "Roboto Cond",
@@ -1539,6 +1608,35 @@ addon.FontDisplayNames = {
     POPPINS_MED       = "Poppins Medium",
     POPPINS_BOLD      = "Poppins Bold",
     POPPINS_BLACK     = "Poppins Black",
+    -- Heavy display families ("Modified" tab)
+    ANTON          = "Anton",
+    ANTON_WIDE_120 = "Anton Wide (1.20x)",
+    ANTON_WIDE_150 = "Anton Wide (1.50x)",
+    ANTON_WIDE_180 = "Anton Wide (1.80x)",
+    ANTON_TALL_90  = "Anton Tall (0.90x)",
+    ANTON_TALL_80  = "Anton Tall (0.80x)",
+    ANTON_TALL_70  = "Anton Tall (0.70x)",
+    RUBIK_MONO_ONE          = "Rubik Mono One",
+    RUBIK_MONO_ONE_WIDE_120 = "Rubik Mono One Wide (1.20x)",
+    RUBIK_MONO_ONE_WIDE_150 = "Rubik Mono One Wide (1.50x)",
+    RUBIK_MONO_ONE_WIDE_180 = "Rubik Mono One Wide (1.80x)",
+    RUBIK_MONO_ONE_TALL_90  = "Rubik Mono One Tall (0.90x)",
+    RUBIK_MONO_ONE_TALL_80  = "Rubik Mono One Tall (0.80x)",
+    RUBIK_MONO_ONE_TALL_70  = "Rubik Mono One Tall (0.70x)",
+    TOMORROW_BLACK          = "Tomorrow Black",
+    TOMORROW_BLACK_WIDE_120 = "Tomorrow Black Wide (1.20x)",
+    TOMORROW_BLACK_WIDE_150 = "Tomorrow Black Wide (1.50x)",
+    TOMORROW_BLACK_WIDE_180 = "Tomorrow Black Wide (1.80x)",
+    TOMORROW_BLACK_TALL_90  = "Tomorrow Black Tall (0.90x)",
+    TOMORROW_BLACK_TALL_80  = "Tomorrow Black Tall (0.80x)",
+    TOMORROW_BLACK_TALL_70  = "Tomorrow Black Tall (0.70x)",
+    BUNGEE          = "Bungee",
+    BUNGEE_WIDE_120 = "Bungee Wide (1.20x)",
+    BUNGEE_WIDE_150 = "Bungee Wide (1.50x)",
+    BUNGEE_WIDE_180 = "Bungee Wide (1.80x)",
+    BUNGEE_TALL_90  = "Bungee Tall (0.90x)",
+    BUNGEE_TALL_80  = "Bungee Tall (0.80x)",
+    BUNGEE_TALL_70  = "Bungee Tall (0.70x)",
     -- Pixel fonts
     PIXELLARI        = "Pixellari",
     DOGICA_REG       = "Dogica",
