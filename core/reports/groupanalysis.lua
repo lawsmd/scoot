@@ -123,9 +123,11 @@ end
 
 -- Returns { mode = "solo"|"party"|"raid", entries = { entry } } where entry =
 -- { unit, guid?, name?, realm?, classR/classG/classB?, specName?, itemLevel?,
--- role?, isPlayer? }. realm is nil for same-realm players. specName is the
--- full spec name ("Beast Mastery"), not an abbreviation. role is
--- TANK/HEALER/DAMAGER or nil. nil fields render as blank.
+-- role?, subgroup?, isPlayer? }. realm is nil for same-realm players. specName
+-- is the full spec name ("Beast Mastery"), not an abbreviation. role is
+-- TANK/HEALER/DAMAGER or nil. subgroup is 1-8, raid mode only. nil fields
+-- render as blank (a nil subgroup lands the player in the panel's "Other"
+-- block under the by-group sort).
 function GA.BuildSnapshot()
     local snapshot = { entries = {} }
 
@@ -138,6 +140,17 @@ function GA.BuildSnapshot()
             if selfOk and isSelf then
                 entry = localPlayerEntry()
                 entry.unit = unit
+            end
+            -- Subgroup, for the panel's by-group sort. The roster overlay
+            -- avoids GetRaidRosterInfo (not documented as secret-safe), but
+            -- its frame-mirroring technique can't correlate players with
+            -- inspect data, which this report must — so read it under the
+            -- file's usual guard ordering and let nil mean "unplaced".
+            local subOk, _, _, sub = pcall(GetRaidRosterInfo, i)
+            if subOk and type(sub) == "number"
+                and not (issecretvalue and issecretvalue(sub))
+                and sub >= 1 and sub <= 8 then
+                entry.subgroup = sub
             end
             table.insert(snapshot.entries, entry)
         end

@@ -28,6 +28,15 @@ local FLY_DOWN, FLY_UP, FLY_LEFT, FLY_RIGHT = "down", "up", "left", "right"
 -- Breathing room between the diamond's intruding half and a panel's content.
 local HEAD_CLEARANCE = 3
 
+-- While a persistent surface (a report panel) is attached, the widget rides at
+-- this strata so the panel clears always-on-screen HUD elements that live at
+-- MEDIUM. Ranks let the raise skip users who configured something higher.
+local CHAIN_STRATA = "HIGH"
+local STRATA_RANK = {
+    BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4,
+    DIALOG = 5, FULLSCREEN = 6, FULLSCREEN_DIALOG = 7, TOOLTIP = 8,
+}
+
 --------------------------------------------------------------------------------
 -- Module-Level State
 --------------------------------------------------------------------------------
@@ -38,6 +47,7 @@ local diamondFill      -- green rotated square (texture)
 
 local flyoutChain = {}  -- ordered list of registered child handles
 local nextHandleId = 1
+local chainStrataRaised = false  -- we moved the widget to CHAIN_STRATA, so we owe a restore
 
 local hoverActive = false
 
@@ -258,6 +268,25 @@ function W:_ReflowFlyoutChildren()
     if not widgetFrame then return end
     local direction = getSetting("flyoutDirection", FLY_DOWN)
     local anchorTarget = widgetFrame
+
+    -- Report panels must clear the always-on-screen HUD (damage meters and
+    -- the like sit at MEDIUM with busy frame levels), so the whole assembly
+    -- rides at CHAIN_STRATA while any child is attached — raised on the
+    -- widget, not the child, because children inherit the parent's strata and
+    -- the head child draws one level under the diamond, which only holds with
+    -- both on the same strata. Never lowers a user-configured DIALOG+ widget,
+    -- and only touches strata it raised itself: the WidgetMenu holds its own
+    -- temporary raise (savedStrata) that a drag mid-menu must not stomp.
+    if #flyoutChain > 0 then
+        local configured = getSetting("frameStrata", "MEDIUM")
+        if (STRATA_RANK[configured] or 0) < STRATA_RANK[CHAIN_STRATA] then
+            pcall(widgetFrame.SetFrameStrata, widgetFrame, CHAIN_STRATA)
+            chainStrataRaised = true
+        end
+    elseif chainStrataRaised then
+        chainStrataRaised = false
+        pcall(widgetFrame.SetFrameStrata, widgetFrame, getSetting("frameStrata", "MEDIUM"))
+    end
 
     -- Half the diamond sits inside the head child, and children draw above
     -- their parent by default, so without this the panel swallows the lower
