@@ -73,6 +73,17 @@ local function SafeUnitName(unit)
     return n:match("^([^%-]+)") or n
 end
 
+-- UnitGUID returns a secret for identity-restricted units (nameplates in
+-- instanced content). pcall success and even a passed truthiness test do not
+-- prove the value plain — a secret key at cache[guid] still throws.
+local function SafeUnitGUID(unit)
+    local ok, guid = pcall(UnitGUID, unit)
+    if not ok or guid == nil then return nil end
+    if issecretvalue and issecretvalue(guid) then return nil end
+    if type(guid) ~= "string" then return nil end
+    return guid
+end
+
 local function IsGroupUnit(unit)
     local okP, inParty = pcall(UnitInParty, unit)
     if okP and inParty then return true end
@@ -99,8 +110,8 @@ local function RebuildQueue()
 
     for i = 1, count do
         local unit = prefix .. i
-        local guidOk, guid = pcall(UnitGUID, unit)
-        if guidOk and guid then
+        local guid = SafeUnitGUID(unit)
+        if guid then
             local isSelfOk, isSelf = pcall(UnitIsUnit, unit, "player")
             if not (isSelfOk and isSelf) then
                 local cached = cache[guid]
@@ -135,8 +146,8 @@ local function SendNextInspect()
 
     -- The roster can shift between queue build and send; a unit token that no
     -- longer holds this GUID would inspect the wrong player.
-    local guidOk, guid = pcall(UnitGUID, entry.unit)
-    if not guidOk or guid ~= entry.guid then return end
+    local guid = SafeUnitGUID(entry.unit)
+    if not guid or guid ~= entry.guid then return end
 
     local canOk, canInspect = pcall(CanInspect, entry.unit, false)
     if not canOk or not canInspect then return end
@@ -222,7 +233,10 @@ end
 --------------------------------------------------------------------------------
 
 local function OnInspectReady(inspecteeGUID)
-    if not inspecteeGUID then return end
+    -- The payload is compared against pending.guid and used as a cache key;
+    -- reject secrets before either. type() is safe on nil and on secrets.
+    if type(inspecteeGUID) ~= "string" then return end
+    if issecretvalue and issecretvalue(inspecteeGUID) then return end
 
     if pending and pending.guid == inspecteeGUID then
         local unit = pending.unit
@@ -247,8 +261,8 @@ local function OnInspectReady(inspecteeGUID)
     if okTok and unit and IsGroupUnit(unit) then
         local isSelfOk, isSelf = pcall(UnitIsUnit, unit, "player")
         if not (isSelfOk and isSelf) then
-            local guidOk, guid = pcall(UnitGUID, unit)
-            if guidOk and guid == inspecteeGUID then
+            local guid = SafeUnitGUID(unit)
+            if guid == inspecteeGUID then
                 HarvestInspectData(inspecteeGUID, unit)
             end
         end
@@ -348,11 +362,14 @@ local function OnEvent(self, event, ...)
         end)
     elseif event == "UNIT_INVENTORY_CHANGED" then
         -- Freshness only: mark the member stale and let the slow scan pick
-        -- them up. Never triggers an immediate inspect.
+        -- them up. Never triggers an immediate inspect. Fires for EVERY unit
+        -- token (frame-wide RegisterEvent), including nameplates whose GUIDs
+        -- are secret in identity-restricted content — SafeUnitGUID drops
+        -- those; a secret GUID can never be a cache hit anyway.
         local unit = ...
         if unit then
-            local guidOk, guid = pcall(UnitGUID, unit)
-            if guidOk and guid and cache[guid] then
+            local guid = SafeUnitGUID(unit)
+            if guid and cache[guid] then
                 local isSelfOk, isSelf = pcall(UnitIsUnit, unit, "player")
                 if not (isSelfOk and isSelf) then
                     cache[guid].time = 0
@@ -397,7 +414,9 @@ end
 -- Returns the cache entry (read-only by convention) or nil. No TTL filtering:
 -- stale data beats a blank cell for display; entry.time lets callers decide.
 function Inspect:GetUnitInfo(guid)
-    if not guid then return nil end
+    -- Callers pass raw UnitGUID results; a secret key would throw on index.
+    if type(guid) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(guid) then return nil end
     return cache[guid]
 end
 
@@ -408,7 +427,9 @@ end
 -- Name-based fallback for callers whose GUIDs may not match the cache (the
 -- damage meter's historic segments can outlive roster GUID mappings).
 function Inspect:FindByName(name)
-    if not name or name == "" then return nil end
+    if type(name) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(name) then return nil end
+    if name == "" then return nil end
     for _, entry in pairs(cache) do
         if entry.name == name and entry.itemLevel then
             return entry
@@ -422,8 +443,30 @@ function Inspect:IsScanning()
         and (state == STATE_SCANNING or state == STATE_AWAITING)
 end
 
+-- True while the service still has members it intends to reach: the ticker is
+-- alive (so combat, solo, and a never-started service all read false) and
+-- either work is queued or a request is in flight. Going false is exact, not a
+-- guess: RebuildQueue only enqueues members who are stale AND CanInspect,
+-- SendNextInspect removes each on send, and a timeout clears pending without
+-- re-queueing — so empty + nothing in flight means anyone still blank is not
+-- coming. The tick's own refill (rebuild then send) happens inside one
+-- callback, so an outside reader can never catch a false-empty.
+--
+-- Deliberately true through SUSPENDED_FOREIGN, which resumes on its own: a
+-- display that blinked off for the backoff would be claiming the scan had
+-- finished. That, and never going false at all, is why IsScanning is the wrong
+-- predicate for a progress indicator.
+function Inspect:HasPendingWork()
+    -- ticker ~= nil is load-bearing: GROUP_ROSTER_UPDATE rebuilds the queue
+    -- unconditionally, even in combat, so a battle-rez mid-fight refills it
+    -- while nothing can send.
+    return started and ticker ~= nil and (#queue > 0 or pending ~= nil)
+end
+
 function Inspect:MarkStale(guid)
-    local entry = guid and cache[guid]
+    if type(guid) ~= "string" then return end
+    if issecretvalue and issecretvalue(guid) then return end
+    local entry = cache[guid]
     if entry then entry.time = 0 end
 end
 
