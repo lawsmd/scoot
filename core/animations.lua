@@ -152,6 +152,45 @@ function ControllerMixin:GetTextures()
 end
 
 --------------------------------------------------------------------------------
+-- Multi-texture controller helper
+--------------------------------------------------------------------------------
+
+-- Build the controller that Anim.Create expects back from a `buildController`
+-- definition, given a setup callback that populates textures and anim groups.
+--
+-- setupFn(frame, textures, animGroups) fills both arrays; animGroups[1] is
+-- treated as the lead group, so it is the one that decides when the effect is
+-- over. Stop() zeroes every texture's alpha as well as halting the groups: a
+-- group stopped mid-flight leaves its target wherever the interpolation had
+-- reached, which for an additive effect is a bright smear that never clears.
+function Anim.BuildMultiTextureController(frame, setupFn)
+	local textures = {}
+	local animGroups = {}
+
+	setupFn(frame, textures, animGroups)
+
+	if animGroups[1] then
+		animGroups[1]:SetScript("OnFinished", function()
+			frame:Hide()
+		end)
+	end
+
+	return {
+		_textures = textures,
+		Play = function(self)
+			for _, ag in ipairs(animGroups) do ag:Play() end
+		end,
+		Stop = function(self)
+			for _, ag in ipairs(animGroups) do ag:Stop() end
+			for _, tex in ipairs(textures) do tex:SetAlpha(0) end
+		end,
+		IsPlaying = function(self)
+			return animGroups[1] and animGroups[1]:IsPlaying() or false
+		end,
+	}
+end
+
+--------------------------------------------------------------------------------
 -- Factory
 --------------------------------------------------------------------------------
 

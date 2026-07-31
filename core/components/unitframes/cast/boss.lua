@@ -789,6 +789,7 @@ do
 	-- Apply styling to all Boss cast bars (Boss1-5)
 	local function applyAllBossCastBars()
 		if not addon:IsModuleEnabled("unitFrames", "Boss") then return end
+		if not addon:IsCastBarXEnabled() then return end
 		local db = addon and addon.db and addon.db.profile
 		if not db then return end
 

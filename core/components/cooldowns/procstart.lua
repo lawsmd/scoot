@@ -145,34 +145,9 @@ Anim.Register({
     end,
 })
 
--- Helper: create a multi-texture buildController with auto-hide on finish
-local function buildMultiTextureController(frame, setupFn)
-    local textures = {}
-    local animGroups = {}
-
-    setupFn(frame, textures, animGroups)
-
-    -- Wire OnFinished on first animGroup to hide the frame
-    if animGroups[1] then
-        animGroups[1]:SetScript("OnFinished", function()
-            frame:Hide()
-        end)
-    end
-
-    return {
-        _textures = textures,
-        Play = function(self)
-            for _, ag in ipairs(animGroups) do ag:Play() end
-        end,
-        Stop = function(self)
-            for _, ag in ipairs(animGroups) do ag:Stop() end
-            for _, tex in ipairs(textures) do tex:SetAlpha(0) end
-        end,
-        IsPlaying = function(self)
-            return animGroups[1] and animGroups[1]:IsPlaying() or false
-        end,
-    }
-end
+-- Multi-texture buildController with auto-hide on finish. Lives on the registry
+-- now that Cast Bar Z's completion effects need the same shape (animations.lua).
+local buildMultiTextureController = Anim.BuildMultiTextureController
 
 -- 5.4 Cross Flare: Four thin lines shoot outward from center (+X/-X/+Y/-Y)
 Anim.Register({

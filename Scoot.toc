@@ -124,6 +124,17 @@ core/components/unitframes/cast/core.lua
 core/components/unitframes/cast/textfill.lua
 core/components/unitframes/cast/styling.lua
 core/components/unitframes/cast/boss.lua
+## Cast Bar Z (Text — Scoot-owned frames, clipped-column text fill)
+core/components/castbarz/core.lua
+core/components/castbarz/frames.lua
+core/components/castbarz/anchoring.lua
+core/components/castbarz/suppression.lua
+core/components/castbarz/text.lua
+core/components/castbarz/empowered.lua
+core/components/castbarz/casttime.lua
+core/components/castbarz/effects.lua
+core/components/castbarz/events.lua
+core/components/castbarz/editmode.lua
 core/components/unitframes/buffs.lua
 core/components/unitframes/visibility.lua
 core/components/unitframes/copy.lua
@@ -246,6 +257,7 @@ ui/v2/settings/interface/NotesRenderer.lua
 ui/v2/settings/interface/DamageMeterXRenderer.lua
 ui/v2/settings/interface/DamageMeterYRenderer.lua
 ui/v2/settings/interface/ObjectiveTrackerRenderer.lua
+ui/v2/settings/castbars/CastBarZRenderer.lua
 ui/v2/settings/bosswarnings/BossWarningsRenderer.lua
 ui/v2/settings/bosswarnings/BossTimelineRenderer.lua
 ui/v2/settings/bosswarnings/BossBarsRenderer.lua

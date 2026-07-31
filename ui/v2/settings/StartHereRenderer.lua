@@ -191,7 +191,10 @@ end
 -- Variant Selector (compact cycling selector for mutuallyExclusive categories)
 --------------------------------------------------------------------------------
 
-local function CreateVariantSelector(parent, theme, subToggles)
+--- @param allowOff boolean|nil  false = the selector always shows a variant and
+---        cycles between them; nil/true keeps the OFF state in the cycle.
+local function CreateVariantSelector(parent, theme, subToggles, allowOff)
+    allowOff = (allowOff ~= false)
     local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB = theme:GetDimTextColor()
 
@@ -255,11 +258,25 @@ local function CreateVariantSelector(parent, theme, subToggles)
         end
     end
     selector._options = options
-    selector._currentIndex = 0  -- 0 = OFF
+    selector._allowOff = allowOff
+    selector._currentIndex = allowOff and 0 or 1  -- 0 = OFF
 
     function selector:UpdateState(activeSubId)
         local r, g, b = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()
+
+        -- With no OFF state, an unset or unrecognized id resolves to the first
+        -- variant — the same default the rest of the addon assumes when nothing
+        -- has been stored yet.
+        if not self._allowOff then
+            local known = false
+            for _, opt in ipairs(self._options) do
+                if opt.id == activeSubId then known = true break end
+            end
+            if not known then
+                activeSubId = self._options[1] and self._options[1].id or nil
+            end
+        end
 
         if not activeSubId then
             -- OFF state
@@ -296,7 +313,9 @@ local function CreateVariantSelector(parent, theme, subToggles)
 
     function selector:CycleNext()
         local nextIdx = self._currentIndex + 1
-        if nextIdx > #self._options then nextIdx = 0 end
+        if nextIdx > #self._options then
+            nextIdx = self._allowOff and 0 or 1
+        end
         self._currentIndex = nextIdx
         if nextIdx == 0 then
             self:UpdateState(nil)
@@ -316,25 +335,43 @@ local function CreateVariantSelector(parent, theme, subToggles)
 
     -- Tooltip on hover showing current variant info (colored to match variant)
     selector:SetScript("OnEnter", function(self)
-        if self._currentIndex == 0 then return end
-        local opt = self._options[self._currentIndex]
-        if not opt or not opt.versionBadge then return end
         local C = addon.UI and addon.UI.Controls
-        if C and C.GetOrCreateTooltip then
+        if not (C and C.GetOrCreateTooltip) then return end
+
+        if self._currentIndex == 0 then
+            -- OFF is where every new profile starts, so saying nothing here hides
+            -- the variants from the people most likely to need them named. Reset
+            -- the shared tooltip's accent, which the variant branch below tints.
             local tip = C:GetOrCreateTooltip()
-            tip:SetContent(opt.versionBadge.title or "", opt.versionBadge.text or "")
-            -- Color tooltip title and border to match variant
-            local vc = opt.variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[opt.variant]
-            if vc and tip._titleText then
-                tip._titleText:SetTextColor(vc[1], vc[2], vc[3], 1)
-            end
-            if vc and tip._border then
-                for _, tex in pairs(tip._border) do
-                    tex:SetColorTexture(vc[1], vc[2], vc[3], 1)
-                end
+            local names = {}
+            for _, o in ipairs(self._options) do names[#names + 1] = o.variant end
+            tip:SetContent("Off", "Scoot leaves this alone. Click to cycle through the available variants ("
+                .. table.concat(names, ", ") .. ") and hover one to see what it does.")
+            local r, g, b = theme:GetAccentColor()
+            if tip._titleText then tip._titleText:SetTextColor(r, g, b, 1) end
+            if tip._border then
+                for _, tex in pairs(tip._border) do tex:SetColorTexture(r, g, b, 1) end
             end
             tip:ShowAtAnchor(self, "BOTTOMLEFT", "TOPLEFT", 0, 4)
+            return
         end
+
+        local opt = self._options[self._currentIndex]
+        if not opt or not opt.versionBadge then return end
+
+        local tip = C:GetOrCreateTooltip()
+        tip:SetContent(opt.versionBadge.title or "", opt.versionBadge.text or "")
+        -- Color tooltip title and border to match variant
+        local vc = opt.variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[opt.variant]
+        if vc and tip._titleText then
+            tip._titleText:SetTextColor(vc[1], vc[2], vc[3], 1)
+        end
+        if vc and tip._border then
+            for _, tex in pairs(tip._border) do
+                tex:SetColorTexture(vc[1], vc[2], vc[3], 1)
+            end
+        end
+        tip:ShowAtAnchor(self, "BOTTOMLEFT", "TOPLEFT", 0, 4)
     end)
     selector:SetScript("OnLeave", function()
         local C = addon.UI and addon.UI.Controls
@@ -480,6 +517,29 @@ local function SetSubToggle(catId, sub, value)
     end
 end
 
+--- The variant currently selected for a category, or nil if none is stored.
+local function ActiveVariant(varCatId, variants)
+    for _, v in ipairs(variants) do
+        if IsSubToggleOn(varCatId, v) then return v end
+    end
+    return nil
+end
+
+--- Apply a variant selection: exactly one variant ends up true, or none when the
+--- selector cycled to OFF.
+local function ApplyVariantSelection(varCatId, variants, chosenId)
+    for _, v in ipairs(variants) do
+        SetSubToggle(varCatId, v, false)
+    end
+    if not chosenId then return end
+    for _, v in ipairs(variants) do
+        if v.id == chosenId then
+            SetSubToggle(varCatId, v, true)
+            return
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Column Builder
 --------------------------------------------------------------------------------
@@ -506,26 +566,11 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
             local selector = CreateVariantSelector(variantRow, theme, catDef.subToggles)
             selector:SetPoint("RIGHT", variantRow, "RIGHT", -ROW_PADDING, 0)
 
-            -- Determine current active sub-toggle
-            local activeSub = nil
-            for _, sub in ipairs(catDef.subToggles) do
-                if IsSubToggleOn(catId, sub) then activeSub = sub break end
-            end
+            local activeSub = ActiveVariant(catId, catDef.subToggles)
             selector:UpdateState(activeSub and activeSub.id or nil)
 
             selector:SetScript("OnClick", function()
-                local nextSubId = selector:CycleNext()
-                for _, sub in ipairs(catDef.subToggles) do
-                    SetSubToggle(catId, sub, false)
-                end
-                if nextSubId then
-                    for _, sub in ipairs(catDef.subToggles) do
-                        if sub.id == nextSubId then
-                            SetSubToggle(catId, sub, true)
-                            break
-                        end
-                    end
-                end
+                ApplyVariantSelection(catId, catDef.subToggles, selector:CycleNext())
                 state.dirty = true
                 if state.registerGuard then state.registerGuard() end
                 rebuild()
@@ -547,26 +592,60 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
 
             -- Sub-toggle rows (always visible)
             for _, sub in ipairs(catDef.subToggles) do
-                local subIsOn = IsSubToggleOn(catId, sub)
-                local subRow = CreateModuleRow(column, {
-                    label = sub.label,
-                    isOn = subIsOn,
-                    indent = SUB_INDENT,
-                    versionBadge = sub.versionBadge,
-                    variant = sub.variant,
-                    theme = theme,
-                    onToggle = function()
-                        local newValue = not IsSubToggleOn(catId, sub)
-                        SetSubToggle(catId, sub, newValue)
+                if sub.variantCategory then
+                    -- A variant selector nested in someone else's list. It reads
+                    -- and writes the category it points at, never this one, and
+                    -- has no OFF: one of its variants is always in effect.
+                    local varCatId = sub.variantCategory
+                    local varCatDef = addon.MODULE_CATEGORIES[varCatId]
+                    local variants = (varCatDef and varCatDef.subToggles) or {}
+
+                    local varRow = CreateModuleRow(column, {
+                        label = sub.label,
+                        indent = SUB_INDENT,
+                        variantSelector = true,
+                        theme = theme,
+                    })
+                    varRow:SetPoint("TOPLEFT", column, "TOPLEFT", 0, -yOffset)
+                    varRow:SetPoint("TOPRIGHT", column, "TOPRIGHT", 0, -yOffset)
+
+                    local varSelector = CreateVariantSelector(varRow, theme, variants, false)
+                    varSelector:SetPoint("RIGHT", varRow, "RIGHT", -ROW_PADDING, 0)
+
+                    local activeVar = ActiveVariant(varCatId, variants)
+                    varSelector:UpdateState(activeVar and activeVar.id or nil)
+
+                    varSelector:SetScript("OnClick", function()
+                        ApplyVariantSelection(varCatId, variants, varSelector:CycleNext())
                         state.dirty = true
                         if state.registerGuard then state.registerGuard() end
                         rebuild()
-                    end,
-                })
-                subRow:SetPoint("TOPLEFT", column, "TOPLEFT", 0, -yOffset)
-                subRow:SetPoint("TOPRIGHT", column, "TOPRIGHT", 0, -yOffset)
-                table.insert(state.rows, subRow)
-                yOffset = yOffset + ROW_HEIGHT
+                    end)
+
+                    table.insert(state.rows, varRow)
+                    yOffset = yOffset + ROW_HEIGHT
+                else
+                    local subIsOn = IsSubToggleOn(catId, sub)
+                    local subRow = CreateModuleRow(column, {
+                        label = sub.label,
+                        isOn = subIsOn,
+                        indent = SUB_INDENT,
+                        versionBadge = sub.versionBadge,
+                        variant = sub.variant,
+                        theme = theme,
+                        onToggle = function()
+                            local newValue = not IsSubToggleOn(catId, sub)
+                            SetSubToggle(catId, sub, newValue)
+                            state.dirty = true
+                            if state.registerGuard then state.registerGuard() end
+                            rebuild()
+                        end,
+                    })
+                    subRow:SetPoint("TOPLEFT", column, "TOPLEFT", 0, -yOffset)
+                    subRow:SetPoint("TOPRIGHT", column, "TOPRIGHT", 0, -yOffset)
+                    table.insert(state.rows, subRow)
+                    yOffset = yOffset + ROW_HEIGHT
+                end
             end
         else
             -- Simple category: single row with toggle
@@ -880,8 +959,16 @@ function StartHere.Render(panel, scrollContent)
         sep:SetColorTexture(ar, ag, ab, 0.3)
         table.insert(pageState.rows, sep)
 
-        -- Compute optimal column splits
-        local categories = addon.MODULE_CATEGORY_ORDER
+        -- Compute optimal column splits. Categories that render as a variant row
+        -- inside another category are skipped here but keep their place in
+        -- MODULE_CATEGORY_ORDER, which init.lua walks for the session snapshot.
+        local categories = {}
+        for _, catId in ipairs(addon.MODULE_CATEGORY_ORDER) do
+            local catDef = addon.MODULE_CATEGORIES[catId]
+            if not (catDef and catDef.hiddenFromFeatures) then
+                categories[#categories + 1] = catId
+            end
+        end
         local splits = ComputeColumnSplits(categories, NUM_COLUMNS)
 
         -- Compute column width

@@ -158,6 +158,15 @@ Navigation.NavModel = {
             { key = "ufToT", label = "Target of Target", module = "unitFrames", moduleSubId = "TargetOfTarget" },
             { key = "ufFocusTarget", label = "Target of Focus", module = "unitFrames", moduleSubId = "FocusTarget" },
             { key = "ufBoss", label = "Boss", module = "unitFrames", moduleSubId = "Boss" },
+            -- Last row of Unit Frames, and Z-only: the X variant is configured
+            -- per frame, on each frame's own page above. alwaysShow keeps the row
+            -- visible while X is selected so the Z badge can still explain what
+            -- this is — grayed out is exactly when someone needs to ask.
+            { key = "castBarZ", label = "Cast Bars", module = "castBars", moduleSubId = "castBarZ",
+                variant = "Z",
+                versionBadge = { label = "Z", title = "Cast Bar Z", text = "Scoot's own cast bars, drawn as filling text instead of a bar. Positioned freely in Edit Mode and configured here." },
+                betaBadge = true,
+                alwaysShow = true },
         },
     },
     {
@@ -606,8 +615,12 @@ function Navigation:BuildRows(contentFrame)
             for _, child in ipairs(parent.children) do
                 local catDef = child.module and addon.MODULE_CATEGORIES and addon.MODULE_CATEGORIES[child.module]
                 local isMutuallyExclusive = catDef and catDef.mutuallyExclusive
-                if isMutuallyExclusive then
-                    -- Only show the active variant
+                if isMutuallyExclusive and not child.alwaysShow then
+                    -- Only show the active variant: the variants of a mutually
+                    -- exclusive category are alternative pages for one feature,
+                    -- so showing both would read as duplicates. alwaysShow opts
+                    -- out for a section that has no other variant page to fall
+                    -- back on, keeping the row visible but grayed.
                     if self:IsNavModuleActive(child.module, child.moduleSubId) then
                         visibleChildren[#visibleChildren + 1] = child
                     end

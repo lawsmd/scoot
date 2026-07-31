@@ -23,6 +23,8 @@ local COMPONENT_TO_CATEGORY = {
     microBar = "actionBars", stanceBar = "actionBars", petBar = "actionBars",
     -- Buffs/Debuffs
     buffs = "buffsDebuffs", debuffs = "buffsDebuffs",
+    -- Cast Bars
+    castBarZ = "castBars",
     -- Cooldown Manager
     essentialCooldowns = "cooldownManager", utilityCooldowns = "cooldownManager",
     trackedBuffs = "cooldownManager", trackedBars = "cooldownManager",
@@ -70,6 +72,10 @@ addon.MODULE_CATEGORY_ORDER = {
     "actionBars",
     "bossWarnings",
     "buffsDebuffs",
+    -- Not rendered on the Features page (hiddenFromFeatures) — it appears as a
+    -- variant row inside Unit Frames. It stays in this list because init.lua
+    -- builds the session module snapshot by walking it.
+    "castBars",
     "classAuras",
     "cooldownManager",
     "damageMeter",
@@ -107,6 +113,31 @@ addon.MODULE_CATEGORIES = {
         subToggles = {
             { id = "buffs", label = "Buffs" },
             { id = "debuffs", label = "Debuffs" },
+        },
+    },
+    castBars = {
+        label = "Cast Bars",
+        mutuallyExclusive = true,
+        noMasterToggle = true,
+        -- Rendered as a variant row inside Unit Frames rather than as a category
+        -- of its own, because X is only ever in effect for unit frames that are
+        -- enabled there. See the castBarsVariant entry under unitFrames.
+        hiddenFromFeatures = true,
+        -- There is no OFF here. Cast bars always exist; the only question is who
+        -- draws them, so the selector cycles X -> Z -> X. X is the default that
+        -- addon:IsCastBarXEnabled() assumes when nothing has been stored yet.
+        subToggles = {
+            -- castBarX has no component of its own: the X path lives inside the
+            -- unit frame components and is read through addon:IsCastBarXEnabled().
+            { id = "castBarX", label = "Cast Bars",
+              variant = "X",
+              versionBadge = { label = "X", title = "Cast Bar X", text = "Blizzard's own cast bars, restyled in place by Scoot. Each frame's cast bar settings live on that frame's page and only take effect while that unit frame is enabled above — with the frame off, its Cast Bar X customizations simply aren't applied." } },
+            -- Z's sub-toggle id MUST equal the component id: addon:RegisterComponent
+            -- gates on IsModuleEnabled(GetComponentCategory(id), id), so a mismatch
+            -- makes the component silently never register.
+            { id = "castBarZ", label = "Cast Bars",
+              variant = "Z",
+              versionBadge = { label = "Z", title = "Cast Bar Z", text = "Scoot's own cast bars, drawn as filling text instead of a bar. They stand alone: positioned freely in Edit Mode and configured on the Cast Bars page under Unit Frames." } },
         },
     },
     classAuras = {
@@ -183,6 +214,10 @@ addon.MODULE_CATEGORIES = {
             { id = "FocusTarget", label = "Target of Focus" },
             { id = "Pet", label = "Pet" },
             { id = "Boss", label = "Boss" },
+            -- Not an on/off row: a variant selector for the castBars category,
+            -- nested here because that is where its effect is scoped. Its state
+            -- lives in moduleEnabled.castBars, never in unitFrames.
+            { id = "castBarsVariant", label = "Cast Bars", variantCategory = "castBars" },
         },
     },
 }
@@ -238,6 +273,23 @@ function addon:IsModuleEnabled(category, subId)
     return true
 end
 
+--- Is the X cast bar path (Scoot styling Blizzard's own cast bars) active?
+---
+--- X is the default, so an absent key means ON here — the opposite of the usual
+--- zero-touch reading. The Cast Bars selector has no off state: an enabled unit
+--- frame always has a cast bar, and the only question is who draws it. Absent
+--- also covers every profile configured before the selector existed, all of
+--- which were on X by definition.
+---
+--- Zero-touch still holds, because the X path is additionally gated on the
+--- unit's own unitFrames toggle and a fresh profile has none of those enabled.
+function addon:IsCastBarXEnabled()
+    local profile = self.db and self.db.profile
+    local me = profile and profile.moduleEnabled
+    if not me or me.castBars == nil then return true end
+    return self:IsModuleEnabled("castBars", "castBarX")
+end
+
 --- Set a module toggle value. Handles boolean→table transition for sub-toggles.
 function addon:SetModuleEnabled(category, subId, value)
     local profile = self.db and self.db.profile
@@ -280,7 +332,9 @@ function addon:SetModuleEnabled(category, subId, value)
                         for _, memberId in ipairs(sub.members) do
                             current[memberId] = initVal
                         end
-                    else
+                    elseif not sub.variantCategory then
+                        -- Variant rows keep their state in the category they point
+                        -- at; a key seeded here would be dead data.
                         current[sub.id] = initVal
                     end
                 end

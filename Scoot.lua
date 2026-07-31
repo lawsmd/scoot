@@ -493,6 +493,26 @@ function SlashCmdList.SCOOT(msg, editBox)
                 else addon:Print("Cast Bar Z debug not available.") end
                 return
             end
+            if sub2 == "endorder" then
+                if addon.DebugCastZEndOrder then addon.DebugCastZEndOrder(args[4])
+                else addon:Print("Cast Bar Z debug not available.") end
+                return
+            end
+            if sub2 == "fit" then
+                if addon.DebugCastZFit then addon.DebugCastZFit()
+                else addon:Print("Cast Bar Z debug not available.") end
+                return
+            end
+            if sub2 == "empower" then
+                if addon.DebugCastZEmpower then addon.DebugCastZEmpower(args[4])
+                else addon:Print("Cast Bar Z debug not available.") end
+                return
+            end
+            if sub2 == "time" then
+                if addon.DebugCastZTime then addon.DebugCastZTime(args[4])
+                else addon:Print("Cast Bar Z debug not available.") end
+                return
+            end
             if addon.DebugCastZProbe then addon.DebugCastZProbe(sub2)
             else addon:Print("Cast Bar Z debug not available.") end
             return
