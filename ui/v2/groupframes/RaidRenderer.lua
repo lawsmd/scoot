@@ -731,9 +731,23 @@ function GF.RenderRaid(panel, scrollContent)
         sectionKey = "debuffs",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
+            -- Adopt a pre-existing CVar override into the profile so the preference
+            -- survives to other characters. Only when the profile has no opinion yet
+            -- and the live CVar differs from Blizzard's default ("1") — i.e. the user
+            -- already changed it deliberately, so this is not a Zero-Touch violation.
+            do
+                local t = ensureDB()
+                if t and t.enlargeRoleDebuffs == nil then
+                    local cur = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("raidFramesDisplayLargerRoleSpecificDebuffs")
+                    if cur == "0" then
+                        t.enlargeRoleDebuffs = false
+                    end
+                end
+            end
+
             inner:AddToggle({
                 label = "Enlarge Dispellable / Boss Debuffs",
-                description = "Blizzard enlarges dispellable and boss/role-specific debuffs on raid frames (Blizzard default: on). Turn this off to render all raid debuffs at the same small size. Also applies to raid-style party frames.",
+                description = "Blizzard renders dispellable and boss/role-specific debuffs at 1.5x size on raid frames (Blizzard default: on). Turn this off to render those debuffs at the same size as other debuffs. Also applies to raid-style party frames. This scales the icon and its border together — it does not fix oversized borders (see below).",
                 get = function()
                     local t = ensureDB() or {}
                     if t.enlargeRoleDebuffs ~= nil then return t.enlargeRoleDebuffs end
@@ -751,7 +765,7 @@ function GF.RenderRaid(panel, scrollContent)
                 end,
             })
 
-            inner:AddDescription("Raid-frame debuffs are rendered by Blizzard's protected private-aura system, so their icons and borders can't be restyled by addons. This toggle controls Blizzard's own enlargement of dispellable/boss debuffs.")
+            inner:AddDescription("Known Blizzard 12.0 bug: raid-frame debuff borders are drawn at a fixed 40px size regardless of icon size, so debuffs with colored (dispellable-type) borders can show a large square outline around a small icon. The debuff renderer runs in Blizzard's secure environment — no addon can resize or hide these borders; this needs a fix from Blizzard. To confirm it isn't Scoot: raise Icon Size in Edit Mode > Raid Frames — the icons grow while the border box stays the same size.")
 
             inner:Finalize()
         end,
