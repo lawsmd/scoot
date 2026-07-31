@@ -16,11 +16,16 @@ globals = {
 
 read_globals = {
     -- WoW core API
+    "AbbreviateNumbers",
+    "C_CurveUtil",
     "C_EditMode",
     "C_Secrets",
+    "C_StringUtil",
     "C_Timer",
     "C_UnitAuras",
+    "CreateAbbreviateConfig",
     "CreateFrame",
+    "Enum",
     "GetTime",
     "hooksecurefunc",
     "InCombatLockdown",
@@ -33,6 +38,7 @@ read_globals = {
     "UnitGUID",
     "UnitHealth",
     "UnitHealthMax",
+    "UnitHealthPercent",
     "UnitExists",
     "UnitInRange",
     "UnitIsPlayer",
@@ -60,6 +66,8 @@ read_globals = {
     "C_PaperDollInfo",
     "C_Spell",
     "C_SpecializationInfo",
+    "C_Texture",
+    "CreateColor",
     "GetSpecialization",
     "GetSpecializationInfo",
 
@@ -81,6 +89,7 @@ read_globals = {
     "string", "table", "math", "pairs", "ipairs", "type", "tostring", "tonumber",
     "select", "unpack", "wipe", "tinsert", "tremove", "sort",
     "format", "strsplit", "strtrim", "strmatch", "strfind", "gsub",
+    "strupper", "strlower", "strjoin", "strconcat",
     "floor", "ceil", "abs", "min", "max",
     "print", "error", "assert", "loadstring",
     "setmetatable", "getmetatable", "rawget", "rawset",
