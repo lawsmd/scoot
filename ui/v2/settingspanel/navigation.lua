@@ -298,6 +298,26 @@ local TOT_FOT_SOURCES = {
     ufFocusTarget = { "ufToT" },
 }
 
+-- Unit Frames Z: a separate copy type -- the X and Z settings schemas share
+-- nothing, so Z pages only ever offer Z sources. Future Z units join these
+-- tables.
+local UFZ_COPY_TARGETS = {
+    ufzPlayer = true,
+    ufzTarget = true,
+}
+
+local UFZ_NAMES = {
+    ufzPlayer = "Player Frame Z",
+    ufzTarget = "Target Frame Z",
+}
+
+local UFZ_KEYS = {
+    ufzPlayer = "Player",
+    ufzTarget = "Target",
+}
+
+local UFZ_ORDER = { "ufzPlayer", "ufzTarget" }
+
 local CUSTOM_GROUP_COPY_TARGETS = {
     customGroup1 = true,
     customGroup2 = true,
@@ -386,6 +406,22 @@ function UIPanel:UpdateCopyFromDropdown()
         dropdown:Show()
         if label then label:Show() end
 
+    -- Check if this is a Unit Frame Z category
+    elseif key and UFZ_COPY_TARGETS[key] then
+        local values = {}
+        local order = {}
+        for _, ufzKey in ipairs(UFZ_ORDER) do
+            if ufzKey ~= key then
+                values[ufzKey] = UFZ_NAMES[ufzKey]
+                table.insert(order, ufzKey)
+            end
+        end
+
+        dropdown:SetOptions(values, order)
+        dropdown:ClearSelection()
+        dropdown:Show()
+        if label then label:Show() end
+
     -- Check if this is a Custom Group category
     elseif key and CUSTOM_GROUP_COPY_TARGETS[key] then
         local values = {}
@@ -419,6 +455,7 @@ function UIPanel:HandleCopyFrom(sourceKey)
     local isActionBar = ACTION_BAR_COPY_TARGETS[destKey]
     local isUnitFrame = UNIT_FRAME_COPY_TARGETS[destKey]
     local isCustomGroup = CUSTOM_GROUP_COPY_TARGETS[destKey]
+    local isUFZ = UFZ_COPY_TARGETS[destKey]
 
     local sourceName, destName
 
@@ -428,6 +465,9 @@ function UIPanel:HandleCopyFrom(sourceKey)
     elseif isUnitFrame then
         sourceName = UNIT_FRAME_NAMES[sourceKey] or sourceKey
         destName = UNIT_FRAME_NAMES[destKey] or self:GetCategoryTitle(destKey)
+    elseif isUFZ then
+        sourceName = UFZ_NAMES[sourceKey] or sourceKey
+        destName = UFZ_NAMES[destKey] or self:GetCategoryTitle(destKey)
     elseif isCustomGroup then
         sourceName = GetCopySourceName(sourceKey)
         destName = GetCopySourceName(destKey)
@@ -437,7 +477,7 @@ function UIPanel:HandleCopyFrom(sourceKey)
 
     if addon.Dialogs and addon.Dialogs.Show then
         local panel = self
-        local dialogKey = isUnitFrame and "SCOOT_COPY_UF_CONFIRM"
+        local dialogKey = (isUnitFrame or isUFZ) and "SCOOT_COPY_UF_CONFIRM"
                        or isCustomGroup and "SCOOT_COPY_CUSTOMGROUP_CONFIRM"
                        or "SCOOT_COPY_ACTIONBAR_CONFIRM"
         addon.Dialogs:Show(dialogKey, {
@@ -449,18 +489,19 @@ function UIPanel:HandleCopyFrom(sourceKey)
                 destName = destName,
                 isUnitFrame = isUnitFrame,
                 isCustomGroup = isCustomGroup,
+                isUFZ = isUFZ,
             },
             onAccept = function()
-                panel:ExecuteCopyFrom(sourceKey, destKey, isUnitFrame, isCustomGroup)
+                panel:ExecuteCopyFrom(sourceKey, destKey, isUnitFrame, isCustomGroup, isUFZ)
             end,
         })
     else
         -- Fallback if dialogs not loaded
-        self:ExecuteCopyFrom(sourceKey, destKey, isUnitFrame, isCustomGroup)
+        self:ExecuteCopyFrom(sourceKey, destKey, isUnitFrame, isCustomGroup, isUFZ)
     end
 end
 
-function UIPanel:ExecuteCopyFrom(sourceKey, destKey, isUnitFrame, isCustomGroup)
+function UIPanel:ExecuteCopyFrom(sourceKey, destKey, isUnitFrame, isCustomGroup, isUFZ)
     if isUnitFrame then
         if addon and addon.CopyUnitFrameSettings then
             local sourceUnit = UNIT_FRAME_KEYS[sourceKey]
@@ -483,6 +524,20 @@ function UIPanel:ExecuteCopyFrom(sourceKey, destKey, isUnitFrame, isCustomGroup)
                 elseif addon.Print then
                     addon:Print("Copy failed: " .. (err or "unknown error"))
                 end
+            end
+        end
+    elseif isUFZ then
+        if addon and addon.CopyUnitFrameZSettings then
+            local sourceUnit = UFZ_KEYS[sourceKey]
+            local destUnit = UFZ_KEYS[destKey]
+            if addon.CopyUnitFrameZSettings(sourceUnit, destUnit) then
+                C_Timer.After(0.1, function()
+                    local panel = addon.UI and addon.UI.SettingsPanel
+                    if panel and panel._currentCategoryKey == destKey then
+                        panel:OnNavigationSelect(destKey, destKey)
+                    end
+                end)
+                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
             end
         end
     elseif isCustomGroup then

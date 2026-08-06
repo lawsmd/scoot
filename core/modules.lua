@@ -89,6 +89,11 @@ addon.MODULE_CATEGORY_ORDER = {
     "sct",
     "tooltip",
     "unitFrames",
+    -- Not rendered on the Features page (hiddenFromFeatures) — each Z-capable
+    -- unit renders as a per-unit OFF/X/Z mode cycle inside Unit Frames (the
+    -- modeCycle entries on unitFrames.subToggles). It stays in this list because
+    -- init.lua builds the session module snapshot by walking it.
+    "unitFramesZ",
 }
 
 addon.MODULE_CATEGORIES = {
@@ -207,8 +212,25 @@ addon.MODULE_CATEGORIES = {
         label = "Unit Frames",
         noMasterToggle = true,
         subToggles = {
-            { id = "Player", label = "Player" },
-            { id = "Target", label = "Target" },
+            -- Player and Target are three-state rows: OFF / X (style Blizzard's
+            -- frame, state in unitFrames.<unit>) / Z (Scoot-owned frame, state in
+            -- unitFramesZ.<unit>). The modeCycle options carry which category+sub
+            -- each mode reads and writes; the Features page clears every option's
+            -- key and sets the chosen one, which is what keeps X and Z exclusive.
+            { id = "Player", label = "Player",
+              modeCycle = {
+                { id = "X", variant = "X", category = "unitFrames", subId = "Player",
+                  versionBadge = { label = "X", title = "Player Frame X", text = "Blizzard's own Player frame, restyled in place by Scoot. Configured on the Player page under Unit Frames." } },
+                { id = "Z", variant = "Z", category = "unitFramesZ", subId = "Player",
+                  versionBadge = { label = "Z", title = "Player Frame Z", text = "Scoot's own text-first Player frame. Blizzard's Player frame is removed entirely while this is on — and everything attached to it goes with it: the Pet frame, totem and rune/class power bars, and a cast bar locked to the Player frame in Edit Mode. Positioned in Edit Mode; configured on the Player page." } },
+              } },
+            { id = "Target", label = "Target",
+              modeCycle = {
+                { id = "X", variant = "X", category = "unitFrames", subId = "Target",
+                  versionBadge = { label = "X", title = "Target Frame X", text = "Blizzard's own Target frame, restyled in place by Scoot. Configured on the Target page under Unit Frames." } },
+                { id = "Z", variant = "Z", category = "unitFramesZ", subId = "Target",
+                  versionBadge = { label = "Z", title = "Target Frame Z", text = "Scoot's own text-first Target frame. Blizzard's Target frame is removed entirely while this is on — and everything attached to it goes with it: the Target-of-Target frame and the target's cast bar. Positioned in Edit Mode; configured on the Target page." } },
+              } },
             { id = "TargetOfTarget", label = "Target of Target" },
             { id = "Focus", label = "Focus" },
             { id = "FocusTarget", label = "Target of Focus" },
@@ -218,6 +240,29 @@ addon.MODULE_CATEGORIES = {
             -- nested here because that is where its effect is scoped. Its state
             -- lives in moduleEnabled.castBars, never in unitFrames.
             { id = "castBarsVariant", label = "Cast Bars", variantCategory = "castBars" },
+        },
+    },
+    unitFramesZ = {
+        label = "Unit Frames",
+        noMasterToggle = true,
+        -- Rendered through the per-unit modeCycle rows inside Unit Frames, never
+        -- as a category of its own.
+        hiddenFromFeatures = true,
+        -- Absent MUST keep meaning "off": the preset backfill turns absent
+        -- categories into `true`, and a bare `true` on a noMasterToggle category
+        -- reads enabled for every sub — which would force Z on for all units
+        -- (while the backfill also turns X on) the moment any preset is applied.
+        noPresetBackfill = true,
+        -- NOT mutuallyExclusive: each unit's Z toggle is independent. X/Z
+        -- exclusivity is per unit and lives in the modeCycle writes (plus the
+        -- component initializer's write-back), not in this category.
+        -- The component id (unitFramesZ) is deliberately NOT in
+        -- COMPONENT_TO_CATEGORY: RegisterComponent would gate on
+        -- IsModuleEnabled("unitFramesZ", "unitFramesZ"), which no sub key ever
+        -- satisfies. The initializer gates inline instead.
+        subToggles = {
+            { id = "Player", label = "Player", variant = "Z" },
+            { id = "Target", label = "Target", variant = "Z" },
         },
     },
 }
@@ -327,7 +372,14 @@ function addon:SetModuleEnabled(category, subId, value)
             -- Grouped sub-toggles expand their members.
             if catDef and catDef.subToggles then
                 for i, sub in ipairs(catDef.subToggles) do
-                    local initVal = not catDef.mutuallyExclusive and wasEnabled or (i == 1)
+                    -- NOT `A and B or C`: with wasEnabled == false that collapses
+                    -- to (i == 1) and silently seeds the first sub-toggle on.
+                    local initVal
+                    if catDef.mutuallyExclusive then
+                        initVal = (i == 1)
+                    else
+                        initVal = wasEnabled
+                    end
                     if sub.members then
                         for _, memberId in ipairs(sub.members) do
                             current[memberId] = initVal

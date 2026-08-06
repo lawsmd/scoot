@@ -151,8 +151,32 @@ Navigation.NavModel = {
         label = "Unit Frames",
         collapsible = true,
         children = {
-            { key = "ufPlayer", label = "Player", module = "unitFrames", moduleSubId = "Player" },
-            { key = "ufTarget", label = "Target", module = "unitFrames", moduleSubId = "Target" },
+            -- Player and Target are three-state units (OFF / X / Z, cycled on
+            -- the Features page), so each is a PAIR of children sharing a
+            -- variantGroup: the group's active member is the only one shown.
+            -- When the whole group is off, only the groupFallback member
+            -- renders -- grayed, and with hideBadgesWhenDisabled its badge is
+            -- suppressed so an OFF unit reads as plain "Player", not "Player
+            -- [X]". The disabled hover tooltip already points at the Features
+            -- page.
+            { key = "ufPlayer", label = "Player", module = "unitFrames", moduleSubId = "Player",
+                variant = "X",
+                versionBadge = { label = "X", title = "Player Frame X", text = "Blizzard's own Player frame, restyled in place by Scoot." },
+                variantGroup = "ufPlayer", groupFallback = true, hideBadgesWhenDisabled = true },
+            { key = "ufzPlayer", label = "Player", module = "unitFramesZ", moduleSubId = "Player",
+                variant = "Z",
+                versionBadge = { label = "Z", title = "Player Frame Z", text = "Scoot's own text-first Player frame. Blizzard's Player frame is removed entirely while this is on. Positioned in Edit Mode and configured here." },
+                betaBadge = true,
+                variantGroup = "ufPlayer" },
+            { key = "ufTarget", label = "Target", module = "unitFrames", moduleSubId = "Target",
+                variant = "X",
+                versionBadge = { label = "X", title = "Target Frame X", text = "Blizzard's own Target frame, restyled in place by Scoot." },
+                variantGroup = "ufTarget", groupFallback = true, hideBadgesWhenDisabled = true },
+            { key = "ufzTarget", label = "Target", module = "unitFramesZ", moduleSubId = "Target",
+                variant = "Z",
+                versionBadge = { label = "Z", title = "Target Frame Z", text = "Scoot's own text-first Target frame. Blizzard's Target frame is removed entirely while this is on. Positioned in Edit Mode and configured here." },
+                betaBadge = true,
+                variantGroup = "ufTarget" },
             { key = "ufFocus", label = "Focus", module = "unitFrames", moduleSubId = "Focus" },
             { key = "ufPet", label = "Pet", module = "unitFrames", moduleSubId = "Pet" },
             { key = "ufToT", label = "Target of Target", module = "unitFrames", moduleSubId = "TargetOfTarget" },
@@ -610,12 +634,34 @@ function Navigation:BuildRows(contentFrame)
         if parent.collapsible and parent.children then
             local isExpanded = self._expandedSections[parent.key]
 
+            -- variantGroup pass: children sharing a variantGroup are alternative
+            -- pages for one three-state unit (OFF/X/Z), spanning two categories
+            -- -- which is why the mutuallyExclusive filter below cannot serve
+            -- them. Among members, only the active one shows; when the whole
+            -- group is off, only the groupFallback member shows (grayed, via
+            -- the normal disabled path).
+            local groupActive = nil
+            for _, child in ipairs(parent.children) do
+                if child.variantGroup and self:IsNavModuleActive(child.module, child.moduleSubId) then
+                    groupActive = groupActive or {}
+                    groupActive[child.variantGroup] = true
+                end
+            end
+
             -- Pre-filter: skip inactive variants for mutuallyExclusive categories
             local visibleChildren = {}
             for _, child in ipairs(parent.children) do
                 local catDef = child.module and addon.MODULE_CATEGORIES and addon.MODULE_CATEGORIES[child.module]
                 local isMutuallyExclusive = catDef and catDef.mutuallyExclusive
-                if isMutuallyExclusive and not child.alwaysShow then
+                if child.variantGroup then
+                    if groupActive and groupActive[child.variantGroup] then
+                        if self:IsNavModuleActive(child.module, child.moduleSubId) then
+                            visibleChildren[#visibleChildren + 1] = child
+                        end
+                    elseif child.groupFallback then
+                        visibleChildren[#visibleChildren + 1] = child
+                    end
+                elseif isMutuallyExclusive and not child.alwaysShow then
                     -- Only show the active variant: the variants of a mutually
                     -- exclusive category are alternative pages for one feature,
                     -- so showing both would read as duplicates. alwaysShow opts
@@ -850,17 +896,27 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
     label:SetText(navItem.label)
     row._label = label
 
-    -- Version badge info icon (e.g., "X" / "Y" with variant color)
-    if navItem.versionBadge and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
+    -- Version badge info icon (e.g., "X" / "Y" with variant color).
+    -- hideBadgesWhenDisabled: a variantGroup's OFF fallback row must read as
+    -- plain "Player", not "Player [X]" -- no mode is in effect, so no letter.
+    local suppressBadges = isModuleDisabled and navItem.hideBadgesWhenDisabled
+    if navItem.versionBadge and not suppressBadges
+        and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
         -- Use variant color if available (X=green, Y=yellow, Z=blue)
         local badgeColor = nil
         if navItem.variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[navItem.variant] then
             badgeColor = addon.VARIANT_COLORS[navItem.variant]
         end
 
-        -- For mutually exclusive entries, append switch instructions to tooltip
+        -- For mutually exclusive and mode-cycled entries, append switch
+        -- instructions to the tooltip
         local catDef = navItem.module and addon.MODULE_CATEGORIES and addon.MODULE_CATEGORIES[navItem.module]
-        local tooltipSuffix = (catDef and catDef.mutuallyExclusive) and "\n\nSwitch variants on the Features page." or ""
+        local tooltipSuffix = ""
+        if catDef and catDef.mutuallyExclusive then
+            tooltipSuffix = "\n\nSwitch variants on the Features page."
+        elseif navItem.variantGroup then
+            tooltipSuffix = "\n\nSwitch modes on the Features page."
+        end
 
         row._versionBadge = addon.UI.Controls:CreateInfoIcon({
             parent = row,
@@ -882,7 +938,8 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
     end
 
     -- Beta badge (red "beta" label)
-    if navItem.betaBadge and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
+    if navItem.betaBadge and not suppressBadges
+        and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
         local BETA_COLOR = { 0.9, 0.2, 0.2 }
         local betaBadge = addon.UI.Controls:CreateInfoIcon({
             parent = row,
@@ -924,7 +981,15 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
             local C = addon.UI and addon.UI.Controls
             if C and C.GetOrCreateTooltip then
                 local tip = C:GetOrCreateTooltip()
-                tip:SetContent("Module Disabled", "Enable this module on the Features page to access its settings.")
+                if navItem.variantGroup then
+                    -- A three-state unit sitting on OFF: "module disabled" would
+                    -- be the wrong mental model -- nothing is broken, the unit
+                    -- just has no mode selected.
+                    tip:SetContent("Frame Off",
+                        "Scoot is leaving this frame alone. Choose the X or Z mode on the Features page to configure it.")
+                else
+                    tip:SetContent("Module Disabled", "Enable this module on the Features page to access its settings.")
+                end
                 tip:ShowAtAnchor(self, "TOPLEFT", "TOPRIGHT", 8, 0)
             end
         end)

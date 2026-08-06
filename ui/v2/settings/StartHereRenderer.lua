@@ -541,6 +541,31 @@ local function ApplyVariantSelection(varCatId, variants, chosenId)
 end
 
 --------------------------------------------------------------------------------
+-- Per-sub mode cycles (OFF / X / Z on one unit)
+--------------------------------------------------------------------------------
+-- The modeCycle contract (modules.lua, unitFrames Player/Target): each option
+-- names the category+subId that holds its state, so one row can span two
+-- categories -- X lives in unitFrames.<unit>, Z in unitFramesZ.<unit>. Clearing
+-- every option's key before setting the chosen one is what keeps the modes
+-- exclusive; there is no mutuallyExclusive category behind this.
+
+--- The mode currently active for a modeCycle sub-toggle, or nil (= OFF).
+local function ActiveModeOption(sub)
+    for _, opt in ipairs(sub.modeCycle) do
+        if addon:IsModuleEnabled(opt.category, opt.subId) then return opt end
+    end
+    return nil
+end
+
+--- Apply a mode selection: exactly one option's key ends up true, or none when
+--- the selector cycled to OFF.
+local function ApplyModeSelection(sub, chosenOptId)
+    for _, opt in ipairs(sub.modeCycle) do
+        addon:SetModuleEnabled(opt.category, opt.subId, opt.id == chosenOptId)
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Column Builder
 --------------------------------------------------------------------------------
 
@@ -592,7 +617,36 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
 
             -- Sub-toggle rows (always visible)
             for _, sub in ipairs(catDef.subToggles) do
-                if sub.variantCategory then
+                if sub.modeCycle then
+                    -- A per-unit OFF/X/Z cycle: the options span categories (see
+                    -- ActiveModeOption above), so this reuses the variant
+                    -- selector widget with its default allowOff = true -- OFF
+                    -- is a real state here, unlike the variantCategory rows.
+                    local modeRow = CreateModuleRow(column, {
+                        label = sub.label,
+                        indent = SUB_INDENT,
+                        variantSelector = true,
+                        theme = theme,
+                    })
+                    modeRow:SetPoint("TOPLEFT", column, "TOPLEFT", 0, -yOffset)
+                    modeRow:SetPoint("TOPRIGHT", column, "TOPRIGHT", 0, -yOffset)
+
+                    local modeSelector = CreateVariantSelector(modeRow, theme, sub.modeCycle)
+                    modeSelector:SetPoint("RIGHT", modeRow, "RIGHT", -ROW_PADDING, 0)
+
+                    local activeOpt = ActiveModeOption(sub)
+                    modeSelector:UpdateState(activeOpt and activeOpt.id or nil)
+
+                    modeSelector:SetScript("OnClick", function()
+                        ApplyModeSelection(sub, modeSelector:CycleNext())
+                        state.dirty = true
+                        if state.registerGuard then state.registerGuard() end
+                        rebuild()
+                    end)
+
+                    table.insert(state.rows, modeRow)
+                    yOffset = yOffset + ROW_HEIGHT
+                elseif sub.variantCategory then
                     -- A variant selector nested in someone else's list. It reads
                     -- and writes the category it points at, never this one, and
                     -- has no OFF: one of its variants is always in effect.
