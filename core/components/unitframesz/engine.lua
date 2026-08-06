@@ -1,0 +1,3268 @@
+-- unitframesz/engine.lua - the Unit Frames Z rendering engine
+--
+-- The whole UFZ frame: a large current-health percent stacked over a smaller
+-- abbreviated current-health value, both colored by the health color curve,
+-- with the class-gradient name beside the stack, power/level texts riding the
+-- name, and the absorb halo above the numbers. Built and certified in the
+-- healthtext debug harness (this file IS that engine, promoted); spec:
+-- ADDONCONTEXT/docs/unitframesZ/ufzhealthtext.md.
+--
+-- ONE INSTANCE per unit (core.lua's UFZ.UNITS), each on the AceDB-backed
+-- per-unit config: inst.cfg IS profile.unitFramesZUnits[unit], so every cfg
+-- read and setter write in this file persists with no translation layer. Each
+-- instance owns its config, FontStrings, digit-probe state and name-fit state;
+-- the public API is bound per instance (UFZ.GetAPI(unitKey)).
+--
+-- UnitHealth is SecretReturns = true unconditionally -- every unit including "player",
+-- in and out of combat -- so nothing here ever reads a health number. The engine does
+-- all the work through secret-tolerant formatters:
+--
+--   Value    AbbreviateNumbers(secret, {config}) with a custom breakpoint table that
+--            encodes the four-character scheme (9000, 99.9k, 100k, 1.15m, 10.5m).
+--            Proven on secret combat values by damagemetersY/data.lua.
+--   Percent  A numeric curve (0->0, 1->100) handed to UnitHealthPercent, whose secret
+--            result goes through C_StringUtil.FloorToNearestString into SetText.
+--            UNPROVEN as a composed chain -- 'probe' validates it end to end and
+--            cross-checks the curve input domain.
+--   Color    UnitHealthPercent(unit, true, colorCurve) returns a readable Color even
+--            though the percentage is secret; applied via FontString:SetTextColor.
+--   Name     The certified blind fit (core/blindfit.lua, ported from nametext.lua)
+--            chooses the largest point size <= nameSize at which the possibly-secret
+--            name fits a nameMaxWidth x nameMaxLines box; the paint is a per-line
+--            class ramp for readable player names, raw solid white for secrets.
+--   Power    Primary + alternate resource as flat values through the same
+--            AbbreviateNumbers chain (UnitPower is only conditionally secret, but
+--            the chain never needs it readable), anchored to the name box and
+--            colored by the readable UnitPowerType resource color.
+--
+-- Width matching is config-driven: every font size is a plain number, tuned in
+-- the harness against plain sample strings. The live FontStrings hold secrets
+-- and are permanently unmeasurable, so no layout decision ever reads them.
+-- Digit mode picks the percent size from a per-digit-count table; the count
+-- comes from the SetAlphaGradient length oracle run against an invisible ruler,
+-- never from reading. The value row shares the main face by default; cfg.valFace
+-- ("follow" or any registry key) can run it on its own face.
+--
+-- Everything here is addon-owned and anchored to UIParent with plain numbers. No
+-- Blizzard frame is read, written, hooked or anchored to. (Parking Blizzard's
+-- own frame for a Z unit is suppression.lua's job, through addon.NativeFrame.)
+
+local addonName, addon = ...
+local UFZ = addon.UnitFramesZ
+
+
+--------------------------------------------------------------------------------
+-- Value chain: the four-character abbreviation config (shared by both instances)
+--------------------------------------------------------------------------------
+-- Engine formula per tier: floor(value / significandDivisor) / fractionDivisor,
+-- then the abbreviation is appended. Largest breakpoint first, every field
+-- required -- omitting significandDivisor is the DMY sub-1K bug. The base entry
+-- keeps 1000-9999 raw and floors float noise out of sub-1K values.
+
+local function BuildHealthBreakpoints()
+    return {
+        { breakpoint = 1e11, abbreviation = "b", significandDivisor = 1e9, fractionDivisor = 1,   abbreviationIsGlobal = false }, -- "105b"
+        { breakpoint = 1e10, abbreviation = "b", significandDivisor = 1e8, fractionDivisor = 10,  abbreviationIsGlobal = false }, -- "10.5b"
+        { breakpoint = 1e9,  abbreviation = "b", significandDivisor = 1e7, fractionDivisor = 100, abbreviationIsGlobal = false }, -- "1.05b"
+        { breakpoint = 1e8,  abbreviation = "m", significandDivisor = 1e6, fractionDivisor = 1,   abbreviationIsGlobal = false }, -- "105m"
+        { breakpoint = 1e7,  abbreviation = "m", significandDivisor = 1e5, fractionDivisor = 10,  abbreviationIsGlobal = false }, -- "10.5m"
+        { breakpoint = 1e6,  abbreviation = "m", significandDivisor = 1e4, fractionDivisor = 100, abbreviationIsGlobal = false }, -- "1.15m"
+        { breakpoint = 1e5,  abbreviation = "k", significandDivisor = 1e3, fractionDivisor = 1,   abbreviationIsGlobal = false }, -- "100k"
+        { breakpoint = 1e4,  abbreviation = "k", significandDivisor = 1e2, fractionDivisor = 10,  abbreviationIsGlobal = false }, -- "45.6k"
+        { breakpoint = 1,    abbreviation = "",  significandDivisor = 1,   fractionDivisor = 1,   abbreviationIsGlobal = false }, -- raw below 10k
+    }
+end
+
+local abbrevOpts, abbrevError, abbrevTier = nil, nil, nil
+local abbrevBuildTried = false
+
+local ABBREV_BITMASK_LEGEND =
+    "InvalidBreakpoint=1 InvalidSignificandDivisor=2 InvalidFractionDivisor=4 NotMultipleOfTen=8"
+
+-- Idempotent, so one instance's Probe re-running it while the other instance's
+-- update() reads it is harmless: abbrevBuildTried is set synchronously and the
+-- rebuilt config is equivalent.
+local function rebuildAbbrevConfig()
+    abbrevBuildTried = true
+    abbrevOpts, abbrevError, abbrevTier = nil, nil, nil
+    if not _G.CreateAbbreviateConfig then
+        abbrevError = "CreateAbbreviateConfig API missing"
+        return nil
+    end
+    local ok, result = pcall(CreateAbbreviateConfig, BuildHealthBreakpoints())
+    if ok and result then
+        abbrevOpts, abbrevTier = { config = result }, "bp=1"
+        return abbrevOpts
+    end
+    abbrevError = "bp=1: " .. tostring(result)
+    -- breakpoint=1 may trip restricted validation (NotMultipleOfTen); retry bp=10.
+    -- Health is an integer, so values 0-9 then pass through raw and render fine.
+    local retry = BuildHealthBreakpoints()
+    retry[#retry].breakpoint = 10
+    ok, result = pcall(CreateAbbreviateConfig, retry)
+    if ok and result then
+        abbrevOpts, abbrevTier = { config = result }, "bp=10"
+    else
+        abbrevError = abbrevError .. " | bp=10: " .. tostring(result)
+    end
+    return abbrevOpts
+end
+
+--------------------------------------------------------------------------------
+-- Percent chain: the numeric curve (shared -- curves are stateless evaluators)
+--------------------------------------------------------------------------------
+
+local pctCurve = nil
+
+local function ensurePctCurve()
+    if pctCurve then return pctCurve end
+    if not (_G.C_CurveUtil and _G.C_CurveUtil.CreateCurve) then return nil end
+    local ok, c = pcall(C_CurveUtil.CreateCurve)
+    if not ok or not c then return nil end
+    if c.SetType and _G.Enum and _G.Enum.LuaCurveType then
+        pcall(c.SetType, c, Enum.LuaCurveType.Linear)
+    end
+    -- UnitHealthPercent feeds the curve the normalized 0-1 percentage (established by
+    -- the color curves in unitframes/bars/textures.lua); map it to 0-100 so the string
+    -- formatter sees a percent. 'probe' P13 cross-checks this domain on screen.
+    pcall(c.AddPoint, c, 0, 0)
+    pcall(c.AddPoint, c, 1, 100)
+    pctCurve = c
+    return c
+end
+
+--------------------------------------------------------------------------------
+-- Color curves (local copies of the bars/textures.lua builds; that module keeps
+-- its table local, so a debug file cannot reach applyHealthTextColor)
+--------------------------------------------------------------------------------
+
+local colorCurve, colorDarkCurve
+
+local function buildColorCurve(dark)
+    if not (_G.C_CurveUtil and _G.C_CurveUtil.CreateColorCurve and _G.CreateColor) then return nil end
+    local ok, c = pcall(C_CurveUtil.CreateColorCurve)
+    if not ok or not c then return nil end
+    if c.SetType and _G.Enum and _G.Enum.LuaCurveType then
+        pcall(c.SetType, c, Enum.LuaCurveType.Linear)
+    end
+    pcall(c.AddPoint, c, 0.0, CreateColor(1, 0, 0, 1))
+    pcall(c.AddPoint, c, 0.5, CreateColor(1, 1, 0, 1))
+    if dark then
+        pcall(c.AddPoint, c, 0.9999, CreateColor(0, 1, 0, 1))
+        pcall(c.AddPoint, c, 1.0, CreateColor(0.23, 0.23, 0.23, 1))
+    else
+        pcall(c.AddPoint, c, 1.0, CreateColor(0, 1, 0, 1))
+    end
+    return c
+end
+
+local function ensureColorCurve(mode)
+    if mode == "dark" then
+        colorDarkCurve = colorDarkCurve or buildColorCurve(true)
+        return colorDarkCurve
+    end
+    colorCurve = colorCurve or buildColorCurve(false)
+    return colorCurve
+end
+
+--------------------------------------------------------------------------------
+-- Fonts and layout
+--------------------------------------------------------------------------------
+
+-- With digit mode on, the fitted size wins over cfg.pctSize so that font/style
+-- commands re-applying fonts do not stomp the current fit. applyLayout shares
+-- this: the percent's BOTTOM anchor lift is proportional to the same size.
+local function currentPctPoint(inst)
+    local cfg = inst.cfg
+    return (cfg.digits and inst.lastDigitCount and cfg["digitSize" .. inst.lastDigitCount]) or cfg.pctSize
+end
+
+-- The percent row's ink-bottom compensation (see DEFAULTS.descent): positive
+-- pushes the rect down (sizes above the master), negative lifts it, zero at the
+-- master size itself -- so the tuned 2-digit look never moves and the other
+-- digit modes match its visible gap. 0.1-px snapped, same contract as the gap
+-- setters (sub-px offsets land on different physical pixels under fractional
+-- UI scale). Shared by applyLayout and 'report' so the two never disagree.
+local function currentPctLift(inst)
+    local cfg = inst.cfg
+    local ref = cfg.digits and cfg.digitSize2 or cfg.pctSize
+    return math.floor((currentPctPoint(inst) - ref) * cfg.descent * 10 + 0.5) / 10
+end
+
+-- Base face first, override on top: SetFont on a file this client session has
+-- never loaded is a silent no-op (ApplyFontStyle pcalls it), and on a virgin
+-- FontString that would mean NO font object at all -- an invisible row. Applying
+-- the main face first guarantees the row always renders; a loadable override
+-- then simply wins.
+local function applyOverrideFace(inst, fs, size, baseFace, overrideKey)
+    addon.ApplyFontStyle(fs, baseFace, size, inst.cfg.style)
+    if overrideKey ~= "follow" then
+        addon.ApplyFontStyle(fs, addon.ResolveFontFace(overrideKey), size, inst.cfg.style)
+    end
+end
+
+-- The '%' rides at a fifth of the percent's current point size, FRACTIONAL on
+-- purpose: digit-mode size changes carry it along (the probe's applyFonts()
+-- re-derives it), and the old integer rounding ate the 2->3-digit step down to
+-- a near-invisible single point. SetFont takes float heights (the value row's
+-- 0.5 steps ride the same path). An explicit symbolSize > 0 overrides, fixed.
+local function currentSymbolPoint(inst)
+    if inst.cfg.symbolSize and inst.cfg.symbolSize > 0 then return inst.cfg.symbolSize end
+    return math.max(1, currentPctPoint(inst) / 5)
+end
+
+-- With the name fit on, the fitted size wins over cfg.nameSize so font/style
+-- commands re-applying fonts do not stomp the current fit -- the same
+-- lastDigitCount pattern the percent uses. The fit writes inst.nameFitSize;
+-- everything else only reads it through here.
+local function currentNamePoint(inst)
+    return (inst.cfg.nameFit and inst.nameFitSize) or inst.cfg.nameSize
+end
+
+-- The level pair: "lvl" leads the number on its own FontString (no inline
+-- size markup exists -- the '%' companion precedent) at 75% of the number's
+-- size (user spec), separated by a small sub-space gap expressed as a
+-- fraction of the number's point size (roughly half a space glyph).
+local LEVEL_PREFIX_SCALE  = 0.75
+local LEVEL_PREFIX_GAP_EM = 0.08
+
+local function applyFonts(inst)
+    local cfg = inst.cfg
+    local face = addon.ResolveFontFace(cfg.face)
+    addon.ApplyFontStyle(inst.pctFS, face, currentPctPoint(inst), cfg.style)
+    applyOverrideFace(inst, inst.valFS, cfg.valSize, face, cfg.valFace)
+    addon.ApplyFontStyle(inst.symbolFS, face, currentSymbolPoint(inst), cfg.style)
+    applyOverrideFace(inst, inst.nameFS, currentNamePoint(inst), face, cfg.nameFace)
+    addon.ApplyFontStyle(inst.powerFS, face, cfg.powerSize, cfg.style)
+    addon.ApplyFontStyle(inst.altPowerFS, face, cfg.altPowerSize, cfg.style)
+    -- The '%' companion rides at half the number's size (user spec), min 1.
+    addon.ApplyFontStyle(inst.altPowerSymbolFS, face, math.max(1, cfg.altPowerSize * 0.5), cfg.style)
+    -- The absorb text shares the value row's settings outright (user spec):
+    -- same size, same face override, same style. No keys of its own.
+    applyOverrideFace(inst, inst.absorbFS, cfg.valSize, face, cfg.valFace)
+    addon.ApplyFontStyle(inst.levelFS, face, cfg.levelSize, cfg.style)
+    -- The "lvl" prefix rides at 75% of the number's size (user spec), min 1.
+    addon.ApplyFontStyle(inst.levelPrefixFS, face, math.max(1, cfg.levelSize * LEVEL_PREFIX_SCALE), cfg.style)
+end
+
+--------------------------------------------------------------------------------
+-- Width-only stretch (the Paint drag): the engine has no per-axis text scale,
+-- but Scale animations take separate axes and apply while playing, so a looping
+-- animation whose from and to scales are both (x, 1) holds a constant render
+-- transform. It stretches the whole rendered output -- outline and shadow widen
+-- with the glyphs, slightly soft -- so it is the live tuning tool; a settled
+-- factor gets baked into a real font file for crisp rasterisation (the shipped
+-- Anton Wide 1.5x).
+-- Animations transform rendering only, never the layout rect, so anchors and
+-- the equal-width tuning are unaffected (both rows stretch by the same factor).
+--------------------------------------------------------------------------------
+
+-- Keyed by FontString, so records from both instances coexist. The capability
+-- flag is session-wide.
+local stretchAnims = {}
+local stretchUnsupported = false
+
+local function applyStretch(inst)
+    if stretchUnsupported or not inst.frame then return end
+    local cfg = inst.cfg
+    local fx = cfg.stretch or 1
+    local edgeOrigin = (cfg.align == "left") and "LEFT" or "RIGHT"
+    for _, fs in ipairs({ inst.pctFS, inst.valFS, inst.symbolFS, inst.nameFS,
+        inst.powerFS, inst.altPowerFS, inst.altPowerSymbolFS, inst.absorbFS,
+        inst.levelFS, inst.levelPrefixFS }) do
+        if fs then
+            -- Centered number rows stretch about their shared centerline; the name
+            -- (still edge-anchored) and the '%' keep the align edge as their origin.
+            -- The absorb text centers on the same column, so it shares the origin.
+            -- Known limit: its box textures track the layout rect, and the stretch
+            -- transform is render-only -- the box does not widen with the glyphs.
+            local origin = (cfg.center and (fs == inst.pctFS or fs == inst.valFS or fs == inst.absorbFS))
+                and "CENTER" or edgeOrigin
+            local rec = stretchAnims[fs]
+            if fx == 1 then
+                if rec then rec.group:Stop() end
+            else
+                if not rec then
+                    local group = fs:CreateAnimationGroup()
+                    group:SetLooping("REPEAT")
+                    local anim = group:CreateAnimation("Scale")
+                    anim:SetDuration(0.05)
+                    if not (anim.SetScaleFrom and anim.SetScaleTo) then
+                        stretchUnsupported = true
+                        addon:Print("Stretch unavailable: this client's Scale animation lacks per-axis SetScaleFrom/SetScaleTo.")
+                        return
+                    end
+                    rec = { group = group, anim = anim }
+                    stretchAnims[fs] = rec
+                end
+                rec.group:Stop()
+                pcall(rec.anim.SetOrigin, rec.anim, origin, 0, 0)
+                pcall(rec.anim.SetScaleFrom, rec.anim, fx, 1)
+                pcall(rec.anim.SetScaleTo, rec.anim, fx, 1)
+                rec.group:Play()
+                -- Play in the same frame as Stop (or creation) occasionally
+                -- does not take; re-arm one frame later if the group is idle.
+                if rec.group.IsPlaying and not rec.group:IsPlaying() then
+                    local group = rec.group
+                    C_Timer.After(0, function()
+                        if (inst.cfg.stretch or 1) ~= 1 and not group:IsPlaying() then
+                            group:Play()
+                        end
+                    end)
+                end
+            end
+        end
+    end
+end
+
+-- The tuned name baseline. cfg.nameOffset/nameY are offsets FROM this, so the
+-- shipped Position sliders read 0/0 at the settled position and negatives pull
+-- the name tighter toward the numbers.
+local NAME_BASE_X = 100
+local NAME_BASE_Y = 5
+
+-- Base separation for the "nameside" power location; powerX/powerY offset from
+-- it, so the offset sliders read 0 at the tuned look.
+local POWER_SIDE_GAP = 6
+
+-- Inward inset for the four name-edge locations: below/above-name text starts
+-- a little inside the name box's outer edge instead of flush with it. Baked
+-- into the anchor, so the offset sliders still read 0 at the default look.
+local POWER_EDGE_INSET = 5
+
+-- Vertical clearance for the same four locations: below-name text drops (and
+-- above-name text rises) a little extra so a two-line wrapped name -- which
+-- overhangs the rect edge the anchor tracks -- never crowds the power text.
+-- Universal by request: no per-line-count logic. Baked in like the inset, so
+-- the offset sliders still read 0 at the default look.
+local POWER_EDGE_DROP = 5
+
+-- The power texts anchor DIRECTLY to nameFS: its LEFT/RIGHT edges are
+-- deterministic (applyLayout gives it an explicit SetWidth), and TOP/BOTTOM
+-- riding the wrap is the point -- a two-line name pushes below-name text down
+-- with it. Anchor resolution is engine-side (the symbolFS->pctFS precedent), so
+-- nothing reads the possibly-secret content. Natural width on the power FS
+-- itself: a width would engage the truncation engine. Uniform sign convention
+-- +x = right, +y = up.
+-- The name box is cfg.nameMaxWidth wide, but the ink hugs its justified
+-- (numbers-facing) edge -- the box's far edge is mostly empty air on short
+-- names, and a power text anchored there floats outside the name (user round
+-- 3). The justified edge is deterministic; the far edge is ink-true only when
+-- the last paint could measure the rendered ink (inst.nameInkWidth, readable
+-- names via GetWrappedWidth). With a measurement, far-side locations anchor to
+-- the justified edge offset by the ink width, tracking the actual first/last
+-- letter; without one (secret names poison the measure), they fall back to the
+-- box edge -- the pre-round-3 behavior, documented, not fixable blind.
+-- trailW reserves room on the right for a trailing companion (the half-size
+-- '%'): right-justified locations pull the NUMBER left by that much so the
+-- companion, not the digits, lands on the alignment edge. Left-justified
+-- locations need nothing -- the companion grows the block away from the edge.
+-- leadW is its mirror for a LEADING companion (the level pair's "lvl"):
+-- left-justified locations push the number right so the prefix, not the
+-- digits, lands on the alignment edge; right-justified locations need
+-- nothing.
+local function anchorPowerFS(inst, fs, loc, x, y, trailW, leadW)
+    trailW = trailW or 0
+    leadW = leadW or 0
+    fs:ClearAllPoints()
+    local nameFS = inst.nameFS
+    local nearRight = inst.cfg.align ~= "left"   -- JustifyH tracks align in every layout mode
+    local inkW = inst.nameInkWidth
+    if type(inkW) ~= "number" or inkW <= 0 then inkW = nil end
+    if loc == "bottomleft" then
+        fs:SetJustifyH("LEFT")
+        if nearRight and inkW then
+            fs:SetPoint("TOPLEFT", nameFS, "BOTTOMRIGHT", -inkW + POWER_EDGE_INSET + leadW + x, y - POWER_EDGE_DROP)
+        else
+            fs:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", POWER_EDGE_INSET + leadW + x, y - POWER_EDGE_DROP)
+        end
+    elseif loc == "bottomright" then
+        fs:SetJustifyH("RIGHT")
+        if not nearRight and inkW then
+            fs:SetPoint("TOPRIGHT", nameFS, "BOTTOMLEFT", inkW - POWER_EDGE_INSET + x - trailW, y - POWER_EDGE_DROP)
+        else
+            fs:SetPoint("TOPRIGHT", nameFS, "BOTTOMRIGHT", -POWER_EDGE_INSET + x - trailW, y - POWER_EDGE_DROP)
+        end
+    elseif loc == "topleft" then
+        fs:SetJustifyH("LEFT")
+        if nearRight and inkW then
+            fs:SetPoint("BOTTOMLEFT", nameFS, "TOPRIGHT", -inkW + POWER_EDGE_INSET + leadW + x, y + POWER_EDGE_DROP)
+        else
+            fs:SetPoint("BOTTOMLEFT", nameFS, "TOPLEFT", POWER_EDGE_INSET + leadW + x, y + POWER_EDGE_DROP)
+        end
+    elseif loc == "topright" then
+        fs:SetJustifyH("RIGHT")
+        if not nearRight and inkW then
+            fs:SetPoint("BOTTOMRIGHT", nameFS, "TOPLEFT", inkW - POWER_EDGE_INSET + x - trailW, y + POWER_EDGE_DROP)
+        else
+            fs:SetPoint("BOTTOMRIGHT", nameFS, "TOPRIGHT", -POWER_EDGE_INSET + x - trailW, y + POWER_EDGE_DROP)
+        end
+    else
+        -- nameside: on the name row, the side away from the numbers -- which is
+        -- the ink's FAR side, so this location benefits most from the ink width.
+        -- The single-point LEFT/RIGHT anchor centers the power text vertically
+        -- on the name row's midline, same mechanism as the name's own anchor.
+        if not nearRight then
+            fs:SetJustifyH("LEFT")
+            if inkW then
+                fs:SetPoint("LEFT", nameFS, "LEFT", inkW + POWER_SIDE_GAP + leadW + x, y)
+            else
+                fs:SetPoint("LEFT", nameFS, "RIGHT", POWER_SIDE_GAP + leadW + x, y)
+            end
+        else
+            fs:SetJustifyH("RIGHT")
+            if inkW then
+                fs:SetPoint("RIGHT", nameFS, "RIGHT", -inkW - POWER_SIDE_GAP + x - trailW, y)
+            else
+                fs:SetPoint("RIGHT", nameFS, "LEFT", -POWER_SIDE_GAP + x - trailW, y)
+            end
+        end
+    end
+end
+
+-- Separate from applyLayout so the loc/offset setters can re-anchor the power
+-- texts alone -- applyLayout restarts the stretch animations (see probeDigits),
+-- churn a positioning nudge does not need.
+local function applyPowerLayout(inst)
+    if not inst.frame then return end
+    local cfg = inst.cfg
+    anchorPowerFS(inst, inst.powerFS, cfg.powerLoc, cfg.powerX, cfg.powerY, 0)
+    -- The level pair rides the same location system (user spec). The "lvl"
+    -- prefix leads the number, so left-justified locations reserve its width
+    -- plus the sub-space gap (leadW, the trailW mirror). "lvl" is plain
+    -- readable text, so the shared ruler measures it synchronously; the
+    -- estimate only covers a missing ruler.
+    local lvlPrefixSize = math.max(1, cfg.levelSize * LEVEL_PREFIX_SCALE)
+    local lvlGap = cfg.levelSize * LEVEL_PREFIX_GAP_EM
+    local leadW = 0
+    if addon.MeasureTextWidth then
+        leadW = addon.MeasureTextWidth("lvl", addon.ResolveFontFace(cfg.face), lvlPrefixSize, cfg.style)
+    end
+    if type(leadW) ~= "number" or leadW <= 0 then leadW = lvlPrefixSize * 1.2 end
+    anchorPowerFS(inst, inst.levelFS, cfg.levelLoc, cfg.levelX, cfg.levelY, 0, leadW + lvlGap)
+    -- The prefix hangs off the number's leading edge. Rect-bottom alignment
+    -- would leave the smaller prefix's baseline low by the descent share of
+    -- the size difference (both rects reserve descent the glyphs never use);
+    -- lift it back to a true shared baseline -- the file's descent doctrine.
+    local pre = inst.levelPrefixFS
+    if pre then
+        pre:ClearAllPoints()
+        pre:SetPoint("BOTTOMRIGHT", inst.levelFS, "BOTTOMLEFT", -lvlGap,
+            (cfg.levelSize - lvlPrefixSize) * cfg.descent)
+    end
+    -- When the alt text is a percent with the sign enabled, right-justified
+    -- locations reserve the sign's width. '%' is plain readable text, so the
+    -- shared ruler measures it synchronously; the estimate only covers a
+    -- missing ruler.
+    local trailW = 0
+    if cfg.powerSymbol and inst.altPowerIsPct then
+        local symSize = math.max(1, cfg.altPowerSize * 0.5)
+        if addon.MeasureTextWidth then
+            trailW = addon.MeasureTextWidth("%", addon.ResolveFontFace(cfg.face), symSize, cfg.style)
+        end
+        if type(trailW) ~= "number" or trailW <= 0 then trailW = symSize * 0.9 end
+    end
+    anchorPowerFS(inst, inst.altPowerFS, cfg.altPowerLoc, cfg.altPowerX, cfg.altPowerY, trailW)
+    -- The sign always hangs off the number's trailing edge, superscript
+    -- top-aligned (the health row's symbol treatment). Anchor resolution is
+    -- engine-side, so the number's secret rendered width is never read; the
+    -- sign only draws when updatePower gave it text.
+    local sym = inst.altPowerSymbolFS
+    if sym then
+        sym:ClearAllPoints()
+        sym:SetPoint("TOPLEFT", inst.altPowerFS, "TOPRIGHT", 0, 0)
+    end
+end
+
+-- The absorb shield text (user spec 2026-08-05; the glow-only look won the
+-- same-day style experiment over a boxed pill): white number on a soft gold
+-- halo, above the percent. Fixed look -- constants, not config; only
+-- show/offsets are configurable.
+local ABSORB_GAP    = 15  -- ink-true: the number's INK bottom above the
+                          -- percent's rect top (anchorAbsorbFS folds the
+                          -- below-ink descent share out of the anchor, so the
+                          -- eye-measured gap holds at every value size);
+                          -- baked 0,0 origin of the offset sliders (the
+                          -- POWER_EDGE_* pattern)
+local ABSORB_GLOW_X = 18  -- halo texture overreach past the FontString rect,
+local ABSORB_GLOW_Y = 13  -- per side -- the file's visible ring sits well
+                          -- inside its rect, so the reach is larger than the
+                          -- halo the eye sees
+local ABSORB_GLOW_ALPHA = 0.70  -- the halo IS the backdrop, so it carries
+                                -- real presence (ADD light over the dark
+                                -- chrome/world still reads gentle)
+
+-- The halo anchors to the absorb FontString's rect, and a CLEARED FontString
+-- collapses its rect -- the glow would shrink to a bare overreach-sized blob.
+-- So visibility is driven exclusively by updateAbsorb's paint verdict (a
+-- plain Lua bool, never a secret), and the halo is NEVER left shown while
+-- the text is empty.
+local function setAbsorbGlowShown(inst, shown)
+    if inst.absorbGlowTex then
+        inst.absorbGlowTex:SetShown(shown and true or false)
+    end
+end
+
+-- PCT-anchored (user revision 2026-08-05, replacing the frame-top anchor):
+-- the percent's rect top rises with digit-mode size changes, and a fixed spot
+-- let the taller 2-digit rendering climb into it. Riding the rect top keeps
+-- the visual gap constant instead -- the text now moves at the 100->99 and
+-- 10->9 transitions, which is the accepted cost. Anchor resolution is
+-- engine-side, so the secret percent's rect is a legal relative region (the
+-- symbolFS precedent), and a single BOTTOM->TOP point centers the text on
+-- the rendered digits in every align mode.
+local function anchorAbsorbFS(inst)
+    local fs, pctFS = inst.absorbFS, inst.pctFS
+    if not fs or not pctFS then return end
+    local cfg = inst.cfg
+    -- The ink sits HIGH in the FS rect: the abbreviated value is digits and
+    -- cap suffixes (no descenders), the face's top leading is near zero, and
+    -- the descent share below the baseline is dead space. Fold that share out
+    -- of the anchor so ABSORB_GAP measures what the eye measures -- ink
+    -- bottom to percent rect top -- at every value size (the same calibrated
+    -- cfg.descent ratio the percent lift uses, scaled by the value point
+    -- size). Size-dependent, so the anchors live here (re-run by every
+    -- font/layout setter), not in ensureFrame.
+    local inkDrop = cfg.valSize * cfg.descent
+    fs:ClearAllPoints()
+    fs:SetPoint("BOTTOM", pctFS, "TOP", cfg.absorbX, ABSORB_GAP - inkDrop + cfg.absorbY)
+    -- The halo centers on the ink, not the rect, for the same reason: shift
+    -- its window UP by half the descent share.
+    if inst.absorbGlowTex then
+        local shift = inkDrop * 0.5
+        inst.absorbGlowTex:ClearAllPoints()
+        inst.absorbGlowTex:SetPoint("TOPLEFT", fs, "TOPLEFT",
+            -ABSORB_GLOW_X, ABSORB_GLOW_Y + shift)
+        inst.absorbGlowTex:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT",
+            ABSORB_GLOW_X, -ABSORB_GLOW_Y + shift)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- The envelope: the frame rect covers the WHOLE element
+--------------------------------------------------------------------------------
+-- Content does not anchor to the outer frame -- it anchors to inst.box, the
+-- tuned numbers box (cfg.width x cfg.height) floating inside it. The outer
+-- frame resizes here to a config-derived envelope around the box, the name's
+-- wrap box, and every satellite text, so everything that treats the frame as
+-- "the element" -- LibEditMode's selection outline (SetAllPoints), the secure
+-- click overlay, a snapped Cast Bar Z (bar edge to frame edge) -- fits the
+-- whole visual without ever measuring it. Config-derived on purpose: the live
+-- FontStrings hold secrets and are permanently unmeasurable (the applyLayout
+-- doctrine below). The envelope is a deterministic SUPERSET: satellite widths
+-- are size-based estimates, the name contributes its full wrap box at the fit
+-- ceiling, and the level row reserves space even when hide-at-max blanks it
+-- (a box that breathes on level-up reads as a bug). Absorb text is the one
+-- deliberate omission -- transient combat text above the numbers, unboxed the
+-- way Blizzard leaves its own combat feedback unboxed.
+
+local ENV_LINE_H = 1.25   -- conservative line box per point of text size
+local ENV_PAD    = 6      -- breathing room past the name-side extents
+
+-- One satellite text's contribution, in box-local down-positive coordinates.
+-- Mirrors anchorPowerFS's five locations against the same name-box geometry
+-- (offsets there are up-positive, hence the sign flips on y).
+local function envelopeSatellite(acc, loc, size, x, y, leadW)
+    local h = size * ENV_LINE_H
+    local w = size * 3.5 + (leadW or 0)
+    local t, b
+    if loc == "topleft" or loc == "topright" then
+        b = acc.nameTop - POWER_EDGE_DROP - y
+        t = b - h
+        acc.far = math.max(acc.far, acc.nameFar + math.max(0, x))
+    elseif loc == "nameside" then
+        local mid = acc.nameMidY - y
+        t, b = mid - h / 2, mid + h / 2
+        acc.far = math.max(acc.far, acc.nameFar + POWER_SIDE_GAP + w + math.max(0, x))
+    else -- bottomleft | bottomright
+        t = acc.nameBottom + POWER_EDGE_DROP - y
+        b = t + h
+        acc.far = math.max(acc.far, acc.nameFar + math.max(0, x))
+    end
+    acc.top = math.min(acc.top, t)
+    acc.bottom = math.max(acc.bottom, b)
+end
+
+local function computeEnvelope(inst)
+    local cfg = inst.cfg
+
+    -- The same row geometry applyLayout derives, in down-positive box coords.
+    local pctGlyphMax = cfg.pctSize
+    if cfg.digits then
+        pctGlyphMax = math.max(cfg.pctSize, cfg.digitSize1, cfg.digitSize2, cfg.digitSize3)
+    end
+    local pctRowH = math.ceil(pctGlyphMax * 0.85)
+    local nameX = NAME_BASE_X + cfg.nameOffset
+    local nameMidY = pctRowH + cfg.gap / 2 - NAME_BASE_Y - cfg.nameY
+    local nameHalf = cfg.nameMaxLines * cfg.nameSize * ENV_LINE_H / 2
+
+    local acc = {
+        nameMidY = nameMidY,
+        nameTop = nameMidY - nameHalf,
+        nameBottom = nameMidY + nameHalf,
+        nameFar = nameX + cfg.nameMaxWidth,
+        top = 0, bottom = cfg.height, far = cfg.width,
+    }
+    acc.top = math.min(acc.top, acc.nameTop)
+    acc.bottom = math.max(acc.bottom, acc.nameBottom)
+    acc.far = math.max(acc.far, acc.nameFar)
+
+    if cfg.powerShow then
+        envelopeSatellite(acc, cfg.powerLoc, cfg.powerSize, cfg.powerX, cfg.powerY)
+    end
+    if cfg.altPowerShow then
+        envelopeSatellite(acc, cfg.altPowerLoc, cfg.altPowerSize, cfg.altPowerX, cfg.altPowerY)
+    end
+    envelopeSatellite(acc, cfg.levelLoc, cfg.levelSize, cfg.levelX, cfg.levelY,
+        cfg.levelSize * 1.5)
+
+    local far = math.ceil(acc.far + ENV_PAD)
+    local top = math.floor(math.min(0, acc.top))
+    local bottom = math.ceil(acc.bottom)
+    return {
+        align = cfg.align,
+        W = far, H = bottom - top, T = -top,
+    }
+end
+
+-- The aura rows' alignment span: the content's horizontal extent, as offsets
+-- from the frame's LEFT edge. The envelope is a deterministic SUPERSET, so a
+-- row aligned to the frame edge floats past the visible content (user report
+-- 2026-08-06); the rows align to the leftmost ELEMENT instead. Box side: the
+-- centered column's near ink edge, estimated from config -- half the widest
+-- configured rendering at ~0.55 em per glyph (the same size-based-estimate
+-- doctrine as the envelope satellites; non-center layouts are already flush).
+-- Name side: the ink-true far edge when the last paint could measure it
+-- (inst.nameInkWidth, the anchorPowerFS mechanism -- the player's own name
+-- always measures), the full wrap box when it could not.
+local AURA_GLYPH_EM  = 0.55  -- rendered width per digit glyph, in em
+local AURA_VAL_GLYPHS = 4.5  -- glyph budget of a "505k"-style abbreviated value
+
+function UFZ._AuraContentSpan(inst)
+    local cfg = inst.cfg
+    -- appliedEnv mirrors the frame's real rect; cfg.width is the documented
+    -- combat-staleness fallback (self-heals on the regen drain).
+    local W = (inst.appliedEnv and inst.appliedEnv.W) or cfg.width or 140
+    local numInset = 0
+    if cfg.center then
+        local pctW
+        if cfg.digits then
+            pctW = math.max(cfg.digitSize1, cfg.digitSize2 * 2, cfg.digitSize3 * 3)
+        else
+            pctW = cfg.pctSize * 3
+        end
+        local half = math.max(pctW, (cfg.valSize or 0) * AURA_VAL_GLYPHS)
+            * AURA_GLYPH_EM * (cfg.stretch or 1) / 2
+        numInset = math.max(0, math.floor((cfg.centerOffset or 0) - half))
+    end
+    if cfg.align == "left" then
+        -- Numbers on the left: rows start at the column's ink edge and may run
+        -- under the name out to the far edge.
+        return numInset, W
+    end
+    -- Numbers on the right: rows start at the name's left edge and stop at the
+    -- column's ink edge.
+    local nameX = NAME_BASE_X + (cfg.nameOffset or 0)
+    local inkW = inst.nameInkWidth
+    if type(inkW) ~= "number" or inkW <= 0 then inkW = cfg.nameMaxWidth or 150 end
+    return math.max(0, math.floor(W - nameX - inkW)), W - numInset
+end
+
+--------------------------------------------------------------------------------
+-- Combat-deferred work
+--------------------------------------------------------------------------------
+-- The secure click button is anchored to the outer frame (SetAllPoints), which
+-- makes the frame ANCHOR-PROTECTED: in combat, insecure code cannot resize,
+-- move, or rescale it. Its VISIBILITY is protected too -- hiding the parent
+-- would hide the protected child, so Show/Hide from insecure code is blocked
+-- in lockdown just like geometry (first combat target-drop proved it:
+-- ADDON_ACTION_BLOCKED on ScootUnitFrameZTarget:Hide()). In-combat show/hide
+-- on unit existence is therefore delegated to Blizzard's secure unit watch
+-- (applyUnitWatch below); our own Show/Hide calls run OOC only. Every worker
+-- that touches protected state queues itself here when it lands in lockdown
+-- and pays on PLAYER_REGEN_ENABLED. Flags only, never values: the drain
+-- re-runs the worker, which recomputes fresh.
+local pendingRegen = {}
+-- Populated beside each worker's definition; drained in this order so a
+-- restored position lands before the resize that happens around it, and the
+-- watch settles before the visibility recheck that trusts it.
+local regenActions = {}
+local REGEN_ORDER = { "position", "scale", "envelope", "click", "watch", "visibility" }
+local regenWatcher
+
+local function queueRegen(inst, what)
+    local flags = pendingRegen[inst]
+    if not flags then
+        flags = {}
+        pendingRegen[inst] = flags
+    end
+    flags[what] = true
+    if not regenWatcher then
+        regenWatcher = CreateFrame("Frame")
+        regenWatcher:SetScript("OnEvent", function(self)
+            if InCombatLockdown() then return end
+            for queued, queuedFlags in pairs(pendingRegen) do
+                pendingRegen[queued] = nil
+                for _, name in ipairs(REGEN_ORDER) do
+                    if queuedFlags[name] and regenActions[name] then
+                        regenActions[name](queued)
+                    end
+                end
+            end
+            if next(pendingRegen) == nil then
+                self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            end
+        end)
+    end
+    regenWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+end
+UFZ._QueueRegen = queueRegen
+
+-- _RestorePosition lives in editmode.lua; resolved at drain time.
+regenActions.position = function(inst) UFZ._RestorePosition(inst) end
+
+-- Resize the outer frame to the envelope and seat the numbers box inside it,
+-- flush against the align edge, T below the top. Stateless recompute-and-set.
+-- When a setting changes the extents, the frame resizes around whatever anchor
+-- Edit Mode stored, so the content can shift a little on screen until the
+-- user re-drags -- accepted (2026-08-05): an analytic keep-the-numbers-still
+-- rebase existed briefly and was deleted as a layer of position-store-writing
+-- logic a settings nudge does not justify.
+--
+-- The applied-envelope cache is what keeps combat quiet: the envelope is pure
+-- config, so the digit-probe path (health events -> applyLayout) recomputes an
+-- identical rect every time and skips out here without touching the protected
+-- SetSize. Only a genuine config change in combat queues.
+local function applyEnvelope(inst)
+    local frame, box = inst.frame, inst.box
+    if not frame or not box then return end
+
+    local env = computeEnvelope(inst)
+    local applied = inst.appliedEnv
+    if applied and applied.W == env.W and applied.H == env.H
+        and applied.T == env.T and applied.align == env.align then
+        return
+    end
+    if InCombatLockdown() then
+        queueRegen(inst, "envelope")
+        return
+    end
+    frame:SetSize(env.W, env.H)
+    box:ClearAllPoints()
+    if env.align == "left" then
+        box:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -env.T)
+    else
+        box:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -env.T)
+    end
+    inst.appliedEnv = env
+end
+regenActions.envelope = applyEnvelope
+
+-- Deterministic anchors only. The live FontStrings hold secrets and are permanently
+-- unmeasurable, so nothing here may derive from their rendered geometry.
+local function applyLayout(inst)
+    local frame = inst.frame
+    if not frame then return end
+    -- Envelope first: content anchors to the numbers box this seats.
+    applyEnvelope(inst)
+    local box = inst.box or frame
+    local cfg = inst.cfg
+    local pctFS, valFS, symbolFS, nameFS = inst.pctFS, inst.valFS, inst.symbolFS, inst.nameFS
+    pctFS:ClearAllPoints()
+    valFS:ClearAllPoints()
+    symbolFS:ClearAllPoints()
+    nameFS:ClearAllPoints()
+    -- The name's wrap box: the display carries the same box the fit measures
+    -- against, so wrapping happens exactly where the rulers said it would. The
+    -- single-point LEFT/RIGHT anchors below pin the rect's edge-CENTER, so a
+    -- two-line block centers vertically on the same gap-midline a one-line
+    -- block does, and JustifyH keeps the ink hugging the numbers-facing edge --
+    -- one-line renders are pixel-identical to the pre-wrap layout.
+    nameFS:SetWidth(cfg.nameMaxWidth)
+    if nameFS.SetMaxLines then pcall(nameFS.SetMaxLines, nameFS, cfg.nameMaxLines) end
+    -- 0.85 em, not the 1.2 em line height: digits have no descenders, so most of
+    -- a full line box is empty space below the baseline. Using cap-height-ish
+    -- spacing tucks the value row up against the percent digits (the sandwiched
+    -- look the UFZ spec wants). cfg.gap fine-tunes from there; negative is legal.
+    -- With digit mode on the row reserves space for the LARGEST digit size, so a
+    -- big one-digit rendering never overlaps the value row. Still static config --
+    -- the reserve never moves per tick; the sandwich just sits a little looser
+    -- under the small three-digit rendering.
+    local pctGlyphMax = cfg.pctSize
+    if cfg.digits then
+        pctGlyphMax = math.max(cfg.pctSize, cfg.digitSize1, cfg.digitSize2, cfg.digitSize3)
+    end
+    local pctRowH = math.ceil(pctGlyphMax * 0.85)
+    -- The name centers on the GAP between the two number rows (the boundary at
+    -- -pctRowH plus half the gap), not the whole stack's midline -- so neither
+    -- the value row's size nor the digit count ever moves it. The name's near
+    -- edge sits NAME_BASE_X + nameOffset px in from the same frame edge the
+    -- numbers hang from, so the visual gap tracks the rendered number width
+    -- (secret, never measured) rather than the arbitrary drag-box width; its
+    -- RIGHT/LEFT point centers the line box on that midline, and NAME_BASE_Y +
+    -- nameY nudges from there (+ = up, the optical compensator for descender
+    -- space in the line box).
+    local nameX = NAME_BASE_X + cfg.nameOffset
+    local nameMidY = -(pctRowH + cfg.gap / 2) + NAME_BASE_Y + cfg.nameY
+    if cfg.center then
+        -- Shared centerline: single-point TOP anchors on natural-width FontStrings.
+        -- The engine centers the rect on the point -- anchor resolution is engine-
+        -- side, so the secret width never has to be read (same mechanism as the
+        -- nametext probe ruler). Deliberately no SetWidth: a width would engage the
+        -- truncation engine; a natural-width rect cannot truncate.
+        pctFS:SetJustifyH("CENTER")
+        valFS:SetJustifyH("CENTER")
+        local edge, dx = "TOPRIGHT", -cfg.centerOffset
+        if cfg.align == "left" then edge, dx = "TOPLEFT", cfg.centerOffset end
+        -- The rows hug a shared boundary so the gap stays constant while digit
+        -- mode changes the percent's size. The value row is top-aligned (fixed
+        -- size, fixed TOP anchor); the percent is bottom-aligned, its BOTTOM
+        -- anchor riding the boundary -- but the rect bottom is NOT the ink
+        -- bottom: the font's descent whitespace under the digits scales with
+        -- point size (measured 0.28 px/pt for Anton Wide 1.5x), so the lift
+        -- shifts the off-master digit modes to re-pin the INK instead. The old
+        -- TOP anchor was worse still: the whole line-box delta moved the ink,
+        -- not just the descent share.
+        local lift = currentPctLift(inst)
+        pctFS:SetPoint("BOTTOM", box, edge, dx, -pctRowH - lift)
+        valFS:SetPoint("TOP", box, edge, dx, -(pctRowH + cfg.gap))
+        -- Superscript '%': top-aligned off the digits' trailing edge. That edge
+        -- is secret-width (same experiment left mode runs) -- anchor resolution
+        -- is engine-side, so it renders without reading it.
+        symbolFS:SetPoint("TOPLEFT", pctFS, "TOPRIGHT", cfg.symbolGap, 0)
+        if cfg.align == "left" then
+            nameFS:SetJustifyH("LEFT")
+            nameFS:SetPoint("LEFT", box, "TOPLEFT", nameX, nameMidY)
+        else
+            nameFS:SetJustifyH("RIGHT")
+            nameFS:SetPoint("RIGHT", box, "TOPRIGHT", -nameX, nameMidY)
+        end
+    elseif cfg.align == "left" then
+        pctFS:SetJustifyH("LEFT")
+        valFS:SetJustifyH("LEFT")
+        pctFS:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0)
+        valFS:SetPoint("TOPLEFT", box, "TOPLEFT", 0, -(pctRowH + cfg.gap))
+        nameFS:SetJustifyH("LEFT")
+        nameFS:SetPoint("LEFT", box, "TOPLEFT", nameX, nameMidY)
+        -- EXPERIMENT: the digits' right edge is secret-width. Anchor resolution is
+        -- engine-side, so this may render correctly anyway -- observe via 'report',
+        -- do not "fix". Right mode below is the deterministic layout.
+        symbolFS:SetPoint("TOPLEFT", pctFS, "TOPRIGHT", cfg.symbolGap, 0)
+    else
+        pctFS:SetJustifyH("RIGHT")
+        valFS:SetJustifyH("RIGHT")
+        if cfg.symbol then
+            -- The '%' owns the rightmost slot at a fixed box anchor, top-aligned
+            -- (superscript); the digits end flush against its left edge. No secret
+            -- geometry involved.
+            symbolFS:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, 0)
+            pctFS:SetPoint("TOPRIGHT", symbolFS, "TOPLEFT", -cfg.symbolGap, 0)
+        else
+            pctFS:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, 0)
+        end
+        valFS:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, -(pctRowH + cfg.gap))
+        nameFS:SetJustifyH("RIGHT")
+        nameFS:SetPoint("RIGHT", box, "TOPRIGHT", -nameX, nameMidY)
+    end
+    symbolFS:SetShown(cfg.symbol and true or false)
+    applyPowerLayout(inst)
+    anchorAbsorbFS(inst)
+    -- Aura rows re-seat around the (possibly resized) envelope. Unboxed: they
+    -- never feed applyEnvelope, they only read its result.
+    if UFZ.Auras then UFZ.Auras.ApplyLayout(inst) end
+    applyStretch(inst)
+end
+
+--------------------------------------------------------------------------------
+-- Update
+--------------------------------------------------------------------------------
+
+local function applyColor(inst)
+    local cfg = inst.cfg
+    local pctFS, valFS, symbolFS = inst.pctFS, inst.valFS, inst.symbolFS
+    if cfg.color == "white" then
+        pcall(pctFS.SetTextColor, pctFS, 1, 1, 1, 1)
+        pcall(valFS.SetTextColor, valFS, 1, 1, 1, 1)
+        pcall(symbolFS.SetTextColor, symbolFS, 1, 1, 1, 1)
+        inst.last.color = "white"
+        return
+    end
+    local curve = ensureColorCurve(cfg.color)
+    if not curve or not _G.UnitHealthPercent then
+        inst.last.color = "curve unavailable"
+        return
+    end
+    local ok, color = pcall(UnitHealthPercent, cfg.unit, true, curve)
+    if not ok or not color then
+        inst.last.color = "eval failed"
+        return
+    end
+    if type(color) == "number" or not color.GetRGB then
+        inst.last.color = "not a color object"
+        return
+    end
+    local r, g, b = color:GetRGB()
+    pcall(pctFS.SetTextColor, pctFS, r, g, b, 1)
+    pcall(valFS.SetTextColor, valFS, r, g, b, 1)
+    pcall(symbolFS.SetTextColor, symbolFS, r, g, b, 1)
+    inst.last.color = "curve (" .. cfg.color .. ")"
+end
+
+--------------------------------------------------------------------------------
+-- The power texts: primary + alternate resource, flat values through the exact
+-- value-row chain (UnitPower is only conditionally secret, but the chain never
+-- needs it readable -- AbbreviateNumbers is secret-whitelisted); the one
+-- exception is alt MANA, which renders as a percent via UnitPowerPercent
+-- (user round 3 -- a flat mana pool number is meaningless). Alternate
+-- power IS UnitPower(unit, secondary type): Blizzard's readable global
+-- GetUnitSecondaryPowerInfo maps class + primary type to the secondary bar
+-- (DRUID/PRIEST/SHAMAN -> MANA, TRAVELER -> ENERGY); two plain returns
+-- (powerType, powerName), nothing when the spec has none -- never a
+-- hand-maintained spec list.
+--------------------------------------------------------------------------------
+
+-- The shared tail of the flat-value chains (power, absorb): pcall'd formatter
+-- into pcall'd SetText, verdict into last[lastKey]. The caller has already
+-- ClearText'd. getterName labels the verdict strings (default: the power
+-- chain's getter). Returns true only when text actually landed -- the absorb
+-- chain gates its box visibility on it.
+local function paintPowerValue(inst, fs, lastKey, getterOk, value, getterName)
+    getterName = getterName or "UnitPower"
+    local last = inst.last
+    if getterOk and type(value) == "number" then
+        local okA, str
+        if abbrevOpts and _G.AbbreviateNumbers then
+            okA, str = pcall(AbbreviateNumbers, value, abbrevOpts)
+        elseif _G.AbbreviateNumbers then
+            -- Degraded: engine-default breakpoints, deliberately visible.
+            okA, str = pcall(AbbreviateNumbers, value)
+        end
+        if okA and type(str) == "string" then
+            local okS = pcall(fs.SetText, fs, str)
+            if okS then
+                last[lastKey] = abbrevOpts and "ok" or "ok (degraded: engine defaults)"
+                return true
+            else
+                last[lastKey] = "SetText failed"
+            end
+        else
+            last[lastKey] = okA and ("AbbreviateNumbers returned " .. type(str))
+                or ("AbbreviateNumbers error: " .. tostring(str))
+        end
+    else
+        last[lastKey] = getterOk and (getterName .. " returned " .. type(value))
+            or (getterName .. " error: " .. tostring(value))
+    end
+    return false
+end
+
+local function updatePower(inst)
+    local cfg, last = inst.cfg, inst.last
+    if not abbrevBuildTried then rebuildAbbrevConfig() end
+
+    -- Primary. ClearText first, always: a failed chain or a gate must show an
+    -- empty row, and ClearText is the only call that releases the Text aspect.
+    if inst.powerFS.ClearText then inst.powerFS:ClearText() end
+    if not cfg.powerShow then
+        last.power = "off"
+    else
+        -- Readable-zero gate: UnitPowerMax is readable for the player and many
+        -- units, and a READABLE 0 means "no resource at all" (training dummies)
+        -- -- blank the row instead of painting a dead 0. Secret or non-number:
+        -- display anyway. Secrecy check BEFORE the comparison, always.
+        local gated = false
+        local okM, pmax = pcall(UnitPowerMax, cfg.unit)
+        if okM and type(pmax) == "number"
+            and not (issecretvalue and issecretvalue(pmax)) and pmax == 0 then
+            gated = true
+            last.power = "max 0 (no resource)"
+        end
+        if not gated then
+            local okP, pv = pcall(UnitPower, cfg.unit)  -- no type arg = current primary
+            paintPowerValue(inst, inst.powerFS, "power", okP, pv)
+        end
+    end
+
+    -- Alternate. Stays cleared when the spec has no secondary bar. The '%'
+    -- companion clears with it and is re-set only by a successful percent
+    -- paint; percent-ness re-anchors on change (the right-edge sign reserve).
+    if inst.altPowerFS.ClearText then inst.altPowerFS:ClearText() end
+    if inst.altPowerSymbolFS and inst.altPowerSymbolFS.ClearText then inst.altPowerSymbolFS:ClearText() end
+    local wasPct = inst.altPowerIsPct
+    inst.altPowerIsPct = false
+    inst.altPowerName = nil
+    if not cfg.altPowerShow then
+        last.altPower = "off"
+    elseif not _G.GetUnitSecondaryPowerInfo then
+        last.altPower = "GetUnitSecondaryPowerInfo missing"
+    else
+        -- Two plain returns (powerType, powerName), NOT an info table; returns
+        -- nothing when the class + primary-power pair has no secondary bar.
+        local okI, altType, altName = pcall(GetUnitSecondaryPowerInfo, cfg.unit)
+        if not okI then
+            last.altPower = "GetUnitSecondaryPowerInfo error: " .. tostring(altType)
+        elseif type(altType) ~= "number" then
+            last.altPower = "no alt bar"
+        elseif altName == "MANA" then
+            -- Alt mana reads as a PERCENT (user round 3): a flat mana pool
+            -- number is meaningless at a glance. Same shape as the health
+            -- percent row -- UnitPowerPercent is the documented power analog
+            -- (secret-tolerant, takes the shared 0->0/1->100 curve), the
+            -- C_StringUtil formatter honors cfg.round. The '%' sign is its own
+            -- half-size FontString (cfg.powerSymbol toggles it), never part of
+            -- the number's string.
+            inst.altPowerName = altName   -- color cache for applyPowerColor
+            inst.altPowerIsPct = true
+            local curve = ensurePctCurve()
+            if curve and _G.UnitPowerPercent and _G.C_StringUtil then
+                local okP, num = pcall(UnitPowerPercent, cfg.unit, altType, false, curve)
+                if okP and type(num) == "number" then
+                    local fmt = (cfg.round == "round") and C_StringUtil.RoundToNearestString
+                        or C_StringUtil.FloorToNearestString
+                    local ok2, str = false, nil
+                    if fmt then ok2, str = pcall(fmt, num) end
+                    if ok2 and type(str) == "string" then
+                        local ok3 = pcall(inst.altPowerFS.SetText, inst.altPowerFS, str)
+                        if ok3 and cfg.powerSymbol and inst.altPowerSymbolFS then
+                            pcall(inst.altPowerSymbolFS.SetText, inst.altPowerSymbolFS, "%")
+                        end
+                        last.altPower = ok3
+                            and (cfg.powerSymbol and "ok (mana %)" or "ok (mana %, sign off)")
+                            or "SetText failed"
+                    else
+                        last.altPower = fmt and (ok2 and ("formatter returned " .. type(str))
+                            or ("formatter error: " .. tostring(str)))
+                            or "C_StringUtil formatter missing"
+                    end
+                else
+                    last.altPower = okP and ("UnitPowerPercent returned " .. type(num))
+                        or ("UnitPowerPercent error: " .. tostring(num))
+                end
+            else
+                last.altPower = "percent API missing (C_CurveUtil / UnitPowerPercent / C_StringUtil)"
+            end
+        else
+            inst.altPowerName = altName   -- color cache for applyPowerColor
+            local okP, pv = pcall(UnitPower, cfg.unit, altType)
+            paintPowerValue(inst, inst.altPowerFS, "altPower", okP, pv)
+        end
+    end
+
+    -- Percent-ness flipped (spec swap, unit change): the sign reserve baked
+    -- into the right-justified anchors is stale -- re-anchor once.
+    if inst.altPowerIsPct ~= wasPct then applyPowerLayout(inst) end
+end
+
+local function applyPowerColor(inst)
+    local cfg = inst.cfg
+    if cfg.powerColorMode == "custom" then
+        pcall(inst.powerFS.SetTextColor, inst.powerFS,
+            cfg.powerColorR, cfg.powerColorG, cfg.powerColorB, cfg.powerColorA)
+        inst.last.powerColor = "custom"
+    else
+        local r, g, b = addon.GetPowerColorRGB(cfg.unit)
+        local tag = "power"
+        -- UnitPowerType is readable (no secret annotation) but MayReturnNothing;
+        -- re-resolved every pass, never cached. Mana gets the same +0.25 lighten
+        -- the UFX classPower text mode uses -- the bar blue is too dark for text.
+        local okT, pt = pcall(UnitPowerType, cfg.unit)
+        if okT and type(pt) == "number" and pt == 0 then
+            r, g, b = addon.LightenColor(r, g, b, 0.25)
+            tag = "power (mana +0.25)"
+        end
+        pcall(inst.powerFS.SetTextColor, inst.powerFS, r, g, b, 1)
+        inst.last.powerColor = tag
+    end
+    if cfg.altPowerColorMode == "custom" then
+        pcall(inst.altPowerFS.SetTextColor, inst.altPowerFS,
+            cfg.altPowerColorR, cfg.altPowerColorG, cfg.altPowerColorB, cfg.altPowerColorA)
+        pcall(inst.altPowerSymbolFS.SetTextColor, inst.altPowerSymbolFS,
+            cfg.altPowerColorR, cfg.altPowerColorG, cfg.altPowerColorB, cfg.altPowerColorA)
+        inst.last.altPowerColor = "custom"
+    else
+        local token = inst.altPowerName or "MANA"
+        local r, g, b = addon.GetPowerColorRGB(token)
+        local tag = "power (" .. tostring(token) .. ")"
+        if token == "MANA" then
+            r, g, b = addon.LightenColor(r, g, b, 0.25)
+            tag = tag .. " +0.25"
+        end
+        pcall(inst.altPowerFS.SetTextColor, inst.altPowerFS, r, g, b, 1)
+        pcall(inst.altPowerSymbolFS.SetTextColor, inst.altPowerSymbolFS, r, g, b, 1)
+        inst.last.altPowerColor = tag
+    end
+end
+
+--------------------------------------------------------------------------------
+-- The zero launder. C_StringUtil.TruncateWhenZero is AllowedWhenTainted and
+-- returns blank for a zero amount -- secret or not. Poured through a scratch
+-- FontString, GetText() then comes back PLAIN nil for the blank; a non-zero
+-- amount comes back as a string (possibly secret). That nil is the one bit of
+-- a secret number this addon can legally observe -- emptiness has nothing to
+-- keep secret -- and it is exactly the bit hide-at-zero needs. Ecosystem-
+-- verified 2026-08-05: two independent shipped addons gate absorb TEXT this
+-- way in 12.0, one citing Blizzard's legacy health-deficit text as the origin
+-- of the technique. Their measured rules, honored below: never == on the
+-- GetText result (comparing a secret string throws), truthiness/nil test only;
+-- and a secret-tainted empty string compared to "" also throws, which is why
+-- the FontString round-trip exists at all.
+--------------------------------------------------------------------------------
+
+local zeroScratchFS = nil
+
+local function ensureZeroScratch()
+    if zeroScratchFS then return zeroScratchFS end
+    -- Hidden is fine here: GetText reports the assigned string, not layout
+    -- (unlike the SetAlphaGradient oracle, whose ruler must stay shown).
+    local holder = CreateFrame("Frame", nil, UIParent)
+    holder:SetSize(1, 1)
+    holder:SetPoint("CENTER", UIParent, "CENTER", 0, -340)
+    holder:Hide()
+    zeroScratchFS = holder:CreateFontString(nil, "BACKGROUND")
+    zeroScratchFS:SetPoint("CENTER", holder, "CENTER", 0, 0)
+    -- A font MUST be set before any SetText on a template-less FontString.
+    zeroScratchFS:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
+    return zeroScratchFS
+end
+
+-- true = provably zero, false = provably non-zero, nil = route unavailable
+-- (callers fail open and show). The == comparisons run only on values
+-- issecretvalue has cleared as plain (guard ordering rule).
+local function isZeroAmount(v)
+    if not (_G.C_StringUtil and C_StringUtil.TruncateWhenZero) then return nil end
+    local okT, trunc = pcall(C_StringUtil.TruncateWhenZero, v)
+    if not okT then return nil end
+    if not (issecretvalue and issecretvalue(trunc)) then
+        return (trunc == nil or trunc == "") and true or false
+    end
+    local scratch = ensureZeroScratch()
+    -- ClearText, not SetText(""): only ClearText releases the Text aspect
+    -- (the fonts.lua ruler rule), keeping the scratch reusable forever.
+    if scratch.ClearText then scratch:ClearText() end
+    if not pcall(scratch.SetText, scratch, trunc) then return nil end
+    local okG, text = pcall(scratch.GetText, scratch)
+    if not okG then return nil end
+    -- Truthiness only; the pcall is the parachute in case a future build walls
+    -- off boolean tests on secret strings too -- the gate then degrades to
+    -- fail-open instead of erroring in the update path.
+    local okB, blank = pcall(function() return not text end)
+    if not okB then return nil end
+    return blank and true or false
+end
+
+--------------------------------------------------------------------------------
+-- The absorb shield text. UnitGetTotalAbsorbs is SecretReturns UNCONDITIONALLY
+-- (the UnitHealth tier -- wow-ui-source 12.0.7 API docs; no SecretWhenUnit*
+-- predicate exists for absorbs), so the display chain is the value row's
+-- (AbbreviateNumbers is secret-whitelisted). Hide-at-zero is always on and
+-- has two routes: a plain value compares directly; a secret one goes through
+-- the zero launder above, so the text hides in either world. last.absorb
+-- records the route per pass; probe P15-P17 carry the secrecy + launder
+-- measurements.
+--------------------------------------------------------------------------------
+
+local function updateAbsorb(inst)
+    local cfg, last = inst.cfg, inst.last
+    local fs = inst.absorbFS
+    -- ClearText first, always (the power chain's rule); the halo follows the
+    -- text -- hidden until a paint verdict says there is something to light.
+    if fs.ClearText then fs:ClearText() end
+    setAbsorbGlowShown(inst, false)
+    if not cfg.absorbShow then
+        last.absorb = "off"
+        return
+    end
+    if not _G.UnitGetTotalAbsorbs then
+        last.absorb = "UnitGetTotalAbsorbs missing"
+        return
+    end
+    if not abbrevBuildTried then rebuildAbbrevConfig() end
+    local ok, v = pcall(UnitGetTotalAbsorbs, cfg.unit)
+    -- Guard ordering, always: type first, THEN secrecy, THEN compare.
+    local plain = ok and type(v) == "number" and not (issecretvalue and issecretvalue(v))
+    local suffix = plain and " (plain)" or " (secret)"
+    if ok then
+        if plain then
+            if v == 0 then
+                last.absorb = "zero (hidden, plain)"
+                return
+            end
+        else
+            local zero = isZeroAmount(v)
+            if zero == true then
+                last.absorb = "zero (hidden, laundered)"
+                return
+            end
+            -- nil = launder unavailable -> fail open and say so.
+            suffix = (zero == false) and " (secret, laundered non-zero)"
+                or " (secret, launder n/a)"
+        end
+    end
+    if paintPowerValue(inst, fs, "absorb", ok, v, "UnitGetTotalAbsorbs") then
+        setAbsorbGlowShown(inst, true)
+        last.absorb = last.absorb .. suffix
+    end
+end
+
+--------------------------------------------------------------------------------
+-- The level pair: "lvl <N>" from UnitEffectiveLevel (what Blizzard's own frames
+-- display; UnitLevel differs only under level-scaling), the prefix on its own
+-- 75%-size FontString (applyPowerLayout owns the pair's geometry; this chain
+-- owns the text). The 12.0.7 docs carry no secrecy flags on either getter --
+-- Blizzard's IsPlayerAtEffectiveMaxLevel does a raw >= on the return from
+-- plain Lua -- so the compares below are legal; the secret branch is
+-- belt-and-braces only. A target above the cap reads -1 ("too high to tell"),
+-- which paints "lvl ??" -- unless hide-at-max is on: -1 means AT LEAST the
+-- cap (bosses, skull mobs), so the toggle hides it too (user decision
+-- 2026-08-05; it originally painted regardless).
+--------------------------------------------------------------------------------
+
+local function updateLevel(inst)
+    local cfg, last = inst.cfg, inst.last
+    local fs, pre = inst.levelFS, inst.levelPrefixFS
+    -- ClearText BOTH first, always: the prefix must never outlive the number
+    -- (hidden-at-max, no-unit, a failed chain).
+    if fs.ClearText then fs:ClearText() end
+    if pre and pre.ClearText then pre:ClearText() end
+    local getter = _G.UnitEffectiveLevel or _G.UnitLevel
+    if not getter then
+        last.level = "level API missing"
+        return
+    end
+    local ok, lvl = pcall(getter, cfg.unit)
+    if not ok then
+        last.level = "error: " .. tostring(lvl)
+        return
+    end
+    -- Guard ordering, always: type first, THEN secrecy, THEN compare.
+    if type(lvl) ~= "number" then
+        last.level = "returned " .. type(lvl)
+        return
+    end
+    if issecretvalue and issecretvalue(lvl) then
+        -- Concatenation launders a secret number into a legal secret string;
+        -- skip every compare.
+        pcall(fs.SetText, fs, "" .. lvl)
+        if pre then pcall(pre.SetText, pre, "lvl") end
+        last.level = "ok (secret)"
+        return
+    end
+    if lvl <= 0 then
+        if cfg.levelHideMax then
+            last.level = "above cap (hidden)"
+            return
+        end
+        pcall(fs.SetText, fs, "??")
+        if pre then pcall(pre.SetText, pre, "lvl") end
+        last.level = "unknown (??)"
+        return
+    end
+    if cfg.levelHideMax then
+        -- The sanctioned max test: min(expansion cap for this account,
+        -- GetMaxPlayerLevel) -- handles Timerunning and capped accounts.
+        local effMax
+        if _G.GameRulesUtil and GameRulesUtil.GetEffectiveMaxLevelForPlayer then
+            local okM, m = pcall(GameRulesUtil.GetEffectiveMaxLevelForPlayer)
+            if okM then effMax = m end
+        elseif _G.GetMaxPlayerLevel then
+            local okM, m = pcall(GetMaxPlayerLevel)
+            if okM then effMax = m end
+        end
+        if type(effMax) == "number" and lvl >= effMax then
+            last.level = "max (hidden)"
+            return
+        end
+    end
+    pcall(fs.SetText, fs, string.format("%d", lvl))
+    if pre then pcall(pre.SetText, pre, "lvl") end
+    last.level = "ok"
+end
+
+--------------------------------------------------------------------------------
+-- The name row. Rules from docs/unitframesZ/unitNames.md: gradient start is the
+-- class color darkened 25%, end is the hand-picked class endpoint lightened 10%
+-- (the CastBar X treatment), applied per-character -- which needs readable text,
+-- so a secret name renders raw in solid white (the documented fallback, not a
+-- failure). Gradient eligibility gates on UnitIsPlayer, never on class-token
+-- resolution: NPCs carry real class tokens. Readable NPC names get the neutral
+-- white-to-grey placeholder ramp nametext.lua uses.
+--
+-- Sizing: the certified blind fit (core/blindfit.lua) picks the point size
+-- asynchronously; refreshName launches it and the paint lands in onDone. The
+-- fit measures the PLAIN string and the paint may apply the ramped one --
+-- certified safe (unitNames.md pitfall 12: widths byte-identical).
+--
+-- update() never touches this FontString: health ticks must not rebuild the
+-- ramp or refit. Name refresh is event- and command-driven only.
+--------------------------------------------------------------------------------
+
+local NPC_RAMP_START = { 1, 1, 1 }
+local NPC_RAMP_END   = { 0.62, 0.64, 0.68 }
+
+-- The rendered ink's width: the one geometric fact the ink-true power anchors
+-- need. GetWrappedWidth reports the widest laid-out line (Blizzard's own
+-- shrink-box-to-ink API); readable names answer plainly, a secret name poisons
+-- its FontString and the guard leaves nil -- anchorPowerFS falls back to the
+-- box edge. Deferred one frame: a FontString reports stale metrics until the
+-- SetText that produced them has rendered once. Every applyNameText terminal
+-- path schedules this, so the ramp swap's own deferred SetText has already
+-- landed by the time the measure fires; the seq guard kills stale timers the
+-- same way it kills stale fits.
+local function measureNameInk(inst, seq)
+    C_Timer.After(0, function()
+        if seq ~= inst.nameFitSeq then return end
+        local w = nil
+        local nameFS = inst.nameFS
+        if nameFS and nameFS.GetWrappedWidth then
+            local ok, gw = pcall(nameFS.GetWrappedWidth, nameFS)
+            if ok and type(gw) == "number"
+                and not (issecretvalue and issecretvalue(gw)) and gw > 0 then
+                w = gw
+            end
+        end
+        inst.nameInkWidth = w
+        applyPowerLayout(inst)
+        -- The name-side aura span reads the same measurement.
+        if UFZ.Auras then UFZ.Auras.ApplyLayout(inst) end
+    end)
+end
+
+-- The paint path: text + color for an already-sized FontString, and the owner
+-- of the reveal -- every terminal path ends at SetAlpha(1). ClearText before
+-- every SetText (readable->secret unit switches need the Text aspect released),
+-- and white first: |cff codes multiply against the text color.
+--
+-- The certified nametext display application in full (the old "no wrap
+-- machinery" divergence was REVERSED by user verdict 2026-08-03). Ramp branches
+-- are two-phase, exactly nametext's applyColor/applyRamp: paint the PLAIN
+-- string in the ramp's solid start color at the final size, then one frame
+-- later ask the engine where it broke the lines (DiscoverTextLines reads the
+-- laid-out display; WrapTextGreedy is the off-frame fallback) and swap in the
+-- per-line ramp with the breaks baked in as "\n". Wrap stays ON through the
+-- swap: |cff codes shift kerning 1-2px (castbarX pitfall #28), so a boundary
+-- line can come out fractionally wider than the plain text it was measured
+-- from -- with wrap off that is a guaranteed "...", with wrap on a reflow at
+-- worst.
+--
+-- seq is the caller's captured inst.nameFitSeq; the deferred swap bails when a
+-- newer pass owns the box.
+local function applyNameText(inst, name, seq)
+    local cfg = inst.cfg
+    local nameFS = inst.nameFS
+    if nameFS.ClearText then nameFS:ClearText() end
+    pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
+
+    -- Custom mode: raw SetText plus a plain text color. No string ops, so a
+    -- secret name renders identically to a readable one (the engine wraps both).
+    if cfg.nameColorMode == "custom" then
+        pcall(nameFS.SetTextColor, nameFS, cfg.nameColorR, cfg.nameColorG, cfg.nameColorB, cfg.nameColorA)
+        pcall(nameFS.SetText, nameFS, name)
+        inst.last.name = "custom color"
+        nameFS:SetAlpha(1)
+        measureNameInk(inst, seq)
+        return
+    end
+
+    local readable = type(name) == "string" and not (issecretvalue and issecretvalue(name))
+    if not readable then
+        -- Per-character ramps are permanently impossible on secret text. The
+        -- engine still wraps it -- layout never needed to read the string.
+        pcall(nameFS.SetText, nameFS, name)
+        inst.last.name = "secret (solid white)"
+        nameFS:SetAlpha(1)
+        measureNameInk(inst, seq)   -- clears a stale readable width to nil
+        return
+    end
+
+    local isPlayer = cfg.unit == "player"
+    if not isPlayer then
+        local okP, p = pcall(UnitIsPlayer, cfg.unit)
+        isPlayer = okP and not (issecretvalue and issecretvalue(p)) and p == true
+    end
+
+    local r1, g1, b1, r2, g2, b2
+    if isPlayer then
+        local token = addon.GetClassTokenForUnit(cfg.unit)
+        local cr, cg, cb = addon.GetClassColorRGB(token)
+        if not (token and cr) then
+            pcall(nameFS.SetText, nameFS, name)
+            inst.last.name = "no class color (solid white)"
+            nameFS:SetAlpha(1)
+            measureNameInk(inst, seq)
+            return
+        end
+        r1, g1, b1 = addon.DarkenColor(cr, cg, cb, 0.25)
+        local ep = addon.CLASS_GRADIENT_ENDPOINTS and addon.CLASS_GRADIENT_ENDPOINTS[token]
+        if ep then
+            r2, g2, b2 = addon.LightenColor(ep[1], ep[2], ep[3], 0.10)
+        else
+            r2, g2, b2 = addon.LightenColor(cr, cg, cb, 0.45)
+        end
+        inst.last.name = "class ramp (" .. tostring(token) .. ")"
+    else
+        r1, g1, b1 = NPC_RAMP_START[1], NPC_RAMP_START[2], NPC_RAMP_START[3]
+        r2, g2, b2 = NPC_RAMP_END[1], NPC_RAMP_END[2], NPC_RAMP_END[3]
+        inst.last.name = "NPC ramp"
+    end
+
+    -- Phase 1: the plain string in the solid start color -- the layout the line
+    -- discovery reads one frame from now, and the documented fallback color if
+    -- the ramp cannot be built. No reveal yet: revealing the solid first would
+    -- make a blanked name appear and then change color a frame later (a hold
+    -- shows one solid frame instead -- nametext-identical).
+    pcall(nameFS.SetTextColor, nameFS, r1, g1, b1, 1)
+    pcall(nameFS.SetText, nameFS, name)
+
+    C_Timer.After(0, function()
+        if seq ~= inst.nameFitSeq then return end          -- a newer pass owns the box
+        local lines = addon.DiscoverTextLines and addon.DiscoverTextLines(nameFS, name)
+        local route = lines and "span"
+        if not lines and addon.WrapTextGreedy then
+            lines = addon.WrapTextGreedy(name, {
+                width = cfg.nameMaxWidth,
+                face  = addon.ResolveFontFace((cfg.nameFace ~= "follow") and cfg.nameFace or cfg.face),
+                size  = currentNamePoint(inst),
+                style = cfg.style,
+            })
+            route = lines and "greedy"
+        end
+        local ramped = lines and addon.BuildPerLineRampString
+            and addon.BuildPerLineRampString(lines, r1, g1, b1, r2, g2, b2, { mode = "line" })
+        if ramped then
+            pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
+            if nameFS.ClearText then nameFS:ClearText() end
+            pcall(nameFS.SetText, nameFS, ramped)
+            inst.last.name = tostring(inst.last.name)
+                .. string.format("  [%d line(s), %s]", #lines, route)
+        else
+            -- The solid start color stays up -- a fallback, not a failure.
+            inst.last.name = tostring(inst.last.name) .. "  [solid fallback: no line discovery]"
+        end
+        nameFS:SetAlpha(1)
+        measureNameInk(inst, seq)
+    end)
+end
+
+-- hold: nil/true = keep the current picture up until the new one is ready
+-- (same subject re-measured); false = new subject, blank the name until the
+-- fit lands (never draw at a stale size). The blank is ALPHA, not ClearText --
+-- a hold must not destroy the picture it is holding, and ClearText would
+-- release the Text aspect mid-hold. Every terminal path ends at alpha 1: the
+-- no-unit paths below, the painted paths inside applyNameText.
+local function refreshName(inst, hold)
+    local cfg = inst.cfg
+    local nameFS = inst.nameFS
+    if not nameFS then return end
+
+    -- Unconditional: any in-flight fit is for a subject this call replaces --
+    -- including the no-unit path, which launches no new fit and is exactly the
+    -- case the fit module's per-pool supersession cannot cover.
+    inst.nameFitSeq = inst.nameFitSeq + 1
+    local seq = inst.nameFitSeq
+
+    local okEx, ex = pcall(UnitExists, cfg.unit)
+    local exSecret = okEx and issecretvalue and issecretvalue(ex)
+    if not okEx or (not exSecret and ex == false) then
+        if nameFS.ClearText then nameFS:ClearText() end
+        pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
+        nameFS:SetAlpha(1)
+        inst.last.name = "no unit"
+        inst.nameInkWidth = nil
+        applyPowerLayout(inst)
+        return
+    end
+
+    local okN, name = pcall(UnitName, cfg.unit)
+    if not okN or type(name) == "nil" then
+        if nameFS.ClearText then nameFS:ClearText() end
+        pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
+        nameFS:SetAlpha(1)
+        inst.last.name = "no name"
+        inst.nameInkWidth = nil
+        applyPowerLayout(inst)
+        return
+    end
+
+    if not cfg.nameFit or not addon.RunBlindFit then
+        -- Fit off: the pre-fit synchronous path at the plain cfg.nameSize.
+        -- applyNameText owns the reveal.
+        if inst.nameFitSize then
+            inst.nameFitSize = nil
+            applyFonts(inst)
+        end
+        applyNameText(inst, name, seq)
+        return
+    end
+
+    if hold == false then nameFS:SetAlpha(0) end
+
+    addon.RunBlindFit(name, {
+        poolKey  = inst.poolKey,
+        face     = (cfg.nameFace ~= "follow") and cfg.nameFace or cfg.face,
+        style    = cfg.style,
+        width    = cfg.nameMaxWidth,
+        height   = 200,   -- generous: nameMaxLines is what actually governs the budget
+        maxLines = cfg.nameMaxLines,
+        minSize  = cfg.nameMinSize,
+        maxSize  = cfg.nameSize,
+        margin   = "auto",
+    }, function(st)
+        if seq ~= inst.nameFitSeq then return end              -- superseded
+        if not inst.frame or not inst.frame:IsShown() then return end
+        local applied, verdict
+        if st.size then
+            applied, verdict = st.size, string.format("[fit %s@%d]", st.tier, st.size)
+        elseif st.F and st.spaces then
+            -- Overflow: nothing in range fits the box. Render at the floor and
+            -- let the display box ellipsize at the last line -- the honest
+            -- nametext overflow.
+            applied, verdict = st.lo, string.format("[fit overflow@%d]", st.lo)
+        else
+            -- Oracle failed: the pre-fit fixed behavior, diagnosable via report.
+            applied, verdict = cfg.nameSize, "[fit FALLBACK: " .. tostring(st.reason) .. "]"
+        end
+        inst.nameFitSize, inst.lastNameFit = applied, st
+        applyFonts(inst)
+        -- The certified belt-and-braces from nametext: re-assert the wrap state
+        -- alongside the size before the paint (cheap, idempotent).
+        pcall(nameFS.SetWordWrap, nameFS, true)
+        if nameFS.SetNonSpaceWrap then pcall(nameFS.SetNonSpaceWrap, nameFS, false) end
+        if nameFS.SetMaxLines then pcall(nameFS.SetMaxLines, nameFS, cfg.nameMaxLines) end
+        -- Paint the SAME string the fit measured -- never re-read the unit
+        -- here. applyNameText owns the reveal (ramp branches land it one frame
+        -- later, after the per-line swap).
+        applyNameText(inst, name, seq)
+        inst.last.name = tostring(inst.last.name) .. "  " .. verdict
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- Digit mode: the percent size follows the digit count
+--------------------------------------------------------------------------------
+-- SetAlphaGradient(start, length) -> isWithinText is the one FontString call that
+-- reports something about a secret string's content without going secret itself.
+-- Measured semantics (nametext.lua, "The oracle"): 0-based and inclusive, counts
+-- UTF-8 characters, a free-standing FontString gives the true string length, and a
+-- read in the same frame as a layout-dirtying write is SATURATED -- true at every
+-- index. The percent is 1-3 characters, so three linear probes replace nametext's
+-- bisection, and an index-3 true is the saturation tell rather than a count.
+--
+-- The probes run against a dedicated invisible ruler, never the live pctFS: a
+-- gradient is render state, and a bailed probe would leave a visible alpha fade on
+-- the number the user is looking at. The oracle is proven on secret NAMES; number-
+-- derived secret strings are presumed identical -- 'digitprobe' is the gate.
+--
+-- Fully separate from the name fit: this ruler's font is set once and never
+-- shared with core/blindfit.lua's pools.
+
+-- true / false, or nil plus a tag describing why it was not a plain boolean.
+local function alphaProbe(fs, start)
+    if not fs or type(fs.SetAlphaGradient) ~= "function" then return nil, "noAPI" end
+    local ok, within = pcall(fs.SetAlphaGradient, fs, start, 1)
+    if not ok then return nil, "err" end
+    if issecretvalue and issecretvalue(within) then return nil, "SECRET" end
+    if within == true or within == false then return within end
+    return nil, "nonbool(" .. type(within) .. ")"
+end
+
+local function clearGradient(fs)
+    if fs and type(fs.ClearAlphaGradient) == "function" then
+        pcall(fs.ClearAlphaGradient, fs)
+    end
+end
+
+-- count (1-3), or nil plus a verdict tag. Clears the gradient on every exit.
+local function readDigitCount(inst)
+    local rulerFS = inst.rulerFS
+    local v0, tag = alphaProbe(rulerFS, 0)
+    if tag then clearGradient(rulerFS); return nil, tag end
+    if v0 == false then clearGradient(rulerFS); return nil, "empty" end
+    local count = 1
+    if alphaProbe(rulerFS, 1) == true then count = 2 end
+    if count == 2 and alphaProbe(rulerFS, 2) == true then count = 3 end
+    local over = alphaProbe(rulerFS, 3)
+    clearGradient(rulerFS)
+    -- True past the longest legitimate string ("100") is not a count, it is a
+    -- dirty layout answering yes at every index.
+    if over == true then return nil, "saturated" end
+    return count
+end
+
+local function probeDigits(inst)
+    local cfg = inst.cfg
+    inst.probePending = false
+    if not inst.frame or not inst.frame:IsShown() or not cfg.digits then return end
+    local count, tag = readDigitCount(inst)
+    if count then
+        inst.probeRetries = 0
+        inst.last.digits = string.format("count=%d -> size %d", count, cfg["digitSize" .. count])
+        if count ~= inst.lastDigitCount then
+            inst.lastDigitCount = count
+            applyFonts(inst)
+            -- With a descent lift in play the BOTTOM anchor tracks the point
+            -- size, so re-anchor. At descent 0 the anchor is static -- skip the
+            -- churn (applyLayout restarts the stretch animations).
+            if cfg.descent > 0 then applyLayout(inst) end
+        end
+        return
+    end
+    if tag == "saturated" and inst.probeRetries < 3 then
+        -- Unit events dispatch before timers within a frame, so a second health
+        -- tick can rewrite the ruler after this probe was scheduled. Waiting for
+        -- the next event instead of retrying would strand a stale size at exactly
+        -- the quiet moments (heal-to-full ending combat).
+        inst.probeRetries = inst.probeRetries + 1
+        inst.probePending = true
+        inst.last.digits = "saturated (retry " .. inst.probeRetries .. ")"
+        C_Timer.After(0, inst.probeDigitsFn)
+        return
+    end
+    inst.probeRetries = 0
+    inst.last.digits = tag or "?"
+end
+
+-- Coalesced: one pending probe at a time; a retry chain in flight keeps its slot.
+local function scheduleDigitProbe(inst)
+    if inst.probePending or not inst.cfg.digits then return end
+    inst.probePending = true
+    inst.probeRetries = 0
+    C_Timer.After(0, inst.probeDigitsFn)
+end
+
+local function update(inst)
+    if not inst.frame or not inst.frame:IsShown() then return end
+    local cfg = inst.cfg
+    local last = inst.last
+    local pctFS, valFS, symbolFS, rulerFS = inst.pctFS, inst.valFS, inst.symbolFS, inst.rulerFS
+
+    -- "No unit" only when UnitExists comes back a readable false. Never boolean-test
+    -- a possibly-secret return.
+    local okEx, ex = pcall(UnitExists, cfg.unit)
+    local exSecret = okEx and issecretvalue and issecretvalue(ex)
+    if not okEx or (not exSecret and ex == false) then
+        -- Nothing renders without a unit -- no placeholder, and the '%' goes
+        -- dark too. Alpha, not SetShown: applyLayout owns SetShown for
+        -- cfg.symbol, so the two mechanisms compose instead of fighting.
+        if pctFS.ClearText then pctFS:ClearText() end
+        if valFS.ClearText then valFS:ClearText() end
+        if inst.powerFS.ClearText then inst.powerFS:ClearText() end
+        if inst.altPowerFS.ClearText then inst.altPowerFS:ClearText() end
+        if inst.altPowerSymbolFS and inst.altPowerSymbolFS.ClearText then inst.altPowerSymbolFS:ClearText() end
+        if inst.absorbFS and inst.absorbFS.ClearText then inst.absorbFS:ClearText() end
+        setAbsorbGlowShown(inst, false)
+        if inst.levelFS and inst.levelFS.ClearText then inst.levelFS:ClearText() end
+        if inst.levelPrefixFS and inst.levelPrefixFS.ClearText then inst.levelPrefixFS:ClearText() end
+        if UFZ.Auras then UFZ.Auras.HideAll(inst) end
+        symbolFS:SetAlpha(0)
+        last.pct, last.val = "no unit", "no unit"
+        last.power, last.altPower = "no unit", "no unit"
+        last.absorb = "no unit"
+        last.level = "no unit"
+        return
+    end
+    symbolFS:SetAlpha(1)
+
+    -- Percent. ClearText first: a failed chain must show an empty row, not last
+    -- tick's stale number, and ClearText is the only call that releases the Text
+    -- secret aspect.
+    if pctFS.ClearText then pctFS:ClearText() end
+    last.pct = "?"
+    local pctStr = nil  -- the secret string, held only to feed the digit ruler
+    local curve = ensurePctCurve()
+    if curve and _G.UnitHealthPercent and _G.C_StringUtil then
+        local ok, num = pcall(UnitHealthPercent, cfg.unit, cfg.usePredicted, curve)
+        if ok and type(num) == "number" then
+            local fmt = (cfg.round == "round") and C_StringUtil.RoundToNearestString
+                or C_StringUtil.FloorToNearestString
+            if fmt then
+                local ok2, str = pcall(fmt, num)
+                if ok2 and type(str) == "string" then
+                    local ok3 = pcall(pctFS.SetText, pctFS, str)
+                    last.pct = ok3 and "ok" or "SetText failed"
+                    if ok3 then pctStr = str end
+                else
+                    last.pct = ok2 and ("formatter returned " .. type(str))
+                        or ("formatter error: " .. tostring(str))
+                end
+            else
+                last.pct = "C_StringUtil formatter missing"
+            end
+        else
+            last.pct = ok and ("UnitHealthPercent returned " .. type(num))
+                or ("UnitHealthPercent error: " .. tostring(num))
+        end
+    else
+        last.pct = "API missing (C_CurveUtil / UnitHealthPercent / C_StringUtil)"
+    end
+
+    -- Feed the digit ruler only from a successful chain. The blank no-unit path and
+    -- the probe command never touch it, so nothing else can contaminate the count.
+    if cfg.digits and pctStr and rulerFS then
+        if rulerFS.ClearText then rulerFS:ClearText() end
+        pcall(rulerFS.SetText, rulerFS, pctStr)
+        scheduleDigitProbe(inst)
+    end
+
+    -- Value.
+    if valFS.ClearText then valFS:ClearText() end
+    last.val = "?"
+    if not abbrevBuildTried then rebuildAbbrevConfig() end
+    local okH, hp = pcall(UnitHealth, cfg.unit)
+    if okH and type(hp) == "number" then
+        local okA, str
+        if abbrevOpts and _G.AbbreviateNumbers then
+            okA, str = pcall(AbbreviateNumbers, hp, abbrevOpts)
+        elseif _G.AbbreviateNumbers then
+            -- Degraded: engine-default breakpoints (uppercase K/M, different tiers).
+            -- Deliberately visible so a broken config never looks correct.
+            okA, str = pcall(AbbreviateNumbers, hp)
+        end
+        if okA and type(str) == "string" then
+            local okS = pcall(valFS.SetText, valFS, str)
+            if okS then
+                last.val = abbrevOpts and "ok" or "ok (degraded: engine defaults)"
+            else
+                last.val = "SetText failed"
+            end
+        else
+            last.val = okA and ("AbbreviateNumbers returned " .. type(str))
+                or ("AbbreviateNumbers error: " .. tostring(str))
+        end
+    else
+        last.val = okH and ("UnitHealth returned " .. type(hp))
+            or ("UnitHealth error: " .. tostring(hp))
+    end
+
+    applyColor(inst)
+    updatePower(inst)
+    applyPowerColor(inst)
+    updateAbsorb(inst)
+    updateLevel(inst)
+end
+
+--------------------------------------------------------------------------------
+-- Frame
+--------------------------------------------------------------------------------
+
+local UNIT_EVENTS = {
+    "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_HEAL_PREDICTION", "UNIT_NAME_UPDATE",
+    "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
+    "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_LEVEL", "UNIT_AURA",
+}
+
+-- Re-registering a unit event replaces its unit filter, so a unit switch is a
+-- plain re-register of the whole list. Registration is per-frame, so the two
+-- instances never collide; both receive PLAYER_TARGET_CHANGED and self-filter.
+local function registerUnitEvents(inst)
+    if not inst.frame then return end
+    for _, ev in ipairs(UNIT_EVENTS) do
+        pcall(inst.frame.RegisterUnitEvent, inst.frame, ev, inst.cfg.unit)
+    end
+end
+
+-- Whole-block scale (the shipped "Overall Scale"): every row is a child of the
+-- one container frame and every layout number resolves in its coordinate space,
+-- so a single SetScale scales the assembled block. The ruler lives outside on
+-- purpose -- the oracle counts characters, not pixels. SetScale is geometry on
+-- the anchor-protected frame, so it takes the same cache + regen-queue path as
+-- the envelope.
+local function applyScale(inst)
+    if not inst.frame then return end
+    local scale = inst.cfg.scale or 1
+    if inst.appliedScale == scale then return end
+    if InCombatLockdown() then
+        queueRegen(inst, "scale")
+        return
+    end
+    inst.frame:SetScale(scale)
+    inst.appliedScale = scale
+end
+regenActions.scale = applyScale
+
+-- Whole-frame conditional opacity, the UFX Visibility offering ported (strict
+-- parity 2026-08-05: Player-only -- a Target cfg carries no opacity keys and
+-- resolves to full alpha). Priority: With Target > In Combat > Out of Combat,
+-- the contract the X tooltip advertises. SetAlpha is unprotected, so unlike
+-- the geometry workers this applies live in combat, no queue. 0 is honored --
+-- deliberately not replicating X's silent 50-percent floor on In Combat.
+local function applyOpacity(inst)
+    local frame = inst.frame
+    if not frame then return end
+    -- Edit Mode must never offer a dimmed or invisible grab target.
+    if inst.previewActive then
+        frame:SetAlpha(1)
+        return
+    end
+    local cfg = inst.cfg
+    local pct = cfg.opacityOutOfCombat or 100
+    local Util = addon.ComponentsUtil
+    if Util and Util.PlayerInCombat and Util.PlayerInCombat() then
+        pct = cfg.opacityInCombat or 100
+    end
+    -- Only units that offer the slider pay for the target probe; the update()
+    -- doctrine: nothing but a readable plain true counts as "has target".
+    if cfg.opacityWithTarget ~= nil then
+        local okEx, ex = pcall(UnitExists, "target")
+        local exSecret = okEx and issecretvalue and issecretvalue(ex)
+        if okEx and not exSecret and ex == true then
+            pct = cfg.opacityWithTarget
+        end
+    end
+    if pct < 0 then pct = 0 elseif pct > 100 then pct = 100 end
+    frame:SetAlpha(pct / 100)
+end
+
+-- Anchors + attributes for the secure click overlay. Both are combat-blocked
+-- on the protected button, so a call that lands in lockdown queues itself and
+-- pays on PLAYER_REGEN_ENABLED (creation paths are OOC in practice; this
+-- covers a reload straight into combat and a combat setUnit).
+local function applyClickAttributes(inst)
+    local click = inst.clickButton
+    if not click then return end
+    if InCombatLockdown() then
+        queueRegen(inst, "click")
+        return
+    end
+    -- Anchored here rather than at creation: SetAllPoints on the protected
+    -- button is itself blocked in lockdown, so a frame born in combat pays
+    -- anchors and attributes together on regen. Idempotent OOC.
+    click:SetAllPoints(inst.frame)
+    -- The Blizzard loader: AnyUp clicks, *type1 = target, unit attribute.
+    if SecureUnitButton_OnLoad then
+        SecureUnitButton_OnLoad(click, inst.cfg.unit)
+    else
+        click:RegisterForClicks("AnyUp")
+        click:SetAttribute("*type1", "target")
+        click:SetAttribute("unit", inst.cfg.unit)
+    end
+    -- togglemenu, not menu: the self-contained secure action Blizzard retains
+    -- for addon frames (SecureTemplates.lua) -- it resolves the right menu per
+    -- unit (SELF/TARGET/...) and opens it via UnitPopup_OpenMenu, no
+    -- menu-function attribute needed.
+    click:SetAttribute("*type2", "togglemenu")
+end
+regenActions.click = applyClickAttributes
+
+-- Secure unit watch: Blizzard's SecureStateDriverManager shows/hides watched
+-- frames on unit existence from its own secure context -- the one channel
+-- that stays legal in combat for a frame whose visibility is protected by the
+-- secure click child. The ecosystem-standard pattern (oUF's Enable IS
+-- RegisterUnitWatch). The player unit always exists, so only target/focus
+-- frames register; register/unregister writes attributes on the protected
+-- manager frame, so this worker is OOC-only and queues like the others.
+-- The watch also drops for the Edit Mode stand-in -- a targetless preview
+-- would otherwise be re-hidden by the manager's next scan.
+local function applyUnitWatch(inst)
+    local frame = inst.frame
+    if not frame then return end
+    local wantWatch = UFZ._IsUnitEnabled(inst.unitKey)
+        and inst.cfg.unit ~= "player"
+        and not inst.previewActive
+    if InCombatLockdown() then
+        -- Steady state needs nothing; only a real transition queues (every
+        -- combat target change routes through here via _UpdateVisibility).
+        if (not wantWatch) == (not inst.watchRegistered)
+            and (not wantWatch or inst.watchUnit == inst.cfg.unit) then
+            return
+        end
+        queueRegen(inst, "watch")
+        return
+    end
+    if wantWatch then
+        -- The manager resolves the unit via SecureButton_GetUnit on the
+        -- watched frame itself; registration settles visibility synchronously.
+        frame:SetAttribute("unit", inst.cfg.unit)
+        RegisterUnitWatch(frame)
+        inst.watchRegistered = true
+        inst.watchUnit = inst.cfg.unit
+    elseif inst.watchRegistered then
+        UnregisterUnitWatch(frame)
+        inst.watchRegistered = nil
+        inst.watchUnit = nil
+    end
+end
+regenActions.watch = applyUnitWatch
+
+-- Our own Show/Hide on the outer frame (enable/disable transitions, the
+-- always-existing player unit): protected in lockdown by the click child, so
+-- combat calls queue a fresh visibility pass for regen instead.
+local function setShownSafe(inst, show)
+    local frame = inst.frame
+    if not frame then return end
+    if frame:IsShown() == show then return end
+    if InCombatLockdown() then
+        queueRegen(inst, "visibility")
+        return
+    end
+    if show then frame:Show() else frame:Hide() end
+end
+regenActions.visibility = function(inst) UFZ._UpdateVisibility(inst) end
+
+local function ensureFrame(inst)
+    if inst.frame then return inst.frame end
+    local cfg = inst.cfg
+
+    local frame = CreateFrame("Frame", inst.frameName, UIParent)
+    inst.frame = frame
+    frame:SetSize(cfg.width, cfg.height)
+    -- A stand-in point only: _RestorePosition at the tail (and every LEM layout
+    -- callback after it) replaces this with the per-layout stored position.
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, -180)
+    -- MEDIUM, not HIGH: Blizzard's full-screen panes live inside MEDIUM and are
+    -- only Raise()d within it, so anything above MEDIUM draws over an open
+    -- talent pane forever (core/strata.lua carries the evidence and the level
+    -- ladder). The level is explicit because a child of UIParent otherwise
+    -- lands at 1, the floor of the band, under every other Scoot overlay.
+    -- Both calls MUST stay above the SecureUnitButtonTemplate child created
+    -- below -- once that child SetAllPoints us, the frame is protected.
+    addon.Strata.ApplyHUD(frame, 10)
+    -- The frame itself stays mouse-dead: Edit Mode dragging is the LibEditMode
+    -- selection overlay's job (editmode.lua), and unit interactivity is the
+    -- secure click overlay's below. Neither wants the insecure frame in the
+    -- hit-test.
+    frame:EnableMouse(false)
+
+    -- The numbers box: the tuned cfg.width x cfg.height rect every content
+    -- anchor in applyLayout targets. Invisible geometry -- the outer frame
+    -- resizes around it to the full-content envelope (applyEnvelope), which is
+    -- what Edit Mode, the click overlay, and snapped cast bars see.
+    local box = CreateFrame("Frame", nil, frame)
+    inst.box = box
+    box:SetSize(cfg.width, cfg.height)
+    box:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+
+    -- Unit interactivity rides a secure overlay covering the whole envelope:
+    -- click anywhere on the element to target, exactly like a Blizzard unit
+    -- frame. Every click routes through SecureUnitButton_OnClick, which
+    -- consults the user's click bindings FIRST -- a spell bound to right-click
+    -- casts, and Open Menu fires on whichever button/modifier the user bound
+    -- it to -- so no mouse button is hard-coded anywhere in Scoot. The
+    -- template is protected; keeping it a CHILD of our insecure frame means
+    -- visibility and geometry ride the parent implicitly, which stays legal in
+    -- combat (the overlay doctrine, inverted). Hidden during Edit Mode so the
+    -- LEM selection gets the mouse (editmode.lua).
+    local click = CreateFrame("Button", inst.frameName .. "Click", frame, "SecureUnitButtonTemplate")
+    inst.clickButton = click
+    -- CLICK-ONLY: motion events pass straight through to whatever is underneath.
+    --
+    -- The overlay spans the whole config-derived envelope, which is a deliberate
+    -- superset of the visible ink -- so it sits on top of a large rectangle of
+    -- apparently-empty screen that users reasonably fill with other frames. As a
+    -- Button it defaults to click+motion, and the motion half was silently eating
+    -- every hover in that reserve: Blizzard's Cooldown Viewer icons (MEDIUM level
+    -- 2, and motion-only themselves -- CooldownViewer.lua:350-351) lost their
+    -- tooltips to us at level 11, as did anything else parked there.
+    --
+    -- Disabling motion costs nothing: SecureUnitButtonTemplate declares an
+    -- OnClick and nothing else (SecureTemplates.xml:21-25), and Scoot never wired
+    -- OnEnter/OnLeave here, so no tooltip or highlight is lost. Clicks are
+    -- unaffected -- the two flags are independent, which is exactly how Blizzard
+    -- runs the Cooldown Viewer in the opposite direction. Click-to-target still
+    -- covers the entire envelope; only hover falls through.
+    --
+    -- Fixing this by frame level instead would not work: the level must stay high
+    -- enough for the UFZ text to draw over a CDM icon (the sixth-pass decision),
+    -- and drawing and hit-testing share the one number. Splitting click from
+    -- motion is the only lever that separates them.
+    click:SetMouseMotionEnabled(false)
+    applyClickAttributes(inst)  -- anchors + attributes (queued if born in combat)
+
+    -- No backdrop by design: the numbers are judged against the world behind
+    -- them. Kept (hidden) for cfg.chrome, the harness's visualization aid --
+    -- it paints the full envelope now, which is the more useful picture.
+    inst.chromeBG = frame:CreateTexture(nil, "BACKGROUND")
+    inst.chromeBG:SetAllPoints()
+    inst.chromeBG:SetColorTexture(0, 0, 0, 0.55)
+    inst.chromeBG:SetShown(cfg.chrome)
+
+    inst.pctFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.valFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.symbolFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.nameFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.powerFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.altPowerFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.altPowerSymbolFS = frame:CreateFontString(nil, "OVERLAY")
+    -- The absorb text: fixed white (spec), set once -- applyColor never touches
+    -- it. Natural width like the number rows (a SetWidth would engage the
+    -- truncation engine, and the halo must track the true rect).
+    inst.absorbFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.absorbFS:SetJustifyH("CENTER")
+    inst.absorbFS:SetTextColor(1, 1, 1, 1)
+    -- The halo (user request 2026-08-05): a soft white-gold glow carrying the
+    -- number, echoing how the base UI paints absorbs. Blizzard's classic
+    -- soft-edged gold ring file; its visible ring sits well inside the
+    -- texture rect, hence the generous overreach constants. BACKGROUND
+    -- sublevel 2 stacks it above the chromeBG (sublevel 0) and below the
+    -- text; not masked -- the art is already soft. It rides the FontString's
+    -- rect: anchor resolution is engine-side, so a secret number's width is
+    -- never read (the symbolFS->pctFS precedent). Hidden until updateAbsorb's
+    -- paint verdict shows it (a cleared FS collapses its rect, and an empty
+    -- halo must never linger). Its anchors are size-dependent (ink-centering
+    -- shift) and live in anchorAbsorbFS, which every init/setter path reaches
+    -- via applyLayout.
+    inst.absorbGlowTex = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+    inst.absorbGlowTex:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    inst.absorbGlowTex:SetBlendMode("ADD")
+    inst.absorbGlowTex:SetAlpha(ABSORB_GLOW_ALPHA)
+    inst.absorbGlowTex:Hide()
+    -- The level pair: baked light gray (spec), set once -- applyColor and
+    -- applyPowerColor never touch either. Natural width (anchorPowerFS's
+    -- contract); JustifyH is set per-location by the anchor worker. The "lvl"
+    -- prefix is its own FontString at 75% size (the '%' companion precedent);
+    -- applyPowerLayout hangs it off the number's leading edge and only
+    -- updateLevel gives it text, so it vanishes with the number.
+    inst.levelFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.levelFS:SetTextColor(0.8, 0.8, 0.8, 1)
+    inst.levelPrefixFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.levelPrefixFS:SetTextColor(0.8, 0.8, 0.8, 1)
+
+    -- The digit ruler: free-standing (single point => natural width), so the oracle
+    -- reports the true string length; one fixed font set ONCE and never touched
+    -- again -- the count is font-independent on an unconstrained FontString, and
+    -- never re-fonting removes the main source of saturated reads. Alpha 0 but
+    -- SHOWN: a hidden region may skip layout entirely, and a layout-sensitive
+    -- oracle would then answer about nothing (the nametext probe-ruler finding).
+    -- Per instance; both holders overlap at the same point, which is fine (alpha
+    -- 0, mouse-dead, each FontString lays out independently).
+    local rulerHolder = CreateFrame("Frame", nil, UIParent)
+    rulerHolder:SetSize(1, 1)
+    rulerHolder:SetPoint("CENTER", UIParent, "CENTER", 0, -320)
+    rulerHolder:SetAlpha(0)
+    inst.rulerFS = rulerHolder:CreateFontString(nil, "OVERLAY")
+    inst.rulerFS:SetPoint("CENTER", rulerHolder, "CENTER", 0, 0)
+    inst.rulerFS:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
+    inst.rulerFS:SetWordWrap(false)
+    -- Fonts before any SetText: a template-less FontString has no font object at all
+    -- (same reason as nametext.lua and the measurement ruler).
+    applyFonts(inst)
+    inst.symbolFS:SetText("%")
+    -- The certified nametext display settings: wrap ON (applyLayout bounds it
+    -- with the fit box), no mid-word breaks. Ramped strings never rely on the
+    -- engine's wrap decision -- applyNameText bakes the discovered breaks in as
+    -- "\n"; wrap-on is the reflow safety net (nametext.lua "Word wrap stays ON").
+    inst.nameFS:SetWordWrap(true)
+    if inst.nameFS.SetNonSpaceWrap then pcall(inst.nameFS.SetNonSpaceWrap, inst.nameFS, false) end
+    applyScale(inst)
+    applyLayout(inst)
+    refreshName(inst)
+
+    registerUnitEvents(inst)
+    frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+    frame:RegisterEvent("PLAYER_FOCUS_CHANGED")
+    -- The alternate power bar appears/disappears with the spec (the secondary
+    -- info is keyed off class + primary power type). Falls through the handler
+    -- to update(inst), which re-resolves it.
+    frame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+    -- Level: PLAYER_LEVEL_CHANGED is the PlayerFrame-canonical event (UNIT_LEVEL
+    -- is the target frames'; it is not what Blizzard trusts for the player), and
+    -- PLAYER_MAX_LEVEL_UPDATE re-evaluates hide-at-max on cap changes. Both
+    -- fall through the handler to update(inst).
+    frame:RegisterEvent("PLAYER_LEVEL_CHANGED")
+    frame:RegisterEvent("PLAYER_MAX_LEVEL_UPDATE")
+    frame:SetScript("OnEvent", function(_, event)
+        -- The Edit Mode stand-in paints static sample text; live data must not
+        -- overwrite it mid-drag. Everything re-syncs on _EndEditModePreview.
+        if inst.previewActive then return end
+        -- inst.cfg, never a captured local: on a profile switch the instance is
+        -- re-pointed at the new profile's table and this closure must follow.
+        if event == "UNIT_AURA" then
+            -- Aura rows only; the numbers have their own events. The seam
+            -- skip-compares plain ID lists, so storms with an unchanged
+            -- visible set cost one C call.
+            if UFZ.Auras then UFZ.Auras.Refresh(inst) end
+            return
+        end
+        if event == "UNIT_NAME_UPDATE" then
+            -- Late name arrival for the watched unit (RegisterUnitEvent filters
+            -- to cfg.unit). Name only; health has its own events. Same subject:
+            -- hold the old picture while the refit runs.
+            refreshName(inst, true)
+            return
+        end
+        if event == "PLAYER_TARGET_CHANGED" and inst.cfg.unit ~= "target" then return end
+        if event == "PLAYER_FOCUS_CHANGED" and inst.cfg.unit ~= "focus" then return end
+        if event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_FOCUS_CHANGED" then
+            -- The subject itself changed. Show/hide on existence is the secure
+            -- unit watch's (combat-legal); this settles the watch and repaints
+            -- a currently-shown frame. A frame the watch shows a beat later
+            -- repaints via its OnShow hook instead.
+            UFZ._UpdateVisibility(inst)
+            -- New subject: blank the name until its fit lands.
+            refreshName(inst, false)
+            -- Force, not Refresh: a new subject can coincidentally reuse aura
+            -- instance-ID values, and a dropped target must clear its rows.
+            if UFZ.Auras then UFZ.Auras.ForceRefresh(inst) end
+            return
+        end
+        update(inst)
+    end)
+
+    -- The secure unit watch shows this frame from Blizzard's manager when the
+    -- watched unit appears (the only combat-legal channel). update() gates on
+    -- IsShown, so the paint that _UpdateVisibility used to run "on the way to
+    -- showing" must re-run here instead. Idempotent for our own OOC shows.
+    frame:SetScript("OnShow", function()
+        if inst.previewActive then return end
+        update(inst)
+        refreshName(inst, false)
+        -- Force: the subject usually changed while hidden, and a new subject
+        -- can coincidentally reuse aura instance-ID values.
+        if UFZ.Auras then UFZ.Auras.ForceRefresh(inst) end
+        applyOpacity(inst)
+    end)
+
+    -- CreateFrame returns a shown frame; start hidden -- _UpdateVisibility is
+    -- the only shower. A frame born in combat cannot (visibility-protected by
+    -- the click child); it stays put until the watch or the regen drain
+    -- settles it, blank via update()'s no-unit paint at worst.
+    if not InCombatLockdown() then frame:Hide() end
+
+    -- Into Edit Mode at the moment of creation, so a unit enabled mid-session is
+    -- draggable without a /reload; the restore no-ops until the first LEM layout
+    -- callback lands (which fires immediately when a layout is already loaded).
+    UFZ._RegisterFrameEditMode(inst)
+    UFZ._RestorePosition(inst)
+
+    return frame
+end
+
+-- A never-laid-out region cannot be trusted, so every mutator ensures the frame
+-- exists before styling it. Visibility stays _UpdateVisibility's call alone --
+-- the harness's force-show is the one behavior that did not survive promotion.
+local function ensureApplied(inst)
+    ensureFrame(inst)
+    return inst.frame
+end
+
+--------------------------------------------------------------------------------
+-- Commands (instance-bound implementations; the API table at the bottom
+-- publishes them through UFZ.GetAPI(unitKey))
+--------------------------------------------------------------------------------
+
+-- Read-only snapshot of the current config, for the settings pages. cfg holds
+-- plain values only, so nothing secret can leak through this.
+local function getConfig(inst)
+    local snapshot = {}
+    for k, v in pairs(inst.cfg) do snapshot[k] = v end
+    return snapshot
+end
+
+local function setUnit(inst, u)
+    ensureApplied(inst)
+    u = tostring(u or ""):lower()
+    if u ~= "player" and u ~= "target" and u ~= "focus" then
+        addon:Print("Unit must be one of: player | target | focus")
+        return
+    end
+    inst.cfg.unit = u
+    inst.lastDigitCount = nil
+    registerUnitEvents(inst)
+    -- The click overlay and the unit watch both target whatever cfg.unit
+    -- says; re-point them (each queues to regen if this lands in combat).
+    applyClickAttributes(inst)
+    UFZ._UpdateVisibility(inst)
+    update(inst)
+    refreshName(inst, false)
+    addon:Print("Unit (" .. inst.label .. " instance): " .. inst.cfg.unit)
+end
+
+-- The applied-vs-requested check exists because both failure modes here are
+-- silent: an unknown key makes ResolveFontFace fall back to the default face,
+-- and SetFont on a file the client has not loaded fails inside a pcall. Either
+-- way the harness would print success while rendering Friz Quadrata.
+--
+-- The read-back is deferred and then re-checked a frame later: GetFont reports
+-- the OLD face for about a frame after SetFont touches a fresh file (the same
+-- settling the nametext caseprobe hit), so a same-frame check fired a false
+-- warning naming the previous font on every first switch to a new face.
+local function verifyAppliedFace(inst, fs, wantedFn)
+    fs = fs or inst.pctFS
+    wantedFn = wantedFn or function() return addon.ResolveFontFace(inst.cfg.face) end
+    local wanted = wantedFn()
+    if type(wanted) ~= "string" then return end
+    local function check(finalCheck)
+        -- Stale guard: the user may have switched faces again while we waited.
+        if wantedFn() ~= wanted then return end
+        local ok, applied = pcall(fs.GetFont, fs)
+        if not ok or type(applied) ~= "string" then return end
+        if issecretvalue and issecretvalue(applied) then return end
+        local a = applied:lower():gsub("/", "\\")
+        local r = wanted:lower():gsub("/", "\\")
+        if a == r then return end
+        if not finalCheck then
+            C_Timer.After(0, function() check(true) end)
+            return
+        end
+        addon:Print("Warning: the client did not load '" .. wanted .. "' (rendering '" .. applied .. "' instead). A brand-new font file requires a FULL client restart, not /reload.")
+    end
+    C_Timer.After(0, function() check(false) end)
+end
+
+local function setFont(inst, face)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    if face and face ~= "" then cfg.face = face end
+    local isPath = type(cfg.face) == "string" and cfg.face:find("[/\\]") ~= nil
+    local isLSM = addon.IsLSMKey and addon.IsLSMKey(cfg.face)
+    if not isPath and not isLSM and not addon.Fonts[cfg.face] then
+        addon:Print("Warning: '" .. cfg.face .. "' is not in this session's font registry, so the resolver falls back to the default face. Registry changes need /reload; new font files need a full client restart.")
+    end
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+    refreshName(inst)
+    verifyAppliedFace(inst)
+end
+
+local function setStyle(inst, style)
+    ensureApplied(inst)
+    if style and style ~= "" then inst.cfg.style = style end
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+    refreshName(inst)
+    addon:Print("Style: " .. inst.cfg.style)
+end
+
+local function setPctSize(inst, n)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    cfg.pctSize = math.max(1, math.floor(tonumber(n) or cfg.pctSize))
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+    addon:Print("Percent size: " .. cfg.pctSize)
+    if cfg.digits then
+        addon:Print("Note: digit mode is on, so the rendered size comes from digitsize 1/2/3; pct sets row geometry and the digits-off fallback.")
+    end
+end
+
+local function setValSize(inst, n)
+    ensureApplied(inst)
+    -- Half-point steps: whole-point jumps are too coarse near the width match.
+    local v = tonumber(n) or inst.cfg.valSize
+    inst.cfg.valSize = math.max(1, math.floor(v * 2 + 0.5) / 2)
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+end
+
+-- The resolved value face for read-back verification and the report.
+local function resolveValFace(inst)
+    return addon.ResolveFontFace(inst.cfg.valFace ~= "follow" and inst.cfg.valFace or inst.cfg.face)
+end
+
+local function setValFont(inst, face)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    if not face or face == "" then
+        addon:Print("UFZ setter usage: valfont <FACE|follow>   (current: " .. cfg.valFace .. ")")
+        return
+    end
+    local lowered = tostring(face):lower()
+    if lowered == "follow" or lowered == "off" or lowered == "reset" then
+        cfg.valFace = "follow"
+    else
+        cfg.valFace = face
+        local isPath = cfg.valFace:find("[/\\]") ~= nil
+        local isLSM = addon.IsLSMKey and addon.IsLSMKey(cfg.valFace)
+        if not isPath and not isLSM and not addon.Fonts[cfg.valFace] then
+            addon:Print("Warning: '" .. cfg.valFace .. "' is not in this session's font registry, so the resolver falls back to the default face. Registry changes need /reload; new font files need a full client restart.")
+        end
+    end
+    applyFonts(inst)
+    verifyAppliedFace(inst, inst.valFS, function() return resolveValFace(inst) end)
+    addon:Print("Value face: " .. cfg.valFace)
+end
+
+local function setDescent(inst, n)
+    ensureApplied(inst)
+    local r = tonumber(n)
+    if not r then
+        addon:Print(string.format("UFZ setter usage: descent <ratio>   (current: %.3f; per-point ink lift for off-master digit sizes -- the font's below-ink descent share)", inst.cfg.descent))
+        return
+    end
+    inst.cfg.descent = math.max(0, math.min(1, r))
+    applyLayout(inst)
+    addon:Print(string.format("Descent ratio: %.3f -- the 2-digit master look is the anchor; nudge until the '100' gap matches it.", inst.cfg.descent))
+end
+
+local function setGap(inst, n)
+    ensureApplied(inst)
+    -- Fractional gaps are legal: under a fractional UI scale a 0.1 px anchor
+    -- offset can land on a different physical pixel, so sub-px steps are the
+    -- fine-tuning knob (snapped to 0.1 to keep the report readable).
+    local v = tonumber(n) or inst.cfg.gap
+    inst.cfg.gap = math.floor(v * 10 + 0.5) / 10
+    applyLayout(inst)
+    update(inst)
+end
+
+local function setCenter(inst, state)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: center <on|off>")
+        return
+    end
+    cfg.center = (state == "on")
+    applyLayout(inst)
+    update(inst)
+    if cfg.center then
+        addon:Print("Center: on (centerline " .. cfg.centerOffset .. "px in from the " .. cfg.align .. " edge; tune with centeroffset)")
+    else
+        addon:Print("Center: off (edge-justified)")
+    end
+end
+
+local function setCenterOffset(inst, n)
+    ensureApplied(inst)
+    inst.cfg.centerOffset = math.floor(tonumber(n) or inst.cfg.centerOffset)
+    applyLayout(inst)
+    addon:Print("Center offset: " .. inst.cfg.centerOffset)
+end
+
+local function setDigits(inst, state)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: digits <on|off>")
+        return
+    end
+    cfg.digits = (state == "on")
+    inst.lastDigitCount = nil
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+    if cfg.digits then
+        addon:Print(string.format("Digit mode: on (sizes %d/%d/%d for 1/2/3 digits; validate with digitprobe)",
+            cfg.digitSize1, cfg.digitSize2, cfg.digitSize3))
+    else
+        addon:Print("Digit mode: off (static size " .. cfg.pctSize .. ")")
+    end
+end
+
+local function setDigitSize(inst, which, size)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    local n = tonumber(which)
+    if n ~= 1 and n ~= 2 and n ~= 3 then
+        addon:Print("UFZ setter usage: digitsize <1|2|3> <size>")
+        return
+    end
+    local key = "digitSize" .. n
+    cfg[key] = math.max(1, math.floor(tonumber(size) or cfg[key]))
+    -- applyFonts so a change to the currently rendered count lands now; applyLayout
+    -- because the row reserve tracks the largest digit size.
+    applyFonts(inst)
+    applyLayout(inst)
+    addon:Print(string.format("Digit size %d: %d", n, cfg[key]))
+end
+
+-- One knob for the digit-size triple (the shipped "% Font Size"): the 2-digit
+-- size is the master and the 1/3-digit sizes ride the tuned 38/32 and 26/32
+-- ratios. Also feeds pctSize (the digits-off fallback and applyLayout's
+-- row-geometry basis).
+local function setPctSizeMaster(inst, n)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    local v = math.max(1, math.floor(tonumber(n) or cfg.digitSize2))
+    cfg.digitSize2 = v
+    cfg.digitSize1 = math.floor(v * 38 / 32 + 0.5)
+    cfg.digitSize3 = math.floor(v * 26 / 32 + 0.5)
+    cfg.pctSize = v
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+end
+
+local function setNameSize(inst, n)
+    ensureApplied(inst)
+    inst.cfg.nameSize = math.max(1, math.floor(tonumber(n) or inst.cfg.nameSize))
+    -- No applyLayout: the name's anchor sits on the row-gap midline, which is
+    -- name-size-independent by design. refreshName refits (nameSize is the fit
+    -- ceiling), so the change lands through the fit when it is on. The envelope
+    -- DOES track the ceiling (reserved wrap-box height), hence the refresh.
+    applyFonts(inst)
+    applyEnvelope(inst)
+    refreshName(inst)
+end
+
+local function setNameFont(inst, face)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    if not face or face == "" then
+        addon:Print("UFZ setter usage: namefont <FACE|follow>   (current: " .. cfg.nameFace .. ")")
+        return
+    end
+    local lowered = tostring(face):lower()
+    if lowered == "follow" or lowered == "off" or lowered == "reset" then
+        cfg.nameFace = "follow"
+    else
+        cfg.nameFace = face
+        local isPath = cfg.nameFace:find("[/\\]") ~= nil
+        local isLSM = addon.IsLSMKey and addon.IsLSMKey(cfg.nameFace)
+        if not isPath and not isLSM and not addon.Fonts[cfg.nameFace] then
+            addon:Print("Warning: '" .. cfg.nameFace .. "' is not in this session's font registry, so the resolver falls back to the default face. Registry changes need /reload; new font files need a full client restart.")
+        end
+    end
+    applyFonts(inst)
+    refreshName(inst)
+end
+
+local function setNameOffset(inst, n)
+    ensureApplied(inst)
+    inst.cfg.nameOffset = math.floor(tonumber(n) or inst.cfg.nameOffset)
+    applyLayout(inst)
+end
+
+local function setNameY(inst, n)
+    ensureApplied(inst)
+    inst.cfg.nameY = math.floor(tonumber(n) or inst.cfg.nameY)
+    applyLayout(inst)
+end
+
+local function setNameColorMode(inst, mode)
+    ensureApplied(inst)
+    mode = tostring(mode or ""):lower()
+    if mode ~= "gradient" and mode ~= "custom" then
+        addon:Print("Name color mode must be one of: gradient | custom")
+        return
+    end
+    inst.cfg.nameColorMode = mode
+    refreshName(inst)
+end
+
+local function setNameColor(inst, r, g, b, a)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    cfg.nameColorR = tonumber(r) or 1
+    cfg.nameColorG = tonumber(g) or 1
+    cfg.nameColorB = tonumber(b) or 1
+    cfg.nameColorA = tonumber(a) or 1
+    refreshName(inst)
+end
+
+local function setNameMaxWidth(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then
+        addon:Print(string.format("UFZ setter usage: namemaxwidth <px>   (current: %d)", inst.cfg.nameMaxWidth))
+        return
+    end
+    inst.cfg.nameMaxWidth = math.max(40, math.min(600, math.floor(v)))
+    -- The display FS carries the same box the fit measures against.
+    applyLayout(inst)
+    refreshName(inst)
+end
+
+local function setNameMaxLines(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then
+        addon:Print(string.format("UFZ setter usage: namemaxlines <n>   (current: %d)", inst.cfg.nameMaxLines))
+        return
+    end
+    inst.cfg.nameMaxLines = math.max(1, math.min(4, math.floor(v)))
+    applyLayout(inst)
+    refreshName(inst)
+end
+
+local function setNameFit(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: namefit <on|off>")
+        return
+    end
+    inst.cfg.nameFit = (state == "on")
+    refreshName(inst)
+end
+
+local function setNameMinSize(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then
+        addon:Print(string.format("UFZ setter usage: nameminsize <n>   (current: %d)", inst.cfg.nameMinSize))
+        return
+    end
+    -- The fit swaps a floor above the ceiling internally, so any value is safe;
+    -- clamp to something readable anyway.
+    inst.cfg.nameMinSize = math.max(4, math.floor(v))
+    refreshName(inst)
+end
+
+local function setStretch(inst, n)
+    ensureApplied(inst)
+    local fx = tonumber(n)
+    if not fx then
+        addon:Print("UFZ setter usage: stretch <factor>   (1 = off; e.g. 1.35)")
+        return
+    end
+    inst.cfg.stretch = math.max(0.5, math.min(3, fx))
+    applyStretch(inst)
+    addon:Print(string.format("Stretch: %.2fx wide%s", inst.cfg.stretch, inst.cfg.stretch == 1 and " (off)" or ""))
+end
+
+local function setScale(inst, n)
+    ensureApplied(inst)
+    local s = tonumber(n)
+    if not s then
+        addon:Print(string.format("UFZ setter usage: scale <0.5-2.0>   (current: %.2f)", inst.cfg.scale))
+        return
+    end
+    inst.cfg.scale = math.max(0.5, math.min(2, s))
+    applyScale(inst)
+end
+
+local function setOpacityImpl(inst, key, v)
+    ensureApplied(inst)
+    local pct = tonumber(v)
+    if not pct then return end
+    inst.cfg[key] = math.max(0, math.min(100, pct))
+    applyOpacity(inst)
+end
+
+local function setSymbol(inst, state, size)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    state = tostring(state or ""):lower()
+    if state == "on" then
+        cfg.symbol = true
+    elseif state == "off" then
+        cfg.symbol = false
+    else
+        addon:Print("UFZ setter usage: symbol <on|off> [size|auto]   (auto = a fifth of the percent size, tracks digit mode)")
+        return
+    end
+    if size then
+        if tostring(size):lower() == "auto" then
+            cfg.symbolSize = 0
+        else
+            local n = tonumber(size)
+            if n then cfg.symbolSize = math.max(1, math.floor(n)) end
+        end
+    end
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+    -- The experimental secret-width anchor only exists in the NON-centered left
+    -- branch; centered mode anchors the '%' identically for both aligns, and the
+    -- target instance defaults to centered-left -- no warning noise there.
+    if cfg.symbol and cfg.align == "left" and not cfg.center then
+        addon:Print("Left mode with symbol on anchors '%' to a secret-width edge (the experiment). Check 'report'.")
+    end
+end
+
+-- Same 0.1-snapping contract as setGap: sub-px offsets land on different
+-- physical pixels under a fractional UI scale. Negative pulls the '%' into the
+-- digits' side bearing (the glyph rects carry whitespace, so ink-tight needs
+-- overlap).
+local function setSymbolGap(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then
+        addon:Print(string.format("UFZ setter usage: symbolgap <px>   (current: %.1f; negative tightens)", inst.cfg.symbolGap))
+        return
+    end
+    inst.cfg.symbolGap = math.floor(v * 10 + 0.5) / 10
+    applyLayout(inst)
+    update(inst)
+end
+
+local function setAlign(inst, a)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    a = tostring(a or ""):lower()
+    if a ~= "right" and a ~= "left" then
+        addon:Print("Align must be one of: right | left")
+        return
+    end
+    cfg.align = a
+    applyLayout(inst)
+    update(inst)
+    if cfg.symbol and cfg.align == "left" and not cfg.center then
+        addon:Print("Left mode with symbol on anchors '%' to a secret-width edge (the experiment). Check 'report'.")
+    end
+    addon:Print("Align: " .. cfg.align)
+end
+
+local function setColor(inst, m)
+    ensureApplied(inst)
+    m = tostring(m or ""):lower()
+    if m ~= "curve" and m ~= "dark" and m ~= "white" then
+        addon:Print("Color must be one of: curve | dark | white")
+        return
+    end
+    inst.cfg.color = m
+    update(inst)
+    addon:Print("Color: " .. inst.cfg.color)
+end
+
+local function setRound(inst, m)
+    ensureApplied(inst)
+    m = tostring(m or ""):lower()
+    if m ~= "floor" and m ~= "round" then
+        addon:Print("Round must be one of: floor | round")
+        return
+    end
+    inst.cfg.round = m
+    update(inst)
+    addon:Print("Percent rounding: " .. inst.cfg.round)
+end
+
+--------------------------------------------------------------------------------
+-- Power text setters: one implementation per knob, keyed by which power
+-- ("power" | "altPower") composes the cfg keys. Published through the API table
+-- as SetPower*/SetAltPower* closures.
+--------------------------------------------------------------------------------
+
+local POWER_LOCS = {
+    bottomleft = true, bottomright = true, topleft = true, topright = true, nameside = true,
+}
+
+local function powerWord(which)
+    if which == "altPower" then return "altpower" end
+    if which == "level" then return "level" end
+    return "power"
+end
+
+local function setPowerShowImpl(inst, which, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: " .. powerWord(which) .. " <on|off>")
+        return
+    end
+    inst.cfg[which .. "Show"] = (state == "on")
+    applyEnvelope(inst)  -- a hidden satellite stops reserving envelope space
+    update(inst)
+end
+
+-- One shared toggle, not per-power: it governs the '%' companion on every
+-- power text that renders as a percent (alt mana today).
+local function setPowerSymbolImpl(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: powersymbol <on|off>")
+        return
+    end
+    inst.cfg.powerSymbol = (state == "on")
+    updatePower(inst)       -- sets/clears the sign's text
+    applyPowerLayout(inst)  -- the right-edge sign reserve changed
+end
+
+local function setPowerLocImpl(inst, which, loc)
+    ensureApplied(inst)
+    loc = tostring(loc or ""):lower()
+    if not POWER_LOCS[loc] then
+        addon:Print("Location must be one of: bottomleft | bottomright | topleft | topright | nameside")
+        return
+    end
+    inst.cfg[which .. "Loc"] = loc
+    applyEnvelope(inst)
+    applyPowerLayout(inst)
+end
+
+local function setPowerSizeImpl(inst, which, n)
+    ensureApplied(inst)
+    -- Half-point steps, the setValSize contract.
+    local key = which .. "Size"
+    local v = tonumber(n) or inst.cfg[key]
+    inst.cfg[key] = math.max(1, math.floor(v * 2 + 0.5) / 2)
+    applyFonts(inst)
+    applyEnvelope(inst)
+    applyPowerLayout(inst)  -- the '%' sign's right-edge reserve tracks the size
+end
+
+-- nil leaves an axis unchanged -- the dual-slider shape (each sub-slider sets
+-- one axis). 0.1 snap, the setGap contract.
+local function setPowerOffsetImpl(inst, which, x, y)
+    ensureApplied(inst)
+    local kx, ky = which .. "X", which .. "Y"
+    local vx, vy = tonumber(x), tonumber(y)
+    if not vx and not vy then
+        addon:Print(string.format("UFZ %soffset usage: <x> [y]   (current: %.1f, %.1f)",
+            powerWord(which), inst.cfg[kx], inst.cfg[ky]))
+        return
+    end
+    if vx then inst.cfg[kx] = math.floor(vx * 10 + 0.5) / 10 end
+    if vy then inst.cfg[ky] = math.floor(vy * 10 + 0.5) / 10 end
+    applyEnvelope(inst)
+    applyPowerLayout(inst)
+end
+
+local function setPowerColorModeImpl(inst, which, mode)
+    ensureApplied(inst)
+    mode = tostring(mode or ""):lower()
+    if mode ~= "power" and mode ~= "custom" then
+        addon:Print("Power color mode must be one of: power | custom")
+        return
+    end
+    inst.cfg[which .. "ColorMode"] = mode
+    applyPowerColor(inst)
+end
+
+local function setPowerColorImpl(inst, which, r, g, b, a)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    cfg[which .. "ColorR"] = tonumber(r) or 1
+    cfg[which .. "ColorG"] = tonumber(g) or 1
+    cfg[which .. "ColorB"] = tonumber(b) or 1
+    cfg[which .. "ColorA"] = tonumber(a) or 1
+    applyPowerColor(inst)
+end
+
+local function setAbsorbShow(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: absorb <on|off>")
+        return
+    end
+    inst.cfg.absorbShow = (state == "on")
+    updateAbsorb(inst)
+end
+
+-- nil leaves an axis unchanged -- the dual-slider shape. 0.1 snap, the setGap
+-- contract. Re-anchors alone: an offset nudge needs none of applyLayout's
+-- stretch churn.
+local function setAbsorbOffset(inst, x, y)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    local vx, vy = tonumber(x), tonumber(y)
+    if not vx and not vy then
+        addon:Print(string.format("UFZ setter usage: absorboffset <x> [y]   (current: %.1f, %.1f)",
+            cfg.absorbX, cfg.absorbY))
+        return
+    end
+    if vx then cfg.absorbX = math.floor(vx * 10 + 0.5) / 10 end
+    if vy then cfg.absorbY = math.floor(vy * 10 + 0.5) / 10 end
+    anchorAbsorbFS(inst)
+end
+
+-- The level text's ONE toggle (user spec: no regular on/off exists).
+local function setLevelHideMax(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: levelhidemax <on|off>")
+        return
+    end
+    inst.cfg.levelHideMax = (state == "on")
+    updateLevel(inst)
+end
+
+--------------------------------------------------------------------------------
+-- Aura row setters: cfg writers only -- auras.lua owns the workers, reached
+-- through the UFZ.Auras seam. Unboxed by design: no aura setter ever calls
+-- applyEnvelope.
+--------------------------------------------------------------------------------
+
+local function auraSeam(inst, hook)
+    local A = UFZ.Auras
+    local fn = A and A[hook]
+    if fn then fn(inst) end
+end
+
+local function setAuraShowImpl(inst, which, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: " .. which:lower() .. " <on|off>")
+        return
+    end
+    inst.cfg["aura" .. which .. "Show"] = (state == "on")
+    auraSeam(inst, "ApplyAll")
+end
+
+local function setAuraLocImpl(inst, which, loc)
+    ensureApplied(inst)
+    loc = tostring(loc or ""):lower()
+    if loc ~= "top" and loc ~= "bottom" then
+        addon:Print("Placement must be one of: top | bottom")
+        return
+    end
+    inst.cfg["aura" .. which .. "Loc"] = loc
+    auraSeam(inst, "ApplyLayout")
+end
+
+-- One shared vertical nudge for both rows (+ = up), 0 = the snug FRAME_GAP
+-- default. Arrangement, not styling: excluded from Copy From beside the Locs.
+local function setAuraOffsetY(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    v = math.floor(v + 0.5)
+    if v < -60 then v = -60 elseif v > 60 then v = 60 end
+    inst.cfg.auraOffsetY = v
+    auraSeam(inst, "ApplyLayout")
+end
+
+local AURA_MAX_CAP = { Buffs = 32, Debuffs = 16 }
+
+local function setAuraMaxImpl(inst, which, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    v = math.floor(v + 0.5)
+    local cap = AURA_MAX_CAP[which]
+    if v < 1 then v = 1 elseif v > cap then v = cap end
+    inst.cfg["aura" .. which .. "Max"] = v
+    auraSeam(inst, "ForceRefresh")  -- maxCount changes the pull itself
+end
+
+local function setAuraIconScale(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    if v < 20 then v = 20 elseif v > 200 then v = 200 end
+    inst.cfg.auraIconScale = v
+    auraSeam(inst, "ApplyStyle")
+end
+
+local function setAuraShape(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    v = math.floor(v + 0.5)
+    if v < -67 then v = -67 elseif v > 67 then v = 67 end
+    inst.cfg.auraTallWideRatio = v
+    auraSeam(inst, "ApplyStyle")
+end
+
+local function setAuraBorderEnable(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: auraborder <on|off>")
+        return
+    end
+    inst.cfg.auraBorderEnable = (state == "on")
+    auraSeam(inst, "ApplyStyle")
+end
+
+local function setAuraBorderStyle(inst, styleKey)
+    ensureApplied(inst)
+    if type(styleKey) ~= "string" or styleKey == "" then return end
+    inst.cfg.auraBorderStyle = styleKey
+    auraSeam(inst, "ApplyStyle")
+end
+
+local function setAuraBorderThickness(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    -- Half steps, the border slider contract.
+    v = math.floor(v * 2 + 0.5) / 2
+    if v < 1 then v = 1 elseif v > 8 then v = 8 end
+    inst.cfg.auraBorderThickness = v
+    auraSeam(inst, "ApplyStyle")
+end
+
+local function setAuraBorderTint(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: auratint <on|off>")
+        return
+    end
+    inst.cfg.auraBorderTintEnable = (state == "on")
+    auraSeam(inst, "ApplyStyle")
+end
+
+local function setAuraBorderTintColor(inst, r, g, b, a)
+    ensureApplied(inst)
+    inst.cfg.auraBorderTintR = tonumber(r) or 1
+    inst.cfg.auraBorderTintG = tonumber(g) or 1
+    inst.cfg.auraBorderTintB = tonumber(b) or 1
+    inst.cfg.auraBorderTintA = tonumber(a) or 1
+    auraSeam(inst, "ApplyStyle")
+end
+
+local function setAuraOnlyPlayerBuffs(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: aurafilter <on|off>")
+        return
+    end
+    inst.cfg.auraOnlyPlayerBuffs = (state == "on")
+    auraSeam(inst, "ForceRefresh")  -- the filter string changes the pull
+end
+
+-- Hover tooltips: motion-only mouse on the icons (clicks always fall through
+-- to the secure click-to-target overlay). ApplyStyle re-applies the memoized
+-- per-icon mouse state; the mouse APIs are unrestricted, so combat-legal.
+local function setAuraTooltips(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: auratooltips <on|off>")
+        return
+    end
+    inst.cfg.auraTooltips = (state == "on")
+    auraSeam(inst, "ApplyStyle")
+end
+
+local function reset(inst)
+    ensureApplied(inst)
+    -- Wipe-and-refill through core.lua, which re-applies the shared defaults
+    -- plus this unit's identity overrides (the target instance must not reset
+    -- into a second player frame). The table object survives -- inst.cfg and
+    -- the DB hold the same reference.
+    UFZ._ResetUnitDB(inst.unitKey)
+    local cfg = inst.cfg
+    inst.lastDigitCount = nil
+    inst.nameFitSize = nil
+    inst.chromeBG:SetShown(cfg.chrome)
+    registerUnitEvents(inst)
+    applyClickAttributes(inst)
+    applyScale(inst)
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+    refreshName(inst)
+    -- Reset runs its own worker list, not _ApplyAll, so the aura pass is
+    -- repeated here (defaults turn the rows off; this clears them).
+    if UFZ.Auras then UFZ.Auras.ApplyAll(inst) end
+    applyOpacity(inst)
+end
+
+--------------------------------------------------------------------------------
+-- Instances and the public API
+--------------------------------------------------------------------------------
+
+-- Identity fields (unitKey/frameName/label/poolKey) live OUTSIDE cfg on
+-- purpose: Reset and GetConfig iterate cfg and must never see or clobber them.
+-- cfg is NOT copied from anywhere: it is the AceDB-backed per-unit table
+-- itself, so every write persists and every read sees the active profile.
+local function newInstance(unitKey, cfg)
+    local inst = {
+        cfg = cfg,
+        unitKey = unitKey,
+        frameName = "ScootUnitFrameZ" .. unitKey,
+        label = (UFZ.UNIT_TOKENS and UFZ.UNIT_TOKENS[unitKey] or unitKey):lower(),
+        poolKey = "ufz:" .. unitKey,   -- one blind-fit ruler pool per instance
+        frame = nil,
+        chromeBG = nil,
+        pctFS = nil, valFS = nil, symbolFS = nil, nameFS = nil, rulerFS = nil,
+        powerFS = nil, altPowerFS = nil, altPowerSymbolFS = nil,
+        -- The absorb text FS and the rect-riding soft halo behind it.
+        absorbFS = nil, absorbGlowTex = nil,
+        -- The level pair: the number and its 75%-size "lvl" prefix.
+        levelFS = nil, levelPrefixFS = nil,
+        -- The alternate power's token ("MANA"/"ENERGY"), written by updatePower
+        -- and read by applyPowerColor. Readable string, never a secret.
+        altPowerName = nil,
+        -- Whether the alt text currently renders as a percent (alt mana);
+        -- drives the '%' companion and its right-edge anchor reserve.
+        altPowerIsPct = false,
+        -- Digit-mode probe state. lastDigitCount is the cache the feature pivots
+        -- on: nil until the oracle answers, then 1-3.
+        probePending = false, probeRetries = 0, lastDigitCount = nil,
+        -- Name-fit state: seq kills stale async passes, nameFitSize is the cache
+        -- currentNamePoint pivots on, lastNameFit is report material.
+        nameFitSeq = 0, nameFitSize = nil, lastNameFit = nil,
+        -- Measured ink width of the painted name (widest wrapped line); nil =
+        -- unmeasurable (secret name) -> power anchors fall back to box edges.
+        nameInkWidth = nil,
+        -- Buff/debuff icon row containers, created lazily by auras.lua the
+        -- first time a row is enabled. { Buffs = frame, Debuffs = frame }.
+        auraRows = nil,
+        -- Secure unit watch bookkeeping (applyUnitWatch): whether the frame is
+        -- registered with Blizzard's existence watcher, and for which unit.
+        watchRegistered = nil, watchUnit = nil,
+        -- What the last update() actually did, per chain. Report material; never
+        -- secrets.
+        last = {
+            pct = "never ran", val = "never ran", color = "never ran",
+            name = "never ran", digits = "never ran",
+            power = "never ran", altPower = "never ran",
+            powerColor = "never ran", altPowerColor = "never ran",
+            absorb = "never ran", level = "never ran",
+        },
+    }
+    -- One stable closure for the probe's timer chain (C_Timer.After cannot pass
+    -- arguments, and allocating a closure per schedule would defeat coalescing).
+    inst.probeDigitsFn = function() probeDigits(inst) end
+    return inst
+end
+
+local API = {
+    GetConfig = getConfig,
+    SetUnit = setUnit,
+    SetFont = setFont,
+    SetStyle = setStyle,
+    SetPctSize = setPctSize,
+    SetValSize = setValSize,
+    SetValFont = setValFont,
+    SetDescent = setDescent,
+    SetGap = setGap,
+    SetCenter = setCenter,
+    SetCenterOffset = setCenterOffset,
+    SetDigits = setDigits,
+    SetDigitSize = setDigitSize,
+    SetPctSizeMaster = setPctSizeMaster,
+    SetNameSize = setNameSize,
+    SetNameFont = setNameFont,
+    SetNameOffset = setNameOffset,
+    SetNameY = setNameY,
+    SetNameColorMode = setNameColorMode,
+    SetNameColor = setNameColor,
+    SetNameMaxWidth = setNameMaxWidth,
+    SetNameMaxLines = setNameMaxLines,
+    SetNameFit = setNameFit,
+    SetNameMinSize = setNameMinSize,
+    SetStretch = setStretch,
+    SetScale = setScale,
+    SetOpacityOutOfCombat = function(inst, v) return setOpacityImpl(inst, "opacityOutOfCombat", v) end,
+    SetOpacityInCombat = function(inst, v) return setOpacityImpl(inst, "opacityInCombat", v) end,
+    SetOpacityWithTarget = function(inst, v) return setOpacityImpl(inst, "opacityWithTarget", v) end,
+    SetSymbol = setSymbol,
+    SetSymbolGap = setSymbolGap,
+    SetAlign = setAlign,
+    SetColor = setColor,
+    SetRound = setRound,
+    SetPowerSymbol = setPowerSymbolImpl,
+    SetPowerShow = function(inst, s) return setPowerShowImpl(inst, "power", s) end,
+    SetPowerLoc = function(inst, l) return setPowerLocImpl(inst, "power", l) end,
+    SetPowerSize = function(inst, n) return setPowerSizeImpl(inst, "power", n) end,
+    SetPowerOffset = function(inst, x, y) return setPowerOffsetImpl(inst, "power", x, y) end,
+    SetPowerColorMode = function(inst, m) return setPowerColorModeImpl(inst, "power", m) end,
+    SetPowerColor = function(inst, r, g, b, a) return setPowerColorImpl(inst, "power", r, g, b, a) end,
+    SetAltPowerShow = function(inst, s) return setPowerShowImpl(inst, "altPower", s) end,
+    SetAltPowerLoc = function(inst, l) return setPowerLocImpl(inst, "altPower", l) end,
+    SetAltPowerSize = function(inst, n) return setPowerSizeImpl(inst, "altPower", n) end,
+    SetAltPowerOffset = function(inst, x, y) return setPowerOffsetImpl(inst, "altPower", x, y) end,
+    SetAltPowerColorMode = function(inst, m) return setPowerColorModeImpl(inst, "altPower", m) end,
+    SetAltPowerColor = function(inst, r, g, b, a) return setPowerColorImpl(inst, "altPower", r, g, b, a) end,
+    SetAbsorbShow = setAbsorbShow,
+    SetAbsorbOffset = setAbsorbOffset,
+    SetLevelHideMax = setLevelHideMax,
+    SetLevelLoc = function(inst, l) return setPowerLocImpl(inst, "level", l) end,
+    SetLevelSize = function(inst, n) return setPowerSizeImpl(inst, "level", n) end,
+    SetLevelOffset = function(inst, x, y) return setPowerOffsetImpl(inst, "level", x, y) end,
+    SetAuraBuffsShow = function(inst, s) return setAuraShowImpl(inst, "Buffs", s) end,
+    SetAuraDebuffsShow = function(inst, s) return setAuraShowImpl(inst, "Debuffs", s) end,
+    SetAuraBuffsLoc = function(inst, l) return setAuraLocImpl(inst, "Buffs", l) end,
+    SetAuraDebuffsLoc = function(inst, l) return setAuraLocImpl(inst, "Debuffs", l) end,
+    SetAuraBuffsMax = function(inst, n) return setAuraMaxImpl(inst, "Buffs", n) end,
+    SetAuraDebuffsMax = function(inst, n) return setAuraMaxImpl(inst, "Debuffs", n) end,
+    SetAuraOffsetY = setAuraOffsetY,
+    SetAuraIconScale = setAuraIconScale,
+    SetAuraShape = setAuraShape,
+    SetAuraBorderEnable = setAuraBorderEnable,
+    SetAuraBorderStyle = setAuraBorderStyle,
+    SetAuraBorderThickness = setAuraBorderThickness,
+    SetAuraBorderTint = setAuraBorderTint,
+    SetAuraBorderTintColor = setAuraBorderTintColor,
+    SetAuraOnlyPlayerBuffs = setAuraOnlyPlayerBuffs,
+    SetAuraTooltips = setAuraTooltips,
+    Reset = reset,
+}
+
+--------------------------------------------------------------------------------
+-- Instance lifecycle (called by core.lua's ApplyStyling)
+--------------------------------------------------------------------------------
+
+--- The unit's instance, created on first request. On every later call the cfg
+--- reference is re-pointed at the active profile's table -- a profile switch
+--- swaps addon.db.profile out from under a cached reference, and every closure
+--- in this file reads through inst.cfg for exactly this moment.
+function UFZ._EnsureInstance(unitKey)
+    local cfg = UFZ._GetUnitConfig(unitKey)
+    if not cfg then return nil end
+
+    local inst = UFZ._instances[unitKey]
+    local switchedProfile = false
+    if not inst then
+        inst = newInstance(unitKey, cfg)
+        UFZ._instances[unitKey] = inst
+    elseif inst.cfg ~= cfg then
+        inst.cfg = cfg
+        -- The caches pivot on config that just changed wholesale.
+        inst.lastDigitCount = nil
+        inst.nameFitSize = nil
+        switchedProfile = true
+    end
+
+    ensureFrame(inst)
+    if switchedProfile then
+        -- The new profile stores its own positions, and nothing else re-reads
+        -- them on an AceDB switch (LEM's layout callback fires only on Edit
+        -- Mode layout changes).
+        UFZ._RestorePosition(inst)
+    end
+    return inst
+end
+
+--- The full apply pipeline, in the reset/settings-change order. update and
+--- refreshName no-op while the frame is hidden; _UpdateVisibility runs them on
+--- the way to showing it.
+function UFZ._ApplyAll(inst)
+    if not inst then return end
+    ensureApplied(inst)
+    registerUnitEvents(inst)
+    inst.chromeBG:SetShown(inst.cfg.chrome)
+    -- Click overlay self-heal (protected ops, OOC only; combat paths re-reach
+    -- here on the next apply): the unit attribute tracks cfg.unit, and the
+    -- overlay stays hidden for exactly as long as Edit Mode is open --
+    -- editmode.lua's enter/exit callbacks are the primary writer, this is the
+    -- backstop for an overlay created mid-session.
+    if inst.clickButton and not InCombatLockdown() then
+        if inst.clickButton:GetAttribute("unit") ~= inst.cfg.unit then
+            applyClickAttributes(inst)
+        end
+        inst.clickButton:SetShown(not UFZ._editModeActive)
+    end
+    applyScale(inst)
+    applyFonts(inst)
+    applyLayout(inst)
+    update(inst)
+    refreshName(inst)
+    -- Full aura pass: covers profile switch, Copy From and mid-session enable
+    -- (all wholesale-change paths funnel through here).
+    if UFZ.Auras then UFZ.Auras.ApplyAll(inst) end
+    applyOpacity(inst)
+end
+
+--- The one visibility resolver. The existence axis for target/focus belongs
+--- to the secure unit watch (the click child makes the frame's visibility
+--- combat-protected, and the watch is the sanctioned secure channel); this
+--- function settles the watch, handles the axes the watch does not know
+--- (enabled toggle, the always-existing player unit, the Edit Mode stand-in),
+--- and repaints whatever is currently shown. It never needs UnitExists: the
+--- watch answers existence by having shown or hidden the frame already.
+function UFZ._UpdateVisibility(inst)
+    if not inst or not inst.frame then return end
+
+    if inst.previewActive then
+        -- Edit Mode is OOC by construction; the watch was dropped by
+        -- _ShowEditModePreview so the manager cannot re-hide the stand-in.
+        if not inst.frame:IsShown() then inst.frame:Show() end
+        applyOpacity(inst)
+        return
+    end
+
+    applyUnitWatch(inst)
+
+    if not UFZ._IsUnitEnabled(inst.unitKey) then
+        setShownSafe(inst, false)
+        return
+    end
+
+    if inst.cfg.unit == "player" then
+        setShownSafe(inst, true)
+    end
+
+    if inst.frame:IsShown() then
+        update(inst)
+        refreshName(inst)
+        applyOpacity(inst)
+    end
+end
+
+--- Central opacity dispatch: init.lua's RefreshOpacityState calls this beside
+--- ApplyAllUnitFrameVisibility, so combat and target transitions re-settle
+--- every live Z frame's alpha with zero engine event wiring. Walks only
+--- instances that already exist -- zero-touch safe.
+function UFZ.RefreshOpacity()
+    for unitKey, inst in pairs(UFZ._instances) do
+        if UFZ._IsUnitEnabled(unitKey) then
+            applyOpacity(inst)
+        end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Edit Mode stand-in
+--------------------------------------------------------------------------------
+-- A targetless Target frame draws nothing (update()'s no-unit blank), and Edit
+-- Mode has nothing to grab without a stand-in. Sample values are plain static
+-- strings -- no unit APIs, no secret hazards -- painted straight onto the
+-- FontStrings the frame already laid out. The player frame has live data and
+-- takes the normal paint. previewActive gates the event handler and
+-- _UpdateVisibility, so live churn cannot overwrite the stand-in mid-drag.
+
+function UFZ._ShowEditModePreview(inst)
+    ensureApplied(inst)
+    inst.previewActive = true
+    -- Drop the unit watch first (previewActive makes it unwanted): a watched
+    -- targetless frame would be re-hidden by the manager's next scan, right
+    -- out from under the stand-in. Edit Mode is OOC, so this runs direct.
+    applyUnitWatch(inst)
+    inst.frame:Show()
+    applyOpacity(inst)  -- previewActive branch: a dimmed frame snaps to full
+
+    local okEx, ex = pcall(UnitExists, inst.cfg.unit)
+    local exSecret = okEx and issecretvalue and issecretvalue(ex)
+    local noUnit = not okEx or (not exSecret and ex == false)
+    if noUnit then
+        local SAMPLE = { 0.55, 0.90, 0.35 }  -- a healthy green, the curve's home stretch
+        inst.pctFS:SetText("72")
+        inst.pctFS:SetTextColor(SAMPLE[1], SAMPLE[2], SAMPLE[3], 1)
+        inst.valFS:SetText("324.5k")
+        inst.valFS:SetTextColor(SAMPLE[1], SAMPLE[2], SAMPLE[3], 1)
+        inst.symbolFS:SetAlpha(1)
+        inst.symbolFS:SetTextColor(SAMPLE[1], SAMPLE[2], SAMPLE[3], 1)
+        inst.nameFS:SetText(inst.unitKey)
+        inst.nameFS:SetTextColor(1, 1, 1, 1)
+        inst.powerFS:SetText("25.3k")
+        inst.powerFS:SetTextColor(0.35, 0.55, 1.0, 1)
+        inst.altPowerFS:SetText("100")
+        inst.altPowerFS:SetTextColor(0.55, 0.65, 1.0, 1)
+        inst.levelFS:SetText("80")
+        inst.levelPrefixFS:SetText("lvl")
+    else
+        update(inst)
+        refreshName(inst)
+    end
+end
+
+function UFZ._EndEditModePreview(inst)
+    if not inst or not inst.previewActive then return end
+    inst.previewActive = nil
+    -- Repaint from live data while still shown -- with no unit this runs the
+    -- no-unit blank, clearing the sample strings -- then let visibility settle.
+    if inst.frame and inst.frame:IsShown() then
+        update(inst)
+        refreshName(inst)
+    end
+    UFZ._UpdateVisibility(inst)
+end
+
+--------------------------------------------------------------------------------
+-- The public per-unit API
+--------------------------------------------------------------------------------
+-- Settings pages and the Edit Mode mirror call the engine through this: every
+-- API function pre-bound to the unit's instance, memoized per unit. Binding
+-- to the INSTANCE (not the cfg table) keeps the API stable across profile
+-- switches -- _EnsureInstance re-points inst.cfg underneath it.
+
+local boundAPIs = {}
+
+function UFZ.GetAPI(unitKey)
+    local bound = boundAPIs[unitKey]
+    if bound then return bound end
+
+    local inst = UFZ._EnsureInstance(unitKey)
+    if not inst then return nil end
+
+    bound = {}
+    for suffix, fn in pairs(API) do
+        bound[suffix] = function(...) return fn(inst, ...) end
+    end
+    boundAPIs[unitKey] = bound
+    return bound
+end
+
+--- Read-only config snapshot for the settings pages (plain values only).
+function UFZ.GetConfig(unitKey)
+    local inst = UFZ._EnsureInstance(unitKey)
+    if not inst then return nil end
+    return getConfig(inst)
+end

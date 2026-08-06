@@ -236,6 +236,7 @@ function addon:GetDefaults()
                 sct = false,
                 tooltip = false,
                 unitFrames = false,
+                unitFramesZ = false,
                 widget = false,
             },
             groupFrames = {
@@ -311,6 +312,11 @@ function addon:RefreshOpacityState()
     -- Update Unit Frame visibility/opacity
     if addon.ApplyAllUnitFrameVisibility then
         addon.ApplyAllUnitFrameVisibility()
+    end
+    -- Unit Frames Z keeps its settings per-unit rather than in component
+    -- settings, so the loop below never sees it -- explicit seam instead.
+    if addon.UnitFramesZ and addon.UnitFramesZ.RefreshOpacity then
+        addon.UnitFramesZ.RefreshOpacity()
     end
     -- Update all components that have opacity settings (CDM, Action Bars, Auras, etc.)
     for id, component in pairs(self.Components) do

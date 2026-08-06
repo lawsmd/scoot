@@ -101,7 +101,11 @@ local function cloneProfilePayload(preset, layoutName)
         copy.moduleEnabled = {}
     end
     for _, category in ipairs(addon.MODULE_CATEGORY_ORDER) do
-        if copy.moduleEnabled[category] == nil then
+        local catDef = addon.MODULE_CATEGORIES and addon.MODULE_CATEGORIES[category]
+        -- noPresetBackfill: categories where absent must keep meaning "off"
+        -- (e.g. unitFramesZ — `true` on a noMasterToggle category reads enabled
+        -- for every sub, which would force the Z frames on alongside X).
+        if copy.moduleEnabled[category] == nil and not (catDef and catDef.noPresetBackfill) then
             copy.moduleEnabled[category] = true
         end
     end

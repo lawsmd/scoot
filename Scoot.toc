@@ -32,6 +32,7 @@ core/petbattle.lua
 core/colors.lua
 core/fonts.lua
 core/colorramp.lua
+core/blindfit.lua
 core/barborders.lua
 core/iconborders.lua
 core/iconbackdrops.lua
@@ -136,6 +137,12 @@ core/components/castbarz/casttime.lua
 core/components/castbarz/effects.lua
 core/components/castbarz/events.lua
 core/components/castbarz/editmode.lua
+## Unit Frames Z (Text — Scoot-owned frames, the promoted health-text engine)
+core/components/unitframesz/core.lua
+core/components/unitframesz/engine.lua
+core/components/unitframesz/auras.lua
+core/components/unitframesz/suppression.lua
+core/components/unitframesz/editmode.lua
 core/components/unitframes/buffs.lua
 core/components/unitframes/visibility.lua
 core/components/unitframes/copy.lua
@@ -289,6 +296,7 @@ ui/v2/unitframes/PlayerRenderer.lua
 ui/v2/unitframes/TargetRenderer.lua
 ui/v2/unitframes/FocusRenderer.lua
 ui/v2/unitframes/BossRenderer.lua
+ui/v2/unitframes/UFZSections.lua
 ui/v2/groupframes/Helpers.lua
 ui/v2/groupframes/PartyRenderer.lua
 ui/v2/groupframes/RaidRenderer.lua
