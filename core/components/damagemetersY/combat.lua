@@ -114,6 +114,11 @@ function DMY._FullRefreshAllWindows()
         end
     end
 
+    -- One cache rebuild per refresh cycle (drilldown support), never per
+    -- window — per-window rebuilds let the last window's session clobber
+    -- the shared cache (the multi-column em-dash bug).
+    DMY._RebuildGUIDCache()
+
     for i = 1, DMY.MAX_WINDOWS do
         local cfg = DMY._GetWindowConfig(i)
         if cfg and cfg.enabled then
@@ -130,6 +135,9 @@ function DMY._UpdateAllWindows()
     if not DMY._initialized then return end
 
     local inCombat = DMY._inCombat
+    if not inCombat then
+        DMY._RebuildGUIDCache()
+    end
     for i = 1, DMY.MAX_WINDOWS do
         local cfg = DMY._GetWindowConfig(i)
         if cfg and cfg.enabled then
@@ -270,6 +278,10 @@ end
 
 function DMY._HandleReset()
     if DMY._CloseDrilldown then DMY._CloseDrilldown() end
+    -- Sessions are gone; identity data from the previous group must not
+    -- survive to create stale GUIDs or false collisions.
+    wipe(DMY._guidCache)
+    wipe(DMY._identityToGUID)
     for i = 1, DMY.MAX_WINDOWS do
         local win = DMY._windows[i]
         if win then

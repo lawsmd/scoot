@@ -72,7 +72,10 @@ function DMY._GetColumnHeader(formatKey)
 end
 
 --- Formats excluded from secondary (non-primary) columns.
---- These use amountPerSecond which the source-level API cannot provide during combat.
+--- Historical: the old per-GUID source API had no amountPerSecond. The
+--- session-correlation path now reads full sources, so rate formats could
+--- become legal secondaries later (future enhancement; kept excluded so
+--- existing migrated configs stay stable).
 DMY.SECONDARY_EXCLUDED_FORMATS = {
     dps      = true,
     hps      = true,

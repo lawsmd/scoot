@@ -1743,3 +1743,173 @@ function addon.DebugDMYAbbrev()
 
     addon.DebugShowWindow("DMY Abbrev Battery", lines)
 end
+
+--------------------------------------------------------------------------------
+-- /scoot debug dmY colprobe — identity-correlated secondary column probe
+-- Purpose: verify the session-correlation pipeline that replaced the
+-- stored-GUID bypass. Dumps restriction states, per-secondary-type session
+-- identity keys with secrecy flags, the live mergedData display simulation,
+-- and the (drilldown-only) GUID cache state. Run OOC and again mid-combat.
+--------------------------------------------------------------------------------
+
+function addon.DebugDMYColprobe()
+    local DMY = addon.DamageMetersY
+    local lines = { "== DMY Column Probe (identity correlation) ==" }
+    local function add(fmt, ...)
+        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
+    end
+
+    if not DMY or not DMY._initialized then
+        add("DMY not initialized (component disabled?).")
+        addon.DebugShowWindow("DMY Column Probe", table.concat(lines, "\n"))
+        return
+    end
+    if not (C_DamageMeter and C_DamageMeter.GetCombatSessionFromType) then
+        add("C_DamageMeter API not available.")
+        addon.DebugShowWindow("DMY Column Probe", table.concat(lines, "\n"))
+        return
+    end
+
+    -- [1] Combat + restriction states
+    add("[1] Context:")
+    add("    InCombatLockdown = %s | DMY._inCombat = %s",
+        tostring(InCombatLockdown()), tostring(DMY._inCombat))
+    if C_RestrictedActions and C_RestrictedActions.IsAddOnRestrictionActive
+        and Enum and Enum.AddOnRestrictionType then
+        for name, enumVal in pairs(Enum.AddOnRestrictionType) do
+            local ok, active = pcall(C_RestrictedActions.IsAddOnRestrictionActive, enumVal)
+            add("    Restriction %-14s = %s", name, ok and tostring(active) or ("ERR: " .. tostring(active)))
+        end
+    else
+        add("    C_RestrictedActions.IsAddOnRestrictionActive not available")
+    end
+    add("")
+
+    -- [2] Window column configs + per-secondary-type session identity dump
+    local FORMATS = DMY.COLUMN_FORMATS
+    local EXCLUDED = DMY.SECONDARY_EXCLUDED_FORMATS
+    for i = 1, DMY.MAX_WINDOWS do
+        local cfg = DMY._GetWindowConfig(i)
+        if cfg and cfg.enabled and cfg.columns and #cfg.columns > 1 then
+            local primaryDef = FORMATS[cfg.columns[1].format]
+            local primaryType = primaryDef and (primaryDef.primary or primaryDef.meterType)
+            add("[2] Window %d (sessionType=%s sessionID=%s): primary=%s (mt=%s)",
+                i, tostring(cfg.sessionType), tostring(cfg.sessionID),
+                tostring(cfg.columns[1].format), tostring(primaryType))
+
+            for c = 2, #cfg.columns do
+                local colDef = cfg.columns[c]
+                local def = colDef and FORMATS[colDef.format]
+                local mt = def and (def.primary or def.meterType)
+                if not def then
+                    add("    col %d: %s — UNKNOWN FORMAT", c, tostring(colDef and colDef.format))
+                elseif EXCLUDED[colDef.format] then
+                    add("    col %d: %s — EXCLUDED (rate format)", c, colDef.format)
+                elseif mt == primaryType then
+                    add("    col %d: %s — same meter type as primary", c, colDef.format)
+                else
+                    add("    col %d: %s (mt=%d) — session dump:", c, colDef.format, mt)
+                    local ok, session
+                    if cfg.sessionID then
+                        ok, session = pcall(C_DamageMeter.GetCombatSessionFromID, cfg.sessionID, mt)
+                    else
+                        ok, session = pcall(C_DamageMeter.GetCombatSessionFromType, cfg.sessionType, mt)
+                    end
+                    if not ok then
+                        add("      query FAILED: %s", tostring(session))
+                    elseif not session or not session.combatSources then
+                        add("      no session data (all-zero metric so far)")
+                    else
+                        local ikeyCounts = {}
+                        for idx, src in ipairs(session.combatSources) do
+                            local ikey = DMY._BuildIdentityKey(src.classFilename, src.specIconID, src.isLocalPlayer)
+                            ikeyCounts[ikey] = (ikeyCounts[ikey] or 0) + 1
+                            local guidSecret = TestSecret(src.sourceGUID)
+                            local totalSecret = TestSecret(src.totalAmount)
+                            add("      #%d ikey=%s guidSecret=%s totalSecret=%s",
+                                idx, ikey, FormatSecretResult(guidSecret), FormatSecretResult(totalSecret))
+                        end
+                        if mt == 9 then
+                            add("      deaths per-ikey counts:")
+                            for ikey, n in pairs(ikeyCounts) do
+                                add("        %s = %d", ikey, n)
+                            end
+                        else
+                            for ikey, n in pairs(ikeyCounts) do
+                                if n > 1 then
+                                    add("      COLLISION: %s appears %dx in this session", ikey, n)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            add("")
+        end
+    end
+
+    -- [3] Live mergedData display simulation (what each row's cells resolve to)
+    for i = 1, DMY.MAX_WINDOWS do
+        local win = DMY._windows and DMY._windows[i]
+        local cfg = DMY._GetWindowConfig(i)
+        local merged = win and win.mergedData
+        if cfg and cfg.enabled and merged and cfg.columns and #cfg.columns > 1 then
+            add("[3] Window %d mergedData:", i)
+            add("    secondaryQueried: %s", merged.secondaryQueried and "yes" or "nil (OOC or no secondaries)")
+            if merged.identityCollisions then
+                local any = false
+                for ikey in pairs(merged.identityCollisions) do
+                    add("    collision: %s", ikey)
+                    any = true
+                end
+                if not any then add("    collisions: none") end
+            end
+            for _, key in ipairs(merged.playerOrder or {}) do
+                local player = merged.players[key]
+                if player then
+                    local parts = {}
+                    for c = 2, #cfg.columns do
+                        local def = FORMATS[cfg.columns[c].format]
+                        local mt = def and (def.primary or def.meterType)
+                        local outcome
+                        if not mt then
+                            outcome = "?"
+                        elseif merged.identityCollisions and merged.identityCollisions[player.identityKey] then
+                            outcome = "DASH(collision)"
+                        elseif merged.secondaryQueried and merged.secondaryQueried[mt] then
+                            local pres = merged.secondaryPresence and merged.secondaryPresence[player.identityKey]
+                            outcome = (pres and pres[mt]) and "VALUE" or "ZERO"
+                        elseif merged.secondaryQueried then
+                            outcome = "DASH(query failed)"
+                        else
+                            outcome = "OOC-path"
+                        end
+                        table.insert(parts, string.format("c%d=%s", c, outcome))
+                    end
+                    add("    %s ikey=%s %s", tostring(key), tostring(player.identityKey), table.concat(parts, " "))
+                end
+            end
+            add("")
+        end
+    end
+
+    -- [4] Drilldown GUID cache state
+    local cacheCount, collisionCount = 0, 0
+    for _ in pairs(DMY._guidCache or {}) do cacheCount = cacheCount + 1 end
+    for _, v in pairs(DMY._identityToGUID or {}) do
+        if v == false then collisionCount = collisionCount + 1 end
+    end
+    add("[4] Drilldown GUID cache: %d entries, %d identity collisions", cacheCount, collisionCount)
+
+    local output = table.concat(lines, "\n")
+    if InCombatLockdown() then
+        local waitFrame = CreateFrame("Frame")
+        waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+        waitFrame:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            addon.DebugShowWindow("DMY Column Probe", output)
+        end)
+    else
+        addon.DebugShowWindow("DMY Column Probe", output)
+    end
+end

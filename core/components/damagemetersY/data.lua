@@ -40,6 +40,21 @@ function DMY._FormatDuration(sec)
 end
 
 --------------------------------------------------------------------------------
+-- Secret-safe GUID access
+--
+-- sourceGUID has no NeverSecret exemption: under active addon restrictions
+-- (combat, and possibly an entire M+ run) it comes back secret. Truthiness
+-- tests and table-keying on a secret throw, so every sourceGUID read goes
+-- through this filter and secret GUIDs degrade to "absent".
+--------------------------------------------------------------------------------
+
+local function PlainGUID(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v
+end
+
+--------------------------------------------------------------------------------
 -- Deaths Aggregation
 --
 -- Deaths metric returns one entry per death event, not per player.
@@ -50,7 +65,7 @@ local function CountDeathsPerGUID(deathSession)
     local counts = {}
     if deathSession and deathSession.combatSources then
         for _, source in ipairs(deathSession.combatSources) do
-            local guid = source.sourceGUID
+            local guid = PlainGUID(source.sourceGUID)
             if guid then
                 counts[guid] = (counts[guid] or 0) + 1
             end
@@ -60,11 +75,12 @@ local function CountDeathsPerGUID(deathSession)
 end
 
 --------------------------------------------------------------------------------
--- GUID Cache + Identity Lookup
+-- GUID Cache + Identity Lookup (drilldown support only)
 --
--- Populated during OOC queries, used during combat for secondary column data.
--- The source-level API (GetCombatSessionSourceFromType) accepts pre-stored
--- non-secret GUIDs during combat, enabling live secondary column values.
+-- Rebuilt once per OOC refresh cycle from the stable Overall sessions.
+-- Used exclusively by drilldown to re-resolve a row's GUID after combat.
+-- Secondary columns no longer touch this cache — they correlate rows to
+-- per-metric session data by identity key (see _QueryMergedData).
 --------------------------------------------------------------------------------
 
 DMY._guidCache = {}       -- { [guid] = { classFilename, specIconID, isLocalPlayer } }
@@ -73,14 +89,55 @@ DMY._identityToGUID = {}  -- { [identityKey] = guid or false (false = collision)
 local function BuildIdentityKey(classFilename, specIconID, isLocalPlayer)
     return (classFilename or "UNKNOWN") .. "_" .. tostring(specIconID or 0) .. "_" .. tostring(isLocalPlayer)
 end
+DMY._BuildIdentityKey = BuildIdentityKey
+
+-- Rebuild the drilldown GUID cache from Overall DamageDone + HealingDone
+-- (the union covers zero-damage healers). Commits only when the read produced
+-- at least one plain GUID: a restricted-context refresh (secret GUIDs) or an
+-- empty session keeps the previous cache instead of clobbering it.
+-- _HandleReset performs the legitimate wipe.
+function DMY._RebuildGUIDCache()
+    if DMY._inCombat then return end
+    if not (C_DamageMeter and C_DamageMeter.GetCombatSessionFromType) then return end
+
+    local guidCache, identityToGUID = {}, {}
+    for _, meterType in ipairs({ 0, 2 }) do -- DamageDone, HealingDone
+        local ok, session = pcall(C_DamageMeter.GetCombatSessionFromType, 0, meterType)
+        if ok and session and session.combatSources then
+            for _, source in ipairs(session.combatSources) do
+                local guid = PlainGUID(source.sourceGUID)
+                if guid and not guidCache[guid] then
+                    local ikey = BuildIdentityKey(source.classFilename, source.specIconID, source.isLocalPlayer)
+                    guidCache[guid] = {
+                        classFilename = source.classFilename,
+                        specIconID = source.specIconID,
+                        isLocalPlayer = source.isLocalPlayer,
+                    }
+                    if identityToGUID[ikey] == nil then
+                        identityToGUID[ikey] = guid
+                    else
+                        identityToGUID[ikey] = false -- collision: same class+spec
+                    end
+                end
+            end
+        end
+    end
+
+    if next(guidCache) then
+        DMY._guidCache, DMY._identityToGUID = guidCache, identityToGUID
+    end
+end
 
 --------------------------------------------------------------------------------
 -- QueryMergedData — Core data pipeline
 --
 -- Returns a merged table with all players and their values across all columns.
--- During combat, primary column uses session-level combatSources (engine-sorted).
--- Secondary columns use stored-GUID source queries for live data.
--- Out of combat, all columns are GUID-correlated via session-level lookups.
+-- During combat, the primary column uses session-level combatSources
+-- (engine-sorted); secondary columns query each metric's own session and
+-- correlate rows by identity key (NeverSecret class/spec/isLocalPlayer) —
+-- both sides read in the same refresh, so values follow players across
+-- mid-combat rank changes. Out of combat, all columns are GUID-correlated
+-- via session-level lookups (exact, collision-free).
 --------------------------------------------------------------------------------
 
 function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
@@ -141,36 +198,25 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
             if session.combatSources then
                 guidLookups[meterType] = {}
                 for _, source in ipairs(session.combatSources) do
-                    if source.sourceGUID then
-                        guidLookups[meterType][source.sourceGUID] = source
+                    local guid = PlainGUID(source.sourceGUID)
+                    if guid then
+                        guidLookups[meterType][guid] = source
                     end
-                end
-            end
-        end
-
-        -- Populate GUID cache + identity lookup from primary session
-        DMY._guidCache = {}
-        DMY._identityToGUID = {}
-        for _, source in ipairs(primarySession.combatSources) do
-            if source.sourceGUID then
-                local ikey = BuildIdentityKey(source.classFilename, source.specIconID, source.isLocalPlayer)
-                DMY._guidCache[source.sourceGUID] = {
-                    classFilename = source.classFilename,
-                    specIconID = source.specIconID,
-                    isLocalPlayer = source.isLocalPlayer,
-                }
-                if DMY._identityToGUID[ikey] == nil then
-                    DMY._identityToGUID[ikey] = source.sourceGUID
-                else
-                    DMY._identityToGUID[ikey] = false -- collision: same class+spec
                 end
             end
         end
     end
 
-    -- Combat: determine secondary meter types needed and query via source API
-    local secondaryByIdentity  -- { [identityKey] = { [meterType] = totalAmount } }
-    if inCombat and next(DMY._guidCache) then
+    -- Combat: query each secondary meter type's own session and correlate by
+    -- identity key. Both sides of the correlation (row ikey from the primary
+    -- session, value ikey from the secondary session) are read in the same
+    -- refresh, so values follow players across mid-combat rank changes with
+    -- no stored-GUID prerequisite.
+    local secondaryByIdentity  -- { [ikey] = { [mt] = totalAmount (secret ok) / plain deaths count } }
+    local secondaryPresence    -- { [ikey] = { [mt] = true } } — plain display gate
+    local secondaryQueried     -- { [mt] = true } — query pcall succeeded (nil session = all-zero)
+    local identityCollisions   -- { [ikey] = true } — ambiguous rows show the em dash
+    if inCombat then
         -- Collect secondary meter types from non-primary, non-excluded columns
         local secondaryTypes = {}
         for c = 2, #columns do
@@ -187,9 +233,9 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
         end
 
         if next(secondaryTypes) then
-            secondaryByIdentity = {}
+            secondaryByIdentity, secondaryPresence = {}, {}
+            secondaryQueried, identityCollisions = {}, {}
 
-            -- Query session-level for maxAmounts of secondary types
             for mt in pairs(secondaryTypes) do
                 local ok, result
                 if sessionID then
@@ -197,26 +243,33 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
                 else
                     ok, result = pcall(C_DamageMeter.GetCombatSessionFromType, sessionType, mt)
                 end
-                if ok and result then
-                    sessions[mt] = result
-                end
-            end
-
-            -- Query source-level API per cached GUID per secondary meter type
-            for guid, info in pairs(DMY._guidCache) do
-                local ikey = BuildIdentityKey(info.classFilename, info.specIconID, info.isLocalPlayer)
-                -- Skip collision keys
-                if DMY._identityToGUID[ikey] ~= false then
-                    if not secondaryByIdentity[ikey] then
-                        secondaryByIdentity[ikey] = {}
-                    end
-                    for mt in pairs(secondaryTypes) do
-                        local ok, srcResult = pcall(
-                            C_DamageMeter.GetCombatSessionSourceFromType,
-                            sessionType, mt, guid, nil
-                        )
-                        if ok and srcResult then
-                            secondaryByIdentity[ikey][mt] = srcResult.totalAmount
+                if ok then
+                    secondaryQueried[mt] = true
+                    if result then
+                        sessions[mt] = result -- feeds merged.maxAmounts below
+                        local seenThisSession = {}
+                        for _, src in ipairs(result.combatSources or {}) do
+                            local ikey = BuildIdentityKey(src.classFilename, src.specIconID, src.isLocalPlayer)
+                            local bucket = secondaryByIdentity[ikey]
+                            if not bucket then
+                                bucket = {}
+                                secondaryByIdentity[ikey] = bucket
+                                secondaryPresence[ikey] = {}
+                            end
+                            if mt == 9 then
+                                -- Deaths session = one entry per death EVENT; repeats
+                                -- of an ikey are the same player dying again, so count
+                                -- them (plain integer). Genuine two-player ambiguity is
+                                -- caught by the primary-session duplicate check below.
+                                bucket[mt] = (bucket[mt] or 0) + 1
+                                secondaryPresence[ikey][mt] = true
+                            elseif seenThisSession[ikey] then
+                                identityCollisions[ikey] = true
+                            else
+                                seenThisSession[ikey] = true
+                                bucket[mt] = src.totalAmount -- may be secret; only ever SetText'd
+                                secondaryPresence[ikey][mt] = true
+                            end
                         end
                     end
                 end
@@ -230,6 +283,9 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
         players = {},
         maxAmounts = {},
         secondaryByIdentity = secondaryByIdentity,  -- nil when OOC (not needed)
+        secondaryPresence = secondaryPresence,      -- plain display gate (combat only)
+        secondaryQueried = secondaryQueried,        -- per-mt query success (combat only)
+        identityCollisions = identityCollisions,    -- ambiguous ikeys (combat only)
         durationSeconds = primarySession.durationSeconds,
         sessionType = sessionType,
     }
@@ -241,10 +297,11 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
 
     -- Iterate primary session (engine-sorted order = rank)
     local seenGUIDs = {}
+    local primarySeenIkeys = identityCollisions and {}
     for rank, source in ipairs(primarySession.combatSources) do
         -- In combat, sourceGUID is secret — cannot use as table key or compare.
         -- Use rank-based keys and skip duplicate detection entirely.
-        local guid = not inCombat and source.sourceGUID or nil
+        local guid = not inCombat and PlainGUID(source.sourceGUID) or nil
         local key = guid or ("rank_" .. rank)
 
         -- Skip duplicate GUIDs (OOC only)
@@ -255,6 +312,17 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
 
             -- Build identity key from NeverSecret fields (works in combat)
             local identityKey = BuildIdentityKey(source.classFilename, source.specIconID, source.isLocalPlayer)
+
+            -- Same class+spec twice in the primary session = ambiguous identity;
+            -- gate those rows' secondary columns even if only one of the pair
+            -- appears in a secondary session.
+            if primarySeenIkeys then
+                if primarySeenIkeys[identityKey] then
+                    identityCollisions[identityKey] = true
+                else
+                    primarySeenIkeys[identityKey] = true
+                end
+            end
 
             local player = {
                 name = source.name,                   -- secret in combat
@@ -437,9 +505,10 @@ function DMY._FormatColumnValue(player, formatKey)
         return UnifiedAbbreviate(pNum) .. " (" .. UnifiedAbbreviate(sNum) .. ")"
     end
 
-    -- Simple format
+    -- Simple format. Rows come from the primary session, so a missing value
+    -- means the player scored zero in this metric — display parity with combat.
     local val = player.values[def.meterType]
-    if not val then return "-" end
+    if not val then return "0" end
     return UnifiedAbbreviate(val[def.valueField] or 0)
 end
 

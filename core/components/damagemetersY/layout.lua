@@ -485,16 +485,22 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
                             end
                         end
                     else
-                        -- Secondary column: use stored-GUID source query data
-                        local secData = merged.secondaryByIdentity
+                        -- Secondary column: identity-correlated session data.
+                        -- All gates are plain maps; the (possibly secret) amount
+                        -- only ever flows into UnifiedAbbreviate -> SetText.
                         local mt = def.primary or def.meterType
-                        local idLookup = secData and player.identityKey and secData[player.identityKey]
-                        local secTotal = idLookup and idLookup[mt]
-
-                        if secTotal then
-                            vt:SetText(DMY._UnifiedAbbreviate(secTotal))
+                        local ikey = player.identityKey
+                        if ikey and merged.identityCollisions and merged.identityCollisions[ikey] then
+                            vt:SetText("\226\128\148") -- em dash: ambiguous (class+spec collision)
+                        elseif merged.secondaryQueried and merged.secondaryQueried[mt] then
+                            local pres = ikey and merged.secondaryPresence and merged.secondaryPresence[ikey]
+                            if pres and pres[mt] then
+                                vt:SetText(DMY._UnifiedAbbreviate(merged.secondaryByIdentity[ikey][mt]))
+                            else
+                                vt:SetText("0") -- absent from that metric's session = zero
+                            end
                         else
-                            vt:SetText("\226\128\148") -- em dash
+                            vt:SetText("\226\128\148") -- em dash: session query failed
                         end
                     end
                 end

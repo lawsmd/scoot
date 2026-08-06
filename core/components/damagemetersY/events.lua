@@ -24,6 +24,15 @@ local function OnEvent(self, event, ...)
         if DMY._CloseDrilldown then DMY._CloseDrilldown() end
     end
 
+    -- Roster changed: refresh the drilldown GUID cache while identities are
+    -- readable. In combat do nothing — the next OOC cycle rebuilds anyway.
+    if event == "GROUP_ROSTER_UPDATE" then
+        if not DMY._inCombat then
+            DMY._RebuildGUIDCache()
+        end
+        return
+    end
+
     -- Combat ended: immediate synchronous full refresh
     if event == "PLAYER_REGEN_ENABLED" then
         DMY._Trace("REGEN_ENABLED -> ExitCombatMode + FullRefresh")
@@ -139,6 +148,7 @@ function DMY._InitializeEvents(comp)
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
     eventFrame:RegisterEvent("UI_SCALE_CHANGED")
     eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
     eventFrame:SetScript("OnEvent", OnEvent)
