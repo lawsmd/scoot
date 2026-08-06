@@ -242,6 +242,8 @@ local elementCreators = {
 local function CreateAuraContainer(aura)
     local frameName = "ScootClassAura_" .. aura.id
     local container = CreateFrame("Frame", frameName, UIParent)
+    -- Before the element creators below, so every child derives from this level.
+    addon.Strata.ApplyHUD(container, 25)
     container:SetSize(64, 32) -- initial size, auto-resized by layout
     container:SetMovable(true)
     container:SetClampedToScreen(true)

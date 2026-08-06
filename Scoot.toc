@@ -21,6 +21,7 @@ libs/AceSerializer-3.0/AceSerializer-3.0.xml
 libs/LibDeflate/LibDeflate.lua
 
 core/framestate.lua
+core/strata.lua
 core/secretsafe.lua
 core/nativeframe.lua
 core/media.lua
@@ -183,6 +184,7 @@ core/debug/export.lua
 core/debug/inspector.lua
 core/debug/misc.lua
 core/debug/cdmlayers.lua
+core/debug/hover.lua
 core/debug/dmY.lua
 core/debug/rosteroverlay.lua
 core/debug/widget.lua

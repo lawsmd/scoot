@@ -302,8 +302,10 @@ local function CreateOverlayButton(db)
 
     local btn = CreateFrame("Button", "ScootMinimapOverlayButton", UIParent)
     btn:SetSize(36, 36)
-    btn:SetFrameStrata("HIGH")
-    btn:SetFrameLevel(200)
+    -- MEDIUM (core/strata.lua), not HIGH: MinimapCluster is LOW (Minimap.xml:3)
+    -- and the darkening overlay is MEDIUM/100, so level 200 keeps the pin on top
+    -- of both -- without floating over an open Blizzard panel.
+    addon.Strata.ApplyHUD(btn, 200)
 
     -- Icon (map pin)
     local icon = btn:CreateTexture(nil, "ARTWORK")

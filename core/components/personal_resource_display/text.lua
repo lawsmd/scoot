@@ -144,8 +144,11 @@ local function ensureTextOverlay(bar, overlayType)
     local overlay = CreateFrame("Frame", nil, UIParent)
     overlay:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
     overlay:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-    overlay:SetFrameStrata("HIGH")
-    overlay:SetFrameLevel(100)
+    -- MEDIUM (core/strata.lua): HIGH put the number in front of every Blizzard
+    -- panel. Level 100 is unchanged and still clears everything it has to --
+    -- the bar overlays below (bg 49, fg 50) and their derived border containers
+    -- (foreground level + 5) -- while staying under a Raise()d pane.
+    addon.Strata.ApplyHUD(overlay, 100)
     overlay:Show()
 
     local leftText = overlay:CreateFontString(nil, "OVERLAY")

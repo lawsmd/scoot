@@ -277,6 +277,10 @@ local vertContainer = nil
 
 local function createVerticalStack()
     local stack = CreateFrame("Frame", nil, UIParent)
+    -- Explicit level even though the stack is reparented to vertContainer on apply
+    -- (SetParent must not be able to leave a stale/floor level -- iconRegion below
+    -- is mouse-live and needs to outrank the overlays it may sit under).
+    addon.Strata.ApplyHUD(stack, 36)
     stack:EnableMouse(false)
 
     stack.iconRegion = CreateFrame("Frame", nil, stack)
@@ -701,6 +705,7 @@ end
 local function ensureVertContainer()
     if vertContainer then return vertContainer end
     vertContainer = CreateFrame("Frame", nil, UIParent)
+    addon.Strata.ApplyHUD(vertContainer, 35)
     vertContainer:SetPoint("BOTTOMLEFT", _G["BuffBarCooldownViewer"] or UIParent, "BOTTOMLEFT", 0, 0)
     vertContainer:EnableMouse(false)
     vertContainer:SetSize(1, 1)

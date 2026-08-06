@@ -25,7 +25,11 @@ local activeOverlays = setmetatable({}, { __mode = "k" })  -- [button] = overlay
 local function CreateOverlayFrame()
     local f = CreateFrame("Frame", nil, UIParent)
     f:SetSize(OVERLAY_SIZE, OVERLAY_SIZE)
-    f:SetFrameStrata("HIGH")
+    -- No strata here on purpose. These decorate the Encounter Journal rather
+    -- than the world, so they take their anchor's strata at attach time
+    -- (Strata.MatchAnchor in attachOverlay) and are occluded together with the
+    -- EJ. The pool hands the same frame to different buttons, so strata belongs
+    -- with the anchor, not the factory. See core/strata.lua.
     f:EnableMouse(true)
     f:SetPropagateMouseMotion(true)  -- preserve EJ tooltip + shift-click on the button
 
@@ -164,7 +168,10 @@ local function attachOverlay(button)
     end
     overlay._anchorButton = button
     overlay:SetParent(UIParent)
-    overlay:SetFrameLevel((button:GetFrameLevel() or 0) + 5)
+    -- Strata AND level from the row we hang off: the EJ is a MEDIUM toplevel
+    -- panel that ShowUIPanel raises, so inheriting its strata is what makes a
+    -- pane opened over the EJ cover these too (core/strata.lua).
+    addon.Strata.MatchAnchor(overlay, button, 5)
     overlay:ClearAllPoints()
     -- Overhang just outside the row's left edge, vertically centered.
     overlay:SetPoint("RIGHT", button, "LEFT", -2, 0)

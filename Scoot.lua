@@ -138,6 +138,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug profiles export [\"Profile Name\"]  |  reload")
             addon:Print("  /scoot debug consoleport export")
             addon:Print("  /scoot debug cdmlayers")
+            addon:Print("  /scoot debug hover [seconds]  -- what is eating the mouse at the cursor")
             addon:Print("  /scoot debug dm export [overall|current|expired]")
             addon:Print("  /scoot debug dm frames")
             addon:Print("  /scoot debug dm trace <on|off>")
@@ -403,6 +404,16 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugCDMLayers()
             else
                 addon:Print("CDM layers debug not available.")
+            end
+            return
+        end
+
+        -- /scoot debug hover [seconds]
+        if sub1 == "hover" then
+            if addon.DebugHover then
+                addon.DebugHover(sub2)
+            else
+                addon:Print("Hover probe not available.")
             end
             return
         end

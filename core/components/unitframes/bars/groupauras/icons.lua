@@ -84,8 +84,10 @@ local iconPool = {}
 local function CreateIconFrame()
     local icon = CreateFrame("Frame", nil, UIParent)
     icon:SetSize(16, 16)
-    icon:SetFrameStrata("HIGH")
-    icon:SetFrameLevel(20)
+    -- MEDIUM (core/strata.lua), not HIGH: Blizzard's raid frames are LOW
+    -- (CompactUnitFrame.xml:3), so MEDIUM still covers them -- and unlike HIGH
+    -- it lets an open Blizzard panel cover us. Level unchanged.
+    addon.Strata.ApplyHUD(icon, 20)
 
     -- Icon texture
     local tex = icon:CreateTexture(nil, "ARTWORK")

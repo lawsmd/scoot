@@ -299,6 +299,10 @@ end
 local function InitializeContainers()
     for i = 1, CG.NUM_GROUPS do
         local container = CreateFrame("Frame", "ScootCustomGroup" .. i, UIParent)
+        -- An explicit level, not just the inherited MEDIUM: a bare UIParent child
+        -- lands at level 1 and loses the mouse hit-test to every overlay above it,
+        -- which is what swallowed the icon tooltips under a UFZ click overlay (11).
+        addon.Strata.ApplyHUD(container, 30)
         container:SetSize(1, 1)
         container:SetMovable(true)
         container:SetClampedToScreen(true)

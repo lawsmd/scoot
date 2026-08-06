@@ -225,7 +225,7 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
         container:ClearAllPoints()
         container:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         container:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-        local strata = parent.GetFrameStrata and parent:GetFrameStrata() or "HIGH"
+        local strata = parent.GetFrameStrata and parent:GetFrameStrata() or addon.Strata.HUD
         container:SetFrameStrata(strata)
         local baseLevel = parent.GetFrameLevel and parent:GetFrameLevel() or 0
         container:SetFrameLevel(baseLevel + 5)

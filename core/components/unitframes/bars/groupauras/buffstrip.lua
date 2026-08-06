@@ -79,8 +79,10 @@ local activeOverlays = setmetatable({}, { __mode = "k" })  -- [compactUnitFrame]
 
 local function CreateOverlayFrame()
     local f = CreateFrame("Frame", nil, UIParent)
-    f:SetFrameStrata("HIGH")
-    f:SetFrameLevel(19)  -- below Scoot's custom icons (level 20) but above Blizzard's buffs
+    -- MEDIUM (core/strata.lua), not HIGH: Blizzard's raid frames and their auras
+    -- are LOW, so MEDIUM still wins there while letting Blizzard panels cover us.
+    -- Level 19 unchanged: below Scoot's custom icons (level 20), above Blizzard's buffs.
+    addon.Strata.ApplyHUD(f, 19)
     f:SetSize(11, 11)
 
     local bg = f:CreateTexture(nil, "ARTWORK")

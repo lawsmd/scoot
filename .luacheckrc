@@ -55,8 +55,10 @@ read_globals = {
     "EventRegistry",
     "GameFontNormal",
     "GetCursorPosition",
+    "GetMouseFoci",
     "HUD_EDIT_MODE_RESET_POSITION",
     "NineSliceUtil",
+    "WorldFrame",
     "securecallfunction",
 
     -- Blizzard addon APIs
