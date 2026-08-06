@@ -588,6 +588,11 @@ function SlashCmdList.SCOOT(msg, editBox)
                 else addon:Print("DMY debug not available.") end
                 return
             end
+            if sub2 == "names" then
+                if addon.DebugDMYNames then addon.DebugDMYNames()
+                else addon:Print("DMY debug not available.") end
+                return
+            end
             addon:Print("Usage: /scoot debug dmY cvar")
             addon:Print("       /scoot debug dmY api")
             addon:Print("       /scoot debug dmY trace")
@@ -597,6 +602,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("       /scoot debug dmY multicol")
             addon:Print("       /scoot debug dmY abbrev")
             addon:Print("       /scoot debug dmY colprobe")
+            addon:Print("       /scoot debug dmY names")
             return
         end
 

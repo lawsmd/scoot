@@ -175,6 +175,7 @@ addon:RegisterComponentInitializer(function(self)
                 fontFace = "ROBOTO_SEMICOND_BOLD", fontStyle = "OUTLINE", fontSize = 12,
                 colorMode = "default", color = { 1, 1, 1, 1 },
             }},
+            hideRealmNames = { type = "addon", default = true },
             -- Text: Values
             textValues = { type = "addon", default = {
                 fontFace = "ROBOTO_SEMICOND_BOLD", fontStyle = "OUTLINE", fontSize = 11,

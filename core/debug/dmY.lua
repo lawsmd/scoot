@@ -1913,3 +1913,52 @@ function addon.DebugDMYColprobe()
         addon.DebugShowWindow("DMY Column Probe", output)
     end
 end
+
+--------------------------------------------------------------------------------
+-- /scoot debug dmY names — Hide Realm Names resolver state
+-- Passive: reports which resolver tier painted rows since login plus the
+-- correlation caches. Not required for the feature; post-hoc diagnosis only.
+--------------------------------------------------------------------------------
+
+function addon.DebugDMYNames()
+    local DMY = addon.DamageMetersY
+    if not DMY then
+        addon.DebugShowWindow("DMY Names", "DMY not available.")
+        return
+    end
+
+    local lines = { "== DMY Display Name Resolver ==", "" }
+    local function add(fmt, ...)
+        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
+    end
+
+    local db = DMY._comp and DMY._comp.db
+    add("hideRealmNames setting: %s", tostring(db and db.hideRealmNames))
+    add("")
+
+    add("[1] Resolver tier counts (rows painted since login, toggle on only):")
+    local c = DMY._nameTierCounts or {}
+    add("  plain     (readable name, match-strip): %d", c.plain or 0)
+    add("  roster    (ikey->GUID->roster map):     %d", c.roster or 0)
+    add("  inspect   (ikey->GUID->inspect cache):  %d", c.inspect or 0)
+    add("  ambiguate (secret name, \"short\"):       %d", c.ambiguate or 0)
+    add("  raw       (untouched fallback):         %d", c.raw or 0)
+    add("")
+
+    add("[2] Roster name map (plain, realm-free):")
+    local n = 0
+    for guid, name in pairs(DMY._rosterNames or {}) do
+        n = n + 1
+        add("  %s -> %s", guid, name)
+    end
+    if n == 0 then add("  (empty — rebuilds OOC on roster update / full refresh)") end
+    add("")
+
+    local collisions = 0
+    for _, v in pairs(DMY._identityToGUID or {}) do
+        if v == false then collisions = collisions + 1 end
+    end
+    add("[3] identityToGUID: %d collisions marked", collisions)
+
+    addon.DebugShowWindow("DMY Names", table.concat(lines, "\n"))
+end

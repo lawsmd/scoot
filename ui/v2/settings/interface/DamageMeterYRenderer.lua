@@ -801,6 +801,10 @@ function DMYSettings.Render(panel, scrollContent)
                 buildContent = {
                     playerName = function(_, tabInner)
                         AddTextControls(tabInner, "textNames", 12)
+                        tabInner:AddToggle({ label = "Hide Realm Names",
+                            description = "Shows only the player name without server (e.g., 'Player' instead of 'Player-Realm').",
+                            get = function() return getSetting("hideRealmNames") ~= false end,
+                            set = function(v) setAndRefresh("hideRealmNames", v) end })
                         tabInner:Finalize()
                     end,
                     headerRow = function(_, tabInner)

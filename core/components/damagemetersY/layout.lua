@@ -337,13 +337,19 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
     else
         row._sourceGUID = (key and not tostring(key):find("^rank_")) and key or nil
     end
-    row._sourceName = player.name -- may be secret in combat; consumer must handle
+    -- Display name: realm-stripped when Hide Realm Names is on. Drilldown
+    -- titles read _sourceName, so they inherit the stripped form.
+    local displayName = player.name
+    if db and db.hideRealmNames then
+        displayName = DMY._ResolveDisplayName(player, key, merged) or player.name
+    end
+    row._sourceName = displayName -- may be secret in combat; consumer must handle
     row._classFilename = player.classFilename
     row._identityKey = player.identityKey
     row._sourceCreatureID = nil -- not currently captured in merged data; nil OK for player sources
 
     -- Name display (SetText accepts secrets during combat)
-    row.nameText:SetText(player.name or "")
+    row.nameText:SetText(displayName or "")
 
     -- Name text color
     local nameSettings = db and db.textNames or {}

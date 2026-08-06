@@ -129,6 +129,118 @@ function DMY._RebuildGUIDCache()
 end
 
 --------------------------------------------------------------------------------
+-- Roster name map + display-name resolution (Hide Realm Names)
+--
+-- rosterNames maps plain UnitGUIDs to plain realm-free names captured from the
+-- group roster. UnitName's first return never includes the realm for same-realm
+-- players; the match is belt-and-braces for cross-realm "Name-Realm" strings.
+-- Rebuilt OOC alongside the GUID cache, commit-only-if-nonempty for the same
+-- reason. UnitName can return a secret in identity-restricted content, so the
+-- value is never operated on until issecretvalue proves it plain.
+--------------------------------------------------------------------------------
+
+DMY._rosterNames = {}  -- { [guid] = plain realm-free name }
+DMY._nameTierCounts = { plain = 0, roster = 0, inspect = 0, ambiguate = 0, raw = 0 }
+
+local function PlainRosterName(unit)
+    local ok, n = pcall(UnitName, unit)
+    if not ok or n == nil then return nil end
+    if issecretvalue and issecretvalue(n) then return nil end
+    if type(n) ~= "string" then return nil end
+    return n:match("^([^%-]+)") or n
+end
+
+function DMY._RebuildRosterNames()
+    if DMY._inCombat then return end
+
+    local map = {}
+    local ok, pGuid = pcall(UnitGUID, "player")
+    pGuid = ok and PlainGUID(pGuid) or nil
+    local pName = PlainRosterName("player")
+    if pGuid and pName then
+        map[pGuid] = pName
+    end
+
+    local prefix, count
+    if IsInRaid() then
+        prefix, count = "raid", GetNumGroupMembers()
+    elseif IsInGroup() then
+        prefix, count = "party", GetNumGroupMembers() - 1
+    end
+    if prefix then
+        for i = 1, count do
+            local unit = prefix .. i
+            local gOk, guid = pcall(UnitGUID, unit)
+            guid = gOk and PlainGUID(guid) or nil
+            local name = PlainRosterName(unit)
+            if guid and name then
+                map[guid] = name
+            end
+        end
+    end
+
+    if next(map) then
+        DMY._rosterNames = map
+    end
+end
+
+-- Resolve the name painted on a meter row when Hide Realm Names is on.
+-- Tier 0: plain name, stripped directly (player names cannot contain hyphens,
+--         so the hyphen always delimits Name-Realm).
+-- Tier 1: secret name correlated to a plain roster/inspect name via identity
+--         key. Guarded by the CURRENT session's collision map so a duplicate
+--         class+spec in this pull can never borrow the other player's name.
+-- Tier 2: Ambiguate(name, "short") on the secret itself — "short" removes the
+--         realm unconditionally (unlike "none"), is AllowedWhenTainted since
+--         12.0.5, and its secret result is a legal SetText argument.
+--         Truthiness only on the result, never a comparison.
+-- Tier 3: the untouched name (today's behavior).
+function DMY._ResolveDisplayName(player, key, merged)
+    local name = player.name
+    local counts = DMY._nameTierCounts
+
+    if type(name) == "string" and not (issecretvalue and issecretvalue(name)) then
+        counts.plain = counts.plain + 1
+        return name:match("^([^%-]+)") or name
+    end
+
+    local ikey = player.identityKey
+    if ikey and not (merged and merged.identityCollisions and merged.identityCollisions[ikey]) then
+        local guid
+        if type(key) == "string" and not key:find("^rank_") then
+            guid = key -- OOC merged key IS the plain GUID
+        else
+            local mapped = DMY._identityToGUID and DMY._identityToGUID[ikey]
+            if mapped and mapped ~= false then guid = mapped end
+        end
+        if guid then
+            local n = DMY._rosterNames and DMY._rosterNames[guid]
+            if type(n) == "string" then
+                counts.roster = counts.roster + 1
+                return n
+            end
+            local cached = addon.Inspect and addon.Inspect:GetUnitInfo(guid)
+            n = cached and cached.name -- realm-stripped at inspect capture time
+            if type(n) == "string" then
+                counts.inspect = counts.inspect + 1
+                return n
+            end
+        end
+    end
+
+    if Ambiguate then
+        local ok, short = pcall(Ambiguate, name, "short")
+        if ok and short then
+            counts.ambiguate = counts.ambiguate + 1
+            return short
+        end
+    end
+
+    counts.raw = counts.raw + 1
+    return name
+end
+
+--------------------------------------------------------------------------------
 -- QueryMergedData — Core data pipeline
 --
 -- Returns a merged table with all players and their values across all columns.

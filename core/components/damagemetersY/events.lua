@@ -29,6 +29,7 @@ local function OnEvent(self, event, ...)
     if event == "GROUP_ROSTER_UPDATE" then
         if not DMY._inCombat then
             DMY._RebuildGUIDCache()
+            DMY._RebuildRosterNames()
         end
         return
     end

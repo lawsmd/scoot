@@ -118,6 +118,7 @@ function DMY._FullRefreshAllWindows()
     -- window — per-window rebuilds let the last window's session clobber
     -- the shared cache (the multi-column em-dash bug).
     DMY._RebuildGUIDCache()
+    DMY._RebuildRosterNames()
 
     for i = 1, DMY.MAX_WINDOWS do
         local cfg = DMY._GetWindowConfig(i)
