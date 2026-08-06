@@ -613,7 +613,9 @@ function Controls:CreateDualSelector(options)
         local descFont = theme:GetFont("VALUE")
         descFS:SetFont(descFont, 11, "")
         descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -DUAL_SELECTOR_PADDING, 0)
+        -- RIGHT anchor comes after the dual container exists: the description
+        -- column must end where the selectors begin, not at the row edge --
+        -- full-width text rendered straight through the selector gaps.
         descFS:SetText(description)
         descFS:SetTextColor(dimR, dimG, dimB, 1)
         descFS:SetJustifyH("LEFT")
@@ -626,6 +628,11 @@ function Controls:CreateDualSelector(options)
     dualContainer:SetSize(DUAL_SELECTOR_DEFAULT_CONTAINER_WIDTH, DUAL_SELECTOR_HEIGHT)
     dualContainer:SetPoint("RIGHT", row, "RIGHT", -DUAL_SELECTOR_PADDING, 0)
     row._dualSelectorContainer = dualContainer
+
+    if row._description then
+        row._description:SetPoint("RIGHT", dualContainer, "LEFT",
+            -DUAL_SELECTOR_LABEL_RIGHT_MARGIN, 0)
+    end
 
     -- Create mini-selector A (left within container)
     local miniSelectorA = CreateMiniSelector(selectorAOpts, dualContainer, theme, useLightDim)
@@ -681,6 +688,12 @@ function Controls:CreateDualSelector(options)
         local labelWidth = 0
         if labelFS then
             labelWidth = labelFS:GetStringWidth() + DUAL_SELECTOR_LABEL_RIGHT_MARGIN
+        end
+        -- A description needs a readable wrap column, not just the label's
+        -- string width (the selectors would otherwise cover most of it).
+        if row._description then
+            local descReserve = 200 + DUAL_SELECTOR_LABEL_RIGHT_MARGIN
+            if descReserve > labelWidth then labelWidth = descReserve end
         end
         local containerWidth = rowWidth - labelWidth - (DUAL_SELECTOR_PADDING * 2)
         if containerWidth < 100 then containerWidth = DUAL_SELECTOR_DEFAULT_CONTAINER_WIDTH end
