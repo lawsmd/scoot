@@ -72,10 +72,6 @@ end
 -- Interruptibility
 --------------------------------------------------------------------------------
 
--- Uninterruptible text. Grey-white, so it reads as drained rather than as another
--- accent color competing with the ramp it replaces.
-local LOCKED_TEXT_COLOR = { 0.85, 0.85, 0.85 }
-
 --- Digest a possibly-secret boolean into a plain {r, g, b} triple of (possibly
 --- secret) components.
 ---
@@ -137,10 +133,11 @@ end
 -- Promoted for empowered.lua, which needs exactly this treatment per tier segment.
 CBZ._PickColor = PickColor
 
---- Apply interruptibility to the line and to every band.
+--- Apply interruptibility to the line and, when tiers are up, to each segment.
 ---
---- Applied as a per-band color override rather than by selecting a different ramp,
---- because selecting anything would require reading the flag.
+--- Applied as a color override rather than by selecting a different palette,
+--- because selecting anything would require reading the flag. The spell name is
+--- deliberately not part of it -- see the band call at the end.
 function CBZ._ApplyInterruptState(bar, notInterruptible)
     -- UnitCastingInfo returns nothing for this field on some casts. nil is never
     -- secret, and type() is the only test that is safe to run first.
@@ -170,12 +167,14 @@ function CBZ._ApplyInterruptState(bar, notInterruptible)
     -- ...and its counterpart, a no-op when they are not.
     CBZ._ApplyEmpoweredColors(bar, ni)
 
-    local ramp = CBZ._GetRamp(bar)
-    local colors = {}
-    for i = 1, CBZ.NUM_BANDS do
-        colors[i] = PickColor(ni, LOCKED_TEXT_COLOR, ramp[i] or LOCKED_TEXT_COLOR)
-    end
-    CBZ._ApplyBandColors(bar, colors)
+    -- The NAME takes no interruptibility override -- it keeps its ramp whatever the
+    -- flag says (2026-08-06, user). Interruptibility is the LINE's axis and it owns
+    -- it outright: white for locked, gold for kickable, right behind the word.
+    -- Draining the word to grey-white as well spent the bar's two channels saying
+    -- one thing twice, and on a boss it read as the bar having lost its colors
+    -- rather than as a cast you cannot kick -- the same misreading that took the
+    -- override off player and pet above.
+    CBZ._ApplyBandColors(bar, CBZ._GetRamp(bar))
 end
 
 --------------------------------------------------------------------------------
@@ -281,6 +280,13 @@ function CBZ._StartCast(bar, channelled)
     -- depending on WHO is casting: a bar that re-resolved per consumer would keep
     -- drawing the previous target's class colors after a switch.
     bar.lineColor, bar.ramp = CBZ._ResolveCastRamp(bar)
+
+    -- The spark and the completion effect are colored by the layout pass, which
+    -- runs on settings changes only -- so without this they would keep the palette
+    -- of whoever this bar's unit was when the panel was last touched. Cheap: both
+    -- reuse their existing regions rather than rebuilding.
+    CBZ._RecolorSpark(bar)
+    CBZ._RecolorFinishFX(bar)
 
     CBZ._SetText(bar, name)
 

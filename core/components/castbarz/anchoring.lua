@@ -67,6 +67,53 @@ function CBZ._GetPositionMode(unitKey)
     return mode
 end
 
+--------------------------------------------------------------------------------
+-- Snap offsets, compartmentalized (user 2026-08-05)
+--------------------------------------------------------------------------------
+-- One offset pair per (snap direction, anchor variant). A nudge tuned against
+-- the Blizzard frame (X) is meaningless against the differently-shaped Z frame
+-- and vice versa -- carrying one shared pair across the X->Z switch is exactly
+-- what made a correctly-snapped bar LOOK broken. Keys are lazy flat scalars on
+-- the unit cfg -- snapOffset_<mode>_<X|Z>_<x|y>, absent = 0 -- so switching
+-- direction or variant lands on that combination's own remembered pair. The
+-- legacy shared offsetX/offsetY pair migrates once in core.lua.
+
+--- Which frame variant this unit's bar snaps against right now. Module state,
+--- not instance state: the offset choice must not flip on a load-order
+--- transient (the anchor itself may briefly fall back to Blizzard's frame
+--- before the Z instance exists; a Z-tuned offset on that fallback for a
+--- frame is harmless).
+function CBZ._AnchorVariant(unitKey)
+    if addon.UnitFramesZ and addon:IsModuleEnabled("unitFramesZ", unitKey) then
+        return "Z"
+    end
+    return "X"
+end
+
+local function snapOffsetKeys(unitKey)
+    local mode = CBZ._GetPositionMode(unitKey)
+    if mode == "free" then return nil end
+    local base = "snapOffset_" .. mode .. "_" .. CBZ._AnchorVariant(unitKey)
+    return base .. "_x", base .. "_y"
+end
+
+--- The offset pair for this unit's CURRENT direction and variant. 0,0 when
+--- free (a free bar is positioned by dragging, not offsets).
+function CBZ._GetSnapOffsets(unitKey)
+    local cfg = CBZ._GetUnitConfig(unitKey)
+    local kx, ky = snapOffsetKeys(unitKey)
+    if not cfg or not kx then return 0, 0 end
+    return tonumber(cfg[kx]) or 0, tonumber(cfg[ky]) or 0
+end
+
+--- Write one axis ("x" | "y") of the current direction+variant pair.
+function CBZ._SetSnapOffset(unitKey, axis, value)
+    local cfg = CBZ._GetUnitConfig(unitKey)
+    local kx, ky = snapOffsetKeys(unitKey)
+    if not cfg or not kx then return end
+    cfg[axis == "y" and ky or kx] = tonumber(value) or 0
+end
+
 --- The frame this bar snaps to, or nil.
 ---
 --- The Unit Frame Z seam: a Scoot-owned frame for this unit wins over the Blizzard
@@ -105,9 +152,9 @@ function CBZ._ApplySnap(bar)
     local anchor = CBZ._ResolveAnchorFrame(bar)
     if not anchor then return false end
 
-    local cfg = CBZ._GetUnitConfig(bar.unitKey)
-    local ox = CBZ._SnapToPixels(tonumber(cfg and cfg.offsetX) or 0)
-    local oy = CBZ._SnapToPixels(tonumber(cfg and cfg.offsetY) or 0)
+    local ox, oy = CBZ._GetSnapOffsets(bar.unitKey)
+    ox = CBZ._SnapToPixels(ox)
+    oy = CBZ._SnapToPixels(oy)
 
     bar:ClearAllPoints()
     bar:SetPoint(pair.barPoint, anchor, pair.anchorPoint, ox, oy)
@@ -167,16 +214,18 @@ function CBZ._EditModeMirror(bar)
         },
     }
 
+    -- The sliders read and write the pair for the CURRENT direction+variant
+    -- (the selector's rebuild re-resolves them on every direction change).
     if CBZ._GetPositionMode(unitKey) ~= "free" then
         specs[#specs + 1] = {
             kind = "slider", label = "Offset X", min = -200, max = 200, step = 1,
-            get = function() return tonumber(cfg.offsetX) or 0 end,
-            set = function(v) cfg.offsetX = v; apply() end,
+            get = function() return (CBZ._GetSnapOffsets(unitKey)) end,
+            set = function(v) CBZ._SetSnapOffset(unitKey, "x", v); apply() end,
         }
         specs[#specs + 1] = {
             kind = "slider", label = "Offset Y", min = -200, max = 200, step = 1,
-            get = function() return tonumber(cfg.offsetY) or 0 end,
-            set = function(v) cfg.offsetY = v; apply() end,
+            get = function() return select(2, CBZ._GetSnapOffsets(unitKey)) end,
+            set = function(v) CBZ._SetSnapOffset(unitKey, "y", v); apply() end,
         }
     end
 

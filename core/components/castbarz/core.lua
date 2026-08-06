@@ -103,8 +103,9 @@ local UNIT_DEFAULTS_SHARED = {
     barWidth     = 200,
     positionMode = "free",  -- "free" | "above" | "below" | "left" | "right"
                             -- (anchoring.lua lands in Phase 2 step 6)
-    offsetX      = 0,
-    offsetY      = 0,
+    -- Snap offsets are NOT declared here: they are lazy flat keys per
+    -- (direction, anchor variant) -- snapOffset_<mode>_<X|Z>_<x|y>, absent = 0
+    -- (anchoring.lua). Declaring 16 zeros per unit would be gap-fill noise.
 
     -- Which side of the bar the cast time readout sits on. Per unit rather than
     -- shared because it is a property of where the bar SITS, not of how it looks:
@@ -157,6 +158,20 @@ function CBZ._EnsureUnitDB()
                     cfg[key] = value
                 end
             end
+        end
+
+        -- One-time migration (2026-08-05): the legacy shared offsetX/offsetY
+        -- pair was always tuned against the Blizzard (X) frames, so it becomes
+        -- the X-variant pair of the direction it was stored with; a free bar
+        -- never used it. Nil'ing the keys is what makes this run once.
+        if cfg.offsetX ~= nil or cfg.offsetY ~= nil then
+            local mode = cfg.positionMode
+            if mode and mode ~= "free" then
+                cfg["snapOffset_" .. mode .. "_X_x"] = tonumber(cfg.offsetX) or 0
+                cfg["snapOffset_" .. mode .. "_X_y"] = tonumber(cfg.offsetY) or 0
+            end
+            cfg.offsetX = nil
+            cfg.offsetY = nil
         end
     end
 
@@ -219,6 +234,24 @@ addon:RegisterComponentInitializer(function(self)
             -- Cast completion. Defaults to "none" -- zero-touch means shipped
             -- behaviour does not change until the user asks for an effect.
             completionFX = { type = "addon", default = "none" },
+
+            -- Color for both flourishes. "spellName" takes the bright end of the
+            -- cast's own ramp -- the stop the last band of the name is drawn in --
+            -- so on your bar it is your spec color and on a target's it is that
+            -- unit's class color. The key says where the value is resolved FROM;
+            -- the settings label reads "Spec Color", which is what it amounts to
+            -- on the bar the user is looking at while they set it.
+            --
+            -- These two ARE a departure from the zero-touch precedent that
+            -- completionFX and castTime were both written to honour: defaulting to
+            -- "spellName" recolors Blizzard's pip and every borrowed effect atlas
+            -- on profiles that never ask for it. Taken deliberately (user, 2026-08-03)
+            -- -- the alternative was a third "whatever it is now" mode naming two
+            -- different behaviours depending on the style selected above it.
+            sparkColorMode      = { type = "addon", default = "spellName" },
+            sparkColor          = { type = "addon", default = { 1, 1, 1, 1 } },
+            completionColorMode = { type = "addon", default = "spellName" },
+            completionColor     = { type = "addon", default = { 1, 1, 1, 1 } },
 
             -- Empowered casts. On by default, unlike completionFX: this is not an
             -- added flourish, it is the only way an empowered bar can say which
@@ -365,11 +398,14 @@ local SETTING_FALLBACKS = {
     fontFace = "FRIZQT__", fontSize = 14, fontStyle = "OUTLINE",
     gradient = true, lineHeight = "medium", capSize = "medium", showSpark = true,
     sparkStyle = "blizzard", completionFX = "none", empoweredTiers = true,
+    sparkColorMode = "spellName", completionColorMode = "spellName",
     castTime = false, castTimeReadout = "remaining", castTimeSize = 12,
     castTimeGap = 10, castTimeOffsetY = 0,
-    -- Deliberately absent: castTimeColor. A frozen table handed out as a fallback
-    -- would be shared by every caller and would throw the moment one wrote to it.
-    -- casttime.lua's _GetCastTimeColor owns that default instead.
+    -- Deliberately absent: every table-valued setting -- castTimeColor, sparkColor,
+    -- completionColor. This table is frozen, so one handed out as a fallback would
+    -- be shared by every caller and would throw the moment one wrote to it. Each
+    -- resolver owns its own default instead: _GetCastTimeColor (casttime.lua),
+    -- _ResolveSparkColor and _ResolveFinishColor (effects.lua).
 }
 table.freeze(SETTING_FALLBACKS)
 

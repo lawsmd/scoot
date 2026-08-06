@@ -220,23 +220,37 @@ end
 -- Unit Selector Row
 --------------------------------------------------------------------------------
 
+-- Two stacked rows: the unit tabs, and the selected unit's ON/OFF directly beneath
+-- the tab it belongs to. Side by side (the original layout) the toggle read as a
+-- page-level switch, which is exactly what it is not -- every unit carries its own.
+-- Parking it under the selected tab makes it move as you change unit, and that
+-- movement is the point: it says what it applies to without a label.
+local UNIT_BTN_H     = 22
+local UNIT_ROW_PAD   = 3
+local UNIT_TOGGLE_GAP = 6
+local UNIT_ROW_HEIGHT = UNIT_ROW_PAD + UNIT_BTN_H + UNIT_TOGGLE_GAP + UNIT_BTN_H + UNIT_ROW_PAD
+
 local function CreateUnitSelector(parentFrame, builder)
     local row = CreateFrame("Frame", nil, parentFrame)
-    row:SetHeight(28)
+    row:SetHeight(UNIT_ROW_HEIGHT)
 
     local Theme = GetTheme()
     local ar, ag, ab = 0.2, 0.9, 0.3
     if Theme and Theme.GetAccentColor then ar, ag, ab = Theme:GetAccentColor() end
+
+    -- Where the selected tab sits, so the toggle can be centred under it.
+    local selX, selW = 4, 50
 
     local x = 4
     for _, unitKey in ipairs(CBZ.UNITS) do
         local label = CBZ.UNIT_LABELS[unitKey] or unitKey
         local isSel = (unitKey == selectedUnit)
         local width = math.max(48, 12 + #label * 7)
+        if isSel then selX, selW = x, width end
 
         local btn = CreateFrame("Button", nil, row)
-        btn:SetSize(width, 22)
-        btn:SetPoint("LEFT", row, "LEFT", x, 0)
+        btn:SetSize(width, UNIT_BTN_H)
+        btn:SetPoint("TOPLEFT", row, "TOPLEFT", x, -UNIT_ROW_PAD)
         x = x + width + 4
 
         local btnBg = btn:CreateTexture(nil, "BACKGROUND")
@@ -280,9 +294,18 @@ local function CreateUnitSelector(parentFrame, builder)
             if builder then builder:DeferredRefreshAll() end
         end
     end)
-    indicator:SetPoint("LEFT", row, "LEFT", x + 8, 0)
 
-    return row
+    -- Widened to the tab above when that tab is wider, so the two read as one
+    -- column rather than as a button that happens to be nearby. Floored at the
+    -- indicator's own 50 so "OFF" never crowds its border.
+    local indW = math.max(50, selW)
+    indicator:SetWidth(indW)
+    -- Floored: a half-pixel offset on a 1px border draws it at two weights on
+    -- opposite sides of the button (subpixel-font-outline).
+    indicator:SetPoint("TOPLEFT", row, "TOPLEFT",
+        selX + math.floor((selW - indW) / 2), -(UNIT_ROW_PAD + UNIT_BTN_H + UNIT_TOGGLE_GAP))
+
+    return row, UNIT_ROW_HEIGHT
 end
 
 --------------------------------------------------------------------------------
@@ -328,11 +351,11 @@ function CBZSettings.Render(panel, scrollContent)
     ----------------------------------------------------------------------------
     -- Unit selector
     ----------------------------------------------------------------------------
-    local sel = CreateUnitSelector(scrollContent, builder)
+    local sel, selHeight = CreateUnitSelector(scrollContent, builder)
     sel:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 12, -8)
     sel:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -12, -8)
     table.insert(builder._controls, sel)
-    builder._currentY = -8 - 28 - 8
+    builder._currentY = -8 - selHeight - 8
 
     ----------------------------------------------------------------------------
     -- Preview
@@ -376,21 +399,6 @@ function CBZSettings.Render(panel, scrollContent)
                 order = { "short", "medium", "tall" },
                 get = function() return getSetting("capSize") or "medium" end,
                 set = function(v) setSetting("capSize", v) end })
-            inner:AddToggle({ label = "Show Spark",
-                description = "The moving pip that rides the leading edge of the fill.",
-                get = function() return getSetting("showSpark") ~= false end,
-                set = function(v) setSetting("showSpark", v) end })
-            inner:AddSelector({ label = "Spark Style",
-                description = "Third Tick matches the end ticks. Ember Trail replaces the pip with a glow along the line. Playhead Caret brackets the line above and below.",
-                values = {
-                    blizzard = "Blizzard Pip",
-                    tick     = "Third Tick",
-                    trail    = "Ember Trail",
-                    caret    = "Playhead Caret",
-                },
-                order = { "blizzard", "tick", "trail", "caret" },
-                get = function() return getSetting("sparkStyle") or "blizzard" end,
-                set = function(v) setSetting("sparkStyle", v) end })
             inner:Finalize()
         end })
 
@@ -427,15 +435,75 @@ function CBZSettings.Render(panel, scrollContent)
                 get = function() return CBZ._GetPositionMode(selectedUnit) end,
                 set = function(v) setUnit("positionMode", v) end })
 
-            -- Offsets are meaningless on a free bar, which is positioned by dragging.
+            -- Offsets are meaningless on a free bar, which is positioned by
+            -- dragging. Each (direction, X/Z frame variant) combination keeps
+            -- its own remembered pair -- these sliders read and write the pair
+            -- currently in effect (CBZ._GetSnapOffsets resolves it).
             if CBZ._GetPositionMode(selectedUnit) ~= "free" then
+                local function setOffset(axis, v)
+                    CBZ._SetSnapOffset(selectedUnit, axis, v)
+                    if CBZ._comp then CBZ._ApplyStyling(CBZ._comp) end
+                    builder:DeferredRefreshAll()
+                end
                 inner:AddSlider({ label = "Offset X", min = -200, max = 200, step = 1,
-                    get = function() return getUnit("offsetX", 0) end,
-                    set = function(v) setUnit("offsetX", v) end })
+                    description = "Remembered separately for each snap direction, and for the X and Z unit frames.",
+                    get = function() return (CBZ._GetSnapOffsets(selectedUnit)) end,
+                    set = function(v) setOffset("x", v) end })
                 inner:AddSlider({ label = "Offset Y", min = -200, max = 200, step = 1,
-                    get = function() return getUnit("offsetY", 0) end,
-                    set = function(v) setUnit("offsetY", v) end })
+                    get = function() return select(2, CBZ._GetSnapOffsets(selectedUnit)) end,
+                    set = function(v) setOffset("y", v) end })
             end
+            inner:Finalize()
+        end })
+
+    ----------------------------------------------------------------------------
+    -- Spark and Cast Completion
+    ----------------------------------------------------------------------------
+    -- The bar's two flourishes, adjacent because they now share a Color row built
+    -- the same way. Both offer exactly two modes: there is no third "Default"
+    -- entry because there is no single behaviour it could name -- Blizzard's pip
+    -- draws in its own gold and the other three sparks draw in the cast's ramp, so
+    -- one option covering both would mean two different things depending on the
+    -- style selected above it.
+    -- The stored key stays "spellName" while the label reads "Spec Color". Only the
+    -- label changed (user, 2026-08-03) -- the key is what a profile already holds,
+    -- and it still describes what the value resolves through.
+    local COLOR_VALUES = { spellName = "Spec Color", custom = "Custom" }
+    local COLOR_ORDER  = { "spellName", "custom" }
+
+    local COLOR_DESC = "Takes the brightest stop of the gradient the spell name is drawn in: your specialization's on your own bar, the unit's class color on someone else's."
+
+    builder:AddCollapsibleSection({ title = "Spark", componentId = "castBarZ", sectionKey = "spark", defaultExpanded = false,
+        buildContent = function(_, inner)
+            inner:AddToggle({ label = "Show Spark",
+                description = "The moving pip that rides the leading edge of the fill.",
+                get = function() return getSetting("showSpark") ~= false end,
+                set = function(v) setSetting("showSpark", v) end })
+            inner:AddSelector({ label = "Spark Style",
+                description = "Third Tick matches the end ticks. Ember Trail replaces the pip with a glow along the line. Playhead Caret brackets the line above and below.",
+                values = {
+                    blizzard = "Blizzard Pip",
+                    tick     = "Third Tick",
+                    trail    = "Ember Trail",
+                    caret    = "Playhead Caret",
+                },
+                order = { "blizzard", "tick", "trail", "caret" },
+                get = function() return getSetting("sparkStyle") or "blizzard" end,
+                set = function(v) setSetting("sparkStyle", v) end })
+            -- No alpha on either picker. On the completion effects the alpha is
+            -- already driven by the animation, so a vertex alpha would multiply
+            -- into it and read as a dimmer effect rather than a transparent one.
+            inner:AddSelectorColorPicker({ label = "Color", hasAlpha = false,
+                description = COLOR_DESC,
+                values = COLOR_VALUES, order = COLOR_ORDER,
+                get = function() return getSetting("sparkColorMode") or "spellName" end,
+                set = function(v) setSetting("sparkColorMode", v or "spellName") end,
+                getColor = function()
+                    local c = getSetting("sparkColor")
+                    if type(c) ~= "table" then return 1, 1, 1, 1 end
+                    return c[1] or 1, c[2] or 1, c[3] or 1, 1
+                end,
+                setColor = function(r, g, b) setSetting("sparkColor", { r, g, b, 1 }) end })
             inner:Finalize()
         end })
 
@@ -453,6 +521,21 @@ function CBZSettings.Render(panel, scrollContent)
                 order = { "none", "glow", "sweep", "wipe", "embers" },
                 get = function() return getSetting("completionFX") or "none" end,
                 set = function(v) setSetting("completionFX", v) end })
+            -- Hidden with the effect off, matching how Position hides its offsets on
+            -- a free bar: a color for something that does not play is noise.
+            if (getSetting("completionFX") or "none") ~= "none" then
+                inner:AddSelectorColorPicker({ label = "Color", hasAlpha = false,
+                    description = COLOR_DESC,
+                    values = COLOR_VALUES, order = COLOR_ORDER,
+                    get = function() return getSetting("completionColorMode") or "spellName" end,
+                    set = function(v) setSetting("completionColorMode", v or "spellName") end,
+                    getColor = function()
+                        local c = getSetting("completionColor")
+                        if type(c) ~= "table" then return 1, 1, 1, 1 end
+                        return c[1] or 1, c[2] or 1, c[3] or 1, 1
+                    end,
+                    setColor = function(r, g, b) setSetting("completionColor", { r, g, b, 1 }) end })
+            end
             inner:Finalize()
         end })
 

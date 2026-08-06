@@ -65,9 +65,9 @@ local INCLUDE_HOLD_AT_MAX = true
 -- never show the red one, and the palette is the thing being previewed.
 local PREVIEW_EDGES = { 0.20, 0.40, 0.60, 0.80, 1.00 }
 
--- Uninterruptible override for the dim half. LOCKED_TEXT_COLOR's grey-white is
--- right on top of the line but far too bright underneath it; the dim segments
--- need the same drained reading at the track's own value.
+-- Uninterruptible override for the dim half. LINE_COLOR_LOCKED's white is right for
+-- the lit segments and far too bright for the unlit track behind them; the dim
+-- segments need the same drained reading at the track's own value.
 local LOCKED_DIM = { 0.40, 0.40, 0.40 }
 
 --------------------------------------------------------------------------------

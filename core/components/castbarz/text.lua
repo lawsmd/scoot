@@ -39,17 +39,26 @@ local CAP_CLEARANCE = 4
 -- Ramp resolution
 --------------------------------------------------------------------------------
 
--- An NPC has no class and no gradient worth inventing, so its name is drawn flat.
+-- Every unit that is not the player or their pet draws its spell name in this one
+-- red ramp: dark on the left, hot on the right, the same left-to-right value climb
+-- the spec gradient makes on the player's own bar.
+--
 -- Red because gold is already the line behind it and the two must not merge.
-CBZ.NPC_RAMP_COLOR = { 1.00, 0.30, 0.25 }
-
--- The treatment Cast Bar X applies to every gradient it builds
--- (unitframes/cast/core.lua:66-67, :79-80): darken the base, lighten the curated
--- endpoint. Duplicated as named constants rather than reached for through CB,
--- because CB._resolveGradientColors hardcodes "player" and cannot answer for a
--- target -- but the two must still look like the same addon drew them.
-local GRADIENT_DARKEN  = 0.25
-local GRADIENT_LIGHTEN = 0.10
+--
+-- It used to class-color any player unit -- a target, a focus (2026-08-06, user).
+-- A target's class is already stated by the target frame the bar is snapped to, so
+-- spending the cast bar's only hue on it says nothing new, while making the one
+-- element whose job is "something is casting at you" change color per pull. One
+-- fixed red reads as a state; a class color reads as an identity, and identity is
+-- not what a cast on a unit that is not you is about.
+--
+-- END is the color a gradient-OFF bar draws and is deliberately the exact flat red
+-- that shipped before there was a ramp here, so turning the gradient off restores
+-- the old look byte for byte. BASE is END darkened 35% -- deeper than the 25% the
+-- class gradients used, because a single hue has only value to climb through and no
+-- hue shift to carry the ramp.
+CBZ.RED_RAMP_END  = { 1.00, 0.30, 0.25 }
+CBZ.RED_RAMP_BASE = { 0.65, 0.20, 0.16 }
 
 --- Interpolate NUM_BANDS stops between two endpoints.
 ---
@@ -79,68 +88,22 @@ local function BuildRamp(r1, g1, b1, r2, g2, b2)
     return ramp
 end
 
---- Is this unit a player character? Plain answers only.
----
---- Guard order is type() -> issecretvalue() -> use, never the reverse: type()
---- reports the REAL type of a secret, so a `type(v) == "boolean"` test PASSES on a
---- secret and any following truth-test throws (secret-guard-ordering).
----
---- This gate is mandatory before class coloring, not defensive: NPCs carry class
---- tokens that mean nothing (npc-identity-not-always-secret), so skipping it paints
---- a boar in Rogue yellow.
-local function IsPlayerUnit(unit)
-    if not unit or not UnitIsPlayer then return false end
-    local ok, v = pcall(UnitIsPlayer, unit)
-    if not ok then return false end
-    if type(v) ~= "boolean" then return false end
-    if issecretvalue and issecretvalue(v) then return false end
-    return v
-end
-
---- That unit's own class gradient, or nil when the class cannot be read.
----
---- addon.GetClassTokenForUnit is already fully secret-guarded and returns nil
---- rather than a secret (colors.lua:155-188), so there is no second guard here --
---- adding one would only hide which layer refused.
-local function ClassGradientFor(unit)
-    local token = addon.GetClassTokenForUnit and addon.GetClassTokenForUnit(unit)
-    if not token then return nil end
-
-    local r, g, b = addon.GetClassColorRGB(token)
-    if not r then return nil end
-
-    local endpoints = addon.CLASS_GRADIENT_ENDPOINTS and addon.CLASS_GRADIENT_ENDPOINTS[token]
-    if not endpoints then
-        local CB = addon.CastBars
-        local lr, lg, lb = addon.LightenColor(r, g, b, (CB and CB.SPELL_LIGHTEN_RATIO) or 0.35)
-        return r, g, b, lr, lg, lb
-    end
-
-    local dr, dg, db = addon.DarkenColor(r, g, b, GRADIENT_DARKEN)
-    local er, eg, eb = addon.LightenColor(endpoints[1], endpoints[2], endpoints[3], GRADIENT_LIGHTEN)
-    return dr, dg, db, er, eg, eb
-end
-
 --- Returns lineColor{r,g,b}, ramp[1..NUM_BANDS] where each entry is {r,g,b}.
 ---
---- Takes the BAR, not a config key. The palette belongs to whoever is casting
---- (`bar.unit`), which is fixed for the player but changes under Target and Focus;
---- resolving from the config key would leave a target bar painted in the previous
---- unit's colors until something else forced a restyle.
+--- Takes the BAR, not a config key. The palette belongs to whoever is casting, and
+--- on the player that is the spec they are currently in; the unit itself is no
+--- longer consulted on any other bar, which is what makes a Target bar's colors
+--- immune to what it happens to be targeting.
 ---
 ---   Player / Pet    the player's spec gradient, whatever they are casting on
----   any other player that unit's class gradient
----   NPC             flat red
+---   everything else the fixed red ramp
 function CBZ._ResolveCastRamp(bar)
     local line = CBZ._ResolveLineColor(bar.unitKey)
-    local flat = CBZ.NPC_RAMP_COLOR
 
-    -- Records which branch answered, for /scoot debug castz fit. Not cleared with
-    -- the palette: three different resolutions can render as "white" (a near-white
-    -- class gradient, the spec fallback, and the uninterruptible override painted
-    -- over any of them) and only this says which one was in play. The override
-    -- itself is unrecordable -- it is chosen from a secret, so no branch of ours
-    -- ever learns which color it produced.
+    -- Records which branch answered, for /scoot debug castz fit. Kept now that the
+    -- non-player branch is unconditional, because the player half still has two
+    -- resolutions that can both render near-white -- a white-ish spec gradient and
+    -- the CastBars-unavailable fallback -- and only this says which was in play.
     local function Note(source, ramp)
         bar.rampInfo = { source = source, first = ramp[1], last = ramp[#ramp], line = line }
         return line, ramp
@@ -154,23 +117,10 @@ function CBZ._ResolveCastRamp(bar)
         return Note("white (CastBars unavailable)", BuildRamp(1, 1, 1))
     end
 
-    -- A preview never consults a live unit. bar.unit on a preview is a real token,
-    -- so without this the Target pane would repaint itself every time the user
-    -- changed target with the settings panel open -- and a swatch that moves while
-    -- you are reading it is worse than one that is merely representative.
-    if bar.isPreview then
-        return Note("preview flat red", BuildRamp(flat[1], flat[2], flat[3]))
-    end
-
-    if IsPlayerUnit(bar.unit) then
-        local r1, g1, b1, r2, g2, b2 = ClassGradientFor(bar.unit)
-        if r1 then
-            return Note("class gradient", BuildRamp(r1, g1, b1, r2, g2, b2))
-        end
-        return Note("flat red (player, class unreadable)", BuildRamp(flat[1], flat[2], flat[3]))
-    end
-
-    return Note("flat red (not a player unit)", BuildRamp(flat[1], flat[2], flat[3]))
+    -- No unit read at all, which is the point: a preview and a live bar resolve
+    -- identically, and neither repaints when the target changes.
+    local base, hot = CBZ.RED_RAMP_BASE, CBZ.RED_RAMP_END
+    return Note("red ramp", BuildRamp(base[1], base[2], base[3], hot[1], hot[2], hot[3]))
 end
 
 --- The palette to draw with right now.

@@ -30,16 +30,63 @@ local function HasAtlas(name)
 end
 CBZ._HasAtlas = HasAtlas
 
---- The bright end of the unit's cast ramp -- the same stop the last band of the
---- spell name is drawn in. Using it ties the moving head to the text it chases
---- instead of leaving a white pip sitting on a colored bar.
---- Reads the cast's cached palette, so a spark built mid-cast matches the name it
---- is chasing rather than re-resolving against whatever the unit is now.
-function CBZ._ResolveSparkColor(bar)
+--- Desaturate a region, then tint it.
+---
+--- SetDesaturated collapses the source texels to luminance and SetVertexColor
+--- modulates what is left, so together they turn any piece of borrowed art into a
+--- tintable mask -- which is the only way Blizzard's green wisp and gold ember can
+--- both come out in a Priest's white. Order matters: vertex color modulates
+--- whatever the texture currently is, so desaturation has to be set first.
+---
+--- The support boolean SetDesaturated returns is deliberately ignored. On hardware
+--- that cannot desaturate the tint still lands, just over the atlas's own hue --
+--- a wrong color rather than a missing spark, which is the failure this whole file
+--- is written to prefer.
+local function Tint(tex, r, g, b, a)
+    if tex.SetDesaturated then tex:SetDesaturated(true) end
+    tex:SetVertexColor(r, g, b, a or 1)
+end
+CBZ._TintRegion = Tint
+
+--- Read a { r, g, b } custom color setting, or nil if it has never been set.
+---
+--- Guarded type()-first for the same reason _GetCastTimeColor is: the value is
+--- whatever the DB holds, and a profile edited by hand can hold anything.
+local function CustomColor(key)
+    local c = CBZ._GetSetting(key)
+    if type(c) ~= "table" or type(c[1]) ~= "number" then return nil end
+    return c[1], c[2], c[3]
+end
+
+--- Resolve one of the two flourish colors.
+---
+--- "spellName" (the default) takes the bright end of the unit's cast ramp -- the
+--- same stop the last band of the spell name is drawn in -- which ties the moving
+--- head and the finish flourish to the text they belong to instead of leaving
+--- Blizzard's gold sitting on a colored bar. On your own bar that is your spec
+--- color; on a target's it is that unit's class color, and flat red on an NPC.
+---
+--- Reads the cast's cached palette via _GetRamp, so a spark colored mid-cast
+--- matches the name it is chasing rather than re-resolving against whatever the
+--- unit is now -- and _GetRamp honours bar.rampOverride, which is what keeps the
+--- settings-page preview deterministic without this function knowing it exists.
+local function ResolveFlourishColor(bar, modeKey, colorKey)
+    if CBZ._GetSetting(modeKey) == "custom" then
+        local r, g, b = CustomColor(colorKey)
+        if r then return r, g, b end
+    end
     local ramp = CBZ._GetRamp(bar)
     local c = ramp and ramp[CBZ.NUM_BANDS]
     if not c then return 1, 1, 1 end
     return c[1], c[2], c[3]
+end
+
+function CBZ._ResolveSparkColor(bar)
+    return ResolveFlourishColor(bar, "sparkColorMode", "sparkColor")
+end
+
+function CBZ._ResolveFinishColor(bar)
+    return ResolveFlourishColor(bar, "completionColorMode", "completionColor")
 end
 
 --------------------------------------------------------------------------------
@@ -107,7 +154,10 @@ local CARET_TEXTURE = "Interface\\AddOns\\Scoot\\media\\textures\\flyout-nub"
 
 local SparkBuilders = {}
 
---- Blizzard's pip, unchanged. The shipped default.
+--- Blizzard's pip. The shipped default, and the one spark whose art carries its
+--- own hue -- the other three are a solid fill or a white triangle, so they have
+--- always drawn in the cast's color and there is nothing in them to desaturate.
+--- Tint() is what brings this one into line with them.
 function SparkBuilders.blizzard(bar, geom)
     local parts = bar._sparkParts
     local tex = parts.blizzardTex
@@ -118,6 +168,7 @@ function SparkBuilders.blizzard(bar, geom)
     if not HasAtlas("ui-castingbar-pip") then return false end
 
     tex:SetAtlas("ui-castingbar-pip")
+    Tint(tex, CBZ._ResolveSparkColor(bar))
     tex:ClearAllPoints()
     tex:SetSize(8, math.max(geom.capH, geom.lineH * 4))
     tex:SetPoint("CENTER", bar.fillTex, "RIGHT", 0, 0)
@@ -271,6 +322,9 @@ table.freeze(CBZ.SPARK_STYLES)
 --- settings panel would otherwise leak a region per flip.
 function CBZ._BuildSpark(bar, geom)
     bar._sparkParts = bar._sparkParts or {}
+    -- Kept so _RecolorSpark can replay the same geometry at cast start without
+    -- the layout pass having to run again.
+    bar._sparkGeom = geom
 
     for _, part in pairs(bar._sparkParts) do
         if type(part) == "table" and not part.Hide then
@@ -294,6 +348,23 @@ function CBZ._BuildSpark(bar, geom)
     end
 
     bar._sparkStyle = style
+end
+
+--- Re-apply the spark's color for the cast that is starting now.
+---
+--- The layout pass is the only thing that used to color the spark, and it runs on
+--- settings changes -- so on a Target bar the color was resolved against whoever
+--- the target happened to be when the panel was last touched, and never refreshed.
+--- Under "spellName" that is visibly wrong: the name would take the new unit's
+--- class color and the spark chasing it would keep the old one.
+---
+--- Replays _BuildSpark rather than duplicating each style's coloring. Builders are
+--- already required to be idempotent and to reuse their regions (see the note
+--- above SparkBuilders), so this allocates nothing -- it is the same call the
+--- layout pass makes, with the geometry it was last given.
+function CBZ._RecolorSpark(bar)
+    if not bar._sparkGeom then return end
+    CBZ._BuildSpark(bar, bar._sparkGeom)
 end
 
 --- Show or hide the spark regions that do not live on bar.sparkFrame.
@@ -729,17 +800,50 @@ function CBZ._LayoutFinishFXFrame(bar, geom, style)
             -- bar, which is the axis it is travelling, instead of away from it.
             -- Square was the mistake: scaling a square down to fix its height also
             -- throws away the width, which was never the problem.
-            -- Tinted to the unit's ramp so the wipe shares the palette of the name
-            -- it has just finished drawing.
-            local r, g, b = CBZ._ResolveSparkColor(bar)
             frame._wipeGlow:SetSize(size * 1.6, size * 0.8)
-            frame._wipeGlow:SetVertexColor(r, g, b, 0.7)
         end
     elseif style == "sweep" and frame._sweepMoves then
         local travel = geom.barW + (frame._sweepOvershoot or 0)
         for _, move in ipairs(frame._sweepMoves) do
             move:SetOffset(travel, 0)
         end
+    end
+
+    CBZ._RecolorFinishFX(bar)
+end
+
+--- The single owner of completion-effect color.
+---
+--- All eleven textures across the four effects are Blizzard's own art, authored in
+--- its own gold and green, so every one of them is desaturated and tinted -- there
+--- is no per-effect exception and no atlas whose hue is allowed to survive. One
+--- loop over ctrl:GetTextures() covers both construction paths, since it returns
+--- the multi-texture array or wraps the single texture (animations.lua:144-152).
+---
+--- Called twice: from the layout pass, and again from _PlayFinishFX so the effect
+--- takes the palette of the cast that just landed rather than the one that was
+--- current when the settings panel was last open. Same staleness _RecolorSpark
+--- fixes, same reason.
+---
+--- It has to be the ONLY writer. The wipe's halo carries a deliberate 0.7 -- it is
+--- meant to sit softer than the shine in front of it -- and a blanket pass running
+--- after a per-style tint would silently restore it to full strength, which is why
+--- that line moved out of _LayoutFinishFXFrame and down here.
+function CBZ._RecolorFinishFX(bar)
+    local ctrl = bar._finishFX
+    if not ctrl then return end
+
+    local textures = ctrl.GetTextures and ctrl:GetTextures()
+    if not textures then return end
+
+    local r, g, b = CBZ._ResolveFinishColor(bar)
+    for _, tex in ipairs(textures) do
+        Tint(tex, r, g, b)
+    end
+
+    local frame = ctrl:GetFrame()
+    if frame and frame._wipeGlow then
+        Tint(frame._wipeGlow, r, g, b, 0.7)
     end
 end
 
@@ -748,7 +852,12 @@ end
 function CBZ._PlayFinishFX(bar)
     local ctrl = bar._finishFX
     if not ctrl then return end
+    -- After Stop (which zeroes every texture's alpha) and before Play, so the
+    -- effect takes the palette of the cast that has just landed. Vertex color and
+    -- the animated alpha are independent channels, so recoloring here cannot
+    -- disturb the fade the animation is about to drive.
     ctrl:Stop()
+    CBZ._RecolorFinishFX(bar)
     ctrl:Play()
 end
 

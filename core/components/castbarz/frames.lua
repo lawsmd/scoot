@@ -58,8 +58,9 @@ local GLOW_PAD_Y = 9
 -- line was indistinguishable from a fixed one. Read the code, not the screen, when
 -- the answer is a single color.
 --
--- The remaining units keep gold, which was chosen against the flat red an NPC cast
--- draws (Phase 2).
+-- The remaining units keep gold, which was chosen against the red their names draw
+-- in (Phase 2) -- and reads against it on every one of them since 2026-08-06, when
+-- class coloring came off the name (text.lua, RED_RAMP_END).
 CBZ.LINE_COLOR_DEFAULT = { 1.0, 0.70, 0.00 }   -- gold, interruptible
 CBZ.LINE_COLOR_LOCKED  = { 1.0, 1.00, 1.00 }   -- white, uninterruptible
 CBZ.LINE_COLOR_OWN_FALLBACK = { 1.0, 1.00, 1.00 }  -- class unresolvable
