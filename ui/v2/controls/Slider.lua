@@ -56,6 +56,11 @@ local SLIDER_ROW_HEIGHT_WITH_BOTH = 80
 local SLIDER_PADDING = 12
 local SLIDER_END_LABEL_FONT_SIZE = 9
 
+-- Emphasized (hero) styling constants
+local EMPHASIZED_EXTRA_HEIGHT = 12
+local EMPHASIZED_LABEL_SIZE = 14
+local EMPHASIZED_BORDER_WIDTH = 3
+
 -- Dynamic height constants
 local MAX_ROW_HEIGHT = 200        -- Cap to prevent excessively tall rows
 local LABEL_LINE_HEIGHT = 16      -- Approximate label height
@@ -94,6 +99,7 @@ function Controls:CreateSlider(options)
     local displaySuffix = options.displaySuffix or ""
     local name = options.name
     local isDisabledFn = options.disabled or options.isDisabled
+    local emphasized = options.emphasized or false
 
     -- Edit Mode sync support: debounced callback for expensive operations
     local onEditModeSync = options.onEditModeSync
@@ -112,6 +118,12 @@ function Controls:CreateSlider(options)
     elseif hasEndLabels then
         rowHeight = SLIDER_ROW_HEIGHT_WITH_LABELS
     end
+    if emphasized then
+        rowHeight = rowHeight + EMPHASIZED_EXTRA_HEIGHT
+    end
+
+    local labelFontSize = emphasized and EMPHASIZED_LABEL_SIZE or 13
+    local leftBorderWidth = emphasized and EMPHASIZED_BORDER_WIDTH or 0
 
     -- Get theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -141,6 +153,23 @@ function Controls:CreateSlider(options)
     rowBorder:SetHeight(1)
     rowBorder:SetColorTexture(ar, ag, ab, 0.2)
     row._rowBorder = rowBorder
+    row._emphasized = emphasized
+
+    -- Left accent border + faint background highlight for emphasized sliders
+    if emphasized then
+        local leftAccent = row:CreateTexture(nil, "BORDER", nil, -1)
+        leftAccent:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        leftAccent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+        leftAccent:SetWidth(leftBorderWidth)
+        leftAccent:SetColorTexture(ar, ag, ab, 1)
+        row._leftAccent = leftAccent
+
+        local emphBg = row:CreateTexture(nil, "BACKGROUND", nil, -7)
+        emphBg:SetPoint("TOPLEFT", leftBorderWidth, 0)
+        emphBg:SetPoint("BOTTOMRIGHT", 0, 0)
+        emphBg:SetColorTexture(ar, ag, ab, 0.03)
+        row._emphBg = emphBg
+    end
 
     -- Calculate vertical offset for label positioning
     local labelYOffset = 0
@@ -153,8 +182,8 @@ function Controls:CreateSlider(options)
     -- Label text (left side)
     local labelFS = row:CreateFontString(nil, "OVERLAY")
     local labelFont = theme:GetFont("LABEL")
-    labelFS:SetFont(labelFont, 13, "")
-    labelFS:SetPoint("LEFT", row, "LEFT", SLIDER_PADDING, labelYOffset)
+    labelFS:SetFont(labelFont, labelFontSize, "")
+    labelFS:SetPoint("LEFT", row, "LEFT", SLIDER_PADDING + leftBorderWidth, labelYOffset)
     labelFS:SetText(label)
     labelFS:SetTextColor(ar, ag, ab, 1)
     row._label = labelFS
@@ -163,8 +192,8 @@ function Controls:CreateSlider(options)
     if hasDesc then
         local descFS = row:CreateFontString(nil, "OVERLAY")
         local descFont = theme:GetFont("VALUE")
-        descFS:SetFont(descFont, 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
+        descFS:SetFont(descFont, emphasized and 12 or 11, "")
+        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, emphasized and -4 or -2)
         descFS:SetText(description)
         descFS:SetTextColor(dimR, dimG, dimB, 1)
         descFS:SetJustifyH("LEFT")
@@ -183,7 +212,7 @@ function Controls:CreateSlider(options)
             if rowWidth == 0 then return false end
 
             -- Calculate available width for description text
-            local descAvailableWidth = rowWidth - sliderWidth - (SLIDER_ARROW_WIDTH * 2) - inputWidth - (SLIDER_PADDING * 3)
+            local descAvailableWidth = rowWidth - sliderWidth - (SLIDER_ARROW_WIDTH * 2) - inputWidth - (SLIDER_PADDING * 3) - leftBorderWidth
             if descAvailableWidth <= 0 then return false end
 
             -- Explicitly set description width so GetStringHeight returns wrapped height
@@ -767,6 +796,13 @@ function Controls:CreateSlider(options)
         -- Update row border
         if row._rowBorder then
             row._rowBorder:SetColorTexture(r, g, b, 0.2)
+        end
+        -- Update emphasized accents
+        if row._leftAccent then
+            row._leftAccent:SetColorTexture(r, g, b, 1)
+        end
+        if row._emphBg then
+            row._emphBg:SetColorTexture(r, g, b, 0.03)
         end
         -- Update hover bg
         if row._hoverBg then

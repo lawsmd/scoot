@@ -689,13 +689,15 @@ function Builder:AddSlider(options)
     end
 
     if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
+        local spacing = options.emphasized and (ITEM_SPACING + 4) or ITEM_SPACING
+        self._currentY = self._currentY - spacing
     end
 
     local slider = Controls:CreateSlider({
         parent = scrollContent,
         label = options.label,
         description = options.description,
+        emphasized = options.emphasized,
         min = options.min,
         max = options.max,
         step = options.step,
