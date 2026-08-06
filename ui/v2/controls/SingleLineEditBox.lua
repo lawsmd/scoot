@@ -245,5 +245,21 @@ function Controls:CreateSingleLineEditBox(options)
         end
     end
 
+    -- Re-assert the text once the container has a rect -- same EditBox layout
+    -- timing as the slider value boxes (see the note in Slider.lua). Repaints
+    -- from the committed text, never from mid-typing state, and never while
+    -- the box has focus.
+    local function RepaintText()
+        if editBox:HasFocus() then return end
+        local text = container._committedText or ""
+        editBox:SetText("")
+        editBox:SetText(text)
+        editBox:SetCursorPosition(0)
+        if container._updatePlaceholder then container._updatePlaceholder() end
+    end
+    container._repaintText = RepaintText
+    C_Timer.After(0, RepaintText)
+    container:SetScript("OnShow", RepaintText)
+
     return container
 end

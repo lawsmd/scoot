@@ -477,6 +477,18 @@ function Controls:CreateDualSlider(options)
         miniSlider._currentValue = ClampValue(getValue() or minVal)
         UpdateDisplay()
 
+        -- Re-assert the value box's text once the row has a rect -- see the
+        -- long note in Slider.lua: an EditBox lays out at SetText time, so a
+        -- row built before its pane's first layout pass stores the value but
+        -- draws nothing. Clearing first forces the re-layout an identical
+        -- SetText would skip.
+        miniSlider._repaintInput = function()
+            if not inputFrame or inputFrame:HasFocus() then return end
+            inputFrame:SetText("")
+            inputFrame:SetText(FormatValue(miniSlider._currentValue))
+            inputFrame:SetCursorPosition(0)
+        end
+
         -- Parse input value
         local function ParseInputValue(text)
             if displaySuffix ~= "" and text:sub(-#displaySuffix) == displaySuffix then
@@ -505,6 +517,16 @@ function Controls:CreateDualSlider(options)
     -- Create slider B (right)
     local sliderB = CreateMiniSlider(sliderBOpts, sliderA, "RIGHT", DUAL_SLIDER_GROUP_GAP)
     row._sliderB = sliderB
+
+    -- Both boxes repaint on the row's first laid-out frame and on any later
+    -- show (collapsed section expanding, tab page switching in).
+    local function RepaintInputs()
+        if sliderA and sliderA._repaintInput then sliderA._repaintInput() end
+        if sliderB and sliderB._repaintInput then sliderB._repaintInput() end
+    end
+    row._repaintInput = RepaintInputs
+    C_Timer.After(0, RepaintInputs)
+    row:SetScript("OnShow", RepaintInputs)
 
     -- State tracking
     row._isDisabled = false

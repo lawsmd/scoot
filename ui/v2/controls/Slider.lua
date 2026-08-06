@@ -480,6 +480,24 @@ function Controls:CreateSlider(options)
     end
     row._updateDisplay = UpdateDisplay
 
+    -- Re-assert the value box's text once the row has a rect.
+    -- An EditBox lays its text out at SetText time, against whatever rect it
+    -- has right then; a FontString re-lays out every render pass. So when a
+    -- page is built before its rows have been through a layout pass -- the
+    -- first panel open after a reload -- the value is stored (GetText returns
+    -- it) but nothing draws, while the label, description and thumb all look
+    -- correct. Re-opening the panel rebuilds into an already-laid-out pane,
+    -- which is why the second look was always fine.
+    -- Clearing first is deliberate: SetText with the identical string can be
+    -- a no-op internally, and a no-op would not re-lay-out anything.
+    local function RepaintInput()
+        if not inputFrame or inputFrame:HasFocus() then return end
+        inputFrame:SetText("")
+        inputFrame:SetText(FormatValue(row._currentValue))
+        inputFrame:SetCursorPosition(0)
+    end
+    row._repaintInput = RepaintInput
+
     -- Initialize from getter, but respect global sync lock
     -- If a sync is pending for this debounceKey (from a previous slider instance),
     -- use the pending value instead of re-fetching (which would get the old value)
@@ -489,6 +507,12 @@ function Controls:CreateSlider(options)
         row._currentValue = ClampValue(getValue() or minVal)
     end
     UpdateDisplay()
+    -- Covers both ways a row can miss its first layout: built into a pane that
+    -- has not laid out yet (the timer), and built inside a hidden container --
+    -- a collapsed section or an inactive tab page -- that is shown later (OnShow;
+    -- the script is set after creation, so it never fires for the initial show).
+    C_Timer.After(0, RepaintInput)
+    row:SetScript("OnShow", RepaintInput)
 
     -- Sync lock state for Edit Mode sync protection
     row._syncLocked = false  -- Only used for non-debounceKey sliders
