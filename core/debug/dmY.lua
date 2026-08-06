@@ -1962,3 +1962,50 @@ function addon.DebugDMYNames()
 
     addon.DebugShowWindow("DMY Names", table.concat(lines, "\n"))
 end
+
+--------------------------------------------------------------------------------
+-- /scoot debug dmY drillstate — In-combat drilldown resolution counters
+-- Passive: reports which link of the combat drilldown chain succeeded or
+-- failed for clicks since login. Not required for the feature; post-hoc
+-- diagnosis only. (The older `drilldown` subcommand is the field-level
+-- secrecy probe; this one reads production counters.)
+--------------------------------------------------------------------------------
+
+function addon.DebugDMYDrillState()
+    local DMY = addon.DamageMetersY
+    if not DMY then
+        addon.DebugShowWindow("DMY Drilldown State", "DMY not available.")
+        return
+    end
+
+    local lines = { "== DMY In-Combat Drilldown State ==", "" }
+    local function add(fmt, ...)
+        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
+    end
+
+    add("InCombatLockdown(): %s", tostring(InCombatLockdown()))
+    add("")
+
+    local c = DMY._drillCounts or {}
+    add("[1] GUID resolution (combat clicks since login):")
+    add("  tierLocal  (own row via UnitGUID):     %d", c.tierLocal or 0)
+    add("  tierCache  (ikey -> OOC GUID cache):   %d", c.tierCache or 0)
+    add("  unresolved (fell back to pending):     %d", c.unresolved or 0)
+    add("")
+    add("[2] Live query + render:")
+    add("  popOk      (live drilldown rendered):  %d", c.popOk or 0)
+    add("  queryFail  (API error or nil result):  %d", c.queryFail or 0)
+    add("  emptyData  (no combatSpells returned): %d", c.emptyData or 0)
+    add("  popFail    (render threw, degraded):   %d", c.popFail or 0)
+    add("")
+
+    local dd = DMY._activeDrilldown
+    if dd then
+        add("[3] Active drilldown: meterType=%s isPending=%s hasGUID=%s",
+            tostring(dd.meterType), tostring(dd.isPending), tostring(dd.sourceGUID ~= nil))
+    else
+        add("[3] Active drilldown: none")
+    end
+
+    addon.DebugShowWindow("DMY Drilldown State", table.concat(lines, "\n"))
+end

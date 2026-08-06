@@ -346,6 +346,7 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
     row._sourceName = displayName -- may be secret in combat; consumer must handle
     row._classFilename = player.classFilename
     row._identityKey = player.identityKey
+    row._isLocalPlayer = player.isLocalPlayer
     row._sourceCreatureID = nil -- not currently captured in merged data; nil OK for player sources
 
     -- Name display (SetText accepts secrets during combat)

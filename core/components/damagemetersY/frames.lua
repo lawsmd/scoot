@@ -279,14 +279,20 @@ function DMY._CreateFlyoutMenu(menuWidth)
         row:ClearAllPoints()
         row:SetPoint("TOP", self, "TOP", 0, self._yOff)
 
-        -- Icon
-        local tex
+        -- Icon. spellID may be secret in combat: the lookup is
+        -- AllowedWhenTainted and returns a secret fileID; pcall contains the
+        -- SetTexture assumption, falling back to the question mark.
+        local iconSet = false
         if spec.spellID and C_Spell and C_Spell.GetSpellTexture then
-            tex = C_Spell.GetSpellTexture(spec.spellID)
+            local ok, applied = pcall(function()
+                local tex = C_Spell.GetSpellTexture(spec.spellID)
+                if not tex then return false end
+                row._icon:SetTexture(tex)
+                return true
+            end)
+            iconSet = ok and applied == true
         end
-        if tex then
-            row._icon:SetTexture(tex)
-        else
+        if not iconSet then
             row._icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         end
 
@@ -302,11 +308,24 @@ function DMY._CreateFlyoutMenu(menuWidth)
         row._valueFS:SetText(spec.valueText or "")
         row._valueFS:SetTextColor(1, 1, 1, 1)
 
-        -- Bar fill + color
-        local frac = tonumber(spec.fillFraction) or 0
-        if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
-        row._bar:SetMinMaxValues(0, 1)
-        row._bar:SetValue(frac)
+        -- Bar fill + color. rawFill: secret amounts go straight to the
+        -- StatusBar (SetValue/SetMinMaxValues are AllowedWhenTainted); the
+        -- plain flag is the branch condition — never test the raw fields.
+        if spec.rawFill then
+            local ok = pcall(function()
+                row._bar:SetMinMaxValues(0, spec.fillMaxRaw)
+                row._bar:SetValue(spec.fillValueRaw)
+            end)
+            if not ok then
+                row._bar:SetMinMaxValues(0, 1)
+                row._bar:SetValue(0)
+            end
+        else
+            local frac = tonumber(spec.fillFraction) or 0
+            if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
+            row._bar:SetMinMaxValues(0, 1)
+            row._bar:SetValue(frac)
+        end
         if spec.barColor then
             row._bar:SetStatusBarColor(spec.barColor[1] or 0.6, spec.barColor[2] or 0.6, spec.barColor[3] or 0.6, 0.85)
         else

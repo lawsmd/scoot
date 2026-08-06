@@ -130,13 +130,14 @@ function DMY._GetAttackerColor(details)
 end
 
 --------------------------------------------------------------------------------
--- Query helper — wraps the source API in pcall. OOC only.
+-- Query helper — wraps the source API in pcall. Legal in combat too: the API
+-- rejects only SECRET arguments from tainted context, and dd.sourceGUID is
+-- plain by construction (row key OOC, _ResolveCombatSourceGUID in combat).
 --------------------------------------------------------------------------------
 
 function DMY._QuerySpellBreakdown()
     local dd = DMY._activeDrilldown
     if not dd or not dd.sourceGUID then return nil end
-    if DMY._inCombat then return dd.spellData end
 
     if not C_DamageMeter then return nil end
     local ok, result
@@ -154,9 +155,13 @@ function DMY._QuerySpellBreakdown()
 
     if ok and result then
         dd.spellData = result
+        dd.spellDataFromCombat = DMY._inCombat and true or false
         dd.isPending = false
         return result
     end
+    -- Combat-queried data has secret fields — never hand it to the OOC
+    -- populate path as a stale fallback (regen refresh auto-closes on nil).
+    if dd.spellDataFromCombat then return nil end
     return dd.spellData
 end
 
@@ -285,6 +290,94 @@ function DMY._PopulateDrilldownPopup(menu, spellData)
 end
 
 --------------------------------------------------------------------------------
+-- Combat-safe populate. Every field on the returned structure is secret in
+-- combat (SecretWhenInCombat; DamageMeterCombatSpell has no NeverSecret
+-- fields), so this renders only what the secret-capable primitives allow:
+-- engine-sorted rows, C_Spell name/icon lookups (AllowedWhenTainted),
+-- UnifiedAbbreviate values, raw StatusBar fills. Dropped until the regen
+-- upgrade: percent shares (no secret division), heal-family aggregation
+-- (secret table keys), pet/attacker suffixes (emptiness tests throw), and
+-- isMob-based coloring (classification-only instead). Caller pcalls this;
+-- returns true only when spell rows were rendered.
+--------------------------------------------------------------------------------
+
+function DMY._PopulateDrilldownPopupCombat(menu, spellData)
+    local dd = DMY._activeDrilldown
+    if not dd then return false end
+
+    local spells = spellData and spellData.combatSpells
+    if not spells or #spells == 0 then
+        DMY._drillCounts.emptyData = DMY._drillCounts.emptyData + 1
+        return false
+    end
+
+    menu:Clear()
+
+    -- Concat is secret-whitelisted; truthiness only on dd.sourceName.
+    local title = (dd.sourceName or "Unknown") .. "  —  " .. GetMetricLabel(dd.meterType)
+    local classColor = nil
+    if dd.classFilename then
+        local cc = addon.ClassColors and addon.ClassColors[dd.classFilename]
+        if cc then classColor = { cc.r or 1, cc.g or 1, cc.b or 1 } end
+    end
+    menu:AddHeaderBar(title, classColor, function() DMY._CloseDrilldown() end)
+    menu:AddDivider()
+
+    local barR, barG, barB = 0.6, 0.6, 0.6
+    if dd.classFilename then
+        local cc = addon.ClassColors and addon.ClassColors[dd.classFilename]
+        if cc then barR, barG, barB = cc.r or 0.6, cc.g or 0.6, cc.b or 0.6 end
+    end
+
+    -- Secret max for raw fills; engine sorts descending, so the first row's
+    -- total substitutes when the source-level maxAmount is absent.
+    local fillMax = spellData.maxAmount or (spells[1] and spells[1].totalAmount)
+
+    for _, spell in ipairs(spells) do
+        local spellName
+        if C_Spell and C_Spell.GetSpellName then
+            local ok, n = pcall(C_Spell.GetSpellName, spell.spellID)
+            if ok and n then spellName = n end
+        end
+        if not spellName then spellName = "Unknown Spell" end
+
+        -- Attacker color: classification is NeverSecret; isMob is secret, so
+        -- unitClassFilename can't be trusted (mob "WARRIOR" junk) — skip it.
+        local nameR, nameG, nameB = 1, 1, 1
+        if DAMAGE_TAKEN_FAMILY[dd.meterType] then
+            local details = spell.combatSpellDetails
+            local classification = details and details.classification
+            if type(classification) == "string"
+                and not (issecretvalue and issecretvalue(classification)) then
+                local c = CLASSIFICATION_COLORS[classification]
+                if c then nameR, nameG, nameB = c[1], c[2], c[3] end
+            end
+        end
+
+        local primaryValue
+        if dd.showsPerSecondAsPrimary then
+            primaryValue = spell.amountPerSecond or spell.totalAmount
+        else
+            primaryValue = spell.totalAmount
+        end
+
+        menu:AddSpellRow({
+            spellID = spell.spellID,
+            nameText = spellName,
+            nameColor = { nameR, nameG, nameB },
+            valueText = DMY._UnifiedAbbreviate(primaryValue or 0),
+            rawFill = true,
+            fillValueRaw = spell.totalAmount,
+            fillMaxRaw = fillMax,
+            barColor = { barR, barG, barB },
+        })
+    end
+
+    menu:ShowAtAnchor(dd.anchor)
+    return true
+end
+
+--------------------------------------------------------------------------------
 -- Show the in-combat pending placeholder.
 --------------------------------------------------------------------------------
 
@@ -362,6 +455,7 @@ function DMY._OpenDrilldown(row, columnIndex)
         sourceName = row._sourceName,
         classFilename = row._classFilename,
         identityKey = identityKey,
+        isLocalPlayer = row._isLocalPlayer,
         meterType = meterType,
         showsPerSecondAsPrimary = (colDef.valueField == "amountPerSecond") or (colDef.primaryField == "amountPerSecond"),
         sessionType = cfg.sessionType,
@@ -389,8 +483,28 @@ function DMY._OpenDrilldown(row, columnIndex)
         return
     end
 
-    -- In-combat: show placeholder, defer query to PLAYER_REGEN_ENABLED
+    -- In-combat: attempt a live drilldown with a plain GUID. Any failed link
+    -- (unresolvable identity, query rejection, empty data, render throw)
+    -- degrades to the pending placeholder — today's exact behavior.
     if DMY._inCombat then
+        local win = DMY._windows and DMY._windows[windowIndex]
+        local guid = DMY._ResolveCombatSourceGUID(row, win and win.mergedData)
+        if guid then
+            DMY._activeDrilldown.sourceGUID = guid
+            local spellData = DMY._QuerySpellBreakdown()
+            if spellData then
+                local ok, rendered = pcall(DMY._PopulateDrilldownPopupCombat, menu, spellData)
+                if ok and rendered then
+                    DMY._drillCounts.popOk = DMY._drillCounts.popOk + 1
+                    return
+                end
+                if not ok then
+                    DMY._drillCounts.popFail = DMY._drillCounts.popFail + 1
+                end
+            else
+                DMY._drillCounts.queryFail = DMY._drillCounts.queryFail + 1
+            end
+        end
         DMY._activeDrilldown.isPending = true
         DMY._ShowPendingState(menu)
         return

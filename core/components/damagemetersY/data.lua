@@ -129,6 +129,48 @@ function DMY._RebuildGUIDCache()
 end
 
 --------------------------------------------------------------------------------
+-- In-combat drilldown GUID resolution.
+--
+-- A row clicked during combat has no plain sourceGUID (the merged key is a
+-- "rank_N" placeholder), but the source API only rejects SECRET arguments from
+-- tainted context — a plain GUID passed in combat is a legal query. Two plain
+-- sources exist: the local player's own GUID (UnitGUID("player") is never
+-- secret) and the OOC-rebuilt identity cache, guarded by the CURRENT session's
+-- collision map so a duplicate class+spec in this pull can never open another
+-- player's breakdown. Counters feed /scoot debug dmY drillstate.
+--------------------------------------------------------------------------------
+
+DMY._drillCounts = { tierLocal = 0, tierCache = 0, unresolved = 0,
+                     queryFail = 0, emptyData = 0, popOk = 0, popFail = 0 }
+
+-- Returns a plain GUID for a row clicked during combat, or nil to fall back
+-- to the pending placeholder.
+function DMY._ResolveCombatSourceGUID(row, merged)
+    local counts = DMY._drillCounts
+
+    if row and row._isLocalPlayer == true then
+        local ok, guid = pcall(UnitGUID, "player")
+        guid = ok and PlainGUID(guid) or nil
+        if guid then
+            counts.tierLocal = counts.tierLocal + 1
+            return guid
+        end
+    end
+
+    local ikey = row and row._identityKey
+    if ikey and not (merged and merged.identityCollisions and merged.identityCollisions[ikey]) then
+        local mapped = DMY._identityToGUID and DMY._identityToGUID[ikey]
+        if mapped and mapped ~= false then
+            counts.tierCache = counts.tierCache + 1
+            return mapped
+        end
+    end
+
+    counts.unresolved = counts.unresolved + 1
+    return nil
+end
+
+--------------------------------------------------------------------------------
 -- Roster name map + display-name resolution (Hide Realm Names)
 --
 -- rosterNames maps plain UnitGUIDs to plain realm-free names captured from the
