@@ -172,7 +172,7 @@ addon.MODULE_CATEGORIES = {
               versionBadge = { label = "X", title = "Damage Meters X", text = "Reskins Blizzard's built-in damage meter frames. Heavily customized frames may result in taint errors during raid encounters, use with caution." } },
             { id = "damageMeterV2", label = "Damage Meters",
               variant = "Y",
-              versionBadge = { label = "Y", title = "Damage Meters Y", text = "Custom frames that replace Blizzard's meter entirely. Zero taint. Multi-column and multi-window support." } },
+              versionBadge = { label = "Y", title = "Damage Meters Y", text = "Custom frames that replace Blizzard's meter entirely. Multi-column and multi-window support." } },
         },
     },
     extraAbilities = {
