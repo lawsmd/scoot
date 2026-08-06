@@ -1344,6 +1344,17 @@ function Builder:AddDualSlider(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
+    if Builder._scanMode and options.label then
+        table.insert(Builder._scanEntries, {
+            type = "slider",
+            label = options.label,
+            description = options.description or "",
+            rendererKey = Builder._scanRendererKey,
+            section = Builder._scanSectionStack[#Builder._scanSectionStack],
+        })
+        return self
+    end
+
     if #self._controls > 0 then
         self._currentY = self._currentY - ITEM_SPACING
     end
