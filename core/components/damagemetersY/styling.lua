@@ -288,6 +288,157 @@ function DMY._GetBarColor(player, db)
 end
 
 --------------------------------------------------------------------------------
+-- Window border helpers
+--------------------------------------------------------------------------------
+
+-- Rounded style uses the high-res rounded-corner edge file directly. It is
+-- deliberately NOT registered in BarBorders: bar-scale geometry there derives
+-- edgeSize from frameHeight/18, which is wrong for a full-size window.
+local WINDOW_ROUNDED_EDGE_FILE = "Interface\\AddOns\\Scoot\\media\\barborder\\roundcorners.tga"
+-- edgeSize per point of Border Thickness (1-8). Source tiles are 64px, so the
+-- art only ever downscales. In-game tuning knob.
+local WINDOW_EDGE_SIZE_PER_THICKNESS = 4
+-- Fraction of edgeSize the holder expands past the window rect so the corner
+-- arc sits over (not inside) the square backdrop corner. In-game tuning knob.
+local WINDOW_EDGE_EXPAND_RATIO = 0.5
+-- Breathing room between the window rect and the border on the left/right/top
+-- edges, where header and bar content hugs the frame; bottom stays flush.
+local WINDOW_BORDER_PADDING = 3
+
+local function EnsureWindowBorder(frame)
+    if frame._winBorder then return frame._winBorder end
+    local holder = CreateFrame("Frame", nil, frame, BackdropTemplateMixin and "BackdropTemplate")
+    holder:SetFrameLevel(frame:GetFrameLevel() + 10)
+    local border = { frame = holder }
+    border.top = holder:CreateTexture(nil, "OVERLAY")
+    border.bottom = holder:CreateTexture(nil, "OVERLAY")
+    border.left = holder:CreateTexture(nil, "OVERLAY")
+    border.right = holder:CreateTexture(nil, "OVERLAY")
+    frame._winBorder = border
+    return border
+end
+
+local function HideWindowSquareEdges(border)
+    border.top:Hide()
+    border.bottom:Hide()
+    border.left:Hide()
+    border.right:Hide()
+end
+
+local function ApplyWindowSquareBorder(frame, color, thickness)
+    local border = EnsureWindowBorder(frame)
+    local holder = border.frame
+    -- Clear any edgeFile backdrop left behind by a previous style
+    if holder.SetBackdrop then pcall(holder.SetBackdrop, holder, nil) end
+    holder:ClearAllPoints()
+    holder:SetPoint("TOPLEFT", frame, "TOPLEFT", -WINDOW_BORDER_PADDING, WINDOW_BORDER_PADDING)
+    holder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", WINDOW_BORDER_PADDING, 0)
+
+    -- Windows carry fractional effective scale; snap to whole physical pixels
+    local t = DMY._SnapToPixels(tonumber(thickness) or 1, frame, 1)
+    local r, g, b, a = color[1] or 0, color[2] or 0, color[3] or 0, color[4] or 1
+
+    border.top:ClearAllPoints()
+    border.top:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+    border.top:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, 0)
+    border.top:SetHeight(t)
+    border.top:SetColorTexture(r, g, b, a)
+    border.top:Show()
+
+    border.bottom:ClearAllPoints()
+    border.bottom:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, 0)
+    border.bottom:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, 0)
+    border.bottom:SetHeight(t)
+    border.bottom:SetColorTexture(r, g, b, a)
+    border.bottom:Show()
+
+    -- Left/right inset vertically by t so translucent colors don't
+    -- double-blend where edges would overlap at the corners
+    border.left:ClearAllPoints()
+    border.left:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -t)
+    border.left:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, t)
+    border.left:SetWidth(t)
+    border.left:SetColorTexture(r, g, b, a)
+    border.left:Show()
+
+    border.right:ClearAllPoints()
+    border.right:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, -t)
+    border.right:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, t)
+    border.right:SetWidth(t)
+    border.right:SetColorTexture(r, g, b, a)
+    border.right:Show()
+
+    holder:Show()
+end
+
+local function ApplyWindowEdgeBorder(frame, texture, color, thickness)
+    local border = EnsureWindowBorder(frame)
+    local holder = border.frame
+    HideWindowSquareEdges(border)
+    if not holder.SetBackdrop then
+        holder:Hide()
+        return
+    end
+
+    local edgeSize = math.max(4, math.floor((tonumber(thickness) or 1) * WINDOW_EDGE_SIZE_PER_THICKNESS + 0.5))
+    -- Expand outward so the corner arc encloses the square backdrop corner
+    local expand = math.floor(edgeSize * WINDOW_EDGE_EXPAND_RATIO + 0.5)
+    local pad = WINDOW_BORDER_PADDING
+    holder:ClearAllPoints()
+    holder:SetPoint("TOPLEFT", frame, "TOPLEFT", -(expand + pad), expand + pad)
+    holder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", expand + pad, -expand)
+
+    local ok = pcall(holder.SetBackdrop, holder, {
+        bgFile = nil,
+        edgeFile = texture,
+        tile = false,
+        edgeSize = edgeSize,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 },
+    })
+    if ok and holder.SetBackdropBorderColor then
+        holder:SetBackdropBorderColor(color[1] or 0, color[2] or 0, color[3] or 0, color[4] or 1)
+        holder:Show()
+    else
+        holder:Hide()
+    end
+end
+
+-- Cross-file: also used by the settings preview pane. Takes any plain Frame
+-- plus the component db; safe to call repeatedly.
+function DMY._ApplyWindowBorder(frame, db)
+    if not frame then return end
+    local styleKey = db.windowBorderStyle or "none"
+
+    if styleKey == "none" then
+        if frame._winBorder then frame._winBorder.frame:Hide() end
+        return
+    end
+
+    local color = db.windowBorderColor or { 0, 0, 0, 1 }
+    local thickness = tonumber(db.windowBorderThickness) or 1
+
+    if styleKey == "square" then
+        ApplyWindowSquareBorder(frame, color, thickness)
+        return
+    end
+
+    -- edgeFile styles: "rounded" resolves to the local asset; any other key
+    -- resolves through BarBorders so future styles are selector-only additions
+    local texture
+    if styleKey == "rounded" then
+        texture = WINDOW_ROUNDED_EDGE_FILE
+    else
+        local style = BarBorders and BarBorders.GetStyle and BarBorders.GetStyle(styleKey)
+        texture = style and style.texture
+    end
+    if texture then
+        ApplyWindowEdgeBorder(frame, texture, color, thickness)
+    elseif frame._winBorder then
+        frame._winBorder.frame:Hide()
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Full styling pass for a window
 --------------------------------------------------------------------------------
 
@@ -301,7 +452,9 @@ function DMY._ApplyFullStyling(windowIndex, comp)
         win.background:SetColorTexture(0, 0, 0, 0)
     else
         local bc = db.windowBackdropColor or { 0.06, 0.06, 0.08, 0.95 }
-        win.background:SetColorTexture(bc[1] or 0.06, bc[2] or 0.06, bc[3] or 0.08, bc[4] or 0.95)
+        -- Opacity slider wins; unset falls back to the color's stored alpha
+        local alpha = db.windowBackdropOpacity and (db.windowBackdropOpacity / 100) or bc[4] or 0.95
+        win.background:SetColorTexture(bc[1] or 0.06, bc[2] or 0.06, bc[3] or 0.08, alpha)
     end
 
     -- Frame size and scale (per-window, falls back to shared)
@@ -312,6 +465,9 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     win.frame:SetScale(tonumber(cfg and cfg.windowScale or db.windowScale) or 1.0)
     local snap = DMY._SnapToPixels
     win.frame:SetSize(snap(fw, win.frame), snap(fh, win.frame))
+
+    -- Window border (after SetScale/SetSize: pixel snap reads effective scale)
+    DMY._ApplyWindowBorder(win.frame, db)
 
     -- Title bar backdrop
     if win.header and win.header._bg then
@@ -408,9 +564,9 @@ function DMY._StyleBarRow(row, player, db)
     ApplyIcon(row, player, db)
     DMY._ApplyBarBorder(row, player, db)
 
-    -- Hollow outline: show when hollow mode active and bars visible
+    -- Hollow outline: show when hollow mode active
     local barMode = db.barMode or "default"
-    if barMode == "hollow" and db.showBars ~= false then
+    if barMode == "hollow" then
         local cr, cg, cb = DMY._GetBarColor(player, db)
         ShowHollowOutline(row, cr, cg, cb)
     else

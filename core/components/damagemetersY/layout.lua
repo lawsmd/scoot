@@ -372,8 +372,8 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
     end
 
     -- Show/hide bar fill and background; mode-aware text parenting
-    local showBars = not db or db.showBars ~= false
     local barMode = db and db.barMode or "default"
+    local showBars = barMode ~= "hidden"
     local barTex = row.bar:GetStatusBarTexture()
 
     if not showBars then

@@ -67,7 +67,7 @@ Navigation.NavModel = {
                 versionBadge = { label = "X", title = "Damage Meters X", text = "Reskins Blizzard's built-in damage meter frames. Heavily customized frames may result in taint errors during raid encounters, use with caution." } },
             { key = "damageMeterV2", label = "Damage Meters", module = "damageMeter", moduleSubId = "damageMeterV2",
                 variant = "Y",
-                versionBadge = { label = "Y", title = "Damage Meters Y", text = "Custom frames that replace Blizzard's meter entirely. Zero taint. Multi-column and multi-window support." },
+                versionBadge = { label = "Y", title = "Damage Meters Y", text = "Custom frames that replace Blizzard's meter entirely. Multi-column and multi-window support." },
                 betaBadge = true },
             { key = "tooltip", label = "Tooltip", module = "tooltip" },
             { key = "objectiveTracker", label = "Objective Tracker", module = "objectiveTracker" },

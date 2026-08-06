@@ -122,9 +122,15 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     container:SetHeight(totalHeight)
 
     local bgc = db.windowBackdropColor or { 0.06, 0.06, 0.08, 0.95 }
+    local bgAlpha = db.windowBackdropOpacity and (db.windowBackdropOpacity / 100) or bgc[4] or 0.95
     local bg = container:CreateTexture(nil, "BACKGROUND", nil, -8)
     bg:SetAllPoints()
-    bg:SetColorTexture(bgc[1] or 0.06, bgc[2] or 0.06, bgc[3] or 0.08, bgc[4] or 0.95)
+    bg:SetColorTexture(bgc[1] or 0.06, bgc[2] or 0.06, bgc[3] or 0.08, bgAlpha)
+
+    -- Window border preview (same code path as the real windows)
+    if DMY and DMY._ApplyWindowBorder then
+        DMY._ApplyWindowBorder(container, db)
+    end
 
     -- Use parent width for layout (read after anchoring, fall back to estimate)
     local containerWidth = parentFrame:GetWidth()
@@ -220,8 +226,8 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     local maxPrimaryVal = GetPlayerValue(PREVIEW_PLAYERS[1], primaryFormatKey)
     if maxPrimaryVal <= 0 then maxPrimaryVal = 1 end
 
-    local showBars = db.showBars ~= false
     local barMode = db.barMode or "default"
+    local showBars = barMode ~= "hidden"
 
     -- Bar rows
     for rowIdx, player in ipairs(PREVIEW_PLAYERS) do
@@ -636,8 +642,8 @@ function DMYSettings.Render(panel, scrollContent)
             inner:AddSelector({
                 label = "Bar Mode",
                 description = "Controls how the damage meter bars are displayed.",
-                values = { default = "Default", thin = "Thin", hollow = "Hollow" },
-                order = { "default", "thin", "hollow" },
+                values = { default = "Default", thin = "Thin", hollow = "Hollow", hidden = "Hide Bars" },
+                order = { "default", "thin", "hollow", "hidden" },
                 emphasized = true,
                 get = function() return getSetting("barMode") or "default" end,
                 set = function(v) setAndRefresh("barMode", v) end,
@@ -731,9 +737,6 @@ function DMYSettings.Render(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     barVisibility = function(_, tabInner)
-                        tabInner:AddToggle({ label = "Hide Bars",
-                            get = function() return getSetting("showBars") == false end,
-                            set = function(v) setAndRefresh("showBars", not v) end })
                         tabInner:AddToggle({ label = "Hide Rank Numbers",
                             get = function() return getSetting("hideRankNumbers") == true end,
                             set = function(v) setAndRefresh("hideRankNumbers", v) end })
@@ -876,7 +879,25 @@ function DMYSettings.Render(panel, scrollContent)
             inner:Finalize()
         end })
 
-    builder:AddCollapsibleSection({ title = "Backdrop", componentId = "damageMeterV2", sectionKey = "backdrop", defaultExpanded = false,
+    builder:AddCollapsibleSection({ title = "Window Border", componentId = "damageMeterV2", sectionKey = "windowBorder", defaultExpanded = false,
+        buildContent = function(_, inner)
+            inner:AddSelector({ label = "Border Style",
+                values = { none = "None", square = "Square", rounded = "Rounded" },
+                order = { "none", "square", "rounded" },
+                get = function() return getSetting("windowBorderStyle") or "none" end,
+                set = function(v) setAndRefresh("windowBorderStyle", v) end })
+            inner:AddColorPicker({ label = "Border Color", hasAlpha = true,
+                get = function() local c = getSetting("windowBorderColor") or {0,0,0,1}; return c[1],c[2],c[3],c[4] end,
+                set = function(r,g,b,a) setAndRefresh("windowBorderColor", {r,g,b,a}) end,
+                isDisabled = function() return (getSetting("windowBorderStyle") or "none") == "none" end })
+            inner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
+                get = function() return getSetting("windowBorderThickness") or 1 end,
+                set = function(v) setAndRefresh("windowBorderThickness", v) end,
+                isDisabled = function() return (getSetting("windowBorderStyle") or "none") == "none" end })
+            inner:Finalize()
+        end })
+
+    builder:AddCollapsibleSection({ title = "Window Backdrop", componentId = "damageMeterV2", sectionKey = "backdrop", defaultExpanded = false,
         buildContent = function(_, inner)
             inner:AddToggle({ label = "Show Window Backdrop",
                 get = function() return getSetting("showBackdrop") ~= false end,
@@ -884,6 +905,15 @@ function DMYSettings.Render(panel, scrollContent)
             inner:AddColorPicker({ label = "Backdrop Color",
                 get = function() local c = getSetting("windowBackdropColor") or {0.06,0.06,0.08,0.95}; return c[1],c[2],c[3],c[4] end,
                 set = function(r,g,b,a) setAndRefresh("windowBackdropColor", {r,g,b,a}) end,
+                isDisabled = function() return getSetting("showBackdrop") == false end })
+            inner:AddSlider({ label = "Backdrop Opacity", min = 1, max = 100, step = 1,
+                get = function()
+                    local v = getSetting("windowBackdropOpacity")
+                    if v then return v end
+                    local c = getSetting("windowBackdropColor") or {0.06,0.06,0.08,0.95}
+                    return math.floor((c[4] or 0.95) * 100 + 0.5)
+                end,
+                set = function(v) setAndRefresh("windowBackdropOpacity", v) end,
                 isDisabled = function() return getSetting("showBackdrop") == false end })
             inner:Finalize()
         end })

@@ -45,6 +45,7 @@ read_globals = {
     "UnitName",
 
     -- WoW frame methods/mixins (accessed as globals in some patterns)
+    "BackdropTemplateMixin",
     "GameTooltip",
     "PlayerFrame",
     "TargetFrame",

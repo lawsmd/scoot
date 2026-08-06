@@ -158,7 +158,6 @@ addon:RegisterComponentInitializer(function(self)
             barBorderThickness      = { type = "addon", default = 1 },
             barBorderInsetH         = { type = "addon", default = 0 },
             barBorderInsetV         = { type = "addon", default = 0 },
-            showBars                = { type = "addon", default = true },
             barMode                 = { type = "addon", default = "default" },
             hideRankNumbers         = { type = "addon", default = false },
             barBgTexture            = { type = "addon", default = "default" },
@@ -202,6 +201,7 @@ addon:RegisterComponentInitializer(function(self)
             -- Window
             showBackdrop            = { type = "addon", default = true },
             windowBackdropColor     = { type = "addon", default = { 0.06, 0.06, 0.08, 0.95 } },
+            windowBackdropOpacity   = { type = "addon", default = 95 },
             windowBackdropTexture   = { type = "addon", default = "solid" },
             windowBorderStyle       = { type = "addon", default = "none" },
             windowBorderColor       = { type = "addon", default = { 0, 0, 0, 1 } },
@@ -344,6 +344,14 @@ function DMY._Initialize(comp)
 
     -- Migrate excluded formats in secondary columns to totalAmount equivalents
     DMY._MigrateSecondaryColumns()
+
+    -- Migrate the retired Hide Bars toggle into its Bar Mode equivalent
+    if comp.db then
+        if comp.db.showBars == false then
+            comp.db.barMode = "hidden"
+        end
+        comp.db.showBars = nil
+    end
 
     -- Create all window frames
     for i = 1, DMY.MAX_WINDOWS do
