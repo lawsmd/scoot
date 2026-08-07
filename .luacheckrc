@@ -52,6 +52,10 @@ read_globals = {
     "UnitExists",
     "UnitInRange",
     "UnitIsPlayer",
+    -- Both plain reads in 12.0 (no SecretReturns in UnitDocumentation.lua):
+    -- the dead skull and the elite/rare icon branch on them directly.
+    "UnitIsDeadOrGhost",
+    "UnitClassification",
     "UnitName",
     "UnitLevel",
     "UnitEffectiveLevel",

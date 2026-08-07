@@ -361,6 +361,13 @@ local POWER_EDGE_DROP = 5
 -- left-justified locations push the number right so the prefix, not the
 -- digits, lands on the alignment edge; right-justified locations need
 -- nothing.
+-- anchorPowerFS also anchors the classification TEXTURE, which has no
+-- JustifyH. Every anchor point below resolves correctly against an
+-- explicitly-sized Texture, so one guard is the whole generalization.
+local function setJustify(fs, justify)
+    if fs.SetJustifyH then fs:SetJustifyH(justify) end
+end
+
 local function anchorPowerFS(inst, fs, loc, x, y, trailW, leadW)
     trailW = trailW or 0
     leadW = leadW or 0
@@ -370,28 +377,28 @@ local function anchorPowerFS(inst, fs, loc, x, y, trailW, leadW)
     local inkW = inst.nameInkWidth
     if type(inkW) ~= "number" or inkW <= 0 then inkW = nil end
     if loc == "bottomleft" then
-        fs:SetJustifyH("LEFT")
+        setJustify(fs, "LEFT")
         if nearRight and inkW then
             fs:SetPoint("TOPLEFT", nameFS, "BOTTOMRIGHT", -inkW + POWER_EDGE_INSET + leadW + x, y - POWER_EDGE_DROP)
         else
             fs:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", POWER_EDGE_INSET + leadW + x, y - POWER_EDGE_DROP)
         end
     elseif loc == "bottomright" then
-        fs:SetJustifyH("RIGHT")
+        setJustify(fs, "RIGHT")
         if not nearRight and inkW then
             fs:SetPoint("TOPRIGHT", nameFS, "BOTTOMLEFT", inkW - POWER_EDGE_INSET + x - trailW, y - POWER_EDGE_DROP)
         else
             fs:SetPoint("TOPRIGHT", nameFS, "BOTTOMRIGHT", -POWER_EDGE_INSET + x - trailW, y - POWER_EDGE_DROP)
         end
     elseif loc == "topleft" then
-        fs:SetJustifyH("LEFT")
+        setJustify(fs, "LEFT")
         if nearRight and inkW then
             fs:SetPoint("BOTTOMLEFT", nameFS, "TOPRIGHT", -inkW + POWER_EDGE_INSET + leadW + x, y + POWER_EDGE_DROP)
         else
             fs:SetPoint("BOTTOMLEFT", nameFS, "TOPLEFT", POWER_EDGE_INSET + leadW + x, y + POWER_EDGE_DROP)
         end
     elseif loc == "topright" then
-        fs:SetJustifyH("RIGHT")
+        setJustify(fs, "RIGHT")
         if not nearRight and inkW then
             fs:SetPoint("BOTTOMRIGHT", nameFS, "TOPLEFT", inkW - POWER_EDGE_INSET + x - trailW, y + POWER_EDGE_DROP)
         else
@@ -403,14 +410,14 @@ local function anchorPowerFS(inst, fs, loc, x, y, trailW, leadW)
         -- The single-point LEFT/RIGHT anchor centers the power text vertically
         -- on the name row's midline, same mechanism as the name's own anchor.
         if not nearRight then
-            fs:SetJustifyH("LEFT")
+            setJustify(fs, "LEFT")
             if inkW then
                 fs:SetPoint("LEFT", nameFS, "LEFT", inkW + POWER_SIDE_GAP + leadW + x, y)
             else
                 fs:SetPoint("LEFT", nameFS, "RIGHT", POWER_SIDE_GAP + leadW + x, y)
             end
         else
-            fs:SetJustifyH("RIGHT")
+            setJustify(fs, "RIGHT")
             if inkW then
                 fs:SetPoint("RIGHT", nameFS, "RIGHT", -inkW - POWER_SIDE_GAP + x - trailW, y)
             else
@@ -471,6 +478,14 @@ local function applyPowerLayout(inst)
     if sym then
         sym:ClearAllPoints()
         sym:SetPoint("TOPLEFT", inst.altPowerFS, "TOPRIGHT", 0, 0)
+    end
+    -- The classification icon rides the same five locations as the texts it
+    -- sits among -- name-relative, not frame-edge (ufzstructure.md). No
+    -- trailW/leadW: a texture has no companion glyph.
+    local classify = inst.classifyTex
+    if classify then
+        classify:SetSize(cfg.classifySize, cfg.classifySize)
+        anchorPowerFS(inst, classify, cfg.classifyLoc, cfg.classifyX, cfg.classifyY, 0, 0)
     end
 end
 
@@ -539,6 +554,101 @@ local function anchorAbsorbFS(inst)
 end
 
 --------------------------------------------------------------------------------
+-- Adornment art: the dead skull and the elite/rare classification icon
+--------------------------------------------------------------------------------
+-- BOTH of these branch on a plain Lua value. Verified against
+-- Blizzard_APIDocumentationGenerated/UnitDocumentation.lua (12.0.7): neither
+-- UnitIsDeadOrGhost nor UnitClassification carries a SecretReturns annotation,
+-- unlike UnitHealth which does. So no issecretvalue dance, no
+-- SetAlphaFromBoolean, no isZeroAmount launder -- the pcall below is house
+-- style against a missing/erroring API, not a secrecy guard. This is what
+-- closed the "readability under restrictions: measure first" open item in
+-- ufzstructure.md.
+--
+-- SetAtlas fails SILENTLY on an unknown name -- it leaves an invisible or
+-- white region rather than erroring -- so every name here is gated on
+-- C_Texture.GetAtlasInfo first (the Cast Bar Z doctrine, ../ingametextures.md).
+
+-- Skull candidates, largest source art first. Sharpness at 40px could not be
+-- verified off-machine (wow-ui-source ships no atlas metadata), so this is a
+-- user-facing selector rather than one hardcoded pick: measure in-game with
+-- C_Texture.GetAtlasInfo and choose. `file` entries are raw paths, not atlases.
+local DEAD_ICONS = {
+    bossbanner = { atlas = "BossBanner-SkullCircle" },   -- boss-kill banner medallion
+    bossspikes = { atlas = "BossBanner-SkullSpikes" },
+    torghast1  = { atlas = "jailerstower-skull-1" },     -- Torghast layer skulls
+    torghast2  = { atlas = "jailerstower-skull-2" },
+    torghast3  = { atlas = "jailerstower-skull-3" },
+    -- The raid marker skull: 64px inside a 256x256 sheet, so it softens past
+    -- ~48px. Listed as the known-blocky always-present fallback.
+    raidmarker = {
+        file = "Interface\\TargetingFrame\\UI-RaidTargetingIcons",
+        coords = { 0.75, 1, 0.25, 0.5 },                 -- icon 8, bottom-right quadrant
+    },
+}
+local DEAD_ICON_FALLBACK = "raidmarker"
+
+-- Blizzard's live mapping, lifted verbatim from
+-- Blizzard_NamePlateClassificationFrame.lua:120-125 (duplicated in
+-- Blizzard_DamageMeter/DamageMeterEntry.lua:69-77). Note plain "rare" gets a
+-- STAR, not a dragon -- that asymmetry is Blizzard's, and matching it is the
+-- point: the game already trains the read.
+local CLASSIFICATION_ATLAS = {
+    elite     = "nameplates-icon-elite-gold",
+    worldboss = "nameplates-icon-elite-gold",
+    rareelite = "nameplates-icon-elite-silver",
+    rare      = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Rare-Star",
+}
+-- The Edit Mode stand-in: the icon is positionable, so it must be visible at
+-- the exact moment the user is placing it, even on a targetless preview.
+local CLASSIFY_PREVIEW_ATLAS = "nameplates-icon-elite-gold"
+
+local function atlasExists(name)
+    if not name or not C_Texture or not C_Texture.GetAtlasInfo then return false end
+    local ok, info = pcall(C_Texture.GetAtlasInfo, name)
+    return ok and info ~= nil
+end
+
+-- Paint one texture from a DEAD_ICONS entry. Returns true on a successful
+-- paint so the caller can fall back.
+local function applyDeadIconArt(tex, key)
+    local entry = DEAD_ICONS[key]
+    if not entry then return false end
+    if entry.atlas then
+        if not atlasExists(entry.atlas) then return false end
+        if not tex.SetAtlas then return false end
+        tex:SetTexCoord(0, 1, 0, 1)
+        return pcall(tex.SetAtlas, tex, entry.atlas) and true or false
+    end
+    local ok = pcall(tex.SetTexture, tex, entry.file)
+    if not ok then return false end
+    if entry.coords then
+        pcall(tex.SetTexCoord, tex, unpack(entry.coords))
+    end
+    return true
+end
+
+-- Memoized: re-running SetAtlas every health tick would be pure churn.
+local function applyDeadIconTexture(inst)
+    local tex = inst.deadTex
+    if not tex then return end
+    local key = inst.cfg.deadIconAtlas or DEAD_ICON_FALLBACK
+    if inst.appliedDeadIcon == key then return end
+    if not applyDeadIconArt(tex, key) then
+        -- A missing atlas is silent, so land on something that always exists
+        -- rather than leaving an invisible or white block on the frame.
+        applyDeadIconArt(tex, DEAD_ICON_FALLBACK)
+    end
+    inst.appliedDeadIcon = key
+end
+
+local function setDeadIconShown(inst, shown)
+    if inst.deadTex then
+        inst.deadTex:SetShown(shown and true or false)
+    end
+end
+
+--------------------------------------------------------------------------------
 -- The envelope: the frame rect covers the WHOLE element
 --------------------------------------------------------------------------------
 -- Content does not anchor to the outer frame -- it anchors to inst.box, the
@@ -562,9 +672,13 @@ local ENV_PAD    = 6      -- breathing room past the name-side extents
 -- One satellite text's contribution, in box-local down-positive coordinates.
 -- Mirrors anchorPowerFS's five locations against the same name-box geometry
 -- (offsets there are up-positive, hence the sign flips on y).
-local function envelopeSatellite(acc, loc, size, x, y, leadW)
-    local h = size * ENV_LINE_H
-    local w = size * 3.5 + (leadW or 0)
+local function envelopeSatellite(acc, loc, size, x, y, leadW, box)
+    -- box overrides the text estimates for a satellite that is not text: the
+    -- classification icon is a square texture of known size, and running it
+    -- through the "3.5 em wide, 1.25 em tall line box" heuristic would
+    -- over-reserve nearly 3x its width on the nameside location.
+    local h = box and size or size * ENV_LINE_H
+    local w = box and size or (size * 3.5 + (leadW or 0))
     local t, b
     if loc == "topleft" or loc == "topright" then
         b = acc.nameTop - POWER_EDGE_DROP - y
@@ -615,6 +729,20 @@ local function computeEnvelope(inst)
     end
     envelopeSatellite(acc, cfg.levelLoc, cfg.levelSize, cfg.levelX, cfg.levelY,
         cfg.levelSize * 1.5)
+    -- Unconditional while the feature is on, exactly like the level row above:
+    -- the contribution is PURE CONFIG (size x loc x offsets), never a function
+    -- of the live classification. That is what keeps a mob-to-mob target swap
+    -- from moving the envelope -- and the envelope's SetSize is protected once
+    -- the secure click child SetAllPoints the frame, so a classification-driven
+    -- resize would be an ADDON_ACTION_BLOCKED in combat. No regen slot exists
+    -- here because none can be needed.
+    if cfg.classifyShow then
+        -- box=true: a square texture, so its own size IS its box on both axes.
+        envelopeSatellite(acc, cfg.classifyLoc, cfg.classifySize, cfg.classifyX, cfg.classifyY,
+            0, true)
+    end
+    -- The dead skull is deliberately absent: it lives inside the span the
+    -- numbers box already reserves, so it can never grow the envelope.
 
     local far = math.ceil(acc.far + ENV_PAD)
     local top = math.floor(math.min(0, acc.top))
@@ -758,6 +886,40 @@ local function applyEnvelope(inst)
 end
 regenActions.envelope = applyEnvelope
 
+-- The skull sits where the two numbers were: horizontally on the same column
+-- the digits hang from, vertically on the stack's TRUE gap-midline. That
+-- midline is the bare -(pctRowH + gap/2) -- NOT the name's nameMidY, which
+-- adds NAME_BASE_Y and cfg.nameY on top. Those two are an optical baseline
+-- compensator for a line box's descender space and a user nudge on the name;
+-- neither means anything to a texture. The icon carries its own offsets
+-- instead.
+--
+-- Size defaults to the height of the stack it replaces, so the skull occupies
+-- the space it took over. ENV_LINE_H is the same conservative line box
+-- computeEnvelope estimates with -- config-derived, because the FontStrings
+-- are secret-poisoned and permanently unmeasurable.
+local function layoutDeadIcon(inst, box, pctRowH, pctGlyphMax)
+    local tex = inst.deadTex
+    if not tex then return end
+    local cfg = inst.cfg
+    local stackH = pctGlyphMax * ENV_LINE_H + cfg.gap + cfg.valSize * ENV_LINE_H
+    local side = math.max(8, math.floor(stackH * (cfg.deadIconScale or 100) / 100))
+    tex:SetSize(side, side)
+    tex:ClearAllPoints()
+    local midY = -(pctRowH + cfg.gap / 2) + cfg.deadIconY
+    if cfg.center then
+        -- Centered mode: the column's horizontal centre IS the box edge offset
+        -- by dx, because the digit rows hang from a single centre-x point there.
+        local edge, dx = "TOPRIGHT", -cfg.centerOffset
+        if cfg.align == "left" then edge, dx = "TOPLEFT", cfg.centerOffset end
+        tex:SetPoint("CENTER", box, edge, dx + cfg.deadIconX, midY)
+    elseif cfg.align == "left" then
+        tex:SetPoint("LEFT", box, "TOPLEFT", cfg.deadIconX, midY)
+    else
+        tex:SetPoint("RIGHT", box, "TOPRIGHT", cfg.deadIconX, midY)
+    end
+end
+
 -- Deterministic anchors only. The live FontStrings hold secrets and are permanently
 -- unmeasurable, so nothing here may derive from their rendered geometry.
 local function applyLayout(inst)
@@ -865,6 +1027,7 @@ local function applyLayout(inst)
         nameFS:SetPoint("RIGHT", box, "TOPRIGHT", -nameX, nameMidY)
     end
     symbolFS:SetShown(cfg.symbol and true or false)
+    layoutDeadIcon(inst, box, pctRowH, pctGlyphMax)
     applyPowerLayout(inst)
     anchorAbsorbFS(inst)
     -- Aura rows re-seat around the (possibly resized) envelope. Unboxed: they
@@ -1278,6 +1441,50 @@ local function updateLevel(inst)
     last.level = "ok"
 end
 
+-- The elite/rare adornment. Blizzard draws this as a dragon wrapped around the
+-- portrait; UFZ has neither portrait nor frame art, so it becomes a satellite
+-- glyph on the same location system as the level and power texts.
+--
+-- The player is a hard early-out: UnitClassification("player") is "normal"
+-- anyway, and the settings page hides the section, so this is belt-and-braces.
+local function updateClassification(inst)
+    local cfg, tex = inst.cfg, inst.classifyTex
+    if not tex then return end
+    local last = inst.last
+    -- Edit Mode owns the texture while previewing (a positionable adornment
+    -- must be visible while it is being positioned); do not fight it.
+    if inst.previewActive then return end
+    if not cfg.classifyShow or cfg.unit == "player" then
+        tex:Hide()
+        inst.classifyAtlas = nil
+        last.classify = "off"
+        return
+    end
+    local ok, class = pcall(UnitClassification, cfg.unit)
+    if not ok then
+        tex:Hide()
+        inst.classifyAtlas = nil
+        last.classify = "error: " .. tostring(class)
+        return
+    end
+    -- Plain string in 12.0, so a direct table lookup is legal.
+    local atlas = type(class) == "string" and CLASSIFICATION_ATLAS[class] or nil
+    if not atlas or not atlasExists(atlas) then
+        tex:Hide()
+        inst.classifyAtlas = nil
+        last.classify = atlas and ("atlas missing: " .. atlas)
+            or ("none (" .. tostring(class) .. ")")
+        return
+    end
+    -- Skip-compare: every target swap runs this, and SetAtlas is not free.
+    if inst.classifyAtlas ~= atlas then
+        pcall(tex.SetAtlas, tex, atlas)
+        inst.classifyAtlas = atlas
+    end
+    tex:Show()
+    last.classify = class
+end
+
 --------------------------------------------------------------------------------
 -- The name row. Rules from docs/unitframesZ/unitNames.md: gradient start is the
 -- class color darkened 25%, end is the hand-picked class endpoint lightened 10%
@@ -1629,6 +1836,18 @@ local function scheduleDigitProbe(inst)
     C_Timer.After(0, inst.probeDigitsFn)
 end
 
+-- Everything downstream of the health numbers. Factored out because the dead
+-- branch skips the number chains but must still run all of it -- the skull
+-- replaces the health readout, not the frame.
+local function updateTail(inst)
+    applyColor(inst)
+    updatePower(inst)
+    applyPowerColor(inst)
+    updateAbsorb(inst)
+    updateLevel(inst)
+    updateClassification(inst)
+end
+
 local function update(inst)
     if not inst.frame or not inst.frame:IsShown() then return end
     local cfg = inst.cfg
@@ -1653,6 +1872,8 @@ local function update(inst)
         if inst.levelFS and inst.levelFS.ClearText then inst.levelFS:ClearText() end
         if inst.levelPrefixFS and inst.levelPrefixFS.ClearText then inst.levelPrefixFS:ClearText() end
         if UFZ.Auras then UFZ.Auras.HideAll(inst) end
+        setDeadIconShown(inst, false)
+        if inst.classifyTex and not inst.previewActive then inst.classifyTex:Hide() end
         symbolFS:SetAlpha(0)
         last.pct, last.val = "no unit", "no unit"
         last.power, last.altPower = "no unit", "no unit"
@@ -1661,6 +1882,36 @@ local function update(inst)
         return
     end
     symbolFS:SetAlpha(1)
+
+    -- Dead / ghost: the skull REPLACES both numbers and the '%'. Two stacked
+    -- zeros at two point sizes read as a rendering fault, not as death.
+    -- UnitIsDeadOrGhost is a plain bool in 12.0 (no SecretReturns annotation),
+    -- so this compares directly -- the pcall guards a missing API, not secrecy.
+    -- Ghost is deliberately included: a ghost has health but is not alive.
+    local okDead, isDead = pcall(UnitIsDeadOrGhost, cfg.unit)
+    local dead = okDead and isDead == true and cfg.deadIconShow and true or false
+    if not dead then
+        setDeadIconShown(inst, false)
+    else
+        -- Texture BEFORE Show, always: the first death of a session is the one
+        -- paint where the memo is cold, and showing an untextured region first
+        -- flashes a white block.
+        applyDeadIconTexture(inst)
+        setDeadIconShown(inst, true)
+        -- ClearText, not SetAlpha: it is the only call that releases the Text
+        -- secret aspect (the no-unit branch precedent). The '%' uses alpha
+        -- because applyLayout owns its SetShown.
+        if pctFS.ClearText then pctFS:ClearText() end
+        if valFS.ClearText then valFS:ClearText() end
+        symbolFS:SetAlpha(0)
+        last.pct, last.val = "dead", "dead"
+        -- The digit ruler is deliberately NOT fed: the blank paths never touch
+        -- it, so lastDigitCount simply holds until revival re-fires the probe.
+        -- Power / absorb / level keep their normal behavior -- the scope of
+        -- this replacement is the two health numbers.
+        updateTail(inst)
+        return
+    end
 
     -- Percent. ClearText first: a failed chain must show an empty row, not last
     -- tick's stale number, and ClearText is the only call that releases the Text
@@ -1733,11 +1984,7 @@ local function update(inst)
             or ("UnitHealth error: " .. tostring(hp))
     end
 
-    applyColor(inst)
-    updatePower(inst)
-    applyPowerColor(inst)
-    updateAbsorb(inst)
-    updateLevel(inst)
+    updateTail(inst)
 end
 
 --------------------------------------------------------------------------------
@@ -1748,6 +1995,8 @@ local UNIT_EVENTS = {
     "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_HEAL_PREDICTION", "UNIT_NAME_UPDATE",
     "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
     "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_LEVEL", "UNIT_AURA",
+    -- The event Blizzard's own classification frame registers.
+    "UNIT_CLASSIFICATION_CHANGED",
 }
 
 -- Re-registering a unit event replaces its unit filter, so a unit switch is a
@@ -2016,6 +2265,16 @@ local function ensureFrame(inst)
     inst.levelPrefixFS = frame:CreateFontString(nil, "OVERLAY")
     inst.levelPrefixFS:SetTextColor(0.8, 0.8, 0.8, 1)
 
+    -- The two adornment textures. OVERLAY sublevel 1 puts both above the number
+    -- FontStrings (plain OVERLAY) -- the skull must cover the space the numbers
+    -- vacated even if a paint races it. Neither is anchor-protected: they are
+    -- children of the frame, not the frame, so Show/Hide/SetSize/SetAtlas on
+    -- them all stay legal in combat and the adornment path needs no regen slot.
+    inst.deadTex = frame:CreateTexture(nil, "OVERLAY", nil, 1)
+    inst.deadTex:Hide()
+    inst.classifyTex = frame:CreateTexture(nil, "OVERLAY", nil, 1)
+    inst.classifyTex:Hide()
+
     -- The digit ruler: free-standing (single point => natural width), so the oracle
     -- reports the true string length; one fixed font set ONCE and never touched
     -- again -- the count is font-independent on an unconstrained FontString, and
@@ -2059,6 +2318,13 @@ local function ensureFrame(inst)
     -- fall through the handler to update(inst).
     frame:RegisterEvent("PLAYER_LEVEL_CHANGED")
     frame:RegisterEvent("PLAYER_MAX_LEVEL_UPDATE")
+    -- Death: UNIT_HEALTH covers the fall to zero, but the ghost->alive
+    -- transition does not always move health, so the PlayerFrame-canonical trio
+    -- is the reliable signal. Registered on both instances (they are cheap,
+    -- non-unit events and the handler is a plain update).
+    frame:RegisterEvent("PLAYER_DEAD")
+    frame:RegisterEvent("PLAYER_ALIVE")
+    frame:RegisterEvent("PLAYER_UNGHOST")
     frame:SetScript("OnEvent", function(_, event)
         -- The Edit Mode stand-in paints static sample text; live data must not
         -- overwrite it mid-drag. Everything re-syncs on _EndEditModePreview.
@@ -2757,6 +3023,120 @@ local function setLevelHideMax(inst, state)
 end
 
 --------------------------------------------------------------------------------
+-- Adornment setters: the dead skull and the classification icon
+--------------------------------------------------------------------------------
+
+local function setDeadIconShow(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: deadicon <on|off>")
+        return
+    end
+    inst.cfg.deadIconShow = (state == "on")
+    -- update() owns the skull's visibility -- it is the only place that knows
+    -- whether the unit is dead. Re-running it is the whole re-apply.
+    update(inst)
+end
+
+local function setDeadIconAtlas(inst, key)
+    ensureApplied(inst)
+    key = tostring(key or "")
+    if not DEAD_ICONS[key] then
+        local names = {}
+        for k in pairs(DEAD_ICONS) do names[#names + 1] = k end
+        table.sort(names)
+        addon:Print("Dead icon must be one of: " .. table.concat(names, " | "))
+        return
+    end
+    inst.cfg.deadIconAtlas = key
+    inst.appliedDeadIcon = nil   -- invalidate the memo, then repaint
+    applyDeadIconTexture(inst)
+end
+
+local function setDeadIconScale(inst, pct)
+    ensureApplied(inst)
+    local v = tonumber(pct)
+    if not v then
+        addon:Print(string.format("UFZ setter usage: deadiconscale <50-200>   (current: %d)",
+            inst.cfg.deadIconScale))
+        return
+    end
+    inst.cfg.deadIconScale = math.max(50, math.min(200, math.floor(v + 0.5)))
+    applyLayout(inst)
+end
+
+-- nil leaves an axis unchanged -- the setAbsorbOffset dual-slider contract.
+local function setDeadIconOffset(inst, x, y)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    local vx, vy = tonumber(x), tonumber(y)
+    if not vx and not vy then
+        addon:Print(string.format("UFZ setter usage: deadiconoffset <x> [y]   (current: %.1f, %.1f)",
+            cfg.deadIconX, cfg.deadIconY))
+        return
+    end
+    if vx then cfg.deadIconX = math.floor(vx * 10 + 0.5) / 10 end
+    if vy then cfg.deadIconY = math.floor(vy * 10 + 0.5) / 10 end
+    applyLayout(inst)
+end
+
+local function setClassifyShow(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: classify <on|off>")
+        return
+    end
+    inst.cfg.classifyShow = (state == "on")
+    -- This one DOES move the envelope: the icon is a satellite, and its
+    -- reservation appears and disappears with the toggle.
+    applyEnvelope(inst)
+    applyPowerLayout(inst)
+    updateClassification(inst)
+end
+
+local function setClassifyLoc(inst, loc)
+    ensureApplied(inst)
+    loc = tostring(loc or ""):lower()
+    if not POWER_LOCS[loc] then
+        addon:Print("Location must be one of: bottomleft | bottomright | topleft | topright | nameside")
+        return
+    end
+    inst.cfg.classifyLoc = loc
+    applyEnvelope(inst)
+    applyPowerLayout(inst)
+end
+
+local function setClassifySize(inst, px)
+    ensureApplied(inst)
+    local v = tonumber(px)
+    if not v then
+        addon:Print(string.format("UFZ setter usage: classifysize <8-48>   (current: %d)",
+            inst.cfg.classifySize))
+        return
+    end
+    inst.cfg.classifySize = math.max(8, math.min(48, math.floor(v + 0.5)))
+    applyEnvelope(inst)
+    applyPowerLayout(inst)
+end
+
+local function setClassifyOffset(inst, x, y)
+    ensureApplied(inst)
+    local cfg = inst.cfg
+    local vx, vy = tonumber(x), tonumber(y)
+    if not vx and not vy then
+        addon:Print(string.format("UFZ setter usage: classifyoffset <x> [y]   (current: %.1f, %.1f)",
+            cfg.classifyX, cfg.classifyY))
+        return
+    end
+    if vx then cfg.classifyX = math.floor(vx * 10 + 0.5) / 10 end
+    if vy then cfg.classifyY = math.floor(vy * 10 + 0.5) / 10 end
+    applyEnvelope(inst)
+    applyPowerLayout(inst)
+end
+
+--------------------------------------------------------------------------------
 -- Aura row setters: cfg writers only -- auras.lua owns the workers, reached
 -- through the UFZ.Auras seam. Unboxed by design: no aura setter ever calls
 -- applyEnvelope.
@@ -2955,6 +3335,11 @@ local function newInstance(unitKey, cfg)
         absorbFS = nil, absorbGlowTex = nil,
         -- The level pair: the number and its 75%-size "lvl" prefix.
         levelFS = nil, levelPrefixFS = nil,
+        -- The adornment textures, plus the memos that keep their SetAtlas calls
+        -- off the per-tick path (appliedDeadIcon = the chosen style key,
+        -- classifyAtlas = the atlas currently painted).
+        deadTex = nil, appliedDeadIcon = nil,
+        classifyTex = nil, classifyAtlas = nil,
         -- The alternate power's token ("MANA"/"ENERGY"), written by updatePower
         -- and read by applyPowerColor. Readable string, never a secret.
         altPowerName = nil,
@@ -3046,6 +3431,14 @@ local API = {
     SetLevelLoc = function(inst, l) return setPowerLocImpl(inst, "level", l) end,
     SetLevelSize = function(inst, n) return setPowerSizeImpl(inst, "level", n) end,
     SetLevelOffset = function(inst, x, y) return setPowerOffsetImpl(inst, "level", x, y) end,
+    SetDeadIconShow = setDeadIconShow,
+    SetDeadIconAtlas = setDeadIconAtlas,
+    SetDeadIconScale = setDeadIconScale,
+    SetDeadIconOffset = setDeadIconOffset,
+    SetClassifyShow = setClassifyShow,
+    SetClassifyLoc = setClassifyLoc,
+    SetClassifySize = setClassifySize,
+    SetClassifyOffset = setClassifyOffset,
     SetAuraBuffsShow = function(inst, s) return setAuraShowImpl(inst, "Buffs", s) end,
     SetAuraDebuffsShow = function(inst, s) return setAuraShowImpl(inst, "Debuffs", s) end,
     SetAuraBuffsLoc = function(inst, l) return setAuraLocImpl(inst, "Buffs", l) end,
@@ -3221,11 +3614,36 @@ function UFZ._ShowEditModePreview(inst)
         update(inst)
         refreshName(inst)
     end
+
+    -- The two adornments, settled the same way in both branches.
+    --
+    -- Skull: always hidden. Preview paints live-looking numbers, and a skull
+    -- sitting on top of "72 / 324.5k" contradicts them. (This also covers
+    -- previewing while genuinely dead, which the update() branch above would
+    -- otherwise have shown.)
+    setDeadIconShown(inst, false)
+    -- Classification: always SHOWN, with a stand-in. It is a positionable
+    -- adornment, so it has to be visible at the exact moment the user is
+    -- placing it -- an invisible icon cannot be dragged into place. Nothing
+    -- else in the component paints it during preview: updateClassification
+    -- early-outs on previewActive.
+    if inst.classifyTex and inst.cfg.classifyShow and inst.cfg.unit ~= "player" then
+        if atlasExists(CLASSIFY_PREVIEW_ATLAS) then
+            pcall(inst.classifyTex.SetAtlas, inst.classifyTex, CLASSIFY_PREVIEW_ATLAS)
+            inst.classifyAtlas = CLASSIFY_PREVIEW_ATLAS
+            inst.classifyTex:Show()
+        end
+    elseif inst.classifyTex then
+        inst.classifyTex:Hide()
+    end
 end
 
 function UFZ._EndEditModePreview(inst)
     if not inst or not inst.previewActive then return end
     inst.previewActive = nil
+    -- Drop the stand-in's memo so updateClassification's skip-compare re-fires
+    -- against the live unit instead of trusting the preview atlas.
+    inst.classifyAtlas = nil
     -- Repaint from live data while still shown -- with no unit this runs the
     -- no-unit blank, clearing the sample strings -- then let visibility settle.
     if inst.frame and inst.frame:IsShown() then

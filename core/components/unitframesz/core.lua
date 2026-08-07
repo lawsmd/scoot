@@ -161,6 +161,24 @@ local UNIT_DEFAULTS_SHARED = {
     auraBorderTintA      = 1,
     auraOnlyPlayerBuffs  = false,       -- buff row filter: HELPFUL|PLAYER
     auraTooltips         = true,        -- hover tooltips: motion-only mouse, clicks still pass through
+    -- Dead indicator: a skull replacing BOTH health numbers (and the '%') on a
+    -- dead or ghost unit. UnitIsDeadOrGhost is a PLAIN read in 12.0 -- no
+    -- SecretReturns annotation in UnitDocumentation.lua -- so this branches
+    -- normally. Sized off the number stack it replaces; no envelope
+    -- contribution, because it lives inside a span the numbers box reserves.
+    deadIconShow   = true,
+    deadIconAtlas  = "bossbanner",      -- key into DEAD_ICONS (engine.lua)
+    deadIconScale  = 100,               -- percent of the replaced stack's height, 50-200
+    deadIconX      = 0,
+    deadIconY      = 0,
+    -- Elite/rare classification icon: Blizzard's own nameplate art, on the
+    -- name-relative location system the power/level texts use. Never shown on
+    -- the player (hard early-out in the engine; the page hides the section).
+    classifyShow   = true,
+    classifyLoc    = "topright",        -- bottomleft|bottomright|topleft|topright|nameside
+    classifySize   = 20,                -- px, 8-48
+    classifyX      = 0,
+    classifyY      = 0,
 }
 table.freeze(UNIT_DEFAULTS_SHARED)
 
@@ -181,7 +199,12 @@ local UNIT_DEFAULTS = {
     Target = {
         unit = "target", align = "left",
         powerLoc = "bottomleft", altPowerLoc = "bottomright",
-        levelLoc = "topright",
+        -- The level DELIBERATELY breaks the mirror (2026-08-06): its mirrored
+        -- slot is topright, which is where the classification icon now lands by
+        -- default, and three of the four corners were already spoken for. This
+        -- only moves FRESH profiles -- an existing Target DB keeps topright and
+        -- overlaps until the level is moved by hand.
+        levelLoc = "topleft",
     },
 }
 table.freeze(UNIT_DEFAULTS)
@@ -252,6 +275,7 @@ local COPY_EXCLUDE = {
     auraBuffsLoc = true,
     auraDebuffsLoc = true,
     auraOffsetY = true,  -- tuned against this frame's own satellite slack
+    classifyLoc = true,  -- arrangement stays per-frame, like every other Loc
 }
 
 --- Copy one unit's Z settings onto another. Whitelist walk over
