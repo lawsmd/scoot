@@ -1560,6 +1560,14 @@ function Builder:AddToggleSliderRow(options)
         end
 
         self._currentY = self._currentY - toggleSlider:GetHeight()
+
+        -- Propagate deferred height changes to parent collapsible
+        if self._parentCollapsible then
+            local parentCollapsible = self._parentCollapsible
+            toggleSlider._onHeightChanged = function(delta)
+                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
+            end
+        end
     end
 
     return self

@@ -33,6 +33,16 @@ local THUMB_WIDTH = 10
 local THUMB_HEIGHT = 16
 local VALUE_WIDTH = 42
 
+-- Dynamic height, same contract as Selector.lua: the description gets the row
+-- width MINUS the control column, then the row grows to whatever that wrapping
+-- costs. DESC_PADDING_BOTTOM is doubled (36, not 18) because the label is
+-- CENTER-anchored -- the description hangs below a block that stays centred, so
+-- it needs its own slack at the bottom.
+local MAX_ROW_HEIGHT = 200
+local LABEL_LINE_HEIGHT = 16
+local DESC_PADDING_TOP = 2
+local DESC_PADDING_BOTTOM = 36
+
 --------------------------------------------------------------------------------
 -- Helper: CreateMiniSlider
 --------------------------------------------------------------------------------
@@ -289,16 +299,61 @@ function Controls:CreateToggleSliderRow(options)
         row._label = labelFS
     end
 
+    -- The control column's worst case: the deferred sizing below only ever
+    -- SHRINKS the container from DEFAULT_CONTAINER_WIDTH, so reserving the full
+    -- width here is what makes the description safe at every panel width -- and
+    -- it is a static anchor, so it holds even if the measurement below never
+    -- gets a width to work with.
+    local CONTROL_RESERVE = PADDING + DEFAULT_CONTAINER_WIDTH + GAP
+
     if hasDesc and labelFS then
         local descFS = row:CreateFontString(nil, "OVERLAY")
         descFS:SetFont(theme:GetFont("VALUE"), 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
+        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -DESC_PADDING_TOP)
+        descFS:SetPoint("RIGHT", row, "RIGHT", -CONTROL_RESERVE, 0)
         descFS:SetText(description)
         descFS:SetTextColor(dimR, dimG, dimB, 1)
         descFS:SetJustifyH("LEFT")
         descFS:SetWordWrap(true)
         row._description = descFS
+
+        -- Grow the row to fit the wrapped text. Immediate first: the builder
+        -- reads GetHeight() the instant this returns, and a height that lands
+        -- later would leave the rows below overlapping this one.
+        local function MeasureAndAdjustHeight()
+            if not row or not descFS then return false end
+
+            local rowWidth = row:GetWidth()
+            if rowWidth == 0 and row:GetParent() then
+                rowWidth = row:GetParent():GetWidth() or 0
+            end
+            if rowWidth == 0 then return false end
+
+            local descAvailableWidth = rowWidth - PADDING - CONTROL_RESERVE
+            if descAvailableWidth <= 0 then return false end
+
+            -- Explicit width first: GetStringHeight only reports the WRAPPED
+            -- height once the FontString has one to wrap against.
+            descFS:SetWidth(descAvailableWidth)
+
+            local textHeight = descFS:GetStringHeight() or 0
+            local requiredHeight = LABEL_LINE_HEIGHT + DESC_PADDING_TOP + textHeight + DESC_PADDING_BOTTOM
+            requiredHeight = math.min(requiredHeight, MAX_ROW_HEIGHT)
+
+            local currentHeight = row:GetHeight()
+            if requiredHeight > currentHeight then
+                row:SetHeight(requiredHeight)
+                if row._onHeightChanged then
+                    row._onHeightChanged(requiredHeight - currentHeight)
+                end
+            end
+            return true
+        end
+        row._measureDesc = MeasureAndAdjustHeight
+
+        if not MeasureAndAdjustHeight() then
+            C_Timer.After(0.1, MeasureAndAdjustHeight)
+        end
     end
 
     local containerHeight = MINI_LABEL_HEIGHT + MINI_LABEL_GAP + CONTROL_HEIGHT
@@ -306,24 +361,6 @@ function Controls:CreateToggleSliderRow(options)
     container:SetSize(DEFAULT_CONTAINER_WIDTH, containerHeight)
     container:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
     row._container = container
-
-    -- Mini-labels above each control
-    if toggleLabel and toggleLabel ~= "" then
-        local fs = container:CreateFontString(nil, "OVERLAY")
-        fs:SetFont(theme:GetFont("VALUE"), 11, "")
-        fs:SetPoint("TOPLEFT", container, "TOPLEFT", 2, 0)
-        fs:SetText(toggleLabel)
-        fs:SetTextColor(dimR, dimG, dimB, 0.8)
-        row._toggleLabelFS = fs
-    end
-    if sliderLabel and sliderLabel ~= "" then
-        local fs = container:CreateFontString(nil, "OVERLAY")
-        fs:SetFont(theme:GetFont("VALUE"), 11, "")
-        fs:SetPoint("TOPRIGHT", container, "TOPRIGHT", -2, 0)
-        fs:SetText(sliderLabel)
-        fs:SetTextColor(dimR, dimG, dimB, 0.8)
-        row._sliderLabelFS = fs
-    end
 
     -- Toggle on the left, slider filling the rest
     local CreateMiniToggle = Controls._CreateMiniToggle
@@ -335,6 +372,26 @@ function Controls:CreateToggleSliderRow(options)
     miniSlider:SetPoint("BOTTOMLEFT", miniToggle, "BOTTOMRIGHT", GAP, 0)
     miniSlider:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", 0, 0)
     row._slider = miniSlider
+
+    -- Mini-labels sit centred over the control they name, not in the container's
+    -- corners: the slider's own width is set by anchors and moves with the
+    -- container, so a corner-pinned label drifts away from what it labels.
+    if toggleLabel and toggleLabel ~= "" then
+        local fs = container:CreateFontString(nil, "OVERLAY")
+        fs:SetFont(theme:GetFont("VALUE"), 11, "")
+        fs:SetPoint("BOTTOM", miniToggle, "TOP", 0, MINI_LABEL_GAP)
+        fs:SetText(toggleLabel)
+        fs:SetTextColor(dimR, dimG, dimB, 0.8)
+        row._toggleLabelFS = fs
+    end
+    if sliderLabel and sliderLabel ~= "" then
+        local fs = container:CreateFontString(nil, "OVERLAY")
+        fs:SetFont(theme:GetFont("VALUE"), 11, "")
+        fs:SetPoint("BOTTOM", miniSlider, "TOP", 0, MINI_LABEL_GAP)
+        fs:SetText(sliderLabel)
+        fs:SetTextColor(dimR, dimG, dimB, 0.8)
+        row._sliderLabelFS = fs
+    end
 
     -- The slider follows the toggle: off means nothing to tune.
     local function SyncSliderEnabled()
@@ -385,6 +442,9 @@ function Controls:CreateToggleSliderRow(options)
 
         container:SetWidth(containerWidth)
         SyncSliderEnabled()
+        -- Last chance for a row that had no width at creation: the description
+        -- anchor already stops any overlap, this only recovers the height.
+        if row._measureDesc then row._measureDesc() end
     end)
 
     row._isDisabled = false

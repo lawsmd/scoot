@@ -48,20 +48,6 @@ local function AddUnitSection(builder, opts)
     }
     local locOrder = { "bottomleft", "bottomright", "topleft", "topright", "nameside" }
 
-    -- Keys must match DEAD_ICONS in unitframesz/engine.lua. Every entry is a
-    -- Blizzard asset; they are offered as a choice rather than one hardcoded
-    -- pick because their source art differs in size, and how sharp each stays
-    -- at 40px can only be judged on screen.
-    local deadIconValues = {
-        bossbanner = "Boss Banner Skull",
-        bossspikes = "Boss Banner Skull (Spiked)",
-        torghast1  = "Torghast Skull 1",
-        torghast2  = "Torghast Skull 2",
-        torghast3  = "Torghast Skull 3",
-        raidmarker = "Raid Marker Skull",
-    }
-    local deadIconOrder = { "bossbanner", "bossspikes", "torghast1", "torghast2", "torghast3", "raidmarker" }
-
     builder:AddDescription("Scoot's text-first " .. (opts.unitWord or "player") .. " frame. Controls apply live and save with your profile. Position the frame in Edit Mode, where Overall Scale is also mirrored.")
 
     builder:AddSlider({
@@ -177,7 +163,6 @@ local function AddUnitSection(builder, opts)
                 tabs = {
                     { key = "fontSize", label = "Font/Size" },
                     { key = "position", label = "Positioning" },
-                    { key = "dead", label = "Dead" },
                 },
                 componentId = opts.componentId,
                 sectionKey = "health_tabs",
@@ -251,103 +236,11 @@ local function AddUnitSection(builder, opts)
                         })
                         tabInner:Finalize()
                     end,
-                    dead = function(cf, tabInner)
-                        tabInner:AddDescription("A dead or ghost unit shows a skull in place of both health numbers -- two stacked zeros read as a glitch, not as death.")
-                        tabInner:AddToggle({
-                            label = "Skull When Dead",
-                            description = "Replaces the percent, the value and the '%' with a skull, centered on the space they occupied. Power, shield and level are unaffected.",
-                            get = function() return htCfg().deadIconShow and true or false end,
-                            set = function(v) call("SetDeadIconShow", v and "on" or "off") end,
-                        })
-                        tabInner:AddSelector({
-                            label = "Skull Style",
-                            description = "Blizzard artwork. They differ in how large the source art is, so they sharpen differently at big sizes -- pick the one that stays crisp at your scale.",
-                            values = deadIconValues,
-                            order = deadIconOrder,
-                            get = function() return htCfg().deadIconAtlas or "bossbanner" end,
-                            set = function(v) call("SetDeadIconAtlas", v) end,
-                        })
-                        tabInner:AddSlider({
-                            label = "Skull Size",
-                            description = "Percent of the height of the two number rows it replaces, so it tracks your health font sizes.",
-                            min = 50, max = 200, step = 5,
-                            displaySuffix = "%",
-                            get = function() return htCfg().deadIconScale or 100 end,
-                            set = function(v) call("SetDeadIconScale", v) end,
-                        })
-                        tabInner:AddDualSlider({
-                            label = "Skull Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -60, max = 60, step = 1,
-                                get = function() return htCfg().deadIconX or 0 end,
-                                set = function(v) call("SetDeadIconOffset", v) end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -60, max = 60, step = 1,
-                                get = function() return htCfg().deadIconY or 0 end,
-                                set = function(v) call("SetDeadIconOffset", nil, v) end,
-                            },
-                        })
-                        tabInner:Finalize()
-                    end,
                 },
             })
             inner:Finalize()
         end,
     })
-
-    -- Classification is a TARGET-side adornment: the player is never elite or
-    -- rare, so the Player page never renders this section (the engine hard
-    -- early-outs on the player unit too).
-    if opts.unitKey ~= "Player" then
-        builder:AddCollapsibleSection({
-            title = "Elite & Rare",
-            componentId = opts.componentId,
-            sectionKey = "classify",
-            defaultExpanded = false,
-            buildContent = function(contentFrame, inner)
-                inner:AddDescription("Blizzard wraps a dragon around the portrait to mark elite and rare mobs. This frame has no portrait, so the same artwork becomes a small icon beside the name.")
-                inner:AddToggle({
-                    label = "Show Elite/Rare Icon",
-                    description = "Gold dragon for elites and world bosses, silver dragon for rare elites, silver star for rares -- Blizzard's own nameplate art and mapping. Normal mobs show nothing.",
-                    get = function() return htCfg().classifyShow and true or false end,
-                    set = function(v) call("SetClassifyShow", v and "on" or "off") end,
-                })
-                inner:AddSelector({
-                    label = "Location",
-                    description = "Where the icon sits relative to the name.",
-                    values = locValues,
-                    order = locOrder,
-                    get = function() return htCfg().classifyLoc or "topright" end,
-                    set = function(v) call("SetClassifyLoc", v) end,
-                })
-                inner:AddSlider({
-                    label = "Icon Size",
-                    min = 8, max = 48, step = 1,
-                    get = function() return htCfg().classifySize or 20 end,
-                    set = function(v) call("SetClassifySize", v) end,
-                })
-                inner:AddDualSlider({
-                    label = "Offset",
-                    sliderA = {
-                        axisLabel = "X",
-                        min = -60, max = 60, step = 1,
-                        get = function() return htCfg().classifyX or 0 end,
-                        set = function(v) call("SetClassifyOffset", v) end,
-                    },
-                    sliderB = {
-                        axisLabel = "Y",
-                        min = -60, max = 60, step = 1,
-                        get = function() return htCfg().classifyY or 0 end,
-                        set = function(v) call("SetClassifyOffset", nil, v) end,
-                    },
-                })
-                inner:Finalize()
-            end,
-        })
-    end
 
     builder:AddCollapsibleSection({
         title = "Power",
@@ -724,6 +617,80 @@ local function AddUnitSection(builder, opts)
             end,
         })
     end
+
+    -- Icons: the two texture adornments, last because they are accents on the
+    -- text layout above rather than part of it. Neither is positionable -- both
+    -- sit on a fixed, tuned offset -- so these tabs carry size and little else.
+    -- Body only: whichever builder this lands in is finalized by its own caller.
+    local function buildDeadIconControls(b)
+        b:AddDescription("A dead or ghost unit shows a skull instead of health numbers.")
+        b:AddSlider({
+            label = "Death Icon Size",
+            description = "Percent of the height of the two number rows it replaces, so it tracks your health font sizes.",
+            min = 50, max = 200, step = 5,
+            displaySuffix = "%",
+            get = function() return htCfg().deadIconScale or 100 end,
+            set = function(v) call("SetDeadIconScale", v) end,
+        })
+    end
+
+    builder:AddCollapsibleSection({
+        title = "Icons",
+        componentId = opts.componentId,
+        sectionKey = "icons",
+        defaultExpanded = false,
+        buildContent = function(contentFrame, inner)
+            if opts.unitKey == "Player" then
+                -- The player is never elite or rare (the engine hard early-outs
+                -- on the player unit), so there is no second tab to switch to
+                -- and the dead controls stand alone.
+                buildDeadIconControls(inner)
+            else
+                inner:AddTabbedSection({
+                    tabs = {
+                        { key = "classify", label = "Rare/Elite" },
+                        { key = "dead", label = "Dead" },
+                    },
+                    componentId = opts.componentId,
+                    sectionKey = "icons_tabs",
+                    buildContent = {
+                        classify = function(cf, tabInner)
+                            tabInner:AddDescription("Blizzard wraps a dragon around the portrait to mark elite and rare mobs. This frame has no portrait, so the same artwork becomes a small icon beside the name.")
+                            tabInner:AddToggleSliderRow({
+                                label = "Elite/Rare Icon",
+                                description = "Marks elites, rare elites and rares with Blizzard's own nameplate art.",
+                                toggle = {
+                                    label = "Show",
+                                    get = function() return htCfg().classifyShow and true or false end,
+                                    set = function(v) call("SetClassifyShow", v and "on" or "off") end,
+                                },
+                                slider = {
+                                    label = "Size",
+                                    min = 8, max = 48, step = 1,
+                                    get = function() return htCfg().classifySize or 20 end,
+                                    set = function(v) call("SetClassifySize", v) end,
+                                },
+                            })
+                            tabInner:AddSelector({
+                                label = "Location",
+                                description = "Where the icon sits relative to the name.",
+                                values = locValues,
+                                order = locOrder,
+                                get = function() return htCfg().classifyLoc or "topright" end,
+                                set = function(v) call("SetClassifyLoc", v) end,
+                            })
+                            tabInner:Finalize()
+                        end,
+                        dead = function(cf, tabInner)
+                            buildDeadIconControls(tabInner)
+                            tabInner:Finalize()
+                        end,
+                    },
+                })
+            end
+            inner:Finalize()
+        end,
+    })
 end
 
 --------------------------------------------------------------------------------

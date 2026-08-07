@@ -337,6 +337,14 @@ local POWER_EDGE_INSET = 5
 -- the offset sliders still read 0 at the default look.
 local POWER_EDGE_DROP = 5
 
+-- The classification icon's fixed vertical seat, in the same sign convention as
+-- the offset sliders it replaces (positive = up). It rides the name-relative
+-- locations but has no user offsets: a texture only needs to look centred, and
+-- the value that centres it against a two-line wrapped target name is a
+-- constant (user-tuned in-game 2026-08-07, the old slider's Y = 5). Baked here
+-- so applyPowerLayout and computeEnvelope cannot drift apart.
+local CLASSIFY_FIXED_Y = 5
+
 -- The power texts anchor DIRECTLY to nameFS: its LEFT/RIGHT edges are
 -- deterministic (applyLayout gives it an explicit SetWidth), and TOP/BOTTOM
 -- riding the wrap is the point -- a two-line name pushes below-name text down
@@ -427,6 +435,77 @@ local function anchorPowerFS(inst, fs, loc, x, y, trailW, leadW)
     end
 end
 
+--------------------------------------------------------------------------------
+-- The classification icon's step-aside
+--------------------------------------------------------------------------------
+-- The icon and the level pair ride the same five locations, and the icon has no
+-- positioning of its own, so a shared location stacks one on top of the other.
+-- Fresh Target profiles dodge it by defaulting the level to topleft, but every
+-- Target profile saved before 2026-08-06 still has both on topright. The icon
+-- steps RIGHT until it clears the level block and sits immediately beside it;
+-- the level itself never moves.
+--
+-- How far depends on which way the blocks grow. Left-justified locations pin
+-- their LEFT edge and grow right, so the icon has to clear the level's whole
+-- width. Right-justified ones pin their RIGHT edge and grow left, so stepping
+-- right by the icon's OWN width already lands its left edge exactly on the
+-- level's right edge -- the level's width does not enter into it.
+local CLASSIFY_LEVEL_GAP = 3
+
+-- Two characters is the entire domain of the digit field: the level cap is two
+-- digits and the unknown-level fallback is "??". Fixed, never the live level --
+-- computeEnvelope reserves this step, and a reservation that moved with the
+-- target would be a protected SetSize the moment it happened in combat.
+local LEVEL_DIGIT_FIELDS = { "00", "??" }
+
+local function levelBlockWidth(cfg)
+    local prefixSize = math.max(1, cfg.levelSize * LEVEL_PREFIX_SCALE)
+    local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.face)
+    local prefixW, digitsW = nil, 0
+    if addon.MeasureTextWidth then
+        prefixW = addon.MeasureTextWidth("lvl", face, prefixSize, cfg.style)
+        for _, field in ipairs(LEVEL_DIGIT_FIELDS) do
+            local w = addon.MeasureTextWidth(field, face, cfg.levelSize, cfg.style)
+            if type(w) == "number" and w > digitsW then digitsW = w end
+        end
+    end
+    -- Same fallback shape applyPowerLayout uses for its own "lvl" measurement:
+    -- the ruler is plain readable text, so this only covers a missing ruler.
+    if type(prefixW) ~= "number" or prefixW <= 0 then prefixW = prefixSize * 1.2 end
+    if digitsW <= 0 then digitsW = cfg.levelSize * 1.2 end
+    return prefixW + cfg.levelSize * LEVEL_PREFIX_GAP_EM + digitsW
+end
+
+-- The step a fully painted level demands. PURE CONFIG, so computeEnvelope can
+-- reserve it without ever consulting the live target.
+local function classifyShiftReserved(inst)
+    local cfg = inst.cfg
+    if not cfg.classifyShow then return 0 end
+    if cfg.classifyLoc ~= cfg.levelLoc then return 0 end
+    -- Justification per anchorPowerFS: the four corners justify by name, and
+    -- nameside follows the frame's handedness.
+    local growsRight = cfg.classifyLoc == "topleft" or cfg.classifyLoc == "bottomleft"
+        or (cfg.classifyLoc == "nameside" and cfg.align == "left")
+    local clear = growsRight and levelBlockWidth(cfg) or cfg.classifySize
+    -- levelX rides along: the user can nudge the level, and the icon has to
+    -- clear where it actually sits. Clamped at 0 so a level nudged far enough
+    -- left simply frees the icon rather than dragging it off its own corner.
+    return math.max(0, cfg.levelX + clear + CLASSIFY_LEVEL_GAP)
+end
+
+-- What the icon actually uses: the same step, dropped when the level painted
+-- nothing (hide-at-max, a hidden unknown level, a missing API). Only ever
+-- SMALLER than the reserved step, so an un-stepped icon still lands inside the
+-- envelope and following it never needs a resize.
+local function anchorClassify(inst)
+    local tex = inst.classifyTex
+    if not tex then return end
+    local cfg = inst.cfg
+    local shift = (inst.levelPainted == false) and 0 or classifyShiftReserved(inst)
+    tex:SetSize(cfg.classifySize, cfg.classifySize)
+    anchorPowerFS(inst, tex, cfg.classifyLoc, shift, CLASSIFY_FIXED_Y, 0, 0)
+end
+
 -- Separate from applyLayout so the loc/offset setters can re-anchor the power
 -- texts alone -- applyLayout restarts the stretch animations (see probeDigits),
 -- churn a positioning nudge does not need.
@@ -482,11 +561,7 @@ local function applyPowerLayout(inst)
     -- The classification icon rides the same five locations as the texts it
     -- sits among -- name-relative, not frame-edge (ufzstructure.md). No
     -- trailW/leadW: a texture has no companion glyph.
-    local classify = inst.classifyTex
-    if classify then
-        classify:SetSize(cfg.classifySize, cfg.classifySize)
-        anchorPowerFS(inst, classify, cfg.classifyLoc, cfg.classifyX, cfg.classifyY, 0, 0)
-    end
+    anchorClassify(inst)
 end
 
 -- The absorb shield text (user spec 2026-08-05; the glow-only look won the
@@ -569,18 +644,13 @@ end
 -- white region rather than erroring -- so every name here is gated on
 -- C_Texture.GetAtlasInfo first (the Cast Bar Z doctrine, ../ingametextures.md).
 
--- Skull candidates, largest source art first. Sharpness at 40px could not be
--- verified off-machine (wow-ui-source ships no atlas metadata), so this is a
--- user-facing selector rather than one hardcoded pick: measure in-game with
--- C_Texture.GetAtlasInfo and choose. `file` entries are raw paths, not atlases.
+-- Six candidates shipped for the in-game sharpness bake-off (the boss banner
+-- medallion and spikes, three Torghast layer skulls, this one). The raid marker
+-- won outright at the size we render at -- everything else read soft -- so the
+-- others are gone and the style selector with them. The table keeps its shape
+-- because "for now" is the user's word: re-adding a candidate is one entry.
 local DEAD_ICONS = {
-    bossbanner = { atlas = "BossBanner-SkullCircle" },   -- boss-kill banner medallion
-    bossspikes = { atlas = "BossBanner-SkullSpikes" },
-    torghast1  = { atlas = "jailerstower-skull-1" },     -- Torghast layer skulls
-    torghast2  = { atlas = "jailerstower-skull-2" },
-    torghast3  = { atlas = "jailerstower-skull-3" },
-    -- The raid marker skull: 64px inside a 256x256 sheet, so it softens past
-    -- ~48px. Listed as the known-blocky always-present fallback.
+    -- 64px inside a 256x256 sheet; `file` is a raw path, not an atlas.
     raidmarker = {
         file = "Interface\\TargetingFrame\\UI-RaidTargetingIcons",
         coords = { 0.75, 1, 0.25, 0.5 },                 -- icon 8, bottom-right quadrant
@@ -628,11 +698,14 @@ local function applyDeadIconArt(tex, key)
     return true
 end
 
--- Memoized: re-running SetAtlas every health tick would be pure churn.
+-- Memoized: re-running SetTexture every health tick would be pure churn. The
+-- key is read from config so a second candidate can return without touching
+-- this path; with one entry it always resolves to the fallback.
 local function applyDeadIconTexture(inst)
     local tex = inst.deadTex
     if not tex then return end
     local key = inst.cfg.deadIconAtlas or DEAD_ICON_FALLBACK
+    if not DEAD_ICONS[key] then key = DEAD_ICON_FALLBACK end
     if inst.appliedDeadIcon == key then return end
     if not applyDeadIconArt(tex, key) then
         -- A missing atlas is silent, so land on something that always exists
@@ -738,8 +811,11 @@ local function computeEnvelope(inst)
     -- here because none can be needed.
     if cfg.classifyShow then
         -- box=true: a square texture, so its own size IS its box on both axes.
-        envelopeSatellite(acc, cfg.classifyLoc, cfg.classifySize, cfg.classifyX, cfg.classifyY,
-            0, true)
+        -- The step-aside is reserved at its full config-derived width, never at
+        -- the live one: the icon may sit un-stepped when the level paints
+        -- nothing, and that only ever moves it further INSIDE this reservation.
+        envelopeSatellite(acc, cfg.classifyLoc, cfg.classifySize,
+            classifyShiftReserved(inst), CLASSIFY_FIXED_Y, 0, true)
     end
     -- The dead skull is deliberately absent: it lives inside the span the
     -- numbers box already reserves, so it can never grow the envelope.
@@ -891,32 +967,33 @@ regenActions.envelope = applyEnvelope
 -- midline is the bare -(pctRowH + gap/2) -- NOT the name's nameMidY, which
 -- adds NAME_BASE_Y and cfg.nameY on top. Those two are an optical baseline
 -- compensator for a line box's descender space and a user nudge on the name;
--- neither means anything to a texture. The icon carries its own offsets
--- instead.
+-- neither means anything to a texture. The midline IS the position -- there is
+-- no user offset on this icon.
 --
--- Size defaults to the height of the stack it replaces, so the skull occupies
--- the space it took over. ENV_LINE_H is the same conservative line box
--- computeEnvelope estimates with -- config-derived, because the FontStrings
--- are secret-poisoned and permanently unmeasurable.
+-- Size: 100% is HALF the stack it replaces. Filling the whole stack height was
+-- the first bake (in-game verdict 2026-08-07: far too big), so the slider's
+-- 100% was rebased rather than its range re-centred -- a saved 100 keeps
+-- meaning "the default", and the old look is still reachable at 200.
+local DEAD_ICON_BASE = 0.5
 local function layoutDeadIcon(inst, box, pctRowH, pctGlyphMax)
     local tex = inst.deadTex
     if not tex then return end
     local cfg = inst.cfg
     local stackH = pctGlyphMax * ENV_LINE_H + cfg.gap + cfg.valSize * ENV_LINE_H
-    local side = math.max(8, math.floor(stackH * (cfg.deadIconScale or 100) / 100))
+    local side = math.max(8, math.floor(stackH * DEAD_ICON_BASE * (cfg.deadIconScale or 100) / 100))
     tex:SetSize(side, side)
     tex:ClearAllPoints()
-    local midY = -(pctRowH + cfg.gap / 2) + cfg.deadIconY
+    local midY = -(pctRowH + cfg.gap / 2)
     if cfg.center then
         -- Centered mode: the column's horizontal centre IS the box edge offset
         -- by dx, because the digit rows hang from a single centre-x point there.
         local edge, dx = "TOPRIGHT", -cfg.centerOffset
         if cfg.align == "left" then edge, dx = "TOPLEFT", cfg.centerOffset end
-        tex:SetPoint("CENTER", box, edge, dx + cfg.deadIconX, midY)
+        tex:SetPoint("CENTER", box, edge, dx, midY)
     elseif cfg.align == "left" then
-        tex:SetPoint("LEFT", box, "TOPLEFT", cfg.deadIconX, midY)
+        tex:SetPoint("LEFT", box, "TOPLEFT", 0, midY)
     else
-        tex:SetPoint("RIGHT", box, "TOPRIGHT", cfg.deadIconX, midY)
+        tex:SetPoint("RIGHT", box, "TOPRIGHT", 0, midY)
     end
 end
 
@@ -1380,7 +1457,9 @@ end
 -- 2026-08-05; it originally painted regardless).
 --------------------------------------------------------------------------------
 
-local function updateLevel(inst)
+-- Returns true when it left text on screen; every blank exit falls through as
+-- nil. updateLevel below turns that into the classification icon's step-aside.
+local function paintLevel(inst)
     local cfg, last = inst.cfg, inst.last
     local fs, pre = inst.levelFS, inst.levelPrefixFS
     -- ClearText BOTH first, always: the prefix must never outlive the number
@@ -1408,7 +1487,7 @@ local function updateLevel(inst)
         pcall(fs.SetText, fs, "" .. lvl)
         if pre then pcall(pre.SetText, pre, "lvl") end
         last.level = "ok (secret)"
-        return
+        return true
     end
     if lvl <= 0 then
         if cfg.levelHideMax then
@@ -1418,7 +1497,7 @@ local function updateLevel(inst)
         pcall(fs.SetText, fs, "??")
         if pre then pcall(pre.SetText, pre, "lvl") end
         last.level = "unknown (??)"
-        return
+        return true
     end
     if cfg.levelHideMax then
         -- The sanctioned max test: min(expansion cap for this account,
@@ -1439,6 +1518,19 @@ local function updateLevel(inst)
     pcall(fs.SetText, fs, string.format("%d", lvl))
     if pre then pcall(pre.SetText, pre, "lvl") end
     last.level = "ok"
+    return true
+end
+
+-- The classification icon only steps aside while the level is actually on
+-- screen, so a blank level (hide-at-max is the common one) hands the corner
+-- back. Re-anchored on the FLIP only: this runs on every level and target
+-- event, and the anchor is unchanged in between.
+local function updateLevel(inst)
+    local painted = paintLevel(inst) and true or false
+    if inst.levelPainted ~= painted then
+        inst.levelPainted = painted
+        anchorClassify(inst)
+    end
 end
 
 -- The elite/rare adornment. Blizzard draws this as a dragon wrapped around the
@@ -1889,7 +1981,7 @@ local function update(inst)
     -- so this compares directly -- the pcall guards a missing API, not secrecy.
     -- Ghost is deliberately included: a ghost has health but is not alive.
     local okDead, isDead = pcall(UnitIsDeadOrGhost, cfg.unit)
-    local dead = okDead and isDead == true and cfg.deadIconShow and true or false
+    local dead = okDead and isDead == true
     if not dead then
         setDeadIconShown(inst, false)
     else
@@ -3026,34 +3118,6 @@ end
 -- Adornment setters: the dead skull and the classification icon
 --------------------------------------------------------------------------------
 
-local function setDeadIconShow(inst, state)
-    ensureApplied(inst)
-    state = tostring(state or ""):lower()
-    if state ~= "on" and state ~= "off" then
-        addon:Print("UFZ setter usage: deadicon <on|off>")
-        return
-    end
-    inst.cfg.deadIconShow = (state == "on")
-    -- update() owns the skull's visibility -- it is the only place that knows
-    -- whether the unit is dead. Re-running it is the whole re-apply.
-    update(inst)
-end
-
-local function setDeadIconAtlas(inst, key)
-    ensureApplied(inst)
-    key = tostring(key or "")
-    if not DEAD_ICONS[key] then
-        local names = {}
-        for k in pairs(DEAD_ICONS) do names[#names + 1] = k end
-        table.sort(names)
-        addon:Print("Dead icon must be one of: " .. table.concat(names, " | "))
-        return
-    end
-    inst.cfg.deadIconAtlas = key
-    inst.appliedDeadIcon = nil   -- invalidate the memo, then repaint
-    applyDeadIconTexture(inst)
-end
-
 local function setDeadIconScale(inst, pct)
     ensureApplied(inst)
     local v = tonumber(pct)
@@ -3063,21 +3127,6 @@ local function setDeadIconScale(inst, pct)
         return
     end
     inst.cfg.deadIconScale = math.max(50, math.min(200, math.floor(v + 0.5)))
-    applyLayout(inst)
-end
-
--- nil leaves an axis unchanged -- the setAbsorbOffset dual-slider contract.
-local function setDeadIconOffset(inst, x, y)
-    ensureApplied(inst)
-    local cfg = inst.cfg
-    local vx, vy = tonumber(x), tonumber(y)
-    if not vx and not vy then
-        addon:Print(string.format("UFZ setter usage: deadiconoffset <x> [y]   (current: %.1f, %.1f)",
-            cfg.deadIconX, cfg.deadIconY))
-        return
-    end
-    if vx then cfg.deadIconX = math.floor(vx * 10 + 0.5) / 10 end
-    if vy then cfg.deadIconY = math.floor(vy * 10 + 0.5) / 10 end
     applyLayout(inst)
 end
 
@@ -3117,21 +3166,6 @@ local function setClassifySize(inst, px)
         return
     end
     inst.cfg.classifySize = math.max(8, math.min(48, math.floor(v + 0.5)))
-    applyEnvelope(inst)
-    applyPowerLayout(inst)
-end
-
-local function setClassifyOffset(inst, x, y)
-    ensureApplied(inst)
-    local cfg = inst.cfg
-    local vx, vy = tonumber(x), tonumber(y)
-    if not vx and not vy then
-        addon:Print(string.format("UFZ setter usage: classifyoffset <x> [y]   (current: %.1f, %.1f)",
-            cfg.classifyX, cfg.classifyY))
-        return
-    end
-    if vx then cfg.classifyX = math.floor(vx * 10 + 0.5) / 10 end
-    if vy then cfg.classifyY = math.floor(vy * 10 + 0.5) / 10 end
     applyEnvelope(inst)
     applyPowerLayout(inst)
 end
@@ -3431,14 +3465,10 @@ local API = {
     SetLevelLoc = function(inst, l) return setPowerLocImpl(inst, "level", l) end,
     SetLevelSize = function(inst, n) return setPowerSizeImpl(inst, "level", n) end,
     SetLevelOffset = function(inst, x, y) return setPowerOffsetImpl(inst, "level", x, y) end,
-    SetDeadIconShow = setDeadIconShow,
-    SetDeadIconAtlas = setDeadIconAtlas,
     SetDeadIconScale = setDeadIconScale,
-    SetDeadIconOffset = setDeadIconOffset,
     SetClassifyShow = setClassifyShow,
     SetClassifyLoc = setClassifyLoc,
     SetClassifySize = setClassifySize,
-    SetClassifyOffset = setClassifyOffset,
     SetAuraBuffsShow = function(inst, s) return setAuraShowImpl(inst, "Buffs", s) end,
     SetAuraDebuffsShow = function(inst, s) return setAuraShowImpl(inst, "Debuffs", s) end,
     SetAuraBuffsLoc = function(inst, l) return setAuraLocImpl(inst, "Buffs", l) end,

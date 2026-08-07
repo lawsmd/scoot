@@ -164,21 +164,19 @@ local UNIT_DEFAULTS_SHARED = {
     -- Dead indicator: a skull replacing BOTH health numbers (and the '%') on a
     -- dead or ghost unit. UnitIsDeadOrGhost is a PLAIN read in 12.0 -- no
     -- SecretReturns annotation in UnitDocumentation.lua -- so this branches
-    -- normally. Sized off the number stack it replaces; no envelope
+    -- normally. Always on (user decision 2026-08-07: two stacked zeros are a
+    -- rendering fault to the eye, so there is nothing to opt out of), fixed
+    -- position, one style. Sized off the number stack it replaces; no envelope
     -- contribution, because it lives inside a span the numbers box reserves.
-    deadIconShow   = true,
-    deadIconAtlas  = "bossbanner",      -- key into DEAD_ICONS (engine.lua)
-    deadIconScale  = 100,               -- percent of the replaced stack's height, 50-200
-    deadIconX      = 0,
-    deadIconY      = 0,
+    deadIconAtlas  = "raidmarker",      -- key into DEAD_ICONS (engine.lua)
+    deadIconScale  = 100,               -- percent of DEAD_ICON_BASE x stack height, 50-200
     -- Elite/rare classification icon: Blizzard's own nameplate art, on the
     -- name-relative location system the power/level texts use. Never shown on
-    -- the player (hard early-out in the engine; the page hides the section).
+    -- the player (hard early-out in the engine; the page hides the tab).
+    -- Vertically fixed at CLASSIFY_FIXED_Y -- no offset keys.
     classifyShow   = true,
     classifyLoc    = "topright",        -- bottomleft|bottomright|topleft|topright|nameside
     classifySize   = 20,                -- px, 8-48
-    classifyX      = 0,
-    classifyY      = 0,
 }
 table.freeze(UNIT_DEFAULTS_SHARED)
 
