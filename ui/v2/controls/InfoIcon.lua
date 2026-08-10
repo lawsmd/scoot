@@ -241,6 +241,7 @@ function Controls:CreateInfoIcon(options)
 
     icon._tooltipText = tooltipText
     icon._tooltipTitle = tooltipTitle
+    icon._tooltipTint = options.tooltipTint
 
     icon:SetScript("OnEnter", function(self)
         local r, g, b
@@ -259,6 +260,22 @@ function Controls:CreateInfoIcon(options)
         -- Position above icon to avoid cursor blocking
         local tooltip = GetOrCreateTooltip()
         tooltip:SetContent(self._tooltipTitle, self._tooltipText)
+        -- The tooltip is shared; always retint it (or reset to accent) so a
+        -- previous caller's variant tint never bleeds into this hover.
+        local tr, tg, tb
+        if self._tooltipTint then
+            tr, tg, tb = self._tooltipTint[1], self._tooltipTint[2], self._tooltipTint[3]
+        else
+            tr, tg, tb = theme:GetAccentColor()
+        end
+        if tooltip._titleText then
+            tooltip._titleText:SetTextColor(tr, tg, tb, 1)
+        end
+        if tooltip._border then
+            for _, tex in pairs(tooltip._border) do
+                tex:SetColorTexture(tr, tg, tb, 1)
+            end
+        end
         tooltip:ShowAtAnchor(self, "BOTTOMLEFT", "TOPLEFT", 0, 4)
     end)
 

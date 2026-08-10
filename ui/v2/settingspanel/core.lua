@@ -913,7 +913,7 @@ function UIPanel:CreateContentPane()
     homeContent:SetAllPoints(contentPane)
 
     local homeContainer = CreateFrame("Frame", nil, homeContent)
-    homeContainer:SetPoint("CENTER", homeContent, "CENTER", 0, 30)  -- Shifted up slightly to make room for Feature Guide
+    homeContainer:SetPoint("CENTER", homeContent, "CENTER", 0, 60)  -- Shifted up to make room for Feature Guide
 
     local labelFont2 = Theme:GetFont("LABEL")
 
@@ -963,7 +963,7 @@ function UIPanel:CreateContentPane()
     -- Feature Guide section
     local GUIDE_INSET = 40
     local GUIDE_ICON_SIZE = 30
-    local GUIDE_ROW_SPACING = 36
+    local GUIDE_ROW_SPACING = 14  -- Gap between a row's text bottom and the next row's icon
     local GUIDE_TEXT_MAX_WIDTH = 380
 
     local guideDivider = homeContent:CreateTexture(nil, "BORDER")
@@ -979,35 +979,12 @@ function UIPanel:CreateContentPane()
     guideHeader:SetTextColor(ar, ag, ab, 1)
     guideHeader:SetPoint("TOP", guideDivider, "BOTTOM", 0, -8)
 
-    local FEATURE_GUIDE = {
-        {
-            letter = "X",
-            color = { 0.2, 0.9, 0.3 },
-            tooltipTitle = "Native",
-            tooltipText = "Scoot's foundation. Customize Blizzard's own frames — fonts, colors, textures, borders — while keeping the originals intact. Zero taint risk, fully compatible with Blizzard's systems.",
-            summary = "Enhance Blizzard's built-in UI with custom fonts, colors, textures, and borders. The original frames stay intact — Scoot just makes them look better.",
-        },
-        {
-            letter = "Y",
-            color = { 1.0, 0.85, 0.1 },
-            tooltipTitle = "Modern",
-            tooltipText = "Custom frames that replace Blizzard's UI entirely. Dense info, smooth bars, full layout control — the competitive addon experience. Zero taint.",
-            summary = "Replace Blizzard's frames with clean, modern alternatives. Dense information, smooth bars, and full layout control — the competitive addon experience.",
-        },
-        {
-            letter = "Z",
-            color = { 0.3, 0.6, 1.0 },
-            tooltipTitle = "Text",
-            tooltipText = "Heavily stylized, opinionated UI elements with a text-centric design. A complete visual identity designed from the ground up - the Dev's playground for new ideas that change what the WoW UI can become.",
-            summary = "Highly stylized, opinionated UI elements designed from scratch around a strong visual identity. These features are experimental and conceptually unique.",
-        },
-    }
-
     local guideIcons = {}
     local guideLabels = {}
-    local prevAnchor = guideHeader
 
-    for i, entry in ipairs(FEATURE_GUIDE) do
+    -- Shared X/Y/Z descriptions live in core/modules.lua (addon.FEATURE_GUIDE);
+    -- the Features page legend renders from the same table.
+    for i, entry in ipairs(addon.FEATURE_GUIDE or {}) do
         local icon = Controls:CreateInfoIcon({
             parent = homeContent,
             size = GUIDE_ICON_SIZE,
@@ -1016,14 +993,12 @@ function UIPanel:CreateContentPane()
             tooltipTitle = entry.tooltipTitle,
             tooltipText = entry.tooltipText,
         })
-        icon:SetPoint("TOPLEFT", prevAnchor, "BOTTOMLEFT", i == 1 and 0 or 0, -GUIDE_ROW_SPACING)
-        -- Center the icon under the header for the first row
+        -- Center the icon under the header for the first row; anchor later rows
+        -- below the previous row's text so spacing tracks the wrapped height
         if i == 1 then
-            icon:ClearAllPoints()
             icon:SetPoint("TOP", guideHeader, "BOTTOM", -(GUIDE_TEXT_MAX_WIDTH / 2) - (GUIDE_ICON_SIZE / 2), -14)
         else
-            icon:ClearAllPoints()
-            icon:SetPoint("TOPLEFT", guideIcons[i - 1], "BOTTOMLEFT", 0, -GUIDE_ROW_SPACING)
+            icon:SetPoint("TOPLEFT", guideLabels[i - 1], "BOTTOMLEFT", -(GUIDE_ICON_SIZE + 10), -GUIDE_ROW_SPACING)
         end
 
         local summaryText = homeContent:CreateFontString(nil, "OVERLAY")
@@ -1038,7 +1013,6 @@ function UIPanel:CreateContentPane()
 
         guideIcons[i] = icon
         guideLabels[i] = summaryText
-        prevAnchor = icon
     end
 
     homeContent._guideIcons = guideIcons
@@ -1101,7 +1075,9 @@ function UIPanel:CreateContentPane()
         if scrollFrame and scrollContent then
             local width = scrollFrame:GetWidth()
             if width and width > 0 then
-                scrollContent:SetWidth(width - 16)
+                -- Pages that pan horizontally (e.g. Features) declare a minimum
+                -- content width; never clamp the scroll child below it
+                scrollContent:SetWidth(math.max(width - 16, contentPane._minContentWidth or 0))
             end
         end
         if scrollbar and scrollbar.Update then

@@ -11,6 +11,32 @@ addon.VARIANT_COLORS = {
     Z = { 0.3, 0.6, 1.0 },   -- Blue (Text)
 }
 
+-- Shared X/Y/Z descriptions: the home page Feature Guide and the Features page
+-- legend both render from this table.
+addon.FEATURE_GUIDE = {
+    {
+        letter = "X",
+        color = addon.VARIANT_COLORS.X,
+        tooltipTitle = "Native",
+        tooltipText = "A new coat of paint for Blizzard's own frames: custom fonts, colors, textures, and borders. The originals stay intact underneath.",
+        summary = "Scoot features which customize and reskin the default Blizzard UI, availing custom fonts, colors, textures, and borders to most elements. The original frames and functionalities remain, just a new coat of paint.",
+    },
+    {
+        letter = "Y",
+        color = addon.VARIANT_COLORS.Y,
+        tooltipTitle = "Modern",
+        tooltipText = "Custom frames that fully replace Blizzard's UI, with dense info, smooth bars, and full layout control.",
+        summary = "Custom frames that replace Blizzard UI elements; these features aim to be clean, informative, efficient frames similar to modern offerings like ElvUI or EllesmereUI.",
+    },
+    {
+        letter = "Z",
+        color = addon.VARIANT_COLORS.Z,
+        tooltipTitle = "Text",
+        tooltipText = "Stylized, text-centric elements built from scratch. Experimental designs with a strong visual identity.",
+        summary = "Highly stylized, opinionated UI elements designed from scratch around a strong visual identity. These features are experimental and conceptually unique.",
+    },
+}
+
 --------------------------------------------------------------------------------
 -- Component ID → Category Mapping
 --------------------------------------------------------------------------------
@@ -101,23 +127,24 @@ addon.MODULE_CATEGORIES = {
         label = "Action Bars",
         noMasterToggle = true,
         subToggles = {
-            { id = "actionBars18", label = "Action Bars 1-8",
+            { id = "actionBars18", label = "Action Bars 1-8", variant = "X",
               members = {"actionBar1","actionBar2","actionBar3","actionBar4",
                          "actionBar5","actionBar6","actionBar7","actionBar8"} },
-            { id = "microBar", label = "Micro Bar" },
-            { id = "petBar", label = "Pet Bar" },
-            { id = "stanceBar", label = "Stance Bar" },
+            { id = "microBar", label = "Micro Bar", variant = "X" },
+            { id = "petBar", label = "Pet Bar", variant = "X" },
+            { id = "stanceBar", label = "Stance Bar", variant = "X" },
         },
     },
     bossWarnings = {
         label = "Boss Warnings",
+        variant = "X",
     },
     buffsDebuffs = {
         label = "Buffs/Debuffs",
         noMasterToggle = true,
         subToggles = {
-            { id = "buffs", label = "Buffs" },
-            { id = "debuffs", label = "Debuffs" },
+            { id = "buffs", label = "Buffs", variant = "X" },
+            { id = "debuffs", label = "Debuffs", variant = "X" },
         },
     },
     castBars = {
@@ -136,7 +163,7 @@ addon.MODULE_CATEGORIES = {
             -- unit frame components and is read through addon:IsCastBarXEnabled().
             { id = "castBarX", label = "Cast Bars",
               variant = "X",
-              versionBadge = { label = "X", title = "Cast Bar X", text = "Blizzard's own cast bars, restyled in place by Scoot. Each frame's cast bar settings live on that frame's page and only take effect while that unit frame is enabled above — with the frame off, its Cast Bar X customizations simply aren't applied." } },
+              versionBadge = { label = "X", title = "Cast Bar X", text = "Blizzard's own cast bars, restyled in place by Scoot. Each frame's cast bar settings live on that frame's page and only take effect while that unit frame is enabled above." } },
             -- Z's sub-toggle id MUST equal the component id: addon:RegisterComponent
             -- gates on IsModuleEnabled(GetComponentCategory(id), id), so a mismatch
             -- makes the component silently never register.
@@ -147,17 +174,18 @@ addon.MODULE_CATEGORIES = {
     },
     classAuras = {
         label = "Class Auras",
+        variant = "X",
         -- No sub-toggles on Features page (dynamic per-class aura IDs)
     },
     cooldownManager = {
         label = "Cooldown Manager",
         noMasterToggle = true,
         subToggles = {
-            { id = "essentialCooldowns", label = "Essential Cooldowns" },
-            { id = "utilityCooldowns", label = "Utility Cooldowns" },
-            { id = "trackedBuffs", label = "Tracked Buffs" },
-            { id = "trackedBars", label = "Tracked Bars" },
-            { id = "customGroups", label = "Custom Groups",
+            { id = "essentialCooldowns", label = "Essential Cooldowns", variant = "X" },
+            { id = "utilityCooldowns", label = "Utility Cooldowns", variant = "X" },
+            { id = "trackedBuffs", label = "Tracked Buffs", variant = "X" },
+            { id = "trackedBars", label = "Tracked Bars", variant = "X" },
+            { id = "customGroups", label = "Custom Groups", variant = "X",
               members = {"customGroup1","customGroup2","customGroup3",
                          "customGroup4","customGroup5"} },
         },
@@ -169,7 +197,7 @@ addon.MODULE_CATEGORIES = {
         subToggles = {
             { id = "damageMeter", label = "Damage Meters",
               variant = "X",
-              versionBadge = { label = "X", title = "Damage Meters X", text = "Reskins Blizzard's built-in damage meter frames. Heavily customized frames may result in taint errors during raid encounters, use with caution." } },
+              versionBadge = { label = "X", title = "Damage Meters X", text = "Reskins Blizzard's built-in damage meter frames while keeping the native functionality intact." } },
             { id = "damageMeterV2", label = "Damage Meters",
               variant = "Y",
               versionBadge = { label = "Y", title = "Damage Meters Y", text = "Custom frames that replace Blizzard's meter entirely. Multi-column and multi-window support." } },
@@ -177,33 +205,39 @@ addon.MODULE_CATEGORIES = {
     },
     extraAbilities = {
         label = "Extra Abilities",
+        variant = "X",
     },
     groupFrames = {
         label = "Group Frames",
         noMasterToggle = true,
         subToggles = {
-            { id = "party", label = "Party" },
-            { id = "raid", label = "Raid" },
-            { id = "auraTracking", label = "Aura Tracking" },
+            { id = "party", label = "Party", variant = "X" },
+            { id = "raid", label = "Raid", variant = "X" },
+            { id = "auraTracking", label = "Aura Tracking", variant = "X" },
         },
     },
     minimap = {
         label = "Minimap",
+        variant = "X",
     },
     notes = {
         label = "Notes",
     },
     objectiveTracker = {
         label = "Objective Tracker",
+        variant = "X",
     },
     prd = {
         label = "Personal Resource Display",
+        variant = "X",
     },
     sct = {
         label = "Scrolling Combat Text",
+        variant = "X",
     },
     tooltip = {
         label = "Tooltip",
+        variant = "X",
     },
     widget = {
         label = "Reports/Widget",
@@ -222,25 +256,25 @@ addon.MODULE_CATEGORIES = {
                 { id = "X", variant = "X", category = "unitFrames", subId = "Player",
                   versionBadge = { label = "X", title = "Player Frame X", text = "Blizzard's own Player frame, restyled in place by Scoot. Configured on the Player page under Unit Frames." } },
                 { id = "Z", variant = "Z", category = "unitFramesZ", subId = "Player",
-                  versionBadge = { label = "Z", title = "Player Frame Z", text = "Scoot's own text-first Player frame. Blizzard's Player frame is removed entirely while this is on — and everything attached to it goes with it: the Pet frame, totem and rune/class power bars, and a cast bar locked to the Player frame in Edit Mode. Positioned in Edit Mode; configured on the Player page." } },
+                  versionBadge = { label = "Z", title = "Player Frame Z", text = "Scoot's own text-first Player frame, replacing Blizzard's while enabled. Positioned in Edit Mode; configured on the Player page." } },
               } },
             { id = "Target", label = "Target",
               modeCycle = {
                 { id = "X", variant = "X", category = "unitFrames", subId = "Target",
                   versionBadge = { label = "X", title = "Target Frame X", text = "Blizzard's own Target frame, restyled in place by Scoot. Configured on the Target page under Unit Frames." } },
                 { id = "Z", variant = "Z", category = "unitFramesZ", subId = "Target",
-                  versionBadge = { label = "Z", title = "Target Frame Z", text = "Scoot's own text-first Target frame. Blizzard's Target frame is removed entirely while this is on — and everything attached to it goes with it: the Target-of-Target frame and the target's cast bar. Positioned in Edit Mode; configured on the Target page." } },
+                  versionBadge = { label = "Z", title = "Target Frame Z", text = "Scoot's own text-first Target frame, replacing Blizzard's while enabled. Positioned in Edit Mode; configured on the Target page." } },
               } },
-            { id = "TargetOfTarget", label = "Target of Target" },
-            { id = "Focus", label = "Focus" },
-            { id = "FocusTarget", label = "Target of Focus" },
-            { id = "Pet", label = "Pet" },
+            { id = "TargetOfTarget", label = "Target of Target", variant = "X" },
+            { id = "Focus", label = "Focus", variant = "X" },
+            { id = "FocusTarget", label = "Target of Focus", variant = "X" },
+            { id = "Pet", label = "Pet", variant = "X" },
             { id = "Boss", label = "Boss",
               modeCycle = {
                 { id = "X", variant = "X", category = "unitFrames", subId = "Boss",
                   versionBadge = { label = "X", title = "Boss Frames X", text = "Blizzard's own Boss frames, restyled in place by Scoot. All five share one configuration, on the Boss page under Unit Frames." } },
                 { id = "Z", variant = "Z", category = "unitFramesZ", subId = "Boss",
-                  versionBadge = { label = "Z", title = "Boss Frames Z", text = "Scoot's own text-first Boss frames — five of them, in a vertical stack you position as one block in Edit Mode. Blizzard's boss frames are removed entirely while this is on, and their cast bars go with them (Cast Bar Z covers those). All five share one configuration, on the Boss page." } },
+                  versionBadge = { label = "Z", title = "Boss Frames Z", text = "Scoot's own text-first Boss frames, replacing Blizzard's while enabled. The five frames stack as one block you position in Edit Mode, and share one configuration on the Boss page." } },
               } },
             -- Not an on/off row: a variant selector for the castBars category,
             -- nested here because that is where its effect is scoped. Its state

@@ -20,11 +20,30 @@ local INDICATOR_BORDER = 2
 local ROW_PADDING = 8
 local SUB_INDENT = 14
 local COLUMN_GAP = 12
-local RELOAD_AREA_HEIGHT = 70
+local RELOAD_AREA_HEIGHT = 46      -- single row: RELOAD button with caption to its right
+local HEADER_TOP_PAD = 6           -- breathing room above the "Modules" title
+-- Below this content width the module columns get crushed; the page locks the
+-- scroll content to it and pans horizontally instead (~250px per column)
+local FEATURES_MIN_CONTENT_WIDTH = 760
+local HSCROLL_HEIGHT = 8
+local HSCROLL_THUMB_MIN = 30
 local LABEL_FONT_SIZE = 10
 local SUB_LABEL_FONT_SIZE = 10
 local INDICATOR_FONT_SIZE = 9
 local NUM_COLUMNS = 3
+local LEGEND_ICON_SIZE = 14
+local LEGEND_TEXT_GAP = 6
+local LEGEND_ROW_GAP = 6
+local LEGEND_FONT_SIZE = 10
+local HEADER_COL_GAP = 16          -- gap between the title/intro column and the legend column
+local LEGEND_RIGHT_INSET = 14      -- keeps the top legend line clear of the panel close button
+local VARIANT_ICON_SIZE = 10       -- tiny per-variant badges beside labels
+local VARIANT_ICON_FONT_SIZE = 5   -- about half of LABEL_FONT_SIZE
+-- This page raises the whole content pane into the title-bar dead space (normally
+-- reserved at -80). The header buttons centered on the frame's top edge reach 13px
+-- below it; -18 clears them, and the close button band (y -10..-34) only spans the
+-- far-right 24px where this page draws nothing that high.
+local PANE_TOP_OFFSET = -18
 
 --------------------------------------------------------------------------------
 -- Helpers
@@ -162,18 +181,20 @@ local function CreateIndicator(parent, theme)
     text:SetTextColor(dimR, dimG, dimB, 1)
     indicator._text = text
 
-    function indicator:UpdateState(isOn, variantColor)
+    function indicator:UpdateState(isOn, variant)
         local r, g, b = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()
-        -- Use variant color (X/Y/Z) when ON and available
+        -- Blizzard-owned features show their variant letter (green "X") when ON;
+        -- addon-original features keep the plain accent "ON".
+        local vc = variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[variant]
         local onR, onG, onB = r, g, b
-        if variantColor then
-            onR, onG, onB = variantColor[1], variantColor[2], variantColor[3]
+        if vc then
+            onR, onG, onB = vc[1], vc[2], vc[3]
         end
         if isOn then
             self._fill:SetColorTexture(onR, onG, onB, 1)
             self._fill:Show()
-            self._text:SetText("ON")
+            self._text:SetText(vc and variant or "ON")
             self._text:SetTextColor(0, 0, 0, 1)
             for _, tex in pairs(self._border) do tex:SetColorTexture(onR, onG, onB, 1) end
         else
@@ -435,39 +456,48 @@ local function CreateModuleRow(parent, options)
         labelFS:SetTextColor(ar, ag, ab, 0.75)
     end
 
-    -- Version badge info icon (e.g., "X" / "Y" with variant color)
-    if options.versionBadge and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
-        -- Use variant color if available (X=green, Y=yellow, Z=blue)
-        local badgeColor = nil
-        if options.variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[options.variant] then
-            badgeColor = addon.VARIANT_COLORS[options.variant]
-        end
-        local badge = addon.UI.Controls:CreateInfoIcon({
-            parent = row,
-            tooltipTitle = options.versionBadge.title or "",
-            tooltipText = options.versionBadge.text or "",
-            size = 14,
-            iconType = "info",
-            customText = options.versionBadge.label or "",
-            colorOverride = badgeColor,
-        })
-        if badge._iconText then
-            local fontPath = badge._iconText:GetFont()
-            if fontPath then
-                pcall(badge._iconText.SetFont, badge._iconText, fontPath, 7, "OUTLINE")
+    -- Tiny per-variant letter badges (multi-variant rows: X/Y or X/Z). Each
+    -- badge hover-shows that variant's versionBadge tooltip, so a user can read
+    -- every variant without clicking the selector through its cycle.
+    if options.variantOptions and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
+        local prevIcon
+        for _, opt in ipairs(options.variantOptions) do
+            local vb = opt.versionBadge
+            local vc = opt.variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[opt.variant]
+            if vb and vc then
+                local badge = addon.UI.Controls:CreateInfoIcon({
+                    parent = row,
+                    size = VARIANT_ICON_SIZE,
+                    customText = vb.label or opt.variant,
+                    colorOverride = vc,
+                    tooltipTitle = vb.title or "",
+                    tooltipText = vb.text or "",
+                    tooltipTint = vc,
+                })
+                if badge then
+                    if badge._iconText then
+                        local fontPath = badge._iconText:GetFont()
+                        if fontPath then
+                            pcall(badge._iconText.SetFont, badge._iconText, fontPath, VARIANT_ICON_FONT_SIZE, "OUTLINE")
+                        end
+                    end
+                    if prevIcon then
+                        badge:SetPoint("LEFT", prevIcon, "RIGHT", 3, 0)
+                    else
+                        badge:SetPoint("LEFT", labelFS, "RIGHT", 4, 0)
+                    end
+                    prevIcon = badge
+                end
             end
         end
-        badge:SetPoint("LEFT", labelFS, "RIGHT", 4, 0)
-        row._variantBadge = badge
     end
 
     -- ON/OFF indicator (right side) — hidden for header and variantSelector rows
     local indicator
     if not options.isHeader and not options.variantSelector then
-        local variantColor = options.variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[options.variant]
         indicator = CreateIndicator(row, theme)
         indicator:SetPoint("RIGHT", row, "RIGHT", -ROW_PADDING, 0)
-        indicator:UpdateState(options.isOn, variantColor)
+        indicator:UpdateState(options.isOn, options.variant)
 
         indicator:SetScript("OnClick", function()
             if options.onToggle then options.onToggle() end
@@ -584,6 +614,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
                 label = catDef.label,
                 theme = theme,
                 variantSelector = true,
+                variantOptions = catDef.subToggles,
             })
             variantRow:SetPoint("TOPLEFT", column, "TOPLEFT", 0, -yOffset)
             variantRow:SetPoint("TOPRIGHT", column, "TOPRIGHT", 0, -yOffset)
@@ -626,6 +657,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
                         label = sub.label,
                         indent = SUB_INDENT,
                         variantSelector = true,
+                        variantOptions = sub.modeCycle,
                         theme = theme,
                     })
                     modeRow:SetPoint("TOPLEFT", column, "TOPLEFT", 0, -yOffset)
@@ -658,6 +690,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
                         label = sub.label,
                         indent = SUB_INDENT,
                         variantSelector = true,
+                        variantOptions = variants,
                         theme = theme,
                     })
                     varRow:SetPoint("TOPLEFT", column, "TOPLEFT", 0, -yOffset)
@@ -684,7 +717,6 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
                         label = sub.label,
                         isOn = subIsOn,
                         indent = SUB_INDENT,
-                        versionBadge = sub.versionBadge,
                         variant = sub.variant,
                         theme = theme,
                         onToggle = function()
@@ -707,6 +739,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
             local simpleRow = CreateModuleRow(column, {
                 label = catDef.label,
                 isOn = isOn,
+                variant = catDef.variant,
                 theme = theme,
                 onToggle = function()
                     addon:SetModuleEnabled(catId, nil, not addon:IsModuleEnabled(catId))
@@ -751,7 +784,7 @@ local function EnsureReloadArea(panel, contentPane)
     sep:SetHeight(1)
     sep:SetColorTexture(ar, ag, ab, 0.3)
 
-    -- RELOAD button (centered)
+    -- RELOAD button (centered) with its caption to the right
     local btn = Controls:CreateButton({
         parent = area,
         text = "RELOAD",
@@ -759,7 +792,7 @@ local function EnsureReloadArea(panel, contentPane)
         height = 30,
         fontSize = 13,
     })
-    btn:SetPoint("TOP", area, "TOP", 0, -14)
+    btn:SetPoint("TOP", area, "TOP", 0, -8)
     btn:SetScript("OnClick", function()
         if ReloadUI then ReloadUI() end
     end)
@@ -768,10 +801,10 @@ local function EnsureReloadArea(panel, contentPane)
     -- Explainer text
     local explainer = area:CreateFontString(nil, "OVERLAY")
     explainer:SetFont(theme:GetFont("VALUE"), 10, "")
-    explainer:SetPoint("TOP", btn, "BOTTOM", 0, -7)
-    explainer:SetText("To toggle the selected components")
+    explainer:SetPoint("LEFT", btn, "RIGHT", 10, 0)
+    explainer:SetText("to apply changes")
     explainer:SetTextColor(dimR, dimG, dimB, 0.8)
-    explainer:SetJustifyH("CENTER")
+    explainer:SetJustifyH("LEFT")
 
     panel._startHereReloadArea = area
     return area
@@ -808,13 +841,149 @@ local function UpdateReloadButtonVisual(area, isDirty)
 end
 
 --------------------------------------------------------------------------------
+-- Horizontal Scrollbar (shown when the window is too narrow for 3 columns)
+--------------------------------------------------------------------------------
+
+local function EnsureHScrollbar(panel, contentPane)
+    if panel._startHereHScroll then
+        panel._startHereHScroll.Update()
+        return panel._startHereHScroll
+    end
+
+    local theme = addon.UI.Theme
+    local ar, ag, ab = theme:GetAccentColor()
+    local scrollFrame = contentPane._scrollFrame
+
+    local bar = CreateFrame("Frame", nil, contentPane)
+    bar:SetHeight(HSCROLL_HEIGHT)
+    bar:SetPoint("BOTTOMLEFT", contentPane, "BOTTOMLEFT", 8, 8 + RELOAD_AREA_HEIGHT + 2)
+    bar:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -24, 8 + RELOAD_AREA_HEIGHT + 2)
+    bar:EnableMouse(true)
+
+    local track = bar:CreateTexture(nil, "BACKGROUND")
+    track:SetAllPoints()
+    track:SetColorTexture(ar, ag, ab, 0.12)
+    bar._track = track
+
+    local thumb = CreateFrame("Button", nil, bar)
+    thumb:SetHeight(HSCROLL_HEIGHT)
+    thumb:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    thumb:EnableMouse(true)
+    thumb:RegisterForDrag("LeftButton")
+
+    local thumbTex = thumb:CreateTexture(nil, "ARTWORK")
+    thumbTex:SetAllPoints()
+    thumbTex:SetColorTexture(ar, ag, ab, 0.5)
+    thumb._tex = thumbTex
+
+    thumb:SetScript("OnEnter", function(self)
+        local r, g, b = theme:GetAccentColor()
+        self._tex:SetColorTexture(r, g, b, 0.8)
+    end)
+    thumb:SetScript("OnLeave", function(self)
+        if not self._isDragging then
+            local r, g, b = theme:GetAccentColor()
+            self._tex:SetColorTexture(r, g, b, 0.5)
+        end
+    end)
+
+    local function Metrics()
+        local visW = scrollFrame:GetWidth() or 1
+        local scrollChild = scrollFrame:GetScrollChild()
+        local contentW = (scrollChild and scrollChild:GetWidth()) or 1
+        return visW, contentW, math.max(0, contentW - visW)
+    end
+
+    function bar.Update()
+        local visW, contentW, maxScroll = Metrics()
+        if maxScroll <= 1 then
+            bar:Hide()
+            scrollFrame:SetHorizontalScroll(0)
+            scrollFrame:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -24, 8 + RELOAD_AREA_HEIGHT)
+        else
+            bar:Show()
+            -- Reserve a slice of the viewport for the bar while it's visible
+            scrollFrame:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -24, 8 + RELOAD_AREA_HEIGHT + HSCROLL_HEIGHT + 6)
+            local trackW = bar:GetWidth() or 1
+            local thumbW = math.max(HSCROLL_THUMB_MIN, (visW / contentW) * trackW)
+            thumb:SetWidth(thumbW)
+            local cur = scrollFrame:GetHorizontalScroll() or 0
+            if cur > maxScroll then
+                cur = maxScroll
+                scrollFrame:SetHorizontalScroll(cur)
+            end
+            local pct = maxScroll > 0 and (cur / maxScroll) or 0
+            thumb:ClearAllPoints()
+            thumb:SetPoint("LEFT", bar, "LEFT", pct * (trackW - thumbW), 0)
+        end
+        -- Viewport height changes with the bar's visibility
+        if contentPane._scrollbar and contentPane._scrollbar.Update then
+            contentPane._scrollbar:Update()
+        end
+    end
+
+    local dragStartX, dragStartScroll
+
+    thumb:SetScript("OnDragStart", function(self)
+        self._isDragging = true
+        local r, g, b = theme:GetAccentColor()
+        self._tex:SetColorTexture(r, g, b, 1)
+        local cursorX = GetCursorPosition()
+        dragStartX = cursorX / self:GetEffectiveScale()
+        dragStartScroll = scrollFrame:GetHorizontalScroll() or 0
+    end)
+
+    thumb:SetScript("OnDragStop", function(self)
+        self._isDragging = false
+        local r, g, b = theme:GetAccentColor()
+        self._tex:SetColorTexture(r, g, b, self:IsMouseOver() and 0.8 or 0.5)
+    end)
+
+    thumb:SetScript("OnUpdate", function(self)
+        if not self._isDragging then return end
+        local cursorX = GetCursorPosition()
+        cursorX = cursorX / self:GetEffectiveScale()
+        local _, _, maxScroll = Metrics()
+        local maxThumbOffset = (bar:GetWidth() or 1) - self:GetWidth()
+        if maxThumbOffset > 0 and maxScroll > 0 then
+            local scrollDelta = ((cursorX - dragStartX) / maxThumbOffset) * maxScroll
+            scrollFrame:SetHorizontalScroll(math.max(0, math.min(maxScroll, dragStartScroll + scrollDelta)))
+            bar.Update()
+        end
+    end)
+
+    -- Track click: jump the thumb center to the cursor
+    bar:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" or thumb:IsMouseOver() then return end
+        local cursorX = GetCursorPosition()
+        cursorX = cursorX / self:GetEffectiveScale()
+        local left = self:GetLeft() or 0
+        local _, _, maxScroll = Metrics()
+        local thumbW = thumb:GetWidth() or HSCROLL_THUMB_MIN
+        local maxThumbOffset = (self:GetWidth() or 1) - thumbW
+        if maxThumbOffset > 0 and maxScroll > 0 then
+            local pct = math.max(0, math.min(1, (cursorX - left - thumbW / 2) / maxThumbOffset))
+            scrollFrame:SetHorizontalScroll(pct * maxScroll)
+            bar.Update()
+        end
+    end)
+
+    panel._startHereHScroll = bar
+    bar.Update()
+    return bar
+end
+
+--------------------------------------------------------------------------------
 -- Cleanup (called from ClearContent when navigating away)
 --------------------------------------------------------------------------------
 
 local function Cleanup(panel)
-    -- Hide reload area
+    -- Hide reload area and horizontal scrollbar
     if panel._startHereReloadArea then
         panel._startHereReloadArea:Hide()
+    end
+    if panel._startHereHScroll then
+        panel._startHereHScroll:Hide()
     end
 
     -- Restore scroll frame, scrollbar anchors, header separator, and scroll top anchor
@@ -831,9 +1000,27 @@ local function Cleanup(panel)
         if contentPane._headerSep then
             contentPane._headerSep:Show()
         end
-        -- Restore scroll frame top anchor (overridden in Render to sit below title)
+        -- Restore scroll frame top anchor (overridden in Render to sit at the
+        -- pane top; the blanked header title is re-set by navigation on the
+        -- next page select)
         if scrollFrame and contentPane._header then
             scrollFrame:SetPoint("TOPLEFT", contentPane._header, "BOTTOMLEFT", 8, -8)
+        end
+        -- Restore the content pane's top (raised in Render into the title bar)
+        if pageState.paneAnchor then
+            local a = pageState.paneAnchor
+            contentPane:SetPoint("TOPLEFT", a.relTo, a.relPoint, a.x, a.y)
+            pageState.paneAnchor = nil
+        end
+        -- Horizontal-scroll teardown: unlock the content width and reset pan
+        contentPane._minContentWidth = nil
+        if scrollFrame then
+            scrollFrame:SetHorizontalScroll(0)
+            local sc = contentPane._scrollContent
+            if sc then
+                local w = scrollFrame:GetWidth()
+                if w and w > 0 then sc:SetWidth(w - 16) end
+            end
         end
     end
 
@@ -854,6 +1041,8 @@ local function Cleanup(panel)
     pageState.dirty = false
     pageState.snapshot = nil
     pageState.registerGuard = nil
+    pageState.rebuild = nil
+    pageState.resizeToken = (pageState.resizeToken or 0) + 1  -- cancel pending reflow
     panel._navigationGuard = nil
     panel._startHereCleanup = nil
 end
@@ -884,20 +1073,30 @@ function StartHere.Render(panel, scrollContent)
         cancelText = "Discard Changes",
     })
 
-    -- Override header title for this page
-    if contentPane._headerTitle then
-        contentPane._headerTitle:SetText("Modules")
+    -- Raise the content pane into the title-bar dead space so the module grid fits
+    -- without scrolling (Cleanup restores the original offset)
+    if not pageState.paneAnchor then
+        local point, relTo, relPoint, x, y = contentPane:GetPoint(1)
+        if point == "TOPLEFT" then
+            pageState.paneAnchor = { relTo = relTo, relPoint = relPoint, x = x, y = y }
+            contentPane:SetPoint("TOPLEFT", relTo, relPoint, x, PANE_TOP_OFFSET)
+        end
     end
 
-    -- Hide the default header separator — a custom one renders below the intro text
+    -- The page title renders inside the scroll content (left header column), so
+    -- blank the pane's own title; navigation re-sets it on the next page select
+    if contentPane._headerTitle then
+        contentPane._headerTitle:SetText("")
+    end
+
+    -- Hide the default header separator — a custom one renders below the header columns
     if contentPane._headerSep then
         contentPane._headerSep:Hide()
     end
 
-    -- Pull scroll frame up so intro text sits right below the header title
-    if contentPane._headerTitle then
-        scrollFrame:SetPoint("TOPLEFT", contentPane._headerTitle, "BOTTOMLEFT", 0, -4)
-    end
+    -- Pull the scroll frame to the pane top: the two-column header (title +
+    -- explainer left, X/Y/Z legend right) owns the full vertical space
+    scrollFrame:SetPoint("TOPLEFT", contentPane, "TOPLEFT", 8, -8)
 
     -- Create/show reload area
     local reloadArea = EnsureReloadArea(panel, contentPane)
@@ -909,8 +1108,44 @@ function StartHere.Render(panel, scrollContent)
         contentPane._scrollbar:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -8, 24 + RELOAD_AREA_HEIGHT)
     end
 
+    -- Lock the scroll content to a 3-column minimum width; when the window is
+    -- narrower the page pans horizontally via the h-scrollbar instead of
+    -- crushing the columns
+    contentPane._minContentWidth = FEATURES_MIN_CONTENT_WIDTH
+    local sfWidth = scrollFrame:GetWidth() or 0
+    if sfWidth > 0 then
+        scrollContent:SetWidth(math.max(sfWidth - 16, FEATURES_MIN_CONTENT_WIDTH))
+    end
+    EnsureHScrollbar(panel, contentPane)
+
     -- Register cleanup for when user navigates away
     panel._startHereCleanup = function() Cleanup(panel) end
+
+    -- Reflow on window resize (debounced): recompute the locked width from the
+    -- new viewport, rebuild the columns for it, and refresh the h-scrollbar
+    if not panel._startHereResizeHooked then
+        panel._startHereResizeHooked = true
+        panel.frame:HookScript("OnSizeChanged", function()
+            if not panel._startHereCleanup then return end
+            pageState.resizeToken = (pageState.resizeToken or 0) + 1
+            local token = pageState.resizeToken
+            C_Timer.After(0.15, function()
+                if token ~= pageState.resizeToken then return end
+                if not panel._startHereCleanup then return end
+                local cp = panel.frame and panel.frame._contentPane
+                local sf = cp and cp._scrollFrame
+                local sc = cp and cp._scrollContent
+                if sf and sc then
+                    local w = sf:GetWidth() or 0
+                    if w > 0 then
+                        sc:SetWidth(math.max(w - 16, FEATURES_MIN_CONTENT_WIDTH))
+                    end
+                end
+                if pageState.rebuild then pageState.rebuild() end
+                if panel._startHereHScroll then panel._startHereHScroll.Update() end
+            end)
+        end)
+    end
 
     -- Navigation guard: called by toggle handlers when dirty to register a
     -- confirmation dialog before allowing navigation away from Features page.
@@ -992,24 +1227,86 @@ function StartHere.Render(panel, scrollContent)
         end
         if wipe then wipe(pageState.columns) else pageState.columns = {} end
 
-        -- Intro text (recreated each rebuild so it survives row cleanup)
+        -- Lock the pan range to the width this layout is built for, so live
+        -- window shrinks keep the full horizontal reach until the debounced
+        -- reflow rebuilds at the new width
+        contentPane._minContentWidth = math.max(scrollContent:GetWidth() or 0, FEATURES_MIN_CONTENT_WIDTH)
+
+        -- Two-column header inside the scroll content: page title + explainer on
+        -- the left (~1/4 of the width), X/Y/Z legend rows on the right (~3/4)
+        local availWidth = (scrollContent:GetWidth() or 300) - ROW_PADDING * 2
+        local leftColWidth = math.floor(availWidth * 0.25)
+        local legendWidth = availWidth - leftColWidth - HEADER_COL_GAP
+        local ar, ag, ab = theme:GetAccentColor()
+
+        local titleFS = scrollContent:CreateFontString(nil, "OVERLAY")
+        theme:ApplyHeaderFont(titleFS, 20)
+        titleFS:SetTextColor(ar, ag, ab, 1)
+        titleFS:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", ROW_PADDING, -HEADER_TOP_PAD)
+        titleFS:SetText("Modules")
+        table.insert(pageState.rows, titleFS)
+
         local introFS = scrollContent:CreateFontString(nil, "OVERLAY")
         introFS:SetFont(theme:GetFont("VALUE"), 11, "")
-        introFS:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", ROW_PADDING, 0)
-        local availWidth = (scrollContent:GetWidth() or 300) - ROW_PADDING * 2
-        introFS:SetWidth(availWidth)
+        introFS:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 0, -6)
+        introFS:SetWidth(leftColWidth)
         introFS:SetWordWrap(true)
         introFS:SetJustifyH("LEFT")
         introFS:SetText("Enable or disable Scoot modules. Disabled modules do not load, freeing them for other addons.")
         introFS:SetTextColor(theme:GetDimTextColor())
         table.insert(pageState.rows, introFS)
 
-        -- Separator below intro text
+        -- X/Y/Z legend: one row per feature-set letter in the right column.
+        -- Chain-anchored (each icon hangs below the previous row's summary text)
+        -- so wrapped text self-spaces without any string-height measurement.
+        local legendLabels = {}
+        local prevFS
+        local legendX = ROW_PADDING + leftColWidth + HEADER_COL_GAP
+        for _, entry in ipairs(addon.FEATURE_GUIDE or {}) do
+            local icon = addon.UI.Controls:CreateInfoIcon({
+                parent = scrollContent,
+                size = LEGEND_ICON_SIZE,
+                customText = entry.letter,
+                colorOverride = entry.color,
+                tooltipTitle = entry.tooltipTitle,
+                tooltipText = entry.tooltipText,
+                tooltipTint = entry.color,
+            })
+            if icon then
+                if prevFS then
+                    icon:SetPoint("TOPLEFT", prevFS, "BOTTOMLEFT", -(LEGEND_ICON_SIZE + LEGEND_TEXT_GAP), -LEGEND_ROW_GAP)
+                else
+                    icon:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", legendX, -(HEADER_TOP_PAD + 2))
+                end
+                local fs = scrollContent:CreateFontString(nil, "OVERLAY")
+                fs:SetFont(theme:GetFont("LABEL"), LEGEND_FONT_SIZE, "")
+                fs:SetTextColor(entry.color[1], entry.color[2], entry.color[3], 0.8)
+                fs:SetText(entry.summary)
+                fs:SetJustifyH("LEFT")
+                fs:SetWordWrap(true)
+                fs:SetWidth(legendWidth - LEGEND_ICON_SIZE - LEGEND_TEXT_GAP - LEGEND_RIGHT_INSET)
+                fs:SetPoint("TOPLEFT", icon, "TOPRIGHT", LEGEND_TEXT_GAP, -1)
+                table.insert(pageState.rows, icon)
+                table.insert(pageState.rows, fs)
+                legendLabels[#legendLabels + 1] = fs
+                prevFS = fs
+            end
+        end
+
+        -- Separator below the header columns. The legend column is the taller
+        -- side in practice (3 wrapped rows vs a title + short explainer), so
+        -- chain to its last label; falls back to below the intro if the legend
+        -- produced nothing. Offsets stretch the line to the full content width.
         local sep = scrollContent:CreateTexture(nil, "BORDER", nil, -1)
         sep:SetHeight(1)
-        sep:SetPoint("TOPLEFT", introFS, "BOTTOMLEFT", -4, -6)
-        sep:SetPoint("TOPRIGHT", introFS, "BOTTOMRIGHT", 4, -6)
-        local ar, ag, ab = theme:GetAccentColor()
+        local sepAnchor = legendLabels[#legendLabels]
+        if sepAnchor then
+            sep:SetPoint("TOPLEFT", sepAnchor, "BOTTOMLEFT", -(leftColWidth + HEADER_COL_GAP + LEGEND_ICON_SIZE + LEGEND_TEXT_GAP) - 4, -8)
+            sep:SetPoint("TOPRIGHT", sepAnchor, "BOTTOMRIGHT", LEGEND_RIGHT_INSET + 4, -8)
+        else
+            sep:SetPoint("TOPLEFT", introFS, "BOTTOMLEFT", -4, -6)
+            sep:SetPoint("TOPRIGHT", introFS, "BOTTOMRIGHT", 4, -6)
+        end
         sep:SetColorTexture(ar, ag, ab, 0.3)
         table.insert(pageState.rows, sep)
 
@@ -1047,24 +1344,48 @@ function StartHere.Render(panel, scrollContent)
             BuildColumnContent(col, categories, startIdx, endIdx, pageState, theme, rebuild)
         end
 
-        -- Set scroll content height
-        local introUsed = (introFS:GetStringHeight() or 14) + 6 + 1 + 4
+        -- Set scroll content height. Sync estimate first (string heights may
+        -- under-report before first render), then a deferred pass corrects it
+        -- from actual geometry.
+        -- Header height = the taller of the two columns (legend wins in practice)
+        local legendUsed = HEADER_TOP_PAD + 2
+        for _, fs in ipairs(legendLabels) do
+            legendUsed = legendUsed + math.max(LEGEND_ICON_SIZE, fs:GetStringHeight() or 12) + LEGEND_ROW_GAP
+        end
+        local leftUsed = HEADER_TOP_PAD + (titleFS:GetStringHeight() or 20) + 6 + (introFS:GetStringHeight() or 14)
+        local headerUsed = math.max(legendUsed, leftUsed) + 2 + 1 + 4  -- remaining sep gap, sep line, gap to columns
         local maxColHeight = 0
         for _, col in ipairs(pageState.columns) do
             local h = col:GetHeight()
             if h > maxColHeight then maxColHeight = h end
         end
-        scrollContent:SetHeight(introUsed + maxColHeight + 8)
+        scrollContent:SetHeight(headerUsed + maxColHeight + 8)
+
+        local col1 = pageState.columns[1]
+        C_Timer.After(0, function()
+            -- Superseded rebuild or navigation away unparents the column; no-op then
+            if not col1 or col1:GetParent() ~= scrollContent then return end
+            local sTop, cTop = scrollContent:GetTop(), col1:GetTop()
+            if not (sTop and cTop) then return end
+            scrollContent:SetHeight((sTop - cTop) + maxColHeight + 8)
+            if contentPane._scrollbar and contentPane._scrollbar.Update then
+                contentPane._scrollbar:Update()
+            end
+        end)
 
         -- Update reload button visual
         UpdateReloadButtonVisual(reloadArea, pageState.dirty)
 
-        -- Update scrollbar
+        -- Update scrollbars (the h-bar also re-slots the viewport bottom)
         if contentPane._scrollbar and contentPane._scrollbar.Update then
             contentPane._scrollbar:Update()
         end
+        if panel._startHereHScroll then
+            panel._startHereHScroll.Update()
+        end
     end
 
+    pageState.rebuild = rebuild
     rebuild()
 end
 
