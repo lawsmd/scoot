@@ -1998,14 +1998,167 @@ function addon.DebugDMYDrillState()
     add("  emptyData  (no combatSpells returned): %d", c.emptyData or 0)
     add("  popFail    (render threw, degraded):   %d", c.popFail or 0)
     add("")
+    add("[death] Death log / recap links:")
+    add("  dlogOk     (death log rendered):       %d", c.dlogOk or 0)
+    add("  dlogEmpty  (no deaths in session):     %d", c.dlogEmpty or 0)
+    add("  dlogAmbig  (ikey collision, pending):  %d", c.dlogAmbig or 0)
+    add("  dlogFail   (query/build/render fail):  %d", c.dlogFail or 0)
+    add("  recapOk    (recap rendered):           %d", c.recapOk or 0)
+    add("  recapEmpty (no recap events):          %d", c.recapEmpty or 0)
+    add("  recapFail  (recap render threw):       %d", c.recapFail or 0)
+    add("  segHit/segMiss (Overall labels):       %d / %d", c.segHit or 0, c.segMiss or 0)
+    add("")
 
     local dd = DMY._activeDrilldown
     if dd then
-        add("[3] Active drilldown: meterType=%s isPending=%s hasGUID=%s",
-            tostring(dd.meterType), tostring(dd.isPending), tostring(dd.sourceGUID ~= nil))
+        add("[3] Active drilldown: meterType=%s isPending=%s hasGUID=%s view=%s scope=%s",
+            tostring(dd.meterType), tostring(dd.isPending), tostring(dd.sourceGUID ~= nil),
+            tostring(dd.deathsView), tostring(dd.logScope))
     else
         add("[3] Active drilldown: none")
     end
 
     addon.DebugShowWindow("DMY Drilldown State", table.concat(lines, "\n"))
+end
+
+--------------------------------------------------------------------------------
+-- /scoot debug dmY deathprobe — Deaths session + C_DeathRecap secrecy probe
+-- Captures IMMEDIATELY (run it mid-combat — that's the point: it delivers the
+-- in-game verdict on whether C_DeathRecap returns plain data during combat).
+-- Display defers to combat end when run in combat (colprobe pattern).
+--------------------------------------------------------------------------------
+
+function addon.DebugDMYDeathProbe()
+    local DMY = addon.DamageMetersY
+    if not DMY then
+        addon.DebugShowWindow("DMY Death Probe", "DMY not available.")
+        return
+    end
+
+    local lines = { "== DMY Death Probe ==", "" }
+    local function add(fmt, ...)
+        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
+    end
+
+    local function FieldInfo(v)
+        if v == nil then return "nil" end
+        if issecretvalue and issecretvalue(v) then return "SECRET(" .. type(v) .. ")" end
+        return type(v) .. "=" .. tostring(v)
+    end
+
+    add("InCombatLockdown(): %s", tostring(InCombatLockdown()))
+    add("")
+
+    -- [1] Deaths sessions: Current (1) and Overall (0)
+    local firstRecapID = nil
+    for _, sessionType in ipairs({ 1, 0 }) do
+        local label = sessionType == 1 and "Current" or "Overall"
+        add("[1] Deaths session (%s):", label)
+        if not (C_DamageMeter and C_DamageMeter.GetCombatSessionFromType) then
+            add("  C_DamageMeter unavailable")
+        else
+            local ok, session = pcall(C_DamageMeter.GetCombatSessionFromType, sessionType, 9)
+            if not ok then
+                add("  query THREW")
+            elseif not session or not session.combatSources then
+                add("  no session / no combatSources")
+            else
+                local sources = session.combatSources
+                add("  %d death events (API order = most recent first)", #sources)
+                for i = 1, math.min(#sources, 10) do
+                    local s = sources[i]
+                    add("  [%d] recapID=%s time=%s guid=%s name=%s class=%s spec=%s local=%s",
+                        i, FieldInfo(s.deathRecapID), FieldInfo(s.deathTimeSeconds),
+                        FieldInfo(s.sourceGUID), FieldInfo(s.name),
+                        FieldInfo(s.classFilename), FieldInfo(s.specIconID),
+                        FieldInfo(s.isLocalPlayer))
+                    if not firstRecapID then
+                        local rid = s.deathRecapID
+                        if rid ~= nil and not (issecretvalue and issecretvalue(rid))
+                            and type(rid) == "number" and rid > 0 then
+                            firstRecapID = rid
+                        end
+                    end
+                end
+                if #sources > 10 then add("  ... (%d more)", #sources - 10) end
+            end
+        end
+        add("")
+    end
+
+    -- [2] C_DeathRecap probe on the first plain recapID found
+    add("[2] C_DeathRecap probe:")
+    if not (C_DeathRecap and C_DeathRecap.GetRecapEvents) then
+        add("  C_DeathRecap unavailable")
+    elseif not firstRecapID then
+        add("  no plain recapID > 0 found in [1] — nothing to probe")
+    else
+        add("  probing recapID=%d", firstRecapID)
+        if C_DeathRecap.HasRecapEvents then
+            local ok, has = pcall(C_DeathRecap.HasRecapEvents, firstRecapID)
+            add("  HasRecapEvents: %s", ok and FieldInfo(has) or "THREW")
+        end
+        local okEv, events = pcall(C_DeathRecap.GetRecapEvents, firstRecapID)
+        if not okEv then
+            add("  GetRecapEvents: THREW")
+        elseif type(events) ~= "table" then
+            add("  GetRecapEvents: %s", FieldInfo(events))
+        else
+            local okCount, n = pcall(function() return #events end)
+            add("  GetRecapEvents: table, count=%s", okCount and tostring(n) or "SECRET-TABLE")
+            if okCount and n and n > 0 then
+                local ev = events[1]
+                add("  event[1] (killing blow) field secrecy:")
+                for _, f in ipairs({ "event", "spellId", "spellName", "school", "amount",
+                    "overkill", "absorbed", "resisted", "blocked", "timestamp",
+                    "currentHP", "sourceName", "hideCaster", "environmentalType" }) do
+                    local okF, v = pcall(function() return ev[f] end)
+                    add("    %-17s %s", f, okF and FieldInfo(v) or "INDEX THREW")
+                end
+            end
+        end
+        if C_DeathRecap.GetRecapMaxHealth then
+            local okHP, hp = pcall(C_DeathRecap.GetRecapMaxHealth, firstRecapID)
+            add("  GetRecapMaxHealth: %s", okHP and FieldInfo(hp) or "THREW")
+        end
+    end
+    add("")
+
+    -- [3] Recap → segment index state
+    local idxCount = 0
+    local samples = {}
+    for rid, v in pairs(DMY._recapSegmentIndex or {}) do
+        idxCount = idxCount + 1
+        if #samples < 5 then
+            if type(v) == "table" then
+                table.insert(samples, string.format("    %d -> seg=%s time=%s",
+                    rid, tostring(v.seg), tostring(v.time)))
+            else
+                table.insert(samples, string.format("    %d -> %s", rid, tostring(v)))
+            end
+        end
+    end
+    add("[3] recapSegmentIndex: %d entries, dirty=%s",
+        idxCount, tostring(DMY._recapSegmentIndexDirty))
+    for _, s in ipairs(samples) do add(s) end
+    add("")
+
+    -- [4] Death counters
+    local c = DMY._drillCounts or {}
+    add("[4] Counters: dlogOk=%d dlogEmpty=%d dlogAmbig=%d dlogFail=%d",
+        c.dlogOk or 0, c.dlogEmpty or 0, c.dlogAmbig or 0, c.dlogFail or 0)
+    add("    recapOk=%d recapEmpty=%d recapFail=%d segHit=%d segMiss=%d",
+        c.recapOk or 0, c.recapEmpty or 0, c.recapFail or 0, c.segHit or 0, c.segMiss or 0)
+
+    local output = table.concat(lines, "\n")
+    if InCombatLockdown() then
+        local waitFrame = CreateFrame("Frame")
+        waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+        waitFrame:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            addon.DebugShowWindow("DMY Death Probe", output)
+        end)
+    else
+        addon.DebugShowWindow("DMY Death Probe", output)
+    end
 end

@@ -41,11 +41,18 @@ function DMY._CreateFlyoutMenu(menuWidth)
     -- Menu frame
     local menu = CreateFrame("Frame", nil, UIParent)
     menu:SetSize(menuWidth, 10)
+    menu._menuWidth = menuWidth
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetFrameLevel(200)
     menu:EnableMouse(true)
     menu:SetClampedToScreen(true)
     menu:Hide()
+
+    -- Wheel dispatch: only consumers that assign _onWheel react (death log scroll).
+    menu:EnableMouseWheel(true)
+    menu:SetScript("OnMouseWheel", function(_, delta)
+        if menu._onWheel then menu._onWheel(delta) end
+    end)
 
     backdrop:SetScript("OnClick", function() menu:Hide() end)
     menu:SetScript("OnHide", function()
@@ -76,13 +83,31 @@ function DMY._CreateFlyoutMenu(menuWidth)
     menu._dividers = {}
     menu._headerBars = {}
     menu._spellRows = {}
+    menu._deathRows = {}
     menu._placeholderTexts = {}
     menu._rowCount = 0
     menu._dividerCount = 0
     menu._headerBarCount = 0
     menu._spellRowCount = 0
+    menu._deathRowCount = 0
     menu._placeholderTextCount = 0
     menu._yOff = -6
+
+    -- Per-view width. Pooled children are created at the current width;
+    -- this resizes the menu and every existing pool member when a view
+    -- (e.g. the compact death log) wants something other than the default.
+    function menu:SetMenuWidth(w)
+        w = w or menuWidth
+        if w == self._menuWidth then return end
+        self._menuWidth = w
+        self:SetWidth(w)
+        for _, f in ipairs(self._rows) do f:SetWidth(w - 8) end
+        for _, f in ipairs(self._dividers) do f:SetWidth(w - 12) end
+        for _, f in ipairs(self._headerBars) do f:SetWidth(w - 8) end
+        for _, f in ipairs(self._spellRows) do f:SetWidth(w - 8) end
+        for _, f in ipairs(self._deathRows) do f:SetWidth(w - 8) end
+        for _, f in ipairs(self._placeholderTexts) do f:SetWidth(w - 8) end
+    end
 
     function menu:Clear()
         for i = 1, self._rowCount do
@@ -97,6 +122,9 @@ function DMY._CreateFlyoutMenu(menuWidth)
         for i = 1, self._spellRowCount do
             self._spellRows[i]:Hide()
         end
+        for i = 1, self._deathRowCount do
+            self._deathRows[i]:Hide()
+        end
         for i = 1, self._placeholderTextCount do
             self._placeholderTexts[i]:Hide()
         end
@@ -104,8 +132,10 @@ function DMY._CreateFlyoutMenu(menuWidth)
         self._dividerCount = 0
         self._headerBarCount = 0
         self._spellRowCount = 0
+        self._deathRowCount = 0
         self._placeholderTextCount = 0
         self._yOff = -6
+        self:SetMenuWidth(menuWidth) -- views wanting another width set it after Clear
     end
 
     function menu:AddRow(label, textColor, onClick, isSelected)
@@ -115,7 +145,7 @@ function DMY._CreateFlyoutMenu(menuWidth)
 
         if not btn then
             btn = CreateFrame("Button", nil, self)
-            btn:SetSize(menuWidth - 8, 24)
+            btn:SetSize(self._menuWidth - 8, 24)
             local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -6)
             bg:SetAllPoints()
             bg:SetColorTexture(1, 1, 1, 0)
@@ -163,7 +193,7 @@ function DMY._CreateFlyoutMenu(menuWidth)
         local div = self._dividers[idx]
         if not div then
             div = self:CreateTexture(nil, "ARTWORK")
-            div:SetSize(menuWidth - 12, 1)
+            div:SetSize(self._menuWidth - 12, 1)
             self._dividers[idx] = div
         end
         div:ClearAllPoints()
@@ -174,13 +204,14 @@ function DMY._CreateFlyoutMenu(menuWidth)
     end
 
     -- Header bar: title text (left) + close X button (right).
-    function menu:AddHeaderBar(titleText, titleColor, onCloseClick)
+    -- onBackClick (optional): shows a "<" back button left of the title.
+    function menu:AddHeaderBar(titleText, titleColor, onCloseClick, onBackClick)
         self._headerBarCount = self._headerBarCount + 1
         local idx = self._headerBarCount
         local bar = self._headerBars[idx]
         if not bar then
             bar = CreateFrame("Frame", nil, self)
-            bar:SetSize(menuWidth - 8, 26)
+            bar:SetSize(self._menuWidth - 8, 26)
             local bg = bar:CreateTexture(nil, "BACKGROUND", nil, -6)
             bg:SetAllPoints()
             bg:SetColorTexture(0.08, 0.08, 0.10, 0.95)
@@ -206,11 +237,33 @@ function DMY._CreateFlyoutMenu(menuWidth)
             closeBtn:SetScript("OnLeave", function() closeTex:SetTextColor(0.8, 0.3, 0.3, 1) end)
             bar._closeBtn = closeBtn
 
+            local backBtn = CreateFrame("Button", nil, bar)
+            backBtn:SetSize(18, 18)
+            backBtn:SetPoint("LEFT", bar, "LEFT", 4, 0)
+            local backTex = backBtn:CreateFontString(nil, "OVERLAY")
+            backTex:SetFont(GetDefaultFont(), 14, "OUTLINE")
+            backTex:SetText("<")
+            backTex:SetPoint("CENTER")
+            backTex:SetTextColor(0.7, 0.7, 0.75, 1)
+            backBtn:SetScript("OnEnter", function() backTex:SetTextColor(1, 1, 1, 1) end)
+            backBtn:SetScript("OnLeave", function() backTex:SetTextColor(0.7, 0.7, 0.75, 1) end)
+            bar._backBtn = backBtn
+
             self._headerBars[idx] = bar
         end
 
         bar:ClearAllPoints()
         bar:SetPoint("TOP", self, "TOP", 0, self._yOff)
+        -- Back button + title anchor reset every call (pool reuse safety)
+        if onBackClick then
+            bar._backBtn:SetScript("OnClick", onBackClick)
+            bar._backBtn:Show()
+        else
+            bar._backBtn:Hide()
+        end
+        bar._title:ClearAllPoints()
+        bar._title:SetPoint("LEFT", bar, "LEFT", onBackClick and 26 or 8, 0)
+        bar._title:SetPoint("RIGHT", bar, "RIGHT", -28, 0)
         bar._title:SetText(titleText or "")
         if titleColor then
             bar._title:SetTextColor(titleColor[1] or 1, titleColor[2] or 1, titleColor[3] or 1, 1)
@@ -229,7 +282,7 @@ function DMY._CreateFlyoutMenu(menuWidth)
         local row = self._spellRows[idx]
         if not row then
             row = CreateFrame("Frame", nil, self)
-            row:SetSize(menuWidth - 8, 22)
+            row:SetSize(self._menuWidth - 8, 22)
 
             local barBg = row:CreateTexture(nil, "BACKGROUND", nil, -2)
             barBg:SetPoint("LEFT", row, "LEFT", 22, 0)
@@ -282,8 +335,12 @@ function DMY._CreateFlyoutMenu(menuWidth)
         -- Icon. spellID may be secret in combat: the lookup is
         -- AllowedWhenTainted and returns a secret fileID; pcall contains the
         -- SetTexture assumption, falling back to the question mark.
+        -- Explicit iconFileID wins (e.g. melee-swing fallback for recap rows).
         local iconSet = false
-        if spec.spellID and C_Spell and C_Spell.GetSpellTexture then
+        if spec.iconFileID then
+            row._icon:SetTexture(spec.iconFileID)
+            iconSet = true
+        elseif spec.spellID and C_Spell and C_Spell.GetSpellTexture then
             local ok, applied = pcall(function()
                 local tex = C_Spell.GetSpellTexture(spec.spellID)
                 if not tex then return false end
@@ -306,7 +363,11 @@ function DMY._CreateFlyoutMenu(menuWidth)
 
         -- Value
         row._valueFS:SetText(spec.valueText or "")
-        row._valueFS:SetTextColor(1, 1, 1, 1)
+        if spec.valueColor then
+            row._valueFS:SetTextColor(spec.valueColor[1] or 1, spec.valueColor[2] or 1, spec.valueColor[3] or 1, 1)
+        else
+            row._valueFS:SetTextColor(1, 1, 1, 1)
+        end
 
         -- Bar fill + color. rawFill: secret amounts go straight to the
         -- StatusBar (SetValue/SetMinMaxValues are AllowedWhenTainted); the
@@ -336,6 +397,123 @@ function DMY._CreateFlyoutMenu(menuWidth)
         self._yOff = self._yOff - 22
     end
 
+    -- Death log row: time stamp (leftmost) + class/spec icon + player name,
+    -- with an optional right-aligned plain label (Overall scope: segment name).
+    -- Clickable when spec.onClick is set (drills into that death's recap);
+    -- clicking does NOT hide the menu — level transitions repopulate in place.
+    -- spec = { timeLabel (plain), timeWidth? (column px, default 32),
+    --          name (SetText-safe, may be secret),
+    --          classFilename, specIconID, rightLabel? (plain), onClick? }
+    function menu:AddDeathRow(spec)
+        self._deathRowCount = self._deathRowCount + 1
+        local idx = self._deathRowCount
+        local btn = self._deathRows[idx]
+        if not btn then
+            btn = CreateFrame("Button", nil, self)
+            btn:SetSize(self._menuWidth - 8, 22)
+            local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -6)
+            bg:SetAllPoints()
+            bg:SetColorTexture(1, 1, 1, 0)
+            btn._bg = bg
+            btn:SetScript("OnEnter", function(s)
+                if s._clickable then s._bg:SetColorTexture(1, 1, 1, 0.08) end
+            end)
+            btn:SetScript("OnLeave", function(s) s._bg:SetColorTexture(1, 1, 1, 0) end)
+
+            local timeFS = btn:CreateFontString(nil, "OVERLAY")
+            timeFS:SetFont(GetDefaultFont(), 10, "OUTLINE")
+            timeFS:SetPoint("LEFT", btn, "LEFT", 2, 0)
+            timeFS:SetWidth(32)
+            timeFS:SetJustifyH("RIGHT")
+            timeFS:SetWordWrap(false)
+            timeFS:SetTextColor(0.65, 0.65, 0.70, 1)
+            btn._timeFS = timeFS
+
+            -- Chained to the time column so a wider timeWidth shifts the row
+            local icon = btn:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(18, 18)
+            icon:SetPoint("LEFT", timeFS, "RIGHT", 4, 0)
+            btn._icon = icon
+
+            local nameFS = btn:CreateFontString(nil, "OVERLAY")
+            nameFS:SetFont(GetDefaultFont(), 10, "OUTLINE")
+            nameFS:SetJustifyH("LEFT")
+            nameFS:SetWordWrap(false)
+            btn._nameFS = nameFS
+
+            local rightFS = btn:CreateFontString(nil, "OVERLAY")
+            rightFS:SetFont(GetDefaultFont(), 10, "OUTLINE")
+            rightFS:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+            rightFS:SetJustifyH("RIGHT")
+            rightFS:SetWordWrap(false)
+            btn._rightFS = rightFS
+
+            self._deathRows[idx] = btn
+        end
+
+        btn:ClearAllPoints()
+        btn:SetPoint("TOP", self, "TOP", 0, self._yOff)
+        btn._bg:SetColorTexture(1, 1, 1, 0)
+
+        btn._timeFS:SetText(spec.timeLabel or "")
+        btn._timeFS:SetWidth(spec.timeWidth or 32)
+
+        -- Right label sizes to its (always plain) text, capped so an overlong
+        -- segment name still leaves the player name room; the name takes
+        -- whatever remains — no fixed columns eating width they don't use.
+        if spec.rightLabel then
+            btn._rightFS:SetWidth(0)
+            btn._rightFS:SetText(spec.rightLabel)
+            local cap = math.floor((self._menuWidth - 8) * 0.45)
+            if (btn._rightFS:GetStringWidth() or 0) > cap then
+                btn._rightFS:SetWidth(cap)
+            end
+            btn._rightFS:Show()
+        else
+            btn._rightFS:SetText("")
+            btn._rightFS:Hide()
+        end
+        btn._nameFS:ClearAllPoints()
+        btn._nameFS:SetPoint("LEFT", btn._icon, "RIGHT", 4, 0)
+        if spec.rightLabel then
+            btn._nameFS:SetPoint("RIGHT", btn._rightFS, "LEFT", -6, 0)
+        else
+            btn._nameFS:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+        end
+
+        -- Icon chain mirrors the bar-row default: spec icon → class atlas → "?"
+        if spec.specIconID and spec.specIconID ~= 0 then
+            btn._icon:SetTexture(spec.specIconID)
+            btn._icon:SetTexCoord(0, 1, 0, 1)
+        elseif spec.classFilename and spec.classFilename ~= ""
+            and GetClassAtlas and GetClassAtlas(spec.classFilename) then
+            btn._icon:SetAtlas(GetClassAtlas(spec.classFilename))
+        else
+            btn._icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            btn._icon:SetTexCoord(0, 1, 0, 1)
+        end
+
+        btn._nameFS:SetText(spec.name or "Unknown")
+        local cc = spec.classFilename and addon.ClassColors and addon.ClassColors[spec.classFilename]
+        if cc then
+            btn._nameFS:SetTextColor(cc.r or 1, cc.g or 1, cc.b or 1, 1)
+        else
+            btn._nameFS:SetTextColor(1, 1, 1, 1)
+        end
+        btn._rightFS:SetTextColor(0.85, 0.85, 0.88, 1)
+
+        btn._clickable = spec.onClick and true or false
+        btn:SetScript("OnClick", spec.onClick)
+        local alpha = btn._clickable and 1 or 0.6
+        btn._nameFS:SetAlpha(alpha)
+        btn._rightFS:SetAlpha(alpha)
+        btn._timeFS:SetAlpha(alpha)
+        btn._icon:SetAlpha(alpha)
+
+        btn:Show()
+        self._yOff = self._yOff - 22
+    end
+
     -- Placeholder text: single non-interactive informational row.
     function menu:AddPlaceholderText(text)
         self._placeholderTextCount = self._placeholderTextCount + 1
@@ -343,7 +521,7 @@ function DMY._CreateFlyoutMenu(menuWidth)
         local frm = self._placeholderTexts[idx]
         if not frm then
             frm = CreateFrame("Frame", nil, self)
-            frm:SetSize(menuWidth - 8, 28)
+            frm:SetSize(self._menuWidth - 8, 28)
             local fs = frm:CreateFontString(nil, "OVERLAY")
             fs:SetFont(GetDefaultFont(), 11, "OUTLINE")
             fs:SetPoint("CENTER")

@@ -17,6 +17,7 @@ globals = {
 read_globals = {
     -- WoW core API
     "AbbreviateNumbers",
+    "Ambiguate",
     "C_CurveUtil",
     "C_EditMode",
     "C_Secrets",
@@ -34,6 +35,7 @@ read_globals = {
     "UnregisterUnitWatch",
     "IsInRaid",
     "IsInGroup",
+    "IsInInstance",
     "LibStub",
     "pcall",
     "UIParent",
@@ -85,11 +87,14 @@ read_globals = {
     "C_AddOns",
     "C_ClassColor",
     "C_Covenants",
+    "C_DamageMeter",
+    "C_DeathRecap",
     "C_PaperDollInfo",
     "C_Spell",
     "C_SpecializationInfo",
     "C_Texture",
     "CreateColor",
+    "GetClassAtlas",
     "GetSpecialization",
     "GetSpecializationInfo",
 

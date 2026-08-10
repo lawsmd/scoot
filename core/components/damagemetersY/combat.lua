@@ -280,9 +280,12 @@ end
 function DMY._HandleReset()
     if DMY._CloseDrilldown then DMY._CloseDrilldown() end
     -- Sessions are gone; identity data from the previous group must not
-    -- survive to create stale GUIDs or false collisions.
+    -- survive to create stale GUIDs or false collisions. Pre-reset recapIDs
+    -- must likewise never label post-reset deaths.
     wipe(DMY._guidCache)
     wipe(DMY._identityToGUID)
+    wipe(DMY._recapSegmentIndex)
+    DMY._recapSegmentIndexDirty = true
     for i = 1, DMY.MAX_WINDOWS do
         local win = DMY._windows[i]
         if win then

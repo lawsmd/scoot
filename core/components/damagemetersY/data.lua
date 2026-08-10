@@ -54,6 +54,31 @@ local function PlainGUID(v)
     return v
 end
 
+-- Generic plain filters, exposed for drilldown code (deathRecapID,
+-- deathTimeSeconds, recap event fields). Same contract as PlainGUID:
+-- nil unless the value is present and plain.
+function DMY._PlainValue(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v
+end
+
+function DMY._PlainNumber(v)
+    v = DMY._PlainValue(v)
+    if type(v) ~= "number" then return nil end
+    return v
+end
+
+-- M:SS (or H:MM:SS) from a plain, non-negative seconds value.
+function DMY._FormatDeathTime(seconds)
+    seconds = math.floor(seconds + 0.5)
+    if seconds >= 3600 then
+        return string.format("%d:%02d:%02d",
+            math.floor(seconds / 3600), math.floor((seconds % 3600) / 60), seconds % 60)
+    end
+    return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
 --------------------------------------------------------------------------------
 -- Deaths Aggregation
 --
@@ -129,6 +154,115 @@ function DMY._RebuildGUIDCache()
 end
 
 --------------------------------------------------------------------------------
+-- Recap → segment index (deaths drilldown, Overall scope)
+--
+-- Overall sessions carry no per-death timestamps (deathTimeSeconds == -1), so
+-- the Overall death list labels each death by finding its recapID in the
+-- retained segments' Deaths sessions. Values are precomputed PLAIN strings,
+-- { seg = "SegName", time = "3:22"|nil } (separate fields — the row renders
+-- time in its own left column). `time` is the death's position on the
+-- OVERALL clock — prior segment durations accumulated chronologically plus
+-- the within-segment deathTimeSeconds — matching the Overall window's
+-- top-left timer. A combat-time lookup is then a single plain table index
+-- (recapID is NeverSecret), with zero arithmetic on secrets.
+-- Rebuilt lazily (deaths drilldown open/refresh) when dirty and OOC; dirtied
+-- at PLAYER_REGEN_ENABLED, wiped+dirtied by _HandleReset.
+--------------------------------------------------------------------------------
+
+DMY._recapSegmentIndex = {}
+DMY._recapSegmentIndexDirty = true
+
+function DMY._RebuildRecapSegmentIndex()
+    if DMY._inCombat then return end
+    if not (C_DamageMeter and C_DamageMeter.GetAvailableCombatSessions
+        and C_DamageMeter.GetCombatSessionFromID) then return end
+
+    local index = {}
+    -- offset = seconds already on the Overall clock when this segment began;
+    -- nil = unknown (an earlier segment reported no duration), in which case
+    -- the death renders an em dash rather than a misleading segment-local time.
+    local function Absorb(session, label, offset)
+        if not session or not session.combatSources then return end
+        for _, source in ipairs(session.combatSources) do
+            local rid = DMY._PlainNumber(source.deathRecapID)
+            if rid and rid > 0 and not index[rid] then
+                local t = DMY._PlainNumber(source.deathTimeSeconds)
+                index[rid] = {
+                    seg = label,
+                    time = (offset and t and t >= 0)
+                        and DMY._FormatDeathTime(offset + t) or nil,
+                }
+            end
+        end
+    end
+
+    -- Pass 1: retained segments in chronological order (sessionIDs are
+    -- monotonically increasing) with each segment's duration — the Available
+    -- list carries it; the session payload is the fallback.
+    local retained = {}
+    local okList, segments = pcall(C_DamageMeter.GetAvailableCombatSessions)
+    if okList and segments then
+        pcall(table.sort, segments, function(a, b) return a.sessionID < b.sessionID end)
+        for _, seg in ipairs(segments) do
+            local sid = DMY._PlainNumber(seg.sessionID)
+            if sid then
+                local ok, session = pcall(C_DamageMeter.GetCombatSessionFromID, sid, 9)
+                if ok then
+                    local name = DMY._PlainValue(seg.name)
+                    if not name or name == "" then name = "Combat #" .. tostring(sid) end
+                    retained[#retained + 1] = {
+                        session = session, name = name,
+                        dur = DMY._PlainNumber(seg.durationSeconds)
+                            or (session and DMY._PlainNumber(session.durationSeconds)),
+                    }
+                end
+            end
+        end
+    end
+    local okCur, currentSession = false, nil
+    if C_DamageMeter.GetCombatSessionFromType then
+        okCur, currentSession = pcall(C_DamageMeter.GetCombatSessionFromType, 1, 9)
+    end
+
+    -- Death times are positions on the OVERALL window's clock (its top-left
+    -- timer), not within their own segment. Base = Overall total minus every
+    -- duration still accounted for — nonzero only when old segments have been
+    -- evicted from the Available list; sub-second residue is duration
+    -- rounding, not eviction. (If the just-ended combat sits in BOTH the
+    -- Available list and the Current slot, its duration is subtracted twice —
+    -- the clamp absorbs that in the no-eviction case; with eviction the base
+    -- can under-count by at most that one combat.)
+    local base, retainedSum = 0, 0
+    for _, r in ipairs(retained) do
+        retainedSum = retainedSum + (r.dur or 0)
+    end
+    if C_DamageMeter.GetSessionDurationSeconds then
+        local okT, total = pcall(C_DamageMeter.GetSessionDurationSeconds, 0)
+        total = okT and DMY._PlainNumber(total) or nil
+        if total then
+            local currentDur = (okCur and currentSession)
+                and DMY._PlainNumber(currentSession.durationSeconds) or nil
+            base = total - retainedSum - (currentDur or 0)
+            if base < 1 then base = 0 end
+        end
+    end
+
+    -- Pass 2: absorb with running offsets. Named/expired segments first so
+    -- their labels win over "Current".
+    local offset = base
+    for _, r in ipairs(retained) do
+        Absorb(r.session, r.name, offset)
+        offset = (offset and r.dur) and (offset + r.dur) or nil
+    end
+    -- The latest combat may not be in the Available list yet; when it is,
+    -- its deaths were indexed above and the dedup makes this a no-op.
+    if okCur then Absorb(currentSession, "Current", offset) end
+
+    DMY._recapSegmentIndex = index
+    DMY._recapSegmentIndexDirty = false
+end
+
+--------------------------------------------------------------------------------
 -- In-combat drilldown GUID resolution.
 --
 -- A row clicked during combat has no plain sourceGUID (the merged key is a
@@ -141,7 +275,11 @@ end
 --------------------------------------------------------------------------------
 
 DMY._drillCounts = { tierLocal = 0, tierCache = 0, unresolved = 0,
-                     queryFail = 0, emptyData = 0, popOk = 0, popFail = 0 }
+                     queryFail = 0, emptyData = 0, popOk = 0, popFail = 0,
+                     -- Deaths drilldown links (death log + recap views)
+                     dlogOk = 0, dlogEmpty = 0, dlogAmbig = 0, dlogFail = 0,
+                     recapOk = 0, recapEmpty = 0, recapFail = 0,
+                     segHit = 0, segMiss = 0 }
 
 -- Returns a plain GUID for a row clicked during combat, or nil to fall back
 -- to the pending placeholder.
@@ -526,6 +664,31 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
 
             merged.players[key] = player
         end
+    end
+
+    -- Deaths values are Scoot-computed per-player counts, but the engine's
+    -- session ordering and maxAmount are per-EVENT (most recent death first).
+    -- OOC: re-sort a deaths-primary window by count (recency as tiebreak) and
+    -- normalize death bars against the highest count. Combat path untouched.
+    if deathCounts then
+        if primaryDef.isDeaths then
+            local origIndex = {}
+            for i, key in ipairs(merged.playerOrder) do origIndex[key] = i end
+            table.sort(merged.playerOrder, function(a, b)
+                local ca, cb = deathCounts[a] or 0, deathCounts[b] or 0
+                if ca ~= cb then return ca > cb end
+                return origIndex[a] < origIndex[b]
+            end)
+            for i, key in ipairs(merged.playerOrder) do
+                local p = merged.players[key]
+                if p then p.rank = i end
+            end
+        end
+        local maxCount = 0
+        for _, c in pairs(deathCounts) do
+            if c > maxCount then maxCount = c end
+        end
+        merged.maxAmounts[9] = maxCount
     end
 
     return merged

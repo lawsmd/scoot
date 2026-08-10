@@ -42,6 +42,9 @@ local function OnEvent(self, event, ...)
         if DMY._comp then
             DMY._RefreshOpacity(DMY._comp)
         end
+        -- A segment just closed: recap→segment labels are stale (rebuilt
+        -- lazily by the deaths drilldown)
+        DMY._recapSegmentIndexDirty = true
         if DMY._OnCombatEnd_RefreshDrilldown then
             DMY._OnCombatEnd_RefreshDrilldown()
         end
@@ -110,6 +113,9 @@ local function OnEvent(self, event, ...)
             end
             DMY._Trace("TIMER_FIRED calling _UpdateAllWindows")
             DMY._UpdateAllWindows()
+            if DMY._RefreshOpenDeathLog then
+                DMY._RefreshOpenDeathLog()
+            end
         end)
     end
 end
