@@ -120,6 +120,16 @@ function CA.DefaultSettings(overrides)
         hideText        = { type = "addon", default = false },
         textOffsetX     = { type = "addon", default = 0 },
         textOffsetY     = { type = "addon", default = 0 },
+        hideNameText        = { type = "addon", default = true },
+        nameTextFont        = { type = "addon", default = "FRIZQT__" },
+        nameTextStyle       = { type = "addon", default = "OUTLINE" },
+        nameTextSize        = { type = "addon", default = 10 },
+        nameTextColor       = { type = "addon", default = { 1, 1, 1, 1 } },
+        nameTextPosition    = { type = "addon", default = "inside" },
+        nameTextInnerAnchor = { type = "addon", default = "LEFT" },
+        nameTextOuterAnchor = { type = "addon", default = "ABOVE" },
+        nameTextOffsetX     = { type = "addon", default = 0 },
+        nameTextOffsetY     = { type = "addon", default = 0 },
         iconShape       = { type = "addon", default = 0 },
         borderStyle     = { type = "addon", default = "none" },
         borderThickness = { type = "addon", default = 1 },
@@ -178,8 +188,8 @@ end
 -- Element Creation
 --------------------------------------------------------------------------------
 
-local function CreateTextElement(container, elemDef)
-    local fs = container:CreateFontString(nil, "OVERLAY")
+local function CreateTextElement(container, elemDef, textParent)
+    local fs = (textParent or container):CreateFontString(nil, "OVERLAY")
     local fontFace = addon.ResolveFontFace("FRIZQT__")
     addon.ApplyFontStyle(fs, fontFace, elemDef.baseSize or 24, "OUTLINE")
     if elemDef.justifyH then
@@ -253,18 +263,32 @@ local function CreateAuraContainer(aura)
     container:SetPoint(dp.point, dp.x or 0, dp.y or 0)
     container:Hide()
 
+    -- Text draws above bar fills: barRegion is container+1, barFill +2, squareBorder +3
+    local textFrame = CreateFrame("Frame", nil, container)
+    textFrame:SetAllPoints(container)
+    textFrame:SetFrameLevel(container:GetFrameLevel() + 4)
+
     -- Create elements from definition
     local elements = {}
+    local hasBar = false
     for _, elemDef in ipairs(aura.elements or {}) do
         local creator = elementCreators[elemDef.type]
         if creator then
-            table.insert(elements, creator(container, elemDef))
+            table.insert(elements, creator(container, elemDef, textFrame))
         end
+        if elemDef.type == "bar" then hasBar = true end
+    end
+
+    -- Bar-capable auras get a name element (settings-driven; hidden by default)
+    if hasBar then
+        table.insert(elements, CreateTextElement(container,
+            { type = "text", key = "name", source = "name", baseSize = 10 }, textFrame))
     end
 
     CA._activeAuras[aura.id] = {
         container = container,
         elements = elements,
+        textFrame = textFrame,
     }
 
     addon.RegisterPetBattleFrame(container)

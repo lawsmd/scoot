@@ -19,8 +19,10 @@ end
 
 local PREVIEW_ROW_HEIGHT = 76
 local PREVIEW_ICON_DISPLAY_SIZE = 36
-local PREVIEW_BAR_MAX_WIDTH = 120
-local PREVIEW_BAR_MAX_HEIGHT = 24
+-- Bars build at their true configured size and SetScale to this display budget,
+-- so borders, insets and text keep their real proportions (same idea as the icon path).
+local PREVIEW_BAR_DISPLAY_MAX_WIDTH = 280
+local PREVIEW_BAR_DISPLAY_MAX_HEIGHT = 40
 local PREVIEW_PADDING = 12
 local PREVIEW_BORDER = 1
 local ICON_TEXCOORD_INSET = 0.07
@@ -30,7 +32,7 @@ local CA_TEXT_MAX_SIZE = 36
 -- Growth ceilings. The preview box measures its contents and grows to fit; these bound how
 -- far it can go before SetClipsChildren takes over, so a slider pinned to its limit can't
 -- shove the row into the "Preview:" label, the legend, or the sections below it.
-local PREVIEW_MAX_CONTENT_WIDTH = 240
+local PREVIEW_MAX_CONTENT_WIDTH = 400
 local PREVIEW_MAX_ROW_HEIGHT = 160
 local PREVIEW_CONTENT_PAD = 4
 -- Border art draws outside the icon frame. iconborders.lua clamps expandX/expandY to [-8, 8]
@@ -111,6 +113,10 @@ end
 --   settingKeys     table    Key name mapping (canonical -> actual DB key)
 --   iconTexture     number/string/nil  Override icon texture
 --   auraDefaultBarColor  table/nil  Default bar foreground color
+--   caTextSource    string/nil  Source of the CA text element ("duration"/"applications");
+--                            picks the placeholder glyph ("T"/"5") and legend entry
+--   previewNameLabel string/nil  Aura label shown as the bar's name text when the
+--                            Aura Name feature is enabled (hideNameText false)
 --   useLightDim     bool     Use lighter dim text color
 --   rowHeight       number   Base row height (default 76). A floor, not a ceiling: the row
 --                            grows to fit its measured contents, up to PREVIEW_MAX_ROW_HEIGHT.
@@ -129,6 +135,8 @@ function Controls:CreatePreview(options)
     local settingKeys = options.settingKeys or {}
     local iconTextureOverride = options.iconTexture
     local auraDefaultBarColor = options.auraDefaultBarColor
+    local caTextSource = options.caTextSource
+    local previewNameLabel = options.previewNameLabel
     local useLightDim = options.useLightDim
     local rowHeight = options.rowHeight or PREVIEW_ROW_HEIGHT
     local borderPath = options.borderPath or "shared"
@@ -151,7 +159,9 @@ function Controls:CreatePreview(options)
     local showBar = (mode == "bar" or mode == "iconbar")
     local showTextOnly = (mode == "text")
     local showCDMText = settingKeys._showCDMText and true or false
-    local showCAText = settingKeys._showCAText and true or false
+    -- Mirror live behavior: hideText suppresses the duration/stacks text everywhere
+    local showCAText = (settingKeys._showCAText and true or false)
+        and (readSetting("hideText", false) ~= true)
 
     -- Theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -209,6 +219,7 @@ function Controls:CreatePreview(options)
     ----------------------------------------------------------------------------
 
     local previewIcon, scaleFactor
+    local iconW, iconH = 0, 0
     -- Measured half-extents of everything drawn around the icon center, used to size the
     -- clip container once all the pieces exist.
     local contentHalfW, contentHalfH = 0, 0
@@ -218,7 +229,7 @@ function Controls:CreatePreview(options)
         -- Dimensions from settings
         local iconSize = readSetting("iconSize", 30)
         local iconShape = readSetting("iconShape", 0)
-        local iconW, iconH = addon.IconRatio.CalculateDimensions(iconSize, iconShape)
+        iconW, iconH = addon.IconRatio.CalculateDimensions(iconSize, iconShape)
 
         -- Build at true HUD dimensions and shrink the frame as a unit. Border art, insets,
         -- thickness and text then keep their real proportions instead of being applied as raw
@@ -366,10 +377,12 @@ function Controls:CreatePreview(options)
     -- BAR
     ----------------------------------------------------------------------------
 
-    local previewBar
+    local previewBar, barScale
     if showBar then
-        local barWidth = math.min(readSetting("barWidth", 120), PREVIEW_BAR_MAX_WIDTH)
-        local barHeight = math.min(readSetting("barHeight", 12), PREVIEW_BAR_MAX_HEIGHT)
+        -- Build at the TRUE configured size and scale as a unit (same approach as the icon
+        -- path) so border thickness, insets and text keep their real proportions.
+        local barWidth = readSetting("barWidth", 120)
+        local barHeight = readSetting("barHeight", 12)
         local barFGTexKey = readSetting("barForegroundTexture", "bevelled")
         local barBGTexKey = readSetting("barBackgroundTexture", "bevelled")
         local barBGOpacity = (readSetting("barBackgroundOpacity", 50) or 50) / 100
@@ -377,8 +390,24 @@ function Controls:CreatePreview(options)
         previewBar = CreateFrame("Frame", nil, container)
         previewBar:SetSize(barWidth, barHeight)
 
-        -- Background
-        local barBg = previewBar:CreateTexture(nil, "BACKGROUND")
+        if showIcon and previewIcon then
+            -- Icon & Bar: one composite factor so the pair keeps its relative proportions
+            local offX = math.abs(clampBarOffsetX(readSetting("barOffsetX", 0)))
+            local fitW = (PREVIEW_MAX_CONTENT_WIDTH - 24) / math.max(iconW + offX + barWidth + 4, 1)
+            local fitH = (PREVIEW_MAX_ROW_HEIGHT - 28) / math.max(iconH, barHeight, 1)
+            scaleFactor = math.min(scaleFactor or 1, fitW, fitH)
+            previewIcon:SetScale(scaleFactor)
+            barScale = scaleFactor
+        else
+            -- Fill the display budget; modest upscale cap keeps small bars honest
+            barScale = math.min(PREVIEW_BAR_DISPLAY_MAX_WIDTH / math.max(barWidth, 1),
+                                PREVIEW_BAR_DISPLAY_MAX_HEIGHT / math.max(barHeight, 1),
+                                2.5)
+        end
+        previewBar:SetScale(barScale)
+
+        -- Background (sublevel -1, matching the live bar)
+        local barBg = previewBar:CreateTexture(nil, "BACKGROUND", nil, -1)
         barBg:SetAllPoints()
         local bgTexPath = addon.Media.ResolveBarTexturePath(barBGTexKey)
         if bgTexPath then
@@ -424,61 +453,124 @@ function Controls:CreatePreview(options)
 
         previewBar._barFill = barFill
 
-        -- Bar text
-        local barTextFrame = CreateFrame("Frame", nil, previewBar)
-        barTextFrame:SetAllPoints()
-        barTextFrame:SetFrameLevel(previewBar:GetFrameLevel() + 1)
-
-        local textFont = readSetting("textFont", "FRIZQT__")
-        local textSize = readSetting("textSize", 10)
-        local textStyle = readSetting("textStyle", "OUTLINE")
-        local resolvedFont = addon.ResolveFontFace(textFont)
-        local barTextSize = math.max(PREVIEW_MIN_FONT_SIZE, math.min(textSize, barHeight - 2))
-
-        local textColor = readSetting("textColor", {1, 1, 1, 1})
-        local tcR = type(textColor) == "table" and (textColor[1] or 1) or 1
-        local tcG = type(textColor) == "table" and (textColor[2] or 1) or 1
-        local tcB = type(textColor) == "table" and (textColor[3] or 1) or 1
-        local tcA = type(textColor) == "table" and (textColor[4] or 1) or 1
-
-        local nameText = barTextFrame:CreateFontString(nil, "OVERLAY")
-        addon.ApplyFontStyle(nameText, resolvedFont, barTextSize, textStyle)
-        nameText:SetPoint("LEFT", barTextFrame, "LEFT", 2, 0)
-        nameText:SetText("Spell Name")
-        nameText:SetTextColor(tcR, tcG, tcB, tcA)
-
-        local timerText = barTextFrame:CreateFontString(nil, "OVERLAY")
-        addon.ApplyFontStyle(timerText, resolvedFont, barTextSize, textStyle)
-        timerText:SetPoint("RIGHT", barTextFrame, "RIGHT", -2, 0)
-        timerText:SetText("T")
-        timerText:SetTextColor(tcR, tcG, tcB, tcA)
-
-        -- Bar border
+        -- Bar border (mirrors the live paths in classauras/styling.lua)
         local barBorderStyle = readSetting("barBorderStyle", "none")
         if barBorderStyle and barBorderStyle ~= "none" then
-            local barBorderThickness = readSetting("barBorderThickness", 1)
+            local barBorderThickness = math.max(1, tonumber(readSetting("barBorderThickness", 1)) or 1)
+            local barBorderInsetH = tonumber(readSetting("barBorderInsetH", 0)) or 0
+            local barBorderInsetV = tonumber(readSetting("barBorderInsetV", 0)) or 0
+            local hiddenEdges = readSetting("barBorderHiddenEdges", nil)
             local barBorderTintEnable = readSetting("barBorderTintEnable", false)
-            local barBorderTintColor = readSetting("barBorderTintColor", {0, 0, 0, 1})
+            local barBorderTintColor = readSetting("barBorderTintColor", { 1, 1, 1, 1 })
+            local borderColor = (barBorderTintEnable and barBorderTintColor) or { 0, 0, 0, 1 }
 
             if barBorderStyle == "square" then
-                if addon.Borders and addon.Borders.ApplySquare then
-                    local color = barBorderTintEnable and barBorderTintColor or {0, 0, 0, 1}
-                    addon.Borders.ApplySquare(previewBar, {
-                        size = barBorderThickness,
-                        color = color,
-                        layer = "OVERLAY",
-                        layerSublevel = 7,
-                        skipDimensionCheck = true,
-                    })
+                -- Edges live in their own child frame ABOVE the fill StatusBar: regions of
+                -- previewBar itself would draw below the barFill child frame regardless of layer.
+                local bf = CreateFrame("Frame", nil, previewBar)
+                bf:SetFrameLevel(barFill:GetFrameLevel() + 1)
+                bf:SetAllPoints(previewBar)
+                local edges = {
+                    Top = bf:CreateTexture(nil, "OVERLAY", nil, 1),
+                    Bottom = bf:CreateTexture(nil, "OVERLAY", nil, 1),
+                    Left = bf:CreateTexture(nil, "OVERLAY", nil, 1),
+                    Right = bf:CreateTexture(nil, "OVERLAY", nil, 1),
+                }
+                local bR, bG, bB, bA = borderColor[1] or 0, borderColor[2] or 0, borderColor[3] or 0, borderColor[4] or 1
+                for _, tex in pairs(edges) do tex:SetColorTexture(bR, bG, bB, bA) end
+
+                edges.Top:SetPoint("TOPLEFT", bf, "TOPLEFT", -barBorderInsetH, barBorderInsetV)
+                edges.Top:SetPoint("TOPRIGHT", bf, "TOPRIGHT", barBorderInsetH, barBorderInsetV)
+                edges.Top:SetHeight(barBorderThickness)
+
+                edges.Bottom:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -barBorderInsetH, -barBorderInsetV)
+                edges.Bottom:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", barBorderInsetH, -barBorderInsetV)
+                edges.Bottom:SetHeight(barBorderThickness)
+
+                edges.Left:SetPoint("TOPLEFT", bf, "TOPLEFT", -barBorderInsetH, barBorderInsetV - barBorderThickness)
+                edges.Left:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -barBorderInsetH, -barBorderInsetV + barBorderThickness)
+                edges.Left:SetWidth(barBorderThickness)
+
+                edges.Right:SetPoint("TOPRIGHT", bf, "TOPRIGHT", barBorderInsetH, barBorderInsetV - barBorderThickness)
+                edges.Right:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", barBorderInsetH, -barBorderInsetV + barBorderThickness)
+                edges.Right:SetWidth(barBorderThickness)
+
+                if hiddenEdges then
+                    if hiddenEdges.top then edges.Top:Hide() end
+                    if hiddenEdges.bottom then edges.Bottom:Hide() end
+                    if hiddenEdges.left then edges.Left:Hide() end
+                    if hiddenEdges.right then edges.Right:Hide() end
                 end
             elseif addon.BarBorders and addon.BarBorders.ApplyToBarFrame then
                 addon.BarBorders.ApplyToBarFrame(barFill, barBorderStyle, {
                     thickness = barBorderThickness,
-                    tintEnabled = barBorderTintEnable,
-                    tintColor = barBorderTintColor,
+                    insetH = barBorderInsetH,
+                    insetV = barBorderInsetV,
+                    color = borderColor,
+                    hiddenEdges = hiddenEdges,
                 })
             end
         end
+    end
+
+    -- Anchors a FontString to the preview bar per an inside/outside position config.
+    -- Offsets are raw: callers live inside the scaled bar subtree, so barScale applies.
+    local function AnchorTextToBar(fs, bar, cfg)
+        local txOff = cfg.offsetX or 0
+        local tyOff = cfg.offsetY or 0
+        if cfg.position == "outside" then
+            local anchor = cfg.outerAnchor or "RIGHT"
+            if anchor == "RIGHT" then
+                fs:SetJustifyH("LEFT")
+                fs:SetPoint("LEFT", bar, "RIGHT", CA_GAP + txOff, tyOff)
+            elseif anchor == "LEFT" then
+                fs:SetJustifyH("RIGHT")
+                fs:SetPoint("RIGHT", bar, "LEFT", -CA_GAP + txOff, tyOff)
+            elseif anchor == "ABOVE" then
+                fs:SetJustifyH("CENTER")
+                fs:SetPoint("BOTTOM", bar, "TOP", txOff, CA_GAP + tyOff)
+            else -- BELOW
+                fs:SetJustifyH("CENTER")
+                fs:SetPoint("TOP", bar, "BOTTOM", txOff, -CA_GAP + tyOff)
+            end
+        else
+            local anchor = cfg.innerAnchor or "CENTER"
+            local offsets = CA_INSIDE_OFFSETS[anchor] or { 0, 0 }
+            fs:SetPoint(anchor, bar, anchor, offsets[1] + txOff, offsets[2] + tyOff)
+        end
+    end
+
+    ----------------------------------------------------------------------------
+    -- AURA NAME (bar name text, shown when the Aura Name feature is enabled)
+    ----------------------------------------------------------------------------
+
+    local nameTextFS, nameTextCfg
+    if showBar and previewBar and previewNameLabel and (readSetting("hideNameText", true) ~= true) then
+        local nameFont = readSetting("nameTextFont", "FRIZQT__")
+        local nameSize = readSetting("nameTextSize", 10)
+        local nameStyle = readSetting("nameTextStyle", "OUTLINE")
+        local nameColor = readSetting("nameTextColor", { 1, 1, 1, 1 })
+
+        local nameFrame = CreateFrame("Frame", nil, previewBar)
+        nameFrame:SetAllPoints(previewBar)
+        nameFrame:SetFrameLevel(previewBar._barFill:GetFrameLevel() + 2)
+
+        nameTextFS = nameFrame:CreateFontString(nil, "OVERLAY")
+        local nameDisplaySize = math.max(PREVIEW_MIN_FONT_SIZE / barScale, nameSize)
+        addon.ApplyFontStyle(nameTextFS, addon.ResolveFontFace(nameFont), nameDisplaySize, nameStyle)
+        if type(nameColor) == "table" then
+            nameTextFS:SetTextColor(nameColor[1] or 1, nameColor[2] or 1, nameColor[3] or 1, nameColor[4] or 1)
+        end
+        nameTextFS:SetText(previewNameLabel)
+
+        nameTextCfg = {
+            position = readSetting("nameTextPosition", "inside"),
+            innerAnchor = readSetting("nameTextInnerAnchor", "LEFT"),
+            outerAnchor = readSetting("nameTextOuterAnchor", "ABOVE"),
+            offsetX = readSetting("nameTextOffsetX", 0),
+            offsetY = readSetting("nameTextOffsetY", 0),
+        }
+        AnchorTextToBar(nameTextFS, previewBar, nameTextCfg)
     end
 
     ----------------------------------------------------------------------------
@@ -509,11 +601,21 @@ function Controls:CreatePreview(options)
 
         local resolvedCAFont = addon.ResolveFontFace(caTextFont)
 
-        caTextFrame = CreateFrame("Frame", nil, container)
-        caTextFrame:SetAllPoints()
+        local caOnBar = showBar and not showIcon and previewBar
+        if caOnBar then
+            -- Bar-only mode: text lives inside the scaled bar subtree at its true font
+            -- size, above the fill (mirrors the live elevated text frame)
+            caTextFrame = CreateFrame("Frame", nil, previewBar)
+            caTextFrame:SetAllPoints(previewBar)
+            caTextFrame:SetFrameLevel(previewBar._barFill:GetFrameLevel() + 2)
+            caDisplaySize = math.max(PREVIEW_MIN_FONT_SIZE / barScale, caTextSize)
+        else
+            caTextFrame = CreateFrame("Frame", nil, container)
+            caTextFrame:SetAllPoints()
+        end
         caTextFS = caTextFrame:CreateFontString(nil, "OVERLAY")
         addon.ApplyFontStyle(caTextFS, resolvedCAFont, caDisplaySize, caTextStyle)
-        caTextFS:SetText("5")
+        caTextFS:SetText(caTextSource == "applications" and "5" or "T")
 
         if type(caTextColor) == "table" then
             caTextFS:SetTextColor(
@@ -549,7 +651,8 @@ function Controls:CreatePreview(options)
             local barPosition = readSetting("barPosition", "RIGHT")
             local barOffsetX = clampBarOffsetX(readSetting("barOffsetX", 0))
             local barOffsetY = clampBarOffsetY(readSetting("barOffsetY", 0))
-            local barW = previewBar:GetWidth()
+            -- previewBar is scaled; convert own-space width and offsets to screen
+            local barW = previewBar:GetWidth() * barScale
 
             if barPosition == "LEFT" then
                 previewIcon:SetPoint("RIGHT", container, "RIGHT", -2, 0)
@@ -559,7 +662,7 @@ function Controls:CreatePreview(options)
                 previewBar:SetPoint("LEFT", previewIcon, "RIGHT", barOffsetX, barOffsetY)
             end
 
-            totalWidth = totalWidth + barW + math.abs(barOffsetX)
+            totalWidth = totalWidth + barW + math.abs(barOffsetX) * barScale
         else
             -- Check if CA text needs outside positioning
             local caConfig = container._caTextConfig
@@ -580,8 +683,9 @@ function Controls:CreatePreview(options)
             end
         end
     elseif showBar and previewBar then
-        previewBar:SetPoint("LEFT", container, "LEFT", 2, 0)
-        totalWidth = previewBar:GetWidth()
+        -- Centered like the live bar-only layout, leaving room for outside-anchored text
+        previewBar:SetPoint("CENTER", container, "CENTER", 0, 0)
+        totalWidth = previewBar:GetWidth() * barScale
     elseif showTextOnly and caTextFS then
         -- Text-only mode: center text in container, size to fit
         caTextFS:SetPoint("CENTER", container, "CENTER", 0, 0)
@@ -645,15 +749,42 @@ function Controls:CreatePreview(options)
                     totalWidth = totalWidth + CA_GAP + textW
                     container:SetWidth(math.max(totalWidth + 4, container:GetWidth()))
                 elseif anchor == "ABOVE" or anchor == "BELOW" then
-                    local iconH = previewIcon and (previewIcon:GetHeight() * (scaleFactor or 1)) or 0
-                    containerHeight = math.max(containerHeight, iconH + CA_GAP + textH)
+                    local iconDisplayH = previewIcon and (previewIcon:GetHeight() * (scaleFactor or 1)) or 0
+                    containerHeight = math.max(containerHeight, iconDisplayH + CA_GAP + textH)
                     container:SetWidth(math.max(math.max(totalWidth, textW) + 4, container:GetWidth()))
                     container:SetHeight(containerHeight)
                 end
             end
+        elseif cfg and previewBar then
+            -- Bar-only mode: anchor to the bar itself (raw offsets; the text lives inside
+            -- the scaled bar subtree), then grow the clip container for outside placements
+            AnchorTextToBar(caTextFS, previewBar, cfg)
+            if cfg.position == "outside" then
+                local tw = (caTextFS:GetStringWidth() or 0) * barScale
+                local th = (caTextFS:GetStringHeight() or 0) * barScale
+                local anchor = cfg.outerAnchor or "RIGHT"
+                -- The bar is centered, so grow both sides to keep it centered and uncovered
+                if anchor == "LEFT" or anchor == "RIGHT" then
+                    container:SetWidth(container:GetWidth() + 2 * (CA_GAP * barScale + tw))
+                else
+                    container:SetHeight(container:GetHeight() + 2 * (CA_GAP * barScale + th))
+                end
+            end
         elseif not previewIcon then
-            -- No icon present: center in container
+            -- No icon or bar present: center in container
             caTextFS:SetPoint("CENTER", container, "CENTER", 0, 0)
+        end
+    end
+
+    -- Grow the container for outside-anchored preview name text (same ceilings re-apply below)
+    if nameTextFS and previewBar and nameTextCfg and nameTextCfg.position == "outside" then
+        local tw = (nameTextFS:GetStringWidth() or 0) * (barScale or 1)
+        local th = (nameTextFS:GetStringHeight() or 0) * (barScale or 1)
+        local anchor = nameTextCfg.outerAnchor or "ABOVE"
+        if anchor == "LEFT" or anchor == "RIGHT" then
+            container:SetWidth(container:GetWidth() + 2 * (CA_GAP * (barScale or 1) + tw))
+        else
+            container:SetHeight(container:GetHeight() + 2 * (CA_GAP * (barScale or 1) + th))
         end
     end
 
@@ -681,11 +812,10 @@ function Controls:CreatePreview(options)
             table.insert(legendParts, "KB = Keybind")
         end
     end
-    if showBar then
-        table.insert(legendParts, "T = Timer")
-    end
     if showCAText then
-        table.insert(legendParts, "5 = Stacks")
+        -- One entry, matching the single placeholder actually drawn for this aura's
+        -- text element; suppressed entirely (with the text) by Hide Text
+        table.insert(legendParts, caTextSource == "applications" and "5 = Stacks" or "T = Timer")
     end
 
     if #legendParts > 0 then

@@ -28,9 +28,15 @@ local function LayoutElements(aura, state)
     local db = CA._GetDB(aura)
 
     -- Find text, texture, and bar elements
-    local textElem, texElem, barElem
+    local textElem, texElem, barElem, nameElem
     for _, elem in ipairs(state.elements) do
-        if elem.type == "text" then textElem = elem end
+        if elem.type == "text" then
+            if elem.def.source == "name" then
+                nameElem = elem
+            else
+                textElem = elem
+            end
+        end
         if elem.type == "texture" then texElem = elem end
         if elem.type == "bar" then barElem = elem end
     end
@@ -208,6 +214,42 @@ local function LayoutElements(aura, state)
         end
 
         barElem.widget:Show()
+    end
+
+    -- Aura name text, anchored to the bar (correct in both bar and iconbar modes)
+    if nameElem then
+        local showName = showBar and barElem and not (db and db.hideNameText)
+        if not showName then
+            nameElem.widget:Hide()
+        else
+            nameElem.widget:ClearAllPoints()
+            local namePos = (db and db.nameTextPosition) or "inside"
+            local nxOff = tonumber(db and db.nameTextOffsetX) or 0
+            local nyOff = tonumber(db and db.nameTextOffsetY) or 0
+            local anchorW = barElem.widget
+
+            if namePos == "outside" then
+                local anchor = (db and db.nameTextOuterAnchor) or "ABOVE"
+                if anchor == "RIGHT" then
+                    nameElem.widget:SetJustifyH("LEFT")
+                    nameElem.widget:SetPoint("LEFT", anchorW, "RIGHT", GAP + nxOff, nyOff)
+                elseif anchor == "LEFT" then
+                    nameElem.widget:SetJustifyH("RIGHT")
+                    nameElem.widget:SetPoint("RIGHT", anchorW, "LEFT", -GAP + nxOff, nyOff)
+                elseif anchor == "ABOVE" then
+                    nameElem.widget:SetJustifyH("CENTER")
+                    nameElem.widget:SetPoint("BOTTOM", anchorW, "TOP", nxOff, GAP + nyOff)
+                else -- "BELOW"
+                    nameElem.widget:SetJustifyH("CENTER")
+                    nameElem.widget:SetPoint("TOP", anchorW, "BOTTOM", nxOff, -GAP + nyOff)
+                end
+            else -- "inside"
+                local anchor = (db and db.nameTextInnerAnchor) or "LEFT"
+                local offsets = INSIDE_OFFSETS[anchor] or { 0, 0 }
+                nameElem.widget:SetPoint(anchor, anchorW, anchor, offsets[1] + nxOff, offsets[2] + nyOff)
+            end
+            nameElem.widget:Show()
+        end
     end
 end
 

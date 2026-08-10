@@ -65,16 +65,54 @@ local function ApplyTextStyling(aura, state)
 
     for _, elem in ipairs(state.elements or {}) do
         if elem.type == "text" then
-            local fontKey = db.textFont or "FRIZQT__"
+            local isName = (elem.def.source == "name")
+            local fontKey = (isName and db.nameTextFont or db.textFont) or "FRIZQT__"
             local fontFace = addon.ResolveFontFace(fontKey)
-            local fontStyle = db.textStyle or "OUTLINE"
-            local size = db.textSize or elem.def.baseSize or 24
+            local fontStyle = (isName and db.nameTextStyle or db.textStyle) or "OUTLINE"
+            local size
+            if isName then
+                size = db.nameTextSize or elem.def.baseSize or 10
+            else
+                size = db.textSize or elem.def.baseSize or 24
+            end
             addon.ApplyFontStyle(elem.widget, fontFace, size, fontStyle)
 
-            local override = GetActiveOverride(aura)
-            local color = (override and override.textColor) or db.textColor
+            local color
+            if isName then
+                -- Name text keeps the user's color on override switches; the string
+                -- itself changing (e.g. Flame Shock -> Frost Shock) is the signal.
+                color = db.nameTextColor
+            else
+                local override = GetActiveOverride(aura)
+                color = (override and override.textColor) or db.textColor
+            end
             if color and type(color) == "table" then
                 elem.widget:SetTextColor(color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
+            end
+        end
+    end
+end
+
+-- Sets the name element's string from the tracked spell (override-aware). Content only;
+-- font/color come from ApplyTextStyling, position from LayoutElements.
+local function UpdateNameText(aura, state)
+    local db = GetDB(aura)
+    for _, elem in ipairs(state.elements or {}) do
+        if elem.type == "text" and elem.def.source == "name" then
+            local mode = (db and db.mode) or "icon"
+            local barShown = (mode == "bar" or mode == "iconbar")
+            if not db or db.hideNameText or not barShown then
+                elem.widget:Hide()
+            else
+                local tracked = auraTracking[aura.id]
+                local sid = (tracked and tracked.activeSpellId) or aura.auraSpellId
+                local name
+                if sid then
+                    local ok, n = pcall(C_Spell.GetSpellName, sid)
+                    if ok and type(n) == "string" and not issecretvalue(n) then name = n end
+                end
+                elem.widget:SetText(name or aura.label or "")
+                elem.widget:Show()
             end
         end
     end
@@ -434,6 +472,7 @@ local function ApplyStyling(aura)
 
     -- Text styling
     ApplyTextStyling(aura, state)
+    UpdateNameText(aura, state)
 
     -- Bar styling
     ApplyBarStyling(aura, state)
@@ -456,6 +495,7 @@ end
 CA._ApplyStyling = ApplyStyling
 CA._ApplyIconMode = ApplyIconMode
 CA._ApplyTextStyling = ApplyTextStyling
+CA._UpdateNameText = UpdateNameText
 CA._ApplyBarStyling = ApplyBarStyling
 CA._ApplyAnchorLinkage = ApplyAnchorLinkage
 CA._GetActiveOverride = GetActiveOverride

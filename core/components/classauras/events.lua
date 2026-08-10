@@ -161,6 +161,8 @@ local function InitializeEditMode()
                             pcall(elem.barFill.SetValue, elem.barFill, math.floor(maxVal * 0.6))
                         end
                     end
+                    -- Name text (gates itself on hideNameText + mode)
+                    CA._UpdateNameText(aura, st)
                     -- Per-aura edit mode enter hook
                     if aura.onEditModeEnter then aura.onEditModeEnter(aura.id, st) end
                 end
@@ -188,6 +190,9 @@ local function InitializeEditMode()
                         pcall(elem.widget.SetText, elem.widget, "")
                     end
                     if elem.type == "text" and elem.def.source == "duration" then
+                        pcall(elem.widget.SetText, elem.widget, "")
+                    end
+                    if elem.type == "text" and elem.def.source == "name" then
                         pcall(elem.widget.SetText, elem.widget, "")
                     end
                     if elem.type == "bar" and elem.def.source == "applications" then

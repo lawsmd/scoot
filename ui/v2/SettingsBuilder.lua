@@ -1793,6 +1793,8 @@ function Builder:AddPreview(options)
         settingKeys = options.settingKeys,
         iconTexture = options.iconTexture,
         auraDefaultBarColor = options.auraDefaultBarColor,
+        caTextSource = options.caTextSource,
+        previewNameLabel = options.previewNameLabel,
         useLightDim = self._useLightDim,
         rowHeight = options.rowHeight,
         borderPath = options.borderPath,

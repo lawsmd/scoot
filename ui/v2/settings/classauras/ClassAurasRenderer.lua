@@ -148,10 +148,15 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                     end
                 end
 
-                -- Determine if this aura has text elements
+                -- Determine if this aura has text elements (and which source drives them)
                 local auraHasText = false
+                local auraTextSource
                 for _, elemDef in ipairs(aura.elements or {}) do
-                    if elemDef.type == "text" then auraHasText = true; break end
+                    if elemDef.type == "text" then
+                        auraHasText = true
+                        auraTextSource = elemDef.source
+                        break
+                    end
                 end
 
                 inner:AddPreview({
@@ -160,6 +165,8 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                     iconTexture = previewIconTex,
                     auraDefaultBarColor = aura.defaultBarColor,
                     settingKeys = auraHasText and { _showCAText = true } or nil,
+                    caTextSource = auraTextSource,
+                    previewNameLabel = aura.label,
                     rowHeight = 152,
                 })
 
@@ -442,6 +449,147 @@ local function RenderClassAuras(panel, scrollContent, classToken)
                                 axisLabel = "Y", min = -50, max = 50, step = 1,
                                 get = function() return getSetting("barOffsetY") or 0 end,
                                 set = function(v) h.setAndApply("barOffsetY", v) builder:DeferredRefreshAll() end,
+                                minLabel = "-50", maxLabel = "+50",
+                            },
+                        })
+
+                        tabBuilder:Finalize()
+                    end
+
+                    -- Aura Name tab (bar-coupled: the name renders on the bar)
+                    table.insert(tabs, { key = "auraName", label = "Aura Name" })
+                    buildContent.auraName = function(tabContent, tabBuilder)
+                        local function nameControlsDisabled()
+                            local m = getSetting("mode") or "icon"
+                            return (m == "icon" or m == "text")
+                        end
+
+                        tabBuilder:AddToggle({
+                            label = "Hide Aura Name",
+                            description = "Hide the aura name text on the bar.",
+                            disabled = nameControlsDisabled,
+                            get = function() return getSetting("hideNameText") ~= false end,
+                            set = function(val) h.setAndApply("hideNameText", val) builder:DeferredRefreshAll() end,
+                        })
+
+                        tabBuilder:AddFontSelector({
+                            label = "Font",
+                            description = "The font used for the aura name.",
+                            disabled = nameControlsDisabled,
+                            get = function() return getSetting("nameTextFont") or "FRIZQT__" end,
+                            set = function(v)
+                                h.setAndApply("nameTextFont", v)
+                                builder:DeferredRefreshAll()
+                            end,
+                        })
+
+                        tabBuilder:AddSelector({
+                            label = "Font Style",
+                            description = "Outline style for the aura name.",
+                            disabled = nameControlsDisabled,
+                            values = fontStyleValues,
+                            order = fontStyleOrder,
+                            get = function() return getSetting("nameTextStyle") or "OUTLINE" end,
+                            set = function(v)
+                                h.setAndApply("nameTextStyle", v)
+                                builder:DeferredRefreshAll()
+                            end,
+                        })
+
+                        tabBuilder:AddSlider({
+                            label = "Font Size",
+                            description = "Size of the aura name in points (6-48).",
+                            disabled = nameControlsDisabled,
+                            min = 6,
+                            max = 48,
+                            step = 1,
+                            get = function() return getSetting("nameTextSize") or 10 end,
+                            set = function(v) h.setAndApply("nameTextSize", v) builder:DeferredRefreshAll() end,
+                            minLabel = "6pt",
+                            maxLabel = "48pt",
+                        })
+
+                        tabBuilder:AddColorPicker({
+                            label = "Font Color",
+                            description = "Color for the aura name.",
+                            disabled = nameControlsDisabled,
+                            get = function()
+                                local c = getSetting("nameTextColor")
+                                if c and type(c) == "table" then
+                                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
+                                end
+                                return 1, 1, 1, 1
+                            end,
+                            set = function(r, g, b, a)
+                                h.setAndApply("nameTextColor", { r, g, b, a })
+                                builder:DeferredRefreshAll()
+                            end,
+                            hasAlpha = true,
+                        })
+
+                        -- Position DualSelector
+                        local currentNamePos = getSetting("nameTextPosition") or "inside"
+                        local nameBValues = currentNamePos == "outside" and OUTSIDE_ANCHOR_VALUES or INSIDE_ANCHOR_VALUES
+                        local nameBOrder = currentNamePos == "outside" and OUTSIDE_ANCHOR_ORDER or INSIDE_ANCHOR_ORDER
+
+                        tabBuilder:AddDualSelector({
+                            label = "Position",
+                            key = "nameTextPositionDual",
+                            maxContainerWidth = 420,
+                            disabled = nameControlsDisabled,
+                            selectorA = {
+                                values = { inside = "Inside the Bar", outside = "Outside of Bar" },
+                                order = { "inside", "outside" },
+                                get = function() return getSetting("nameTextPosition") or "inside" end,
+                                set = function(v)
+                                    h.setAndApply("nameTextPosition", v)
+                                    local dualSelector = tabBuilder:GetControl("nameTextPositionDual")
+                                    if dualSelector then
+                                        if v == "outside" then
+                                            dualSelector:SetOptionsB(OUTSIDE_ANCHOR_VALUES, OUTSIDE_ANCHOR_ORDER)
+                                        else
+                                            dualSelector:SetOptionsB(INSIDE_ANCHOR_VALUES, INSIDE_ANCHOR_ORDER)
+                                        end
+                                    end
+                                    builder:DeferredRefreshAll()
+                                end,
+                            },
+                            selectorB = {
+                                values = nameBValues,
+                                order = nameBOrder,
+                                get = function()
+                                    local pos = getSetting("nameTextPosition") or "inside"
+                                    if pos == "outside" then
+                                        return getSetting("nameTextOuterAnchor") or "ABOVE"
+                                    else
+                                        return getSetting("nameTextInnerAnchor") or "LEFT"
+                                    end
+                                end,
+                                set = function(v)
+                                    local pos = getSetting("nameTextPosition") or "inside"
+                                    if pos == "outside" then
+                                        h.setAndApply("nameTextOuterAnchor", v)
+                                    else
+                                        h.setAndApply("nameTextInnerAnchor", v)
+                                    end
+                                    builder:DeferredRefreshAll()
+                                end,
+                            },
+                        })
+
+                        tabBuilder:AddDualSlider({
+                            label = "Offset",
+                            disabled = nameControlsDisabled,
+                            sliderA = {
+                                axisLabel = "X", min = -50, max = 50, step = 1,
+                                get = function() return getSetting("nameTextOffsetX") or 0 end,
+                                set = function(v) h.setAndApply("nameTextOffsetX", v) builder:DeferredRefreshAll() end,
+                                minLabel = "-50", maxLabel = "+50",
+                            },
+                            sliderB = {
+                                axisLabel = "Y", min = -50, max = 50, step = 1,
+                                get = function() return getSetting("nameTextOffsetY") or 0 end,
+                                set = function(v) h.setAndApply("nameTextOffsetY", v) builder:DeferredRefreshAll() end,
                                 minLabel = "-50", maxLabel = "+50",
                             },
                         })

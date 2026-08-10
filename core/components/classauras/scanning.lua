@@ -166,6 +166,8 @@ local function StartAuraDisplay(auraId)
             if not elem._cdFrame then
                 local cdFrame = CreateFrame("Cooldown", nil, state.container, "CooldownFrameTemplate")
                 cdFrame:SetAllPoints(elem.widget)
+                -- Same level as the elevated text frame, so the countdown draws above bar fills
+                cdFrame:SetFrameLevel(state.container:GetFrameLevel() + 4)
                 cdFrame:SetDrawSwipe(false)
                 cdFrame:SetDrawEdge(false)
                 cdFrame:SetHideCountdownNumbers(false)
@@ -186,6 +188,7 @@ local function StartAuraDisplay(auraId)
     end
 
     CA._LayoutElements(auraDef, state)
+    CA._UpdateNameText(auraDef, state)
     state.container:Show()
 
     -- Single unified OnUpdate -- uses DurationObject for all timing
@@ -385,6 +388,7 @@ function CA.ScanAura(aura)
             CA._ApplyIconMode(aura, state)
             CA._ApplyTextStyling(aura, state)
             CA._ApplyBarStyling(aura, state)
+            CA._UpdateNameText(aura, state)
         end
     end
 
