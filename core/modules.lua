@@ -235,7 +235,13 @@ addon.MODULE_CATEGORIES = {
             { id = "Focus", label = "Focus" },
             { id = "FocusTarget", label = "Target of Focus" },
             { id = "Pet", label = "Pet" },
-            { id = "Boss", label = "Boss" },
+            { id = "Boss", label = "Boss",
+              modeCycle = {
+                { id = "X", variant = "X", category = "unitFrames", subId = "Boss",
+                  versionBadge = { label = "X", title = "Boss Frames X", text = "Blizzard's own Boss frames, restyled in place by Scoot. All five share one configuration, on the Boss page under Unit Frames." } },
+                { id = "Z", variant = "Z", category = "unitFramesZ", subId = "Boss",
+                  versionBadge = { label = "Z", title = "Boss Frames Z", text = "Scoot's own text-first Boss frames — five of them, in a vertical stack you position as one block in Edit Mode. Blizzard's boss frames are removed entirely while this is on, and their cast bars go with them (Cast Bar Z covers those). All five share one configuration, on the Boss page." } },
+              } },
             -- Not an on/off row: a variant selector for the castBars category,
             -- nested here because that is where its effect is scoped. Its state
             -- lives in moduleEnabled.castBars, never in unitFrames.
@@ -263,6 +269,9 @@ addon.MODULE_CATEGORIES = {
         subToggles = {
             { id = "Player", label = "Player", variant = "Z" },
             { id = "Target", label = "Target", variant = "Z" },
+            -- One sub-toggle, five frames: Boss is a single configuration in Z
+            -- exactly as it is in X (unitframesz/core.lua).
+            { id = "Boss", label = "Boss", variant = "Z" },
         },
     },
 }

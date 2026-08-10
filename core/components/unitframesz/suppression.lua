@@ -21,8 +21,9 @@
 --                   PlayerCastingBarFrame while Edit Mode's "Lock to Player
 --                   Frame" is on (PlayerFrame.lua:40)
 --   TargetFrame  -> TargetFrameToT, TargetFrameSpellBar
+--   BossTargetFrameContainer -> all five Boss<N>TargetFrame and their spell bars
 -- Those children come back the moment the unit leaves Z mode; their own Z
--- equivalents are future components.
+-- equivalents are future components (Cast Bar Z already covers the boss bars).
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -31,10 +32,26 @@ local UFZ = addon.UnitFramesZ
 local OWNER = "unitFramesZ"
 
 -- Names are Blizzard's own, read out of the source rather than derived:
--- PlayerFrame (PlayerFrame.xml), TargetFrame (TargetFrame.xml).
+-- PlayerFrame (PlayerFrame.xml), TargetFrame and BossTargetFrameContainer
+-- (TargetFrame.xml:708).
+--
+-- Boss parks the CONTAINER, not the five frames inside it. That is the whole
+-- decision and it is not interchangeable: BossTargetFrameContainer is a
+-- VerticalLayoutFrame whose UpdateSize() walks self.BossTargetFrames and calls
+-- Layout() on their sizes, so re-parenting the children out from under it
+-- breaks its layout code -- verified live by one of the two local reference
+-- addons, which parks the container and pointedly leaves the children alone
+-- (the other parks the children and is the counter-example). It is also one
+-- call instead of five, and it matches nativeframe.lua's own rule of thumb:
+-- park top-level frames, dim children of a system.
+--
+-- Blizzard re-parents this container to UIParent on EVERY Edit Mode enter and
+-- exit, so NativeFrame's deferred SetParent re-park hook is load-bearing here
+-- rather than belt-and-braces.
 local BLIZZARD_FRAME = {
     Player = { name = "PlayerFrame", method = "park" },
     Target = { name = "TargetFrame", method = "park" },
+    Boss   = { name = "BossTargetFrameContainer", method = "park" },
 }
 
 -- Which frames Z currently owns. Nothing is ever released that was not

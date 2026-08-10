@@ -48,7 +48,11 @@ local function AddUnitSection(builder, opts)
     }
     local locOrder = { "bottomleft", "bottomright", "topleft", "topright", "nameside" }
 
-    builder:AddDescription("Scoot's text-first " .. (opts.unitWord or "player") .. " frame. Controls apply live and save with your profile. Position the frame in Edit Mode, where Overall Scale is also mirrored.")
+    if opts.stacked then
+        builder:AddDescription("Scoot's text-first " .. (opts.unitWord or "boss") .. " frames. All five share these settings and stack vertically as one block -- position the block in Edit Mode, where Overall Scale is also mirrored.")
+    else
+        builder:AddDescription("Scoot's text-first " .. (opts.unitWord or "player") .. " frame. Controls apply live and save with your profile. Position the frame in Edit Mode, where Overall Scale is also mirrored.")
+    end
 
     builder:AddSlider({
         label = "Overall Scale",
@@ -62,6 +66,37 @@ local function AddUnitSection(builder, opts)
         get = function() return htCfg().scale or 1 end,
         set = function(v) call("SetScale", v) end,
     })
+
+    -- Stacked units only (Boss). How the five frames sit relative to each
+    -- other; where the block as a whole sits is Edit Mode's job.
+    if opts.stacked then
+        builder:AddCollapsibleSection({
+            title = "Stack Layout",
+            componentId = opts.componentId,
+            sectionKey = "stack",
+            defaultExpanded = false,
+            buildContent = function(contentFrame, inner)
+                inner:AddDescription("Empty boss slots keep their place in the stack rather than closing up, so a frame never jumps to a new spot mid-fight.")
+                inner:AddSlider({
+                    label = "Spacing",
+                    description = "Vertical gap between frames. 0 sits them as close as their text allows; go below it to overlap.",
+                    min = -20, max = 40, step = 1,
+                    displaySuffix = "px",
+                    get = function() return htCfg().stackSpacing or 0 end,
+                    set = function(v) call("SetStackSpacing", v) end,
+                })
+                inner:AddSelector({
+                    label = "Growth Direction",
+                    description = "Which end of the block Boss 1 sits at. The block itself does not move.",
+                    values = { down = "Downward (Boss 1 on top)", up = "Upward (Boss 1 on bottom)" },
+                    order = { "down", "up" },
+                    get = function() return htCfg().stackGrowth or "down" end,
+                    set = function(v) call("SetStackGrowth", v) end,
+                })
+                inner:Finalize()
+            end,
+        })
+    end
 
     builder:AddCollapsibleSection({
         title = "Name",
@@ -697,9 +732,13 @@ end
 -- Renderers
 --------------------------------------------------------------------------------
 
+-- One page per CONFIG key. Boss is five frames behind one key, which the page
+-- never has to know about -- every read and write goes through GetConfig /
+-- GetAPI, and GetAPI fans out. `stacked` only adds the layout section.
 local PAGES = {
     ufzPlayer = { title = "Player Frame Z", componentId = "ufzPlayer", unitKey = "Player", unitWord = "player" },
     ufzTarget = { title = "Target Frame Z", componentId = "ufzTarget", unitKey = "Target", unitWord = "target" },
+    ufzBoss   = { title = "Boss Frames Z",  componentId = "ufzBoss",   unitKey = "Boss",   unitWord = "boss", stacked = true },
 }
 
 for key, page in pairs(PAGES) do

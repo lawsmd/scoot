@@ -7,11 +7,15 @@
 -- healthtext debug harness (this file IS that engine, promoted); spec:
 -- ADDONCONTEXT/docs/unitframesZ/ufzhealthtext.md.
 --
--- ONE INSTANCE per unit (core.lua's UFZ.UNITS), each on the AceDB-backed
--- per-unit config: inst.cfg IS profile.unitFramesZUnits[unit], so every cfg
--- read and setter write in this file persists with no translation layer. Each
--- instance owns its config, FontStrings, digit-probe state and name-fit state;
--- the public API is bound per instance (UFZ.GetAPI(unitKey)).
+-- ONE INSTANCE PER FRAME (core.lua's UFZ.FRAMES), on the AceDB-backed config
+-- of its unit: inst.cfg IS profile.unitFramesZUnits[inst.unitKey], so every cfg
+-- read and setter write in this file persists with no translation layer.
+--
+-- Frames and configs are NOT 1:1. Boss is five frames sharing one config, so
+-- this file never reads a unit token out of cfg -- inst.unit carries it, minted
+-- from the frame row. Everything else an instance owns (FontStrings, the digit
+-- probe, the name fit) is genuinely per frame. The public API is per CONFIG and
+-- fans out across that config's instances (UFZ.GetAPI(unitKey)).
 --
 -- UnitHealth is SecretReturns = true unconditionally -- every unit including "player",
 -- in and out of combat -- so nothing here ever reads a health number. The engine does
@@ -321,6 +325,43 @@ end
 local NAME_BASE_X = 100
 local NAME_BASE_Y = 5
 
+-- The number-row geometry three call sites have to agree on: applyLayout
+-- anchors from it, envelopeFor reserves from it, and the dead skull sits on it.
+-- Derived once here so they cannot drift -- the classifySeatY precedent.
+--
+-- The percent row reserves the LARGEST configured digit rendering, so a big
+-- one-digit paint never overlaps the value row. nameSeatY is the resulting
+-- gap-midline between the two number rows plus the name's own tuned lift, in
+-- up-positive box coords (envelopeFor flips the sign for its own convention).
+local function pctGlyphCeiling(cfg)
+    if not cfg.digits then return cfg.pctSize end
+    return math.max(cfg.pctSize, cfg.digitSize1, cfg.digitSize2, cfg.digitSize3)
+end
+
+local function pctRowHeight(cfg)
+    return math.ceil(pctGlyphCeiling(cfg) * 0.85)
+end
+
+local function nameSeatY(cfg)
+    return -(pctRowHeight(cfg) + cfg.gap / 2) + NAME_BASE_Y + cfg.nameY
+end
+
+-- Where the name's INK sits, as opposed to where its rect is anchored. The
+-- name's single-point LEFT/RIGHT anchor pins its RECT's vertical center, and
+-- the rect reserves descender space the glyphs never use, so the visible ink
+-- centers HIGHER than the anchor by half that share. That is anchorAbsorbFS's
+-- halo mechanism verbatim -- same calibrated cfg.descent ratio -- taken
+-- against the FITTED point size rather than the fit ceiling, because a
+-- shrunken name's ink closes back toward its rect center.
+--
+-- Anything that has to look CENTERED ON the name, rather than merely sit
+-- beside it, aims here. Satellites do not: they anchor to the rect edges on
+-- purpose, so a wrapped second line pushes them out of the way.
+local function nameInkMidY(inst)
+    local cfg = inst.cfg
+    return nameSeatY(cfg) + currentNamePoint(inst) * cfg.descent * 0.5
+end
+
 -- Base separation for the "nameside" power location; powerX/powerY offset from
 -- it, so the offset sliders read 0 at the tuned look.
 local POWER_SIDE_GAP = 6
@@ -340,10 +381,37 @@ local POWER_EDGE_DROP = 5
 -- The classification icon's fixed vertical seat, in the same sign convention as
 -- the offset sliders it replaces (positive = up). It rides the name-relative
 -- locations but has no user offsets: a texture only needs to look centred, and
--- the value that centres it against a two-line wrapped target name is a
--- constant (user-tuned in-game 2026-08-07, the old slider's Y = 5). Baked here
--- so applyPowerLayout and computeEnvelope cannot drift apart.
-local CLASSIFY_FIXED_Y = 5
+-- the value that centres it is a constant (user-tuned in-game 2026-08-07).
+-- Derived rather than baked so applyPowerLayout and computeEnvelope cannot
+-- drift apart -- both call this.
+--
+-- POWER_EDGE_DROP is clearance for TEXT, and the icon does not want it. That
+-- went unnoticed because the drop is applied OUTWARD: on a bottom location the
+-- tuned +5 cancelled it exactly, and only the top locations were left paying it
+-- twice -- 10px above the name's rect, plus the font's own ascent reserve above
+-- the cap line on top of that. Hence "the icon hovers too high above the name"
+-- on a topright frame while a bottom one looked right (user report 2026-08-07,
+-- round 3, on Boss and Target alike). The seat now cancels the drop on all four
+-- corner locations, so the icon's near edge lands on the name's rect edge and
+-- the only gap left is the font's ascent reserve -- which scales with nameSize,
+-- as it should. nameside takes no drop at all, so it keeps the tuned value.
+--
+-- CLASSIFY_TUCK is the knob for going further: it moves the icon TOWARD the
+-- name, into the ascent reserve and then into the caps. A little overlap is
+-- sanctioned (same report) -- the name is not the thing that must stay legible
+-- at the corner.
+local CLASSIFY_TUCK       = 0
+local CLASSIFY_NAMESIDE_Y = 5
+
+local function classifySeatY(cfg)
+    local loc = cfg.classifyLoc
+    if loc == "topleft" or loc == "topright" then
+        return -POWER_EDGE_DROP - CLASSIFY_TUCK
+    elseif loc == "bottomleft" or loc == "bottomright" then
+        return POWER_EDGE_DROP + CLASSIFY_TUCK
+    end
+    return CLASSIFY_NAMESIDE_Y
+end
 
 -- The power texts anchor DIRECTLY to nameFS: its LEFT/RIGHT edges are
 -- deterministic (applyLayout gives it an explicit SetWidth), and TOP/BOTTOM
@@ -355,12 +423,14 @@ local CLASSIFY_FIXED_Y = 5
 -- The name box is cfg.nameMaxWidth wide, but the ink hugs its justified
 -- (numbers-facing) edge -- the box's far edge is mostly empty air on short
 -- names, and a power text anchored there floats outside the name (user round
--- 3). The justified edge is deterministic; the far edge is ink-true only when
--- the last paint could measure the rendered ink (inst.nameInkWidth, readable
--- names via GetWrappedWidth). With a measurement, far-side locations anchor to
--- the justified edge offset by the ink width, tracking the actual first/last
--- letter; without one (secret names poison the measure), they fall back to the
--- box edge -- the pre-round-3 behavior, documented, not fixable blind.
+-- 3). The justified edge is deterministic; the far edge is ink-true whenever
+-- the name could be measured at all (inst.nameInkWidth -- measureNameInk rules
+-- both the how and the when: synchronously on the shared ruler, in the same
+-- step as the paint, so this function never sees a half-settled answer). With a
+-- measurement, far-side locations anchor to the justified edge offset by the
+-- ink width, tracking the actual first/last letter; without one -- a secret
+-- name, which no getter and no ruler in 12.0 can size -- they fall back to the
+-- box edge, the pre-round-3 behavior, documented, not fixable blind.
 -- trailW reserves room on the right for a trailing companion (the half-size
 -- '%'): right-justified locations pull the NUMBER left by that much so the
 -- companion, not the digits, lands on the alignment edge. Left-justified
@@ -503,7 +573,7 @@ local function anchorClassify(inst)
     local cfg = inst.cfg
     local shift = (inst.levelPainted == false) and 0 or classifyShiftReserved(inst)
     tex:SetSize(cfg.classifySize, cfg.classifySize)
-    anchorPowerFS(inst, tex, cfg.classifyLoc, shift, CLASSIFY_FIXED_Y, 0, 0)
+    anchorPowerFS(inst, tex, cfg.classifyLoc, shift, classifySeatY(cfg), 0, 0)
 end
 
 -- Separate from applyLayout so the loc/offset setters can re-anchor the power
@@ -770,18 +840,13 @@ local function envelopeSatellite(acc, loc, size, x, y, leadW, box)
     acc.bottom = math.max(acc.bottom, b)
 end
 
-local function computeEnvelope(inst)
+local function envelopeFor(inst, lines)
     local cfg = inst.cfg
 
     -- The same row geometry applyLayout derives, in down-positive box coords.
-    local pctGlyphMax = cfg.pctSize
-    if cfg.digits then
-        pctGlyphMax = math.max(cfg.pctSize, cfg.digitSize1, cfg.digitSize2, cfg.digitSize3)
-    end
-    local pctRowH = math.ceil(pctGlyphMax * 0.85)
     local nameX = NAME_BASE_X + cfg.nameOffset
-    local nameMidY = pctRowH + cfg.gap / 2 - NAME_BASE_Y - cfg.nameY
-    local nameHalf = cfg.nameMaxLines * cfg.nameSize * ENV_LINE_H / 2
+    local nameMidY = -nameSeatY(cfg)   -- shared seat, flipped to down-positive
+    local nameHalf = lines * cfg.nameSize * ENV_LINE_H / 2
 
     local acc = {
         nameMidY = nameMidY,
@@ -815,10 +880,12 @@ local function computeEnvelope(inst)
         -- the live one: the icon may sit un-stepped when the level paints
         -- nothing, and that only ever moves it further INSIDE this reservation.
         envelopeSatellite(acc, cfg.classifyLoc, cfg.classifySize,
-            classifyShiftReserved(inst), CLASSIFY_FIXED_Y, 0, true)
+            classifyShiftReserved(inst), classifySeatY(cfg), 0, true)
     end
-    -- The dead skull is deliberately absent: it lives inside the span the
-    -- numbers box already reserves, so it can never grow the envelope.
+    -- The dead skull is deliberately absent: it is half the number stack it
+    -- replaces, centred on the name row that sits between the two, so it lives
+    -- inside the overlap of two spans already reserved above (the numbers box
+    -- and the name's own band) and can never grow the envelope.
 
     local far = math.ceil(acc.far + ENV_PAD)
     local top = math.floor(math.min(0, acc.top))
@@ -829,6 +896,32 @@ local function computeEnvelope(inst)
     }
 end
 
+-- How much of the envelope's HEIGHT is reserved for name lines that a given
+-- unit usually does not use. The rect has to hold a wrapped name -- and every
+-- satellite anchors to the name, so a second line pushes the top ones up and
+-- the bottom ones down -- but most names are one line, which leaves a band of
+-- reserved-and-empty rect above and below the visible content.
+--
+-- Nobody can see that band on a lone frame. Stacked, it is the whole distance
+-- between two frames, which is why boss frames looked far apart at every
+-- spacing the slider offered (user report 2026-08-07). stack.lua subtracts this
+-- from the chain step, so the Spacing slider measures the gap between what is
+-- on screen rather than between two reservations.
+--
+-- Measured as the difference between the real envelope and a one-line one, not
+-- estimated: that way a config with no satellites -- where the extra line
+-- changes far less, because the name box is not what drives the edges -- gets
+-- the smaller number it deserves, and the correction can never exceed the
+-- reservation it removes. A name that DOES wrap therefore lands its content
+-- exactly against its neighbour's rather than overlapping it.
+local function computeEnvelope(inst)
+    local env = envelopeFor(inst, inst.cfg.nameMaxLines)
+    if inst.stackIndex then
+        env.snug = math.max(0, env.H - envelopeFor(inst, 1).H)
+    end
+    return env
+end
+
 -- The aura rows' alignment span: the content's horizontal extent, as offsets
 -- from the frame's LEFT edge. The envelope is a deterministic SUPERSET, so a
 -- row aligned to the frame edge floats past the visible content (user report
@@ -836,9 +929,9 @@ end
 -- centered column's near ink edge, estimated from config -- half the widest
 -- configured rendering at ~0.55 em per glyph (the same size-based-estimate
 -- doctrine as the envelope satellites; non-center layouts are already flush).
--- Name side: the ink-true far edge when the last paint could measure it
--- (inst.nameInkWidth, the anchorPowerFS mechanism -- the player's own name
--- always measures), the full wrap box when it could not.
+-- Name side: the ink-true far edge when the name could be measured at all
+-- (inst.nameInkWidth, the anchorPowerFS mechanism -- every readable name
+-- measures), the full wrap box when it could not.
 local AURA_GLYPH_EM  = 0.55  -- rendered width per digit glyph, in em
 local AURA_VAL_GLYPHS = 4.5  -- glyph budget of a "505k"-style abbreviated value
 
@@ -891,10 +984,14 @@ local pendingRegen = {}
 -- restored position lands before the resize that happens around it, and the
 -- watch settles before the visibility recheck that trusts it.
 local regenActions = {}
-local REGEN_ORDER = { "position", "scale", "envelope", "click", "watch", "visibility" }
+local REGEN_ORDER = { "position", "scale", "envelope", "stack", "click", "watch", "visibility" }
 local regenWatcher
 
 local function queueRegen(inst, what)
+    -- Callers that resolve an instance from a config key can legitimately come
+    -- up empty (a frame not built yet). Nothing to defer, and pendingRegen[nil]
+    -- would throw rather than no-op.
+    if not inst then return end
     local flags = pendingRegen[inst]
     if not flags then
         flags = {}
@@ -922,8 +1019,12 @@ local function queueRegen(inst, what)
 end
 UFZ._QueueRegen = queueRegen
 
--- _RestorePosition lives in editmode.lua; resolved at drain time.
+-- _RestorePosition lives in editmode.lua; _ApplyStack in stack.lua. Both are
+-- resolved at drain time, so their load order behind this file does not matter.
 regenActions.position = function(inst) UFZ._RestorePosition(inst) end
+-- Drains after "envelope" because the stack's box is sized from the envelope
+-- the frames just took.
+regenActions.stack = function(inst) UFZ._ApplyStack(inst.unitKey) end
 
 -- Resize the outer frame to the envelope and seat the numbers box inside it,
 -- flush against the align edge, T below the top. Stateless recompute-and-set.
@@ -943,8 +1044,12 @@ local function applyEnvelope(inst)
 
     local env = computeEnvelope(inst)
     local applied = inst.appliedEnv
+    -- snug rides along in the compare even though it changes nothing the frame
+    -- itself draws: stack.lua reads it off appliedEnv, so a stale one there
+    -- would be a stale chain step.
     if applied and applied.W == env.W and applied.H == env.H
-        and applied.T == env.T and applied.align == env.align then
+        and applied.T == env.T and applied.align == env.align
+        and applied.snug == env.snug then
         return
     end
     if InCombatLockdown() then
@@ -959,31 +1064,49 @@ local function applyEnvelope(inst)
         box:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -env.T)
     end
     inst.appliedEnv = env
+    -- A stacked frame's new height moves every frame below it and resizes the
+    -- Edit Mode box around them. Only reached on a genuine change (the cache
+    -- above absorbs the digit-probe path), and _ApplyStack skip-compares again.
+    if inst.stackIndex then UFZ._ApplyStack(inst.unitKey) end
 end
 regenActions.envelope = applyEnvelope
 
 -- The skull sits where the two numbers were: horizontally on the same column
--- the digits hang from, vertically on the stack's TRUE gap-midline. That
--- midline is the bare -(pctRowH + gap/2) -- NOT the name's nameMidY, which
--- adds NAME_BASE_Y and cfg.nameY on top. Those two are an optical baseline
--- compensator for a line box's descender space and a user nudge on the name;
--- neither means anything to a texture. The midline IS the position -- there is
--- no user offset on this icon.
+-- the digits hang from, vertically on the NAME ROW's ink centerline.
+--
+-- The first bake seated it on the stack's bare gap-midline, -(pctRowH+gap/2),
+-- reasoning that NAME_BASE_Y and cfg.nameY are a text compensator and a user
+-- nudge that "mean nothing to a texture". Wrong twice over -- the skull read
+-- visibly low against the name on Player and Target alike, both at nameY 0
+-- (user report 2026-08-10). First: the icon replaces the health readout, and
+-- the thing the eye lines it up against is the name beside it, so the name's
+-- seat is exactly what it has to inherit. Second: even that seat is the name
+-- RECT's midline, and a rect is not its ink. Measured off the reported
+-- screenshot the two errors compound to ~10px of droop at the shipped
+-- defaults, and nameInkMidY answers both at once:
+--     NAME_BASE_Y + cfg.nameY      the name's own lift off the gap-midline
+--     namePoint * descent / 2      the rect's dead descender space, which
+--                                  seats the ink above the rect center
+-- Still no user offset on this icon: it follows the name, and the name has the
+-- sliders. Self-sufficient rather than fed from applyLayout, so the name fit
+-- can re-seat it when a long name lands at a smaller point size.
 --
 -- Size: 100% is HALF the stack it replaces. Filling the whole stack height was
 -- the first bake (in-game verdict 2026-08-07: far too big), so the slider's
 -- 100% was rebased rather than its range re-centred -- a saved 100 keeps
 -- meaning "the default", and the old look is still reachable at 200.
 local DEAD_ICON_BASE = 0.5
-local function layoutDeadIcon(inst, box, pctRowH, pctGlyphMax)
+local function layoutDeadIcon(inst)
     local tex = inst.deadTex
     if not tex then return end
+    local box = inst.box or inst.frame
+    if not box then return end
     local cfg = inst.cfg
-    local stackH = pctGlyphMax * ENV_LINE_H + cfg.gap + cfg.valSize * ENV_LINE_H
+    local stackH = pctGlyphCeiling(cfg) * ENV_LINE_H + cfg.gap + cfg.valSize * ENV_LINE_H
     local side = math.max(8, math.floor(stackH * DEAD_ICON_BASE * (cfg.deadIconScale or 100) / 100))
     tex:SetSize(side, side)
     tex:ClearAllPoints()
-    local midY = -(pctRowH + cfg.gap / 2)
+    local midY = nameInkMidY(inst)
     if cfg.center then
         -- Centered mode: the column's horizontal centre IS the box edge offset
         -- by dx, because the digit rows hang from a single centre-x point there.
@@ -1027,11 +1150,7 @@ local function applyLayout(inst)
     -- big one-digit rendering never overlaps the value row. Still static config --
     -- the reserve never moves per tick; the sandwich just sits a little looser
     -- under the small three-digit rendering.
-    local pctGlyphMax = cfg.pctSize
-    if cfg.digits then
-        pctGlyphMax = math.max(cfg.pctSize, cfg.digitSize1, cfg.digitSize2, cfg.digitSize3)
-    end
-    local pctRowH = math.ceil(pctGlyphMax * 0.85)
+    local pctRowH = pctRowHeight(cfg)
     -- The name centers on the GAP between the two number rows (the boundary at
     -- -pctRowH plus half the gap), not the whole stack's midline -- so neither
     -- the value row's size nor the digit count ever moves it. The name's near
@@ -1042,7 +1161,7 @@ local function applyLayout(inst)
     -- nameY nudges from there (+ = up, the optical compensator for descender
     -- space in the line box).
     local nameX = NAME_BASE_X + cfg.nameOffset
-    local nameMidY = -(pctRowH + cfg.gap / 2) + NAME_BASE_Y + cfg.nameY
+    local nameMidY = nameSeatY(cfg)
     if cfg.center then
         -- Shared centerline: single-point TOP anchors on natural-width FontStrings.
         -- The engine centers the rect on the point -- anchor resolution is engine-
@@ -1104,7 +1223,7 @@ local function applyLayout(inst)
         nameFS:SetPoint("RIGHT", box, "TOPRIGHT", -nameX, nameMidY)
     end
     symbolFS:SetShown(cfg.symbol and true or false)
-    layoutDeadIcon(inst, box, pctRowH, pctGlyphMax)
+    layoutDeadIcon(inst)
     applyPowerLayout(inst)
     anchorAbsorbFS(inst)
     -- Aura rows re-seat around the (possibly resized) envelope. Unboxed: they
@@ -1132,7 +1251,7 @@ local function applyColor(inst)
         inst.last.color = "curve unavailable"
         return
     end
-    local ok, color = pcall(UnitHealthPercent, cfg.unit, true, curve)
+    local ok, color = pcall(UnitHealthPercent, inst.unit, true, curve)
     if not ok or not color then
         inst.last.color = "eval failed"
         return
@@ -1211,14 +1330,14 @@ local function updatePower(inst)
         -- -- blank the row instead of painting a dead 0. Secret or non-number:
         -- display anyway. Secrecy check BEFORE the comparison, always.
         local gated = false
-        local okM, pmax = pcall(UnitPowerMax, cfg.unit)
+        local okM, pmax = pcall(UnitPowerMax, inst.unit)
         if okM and type(pmax) == "number"
             and not (issecretvalue and issecretvalue(pmax)) and pmax == 0 then
             gated = true
             last.power = "max 0 (no resource)"
         end
         if not gated then
-            local okP, pv = pcall(UnitPower, cfg.unit)  -- no type arg = current primary
+            local okP, pv = pcall(UnitPower, inst.unit)  -- no type arg = current primary
             paintPowerValue(inst, inst.powerFS, "power", okP, pv)
         end
     end
@@ -1238,7 +1357,7 @@ local function updatePower(inst)
     else
         -- Two plain returns (powerType, powerName), NOT an info table; returns
         -- nothing when the class + primary-power pair has no secondary bar.
-        local okI, altType, altName = pcall(GetUnitSecondaryPowerInfo, cfg.unit)
+        local okI, altType, altName = pcall(GetUnitSecondaryPowerInfo, inst.unit)
         if not okI then
             last.altPower = "GetUnitSecondaryPowerInfo error: " .. tostring(altType)
         elseif type(altType) ~= "number" then
@@ -1255,7 +1374,7 @@ local function updatePower(inst)
             inst.altPowerIsPct = true
             local curve = ensurePctCurve()
             if curve and _G.UnitPowerPercent and _G.C_StringUtil then
-                local okP, num = pcall(UnitPowerPercent, cfg.unit, altType, false, curve)
+                local okP, num = pcall(UnitPowerPercent, inst.unit, altType, false, curve)
                 if okP and type(num) == "number" then
                     local fmt = (cfg.round == "round") and C_StringUtil.RoundToNearestString
                         or C_StringUtil.FloorToNearestString
@@ -1283,7 +1402,7 @@ local function updatePower(inst)
             end
         else
             inst.altPowerName = altName   -- color cache for applyPowerColor
-            local okP, pv = pcall(UnitPower, cfg.unit, altType)
+            local okP, pv = pcall(UnitPower, inst.unit, altType)
             paintPowerValue(inst, inst.altPowerFS, "altPower", okP, pv)
         end
     end
@@ -1300,12 +1419,12 @@ local function applyPowerColor(inst)
             cfg.powerColorR, cfg.powerColorG, cfg.powerColorB, cfg.powerColorA)
         inst.last.powerColor = "custom"
     else
-        local r, g, b = addon.GetPowerColorRGB(cfg.unit)
+        local r, g, b = addon.GetPowerColorRGB(inst.unit)
         local tag = "power"
         -- UnitPowerType is readable (no secret annotation) but MayReturnNothing;
         -- re-resolved every pass, never cached. Mana gets the same +0.25 lighten
         -- the UFX classPower text mode uses -- the bar blue is too dark for text.
-        local okT, pt = pcall(UnitPowerType, cfg.unit)
+        local okT, pt = pcall(UnitPowerType, inst.unit)
         if okT and type(pt) == "number" and pt == 0 then
             r, g, b = addon.LightenColor(r, g, b, 0.25)
             tag = "power (mana +0.25)"
@@ -1417,7 +1536,7 @@ local function updateAbsorb(inst)
         return
     end
     if not abbrevBuildTried then rebuildAbbrevConfig() end
-    local ok, v = pcall(UnitGetTotalAbsorbs, cfg.unit)
+    local ok, v = pcall(UnitGetTotalAbsorbs, inst.unit)
     -- Guard ordering, always: type first, THEN secrecy, THEN compare.
     local plain = ok and type(v) == "number" and not (issecretvalue and issecretvalue(v))
     local suffix = plain and " (plain)" or " (secret)"
@@ -1457,6 +1576,21 @@ end
 -- 2026-08-05; it originally painted regardless).
 --------------------------------------------------------------------------------
 
+-- The sanctioned max test: min(expansion cap for this account,
+-- GetMaxPlayerLevel) -- handles Timerunning and capped accounts. Shared with
+-- the Edit Mode stand-in, which has no unit to read and asks the same question
+-- of the player instead.
+local function effectiveMaxLevel()
+    if _G.GameRulesUtil and GameRulesUtil.GetEffectiveMaxLevelForPlayer then
+        local ok, m = pcall(GameRulesUtil.GetEffectiveMaxLevelForPlayer)
+        if ok and type(m) == "number" then return m end
+    elseif _G.GetMaxPlayerLevel then
+        local ok, m = pcall(GetMaxPlayerLevel)
+        if ok and type(m) == "number" then return m end
+    end
+    return nil
+end
+
 -- Returns true when it left text on screen; every blank exit falls through as
 -- nil. updateLevel below turns that into the classification icon's step-aside.
 local function paintLevel(inst)
@@ -1471,7 +1605,7 @@ local function paintLevel(inst)
         last.level = "level API missing"
         return
     end
-    local ok, lvl = pcall(getter, cfg.unit)
+    local ok, lvl = pcall(getter, inst.unit)
     if not ok then
         last.level = "error: " .. tostring(lvl)
         return
@@ -1500,17 +1634,8 @@ local function paintLevel(inst)
         return true
     end
     if cfg.levelHideMax then
-        -- The sanctioned max test: min(expansion cap for this account,
-        -- GetMaxPlayerLevel) -- handles Timerunning and capped accounts.
-        local effMax
-        if _G.GameRulesUtil and GameRulesUtil.GetEffectiveMaxLevelForPlayer then
-            local okM, m = pcall(GameRulesUtil.GetEffectiveMaxLevelForPlayer)
-            if okM then effMax = m end
-        elseif _G.GetMaxPlayerLevel then
-            local okM, m = pcall(GetMaxPlayerLevel)
-            if okM then effMax = m end
-        end
-        if type(effMax) == "number" and lvl >= effMax then
+        local effMax = effectiveMaxLevel()
+        if effMax and lvl >= effMax then
             last.level = "max (hidden)"
             return
         end
@@ -1521,12 +1646,62 @@ local function paintLevel(inst)
     return true
 end
 
+-- The Edit Mode stand-in's level, and the reason it is not just a sample
+-- string: hide-at-max has to hold in the preview too, or the user is placing a
+-- frame whose settings are not the ones they set.
+--
+-- paintLevel asks the SUBJECT's level, and the stand-in has no subject. The
+-- player is the honest stand-in for one, in both directions: a boss never
+-- outlevels you, so "the player is capped" is exactly when a boss level stops
+-- carrying information -- and when it is NOT hidden, the player's own level is
+-- what a scaled encounter would put on the frame anyway. (Target's stand-in
+-- takes the same answer; a level worth reading is one below yours, and the
+-- toggle is off by default.)
+--
+-- Returns paintLevel's verdict -- true when it left text on screen -- so the
+-- caller can drive the same classification step-aside.
+local function previewLevel(inst)
+    local fs, pre = inst.levelFS, inst.levelPrefixFS
+    if fs.ClearText then fs:ClearText() end
+    if pre and pre.ClearText then pre:ClearText() end
+
+    local lvl
+    local getter = _G.UnitEffectiveLevel or _G.UnitLevel
+    if getter then
+        local ok, v = pcall(getter, "player")
+        -- Guard ordering, always: type, then secrecy, then compare.
+        if ok and type(v) == "number"
+            and not (issecretvalue and issecretvalue(v)) and v > 0 then
+            lvl = v
+        end
+    end
+
+    if inst.cfg.levelHideMax and lvl then
+        local effMax = effectiveMaxLevel()
+        if effMax and lvl >= effMax then return end
+    end
+    -- Unreadable player level: fail open on the sample, the way paintLevel
+    -- fails open on a secret one. A blank preview is the worse lie -- it looks
+    -- like a setting rather than a missing measurement.
+    pcall(fs.SetText, fs, string.format("%d", lvl or 80))
+    if pre then pcall(pre.SetText, pre, "lvl") end
+    return true
+end
+
 -- The classification icon only steps aside while the level is actually on
 -- screen, so a blank level (hide-at-max is the common one) hands the corner
 -- back. Re-anchored on the FLIP only: this runs on every level and target
 -- event, and the anchor is unchanged in between.
+--
+-- The stand-in owns the level while it is up, the updateClassification
+-- precedent: every live setter routes its repaint through here, and against a
+-- unit that is not there paintLevel would answer "??" (or nothing) and blank
+-- the stand-in the moment the user touched a setting. previewStandIn, not
+-- previewActive -- previewing a frame that DOES have a unit keeps the live
+-- paint, which is the more accurate preview of the two.
 local function updateLevel(inst)
-    local painted = paintLevel(inst) and true or false
+    local paint = inst.previewStandIn and previewLevel or paintLevel
+    local painted = paint(inst) and true or false
     if inst.levelPainted ~= painted then
         inst.levelPainted = painted
         anchorClassify(inst)
@@ -1546,13 +1721,13 @@ local function updateClassification(inst)
     -- Edit Mode owns the texture while previewing (a positionable adornment
     -- must be visible while it is being positioned); do not fight it.
     if inst.previewActive then return end
-    if not cfg.classifyShow or cfg.unit == "player" then
+    if not cfg.classifyShow or inst.unit == "player" then
         tex:Hide()
         inst.classifyAtlas = nil
         last.classify = "off"
         return
     end
-    local ok, class = pcall(UnitClassification, cfg.unit)
+    local ok, class = pcall(UnitClassification, inst.unit)
     if not ok then
         tex:Hide()
         inst.classifyAtlas = nil
@@ -1598,32 +1773,117 @@ end
 local NPC_RAMP_START = { 1, 1, 1 }
 local NPC_RAMP_END   = { 0.62, 0.64, 0.68 }
 
--- The rendered ink's width: the one geometric fact the ink-true power anchors
--- need. GetWrappedWidth reports the widest laid-out line (Blizzard's own
--- shrink-box-to-ink API); readable names answer plainly, a secret name poisons
--- its FontString and the guard leaves nil -- anchorPowerFS falls back to the
--- box edge. Deferred one frame: a FontString reports stale metrics until the
--- SetText that produced them has rendered once. Every applyNameText terminal
--- path schedules this, so the ramp swap's own deferred SetText has already
--- landed by the time the measure fires; the seq guard kills stale timers the
--- same way it kills stale fits.
-local function measureNameInk(inst, seq)
-    C_Timer.After(0, function()
-        if seq ~= inst.nameFitSeq then return end
-        local w = nil
-        local nameFS = inst.nameFS
-        if nameFS and nameFS.GetWrappedWidth then
-            local ok, gw = pcall(nameFS.GetWrappedWidth, nameFS)
-            if ok and type(gw) == "number"
-                and not (issecretvalue and issecretvalue(gw)) and gw > 0 then
-                w = gw
-            end
+-- The name's own face key, resolved identically in the three places that need
+-- it: the blind fit's ruler, the greedy wrapper's ruler, and the ink
+-- measurement. Derived rather than repeated so the three cannot drift onto
+-- different fonts and disagree about where the name ends.
+local function nameFaceKey(cfg)
+    return (cfg.nameFace ~= "follow") and cfg.nameFace or cfg.face
+end
+
+-- The rendered ink's width: the one geometric fact the ink-true satellite
+-- anchors need, because the name BOX is nameMaxWidth wide and a short name
+-- leaves the far half of it empty air.
+--
+-- Measured SYNCHRONOUSLY on the shared ruler, from the string and the point
+-- size -- never read back off the live name FontString. That is the round-5
+-- correction (user report 2026-08-10, the alt power sitting way outside the
+-- name). The old path read nameFS:GetWrappedWidth one deferred frame after the
+-- paint, and a single deferred shot is wrong twice over:
+--
+--   * It cannot land before the paint it describes. Every far-side satellite
+--     was therefore drawn at least one frame at the BOX edge and then seen to
+--     snap onto the name -- on every target change, visibly.
+--   * A shot that misses has nothing behind it. The read needs the FontString's
+--     layout to have settled, the frame to have rendered once, and the seq to
+--     still match; when any of that failed the guard wrote nil, anchorPowerFS
+--     read that as "no measurement", and the satellite stayed parked at the box
+--     edge for the whole life of that target. Nothing was scheduled to retry.
+--
+-- The ruler has neither failure mode. addon.MeasureTextWidth takes the string
+-- and the size as ARGUMENTS, so no layout has to have settled and there is
+-- nothing that can be stale -- it is the same primitive applyPowerLayout
+-- already measures "lvl" and "%" with, and it answers before the name is
+-- painted at all.
+--
+-- A name wider than the box wraps, and then the far edge is the widest LINE
+-- rather than the whole string, so the greedy wrapper (applyNameText's own ramp
+-- fallback, which already carries a per-line width) splits it and the widest
+-- allowed line wins. A single unbreakable word has nowhere to break and
+-- ellipsizes against the box instead, which fills it -- hence the box-width
+-- answer, which is the truth in that case rather than a fallback.
+--
+-- Secret names stay unmeasurable in every form (unitNames.md's constraint map:
+-- every width getter on a FontString holding one is secret, and the ruler
+-- refuses the string outright rather than poisoning itself for every other
+-- caller in the addon). nil, and the box-edge fallback stands -- documented,
+-- not fixable blind.
+local function measureNameInk(inst, name)
+    local cfg = inst.cfg
+    if not addon.MeasureTextWidth then return nil end
+    local face = addon.ResolveFontFace(nameFaceKey(cfg))
+    local size = currentNamePoint(inst)
+    local w = addon.MeasureTextWidth(name, face, size, cfg.style)
+    if type(w) ~= "number" or w <= 0 then return nil end
+    if w <= cfg.nameMaxWidth then return w end
+    local lines = addon.WrapTextGreedy and addon.WrapTextGreedy(name, {
+        width = cfg.nameMaxWidth, face = face, size = size, style = cfg.style,
+    })
+    local widest = 0
+    if lines then
+        for i = 1, math.min(#lines, cfg.nameMaxLines) do
+            local lw = lines[i].width
+            if type(lw) == "number" and lw > widest then widest = lw end
         end
-        inst.nameInkWidth = w
-        applyPowerLayout(inst)
-        -- The name-side aura span reads the same measurement.
-        if UFZ.Auras then UFZ.Auras.ApplyLayout(inst) end
-    end)
+    end
+    if widest <= 0 then return cfg.nameMaxWidth end
+    return math.min(widest, cfg.nameMaxWidth)
+end
+
+-- Every name-relative satellite -- the two power texts and the '%' companion,
+-- the level pair, the classification icon -- anchors to nameFS. All of them
+-- move when a refit changes the name's point size or line count (the rect
+-- centers on a fixed midline, so both its edges travel), and the far-side
+-- locations move again with the ink width. None of that is known until the fit
+-- lands.
+--
+-- So they ride the name's own hold. On a NEW subject refreshName blanks the
+-- name until its fit lands, and a satellite left visible across that window is
+-- drawn for those frames at the PREVIOUS subject's geometry and then seen to
+-- correct itself -- the same user report's other half, and the reason the
+-- synchronous measurement above is not sufficient on its own. The whole name
+-- row now appears at once instead.
+--
+-- Alpha, never Hide: Show/Hide on these belongs to updateClassification and
+-- applyLayout, and a hold must not fight the state they own. Nothing else in
+-- the file writes alpha on any of them (inst.symbolFS, which update() does
+-- drive by alpha, is the percent's '%', not altPowerSymbolFS).
+local function satelliteAlpha(inst, a)
+    for _, region in ipairs({ inst.powerFS, inst.altPowerFS, inst.altPowerSymbolFS,
+        inst.levelFS, inst.levelPrefixFS, inst.classifyTex }) do
+        if region then region:SetAlpha(a) end
+    end
+end
+
+-- The name and its satellites reveal TOGETHER, never separately: the satellites
+-- are the name row, and a row that arrives in two pieces is the same visible
+-- churn the hold exists to remove. The ramp path makes this concrete -- it
+-- paints one frame and reveals the next, so a satellite revealed at placement
+-- time would beat the name it is anchored to onto the screen. Every terminal
+-- path in applyNameText, paintStandInName and refreshName ends here instead.
+local function revealNameRow(inst)
+    if inst.nameFS then inst.nameFS:SetAlpha(1) end
+    satelliteAlpha(inst, 1)
+end
+
+-- Measurement and placement are one step, and both happen before the paint: no
+-- frame exists in which a satellite is drawn at a stale anchor. The reveal is
+-- deliberately NOT here -- it belongs with the name's own, above.
+local function resolveNameInk(inst, name)
+    inst.nameInkWidth = measureNameInk(inst, name)
+    applyPowerLayout(inst)
+    -- The name-side aura span reads the same measurement.
+    if UFZ.Auras then UFZ.Auras.ApplyLayout(inst) end
 end
 
 -- The paint path: text + color for an already-sized FontString, and the owner
@@ -1648,6 +1908,10 @@ end
 local function applyNameText(inst, name, seq)
     local cfg = inst.cfg
     local nameFS = inst.nameFS
+    -- Before a single glyph of this name is drawn. One call covers every branch
+    -- below, including the two that return early -- the old per-branch deferred
+    -- measure was four call sites that had to stay in step.
+    resolveNameInk(inst, name)
     if nameFS.ClearText then nameFS:ClearText() end
     pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
 
@@ -1657,8 +1921,7 @@ local function applyNameText(inst, name, seq)
         pcall(nameFS.SetTextColor, nameFS, cfg.nameColorR, cfg.nameColorG, cfg.nameColorB, cfg.nameColorA)
         pcall(nameFS.SetText, nameFS, name)
         inst.last.name = "custom color"
-        nameFS:SetAlpha(1)
-        measureNameInk(inst, seq)
+        revealNameRow(inst)
         return
     end
 
@@ -1668,26 +1931,24 @@ local function applyNameText(inst, name, seq)
         -- engine still wraps it -- layout never needed to read the string.
         pcall(nameFS.SetText, nameFS, name)
         inst.last.name = "secret (solid white)"
-        nameFS:SetAlpha(1)
-        measureNameInk(inst, seq)   -- clears a stale readable width to nil
+        revealNameRow(inst)
         return
     end
 
-    local isPlayer = cfg.unit == "player"
+    local isPlayer = inst.unit == "player"
     if not isPlayer then
-        local okP, p = pcall(UnitIsPlayer, cfg.unit)
+        local okP, p = pcall(UnitIsPlayer, inst.unit)
         isPlayer = okP and not (issecretvalue and issecretvalue(p)) and p == true
     end
 
     local r1, g1, b1, r2, g2, b2
     if isPlayer then
-        local token = addon.GetClassTokenForUnit(cfg.unit)
+        local token = addon.GetClassTokenForUnit(inst.unit)
         local cr, cg, cb = addon.GetClassColorRGB(token)
         if not (token and cr) then
             pcall(nameFS.SetText, nameFS, name)
             inst.last.name = "no class color (solid white)"
-            nameFS:SetAlpha(1)
-            measureNameInk(inst, seq)
+            revealNameRow(inst)
             return
         end
         r1, g1, b1 = addon.DarkenColor(cr, cg, cb, 0.25)
@@ -1719,7 +1980,7 @@ local function applyNameText(inst, name, seq)
         if not lines and addon.WrapTextGreedy then
             lines = addon.WrapTextGreedy(name, {
                 width = cfg.nameMaxWidth,
-                face  = addon.ResolveFontFace((cfg.nameFace ~= "follow") and cfg.nameFace or cfg.face),
+                face  = addon.ResolveFontFace(nameFaceKey(cfg)),
                 size  = currentNamePoint(inst),
                 style = cfg.style,
             })
@@ -1737,21 +1998,64 @@ local function applyNameText(inst, name, seq)
             -- The solid start color stays up -- a fallback, not a failure.
             inst.last.name = tostring(inst.last.name) .. "  [solid fallback: no line discovery]"
         end
-        nameFS:SetAlpha(1)
-        measureNameInk(inst, seq)
+        revealNameRow(inst)
     end)
 end
 
+-- The Edit Mode stand-in's name -- the frame's whole handle while it is up, so
+-- it is worth as much care as the live one. Painted straight onto the
+-- FontString because there is no unit: the blind fit and the class ramp both
+-- need a subject. The two side jobs refreshName does AROUND them still have to
+-- happen, or the preview is not the frame:
+--
+-- One, the fit's cached point size belongs to whatever unit was last here, and
+-- a short stand-in belongs at the full nameSize. The seq bump goes with it, so
+-- an in-flight fit for that unit cannot land on top of this.
+--
+-- Two, and the one the eye catches: every FAR-side satellite -- the level pair,
+-- the classification icon, the alt power -- anchors to the name's last letter,
+-- and only a measurement knows where that is. Without one they fall back to the
+-- name BOX edge (nameMaxWidth from the justified side) and float out past the
+-- end of a short stand-in. resolveNameInk places them; frameKey is plain text,
+-- so the ruler always answers here.
+local function paintStandInName(inst)
+    local nameFS = inst.nameFS
+    if not nameFS then return end
+    inst.nameFitSeq = inst.nameFitSeq + 1
+    if inst.nameFitSize then
+        inst.nameFitSize = nil
+        applyFonts(inst)
+    end
+    if nameFS.ClearText then nameFS:ClearText() end
+    pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
+    -- frameKey, not unitKey: five boss stand-ins all reading "Boss" would give
+    -- the user no way to tell which slot they are placing.
+    pcall(nameFS.SetText, nameFS, inst.frameKey)
+    revealNameRow(inst)
+    inst.last.name = "edit mode stand-in"
+    resolveNameInk(inst, inst.frameKey)
+end
+
 -- hold: nil/true = keep the current picture up until the new one is ready
--- (same subject re-measured); false = new subject, blank the name until the
--- fit lands (never draw at a stale size). The blank is ALPHA, not ClearText --
--- a hold must not destroy the picture it is holding, and ClearText would
--- release the Text aspect mid-hold. Every terminal path ends at alpha 1: the
--- no-unit paths below, the painted paths inside applyNameText.
+-- (same subject re-measured); false = new subject, blank the name AND its
+-- satellites until the fit lands (never draw at a stale size, and never at a
+-- stale place). The blank is ALPHA, not ClearText -- a hold must not destroy
+-- the picture it is holding, and ClearText would release the Text aspect
+-- mid-hold. Every terminal path ends at alpha 1: the no-unit paths below, the
+-- painted paths inside applyNameText via resolveNameInk.
 local function refreshName(inst, hold)
     local cfg = inst.cfg
     local nameFS = inst.nameFS
     if not nameFS then return end
+
+    -- The stand-in owns the name while it is up, the updateLevel precedent.
+    -- Without this, every setter that refreshes the name (size, face, fit,
+    -- width, lines...) would take the no-unit path and blank the frame's whole
+    -- handle mid-preview -- the one thing the stand-in exists to prevent.
+    if inst.previewStandIn then
+        paintStandInName(inst)
+        return
+    end
 
     -- Unconditional: any in-flight fit is for a subject this call replaces --
     -- including the no-unit path, which launches no new fit and is exactly the
@@ -1759,26 +2063,26 @@ local function refreshName(inst, hold)
     inst.nameFitSeq = inst.nameFitSeq + 1
     local seq = inst.nameFitSeq
 
-    local okEx, ex = pcall(UnitExists, cfg.unit)
+    local okEx, ex = pcall(UnitExists, inst.unit)
     local exSecret = okEx and issecretvalue and issecretvalue(ex)
     if not okEx or (not exSecret and ex == false) then
         if nameFS.ClearText then nameFS:ClearText() end
         pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
-        nameFS:SetAlpha(1)
         inst.last.name = "no unit"
         inst.nameInkWidth = nil
         applyPowerLayout(inst)
+        revealNameRow(inst)   -- also drops a hold left by the pass this replaces
         return
     end
 
-    local okN, name = pcall(UnitName, cfg.unit)
+    local okN, name = pcall(UnitName, inst.unit)
     if not okN or type(name) == "nil" then
         if nameFS.ClearText then nameFS:ClearText() end
         pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
-        nameFS:SetAlpha(1)
         inst.last.name = "no name"
         inst.nameInkWidth = nil
         applyPowerLayout(inst)
+        revealNameRow(inst)   -- also drops a hold left by the pass this replaces
         return
     end
 
@@ -1793,11 +2097,24 @@ local function refreshName(inst, hold)
         return
     end
 
-    if hold == false then nameFS:SetAlpha(0) end
+    if hold == false then
+        nameFS:SetAlpha(0)
+        satelliteAlpha(inst, 0)
+        -- The release rides a callback that is ALLOWED not to fire: RunBlindFit
+        -- abandons a superseded same-pool pass silently (unitNames.md). A
+        -- superseding pass bumps the seq and owns its own release, so this only
+        -- fires when nothing did -- and it drops the hold rather than leaving a
+        -- satellite invisible, which would be a worse failure than a misplaced
+        -- one. A fit that landed normally leaves the seq alone and re-asserts an
+        -- alpha already at 1; idempotent either way.
+        C_Timer.After(1, function()
+            if inst.nameFitSeq == seq then satelliteAlpha(inst, 1) end
+        end)
+    end
 
     addon.RunBlindFit(name, {
         poolKey  = inst.poolKey,
-        face     = (cfg.nameFace ~= "follow") and cfg.nameFace or cfg.face,
+        face     = nameFaceKey(cfg),
         style    = cfg.style,
         width    = cfg.nameMaxWidth,
         height   = 200,   -- generous: nameMaxLines is what actually governs the budget
@@ -1822,6 +2139,11 @@ local function refreshName(inst, hold)
         end
         inst.nameFitSize, inst.lastNameFit = applied, st
         applyFonts(inst)
+        -- The skull seats on the name's INK midline, which closes back toward
+        -- the rect center as the fit shrinks the point size. Re-seat here
+        -- rather than re-running applyLayout: this is two calls on a texture we
+        -- own, against a full relayout that restarts the stretch animations.
+        layoutDeadIcon(inst)
         -- The certified belt-and-braces from nametext: re-assert the wrap state
         -- alongside the size before the paint (cheap, idempotent).
         pcall(nameFS.SetWordWrap, nameFS, true)
@@ -1948,7 +2270,7 @@ local function update(inst)
 
     -- "No unit" only when UnitExists comes back a readable false. Never boolean-test
     -- a possibly-secret return.
-    local okEx, ex = pcall(UnitExists, cfg.unit)
+    local okEx, ex = pcall(UnitExists, inst.unit)
     local exSecret = okEx and issecretvalue and issecretvalue(ex)
     if not okEx or (not exSecret and ex == false) then
         -- Nothing renders without a unit -- no placeholder, and the '%' goes
@@ -1980,7 +2302,7 @@ local function update(inst)
     -- UnitIsDeadOrGhost is a plain bool in 12.0 (no SecretReturns annotation),
     -- so this compares directly -- the pcall guards a missing API, not secrecy.
     -- Ghost is deliberately included: a ghost has health but is not alive.
-    local okDead, isDead = pcall(UnitIsDeadOrGhost, cfg.unit)
+    local okDead, isDead = pcall(UnitIsDeadOrGhost, inst.unit)
     local dead = okDead and isDead == true
     if not dead then
         setDeadIconShown(inst, false)
@@ -2013,7 +2335,7 @@ local function update(inst)
     local pctStr = nil  -- the secret string, held only to feed the digit ruler
     local curve = ensurePctCurve()
     if curve and _G.UnitHealthPercent and _G.C_StringUtil then
-        local ok, num = pcall(UnitHealthPercent, cfg.unit, cfg.usePredicted, curve)
+        local ok, num = pcall(UnitHealthPercent, inst.unit, cfg.usePredicted, curve)
         if ok and type(num) == "number" then
             local fmt = (cfg.round == "round") and C_StringUtil.RoundToNearestString
                 or C_StringUtil.FloorToNearestString
@@ -2050,7 +2372,7 @@ local function update(inst)
     if valFS.ClearText then valFS:ClearText() end
     last.val = "?"
     if not abbrevBuildTried then rebuildAbbrevConfig() end
-    local okH, hp = pcall(UnitHealth, cfg.unit)
+    local okH, hp = pcall(UnitHealth, inst.unit)
     if okH and type(hp) == "number" then
         local okA, str
         if abbrevOpts and _G.AbbreviateNumbers then
@@ -2097,7 +2419,7 @@ local UNIT_EVENTS = {
 local function registerUnitEvents(inst)
     if not inst.frame then return end
     for _, ev in ipairs(UNIT_EVENTS) do
-        pcall(inst.frame.RegisterUnitEvent, inst.frame, ev, inst.cfg.unit)
+        pcall(inst.frame.RegisterUnitEvent, inst.frame, ev, inst.unit)
     end
 end
 
@@ -2117,6 +2439,9 @@ local function applyScale(inst)
     end
     inst.frame:SetScale(scale)
     inst.appliedScale = scale
+    -- The stack's anchor box carries the same scale, so it stays an exact fit
+    -- around frames whose spacing is expressed in their own coordinate space.
+    if inst.stackIndex then UFZ._ApplyStack(inst.unitKey) end
 end
 regenActions.scale = applyScale
 
@@ -2170,11 +2495,11 @@ local function applyClickAttributes(inst)
     click:SetAllPoints(inst.frame)
     -- The Blizzard loader: AnyUp clicks, *type1 = target, unit attribute.
     if SecureUnitButton_OnLoad then
-        SecureUnitButton_OnLoad(click, inst.cfg.unit)
+        SecureUnitButton_OnLoad(click, inst.unit)
     else
         click:RegisterForClicks("AnyUp")
         click:SetAttribute("*type1", "target")
-        click:SetAttribute("unit", inst.cfg.unit)
+        click:SetAttribute("unit", inst.unit)
     end
     -- togglemenu, not menu: the self-contained secure action Blizzard retains
     -- for addon frames (SecureTemplates.lua) -- it resolves the right menu per
@@ -2197,13 +2522,13 @@ local function applyUnitWatch(inst)
     local frame = inst.frame
     if not frame then return end
     local wantWatch = UFZ._IsUnitEnabled(inst.unitKey)
-        and inst.cfg.unit ~= "player"
+        and inst.unit ~= "player"
         and not inst.previewActive
     if InCombatLockdown() then
         -- Steady state needs nothing; only a real transition queues (every
         -- combat target change routes through here via _UpdateVisibility).
         if (not wantWatch) == (not inst.watchRegistered)
-            and (not wantWatch or inst.watchUnit == inst.cfg.unit) then
+            and (not wantWatch or inst.watchUnit == inst.unit) then
             return
         end
         queueRegen(inst, "watch")
@@ -2212,10 +2537,10 @@ local function applyUnitWatch(inst)
     if wantWatch then
         -- The manager resolves the unit via SecureButton_GetUnit on the
         -- watched frame itself; registration settles visibility synchronously.
-        frame:SetAttribute("unit", inst.cfg.unit)
+        frame:SetAttribute("unit", inst.unit)
         RegisterUnitWatch(frame)
         inst.watchRegistered = true
-        inst.watchUnit = inst.cfg.unit
+        inst.watchUnit = inst.unit
     elseif inst.watchRegistered then
         UnregisterUnitWatch(frame)
         inst.watchRegistered = nil
@@ -2417,6 +2742,14 @@ local function ensureFrame(inst)
     frame:RegisterEvent("PLAYER_DEAD")
     frame:RegisterEvent("PLAYER_ALIVE")
     frame:RegisterEvent("PLAYER_UNGHOST")
+    -- Boss slots change occupant without changing existence: a phase transition
+    -- or an add swap re-points boss3 at a different creature while the frame
+    -- stays shown, and the unit watch -- which answers existence only -- sees
+    -- nothing. This is Blizzard's own signal for it (BossTargetFrameMixin:OnLoad
+    -- registers it, TargetFrame.lua) and Cast Bar Z's boss changeEvent. It is
+    -- not a unit event and carries no argument to filter on, so each frame
+    -- takes it plainly and the handler self-filters.
+    frame:RegisterEvent("INSTANCE_ENCOUNTER_ENGAGE_UNIT")
     frame:SetScript("OnEvent", function(_, event)
         -- The Edit Mode stand-in paints static sample text; live data must not
         -- overwrite it mid-drag. Everything re-syncs on _EndEditModePreview.
@@ -2432,14 +2765,16 @@ local function ensureFrame(inst)
         end
         if event == "UNIT_NAME_UPDATE" then
             -- Late name arrival for the watched unit (RegisterUnitEvent filters
-            -- to cfg.unit). Name only; health has its own events. Same subject:
+            -- to inst.unit). Name only; health has its own events. Same subject:
             -- hold the old picture while the refit runs.
             refreshName(inst, true)
             return
         end
-        if event == "PLAYER_TARGET_CHANGED" and inst.cfg.unit ~= "target" then return end
-        if event == "PLAYER_FOCUS_CHANGED" and inst.cfg.unit ~= "focus" then return end
-        if event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_FOCUS_CHANGED" then
+        if event == "PLAYER_TARGET_CHANGED" and inst.unit ~= "target" then return end
+        if event == "PLAYER_FOCUS_CHANGED" and inst.unit ~= "focus" then return end
+        if event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" and not inst.stackIndex then return end
+        if event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_FOCUS_CHANGED"
+            or event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
             -- The subject itself changed. Show/hide on existence is the secure
             -- unit watch's (combat-legal); this settles the watch and repaints
             -- a currently-shown frame. A frame the watch shows a beat later
@@ -2505,24 +2840,10 @@ local function getConfig(inst)
     return snapshot
 end
 
-local function setUnit(inst, u)
-    ensureApplied(inst)
-    u = tostring(u or ""):lower()
-    if u ~= "player" and u ~= "target" and u ~= "focus" then
-        addon:Print("Unit must be one of: player | target | focus")
-        return
-    end
-    inst.cfg.unit = u
-    inst.lastDigitCount = nil
-    registerUnitEvents(inst)
-    -- The click overlay and the unit watch both target whatever cfg.unit
-    -- says; re-point them (each queues to regen if this lands in combat).
-    applyClickAttributes(inst)
-    UFZ._UpdateVisibility(inst)
-    update(inst)
-    refreshName(inst, false)
-    addon:Print("Unit (" .. inst.label .. " instance): " .. inst.cfg.unit)
-end
+-- setUnit is gone (2026-08-07). The unit token is structural now -- minted from
+-- the frame row into inst.unit -- so there is nothing for a setter to write:
+-- five boss frames read one config table and each needs its own token. It was
+-- a harness relic with no caller outside the API table.
 
 -- The applied-vs-requested check exists because both failure modes here are
 -- silent: an unknown key makes ResolveFontFace fall back to the default face,
@@ -3171,6 +3492,38 @@ local function setClassifySize(inst, px)
 end
 
 --------------------------------------------------------------------------------
+-- Stack setters (Boss only)
+--------------------------------------------------------------------------------
+-- The keys exist only on a config whose defaults declare them (core.lua), so
+-- these are no-ops on Player and Target rather than a way to grow them a
+-- stack. _ApplyStack owns the combat guard.
+
+local function setStackSpacing(inst, px)
+    ensureApplied(inst)
+    if inst.cfg.stackSpacing == nil then return end
+    local v = tonumber(px)
+    if not v then
+        addon:Print(string.format("UFZ setter usage: stackspacing <-20-40>   (current: %d)",
+            inst.cfg.stackSpacing))
+        return
+    end
+    inst.cfg.stackSpacing = math.max(-20, math.min(40, math.floor(v + 0.5)))
+    UFZ._ApplyStack(inst.unitKey)
+end
+
+local function setStackGrowth(inst, dir)
+    ensureApplied(inst)
+    if inst.cfg.stackGrowth == nil then return end
+    dir = tostring(dir or ""):lower()
+    if dir ~= "down" and dir ~= "up" then
+        addon:Print("Stack growth must be one of: down | up")
+        return
+    end
+    inst.cfg.stackGrowth = dir
+    UFZ._ApplyStack(inst.unitKey)
+end
+
+--------------------------------------------------------------------------------
 -- Aura row setters: cfg writers only -- auras.lua owns the workers, reached
 -- through the UFZ.Auras seam. Unboxed by design: no aura setter ever calls
 -- applyEnvelope.
@@ -3325,9 +3678,10 @@ end
 local function reset(inst)
     ensureApplied(inst)
     -- Wipe-and-refill through core.lua, which re-applies the shared defaults
-    -- plus this unit's identity overrides (the target instance must not reset
-    -- into a second player frame). The table object survives -- inst.cfg and
-    -- the DB hold the same reference.
+    -- plus this unit's overrides (the target instance must not reset into a
+    -- second player frame). The table object survives -- inst.cfg and the DB
+    -- hold the same reference. Called once per instance by the GetAPI fan-out,
+    -- which is harmless: the second wipe refills the same defaults.
     UFZ._ResetUnitDB(inst.unitKey)
     local cfg = inst.cfg
     inst.lastDigitCount = nil
@@ -3344,23 +3698,37 @@ local function reset(inst)
     -- repeated here (defaults turn the rows off; this clears them).
     if UFZ.Auras then UFZ.Auras.ApplyAll(inst) end
     applyOpacity(inst)
+    -- Explicit, not via the applyEnvelope/applyScale hooks: a reset restores
+    -- the default spacing and growth, and those two move the stack without
+    -- moving any frame's envelope or scale.
+    UFZ._ApplyStack(inst.unitKey)
 end
 
 --------------------------------------------------------------------------------
 -- Instances and the public API
 --------------------------------------------------------------------------------
 
--- Identity fields (unitKey/frameName/label/poolKey) live OUTSIDE cfg on
--- purpose: Reset and GetConfig iterate cfg and must never see or clobber them.
--- cfg is NOT copied from anywhere: it is the AceDB-backed per-unit table
--- itself, so every write persists and every read sees the active profile.
-local function newInstance(unitKey, cfg)
+-- Identity fields live OUTSIDE cfg on purpose: Reset and GetConfig iterate cfg
+-- and must never see or clobber them. cfg is NOT copied from anywhere: it is
+-- the AceDB-backed per-unit table itself, so every write persists and every
+-- read sees the active profile.
+--
+-- The three identifiers come from the frame ROW (core.lua), never from cfg --
+-- five boss instances share one cfg table, so the unit token in particular
+-- cannot be a config value:
+--   unitKey  "Boss"   which config this frame reads
+--   frameKey "Boss3"  which frame this is
+--   unit     "boss3"  the token every unit API call takes
+local function newInstance(row, cfg)
     local inst = {
         cfg = cfg,
-        unitKey = unitKey,
-        frameName = "ScootUnitFrameZ" .. unitKey,
-        label = (UFZ.UNIT_TOKENS and UFZ.UNIT_TOKENS[unitKey] or unitKey):lower(),
-        poolKey = "ufz:" .. unitKey,   -- one blind-fit ruler pool per instance
+        unitKey = row.unitKey,
+        frameKey = row.frameKey,
+        unit = row.token,
+        stackIndex = row.stackIndex,
+        frameName = "ScootUnitFrameZ" .. row.frameKey,
+        label = row.token,
+        poolKey = "ufz:" .. row.frameKey,   -- one blind-fit ruler pool per instance
         frame = nil,
         chromeBG = nil,
         pctFS = nil, valFS = nil, symbolFS = nil, nameFS = nil, rulerFS = nil,
@@ -3413,7 +3781,6 @@ end
 
 local API = {
     GetConfig = getConfig,
-    SetUnit = setUnit,
     SetFont = setFont,
     SetStyle = setStyle,
     SetPctSize = setPctSize,
@@ -3469,6 +3836,8 @@ local API = {
     SetClassifyShow = setClassifyShow,
     SetClassifyLoc = setClassifyLoc,
     SetClassifySize = setClassifySize,
+    SetStackSpacing = setStackSpacing,
+    SetStackGrowth = setStackGrowth,
     SetAuraBuffsShow = function(inst, s) return setAuraShowImpl(inst, "Buffs", s) end,
     SetAuraDebuffsShow = function(inst, s) return setAuraShowImpl(inst, "Debuffs", s) end,
     SetAuraBuffsLoc = function(inst, l) return setAuraLocImpl(inst, "Buffs", l) end,
@@ -3492,19 +3861,23 @@ local API = {
 -- Instance lifecycle (called by core.lua's ApplyStyling)
 --------------------------------------------------------------------------------
 
---- The unit's instance, created on first request. On every later call the cfg
---- reference is re-pointed at the active profile's table -- a profile switch
---- swaps addon.db.profile out from under a cached reference, and every closure
---- in this file reads through inst.cfg for exactly this moment.
-function UFZ._EnsureInstance(unitKey)
-    local cfg = UFZ._GetUnitConfig(unitKey)
+--- A frame row's instance, created on first request. On every later call the
+--- cfg reference is re-pointed at the active profile's table -- a profile
+--- switch swaps addon.db.profile out from under a cached reference, and every
+--- closure in this file reads through inst.cfg for exactly this moment.
+---
+--- Takes a ROW, not a unit key: the config comes from row.unitKey (shared by
+--- all five boss frames) while the instance is keyed by row.frameKey.
+function UFZ._EnsureInstance(row)
+    if not row then return nil end
+    local cfg = UFZ._GetUnitConfig(row.unitKey)
     if not cfg then return nil end
 
-    local inst = UFZ._instances[unitKey]
+    local inst = UFZ._instances[row.frameKey]
     local switchedProfile = false
     if not inst then
-        inst = newInstance(unitKey, cfg)
-        UFZ._instances[unitKey] = inst
+        inst = newInstance(row, cfg)
+        UFZ._instances[row.frameKey] = inst
     elseif inst.cfg ~= cfg then
         inst.cfg = cfg
         -- The caches pivot on config that just changed wholesale.
@@ -3532,12 +3905,12 @@ function UFZ._ApplyAll(inst)
     registerUnitEvents(inst)
     inst.chromeBG:SetShown(inst.cfg.chrome)
     -- Click overlay self-heal (protected ops, OOC only; combat paths re-reach
-    -- here on the next apply): the unit attribute tracks cfg.unit, and the
+    -- here on the next apply): the unit attribute tracks inst.unit, and the
     -- overlay stays hidden for exactly as long as Edit Mode is open --
     -- editmode.lua's enter/exit callbacks are the primary writer, this is the
     -- backstop for an overlay created mid-session.
     if inst.clickButton and not InCombatLockdown() then
-        if inst.clickButton:GetAttribute("unit") ~= inst.cfg.unit then
+        if inst.clickButton:GetAttribute("unit") ~= inst.unit then
             applyClickAttributes(inst)
         end
         inst.clickButton:SetShown(not UFZ._editModeActive)
@@ -3578,7 +3951,7 @@ function UFZ._UpdateVisibility(inst)
         return
     end
 
-    if inst.cfg.unit == "player" then
+    if inst.unit == "player" then
         setShownSafe(inst, true)
     end
 
@@ -3605,11 +3978,24 @@ end
 -- Edit Mode stand-in
 --------------------------------------------------------------------------------
 -- A targetless Target frame draws nothing (update()'s no-unit blank), and Edit
--- Mode has nothing to grab without a stand-in. Sample values are plain static
--- strings -- no unit APIs, no secret hazards -- painted straight onto the
--- FontStrings the frame already laid out. The player frame has live data and
--- takes the normal paint. previewActive gates the event handler and
+-- Mode has nothing to grab without a stand-in. The health, power and alt power
+-- samples are plain static strings -- no unit APIs, no secret hazards --
+-- painted straight onto the FontStrings the frame already laid out. The player
+-- frame has live data and takes the normal paint.
+--
+-- Two flags, deliberately not one. previewActive means "Edit Mode is holding
+-- this frame": it gates the event handler, the OnShow paint and
 -- _UpdateVisibility, so live churn cannot overwrite the stand-in mid-drag.
+-- previewStandIn is the narrower claim -- "this frame has no subject at all" --
+-- and it is what routes refreshName and updateLevel to their stand-in paints
+-- (paintStandInName, previewLevel). A previewed frame that DOES have a unit
+-- sets only the first and keeps every live paint, which is the more accurate
+-- preview of the two.
+--
+-- The bar the stand-in has to clear: outside an encounter this IS the boss
+-- frame, so a setting that changes nothing here reads as a setting that does
+-- nothing. Hence the level's hide-at-max and the name's ink measurement both
+-- reach the preview, and every setter's repaint stays on the stand-in.
 
 function UFZ._ShowEditModePreview(inst)
     ensureApplied(inst)
@@ -3621,9 +4007,13 @@ function UFZ._ShowEditModePreview(inst)
     inst.frame:Show()
     applyOpacity(inst)  -- previewActive branch: a dimmed frame snaps to full
 
-    local okEx, ex = pcall(UnitExists, inst.cfg.unit)
+    local okEx, ex = pcall(UnitExists, inst.unit)
     local exSecret = okEx and issecretvalue and issecretvalue(ex)
     local noUnit = not okEx or (not exSecret and ex == false)
+    -- Distinct from previewActive: the stand-in only owns the chains that have
+    -- no subject to read. A previewed frame that DOES have a unit keeps every
+    -- live paint, which is the more accurate preview of the two.
+    inst.previewStandIn = noUnit or nil
     if noUnit then
         local SAMPLE = { 0.55, 0.90, 0.35 }  -- a healthy green, the curve's home stretch
         inst.pctFS:SetText("72")
@@ -3632,14 +4022,19 @@ function UFZ._ShowEditModePreview(inst)
         inst.valFS:SetTextColor(SAMPLE[1], SAMPLE[2], SAMPLE[3], 1)
         inst.symbolFS:SetAlpha(1)
         inst.symbolFS:SetTextColor(SAMPLE[1], SAMPLE[2], SAMPLE[3], 1)
-        inst.nameFS:SetText(inst.unitKey)
-        inst.nameFS:SetTextColor(1, 1, 1, 1)
         inst.powerFS:SetText("25.3k")
         inst.powerFS:SetTextColor(0.35, 0.55, 1.0, 1)
         inst.altPowerFS:SetText("100")
         inst.altPowerFS:SetTextColor(0.55, 0.65, 1.0, 1)
-        inst.levelFS:SetText("80")
-        inst.levelPrefixFS:SetText("lvl")
+
+        -- The name and the level both go through the normal chains, which
+        -- previewStandIn has just routed to their stand-in paints: the name
+        -- lands ink-measured (so the far-side satellites sit against its last
+        -- letter, not the box edge) and the level honours hide-at-max. Routed
+        -- rather than painted inline so an entry paint and a live setter's
+        -- repaint can never disagree.
+        refreshName(inst)
+        updateLevel(inst)
     else
         update(inst)
         refreshName(inst)
@@ -3657,7 +4052,7 @@ function UFZ._ShowEditModePreview(inst)
     -- placing it -- an invisible icon cannot be dragged into place. Nothing
     -- else in the component paints it during preview: updateClassification
     -- early-outs on previewActive.
-    if inst.classifyTex and inst.cfg.classifyShow and inst.cfg.unit ~= "player" then
+    if inst.classifyTex and inst.cfg.classifyShow and inst.unit ~= "player" then
         if atlasExists(CLASSIFY_PREVIEW_ATLAS) then
             pcall(inst.classifyTex.SetAtlas, inst.classifyTex, CLASSIFY_PREVIEW_ATLAS)
             inst.classifyAtlas = CLASSIFY_PREVIEW_ATLAS
@@ -3671,6 +4066,7 @@ end
 function UFZ._EndEditModePreview(inst)
     if not inst or not inst.previewActive then return end
     inst.previewActive = nil
+    inst.previewStandIn = nil
     -- Drop the stand-in's memo so updateClassification's skip-compare re-fires
     -- against the live unit instead of trusting the preview atlas.
     inst.classifyAtlas = nil
@@ -3687,30 +4083,46 @@ end
 -- The public per-unit API
 --------------------------------------------------------------------------------
 -- Settings pages and the Edit Mode mirror call the engine through this: every
--- API function pre-bound to the unit's instance, memoized per unit. Binding
--- to the INSTANCE (not the cfg table) keeps the API stable across profile
--- switches -- _EnsureInstance re-points inst.cfg underneath it.
+-- API function applied to EVERY instance the config key drives. One for Player
+-- and Target, five for Boss -- so a single settings page stays indifferent to
+-- how many frames sit behind it, and the boss frames cannot drift apart.
+--
+-- The instance is resolved per call rather than captured once: profile
+-- switches re-point inst.cfg, and a boss frame may not exist yet when the
+-- page first binds.
 
 local boundAPIs = {}
 
 function UFZ.GetAPI(unitKey)
     local bound = boundAPIs[unitKey]
     if bound then return bound end
+    if not UFZ._GetUnitConfig(unitKey) then return nil end
 
-    local inst = UFZ._EnsureInstance(unitKey)
-    if not inst then return nil end
+    local rows = UFZ._RowsForUnitKey(unitKey)
+    if #rows == 0 then return nil end
 
     bound = {}
     for suffix, fn in pairs(API) do
-        bound[suffix] = function(...) return fn(inst, ...) end
+        bound[suffix] = function(...)
+            local result
+            for _, row in ipairs(rows) do
+                local inst = UFZ._EnsureInstance(row)
+                if inst then result = fn(inst, ...) end
+            end
+            return result
+        end
     end
     boundAPIs[unitKey] = bound
     return bound
 end
 
 --- Read-only config snapshot for the settings pages (plain values only).
+--- Straight off the DB: the page reads the config, not a frame, and
+--- materializing five boss instances to answer a getter would be backwards.
 function UFZ.GetConfig(unitKey)
-    local inst = UFZ._EnsureInstance(unitKey)
-    if not inst then return nil end
-    return getConfig(inst)
+    local cfg = UFZ._GetUnitConfig(unitKey)
+    if not cfg then return nil end
+    local snapshot = {}
+    for k, v in pairs(cfg) do snapshot[k] = v end
+    return snapshot
 end

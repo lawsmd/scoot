@@ -120,6 +120,13 @@ end
 --- root. Until that exists the hook is simply absent, which is why it is called
 --- through a nil check rather than declared here.
 ---
+--- The seam answers TWO things, because "no Z frame" and "no Z" are different
+--- states. Z SUPPRESSES the Blizzard frame it replaces, and a parked frame
+--- keeps a valid rect at its old on-screen position -- so falling back to it
+--- would snap a visible cast bar to an invisible frame. When Z owns the unit
+--- but has not built the frame yet, the honest answer is "do not snap", which
+--- leaves the bar at its stored position until the next re-snap corrects it.
+---
 --- Frame names come from the row (core.lua), which takes them from the verified
 --- paths in ufboss.md -- never guessed, never derived from the unit token.
 function CBZ._ResolveAnchorFrame(bar)
@@ -127,8 +134,9 @@ function CBZ._ResolveAnchorFrame(bar)
     if not row or not row.anchorFrame then return nil end
 
     if CBZ._ResolveCustomAnchorFrame then
-        local custom = CBZ._ResolveCustomAnchorFrame(row)
+        local custom, owned = CBZ._ResolveCustomAnchorFrame(row)
         if custom then return custom end
+        if owned then return nil end
     end
 
     local frame = _G[row.anchorFrame]

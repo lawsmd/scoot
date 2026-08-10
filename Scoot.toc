@@ -141,6 +141,7 @@ core/components/castbarz/editmode.lua
 core/components/unitframesz/core.lua
 core/components/unitframesz/engine.lua
 core/components/unitframesz/auras.lua
+core/components/unitframesz/stack.lua
 core/components/unitframesz/suppression.lua
 core/components/unitframesz/editmode.lua
 core/components/unitframes/buffs.lua

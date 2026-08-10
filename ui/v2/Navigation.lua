@@ -181,7 +181,15 @@ Navigation.NavModel = {
             { key = "ufPet", label = "Pet", module = "unitFrames", moduleSubId = "Pet" },
             { key = "ufToT", label = "Target of Target", module = "unitFrames", moduleSubId = "TargetOfTarget" },
             { key = "ufFocusTarget", label = "Target of Focus", module = "unitFrames", moduleSubId = "FocusTarget" },
-            { key = "ufBoss", label = "Boss", module = "unitFrames", moduleSubId = "Boss" },
+            { key = "ufBoss", label = "Boss", module = "unitFrames", moduleSubId = "Boss",
+                variant = "X",
+                versionBadge = { label = "X", title = "Boss Frames X", text = "Blizzard's own Boss frames, restyled in place by Scoot. All five share one configuration." },
+                variantGroup = "ufBoss", groupFallback = true, hideBadgesWhenDisabled = true },
+            { key = "ufzBoss", label = "Boss", module = "unitFramesZ", moduleSubId = "Boss",
+                variant = "Z",
+                versionBadge = { label = "Z", title = "Boss Frames Z", text = "Scoot's own text-first Boss frames — five of them, stacked vertically and positioned as one block in Edit Mode. Blizzard's boss frames are removed entirely while this is on. All five share one configuration, set here." },
+                betaBadge = true,
+                variantGroup = "ufBoss" },
             -- Last row of Unit Frames, and Z-only: the X variant is configured
             -- per frame, on each frame's own page above. alwaysShow keeps the row
             -- visible while X is selected so the Z badge can still explain what

@@ -304,19 +304,24 @@ local TOT_FOT_SOURCES = {
 local UFZ_COPY_TARGETS = {
     ufzPlayer = true,
     ufzTarget = true,
+    ufzBoss = true,
 }
 
 local UFZ_NAMES = {
     ufzPlayer = "Player Frame Z",
     ufzTarget = "Target Frame Z",
+    ufzBoss = "Boss Frames Z",
 }
 
+-- The CONFIG key, which for Boss is one key behind five frames -- the copy
+-- lands on all of them because it goes through the shared config table.
 local UFZ_KEYS = {
     ufzPlayer = "Player",
     ufzTarget = "Target",
+    ufzBoss = "Boss",
 }
 
-local UFZ_ORDER = { "ufzPlayer", "ufzTarget" }
+local UFZ_ORDER = { "ufzPlayer", "ufzTarget", "ufzBoss" }
 
 local CUSTOM_GROUP_COPY_TARGETS = {
     customGroup1 = true,

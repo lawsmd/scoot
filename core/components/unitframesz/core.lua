@@ -21,20 +21,73 @@ addon.UnitFramesZ = addon.UnitFramesZ or {}
 local UFZ = addon.UnitFramesZ
 
 --------------------------------------------------------------------------------
--- Units
+-- Units and frames: three identifiers, not one
 --------------------------------------------------------------------------------
--- Extension point: Focus/Pet/Boss/ToT/FocusTarget land by adding rows here, a
--- sub-toggle + modeCycle in modules.lua, per-unit default overrides below, a
--- default Edit Mode position (editmode.lua), a suppression target
+-- Boss is five frames driven by ONE configuration, so the single unitKey that
+-- served Player and Target has to split -- the same collision Cast Bar Z hit
+-- and solved the same way (castbarz/core.lua:16-30):
+--
+--   unitKey   "Boss"    DB config, settings page, nav key, Copy From, sub-toggle
+--   frameKey  "Boss3"   the instance, the frame name, the stack index
+--   token     "boss3"   every unit API call (inst.unit; NOT a config value)
+--
+-- For Player and Target all three coincide (modulo case), so nothing about
+-- those two changes in practice.
+--
+-- Extension point: Focus/Pet/ToT/FocusTarget land by adding rows to both lists
+-- here, a sub-toggle + modeCycle in modules.lua, per-unit default overrides
+-- below, a default Edit Mode position (editmode.lua), a suppression target
 -- (suppression.lua) and a nav/renderer pair.
 
-UFZ.UNITS = { "Player", "Target" }
+UFZ.UNITS = { "Player", "Target", "Boss" }   -- config keys
+UFZ.NUM_BOSS_FRAMES = 5
 
--- unitKey -> the API unit token the engine watches. The token also lives in the
--- per-unit DB as cfg.unit (the engine reads it there); this map only seeds it.
-UFZ.UNIT_TOKENS = { Player = "player", Target = "target" }
+UFZ.FRAMES = {
+    { frameKey = "Player", unitKey = "Player", token = "player" },
+    { frameKey = "Target", unitKey = "Target", token = "target" },
+}
 
-UFZ._instances = {}
+-- Boss: one config, five frames. They stack vertically off a shared anchor
+-- (stack.lua); stackIndex is that anchor's ordering.
+for i = 1, UFZ.NUM_BOSS_FRAMES do
+    UFZ.FRAMES[#UFZ.FRAMES + 1] = {
+        frameKey   = "Boss" .. i,
+        unitKey    = "Boss",
+        token      = "boss" .. i,
+        stackIndex = i,
+    }
+end
+
+function UFZ._RowForFrameKey(frameKey)
+    for _, row in ipairs(UFZ.FRAMES) do
+        if row.frameKey == frameKey then return row end
+    end
+    return nil
+end
+
+--- Every frame row belonging to a config key. One row for Player and Target,
+--- five for Boss -- which is what makes GetAPI a fan-out and the settings page
+--- indifferent to how many frames sit behind it.
+---
+--- Built once: UFZ.FRAMES is static, and this is on the settings-change path.
+--- Callers must treat the result as read-only.
+local rowsByUnitKey = {}
+for _, row in ipairs(UFZ.FRAMES) do
+    local rows = rowsByUnitKey[row.unitKey]
+    if not rows then
+        rows = {}
+        rowsByUnitKey[row.unitKey] = rows
+    end
+    rows[#rows + 1] = row
+end
+
+local EMPTY_ROWS = {}
+
+function UFZ._RowsForUnitKey(unitKey)
+    return rowsByUnitKey[unitKey] or EMPTY_ROWS
+end
+
+UFZ._instances = {}   -- [frameKey] = inst
 UFZ._comp = nil
 UFZ._initialized = false
 UFZ._editModeActive = false
@@ -49,12 +102,16 @@ UFZ._editModeActive = false
 --
 -- Keys not surfaced in the settings UI (style, digits, digitSize1/3, center,
 -- centerOffset, descent, stretch, symbolSize, align, color, round, usePredicted,
--- chrome, width, height, valFace, pctSize, nameFit, nameMinSize, unit) are the
+-- chrome, width, height, valFace, pctSize, nameFit, nameMinSize) are the
 -- certified-look tuning constants from the harness; they ride along as declared
 -- defaults so a future setting can surface any of them without a migration.
+--
+-- The unit token is NOT here. It used to live as cfg.unit, which cannot work
+-- once five boss frames share one config table -- it is now structural, minted
+-- from the frame row into inst.unit (2026-08-07). Profiles saved before that
+-- keep a harmless orphan `unit` key.
 
 local UNIT_DEFAULTS_SHARED = {
-    unit         = "player",
     -- Anton Wide 1.5x: the settled shipping bake. Metrics table in
     -- docs/unitframesZ/ufzhealthtext.md.
     face         = "ANTON_WIDE_150",
@@ -173,7 +230,7 @@ local UNIT_DEFAULTS_SHARED = {
     -- Elite/rare classification icon: Blizzard's own nameplate art, on the
     -- name-relative location system the power/level texts use. Never shown on
     -- the player (hard early-out in the engine; the page hides the tab).
-    -- Vertically fixed at CLASSIFY_FIXED_Y -- no offset keys.
+    -- Vertically fixed by the engine's classifySeatY -- no offset keys.
     classifyShow   = true,
     classifyLoc    = "topright",        -- bottomleft|bottomright|topleft|topright|nameside
     classifySize   = 20,                -- px, 8-48
@@ -195,14 +252,34 @@ local UNIT_DEFAULTS = {
         opacityWithTarget  = 100,
     },
     Target = {
-        unit = "target", align = "left",
+        align = "left",
         powerLoc = "bottomleft", altPowerLoc = "bottomright",
-        -- The level DELIBERATELY breaks the mirror (2026-08-06): its mirrored
-        -- slot is topright, which is where the classification icon now lands by
-        -- default, and three of the four corners were already spoken for. This
-        -- only moves FRESH profiles -- an existing Target DB keeps topright and
-        -- overlaps until the level is moved by hand.
-        levelLoc = "topleft",
+        -- topright is the clean mirror of the player's topleft, and it shares
+        -- the corner with the classification icon on purpose: the icon steps
+        -- aside (engine classifyShiftReserved) wherever the two coincide, which
+        -- is a better answer than the 2026-08-06 dodge of defaulting the level
+        -- to the one free corner. Restored 2026-08-07, so fresh profiles now
+        -- look like every Target DB saved before that dodge.
+        levelLoc = "topright",
+    },
+    -- Boss: styling identical to Target (ufzstructure.md: "Target, Focus, Boss:
+    -- health block left of the name. Nothing else changes between units"), with
+    -- one key different -- five stacked frames at Target's size is a lot of
+    -- screen, so they ship smaller and the user raises the existing slider.
+    Boss = {
+        align = "left",
+        powerLoc = "bottomleft", altPowerLoc = "bottomright",
+        levelLoc = "topright",  -- shares the corner with the icon; see Target
+        scale = 0.7,
+        -- Stack layout. Unit-only keys -- absent from SHARED, so only the Boss
+        -- DB carries them and CopyUnitFrameZSettings (a SHARED walk) can never
+        -- touch them. Same construction as the Player opacity trio.
+        --
+        -- 0 is not "frames touching": stack.lua steps over the envelope's
+        -- unused name-line reservation first, so 0 is as close as the content
+        -- allows and the slider goes negative from there into real overlap.
+        stackSpacing = 0,       -- px between frames, -20..40
+        stackGrowth  = "down",  -- down | up: which end of the box Boss1 sits at
     },
 }
 table.freeze(UNIT_DEFAULTS)
@@ -265,7 +342,12 @@ end
 -- mirrored handedness keys stay the destination's own (user decision
 -- 2026-08-05, matching the X copy's preserve-positioning philosophy).
 local COPY_EXCLUDE = {
-    unit = true,
+    -- Overall Scale sits on the positioning side of that line, not the styling
+    -- side: it is the ONE setting the Edit Mode mirror carries, for the reason
+    -- editmode.lua states -- it is judged by looking at the frame in place.
+    -- Excluded 2026-08-07, when Boss shipped at a smaller default and "copy my
+    -- Target look onto Boss" would otherwise have flattened it every time.
+    scale = true,
     align = true,
     powerLoc = true,
     altPowerLoc = true,
@@ -297,10 +379,14 @@ function addon.CopyUnitFrameZSettings(sourceUnit, destUnit)
     -- Same cache nils as the other wholesale-change paths (reset, profile
     -- switch), then the full component pass: apply + visibility + suppression
     -- + the Cast Bar Z re-snap (a copied width/height moves the envelope).
-    local inst = UFZ._instances[destUnit]
-    if inst then
-        inst.lastDigitCount = nil
-        inst.nameFitSize = nil
+    -- Every frame on the destination config, so a copy onto Boss reaches all
+    -- five rather than just the first.
+    for _, row in ipairs(UFZ._RowsForUnitKey(destUnit)) do
+        local inst = UFZ._instances[row.frameKey]
+        if inst then
+            inst.lastDigitCount = nil
+            inst.nameFitSize = nil
+        end
     end
     UFZ._ApplyStyling()
     return true
@@ -310,6 +396,15 @@ end
 --- per-unit table carries cosmetics, never the mode.
 function UFZ._IsUnitEnabled(unitKey)
     return addon:IsModuleEnabled("unitFramesZ", unitKey)
+end
+
+--- The first instance a config key drives, or nil. The only instance for Player
+--- and Target; the stack head for Boss. Anything that needs "an instance for
+--- this config" -- the combat queue, a cache nil -- wants this one.
+function UFZ._HeadInstance(unitKey)
+    local rows = UFZ._RowsForUnitKey(unitKey)
+    local row = rows[1]
+    return row and UFZ._instances[row.frameKey] or nil
 end
 
 --------------------------------------------------------------------------------
@@ -392,6 +487,8 @@ function UFZ._ApplyStyling(comp)
             -- retires the unit watch that would fight the hide.
             if inst.frame then UFZ._UpdateVisibility(inst) end
         end
+        -- Retires the boss stack's Edit Mode anchor along with the frames.
+        UFZ._ApplyStack("Boss")
         -- Hand Blizzard's frames back. Safe on a profile that never enabled Z:
         -- this only ever writes to a frame Z itself suppressed.
         UFZ._ApplySuppression()
@@ -402,14 +499,17 @@ function UFZ._ApplyStyling(comp)
         UFZ._Initialize(comp)
     end
 
-    for _, unitKey in ipairs(UFZ.UNITS) do
-        if UFZ._IsUnitEnabled(unitKey) then
-            local inst = UFZ._EnsureInstance(unitKey)
+    for _, row in ipairs(UFZ.FRAMES) do
+        if UFZ._IsUnitEnabled(row.unitKey) then
+            local inst = UFZ._EnsureInstance(row)
             if inst then UFZ._ApplyAll(inst) end
         end
-        local inst = UFZ._instances[unitKey]
+        local inst = UFZ._instances[row.frameKey]
         if inst then UFZ._UpdateVisibility(inst) end
     end
+
+    -- The boss stack, once every frame it chains exists and has its envelope.
+    UFZ._ApplyStack("Boss")
 
     -- Last, in one pass: this is the only place that knows the whole picture.
     -- Writes only on a transition, so a slider drag costs nothing here.
@@ -440,8 +540,17 @@ end
 -- castbarz/anchoring.lua calls this (nil-checked) before falling back to the
 -- Blizzard root: a snapped cast bar follows whichever frame actually represents
 -- the unit. Z mode -> the Scoot-owned frame; X or OFF -> nil -> Blizzard's.
--- The instance check matters: before the first ApplyStyling the frame doesn't
--- exist yet, and anchoring to nil must fall back rather than error.
+--
+-- Resolved per BAR, not per unit config. Boss is five bars sharing unitKey
+-- "Boss", so a unitKey lookup would land all five on one frame; row.barKey is
+-- the per-bar identity and equals unitKey for every non-boss row, so this one
+-- lookup is correct universally.
+--
+-- The second return says "Z owns this unit" independently of whether the frame
+-- exists yet. It matters because Z SUPPRESSES the Blizzard frame it replaces:
+-- a parked frame keeps a valid rect at its old position, so falling back to it
+-- would snap a visible cast bar to an invisible frame. Ownership without a
+-- frame means "do not snap", not "snap to Blizzard".
 
 local CBZ = addon.CastBarZ
 if CBZ then
@@ -449,7 +558,7 @@ if CBZ then
         local unitKey = row and row.unitKey
         if not unitKey then return nil end
         if not addon:IsModuleEnabled("unitFramesZ", unitKey) then return nil end
-        local inst = UFZ._instances[unitKey]
-        return inst and inst.frame or nil
+        local inst = UFZ._instances[row.barKey]
+        return (inst and inst.frame) or nil, true
     end
 end

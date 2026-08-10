@@ -300,7 +300,7 @@ local function rowFilter(inst, rowKey)
     end
     -- Blizzard TargetFrame parity: nameplate-flagged player DoTs are part of
     -- the target's debuff row; plain HARMFUL for the player's own frame.
-    if inst.cfg.unit == "player" then
+    if inst.unit == "player" then
         return "HARMFUL"
     end
     return "HARMFUL|INCLUDE_NAME_PLATE_ONLY"
@@ -311,7 +311,7 @@ end
 -- Never Lua-sort aura data.
 local function pullIDs(inst, rowKey)
     local maxN = tonumber(inst.cfg["aura" .. rowKey .. "Max"]) or 16
-    local ok, ids = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, inst.cfg.unit,
+    local ok, ids = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, inst.unit,
         rowFilter(inst, rowKey), maxN,
         Enum.UnitAuraSortRule.Default, Enum.UnitAuraSortDirection.Normal)
     if not ok or type(ids) ~= "table" then return nil end
@@ -354,7 +354,7 @@ local function refreshRow(inst, rowKey)
     local ids = pullIDs(inst, rowKey) or {}
     if sameIDs(ids, row.shownIDs) then return false end
 
-    local unit = cfg.unit
+    local unit = inst.unit
     local filter = rowFilter(inst, rowKey)  -- tooltip stamp; same string the pull used
     for i = 1, #ids do
         local iid = ids[i]
