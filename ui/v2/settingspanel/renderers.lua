@@ -46,7 +46,7 @@ local function RenderDebugMenu(panel, scrollContent)
 
     builder:AddToggle({
         label = "Force Secret Restrictions",
-        description = "Enables all secret restriction CVars to simulate combat/instance restrictions for testing taint behavior.",
+        description = "Enables all secret restriction CVars to simulate combat/instance restrictions for testing.",
         get = function()
             local val = GetCVar("secretCombatRestrictionsForced")
             return val == "1"
