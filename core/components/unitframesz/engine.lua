@@ -2521,8 +2521,30 @@ local function applyClickAttributes(inst)
     -- unit (SELF/TARGET/...) and opens it via UnitPopup_OpenMenu, no
     -- menu-function attribute needed.
     click:SetAttribute("*type2", "togglemenu")
+    -- Our own overlay inherits the 12.0.7 regression that SmallFixes exists to
+    -- undo: *type1 = "target" above is exactly the value SecureUnitButton_OnClick
+    -- refuses to act on while a modifier is held. No-ops unless the user turned
+    -- a modifier on.
+    if addon.SmallFixes and addon.SmallFixes.ApplyModifierProxies then
+        addon.SmallFixes.ApplyModifierProxies(click)
+    end
 end
 regenActions.click = applyClickAttributes
+
+--- Re-applies the modifier delegates on every live overlay. Called when a
+--- Small Fixes toggle changes; combat-blocked writes ride the existing click
+--- regen action rather than a second deferral of their own.
+function UFZ._RefreshClickModifiers()
+    for _, inst in pairs(UFZ._instances) do
+        if inst.clickButton then
+            if InCombatLockdown() then
+                queueRegen(inst, "click")
+            else
+                applyClickAttributes(inst)
+            end
+        end
+    end
+end
 
 -- Secure unit watch: Blizzard's SecureStateDriverManager shows/hides watched
 -- frames on unit existence from its own secure context -- the one channel

@@ -1574,6 +1574,86 @@ function Builder:AddToggleSliderRow(options)
 end
 
 --------------------------------------------------------------------------------
+-- AddMultiToggleRow: Several compact toggles in one row
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Row label text
+--   description : Optional explainer below the label
+--   toggles     : Array of { key, label, get, set }
+--   disabled / isDisabled : Function returning disabled state
+--   key         : Optional unique key for dynamic updates
+--------------------------------------------------------------------------------
+
+function Builder:AddMultiToggleRow(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    if Builder._scanMode and options.label then
+        -- Fold the per-toggle labels into the indexed text so searching for an
+        -- individual toggle still surfaces the row that holds it.
+        local searchText = options.description or ""
+        if type(options.toggles) == "table" then
+            local names = {}
+            for _, def in ipairs(options.toggles) do
+                if def.label and def.label ~= "" then
+                    table.insert(names, def.label)
+                end
+            end
+            if #names > 0 then
+                searchText = searchText .. " " .. table.concat(names, " ")
+            end
+        end
+
+        table.insert(Builder._scanEntries, {
+            type = "multi toggle",
+            label = options.label,
+            description = searchText,
+            rendererKey = Builder._scanRendererKey,
+            section = Builder._scanSectionStack[#Builder._scanSectionStack],
+        })
+        return self
+    end
+
+    if #self._controls > 0 then
+        self._currentY = self._currentY - ITEM_SPACING
+    end
+
+    local multiToggle = Controls:CreateMultiToggleRow({
+        parent = scrollContent,
+        label = options.label,
+        description = options.description,
+        toggles = options.toggles,
+        useLightDim = self._useLightDim,
+        disabled = options.disabled,
+        isDisabled = options.isDisabled,
+        name = options.name,
+    })
+
+    if multiToggle then
+        multiToggle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+        multiToggle:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+        table.insert(self._controls, multiToggle)
+
+        if options.key then
+            self._controlsByKey[options.key] = multiToggle
+        end
+
+        self._currentY = self._currentY - multiToggle:GetHeight()
+
+        -- Propagate deferred height changes to parent collapsible
+        if self._parentCollapsible then
+            local parentCollapsible = self._parentCollapsible
+            multiToggle._onHeightChanged = function(delta)
+                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
+            end
+        end
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
 -- AddDualBarStyleRow: Texture + Color compact row
 --------------------------------------------------------------------------------
 -- Options:

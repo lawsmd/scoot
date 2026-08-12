@@ -161,6 +161,7 @@ core/components/minimap/overlay.lua
 core/components/tooltip.lua
 core/components/notes.lua
 core/qol.lua
+core/smallfixes.lua
 core/components/widget/core.lua
 core/reports/core.lua
 core/reports/groupanalysis.lua
@@ -221,6 +222,7 @@ ui/v2/controls/DualSelector.lua
 ui/v2/controls/RankSelector.lua
 ui/v2/controls/SelectorToggleRow.lua
 ui/v2/controls/ToggleSliderRow.lua
+ui/v2/controls/MultiToggleRow.lua
 ui/v2/controls/Tabbed.lua
 ui/v2/controls/FontSelector.lua
 ui/v2/controls/InfoIcon.lua
@@ -283,6 +285,7 @@ ui/v2/settings/qol/EditModeRenderer.lua
 ui/v2/settings/qol/LootVendorsRenderer.lua
 ui/v2/settings/qol/QuestsRenderer.lua
 ui/v2/settings/qol/DungeonJournalRenderer.lua
+ui/v2/settings/qol/SmallFixesRenderer.lua
 ui/v2/settings/profiles/ManageRenderer.lua
 ui/v2/settings/profiles/PresetsRenderer.lua
 ui/v2/settings/profiles/RulesRenderer.lua
