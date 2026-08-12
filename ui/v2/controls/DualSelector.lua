@@ -382,16 +382,9 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
     dropdown._closeListener = closeListener
 
     -- ESC key handling for dropdown
-    dropdown:EnableKeyboard(true)
-    dropdown:SetPropagateKeyboardInput(true)
-    dropdown:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
-            CloseDropdown()
-            PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
-        else
-            self:SetPropagateKeyboardInput(true)
-        end
+    addon.EscapeKey.Attach(dropdown, function()
+        CloseDropdown()
+        PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
     end)
 
     -- Build and show dropdown

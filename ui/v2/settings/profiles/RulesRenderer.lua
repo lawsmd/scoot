@@ -88,16 +88,9 @@ local function ShowSpecPicker(anchor, rule, callback)
         frame:Hide()
 
         -- ESC to close
-        frame:EnableKeyboard(true)
-        frame:SetPropagateKeyboardInput(true)
-        frame:SetScript("OnKeyDown", function(self, key)
-            if key == "ESCAPE" then
-                self:SetPropagateKeyboardInput(false)
-                CloseSpecPicker()
-                PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
-            else
-                self:SetPropagateKeyboardInput(true)
-            end
+        addon.EscapeKey.Attach(frame, function()
+            CloseSpecPicker()
+            PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
         end)
 
         rulesSpecPickerFrame = frame

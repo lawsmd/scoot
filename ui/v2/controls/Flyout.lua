@@ -325,15 +325,8 @@ function Controls:CreateFlyout(options)
     -- ESC key handling
     ---------------------------------------------------------------------------
 
-    panel:EnableKeyboard(true)
-    panel:SetPropagateKeyboardInput(true)
-    panel:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
-            CloseFlyout(self)
-        else
-            self:SetPropagateKeyboardInput(true)
-        end
+    addon.EscapeKey.Attach(panel, function(self)
+        CloseFlyout(self)
     end)
 
     ---------------------------------------------------------------------------

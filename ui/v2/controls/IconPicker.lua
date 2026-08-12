@@ -789,13 +789,8 @@ local function CreateIconPicker()
     end
 
     -- ESC key support
-    frame:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
-            CloseIconPicker()
-        else
-            self:SetPropagateKeyboardInput(true)
-        end
+    addon.EscapeKey.Attach(frame, function()
+        CloseIconPicker()
     end)
 
     -- Click-outside-to-close

@@ -315,16 +315,10 @@ local function CreateButtonContainerMenu()
     menu.entries = {}
 
     -- Close on escape
-    menu:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            self:Hide()
-            self:SetPropagateKeyboardInput(false)
-        else
-            self:SetPropagateKeyboardInput(true)
-        end
+    addon.EscapeKey.Attach(menu, function(self)
+        self:Hide()
     end)
 
-    menu:EnableKeyboard(true)
     menu:Hide()
 
     buttonContainerMenu = menu

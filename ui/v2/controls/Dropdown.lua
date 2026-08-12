@@ -238,16 +238,9 @@ function Controls:CreateDropdown(options)
     menu._closeListener = closeListener
 
     -- ESC key handling for menu
-    menu:EnableKeyboard(true)
-    menu:SetPropagateKeyboardInput(true)
-    menu:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
-            CloseMenu()
-            PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
-        else
-            self:SetPropagateKeyboardInput(true)
-        end
+    addon.EscapeKey.Attach(menu, function()
+        CloseMenu()
+        PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
     end)
 
     -- Build and show menu
