@@ -146,6 +146,7 @@ core/components/unitframesz/stack.lua
 core/components/unitframesz/suppression.lua
 core/components/unitframesz/editmode.lua
 core/components/unitframes/buffs.lua
+core/components/unitframes/auracontainer.lua
 core/components/unitframes/visibility.lua
 core/components/unitframes/copy.lua
 core/components/unitframes/scalemult.lua
@@ -202,6 +203,7 @@ core/debug/inspect.lua
 core/debug/nametext.lua
 core/debug/castz.lua
 core/debug/repcolor.lua
+core/debug/auracontainer.lua
 core/taintdebug.lua
 core/dialogs.lua
 core/importexport.lua

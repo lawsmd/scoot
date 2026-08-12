@@ -161,6 +161,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug castz endorder [unit]  (toggle cast-end event order watch)")
             addon:Print("  /scoot debug castz fit         (shrink-to-fit state of each live bar)")
             addon:Print("  /scoot debug repcolor [watch]   (ReputationColor banner trace)")
+            addon:Print("  /scoot debug auracontainer [start|stop|probes|filters|suppress|log]")
             return
         end
 
@@ -550,6 +551,17 @@ function SlashCmdList.SCOOT(msg, editBox)
         if sub1 == "repcolor" then
             if addon.DebugRepColor then addon.DebugRepColor(sub2)
             else addon:Print("RepColor debug not available.") end
+            return
+        end
+
+        -- /scoot debug auracontainer [start|stop|probes|filters|suppress|log]
+        -- Target/Focus replacement aura container pilot (12.1 probe battery)
+        if sub1 == "auracontainer" or sub1 == "aurac" then
+            if addon.DebugAuraContainer then
+                addon.DebugAuraContainer(sub2, string.lower(args[4] or ""))
+            else
+                addon:Print("Aura container debug not available.")
+            end
             return
         end
 
