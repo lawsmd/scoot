@@ -54,6 +54,90 @@ local function SnapToPixels(value, region)
 end
 
 --------------------------------------------------------------------------------
+-- The stored position anchors the CONTENT, not the rect
+--------------------------------------------------------------------------------
+-- The frame rect is a config-derived SUPERSET around the numbers box
+-- (engine.lua, computeEnvelope): it reserves room for every satellite the config
+-- can ask for, so it grows and shrinks whenever a setting changes what the
+-- element may contain. Anchoring THAT rect to the screen makes every one of
+-- those changes move the content -- and with a vertically centred anchor point,
+-- which is what normalizePosition hands out for anything near the middle of the
+-- screen, it moves it BOTH ways at once. Enabling the power text grew the
+-- envelope downward by ~14px, the pinned centre pushed the name and the number
+-- stack UP by half of it, and the aura rows hanging off the frame's bottom edge
+-- went DOWN by the other half (user report 2026-08-10: "the name is supposed to
+-- be the anchor of the frame").
+--
+-- So what the stored numbers pin is the CONTENT ORIGIN -- the numbers box, which
+-- is the rect every content anchor in applyLayout is measured from -- and the
+-- frame's own anchor is derived from it against the current envelope. The
+-- reservation now grows outward from a name that does not move, and the only
+-- things that follow the frame's edges are the unboxed aura rows, which are
+-- exactly what has to make room.
+--
+-- The conversion runs both ways and lives here alone: everything outside this
+-- file (LibEditMode's drag, GetPoint, SetPoint) still speaks frame rects.
+
+--- The anchor point's position inside a rect, as fractions from its TOPLEFT.
+--- LibEditMode hands out the nine UIParent points (normalizePosition).
+local function PointFractions(point)
+    point = point or "CENTER"
+    local fx = point:find("LEFT") and 0 or point:find("RIGHT") and 1 or 0.5
+    local fy = point:find("TOP") and 0 or point:find("BOTTOM") and 1 or 0.5
+    return fx, fy
+end
+
+--- The rect Edit Mode positions, and where the content origin sits inside it:
+--- rect W/H, plus the origin as an offset from the rect's TOPLEFT (+x right,
+--- +y up). Pure config, like the envelope it reads -- nothing here measures a
+--- widget. nil before the frame has taken an envelope, which is the callers' cue
+--- to leave the stored numbers alone.
+local function ContentRect(unitKey)
+    local inst = UFZ._HeadInstance(unitKey)
+    local env = inst and inst.appliedEnv
+    if not env then return nil end
+
+    local W, H = env.W, env.H
+
+    -- applyEnvelope seats the box env.T below the rect's top edge, flush against
+    -- the align edge. The reference is its TOPLEFT on BOTH handednesses, rather
+    -- than the align-side corner it is actually pinned by: flipping align
+    -- mirrors the element, and mirroring it about the box leaves the box roughly
+    -- where it was instead of throwing the whole element a frame-width sideways.
+    local oy = -env.T
+    local ox = (env.align == "left") and 0 or (W - (inst.cfg.width or 0))
+
+    if UFZ._IsStacked(unitKey) then
+        -- The box is the union of five overlapping frame rects, and growth
+        -- decides which END of it the head frame occupies (stack.lua). The head
+        -- frame's content is what a stack position holds still.
+        local applied = UFZ._appliedStack and UFZ._appliedStack[unitKey]
+        if not applied then return nil end
+        H = applied.H + applied.pitch * (applied.count - 1)
+        if applied.growth == "up" then oy = oy - (H - applied.H) end
+    end
+
+    return W, H, ox, oy
+end
+
+--- Stored content position -> the frame-rect anchor offsets that realize it.
+local function ToFrameOffsets(unitKey, point, x, y)
+    local W, H, ox, oy = ContentRect(unitKey)
+    if not W then return x, y end
+    local fx, fy = PointFractions(point)
+    return x - ox + fx * W, y - oy - fy * H
+end
+
+--- Frame-rect anchor offsets (what GetPoint reports) -> the position to store.
+--- nil when the rect cannot be resolved, which callers treat as "not converted".
+local function ToContentOffsets(unitKey, point, x, y)
+    local W, H, ox, oy = ContentRect(unitKey)
+    if not W then return nil end
+    local fx, fy = PointFractions(point)
+    return x + ox - fx * W, y + oy + fy * H
+end
+
+--------------------------------------------------------------------------------
 -- Persistence
 --------------------------------------------------------------------------------
 
@@ -66,13 +150,40 @@ local function EnsurePositionsDB()
     return profile.unitFramesZPositions
 end
 
+--- Store a position. What comes in is the FRAME RECT's anchor -- what GetPoint
+--- reports, and what LibEditMode's drag produces -- and what goes out is the
+--- content origin expressed against it, so the stored number outlives every
+--- later change to the reservation drawn around that content.
 function UFZ._SavePosition(unitKey, layoutName, point, x, y)
     local positions = EnsurePositionsDB()
     if not positions or not layoutName then return end
     if not positions[layoutName] then
         positions[layoutName] = {}
     end
-    positions[layoutName][unitKey] = { point = point, x = x, y = y }
+    local cx, cy = ToContentOffsets(unitKey, point, x, y)
+    positions[layoutName][unitKey] = {
+        point = point,
+        x = cx or x,
+        y = cy or y,
+        -- Absent when the rect could not be resolved -- and on everything saved
+        -- before this existed, which is what UpgradeStored keys on.
+        anchorsContent = cx and true or nil,
+    }
+end
+
+--- Re-express a position stored before the content anchor existed. Those numbers
+--- anchor the frame RECT; converting them against the envelope that rect is
+--- wearing right now -- which is the envelope it wore when they were saved,
+--- since nothing but a settings change moves it -- lands the frame in exactly
+--- the same pixels and gives every LATER settings change a still name to grow
+--- around. Deferred until the frame has taken an envelope so it never guesses;
+--- until then the restore below uses the raw numbers, which is what it always
+--- did.
+local function UpgradeStored(unitKey, pos)
+    if pos.anchorsContent then return end
+    local cx, cy = ToContentOffsets(unitKey, pos.point or "CENTER", pos.x or 0, pos.y or 0)
+    if not cx then return end
+    pos.x, pos.y, pos.anchorsContent = cx, cy, true
 end
 
 --- The frame a config key's stored position applies to.
@@ -102,14 +213,22 @@ function UFZ._RestorePositionForLayout(unitKey, layoutName)
 
     local positions = EnsurePositionsDB()
     local pos = positions and positions[layoutName] and positions[layoutName][unitKey]
-    if not pos then
+    if pos then
+        UpgradeStored(unitKey, pos)
+    else
+        -- The shipped starting spots are frame-rect anchors and stay that way:
+        -- they are arbitrary places to land before the first drag, and the save
+        -- that follows it writes a content position.
         pos = DefaultPositionFor(unitKey)
     end
 
     local point = pos.point or "CENTER"
+    local x, y = pos.x or 0, pos.y or 0
+    if pos.anchorsContent then
+        x, y = ToFrameOffsets(unitKey, point, x, y)
+    end
     frame:ClearAllPoints()
-    frame:SetPoint(point, UIParent, point,
-        SnapToPixels(pos.x or 0, frame), SnapToPixels(pos.y or 0, frame))
+    frame:SetPoint(point, UIParent, point, SnapToPixels(x, frame), SnapToPixels(y, frame))
 end
 
 --- Re-apply the stored position for the layout that is currently active.

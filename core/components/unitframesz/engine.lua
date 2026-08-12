@@ -1064,10 +1064,25 @@ local function applyEnvelope(inst)
         box:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -env.T)
     end
     inst.appliedEnv = env
-    -- A stacked frame's new height moves every frame below it and resizes the
-    -- Edit Mode box around them. Only reached on a genuine change (the cache
-    -- above absorbs the digit-probe path), and _ApplyStack skip-compares again.
-    if inst.stackIndex then UFZ._ApplyStack(inst.unitKey) end
+    -- The rect just changed shape, and the stored position anchors the CONTENT
+    -- inside it rather than the rect itself (editmode.lua), so the frame's own
+    -- anchor has to be re-derived against the new envelope. Without this the
+    -- growth is paid out of the name's position instead of the frame's edges:
+    -- a vertically centred anchor point splits it, lifting the name and the
+    -- number stack by half of it while the aura rows below drop by the other
+    -- half (user report 2026-08-10). Stateless -- _RestorePosition recomputes
+    -- from the store and the envelope above, so nothing is written back.
+    --
+    -- A stacked frame's new height also moves every frame below it and resizes
+    -- the Edit Mode box around them; the box is what carries the position there,
+    -- and it is not resized until _ApplyStack runs, so it re-anchors from inside
+    -- that call instead. Only reached on a genuine change (the cache above
+    -- absorbs the digit-probe path), and _ApplyStack skip-compares again.
+    if inst.stackIndex then
+        UFZ._ApplyStack(inst.unitKey)
+    else
+        UFZ._RestorePosition(inst)
+    end
 end
 regenActions.envelope = applyEnvelope
 

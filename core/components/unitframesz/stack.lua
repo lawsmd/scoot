@@ -210,6 +210,14 @@ function UFZ._ApplyStack(unitKey)
         W = env.W, H = env.H, scale = scale,
         pitch = pitch, growth = growth, count = count,
     }
+
+    -- The box just changed shape, and the stored position anchors the head
+    -- frame's CONTENT rather than this rect (editmode.lua), so its anchor has to
+    -- be re-derived against the new one -- otherwise a taller envelope pays for
+    -- itself out of where Boss1's name sits. After the cache write, deliberately:
+    -- the conversion reads the box's dimensions back out of it. No-ops before the
+    -- first LibEditMode layout callback, exactly like every other restore.
+    UFZ._RestorePositionForLayout(unitKey, UFZ._currentLayout)
 end
 
 --- Build the box on demand. editmode.lua calls this from the registration path
