@@ -584,6 +584,58 @@ end
 -- Expose for the Raid Frames renderer toggle so it reuses the one combat-guarded implementation.
 addon.ApplyRaidLargerRoleDebuffs = ApplyRaidLargerRoleDebuffsForActiveProfile
 
+-- Group frames: patch 12.1 added the raidFramesDisplayBuffs CVar, an engine-level switch
+-- that removes every buff icon from raid and raid-style party frames (the frames read it
+-- through CompactUnitFrameProfiles' CVar callback, which reapplies frame setup on its own).
+-- Blizzard wired the CVar but exposed no options UI for it; Scoot's Aura Tracking page does.
+local function ApplyGroupBuffIconsHiddenForActiveProfile(reason)
+    local profile = addon and addon.db and addon.db.profile
+    local gf = profile and profile.groupFrames
+    local at = gf and gf.auraTracking
+
+    -- One-shot conversion from the retired replacementStyle overlay setting. Runs here as
+    -- well as in ensureAuraTrackingDB (ui/v2/groupframes/Helpers.lua) because this function
+    -- fires at login before any settings UI code touches the profile. Both copies are
+    -- idempotent; keep them in sync.
+    if at and at.replacementStyle ~= nil then
+        if at.replacementStyle ~= "none" and at.hideBlizzardBuffIcons == nil then
+            at.hideBlizzardBuffIcons = true
+        end
+        at.replacementStyle = nil
+    end
+
+    local desired = at and at.hideBlizzardBuffIcons
+    if desired == nil then
+        return  -- Zero-Touch: never override until the user configures the toggle
+    end
+    -- Inverted polarity: the toggle means "hide", the CVar means "display".
+    local value = (desired and "0") or "1"
+
+    local function applyCVar()
+        if C_CVar and C_CVar.SetCVar then
+            pcall(C_CVar.SetCVar, "raidFramesDisplayBuffs", value)
+        elseif SetCVar then
+            pcall(SetCVar, "raidFramesDisplayBuffs", value)
+        end
+    end
+
+    if InCombatLockdown and InCombatLockdown() then
+        local f = CreateFrame("Frame")
+        f:RegisterEvent("PLAYER_REGEN_ENABLED")
+        f:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            applyCVar()
+        end)
+    else
+        applyCVar()
+    end
+
+    Debug("Applied raidFramesDisplayBuffs from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
+end
+
+-- Expose for the Aura Tracking renderer toggle so it reuses the one combat-guarded implementation.
+addon.ApplyGroupBuffIconsHidden = ApplyGroupBuffIconsHiddenForActiveProfile
+
 -- Expose for the Action Bars renderer toggle and the Edit Mode / world entry hooks in
 -- core/init.lua so they reuse the one combat- and readiness-guarded implementation.
 addon.ReconcileActionBarsEnabled = ReconcileActionBarsEnabled
@@ -1082,6 +1134,7 @@ function Profiles:Initialize()
     ensureBarSettingsArrivalHook()
     ReconcileActionBarsEnabled("Initialize")
     ApplyRaidLargerRoleDebuffsForActiveProfile("Initialize")
+    ApplyGroupBuffIconsHiddenForActiveProfile("Initialize")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:Initialize")
     end
@@ -1107,6 +1160,7 @@ function Profiles:OnProfileChanged(_, _, newProfileKey)
     ApplyDamageMeterEnabledForActiveProfile("OnProfileChanged")
     ReconcileActionBarsEnabled("OnProfileChanged")
     ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileChanged")
+    ApplyGroupBuffIconsHiddenForActiveProfile("OnProfileChanged")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileChanged")
     end
@@ -1122,6 +1176,7 @@ function Profiles:OnProfileCopied(_, _, sourceKey)
     ApplyDamageMeterEnabledForActiveProfile("OnProfileCopied")
     ReconcileActionBarsEnabled("OnProfileCopied")
     ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileCopied")
+    ApplyGroupBuffIconsHiddenForActiveProfile("OnProfileCopied")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileCopied")
     end
@@ -1136,6 +1191,7 @@ function Profiles:OnProfileReset()
     ApplyDamageMeterEnabledForActiveProfile("OnProfileReset")
     ReconcileActionBarsEnabled("OnProfileReset")
     ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileReset")
+    ApplyGroupBuffIconsHiddenForActiveProfile("OnProfileReset")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileReset")
     end
@@ -1277,6 +1333,7 @@ function Profiles:_setActiveProfile(profileKey, opts)
     ApplyDamageMeterEnabledForActiveProfile("_setActiveProfile")
     ReconcileActionBarsEnabled("_setActiveProfile")
     ApplyRaidLargerRoleDebuffsForActiveProfile("_setActiveProfile")
+    ApplyGroupBuffIconsHiddenForActiveProfile("_setActiveProfile")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:_setActiveProfile")
     end

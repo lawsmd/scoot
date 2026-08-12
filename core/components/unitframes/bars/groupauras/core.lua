@@ -2,10 +2,11 @@
 -- groupauras/core.lua
 -- Aura Tracking on group frames (party + raid)
 --
--- Renders custom Scoot-styled icons for tracked auras. Buff strip
--- overlay (buffstrip.lua) handles scaling Blizzard's default buff icons.
--- Spell registry, event handling, active-set management, rainbow color
--- engine, graceful degradation.
+-- Renders custom Scoot-styled icons for tracked auras. Spell registry,
+-- event handling, active-set management, rainbow color engine, graceful
+-- degradation. Hiding Blizzard's own buff icons is handled by the
+-- raidFramesDisplayBuffs CVar (see ApplyGroupBuffIconsHiddenForActiveProfile
+-- in core/profiles/core.lua), not by anything in this component.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -201,9 +202,8 @@ HA.STACKS_TEXT_DEFAULTS = {
 }
 
 -- Global defaults (flat keys on auraTracking DB table). Applied on first read via
--- the DB getters in icons.lua / buffstrip.lua so they don't require eager writes.
+-- the DB getters in icons.lua so they don't require eager writes.
 HA.GLOBAL_DEFAULTS = {
-    replacementStyle = "none",          -- "none" | "solidBlack" | "numbered"
     positionGroupSpacingDefault = 2,    -- px gap fallback when an anchor key is missing
 }
 table.freeze(HA.GLOBAL_DEFAULTS)
@@ -404,17 +404,15 @@ local function ensureState(frame)
     return AuraTrackingState[frame]
 end
 
--- Export for icons.lua and buffstrip.lua
+-- Export for icons.lua
 HA._getState = getState
 HA._ensureState = ensureState
-HA._AuraTrackingState = AuraTrackingState
 
 --------------------------------------------------------------------------------
 -- Group Unit Token Set
 --------------------------------------------------------------------------------
 
 local GROUP_UNITS = {}
-HA._GROUP_UNITS = GROUP_UNITS  -- Export for buffstrip.lua
 
 local function RebuildGroupUnits()
     wipe(GROUP_UNITS)
@@ -525,6 +523,22 @@ end
 -- This avoids reading frame.unit directly (which could be tainted).
 --------------------------------------------------------------------------------
 
+local function IsEditModeOpen()
+    -- Primary: Scoot's EventRegistry-driven flag.
+    if addon.EditMode and addon.EditMode.IsEditModeActiveOrOpening
+       and addon.EditMode.IsEditModeActiveOrOpening() then
+        return true
+    end
+    -- Fallback: ask Blizzard directly. Covers cases where EventRegistry
+    -- callbacks lag or don't fire (observed under 12.0.5).
+    local mgr = _G.EditModeManagerFrame
+    if mgr then
+        local ok, shown = pcall(mgr.IsShown, mgr)
+        if ok and shown == true then return true end
+    end
+    return false
+end
+
 local frameToUnitHookInstalled = false
 
 local function InstallFrameToUnitHook()
@@ -534,10 +548,7 @@ local function InstallFrameToUnitHook()
     hooksecurefunc("CompactUnitFrame_SetUnit", function(frame, unit)
         if not frame then return end
         -- Skip during Edit Mode to avoid taint propagation
-        if addon.EditMode and addon.EditMode.IsEditModeActiveOrOpening
-           and addon.EditMode.IsEditModeActiveOrOpening() then
-            return
-        end
+        if IsEditModeOpen() then return end
         local state = ensureState(frame)
         state.unit = unit
         -- Cache frame height while we have a safe reference (OOC context)
@@ -553,11 +564,9 @@ local function InstallFrameToUnitHook()
                 HA.UpdateAurasForFrame(frame, unit)
             else
                 HA.HideAllAurasForFrame(frame)
-                if HA.ReleaseOverlaysForFrame then HA.ReleaseOverlaysForFrame(frame) end
             end
         else
             HA.HideAllAurasForFrame(frame)
-            if HA.ReleaseOverlaysForFrame then HA.ReleaseOverlaysForFrame(frame) end
         end
     end)
 
@@ -570,15 +579,16 @@ end
 
 local function ScanAurasForUnit(unit)
     local found = {}
-    if not unit or not AuraUtil or not AuraUtil.ForEachAura then return found end
+    if not unit or not AuraUtil or not AuraUtil.ForEachAura then return found, false end
 
     local ok = pcall(function()
         AuraUtil.ForEachAura(unit, "HELPFUL", nil, function(aura)
-            if not aura then return end
+            -- Secret checks first: truthiness on a secret entry/field throws
+            -- (contained by the outer pcall, but it would abort the whole scan)
+            if issecretvalue(aura) or type(aura) ~= "table" then return end
             local spellId = aura.spellId
-            if not spellId then return end
             -- Skip secret spellIds individually (don't abort the whole scan)
-            if issecretvalue and issecretvalue(spellId) then return end
+            if issecretvalue(spellId) or not spellId then return end
             local trackMode = HA.ACTIVE_TRACKED_IDS[spellId]
             if trackMode then
                 -- Source filtering: only show auras cast by the local player unless
@@ -599,19 +609,32 @@ local function ScanAurasForUnit(unit)
                     if isMine == false then return end
                 end
 
+                -- Sanitize every stored field: consumers (icons.lua) boolean-test
+                -- these outside any pcall, so the produced table must be plain-only
+                local icon = aura.icon
+                if issecretvalue(icon) then icon = nil end
+                local duration = aura.duration
+                if issecretvalue(duration) then duration = nil end
+                local expirationTime = aura.expirationTime
+                if issecretvalue(expirationTime) then expirationTime = nil end
+                local applications = aura.applications
+                if issecretvalue(applications) then applications = nil end
+                local auraInstanceID = aura.auraInstanceID
+                if issecretvalue(auraInstanceID) then auraInstanceID = nil end
+
                 found[spellId] = {
                     spellId = spellId,
-                    icon = aura.icon,
-                    duration = aura.duration or 0,
-                    expirationTime = aura.expirationTime or 0,
-                    applications = aura.applications or 0,
-                    auraInstanceID = aura.auraInstanceID,
+                    icon = icon,
+                    duration = duration or 0,
+                    expirationTime = expirationTime or 0,
+                    applications = applications or 0,
+                    auraInstanceID = auraInstanceID,
                 }
             end
         end, true) -- usePackedAura = true
     end)
 
-    return found
+    return found, ok
 end
 
 function HA.UpdateAurasForFrame(frame, unit)
@@ -628,49 +651,45 @@ function HA.UpdateAurasForFrame(frame, unit)
     end
 
     -- Skip during Edit Mode
-    if addon.EditMode and addon.EditMode.IsEditModeActiveOrOpening
-       and addon.EditMode.IsEditModeActiveOrOpening() then
-        return
-    end
+    if IsEditModeOpen() then return end
 
     local state = ensureState(frame)
-    local currentAuras = ScanAurasForUnit(unit)
+    local currentAuras, scanOk = ScanAurasForUnit(unit)
 
-    -- Hide icons for auras no longer present
-    for spellId, iconFrame in pairs(state.iconFrames) do
-        if not currentAuras[spellId] then
-            if HA.ReleaseIcon then
-                HA.ReleaseIcon(iconFrame)
+    -- 12.1: when aura data is secret in combat the scan aborts and reports
+    -- nothing. Releasing icons on that empty result would strip every tracked
+    -- icon at the pull. Freeze the current icon set instead; swipes keep
+    -- draining from their DurationObjects, and the regen refresh re-syncs.
+    if scanOk then
+        -- Hide icons for auras no longer present
+        for spellId, iconFrame in pairs(state.iconFrames) do
+            if not currentAuras[spellId] then
+                if HA.ReleaseIcon then
+                    HA.ReleaseIcon(iconFrame)
+                end
+                state.iconFrames[spellId] = nil
             end
-            state.iconFrames[spellId] = nil
         end
-    end
 
-    -- Show/update icons for present auras
-    for spellId, auraData in pairs(currentAuras) do
-        local iconFrame = state.iconFrames[spellId]
-        if not iconFrame and HA.AcquireIcon then
-            iconFrame = HA.AcquireIcon(frame)
-            state.iconFrames[spellId] = iconFrame
+        -- Show/update icons for present auras
+        for spellId, auraData in pairs(currentAuras) do
+            local iconFrame = state.iconFrames[spellId]
+            if not iconFrame and HA.AcquireIcon then
+                iconFrame = HA.AcquireIcon(frame)
+                state.iconFrames[spellId] = iconFrame
+            end
+            if iconFrame and HA.StyleIcon then
+                HA.StyleIcon(iconFrame, spellId, auraData, frame, unit)
+            end
         end
-        if iconFrame and HA.StyleIcon then
-            HA.StyleIcon(iconFrame, spellId, auraData, frame, unit)
+
+        -- Single-pass layout for the whole frame: groups icons by anchor, sorts by
+        -- rank, offsets cumulatively. Individual StyleIcon calls above also trigger
+        -- reflow via HA.PositionIcon, but running once more here catches any ordering
+        -- where a later-added icon needs to push earlier siblings.
+        if HA.ReflowIconsForFrame then
+            HA.ReflowIconsForFrame(frame)
         end
-    end
-
-    -- Single-pass layout for the whole frame: groups icons by anchor, sorts by
-    -- rank, offsets cumulatively. Individual StyleIcon calls above also trigger
-    -- reflow via HA.PositionIcon, but running once more here catches any ordering
-    -- where a later-added icon needs to push earlier siblings.
-    if HA.ReflowIconsForFrame then
-        HA.ReflowIconsForFrame(frame)
-    end
-
-    -- Refresh replacement overlays (no-op when replacementStyle = "none").
-    -- Overlay count matches CountHelpfulAuras() clamped to max-buffs, so slot 1
-    -- always reflects an actual Blizzard-rendered buff.
-    if HA.RefreshOverlaysForFrame then
-        HA.RefreshOverlaysForFrame(frame, unit)
     end
 end
 
@@ -684,10 +703,6 @@ function HA.HideAllAurasForFrame(frame)
         end
     end
     wipe(state.iconFrames)
-    -- Overlays are managed separately by RefreshOverlaysForFrame (which handles
-    -- visibility + style="none"). Only release them here when the frame itself
-    -- becomes invisible — RefreshOverlaysForFrame handles that case on its own,
-    -- so we don't touch them in the general-hide path.
 end
 
 local function DiscoverGroupFrames()
@@ -740,14 +755,8 @@ function HA.RefreshAllAuraDisplays()
     for frame, state in pairs(AuraTrackingState) do
         if state.unit and GROUP_UNITS[state.unit] then
             HA.UpdateAurasForFrame(frame, state.unit)
-            if HA.RefreshOverlaysForFrame then
-                HA.RefreshOverlaysForFrame(frame, state.unit)
-            end
         else
             HA.HideAllAurasForFrame(frame)
-            if HA.ReleaseOverlaysForFrame then
-                HA.ReleaseOverlaysForFrame(frame)
-            end
         end
     end
 end
@@ -756,24 +765,18 @@ end
 -- Config Change Refresh
 --------------------------------------------------------------------------------
 -- When user enables/disables a spell, rebuild tracked set and refresh all
--- custom icons + buff strip overlays.
+-- custom icons.
 --------------------------------------------------------------------------------
-
-local pendingRefresh = false
 
 function HA.OnConfigChanged()
     HA.RebuildActiveTrackedSet()
 
     if InCombatLockdown() then
-        pendingRefresh = true
+        -- Deferred: the PLAYER_REGEN_ENABLED handler refreshes unconditionally
         return
     end
 
     HA.RefreshAllAuraDisplays()
-    -- Refresh buff icon scaling (installed by buffstrip.lua)
-    if HA.RefreshBuffStripScaling then
-        HA.RefreshBuffStripScaling()
-    end
 end
 
 --------------------------------------------------------------------------------
@@ -810,17 +813,14 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "UNIT_AURA" then
         local unit = ...
         if not GROUP_UNITS[unit] then return end
+        -- Nothing to do when no tracked spells are enabled
+        if not next(HA.ACTIVE_TRACKED_IDS) then return end
 
-        local hasTracked = next(HA.ACTIVE_TRACKED_IDS) ~= nil
-
-        -- Find the frame for this unit. Always refresh overlays (independent of
-        -- tracked-spell set); only run the custom-icon pipeline when there ARE
-        -- tracked spells enabled.
+        -- Find the frame for this unit and refresh its custom icons.
         local found = false
         for frame, state in pairs(AuraTrackingState) do
             if state.unit == unit then
-                if hasTracked then HA.UpdateAurasForFrame(frame, unit) end
-                if HA.RefreshOverlaysForFrame then HA.RefreshOverlaysForFrame(frame, unit) end
+                HA.UpdateAurasForFrame(frame, unit)
                 found = true
             end
         end
@@ -828,8 +828,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             DiscoverGroupFrames()
             for frame, state in pairs(AuraTrackingState) do
                 if state.unit == unit then
-                    if hasTracked then HA.UpdateAurasForFrame(frame, unit) end
-                    if HA.RefreshOverlaysForFrame then HA.RefreshOverlaysForFrame(frame, unit) end
+                    HA.UpdateAurasForFrame(frame, unit)
                 end
             end
         end
@@ -841,10 +840,10 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
-        if pendingRefresh then
-            pendingRefresh = false
-            HA.RefreshAllAuraDisplays()
-        end
+        -- Unconditional: icons frozen during combat secrecy must re-sync even
+        -- when no post-combat UNIT_AURA arrives to trigger it, and this also
+        -- covers config changes deferred by OnConfigChanged during combat
+        HA.RefreshAllAuraDisplays()
     end
 end)
 
@@ -852,3 +851,39 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("UNIT_AURA")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+
+--------------------------------------------------------------------------------
+-- Edit Mode Exit Repaint
+--------------------------------------------------------------------------------
+-- UpdateAurasForFrame refuses to run while Edit Mode is open or transitioning,
+-- so nothing repaints the custom icons on Edit Mode exit unless we do it here.
+-- Hook EditModeManagerFrame's OnHide directly; it fires reliably even when the
+-- EventRegistry exit callback does not (observed under 12.0.5).
+--------------------------------------------------------------------------------
+
+local function InstallEditModeExitHook()
+    local mgr = _G.EditModeManagerFrame
+    if not mgr or HA._editModeExitHookInstalled then return end
+    HA._editModeExitHookInstalled = true
+    mgr:HookScript("OnHide", function()
+        -- MarkExitingEditMode keeps the transition flag true for ~1s; defer the
+        -- repaint past that window so IsEditModeOpen() does not block it.
+        C_Timer.After(1.05, function()
+            if InCombatLockdown() then return end
+            if HA.RefreshAllAuraDisplays then HA.RefreshAllAuraDisplays() end
+        end)
+    end)
+end
+
+if _G.EditModeManagerFrame then
+    InstallEditModeExitHook()
+else
+    local hookWaitFrame = CreateFrame("Frame")
+    hookWaitFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    hookWaitFrame:SetScript("OnEvent", function(self)
+        if _G.EditModeManagerFrame then
+            InstallEditModeExitHook()
+            self:UnregisterAllEvents()
+        end
+    end)
+end

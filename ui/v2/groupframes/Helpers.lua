@@ -76,6 +76,21 @@ function GF.ensureAuraTrackingDB()
     at.auraScale = nil
     at.hideBlizzardBuffs = nil
 
+    -- 12.1 retires the replacementStyle overlay system: the raidFramesDisplayBuffs
+    -- CVar now hides Blizzard's buff icons outright. Users who had chosen an overlay
+    -- style wanted those icons neutralized, so they convert to the hide toggle.
+    -- NOTE: the new field must stay named hideBlizzardBuffIcons; the legacy drop
+    -- above nukes hideBlizzardBuffs on every call. A copy of this conversion runs
+    -- at login in core/profiles/core.lua (ApplyGroupBuffIconsHiddenForActiveProfile)
+    -- because profile apply fires before any UI code calls this helper; both copies
+    -- are idempotent, keep them in sync.
+    if at.replacementStyle ~= nil then
+        if at.replacementStyle ~= "none" and at.hideBlizzardBuffIcons == nil then
+            at.hideBlizzardBuffIcons = true
+        end
+        at.replacementStyle = nil
+    end
+
     -- Per-spell migration: the dual-selector `position` ("inside"/"outside")
     -- field is replaced by a single inside-frame anchor, and ranks are
     -- assigned by the auto-slot helpers. `offsetX` / `offsetY` live on as a

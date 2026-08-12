@@ -17,7 +17,7 @@ AuraTrackingUI._selectedClass = nil
 AuraTrackingUI._selectedSpellId = nil
 
 --------------------------------------------------------------------------------
--- Anchor / Replacement Style Option Tables
+-- Anchor Option Tables
 --------------------------------------------------------------------------------
 
 local ANCHOR_VALUES = {
@@ -26,13 +26,6 @@ local ANCHOR_VALUES = {
     BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom", BOTTOMRIGHT = "Bottom-Right",
 }
 local ANCHOR_ORDER = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
-
-local REPLACEMENT_VALUES = {
-    none       = "None",
-    solidBlack = "Solid Black",
-    numbered   = "Numbered Boxes",
-}
-local REPLACEMENT_ORDER = { "none", "solidBlack", "numbered" }
 
 --------------------------------------------------------------------------------
 -- DB Helpers
@@ -458,38 +451,78 @@ function AuraTrackingUI.Render(panel, scrollContent)
     end
 
     --------------------------------------------------------------------------
-    -- 12.0.5 limitation note (single yellow paragraph, no header)
+    -- Blizzard icon note (single yellow paragraph, no header)
     --------------------------------------------------------------------------
 
     builder:AddDescription(
-        "In patch 12.0.5, Blizzard moved party/raid buff rendering into a protected internal system, making it impossible for addons to hide or shrink those icons. "
-        .. "Scoot compensates by auto-grouping its custom icons and letting you replace Blizzard's icons with a uniform overlay so your tracked icons stand out.",
+        "Blizzard draws party and raid buff icons in a protected internal system, so addons cannot restyle, shrink, or reposition them individually. "
+        .. "Patch 12.1 added a Blizzard setting that can turn those buff icons off entirely; the toggle below controls it. "
+        .. "Scoot's custom tracked icons are drawn separately and work whether Blizzard's icons are shown or hidden.",
         { color = {1, 0.82, 0}, topPadding = 4, bottomPadding = -16 }
     )
 
     --------------------------------------------------------------------------
-    -- Replace Blizzard Icons with (selector)
+    -- Hide Blizzard Buff Icons (toggle driving the raidFramesDisplayBuffs CVar)
     --------------------------------------------------------------------------
 
-    builder:AddSelector({
-        key = "replacementStyle",
-        label = "Replace Blizzard icons with:",
-        description = "Overlay visual drawn on top of whichever buff slots Blizzard is actively showing. "
-            .. "The native icon becomes uniform chrome so your custom Scoot icons stand out.",
-        values = REPLACEMENT_VALUES,
-        order = REPLACEMENT_ORDER,
-        get = function()
+    local buffCVarOk, buffCVarValue = pcall(function()
+        return C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("raidFramesDisplayBuffs")
+    end)
+    local buffCVarPresent = buffCVarOk and buffCVarValue ~= nil
+
+    if buffCVarPresent then
+        -- Adopt a pre-existing CVar override into the profile so the preference
+        -- survives to other characters. Only when the profile has no opinion yet
+        -- and the live CVar differs from the client's REGISTERED default (queried,
+        -- not assumed), i.e. the user already changed it deliberately, so this is
+        -- not a Zero-Touch violation. ensureDB() runs the replacementStyle
+        -- conversion first, so an overlay-era profile has already been migrated by
+        -- the time this check runs.
+        local cvarDefault = C_CVar.GetCVarDefault and C_CVar.GetCVarDefault("raidFramesDisplayBuffs")
+        do
             local at = ensureDB()
-            return (at and at.replacementStyle) or "none"
-        end,
-        set = function(v)
-            local at = ensureDB()
-            if at then at.replacementStyle = v end
-            if addon.AuraTracking and addon.AuraTracking.RefreshBuffStripScaling then
-                addon.AuraTracking.RefreshBuffStripScaling()
+            if at and at.hideBlizzardBuffIcons == nil then
+                local cur = C_CVar.GetCVar("raidFramesDisplayBuffs")
+                if cur ~= nil and cvarDefault ~= nil and cur ~= cvarDefault then
+                    at.hideBlizzardBuffIcons = (cur == "0")
+                end
             end
-        end,
-    })
+        end
+
+        local defaultNote = ""
+        if cvarDefault == "1" then
+            defaultNote = " (Blizzard default: shown)"
+        elseif cvarDefault == "0" then
+            defaultNote = " (Blizzard default: hidden)"
+        end
+
+        builder:AddToggle({
+            key = "hideBlizzardBuffIcons",
+            label = "Hide Blizzard Buff Icons",
+            description = "Turns off Blizzard's own buff icons on raid frames and raid-style party frames" .. defaultNote .. ". "
+                .. "Debuffs are not affected. Scoot's custom tracked icons render either way.",
+            get = function()
+                local at = ensureDB() or {}
+                if at.hideBlizzardBuffIcons ~= nil then return at.hideBlizzardBuffIcons end
+                -- Unset: reflect the live CVar so the checkbox matches reality.
+                local cur = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("raidFramesDisplayBuffs")
+                return cur == "0"
+            end,
+            set = function(v)
+                local at = ensureDB()
+                if not at then return end
+                at.hideBlizzardBuffIcons = v and true or false
+                if addon.ApplyGroupBuffIconsHidden then
+                    addon.ApplyGroupBuffIconsHidden("toggle")
+                end
+            end,
+        })
+    else
+        builder:AddDescription(
+            "Hiding Blizzard's buff icons requires a game setting that is not available on this client.",
+            { color = {1, 0.4, 0.4} }
+        )
+    end
 
     --------------------------------------------------------------------------
     -- Class Selector (centered, emphasized, 400px wide)

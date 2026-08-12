@@ -34,7 +34,6 @@
 --
 --     ~2   Cast Bar Z                      (inherited, no explicit call)
 --     10   UFZ unit frames                 unitframesz/engine.lua
---     19   group aura buff-strip counters  groupauras/buffstrip.lua
 --     20   group aura icons                groupauras/icons.lua
 --     25   Class Aura containers           classauras/core.lua
 --     30   CDM Custom Group containers     cooldowns/customgroups/core.lua

@@ -1,8 +1,7 @@
 -- dungeonjournal/overlay.lua - Pooled checkbox overlays anchored to EJ loot
 -- buttons. Discipline: zero writes to Blizzard frames; we only call SetPoint
 -- against them. Active overlays are keyed by button identity (the ScrollBox
--- recycles buttons), mirroring the pool shape in
--- core/components/unitframes/bars/groupauras/buffstrip.lua.
+-- recycles buttons).
 local addonName, addon = ...
 
 local DJ = addon.DungeonJournal
