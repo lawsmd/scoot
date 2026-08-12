@@ -425,15 +425,17 @@ local function ensureRaidNameOverlay(frame, cfg)
     local fpColorMode = cfg.colorMode or "default"
     local classKey = ""
     if fpColorMode == "class" and frame.unit then
-        -- UnitClassBase (12.0): returns nothing from tainted context (not secrets)
-        local token = UnitClassBase and UnitClassBase(frame.unit) or nil
+        -- 12.1: UnitClassBase/UnitClass can return secrets for group members;
+        -- issecretvalue before any truthiness test (boolean-testing a secret throws)
+        local token = UnitClassBase and UnitClassBase(frame.unit)
+        if issecretvalue(token) then token = nil end
         if not token then
             local ok, _, rawToken = pcall(function() return UnitClass(frame.unit) end)
-            if ok and rawToken and not issecretvalue(rawToken) then
+            if ok and not issecretvalue(rawToken) and rawToken then
                 token = rawToken
             end
         end
-        if token and type(token) == "string" and not issecretvalue(token) then
+        if type(token) == "string" then
             classKey = token
         end
     end
