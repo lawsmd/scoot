@@ -162,6 +162,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug castz fit         (shrink-to-fit state of each live bar)")
             addon:Print("  /scoot debug repcolor [watch]   (ReputationColor banner trace)")
             addon:Print("  /scoot debug auracontainer [start|stop|probes|filters|suppress|log]")
+            addon:Print("  /scoot debug ufzauras [log|apply|kick]   (Unit Frames Z aura rows)")
             return
         end
 
@@ -561,6 +562,17 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugAuraContainer(sub2, string.lower(args[4] or ""))
             else
                 addon:Print("Aura container debug not available.")
+            end
+            return
+        end
+
+        -- /scoot debug ufzauras [log|apply|kick]
+        -- Unit Frames Z aura rows (12.1 AuraContainer port telemetry)
+        if sub1 == "ufzauras" or sub1 == "ufza" then
+            if addon.DebugUFZAuras then
+                addon.DebugUFZAuras(sub2)
+            else
+                addon:Print("Unit Frames Z aura debug not available.")
             end
             return
         end

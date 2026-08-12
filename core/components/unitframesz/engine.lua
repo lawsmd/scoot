@@ -2423,7 +2423,7 @@ end
 local UNIT_EVENTS = {
     "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_HEAL_PREDICTION", "UNIT_NAME_UPDATE",
     "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
-    "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_LEVEL", "UNIT_AURA",
+    "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_LEVEL",
     -- The event Blizzard's own classification frame registers.
     "UNIT_CLASSIFICATION_CHANGED",
 }
@@ -2771,13 +2771,6 @@ local function ensureFrame(inst)
         if inst.previewActive then return end
         -- inst.cfg, never a captured local: on a profile switch the instance is
         -- re-pointed at the new profile's table and this closure must follow.
-        if event == "UNIT_AURA" then
-            -- Aura rows only; the numbers have their own events. The seam
-            -- skip-compares plain ID lists, so storms with an unchanged
-            -- visible set cost one C call.
-            if UFZ.Auras then UFZ.Auras.Refresh(inst) end
-            return
-        end
         if event == "UNIT_NAME_UPDATE" then
             -- Late name arrival for the watched unit (RegisterUnitEvent filters
             -- to inst.unit). Name only; health has its own events. Same subject:
@@ -3594,7 +3587,9 @@ local function setAuraMaxImpl(inst, which, n)
     local cap = AURA_MAX_CAP[which]
     if v < 1 then v = 1 elseif v > cap then v = cap end
     inst.cfg["aura" .. which .. "Max"] = v
-    auraSeam(inst, "ForceRefresh")  -- maxCount changes the pull itself
+    -- ApplyAll, not ForceRefresh: the cap is the group's maxFrameCount, and
+    -- only the group-config pass writes it. A kick would repaint the same cap.
+    auraSeam(inst, "ApplyAll")
 end
 
 local function setAuraIconScale(inst, n)
@@ -3673,7 +3668,9 @@ local function setAuraOnlyPlayerBuffs(inst, state)
         return
     end
     inst.cfg.auraOnlyPlayerBuffs = (state == "on")
-    auraSeam(inst, "ForceRefresh")  -- the filter string changes the pull
+    -- ApplyAll, not ForceRefresh: the PLAYER token lives in the group's filter
+    -- string, and only the group-config pass writes it.
+    auraSeam(inst, "ApplyAll")
 end
 
 -- Hover tooltips: motion-only mouse on the icons (clicks always fall through
@@ -3772,9 +3769,10 @@ local function newInstance(row, cfg)
         -- Measured ink width of the painted name (widest wrapped line); nil =
         -- unmeasurable (secret name) -> power anchors fall back to box edges.
         nameInkWidth = nil,
-        -- Buff/debuff icon row containers, created lazily by auras.lua the
-        -- first time a row is enabled. { Buffs = frame, Debuffs = frame }.
-        auraRows = nil,
+        -- Buff/debuff AuraContainers, created lazily by auras.lua the first
+        -- time a row is enabled and never destroyed after that (the engine
+        -- exposes no group removal). { Buffs = entry, Debuffs = entry }.
+        auraContainers = nil,
         -- Secure unit watch bookkeeping (applyUnitWatch): whether the frame is
         -- registered with Blizzard's existence watcher, and for which unit.
         watchRegistered = nil, watchUnit = nil,
@@ -4029,6 +4027,10 @@ function UFZ._ShowEditModePreview(inst)
     -- no subject to read. A previewed frame that DOES have a unit keeps every
     -- live paint, which is the more accurate preview of the two.
     inst.previewStandIn = noUnit or nil
+    -- Aura rows follow the same split. Engine-managed buttons cannot be made to
+    -- fake auras, so a subject-less stand-in hides its containers; a previewed
+    -- frame that DOES have a unit keeps its live rows.
+    if UFZ.Auras then UFZ.Auras.SetPreviewStandIn(inst, noUnit) end
     if noUnit then
         local SAMPLE = { 0.55, 0.90, 0.35 }  -- a healthy green, the curve's home stretch
         inst.pctFS:SetText("72")
@@ -4082,6 +4084,7 @@ function UFZ._EndEditModePreview(inst)
     if not inst or not inst.previewActive then return end
     inst.previewActive = nil
     inst.previewStandIn = nil
+    if UFZ.Auras then UFZ.Auras.SetPreviewStandIn(inst, false) end
     -- Drop the stand-in's memo so updateClassification's skip-compare re-fires
     -- against the live unit instead of trusting the preview atlas.
     inst.classifyAtlas = nil

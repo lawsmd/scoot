@@ -18,6 +18,10 @@ read_globals = {
     -- WoW core API
     "AbbreviateNumbers",
     "Ambiguate",
+    "AnchorUtil",
+    -- 12.1 AuraContainer enums: plain globals, deliberately not under Enum
+    "AuraContainerSortDirection",
+    "AuraContainerSortMethod",
     "C_CurveUtil",
     "C_EditMode",
     "C_Secrets",

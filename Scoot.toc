@@ -204,6 +204,7 @@ core/debug/nametext.lua
 core/debug/castz.lua
 core/debug/repcolor.lua
 core/debug/auracontainer.lua
+core/debug/ufzauras.lua
 core/taintdebug.lua
 core/dialogs.lua
 core/importexport.lua

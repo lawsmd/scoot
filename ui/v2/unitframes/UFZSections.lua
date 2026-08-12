@@ -504,7 +504,7 @@ local function AddUnitSection(builder, opts)
                         })
                         tabInner:AddToggle({
                             label = "Show Debuffs",
-                            description = "On the same side as the buffs, the debuff rows stack beyond them -- buffs always sit closer to the frame. Debuff icons always carry a red border.",
+                            description = "On the same side as the buffs, the debuff row stacks beyond them, so buffs always sit closer to the frame. Debuff icons always carry a border, colored by dispel school.",
                             get = function() return htCfg().auraDebuffsShow and true or false end,
                             set = function(v) call("SetAuraDebuffsShow", v and "on" or "off") end,
                         })
@@ -516,7 +516,7 @@ local function AddUnitSection(builder, opts)
                         })
                         tabInner:AddDualSelector({
                             label = "Placement",
-                            description = "Above or below the frame -- buffs on the left, debuffs on the right.",
+                            description = "Above or below the frame. Buffs on the left, debuffs on the right.",
                             selectorA = {
                                 values = { bottom = "Buffs: Below", top = "Buffs: Above" },
                                 order = { "bottom", "top" },
@@ -566,7 +566,7 @@ local function AddUnitSection(builder, opts)
                     border = function(cf, tabInner)
                         tabInner:AddToggle({
                             label = "Enable Custom Borders",
-                            description = "Borders on the buff icons. Debuff icons always keep a red border to mark them as debuffs; the style and thickness below apply to both rows.",
+                            description = "Borders on the buff icons. Debuff icons always keep a border of their own so a debuff reads as one at a glance; the thickness below applies to both rows.",
                             get = function() return htCfg().auraBorderEnable and true or false end,
                             set = function(v) call("SetAuraBorderEnable", v and "on" or "off") end,
                         })
@@ -592,7 +592,7 @@ local function AddUnitSection(builder, opts)
                         })
                         tabInner:AddToggleColorPicker({
                             label = "Border Tint",
-                            description = "Buff borders only -- debuff borders stay red so a debuff always reads as one.",
+                            description = "Buff borders only. Debuff borders take their color from the aura's dispel school, red when it cannot be dispelled.",
                             get = function() return htCfg().auraBorderTintEnable and true or false end,
                             set = function(v) call("SetAuraBorderTint", v and "on" or "off") end,
                             getColor = function()
