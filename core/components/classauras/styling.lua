@@ -5,20 +5,11 @@ local CA = addon.ClassAuras
 
 -- Local aliases (resolved at load time — core.lua and layout.lua load first)
 local GetDB = CA._GetDB
-local auraTracking = CA._auraTracking
 local playerClassToken = CA._playerClassToken
 
 --------------------------------------------------------------------------------
 -- Styling
 --------------------------------------------------------------------------------
-
-local function GetActiveOverride(aura)
-    if not aura.spellOverrides then return nil end
-    local tracked = auraTracking[aura.id]
-    if not tracked or not tracked.activeSpellId then return nil end
-    if tracked.activeSpellId == aura.auraSpellId then return nil end
-    return aura.spellOverrides[tracked.activeSpellId]
-end
 
 local function ApplyIconMode(aura, state)
     local db = GetDB(aura)
@@ -35,21 +26,16 @@ local function ApplyIconMode(aura, state)
             if not showIcon or mode == "hidden" then
                 elem.widget:Hide()
             elseif mode == "custom" then
-                local override = GetActiveOverride(aura)
-                local path = (override and override.customPath) or elem.def.customPath
-                if path then elem.widget:SetTexture(path) end
+                if elem.def.customPath then elem.widget:SetTexture(elem.def.customPath) end
                 elem.widget:Show()
             else
-                -- "default": use the spell icon (override spell or primary), fallback to customPath
-                local override = GetActiveOverride(aura)
-                local spellForTexture = (override and override.overrideSpellId) or aura.auraSpellId
+                -- "default": the engine's SetIcon binding stamps the matched
+                -- aura's real icon; this static paint is the pre-match backdrop.
                 local ok, tex = pcall(function()
-                    return C_Spell.GetSpellTexture(spellForTexture)
+                    return C_Spell.GetSpellTexture(aura.auraSpellId)
                 end)
-                if ok and tex then
+                if ok and tex and not issecretvalue(tex) then
                     elem.widget:SetTexture(tex)
-                elseif override and override.customPath then
-                    elem.widget:SetTexture(override.customPath)
                 elseif elem.def.customPath then
                     elem.widget:SetTexture(elem.def.customPath)
                 end
@@ -77,42 +63,9 @@ local function ApplyTextStyling(aura, state)
             end
             addon.ApplyFontStyle(elem.widget, fontFace, size, fontStyle)
 
-            local color
-            if isName then
-                -- Name text keeps the user's color on override switches; the string
-                -- itself changing (e.g. Flame Shock -> Frost Shock) is the signal.
-                color = db.nameTextColor
-            else
-                local override = GetActiveOverride(aura)
-                color = (override and override.textColor) or db.textColor
-            end
+            local color = isName and db.nameTextColor or db.textColor
             if color and type(color) == "table" then
                 elem.widget:SetTextColor(color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
-            end
-        end
-    end
-end
-
--- Sets the name element's string from the tracked spell (override-aware). Content only;
--- font/color come from ApplyTextStyling, position from LayoutElements.
-local function UpdateNameText(aura, state)
-    local db = GetDB(aura)
-    for _, elem in ipairs(state.elements or {}) do
-        if elem.type == "text" and elem.def.source == "name" then
-            local mode = (db and db.mode) or "icon"
-            local barShown = (mode == "bar" or mode == "iconbar")
-            if not db or db.hideNameText or not barShown then
-                elem.widget:Hide()
-            else
-                local tracked = auraTracking[aura.id]
-                local sid = (tracked and tracked.activeSpellId) or aura.auraSpellId
-                local name
-                if sid then
-                    local ok, n = pcall(C_Spell.GetSpellName, sid)
-                    if ok and type(n) == "string" and not issecretvalue(n) then name = n end
-                end
-                elem.widget:SetText(name or aura.label or "")
-                elem.widget:Show()
             end
         end
     end
@@ -271,13 +224,7 @@ local function ApplyBarStyling(aura, state)
                     fgR, fgG, fgB, fgA = classColor.r, classColor.g, classColor.b, 1
                 end
             else -- "custom" (or any fallback)
-                local override = GetActiveOverride(aura)
-                local c
-                if override and override.barColor then
-                    c = override.barColor
-                else
-                    c = db.barForegroundTint or aura.defaultBarColor or { 1, 1, 1, 1 }
-                end
+                local c = db.barForegroundTint or aura.defaultBarColor or { 1, 1, 1, 1 }
                 fgR, fgG, fgB, fgA = c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
             end
             local fillTex = elem.barFill:GetStatusBarTexture()
@@ -419,15 +366,15 @@ local function ApplyAnchorLinkage(aura, state)
     end
 end
 
+-- Everything here is Tier 1 (Scoot frame only, always legal). Content lives
+-- under the engine-managed button and may only be built/styled outside
+-- secrecy windows; Engine.ApplyAll gates and queues itself.
 local function ApplyStyling(aura)
     local state = CA._activeAuras[aura.id]
     if not state then return end
 
     local db = GetDB(aura)
     if not db then return end
-
-    -- Reset override tracking so next ScanAura re-evaluates
-    state._lastActiveSpellId = nil
 
     -- CDM borrow: rescan on enable/disable to hide/restore CDM icon
     if aura.cdmBorrow then
@@ -442,6 +389,7 @@ local function ApplyStyling(aura)
         isEnabled = primaryDb and primaryDb.enabled
     end
     if not isEnabled then
+        CA.Engine.SetEnabledState(aura, false)
         state.container:Hide()
         return
     end
@@ -461,31 +409,8 @@ local function ApplyStyling(aura)
     end
     state.container:SetAlpha(opacityValue / 100)
 
-    -- Icon mode
-    ApplyIconMode(aura, state)
-
-    -- Icon shape (adjusts dimensions based on ratio slider)
-    ApplyIconShape(aura, state)
-
-    -- Borders (icon borders)
-    ApplyBorders(aura, state)
-
-    -- Text styling
-    ApplyTextStyling(aura, state)
-    UpdateNameText(aura, state)
-
-    -- Bar styling
-    ApplyBarStyling(aura, state)
-
-    -- Re-layout elements (late-bound: layout.lua loads before styling.lua)
-    CA._LayoutElements(aura, state)
-
-    -- Anchor linkage for secondary auras (e.g., dreadPlague -> virulentPlague)
-    ApplyAnchorLinkage(aura, state)
-
-    -- Trigger a rescan to show/hide based on current aura state
-    -- (late-bound: scanning.lua loads after styling.lua, resolved at runtime)
-    CA.ScanAura(aura)
+    state.container:Show()
+    CA.Engine.ApplyAll(aura)
 end
 
 --------------------------------------------------------------------------------
@@ -494,8 +419,8 @@ end
 
 CA._ApplyStyling = ApplyStyling
 CA._ApplyIconMode = ApplyIconMode
+CA._ApplyIconShape = ApplyIconShape
+CA._ApplyBorders = ApplyBorders
 CA._ApplyTextStyling = ApplyTextStyling
-CA._UpdateNameText = UpdateNameText
 CA._ApplyBarStyling = ApplyBarStyling
 CA._ApplyAnchorLinkage = ApplyAnchorLinkage
-CA._GetActiveOverride = GetActiveOverride

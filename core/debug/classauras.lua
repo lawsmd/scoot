@@ -62,7 +62,7 @@ function addon.DebugDumpClassAuras()
 
     -- CDM Borrow state
     local cdmBorrowState = CA._cdmBorrow
-    push("CDM Borrow Hooks Installed: " .. tostring(cdmBorrowState and cdmBorrowState.hookInstalled or false))
+    push("CDM borrow mixin-hook install ran: " .. tostring(cdmBorrowState and cdmBorrowState.hookInstalled or false))
     push("")
 
     -- Registered auras
@@ -140,6 +140,67 @@ function addon.DebugDumpClassAuras()
 
             push("")
         end
+    end
+
+    -- ================================================================
+    -- Slot Engine (12.1 AuraContainer path)
+    -- ================================================================
+    push("--- Slot Engine (12.1 AuraContainer path) ---")
+    push("")
+    if not CA.Engine then
+        push("Engine module not loaded.")
+        push("")
+    else
+        local anyEngine = false
+        if classAuras then
+            for _, aura in ipairs(classAuras) do
+                if CA.Engine.IsEngineDriven(aura) then
+                    anyEngine = true
+                    local entry = CA.Engine._entries and CA.Engine._entries[aura.id]
+                    local parts = { "[" .. tostring(aura.id) .. "] engine-driven" }
+                    if not entry then
+                        table.insert(parts, "built=no (zero-touch or not yet enabled)")
+                    else
+                        table.insert(parts, "built=" .. (entry.container and "yes" or "FAILED"))
+                        table.insert(parts, "wired=" .. tostring(entry.wired or false))
+                        table.insert(parts, "desiredEnabled=" .. tostring(entry.desiredEnabled))
+                        if entry.enabledDirty then table.insert(parts, "enabledDirty=true") end
+                    end
+                    if CA.Engine._pendingApply and CA.Engine._pendingApply[aura.id] then
+                        table.insert(parts, "PENDING APPLY (flushes at regen)")
+                    end
+                    push(table.concat(parts, " | "))
+                end
+            end
+        end
+        if not anyEngine then
+            push("No engine-driven auras for this class.")
+        end
+        push("")
+        local keys = {}
+        for k in pairs(CA.Engine._results or {}) do table.insert(keys, k) end
+        table.sort(keys)
+        if #keys > 0 then
+            push("Engine observations:")
+            for _, k in ipairs(keys) do
+                push("  " .. k .. " = " .. tostring(CA.Engine._results[k]))
+            end
+        else
+            push("Engine observations: (none recorded)")
+        end
+        push("")
+        local logEntries = {}
+        for _, rec in pairs(CA.Engine._log or {}) do
+            if rec and rec.seq then table.insert(logEntries, rec) end
+        end
+        table.sort(logEntries, function(a, b) return a.seq < b.seq end)
+        if #logEntries > 0 then
+            push("Engine log (oldest first):")
+            for _, rec in ipairs(logEntries) do
+                push(string.format("  #%d %s: %s", rec.seq, tostring(rec.tag), tostring(rec.detail)))
+            end
+        end
+        push("")
     end
 
     -- ================================================================
@@ -772,30 +833,10 @@ function addon.DebugAlterTimeHealth()
             end
         end
 
-        -- Snapshot state
+        -- Snapshot state (engine path: own-cast toggle + timer + regen reconcile)
         push("")
-        push("  _healthPctInstance: " .. safe(state._healthPctInstance))
-        push("  _healthPctValue: " .. safe(state._healthPctValue))
-        if state._healthPctColor then
-            push("  _healthPctColor: { " .. safe(state._healthPctColor[1]) .. ", " .. safe(state._healthPctColor[2]) .. ", " .. safe(state._healthPctColor[3]) .. " }")
-        else
-            push("  _healthPctColor: nil")
-        end
-    end
-    push("")
-
-    -- ================================================================
-    -- C. Aura Tracking State
-    -- ================================================================
-    push("--- C. Aura Tracking ---")
-    push("")
-
-    local tracked = CA._auraTracking and CA._auraTracking["alterTime"]
-    push("CA._auraTracking[\"alterTime\"]: " .. (tracked and "EXISTS" or "nil (buff not active/tracked)"))
-    if tracked then
-        push("  unit: " .. safe(tracked.unit))
-        push("  auraInstanceID: " .. safe(tracked.auraInstanceID))
-        push("  activeSpellId: " .. safe(tracked.activeSpellId))
+        push("  _snapshotShown: " .. safe(state._snapshotShown))
+        push("  _snapshotTimer: " .. (state._snapshotTimer and "running" or "nil"))
     end
     push("")
 

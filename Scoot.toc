@@ -75,8 +75,9 @@ core/components/cooldowns/customgroups/tracking.lua
 core/components/classauras/core.lua
 core/components/classauras/layout.lua
 core/components/classauras/styling.lua
-core/components/classauras/scanning.lua
 core/components/classauras/cdmborrow.lua
+core/components/classauras/engine.lua
+core/components/classauras/regions.lua
 core/components/classauras/events.lua
 core/components/classauras/mage.lua
 core/components/classauras/shaman.lua

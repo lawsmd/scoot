@@ -86,6 +86,7 @@ read_globals = {
     -- Blizzard addon APIs
     "C_AddOns",
     "C_ClassColor",
+    "C_CooldownViewer",
     "C_Covenants",
     "C_DamageMeter",
     "C_DeathRecap",
@@ -95,6 +96,7 @@ read_globals = {
     "C_Texture",
     "CreateColor",
     "GetClassAtlas",
+    "RAID_CLASS_COLORS",
     "GetSpecialization",
     "GetSpecializationInfo",
 

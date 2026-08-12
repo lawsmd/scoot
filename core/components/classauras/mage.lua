@@ -120,58 +120,6 @@ local function AlterTimeOnContainerCreated(auraId, state)
     addon.ApplyFontStyle(fs, fontFace, 16, "OUTLINE")
     fs:Hide()
     state._healthPctFS = fs
-    state._healthPctInstance = nil
-    state._healthPctSnapped = nil
-end
-
-local function AlterTimeOnAuraFound(auraId, state)
-    local fs = state._healthPctFS
-    if not fs then return end
-
-    local auraDef = CA._registry[auraId]
-    local db = auraDef and CA._GetDB(auraDef)
-    if not db then return end
-
-    if db.hideHealthText then
-        fs:Hide()
-        return
-    end
-
-    -- Snapshot health % when aura instance changes (new cast).
-    -- Health values are secret in 12.0. Arithmetic on secrets errors, so the value is copied from
-    -- the already-rendered health text from Blizzard's PlayerFrame (SetText accepts secrets).
-    local tracked = CA._auraTracking[auraId]
-    if tracked then
-        local iid = tracked.auraInstanceID
-        if iid and iid ~= state._healthPctInstance then
-            state._healthPctInstance = iid
-            -- Text: copy Blizzard's health % text (secret string, SetText accepts it)
-            local healthText = getBlizzardHealthText()
-            if healthText then
-                pcall(fs.SetText, fs, healthText)
-            end
-            -- Color: secret RGB → SetTextColor (AllowedWhenTainted)
-            applyHealthColorToFS(fs)
-            state._healthPctSnapped = true
-        end
-    end
-
-    -- Apply font styling and position (runs every call for settings changes)
-    if state._healthPctSnapped then
-        applyHealthTextFont(auraId, state)
-        positionHealthText(auraId, state)
-        fs:Show()
-    end
-end
-
-local function AlterTimeOnAuraMissing(auraId, state)
-    local fs = state._healthPctFS
-    if fs then
-        pcall(fs.SetText, fs, "")
-        fs:Hide()
-    end
-    state._healthPctInstance = nil
-    state._healthPctSnapped = nil
 end
 
 local function AlterTimeOnEditModeEnter(auraId, state)
@@ -200,6 +148,108 @@ local function AlterTimeOnEditModeExit(auraId, state)
         pcall(fs.SetText, fs, "")
         fs:Hide()
     end
+end
+
+--------------------------------------------------------------------------------
+-- Alter Time: Engine-Path Snapshot (12.1 slot engine)
+--------------------------------------------------------------------------------
+-- On the engine path the addon never observes the buff, so the health %
+-- snapshot keys off the player's own successful casts instead (own casts stay
+-- plain through combat). The FontString lives on the Scoot frame, never the
+-- button tree, so text/color/show stay legal mid-combat. Hide is
+-- triple-covered: return-cast toggle, max-duration timer, regen reconcile.
+
+local ALTER_TIME_BUFF_ID = 342246
+-- 342245 casts the buff; 342247 is the return cast that consumes it. The
+-- return ID does not appear in the UI source, so it is best-effort: if it
+-- never fires, the timer and the regen reconcile still clear the snapshot.
+local ALTER_TIME_CAST_IDS = { [342245] = true, [342247] = true }
+local ALTER_TIME_MAX_SECONDS = 11  -- base duration 10s + slack
+
+local function GetEngineSnapshotContext()
+    local auraDef = CA._registry["alterTime"]
+    if not auraDef or not auraDef.engineDriven then return nil end
+    local db = CA._GetDB(auraDef)
+    if not db or not db.enabled then return nil end
+    local state = CA._activeAuras["alterTime"]
+    if not state or not state._healthPctFS then return nil end
+    return auraDef, db, state
+end
+
+local function HideEngineSnapshot(state)
+    if state._snapshotTimer then
+        state._snapshotTimer:Cancel()
+        state._snapshotTimer = nil
+    end
+    state._snapshotShown = nil
+    local fs = state._healthPctFS
+    if fs then
+        pcall(fs.SetText, fs, "")
+        fs:Hide()
+    end
+end
+
+local function ShowEngineSnapshot(db, state)
+    if db.hideHealthText then return end
+    local fs = state._healthPctFS
+    if not fs then return end
+    local healthText = getBlizzardHealthText()
+    if healthText then
+        pcall(fs.SetText, fs, healthText)
+    end
+    applyHealthColorToFS(fs)
+    fs:Show()
+    state._snapshotShown = true
+    if state._snapshotTimer then state._snapshotTimer:Cancel() end
+    state._snapshotTimer = C_Timer.NewTimer(ALTER_TIME_MAX_SECONDS, function()
+        state._snapshotTimer = nil
+        HideEngineSnapshot(state)
+    end)
+end
+
+local snapshotWatcher = CreateFrame("Frame")
+snapshotWatcher:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+snapshotWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+snapshotWatcher:SetScript("OnEvent", function(self, event, ...)
+    if event == "UNIT_SPELLCAST_SUCCEEDED" then
+        local unit, _, spellID = ...
+        if issecretvalue(unit) or unit ~= "player" then return end
+        -- issecretvalue first: indexing a table with a secret key throws
+        if issecretvalue(spellID) or not ALTER_TIME_CAST_IDS[spellID] then return end
+        local auraDef, db, state = GetEngineSnapshotContext()
+        if not auraDef then return end
+        if state._snapshotShown then
+            -- Second press is the return cast: the buff is consumed.
+            HideEngineSnapshot(state)
+        else
+            ShowEngineSnapshot(db, state)
+        end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        local auraDef, _, state = GetEngineSnapshotContext()
+        if not auraDef or not state._snapshotShown then return end
+        if addon.AurasSecretNow and addon.AurasSecretNow() then return end
+        -- Auras are readable again: reconcile against the real buff.
+        local ok, auraData = pcall(C_UnitAuras.GetPlayerAuraBySpellID, ALTER_TIME_BUFF_ID)
+        if ok and not issecretvalue(auraData) and auraData == nil then
+            HideEngineSnapshot(state)
+        end
+    end
+end)
+
+-- Tier 2 apply hook: font + placement run inside the engine gate, so the
+-- anchor target (a button-tree texture) is only referenced in an open window.
+local function AlterTimeEngineApply(auraDef, state, entry)
+    local db = CA._GetDB(auraDef)
+    if not db then return end
+    local fs = state._healthPctFS
+    if not fs then return end
+    if db.hideHealthText then
+        fs:Hide()
+        return
+    end
+    applyHealthTextFont(auraDef.id, state)
+    positionHealthText(auraDef.id, state)
+    if state._snapshotShown then fs:Show() end
 end
 
 --------------------------------------------------------------------------------
@@ -353,6 +403,7 @@ CA.RegisterAuras("MAGE", {
         auraSpellId = 1221389,
         cdmSpellId = 1246769,  -- Shatter passive (CDM tracks Freezing stacks under this ID)
         cdmBorrow = true,
+        engineDriven = true,
         unit = "target",
         filter = "HARMFUL|PLAYER",
         enableLabel = "Enable Freezing Stacks Tracker",
@@ -376,6 +427,7 @@ CA.RegisterAuras("MAGE", {
         auraSpellId = 1242974,
         cdmSpellId = 384452,
         cdmBorrow = true,
+        engineDriven = true,
         unit = "player",
         filter = "HELPFUL|PLAYER",
         enableLabel = "Enable Arcane Salvo Stacks Tracker",
@@ -399,6 +451,8 @@ CA.RegisterAuras("MAGE", {
         auraSpellId = 342246,   -- Alter Time buff on player
         cdmSpellId = 342245,    -- Base spell (CDM Tracked Buffs)
         cdmBorrow = true,
+        engineDriven = true,
+        engineApply = AlterTimeEngineApply,
         unit = "player",
         filter = "HELPFUL|PLAYER",
         enableLabel = "Enable Alter Time Tracker",
@@ -412,8 +466,6 @@ CA.RegisterAuras("MAGE", {
             { type = "bar",     key = "durationBar", source = "duration", fillMode = "deplete", defaultSize = { 120, 12 } },
         },
         onContainerCreated = AlterTimeOnContainerCreated,
-        onAuraFound = AlterTimeOnAuraFound,
-        onAuraMissing = AlterTimeOnAuraMissing,
         onEditModeEnter = AlterTimeOnEditModeEnter,
         onEditModeExit = AlterTimeOnEditModeExit,
         additionalTabs = AlterTimeAdditionalTabs,

@@ -1,22 +1,19 @@
--- classauras/cdmborrow.lua - CDM icon hiding, mixin hooks, rescan logic
+-- classauras/cdmborrow.lua - CDM icon hiding and rescan logic
 local addonName, addon = ...
 
 local CA = addon.ClassAuras
 
 -- Local aliases (resolved at load time — core.lua loads first)
 local GetDB = CA._GetDB
-local auraTracking = CA._auraTracking
-local CacheAuraIdentity = CA._CacheAuraIdentity
 local playerClassToken = CA._playerClassToken
 
 --------------------------------------------------------------------------------
--- CDM Borrow: Hide CDM icons via SetAlpha(0)
+-- CDM Borrow: Hide CDM icons via SetAlphaFromBoolean
 --------------------------------------------------------------------------------
--- When Class Auras takes over display, the corresponding CDM icon is hidden
--- to avoid duplicates. Duration comes from DurationObject, stacks from direct scan or GetAuraApplicationDisplayCount.
+-- When a class aura takes over display, the corresponding CDM icon is hidden
+-- to avoid duplicates. Display itself is engine-side (engine.lua); this file
+-- only manages the CDM icon's alpha state.
 
--- CDM Borrow subsystem: hides CDM icons via SetAlphaFromBoolean when Class Auras
--- takes over display. Duration/timing data comes from DurationObject API (live C++ object).
 local cdmBorrow = {
     hookInstalled = false,
 }
@@ -42,7 +39,7 @@ local function searchViewer(children, spellId)
         -- GetBaseSpellID() is a plain Lua table read (self.cooldownInfo.spellID),
         -- populated by Blizzard's untainted code -- returns real data even in combat.
         local idOk, childSpellId = pcall(child.GetBaseSpellID, child)
-        if idOk and childSpellId == spellId then
+        if idOk and not issecretvalue(childSpellId) and childSpellId == spellId then
             return child
         end
     end
@@ -103,9 +100,14 @@ local function BindCDMBorrowTarget(itemFrame, aura)
         end)
     end
 
-    -- Apply or remove CDM icon hiding
+    -- Apply or remove CDM icon hiding. Hide only when this aura's engine
+    -- wiring succeeded this session (a plain per-session boolean, never
+    -- presence-derived): a failed or not-yet-built engine aura renders
+    -- nothing, and hiding Blizzard's icon too would blank both displays.
     local db = GetDB(aura)
-    if db and db.enabled and (db.hideFromCDM ~= false) then
+    local wantHide = db and db.enabled and (db.hideFromCDM ~= false)
+        and CA.Engine.IsWired(aura.id)
+    if wantHide then
         itemFrame:SetAlphaFromBoolean(false, 1, 0)
         hiddenItemFrames[itemFrame] = aura.id
     elseif hiddenItemFrames[itemFrame] then
@@ -155,33 +157,10 @@ local function RescanForCDMBorrow()
                         itemFrame = FindCDMItemForSpell(aura.auraSpellId)
                     end
                     if itemFrame then
-                        -- Capture identity (auraInstanceID + unit + activeSpellId) for DurationObject tracking
-                        local iid = itemFrame.auraInstanceID
-                        local iunit = itemFrame.auraDataUnit
-                        if iid and iunit then
-                            -- Validate CDM frame's auraInstanceID before storing (prevents stale overwrites)
-                            local vOk, vDur = pcall(C_UnitAuras.GetAuraDuration, iunit, iid)
-                            if vOk and vDur then
-                                local activeSpell = aura.auraSpellId
-                                pcall(function()
-                                    local fSpell = itemFrame.auraSpellID
-                                    if fSpell and not issecretvalue(fSpell) and aura.linkedSpellIds then
-                                        for _, lid in ipairs(aura.linkedSpellIds) do
-                                            if fSpell == lid then activeSpell = lid; break end
-                                        end
-                                    end
-                                end)
-                                local tracked = auraTracking[aura.id]
-                                if not tracked or tracked.auraInstanceID ~= iid then
-                                    auraTracking[aura.id] = { unit = iunit, auraInstanceID = iid, activeSpellId = activeSpell }
-                                    CacheAuraIdentity(iunit, aura.id, iid, activeSpell)
-                                end
-                            end
-                        end
                         BindCDMBorrowTarget(itemFrame, aura)
                     else
-                        -- Don't clear auraTracking -- let ScanAura's GetAuraDuration handle stale instances.
-                        -- CDM icon may be gone due to target switch, but aura may still exist on original target.
+                        -- CDM icon may be gone due to target switch; restore
+                        -- the hide binding so a pool-recycled frame stays visible.
                         RestoreHiddenCDMFrames(aura.id)
                     end
                 end
@@ -201,74 +180,11 @@ local function ScheduleRescan()
     end)
 end
 
+-- Global-mixin hooks that keep the alpha-hide bindings correct across CDM
+-- frame-pool recycling. These are mixin-table hooks on Blizzard globals (safe
+-- per Rule 11 — not system-frame tree members), installed once.
 local function InstallMixinHooks()
     if cdmBorrow.hookInstalled then return end
-
-    -- Hook SetAuraInstanceInfo to capture auraInstanceID for combat tracking.
-    -- When CDM processes an aura in its untainted context, this fires and gives
-    -- us the non-secret spellID (from cooldownInfo) and the auraInstanceID.
-    local dataMixin = _G.CooldownViewerItemDataMixin
-    if dataMixin and dataMixin.SetAuraInstanceInfo then
-        hooksecurefunc(dataMixin, "SetAuraInstanceInfo", function(self, auraInfo)
-            local ci = self.cooldownInfo
-            if not ci then return end
-            local spellID = ci.spellID
-            if ci.linkedSpellIDs and ci.linkedSpellIDs[1] then
-                spellID = ci.linkedSpellIDs[1]
-            end
-            if not spellID then return end
-
-            local instanceID = auraInfo and auraInfo.auraInstanceID
-            local unit = self.auraDataUnit
-            if not instanceID or not unit then return end
-
-            local auras = CA._classAuras[playerClassToken]
-            if not auras then return end
-            for _, aura in ipairs(auras) do
-                if aura.cdmBorrow then
-                    local cdmId = aura.cdmSpellId or aura.auraSpellId
-                    local auraSpell = auraInfo and auraInfo.spellId
-                    local matchesAuraSpell = false
-                    if auraSpell then
-                        pcall(function()
-                            if not issecretvalue(auraSpell) then
-                                matchesAuraSpell = (auraSpell == aura.auraSpellId)
-                            end
-                        end)
-                    end
-                    if spellID == cdmId or spellID == aura.auraSpellId or matchesAuraSpell then
-                        -- Determine activeSpellId from auraInfo.spellId (actual debuff spell)
-                        local activeSpell = aura.auraSpellId  -- default to primary
-                        if auraInfo and auraInfo.spellId then
-                            pcall(function()
-                                local infoSpell = auraInfo.spellId
-                                if not issecretvalue(infoSpell) then
-                                    if infoSpell == aura.auraSpellId then
-                                        activeSpell = aura.auraSpellId
-                                    elseif aura.linkedSpellIds then
-                                        for _, lid in ipairs(aura.linkedSpellIds) do
-                                            if infoSpell == lid then activeSpell = lid; break end
-                                        end
-                                    end
-                                end
-                            end)
-                        end
-                        local tracked = auraTracking[aura.id]
-                        if not tracked or tracked.auraInstanceID ~= instanceID then
-                            auraTracking[aura.id] = { unit = unit, auraInstanceID = instanceID, activeSpellId = activeSpell }
-                            CacheAuraIdentity(unit, aura.id, instanceID, activeSpell)
-                        end
-                        local auraId = aura.id
-                        C_Timer.After(0, function()
-                            local a = CA._registry[auraId]
-                            if a then CA.ScanAura(a) end
-                        end)
-                        break
-                    end
-                end
-            end
-        end)
-    end
 
     -- Hook RefreshData to catch icon pool recycling (for CDM icon alpha re-find)
     local buffMixin = _G.CooldownViewerBuffIconItemMixin
@@ -299,8 +215,6 @@ local function InstallMixinHooks()
         end)
     end
 
-    -- CooldownFrame_Set/Clear hooks removed -- duration comes from DurationObject API
-
     cdmBorrow.hookInstalled = true
 end
 
@@ -310,7 +224,6 @@ end
 
 CA._RescanForCDMBorrow = RescanForCDMBorrow
 CA._InstallMixinHooks = InstallMixinHooks
-CA._ResetAllHiddenCDMFrames = ResetAllHiddenFrames
 
 -- Expose for debug
 CA._cdmBorrow = cdmBorrow

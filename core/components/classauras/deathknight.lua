@@ -18,13 +18,13 @@ local DOT_COLORS = {
 }
 
 -- Per-icon visual state (indexed by auraId)
-local iconState = {}  -- [auraId] = { swipeFrame, cooldown, excFrame, excAnim, borderEdges, isSquare }
+local iconState = {}  -- [auraId] = { engineLayers, engineActive }
 
 -- Alert suppression: prevent exclamation for 2s after combat start or target change
 local alertSuppressed = false
 
--- Forward declaration
-local ApplyDotIconStyle, ApplyDotIconSize, UpdateSwipeTexture
+-- Forward declarations
+local EnsureEngineLayers, UpdateDotAlertLayers
 
 --------------------------------------------------------------------------------
 -- Icon construction helpers
@@ -72,152 +72,13 @@ local function HideBorders(edges)
     for _, tex in pairs(edges) do tex:Hide() end
 end
 
-local function CreateCooldownSwipe(container)
-    local swipeFrame = CreateFrame("Frame", nil, container)
-    swipeFrame:SetAllPoints(container)
-    swipeFrame:SetFrameLevel(container:GetFrameLevel() + 2)
-
-    local cooldown = CreateFrame("Cooldown", nil, swipeFrame, "CooldownFrameTemplate")
-    cooldown:SetAllPoints(swipeFrame)
-    cooldown:SetReverse(true)
-    cooldown:SetDrawBling(false)
-    cooldown:SetDrawEdge(false)
-    cooldown:SetHideCountdownNumbers(true)
-    cooldown:SetSwipeColor(0, 0, 0, 1.0)
-
-    return swipeFrame, cooldown
-end
-
-local function CreateExclamation(container)
-    local excFrame = CreateFrame("Frame", nil, container)
-    excFrame:SetFrameLevel(container:GetFrameLevel() + 5)
-    excFrame:SetSize(16, 16)
-    excFrame:Hide()
-
-    local tex = excFrame:CreateTexture(nil, "OVERLAY")
-    tex:SetTexture(EXCLAMATION_PATH)
-    tex:SetAllPoints(excFrame)
-
-    local ag = tex:CreateAnimationGroup()
-    ag:SetLooping("BOUNCE")
-    local fade = ag:CreateAnimation("Alpha")
-    fade:SetFromAlpha(1.0)
-    fade:SetToAlpha(0.0)
-    fade:SetDuration(0.5)
-
-    return excFrame, ag
-end
-
-local function PositionExclamation(excFrame, container, position)
-    if not excFrame then return end
-    excFrame:ClearAllPoints()
-    if position == "LEFT" then
-        excFrame:SetPoint("RIGHT", container, "LEFT", -2, 0)
-    elseif position == "RIGHT" then
-        excFrame:SetPoint("LEFT", container, "RIGHT", 2, 0)
-    elseif position == "TOP" then
-        excFrame:SetPoint("BOTTOM", container, "TOP", 0, 2)
-    elseif position == "BOTTOM" then
-        excFrame:SetPoint("TOP", container, "BOTTOM", 0, -2)
-    else -- "ON"
-        excFrame:SetPoint("CENTER", container, "CENTER", 0, 0)
-    end
-end
-
---------------------------------------------------------------------------------
--- Icon style application
---------------------------------------------------------------------------------
-
-ApplyDotIconStyle = function(auraId, state, spellId, color, db, isActive)
-    local is = iconState[auraId]
-    if not is then return end
-
-    local texElem
-    for _, elem in ipairs(state.elements) do
-        if elem.type == "texture" then texElem = elem; break end
-    end
-    if not texElem then return end
-
-    local isSquare = (db and db.dotIconStyle) or false
-
-    if isSquare then
-        if isActive then
-            texElem.widget:SetColorTexture(color[1], color[2], color[3], color[4] or 1)
-            texElem.widget:SetDesaturated(false)
-        else
-            texElem.widget:SetColorTexture(0.15, 0.15, 0.15, 1.0)
-        end
-        ShowBorders(is.borderEdges)
-        is.cooldown:SetSwipeTexture(WHITE8X8)
-        is.cooldown:SetSwipeColor(0, 0, 0, 1.0)
-        is.isSquare = true
-    else
-        local ok, tex = pcall(C_Spell.GetSpellTexture, spellId)
-        if ok and tex then
-            texElem.widget:SetTexture(tex)
-            texElem.widget:SetDesaturated(not isActive)
-        end
-        HideBorders(is.borderEdges)
-        is.cooldown:SetSwipeColor(0, 0, 0, 1.0)
-        is.isSquare = false
-    end
-end
-
-ApplyDotIconSize = function(auraId, state, db)
-    local is = iconState[auraId]
-    if not is then return end
-
-    local size = 16
-    local container = state.container
-    container:SetSize(size, size)
-
-    for _, elem in ipairs(state.elements) do
-        if elem.type == "texture" then
-            elem.widget:SetSize(size, size)
-            elem.widget:ClearAllPoints()
-            elem.widget:SetAllPoints(container)
-            elem.widget:Show()
-        end
-    end
-
-    is.swipeFrame:SetAllPoints(container)
-    is.cooldown:SetAllPoints(is.swipeFrame)
-
-    local excSize = tonumber(db and db.exclamationSize) or 16
-    is.excFrame:SetSize(excSize, excSize)
-end
-
-UpdateSwipeTexture = function(auraId, spellId, db)
-    local is = iconState[auraId]
-    if not is then return end
-    local isSquare = (db and db.dotIconStyle) or false
-    if isSquare then
-        is.cooldown:SetSwipeTexture(WHITE8X8)
-        is.cooldown:SetSwipeColor(0, 0, 0, 1.0)
-    else
-        is.cooldown:SetSwipeColor(0, 0, 0, 1.0)
-    end
-end
-
 --------------------------------------------------------------------------------
 -- Lifecycle callbacks (called by core.lua hooks)
 --------------------------------------------------------------------------------
 
 local function OnContainerCreated(auraId, state)
-    local container = state.container
-    local swipeFrame, cooldown = CreateCooldownSwipe(container)
-    local excFrame, excAnim = CreateExclamation(container)
-    local borderEdges = CreateSquareBorders(container, 16)
-    HideBorders(borderEdges)
-
-    iconState[auraId] = {
-        swipeFrame = swipeFrame,
-        cooldown = cooldown,
-        excFrame = excFrame,
-        excAnim = excAnim,
-        borderEdges = borderEdges,
-        isSquare = false,
-    }
+    -- Always-built Scoot-frame layers: inactive art + exclamation reveal.
+    EnsureEngineLayers(auraId, state)
 end
 
 local function GetDotContext(auraId)
@@ -235,146 +96,209 @@ local function GetDotContext(auraId)
     return db, spellId, color
 end
 
-local function OnAuraFound(auraId, state)
+--------------------------------------------------------------------------------
+-- Engine path (12.1 slot engine): layered reveal
+--------------------------------------------------------------------------------
+-- The engine shows/hides the button on aura presence, and that state is
+-- secret, so "missing" visuals cannot be event-driven. Instead they live on
+-- the Scoot frame BELOW the AuraContainer: the button's active art covers
+-- them while the aura is present, and the engine hiding the button reveals
+-- them. Consequences: the exclamation only works at the ON position (offset
+-- positions would peek out beside a present aura) and is clipped to the icon
+-- rect; larger alert sizes are cropped.
+
+EnsureEngineLayers = function(auraId, state)
     local is = iconState[auraId]
-    if not is then return end
+    if is and is.engineLayers then return is end
+    is = is or {}
+    iconState[auraId] = is
 
-    -- Hide exclamation
-    is.excAnim:Stop()
-    is.excFrame:Hide()
+    local container = state.container
 
-    -- Re-apply correct icon texture (active appearance)
-    local db, spellId, color = GetDotContext(auraId)
-    ApplyDotIconStyle(auraId, state, spellId, color, db, true)
+    -- Inactive ("missing") art: below the AuraContainer (level +5)
+    local inactive = CreateFrame("Frame", nil, container)
+    inactive:SetAllPoints(container)
+    inactive:SetFrameLevel(container:GetFrameLevel() + 1)
+    local inactiveTex = inactive:CreateTexture(nil, "ARTWORK")
+    inactiveTex:SetAllPoints(inactive)
+    local inactiveEdges = CreateSquareBorders(inactive, 16)
+    HideBorders(inactiveEdges)
+    inactive:Hide()
 
-    -- Update cooldown swipe from auraTracking (if enabled)
-    local swipeEnabled = db and db.dotSwipeEnable
-    if swipeEnabled then
-        local tracked = CA._auraTracking[auraId]
-        if tracked then
-            local ok, durObj = pcall(C_UnitAuras.GetAuraDuration, tracked.unit, tracked.auraInstanceID)
-            if ok and durObj then
-                local startTime = durObj:GetStartTime()
-                local totalDur = durObj:GetTotalDuration()
-                pcall(is.cooldown.SetCooldown, is.cooldown, startTime, totalDur)
+    -- Exclamation reveal: above the inactive art, still below the container
+    local excHolder = CreateFrame("Frame", nil, container)
+    excHolder:SetAllPoints(container)
+    excHolder:SetFrameLevel(container:GetFrameLevel() + 3)
+    excHolder:SetClipsChildren(true)
+    local excTex = excHolder:CreateTexture(nil, "OVERLAY")
+    excTex:SetTexture(EXCLAMATION_PATH)
+    excTex:SetPoint("CENTER", excHolder, "CENTER", 0, 0)
+    excTex:SetSize(16, 16)
+    local excAnim = excTex:CreateAnimationGroup()
+    excAnim:SetLooping("BOUNCE")
+    local fade = excAnim:CreateAnimation("Alpha")
+    fade:SetFromAlpha(1.0)
+    fade:SetToAlpha(0.0)
+    fade:SetDuration(0.5)
+    excHolder:Hide()
+
+    is.engineLayers = {
+        inactive = inactive,
+        inactiveTex = inactiveTex,
+        inactiveEdges = inactiveEdges,
+        excHolder = excHolder,
+        excTex = excTex,
+        excAnim = excAnim,
+    }
+    return is
+end
+
+-- Under-button extras, created inside the slot's initializeFrame: the swipe
+-- cooldown (engine-driven via SetDurationCooldown) and square-mode edges.
+local function DotEngineWire(auraDef, state, entry, button)
+    local is = iconState[auraDef.id] or {}
+    iconState[auraDef.id] = is
+
+    local swipeFrame = CreateFrame("Frame", nil, button)
+    swipeFrame:SetAllPoints(button)
+    swipeFrame:SetFrameLevel(button:GetFrameLevel() + 2)
+    local cooldown = CreateFrame("Cooldown", nil, swipeFrame, "CooldownFrameTemplate")
+    cooldown:SetAllPoints(swipeFrame)
+    cooldown:SetReverse(true)
+    cooldown:SetDrawBling(false)
+    cooldown:SetDrawEdge(false)
+    cooldown:SetHideCountdownNumbers(true)
+    cooldown:SetSwipeColor(0, 0, 0, 1.0)
+
+    local edges = CreateSquareBorders(button, 16)
+    HideBorders(edges)
+
+    is.engineActive = { swipeFrame = swipeFrame, cooldown = cooldown, edges = edges }
+end
+
+-- Plain-state visibility for the reveal layers. Everything read here is
+-- always readable: db settings, InCombatLockdown, UnitExists, own flags.
+UpdateDotAlertLayers = function()
+    if CA._isEditModeActive() then return end
+    for _, auraId in ipairs({ "virulentPlague", "dreadPlague" }) do
+        local auraDef = CA._registry[auraId]
+        local state = CA._activeAuras[auraId]
+        local is = iconState[auraId]
+        local eng = is and is.engineLayers
+        if auraDef and auraDef.engineDriven and state and eng then
+            local db = GetDotContext(auraId)
+            local enabled = db and db.enabled
+            local showLayers = enabled and UnitExists("target")
+            eng.inactive:SetShown(showLayers and true or false)
+            local excEnabled = db and (db.exclamationEnable ~= false)
+            if showLayers and excEnabled and InCombatLockdown() and not alertSuppressed then
+                eng.excHolder:Show()
+                eng.excAnim:Play()
+            else
+                eng.excAnim:Stop()
+                eng.excHolder:Hide()
             end
         end
-    else
-        is.cooldown:Clear()
     end
 end
 
-local function OnAuraMissing(auraId, state)
-    local is = iconState[auraId]
-    if not is then return end
-
-    -- Clear swipe
-    is.cooldown:Clear()
-
-    -- Apply inactive appearance
+-- Tier 2 apply hook (runs inside the engine gate, button tree touchable).
+local function DotEngineApply(auraDef, state, entry)
+    local auraId = auraDef.id
+    local is = EnsureEngineLayers(auraId, state)
+    local eng = is.engineLayers
+    local act = is.engineActive
     local db, spellId, color = GetDotContext(auraId)
-    ApplyDotIconStyle(auraId, state, spellId, color, db, false)
+    local isSquare = (db and db.dotIconStyle) or false
 
-    -- Check if exclamation is enabled
-    local auraDef = CA._registry[auraId]
-    if not auraDef then return end
-
-    -- Read exclamationEnable from VP's DB (primary controls both)
-    local primaryId = auraDef.anchorTo or auraId
-    local primaryAura = CA._registry[primaryId]
-    local primaryDb
-    if primaryAura then
-        local comp = addon.Components and addon.Components["classAura_" .. primaryId]
-        primaryDb = comp and comp.db
+    -- Active texture under the button (ApplyIconMode skips customIconHandling,
+    -- and BindForMode cleared the engine icon binding, so this paint sticks)
+    local texElem
+    for _, elem in ipairs(state.elements or {}) do
+        if elem.type == "texture" then texElem = elem; break end
     end
-    if not primaryDb then
-        local comp = addon.Components and addon.Components["classAura_" .. auraId]
-        primaryDb = comp and comp.db
-    end
-
-    local excEnabled = primaryDb and (primaryDb.exclamationEnable ~= false)
-    if not excEnabled or not InCombatLockdown() or alertSuppressed then
-        is.excFrame:Hide()
-        is.excAnim:Stop()
-        return
+    if texElem then
+        if isSquare then
+            texElem.widget:SetColorTexture(color[1], color[2], color[3], color[4] or 1)
+            texElem.widget:SetDesaturated(false)
+        else
+            local ok, tex = pcall(C_Spell.GetSpellTexture, spellId)
+            if ok and tex and not issecretvalue(tex) then
+                texElem.widget:SetTexture(tex)
+                texElem.widget:SetDesaturated(false)
+            end
+        end
+        texElem.widget:Show()
     end
 
-    local position = (primaryDb and primaryDb.exclamationPosition) or "ON"
-    PositionExclamation(is.excFrame, state.container, position)
-    is.excFrame:Show()
-    is.excAnim:Play()
+    if act then
+        if isSquare then ShowBorders(act.edges) else HideBorders(act.edges) end
+        local CallBinding = CA.Engine and CA.Engine._CallBinding
+        if CallBinding and entry and entry.button then
+            if db and db.dotSwipeEnable then
+                if isSquare then act.cooldown:SetSwipeTexture(WHITE8X8) end
+                act.cooldown:SetSwipeColor(0, 0, 0, 1.0)
+                CallBinding(auraDef, entry.button, "SetDurationCooldown", act.cooldown)
+            else
+                CallBinding(auraDef, entry.button, "ClearDurationCooldown")
+                act.cooldown:Clear()
+            end
+        end
+    end
+
+    -- Inactive layer on the Scoot frame
+    if isSquare then
+        eng.inactiveTex:SetColorTexture(0.15, 0.15, 0.15, 1.0)
+        eng.inactiveTex:SetDesaturated(false)
+        ShowBorders(eng.inactiveEdges)
+    else
+        local ok, tex = pcall(C_Spell.GetSpellTexture, spellId)
+        if ok and tex and not issecretvalue(tex) then
+            eng.inactiveTex:SetTexture(tex)
+            eng.inactiveTex:SetDesaturated(true)
+        end
+        HideBorders(eng.inactiveEdges)
+    end
+
+    local excSize = tonumber(db and db.exclamationSize) or 16
+    eng.excTex:SetSize(excSize, excSize)
+
+    UpdateDotAlertLayers()
 end
 
+-- Edit Mode preview: static layers through the always-built reveal art
+-- (the engine button cannot fake an aura).
 local function OnEditModeEnter(auraId, state)
     local is = iconState[auraId]
-    if not is then return end
-    -- Show exclamation as static preview (no blink)
-    is.excAnim:Stop()
-    is.excFrame:Show()
-
-    local auraDef = CA._registry[auraId]
-    local primaryId = (auraDef and auraDef.anchorTo) or auraId
-    local primaryAura = CA._registry[primaryId]
-    local primaryDb
-    if primaryAura then
-        local comp = addon.Components and addon.Components["classAura_" .. primaryId]
-        primaryDb = comp and comp.db
+    local eng = is and is.engineLayers
+    if eng then
+        eng.inactive:Show()
+        eng.excAnim:Stop()
+        eng.excTex:SetAlpha(1.0)
+        eng.excHolder:Show()
     end
-    if not primaryDb then
-        local comp = addon.Components and addon.Components["classAura_" .. auraId]
-        primaryDb = comp and comp.db
-    end
-    local position = (primaryDb and primaryDb.exclamationPosition) or "ON"
-    PositionExclamation(is.excFrame, state.container, position)
 end
 
 local function OnEditModeExit(auraId, state)
     local is = iconState[auraId]
-    if not is then return end
-    is.excAnim:Stop()
-    is.excFrame:Hide()
+    local eng = is and is.engineLayers
+    if eng then
+        eng.excAnim:Stop()
+        eng.excHolder:Hide()
+    end
+    UpdateDotAlertLayers()
 end
 
 --------------------------------------------------------------------------------
 -- Full styling pass (called from customRenderer's set handlers and init)
 --------------------------------------------------------------------------------
 
-local function ApplyFullDotStyling(auraId, spellId, color)
-    local state = CA._activeAuras[auraId]
-    if not state then return end
-    local auraDef = CA._registry[auraId]
-    if not auraDef then return end
-
-    -- Read DB from primary aura (VP) for shared settings
-    local primaryId = auraDef.anchorTo or auraId
-    local primaryAura = CA._registry[primaryId]
-    local db
-    if primaryAura then
-        local comp = addon.Components and addon.Components["classAura_" .. primaryId]
-        db = comp and comp.db
-    end
-    if not db then
-        local comp = addon.Components and addon.Components["classAura_" .. auraId]
-        db = comp and comp.db
-    end
-
-    local isActive = CA._auraTracking[auraId] ~= nil
-    ApplyDotIconStyle(auraId, state, spellId, color, db, isActive)
-    ApplyDotIconSize(auraId, state, db)
-    UpdateSwipeTexture(auraId, spellId, db)
-
-    -- Position exclamation
-    local is = iconState[auraId]
-    if is then
-        local position = (db and db.exclamationPosition) or "ON"
-        PositionExclamation(is.excFrame, state.container, position)
-    end
-end
-
--- Re-apply styling for both VP and DP
+-- Re-apply styling for both VP and DP (Tier 1 inline + gated/queued engine apply).
 local function RefreshBothDots()
-    ApplyFullDotStyling("virulentPlague", VIRULENT_PLAGUE_ID, {0.0, 0.8, 0.2, 1.0})
-    ApplyFullDotStyling("dreadPlague", DREAD_PLAGUE_ID, {0.8, 0.1, 0.1, 1.0})
+    local vp = CA._registry["virulentPlague"]
+    if vp then CA._ApplyStyling(vp) end
+    local dp = CA._registry["dreadPlague"]
+    if dp then CA._ApplyStyling(dp) end
 end
 
 --------------------------------------------------------------------------------
@@ -391,24 +315,13 @@ local function DotCustomRenderer(contentFrame, inner, h, getSetting, componentId
         get = function() return getSetting("enabled") or false end,
         set = function(val)
             h.setAndApply("enabled", val)
-            -- Sync DP enable state
+            -- Sync DP enable state; RefreshBothDots restyles both dots
             local dpComp = addon.Components and addon.Components["classAura_dreadPlague"]
             if dpComp and dpComp.db then
                 dpComp.db.enabled = val
-                local dpAura = CA._registry["dreadPlague"]
-                if dpAura then
-                    local dpState = CA._activeAuras["dreadPlague"]
-                    if dpState then
-                        if val then
-                            dpState.container:Show()
-                        else
-                            dpState.container:Hide()
-                        end
-                    end
-                    CA.ScanAura(dpAura)
-                end
             end
             RefreshBothDots()
+            UpdateDotAlertLayers()
         end,
     })
 
@@ -642,6 +555,7 @@ CA.RegisterAuras("DEATHKNIGHT", {
         auraSpellId = 1254252,
         cdmSpellId = 1254252,
         cdmBorrow = true,
+        engineDriven = true,
         unit = "player",
         filter = "HELPFUL|PLAYER",
         enableLabel = "Enable Lesser Ghoul Stacks Tracker",
@@ -666,9 +580,11 @@ CA.RegisterAuras("DEATHKNIGHT", {
         label = "Unholy DoTs",
         auraSpellId = VIRULENT_PLAGUE_ID,
         cdmBorrow = true,
+        engineDriven = true,
+        engineApply = DotEngineApply,
+        onEngineWire = DotEngineWire,
         unit = "target",
         filter = "HARMFUL|PLAYER",
-        keepVisible = true,
         enableLabel = "Enable Unholy DoTs Tracker",
         enableDescription = "Track Virulent Plague and Dread Plague as dual icons with cooldown swipes and missing-debuff alerts.",
         editModeName = "Unholy DoTs",
@@ -678,8 +594,6 @@ CA.RegisterAuras("DEATHKNIGHT", {
         },
         customIconHandling = true,
         onContainerCreated = OnContainerCreated,
-        onAuraFound = OnAuraFound,
-        onAuraMissing = OnAuraMissing,
         onEditModeEnter = OnEditModeEnter,
         onEditModeExit = OnEditModeExit,
         customRenderer = DotCustomRenderer,
@@ -701,9 +615,11 @@ CA.RegisterAuras("DEATHKNIGHT", {
         label = "Dread Plague",
         auraSpellId = DREAD_PLAGUE_ID,
         cdmBorrow = true,
+        engineDriven = true,
+        engineApply = DotEngineApply,
+        onEngineWire = DotEngineWire,
         unit = "target",
         filter = "HARMFUL|PLAYER",
-        keepVisible = true,
         anchorTo = "virulentPlague",
         skipEditMode = true,
         hideFromSettings = true,
@@ -713,8 +629,6 @@ CA.RegisterAuras("DEATHKNIGHT", {
         },
         customIconHandling = true,
         onContainerCreated = OnContainerCreated,
-        onAuraFound = OnAuraFound,
-        onAuraMissing = OnAuraMissing,
         onEditModeEnter = OnEditModeEnter,
         onEditModeExit = OnEditModeExit,
         settings = CA.DefaultSettings({}),
@@ -728,18 +642,12 @@ CA.RegisterAuras("DEATHKNIGHT", {
 local function HideAllExclamations()
     for _, auraId in ipairs({"virulentPlague", "dreadPlague"}) do
         local is = iconState[auraId]
-        if is then
-            is.excAnim:Stop()
-            is.excFrame:Hide()
+        local eng = is and is.engineLayers
+        if eng then
+            eng.excAnim:Stop()
+            eng.excHolder:Hide()
         end
     end
-end
-
-local function RescanBothDots()
-    local vpAura = CA._registry["virulentPlague"]
-    local dpAura = CA._registry["dreadPlague"]
-    if vpAura then CA.ScanAura(vpAura) end
-    if dpAura then CA.ScanAura(dpAura) end
 end
 
 local function SuppressAlerts()
@@ -748,7 +656,7 @@ local function SuppressAlerts()
     C_Timer.After(2, function()
         alertSuppressed = false
         if InCombatLockdown() then
-            RescanBothDots()
+            UpdateDotAlertLayers()
         end
     end)
 end
@@ -768,11 +676,10 @@ initFrame:SetScript("OnEvent", function(self, event)
             local dpComp = addon.Components and addon.Components["classAura_dreadPlague"]
             if vpComp and vpComp.db and dpComp and dpComp.db then
                 dpComp.db.enabled = vpComp.db.enabled
-
             end
 
             RefreshBothDots()
-            RescanBothDots()
+            UpdateDotAlertLayers()
         end)
     elseif event == "PLAYER_REGEN_DISABLED" then
         -- Entering combat: suppress alerts for 2s, then rescan
@@ -781,10 +688,14 @@ initFrame:SetScript("OnEvent", function(self, event)
         -- Leaving combat: immediately hide all exclamation alerts
         alertSuppressed = false
         HideAllExclamations()
+        UpdateDotAlertLayers()
     elseif event == "PLAYER_TARGET_CHANGED" then
-        -- New target: suppress alerts for 2s, then rescan
+        -- New target: suppress alerts for 2s, then rescan. The alert-layer
+        -- update runs after the suppression flag is set, so it only refreshes
+        -- the inactive art here; the exclamation returns via the 2s timer.
         if InCombatLockdown() then
             SuppressAlerts()
         end
+        UpdateDotAlertLayers()
     end
 end)

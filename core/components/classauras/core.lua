@@ -31,35 +31,6 @@ CA.NAV_KEY_BY_CLASS = {
 CA._registry = {}       -- [auraId] = auraDef (flat lookup)
 CA._classAuras = {}     -- [classToken] = { auraDef, auraDef, ... }
 CA._activeAuras = {}    -- [auraId] = { container, elements, component }
-CA._trackedUnits = {}   -- [unitToken] = true — built from registered auras
-
-local spellToAura = {}  -- [spellId] = auraDef — O(1) reverse lookup for UNIT_AURA addedAuras matching
-local nameToAura = {}   -- [lowerName] = auraDef — O(1) name-based fallback when spellId is secret
-
--- DurationObject-based aura tracking: maps auraId → { unit, auraInstanceID }
--- Populated by FindAuraOnUnit (direct scan), CDM SetAuraInstanceInfo hook, and RescanForCDMBorrow.
--- OnUpdate uses C_UnitAuras.GetAuraDuration(unit, auraInstanceID) to get live DurationObject each frame.
-local auraTracking = {}
-
--- GUID-based identity cache: persists across target switches for instant re-acquisition.
--- Populated by any successful aura identification (direct scan, CDM hook, addedAuras, rescan).
--- Indexed by unit GUID (not "target" token) so cache survives target switching.
-local guidCache = {}  -- [unitGUID] = { auraId, auraInstanceID, activeSpellId }
-
-local function CacheAuraIdentity(unit, auraId, auraInstanceID, activeSpellId)
-    local ok, guid = pcall(UnitGUID, unit)
-    if ok and guid and not issecretvalue(guid) then
-        guidCache[guid] = {
-            auraId = auraId,
-            auraInstanceID = auraInstanceID,
-            activeSpellId = activeSpellId,
-        }
-    end
-end
-
--- Expose for debug command and per-class modules
-CA._auraTracking = auraTracking
-CA._guidCache = guidCache
 
 function CA.RegisterAuras(classToken, auras)
     if not classToken or not auras then return end
@@ -68,30 +39,6 @@ function CA.RegisterAuras(classToken, auras)
         aura.classToken = classToken
         CA._registry[aura.id] = aura
         table.insert(CA._classAuras[classToken], aura)
-        if aura.unit then
-            CA._trackedUnits[aura.unit] = true
-        end
-        spellToAura[aura.auraSpellId] = aura
-        if aura.linkedSpellIds then
-            for _, linkedId in ipairs(aura.linkedSpellIds) do
-                spellToAura[linkedId] = aura
-            end
-        end
-        -- Populate name-based fallback for when spellId is secret in combat
-        -- Also store pre-resolved canonical name on the aura def for FindAuraOnUnit
-        local nameOk, spellName = pcall(C_Spell.GetSpellName, aura.auraSpellId)
-        if nameOk and spellName and not issecretvalue(spellName) then
-            nameToAura[spellName:lower()] = aura
-            aura._canonName = spellName:lower()
-        end
-        if aura.linkedSpellIds then
-            for _, linkedId in ipairs(aura.linkedSpellIds) do
-                local lok, lname = pcall(C_Spell.GetSpellName, linkedId)
-                if lok and lname and not issecretvalue(lname) then
-                    nameToAura[lname:lower()] = aura
-                end
-            end
-        end
     end
 end
 
@@ -263,32 +210,12 @@ local function CreateAuraContainer(aura)
     container:SetPoint(dp.point, dp.x or 0, dp.y or 0)
     container:Hide()
 
-    -- Text draws above bar fills: barRegion is container+1, barFill +2, squareBorder +3
-    local textFrame = CreateFrame("Frame", nil, container)
-    textFrame:SetAllPoints(container)
-    textFrame:SetFrameLevel(container:GetFrameLevel() + 4)
-
-    -- Create elements from definition
-    local elements = {}
-    local hasBar = false
-    for _, elemDef in ipairs(aura.elements or {}) do
-        local creator = elementCreators[elemDef.type]
-        if creator then
-            table.insert(elements, creator(container, elemDef, textFrame))
-        end
-        if elemDef.type == "bar" then hasBar = true end
-    end
-
-    -- Bar-capable auras get a name element (settings-driven; hidden by default)
-    if hasBar then
-        table.insert(elements, CreateTextElement(container,
-            { type = "text", key = "name", source = "name", baseSize = 10 }, textFrame))
-    end
-
+    -- All visuals live under the engine-managed button (built later by
+    -- CA.Engine via WireButton, which fills elements/textFrame); only the
+    -- positioned Scoot frame is created here.
     CA._activeAuras[aura.id] = {
         container = container,
-        elements = elements,
-        textFrame = textFrame,
+        elements = {},
     }
 
     addon.RegisterPetBattleFrame(container)
@@ -369,8 +296,6 @@ end, "classAuras")
 CA._GetDB = GetDB
 CA._GetComponentId = GetComponentId
 CA._playerClassToken = playerClassToken
-CA._CacheAuraIdentity = CacheAuraIdentity
-CA._spellToAura = spellToAura
-CA._nameToAura = nameToAura
 CA._InitializeContainers = InitializeContainers
 CA._RebuildAll = RebuildAll
+CA._elementCreators = elementCreators

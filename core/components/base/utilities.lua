@@ -7,6 +7,19 @@ local setProp = addon.ComponentsUtil._setProp
 
 local Util = addon.ComponentsUtil
 
+-- 12.1 secrecy gate: true when aura data is secret for addon code right now
+-- (any combat, encounters, M+, PvP). Fail-closed: a missing probe result or a
+-- secret return is treated as secret. Aura getters THROW from addon context
+-- while this is true, so callers must bail before scanning, not after.
+function addon.AurasSecretNow()
+    local fn = C_Secrets and C_Secrets.ShouldAurasBeSecret
+    if type(fn) ~= "function" then return false end
+    local ok, secret = pcall(fn)
+    if not ok then return true end
+    if issecretvalue and issecretvalue(secret) then return true end
+    return secret == true
+end
+
 -- Combat watcher: defers FullPowerFrame reapplies to avoid taint during combat.
 local fullPowerFrameCombatWatcher = nil
 local pendingFullPowerFrames = {}
