@@ -6,9 +6,16 @@ local TB = addon.TB
 --------------------------------------------------------------------------------
 -- Suppression State Machine
 --
--- Authority model: removal signals (OnUnitAuraRemovedEvent, ClearAuraInfo,
+-- Authority model: removal signals (OnUnitAuraRemovedEvent, ClearAuraInstanceInfo,
 -- RefreshData lost-instance) suppress an item. Restore only happens through
 -- validated add events or combat fallback timers.
+--
+-- 12.1 secrecy carve-out: while auras are secret, no restore path can validate
+-- (no plain aura instance ID exists in combat by any route), so a suppress
+-- would stick for the whole fight. suppressItem therefore fails OPEN under
+-- addon.AurasSecretNow(); Blizzard's own item visibility and the vertical
+-- mode SetIsActive alpha mirror are the authority under restriction, and the
+-- restriction-lift watcher below re-syncs when secrecy ends.
 --------------------------------------------------------------------------------
 
 local function clearSuppressionState(item)
@@ -53,6 +60,16 @@ end
 TB.enforceSuppressedVisibility = enforceSuppressedVisibility
 
 local function suppressItem(item, reason)
+    -- 12.1: fail open while auras are secret (see the header carve-out). A bar
+    -- may linger briefly after its aura drops mid-combat -- Blizzard's own
+    -- timing -- instead of vanishing for the rest of the fight.
+    if addon.AurasSecretNow and addon.AurasSecretNow() then
+        if TB.tbTraceEnabled then
+            TB.tbTrace("Suppression: skipped (auras secret) reason=%s id=%s",
+                tostring(reason or "?"), tostring(item):sub(-6))
+        end
+        return
+    end
     local now = GetTime()
     if not isItemSuppressed(item) then
         TB.suppressedByRemoval[item] = true
@@ -100,8 +117,14 @@ local function restoreSuppressedItem(item, reason)
 
     pcall(item.SetAlpha, item, 1)
     local ov = TB.trackedBarOverlays[item]
-    if ov and (not item.IsShown or item:IsShown()) then
-        ov:Show()
+    if ov then
+        -- Shown state can be secret in 12.1 combat (this path now runs
+        -- mid-combat via SecretAuraAddFailOpen); fail open and show the
+        -- overlay unless the item is plainly hidden.
+        local okSh, sh = pcall(item.IsShown, item)
+        if not okSh or issecretvalue(sh) or sh then
+            ov:Show()
+        end
     end
     if TB.tbTraceEnabled then
         TB.tbTrace("Suppression: restored reason=%s id=%s", tostring(reason or "?"), tostring(item):sub(-6))
@@ -125,14 +148,18 @@ function TB.hasLiveAuraInstance(item)
         return false, nil
     end
 
-    local getter = C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID
+    -- 12.1: GetAuraDataByAuraInstanceID returns a fully secret struct in combat;
+    -- even truthiness-testing it throws. GetAuraDuration is the sanctioned
+    -- liveness gate: nil = aura gone, DurationObject (plain userdata, safe to
+    -- truthy-test) = aura live. Never IsZero() here.
+    local getter = C_UnitAuras and C_UnitAuras.GetAuraDuration
     if type(getter) ~= "function" then
         return true, nil
     end
 
-    local ok, auraData = pcall(getter, "player", auraInstance)
-    if ok and auraData and not issecretvalue(auraData) then
-        return true, auraData
+    local ok, durObj = pcall(getter, "player", auraInstance)
+    if ok and durObj then
+        return true, nil
     end
 
     return false, nil
@@ -141,11 +168,13 @@ end
 local reusableRelevantSpells = {}
 
 function TB.getRelevantAddedAuraInfo(item, unitAuraUpdateInfo)
-    if not unitAuraUpdateInfo or type(unitAuraUpdateInfo) ~= "table" then
+    -- issecretvalue first: truthiness/ipairs on a secret payload throws, and
+    -- type() alone is not a gate (it reports "table" for secret tables too)
+    if issecretvalue(unitAuraUpdateInfo) or type(unitAuraUpdateInfo) ~= "table" then
         return false, nil
     end
     local added = unitAuraUpdateInfo.addedAuras
-    if type(added) ~= "table" then
+    if issecretvalue(added) or type(added) ~= "table" then
         return false, nil
     end
 
@@ -163,12 +192,13 @@ function TB.getRelevantAddedAuraInfo(item, unitAuraUpdateInfo)
     end
     if item.GetCooldownInfo then
         local okInfo, info = pcall(item.GetCooldownInfo, item)
-        if okInfo and type(info) == "table" then
+        if okInfo and not issecretvalue(info) and type(info) == "table" then
             addSpellToSet(relevantSpells, info.spellID)
             addSpellToSet(relevantSpells, info.overrideSpellID)
             addSpellToSet(relevantSpells, info.linkedSpellID)
-            if type(info.linkedSpellIDs) == "table" then
-                for _, linkedSID in ipairs(info.linkedSpellIDs) do
+            local linked = info.linkedSpellIDs
+            if not issecretvalue(linked) and type(linked) == "table" then
+                for _, linkedSID in ipairs(linked) do
                     addSpellToSet(relevantSpells, linkedSID)
                 end
             end
@@ -176,15 +206,17 @@ function TB.getRelevantAddedAuraInfo(item, unitAuraUpdateInfo)
     end
 
     for _, aura in ipairs(added) do
-        local sid = aura and aura.spellId
-        if type(sid) == "number" and not issecretvalue(sid) then
-            if relevantSpells[sid] then
-                return true, sid
-            end
-            if item.NeedsAddedAuraUpdate then
-                local okNeeds, needs = pcall(item.NeedsAddedAuraUpdate, item, sid)
-                if okNeeds and needs then
+        if not issecretvalue(aura) and type(aura) == "table" then
+            local sid = aura.spellId
+            if type(sid) == "number" and not issecretvalue(sid) then
+                if relevantSpells[sid] then
                     return true, sid
+                end
+                if item.NeedsAddedAuraUpdate then
+                    local okNeeds, needs = pcall(item.NeedsAddedAuraUpdate, item, sid)
+                    if okNeeds and not issecretvalue(needs) and needs then
+                        return true, sid
+                    end
                 end
             end
         end
@@ -234,7 +266,11 @@ function TB.scheduleBackgroundVerification(self)
 
         if TB.tbTraceEnabled then
             local auraState = auraData and "present" or "nil"
-            local auraInst = auraData and tostring(auraData.auraInstanceID) or "nil"
+            local auraInst = "nil"
+            if auraData then
+                local inst = auraData.auraInstanceID
+                auraInst = issecretvalue(inst) and "SECRET" or tostring(inst)
+            end
             local pendingText = hasPendingAdd and "yes" or "no"
             TB.tbTrace("BackgroundVerify(v15): idx=%d suppressed=%s pendingAdd=%s shown=%s clearAge=%.3f spell=%s aura=%s inst=%s id=%s",
                 idx, tostring(suppressed), pendingText, tostring(shown), clearAge,
@@ -254,3 +290,34 @@ function TB.scheduleBackgroundVerification(self)
 
     C_Timer.After(0, function() checkAt(1) end)
 end
+
+--------------------------------------------------------------------------------
+-- Restriction-Lift Re-sync
+--
+-- While aura data is secret in combat, suppression and vertical stack
+-- membership degrade to their last plain state. Aura secrecy can lift without
+-- a regen edge (ENCOUNTER_END with trash still in combat, zone transitions),
+-- so watch every lift signal: sweep suppressed items with live auras, then
+-- rebuild vertical mode unconditionally to erase any drift. No secrecy gate
+-- here -- hasLiveAuraInstance is self-gating and a rebuild under secrecy is
+-- safe, just cosmetically wasteful.
+--------------------------------------------------------------------------------
+
+local regenFrame = CreateFrame("Frame")
+regenFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+regenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+regenFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+regenFrame:RegisterEvent("ENCOUNTER_END")
+regenFrame:SetScript("OnEvent", function()
+    for item in pairs(TB.suppressedByRemoval) do
+        if TB.hasLiveAuraInstance(item) then
+            TB.restoreSuppressedItem(item, "RestrictionLiftResync")
+        end
+    end
+    if TB.verticalModeActive then
+        local comp = addon.Components and addon.Components.trackedBars
+        if comp and TB.scheduleVerticalRebuild then
+            TB.scheduleVerticalRebuild(comp)
+        end
+    end
+end)

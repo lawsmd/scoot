@@ -1,4 +1,23 @@
 -- vertical.lua - Tracked Bars vertical mode: data mirroring and stack layout
+--
+-- 12.1 combat contract (aura data is secret in instances/M+/PvP combat):
+--   * Stacks stay live through forwarded hook data: SetValue/SetMinMaxValues and
+--     SetText args (secret or plain) are forwarded raw to Scoot widgets, and the
+--     SetIsActive arg drives stack visibility via SetAlphaFromBoolean -- the
+--     engine branches on the secret, Lua never does.
+--   * Rebuilds remain allowed in combat; every read in the build path is
+--     guarded and fails OPEN (a secret state builds the stack and lets the
+--     alpha mirror decide). A stack darkened by a secret keeps its layout slot
+--     until the next plain-state rebuild (restriction-lift watcher in
+--     suppression.lua).
+--   * Stack-count text under secrecy shows Blizzard's raw text ("" unless the
+--     count is > 1), matching Blizzard's own display.
+--   * Suppression (the anti-linger authority) is suspended while auras are
+--     secret; bar appear/disappear timing is Blizzard's engine timing.
+--   * Membership changes mid-combat ride Blizzard's own signals (Show/Hide,
+--     SetIsActive, RefreshLayout); anything Blizzard cannot surface mid-combat,
+--     this module cannot either. Style/settings changes still defer to regen
+--     via the core _pendingApplyStyles path.
 local addonName, addon = ...
 
 local TB = addon.TB
@@ -69,7 +88,9 @@ function TB.installDataMirrorHooks(child)
         if iconFrame.Icon and iconFrame.Icon.SetTexture then
             hooksecurefunc(iconFrame.Icon, "SetTexture", function(_, tex)
                 local m = TB.barItemMirror[child]
-                if m then m.spellTexture = tex end
+                -- Texture is cooldown-derived and should stay plain; keeping the
+                -- last plain value beats storing a secret we later truthy-test.
+                if m and not issecretvalue(tex) then m.spellTexture = tex end
                 if TB.verticalModeActive then
                     addon.UpdateVerticalBarText(child, "icon")
                 end
@@ -93,10 +114,15 @@ function TB.installDataMirrorHooks(child)
             if TB.tbTraceEnabled then
                 local prev = TB.prevIsActive[self]
                 local shouldLog = false
+                -- 12.1: shown state can itself be secret under aura restriction;
+                -- branching or tostring on it would throw inside this hook body.
+                local okShown, curShown = pcall(self.IsShown, self)
+                local shownPlain = okShown and not issecretvalue(curShown)
+                local shownStr = shownPlain and tostring(curShown) or "SECRET"
                 if argSecret then
-                    local currentShown = self:IsShown()
-                    if TB.prevShown[self] ~= currentShown then
-                        TB.prevShown[self] = currentShown
+                    local dedupeKey = shownPlain and curShown or "SECRET"
+                    if TB.prevShown[self] ~= dedupeKey then
+                        TB.prevShown[self] = dedupeKey
                         shouldLog = true
                     end
                 else
@@ -111,7 +137,7 @@ function TB.installDataMirrorHooks(child)
                     TB.tbTrace("SetIsActive: arg=%s(secret=%s) prev=%s shown=%s id=%s",
                         argSecret and "SECRET" or tostring(active), tostring(argSecret),
                         prev == nil and "nil" or tostring(prev),
-                        tostring(self:IsShown()),
+                        shownStr,
                         tostring(self):sub(-6))
                 end
             end
@@ -121,9 +147,25 @@ function TB.installDataMirrorHooks(child)
                 TB.prevIsActive[self] = nil
             end
             if TB.verticalModeActive then
+                -- Engine-side liveness: SetAlphaFromBoolean accepts a secret
+                -- boolean, so the stack tracks Blizzard's active state on the
+                -- engine's timing even while aura data is secret.
+                local stack = TB.blizzItemToStack[self]
+                if stack then
+                    pcall(stack.SetAlphaFromBoolean, stack, active, 1, 0)
+                end
                 local comp = addon.Components and addon.Components.trackedBars
                 if comp then
-                    TB.scheduleVerticalRebuild(comp)
+                    if not argSecret then
+                        TB.scheduleVerticalRebuild(comp)
+                    elseif not stack then
+                        -- Restricted combat: the item went (secretly) active with
+                        -- no stack yet -- it was inactive at the last plain-state
+                        -- rebuild. Build one now; once the stack exists, secret
+                        -- calls are pure alpha forwards (the viewer pump fires
+                        -- every frame -- never rebuild per secret call).
+                        TB.scheduleVerticalRebuild(comp)
+                    end
                 end
             end
         end)
@@ -185,22 +227,40 @@ function TB.installDataMirrorHooks(child)
         end)
     end
 
-    if child.ClearAuraInfo then
-        hooksecurefunc(child, "ClearAuraInfo", function(self)
+    -- ClearAuraInfo was renamed ClearAuraInstanceInfo in 12.0.0, so the old hook
+    -- has been silently dead since then. The renamed method fires on every
+    -- aura-instance SWAP too (SetAuraInstanceInfo clears before assigning the new
+    -- instance), so the removal decision must be deferred one tick and re-checked.
+    local clearMethodName
+    if type(child.ClearAuraInstanceInfo) == "function" then
+        clearMethodName = "ClearAuraInstanceInfo"
+    elseif type(child.ClearAuraInfo) == "function" then
+        clearMethodName = "ClearAuraInfo"
+    end
+    if clearMethodName then
+        hooksecurefunc(child, clearMethodName, function(self)
             local hadAuraInstance = TB.lastKnownAuraInstance[self] ~= nil
             TB.lastKnownAuraInstance[self] = nil
+            if not hadAuraInstance then return end
 
-            if TB.isItemSuppressed(self) then
-                TB.enforceSuppressedVisibility(self)
-                return
-            end
+            C_Timer.After(0, function()
+                if addon.AurasSecretNow and addon.AurasSecretNow() then return end
+                -- Swap-fire guard: a live instance now means this was a swap,
+                -- not a removal.
+                if TB.hasLiveAuraInstance(self) then return end
 
-            if hadAuraInstance and TB.getItemCooldownID(self) then
-                TB.suppressItem(self, "ClearAuraInfo")
-                if not TB.verticalModeActive then
-                    TB.scheduleBackgroundVerification(self)
+                if TB.isItemSuppressed(self) then
+                    TB.enforceSuppressedVisibility(self)
+                    return
                 end
-            end
+
+                if TB.getItemCooldownID(self) then
+                    TB.suppressItem(self, "ClearAuraInstanceInfo")
+                    if not TB.verticalModeActive then
+                        TB.scheduleBackgroundVerification(self)
+                    end
+                end
+            end)
         end)
     end
 
@@ -230,6 +290,15 @@ function TB.installDataMirrorHooks(child)
         hooksecurefunc(child, "OnUnitAuraAddedEvent", function(self, unitAuraUpdateInfo)
             if not TB.isItemSuppressed(self) then return end
 
+            -- 12.1: while auras are secret the add cannot be validated (payload
+            -- and instance ID are secret), so a suppressed item could never
+            -- restore mid-combat. Fail open; Blizzard's own item visibility and
+            -- the SetIsActive alpha mirror are the authority under restriction.
+            if addon.AurasSecretNow and addon.AurasSecretNow() then
+                TB.restoreSuppressedItem(self, "SecretAuraAddFailOpen")
+                return
+            end
+
             local relevantAdd, matchedSpellID = TB.getRelevantAddedAuraInfo(self, unitAuraUpdateInfo)
             TB.pendingAuraAdd[self] = {
                 at = GetTime(),
@@ -256,8 +325,11 @@ function TB.installDataMirrorHooks(child)
 
             if TB.tbTraceEnabled then
                 local addedCount = 0
-                if unitAuraUpdateInfo and type(unitAuraUpdateInfo) == "table" and type(unitAuraUpdateInfo.addedAuras) == "table" then
-                    addedCount = #unitAuraUpdateInfo.addedAuras
+                if not issecretvalue(unitAuraUpdateInfo) and type(unitAuraUpdateInfo) == "table" then
+                    local addedList = unitAuraUpdateInfo.addedAuras
+                    if not issecretvalue(addedList) and type(addedList) == "table" then
+                        addedCount = #addedList
+                    end
                 end
                 TB.tbTrace("AuraAdded(v15e): pending addAuras=%d relevant=%s matchSpell=%s hasAuraInst=%s liveAura=%s hasAuraSpell=%s id=%s",
                     addedCount, tostring(relevantAdd), tostring(matchedSpellID),
@@ -336,6 +408,9 @@ end
 local function releaseVertStack(stack)
     if not stack then return end
     stack:Hide()
+    -- A stack darkened by the SetIsActive alpha mirror must not be reused
+    -- invisible after combat.
+    stack:SetAlpha(1)
     stack:ClearAllPoints()
     stack:SetParent(UIParent)
     stack.iconTexture:SetTexture(nil)
@@ -456,6 +531,30 @@ end
 -- Vertical Mode: Fill + Text Updates
 --------------------------------------------------------------------------------
 
+-- Forwarding a secret string to SetText is legal (AllowedWhenTainted); what
+-- throws is any Lua-side branch on it -- including the bare `value or ""`.
+local function setTextSecretSafe(fs, value)
+    if issecretvalue(value) then
+        fs:SetText(value)
+    else
+        fs:SetText(value or "")
+    end
+end
+
+local function setApplicationsText(fs, value)
+    if issecretvalue(value) then
+        -- Blizzard's GetApplicationsText returns a plain "" for counts <= 1 and
+        -- a secret number only for counts > 1, so "value is secret" literally
+        -- means "there is a stack count worth showing".
+        fs:SetText(value)
+        fs:SetShown(true)
+    else
+        local txt = value or ""
+        fs:SetText(txt)
+        fs:SetShown(txt ~= "" and txt ~= "0" and txt ~= "1")
+    end
+end
+
 function addon.UpdateVerticalBarText(child, which)
     local mirror = TB.barItemMirror[child]
     if not mirror then return end
@@ -463,15 +562,13 @@ function addon.UpdateVerticalBarText(child, which)
     if not stack then return end
 
     if which == "name" then
-        stack.spellNameFS:SetText(mirror.nameText or "")
+        setTextSecretSafe(stack.spellNameFS, mirror.nameText)
     elseif which == "duration" then
-        stack.timerFS:SetText(mirror.durationText or "")
+        setTextSecretSafe(stack.timerFS, mirror.durationText)
     elseif which == "icon" then
         stack.iconTexture:SetTexture(mirror.spellTexture)
     elseif which == "applications" then
-        local txt = mirror.applicationsText or ""
-        stack.applicationsFS:SetText(txt)
-        stack.applicationsFS:SetShown(txt ~= "" and txt ~= "0" and txt ~= "1")
+        setApplicationsText(stack.applicationsFS, mirror.applicationsText)
     end
 end
 
@@ -687,8 +784,15 @@ local function enforceBlizzItemAlpha(child)
     TB.alphaEnforcedItems[child] = true
     if child.SetAlpha then
         hooksecurefunc(child, "SetAlpha", function(self, alpha)
-            if TB.verticalModeActive and alpha > 0 then
+            -- issecretvalue: comparing a secret alpha throws. Skipping the
+            -- re-assert on a secret is safe -- our own writes are always plain 0.
+            -- The reentrancy flag stands in for the "0 stops recursion" property,
+            -- which is unreadable when the incoming alpha is secret.
+            if TB._alphaReasserting then return end
+            if TB.verticalModeActive and not issecretvalue(alpha) and alpha > 0 then
+                TB._alphaReasserting = true
                 pcall(self.SetAlpha, self, 0)
+                TB._alphaReasserting = false
             end
         end)
     end
@@ -714,6 +818,98 @@ local function ensureVertContainer()
     return vertContainer
 end
 
+local function buildOneVerticalItem(child, component, displayMode)
+    TB.installDataMirrorHooks(child)
+
+    if not TB.visHookedItems[child] then
+        hooksecurefunc(child, "Hide", function(self) TB.onItemFrameHide(self, component) end)
+        hooksecurefunc(child, "Show", function(self) TB.onItemFrameShow(self, component) end)
+        TB.visHookedItems[child] = true
+    end
+
+    enforceBlizzItemAlpha(child)
+
+    -- 12.1: shown state can be secret under aura restriction. Fail OPEN (build
+    -- the stack) and let the SetIsActive alpha mirror drive its visibility;
+    -- only a plain-false shown state skips.
+    local okShown, shownVal = pcall(child.IsShown, child)
+    local shownIsSecret = okShown and issecretvalue(shownVal)
+    local skipItem = false
+    if okShown and not shownIsSecret then
+        skipItem = not shownVal
+    end
+    if not skipItem then
+        local ok, isInactive = pcall(function() return child.isActive == false end)
+        if ok and not issecretvalue(isInactive) and isInactive then
+            skipItem = true
+        end
+    end
+    if not skipItem and TB.isItemSuppressed(child) then
+        skipItem = true
+    end
+    if skipItem then
+        -- Don't create a vertical stack for hidden or inactive items
+        return
+    end
+
+    local stack = acquireVertStack()
+    stack:SetParent(vertContainer)
+
+    local mirror = TB.barItemMirror[child] or {}
+    TB.barItemMirror[child] = mirror
+
+    -- Register bookkeeping before the fallible build steps so a mid-build
+    -- failure leaves the stack reclaimable by the next releaseAllVertStacks
+    -- instead of orphaned (a pooled stack starts hidden, so nothing shows).
+    table.insert(activeVertStacks, { blizzItem = child, frame = stack })
+    TB.blizzItemToStack[child] = stack
+
+    local iconFrame = (child.GetIconFrame and child:GetIconFrame()) or child.Icon
+
+    if iconFrame and iconFrame.Icon then
+        local ok, tex = pcall(iconFrame.Icon.GetTexture, iconFrame.Icon)
+        if ok and not issecretvalue(tex) and tex then mirror.spellTexture = tex end
+    end
+
+    stack.iconTexture:SetTexture(mirror.spellTexture)
+    setTextSecretSafe(stack.spellNameFS, mirror.nameText)
+    setTextSecretSafe(stack.timerFS, mirror.durationText)
+    setApplicationsText(stack.applicationsFS, mirror.applicationsText)
+
+    layoutVerticalStack(stack, displayMode)
+    styleVerticalStack(stack, component)
+
+    mirror.vertStatusBar = stack.barFill
+
+    local initBar = (child.GetBarFrame and child:GetBarFrame()) or child.Bar
+    if initBar then
+        pcall(function()
+            local min, max = initBar:GetMinMaxValues()
+            stack.barFill:SetMinMaxValues(min, max)
+        end)
+        pcall(function()
+            local val = initBar:GetValue()
+            stack.barFill:SetValue(val)
+        end)
+    end
+
+    setupVertStackTooltip(stack, child)
+
+    stack:Show()
+
+    -- Seed the liveness channel when the plain reads were unavailable: the
+    -- engine resolves the secret boolean C-side; subsequent SetIsActive
+    -- forwards keep it current.
+    if shownIsSecret then
+        pcall(stack.SetAlphaFromBoolean, stack, shownVal, 1, 0)
+    elseif not okShown then
+        local rawActive = child.isActive
+        if issecretvalue(rawActive) then
+            pcall(stack.SetAlphaFromBoolean, stack, rawActive, 1, 0)
+        end
+    end
+end
+
 function TB.applyVerticalMode(component)
     TB.verticalModeActive = true
     ensureVertContainer()
@@ -727,74 +923,13 @@ function TB.applyVerticalMode(component)
     local children = { frame:GetChildren() }
     for _, child in ipairs(children) do
         if child.GetBarFrame or child.Bar then
-            TB.installDataMirrorHooks(child)
-
-            if not TB.visHookedItems[child] then
-                hooksecurefunc(child, "Hide", function(self) TB.onItemFrameHide(self, component) end)
-                hooksecurefunc(child, "Show", function(self) TB.onItemFrameShow(self, component) end)
-                TB.visHookedItems[child] = true
+            -- Per-child containment: release-first ordering means an uncaught
+            -- throw here would leave the whole viewer rendered as nothing.
+            local ok, err = pcall(buildOneVerticalItem, child, component, displayMode)
+            if not ok and TB.tbTraceEnabled then
+                TB.tbTrace("applyVerticalMode: item build failed err=%s id=%s",
+                    tostring(err), tostring(child):sub(-6))
             end
-
-            enforceBlizzItemAlpha(child)
-
-            local skipItem = not child:IsShown()
-            if not skipItem then
-                local ok, isInactive = pcall(function() return child.isActive == false end)
-                if ok and not issecretvalue(isInactive) and isInactive then
-                    skipItem = true
-                end
-            end
-            if not skipItem and TB.isItemSuppressed(child) then
-                skipItem = true
-            end
-            if skipItem then
-                -- Don't create a vertical stack for hidden or inactive items
-            else
-
-            local stack = acquireVertStack()
-            stack:SetParent(vertContainer)
-
-            local mirror = TB.barItemMirror[child] or {}
-
-            local barFrame2 = (child.GetBarFrame and child:GetBarFrame()) or child.Bar
-            local iconFrame = (child.GetIconFrame and child:GetIconFrame()) or child.Icon
-
-            if iconFrame and iconFrame.Icon then
-                local ok, tex = pcall(iconFrame.Icon.GetTexture, iconFrame.Icon)
-                if ok and tex then mirror.spellTexture = tex end
-            end
-
-            stack.iconTexture:SetTexture(mirror.spellTexture)
-            stack.spellNameFS:SetText(mirror.nameText or "")
-            stack.timerFS:SetText(mirror.durationText or "")
-            local appText = mirror.applicationsText or ""
-            stack.applicationsFS:SetText(appText)
-            stack.applicationsFS:SetShown(appText ~= "" and appText ~= "0" and appText ~= "1")
-
-            layoutVerticalStack(stack, displayMode)
-            styleVerticalStack(stack, component)
-
-            TB.barItemMirror[child] = mirror
-            mirror.vertStatusBar = stack.barFill
-            table.insert(activeVertStacks, { blizzItem = child, frame = stack })
-            TB.blizzItemToStack[child] = stack
-
-            local initBar = (child.GetBarFrame and child:GetBarFrame()) or child.Bar
-            if initBar then
-                pcall(function()
-                    local min, max = initBar:GetMinMaxValues()
-                    stack.barFill:SetMinMaxValues(min, max)
-                end)
-                pcall(function()
-                    local val = initBar:GetValue()
-                    stack.barFill:SetValue(val)
-                end)
-            end
-
-            setupVertStackTooltip(stack, child)
-
-            stack:Show()
-            end -- else (skipItem)
         end
     end
 

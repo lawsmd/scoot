@@ -1416,19 +1416,32 @@ end
 -- Viewer Integration
 --------------------------------------------------------------------------------
 
+-- Diagnostic record for /scoot debug cdm: last ApplyToViewer outcome per viewer
+local function recordApply(viewerFrameName, outcome)
+    Overlays._lastApply = Overlays._lastApply or {}
+    Overlays._lastApply[viewerFrameName] = { t = GetTime(), outcome = outcome }
+end
+
 function Overlays.ApplyToViewer(viewerFrameName, componentId)
     local viewer = _G[viewerFrameName]
-    if not viewer then return end
+    if not viewer then
+        recordApply(viewerFrameName, "no viewer global")
+        return
+    end
 
     if viewer.IsVisible and not viewer:IsVisible() then
         for _, child in ipairs(getViewerChildren(viewer, viewerFrameName)) do
             Overlays.ReleaseForIcon(child)
         end
+        recordApply(viewerFrameName, "viewer not visible: overlays released")
         return
     end
 
     local component = addon.Components and addon.Components[componentId]
-    if not component or not component.db then return end
+    if not component or not component.db then
+        recordApply(viewerFrameName, component and "component has no db" or "component missing")
+        return
+    end
 
     local db = component.db
     local borderEnabled = db.borderEnable
@@ -1447,11 +1460,14 @@ function Overlays.ApplyToViewer(viewerFrameName, componentId)
     local useSquareSwipe = db.squareCooldownSwipe
     local hideRing = db.hideDecorativeRing
 
+    local styledCount, invisCount, invalidCount = 0, 0, 0
     for _, child in ipairs(getViewerChildren(viewer, viewerFrameName)) do
         if isValidCDMItemFrame(child) then
             if not isFrameVisible(child) then
                 Overlays.ReleaseForIcon(child)
+                invisCount = invisCount + 1
             else
+                styledCount = styledCount + 1
                 -- Apply icon sizing (with zoom) if configured
                 if hasCustomSize and iconWidth and iconHeight then
                     Overlays.ApplyIconSize(child, {
@@ -1549,8 +1565,13 @@ function Overlays.ApplyToViewer(viewerFrameName, componentId)
                     end
                 end
             end
+        else
+            invalidCount = invalidCount + 1
         end
     end
+
+    recordApply(viewerFrameName, string.format("styled %d, invisible %d, invalid %d",
+        styledCount, invisCount, invalidCount))
 
     -- Apply per-icon cooldown opacity (uses SetAlphaFromBoolean with secret booleans)
     applyPerIconCooldownOpacity(viewerFrameName, componentId)
@@ -1701,6 +1722,18 @@ function Overlays.HookViewer(viewerFrameName, componentId)
         end)
     end
 
+    -- Diagnostic record for /scoot debug cdm: which methods existed at hook time
+    -- (RefreshData/OnCooldownDataChanged are recorded but not hooked)
+    Overlays._hookState = Overlays._hookState or {}
+    Overlays._hookState[viewerFrameName] = string.format(
+        "OnAcquireItemFrame=%s OnReleaseItemFrame=%s RefreshLayout=%s Layout=%s RefreshData=%s OnCooldownDataChanged=%s",
+        tostring(viewer.OnAcquireItemFrame ~= nil),
+        tostring(viewer.OnReleaseItemFrame ~= nil),
+        tostring(viewer.RefreshLayout ~= nil),
+        tostring(viewer.Layout ~= nil),
+        tostring(viewer.RefreshData ~= nil),
+        tostring(viewer.OnCooldownDataChanged ~= nil))
+
     hookedViewers[viewerFrameName] = true
     return true
 end
@@ -1761,6 +1794,7 @@ local function startCleanupTicker()
     if cleanupTicker then return end
     if C_Timer and C_Timer.NewTicker then
         cleanupTicker = C_Timer.NewTicker(0.5, runOverlayCleanup)
+        Overlays._cleanupTickerStarted = true
     end
 end
 

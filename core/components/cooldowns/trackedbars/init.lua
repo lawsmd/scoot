@@ -191,6 +191,9 @@ TB.hideBarOverlay = nil
 
 local vertRebuildPending = false
 
+-- Deliberately NO combat/secrecy gate: the rebuild path is combat-safe (every
+-- read fails open under secrecy) and this is what lets a bar that first
+-- activates mid-instance-combat get its stack. Load-bearing for 12.1.
 local function scheduleVerticalRebuild(component)
     if vertRebuildPending then return end
     vertRebuildPending = true
@@ -215,7 +218,9 @@ local function onItemFrameHide(self, component)
     cancelCascade(self)
     TB.auraRemovedSpellID[self] = nil
     if TB.tbTraceEnabled then
-        TB.tbTrace("OnHide: id=%s shown=%s", tostring(self):sub(-6), tostring(self:IsShown()))
+        local okSh, sh = pcall(self.IsShown, self)
+        TB.tbTrace("OnHide: id=%s shown=%s", tostring(self):sub(-6),
+            (okSh and not issecretvalue(sh)) and tostring(sh) or "SECRET")
     end
     if TB.verticalModeActive then
         scheduleVerticalRebuild(component)
@@ -227,8 +232,16 @@ end
 local function onItemFrameShow(self, component)
     if TB.tbTraceEnabled then
         local ok, iActive = pcall(function() return self.isActive end)
+        local iaStr
+        if not ok then
+            iaStr = "ERR"
+        elseif issecretvalue(iActive) then
+            iaStr = "SECRET"
+        else
+            iaStr = tostring(iActive)
+        end
         TB.tbTrace("OnShow: isActive=%s id=%s hideAge=%s",
-            ok and tostring(iActive) or "ERR",
+            iaStr,
             tostring(self):sub(-6),
             TB.recentHide[self] and string.format("%.3f", GetTime() - TB.recentHide[self]) or "none")
     end
@@ -334,39 +347,46 @@ local function hookTrackedBars(component)
                 TB.visHookedItems[itemFrame] = true
             end
 
-            if InCombatLockdown and InCombatLockdown() then return end
+            -- Vertical rebuilds are combat-safe (Scoot-owned frames, fail-open
+            -- reads) and this hook is the only handler of mid-combat item
+            -- acquisition, so the vertical branch must run before the combat
+            -- bail. The default-mode restyle stays combat-gated.
             local mode = TB.getTrackedBarMode()
             if mode == "vertical" then
                 scheduleVerticalRebuild(component)
-            else
-                C_Timer.After(0, function()
-                    if addon.ApplyTrackedBarVisualsForChild then
-                        addon.ApplyTrackedBarVisualsForChild(component, itemFrame)
-                    end
-                end)
+                return
             end
+            if InCombatLockdown and InCombatLockdown() then return end
+            C_Timer.After(0, function()
+                if addon.ApplyTrackedBarVisualsForChild then
+                    addon.ApplyTrackedBarVisualsForChild(component, itemFrame)
+                end
+            end)
         end)
     end
 
     if frame.RefreshLayout then
         hooksecurefunc(frame, "RefreshLayout", function()
-            if InCombatLockdown and InCombatLockdown() then return end
+            -- Same split as OnAcquireItemFrame: RefreshLayout is the only
+            -- mid-combat membership change signal (UNIT_AURA isFullUpdate), so
+            -- the vertical branch must not be combat-gated.
             local mode = TB.getTrackedBarMode()
             if mode == "vertical" then
                 scheduleVerticalRebuild(component)
-            else
-                C_Timer.After(0, function()
-                    if not addon or not addon.Components or not addon.Components.trackedBars then return end
-                    local comp = addon.Components.trackedBars
-                    local f = _G[comp.frameName]
-                    if not f then return end
-                    for _, child in ipairs({ f:GetChildren() }) do
-                        if child:IsShown() and addon.ApplyTrackedBarVisualsForChild then
-                            addon.ApplyTrackedBarVisualsForChild(comp, child)
-                        end
-                    end
-                end)
+                return
             end
+            if InCombatLockdown and InCombatLockdown() then return end
+            C_Timer.After(0, function()
+                if not addon or not addon.Components or not addon.Components.trackedBars then return end
+                local comp = addon.Components.trackedBars
+                local f = _G[comp.frameName]
+                if not f then return end
+                for _, child in ipairs({ f:GetChildren() }) do
+                    if child:IsShown() and addon.ApplyTrackedBarVisualsForChild then
+                        addon.ApplyTrackedBarVisualsForChild(comp, child)
+                    end
+                end
+            end)
         end)
     end
 

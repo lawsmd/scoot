@@ -194,6 +194,7 @@ core/debug/export.lua
 core/debug/inspector.lua
 core/debug/misc.lua
 core/debug/cdmlayers.lua
+core/debug/cdm.lua
 core/debug/hover.lua
 core/debug/dmY.lua
 core/debug/rosteroverlay.lua
