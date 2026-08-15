@@ -60,6 +60,8 @@ function Controls:CreateTabbedSection(options)
     local onTabChange = options.onTabChange
     local onHeightChange = options.onHeightChange
     local name = options.name
+    -- Per-section row capacity; every existing caller keeps the default
+    local maxTabsPerRow = options.maxTabsPerRow or MAX_TABS_PER_ROW
 
     -- Get initial selected tab from session storage
     local selectedTabKey = GetTabState(componentId, sectionKey, defaultTab)
@@ -83,7 +85,7 @@ function Controls:CreateTabbedSection(options)
 
     -- Calculate tab row layout
     local numTabs = #tabs
-    local hasSecondRow = numTabs > MAX_TABS_PER_ROW
+    local hasSecondRow = numTabs > maxTabsPerRow
     local tabBarHeight = hasSecondRow and (TAB_HEIGHT * 2 + TAB_ROW_SPACING) or TAB_HEIGHT
 
     -- Main container frame
@@ -338,21 +340,21 @@ function Controls:CreateTabbedSection(options)
 
         -- Recalculate row layout based on visible count
         local visCount = #allTabs
-        local needsSecondRow = visCount > MAX_TABS_PER_ROW
+        local needsSecondRow = visCount > maxTabsPerRow
         local newTabBarHeight = needsSecondRow and (TAB_HEIGHT * 2 + TAB_ROW_SPACING) or TAB_HEIGHT
         tabBar:SetHeight(newTabBarHeight)
         tabBarHeight = newTabBarHeight  -- update upvalue
 
-        -- Split into rows: bottom row (first 5), top row (6+)
-        local bottomCount = math.min(MAX_TABS_PER_ROW, visCount)
+        -- Split into rows: bottom row (first maxTabsPerRow), top row (rest)
+        local bottomCount = math.min(maxTabsPerRow, visCount)
         local bottomRow = {}
         for i = 1, bottomCount do
             table.insert(bottomRow, allTabs[i])
         end
 
         local topRow = {}
-        if visCount > MAX_TABS_PER_ROW then
-            for i = MAX_TABS_PER_ROW + 1, visCount do
+        if visCount > maxTabsPerRow then
+            for i = maxTabsPerRow + 1, visCount do
                 table.insert(topRow, allTabs[i])
             end
         end

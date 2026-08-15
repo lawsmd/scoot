@@ -119,10 +119,29 @@ end
 --                            Aura Name feature is enabled (hideNameText false)
 --   useLightDim     bool     Use lighter dim text color
 --   rowHeight       number   Base row height (default 76). A floor, not a ceiling: the row
---                            grows to fit its measured contents, up to PREVIEW_MAX_ROW_HEIGHT.
+--                            grows to fit its measured contents, up to maxRowHeight.
+--   previewScale    number/nil  Opt-in true-size mode (icon/bar/iconbar): render at
+--                            configured size x (scale setting / 100) x previewScale
+--                            instead of normalizing to the display budget. 1 = 1:1.
+--   maxRowHeight    number/nil  Row growth ceiling (default PREVIEW_MAX_ROW_HEIGHT).
 --   borderPath      string   Which border implementation to draw with: "shared" (default,
 --                            addon.ApplyIconBorderStyle) or "customGroups" (the CG HUD path).
 --                            Must match whichever one the previewed system uses at runtime.
+--   getSetting      fn/nil   Override for the settings read path (key -> value). Lets a
+--                            draft (no component db yet) drive the preview.
+--   getSubSetting   fn/nil   Override for the sub-table read path (tableKey, key, default).
+--   shapeAtlas      string/nil  Render the icon element as this atlas instead of a spell
+--                            texture (shape-style trackers). Suppresses crop and borders.
+--   shapeColor      table/nil   {r,g,b,a} vertex color for shapeAtlas.
+--   shapeDrain      bool     Animate a drain sweep over shapeAtlas: a Cooldown clipped to
+--                            the glyph, driven by the same 15s cycle as the countdown.
+--   noBottomBorder  bool     Skip the divider line under the row.
+--   noHover         bool     Skip the accent hover highlight on the row.
+--   noLabel         bool     Skip the "Preview:" label (caller draws its own).
+--   timerEpoch      table/nil  Caller-owned countdown anchor { start = <GetTime()> }.
+--                            Seeded on first use; a rebuilt row resumes the same
+--                            15s cycle instead of restarting it. The caller resets
+--                            the table (or its start) to restart the countdown.
 --------------------------------------------------------------------------------
 
 function Controls:CreatePreview(options)
@@ -139,13 +158,14 @@ function Controls:CreatePreview(options)
     local previewNameLabel = options.previewNameLabel
     local useLightDim = options.useLightDim
     local rowHeight = options.rowHeight or PREVIEW_ROW_HEIGHT
+    local maxRowHeight = options.maxRowHeight or PREVIEW_MAX_ROW_HEIGHT
     local borderPath = options.borderPath or "shared"
 
-    -- Component settings helpers
+    -- Component settings helpers (overridable so a draft can drive the preview)
     local Helpers = addon.UI.Settings.Helpers
     local h = Helpers.CreateComponentHelpers(componentId)
-    local getSetting = h.get
-    local getSubSetting = h.getSubSetting
+    local getSetting = options.getSetting or h.get
+    local getSubSetting = options.getSubSetting or h.getSubSetting
 
     -- Resolve a setting key through the mapping table
     local function readSetting(canonicalKey, default)
@@ -154,6 +174,13 @@ function Controls:CreatePreview(options)
         if val == nil then return default end
         return val
     end
+
+    -- True-size mode: one factor for art and text. nil when previewScale is
+    -- absent, leaving every normalized path exactly as before (the scale key
+    -- is not even read).
+    local trueScale = options.previewScale
+        and (options.previewScale * (readSetting("scale", 100) / 100))
+        or nil
 
     local showIcon = (mode == "icon" or mode == "iconbar")
     local showBar = (mode == "bar" or mode == "iconbar")
@@ -181,14 +208,16 @@ function Controls:CreatePreview(options)
     row:EnableMouse(true)
 
     -- Hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    if not options.noHover then
+        local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
+        hoverBg:SetAllPoints()
+        hoverBg:SetColorTexture(ar, ag, ab, 0.08)
+        hoverBg:Hide()
+        row._hoverBg = hoverBg
 
-    row:SetScript("OnEnter", function(self) self._hoverBg:Show() end)
-    row:SetScript("OnLeave", function(self) self._hoverBg:Hide() end)
+        row:SetScript("OnEnter", function(self) self._hoverBg:Show() end)
+        row:SetScript("OnLeave", function(self) self._hoverBg:Hide() end)
+    end
 
     -- Bottom border
     local bottomBorder = row:CreateTexture(nil, "BORDER", nil, -1)
@@ -197,15 +226,18 @@ function Controls:CreatePreview(options)
     bottomBorder:SetHeight(PREVIEW_BORDER)
     bottomBorder:SetColorTexture(ar, ag, ab, 0.2)
     row._bottomBorder = bottomBorder
+    if options.noBottomBorder then bottomBorder:Hide() end
 
     -- "Preview:" label (left side)
-    local previewLabelFS = row:CreateFontString(nil, "OVERLAY")
-    local labelFont = theme:GetFont("LABEL")
-    previewLabelFS:SetFont(labelFont, 13, "")
-    previewLabelFS:SetPoint("LEFT", row, "LEFT", PREVIEW_PADDING, 0)
-    previewLabelFS:SetText("Preview:")
-    previewLabelFS:SetTextColor(ar, ag, ab, 1)
-    row._previewLabel = previewLabelFS
+    if not options.noLabel then
+        local previewLabelFS = row:CreateFontString(nil, "OVERLAY")
+        local labelFont = theme:GetFont("LABEL")
+        previewLabelFS:SetFont(labelFont, 13, "")
+        previewLabelFS:SetPoint("LEFT", row, "LEFT", PREVIEW_PADDING, 0)
+        previewLabelFS:SetText("Preview:")
+        previewLabelFS:SetTextColor(ar, ag, ab, 1)
+        row._previewLabel = previewLabelFS
+    end
 
     ----------------------------------------------------------------------------
     -- Preview container (clips children)
@@ -235,17 +267,48 @@ function Controls:CreatePreview(options)
         -- thickness and text then keep their real proportions instead of being applied as raw
         -- pixels to a resized icon. Everything below works in icon-local pixels; scaleFactor
         -- converts to screen pixels once, when the clip container is sized.
-        scaleFactor = PREVIEW_ICON_DISPLAY_SIZE / math.max(iconW, iconH, 1)
+        scaleFactor = trueScale or (PREVIEW_ICON_DISPLAY_SIZE / math.max(iconW, iconH, 1))
 
         previewIcon = CreateFrame("Frame", nil, container)
         previewIcon:SetSize(iconW, iconH)
         previewIcon:SetScale(scaleFactor)
         contentHalfW, contentHalfH = iconW / 2, iconH / 2
 
-        -- Icon texture
+        -- Icon texture (or shape atlas: shape-style trackers preview their atlas art)
         local iconTex = previewIcon:CreateTexture(nil, "ARTWORK")
         iconTex:SetAllPoints()
-        iconTex:SetTexture(iconTexture)
+        if options.shapeAtlas then
+            iconTex:SetAtlas(options.shapeAtlas)
+            local sc = options.shapeColor
+            if sc then
+                iconTex:SetVertexColor(sc[1] or 1, sc[2] or 1, sc[3] or 1, sc[4] or 1)
+            end
+            if options.shapeDrain then
+                -- Same recipe as the live tracker: the atlas resolved to its
+                -- file and texcoords clips the swipe to the glyph. The
+                -- animation block below re-arms it each countdown cycle.
+                local cd = CreateFrame("Cooldown", nil, previewIcon, "CooldownFrameTemplate")
+                cd:SetAllPoints()
+                cd:SetDrawBling(false)
+                cd:SetDrawEdge(false)
+                cd:SetHideCountdownNumbers(true)
+                -- Reverse = the dark swipe grows as time runs out (full color at
+                -- max duration), matching the live tracker's drain direction
+                cd:SetReverse(true)
+                cd:SetSwipeColor(0, 0, 0, 0.6)
+                local info = C_Texture and C_Texture.GetAtlasInfo
+                    and C_Texture.GetAtlasInfo(options.shapeAtlas)
+                if info and (info.file or info.filename) then
+                    pcall(cd.SetSwipeTexture, cd, info.file or info.filename)
+                    pcall(cd.SetTexCoordRange, cd,
+                        { x = info.leftTexCoord, y = info.topTexCoord },
+                        { x = info.rightTexCoord, y = info.bottomTexCoord })
+                end
+                row._shapeCooldown = cd
+            end
+        else
+            iconTex:SetTexture(iconTexture)
+        end
         previewIcon.Icon = iconTex
 
         -- Borders (suppress when iconMode ~= "default", matching runtime behavior)
@@ -253,7 +316,7 @@ function Controls:CreatePreview(options)
 
         -- TexCoord cropping (only for default icons — custom pixel art uses full texture).
         -- Shares the HUD's cropping math so the Icon Zoom slider reads the same here.
-        if iconMode == "default" then
+        if iconMode == "default" and not options.shapeAtlas then
             local l, r, t, b = addon.CalculateIconTexCoords(
                 iconW / iconH, readSetting("iconZoom", 0), ICON_TEXCOORD_INSET)
             iconTex:SetTexCoord(l, r, t, b)
@@ -261,6 +324,7 @@ function Controls:CreatePreview(options)
         local borderEnable = readSetting("borderEnable", nil)
         local borderStyle = readSetting("borderStyle", "square")
         local shouldShowBorder = (iconMode == "default") and (borderEnable ~= false) and (borderStyle ~= "none")
+            and not options.shapeAtlas
 
         if shouldShowBorder then
             -- Custom Groups draw borders through their own HUD code rather than the shared
@@ -391,18 +455,22 @@ function Controls:CreatePreview(options)
         previewBar:SetSize(barWidth, barHeight)
 
         if showIcon and previewIcon then
-            -- Icon & Bar: one composite factor so the pair keeps its relative proportions
-            local offX = math.abs(clampBarOffsetX(readSetting("barOffsetX", 0)))
-            local fitW = (PREVIEW_MAX_CONTENT_WIDTH - 24) / math.max(iconW + offX + barWidth + 4, 1)
-            local fitH = (PREVIEW_MAX_ROW_HEIGHT - 28) / math.max(iconH, barHeight, 1)
-            scaleFactor = math.min(scaleFactor or 1, fitW, fitH)
-            previewIcon:SetScale(scaleFactor)
+            if not trueScale then
+                -- Icon & Bar: one composite factor so the pair keeps its relative proportions
+                local offX = math.abs(clampBarOffsetX(readSetting("barOffsetX", 0)))
+                local fitW = (PREVIEW_MAX_CONTENT_WIDTH - 24) / math.max(iconW + offX + barWidth + 4, 1)
+                local fitH = (PREVIEW_MAX_ROW_HEIGHT - 28) / math.max(iconH, barHeight, 1)
+                scaleFactor = math.min(scaleFactor or 1, fitW, fitH)
+                previewIcon:SetScale(scaleFactor)
+            end
+            -- True-size: the icon already carries trueScale; the bar shares the factor
             barScale = scaleFactor
         else
             -- Fill the display budget; modest upscale cap keeps small bars honest
-            barScale = math.min(PREVIEW_BAR_DISPLAY_MAX_WIDTH / math.max(barWidth, 1),
-                                PREVIEW_BAR_DISPLAY_MAX_HEIGHT / math.max(barHeight, 1),
-                                2.5)
+            barScale = trueScale
+                or math.min(PREVIEW_BAR_DISPLAY_MAX_WIDTH / math.max(barWidth, 1),
+                            PREVIEW_BAR_DISPLAY_MAX_HEIGHT / math.max(barHeight, 1),
+                            2.5)
         end
         previewBar:SetScale(barScale)
 
@@ -452,6 +520,7 @@ function Controls:CreatePreview(options)
         end
 
         previewBar._barFill = barFill
+        row._barFill = barFill
 
         -- Bar border (mirrors the live paths in classauras/styling.lua)
         local barBorderStyle = readSetting("barBorderStyle", "none")
@@ -601,7 +670,11 @@ function Controls:CreatePreview(options)
 
         local resolvedCAFont = addon.ResolveFontFace(caTextFont)
 
-        local caOnBar = showBar and not showIcon and previewBar
+        -- Trackers on the icon-beside-bar model (marked by barIconSide) put the
+        -- duration on the bar even with the icon shown, matching their live
+        -- layout; legacy icon+bar components keep their icon-anchored text.
+        local caOnBar = showBar and previewBar ~= nil
+            and (not showIcon or readSetting("barIconSide", nil) ~= nil)
         if caOnBar then
             -- Bar-only mode: text lives inside the scaled bar subtree at its true font
             -- size, above the fill (mirrors the live elevated text frame)
@@ -615,7 +688,10 @@ function Controls:CreatePreview(options)
         end
         caTextFS = caTextFrame:CreateFontString(nil, "OVERLAY")
         addon.ApplyFontStyle(caTextFS, resolvedCAFont, caDisplaySize, caTextStyle)
-        caTextFS:SetText(caTextSource == "applications" and "5" or "T")
+        -- "15" is the widest value the animated countdown shows, so the width
+        -- measurements below reserve two digits before the ticker takes over.
+        caTextFS:SetText(caTextSource == "applications" and "5" or "15")
+        row._caTextFS = caTextFS
 
         if type(caTextColor) == "table" then
             caTextFS:SetTextColor(
@@ -632,6 +708,7 @@ function Controls:CreatePreview(options)
             outerAnchor = caTextOuterAnchor,
             offsetX = readSetting("textOffsetX", 0),
             offsetY = readSetting("textOffsetY", 0),
+            onBar = caOnBar,
         }
     end
 
@@ -651,6 +728,16 @@ function Controls:CreatePreview(options)
             local barPosition = readSetting("barPosition", "RIGHT")
             local barOffsetX = clampBarOffsetX(readSetting("barOffsetX", 0))
             local barOffsetY = clampBarOffsetY(readSetting("barOffsetY", 0))
+            -- Trackers on the icon-beside-bar model carry barIconSide and
+            -- barIconGap instead; map them onto the legacy side + signed
+            -- spacing vocabulary this block already speaks.
+            local iconSide = readSetting("barIconSide", nil)
+            if iconSide then
+                barPosition = (iconSide == "RIGHT") and "LEFT" or "RIGHT"
+                local g = tonumber(readSetting("barIconGap", 2)) or 2
+                barOffsetX = (barPosition == "LEFT") and -g or g
+                barOffsetY = 0
+            end
             -- previewBar is scaled; convert own-space width and offsets to screen
             local barW = previewBar:GetWidth() * barScale
 
@@ -706,7 +793,7 @@ function Controls:CreatePreview(options)
     local neededRowHeight = math.max(2 * halfH + PREVIEW_CONTENT_PAD, containerHeight) + 20
 
     -- The caller's row height is a floor, never a ceiling, so Class Auras keeps its 152.
-    rowHeight = math.min(math.max(rowHeight, neededRowHeight), PREVIEW_MAX_ROW_HEIGHT)
+    rowHeight = math.min(math.max(rowHeight, neededRowHeight), maxRowHeight)
     containerHeight = rowHeight - 20
 
     row:SetHeight(rowHeight) -- re-set: the initial SetHeight ran before anything was measured
@@ -715,12 +802,28 @@ function Controls:CreatePreview(options)
 
     -- Anchor CA text for non-text-only modes (icon must be positioned first)
     if caTextFS and not showTextOnly then
-        -- Boost frame level so text renders above the icon texture
-        if caTextFrame and previewIcon then
+        local cfg = container._caTextConfig
+        -- Boost frame level so text renders above the icon texture (bar-hosted
+        -- text was already leveled above the bar fill at creation)
+        if caTextFrame and previewIcon and not (cfg and cfg.onBar) then
             caTextFrame:SetFrameLevel(previewIcon:GetFrameLevel() + 2)
         end
-        local cfg = container._caTextConfig
-        if cfg and previewIcon then
+        if cfg and cfg.onBar and previewBar then
+            -- Bar-hosted text: anchor to the bar itself (raw offsets; the text
+            -- lives inside the scaled bar subtree), then grow the clip
+            -- container for outside placements
+            AnchorTextToBar(caTextFS, previewBar, cfg)
+            if cfg.position == "outside" then
+                local tw = (caTextFS:GetStringWidth() or 0) * barScale
+                local th = (caTextFS:GetStringHeight() or 0) * barScale
+                local anchor = cfg.outerAnchor or "RIGHT"
+                if anchor == "LEFT" or anchor == "RIGHT" then
+                    container:SetWidth(container:GetWidth() + 2 * (CA_GAP * barScale + tw))
+                else
+                    container:SetHeight(container:GetHeight() + 2 * (CA_GAP * barScale + th))
+                end
+            end
+        elseif cfg and previewIcon then
             local txOff = (cfg.offsetX or 0) * (scaleFactor or 1)
             local tyOff = (cfg.offsetY or 0) * (scaleFactor or 1)
 
@@ -755,21 +858,6 @@ function Controls:CreatePreview(options)
                     container:SetHeight(containerHeight)
                 end
             end
-        elseif cfg and previewBar then
-            -- Bar-only mode: anchor to the bar itself (raw offsets; the text lives inside
-            -- the scaled bar subtree), then grow the clip container for outside placements
-            AnchorTextToBar(caTextFS, previewBar, cfg)
-            if cfg.position == "outside" then
-                local tw = (caTextFS:GetStringWidth() or 0) * barScale
-                local th = (caTextFS:GetStringHeight() or 0) * barScale
-                local anchor = cfg.outerAnchor or "RIGHT"
-                -- The bar is centered, so grow both sides to keep it centered and uncovered
-                if anchor == "LEFT" or anchor == "RIGHT" then
-                    container:SetWidth(container:GetWidth() + 2 * (CA_GAP * barScale + tw))
-                else
-                    container:SetHeight(container:GetHeight() + 2 * (CA_GAP * barScale + th))
-                end
-            end
         elseif not previewIcon then
             -- No icon or bar present: center in container
             caTextFS:SetPoint("CENTER", container, "CENTER", 0, 0)
@@ -794,7 +882,7 @@ function Controls:CreatePreview(options)
         container:SetWidth(PREVIEW_MAX_CONTENT_WIDTH)
     end
     if container:GetHeight() + 20 > rowHeight then
-        rowHeight = math.min(container:GetHeight() + 20, PREVIEW_MAX_ROW_HEIGHT)
+        rowHeight = math.min(container:GetHeight() + 20, maxRowHeight)
         container:SetHeight(rowHeight - 20)
         row:SetHeight(rowHeight)
     end
@@ -812,10 +900,10 @@ function Controls:CreatePreview(options)
             table.insert(legendParts, "KB = Keybind")
         end
     end
-    if showCAText then
-        -- One entry, matching the single placeholder actually drawn for this aura's
-        -- text element; suppressed entirely (with the text) by Hide Text
-        table.insert(legendParts, caTextSource == "applications" and "5 = Stacks" or "T = Timer")
+    if showCAText and caTextSource == "applications" then
+        -- Duration text needs no legend entry: the animated countdown explains
+        -- itself. Stacks keep the static "5" placeholder and its key.
+        table.insert(legendParts, "5 = Stacks")
     end
 
     if #legendParts > 0 then
@@ -860,6 +948,49 @@ function Controls:CreatePreview(options)
     end)
 
     ----------------------------------------------------------------------------
+    -- Animation: a 15-second looping countdown drives the duration text and
+    -- the bar fill, so the preview shows what live tracking looks like.
+    -- Hidden frames skip OnUpdate, so hiding the row pauses it for free.
+    ----------------------------------------------------------------------------
+
+    local animText = (caTextSource ~= "applications") and row._caTextFS or nil
+    local animFill = row._barFill
+    local animDrain = row._shapeCooldown
+    if animText or animFill or animDrain then
+        local epoch = options.timerEpoch
+        local startTime
+        if epoch then
+            epoch.start = epoch.start or GetTime()
+            startTime = epoch.start
+        else
+            startTime = GetTime()
+        end
+        local lastShown, lastCycle
+        row:SetScript("OnUpdate", function()
+            local remaining = 15 - ((GetTime() - startTime) % 15)
+            if animFill then
+                animFill:SetValue(remaining / 15)
+            end
+            if animText then
+                local shown = math.ceil(remaining)
+                if shown ~= lastShown then
+                    lastShown = shown
+                    animText:SetText(tostring(shown))
+                end
+            end
+            if animDrain then
+                -- One SetCooldown per cycle; the Cooldown animates itself. A
+                -- past start (resumed epoch) lands mid-sweep correctly.
+                local cycle = math.floor((GetTime() - startTime) / 15)
+                if cycle ~= lastCycle then
+                    lastCycle = cycle
+                    animDrain:SetCooldown(startTime + cycle * 15, 15)
+                end
+            end
+        end)
+    end
+
+    ----------------------------------------------------------------------------
     -- Public methods
     ----------------------------------------------------------------------------
 
@@ -868,6 +999,7 @@ function Controls:CreatePreview(options)
     end
 
     function row:Cleanup()
+        self:SetScript("OnUpdate", nil)
         if self._subscribeKey then
             theme:Unsubscribe(self._subscribeKey)
         end

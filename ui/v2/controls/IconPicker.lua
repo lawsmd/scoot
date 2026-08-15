@@ -138,6 +138,7 @@ end
 local pickerFrame = nil
 local pickerCallback = nil
 local pickerAnchor = nil
+local pickerOptions = nil
 local selectedTab = "simple"
 local currentSelection = nil
 
@@ -165,6 +166,7 @@ local function CloseIconPicker()
     end
     pickerCallback = nil
     pickerAnchor = nil
+    pickerOptions = nil
 end
 
 --------------------------------------------------------------------------------
@@ -426,6 +428,15 @@ local function CreateIconPicker()
         end
 
         local icons = currentTab.icons
+        if pickerOptions and pickerOptions.hideSpellEntry and selectedTab == "simple" then
+            local filtered = {}
+            for _, iconData in ipairs(icons) do
+                if iconData.key ~= "spell" then
+                    table.insert(filtered, iconData)
+                end
+            end
+            icons = filtered
+        end
         local contentFrame = self.Content
         local ar, ag, ab = self._accentR, self._accentG, self._accentB
 
@@ -855,13 +866,23 @@ end
 -- Public API
 --------------------------------------------------------------------------------
 
-function addon.ShowIconPicker(anchor, currentValue, callback)
+-- options (all optional):
+--   hideSpellEntry  : omit the "use the spell's actual icon" entry from the
+--                     Simple tab (callers whose shapes are always atlas art)
+--   hideAnimatedTab : omit the Animated tab entirely
+function addon.ShowIconPicker(anchor, currentValue, callback, options)
     local frame = CreateIconPicker()
     if not frame then return end
 
     currentSelection = currentValue
     pickerCallback = callback
     pickerAnchor = anchor
+    pickerOptions = options
+
+    local animTab = frame.TabButtons and frame.TabButtons.animated
+    if animTab then
+        animTab:SetShown(not (options and options.hideAnimatedTab))
+    end
 
     -- Position relative to anchor or screen center
     frame:ClearAllPoints()

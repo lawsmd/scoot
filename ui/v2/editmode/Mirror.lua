@@ -14,11 +14,20 @@
 -- with current state -- offset sliders that only exist while a bar is snapped, an
 -- entry hidden for one unit, and so on.
 --
--- Spec entries, all of which take `label`, `get` and `set`:
+-- Spec entries; value kinds take `label`, `get` and `set`:
 --
 --     { kind = "selector", values = {k=label}, order = {k}, rebuild = true }
 --     { kind = "slider",   min = -200, max = 200, step = 1, precision = 0 }
 --     { kind = "toggle" }
+--
+-- Action kinds take `label` and `set` (the click handler); they have no `get`:
+--
+--     { kind = "button", label = "Do The Thing", rebuild = true }
+--     { kind = "status", label = "Doing", animate = true, buttonLabel = "Done" }
+--
+-- `status` is a label on the left (cycling "..." while `animate`) beside a compact
+-- button on the right. Both action kinds share one row height so a provider can
+-- swap one for the other without the dialog resizing.
 --
 -- `rebuild = true` means writing this value changes the SHAPE of the list, so the
 -- whole slot is rebuilt afterwards rather than just re-read.
@@ -46,6 +55,10 @@ local Mirror = addon.EditMode.Mirror
 local SELECTOR_W    = 132
 local SLIDER_TRACK_W = 60
 local SLIDER_INPUT_W = 38
+
+local ACTION_BTN_H  = 26   -- matches Dialog.lua's BTN_H
+local ACTION_ROW_H  = 34   -- button + top gap; both action kinds share it
+local STATUS_BTN_W  = 64   -- the compact status-row button
 
 --------------------------------------------------------------------------------
 -- State
@@ -95,7 +108,77 @@ local BUILDERS = {
             set    = set,
         })
     end,
+
+    button = function(Controls, parent, spec, set)
+        local row = CreateFrame("Frame", nil, parent)
+        row:SetHeight(ACTION_ROW_H)
+        local btn = Controls:CreateButton({
+            parent   = row,
+            text     = spec.label or "",
+            height   = ACTION_BTN_H,
+            fontSize = 11,
+            onClick  = function() set() end,
+        })
+        btn:ClearAllPoints()
+        btn:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+        btn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+        function row:Cleanup()
+            if btn.Cleanup then btn:Cleanup() end
+        end
+        return row
+    end,
+
+    status = function(Controls, parent, spec, set)
+        local row = CreateFrame("Frame", nil, parent)
+        row:SetHeight(ACTION_ROW_H)
+
+        local btn = Controls:CreateButton({
+            parent   = row,
+            text     = spec.buttonLabel or "Done",
+            width    = STATUS_BTN_W,
+            height   = ACTION_BTN_H,
+            fontSize = 11,
+            onClick  = function() set() end,
+        })
+        btn:ClearAllPoints()
+        btn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+
+        local fs = row:CreateFontString(nil, "OVERLAY")
+        local theme = addon.UI and addon.UI.Theme
+        if theme and theme.ApplyLabelFont then
+            theme:ApplyLabelFont(fs, 11)
+        end
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(false)
+        -- Centered on the button's 26px band, not the 34px row.
+        fs:SetPoint("LEFT", row, "BOTTOMLEFT", 0, ACTION_BTN_H / 2)
+        fs:SetPoint("RIGHT", btn, "LEFT", -8, 0)
+        fs:SetText(spec.label or "")
+
+        -- OnUpdate rather than a ticker: it pauses while the row is hidden and
+        -- dies with the frame, so Clear() cannot strand a running animation.
+        if spec.animate then
+            local elapsed, dots = 0, 0
+            row:SetScript("OnUpdate", function(_, dt)
+                elapsed = elapsed + dt
+                if elapsed >= 0.4 then
+                    elapsed = elapsed - 0.4
+                    dots = (dots % 3) + 1
+                    fs:SetText((spec.label or "") .. string.rep(".", dots))
+                end
+            end)
+        end
+
+        function row:Cleanup()
+            self:SetScript("OnUpdate", nil)
+            if btn.Cleanup then btn:Cleanup() end
+        end
+        return row
+    end,
 }
+
+-- Action kinds carry no readable value; `set` alone is their contract.
+local NO_GET_KINDS = { button = true, status = true }
 
 --- Wrap the spec's setter so a shape-changing write rebuilds the slot.
 ---
@@ -157,7 +240,8 @@ function Mirror.Build(slot, frame, provider, onRebuild)
     local y = 0
     for _, spec in ipairs(specs) do
         local build = type(spec) == "table" and BUILDERS[spec.kind]
-        if build and type(spec.get) == "function" and type(spec.set) == "function" then
+        local getOk = type(spec.get) == "function" or NO_GET_KINDS[spec.kind]
+        if build and getOk and type(spec.set) == "function" then
             local row = build(Controls, slot, spec, WrapSet(spec, onRebuild))
             if row then
                 -- The control set its own height at creation; read it before

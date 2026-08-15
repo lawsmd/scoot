@@ -569,6 +569,10 @@ end
 --   width       : Selector width (optional)
 --   key         : Optional unique key for dynamic updates (SetLabel, SetOptions)
 --   emphasized  : Optional boolean for "Hero" styling (master controls)
+--   labelAlign  : "field" right-aligns the label against the field's left edge
+--   noBottomBorder : Optional boolean to hide the 1px row bottom border
+--   sizeScale   : Optional factor scaling the whole control (fonts, heights);
+--                 not supported together with description or emphasized
 --------------------------------------------------------------------------------
 
 function Builder:AddSelector(options)
@@ -603,6 +607,9 @@ function Builder:AddSelector(options)
         width = options.width,
         useLightDim = self._useLightDim,
         emphasized = options.emphasized,
+        labelAlign = options.labelAlign,
+        noBottomBorder = options.noBottomBorder,
+        sizeScale = options.sizeScale,
         disabled = options.disabled,
         isDisabled = options.isDisabled,
         optionInfoIcons = options.optionInfoIcons,
@@ -945,6 +952,7 @@ end
 --   buildContent  : Table of { tabKey = function(contentFrame, innerBuilder) }
 --                   Each function populates that tab's content
 --   onTabChange   : Optional callback when tab changes
+--   maxTabsPerRow : Optional per-row tab capacity (default 5)
 --------------------------------------------------------------------------------
 
 function Builder:AddTabbedSection(options)
@@ -991,6 +999,7 @@ function Builder:AddTabbedSection(options)
         componentId = options.componentId,
         sectionKey = options.sectionKey,
         defaultTab = options.defaultTab,
+        maxTabsPerRow = options.maxTabsPerRow,
         onTabChange = function(newTabKey, oldTabKey)
             -- Call user callback if provided
             if options.onTabChange then
@@ -1877,7 +1886,18 @@ function Builder:AddPreview(options)
         previewNameLabel = options.previewNameLabel,
         useLightDim = self._useLightDim,
         rowHeight = options.rowHeight,
+        previewScale = options.previewScale,
+        maxRowHeight = options.maxRowHeight,
         borderPath = options.borderPath,
+        getSetting = options.getSetting,
+        getSubSetting = options.getSubSetting,
+        shapeAtlas = options.shapeAtlas,
+        shapeColor = options.shapeColor,
+        shapeDrain = options.shapeDrain,
+        noBottomBorder = options.noBottomBorder,
+        noHover = options.noHover,
+        noLabel = options.noLabel,
+        timerEpoch = options.timerEpoch,
     })
 
     if preview then

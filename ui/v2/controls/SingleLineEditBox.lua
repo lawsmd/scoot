@@ -37,6 +37,8 @@ function Controls:CreateSingleLineEditBox(options)
     local initialText = options.text or ""
     local fontSize = options.fontSize or DEFAULT_FONT_SIZE
     local maxLetters = options.maxLetters or 0
+    local numeric = options.numeric
+    local justifyH = options.justifyH
 
     -- Theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -124,6 +126,12 @@ function Controls:CreateSingleLineEditBox(options)
     if maxLetters > 0 then
         editBox:SetMaxLetters(maxLetters)
     end
+    if numeric then
+        editBox:SetNumeric(true)
+    end
+    if justifyH then
+        editBox:SetJustifyH(justifyH)
+    end
 
     container._editBox = editBox
 
@@ -137,7 +145,7 @@ function Controls:CreateSingleLineEditBox(options)
         placeholderFS:SetPoint("LEFT", editBox, "LEFT", 2, 0)
         placeholderFS:SetText(placeholder)
         placeholderFS:SetTextColor(dimR, dimG, dimB, 0.6)
-        placeholderFS:SetJustifyH("LEFT")
+        placeholderFS:SetJustifyH(justifyH or "LEFT")
         container._placeholder = placeholderFS
 
         local function UpdatePlaceholder()
@@ -181,10 +189,8 @@ function Controls:CreateSingleLineEditBox(options)
     end)
 
     editBox:SetScript("OnEnterPressed", function(self)
-        container._committedText = self:GetText()
-        if container._onChange then
-            container._onChange(self:GetText())
-        end
+        -- ClearFocus fires OnEditFocusLost, which commits; committing here
+        -- too would fire the change callback twice per Enter.
         self:ClearFocus()
     end)
 
@@ -237,6 +243,10 @@ function Controls:CreateSingleLineEditBox(options)
 
     function container:ClearFocus()
         self._editBox:ClearFocus()
+    end
+
+    container.HasFocus = function()
+        return editBox:HasFocus()
     end
 
     function container:Cleanup()

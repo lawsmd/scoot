@@ -58,17 +58,27 @@ function Controls:CreateSelector(options)
     local emphasized = options.emphasized or false
     local isDisabledFn = options.disabled or options.isDisabled
     local optionInfoIcons = options.optionInfoIcons
+    -- labelAlign = "field" right-aligns the label against the field's left
+    -- edge (for description-less selectors; the description anchors to the
+    -- label and would follow it rightward).
+    local labelAlign = options.labelAlign
+    local noBottomBorder = options.noBottomBorder
+    -- sizeScale scales the whole control (fonts, field height, arrows, row
+    -- height). Field width stays the caller's `width`. Not supported together
+    -- with description or emphasized rows.
+    local S = options.sizeScale or 1
+    local function sc(v) return math.floor(v * S + 0.5) end
 
     local hasDesc = description and description ~= ""
     local rowHeight
     if emphasized then
-        rowHeight = hasDesc and EMPHASIZED_ROW_HEIGHT_WITH_DESC or EMPHASIZED_ROW_HEIGHT
+        rowHeight = hasDesc and EMPHASIZED_ROW_HEIGHT_WITH_DESC or sc(EMPHASIZED_ROW_HEIGHT)
     else
-        rowHeight = hasDesc and SELECTOR_ROW_HEIGHT_WITH_DESC or SELECTOR_ROW_HEIGHT
+        rowHeight = hasDesc and SELECTOR_ROW_HEIGHT_WITH_DESC or sc(SELECTOR_ROW_HEIGHT)
     end
 
     -- Use appropriate sizes for emphasized vs normal
-    local labelFontSize = emphasized and EMPHASIZED_LABEL_SIZE or 13
+    local labelFontSize = sc(emphasized and EMPHASIZED_LABEL_SIZE or 13)
     local leftBorderWidth = emphasized and EMPHASIZED_BORDER_WIDTH or 0
 
     -- Build ordered key list
@@ -116,6 +126,7 @@ function Controls:CreateSelector(options)
     bottom:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
     bottom:SetHeight(1)
     bottom:SetColorTexture(ar, ag, ab, 0.2)
+    if noBottomBorder then bottom:Hide() end
     rowBorder.BOTTOM = bottom
 
     -- Add left accent border for emphasized selectors
@@ -138,7 +149,7 @@ function Controls:CreateSelector(options)
     row._rowBorder = rowBorder
 
     -- Calculate label padding (account for left border on emphasized)
-    local labelLeftPad = SELECTOR_PADDING + leftBorderWidth
+    local labelLeftPad = sc(SELECTOR_PADDING) + leftBorderWidth
 
     -- Label text (left side)
     local labelFS = row:CreateFontString(nil, "OVERLAY")
@@ -204,8 +215,14 @@ function Controls:CreateSelector(options)
 
     -- Selector container (right side)
     local selector = CreateFrame("Frame", nil, row)
-    selector:SetSize(selectorWidth, SELECTOR_HEIGHT)
-    selector:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_PADDING, 0)
+    selector:SetSize(selectorWidth, sc(SELECTOR_HEIGHT))
+    selector:SetPoint("RIGHT", row, "RIGHT", -sc(SELECTOR_PADDING), 0)
+
+    if labelAlign == "field" then
+        labelFS:ClearAllPoints()
+        labelFS:SetPoint("RIGHT", selector, "LEFT", -sc(16), hasDesc and (emphasized and 12 or 6) or 0)
+        labelFS:SetJustifyH("RIGHT")
+    end
 
     -- Selector border
     local selBorder = {}
@@ -249,7 +266,7 @@ function Controls:CreateSelector(options)
 
     -- Left arrow button
     local leftArrow = CreateFrame("Button", nil, selector)
-    leftArrow:SetSize(SELECTOR_ARROW_WIDTH, SELECTOR_HEIGHT - 2)
+    leftArrow:SetSize(sc(SELECTOR_ARROW_WIDTH), sc(SELECTOR_HEIGHT) - 2)
     leftArrow:SetPoint("LEFT", selector, "LEFT", 1, 0)
     leftArrow:EnableMouse(true)
     leftArrow:RegisterForClicks("AnyUp")
@@ -261,7 +278,7 @@ function Controls:CreateSelector(options)
 
     local leftArrowText = leftArrow:CreateFontString(nil, "OVERLAY")
     local arrowFont = theme:GetFont("BUTTON")
-    leftArrowText:SetFont(arrowFont, 14, "")
+    leftArrowText:SetFont(arrowFont, sc(14), "")
     leftArrowText:SetPoint("CENTER", 0, 0)
     leftArrowText:SetText("◀")
     leftArrowText:SetTextColor(ar, ag, ab, 1)
@@ -277,7 +294,7 @@ function Controls:CreateSelector(options)
 
     -- Right arrow button
     local rightArrow = CreateFrame("Button", nil, selector)
-    rightArrow:SetSize(SELECTOR_ARROW_WIDTH, SELECTOR_HEIGHT - 2)
+    rightArrow:SetSize(sc(SELECTOR_ARROW_WIDTH), sc(SELECTOR_HEIGHT) - 2)
     rightArrow:SetPoint("RIGHT", selector, "RIGHT", -1, 0)
     rightArrow:EnableMouse(true)
     rightArrow:RegisterForClicks("AnyUp")
@@ -288,7 +305,7 @@ function Controls:CreateSelector(options)
     rightArrow._bg = rightArrowBg
 
     local rightArrowText = rightArrow:CreateFontString(nil, "OVERLAY")
-    rightArrowText:SetFont(arrowFont, 14, "")
+    rightArrowText:SetFont(arrowFont, sc(14), "")
     rightArrowText:SetPoint("CENTER", 0, 0)
     rightArrowText:SetText("▶")
     rightArrowText:SetTextColor(ar, ag, ab, 1)
@@ -306,7 +323,7 @@ function Controls:CreateSelector(options)
     local valueBtn = CreateFrame("Button", nil, selector)
     valueBtn:SetPoint("LEFT", leftArrow, "RIGHT", 1, 0)
     valueBtn:SetPoint("RIGHT", rightArrow, "LEFT", -1, 0)
-    valueBtn:SetHeight(SELECTOR_HEIGHT - 2)
+    valueBtn:SetHeight(sc(SELECTOR_HEIGHT) - 2)
     valueBtn:EnableMouse(true)
     valueBtn:RegisterForClicks("AnyUp")
 
@@ -317,15 +334,15 @@ function Controls:CreateSelector(options)
 
     local valueText = valueBtn:CreateFontString(nil, "OVERLAY")
     local valueFont = theme:GetFont("VALUE")
-    valueText:SetFont(valueFont, 12, "")
-    valueText:SetPoint("CENTER", -6, 0)  -- Offset left to make room for dropdown indicator
+    valueText:SetFont(valueFont, sc(12), "")
+    valueText:SetPoint("CENTER", 0, 0)
     valueText:SetTextColor(1, 1, 1, 1)
     valueBtn._text = valueText
 
-    -- Small dropdown indicator arrow
+    -- Small dropdown indicator arrow, pinned to the field's right edge
     local dropIndicator = valueBtn:CreateFontString(nil, "OVERLAY")
-    dropIndicator:SetFont(valueFont, 9, "")
-    dropIndicator:SetPoint("LEFT", valueText, "RIGHT", 4, -1)
+    dropIndicator:SetFont(valueFont, sc(9), "")
+    dropIndicator:SetPoint("RIGHT", valueBtn, "RIGHT", -sc(8), -1)
     dropIndicator:SetText("▼")
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
     valueBtn._dropIndicator = dropIndicator
@@ -543,12 +560,17 @@ function Controls:CreateSelector(options)
 
     -- Build and show dropdown (uses row._keyList and row._values for dynamic updates)
     local function ShowDropdown()
+        -- The host surface can sit at or above this strata's level 100 (a
+        -- Flyout raises itself on open); track the row's level so the list
+        -- opens on top of whatever hosts the selector.
+        dropdown:SetFrameLevel(math.max(100, row:GetFrameLevel() + 10))
+
         -- Position dropdown below the selector (or above if not enough space)
         dropdown:ClearAllPoints()
 
         local kList = row._keyList
         local vMap = row._values
-        local optionHeight = 26
+        local optionHeight = sc(26)
         local optionPadding = 4
         local totalHeight = (#kList * optionHeight) + (optionPadding * 2)
         local dropdownWidth = selectorWidth
@@ -603,7 +625,7 @@ function Controls:CreateSelector(options)
             -- Option text
             local optText = optBtn:CreateFontString(nil, "OVERLAY")
             local optFont = theme:GetFont("VALUE")
-            optText:SetFont(optFont, 12, "")
+            optText:SetFont(optFont, sc(12), "")
             optText:SetPoint("LEFT", optBtn, "LEFT", textLeftOffset, 0)
             optText:SetPoint("RIGHT", optBtn, "RIGHT", -12, 0)
             optText:SetJustifyH("LEFT")
@@ -704,9 +726,14 @@ function Controls:CreateSelector(options)
         if row._label then
             row._label:SetTextColor(r, g, b, 1)
         end
-        -- Update row border
+        -- Update row border (_rowBorder is a table of textures, not a texture)
         if row._rowBorder then
-            row._rowBorder:SetColorTexture(r, g, b, 0.2)
+            if row._rowBorder.BOTTOM then
+                row._rowBorder.BOTTOM:SetColorTexture(r, g, b, 0.2)
+            end
+            if row._rowBorder.LEFT then
+                row._rowBorder.LEFT:SetColorTexture(r, g, b, 1)
+            end
         end
         -- Update hover bg
         if row._hoverBg then
