@@ -25,6 +25,10 @@ TB.blizzItemToStack = setmetatable({}, { __mode = "k" })
 
 -- Mode flag (written by vertical.lua, read by all)
 TB.verticalModeActive = false
+-- "Lock drain to original duration" (vertical mode). Cached from the
+-- verticalLockCadence setting by TB.applyVerticalMode; read by the per-tick
+-- data mirror hooks.
+TB.vertLockCadence = false
 
 -- Viewer alpha tracking for CMC compatibility (SetAlpha(0) on viewer)
 TB._viewerAlpha = 1
@@ -455,6 +459,7 @@ addon:RegisterComponentInitializer(function(self)
         frameName = "BuffBarCooldownViewer",
         settings = {
             barMode = { type = "addon", default = "default" },
+            verticalLockCadence = { type = "addon", default = false },
             iconPadding = { type = "editmode", settingId = 4, default = 3, ui = {
                 label = "Icon Padding", widget = "slider", min = 2, max = 10, step = 1, section = "Positioning", order = 1
             }},

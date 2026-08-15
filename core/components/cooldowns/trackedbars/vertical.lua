@@ -47,8 +47,13 @@ function TB.installDataMirrorHooks(child)
                     m.barValue = val
                     m.valueTime = GetTime()
                 end
-                if TB.verticalModeActive and m.vertStatusBar then
-                    pcall(m.vertStatusBar.SetValue, m.vertStatusBar, val)
+                if TB.verticalModeActive then
+                    if m.vertStatusBar then
+                        pcall(m.vertStatusBar.SetValue, m.vertStatusBar, val)
+                    end
+                    if m.vertLockBar then
+                        pcall(m.vertLockBar.SetValue, m.vertLockBar, val)
+                    end
                 end
             end)
         end
@@ -58,8 +63,37 @@ function TB.installDataMirrorHooks(child)
                 if not m then return end
                 if not issecretvalue(minVal) then m.barMin = minVal end
                 if not issecretvalue(maxVal) then m.barMax = maxVal end
-                if TB.verticalModeActive and m.vertStatusBar then
+                if not TB.verticalModeActive then return end
+                -- B mirrors Blizzard 1:1.
+                if m.vertStatusBar then
                     pcall(m.vertStatusBar.SetMinMaxValues, m.vertStatusBar, minVal, maxVal)
+                end
+                -- A locks to the first range after activation. Blizzard's
+                -- deactivation write is a literal plain (0, 0)
+                -- (CooldownViewer.lua RefreshCooldownInfo) and releases the
+                -- lock. Bookkeeping runs even with no stack built so the lock
+                -- follows the aura, not the pooled stack. Branch only on the
+                -- plain boolean m.lockHeld: m.lockedMax may hold a secret.
+                if not TB.vertLockCadence then return end
+                local plainZero = (not issecretvalue(maxVal))
+                    and type(maxVal) == "number" and maxVal == 0
+                if plainZero then
+                    m.lockHeld = false
+                    m.lockedMin, m.lockedMax = nil, nil
+                elseif m.lockHeld then
+                    return
+                else
+                    m.lockHeld = true
+                    m.lockedMin, m.lockedMax = minVal, maxVal
+                end
+                if TB.tbTraceEnabled then
+                    TB.tbTrace("Lock: %s max=%s id=%s",
+                        plainZero and "clear" or "take",
+                        issecretvalue(maxVal) and "SECRET" or tostring(maxVal),
+                        tostring(child):sub(-6))
+                end
+                if m.vertLockBar then
+                    pcall(m.vertLockBar.SetMinMaxValues, m.vertLockBar, minVal, maxVal)
                 end
             end)
         end
@@ -239,6 +273,16 @@ function TB.installDataMirrorHooks(child)
     end
     if clearMethodName then
         hooksecurefunc(child, clearMethodName, function(self)
+            -- A new aura instance (removal, or a swap with no inactive gap:
+            -- target change, fresh application) starts a new cadence lock.
+            -- Blizzard never fires this on a same-instance refresh
+            -- (CooldownViewerItemData.lua SetAuraInstanceInfo identity guard).
+            local lockMirror = TB.barItemMirror[self]
+            if lockMirror then
+                lockMirror.lockHeld = false
+                lockMirror.lockedMin, lockMirror.lockedMax = nil, nil
+            end
+
             local hadAuraInstance = TB.lastKnownAuraInstance[self] ~= nil
             TB.lastKnownAuraInstance[self] = nil
             if not hadAuraInstance then return end
@@ -369,7 +413,29 @@ local function createVerticalStack()
     stack.barBg = stack.barRegion:CreateTexture(nil, "BACKGROUND", nil, 0)
     stack.barBg:SetAllPoints(stack.barRegion)
 
-    stack.barFill = CreateFrame("StatusBar", nil, stack.barRegion)
+    -- Lock bar "A": invisible cadence reference for the "lock drain to original
+    -- duration" option. It receives every forwarded SetValue but only the first
+    -- SetMinMaxValues after activation, so its fill drains at the original
+    -- cadence. Alpha 0, never Hide(): a hidden StatusBar stops laying out its
+    -- fill texture and the clip rect below would freeze.
+    stack.barLock = CreateFrame("StatusBar", nil, stack.barRegion)
+    stack.barLock:SetAllPoints(stack.barRegion)
+    stack.barLock:SetOrientation("VERTICAL")
+    stack.barLock:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+    stack.barLock:SetMinMaxValues(0, 1)
+    stack.barLock:SetValue(1)
+    stack.barLock:SetAlpha(0)
+    stack.barLock:EnableMouse(false)
+
+    -- Clip frame: the visible fill is barFill's rect intersected with this
+    -- rect. Anchored to A's fill texture when locking (buildOneVerticalItem),
+    -- to barRegion otherwise. Visible = min(A, B) = remaining / max(orig, cur).
+    stack.barClip = CreateFrame("Frame", nil, stack.barRegion)
+    stack.barClip:SetClipsChildren(true)
+    stack.barClip:SetAllPoints(stack.barRegion)
+    stack.barClip:EnableMouse(false)
+
+    stack.barFill = CreateFrame("StatusBar", nil, stack.barClip)
     stack.barFill:SetAllPoints(stack.barRegion)
     stack.barFill:SetOrientation("VERTICAL")
     stack.barFill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
@@ -381,6 +447,15 @@ local function createVerticalStack()
     stack.spellNameFS:SetAllPoints(stack.spellNameFrame)
     stack.spellNameFS:SetJustifyH("CENTER")
     stack.spellNameFS:SetJustifyV("MIDDLE")
+
+    -- Explicit levels: barFill moved one level deeper (under barClip), so pin
+    -- the order barBg (barRegion) < fill < spell name < border (base + 5, see
+    -- styleVerticalStack). Offsets shift with the stack on SetParent.
+    local base = stack.barRegion:GetFrameLevel()
+    stack.barLock:SetFrameLevel(base + 1)
+    stack.barClip:SetFrameLevel(base + 1)
+    stack.barFill:SetFrameLevel(base + 2)
+    stack.spellNameFrame:SetFrameLevel(base + 3)
 
     local ag = stack.spellNameFrame:CreateAnimationGroup()
     local rot = ag:CreateAnimation("Rotation")
@@ -419,6 +494,8 @@ local function releaseVertStack(stack)
     stack.timerFS:SetText("")
     stack.barFill:SetMinMaxValues(0, 1)
     stack.barFill:SetValue(0)
+    stack.barLock:SetMinMaxValues(0, 1)
+    stack.barLock:SetValue(1)
     table.insert(vertStackPool, stack)
 end
 
@@ -426,10 +503,22 @@ local function releaseAllVertStacks()
     for i = #activeVertStacks, 1, -1 do
         local entry = activeVertStacks[i]
         local m = TB.barItemMirror[entry.blizzItem]
-        if m then m.vertStatusBar = nil end
+        -- The cadence lock fields (lockHeld/lockedMin/lockedMax) stay: the
+        -- lock follows the aura across rebuilds; only the widget links drop.
+        if m then
+            m.vertStatusBar = nil
+            m.vertLockBar = nil
+        end
         TB.blizzItemToStack[entry.blizzItem] = nil
         releaseVertStack(entry.frame)
         activeVertStacks[i] = nil
+    end
+end
+
+local function clearAllVertLocks()
+    for _, m in pairs(TB.barItemMirror) do
+        m.lockHeld = false
+        m.lockedMin, m.lockedMax = nil, nil
     end
 end
 
@@ -880,17 +969,47 @@ local function buildOneVerticalItem(child, component, displayMode)
     styleVerticalStack(stack, component)
 
     mirror.vertStatusBar = stack.barFill
+    local lockOn = TB.vertLockCadence
+    mirror.vertLockBar = lockOn and stack.barLock or nil
+
+    -- Clip B to A's fill when locking; otherwise the clip is the whole bar.
+    stack.barClip:ClearAllPoints()
+    if lockOn then
+        stack.barClip:SetAllPoints(stack.barLock:GetStatusBarTexture())
+    else
+        stack.barClip:SetAllPoints(stack.barRegion)
+    end
 
     local initBar = (child.GetBarFrame and child:GetBarFrame()) or child.Bar
     if initBar then
-        pcall(function()
-            local min, max = initBar:GetMinMaxValues()
-            stack.barFill:SetMinMaxValues(min, max)
-        end)
-        pcall(function()
-            local val = initBar:GetValue()
-            stack.barFill:SetValue(val)
-        end)
+        -- Separate pcalls: an A failure must never block B (today's behavior).
+        local okRange, min, max = pcall(initBar.GetMinMaxValues, initBar)
+        if okRange then
+            pcall(stack.barFill.SetMinMaxValues, stack.barFill, min, max)
+            if lockOn then
+                if mirror.lockHeld then
+                    pcall(stack.barLock.SetMinMaxValues, stack.barLock, mirror.lockedMin, mirror.lockedMax)
+                else
+                    pcall(stack.barLock.SetMinMaxValues, stack.barLock, min, max)
+                    -- Plain (0, 0) = inactive; any other number (secret
+                    -- included; type() is plain on secrets) is the cadence
+                    -- for this activation.
+                    local hasRange = type(max) == "number"
+                    local plainZero = hasRange and (not issecretvalue(max)) and max == 0
+                    if hasRange and not plainZero then
+                        mirror.lockHeld = true
+                        mirror.lockedMin, mirror.lockedMax = min, max
+                    end
+                end
+            end
+        end
+        local okVal, val = pcall(initBar.GetValue, initBar)
+        if okVal then
+            pcall(stack.barFill.SetValue, stack.barFill, val)
+            if lockOn then
+                pcall(stack.barLock.SetValue, stack.barLock, val)
+            end
+        end
     end
 
     setupVertStackTooltip(stack, child)
@@ -912,6 +1031,10 @@ end
 
 function TB.applyVerticalMode(component)
     TB.verticalModeActive = true
+    -- Cached for the per-tick hooks; refreshed before every build so a
+    -- settings change reaches the hooks through this rebuild.
+    TB.vertLockCadence = TB.getTrackedBarSetting("verticalLockCadence") == true
+    if not TB.vertLockCadence then clearAllVertLocks() end
     ensureVertContainer()
     local frame = _G[component.frameName]
     if not frame then return end
@@ -940,6 +1063,7 @@ end
 function TB.removeVerticalMode()
     TB.verticalModeActive = false
     releaseAllVertStacks()
+    clearAllVertLocks()
     if vertContainer then
         vertContainer:Hide()
     end
@@ -981,6 +1105,9 @@ function TB.hookVertEditMode()
             else
                 if TB.getTrackedBarMode() == "vertical" then
                     C_Timer.After(0, function()
+                        -- Edit Mode sample data writes a plain max through the
+                        -- same hooks; drop any lock it took before rebuilding.
+                        clearAllVertLocks()
                         local comp = addon.Components and addon.Components.trackedBars
                         if comp then TB.applyVerticalMode(comp) end
                     end)

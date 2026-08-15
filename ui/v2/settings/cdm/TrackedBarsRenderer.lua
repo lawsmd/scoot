@@ -40,8 +40,20 @@ function TrackedBars.Render(panel, scrollContent)
         order = { "default", "vertical" },
         emphasized = true,
         get = function() return getSetting("barMode") or "default" end,
-        set = function(v) setSetting("barMode", v) end,
+        set = function(v)
+            setSetting("barMode", v)
+            builder:DeferredRefreshAll()   -- the row below exists only in vertical mode
+        end,
     })
+
+    if (getSetting("barMode") or "default") == "vertical" then
+        builder:AddToggle({
+            label = "Lock Drain to Original Duration",
+            description = "When a tracked buff or debuff gets extended, keep draining at the speed set by its original duration and add the extra time as extra fill instead of refilling the bar. If the new duration is longer than the original, the bar still refills and drains at that longer speed.",
+            get = function() return getSetting("verticalLockCadence") or false end,
+            set = function(v) setSetting("verticalLockCadence", v) end,
+        })
+    end
 
     ---------------------------------------------------------------------------
     -- Positioning Section
