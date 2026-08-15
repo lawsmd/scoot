@@ -136,6 +136,14 @@ Navigation.NavModel = {
         },
     },
     {
+        key = "scootAuras",
+        label = "ScootAuras",
+        collapsible = true,
+        children = {
+            { key = "scootAurasList", label = "Aura List", module = "scootAuras", betaBadge = true },
+        },
+    },
+    {
         key = "prd",
         label = "Personal Resource",
         collapsible = true,

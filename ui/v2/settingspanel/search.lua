@@ -79,6 +79,7 @@ local SKIP_SCAN = {
     profilesImportExport = true,
     applyAllFonts = true,
     applyAllTextures = true,
+    scootAurasList = true,
     search = true,
 }
 
@@ -100,6 +101,26 @@ local MANUAL_ENTRIES = {
         label = "Texture",
         description = "Select a bar texture to apply across all Scoot settings.",
         rendererKey = "applyAllTextures",
+    },
+    -- ScootAuras: the Aura List page is hand-rolled, so the scanner never
+    -- sees it; these entries make its flows findable.
+    {
+        type = "page",
+        label = "Aura List",
+        description = "ScootAuras: track any buff or debuff as an icon, bar, or shape on player, target, or focus.",
+        rendererKey = "scootAurasList",
+    },
+    {
+        type = "button",
+        label = "Add Aura",
+        description = "Create a custom aura tracker from a spell ID or the cooldown catalog.",
+        rendererKey = "scootAurasList",
+    },
+    {
+        type = "button",
+        label = "Add Group",
+        description = "Group aura trackers to arrange and move them together.",
+        rendererKey = "scootAurasList",
     },
 }
 

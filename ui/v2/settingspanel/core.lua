@@ -81,6 +81,7 @@ function UIPanel:Initialize()
         if addon.CloseFontPicker then addon.CloseFontPicker() end
         if addon.CloseBarTexturePicker then addon.CloseBarTexturePicker() end
         if addon.CloseBarBorderPicker then addon.CloseBarBorderPicker() end
+        if addon.CloseScootAuraEditor then addon.CloseScootAuraEditor() end
     end)
 
     Window:RestorePosition(frame)

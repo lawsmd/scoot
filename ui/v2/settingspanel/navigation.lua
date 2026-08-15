@@ -59,6 +59,11 @@ function UIPanel:ClearContent()
         self._startHereCleanup()
     end
 
+    -- Aura List page cleanup (two-pane layout, hand-rolled rows)
+    if self._scootAurasCleanup then
+        self._scootAurasCleanup()
+    end
+
     -- Builder-based content
     if self._currentBuilder then
         self._currentBuilder:Cleanup()
@@ -853,8 +858,15 @@ function UIPanel:OnNavigationSelect(key, previousKey)
             if gi then
                 local CG = addon.CustomGroups
                 if CG and CG.GetGroupName and CG.GetGroupName(tonumber(gi)) then
-                    contentPane._headerSubtitle:SetText("(Custom Group " .. gi .. ")")
-                    contentPane._headerSubtitle:Show()
+                    -- The Aura List page restyles this shared FontString (gray,
+                    -- clamped to the header width); restore the stock look.
+                    local sub = contentPane._headerSubtitle
+                    sub:ClearAllPoints()
+                    sub:SetPoint("BOTTOMLEFT", contentPane._header, "BOTTOMLEFT", 16, 8)
+                    local sr, sg, sb = Theme:GetAccentColor()
+                    sub:SetTextColor(sr, sg, sb, 0.5)
+                    sub:SetText("(Custom Group " .. gi .. ")")
+                    sub:Show()
                 else
                     contentPane._headerSubtitle:Hide()
                 end
@@ -928,6 +940,7 @@ end
 local TITLE_PREFIX = {
     cdm         = "CDM",
     classAuras  = "Class Auras",
+    scootAuras  = "ScootAuras",
     unitFrames  = "Unit Frames",
     prd         = "Personal Resource",
     applyAll    = "Apply All",

@@ -82,6 +82,16 @@ core/components/classauras/events.lua
 core/components/classauras/mage.lua
 core/components/classauras/shaman.lua
 core/components/classauras/deathknight.lua
+## ScootAuras (user-built aura trackers, replaces Class Auras)
+core/components/scootauras/core.lua
+core/components/scootauras/layout.lua
+core/components/scootauras/styling.lua
+core/components/scootauras/engine.lua
+core/components/scootauras/cadence.lua
+core/components/scootauras/groups.lua
+core/components/scootauras/rearrange.lua
+core/components/scootauras/regions.lua
+core/components/scootauras/events.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua
 core/components/auras.lua
@@ -205,6 +215,7 @@ core/debug/nametext.lua
 core/debug/castz.lua
 core/debug/repcolor.lua
 core/debug/auracontainer.lua
+core/debug/scootauras.lua
 core/debug/ufzauras.lua
 core/taintdebug.lua
 core/dialogs.lua
@@ -259,6 +270,11 @@ ui/v2/settings/cdm/CustomGroupsRenderer.lua
 ui/v2/settings/cdm/CustomGroupsTab.lua
 ui/v2/settings/cdm/SpellbookOverlay.lua
 ui/v2/settings/classauras/ClassAurasRenderer.lua
+ui/v2/settings/scootauras/EditorTabs.lua
+ui/v2/settings/scootauras/CDMPicker.lua
+ui/v2/settings/scootauras/TitleCarousel.lua
+ui/v2/settings/scootauras/EditorWindow.lua
+ui/v2/settings/scootauras/AuraListRenderer.lua
 ui/v2/settings/actionbars/ActionBarRenderer.lua
 ui/v2/settings/actionbars/MicroBarRenderer.lua
 ui/v2/settings/actionbars/ExtraAbilitiesRenderer.lua

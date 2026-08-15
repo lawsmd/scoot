@@ -189,6 +189,7 @@ function addon:GetDefaults()
             -- Settings Panel (global accent color, position, size)
             accentColor = { r = 0, g = 1, b = 0.255, a = 1 },  -- Matrix green #00FF41
             windowPosition = nil,  -- Saved as { point, relPoint, x, y }
+            scootAuraEditorPosition = nil,  -- ScootAura editor window, same shape
         },
         profile = {
             applyAll = {
@@ -233,6 +234,7 @@ function addon:GetDefaults()
                 notes = false,
                 objectiveTracker = false,
                 prd = false,
+                scootAuras = false,
                 sct = false,
                 tooltip = false,
                 unitFrames = false,

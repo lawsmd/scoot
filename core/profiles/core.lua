@@ -1164,6 +1164,9 @@ function Profiles:OnProfileChanged(_, _, newProfileKey)
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileChanged")
     end
+    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
+        addon.ScootAuras.ReconcileForActiveProfile("OnProfileChanged")
+    end
     self._lastActiveLayout = newProfileKey
     self:RequestSync("ProfileChanged")
 end
@@ -1180,6 +1183,9 @@ function Profiles:OnProfileCopied(_, _, sourceKey)
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileCopied")
     end
+    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
+        addon.ScootAuras.ReconcileForActiveProfile("OnProfileCopied")
+    end
     self:RequestSync("ProfileCopied")
 end
 
@@ -1194,6 +1200,9 @@ function Profiles:OnProfileReset()
     ApplyGroupBuffIconsHiddenForActiveProfile("OnProfileReset")
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:OnProfileReset")
+    end
+    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
+        addon.ScootAuras.ReconcileForActiveProfile("OnProfileReset")
     end
     self:RequestSync("ProfileReset")
 end

@@ -162,6 +162,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug castz fit         (shrink-to-fit state of each live bar)")
             addon:Print("  /scoot debug repcolor [watch]   (ReputationColor banner trace)")
             addon:Print("  /scoot debug auracontainer [start|stop|probes|filters|suppress|log]")
+            addon:Print("  /scoot debug scootauras [add|del|edit|enable|disable|list|reconcile|flush|methods|create|park|revive|fresh|repoint|parkfilter|setunit|budget|clear|log]")
             addon:Print("  /scoot debug ufzauras [log|apply|kick]   (Unit Frames Z aura rows)")
             return
         end
@@ -562,6 +563,17 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugAuraContainer(sub2, string.lower(args[4] or ""))
             else
                 addon:Print("Aura container debug not available.")
+            end
+            return
+        end
+
+        -- /scoot debug scootauras [add|del|enable|disable|list|reconcile|flush|methods|...]
+        -- ScootAuras lifecycle commands (phase 1) plus the phase-0 probe battery
+        if sub1 == "scootauras" or sub1 == "sa" then
+            if addon.DebugScootAuras then
+                addon.DebugScootAuras(sub2, string.lower(args[4] or ""), string.lower(args[5] or ""), string.lower(args[6] or ""), string.lower(args[7] or ""))
+            else
+                addon:Print("ScootAuras debug not available.")
             end
             return
         end

@@ -81,6 +81,7 @@ read_globals = {
     "EventRegistry",
     "GameFontNormal",
     "GetCursorPosition",
+    "IsMouseButtonDown",
     "GetMouseFoci",
     "HUD_EDIT_MODE_RESET_POSITION",
     "NineSliceUtil",

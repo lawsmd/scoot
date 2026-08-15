@@ -87,6 +87,9 @@ function addon:GetComponentCategory(componentId)
     if componentId:sub(1, 10) == "classAura_" then
         return "classAuras"
     end
+    if componentId:sub(1, 10) == "scootAura_" then
+        return "scootAuras"
+    end
     return nil
 end
 
@@ -112,6 +115,7 @@ addon.MODULE_CATEGORY_ORDER = {
     "objectiveTracker",
     "prd",
     "widget",  -- label "Reports/Widget" — sorted alphabetically by label
+    "scootAuras",
     "sct",
     "tooltip",
     "unitFrames",
@@ -176,6 +180,11 @@ addon.MODULE_CATEGORIES = {
         label = "Class Auras",
         variant = "X",
         -- No sub-toggles on Features page (dynamic per-class aura IDs)
+    },
+    scootAuras = {
+        label = "ScootAuras",
+        -- No variant letter: plain ON/OFF row (maintainer decision 2026-08-13).
+        -- No sub-toggles on Features page (dynamic per-tracker IDs)
     },
     cooldownManager = {
         label = "Cooldown Manager",
