@@ -892,10 +892,11 @@ function Controls:ShowDialog(name, options)
         f._acceptBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, CONTENT_PADDING)
         f._cancelBtn:Hide()
     else
-        -- Two buttons side by side, centered
+        -- Two buttons side by side, centered. The affirmative action is always
+        -- the left button, across every dialog in the addon.
         local totalWidth = acceptWidth + cancelWidth + BUTTON_GAP
-        f._cancelBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", -totalWidth/2, CONTENT_PADDING)
-        f._acceptBtn:SetPoint("BOTTOMLEFT", f._cancelBtn, "BOTTOMRIGHT", BUTTON_GAP, 0)
+        f._acceptBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", -totalWidth/2, CONTENT_PADDING)
+        f._cancelBtn:SetPoint("BOTTOMLEFT", f._acceptBtn, "BOTTOMRIGHT", BUTTON_GAP, 0)
         f._cancelBtn:Show()
     end
 
