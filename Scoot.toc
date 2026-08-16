@@ -92,6 +92,7 @@ core/components/scootauras/groups.lua
 core/components/scootauras/rearrange.lua
 core/components/scootauras/regions.lua
 core/components/scootauras/events.lua
+core/components/scootauras/copy.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua
 core/components/auras.lua
@@ -272,6 +273,7 @@ ui/v2/settings/cdm/SpellbookOverlay.lua
 ui/v2/settings/classauras/ClassAurasRenderer.lua
 ui/v2/settings/scootauras/EditorTabs.lua
 ui/v2/settings/scootauras/CDMPicker.lua
+ui/v2/settings/scootauras/CopyFromGlobal.lua
 ui/v2/settings/scootauras/TitleCarousel.lua
 ui/v2/settings/scootauras/EditorWindow.lua
 ui/v2/settings/scootauras/AuraListRenderer.lua

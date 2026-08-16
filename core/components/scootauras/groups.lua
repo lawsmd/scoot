@@ -399,8 +399,7 @@ end
 --- Aligns the group pool with the store: claims live groups, releases stale
 -- entries, reconciles member parenting, and lays everything out.
 function Groups.ApplyAll()
-    local store = SAU.GetStore()
-    local groups = (SAU.IsModuleActive() and store and store.groups) or {}
+    local groups = SAU.IsModuleActive() and SAU.OwnedGroups() or {}
 
     local toRelease = {}
     for gid in pairs(byGroup) do

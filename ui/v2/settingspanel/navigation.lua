@@ -53,6 +53,25 @@ end
 -- Cleans up all content types before rendering a new section.
 -- New sections with custom state tracking must add their cleanup logic here.
 
+-- The header subtitle is one shared FontString. Pages that restyle it (the
+-- Aura List hangs a gray, wrapped how-to line under the title) put it back
+-- through this before another page reuses it: single bottom-left anchor,
+-- 11pt, accent at half alpha, wrap on (the stock look from CreateContentPane).
+function UIPanel:ResetHeaderSubtitle()
+    local contentPane = self.frame and self.frame._contentPane
+    local sub = contentPane and contentPane._headerSubtitle
+    if not sub or not contentPane._header then return end
+    sub:ClearAllPoints()
+    sub:SetPoint("BOTTOMLEFT", contentPane._header, "BOTTOMLEFT", 16, 8)
+    sub:SetFont(Theme:GetFont("LABEL"), 11, "")
+    sub:SetJustifyH("LEFT")
+    sub:SetJustifyV("MIDDLE")
+    sub:SetWordWrap(true)
+    local sr, sg, sb = Theme:GetAccentColor()
+    sub:SetTextColor(sr, sg, sb, 0.5)
+    contentPane._headerSubtitleCustom = nil
+end
+
 function UIPanel:ClearContent()
     -- Features page cleanup (restore scroll frame, hide reload area, destroy rows)
     if self._startHereCleanup then
@@ -858,13 +877,10 @@ function UIPanel:OnNavigationSelect(key, previousKey)
             if gi then
                 local CG = addon.CustomGroups
                 if CG and CG.GetGroupName and CG.GetGroupName(tonumber(gi)) then
-                    -- The Aura List page restyles this shared FontString (gray,
-                    -- clamped to the header width); restore the stock look.
+                    -- The Aura List page restyles this shared FontString;
+                    -- restore the stock look before reusing it.
+                    self:ResetHeaderSubtitle()
                     local sub = contentPane._headerSubtitle
-                    sub:ClearAllPoints()
-                    sub:SetPoint("BOTTOMLEFT", contentPane._header, "BOTTOMLEFT", 16, 8)
-                    local sr, sg, sb = Theme:GetAccentColor()
-                    sub:SetTextColor(sr, sg, sb, 0.5)
                     sub:SetText("(Custom Group " .. gi .. ")")
                     sub:Show()
                 else

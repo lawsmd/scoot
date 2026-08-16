@@ -21,6 +21,8 @@ local TOP_H = 423
 local TOP_LEFT_W = 797
 local BOTTOM_LEFT_W = 667
 local PAD = 10
+local TITLE_ICON = 16      -- rename pencil, duplicate copy
+local TITLE_ICON_GAP = 5   -- name glyphs to the first icon, and icon to icon
 
 local frame
 local session
@@ -115,10 +117,10 @@ local function CurrentName()
     return "New Aura Tracker"
 end
 
+-- Icon as the Aura List and the CDM picker show it (SAU.DescribeSpell: the
+-- CDM override chain, so a base spell wears its talent's art and name).
 local function PlainSpellTexture(spellId)
-    local ok, tex = pcall(C_Spell.GetSpellTexture, spellId)
-    if ok and tex and not issecretvalue(tex) then return tex end
-    return 134400
+    return SAU()._SpellIcon(spellId)
 end
 
 --------------------------------------------------------------------------------
@@ -195,7 +197,8 @@ local function ValidateSpell(spellId)
     local SpellObj = _G.Spell
     if not (SpellObj and SpellObj.CreateFromSpellID) then
         -- No hydration path; DoesSpellExist already passed, accept it.
-        session.validated = { spellId = spellId, name = "Spell " .. spellId, icon = PlainSpellTexture(spellId) }
+        local name, icon = SAU().DescribeSpell(spellId)
+        session.validated = { spellId = spellId, name = name, icon = icon }
         session.statusOverride = nil
         session.timerEpoch = {}
         ApplyValidatedSpell()
@@ -206,13 +209,13 @@ local function ValidateSpell(spellId)
     local spell = SpellObj:CreateFromSpellID(spellId)
     spell:ContinueOnSpellLoad(function()
         if token ~= validationToken or not session then return end
-        local name
-        local nok, sname = pcall(spell.GetSpellName, spell)
-        if nok and type(sname) == "string" and not issecretvalue(sname) then name = sname end
+        -- Hydrated now; describe through the shared resolver so the chip
+        -- matches the picker cell that was clicked.
+        local name, icon = SAU().DescribeSpell(spellId)
         session.validated = {
             spellId = spellId,
-            name = name or ("Spell " .. spellId),
-            icon = PlainSpellTexture(spellId),
+            name = name,
+            icon = icon,
         }
         session.statusOverride = nil
         session.timerEpoch = {}
@@ -301,30 +304,67 @@ local function InitializeFrame()
     titleText:SetTextColor(ar, ag, ab, 1)
     widgets.titleText = titleText
 
-    -- Rename pencil (floats right of the centered title; drafts hide it).
+    -- Title icons: the rename pencil, then the duplicate copy for a tracker in
+    -- a group. Both float right of the centered title; drafts hide them.
     -- Leveled above the carousel viewport (+2) and its name buttons (+3).
-    local renameBtn = CreateFrame("Button", nil, titleBar)
-    renameBtn:SetSize(16, 16)
-    renameBtn:SetPoint("LEFT", titleText, "RIGHT", 8, 0)
-    renameBtn:SetFrameLevel(titleBar:GetFrameLevel() + 6)
-    local pencil = renameBtn:CreateTexture(nil, "ARTWORK")
-    pencil:SetAllPoints()
-    pencil:SetAtlas("Pencil-Icon")
-    pencil:SetDesaturated(true)
-    pencil:SetVertexColor(ar, ag, ab)
-    pencil:SetAlpha(0.35)
-    renameBtn:SetScript("OnEnter", function() pencil:SetAlpha(0.8) end)
-    renameBtn:SetScript("OnLeave", function() pencil:SetAlpha(0.35) end)
-    widgets.renameBtn = renameBtn
-
-    -- The pencil follows whichever name is centered: the plain title, or the
-    -- carousel's selected member when the tracker is in a group.
-    local function AnchorPencil()
-        renameBtn:ClearAllPoints()
-        local target = widgets.carouselActive and widgets.carousel.selectedAnchor or titleText
-        renameBtn:SetPoint("LEFT", target, "RIGHT", 8, 0)
+    local function TitleIcon(atlas, tooltip)
+        local btn = CreateFrame("Button", nil, titleBar)
+        btn:SetSize(TITLE_ICON, TITLE_ICON)
+        btn:SetFrameLevel(titleBar:GetFrameLevel() + 6)
+        local tex = btn:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints()
+        tex:SetAtlas(atlas)
+        tex:SetDesaturated(true)
+        tex:SetVertexColor(ar, ag, ab)
+        tex:SetAlpha(0.35)
+        btn:SetScript("OnEnter", function(self)
+            tex:SetAlpha(0.8)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(tooltip, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function()
+            tex:SetAlpha(0.35)
+            GameTooltip:Hide()
+        end)
+        return btn
     end
-    widgets.AnchorPencil = AnchorPencil
+
+    local renameBtn = TitleIcon("Pencil-Icon", "Rename")
+    local duplicateBtn = TitleIcon("friends-icon-battlenet-copy", "Duplicate into this group")
+    widgets.renameBtn = renameBtn
+    widgets.duplicateBtn = duplicateBtn
+
+    -- Both icons follow whichever name is centered: the plain title, or the
+    -- carousel's selected member when the tracker is in a group. They anchor to
+    -- the text rather than the carousel's padded hit box, so they sit against
+    -- the glyphs and stay clear of the neighboring names.
+    local function AnchorTitleIcons()
+        local target = widgets.carouselActive and widgets.carousel.selectedAnchor or titleText
+        renameBtn:ClearAllPoints()
+        renameBtn:SetPoint("LEFT", target, "RIGHT", TITLE_ICON_GAP, 0)
+        duplicateBtn:ClearAllPoints()
+        duplicateBtn:SetPoint("LEFT", renameBtn, "RIGHT", TITLE_ICON_GAP, 0)
+    end
+    widgets.AnchorTitleIcons = AnchorTitleIcons
+
+    -- Duplicating is a group action, so that icon also needs widgets.inGroup.
+    local function SetTitleIconsShown(shown)
+        renameBtn:SetShown(shown)
+        duplicateBtn:SetShown(not not (shown and widgets.inGroup))
+    end
+    widgets.SetTitleIconsShown = SetTitleIconsShown
+
+    -- Copies the open tracker into its group beside itself, then edits the copy.
+    duplicateBtn:SetScript("OnClick", function()
+        local tracker = CurrentTracker()
+        if not (tracker and tracker.groupId) then return end
+        local newId = SAU().DuplicateTrackerInGroup(session.trackerId)
+        if not newId then return end
+        GameTooltip:Hide()
+        RefreshList()
+        Editor.Open(newId)
+    end)
 
     -- Group carousel: the title name becomes a spinnable strip of the group's
     -- members. Selection defers a frame so the release frame stays smooth.
@@ -333,6 +373,8 @@ local function InitializeFrame()
         font = theme:GetFont("HEADER"),
         arrowFont = theme:GetFont("BUTTON"),
         color = { ar, ag, ab },
+        dimColor = { theme.TEXT_DIM.r, theme.TEXT_DIM.g, theme.TEXT_DIM.b },
+        selectedRoom = 2 * (TITLE_ICON_GAP + TITLE_ICON),
         onSelect = function(trackerId)
             C_Timer.After(0, function()
                 if session and session.trackerId ~= trackerId and SAU().GetTracker(trackerId) then
@@ -343,10 +385,10 @@ local function InitializeFrame()
         onMotion = function(moving)
             if not widgets.carouselActive or widgets.renameBox:IsShown() then return end
             if moving then
-                renameBtn:Hide()
+                SetTitleIconsShown(false)
             else
-                AnchorPencil()
-                renameBtn:Show()
+                AnchorTitleIcons()
+                SetTitleIconsShown(true)
             end
         end,
     })
@@ -380,7 +422,7 @@ local function InitializeFrame()
         local name = renameBox:GetText()
         renameBox:Hide()
         SetTitleShown(true)
-        renameBtn:Show()
+        SetTitleIconsShown(true)
         if type(name) ~= "string" or name == "" then return end
         if session and session.trackerId then
             SAU().RenameTracker(session.trackerId, name)
@@ -392,7 +434,7 @@ local function InitializeFrame()
     renameBtn:SetScript("OnClick", function()
         renameBox:SetText(CurrentName())
         SetTitleShown(false)
-        renameBtn:Hide()
+        SetTitleIconsShown(false)
         renameBox:Show()
         renameBox:SetFocus()
         renameBox:HighlightText()
@@ -401,13 +443,13 @@ local function InitializeFrame()
     renameBox:SetScript("OnEscapePressed", function()
         renameBox:Hide()
         SetTitleShown(true)
-        renameBtn:Show()
+        SetTitleIconsShown(true)
     end)
     renameBox:SetScript("OnEditFocusLost", function()
         if renameBox:IsShown() then
             renameBox:Hide()
             SetTitleShown(true)
-            renameBtn:Show()
+            SetTitleIconsShown(true)
         end
     end)
 
@@ -840,33 +882,35 @@ local function UpdateSpellRegion()
     widgets.statusText:SetText(status)
 end
 
--- A draft has nothing to rename yet: static title, pencil hidden. The pencil
--- appears with the tracker. Never touched while the rename box is open (a
--- deferred refresh mid-rename must not re-show the pencil over it). A tracker
--- in a group of two or more gets the member carousel instead of the plain
--- title; the pencil waits until the strip is at rest.
+-- A draft has nothing to rename or copy yet: static title, no icons. They
+-- appear with the tracker, and the duplicate one only for a tracker in a group.
+-- Never touched while the rename box is open (a deferred refresh mid-rename
+-- must not re-show an icon over it). A tracker in a group of two or more gets
+-- the member carousel instead of the plain title; the icons wait until the
+-- strip is at rest.
 local function UpdateTitle()
     if widgets.renameBox:IsShown() then return end
     local tracker = CurrentTracker()
     local gid = tracker and tracker.groupId
+    widgets.inGroup = gid ~= nil
     if gid and widgets.carousel:SetContext(gid, session.trackerId) then
         widgets.carouselActive = true
         widgets.titleText:Hide()
         widgets.carousel:Show()
-        widgets.AnchorPencil()
-        widgets.renameBtn:SetShown(widgets.carousel:IsSettled())
+        widgets.AnchorTitleIcons()
+        widgets.SetTitleIconsShown(widgets.carousel:IsSettled())
         return
     end
     widgets.carouselActive = false
     widgets.carousel:Hide()
     widgets.titleText:Show()
-    widgets.AnchorPencil()
+    widgets.AnchorTitleIcons()
     if tracker then
         widgets.titleText:SetText(CurrentName())
-        widgets.renameBtn:Show()
+        widgets.SetTitleIconsShown(true)
     else
         widgets.titleText:SetText("Creating a new Aura Tracker")
-        widgets.renameBtn:Hide()
+        widgets.SetTitleIconsShown(false)
     end
 end
 

@@ -2,16 +2,16 @@
 --
 -- When the tracker open in the ScootAura editor belongs to a group, the
 -- centered title name becomes the handle of a carousel listing the group's
--- members in memberOrder. The selected name sits centered at full size; the
--- neighbors shrink ring by ring and fade toward the viewport edges, each in a
--- faint box that shrinks with it, so the strip reads as a row of cards. A click
+-- members in memberOrder. The selected name sits centered at full size in the
+-- accent color; the neighbors shrink ring by ring, tint to gray, and fade
+-- toward the viewport edges, so the accent marks the selection. A click
 -- on a name selects it, dragging spins the strip, the wheel steps it. A pair of
 -- end chevrons brackets the visible strip (riding its ends when the whole
 -- group fits, parked at the viewport edges when it does not) so the bar reads
 -- as something that moves; they dim at the ends and click to step.
 --
 -- Layout is continuous in index space: `offset` is a float, the selected
--- member sits at an integer, and every size, gap, and alpha interpolates
+-- member sits at an integer, and every size, gap, alpha, and tint interpolates
 -- from the fractional distance to `offset`, so a drag morphs the strip
 -- instead of stepping it. Widths derive from one base measurement per name
 -- (16pt) scaled by size, never from per-frame GetStringWidth.
@@ -27,15 +27,16 @@ addon.UI.ScootAuraTitleCarousel = {}
 local Carousel = addon.UI.ScootAuraTitleCarousel
 
 local BASE_SIZE = 16
-local GAP = 20               -- edge-to-edge between boxes (36 text-to-text at the center pair)
-local PENCIL_ROOM = 24       -- 8 + 16px pencil, reserved right of the selected box
--- Each name sits in a faint box that shrinks with its ring: padding beside the
--- text scales with the font size (floored), height is a multiple of it.
-local BOX_PAD_X = 10
-local BOX_PAD_MIN = 5
-local BOX_H_RATIO = 1.8      -- box height / font size (16pt -> 28.8px)
-local BOX_FILL = { 1, 1, 1, 0.05 }
-local BOX_EDGE = { 1, 1, 1, 0.10 }
+local GAP = 20               -- edge-to-edge between names (36 text-to-text at the center pair)
+-- Space held clear right of the selected name for the editor's title icons,
+-- measured from its glyph edge (opts.selectedRoom overrides). The name's own
+-- side padding covers the first PAD_X of it.
+local SELECTED_ROOM = 42
+-- Padding beside each name, scaled by its ring's font size (floored). Nothing
+-- draws it; it widens the click target and spaces the names apart.
+local PAD_X = 10
+local PAD_MIN = 5
+local DIM_COLOR = { 0.6, 0.6, 0.6 }   -- unselected names; opts.dimColor overrides
 local EDGE_FADE = 80         -- px inward from the viewport edge over which alpha ramps 0 -> 1
 local DRAG_THRESHOLD = 4     -- px; below it a press is a click
 local FLING = 0.15           -- seconds of release velocity projected into the snap target
@@ -118,30 +119,15 @@ local function AcquireItem(c)
     local it = table.remove(c.pool)
     if it then return it end
     local btn = CreateFrame("Button", nil, c.viewport)
-    btn:SetHeight(c.viewport:GetHeight())   -- full-height hit area; the box draws shorter
+    btn:SetHeight(c.viewport:GetHeight())   -- full-height hit area
     btn:EnableMouse(true)
-    local fill = btn:CreateTexture(nil, "BACKGROUND")
-    fill:SetPoint("CENTER", btn, "CENTER", 0, 0)
-    fill:SetColorTexture(BOX_FILL[1], BOX_FILL[2], BOX_FILL[3], BOX_FILL[4])
-    -- 1px edges ride the fill's corners, so one SetSize on the fill resizes the box.
-    local function Edge(p1, p2, w, h)
-        local t = btn:CreateTexture(nil, "BORDER")
-        t:SetPoint(p1, fill, p1, 0, 0)
-        t:SetPoint(p2, fill, p2, 0, 0)
-        if w then t:SetWidth(w) else t:SetHeight(h) end
-        t:SetColorTexture(BOX_EDGE[1], BOX_EDGE[2], BOX_EDGE[3], BOX_EDGE[4])
-    end
-    Edge("TOPLEFT", "TOPRIGHT", nil, 1)
-    Edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 1)
-    Edge("TOPLEFT", "BOTTOMLEFT", 1, nil)
-    Edge("TOPRIGHT", "BOTTOMRIGHT", 1, nil)
     local fs = btn:CreateFontString(nil, "OVERLAY")
     fs:SetFont(c.opts.font, BASE_SIZE, "")   -- SetText errors on a font-less string
     fs:SetPoint("CENTER", btn, "CENTER", 0, 0)
     fs:SetJustifyH("CENTER")
     fs:SetWordWrap(false)
-    fs:SetTextColor(c.opts.color[1], c.opts.color[2], c.opts.color[3], 1)
-    it = { btn = btn, fs = fs, fill = fill, curSize = BASE_SIZE }
+    fs:SetTextColor(c.dim[1], c.dim[2], c.dim[3], 1)   -- ApplyItem tints from here
+    it = { btn = btn, fs = fs, curSize = BASE_SIZE }
     btn:SetScript("OnMouseDown", function(_, button)
         if button == "LeftButton" then BeginPress(c, it.index) end
     end)
@@ -155,7 +141,8 @@ local function ReleaseAll(c)
         it.btn:Hide()
         it.btn:EnableMouse(true)
         it.btn:SetHitRectInsets(0, 0, 0, 0)
-        it.hover, it.curSize, it.id, it.index, it.alpha, it.ad = false, nil, nil, nil, nil, nil
+        it.hover, it.curSize, it.curTint = false, nil, nil
+        it.id, it.index, it.alpha, it.ad = nil, nil, nil, nil
         c.pool[#c.pool + 1] = it
     end
     wipe(c.items)
@@ -178,16 +165,16 @@ end
 --------------------------------------------------------------------------------
 
 local function PadX(size)
-    return math.max(BOX_PAD_MIN, BOX_PAD_X * size / BASE_SIZE)
+    return math.max(PAD_MIN, PAD_X * size / BASE_SIZE)
 end
 
---- Font size, box width, pencil room, and ring distance of item i.
+--- Font size, padded width, title-icon room, and ring distance of item i.
 local function Metrics(c, i)
     local d = i - c.offset
     local ad = math.abs(d)
     local size = BASE_SIZE * Knot(SIZE_KNOTS, 3, ad)
     local w = c.items[i].baseW * (size / BASE_SIZE) + 2 * PadX(size)
-    local room = PENCIL_ROOM * Clamp(1 - ad, 0, 1)
+    local room = c.selRoom * Clamp(1 - ad, 0, 1)
     return size, w, room, ad
 end
 
@@ -197,10 +184,22 @@ local function ApplyItem(c, it, size, w, x, ad, half)
         it.fs:SetFont(c.opts.font, q, "")
         it.curSize = q
     end
+    -- Accent at the center, gray by one ring out, quantized so a drag repaints
+    -- the color at most 32 times per name. The squared falloff keeps the accent
+    -- on the selected name instead of bleeding into its neighbors.
+    local t = Clamp(1 - ad, 0, 1)
+    t = math.floor(t * t * 32 + 0.5) / 32
+    if it.curTint ~= t then
+        local sel, dim = c.opts.color, c.dim
+        it.fs:SetTextColor(dim[1] + (sel[1] - dim[1]) * t,
+                           dim[2] + (sel[2] - dim[2]) * t,
+                           dim[3] + (sel[3] - dim[3]) * t, 1)
+        it.curTint = t
+    end
+
     w = math.max(w, 8)
     it.btn:SetWidth(w)
     it.btn:SetPoint("CENTER", c.viewport, "CENTER", x, 0)
-    it.fill:SetSize(w, size * BOX_H_RATIO)
 
     local a = Knot(ALPHA_KNOTS, 4, ad)
     a = a * Clamp((half - (math.abs(x) + w / 2)) / EDGE_FADE, 0, 1)
@@ -273,7 +272,7 @@ Layout = function(c)
         hi, prevW, prevRoom = i, w, room
         hiX, hiW, hiRoom = cx - anchor, w, room
     end
-    -- Leftward: item i's pencil room sits between it and its right neighbor.
+    -- Leftward: item i's icon room sits between it and its right neighbor.
     cx, prevW = 0, wk
     local loX, loW = -anchor, wk
     for i = k - 1, 1, -1 do
@@ -303,7 +302,9 @@ end
 SetSelected = function(c, idx, notify)
     local it = c.items[idx]
     if not it or it.id == c.selectedId then return end
-    c.selectedIndex, c.selectedId, c.selectedAnchor = idx, it.id, it.btn
+    -- The anchor is the text, not the padded hit box: the editor's title icons
+    -- sit against the glyphs.
+    c.selectedIndex, c.selectedId, c.selectedAnchor = idx, it.id, it.fs
     if notify and c.opts.onSelect then c.opts.onSelect(it.id) end
 end
 
@@ -506,10 +507,14 @@ local function PreWarm(c)
     c.measureFS:SetFont(c.opts.font, BASE_SIZE, "")
 end
 
---- opts: width, font, arrowFont (chevron glyphs; defaults to font), color = { r, g, b },
---- onSelect(trackerId), onMotion(isMoving)
+--- opts: width, font, arrowFont (chevron glyphs; defaults to font),
+--- color = { r, g, b } for the selected name, dimColor = { r, g, b } for the
+--- rest (defaults to DIM_COLOR), selectedRoom (px kept clear right of the
+--- selected name's glyphs), onSelect(trackerId), onMotion(isMoving)
 function Carousel.Create(titleBar, opts)
     local c = setmetatable({ titleBar = titleBar, opts = opts, items = {}, pool = {}, count = 0 }, Proto)
+    c.dim = opts.dimColor or DIM_COLOR
+    c.selRoom = math.max(0, (opts.selectedRoom or SELECTED_ROOM) - PAD_X)
     c.viewW = math.max(MIN_WIDTH, math.floor(opts.width))
 
     local vp = CreateFrame("Frame", nil, titleBar)

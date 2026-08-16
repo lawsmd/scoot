@@ -102,6 +102,20 @@ local CDM_CATEGORIES = (function()
     return { 0, 1, 2, 3 }
 end)()
 
+local function PlainId(v)
+    if type(v) == "number" and not issecretvalue(v) and v > 0 then return v end
+    return nil
+end
+
+-- Every CDM entry whose identity (base spell, override, or tooltip override)
+-- is the looked-up ID contributes its whole aura family: base, override,
+-- tooltip override, and every linked aura ID. The union across entries is the
+-- point. Blizzard keys several entries on one hidden base spell and only some
+-- of them carry the real aura as a linked spell: Flame Shock's CDM base is
+-- 470411 (the debuff is 188389, never a base anywhere), and for Elemental the
+-- Essential entry lists no linked spells while the Tracked Bar entry links
+-- 188389. Stopping at the first match built {470411, 470057} and the tracker
+-- never fired (2026-08-16).
 local function ExpandFromCDM(include, lookupSpellId)
     if not lookupSpellId or not C_CooldownViewer then return end
     if not C_CooldownViewer.GetCooldownViewerCategorySet
@@ -115,20 +129,20 @@ local function ExpandFromCDM(include, lookupSpellId)
                 if not issecretvalue(cooldownID) then
                     local iok, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
                     if iok and type(info) == "table" and not issecretvalue(info) then
-                        local sid = not issecretvalue(info.spellID) and info.spellID or nil
-                        local oid = not issecretvalue(info.overrideSpellID) and info.overrideSpellID or nil
-                        if sid == lookupSpellId or oid == lookupSpellId then
+                        local sid = PlainId(info.spellID)
+                        local oid = PlainId(info.overrideSpellID)
+                        local tid = PlainId(info.overrideTooltipSpellID)
+                        if sid == lookupSpellId or oid == lookupSpellId or tid == lookupSpellId then
                             if sid then include[sid] = true end
                             if oid then include[oid] = true end
+                            if tid then include[tid] = true end
                             local linked = info.linkedSpellIDs
                             if type(linked) == "table" and not issecretvalue(linked) then
                                 for _, lid in ipairs(linked) do
-                                    if type(lid) == "number" and not issecretvalue(lid) then
-                                        include[lid] = true
-                                    end
+                                    lid = PlainId(lid)
+                                    if lid then include[lid] = true end
                                 end
                             end
-                            return
                         end
                     end
                 end
@@ -137,9 +151,15 @@ local function ExpandFromCDM(include, lookupSpellId)
     end
 end
 
-local function BuildCandidateFilters(tracker)
+local function BuildCandidateFilters(tracker, trackerId)
     local include = { [tracker.spellId] = true }
     pcall(ExpandFromCDM, include, tracker.spellId)
+    if trackerId then
+        local ids = {}
+        for id in pairs(include) do table.insert(ids, id) end
+        table.sort(ids)
+        SetResult("filters.t" .. trackerId, table.concat(ids, ","))
+    end
     return { includeSpellIDs = include }
 end
 
@@ -372,7 +392,7 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
     local slotKey = "scootAura" .. trackerId .. "_" .. entry.slotSeq
 
     local slotOk, buttonOrErr = pcall(container.AddAuraSlot, container, slotKey, SAU.FilterForKind(tracker.kind), {
-        candidateFilters = BuildCandidateFilters(tracker),
+        candidateFilters = BuildCandidateFilters(tracker, trackerId),
         initializeFrame = function(button)
             entry.button = button
             local wok, werr = pcall(Engine.WireButton, trackerId, tracker, state, entry, button)

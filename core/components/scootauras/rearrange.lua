@@ -287,10 +287,7 @@ BeginMemberDrag = function(ov)
     if drag.visual then drag.visual:SetAlpha(0.4) end
 
     local g = EnsureGhost()
-    local texture
-    local okTex, tex = pcall(C_Spell.GetSpellTexture, tracker.spellId)
-    if okTex and tex and not issecretvalue(tex) then texture = tex end
-    g._tex:SetTexture(texture or 134400)
+    g._tex:SetTexture(SAU._SpellIcon(tracker.spellId))
     g:SetAlpha(0.85)
     g:Show()
 

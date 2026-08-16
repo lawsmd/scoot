@@ -47,17 +47,21 @@ local SHAPE_LABELS = { icon = "Icon", bar = "Horizontal Bar", shape = "Shape" }
 local GROW_LABELS = { RIGHT = "Right", LEFT = "Left", DOWN = "Down", UP = "Up" }
 local GROW_ORDER = { "RIGHT", "LEFT", "DOWN", "UP" }
 
--- One descriptor for both surfaces: the tracker row's meta line and the
--- group icon's hover tooltip.
-local function TrackerMetaText(tracker)
+-- One descriptor for every surface: the tracker row's meta line, the group
+-- icon's hover tooltip, and the Copy from Global rows (which pass
+-- includeDisabled = false: another character's enabled state is not news).
+local function TrackerMetaText(tracker, includeDisabled)
     local text = (KIND_LABELS[tracker.kind] or "?") .. " on "
         .. (UNIT_LABELS[tracker.unit] or "?") .. ", shown as "
         .. (SHAPE_LABELS[tracker.shape] or "?")
-    if tracker.enabled == false then
+    if includeDisabled ~= false and tracker.enabled == false then
         text = text .. "  (disabled)"
     end
     return text
 end
+
+addon.ScootAurasUI = addon.ScootAurasUI or {}
+addon.ScootAurasUI.TrackerMetaText = TrackerMetaText
 
 local RenderList
 
@@ -293,6 +297,82 @@ local function Cleanup(panel)
     state.leftDropHighlight = nil
     state.active = false
     panel._scootAurasCleanup = nil
+
+    -- Header pieces this page borrows: the two action buttons and the
+    -- restyled subtitle. The buttons and the copy fly-out are built once per
+    -- window and cached (not in state.flyouts, whose entries are destroyed
+    -- here), so hide and close rather than tear down.
+    local contentPane = panel.frame and panel.frame._contentPane
+    if contentPane then
+        if contentPane._scootAuraCopyBtn then contentPane._scootAuraCopyBtn:Hide() end
+        if contentPane._scootAuraImportBtn then contentPane._scootAuraImportBtn:Hide() end
+        if contentPane._scootAuraCopyFlyout then contentPane._scootAuraCopyFlyout:Close() end
+    end
+    if panel.ResetHeaderSubtitle then panel:ResetHeaderSubtitle() end
+end
+
+--------------------------------------------------------------------------------
+-- Header actions: "Import" (placeholder) and "Copy from Global"
+--------------------------------------------------------------------------------
+
+-- Built once per settings window on the shared page header, right of the
+-- title, in the header's small-button recipe (see the Collapse All button in
+-- settingspanel/core.lua). Shown by RenderList, hidden by Cleanup.
+local function EnsureHeaderButtons(contentPane)
+    if not contentPane or not contentPane._header then return end
+    if contentPane._scootAuraCopyBtn then return end
+    local Controls = addon.UI.Controls
+    if not Controls or not Controls.CreateButton then return end
+    local header = contentPane._header
+
+    local copyBtn = Controls:CreateButton({
+        parent = header,
+        name = "ScootAuraCopyFromGlobalBtn",
+        text = "Copy from Global",
+        height = 17,
+        fontSize = 10,
+        borderWidth = 1,
+        borderAlpha = 0.6,
+        onClick = function()
+            local fly = contentPane._scootAuraCopyFlyout
+            if fly then fly:Toggle() end
+        end,
+    })
+    copyBtn:SetPoint("TOPRIGHT", header, "TOPRIGHT", -16, -12)
+    copyBtn:Hide()
+    contentPane._scootAuraCopyBtn = copyBtn
+
+    local importBtn = Controls:CreateButton({
+        parent = header,
+        name = "ScootAuraImportBtn",
+        text = "Import",
+        height = 17,
+        fontSize = 10,
+        borderWidth = 1,
+        borderAlpha = 0.6,
+    })
+    importBtn:SetPoint("RIGHT", copyBtn, "LEFT", -8, 0)
+    importBtn:Hide()
+    -- Placeholder: no action yet. HookScript, because the button control owns
+    -- OnEnter/OnLeave for its hover fill.
+    importBtn:HookScript("OnEnter", function(self)
+        if Controls.GetOrCreateTooltip then
+            local tip = Controls:GetOrCreateTooltip()
+            tip:SetContent(nil, "Coming soon...")
+            tip:ShowAtAnchor(self, "TOPRIGHT", "BOTTOMRIGHT", 0, -4)
+        end
+    end)
+    importBtn:HookScript("OnLeave", function()
+        if Controls.GetOrCreateTooltip then
+            Controls:GetOrCreateTooltip():Hide()
+        end
+    end)
+    contentPane._scootAuraImportBtn = importBtn
+
+    local CopyFlyout = addon.UI.ScootAuraCopyFlyout
+    if CopyFlyout and CopyFlyout.Create then
+        contentPane._scootAuraCopyFlyout = CopyFlyout.Create(copyBtn)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -417,8 +497,7 @@ local function CreateTrackerRow(pane, trackerId, tracker)
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ROW_ICON, ROW_ICON)
     icon:SetPoint("LEFT", row, "LEFT", PAD, 0)
-    local ok, tex = pcall(C_Spell.GetSpellTexture, tracker.spellId)
-    local texture = (ok and tex and not issecretvalue(tex)) and tex or 134400
+    local texture = addon.ScootAuras._SpellIcon(tracker.spellId)
     icon:SetTexture(texture)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
@@ -785,8 +864,7 @@ local function CreateGroupBox(pane, gid, group, boxW)
 
             local tex = btn:CreateTexture(nil, "ARTWORK")
             tex:SetAllPoints()
-            local ok, spellTex = pcall(C_Spell.GetSpellTexture, tracker.spellId)
-            local texture = (ok and spellTex and not issecretvalue(spellTex)) and spellTex or 134400
+            local texture = addon.ScootAuras._SpellIcon(tracker.spellId)
             tex:SetTexture(texture)
             tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             if tracker.enabled == false then tex:SetDesaturated(true) end
@@ -886,24 +964,34 @@ RenderList = function(panel, scrollContent)
     local ar, ag, ab = theme:GetAccentColor()
     local totalW = scrollContent:GetWidth() or 600
 
-    -- The how-to line rides the page header as its subtitle, above the
-    -- header's divider. Navigation hides it again when the page changes.
-    -- Gray like the row meta text, clamped to the header on both ends so a
-    -- long line truncates instead of running past the window edge; the
-    -- custom-group path in navigation.lua restores the stock single-anchor
-    -- accent styling before it reuses this FontString.
+    -- The how-to line rides the page header as its subtitle: gray like the
+    -- row meta text, hung under the title and spanning the header's width so
+    -- it wraps to a second line instead of truncating. The header buttons sit
+    -- on the title row above it. Cleanup restores the stock look through
+    -- UIPanel:ResetHeaderSubtitle before another page reuses the FontString;
+    -- the flag keeps the theme subscription from recoloring it to accent.
     local contentPane = panel.frame and panel.frame._contentPane
     if contentPane and contentPane._headerSubtitle and contentPane._header then
         local sub = contentPane._headerSubtitle
         sub:SetText(
             "Click a tracker to edit it. Drag trackers into groups; drag a group's icons to reorder or remove them. Position frames in Edit Mode.")
         sub:ClearAllPoints()
-        sub:SetPoint("BOTTOMLEFT", contentPane._header, "BOTTOMLEFT", 16, 8)
-        sub:SetPoint("BOTTOMRIGHT", contentPane._header, "BOTTOMRIGHT", -16, 8)
+        sub:SetPoint("TOPLEFT", contentPane._header, "TOPLEFT", 16, -36)
+        sub:SetPoint("BOTTOMRIGHT", contentPane._header, "BOTTOMRIGHT", -16, 4)
+        sub:SetFont(theme:GetFont("LABEL"), 10, "")
         sub:SetJustifyH("LEFT")
-        sub:SetWordWrap(false)
+        sub:SetJustifyV("TOP")
+        sub:SetWordWrap(true)
         sub:SetTextColor(0.55, 0.55, 0.55, 1)
+        contentPane._headerSubtitleCustom = true
         sub:Show()
+    end
+
+    -- Header actions, right of the title.
+    EnsureHeaderButtons(contentPane)
+    if contentPane and contentPane._scootAuraCopyBtn then
+        contentPane._scootAuraCopyBtn:Show()
+        contentPane._scootAuraImportBtn:Show()
     end
 
     -- Pane split: fixed offsets from the measured content width, divider

@@ -414,18 +414,46 @@ local function LifecycleDump()
     push("Aura restrictions active: " .. tostring(addon.AurasSecretNow and addon.AurasSecretNow()))
     push("Engine initialized: " .. tostring(SAU.Engine.IsInitialized()))
     push("Pending queue: " .. tostring(SAU.Engine.HasPendingWork()))
+    push("Me: " .. tostring(SAU.GetOwnerKey()) .. " class=" .. tostring(SAU.GetOwnerClassToken()))
     push("")
 
     local store = SAU.GetStore()
+    local ownedRows = SAU.SortedTrackers()
     if not store or not next(store.trackers or {}) then
         push("No trackers. Start with: /scoot debug sa add <spellId> [unit] [buff|debuff] [icon|bar|shape]")
+    elseif #ownedRows == 0 then
+        push("--- Trackers (profile, this character) ---")
+        push("(none owned by this character)")
     else
-        push("--- Trackers (profile) ---")
-        for _, row in ipairs(SAU.SortedTrackers()) do
+        push("--- Trackers (profile, this character) ---")
+        for _, row in ipairs(ownedRows) do
             local t = row.tracker
-            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s wired=%s"):format(
+            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s wired=%s owner=%s"):format(
                 row.id, tostring(t.name), tostring(t.spellId), t.kind, t.unit, t.shape,
-                tostring(t.enabled), tostring(SAU.Engine.IsWired(row.id))))
+                tostring(t.enabled), tostring(SAU.Engine.IsWired(row.id)), tostring(t.owner)))
+        end
+    end
+    if store then
+        -- Other characters' records share the store; they are hidden here.
+        local hiddenT, hiddenG = 0, 0
+        for _, t in pairs(store.trackers or {}) do
+            if type(t) == "table" and not SAU.IsOwnedByMe(t) then hiddenT = hiddenT + 1 end
+        end
+        for _, g in pairs(store.groups or {}) do
+            if type(g) == "table" and not SAU.IsOwnedByMe(g) then hiddenG = hiddenG + 1 end
+        end
+        if hiddenT > 0 or hiddenG > 0 then
+            push(("(hidden: %d trackers / %d groups owned by other characters; see /scoot debug sa owners)"):format(
+                hiddenT, hiddenG))
+        end
+        local owners = rawget(store, "owners")
+        if type(owners) == "table" and next(owners) then
+            local parts = {}
+            for key, rec in pairs(owners) do
+                table.insert(parts, tostring(key) .. "=" .. tostring(type(rec) == "table" and rec.class))
+            end
+            table.sort(parts)
+            push("Owners: " .. table.concat(parts, ", "))
         end
     end
     push("")
@@ -452,9 +480,9 @@ local function LifecycleDump()
         for _, row in ipairs(groupRows) do
             local g = row.group
             local s = g.settings or {}
-            push(("g%d '%s': grow=%s spacing=%s members=[%s]"):format(
+            push(("g%d '%s': grow=%s spacing=%s members=[%s] owner=%s"):format(
                 row.id, tostring(g.name), tostring(s.grow), tostring(s.spacing),
-                table.concat(g.memberOrder or {}, ",")))
+                table.concat(g.memberOrder or {}, ","), tostring(g.owner)))
         end
         push("")
         push("--- Group pool ---")
@@ -488,10 +516,89 @@ local function LifecycleDump()
     push("/scoot debug sa gadd [name] || gdel <gid> (delete keeps members)")
     push("/scoot debug sa join <id> <gid> [index] || leave <id>")
     push("/scoot debug sa reconcile || flush || list")
+    push("/scoot debug sa owners  (every profile: owners, counts, Copy-from-Global buckets)")
     push("/scoot debug sa methods <id>  (button binding inventory)")
+    push("/scoot debug sa spell <N||spellId>  (N from a tN row above; include set, CDM entries, picker cell, live aura check)")
+    push("/scoot debug sa catalog  (every picker cell: shown name, stored base)")
     push("/scoot debug sa cadence <id||spellId> [on || off || set <0..1> || alpha <0..1> || mirror <y||off>]  (cadence lock record / probes)")
 
     addon.DebugShowWindow("ScootAuras Lifecycle", table.concat(lines, "\n"))
+end
+
+-- Ownership across the whole account: per profile, who owns what; then the
+-- Copy-from-Global buckets exactly as the fly-out would list them.
+local function OwnersDump()
+    local SAU = addon.ScootAuras
+    local lines = {}
+    local function push(s) table.insert(lines, s) end
+
+    push("=== ScootAuras Owners ===")
+    push("")
+    push("Me: " .. tostring(SAU.GetOwnerKey()) .. " class=" .. tostring(SAU.GetOwnerClassToken()))
+    local db = addon.db
+    local active = db and db.GetCurrentProfile and db:GetCurrentProfile() or nil
+    push("Active profile: " .. tostring(active))
+    push("")
+
+    local names = {}
+    for name in pairs((db and db.profiles) or {}) do table.insert(names, name) end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local profile = db.profiles[name]
+        local store = type(profile) == "table" and rawget(profile, "scootAuras") or nil
+        if store then
+            local byOwnerT, byOwnerG = {}, {}
+            for _, t in pairs(rawget(store, "trackers") or {}) do
+                if type(t) == "table" then
+                    local k = tostring(t.owner or "(unowned)")
+                    byOwnerT[k] = (byOwnerT[k] or 0) + 1
+                end
+            end
+            for _, g in pairs(rawget(store, "groups") or {}) do
+                if type(g) == "table" then
+                    local k = tostring(g.owner or "(unowned)")
+                    byOwnerG[k] = (byOwnerG[k] or 0) + 1
+                end
+            end
+            push(("--- Profile '%s'%s (nextId=%s) ---"):format(name, (name == active) and " [active]" or "",
+                tostring(rawget(store, "nextId"))))
+            local owners = rawget(store, "owners")
+            local keys = {}
+            for k in pairs(byOwnerT) do keys[k] = true end
+            for k in pairs(byOwnerG) do keys[k] = true end
+            if type(owners) == "table" then
+                for k in pairs(owners) do keys[tostring(k)] = true end
+            end
+            local sorted = {}
+            for k in pairs(keys) do table.insert(sorted, k) end
+            table.sort(sorted)
+            if #sorted == 0 then push("(empty store)") end
+            for _, k in ipairs(sorted) do
+                local rec = type(owners) == "table" and owners[k] or nil
+                push(("%s: trackers=%d groups=%d class=%s"):format(
+                    k, byOwnerT[k] or 0, byOwnerG[k] or 0,
+                    tostring(type(rec) == "table" and rec.class or nil)))
+            end
+            push("")
+        end
+    end
+
+    push("--- Copy from Global buckets (as listed for this character) ---")
+    local buckets = SAU.CollectCopySources and SAU.CollectCopySources() or {}
+    if #buckets == 0 then push("(none)") end
+    for _, b in ipairs(buckets) do
+        push(("%s [%s] class=%s: %d source(s)"):format(
+            b.displayName, tostring(b.ownerKey), tostring(b.classToken), #b.sources))
+        for _, src in ipairs(b.sources) do
+            local t = src.tracker
+            push(("   t%s '%s' spell=%s %s on %s as %s  (profile '%s'%s)"):format(
+                tostring(src.trackerId), tostring(t.name), tostring(t.spellId),
+                tostring(t.kind), tostring(t.unit), tostring(t.shape), tostring(src.profileName),
+                src.styling and "" or ", no styling"))
+        end
+    end
+
+    addon.DebugShowWindow("ScootAuras Owners", table.concat(lines, "\n"))
 end
 
 -- Binding-method inventory on a live tracker's engine button; gates the Shape
@@ -514,6 +621,266 @@ local function DumpButtonMethods(trackerId)
         table.insert(lines, n .. " = " .. type(entry.button[n]))
     end
     addon.DebugShowWindow("ScootAuras Button Methods", table.concat(lines, "\n"))
+end
+
+--------------------------------------------------------------------------------
+-- Spell resolution: what a tracker (or a bare spell ID) expands to, and every
+-- CDM entry that touches those IDs. Built for the Flame Shock case, where the
+-- CDM keys its entries on a hidden base spell (470411) and the real debuff
+-- (188389) is only a linked spell on some of them.
+--------------------------------------------------------------------------------
+
+local function PlainNum(v)
+    if type(v) == "number" and not issecretvalue(v) and v > 0 then return v end
+    return nil
+end
+
+local function SpellLabel(spellId)
+    local ok, name = pcall(C_Spell.GetSpellName, spellId)
+    if ok and type(name) == "string" and not issecretvalue(name) and name ~= "" then
+        return name
+    end
+    return "?"
+end
+
+local function CategoryName(value)
+    local enum = Enum and Enum.CooldownViewerCategory
+    if type(enum) == "table" then
+        for k, v in pairs(enum) do
+            if v == value then return k end
+        end
+    end
+    return tostring(value)
+end
+
+-- Every CDM entry (all categories, unlearned included) as plain fields.
+local function ScanCDMEntries()
+    local out = {}
+    local enum = Enum and Enum.CooldownViewerCategory
+    if not enum or not C_CooldownViewer
+        or not C_CooldownViewer.GetCooldownViewerCategorySet
+        or not C_CooldownViewer.GetCooldownViewerCooldownInfo then
+        return out
+    end
+    local cats = {}
+    for _, v in pairs(enum) do
+        if type(v) == "number" then table.insert(cats, v) end
+    end
+    table.sort(cats)
+    for _, cat in ipairs(cats) do
+        local ok, ids = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, cat, true)
+        if ok and type(ids) == "table" and not issecretvalue(ids) then
+            for _, cooldownID in ipairs(ids) do
+                if not issecretvalue(cooldownID) then
+                    local iok, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
+                    if iok and type(info) == "table" and not issecretvalue(info) then
+                        local linked = {}
+                        if type(info.linkedSpellIDs) == "table" and not issecretvalue(info.linkedSpellIDs) then
+                            for _, lid in ipairs(info.linkedSpellIDs) do
+                                lid = PlainNum(lid)
+                                if lid then table.insert(linked, lid) end
+                            end
+                        end
+                        table.insert(out, {
+                            category = cat,
+                            cooldownID = cooldownID,
+                            base = PlainNum(info.spellID),
+                            override = PlainNum(info.overrideSpellID),
+                            tooltip = PlainNum(info.overrideTooltipSpellID),
+                            linked = linked,
+                            isKnown = info.isKnown,
+                            hasAura = info.hasAura,
+                            selfAura = info.selfAura,
+                            isInvisible = info.isInvisible,
+                        })
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+local function SpellDump(arg)
+    local SAU = addon.ScootAuras
+    local Engine = SAU.Engine
+    local lines = {}
+    local function push(s) table.insert(lines, s) end
+
+    local n = tonumber(arg)
+    if not n then
+        addon:Print("Usage: /scoot debug sa spell <N|spellId>  (N from a tN row in /scoot debug sa list)")
+        return
+    end
+
+    -- Tracker ids are small profile counters; anything else is a spell id.
+    local trackerId, tracker = nil, SAU.GetTracker(n)
+    local spellId
+    if tracker then
+        trackerId = n
+        spellId = tracker.spellId
+    else
+        spellId = n
+    end
+
+    push("=== ScootAuras spell resolution ===")
+    push("")
+    push("In combat: " .. tostring(InCombatLockdown())
+        .. "  aura restrictions: " .. tostring(addon.AurasSecretNow and addon.AurasSecretNow())
+        .. "  structural gate open: " .. tostring(Engine.CanDoStructuralWork()))
+    push("")
+
+    if tracker then
+        push(("Tracker t%d '%s': spell=%d kind=%s unit=%s shape=%s enabled=%s owner=%s"):format(
+            trackerId, tostring(tracker.name), spellId, tostring(tracker.kind), tostring(tracker.unit),
+            tostring(tracker.shape), tostring(tracker.enabled), tostring(tracker.owner)))
+        push("Filter string: " .. tostring(SAU.FilterForKind(tracker.kind)))
+        local entry = Engine._byTracker[trackerId]
+        if entry then
+            push(("Pool entry shell%d: container=%s button=%s wired=%s wiredSpell=%s wiredUnit=%s wiredKind=%s retired=%d desiredEnabled=%s enabledDirty=%s"):format(
+                entry.index, tostring(entry.container ~= nil), tostring(entry.button ~= nil),
+                tostring(entry.wired), tostring(entry.wiredSpellId), tostring(entry.wiredUnit),
+                tostring(entry.wiredKind), #(entry.containers or {}), tostring(entry.desiredEnabled),
+                tostring(entry.enabledDirty)))
+            local shown = entry.shell and entry.shell:IsShown()
+            push("Shell shown: " .. tostring(shown) .. "  grouped: " .. tostring(entry.grouped or false))
+        else
+            push("Pool entry: NONE (tracker not claimed)")
+        end
+        push("Pending wire: " .. tostring(Engine.HasPendingWork()))
+        for _, key in ipairs({ "build.t" .. trackerId, "wire.t" .. trackerId, "filters.t" .. trackerId,
+                               "cadence.t" .. trackerId }) do
+            if Engine._results[key] ~= nil then
+                push(key .. " = " .. tostring(Engine._results[key]))
+            end
+        end
+    else
+        push("Spell " .. spellId .. " (no tracker with that id; treated as a spell ID)")
+    end
+    push("")
+
+    -- What the player sees for this ID (fresh override state).
+    SAU.InvalidateSpellDescriptions()
+    local dname, dicon, dshown = SAU.DescribeSpell(spellId)
+    push(("Described as: '%s' icon=%s via spell %d%s"):format(
+        dname, tostring(dicon), dshown, (dshown ~= spellId) and (" (override of " .. spellId .. ")") or ""))
+    local ook, ov = pcall(C_Spell.GetOverrideSpell, spellId)
+    push("C_Spell.GetOverrideSpell(" .. spellId .. ") = " .. (ook and tostring(ov) or ("ERR " .. tostring(ov))))
+    local bok, bs = pcall(C_Spell.GetBaseSpell, spellId)
+    push("C_Spell.GetBaseSpell(" .. spellId .. ") = " .. (bok and tostring(bs) or ("ERR " .. tostring(bs))))
+    push("Own name/icon: '" .. SpellLabel(spellId) .. "'")
+    push("")
+
+    -- The include set the engine would build right now.
+    local filters = Engine._BuildCandidateFilters({ spellId = spellId })
+    local include = filters and filters.includeSpellIDs or {}
+    local ids = {}
+    for id in pairs(include) do table.insert(ids, id) end
+    table.sort(ids)
+    push("--- includeSpellIDs (" .. #ids .. ") ---")
+    for _, id in ipairs(ids) do
+        push(("  %d  %s"):format(id, SpellLabel(id)))
+    end
+    push("")
+
+    -- Every CDM entry touching any included ID.
+    local wanted = {}
+    for id in pairs(include) do wanted[id] = true end
+    push("--- CDM entries touching these IDs ---")
+    local entries = ScanCDMEntries()
+    local hits = 0
+    for _, e in ipairs(entries) do
+        local touch = (e.base and wanted[e.base]) or (e.override and wanted[e.override])
+            or (e.tooltip and wanted[e.tooltip])
+        if not touch then
+            for _, lid in ipairs(e.linked) do
+                if wanted[lid] then touch = true break end
+            end
+        end
+        if touch then
+            hits = hits + 1
+            local linkedStr = {}
+            for _, lid in ipairs(e.linked) do
+                table.insert(linkedStr, lid .. " " .. SpellLabel(lid))
+            end
+            push(("  [%s] cooldownID=%s base=%s '%s' override=%s%s tooltipOverride=%s linked=[%s] known=%s hasAura=%s selfAura=%s invisible=%s"):format(
+                CategoryName(e.category), tostring(e.cooldownID), tostring(e.base),
+                e.base and SpellLabel(e.base) or "?",
+                tostring(e.override), e.override and (" '" .. SpellLabel(e.override) .. "'") or "",
+                tostring(e.tooltip), table.concat(linkedStr, ", "),
+                tostring(e.isKnown), tostring(e.hasAura), tostring(e.selfAura), tostring(e.isInvisible)))
+        end
+    end
+    if hits == 0 then
+        push("  (none: the ID is off-catalog; the include set is the raw ID only)")
+    end
+    push("Catalog scanned: " .. #entries .. " entries")
+    push("")
+
+    -- What the picker shows for this ID, if it is a catalog base.
+    local Picker = addon.UI and addon.UI.ScootAuraCDMPicker
+    if Picker and Picker.BuildCatalog then
+        local cell
+        for _, c in ipairs(Picker.BuildCatalog()) do
+            if c.spellId == spellId or c.shownSpellId == spellId or c.baseSpellId == spellId then
+                cell = c
+                break
+            end
+        end
+        if cell then
+            push(("Picker cell: '%s' stores %d (entry base %s) shows %d icon=%s"):format(
+                cell.name, cell.spellId, tostring(cell.baseSpellId), tostring(cell.shownSpellId),
+                tostring(cell.icon)))
+        else
+            push("Picker cell: none (not a CDM entry identity for this character)")
+        end
+    end
+
+    -- Live aura check (plain outside restrictions; a debuff tracker wants a target).
+    if tracker and not (addon.AurasSecretNow and addon.AurasSecretNow()) then
+        push("")
+        local unit = tracker.unit or "target"
+        if UnitExists(unit) then
+            push("--- Auras on " .. unit .. " matching the include set (plain read, out of restrictions) ---")
+            local found = 0
+            for _, id in ipairs(ids) do
+                local aok, data = pcall(C_UnitAuras.GetUnitAuraBySpellID, unit, id)
+                if aok and type(data) == "table" and not issecretvalue(data) then
+                    found = found + 1
+                    push(("  %d %s source=%s"):format(id, tostring(data.name), tostring(data.sourceUnit)))
+                end
+            end
+            if found == 0 then push("  (none present right now)") end
+        else
+            push("No " .. unit .. "; target something with the aura up and re-run for a live match check.")
+        end
+    end
+
+    addon.DebugShowWindow("ScootAuras Spell Resolution", table.concat(lines, "\n"))
+end
+
+local function CatalogDump()
+    local Picker = addon.UI and addon.UI.ScootAuraCDMPicker
+    if not (Picker and Picker.BuildCatalog) then
+        addon:Print("CDM picker not loaded.")
+        return
+    end
+    local lines = { "=== ScootAuras CDM picker catalog (as the grid shows it) ===", "" }
+    local cells = Picker.BuildCatalog()
+    for _, c in ipairs(cells) do
+        local notes = {}
+        if c.baseSpellId and c.baseSpellId ~= c.spellId then
+            table.insert(notes, "tooltip override of base " .. c.baseSpellId)
+        end
+        if c.shownSpellId and c.shownSpellId ~= c.spellId then
+            table.insert(notes, "shown as " .. c.shownSpellId)
+        end
+        local via = (#notes > 0) and ("  (" .. table.concat(notes, "; ") .. ")") or ""
+        table.insert(lines, ("%-32s stores %d%s"):format(c.name, c.spellId, via))
+    end
+    table.insert(lines, "")
+    table.insert(lines, #cells .. " cells")
+    addon.DebugShowWindow("ScootAuras Catalog", table.concat(lines, "\n"))
 end
 
 --------------------------------------------------------------------------------
@@ -640,6 +1007,11 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
         return
     end
 
+    if sub == "owners" then
+        OwnersDump()
+        return
+    end
+
     if sub == "methods" then
         local trackerId = tonumber(a1)
         if not trackerId then
@@ -647,6 +1019,16 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
             return
         end
         DumpButtonMethods(trackerId)
+        return
+    end
+
+    if sub == "spell" then
+        SpellDump(a1)
+        return
+    end
+
+    if sub == "catalog" then
+        CatalogDump()
         return
     end
 

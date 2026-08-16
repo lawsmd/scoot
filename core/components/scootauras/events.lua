@@ -27,9 +27,7 @@ local function RegisterLEMCallbacks()
 
     lib:RegisterCallback("enter", function()
         editModeActive = true
-        local store = SAU.GetStore()
-        if not store or not store.trackers then return end
-        for trackerId, tracker in pairs(store.trackers) do
+        for trackerId, tracker in pairs(SAU.OwnedTrackers()) do
             local state = SAU._activeStates[trackerId]
             if state and state.shell and tracker.enabled and SAU.IsModuleActive() then
                 -- Engine content cannot fake an aura; show Scoot-side preview
@@ -72,10 +70,10 @@ local function InitializeFromProfile()
     Engine.SetInitialized()
     RegisterLEMCallbacks()
     if not SAU.IsModuleActive() then return end
-    local store = SAU.GetStore()
-    if not store or not store.trackers then return end
+    -- Adopt before validating (see ReconcileForActiveProfile).
+    SAU.AdoptUnowned("pew")
     SAU.ValidateGroupData()
-    for trackerId in pairs(store.trackers) do
+    for trackerId in pairs(SAU.OwnedTrackers()) do
         SAU.RegisterTrackerComponent(trackerId)
         addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
         Engine.ClaimForTracker(trackerId)
@@ -94,8 +92,22 @@ eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+-- Spell descriptions (name/icon by CDM override chain) cache a base-to-display
+-- map; these are the moments an override can appear or vanish.
+eventFrame:RegisterEvent("COOLDOWN_VIEWER_DATA_LOADED")
+eventFrame:RegisterEvent("COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED")
+eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 
 eventFrame:SetScript("OnEvent", function(_, event)
+    if event == "COOLDOWN_VIEWER_DATA_LOADED"
+        or event == "COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED"
+        or event == "PLAYER_SPECIALIZATION_CHANGED"
+        or event == "TRAIT_CONFIG_UPDATED" then
+        SAU.InvalidateSpellDescriptions()
+        return
+    end
+
     if event == "PLAYER_ENTERING_WORLD" then
         if not containersInitialized then
             containersInitialized = true

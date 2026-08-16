@@ -48,44 +48,170 @@ function SAU.EnsureStore()
     return store
 end
 
-function SAU.GetTracker(trackerId)
+--------------------------------------------------------------------------------
+-- Ownership
+--
+-- A profile is an Edit Mode layout, and several characters can share one, so
+-- trackers and groups are character-specific inside the profile: each record
+-- carries `owner` (the AceDB char key, "Name - Realm"). The getters below are
+-- the single choke point: anything resolved through GetTracker/GetGroup or the
+-- Owned*/Sorted* views belongs to this character. Other characters' records
+-- stay in the store untouched (their styling tables in profile.components are
+-- unregistered here and the pruner leaves non-empty ones alone).
+--------------------------------------------------------------------------------
+
+function SAU.GetOwnerKey()
+    local db = addon.db
+    return db and db.keys and db.keys.char or nil
+end
+
+function SAU.GetOwnerClassToken()
+    if addon.GetClassTokenForUnit then
+        local token = addon.GetClassTokenForUnit("player")
+        if type(token) == "string" then return token end
+    end
+    return nil
+end
+
+function SAU.IsOwnedByMe(record)
+    if type(record) ~= "table" or record.owner == nil then return false end
+    return record.owner == SAU.GetOwnerKey()
+end
+
+--- Records this character's class beside its trackers so other characters can
+-- class-color its name in the copy list. Write paths only.
+function SAU.StampOwner(store)
+    local me = SAU.GetOwnerKey()
+    if not store or not me then return end
+    local token = SAU.GetOwnerClassToken()
+    store.owners = store.owners or {}
+    local rec = store.owners[me]
+    if type(rec) ~= "table" then
+        store.owners[me] = { class = token }
+    elseif token and rec.class ~= token then
+        rec.class = token
+    end
+end
+
+-- Unfiltered access, for hygiene passes, debug output, and the copy scan.
+function SAU.GetTrackerRaw(trackerId)
     local store = SAU.GetStore()
     return store and store.trackers and store.trackers[trackerId] or nil
+end
+
+function SAU.GetGroupRaw(gid)
+    local store = SAU.GetStore()
+    return store and store.groups and store.groups[gid] or nil
+end
+
+--- This character's trackers as { [id] = tracker }. Fresh table; never
+-- materializes the store.
+function SAU.OwnedTrackers()
+    local out = {}
+    local store = SAU.GetStore()
+    local me = SAU.GetOwnerKey()
+    if store and store.trackers and me then
+        for id, tracker in pairs(store.trackers) do
+            if type(tracker) == "table" and tracker.owner == me then
+                out[id] = tracker
+            end
+        end
+    end
+    return out
+end
+
+function SAU.OwnedGroups()
+    local out = {}
+    local store = SAU.GetStore()
+    local me = SAU.GetOwnerKey()
+    if store and store.groups and me then
+        for gid, group in pairs(store.groups) do
+            if type(group) == "table" and group.owner == me then
+                out[gid] = group
+            end
+        end
+    end
+    return out
+end
+
+--- Migration: records without an owner (created before ownership existed)
+-- belong to the first character that loads the profile. Writes nothing when
+-- nothing is unowned, so it is safe on every init and reconcile pass.
+function SAU.AdoptUnowned(reason)
+    local store = SAU.GetStore()
+    local me = SAU.GetOwnerKey()
+    if not store or not me then return 0 end
+    local adopted = 0
+    for _, tracker in pairs(store.trackers or {}) do
+        if type(tracker) == "table" and tracker.owner == nil then
+            tracker.owner = me
+            adopted = adopted + 1
+        end
+    end
+    for _, group in pairs(store.groups or {}) do
+        if type(group) == "table" and group.owner == nil then
+            group.owner = me
+            adopted = adopted + 1
+        end
+    end
+    if adopted > 0 then
+        SAU.StampOwner(store)
+        if SAU.Engine and SAU.Engine.Record then
+            SAU.Engine.Record("adopt", tostring(reason) .. "=" .. adopted)
+        end
+    end
+    return adopted
+end
+
+-- Ids are shared between trackers and groups and unique across owners within
+-- a profile. Bumping past any id already in use guards a hand-merged store
+-- whose nextId lags behind its records.
+local function AllocateId(store)
+    local id = tonumber(store.nextId) or 1
+    while (store.trackers and store.trackers[id]) or (store.groups and store.groups[id]) do
+        id = id + 1
+    end
+    store.nextId = id + 1
+    return id
+end
+SAU._AllocateId = AllocateId
+
+--- Owner-filtered: nil for another character's tracker.
+function SAU.GetTracker(trackerId)
+    local tracker = SAU.GetTrackerRaw(trackerId)
+    if tracker and SAU.IsOwnedByMe(tracker) then return tracker end
+    return nil
 end
 
 --- Returns a sorted array of { id, tracker } for stable iteration.
 function SAU.SortedTrackers()
     local out = {}
-    local store = SAU.GetStore()
-    if store and store.trackers then
-        for id, tracker in pairs(store.trackers) do
-            table.insert(out, { id = id, tracker = tracker })
-        end
-        table.sort(out, function(a, b)
-            local ao = a.tracker.order or a.id
-            local bo = b.tracker.order or b.id
-            if ao ~= bo then return ao < bo end
-            return a.id < b.id
-        end)
+    for id, tracker in pairs(SAU.OwnedTrackers()) do
+        table.insert(out, { id = id, tracker = tracker })
     end
+    table.sort(out, function(a, b)
+        local ao = a.tracker.order or a.id
+        local bo = b.tracker.order or b.id
+        if ao ~= bo then return ao < bo end
+        return a.id < b.id
+    end)
     return out
 end
 
+--- Owner-filtered: nil for another character's group.
 function SAU.GetGroup(gid)
-    local store = SAU.GetStore()
-    return store and store.groups and store.groups[gid] or nil
+    local group = SAU.GetGroupRaw(gid)
+    if group and SAU.IsOwnedByMe(group) then return group end
+    return nil
 end
 
 --- Returns a sorted array of { id, group } for stable iteration.
 function SAU.SortedGroups()
     local out = {}
-    local store = SAU.GetStore()
-    if store and store.groups then
-        for gid, group in pairs(store.groups) do
-            table.insert(out, { id = gid, group = group })
-        end
-        table.sort(out, function(a, b) return a.id < b.id end)
+    for gid, group in pairs(SAU.OwnedGroups()) do
+        table.insert(out, { id = gid, group = group })
     end
+    table.sort(out, function(a, b) return a.id < b.id end)
     return out
 end
 
@@ -262,15 +388,132 @@ end
 -- Component registration
 --------------------------------------------------------------------------------
 
-local function PlainSpellName(spellId)
-    local ok, name = pcall(C_Spell.GetSpellName, spellId)
-    if ok and type(name) == "string" and not issecretvalue(name) and name ~= "" then
-        return name
+--------------------------------------------------------------------------------
+-- Spell descriptions (name and icon as the player knows the spell)
+--------------------------------------------------------------------------------
+
+-- Cooldown Manager entries key on a base spell that a talent may override:
+-- Flame Shock's entries carry base 470411, shown as Voltaic Blaze (470057)
+-- while that talent is taken. Blizzard's own CDM settings tooltip the entry by
+-- the override, so a stored spell ID is described the same way here: the
+-- CDM's `overrideSpellID` for a base spell, else the player's own override,
+-- else the spell itself. Name and icon always come from the same resolved
+-- ID, so they agree (the first cut named cells by the base and iconed them by
+-- the override-resolved texture, and "Flame Shock" wore the Voltaic Blaze
+-- icon). `overrideTooltipSpellID` is deliberately not in this map: it is a
+-- per-entry identity (several tracked entries share one base and differ only
+-- there), and the picker stores it as the cell's spell ID instead.
+
+local cdmDisplayByBase   -- [baseSpellId] = displaySpellId; nil until built
+
+local function PlainNumber(v)
+    if type(v) == "number" and not issecretvalue(v) and v > 0 then return v end
+    return nil
+end
+
+local function BuildCDMDisplayMap()
+    local map = {}
+    local enum = Enum and Enum.CooldownViewerCategory
+    if not enum or not C_CooldownViewer
+        or not C_CooldownViewer.GetCooldownViewerCategorySet
+        or not C_CooldownViewer.GetCooldownViewerCooldownInfo then
+        return map, 0
     end
-    return "Aura " .. tostring(spellId)
+    local count = 0
+    for _, category in pairs(enum) do
+        if type(category) == "number" then
+            local ok, ids = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, category, true)
+            if ok and type(ids) == "table" and not issecretvalue(ids) then
+                for _, cooldownID in ipairs(ids) do
+                    if not issecretvalue(cooldownID) then
+                        local iok, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
+                        if iok and type(info) == "table" and not issecretvalue(info) then
+                            local base = PlainNumber(info.spellID)
+                            if base then
+                                count = count + 1
+                                local shown = PlainNumber(info.overrideSpellID)
+                                -- Several entries share one base (cooldown and
+                                -- tracked-aura rows); the talent override is a
+                                -- property of the base, so any entry that
+                                -- reports it wins over the bare base.
+                                if shown and shown ~= base then
+                                    map[base] = shown
+                                elseif map[base] == nil then
+                                    map[base] = base
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return map, count
+end
+
+--- Drops the cached CDM base-to-display map; rebuilt on the next description.
+-- Called on CDM data/override events, spec changes, and talent edits.
+function SAU.InvalidateSpellDescriptions()
+    cdmDisplayByBase = nil
+end
+
+--- The spell ID a stored ID is shown as: CDM override chain, else the
+-- player's own override, else the ID itself.
+function SAU.DisplaySpellFor(spellId)
+    if type(spellId) ~= "number" then return spellId end
+    if not cdmDisplayByBase then
+        local map, count = BuildCDMDisplayMap()
+        -- An empty catalog means the CDM data has not loaded yet; keep
+        -- looking until it has.
+        if count > 0 then cdmDisplayByBase = map end
+        local mapped = map[spellId]
+        if mapped then return mapped end
+    else
+        local mapped = cdmDisplayByBase[spellId]
+        if mapped then return mapped end
+    end
+    local ok, override = pcall(C_Spell.GetOverrideSpell, spellId)
+    override = ok and PlainNumber(override) or nil
+    if override then return override end
+    return spellId
+end
+
+--- Name, icon (fileID), and the ID they came from, for a stored spell ID.
+-- Name falls back to "Aura <id>", icon to the question mark.
+function SAU.DescribeSpell(spellId)
+    local shown = SAU.DisplaySpellFor(spellId)
+    local name, icon
+    local nok, sname = pcall(C_Spell.GetSpellName, shown)
+    if nok and type(sname) == "string" and not issecretvalue(sname) and sname ~= "" then
+        name = sname
+    elseif shown ~= spellId then
+        nok, sname = pcall(C_Spell.GetSpellName, spellId)
+        if nok and type(sname) == "string" and not issecretvalue(sname) and sname ~= "" then
+            name = sname
+        end
+    end
+    -- originalIconID is the described spell's own art; iconID would resolve
+    -- overrides a second time through a different ID.
+    local tok, iconID, originalIconID = pcall(C_Spell.GetSpellTexture, shown)
+    if tok then icon = PlainNumber(originalIconID) or PlainNumber(iconID) end
+    if not icon and shown ~= spellId then
+        tok, iconID, originalIconID = pcall(C_Spell.GetSpellTexture, spellId)
+        if tok then icon = PlainNumber(originalIconID) or PlainNumber(iconID) end
+    end
+    return name or ("Aura " .. tostring(spellId)), icon or 134400, shown
+end
+
+local function PlainSpellName(spellId)
+    return (SAU.DescribeSpell(spellId))
 end
 
 SAU._PlainSpellName = PlainSpellName
+
+--- Icon fileID for a stored spell ID (see DescribeSpell).
+function SAU._SpellIcon(spellId)
+    local _, icon = SAU.DescribeSpell(spellId)
+    return icon
+end
 
 --- Registers the settings component for one tracker. Idempotent; respects the
 -- module gate (RegisterComponent no-ops while the category is disabled).
@@ -298,9 +541,8 @@ end
 
 -- Registered at init so LinkComponentsToDB picks up persisted styling tables.
 addon:RegisterComponentInitializer(function(self)
-    local store = SAU.GetStore()
-    if not store or not store.trackers then return end
-    for trackerId in pairs(store.trackers) do
+    SAU.AdoptUnowned("init")
+    for trackerId in pairs(SAU.OwnedTrackers()) do
         SAU.RegisterTrackerComponent(trackerId)
     end
 end, SAU.MODULE_CATEGORY)
@@ -325,8 +567,7 @@ function SAU.CreateTracker(spec)
     local store = SAU.EnsureStore()
     if not store then return nil, "profile not ready" end
 
-    local trackerId = store.nextId
-    store.nextId = trackerId + 1
+    local trackerId = AllocateId(store)
     store.trackers[trackerId] = {
         spellId = spellId,
         kind = kind,
@@ -335,7 +576,9 @@ function SAU.CreateTracker(spec)
         name = spec.name or PlainSpellName(spellId),
         enabled = true,
         order = trackerId,
+        owner = SAU.GetOwnerKey(),
     }
+    SAU.StampOwner(store)
 
     SAU.RegisterTrackerComponent(trackerId)
     addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
@@ -351,7 +594,7 @@ end
 -- the cleanup here is explicit.
 function SAU.DeleteTracker(trackerId)
     local store = SAU.GetStore()
-    local tracker = store and store.trackers and store.trackers[trackerId]
+    local tracker = SAU.GetTracker(trackerId)
     if not tracker then return nil, "no such tracker" end
 
     if tracker.groupId then
@@ -409,9 +652,14 @@ function SAU.SetTrackerContent(trackerId, changes)
     tracker.shape = shape
     if type(changes.name) == "string" and changes.name ~= "" then
         tracker.name = changes.name
-    elseif spellId ~= oldSpellId and tracker.name == PlainSpellName(oldSpellId) then
-        -- The name was the auto name; follow the new spell. Custom names stay.
-        tracker.name = PlainSpellName(spellId)
+    elseif spellId ~= oldSpellId then
+        -- The name was the auto name (or a Duplicate / Copy from Global of
+        -- one, where the point is to swap the spell next); follow the new
+        -- spell. Custom names stay.
+        local oldAuto = PlainSpellName(oldSpellId)
+        if tracker.name == oldAuto or tracker.name == oldAuto .. " copy" then
+            tracker.name = PlainSpellName(spellId)
+        end
     end
 
     if shape == "bar" and oldShape ~= "bar" then
@@ -433,8 +681,7 @@ function SAU.DuplicateTracker(trackerId)
     local store = SAU.EnsureStore()
     if not store then return nil, "profile not ready" end
 
-    local newId = store.nextId
-    store.nextId = newId + 1
+    local newId = AllocateId(store)
     store.trackers[newId] = {
         spellId = source.spellId,
         kind = source.kind,
@@ -443,7 +690,9 @@ function SAU.DuplicateTracker(trackerId)
         name = (source.name or PlainSpellName(source.spellId)) .. " copy",
         enabled = source.enabled ~= false,
         order = newId,
+        owner = SAU.GetOwnerKey(),
     }
+    SAU.StampOwner(store)
 
     local profile = addon.db and addon.db.profile
     if profile then
@@ -471,6 +720,26 @@ function SAU.DuplicateTracker(trackerId)
         SAU.ApplyBarStartingValues(newId)
     end
     SAU.Engine.ClaimForTracker(newId)
+    return newId
+end
+
+--- Duplicates a tracker that belongs to a group, placing the copy in the same
+-- group directly after it. A tracker outside a group gets a plain duplicate.
+function SAU.DuplicateTrackerInGroup(trackerId)
+    local source = SAU.GetTracker(trackerId)
+    if not source then return nil, "no such tracker" end
+    local gid = source.groupId
+    local newId, err = SAU.DuplicateTracker(trackerId)
+    if not newId then return nil, err end
+
+    local group = gid and SAU.GetGroup(gid)
+    local order = group and group.memberOrder
+    if not order then return newId end
+    local at = #order + 1
+    for i, id in ipairs(order) do
+        if id == trackerId then at = i + 1; break end
+    end
+    SAU.SetTrackerGroup(newId, gid, at)
     return newId
 end
 
@@ -509,13 +778,14 @@ function SAU.CreateGroup(name)
     local store = SAU.EnsureStore()
     if not store then return nil, "profile not ready" end
 
-    local gid = store.nextId
-    store.nextId = gid + 1
+    local gid = AllocateId(store)
     store.groups[gid] = {
         name = (type(name) == "string" and name ~= "") and name or ("Aura Group " .. gid),
         settings = CopyTable(SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},
+        owner = SAU.GetOwnerKey(),
     }
+    SAU.StampOwner(store)
     SAU.Groups.ClaimForGroup(gid)
     SAU.Groups.LayoutGroup(gid)
     return gid
@@ -525,7 +795,7 @@ end
 -- the screen spot where it currently renders.
 function SAU.DeleteGroup(gid)
     local store = SAU.GetStore()
-    local group = store and store.groups and store.groups[gid]
+    local group = SAU.GetGroup(gid)
     if not group then return nil, "no such group" end
 
     for _, trackerId in ipairs(group.memberOrder or {}) do
@@ -595,13 +865,17 @@ function SAU.SetTrackerGroup(trackerId, gid, index)
     local tracker = SAU.GetTracker(trackerId)
     if not tracker then return nil, "no such tracker" end
     local store = SAU.GetStore()
-    if gid ~= nil and not (store and store.groups and store.groups[gid]) then
+    local group = (gid ~= nil) and SAU.GetGroup(gid) or nil
+    if gid ~= nil and not group then
         return nil, "no such group"
+    end
+    if group and group.owner ~= tracker.owner then
+        return nil, "tracker and group belong to different characters"
     end
 
     local oldGid = tracker.groupId
     if oldGid then
-        local oldGroup = store.groups and store.groups[oldGid]
+        local oldGroup = store and store.groups and store.groups[oldGid]
         if oldGroup and oldGroup.memberOrder then
             for i, id in ipairs(oldGroup.memberOrder) do
                 if id == trackerId then
@@ -613,7 +887,6 @@ function SAU.SetTrackerGroup(trackerId, gid, index)
     end
 
     if gid then
-        local group = store.groups[gid]
         group.memberOrder = group.memberOrder or {}
         local wasEmpty = #group.memberOrder == 0
         local at = tonumber(index) or (#group.memberOrder + 1)
@@ -642,14 +915,15 @@ function SAU.DuplicateGroup(gid)
     local store = SAU.EnsureStore()
     if not store then return nil, "profile not ready" end
 
-    local newGid = store.nextId
-    store.nextId = newGid + 1
+    local newGid = AllocateId(store)
     local newGroup = {
         name = (source.name or ("Aura Group " .. gid)) .. " copy",
         settings = CopyTable(source.settings or SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},
+        owner = SAU.GetOwnerKey(),
     }
     store.groups[newGid] = newGroup
+    SAU.StampOwner(store)
 
     for _, memberId in ipairs(source.memberOrder or {}) do
         if SAU.GetTracker(memberId) then
@@ -689,8 +963,11 @@ function SAU.ValidateGroupData()
     local trackers = store.trackers or {}
     local groups = store.groups or {}
 
+    -- Whole-store pass (every owner): a dangling groupId, or membership across
+    -- two characters, hides the tracker from both panes of its owner's list.
     for _, tracker in pairs(trackers) do
-        if tracker.groupId ~= nil and not groups[tracker.groupId] then
+        local group = tracker.groupId ~= nil and groups[tracker.groupId] or nil
+        if tracker.groupId ~= nil and (not group or group.owner ~= tracker.owner) then
             tracker.groupId = nil
         end
     end
@@ -726,11 +1003,14 @@ function SAU.ReconcileForActiveProfile(reason)
     local Engine = SAU.Engine
     if not Engine or not Engine.IsInitialized() then return end
 
+    -- Adopt before validating so the owner-consistency repair never splits a
+    -- pre-ownership group from its members.
+    if SAU.IsModuleActive() then SAU.AdoptUnowned("reconcile:" .. tostring(reason)) end
     SAU.ValidateGroupData()
-    local store = SAU.GetStore()
-    local trackers = (SAU.IsModuleActive() and store and store.trackers) or {}
+    local trackers = SAU.IsModuleActive() and SAU.OwnedTrackers() or {}
 
-    -- Park pool occupants absent from (or stale in) the new profile.
+    -- Park pool occupants absent from (or stale in) the new profile, and any
+    -- that belong to another character.
     Engine.ReleaseAllExcept(trackers)
 
     -- Claim/create the new profile's trackers. Claim verifies wired content
@@ -750,9 +1030,8 @@ function SAU.ReconcileForActiveProfile(reason)
 end
 
 function SAU.RebuildAll()
-    local store = SAU.GetStore()
-    if not store or not store.trackers then return end
-    for trackerId, tracker in pairs(store.trackers) do
-        if SAU._ApplyStyling then SAU._ApplyStyling(trackerId, tracker) end
+    if not SAU._ApplyStyling then return end
+    for trackerId, tracker in pairs(SAU.OwnedTrackers()) do
+        SAU._ApplyStyling(trackerId, tracker)
     end
 end

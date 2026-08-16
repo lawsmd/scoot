@@ -85,15 +85,29 @@ end
 -- Catalog data (plain-guarded; the CDM APIs go secret under restrictions)
 --------------------------------------------------------------------------------
 
--- One flat list, deduped across every category, alphabetical by spell name.
+-- One flat list, deduped across every category, alphabetical by shown name.
+-- A cell's identity is what Blizzard's CDM settings treat as the item's
+-- spell: `overrideTooltipSpellID` when the entry carries one (several tracked
+-- entries can share one base and differ only there: Balance's Eclipse base
+-- fronts a Solar bar and a Lunar bar, Prot Paladin's spec passive fronts four
+-- tracked buffs), else the base `spellID` (stable across talent swaps; the
+-- engine expansion keys on it and unions every entry sharing it). The cell
+-- shows the entry as Blizzard tooltips it: by the current talent override
+-- when there is one (Flame Shock's base 470411 reads "Voltaic Blaze" with
+-- that icon while the talent is taken). Name and icon come from
+-- SAU.DescribeSpell, the same describer the editor chip and the Aura List
+-- use, so a click never changes what the player saw.
 local function BuildCatalog()
     local entries = {}
+    local SAU = addon.ScootAuras
     local enum = Enum and Enum.CooldownViewerCategory
-    if not enum or not C_CooldownViewer
+    if not SAU or not enum or not C_CooldownViewer
         or not C_CooldownViewer.GetCooldownViewerCategorySet
         or not C_CooldownViewer.GetCooldownViewerCooldownInfo then
         return entries
     end
+    -- Fresh override state for this open (talents may have changed).
+    SAU.InvalidateSpellDescriptions()
 
     local cats = {}
     for _, value in pairs(enum) do
@@ -112,21 +126,18 @@ local function BuildCatalog()
                     local iok, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
                     if iok and type(info) == "table" and not issecretvalue(info) then
                         local sid = not issecretvalue(info.spellID) and info.spellID or nil
-                        if type(sid) == "number" and not seen[sid] then
-                            seen[sid] = true
-                            local name, icon
-                            local sok, sname = pcall(C_Spell.GetSpellName, sid)
-                            if sok and type(sname) == "string" and not issecretvalue(sname) then
-                                name = sname
-                            end
-                            local tok, tex = pcall(C_Spell.GetSpellTexture, sid)
-                            if tok and tex and not issecretvalue(tex) then
-                                icon = tex
-                            end
+                        local tid = not issecretvalue(info.overrideTooltipSpellID)
+                            and info.overrideTooltipSpellID or nil
+                        local identity = (type(tid) == "number" and tid > 0) and tid or sid
+                        if type(identity) == "number" and not seen[identity] then
+                            seen[identity] = true
+                            local name, icon, shownId = SAU.DescribeSpell(identity)
                             table.insert(entries, {
-                                spellId = sid,
-                                name = name or ("Spell " .. sid),
-                                icon = icon or 134400,
+                                spellId = identity,
+                                baseSpellId = sid,
+                                shownSpellId = shownId,
+                                name = name,
+                                icon = icon,
                             })
                         end
                     end
@@ -140,6 +151,9 @@ local function BuildCatalog()
     end)
     return entries
 end
+
+-- Exposed for the debug dump (/scoot debug sa catalog).
+Picker.BuildCatalog = BuildCatalog
 
 --------------------------------------------------------------------------------
 -- Grid construction

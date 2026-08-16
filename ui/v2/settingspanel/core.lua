@@ -82,6 +82,7 @@ function UIPanel:Initialize()
         if addon.CloseBarTexturePicker then addon.CloseBarTexturePicker() end
         if addon.CloseBarBorderPicker then addon.CloseBarBorderPicker() end
         if addon.CloseScootAuraEditor then addon.CloseScootAuraEditor() end
+        if addon.CloseScootAuraCopyFlyout then addon.CloseScootAuraCopyFlyout() end
     end)
 
     Window:RestorePosition(frame)
@@ -1064,7 +1065,8 @@ function UIPanel:CreateContentPane()
         if contentPane._headerTitle then
             contentPane._headerTitle:SetTextColor(r, g, b, 1)
         end
-        if contentPane._headerSubtitle then
+        -- A page that owns the subtitle's color (Aura List: gray) keeps it.
+        if contentPane._headerSubtitle and not contentPane._headerSubtitleCustom then
             contentPane._headerSubtitle:SetTextColor(r, g, b, 0.5)
         end
         if contentPane._copyFromLabel then

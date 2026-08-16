@@ -29,12 +29,10 @@ local function ApplyIconMode(trackerId, tracker, state)
                 elem.widget:Show()
             else
                 -- The engine's SetIcon binding stamps the matched aura's real
-                -- icon; this static paint is the pre-match backdrop.
-                local ok, tex = pcall(C_Spell.GetSpellTexture, tracker.spellId)
-                if ok and tex and not issecretvalue(tex) then
-                    elem.widget:SetTexture(tex)
-                    elem.widget:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                end
+                -- icon; this static paint is the pre-match backdrop, drawn as
+                -- the Aura List and picker show the spell.
+                elem.widget:SetTexture(SAU._SpellIcon(tracker.spellId))
+                elem.widget:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                 -- Undo any shape-mode tint from a prior binding of this element.
                 elem.widget:SetVertexColor(1, 1, 1, 1)
                 elem.widget:SetDesaturated(false)
