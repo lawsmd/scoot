@@ -2544,7 +2544,6 @@ Presets:Register({
         g = 1,
       },
       buttonTintMode = "custom",
-      customTruncation = true,
       exportButtonXOffset = 0,
       exportChatChannel = "PARTY",
       exportChatLineCount = 5,
@@ -2642,7 +2641,6 @@ Presets:Register({
       },
     },
     essentialCooldowns = {
-      alignGroupCenter = true,
       borderEnable = true,
       borderInset = -0,
       borderInsetH = -0,
@@ -2705,12 +2703,6 @@ Presets:Register({
       },
       textStacks = {
         backdrop = "none",
-        backdropColor = {
-          -0,
-          -0,
-          -0,
-          1,
-        },
         color = {
           1,
           -0,
@@ -2783,7 +2775,6 @@ Presets:Register({
       borderEnabled = true,
       borderThickness = 2,
       borderTintEnabled = false,
-      clockAnchor = "BOTTOMLEFT",
       clockColorMode = "default",
       clockFont = "ROBOTO_SEMICOND_BLACK",
       clockFontSize = 18,
@@ -2833,15 +2824,6 @@ Presets:Register({
       zoneTextOffsetX = 0,
       zoneTextOffsetY = -5,
       zoneTextPosition = "TOP",
-    },
-    nameplatesUnit = {
-      _nameplatesColorMigrated = true,
-      _nameplatesTextMigrated = true,
-      textName = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-        size = 8,
-        style = "THICKOUTLINE",
-      },
     },
     notes = {
       note1BodyText = "— Train Tailoring and Enchanting\
@@ -3072,24 +3054,6 @@ Presets:Register({
       textEverythingElse = {
         fontFace = "ROBOTO_SEMICOND_BLACK",
       },
-      textLine2 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine3 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine4 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine5 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine6 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine7 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
       textTitle = {
         fontFace = "ROBOTO_SEMICOND_BLACK",
         size = 20,
@@ -3186,7 +3150,6 @@ Presets:Register({
         -0,
       },
       borderTintEnable = true,
-      compactCenter = true,
       direction = "down",
       hideDecorativeRing = false,
       hideWhenInactive = true,
@@ -3238,7 +3201,6 @@ Presets:Register({
       visibilityMode = "always",
     },
     utilityCooldowns = {
-      alignGroupCenter = true,
       borderEnable = true,
       borderInset = -0,
       borderInsetH = -1,
@@ -3513,7 +3475,6 @@ Presets:Register({
       },
       healthBarBorderTintEnable = true,
       healthBarColorMode = "valueDark",
-      healthBarPadding = 6,
       healthBarTexture = "a2",
       hideOverAbsorbGlow = true,
       roleIconAnchor = "TOPRIGHT",
@@ -3647,7 +3608,6 @@ Presets:Register({
       },
     },
   },
-  keepFriendlyNameplatesDisabled = true,
   minimap = {
     hide = false,
     minimapPos = 198.15696322251,
@@ -3777,7 +3737,6 @@ Presets:Register({
         },
         widthPct = 75,
       },
-      frameSpacingYDelta = -60,
       healthBarBackgroundTexture = "a3",
       healthBarBorderStyle = "square",
       healthBarBorderThickness = 1,
@@ -4209,7 +4168,6 @@ Presets:Register({
       powerBarBorderInset = -0,
       powerBarBorderStyle = "square",
       powerBarBorderThickness = 1,
-      powerBarCustomPositionEnabled = true,
       powerBarHeightPct = 100,
       powerBarHidden = true,
       powerBarHideFeedback = false,
@@ -4219,8 +4177,6 @@ Presets:Register({
       powerBarHideTextureOnly = true,
       powerBarOffsetX = 10,
       powerBarOffsetY = -2,
-      powerBarPosX = -0,
-      powerBarPosY = -55,
       powerBarTexture = "a1",
       powerBarWidthPct = 80,
       powerPercentHidden = false,

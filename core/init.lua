@@ -92,6 +92,134 @@ function addon:OnInitialize()
         end
     end
 
+    -- Migration V5: prune settings whose features were replaced or removed.
+    -- Every key listed here has no reader left in the addon, so it only bloats
+    -- profiles and any preset exported from them. Runs on raw SavedVariables so
+    -- the tables are pruned before AceDB wraps them.
+    do
+        local sv = _G["ScootDB"]
+        if sv and not (sv.global and sv.global._retiredKeysPrunedV5) then
+            -- The old TUI settings window; the current panel keeps its own
+            -- windowPosition/windowSize.
+            if type(sv.global) == "table" then
+                sv.global.tuiWindowPosition = nil
+                sv.global.tuiWindowSize = nil
+            end
+
+            -- Components retired outright — drop the whole stored table.
+            local RETIRED_COMPONENTS = { "nameplatesUnit" }
+
+            -- component id -> keys that component no longer reads.
+            local RETIRED_COMPONENT_KEYS = {
+                essentialCooldowns = { "alignGroupCenter" },
+                utilityCooldowns   = { "alignGroupCenter" },
+                trackedBuffs       = { "compactCenter" },
+                minimapStyle       = { "clockAnchor" },
+                tooltip            = { "textLine2", "textLine3", "textLine4",
+                                       "textLine5", "textLine6", "textLine7" },
+                damageMeter        = { "customTruncation", "namesFont", "namesFontStyle",
+                                       "numbersFont", "useCustomBarBorder" },
+            }
+            -- The button-bar components all carried the same retired border switch.
+            for i = 1, 8 do
+                RETIRED_COMPONENT_KEYS["actionBar" .. i] = { "borderDisableAll" }
+            end
+            RETIRED_COMPONENT_KEYS.petBar = { "borderDisableAll" }
+
+            -- Per-unit keys dropped from the Unit Frames schema.
+            local RETIRED_UNIT_KEYS = {
+                "frameSpacingYDelta", "healthvalueHidden", "healthBarOverlayHeightPct",
+                "powerBarCustomPositionEnabled", "powerBarPosX", "powerBarPosY",
+            }
+
+            for _, profileData in pairs(sv.profiles or {}) do
+                if type(profileData) == "table" then
+                    profileData.keepFriendlyNameplatesDisabled = nil
+
+                    local components = profileData.components
+                    if type(components) == "table" then
+                        for _, id in ipairs(RETIRED_COMPONENTS) do
+                            components[id] = nil
+                        end
+                        for id, keys in pairs(RETIRED_COMPONENT_KEYS) do
+                            local cfg = components[id]
+                            if type(cfg) == "table" then
+                                for _, key in ipairs(keys) do cfg[key] = nil end
+                            end
+                        end
+                        -- Superseded by hideRealmNames at the component root.
+                        local dmY = components.damageMeterV2
+                        if type(dmY) == "table" and type(dmY.textNames) == "table" then
+                            dmY.textNames.hideRealmName = nil
+                        end
+                        -- The stack text lost its backdrop tint.
+                        local ess = components.essentialCooldowns
+                        if type(ess) == "table" and type(ess.textStacks) == "table" then
+                            ess.textStacks.backdropColor = nil
+                        end
+                    end
+
+                    local uf = profileData.unitFrames
+                    if type(uf) == "table" then
+                        for _, unitCfg in pairs(uf) do
+                            if type(unitCfg) == "table" then
+                                for _, key in ipairs(RETIRED_UNIT_KEYS) do
+                                    unitCfg[key] = nil
+                                end
+                                if type(unitCfg.castBar) == "table" then
+                                    unitCfg.castBar.textFillEndCapStyle = nil
+                                end
+                            end
+                        end
+                    end
+
+                    local gf = profileData.groupFrames
+                    if type(gf) == "table" then
+                        -- Aura Tracking was rebuilt onto groupFrames.auraTracking and
+                        -- the spell list is re-picked there; the old table is dead.
+                        gf.healerAuras = nil
+                        for _, groupKey in ipairs({ "party", "raid" }) do
+                            if type(gf[groupKey]) == "table" then
+                                gf[groupKey].healthBarPadding = nil
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- Spec assignments pointing at deleted profiles can never resolve, so
+            -- drop them; then drop character tables that are left with nothing and
+            -- belong to a character the addon has no profile key for (renamed or
+            -- deleted). Characters still in profileKeys are always kept.
+            if type(sv.char) == "table" then
+                local profiles = type(sv.profiles) == "table" and sv.profiles or {}
+                local profileKeys = type(sv.profileKeys) == "table" and sv.profileKeys or {}
+                for charKey, charData in pairs(sv.char) do
+                    if type(charData) == "table" then
+                        local specProfiles = charData.specProfiles
+                        local assignments = type(specProfiles) == "table" and specProfiles.assignments or nil
+                        local remaining = 0
+                        if type(assignments) == "table" then
+                            for specId, profileName in pairs(assignments) do
+                                if profiles[profileName] == nil then
+                                    assignments[specId] = nil
+                                else
+                                    remaining = remaining + 1
+                                end
+                            end
+                        end
+                        if remaining == 0 and profileKeys[charKey] == nil then
+                            sv.char[charKey] = nil
+                        end
+                    end
+                end
+            end
+
+            if not sv.global then sv.global = {} end
+            sv.global._retiredKeysPrunedV5 = true
+        end
+    end
+
     -- 1. Create the database first so moduleEnabled is available for component gating.
     --    GetDefaults() does not reference self.Components — safe to call before init.
     self.db = LibStub("AceDB-3.0"):New("ScootDB", self:GetDefaults(), true)

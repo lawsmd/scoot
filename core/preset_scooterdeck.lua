@@ -3069,7 +3069,6 @@ Presets:Register({
       borderEnabled = true,
       borderThickness = 2,
       borderTintEnabled = false,
-      clockAnchor = "BOTTOM",
       clockColorMode = "default",
       clockCustomColor = {
         1,
@@ -3453,24 +3452,6 @@ Presets:Register({
         fontFace = "ROBOTO_SEMICOND_BLACK",
         size = 12,
         style = "OUTLINE",
-      },
-      textLine2 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine3 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine4 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine5 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine6 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
-      },
-      textLine7 = {
-        fontFace = "ROBOTO_SEMICOND_BLACK",
       },
       textTitle = {
         fontFace = "ROBOTO_SEMICOND_BLACK",
