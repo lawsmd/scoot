@@ -451,8 +451,9 @@ function Engine.ApplyAll(trackerId)
     SAU._ApplyBorders(trackerId, tracker, state)
     SAU._ApplyBarStyling(trackerId, tracker, state)
     Engine.BindForMode(trackerId, tracker, state)
-    -- Cadence lock config rides the same gate as the bindings so the lock
-    -- bar's curve/mode stays in lockstep with the bound direction and clips.
+    -- Cadence lock config rides the same gate as the bindings: it asks the
+    -- bar just bound for its duration object and sets the lock bar's fill
+    -- direction to match the clips BindForMode anchored.
     if SAU.Cadence then
         SAU.Cadence.Configure(trackerId, tracker, state)
     end

@@ -86,14 +86,6 @@ function ctx.shape()
     return (session and session.draft.content.shape) or "icon"
 end
 
--- The tracker's spell ID (materialized) or the validated draft spell; nil for
--- an unresolved draft.
-function ctx.spellId()
-    local tracker = CurrentTracker()
-    if tracker then return tracker.spellId end
-    return session and session.validated and session.validated.spellId or nil
-end
-
 function ctx.refresh()
     Editor.DeferredRefresh()
 end

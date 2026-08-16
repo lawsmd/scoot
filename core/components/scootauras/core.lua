@@ -43,32 +43,9 @@ function SAU.EnsureStore()
     store.trackers = store.trackers or {}
     store.groups = store.groups or {}
     store.nextId = store.nextId or 1
-    store.learnedDurations = store.learnedDurations or {}
+    -- Left behind by the first cadence-lock build (2026-08-15); nothing reads it.
+    store.learnedDurations = nil
     return store
-end
-
---- Learned original durations for the cadence lock, per spell ID (seconds).
--- Content path: written by cadence.lua when an aura's duration is readable.
-function SAU.GetLearnedDuration(spellId)
-    local store = SAU.GetStore()
-    local map = store and rawget(store, "learnedDurations")
-    local seconds = map and spellId and map[spellId] or nil
-    if type(seconds) == "number" and seconds > 0 then
-        return seconds
-    end
-    return nil
-end
-
-function SAU.SetLearnedDuration(spellId, seconds)
-    if type(spellId) ~= "number" or type(seconds) ~= "number" or seconds <= 0 then return end
-    local store = SAU.EnsureStore()
-    if not store then return end
-    local rounded = math.floor(seconds * 100 + 0.5) / 100
-    if store.learnedDurations[spellId] == rounded then return end
-    store.learnedDurations[spellId] = rounded
-    if SAU.Cadence then
-        SAU.Cadence.OnLearned(spellId)
-    end
 end
 
 function SAU.GetTracker(trackerId)
@@ -223,10 +200,9 @@ function SAU.DefaultSettings()
         -- The bar is the anchor; the icon is an optional addition beside it.
         barIconSide             = { type = "addon", default = "LEFT" },
         barIconGap              = { type = "addon", default = 2 },
-        -- Cadence lock (cadence.lua): drain speed pinned to the aura's original
-        -- duration; barLockDuration 0 = use the learned per-spell value.
+        -- Cadence lock (cadence.lua): drain speed pinned to the duration the
+        -- aura was assigned with; extensions add fill instead of refilling.
         barLockCadence          = { type = "addon", default = false },
-        barLockDuration         = { type = "addon", default = 0 },
         shapeStyle      = { type = "addon", default = "border:SquareMask" },
         shapeColorMode  = { type = "addon", default = "class" },
         shapeTint       = { type = "addon", default = { 1, 1, 1, 1 } },

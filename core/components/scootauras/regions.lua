@@ -47,10 +47,14 @@ local function CreateBarElement(parent, elemDef)
     barBg:SetAllPoints(barRegion)
 
     -- Cadence lock geometry (cadence.lua). Both clips are neutral here and are
-    -- re-anchored by BindForMode (structural gate) to the lock bar's fill
-    -- texture, which lives outside the button tree and is Lua-driven:
-    --   deplete: barFill inside barClip; visible = min(lock, engine)
-    --   fill:    lockOverlay inside lockClip, drawn under barFill;
+    -- re-anchored by BindForMode (structural gate) to the lock bar, which
+    -- lives outside the button tree and holds remaining / original as a
+    -- secret-fed StatusBar:
+    --   deplete: barFill inside barClip anchored to the lock bar's fill;
+    --            visible = min(lock, engine)
+    --   fill:    lockOverlay inside lockClip, drawn under barFill; the lock
+    --            bar is reverse-filled and lockClip spans from its left edge
+    --            to its texture's left edge (the elapsed share);
     --            visible = max(lock, engine)
     -- lockOverlay spans the full bar so its texcoords stay intact; the clip
     -- does the cutting. It draws at barRegion's level so it sits above barBg
@@ -155,15 +159,13 @@ function Engine.WireButton(trackerId, tracker, state, entry, button)
         type = "text", key = "duration", source = "duration", baseSize = 24,
     }, textHost))
 
-    local barElem = CreateBarElement(button, {
+    table.insert(elements, CreateBarElement(button, {
         type = "bar", key = "durationBar", source = "duration", defaultSize = { 120, 12 },
-    })
-    table.insert(elements, barElem)
-    -- Cadence lock seam: the hook on the bar's SetTimerDuration must be
-    -- installed here, before SetDurationBar binds it (still inside
-    -- initializeFrame, so the tree is touchable).
+    }))
+    -- Cadence lock: start the tracker's record now; Configure reads the bound
+    -- bar's duration object later, under the structural gate.
     if SAU.Cadence then
-        SAU.Cadence.OnWire(entry, barElem)
+        SAU.Cadence.OnWire(entry)
     end
 
     table.insert(elements, CreateTextElement(button, {
@@ -260,6 +262,7 @@ function Engine.BindForMode(trackerId, tracker, state)
             -- only under the gate, so re-anchoring the in-tree clips is legal.
             local lockBar = (vis.showBar and db.barLockCadence == true) and state.lockBar or nil
             local lockTex = lockBar and lockBar:GetStatusBarTexture() or nil
+            state.cadenceGeometry = lockTex and (fillMode and "fill-lock" or "deplete-lock") or "neutral"
             if elem.barClip then
                 elem.barClip:ClearAllPoints()
                 if lockTex and not fillMode then
@@ -270,8 +273,12 @@ function Engine.BindForMode(trackerId, tracker, state)
             end
             if elem.lockClip then
                 if lockTex and fillMode then
+                    -- The lock bar is reverse-filled in fill mode
+                    -- (Cadence.Configure): its texture is the remaining share
+                    -- on the right, so left edge to texture left edge = elapsed.
                     elem.lockClip:ClearAllPoints()
-                    elem.lockClip:SetAllPoints(lockTex)
+                    elem.lockClip:SetPoint("TOPLEFT", lockBar, "TOPLEFT", 0, 0)
+                    elem.lockClip:SetPoint("BOTTOMRIGHT", lockTex, "BOTTOMLEFT", 0, 0)
                     elem.lockClip:Show()
                 else
                     elem.lockClip:Hide()
@@ -281,6 +288,9 @@ function Engine.BindForMode(trackerId, tracker, state)
             end
             if vis.showBar then
                 local direction = fillMode and DIR_ELAPSED or DIR_REMAINING
+                -- Cadence.Configure (right after this pass) asks this bar for
+                -- the duration object it was just timed with, so the binding
+                -- must precede it.
                 CallBinding(trackerId, button, "SetDurationBar", elem.barFill, { direction = direction })
             else
                 CallBinding(trackerId, button, "ClearDurationBar")

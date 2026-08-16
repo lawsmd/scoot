@@ -489,7 +489,7 @@ local function LifecycleDump()
     push("/scoot debug sa join <id> <gid> [index] || leave <id>")
     push("/scoot debug sa reconcile || flush || list")
     push("/scoot debug sa methods <id>  (button binding inventory)")
-    push("/scoot debug sa cadence <id> [set <0..1> || alpha <0..1>]  (cadence lock record / probes)")
+    push("/scoot debug sa cadence <id||spellId> [on || off || set <0..1> || alpha <0..1> || mirror <y||off>]  (cadence lock record / probes)")
 
     addon.DebugShowWindow("ScootAuras Lifecycle", table.concat(lines, "\n"))
 end
@@ -653,25 +653,71 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
     -- Cadence lock probes: dump the record, force the lock bar's value
     -- (geometry check), or show the lock bar (alpha) to watch it drain.
     if sub == "cadence" then
+        local SAU = addon.ScootAuras
         local trackerId = tonumber(a1)
-        local Cadence = addon.ScootAuras.Cadence
+        local Cadence = SAU.Cadence
         if not trackerId or not Cadence then
-            addon:Print("Usage: /scoot debug sa cadence <id> [set <0..1> | alpha <0..1>]")
+            addon:Print("Usage: /scoot debug sa cadence <trackerId|spellId> [on | off | set <0..1> | alpha <0..1> | mirror <y|off>]")
             return
         end
-        if a2 == "set" or a2 == "alpha" then
-            local ok, err = Cadence.DebugSet(trackerId, a2, a3)
-            addon:Print(ok and ("ScootAuras cadence t" .. trackerId .. " " .. a2 .. " " .. tostring(a3))
-                or ("cadence " .. a2 .. " failed: " .. tostring(err)))
+        -- Tracker ids are small profile counters; a spell id (e.g. 589 for
+        -- Shadow Word: Pain) resolves to every bar tracker on that spell.
+        local ids = {}
+        if SAU.GetTracker(trackerId) then
+            ids[1] = trackerId
+        else
+            for _, row in ipairs(SAU.SortedTrackers()) do
+                if row.tracker.spellId == trackerId and row.tracker.shape == "bar" then
+                    table.insert(ids, row.id)
+                end
+            end
+            if #ids == 0 then
+                addon:Print("ScootAuras cadence: no tracker with id " .. trackerId
+                    .. " and no bar tracker on spell " .. trackerId .. " (ids: /scoot debug sa)")
+                return
+            end
+        end
+        -- on/off: flip the tracker's toggle without the editor (same db key
+        -- the Bar tab writes), then re-apply so Configure grabs the object.
+        if a2 == "on" or a2 == "off" then
+            local want = (a2 == "on")
+            for _, id in ipairs(ids) do
+                local db = SAU.GetDB(id)
+                if db then db.barLockCadence = want end
+                local comp = addon.Components and addon.Components[SAU.GetComponentId(id)]
+                if comp and comp.ApplyStyling then
+                    C_Timer.After(0, function() comp:ApplyStyling() end)
+                end
+                addon:Print(("ScootAuras cadence t%d barLockCadence=%s%s"):format(
+                    id, tostring(want), db and "" or " (no db)"))
+            end
             return
         end
-        local lines, err = Cadence.DebugInfo(trackerId)
-        if not lines then
-            addon:Print("ScootAuras cadence t" .. trackerId .. ": " .. tostring(err))
+        if a2 == "set" or a2 == "alpha" or a2 == "mirror" then
+            for _, id in ipairs(ids) do
+                local ok, err = Cadence.DebugSet(id, a2, a3)
+                addon:Print(ok and ("ScootAuras cadence t" .. id .. " " .. a2 .. " " .. tostring(a3))
+                    or ("cadence t" .. id .. " " .. a2 .. " failed: " .. tostring(err)))
+            end
             return
         end
-        table.insert(lines, 1, "=== Cadence lock (t" .. trackerId .. ") ===")
-        addon.DebugShowWindow("ScootAuras Cadence", table.concat(lines, "\n"))
+        local out = {}
+        for _, id in ipairs(ids) do
+            local t = SAU.GetTracker(id)
+            local db = SAU.GetDB(id)
+            table.insert(out, ("=== Cadence lock (t%d '%s' spell=%s %s on %s) ==="):format(
+                id, tostring(t and t.name), tostring(t and t.spellId), tostring(t and t.kind), tostring(t and t.unit)))
+            table.insert(out, "barLockCadence(db)=" .. tostring(db and db.barLockCadence)
+                .. " barFillMode(db)=" .. tostring(db and db.barFillMode))
+            local lines, err = Cadence.DebugInfo(id)
+            if lines then
+                for _, l in ipairs(lines) do table.insert(out, l) end
+            else
+                table.insert(out, tostring(err))
+            end
+            table.insert(out, "")
+        end
+        addon.DebugShowWindow("ScootAuras Cadence", table.concat(out, "\n"))
         return
     end
 

@@ -15,8 +15,6 @@
 --                                          value edits, so the tab body is
 --                                          not rebuilt under the cursor)
 --   shape()               -> "icon"|"bar"|"shape"
---   spellId()             -> number|nil   (tracker spell, or the validated
---                                          draft spell)
 -- }
 local addonName, addon = ...
 
@@ -244,36 +242,13 @@ function Tabs.BuildBarTab(tabBuilder, ctx)
         set = function(v) ctx.setAndApply("barFillMode", v) ctx.refreshPreview() end,
     })
 
-    -- Cadence lock (scootauras/cadence.lua). The detected value is per spell;
-    -- a draft without a validated spell has none yet.
+    -- Cadence lock (scootauras/cadence.lua).
     tabBuilder:AddToggle({
         label = "Lock Drain to Original Duration",
-        description = "Keeps the drain speed tied to the aura's original duration. Refreshes and extensions add to the bar instead of refilling it. If the new duration is longer than the original, the bar still refills and drains at that longer speed.",
+        description = "Keeps the drain speed tied to the duration the aura was applied with. Refreshes and extensions add to the bar instead of refilling it. If the new duration is longer than the original, the bar still refills and drains at that longer speed. Takes effect the next time the aura is freshly applied.",
         get = function() return ctx.get("barLockCadence") or false end,
-        set = function(v)
-            ctx.setAndApply("barLockCadence", v)
-            ctx.refresh()   -- gates the duration rows below
-        end,
+        set = function(v) ctx.setAndApply("barLockCadence", v) end,
     })
-    if ctx.get("barLockCadence") then
-        tabBuilder:AddSlider({
-            label = "Original Duration (seconds)",
-            description = "0 uses the detected duration.",
-            min = 0, max = 120, step = 0.5, precision = 1,
-            get = function() return ctx.get("barLockDuration") or 0 end,
-            set = function(v) ctx.setAndApply("barLockDuration", v) end,
-            minLabel = "Auto", maxLabel = "120s",
-        })
-        local spellId = ctx.spellId and ctx.spellId() or nil
-        local learned = spellId and addon.ScootAuras.GetLearnedDuration(spellId) or nil
-        local detectedText
-        if learned then
-            detectedText = ("Detected duration for this spell: %.1f seconds."):format(learned)
-        else
-            detectedText = "No duration detected yet. Auto-detect learns the duration the first time the aura is applied outside restricted content."
-        end
-        tabBuilder:AddDescription(detectedText, { fontSize = 11, bottomPadding = 2 })
-    end
 
     tabBuilder:AddDualBarStyleRow({
         label = "Foreground",

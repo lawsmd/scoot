@@ -7,23 +7,47 @@
 -- "lock bar", entry.lockBar, outside every button tree) at
 -- remaining / originalDuration, and regions.lua composes the two
 -- geometrically (deplete: barFill clipped to the lock bar's fill; fill: a
--- lock-clipped overlay unioned with barFill). No Lua ever compares a duration.
+-- lock-clipped overlay unioned with barFill). No Lua ever reads or compares
+-- a duration: both numbers travel as secrets into StatusBar sinks
+-- (SetMinMaxValues / SetValue are AllowedWhenTainted).
 --
--- The seam: Blizzard's CustomAuraButton ApplyDurationBar calls
--- statusBar:SetTimerDuration(auraDuration, ...) on the bound bar on every aura
--- assignment, update, and clear. InitializeInboundScriptObject only adds
--- forbidden aspects to that same object, so a hooksecurefunc installed on our
--- barFill before binding receives the button's private duration object. The
--- lock bar is then ticked with durObj:EvaluateRemainingDuration(curve), an
--- engine-side evaluation that accepts secret internals; the curve
--- (0,0)->(orig,1) yields remaining/orig, and the StatusBar saturates above 1.
+-- Source of the numbers: StatusBar:GetTimerDuration() on our own bound
+-- barFill returns the button's private LuaDurationObject by reference
+-- (verified live 2026-08-15: the object's HasSecretValues flips from false to
+-- true across a pull). Configure asks once, under the structural gate, and
+-- keeps the reference; Blizzard mutates the object in place, so
+--   lock take:  lockBar:SetMinMaxValues(0, durObj:GetTotalDuration())
+--   every tick: lockBar:SetValue(durObj:GetRemainingDuration())
+-- No hook is involved: the button's private mixin runs in the forbidden
+-- partition and holds our bar's forbidden object table, so neither a
+-- per-object hook nor a method-table hook on SetTimerDuration ever fires
+-- (history in ADDONCONTEXT/docs/scootauras/saengine.md, "Cadence lock").
 --
--- The original duration must be a plain number to build the curve. It comes
--- from the tracker's override (barLockDuration) or from a value learned per
--- spell the first time the aura is assigned while its duration is readable
--- (outside restricted content). Unknown original = lock bar at rest = today's
--- behavior. The hook handler never touches its `self` (a denied tree member
--- while auras are secret); records never store tree references.
+-- Assignment: the button writes a zero-span duration only when its slot is
+-- cleared (AuraButton ClearAuraInstance); assign and update both go straight
+-- to SetTimeFromEnd. So the TOTAL duration is exactly zero while the slot is
+-- clear and at least one second for any live aura, and a secret number's
+-- zero-ness is observable (C_StringUtil.TruncateWhenZero through a scratch
+-- FontString; the unitframesz launder). Zero -> non-zero on a tick is a fresh
+-- instance: take the lock. Refreshes and extensions never pass through zero
+-- and keep it; a pandemic recast keeps it too, and the geometry then shows
+-- the longer of the two cadences. The launder must NOT see the remaining
+-- time: TruncateWhenZero floors to an integer, so remaining reads "zero" for
+-- the whole last second of an aura, and an extension landing in that second
+-- re-took the lock at the extended (shorter) total (found live 2026-08-15).
+--
+-- "Original" is the total of a FRESH instance (elapsed floors to zero on the
+-- flip tick, so it was applied within the last second) and stays until the
+-- next fresh instance. An instance that arrives already running (target
+-- swapped back to a unit whose aura was extended earlier; the lock enabled
+-- with an aura already up) is skipped: the previous lock stays, or the bar
+-- rests (engine fill) until a fresh application. The base duration is a
+-- property of the spell, so one fresh take is right for every target; there
+-- is no re-take on target/focus swaps.
+--
+-- Everything fails open: any error rests the lock bar (full), which shows the
+-- engine's fill unchanged, until the next Configure or regen re-arms it.
+-- Records never store tree references beyond the duration object.
 local addonName, addon = ...
 
 local SAU = addon.ScootAuras
@@ -35,15 +59,12 @@ local SafeToString = Engine._SafeToString
 local Cadence = {}
 SAU.Cadence = Cadence
 
-local LINEAR = (Enum and Enum.LuaCurveType and Enum.LuaCurveType.Linear) or 0
-
 local records = {}   -- [poolEntry] = rec (one per wired container)
 local active = {}    -- [poolEntry] = rec (driver set)
-local curves = { deplete = {}, fill = {} }   -- [mode][orig*100] = LuaCurveObject
 local driver
+local eventFrame
 
-Cadence._records = records
-Cadence._active = active
+local TAKE_LOG_MAX = 12
 
 --------------------------------------------------------------------------------
 -- Lock bar
@@ -65,37 +86,64 @@ function Cadence.CreateLockBar(parent)
     return bar
 end
 
---------------------------------------------------------------------------------
--- Curves and rest values
---------------------------------------------------------------------------------
-
-local function GetCurve(mode, orig)
-    local cache = curves[mode] or curves.deplete
-    local key = math.floor(orig * 100 + 0.5)
-    local curve = cache[key]
-    if curve then return curve end
-    curve = C_CurveUtil.CreateCurve()
-    curve:SetType(LINEAR)
-    if mode == "fill" then
-        curve:AddPoint(0, 1)
-        curve:AddPoint(orig, 0)
-    else
-        curve:AddPoint(0, 0)
-        curve:AddPoint(orig, 1)
-    end
-    cache[key] = curve
-    return curve
-end
-
--- Neutral value: full for deplete (intersection), empty for fill (union).
-local function RestValue(mode)
-    return (mode == "fill") and 0 or 1
-end
-
+-- Rest = full, in both modes, and no lock held. Deplete: barClip spans the
+-- whole bar and the engine's fill shows through. Fill: the lock bar is
+-- reverse-filled, its texture spans the bar, and lockClip (bar left edge to
+-- texture left edge) is zero-width. Presence is forgotten too, so the next
+-- tick re-derives it and takes the lock if an aura is up.
 local function SetRest(rec)
-    if rec and rec.lockBar then
-        pcall(rec.lockBar.SetValue, rec.lockBar, RestValue(rec.mode))
+    local bar = rec and rec.lockBar
+    if not bar then return end
+    pcall(bar.SetMinMaxValues, bar, 0, 1)
+    pcall(bar.SetValue, bar, 1)
+    local mirror = rec.entry and rec.entry.lockMirror
+    if mirror then
+        pcall(mirror.SetMinMaxValues, mirror, 0, 1)
+        pcall(mirror.SetValue, mirror, 1)
     end
+    rec.taken = false
+    rec.present = nil
+end
+
+--------------------------------------------------------------------------------
+-- Zero launder (port of unitframesz/engine.lua isZeroAmount)
+--------------------------------------------------------------------------------
+
+local zeroScratchFS
+
+local function EnsureZeroScratch()
+    if zeroScratchFS then return zeroScratchFS end
+    local holder = CreateFrame("Frame", nil, UIParent)
+    holder:SetSize(1, 1)
+    holder:SetPoint("CENTER", UIParent, "CENTER", 0, -360)
+    holder:Hide()
+    zeroScratchFS = holder:CreateFontString(nil, "BACKGROUND")
+    zeroScratchFS:SetPoint("CENTER", holder, "CENTER", 0, 0)
+    -- A font must be set before any SetText on a template-less FontString.
+    zeroScratchFS:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
+    return zeroScratchFS
+end
+
+local function IsBlank(text) return not text end
+
+-- true = floors to zero, false = at least one, nil = route unavailable.
+-- Never == on the GetText result (a secret string throws on compare); the
+-- FontString round-trip turns the blank into a plain nil.
+local function IsZeroAmount(v)
+    if not (_G.C_StringUtil and C_StringUtil.TruncateWhenZero) then return nil end
+    local okT, trunc = pcall(C_StringUtil.TruncateWhenZero, v)
+    if not okT then return nil end
+    if not (issecretvalue and issecretvalue(trunc)) then
+        return (trunc == nil or trunc == "") and true or false
+    end
+    local scratch = EnsureZeroScratch()
+    if scratch.ClearText then scratch:ClearText() end
+    if not pcall(scratch.SetText, scratch, trunc) then return nil end
+    local okG, text = pcall(scratch.GetText, scratch)
+    if not okG then return nil end
+    local okB, blank = pcall(IsBlank, text)
+    if not okB then return nil end
+    return blank and true or false
 end
 
 --------------------------------------------------------------------------------
@@ -115,23 +163,89 @@ local function Fail(entry, rec, err)
     Record("cadence-fail", id .. " " .. rec.failed)
 end
 
--- One evaluation. Returns true on success; on any error the tracker's cadence
--- rests (fail open: the visible bar shows the engine's fill) until the next
--- hook call re-arms it.
+-- The lock bar's max becomes the duration object's current total. Called on
+-- a zero -> non-zero step of the total whose elapsed time floors to zero (a
+-- fresh instance).
+local function TakeLock(entry, rec, durObj)
+    local bar = rec.lockBar
+    if not (bar and durObj) then return false end
+    local ok, total = pcall(durObj.GetTotalDuration, durObj)
+    if ok then
+        local mirror = entry.lockMirror
+        if mirror then pcall(mirror.SetMinMaxValues, mirror, 0, total) end
+        ok, total = pcall(bar.SetMinMaxValues, bar, 0, total)
+    end
+    if not ok then
+        Fail(entry, rec, total)
+        return false
+    end
+    rec.taken = true
+    rec.takeCount = (rec.takeCount or 0) + 1
+    local log = rec.takeLog
+    if not log then
+        log = {}
+        rec.takeLog = log
+    end
+    log[#log + 1] = GetTime()
+    if #log > TAKE_LOG_MAX then table.remove(log, 1) end
+    return true
+end
+
+-- One evaluation. Presence (total floors to zero or not) is read first: a
+-- zero -> non-zero step is a fresh instance and takes the lock before the
+-- value lands. A dead launder means assignment is undetectable, so the lock
+-- rests rather than freeze on a guess (fail open).
 local function Tick(entry, rec)
-    local durObj, curve, bar = rec.durObj, rec.curve, rec.lockBar
-    if not (durObj and curve and bar) then
+    local durObj, bar = rec.durObj, rec.lockBar
+    if not (durObj and bar) then
         Deactivate(entry, rec)
         return false
     end
-    local ok, v = pcall(durObj.EvaluateRemainingDuration, durObj, curve)
-    if ok then
-        ok, v = pcall(bar.SetValue, bar, v)
+    local ok, total = pcall(durObj.GetTotalDuration, durObj)
+    if not ok then
+        Fail(entry, rec, total)
+        return false
     end
+    local zero = IsZeroAmount(total)
+    if zero == nil then
+        rec.launderDead = true
+        Fail(entry, rec, "zero launder unavailable")
+        return false
+    end
+    rec.launderDead = nil
+    local present = not zero
+    if present and not rec.present then
+        rec.presentFlips = (rec.presentFlips or 0) + 1
+        -- Only a fresh instance carries the base duration. An instance that
+        -- arrives already running (target swapped back to a unit whose aura
+        -- was extended earlier) keeps the previous lock, or leaves the bar
+        -- at rest until a fresh application shows up. Fresh = elapsed floors
+        -- to zero (applied within the last second). An unreadable elapsed
+        -- counts as fresh: taking is the fail-open side.
+        local okE, elapsed = pcall(durObj.GetElapsedDuration, durObj)
+        local stale = okE and IsZeroAmount(elapsed) == false
+        if stale then
+            rec.staleSkips = (rec.staleSkips or 0) + 1
+        elseif not TakeLock(entry, rec, durObj) then
+            return false
+        end
+    end
+    rec.present = present
+
+    local v
+    ok, v = pcall(durObj.GetRemainingDuration, durObj)
     if not ok then
         Fail(entry, rec, v)
         return false
     end
+    local mirror = entry.lockMirror
+    if mirror then pcall(mirror.SetValue, mirror, v) end
+    ok, v = pcall(bar.SetValue, bar, v)
+    if not ok then
+        Fail(entry, rec, v)
+        return false
+    end
+    rec.tickCount = (rec.tickCount or 0) + 1
     return true
 end
 
@@ -146,7 +260,7 @@ local function DriverOnUpdate()
 end
 
 local function Activate(entry, rec)
-    if not (rec.enabled and rec.curve and rec.durObj and rec.lockBar) then
+    if not (rec.enabled and rec.durObj and rec.lockBar) then
         return false
     end
     active[entry] = rec
@@ -159,164 +273,107 @@ local function Activate(entry, rec)
     return true
 end
 
---------------------------------------------------------------------------------
--- Original duration
---------------------------------------------------------------------------------
-
-local function ResolveOriginal(tracker, db)
-    local override = tonumber(db and db.barLockDuration) or 0
-    if override > 0 then
-        return override, "override"
-    end
-    local learned = tracker and SAU.GetLearnedDuration(tracker.spellId)
-    if learned then
-        return learned, "learned"
-    end
-    return nil, nil
-end
-
---------------------------------------------------------------------------------
--- Hook (installed inside initializeFrame, before SetDurationBar)
---------------------------------------------------------------------------------
-
-local function HandleDuration(entry, rec, durObj)
-    rec.hookCount = (rec.hookCount or 0) + 1
-    rec.durObj = durObj
-    rec.failed = nil
-
-    -- Learn the original duration while it is readable. Only a FRESH
-    -- assignment (previous readable total was zero, or nothing seen yet since
-    -- wire) reports the aura's real duration; an update may carry an extended
-    -- one. Never IsZero() on aura duration objects.
-    local readable = false
-    if durObj and durObj.HasSecretValues then
-        local okS, secret = pcall(durObj.HasSecretValues, durObj)
-        readable = okS and secret == false
-    end
-    if readable then
-        local okT, total = pcall(durObj.GetTotalDuration, durObj)
-        if okT and type(total) == "number" and not issecretvalue(total) then
-            local fresh = (rec.lastTotal == nil) or (rec.lastTotal == 0)
-            if total > 0 and fresh then
-                local tracker = entry.occupantId and SAU.GetTracker(entry.occupantId)
-                if tracker then
-                    SAU.SetLearnedDuration(tracker.spellId, total)
-                end
-            end
-            rec.lastTotal = total
-            if total == 0 then
-                -- Cleared (or a permanent aura): nothing to pace.
-                Deactivate(entry, rec)
-                return
-            end
-        else
-            rec.lastTotal = false
+-- Re-arm anything that failed during the fight; the first tick re-derives
+-- presence and takes the lock if an aura is up.
+local function OnRegenEnabled()
+    for entry, rec in pairs(records) do
+        if rec.failed and not active[entry] then
+            rec.failed = nil
+            Activate(entry, rec)
         end
-    else
-        -- Unreadable: keep driving. Every visible part is inside the button
-        -- tree and hides with it, so a stale lock value while the aura is
-        -- absent has no visible effect.
-        rec.lastTotal = false
-    end
-
-    if Activate(entry, rec) then
-        Tick(entry, rec)
     end
 end
 
-function Cadence.OnTimerDuration(entry, seq, durObj)
-    local rec = records[entry]
-    if not rec or rec.seq ~= seq then return end   -- stale container's hook
-    local ok, err = pcall(HandleDuration, entry, rec, durObj)
-    if not ok then
-        Fail(entry, rec, err)
-    end
+local function EnsureEvents()
+    if eventFrame then return end
+    eventFrame = CreateFrame("Frame")
+    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    eventFrame:SetScript("OnEvent", OnRegenEnabled)
 end
 
---- Called from Engine.WireButton (inside initializeFrame) with the freshly
--- created bar element. Installs the SetTimerDuration hook and starts a new
--- record for this container.
-function Cadence.OnWire(entry, barElem)
-    local seq = entry.slotSeq
-    local rec = {
-        seq = seq,
+--------------------------------------------------------------------------------
+-- Wiring and configuration
+--------------------------------------------------------------------------------
+
+--- Called from Engine.WireButton (inside initializeFrame) once the bar
+-- element exists. Starts a new record for this container.
+function Cadence.OnWire(entry)
+    records[entry] = {
+        entry = entry,
         lockBar = entry.lockBar,
         mode = "deplete",
-        hookCount = 0,
+        takeCount = 0,
+        tickCount = 0,
+        presentFlips = 0,
     }
-    records[entry] = rec
     active[entry] = nil
-
-    local barFill = barElem and barElem.barFill
-    local ok, err = false, "no barFill"
-    if barFill then
-        ok, err = pcall(hooksecurefunc, barFill, "SetTimerDuration", function(_, durObj)
-            Cadence.OnTimerDuration(entry, seq, durObj)
-        end)
-    end
-    rec.hooked = ok and true or false
-    local id = entry.occupantId and ("t" .. entry.occupantId) or ("entry" .. tostring(entry.index))
-    SetResult("cadence.hook." .. id, ok and "ok" or ("FAILED: " .. SafeToString(err)))
 end
 
---------------------------------------------------------------------------------
--- Configuration (runs under the structural gate, right after BindForMode)
---------------------------------------------------------------------------------
+-- Asks our own bound bar for the duration object it was timed with. Legal
+-- only under the structural gate (Configure's caller), where the tree is
+-- readable. A new object (rebuilt bar) drops the held lock; the same object
+-- keeps it.
+local function GrabDuration(rec, state)
+    local barFill
+    for _, elem in ipairs(state and state.elements or {}) do
+        if elem.type == "bar" then
+            barFill = elem.barFill
+            break
+        end
+    end
+    if not barFill then
+        rec.grab = "no bar element"
+        return
+    end
+    local ok, d = pcall(barFill.GetTimerDuration, barFill)
+    if ok and type(d) == "userdata" then
+        if rec.durObj ~= d then
+            rec.durObj = d
+            rec.present = nil
+            rec.taken = false
+        end
+        local okS, secret = pcall(d.HasSecretValues, d)
+        rec.grab = "ok secret=" .. tostring(okS and secret)
+    else
+        rec.grab = "FAILED: " .. SafeToString(d)
+    end
+end
 
+--- Runs under the structural gate, right after BindForMode.
 function Cadence.Configure(trackerId, tracker, state)
     local entry = state and state.entry
     if not entry then return end
     local db = SAU.GetDB(trackerId)
     local fillMode = db and db.barFillMode == "fill"
+    local lockBar = entry.lockBar
+    if lockBar then
+        -- Fill mode reads the lock bar from the right: its texture is the
+        -- remaining share, so the span from the bar's left edge to the
+        -- texture's left edge is the elapsed share (see regions.lua).
+        pcall(lockBar.SetReverseFill, lockBar, fillMode and true or false)
+    end
+
     local rec = records[entry]
     if not rec then
-        -- No hook for this container (bar not wired, or the hook failed):
-        -- keep the lock bar neutral for the bound mode.
-        if entry.lockBar then
-            pcall(entry.lockBar.SetValue, entry.lockBar, RestValue(fillMode and "fill" or "deplete"))
-        end
+        SetRest({ lockBar = lockBar })
         return
     end
 
-    rec.lockBar = entry.lockBar
+    rec.lockBar = lockBar
     rec.mode = fillMode and "fill" or "deplete"
+    rec.unit = tracker and tracker.unit or nil
     local vis = tracker and db and SAU.ResolveVisibility(tracker, db) or nil
     rec.enabled = (vis and vis.showBar and db.barLockCadence == true) and true or false
-    if rec.enabled then
-        rec.orig, rec.origSource = ResolveOriginal(tracker, db)
-        rec.curve = rec.orig and GetCurve(rec.mode, rec.orig) or nil
-    else
-        rec.orig, rec.origSource, rec.curve = nil, nil, nil
-    end
-
-    if not rec.enabled or not rec.curve then
+    if not rec.enabled then
         Deactivate(entry, rec)
         return
     end
+
+    GrabDuration(rec, state)
+    rec.failed = nil
+    EnsureEvents()
     if Activate(entry, rec) then
         Tick(entry, rec)
-    else
-        SetRest(rec)
-    end
-end
-
---- A learned value arrived for spellId: re-derive every enabled record of that
--- spell that has no override. Scoot-only work, legal in combat.
-function Cadence.OnLearned(spellId)
-    for entry, rec in pairs(records) do
-        local trackerId = entry.occupantId
-        local tracker = trackerId and SAU.GetTracker(trackerId)
-        if tracker and tracker.spellId == spellId and rec.enabled then
-            local db = SAU.GetDB(trackerId)
-            local override = tonumber(db and db.barLockDuration) or 0
-            if override <= 0 then
-                rec.orig, rec.origSource = ResolveOriginal(tracker, db)
-                rec.curve = rec.orig and GetCurve(rec.mode, rec.orig) or nil
-                if Activate(entry, rec) then
-                    Tick(entry, rec)
-                end
-            end
-        end
     end
 end
 
@@ -332,48 +389,127 @@ function Cadence.OnRetire(entry)
 end
 
 --- The tracker released its entry (container parked). The record survives:
--- a revive-on-content-match keeps the same button and hook.
+-- a revive-on-content-match keeps the same button, and Configure re-enables
+-- it at the next claim.
 function Cadence.OnRelease(entry)
-    Deactivate(entry, records[entry])
+    local rec = records[entry]
+    if rec then rec.enabled = false end
+    Deactivate(entry, rec)
 end
 
 --------------------------------------------------------------------------------
 -- Debug
 --------------------------------------------------------------------------------
 
+-- Plain-or-"secret" rendering for the dump; never lets a secret reach a
+-- string operation.
+local function Plain(v)
+    if issecretvalue and issecretvalue(v) then return "secret" end
+    return tostring(v)
+end
+
 function Cadence.DebugInfo(trackerId)
     local entry = Engine._byTracker[trackerId]
     if not entry then return nil, "no pool entry" end
     local rec = records[entry]
     if not rec then return nil, "no cadence record (bar not wired yet)" end
+    local state = SAU._activeStates and SAU._activeStates[trackerId]
     local lines = {
-        "hooked=" .. tostring(rec.hooked),
-        "hookCount=" .. tostring(rec.hookCount),
         "enabled=" .. tostring(rec.enabled),
-        "mode=" .. tostring(rec.mode),
-        "orig=" .. tostring(rec.orig) .. " (" .. tostring(rec.origSource) .. ")",
-        "curve=" .. tostring(rec.curve ~= nil),
+        "grab=" .. tostring(rec.grab),
         "durObj=" .. tostring(rec.durObj ~= nil),
-        "lastTotal=" .. tostring(rec.lastTotal),
+        "present=" .. tostring(rec.present) .. " presentFlips=" .. tostring(rec.presentFlips)
+            .. " launderDead=" .. tostring(rec.launderDead),
+        "takeCount=" .. tostring(rec.takeCount) .. " staleSkips=" .. tostring(rec.staleSkips or 0)
+            .. " tickCount=" .. tostring(rec.tickCount),
+        "mode=" .. tostring(rec.mode) .. " unit=" .. tostring(rec.unit),
+        "geometry=" .. tostring(state and state.cadenceGeometry),
+        "taken=" .. tostring(rec.taken),
         "active=" .. tostring(active[entry] ~= nil),
+        "driverShown=" .. tostring(driver ~= nil and driver:IsShown()),
         "failed=" .. tostring(rec.failed),
         "lockBar=" .. tostring(rec.lockBar ~= nil),
     }
+    -- Last takes as seconds before now: every take after the first should
+    -- follow a visible gap in the aura (expiry or a target without it).
+    if rec.takeLog and #rec.takeLog > 0 then
+        local now = GetTime()
+        local parts = {}
+        for _, t in ipairs(rec.takeLog) do
+            parts[#parts + 1] = ("-%.1fs"):format(now - t)
+        end
+        table.insert(lines, "takes=" .. table.concat(parts, " "))
+    end
+    local bar = rec.lockBar
+    if bar then
+        -- Scoot-owned frame: its own size, alpha and level are plain. The
+        -- fill texture's width derives from secret values and prints "secret".
+        local w, h = bar:GetSize()
+        table.insert(lines, ("lockBarSize=%s x %s alpha=%s level=%s reverse=%s visible=%s"):format(
+            Plain(w), Plain(h), Plain(bar:GetAlpha()), Plain(bar:GetFrameLevel()),
+            tostring(bar:GetReverseFill()), tostring(bar:IsVisible())))
+        local tex = bar:GetStatusBarTexture()
+        local okW, tw = pcall(function() return tex and tex:GetWidth() end)
+        table.insert(lines, "lockTexWidth=" .. (okW and Plain(tw) or ("ERR " .. Plain(tw))))
+    end
     return lines
 end
 
---- Forces the lock bar's value (geometry probe) or its alpha (visibility
--- probe) from the debug command.
+--- Debug probes on a tracker's lock bar:
+--   alpha <a>   show the lock bar itself, raised above the button tree
+--               (a > 0) or put back (0). It sits exactly on the styled bar.
+--   mirror <y>  a separate white bar y px above the styled bar (default 10),
+--               fed the same two values as the lock bar and taking no part in
+--               the clip geometry; "mirror off" hides it.
+--   set <v>     force the lock bar to v on a 0..1 range (geometry probe).
 function Cadence.DebugSet(trackerId, what, value)
     local entry = Engine._byTracker[trackerId]
-    local bar = entry and entry.lockBar
-    if not bar then return false, "no lock bar" end
+    if not entry then return false, "no pool entry for tracker t" .. tostring(trackerId) end
+    local bar = entry.lockBar
+    if not bar then return false, "no lock bar on tracker t" .. tostring(trackerId) end
     if what == "alpha" then
-        bar:SetAlpha(tonumber(value) or 0)
+        local a = tonumber(value) or 0
+        bar:SetAlpha(a)
+        local base = entry.visual and entry.visual:GetFrameLevel() or 0
+        bar:SetFrameLevel(a > 0 and (base + 40) or (base + 1))
+        return true
+    end
+    if what == "mirror" then
+        local mirror = entry.lockMirror
+        if value == "off" or value == "0" then
+            if mirror then mirror:Hide() end
+            return true
+        end
+        local dy = tonumber(value) or 10
+        if not mirror then
+            mirror = CreateFrame("StatusBar", nil, entry.visual)
+            mirror:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+            mirror:GetStatusBarTexture():SetVertexColor(1, 1, 1, 0.9)
+            mirror:EnableMouse(false)
+            entry.lockMirror = mirror
+        end
+        local w, h = bar:GetSize()
+        mirror:SetSize(w, h)
+        mirror:SetReverseFill(bar:GetReverseFill())
+        mirror:ClearAllPoints()
+        mirror:SetPoint("BOTTOM", bar, "TOP", 0, dy)
+        mirror:SetFrameLevel((entry.visual and entry.visual:GetFrameLevel() or 0) + 40)
+        -- Start from the lock bar's rest state; the next take/tick feeds it.
+        -- With a lock already held, seed the max from the duration object's
+        -- current total (the lock's own max is secret and cannot be copied);
+        -- the next fresh application aligns the two exactly.
+        mirror:SetMinMaxValues(0, 1)
+        mirror:SetValue(1)
+        local rec = records[entry]
+        if rec and rec.taken and rec.durObj then
+            pcall(function() mirror:SetMinMaxValues(0, rec.durObj:GetTotalDuration()) end)
+        end
+        mirror:Show()
         return true
     end
     -- A forced value only holds while the driver is not ticking this entry.
     Deactivate(entry, records[entry])
+    bar:SetMinMaxValues(0, 1)
     bar:SetValue(tonumber(value) or 1)
     return true
 end
