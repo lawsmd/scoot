@@ -12,6 +12,7 @@ local normalizeName = addon.Profiles._normalizeName
 local notifyUI = addon.Profiles._notifyUI
 local postMutationSync = addon.Profiles._postMutationSync
 local addLayoutToCache = addon.Profiles._addLayoutToCache
+local presetLayoutOffset = addon.Profiles._presetLayoutOffset
 
 -- Layout dialogs use addon.Dialogs (see dialogs.lua).
 
@@ -506,76 +507,117 @@ function Profiles:PerformCreateLayout(rawNewName)
         return false, "Edit Mode layouts are not ready yet."
     end
 
+    -- Work from a fresh list; a stale one risks writing back a layout set that no
+    -- longer matches the client.
+    if LEO and LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
+
     local layoutInfo = C_EditMode.GetLayouts()
     if not layoutInfo or not layoutInfo.layouts then
         return false, "Unable to read layouts."
     end
-    for _, l in ipairs(layoutInfo.layouts) do
+
+    local savedLayouts = layoutInfo.layouts
+    for _, l in ipairs(savedLayouts) do
         if l and l.layoutName == name then
             return false, "A layout with that name already exists."
         end
     end
 
-    -- Choose a base: prefer Modern preset; fallback to active; fallback to any preset
-    local base
-    for _, l in ipairs(layoutInfo.layouts) do
-        if l.layoutType == Enum.EditModeLayoutType.Preset and l.layoutName == "Modern" then base = l break end
+    -- Blizzard caps layouts per type. We deliberately bypass EditModeManagerFrame to
+    -- avoid taint, so its AreLayoutsOfTypeMaxed check never runs -- enforce it here.
+    local layoutType = Enum.EditModeLayoutType.Account
+    local maxPerType = Constants and Constants.EditModeConsts
+        and Constants.EditModeConsts.EditModeMaxLayoutsPerType
+    if maxPerType then
+        local count = 0
+        for _, l in ipairs(savedLayouts) do
+            if l and l.layoutType == layoutType then count = count + 1 end
+        end
+        if count >= maxPerType then
+            return false, "Edit Mode allows at most " .. maxPerType .. " account layouts."
+        end
     end
-    if not base and layoutInfo.activeLayout and layoutInfo.layouts[layoutInfo.activeLayout] then
-        base = layoutInfo.layouts[layoutInfo.activeLayout]
+
+    -- Rebuild the presets-prepended list Blizzard operates on (EditModeManagerFrameMixin:
+    -- UpdateLayoutInfo). The insertion index and OnLayoutAdded both live in that space,
+    -- not in the preset-less space C_EditMode.GetLayouts() hands back.
+    if not (EditModePresetLayoutManager and EditModePresetLayoutManager.GetCopyOfPresetLayouts) then
+        return false, "Unable to locate a base layout for creation."
     end
-    if not base and EditModePresetLayoutManager and EditModePresetLayoutManager.GetCopyOfPresetLayouts then
-        local presets = EditModePresetLayoutManager:GetCopyOfPresetLayouts() or {}
-        base = presets[1]
-    end
+    local combined = EditModePresetLayoutManager:GetCopyOfPresetLayouts() or {}
+    tAppendAll(combined, savedLayouts)
+    layoutInfo.layouts = combined
+
+    -- Base is the Modern preset at index 1, matching LEO:AddLayout.
+    local base = combined[1]
     if not base then
         return false, "Unable to locate a base layout for creation."
     end
 
     local newLayout = CopyTable(base)
     newLayout.layoutName = name
-    newLayout.layoutType = Enum.EditModeLayoutType.Account
+    newLayout.layoutType = layoutType
     newLayout.isPreset = nil
     newLayout.isModified = nil
 
-    table.insert(layoutInfo.layouts, newLayout)
+    -- Insertion index, per EditModeManagerFrameMixin:MakeNewLayout.
+    local highestByType = {}
+    for index, layout in ipairs(combined) do
+        local t = layout and layout.layoutType
+        if t and (not highestByType[t] or highestByType[t] < index) then
+            highestByType[t] = index
+        end
+    end
+    local newLayoutIndex = highestByType[layoutType]
+    newLayoutIndex = newLayoutIndex and (newLayoutIndex + 1) or (presetLayoutOffset() + 1)
+
+    table.insert(combined, newLayoutIndex, newLayout)
     C_EditMode.SaveLayouts(layoutInfo)
+
+    -- SaveLayouts persists settings but does not tell the client that a layout was
+    -- structurally added; without OnLayoutAdded the new layout is dropped. This mirrors
+    -- the delete path below, which pairs its removal with OnLayoutDeleted.
+    -- activateNewLayout is false: activation happens through the standard reload prompt
+    -- so Blizzard reinitializes baselines (Zero-Touch), same as ClonePresetLayout.
+    if C_EditMode.OnLayoutAdded then
+        pcall(C_EditMode.OnLayoutAdded, newLayoutIndex, false, false)
+    end
+
+    if LEO and LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
+
+    -- Verify the write landed before creating any AceDB state. Bailing here leaves no
+    -- orphaned profile behind, so nothing downstream can mistake it for a layout that
+    -- was deleted outside Scoot.
+    do
+        local li = C_EditMode.GetLayouts()
+        local found = false
+        if li and li.layouts then
+            for _, info in ipairs(li.layouts) do
+                if info and info.layoutName == name then found = true break end
+            end
+        end
+        if not found then
+            return false, "Layout creation failed to persist."
+        end
+    end
+
+    postMutationSync(self, "CreateLayout")
 
     -- Create AceDB profile using template defaults (Zero‑Touch template is empty)
     addLayoutToCache(self, name)
     self.db.profiles[name] = deepCopy(self._profileTemplate)
 
-    -- Persist AceDB current profile without firing our ProfileChanged apply path.
-    self._suppressProfileCallback = true
-    pcall(self.db.SetProfile, self.db, name)
-    self._suppressProfileCallback = false
-
-    -- EXTRA SAFETY: explicitly persist the profileKeys entry AceDB uses for this character.
-    -- Ensures the newly-created profile is the one selected when the reload snapshot is written.
-    do
-        local sv = rawget(self.db, "sv")
-        local charKey = self.db.keys and self.db.keys.char
-        if sv and sv.profileKeys and charKey then
-            sv.profileKeys[charKey] = name
-        end
-        if self.db.global then
-            self.db.global.pendingProfileActivation = { layoutName = name }
-        end
+    -- Hand off to the standard switch/reload prompt rather than reloading inline. This
+    -- keeps ReloadUI() on a hardware event and puts a frame boundary plus a user click
+    -- between the layout write and the reload.
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0.1, function()
+            self:SwitchToProfile(name, { reason = "DeferredCreateSwitch", force = true })
+            notifyUI()
+        end)
+    else
+        self:SwitchToProfile(name, { reason = "CreateLayout", force = true })
     end
-
-    -- Ensure the destination is marked active in Edit Mode before reload.
-    local li = C_EditMode.GetLayouts()
-    if li and li.layouts then
-        for idx, layout in ipairs(li.layouts) do
-            if layout and layout.layoutName == name then
-                li.activeLayout = idx
-                break
-            end
-        end
-        pcall(C_EditMode.SaveLayouts, li)
-    end
-
-    ReloadUI()
 
     return true
 end
@@ -649,9 +691,11 @@ function Profiles:PerformDeleteLayout(layoutName)
         end
         if not deleteIndex then return false, "Layout not found." end
         table.remove(li.layouts, deleteIndex)
-        -- Persist the removal before notifying the C-side
+        -- Persist the removal before notifying the C-side. deleteIndex is a position in
+        -- li.layouts (no presets); OnLayoutDeleted expects the presets-prepended index,
+        -- which is the space LEO:DeleteLayout above already works in.
         pcall(C_EditMode.SaveLayouts, li)
-        pcall(C_EditMode.OnLayoutDeleted, deleteIndex)
+        pcall(C_EditMode.OnLayoutDeleted, deleteIndex + presetLayoutOffset())
     end
 
     -- Refresh library/cache and UI after successful delete

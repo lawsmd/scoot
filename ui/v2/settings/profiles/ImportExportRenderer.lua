@@ -167,9 +167,11 @@ local function performImport(envelope, targetLayoutName, editModeStr)
     if C_EditMode and C_EditMode.GetLayouts and C_EditMode.SaveLayouts then
         local li = C_EditMode.GetLayouts()
         if li and li.layouts then
+            local offset = addon.Profiles._presetLayoutOffset and addon.Profiles._presetLayoutOffset() or 2
             for idx, layout in ipairs(li.layouts) do
                 if layout and layout.layoutName == targetLayoutName then
-                    li.activeLayout = idx
+                    -- li.layouts excludes presets; activeLayout indexes the presets-prepended list.
+                    li.activeLayout = idx + offset
                     break
                 end
             end

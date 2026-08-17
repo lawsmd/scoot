@@ -665,6 +665,11 @@ local function addLayoutToCache(self, layoutName)
     if not layoutName then return end
     self._layoutLookup = self._layoutLookup or {}
     self._layoutLookup[layoutName] = true
+    -- Record that Scoot created this layout during this session. A layout we just made
+    -- cannot have been deleted outside Scoot, and must not be swept up by the orphan
+    -- auto-heal if the client's layout list is briefly out of step.
+    self._sessionCreatedProfiles = self._sessionCreatedProfiles or {}
+    self._sessionCreatedProfiles[layoutName] = true
     self._sortedEditableLayouts = self._sortedEditableLayouts or {}
     for _, existing in ipairs(self._sortedEditableLayouts) do
         if existing == layoutName then
@@ -766,6 +771,17 @@ end
 
 -- clearDropdownTaint() REMOVED — dead code (defined but never called).
 
+-- Edit Mode uses two different index spaces and they are easy to mix up:
+--   C_EditMode.GetLayouts().layouts -- saved layouts only, presets excluded
+--   layoutInfo.activeLayout         -- indexes the presets-prepended list that
+--                                      EditModeManagerFrame builds in UpdateLayoutInfo
+-- The same prepended space is what C_EditMode.OnLayoutAdded/OnLayoutDeleted expect.
+-- Converting a position in the first space to the second means adding this offset.
+local function presetLayoutOffset()
+    local meta = Enum and Enum.EditModePresetLayoutsMeta
+    return (meta and meta.NumValues) or 2
+end
+
 -- Copy all Edit Mode system settings (including anchors) from one layout to another
 local function copyLayoutSettingsByName(sourceName, destName)
     if not sourceName or not destName then return false end
@@ -819,11 +835,11 @@ local function copyLayoutSettingsByName(sourceName, destName)
             end
         end
     end
-    -- Ensure the destination is the active layout so the client reflects changes
-    if li.activeLayout and li.layouts[li.activeLayout] and li.layouts[li.activeLayout].layoutName ~= destName then
-        for idx, layout in ipairs(li.layouts) do
-            if layout.layoutName == destName then li.activeLayout = idx break end
-        end
+    -- Ensure the destination is the active layout so the client reflects changes.
+    -- dstIndex is a position in li.layouts (no presets); activeLayout indexes the
+    -- presets-prepended list, so translate before assigning.
+    if dstIndex then
+        li.activeLayout = dstIndex + presetLayoutOffset()
     end
     C_EditMode.SaveLayouts(li)
     if LEO and LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
@@ -980,7 +996,8 @@ local function persistEditModeActiveLayoutByName(layoutName)
     if not (li and li.layouts) then return end
     for idx, layout in ipairs(li.layouts) do
         if layout and layout.layoutName == layoutName then
-            li.activeLayout = idx
+            -- li.layouts has no presets; activeLayout indexes the presets-prepended list.
+            li.activeLayout = idx + presetLayoutOffset()
             break
         end
     end
@@ -1080,6 +1097,7 @@ function Profiles:Initialize()
     self._knownLayouts = {}
     self._layoutLookup = {}
     self._presetLookup = {}
+    self._sessionCreatedProfiles = {}
     self._profileTemplate = buildDefaultProfile()
     self._pendingActiveLayout = nil
     self._pendingRefreshReason = "Initialize"
@@ -1654,5 +1672,6 @@ addon.Profiles._notifyUI = notifyUI
 addon.Profiles._postMutationSync = postMutationSync
 addon.Profiles._addLayoutToCache = addLayoutToCache
 addon.Profiles._getCurrentSpecID = getCurrentSpecID
+addon.Profiles._presetLayoutOffset = presetLayoutOffset
 
 return Profiles

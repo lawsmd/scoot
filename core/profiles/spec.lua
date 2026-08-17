@@ -6,6 +6,25 @@ local Profiles = addon.Profiles
 local Debug = addon.Profiles._Debug
 local getCurrentSpecID = addon.Profiles._getCurrentSpecID
 
+-- The layout lookup can never legitimately be empty or preset-free: Blizzard's Modern and
+-- Classic presets are always present. An empty or preset-less lookup means we are reading
+-- Edit Mode state that has not populated yet, not a real deletion -- and acting on it
+-- destroys profiles or raises a false "deleted outside Scoot" warning.
+local function layoutLookupIsTrustworthy(self)
+    if not self._layoutLookup or not next(self._layoutLookup) then return false end
+    if not self._presetLookup or not next(self._presetLookup) then return false end
+    return true
+end
+
+-- True while a reload-driven profile activation is still settling. Edit Mode reports the
+-- previous layout for a short window after login (see _reloadActivationLock in core.lua),
+-- so the layout list is not authoritative yet.
+local function reloadActivationInFlight(self)
+    if not (self._reloadActivationLock and self._reloadActivationLockUntil) then return false end
+    local now = GetTime and GetTime() or 0
+    return now < self._reloadActivationLockUntil
+end
+
 function Profiles:GetSpecConfig()
     if not self.db or not self.db.char then
         return nil
@@ -74,6 +93,12 @@ function Profiles:CleanupOrphanedProfiles()
         return
     end
 
+    -- Never delete profiles based on a layout list we don't trust.
+    if not layoutLookupIsTrustworthy(self) then
+        Debug("CleanupOrphanedProfiles skipped: layout lookup not trustworthy")
+        return
+    end
+
     local protected = {
         ["Default"] = true, -- AceDB shared default (created via AceDB:New(..., true))
         ["Modern"] = true,  -- Blizzard preset layout name (may have a profile mirror)
@@ -81,12 +106,17 @@ function Profiles:CleanupOrphanedProfiles()
     }
 
     local currentProfile = self.db.GetCurrentProfile and self.db:GetCurrentProfile() or nil
+    local sessionCreated = self._sessionCreatedProfiles or {}
     local orphaned = {}
 
     for profileName in pairs(self.db.profiles) do
         if type(profileName) == "string"
             and not protected[profileName]
             and profileName ~= currentProfile
+            -- A layout Scoot created this session is not an orphan from a previous
+            -- machine; if it is missing, that is a creation failure to surface, not
+            -- profile data to silently destroy.
+            and not sessionCreated[profileName]
             and not self._layoutLookup[profileName]
         then
             orphaned[#orphaned + 1] = profileName
@@ -139,6 +169,18 @@ function Profiles:CheckForExternalDeletion()
         return
     end
 
+    -- An unpopulated layout list is not evidence of a deletion.
+    if not layoutLookupIsTrustworthy(self) then
+        Debug("CheckForExternalDeletion skipped: layout lookup not trustworthy")
+        return
+    end
+
+    -- Edit Mode still reports the pre-reload layout during the activation window.
+    if reloadActivationInFlight(self) then
+        Debug("CheckForExternalDeletion skipped: reload activation in flight")
+        return
+    end
+
     local protected = {
         ["Default"] = true,
         ["Modern"] = true,
@@ -147,6 +189,13 @@ function Profiles:CheckForExternalDeletion()
 
     local currentProfile = self.db:GetCurrentProfile()
     if not currentProfile or protected[currentProfile] then
+        return
+    end
+
+    -- Scoot created this layout during this session, so nothing external deleted it.
+    -- A missing layout here means creation failed; the creating path reports that.
+    if self._sessionCreatedProfiles and self._sessionCreatedProfiles[currentProfile] then
+        Debug("CheckForExternalDeletion skipped: profile created this session", currentProfile)
         return
     end
 
