@@ -983,7 +983,7 @@ do
 
 			-- Ensure cast bar text (spell name / cast time) renders above custom borders.
 			-- BarBorders creates a holder frame at barLevel + levelOffset, which causes
-			-- child FontStrings to render behind the border. We re-parent text to a thin
+			-- child FontStrings to render behind the border. Text is re-parented to a thin
 			-- overlay frame at a level above the border holder.
 			do
 				local borderEnabled = not not cfg.castBarBorderEnable

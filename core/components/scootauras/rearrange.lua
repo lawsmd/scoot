@@ -94,7 +94,7 @@ local function EnsureFrames()
     blocker:EnableMouse(true)
 
     -- Watches for the mode's ground truth disappearing: dialog hidden or
-    -- moved to another frame, or the group released out from under us.
+    -- moved to another frame, or the group released underneath it.
     -- Cheaper and less invasive than hooking LEM dialog internals, and it
     -- costs nothing while the mode is inactive (hidden frames skip OnUpdate).
     local acc = 0
@@ -144,7 +144,7 @@ end
 
 --- One overlay per rendered member, anchored to its visual so reflows, nudges,
 -- and scale changes track for free. Only dataIndex can go stale mid-mode, and
--- the only writer is our own drop, which rebuilds.
+-- the only writer is the drop handler, which rebuilds.
 local function BuildOverlays()
     local group = SAU.GetGroup(mode.gid)
     local Engine = SAU.Engine

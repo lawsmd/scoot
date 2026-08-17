@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- Scoot Minimap Component — Buttons
+-- buttons.lua - Minimap addon button container, menu, and button border styling
 --
 -- Addon button container/menu, button border styling, tracking button,
 -- mail button with event handler.
@@ -132,7 +132,7 @@ local function isBackdropTexture(path)
 end
 
 -- Get the icon texture from an addon button. Prefers ARTWORK > BORDER > BACKGROUND
--- so we get the actual addon icon and not the dark minimap backdrop disc that
+-- so the result is the addon icon and not the dark minimap backdrop disc that
 -- some addons (e.g. AutomaticRoleCheck) layer underneath their icon.
 local function GetButtonIconTexture(button)
     if not button then return nil end
@@ -627,10 +627,10 @@ local function CreateTrackingButton()
         trackingBtn:GenerateMenu()
         if not trackingBtn.menuDescription then return end
 
-        -- Open with OUR button as owner so the menu stays visible.
+        -- Open with the Scoot button as owner so the menu stays visible.
         -- Blizzard's Menu.lua auto-closes menus when owner:IsVisible() is false.
         -- The Blizzard tracking button is hidden when dock is hidden, so passing it
-        -- as owner causes immediate closure. Our custom button is always visible.
+        -- as owner causes immediate closure. The Scoot button is always visible.
         local anchor = AnchorUtil.CreateAnchor("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
         local menu = Menu.GetManager():OpenMenu(self, trackingBtn.menuDescription, anchor)
 

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- Scoot Minimap Component — Core
+-- core.lua - Minimap namespace, state, shape and mask, border overlay
 --
 -- Namespace, state, constants, helpers, shape/mask, border overlay,
 -- dock visibility, zone event handler, ADDON_LOADED handler,

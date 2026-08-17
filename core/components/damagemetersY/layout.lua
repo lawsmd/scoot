@@ -121,7 +121,7 @@ function DMY._CalculateColumnWidths(windowIndex, comp)
 
     -- Cumulative pixel edges from the stored fractions (equal split when
     -- unset). A live divider drag overrides via win._dragFractions. The last
-    -- column absorbs rounding remainder so the edges always tile [left, fw].
+    -- column absorbs the rounding leftovers so the edges always tile [left, fw].
     local fractions = win._dragFractions or DMY._GetColumnFractions(cfg, numColumns)
     local edges = { [0] = left }
     local acc = 0

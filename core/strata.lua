@@ -22,12 +22,12 @@
 -- is confined to MEDIUM, and any addon frame parked at HIGH or above draws in
 -- front of every Blizzard panel permanently, no matter how high the panel is
 -- raised. That was the bug this file exists to prevent: UFZ unit frames and the
--- PRD number overlay floating over an open talent pane (2026-08-06).
+-- PRD number overlay floating over an open talent pane.
 --
 -- For scale, Blizzard's own baseline: PlayerFrame, TargetFrame,
 -- CompactUnitFrameTemplate and BaseAuraFrameTemplate are all LOW; action bars
 -- and the Cooldown Viewer are MEDIUM. The one HUD element Blizzard puts at HIGH
--- is PlayerCastingBarFrame. LOW was considered for our unit frames and rejected:
+-- is PlayerCastingBarFrame. LOW was considered for the unit frames and rejected:
 -- UFZ is user-positioned and would then vanish behind an action bar it overlaps.
 --
 -- THE LEVEL LADDER inside MEDIUM (keep this table current):
@@ -62,8 +62,7 @@
 -- drawing and hit-testing share the one number, and only the flag split
 -- separates them. Rule: an invisible catch-all input surface takes clicks only
 -- -- that is why the UFZ click overlay calls SetMouseMotionEnabled(false).
--- Diagnose with /scoot debug hover before theorising. Full write-up and the
--- current mouse-surface table: ADDONCONTEXT/docs/framestrata.md.
+-- Diagnose with /scoot debug hover before theorising.
 --
 -- THE EXCEPTION: a frame that decorates a Blizzard panel (rather than the
 -- world) must not pick a strata at all -- it should ride whatever strata its

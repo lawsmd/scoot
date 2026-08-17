@@ -212,7 +212,7 @@ function addon.Media.ApplyBarTexturesToBarFrame(barFrame, foregroundKey, backgro
 			if tex and tex.SetDrawLayer then pcall(tex.SetDrawLayer, tex, "ARTWORK", 0) end
 			if tex and tex.SetSnapToPixelGrid then pcall(tex.SetSnapToPixelGrid, tex, false) end
 		elseif barFrameState[barFrame] and barFrameState[barFrame].fgPath then
-			-- Foreground key changed to "default" - clear our stored path so future
+			-- Foreground key changed to "default": clear the stored path so future
 			-- custom textures will be applied correctly
 			barFrameState[barFrame].fgPath = nil
 		end

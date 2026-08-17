@@ -34,7 +34,7 @@
 -- sizes the container PUSH wide, content is pushed PUSH px to the right, out
 -- of the window, and nothing renders.
 --
--- Why not an engine-written FontString (the first build, 2026-08-17): a
+-- Why not an engine-written FontString, which the first build used: a
 -- region that is 0 wide or 0 high has no rect at all (Blizzard's
 -- LayoutFrame.lua:487 says so; ApplyFlowLayout floors its sizes at 1 for the
 -- same reason), and every engine text binding writes "" for an empty slot.

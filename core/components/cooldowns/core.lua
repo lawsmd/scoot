@@ -267,7 +267,7 @@ function addon.RefreshCDMCenterAnchor(componentId)
             local db = component and component.db
             if db and not db.centerAnchor and not db.centerAdditionalRows then
                 -- Centering disabled: re-run Layout to restore default positions
-                -- (our Layout hook will early-exit since centering is off)
+                -- (the Layout hook early-exits since centering is off)
                 pcall(function() viewerFrame:Layout() end)
             else
                 CenterIconsInViewer(viewerFrame, componentId)
@@ -277,8 +277,8 @@ function addon.RefreshCDMCenterAnchor(componentId)
 end
 
 -- Apply center anchor on orientation change (called from Edit Mode sync)
--- Orientation changes trigger RefreshLayout → Layout() → our Layout hook,
--- so we just need to re-run Layout to pick up the new orientation.
+-- Orientation changes trigger RefreshLayout → Layout() → the Layout hook,
+-- so re-running Layout is enough to pick up the new orientation.
 function addon.OnCDMOrientationChanged(viewerFrame, componentId)
     if not viewerFrame or not componentId then return end
     C_Timer.After(0.1, function()
@@ -963,7 +963,7 @@ end
 
 -- Retroactive scan: find CDM icons where a Blizzard proc glow is active but
 -- should be replaced by a pixel glow (or vice-versa after profile switch).
--- Covers the reload timing race (ShowAlert fires before our hook is installed)
+-- Covers the reload timing race (ShowAlert fires before the hook is installed)
 -- and profile switches where active procs need glow-type changes.
 local function scanAndReplaceActiveBlizzardGlows()
     if abeLoaded then return end
@@ -1131,7 +1131,7 @@ function Overlays.GetOrCreateForIcon(cdmIcon)
         overlay.borderFrame:SetFrameLevel(iconLevel + 2)
     end
 
-    -- Raise Blizzard's text-bearing child frames above all our layers
+    -- Raise Blizzard's text-bearing child frames above every Scoot layer
     raiseBlizzardTextFrames(cdmIcon, iconLevel + 14)
 
     overlay:Show()  -- OnShow hook propagates to borderFrame
@@ -1837,7 +1837,7 @@ function Overlays.Initialize()
     hookCooldownTextStyling()
     hookProcGlowResizing()
 
-    -- Catch Blizzard proc glows that fired before our hook was installed
+    -- Catch Blizzard proc glows that fired before the hook was installed
     C_Timer.After(0.15, scanAndReplaceActiveBlizzardGlows)
 
     -- Initialize keybind system and share the activeOverlays table
@@ -1978,7 +1978,7 @@ end
 -- When text differs from icon, SetIgnoreParentAlpha decouples the Cooldown frame
 -- from the icon frame's alpha chain and SetAlphaFromBoolean drives it independently.
 -- Targets the Cooldown frame (not its FontString) because Blizzard's C++ cooldown
--- renderer resets the FontString's alpha every frame, overriding our values.
+-- renderer resets the FontString's alpha every frame, overriding the styled values.
 --------------------------------------------------------------------------------
 
 local function applyTextCooldownAlpha(cooldownFrame, durObj, containerAlpha, textDimAlpha, isGCD, isOffCooldownMode)

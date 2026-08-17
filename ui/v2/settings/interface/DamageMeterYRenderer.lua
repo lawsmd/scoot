@@ -644,6 +644,7 @@ function DMYSettings.Render(panel, scrollContent)
             tooltipText = "Sizing settings apply only to the selected window (1-5). All other settings in this menu apply to all windows.",
         },
         buildContent = function(_, inner)
+            inner:AddDescription("Columns can be sized individually in Edit Mode by dragging the vertical white lines in a selected window.", { color = {1, 0.82, 0}, bottomPadding = 2 })
             inner:AddSlider({ label = "Window Scale", min = 0.5, max = 2.0, step = 0.05, precision = 2,
                 get = function() return getWinSizing("windowScale", 1.0) end, set = function(v) setWinSizing("windowScale", v) end })
             inner:AddSlider({ label = "Frame Width", min = 100, max = 800, step = 10,

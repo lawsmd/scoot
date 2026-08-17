@@ -226,7 +226,7 @@ function Menu:Toggle()
     flyout:Open()
 
     -- GetStringHeight() reports a single-line height until the FontString has
-    -- actually been rendered once, and the panel is still hidden during the
+    -- been rendered once, and the panel is still hidden during the
     -- layout pass above. On the first open after a reload that sizes the panel
     -- to one line and the rest of the text clips out through the bottom border
     -- (later opens reuse an already-laid-out FontString, so they measure

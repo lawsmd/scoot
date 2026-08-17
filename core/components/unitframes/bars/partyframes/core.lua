@@ -1,6 +1,5 @@
 --------------------------------------------------------------------------------
--- bars/partyframes.lua
--- Party frame health bar and text styling
+-- core.lua - Party frame health bar and text styling
 --
 -- Applies styling to CompactPartyFrameMember[1-5] frames.
 -- Uses combat-safe overlay patterns for persistence during combat.
@@ -131,10 +130,10 @@ local function updateHealthOverlay(bar)
         return
     end
 
-    -- IMPORTANT: only re-anchor when the fill texture identity has actually
+    -- IMPORTANT: only re-anchor when the fill texture identity has
     -- changed. Calling ClearAllPoints + SetAllPoints on every UNIT_HEALTH tick
     -- re-stamps the overlay in the bar's render queue, demoting Blizzard's
-    -- (12.0.5+) dispel-highlight texture beneath ours. The fill pointer only
+    -- (12.0.5+) dispel-highlight texture beneath the overlay. The fill pointer only
     -- changes on bar-texture swaps (handled by the SetStatusBarTexture hook),
     -- so SetValue/SetMinMaxValues/OnSizeChanged should be no-ops here.
     if state.lastAnchoredFill ~= fill then
@@ -211,7 +210,7 @@ local function styleHealthOverlay(bar, cfg)
             if okU and u then unit = u end
         end
         if unit and addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
-            -- This will override the fallback color if it can determine the actual color
+            -- This overrides the fallback color when it can determine the live color
             addon.BarsTextures.applyValueBasedColor(bar, unit, overlay, useDark)
         end
         return -- Color already handled (either fallback or value-based)
@@ -320,8 +319,8 @@ function PartyFrames.ensureHealthOverlay(bar, cfg)
         -- child). Places the overlay in the same rendering pass as Blizzard's
         -- dispel highlight (rendered into the parent CompactUnitFrame's pass
         -- via PrivateAurasUI in 12.0.5+). Within that pass, draw layer
-        -- ordering is authoritative — our BORDER 7 renders before Blizzard's
-        -- ARTWORK dispel highlight, so the dispel reliably renders above us.
+        -- ordering is authoritative: the Scoot BORDER 7 renders before Blizzard's
+        -- ARTWORK dispel highlight, so the dispel reliably renders above it.
         local overlay = bar:CreateTexture(nil, "BORDER", nil, 7)
         overlay:SetVertTile(false)
         overlay:SetHorizTile(false)
@@ -470,13 +469,13 @@ function PartyFrames.ensureHealthOverlay(bar, cfg)
     -- Dispel rendering is left entirely to Blizzard. In 12.0.5+ the dispel
     -- highlight is rendered by Blizzard_PrivateAurasUI directly into the
     -- parent CompactUnitFrame's render pass at an ARTWORK draw layer that
-    -- naturally sits above our BORDER 7 health overlay. As long as Scoot
+    -- naturally sits above the BORDER 7 health overlay. As long as Scoot
     -- doesn't perturb the bar's render-queue position via redundant
     -- SetStatusBarTexture writes (see Textures.applyToBar's
     -- ufLastTexturePath cache in textures.lua), Blizzard's highlight
     -- renders correctly above the bar without addon involvement.
 
-    -- Build a config fingerprint to detect if settings have actually changed.
+    -- Build a config fingerprint to detect whether settings changed.
     -- Prevents expensive re-styling when ApplyStyles() is called but party
     -- frame settings haven't changed (e.g., when changing Action Bar settings).
     local fingerprint = string.format("%s|%s|%s|%s|%s",
@@ -1086,8 +1085,8 @@ function PartyFrames.installHooks()
 
         -- Install Show hook (once per roleIcon) to re-apply after Blizzard atlas resets.
         -- Blizzard's CompactUnitFrame_UpdateRoleIcon calls SetAtlas(default) then Show()
-        -- then SetSize(secret) which errors — our post-hook never fires. This Show hook
-        -- fires BEFORE the SetSize error, so our custom atlas is applied reliably.
+        -- then SetSize(secret) which errors, so the post-hook never fires. This Show hook
+        -- fires BEFORE the SetSize error, so the custom atlas is applied reliably.
         _roleIconToFrame[roleIcon] = frame
         if not _hookedRoleIcons[roleIcon] then
             _hookedRoleIcons[roleIcon] = true
@@ -1229,7 +1228,7 @@ function PartyFrames.installHooks()
 
     -- Safety net: re-apply custom role icons on roster/role events
     -- Needed because Blizzard's CompactUnitFrame_UpdateRoleIcon may error on
-    -- tainted roleIcon widgets (secret value from GetHeight), causing our
+    -- tainted roleIcon widgets (secret value from GetHeight), causing the
     -- post-hook to never fire. This directly applies without going through
     -- Blizzard's function.
     if not addon._RoleIconSafetyNetInstalled then
@@ -1282,7 +1281,7 @@ function PartyFrames.installHooks()
     end
 
     -- Re-apply role icons after Edit Mode exit transition window (1.0s _exitingEditMode flag).
-    -- During the transition, Blizzard rebuilds frames (resetting atlas to default) but our
+    -- During the transition, Blizzard rebuilds frames (resetting atlas to default) but the
     -- Show hook and safety net are suppressed by isEditModeActive(). This fires after the
     -- flag clears so custom icons are restored.
     if not addon._RoleIconEditModeExitInstalled and _G.EventRegistry then
@@ -1565,7 +1564,7 @@ function PartyFrames.installHooks()
                     C_Timer.After(2.0, function()
                         if not isEditModeActive() then return end -- already cleared
                         if not addon.EditMode.ForceResetIfStuck() then return end
-                        -- State was stuck; schedule the ticker we skipped
+                        -- State was stuck; schedule the ticker that was skipped
                         local inGroup = IsInGroup and IsInGroup()
                         if inGroup and not integrityTicker then
                             integrityTicker = C_Timer.NewTicker(5, runIntegrityCheck)

@@ -123,7 +123,7 @@ end
 -- SetFont fails silently (returns false, leaves the string unfonted) when the
 -- file is missing or not yet loaded, and SetText on an unfonted FontString
 -- errors outright with "Font not set". So walk the fallbacks and confirm with
--- GetFont that one actually took. Every SetFont in this file goes through
+-- GetFont that one took. Every SetFont in this file goes through
 -- here, and no SetText runs before it.
 local fontCandidates = {}  -- reused; a render touches this ~4x per row
 
@@ -489,7 +489,7 @@ local function inspectHasPendingWork()
     return (I and I.HasPendingWork and I:HasPendingWork()) or false
 end
 
--- Only the two fields the inspect service actually delivers, and only for the
+-- Only the two fields the inspect service delivers, and only for the
 -- members it can reach. Everything excluded here has a legitimate permanent
 -- nil that would otherwise pin the dots on forever: name comes back nil under
 -- identity secrecy in exactly the instanced content this panel gets opened in
@@ -518,7 +518,7 @@ local function tickDots()
     -- Polled rather than purely event-driven, and this is why: when the last
     -- queued member times out, the service clears it inside its own ticker and
     -- sends no message at all, so nothing would ever queue the render that
-    -- stops us.
+    -- stops it.
     updateDots(dotsMissing)
     if not dotsTicker then return end
     dotsPhase = dotsPhase % #DOTS_FRAMES + 1
@@ -861,7 +861,7 @@ function render()
         or (M.width + 2 * roleCol)
 
     -- The divider spans the header line and the rows, and only earns its
-    -- place once the second column actually holds something.
+    -- place once the second column holds something.
     local divider = frame._divider
     if divider then
         if M.columns > 1 and cols[2] and #cols[2] > 0 then

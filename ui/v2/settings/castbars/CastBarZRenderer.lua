@@ -21,8 +21,8 @@ local function GetTheme() return addon.UI and addon.UI.Theme end
 --------------------------------------------------------------------------------
 -- Preview Pane
 --------------------------------------------------------------------------------
--- Departure from every other Scoot preview, which render once and stay static
--- (previews.md). A cast bar's whole point is the sweep, so this one animates on a
+-- Departure from every other Scoot preview, which render once and stay static.
+-- A cast bar's whole point is the sweep, so this one animates on a
 -- loop. The pane builds a real Cast Bar Z frame through CBZ._CreatePreviewBar and
 -- lays it out with the same CBZ._LayoutBar the HUD uses, so it cannot drift from
 -- what the live bar draws.
@@ -328,7 +328,7 @@ function CBZSettings.Render(panel, scrollContent)
     local getSetting = h.get
 
     -- Every visual setter refreshes the panel, which rebuilds the preview with
-    -- the new value (previews.md: setters call DeferredRefreshAll after the write).
+    -- the new value: setters call DeferredRefreshAll after the write.
     local function setSetting(key, value)
         h.setAndApply(key, value)
         if CBZ._comp then CBZ._ApplyStyling(CBZ._comp) end
@@ -466,7 +466,7 @@ function CBZSettings.Render(panel, scrollContent)
     -- one option covering both would mean two different things depending on the
     -- style selected above it.
     -- The stored key stays "spellName" while the label reads "Spec Color". Only the
-    -- label changed (user, 2026-08-03) -- the key is what a profile already holds,
+    -- label changed; the key is what a profile already holds,
     -- and it still describes what the value resolves through.
     local COLOR_VALUES = { spellName = "Spec Color", custom = "Custom" }
     local COLOR_ORDER  = { "spellName", "custom" }
@@ -623,7 +623,7 @@ function CBZSettings.Render(panel, scrollContent)
                                 set = function(v) setSetting("castTimeReadout", v) end })
                             -- Follows the Spell Name font until you pick one here,
                             -- which is what an untouched profile does. The getter
-                            -- shows the face actually in use either way, so the
+                            -- shows the face in use either way, so the
                             -- control never reads as empty.
                             tab:AddFontSelector({ label = "Font",
                                 description = "Matches the spell name font until you choose one here.",

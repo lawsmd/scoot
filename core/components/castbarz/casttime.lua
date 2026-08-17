@@ -249,8 +249,8 @@ end
 --- SetDuration is annotated SecretArguments = "AllowedWhenUntainted", which reads
 --- like a gate and is not one: it tests whether the ARGUMENT is a secret, and a
 --- LuaDurationObject is plain userdata that merely holds secrets internally. Same
---- finding as SetTimerDuration (events.lua:185-192), measured again for this call
---- specifically by /scoot debug castz time on 2026-07-31.
+--- finding as SetTimerDuration (events.lua:185-192), measured again for this
+--- call specifically by /scoot debug castz time.
 function CBZ._StartCastTime(bar, dur, countUp)
     if not CBZ._IsCastTimeEnabled() then return end
 

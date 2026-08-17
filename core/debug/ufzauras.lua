@@ -4,9 +4,9 @@
 --
 -- The UFZ rows are Blizzard AuraContainer intrinsics since the 12.1 port, so
 -- there is nothing to read back and confirm: container geometry is secret, the
--- button list is ours only because initializeFrame handed it to us, and aura
+-- button list is known only because initializeFrame handed it over, and aura
 -- presence must never be branched on. What CAN be observed is whether each
--- engine call we made succeeded, which is what this surface reports.
+-- engine call succeeded, which is what this surface reports.
 --
 -- The open corners this exists to settle in-game, none of which the slot-shaped
 -- ScootAuras port exercised:

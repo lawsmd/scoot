@@ -252,7 +252,7 @@ do
     end
 
     -- Targeted zero-touch check for DeadText/UnconsciousText: only fontFace and style matter
-    -- (color, alignment, offset are irrelevant — we preserve Blizzard's original values)
+    -- (color, alignment, offset are irrelevant: Blizzard's original values are kept)
     local function hasFontFaceOrStyle(styleCfg)
         if not styleCfg then return false end
         if styleCfg.fontFace ~= nil and styleCfg.fontFace ~= "" and styleCfg.fontFace ~= "FRIZQT__" then

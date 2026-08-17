@@ -43,7 +43,7 @@ function SAU.EnsureStore()
     store.trackers = store.trackers or {}
     store.groups = store.groups or {}
     store.nextId = store.nextId or 1
-    -- Left behind by the first cadence-lock build (2026-08-15); nothing reads it.
+    -- Left behind by the first cadence-lock build; nothing reads it.
     store.learnedDurations = nil
     return store
 end

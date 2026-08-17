@@ -650,7 +650,7 @@ local function SetHealthBarTextureOnlyHidden(ownerFrame, hidden)
     -- re-apply path), fall through so it gets hidden too.
     -- Exception 2: if the fill texture object was replaced (e.g. by
     -- SetStatusBarTexture in applyToBar), the new texture has no hooks.
-    -- Verify the current fill texture still carries our hidden flag.
+    -- Verify the current fill texture still carries the hidden flag.
     if hidden then
         if getProp(ownerFrame, "healthBarColorHidden") then
             local currentFill = ownerFrame.texture or (ownerFrame.GetStatusBarTexture and ownerFrame:GetStatusBarTexture())

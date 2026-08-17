@@ -123,7 +123,7 @@ function TB.installDataMirrorHooks(child)
             hooksecurefunc(iconFrame.Icon, "SetTexture", function(_, tex)
                 local m = TB.barItemMirror[child]
                 -- Texture is cooldown-derived and should stay plain; keeping the
-                -- last plain value beats storing a secret we later truthy-test.
+                -- last plain value beats storing a secret that is later truthy-tested.
                 if m and not issecretvalue(tex) then m.spellTexture = tex end
                 if TB.verticalModeActive then
                     addon.UpdateVerticalBarText(child, "icon")
@@ -874,7 +874,7 @@ local function enforceBlizzItemAlpha(child)
     if child.SetAlpha then
         hooksecurefunc(child, "SetAlpha", function(self, alpha)
             -- issecretvalue: comparing a secret alpha throws. Skipping the
-            -- re-assert on a secret is safe -- our own writes are always plain 0.
+            -- re-assert on a secret is safe: Scoot's own writes are always plain 0.
             -- The reentrancy flag stands in for the "0 stops recursion" property,
             -- which is unreadable when the incoming alpha is secret.
             if TB._alphaReasserting then return end

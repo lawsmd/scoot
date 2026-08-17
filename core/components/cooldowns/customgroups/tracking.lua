@@ -174,7 +174,7 @@ end
 -- SetAlphaFromBoolean evaluates secret booleans in C++ without Lua-side inspection.
 -- Text opacity can be controlled independently via opacityOnCooldownText.
 -- Targets the Cooldown frame (not its FontString) because Blizzard's C++ cooldown
--- renderer resets the FontString's alpha every frame, overriding our values.
+-- renderer resets the FontString's alpha every frame, overriding the styled values.
 --------------------------------------------------------------------------------
 
 local function applyCGTextAlpha(cooldownFrame, durObj, containerAlpha, textDimAlpha, isGCD, isOffCooldownMode)

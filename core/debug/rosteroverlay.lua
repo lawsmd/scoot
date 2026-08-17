@@ -1,3 +1,4 @@
+-- rosteroverlay.lua - /scoot debug rosteroverlay: why the raid overlay rows read blank
 local addonName, addon = ...
 
 --------------------------------------------------------------------------------
@@ -32,7 +33,7 @@ local function probeFrame(lines, label, frame)
     if not frame then return false end
 
     -- Ask the real code which FontString it would bind, so this report cannot
-    -- drift from the actual behaviour. Falls back to frame.name if the overlay
+    -- drift from the live behaviour. Falls back to frame.name if the overlay
     -- module predates the accessor.
     local RO = addon.RaidRosterOverlay
     local nameFS
@@ -68,8 +69,8 @@ local function probeFrame(lines, label, frame)
         getDesc = describe(false, nil, valOrErr)
     end
 
-    -- Can we forward that value into a throwaway FontString? This is the exact
-    -- operation the overlay performs, so its result is the answer we want.
+    -- Can that value be forwarded into a throwaway FontString? This is the exact
+    -- operation the overlay performs, so its result is the answer.
     local probe = addon._RosterOverlayProbeFS
     if not probe then
         local host = CreateFrame("Frame", nil, UIParent)
@@ -83,7 +84,7 @@ local function probeFrame(lines, label, frame)
         setDesc = okSet and "ok" or ("ERROR: " .. tostring(setErr))
     end
 
-    -- Is the overlay actually hooked to this FontString, and pointed somewhere?
+    -- Is the overlay hooked to this FontString, and pointed somewhere?
     local bound = "no"
     local bindings = addon.RaidRosterOverlay and addon.RaidRosterOverlay._bindings
     if bindings then
@@ -93,7 +94,7 @@ local function probeFrame(lines, label, frame)
         end
     end
 
-    -- The colour we expect to land on the row. A mismatch between this and the
+    -- The colour expected to land on the row. A mismatch between this and the
     -- row's own colour localises the failure to the forwarding, not the source.
     local colorDesc = "?"
     local okC, r, g, b, a = pcall(nameFS.GetTextColor, nameFS)
@@ -179,10 +180,10 @@ function addon.DebugRosterOverlay()
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug roster rows — what state are OUR rows actually in?
+-- /scoot debug roster rows — what state are the Scoot rows in?
 --------------------------------------------------------------------------------
 -- The other probe looks at Blizzard's side of the transfer. This one looks at
--- ours: are the rows shown, sized, positioned, and -- the question that matters
+-- the Scoot side: are the rows shown, sized, positioned, and -- the question that matters
 -- most -- what alpha is their text colour sitting at? A row holding the right
 -- text at alpha 0 is indistinguishable from an empty row on screen.
 --------------------------------------------------------------------------------
@@ -209,7 +210,7 @@ local function dumpRow(lines, label, fs)
         colorDesc = "ERROR: " .. tostring(r)
     end
 
-    -- Our own rows may hold a secret name, so GetText is reported defensively
+    -- Scoot's own rows may hold a secret name, so GetText is reported defensively
     -- and never compared against anything.
     local textDesc
     local okT, val = pcall(fs.GetText, fs)

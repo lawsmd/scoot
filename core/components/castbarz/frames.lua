@@ -52,21 +52,21 @@ local GLOW_PAD_Y = 9
 -- a red-orange gradient over Shaman blue. A static backdrop breaks that pairing for
 -- every class whose spec hues were tuned away from it.
 --
--- Corrected 2026-07-30. A 2026-07-29 check against X in-game reported white and the
+-- Corrected. An earlier check against X in-game reported white and the
 -- constant was hardcoded to match; the character used for that check must have been
 -- one whose class color IS near-white (Priest is exactly 1,1,1), so a class-colored
 -- line was indistinguishable from a fixed one. Read the code, not the screen, when
 -- the answer is a single color.
 --
 -- The remaining units keep gold, which was chosen against the red their names draw
--- in (Phase 2) -- and reads against it on every one of them since 2026-08-06, when
--- class coloring came off the name (text.lua, RED_RAMP_END).
+-- in, and reads against it on every one of them since class coloring came off
+-- the name (text.lua, RED_RAMP_END).
 CBZ.LINE_COLOR_DEFAULT = { 1.0, 0.70, 0.00 }   -- gold, interruptible
 CBZ.LINE_COLOR_LOCKED  = { 1.0, 1.00, 1.00 }   -- white, uninterruptible
 CBZ.LINE_COLOR_OWN_FALLBACK = { 1.0, 1.00, 1.00 }  -- class unresolvable
 
 -- Units that render the PLAYER's own palette -- spec gradient for the name, class
--- color for the line -- regardless of what is actually being cast on them. Shared
+-- color for the line -- regardless of what is being cast on them. Shared
 -- with text.lua so the two halves of that palette can never disagree about which
 -- units they cover.
 CBZ.OWN_CAST_UNITS = { Player = true, Pet = true }
@@ -93,7 +93,7 @@ end
 -- Band edges at W * i / N land on fractional pixels for most widths. Unsnapped,
 -- adjacent columns either overlap or leave a sub-pixel gap, and the gap reads as
 -- a hairline straight through the spell name. Same mechanism as the row-to-row
--- outline weight differences documented in subpixel-font-outline.md.
+-- outline weight differences: a sub-pixel Y phase, fixed by pixel snapping.
 --
 -- Snapped against UIParent, never against the bar: reading the bar's own
 -- effective scale would be a geometry read on a frame that may be secret. The bar
@@ -159,7 +159,7 @@ local function BuildBarFrame(name, parent, row)
     -- Claim one free level underneath before anything else reads it: the
     -- interrupt glow sits BELOW the bar's own textures, matching where Blizzard
     -- layers InterruptGlow. Bumping the bar rather than dropping the glow to
-    -- level - 1 keeps the glow's level positive whatever UIParent hands us.
+    -- level - 1 keeps the glow's level positive whatever UIParent hands back.
     bar:SetFrameLevel(bar:GetFrameLevel() + 1)
     local level = bar:GetFrameLevel()
 
@@ -234,7 +234,7 @@ local function BuildBarFrame(name, parent, row)
     -- on BOTH sides of the sweep. Left on the bar it would be painted over by the
     -- bright tier segments the moment the fill passed it, which is precisely when
     -- it matters most. Contents belong to empowered.lua; nothing is built until an
-    -- empowered cast actually starts.
+    -- empowered cast starts.
     local pipFrame = CreateFrame("Frame", nil, bar)
     pipFrame:SetAllPoints(bar)
     pipFrame:SetFrameLevel(level + 3)
@@ -303,7 +303,7 @@ local function BuildBarFrame(name, parent, row)
         flashFrame:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", GLOW_PAD_X, -GLOW_PAD_Y)
     else
         -- Not expected on 12.0. One branch to keep the interrupt legible rather
-        -- than invisible if the atlas is ever renamed out from under us.
+        -- than invisible if the atlas is ever renamed.
         flashTex:SetTexture("Interface\\Buttons\\WHITE8X8")
         flashTex:SetVertexColor(1.00, 0.45, 0.40)
         flashFrame:SetAllPoints(bar)
@@ -329,7 +329,7 @@ end
 
 --- A copy for the settings preview, parented into the panel instead of UIParent.
 --- Deliberately the same construction and the same layout code as the live bar,
---- so the preview cannot drift away from what the HUD actually draws. `width`
+--- so the preview cannot drift away from what the HUD draws. `width`
 --- overrides the DB width, since the pane sets its own.
 ---
 --- Takes a unitKey, not a barKey: the settings page has one entry per
@@ -642,7 +642,7 @@ end
 --- the fade. That describes EVERY empowered cast -- releasing early is the whole
 --- mechanic -- and the Phase 1 alternative of parking at 0 or 1 is a lie either
 --- way: release at tier 2 and the bar reports an emptied channel or a completed
---- one, never the tier you actually got.
+--- one, never the tier you got.
 ---
 --- The round trip is legal on a secret-valued bar in both directions and never
 --- inspects what it moves: GetValue is SecretReturnsForAspect { BarValue }

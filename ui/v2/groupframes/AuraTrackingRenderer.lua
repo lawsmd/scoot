@@ -228,7 +228,7 @@ local function CreateIconStyleRow(parent, spellId, builder)
             iconPreview:SetVertexColor(0.8, 0.8, 0.8, 1)
             selText:SetText("Wide " .. baseStyle)
         elseif style == "spell" then
-            -- Show the actual spell icon
+            -- Show the spell's own icon
             local tex
             pcall(function()
                 tex = C_Spell.GetSpellTexture(spellId)
@@ -442,7 +442,7 @@ function AuraTrackingUI.Render(panel, scrollContent)
     -- Default to player's class on fresh session
     if not AuraTrackingUI._selectedClass then
         local _, classToken = UnitClass("player")
-        -- Only use player class if it's in our registry
+        -- Only use player class if it is in the registry
         if HA and HA.SPELL_REGISTRY and HA.SPELL_REGISTRY[classToken] then
             AuraTrackingUI._selectedClass = classToken
         else
@@ -616,7 +616,7 @@ function AuraTrackingUI.Render(panel, scrollContent)
                 if v then
                     -- Enabling: land at end of current anchor's list (BOTTOMRIGHT default
                     -- when the aura has never been configured before). AutoSlotAtEnd
-                    -- writes anchor + rank, so we set enabled last.
+                    -- writes anchor + rank, so enabled is set last.
                     local targetAnchor = (cfg and cfg.anchor) or "BOTTOMRIGHT"
                     if HA and HA.AutoSlotAtEnd then
                         HA.AutoSlotAtEnd(selectedId, targetAnchor)

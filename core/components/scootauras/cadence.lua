@@ -11,17 +11,16 @@
 -- a duration: both numbers travel as secrets into StatusBar sinks
 -- (SetMinMaxValues / SetValue are AllowedWhenTainted).
 --
--- Source of the numbers: StatusBar:GetTimerDuration() on our own bound
+-- Source of the numbers: StatusBar:GetTimerDuration() on the Scoot-bound
 -- barFill returns the button's private LuaDurationObject by reference
--- (verified live 2026-08-15: the object's HasSecretValues flips from false to
+-- (the object's HasSecretValues flips from false to
 -- true across a pull). Configure asks once, under the structural gate, and
 -- keeps the reference; Blizzard mutates the object in place, so
 --   lock take:  lockBar:SetMinMaxValues(0, durObj:GetTotalDuration())
 --   every tick: lockBar:SetValue(durObj:GetRemainingDuration())
 -- No hook is involved: the button's private mixin runs in the forbidden
--- partition and holds our bar's forbidden object table, so neither a
--- per-object hook nor a method-table hook on SetTimerDuration ever fires
--- (history in ADDONCONTEXT/docs/scootauras/saengine.md, "Cadence lock").
+-- partition and holds the bar's forbidden object table, so neither a
+-- per-object hook nor a method-table hook on SetTimerDuration ever fires.
 --
 -- Assignment: the button writes a zero-span duration only when its slot is
 -- cleared (AuraButton ClearAuraInstance); assign and update both go straight
@@ -34,7 +33,7 @@
 -- the longer of the two cadences. The launder must NOT see the remaining
 -- time: TruncateWhenZero floors to an integer, so remaining reads "zero" for
 -- the whole last second of an aura, and an extension landing in that second
--- re-took the lock at the extended (shorter) total (found live 2026-08-15).
+-- re-took the lock at the extended (shorter) total.
 --
 -- "Original" is the total of a FRESH instance (elapsed floors to zero on the
 -- flip tick, so it was applied within the last second) and stays until the
@@ -309,7 +308,7 @@ function Cadence.OnWire(entry)
     active[entry] = nil
 end
 
--- Asks our own bound bar for the duration object it was timed with. Legal
+-- Asks the Scoot-bound bar for the duration object it was timed with. Legal
 -- only under the structural gate (Configure's caller), where the tree is
 -- readable. A new object (rebuilt bar) drops the held lock; the same object
 -- keeps it.

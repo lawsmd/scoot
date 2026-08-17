@@ -39,7 +39,7 @@ function EscapeKey.Attach(frame, onEscape)
     frame:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
             -- In combat ESC also reaches whatever Blizzard has next in line
-            -- (the game menu, usually). Closing our own popup still happens.
+            -- (the game menu, usually). Closing the Scoot popup still happens.
             if not InCombatLockdown() then
                 self:SetPropagateKeyboardInput(false)
             end

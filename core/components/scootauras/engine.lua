@@ -116,7 +116,7 @@ end
 -- 470411 (the debuff is 188389, never a base anywhere), and for Elemental the
 -- Essential entry lists no linked spells while the Tracked Bar entry links
 -- 188389. Stopping at the first match built {470411, 470057} and the tracker
--- never fired (2026-08-16).
+-- never fired.
 local function ExpandFromCDM(include, lookupSpellId)
     if not lookupSpellId or not C_CooldownViewer then return end
     if not C_CooldownViewer.GetCooldownViewerCategorySet

@@ -551,7 +551,7 @@ local function ensureBossRectOverlay(bossFrame, bar, cfg, barType, unitId)
     end
     overlay:SetVertexColor(r, g, b, a)
 
-    -- Safety: verify overlay has a valid texture. If all atlas/texture attempts
+    -- Safety: verify overlay has a valid texture. If every atlas/texture try
     -- failed silently, fall back to SetColorTexture to prevent gray checkerboard.
     do
         local okA, aName = pcall(overlay.GetAtlas, overlay)
@@ -652,7 +652,7 @@ local function updateRectHealthOverlay(unit, bar)
     end
     -- Instead of reading values (GetMinMaxValues, GetValue, GetWidth) which return
     -- "secret values", the overlay anchors directly to the StatusBarTexture. The StatusBarTexture
-    -- is the actual "fill" portion of the StatusBar and automatically scales with health value.
+    -- is the "fill" portion of the StatusBar and automatically scales with health value.
     if not statusBarTex then
         overlay:Hide()
         return
@@ -899,7 +899,7 @@ local function ensureRectHealthOverlay(unit, bar, cfg)
                 local okTex, pathOrTex = pcall(tex.GetTexture, tex)
                 if okTex then
                     if type(pathOrTex) == "string" and pathOrTex ~= "" then
-                        -- Check if this string is actually an atlas token
+                        -- Check whether this string is an atlas token
                         local isAtlas = _G.C_Texture and _G.C_Texture.GetAtlasInfo and _G.C_Texture.GetAtlasInfo(pathOrTex) ~= nil
                         if isAtlas and overlay and overlay.SetAtlas then
                             -- Use SetAtlas to avoid spritesheet rendering

@@ -1,5 +1,5 @@
 -- dungeonjournal/overlay.lua - Pooled checkbox overlays anchored to EJ loot
--- buttons. Discipline: zero writes to Blizzard frames; we only call SetPoint
+-- buttons. Discipline: zero writes to Blizzard frames; only SetPoint is called
 -- against them. Active overlays are keyed by button identity (the ScrollBox
 -- recycles buttons).
 local addonName, addon = ...
@@ -167,7 +167,7 @@ local function attachOverlay(button)
     end
     overlay._anchorButton = button
     overlay:SetParent(UIParent)
-    -- Strata AND level from the row we hang off: the EJ is a MEDIUM toplevel
+    -- Strata AND level from the row the overlay hangs off: the EJ is a MEDIUM toplevel
     -- panel that ShowUIPanel raises, so inheriting its strata is what makes a
     -- pane opened over the EJ cover these too (core/strata.lua).
     addon.Strata.MatchAnchor(overlay, button, 5)
@@ -228,7 +228,7 @@ local function installHooks()
     end)
 
     -- Tab change refresh: hook OnShow/OnHide of the LootContainer so switching
-    -- to Overview / Boss Abilities / Model attaches & detaches our overlays.
+    -- to Overview / Boss Abilities / Model attaches and detaches the overlays.
     -- LootContainer is a plain Frame, not an EditModeSystemTemplate inheritor —
     -- HookScript here is safe (taint Rule 11 only applies to system templates).
     local lc = getLootContainer()

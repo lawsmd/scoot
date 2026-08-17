@@ -621,7 +621,7 @@ local function AddUnitSection(builder, opts)
     })
 
     -- Player-only, matching the X pages exactly (the X Target page offers no
-    -- opacity sliders either -- strict parity, user decision 2026-08-05).
+    -- opacity sliders either -- strict parity).
     if opts.unitKey == "Player" then
         builder:AddCollapsibleSection({
             title = "Visibility",

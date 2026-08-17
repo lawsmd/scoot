@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- Scoot: Minimap Overlay System
+-- overlay.lua - Centered minimap overlay with transparent terrain for node hunting
 -- Centers the minimap on screen with transparent terrain for node hunting.
 -- Uses C_Minimap.SetDrawGroundTextures(false) to hide terrain while keeping
 -- tracking blips, nodes, pins, and player arrow fully visible.

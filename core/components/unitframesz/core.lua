@@ -2,9 +2,8 @@
 --
 -- The Z-tier unit frame: Scoot owns every frame outright, and the frame is
 -- text-first -- no health bar, no portrait, no frame art. The engine was built
--- and certified in the healthtext debug harness (see
--- ADDONCONTEXT/docs/unitframesZ/ufzhealthtext.md) and promoted here whole; this
--- file is the component wrapper around it.
+-- and certified in the healthtext debug harness, then promoted here whole;
+-- this file is the component wrapper around it.
 --
 -- Mode model (three states per unit, one active at a time):
 --   OFF  moduleEnabled.unitFrames.<unit> == false and unitFramesZ.<unit> == false
@@ -108,12 +107,11 @@ UFZ._editModeActive = false
 --
 -- The unit token is NOT here. It used to live as cfg.unit, which cannot work
 -- once five boss frames share one config table -- it is now structural, minted
--- from the frame row into inst.unit (2026-08-07). Profiles saved before that
+-- from the frame row into inst.unit. Profiles saved before that change
 -- keep a harmless orphan `unit` key.
 
 local UNIT_DEFAULTS_SHARED = {
-    -- Anton Wide 1.5x: the settled shipping bake. Metrics table in
-    -- docs/unitframesZ/ufzhealthtext.md.
+    -- Anton Wide 1.5x: the settled shipping bake.
     face         = "ANTON_WIDE_150",
     style        = "SHADOWTHICKOUTLINE",
     pctSize      = 32,               -- digits-off static percent size
@@ -130,7 +128,7 @@ local UNIT_DEFAULTS_SHARED = {
     center       = true,
     centerOffset = 65,               -- px from the anchored frame edge to the centerline
     -- Ink-bottom compensation, RELATIVE to the 2-digit master size. 0.28 measured
-    -- for Anton Wide 1.5x by two-point screenshot calibration (2026-08-03).
+    -- for Anton Wide 1.5x by two-point screenshot calibration.
     -- Per-font: recalibrate if the face changes.
     descent      = 0.28,
     stretch      = 1.0,              -- width-only render stretch (1 = off)
@@ -221,7 +219,7 @@ local UNIT_DEFAULTS_SHARED = {
     -- Dead indicator: a skull replacing BOTH health numbers (and the '%') on a
     -- dead or ghost unit. UnitIsDeadOrGhost is a PLAIN read in 12.0 -- no
     -- SecretReturns annotation in UnitDocumentation.lua -- so this branches
-    -- normally. Always on (user decision 2026-08-07: two stacked zeros are a
+    -- normally. Always on (two stacked zeros are a
     -- rendering fault to the eye, so there is nothing to opt out of), fixed
     -- position, one style. Sized off the number stack it replaces; no envelope
     -- contribution, because it lives inside a span the numbers box reserves.
@@ -238,12 +236,12 @@ local UNIT_DEFAULTS_SHARED = {
 table.freeze(UNIT_DEFAULTS_SHARED)
 
 -- The mirrored target block: align "left" is the whole geometry difference
--- (ufzstructure.md: "Nothing else changes between units") -- plus the
+-- and nothing else changes between units, plus the
 -- power/level locations, which mirror so each text keeps the same relationship
 -- to the numbers on both frames.
 local UNIT_DEFAULTS = {
     -- Visibility opacity is Player-only by design (strict UFX parity,
-    -- 2026-08-05: the X Target page offers none either). Percent 0-100;
+    -- the X Target page offers none either). Percent 0-100;
     -- priority With Target > In Combat > Out of Combat. Keys here and NOT in
     -- SHARED so the Target DB never carries them.
     Player = {
@@ -257,13 +255,13 @@ local UNIT_DEFAULTS = {
         -- topright is the clean mirror of the player's topleft, and it shares
         -- the corner with the classification icon on purpose: the icon steps
         -- aside (engine classifyShiftReserved) wherever the two coincide, which
-        -- is a better answer than the 2026-08-06 dodge of defaulting the level
-        -- to the one free corner. Restored 2026-08-07, so fresh profiles now
+        -- is a better answer than the earlier dodge of defaulting the level
+        -- to the one free corner. Restored, so fresh profiles now
         -- look like every Target DB saved before that dodge.
         levelLoc = "topright",
     },
-    -- Boss: styling identical to Target (ufzstructure.md: "Target, Focus, Boss:
-    -- health block left of the name. Nothing else changes between units"), with
+    -- Boss: styling identical to Target (Target, Focus and Boss all put the
+    -- health block left of the name; nothing else changes between units), with
     -- one key different -- five stacked frames at Target's size is a lot of
     -- screen, so they ship smaller and the user raises the existing slider.
     Boss = {
@@ -339,13 +337,13 @@ function UFZ._ResetUnitDB(unitKey)
 end
 
 -- Copy From (settings panel header dropdown): styling only. Identity and the
--- mirrored handedness keys stay the destination's own (user decision
--- 2026-08-05, matching the X copy's preserve-positioning philosophy).
+-- mirrored handedness keys stay the destination's own, matching the X copy's
+-- preserve-positioning approach.
 local COPY_EXCLUDE = {
     -- Overall Scale sits on the positioning side of that line, not the styling
     -- side: it is the ONE setting the Edit Mode mirror carries, for the reason
     -- editmode.lua states -- it is judged by looking at the frame in place.
-    -- Excluded 2026-08-07, when Boss shipped at a smaller default and "copy my
+    -- Excluded when Boss shipped at a smaller default and "copy my
     -- Target look onto Boss" would otherwise have flattened it every time.
     scale = true,
     align = true,
@@ -430,7 +428,7 @@ addon:RegisterComponentInitializer(function(self)
     end
 
     -- Pre-materialize the component DB so the zero-touch proxy doesn't skip
-    -- ApplyStyling. Safe here: we are already behind the enabled gate.
+    -- ApplyStyling. Safe here: this runs behind the enabled gate.
     if self.db and self.db.profile then
         if not self.db.profile.components then
             self.db.profile.components = {}
@@ -459,7 +457,7 @@ addon:RegisterComponentInitializer(function(self)
     UFZ._comp = comp
 
     -- Bootstrap on the first PLAYER_ENTERING_WORLD (mirrors castbarz/core.lua:
-    -- the component system's ApplyStyling gate can skip us on a fresh profile).
+    -- the component system's ApplyStyling gate can skip this on a fresh profile).
     local bootstrapFrame = CreateFrame("Frame")
     bootstrapFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     bootstrapFrame:SetScript("OnEvent", function(f)
@@ -538,7 +536,7 @@ end
 -- The Cast Bar Z anchor seam
 --------------------------------------------------------------------------------
 -- castbarz/anchoring.lua calls this (nil-checked) before falling back to the
--- Blizzard root: a snapped cast bar follows whichever frame actually represents
+-- Blizzard root: a snapped cast bar follows whichever frame represents
 -- the unit. Z mode -> the Scoot-owned frame; X or OFF -> nil -> Blizzard's.
 --
 -- Resolved per BAR, not per unit config. Boss is five bars sharing unitKey

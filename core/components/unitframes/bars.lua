@@ -502,7 +502,7 @@ do
                 local bossFrame = _G["Boss" .. i .. "TargetFrame"]
                 local unitId = "boss" .. i
                 -- Apply styling whenever the frame exists. Let resolveHealthBar/resolvePowerBar
-                -- handle finding the actual bars within the frame structure.
+                -- handle finding the bars within the frame structure.
                 if bossFrame then
                     local hb = resolveHealthBar(bossFrame, unit)
                         if hb then
@@ -1139,7 +1139,7 @@ do
             -- Apply background texture and color for Health Bar
             do
                 -- IMPORTANT: Default/clean profiles should not change the look of Blizzard's bars.
-                -- Only apply the background overlay if the user actually customized background settings.
+                -- Only apply the background overlay if the user customized background settings.
                 local function hasBackgroundCustomization()
                     local texKey = cfg.healthBarBackgroundTexture
                     if type(texKey) == "string" and texKey ~= "" and texKey ~= "default" then
@@ -1711,7 +1711,7 @@ do
             -- Apply background texture and color for Power Bar
             do
                 -- IMPORTANT: Default/clean profiles should not change the look of Blizzard's bars.
-                -- Only apply the background overlay if the user actually customized background settings.
+                -- Only apply the background overlay if the user customized background settings.
                 local function hasBackgroundCustomization()
                     local texKey = cfg.powerBarBackgroundTexture
                     if type(texKey) == "string" and texKey ~= "" and texKey ~= "default" then

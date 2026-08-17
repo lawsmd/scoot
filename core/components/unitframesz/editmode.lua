@@ -65,8 +65,8 @@ end
 -- screen, it moves it BOTH ways at once. Enabling the power text grew the
 -- envelope downward by ~14px, the pinned centre pushed the name and the number
 -- stack UP by half of it, and the aura rows hanging off the frame's bottom edge
--- went DOWN by the other half (user report 2026-08-10: "the name is supposed to
--- be the anchor of the frame").
+-- went DOWN by the other half. The name is meant to be the anchor of the
+-- frame.
 --
 -- So what the stored numbers pin is the CONTENT ORIGIN -- the numbers box, which
 -- is the rect every content anchor in applyLayout is measured from -- and the
@@ -101,7 +101,7 @@ local function ContentRect(unitKey)
 
     -- applyEnvelope seats the box env.T below the rect's top edge, flush against
     -- the align edge. The reference is its TOPLEFT on BOTH handednesses, rather
-    -- than the align-side corner it is actually pinned by: flipping align
+    -- than the align-side corner it is pinned by: flipping align
     -- mirrors the element, and mirroring it about the box leaves the box roughly
     -- where it was instead of throwing the whole element a frame-width sideways.
     local oy = -env.T
@@ -332,11 +332,11 @@ local function AddToEditMode(frame, unitKey)
                 SnapToPixels(x, f), SnapToPixels(y, f))
         end
         if layoutName then
-            -- Persist the RESOLVED anchor, not the one we asked for:
+            -- Persist the RESOLVED anchor, not the requested one:
             -- LibEditMode's normalizePosition() picks the anchor point per
             -- screen quadrant and does not preserve what you set, so storing
-            -- the requested point drifts the frame on every reload
-            -- (emcustomframes.md). Reading GetPoint here is safe: the frame is
+            -- the requested point drifts the frame on every reload.
+            -- Reading GetPoint here is safe: the frame is
             -- anchored to UIParent only, so its anchor chain carries no secrets.
             local savedPoint, _, _, savedX, savedY = f:GetPoint(1)
             if savedPoint then

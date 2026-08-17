@@ -4,7 +4,7 @@
 -- styling. Mirrors the PRD's own native bar text (12.0.7+) onto Scoot-owned
 -- overlay FontStrings via hooks. Blizzard's native bar text is force-shown via
 -- the Edit Mode "Show Bar Text" setting (so it populates in a clean context),
--- harvested, then hidden in favor of our styled overlay.
+-- harvested, then hidden in favor of the Scoot overlay.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -36,9 +36,9 @@ local textHooksInstalled = { power = false, health = false }
 --------------------------------------------------------------------------------
 -- The PRD bars (PersonalResourceStatusBar) carry their own native value/percent
 -- FontStrings: LeftText (percent), RightText (value), TextString (center).
--- We harvest those, render our own styled overlay on top, and keep the native
+-- Scoot harvests those, renders a styled overlay on top, and keeps the native
 -- FontStrings hidden (alpha 0). The native text only populates while Blizzard's
--- Edit Mode "Show Bar Text" setting is on, which we drive Edit-Mode-first.
+-- Edit Mode "Show Bar Text" setting is on, which Scoot drives Edit-Mode-first.
 
 local NATIVE_TEXT_KEYS = { "LeftText", "RightText", "TextString" }
 
@@ -51,7 +51,7 @@ local function hideNativeBarTextOn(bar)
 end
 
 -- Hide Blizzard's native PRD bar text across health, power, and alternate power
--- bars. (We only overlay health/power; the alt-power bar simply shows no text,
+-- bars. (Only health/power get an overlay; the alt-power bar shows no text,
 -- which matches pre-12.0.7 behavior.)
 local function hidePRDNativeBarText()
     local prd = PersonalResourceDisplayFrame
@@ -83,7 +83,7 @@ end
 
 -- Drive Blizzard's native "Show Bar Text" Edit Mode setting so the PRD's own bar
 -- FontStrings get populated. Edit-Mode-first: never write the frame directly.
--- Zero-touch: we never disable a setting we never enabled, so default profiles
+-- Zero-touch: a setting Scoot never enabled is never disabled, so default profiles
 -- are left untouched.
 local function setNativeBarTextEnabled(enabled)
     enabled = enabled and true or false
@@ -365,7 +365,7 @@ end
 
 -- Install hooks on a native PRD bar's own text FontStrings (LeftText = percent,
 -- RightText = value). Blizzard populates these via SetText in its own clean
--- context; we mirror onto our overlay and keep the native FontStrings hidden.
+-- context; Scoot mirrors onto the overlay and keeps the native FontStrings hidden.
 local function installNativeBarTextHooks(overlayType, bar)
     if not bar then return false end
 

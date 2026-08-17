@@ -155,7 +155,7 @@ function addon.ApplyRaidFrameTextStyle()
         return
     end
 
-    -- Zero-Touch: if user hasn't actually changed anything from the defaults, do nothing.
+    -- Zero-Touch: if the user changed nothing from the defaults, do nothing.
     if not Utils.hasCustomTextSettings(cfg) then
         return
     end
@@ -503,7 +503,7 @@ local function ensureRaidNameOverlay(frame, cfg)
         end
     end
 
-    -- Reposition after initial text copy so CENTER/RIGHT alignment uses actual text width
+    -- Reposition after the first text copy so CENTER/RIGHT alignment uses rendered width
     if frameState and frameState.nameAnchor and frameState.nameOverlayText then
         Utils.repositionNameOverlay(frameState.nameOverlayText,
             frameState.nameOverlayContainer or frame,
@@ -1033,7 +1033,7 @@ function addon.ApplyRaidFrameStatusTextStyle()
         return
     end
 
-    -- Zero-Touch: if user hasn't actually changed anything from the defaults, do nothing.
+    -- Zero-Touch: if the user changed nothing from the defaults, do nothing.
     if not Utils.hasCustomTextSettings(cfg) then
         return
     end

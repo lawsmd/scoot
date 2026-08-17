@@ -179,13 +179,13 @@ end
 -- SetFont does NOT raise for a missing or not-yet-loaded file -- it returns
 -- false. Testing only the pcall status therefore always answered "true", so
 -- every fallback below was dead code and GetFont happily handed back a path the
--- client could not render. The boolean is the actual answer.
+-- client could not render. The boolean is the real answer.
 --
 -- One probe object, created lazily and reused: the old version minted a fresh
 -- CreateFont global per call from a 100k-name random space.
 -- Results are memoized per path: GetFont runs on nearly every panel widget, and
 -- a file the client did not load at startup will not start loading mid-session
--- (that needs a full client restart), so the answer cannot change under us.
+-- (that needs a full client restart), so the answer cannot change mid-session.
 local probeFont
 local fontExistsCache = {}
 local function FontExists(path)

@@ -10,7 +10,7 @@ local Util = addon.ComponentsUtil
 --------------------------------------------------------------------------------
 -- Textures snap to the physical pixel grid by default, which quantises fractional
 -- anchor offsets straight back to whole pixels: a 0.5 inset would render identically
--- to 0 or 1. Snapping is relaxed only when the requested inset actually carries a
+-- to 0 or 1. Snapping is relaxed only when the requested inset carries a
 -- fractional part, so whole-number insets keep their crisp, grid-aligned edges.
 
 local DEFAULT_TEXEL_SNAPPING_BIAS = 0.51
@@ -52,7 +52,7 @@ function addon.ClearIconMask(iconTexture)
 end
 
 -- Applies (or removes) the rounded mask a border style calls for. `ownerFrame` must be
--- a frame we own — the MaskTexture is created on it. Safe to call every restyle; the
+-- a Scoot-owned frame: the MaskTexture is created on it. Safe to call every restyle; the
 -- mask is created once per owner and re-anchored thereafter.
 function addon.ApplyIconMask(iconTexture, ownerFrame, styleKey, iconW, iconH)
     if not iconTexture or not iconTexture.AddMaskTexture then return end

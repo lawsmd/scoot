@@ -192,7 +192,7 @@ function addon.GetClassColorRGB(unitOrClassToken)
 	if not classToken then
 		return nil, nil, nil -- no class resolved; callers decide fallback
 	end
-	-- Use our static table first; fall back to RAID_CLASS_COLORS when available
+	-- Use the static table first; fall back to RAID_CLASS_COLORS when available
 	local c = addon.ClassColors[classToken]
 	if not c and _G.RAID_CLASS_COLORS then c = _G.RAID_CLASS_COLORS[classToken] end
 	if c and c.r and c.g and c.b then return c.r, c.g, c.b end

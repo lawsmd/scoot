@@ -32,14 +32,10 @@ end
 
 local function _DbgPrint(...)
     if not _DbgEnabled() then return end
-    if addon and addon.DebugPrint then
-        addon.DebugPrint("[MinimapOffscreenUnlock]", ...)
-    else
-        print("[Scoot MinimapOffscreenUnlock]", ...)
-    end
+    addon.DebugPrint("[MinimapOffscreenUnlock]", ...)
 end
 
--- Prefer the Edit Mode registered system frame (what Edit Mode actually drags).
+-- Prefer the Edit Mode registered system frame, which is what Edit Mode drags.
 local function _GetMinimapFrame()
     local mgr = _G.EditModeManagerFrame
     local EMSys = _G.Enum and _G.Enum.EditModeSystem

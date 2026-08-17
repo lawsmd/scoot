@@ -1,6 +1,6 @@
+-- core.lua - Copy window for debug dumps, separate from the Table Inspector copy
 local addonName, addon = ...
 
--- Lightweight copy window for debug dumps (separate from Table Inspector copy)
 local function ShowDebugCopyWindow(title, text)
     if not addon.DebugCopyWindow then
         local f = CreateFrame("Frame", "ScootDebugCopyWindow", UIParent, "BasicFrameTemplateWithInset")

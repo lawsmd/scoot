@@ -9,10 +9,8 @@ local addonName, addon = ...
 -- Debug helper (disabled by default)
 local DEBUG_SCALE_MULT = false
 local function debugPrint(...)
-    if DEBUG_SCALE_MULT and addon and addon.DebugPrint then
+    if DEBUG_SCALE_MULT then
         addon.DebugPrint("[ScaleMult]", ...)
-    elseif DEBUG_SCALE_MULT then
-        print("[Scoot ScaleMult]", ...)
     end
 end
 

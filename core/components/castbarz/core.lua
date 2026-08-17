@@ -21,7 +21,7 @@ local CBZ = addon.CastBarZ
 --   unit     "boss3"  every API call -- ramp resolution, cast state, events
 --
 -- Boss shares one config the same way Cast Bar X does (db.unitFrames.Boss.castBar
--- is common to all five, ufboss.md:16-17). It also keeps the selector strip at
+-- is common to all five). It also keeps the selector strip at
 -- five buttons; nine would overflow the settings content area.
 --
 -- UNITS is the config / selector list -- five entries, not nine, because Boss is
@@ -40,8 +40,8 @@ CBZ.NUM_BOSS_BARS = 5
 -- `changeEventUnit` is set only when that event is a genuine unit event whose unit
 -- argument is NOT this bar's token.
 --
--- Anchor frame names are the verified paths from ufboss.md:3, 37-50 -- never
--- guessed. They are unused until anchoring.lua (step 6) but belong with the row.
+-- Anchor frame names are paths verified in the frame stack -- never
+-- guessed. They are unused until anchoring.lua resolves them, but belong here.
 CBZ.BARS = {
     { barKey = "Player", unitKey = "Player", token = "player",
       anchorFrame = "PlayerFrame" },
@@ -102,7 +102,7 @@ local UNIT_DEFAULTS_SHARED = {
     enabled      = false,   -- zero-touch: nothing is created until the user says so
     barWidth     = 200,
     positionMode = "free",  -- "free" | "above" | "below" | "left" | "right"
-                            -- (anchoring.lua lands in Phase 2 step 6)
+                            -- (resolved by anchoring.lua)
     -- Snap offsets are NOT declared here: they are lazy flat keys per
     -- (direction, anchor variant) -- snapOffset_<mode>_<X|Z>_<x|y>, absent = 0
     -- (anchoring.lua). Declaring 16 zeros per unit would be gap-fill noise.
@@ -160,7 +160,7 @@ function CBZ._EnsureUnitDB()
             end
         end
 
-        -- One-time migration (2026-08-05): the legacy shared offsetX/offsetY
+        -- One-time migration: the legacy shared offsetX/offsetY
         -- pair was always tuned against the Blizzard (X) frames, so it becomes
         -- the X-variant pair of the direction it was stored with; a free bar
         -- never used it. Nil'ing the keys is what makes this run once.
@@ -200,7 +200,7 @@ addon:RegisterComponentInitializer(function(self)
     if not self:IsModuleEnabled("castBars", "castBarZ") then return end
 
     -- Pre-materialize the component DB so the zero-touch proxy doesn't skip
-    -- ApplyStyling. Safe here: we are already behind the enabled gate.
+    -- ApplyStyling. Safe here: this runs behind the enabled gate.
     if self.db and self.db.profile then
         if not self.db.profile.components then
             self.db.profile.components = {}
@@ -216,11 +216,10 @@ addon:RegisterComponentInitializer(function(self)
         id = "castBarZ",
         name = "Cast Bar Z",
         settings = {
-            -- These defaults are the component's house look, set when Z left beta
-            -- (user, 2026-08-17): Scoot's own face in its heaviest weight, the caret
-            -- spark and the success glow. Every scalar default here must be
-            -- mirrored in SETTING_FALLBACKS below, which serves a bar whose
-            -- component DB is missing.
+            -- These defaults are the component's house look: Scoot's own face in
+            -- its heaviest weight, the caret spark and the success glow. Every
+            -- scalar default here must be mirrored in SETTING_FALLBACKS below,
+            -- which serves a bar whose component DB is missing.
             --
             -- Zero-touch survives at the category level -- a fresh profile has no
             -- moduleEnabled.castBars key, so no bar exists until Z is selected --
@@ -256,7 +255,7 @@ addon:RegisterComponentInitializer(function(self)
             -- on the bar the user is looking at while they set it. There is no
             -- third "whatever it is now" mode: Blizzard's pip drew in its own gold
             -- and every other spark drew in the ramp, so one option covering both
-            -- would have named two behaviours (user, 2026-08-03).
+            -- would have named two behaviours.
             sparkColorMode      = { type = "addon", default = "spellName" },
             sparkColor          = { type = "addon", default = { 1, 1, 1, 1 } },
             completionColorMode = { type = "addon", default = "spellName" },
@@ -301,7 +300,7 @@ addon:RegisterComponentInitializer(function(self)
     CBZ._comp = comp
 
     -- Bootstrap on the first PLAYER_ENTERING_WORLD. The component system's
-    -- ApplyStyling gate can skip us on a fresh profile, so Z self-bootstraps
+    -- ApplyStyling gate can skip it on a fresh profile, so Z self-bootstraps
     -- once DB linking is complete (mirrors damagemetersY/core.lua).
     local bootstrapFrame = CreateFrame("Frame")
     bootstrapFrame:RegisterEvent("PLAYER_ENTERING_WORLD")

@@ -338,7 +338,7 @@ function CBZ._BuildSpark(bar, geom)
     if not SparkBuilders[style] then style = "caret" end
 
     -- Only `blizzard` can fail to build, and only if Blizzard renames the pip
-    -- atlas out from under us. Fall back to `tick` rather than to nothing: an
+    -- atlas. Fall back to `tick` rather than to nothing: an
     -- invisible spark is indistinguishable from showSpark being off, which sends
     -- anyone debugging it to the wrong setting. `tick` is pure geometry, so it is
     -- the one style that cannot fail for the same reason.
@@ -445,7 +445,7 @@ Anim.Register({
 -- it is unfamiliar on a combat cast -- which is an argument for it.
 --
 -- Blizzard translates it +180px, sized for a bar with a tall filled body to hide
--- the entry and exit. Ours travels the bar's own width instead, set at build
+-- the entry and exit. The Scoot spark travels the bar's own width instead, set at build
 -- time by _LayoutFinishFX.
 --
 -- Two regions, like the ember trail and for a related reason: the shine alone is
@@ -564,7 +564,7 @@ Anim.Register({
 -- first build's mistake was scaling them by barW/200 instead. That preserved the
 -- fraction, and the fraction was the problem: their wisp only crosses a quarter of
 -- their own bar, because ChannelFinish is a burst at the end of a channel, not a
--- sweep along it. Ours is a sweep, so the distance is the bar.
+-- sweep along it. This spark is a sweep, so the distance is the bar.
 local SWEEP_OVERSHOOT = 16
 
 Anim.Register({
@@ -628,7 +628,7 @@ Anim.Register({
 
                 -- Fades over the back 40% only. Blizzard's fade covers two thirds
                 -- of the travel, which was survivable at their distance and is not
-                -- at ours -- the wisp would be spent by mid-bar and the sweep would
+                -- at this distance -- the wisp would be spent by mid-bar and the sweep would
                 -- read as stopping early all over again.
                 local fade = ag:CreateAnimation("Alpha")
                 fade:SetFromAlpha(1)
@@ -732,7 +732,7 @@ local FX_PAD = {
 --- Create or replace the bar's completion-effect controller.
 ---
 --- Called from the layout pass, so it runs on every settings change. Rebuilding
---- only when the style actually changed matters: Anim.Create allocates a frame
+--- only when the style changed matters: Anim.Create allocates a frame
 --- and its textures, and a settings panel emits a layout pass per slider tick.
 function CBZ._LayoutFinishFX(bar, geom)
     local style = tostring(CBZ._GetSetting("completionFX") or "glow")

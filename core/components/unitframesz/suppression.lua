@@ -15,7 +15,7 @@
 -- handled by NativeFrame's ApplySelection.
 --
 -- Parking hides the WHOLE subtree, and Blizzard parents more under these
--- frames than the frames themselves (accepted, user decision 2026-08-05; the
+-- frames than the frames themselves (accepted; the
 -- Features-page Z tooltips name the casualties):
 --   PlayerFrame  -> PetFrame, TotemFrame, RuneFrame, ClassPowerBarFrame, and
 --                   PlayerCastingBarFrame while Edit Mode's "Lock to Player
@@ -39,9 +39,9 @@ local OWNER = "unitFramesZ"
 -- decision and it is not interchangeable: BossTargetFrameContainer is a
 -- VerticalLayoutFrame whose UpdateSize() walks self.BossTargetFrames and calls
 -- Layout() on their sizes, so re-parenting the children out from under it
--- breaks its layout code -- verified live by one of the two local reference
--- addons, which parks the container and pointedly leaves the children alone
--- (the other parks the children and is the counter-example). It is also one
+-- breaks its layout code. Parking the container and leaving the children
+-- alone is the shape that holds; parking the children instead is what breaks
+-- it. It is also one
 -- call instead of five, and it matches nativeframe.lua's own rule of thumb:
 -- park top-level frames, dim children of a system.
 --
@@ -66,7 +66,7 @@ end
 
 --- Re-assert every claim Z currently holds.
 ---
---- Called on Edit Mode enter and exit. Both matter: NativeFrame skips our
+--- Called on Edit Mode enter and exit. Both matter: NativeFrame skips the
 --- re-parent while the Edit Mode manager is open (writing there taints the
 --- manager, not just the frame -- see nativeframe.lua), so entering Edit Mode
 --- is where a claim gets deferred and leaving it is where it gets paid.

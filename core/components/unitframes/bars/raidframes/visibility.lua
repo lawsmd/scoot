@@ -5,15 +5,15 @@
 -- Goal: let ScooterDeck / small-screen users hide the raid frames outright,
 -- for when even minimum-sized frames eat too much of the screen.
 --
--- Constraints (see docs/context.md, debugging/taint.md):
---  - CompactRaidFrameContainer is an Edit Mode system frame. We never call
+-- Constraints:
+--  - CompactRaidFrameContainer is an Edit Mode system frame. Scoot never calls
 --    Hide() on it (protected during combat, and exactly when raid frames
 --    matter) and never write fields to it.
 --  - SetAlpha is genuinely unprotected and safe in and out of combat.
 --    EnableMouse / SetMouseClickEnabled are NOT: on a protected frame they are
 --    protected during combat lockdown. Blizzard calls Show() on the container
---    from UpdateRaidAndPartyFrames, which fires our re-enforcement hook with
---    our taint on the stack -- calling them there during combat produces
+--    from UpdateRaidAndPartyFrames, which fires the re-enforcement hook with
+--    addon taint on the stack -- calling them there during combat produces
 --    ADDON_ACTION_BLOCKED. Note that pcall does not help, because a blocked
 --    call is not a Lua error. Mouse changes are therefore deferred to
 --    PLAYER_REGEN_ENABLED; alpha still applies immediately, so the frames go
@@ -100,7 +100,7 @@ end
 local function ApplyHidden(self, name, frame, isContainer)
     CaptureBaseline(self, name, frame)
 
-    -- Guard against the SetAlpha hook re-entering while we set alpha ourselves.
+    -- Guard against the SetAlpha hook re-entering during this alpha write.
     self._enforcing = true
     SafeCall(frame, "SetAlpha", 0)
     self._enforcing = nil
@@ -120,7 +120,7 @@ end
 local function RestoreBaseline(self, name, frame)
     local baseline = self._baselines and self._baselines[name] or nil
     if not baseline then
-        -- Zero-Touch: this frame was never hidden by us, so leave it alone.
+        -- Zero-Touch: Scoot never hid this frame, so leave it alone.
         -- Never force raid frames visible.
         return
     end
@@ -130,7 +130,7 @@ local function RestoreBaseline(self, name, frame)
     self._enforcing = nil
 
     -- Same protection as ApplyHidden. The baseline is deliberately NOT cleared
-    -- while deferred -- it holds the mouse state we still owe this frame, and
+    -- while deferred -- it holds the mouse state still owed to this frame, and
     -- dropping it here would restore alpha but leave the frame click-dead.
     if InCombatLockdown() then
         self._pendingMouse = true

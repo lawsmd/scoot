@@ -76,7 +76,7 @@ local function ElementHalfExtents(anchor, boxW, boxH, offsetX, offsetY, elemW, e
 end
 
 -- MeasureTextWidth rules a UIParent-anchored FontString with GetUnboundedStringWidth, so it
--- reports correctly before the panel has rendered. Height comes from the size we just applied
+-- reports correctly before the panel has rendered. Height comes from the size applied above
 -- because GetStringHeight under-reports until a FontString has rendered once, and all of this
 -- runs synchronously while the panel is being built.
 local function MeasureString(fs, text, face, size, style)
@@ -110,7 +110,7 @@ end
 --   parent          Frame    Scroll content frame (set by builder)
 --   componentId     string   Component to read settings from
 --   mode            string   "icon" / "bar" / "iconbar" / "text"
---   settingKeys     table    Key name mapping (canonical -> actual DB key)
+--   settingKeys     table    Key name mapping (canonical -> real DB key)
 --   iconTexture     number/string/nil  Override icon texture
 --   auraDefaultBarColor  table/nil  Default bar foreground color
 --   caTextSource    string/nil  Source of the CA text element ("duration"/"applications");
@@ -334,7 +334,7 @@ function Controls:CreatePreview(options)
             -- Custom Groups draw borders through their own HUD code rather than the shared
             -- helper every other system uses. Route the preview to whichever one owns this
             -- component so the two can't drift, and take the reported outward reach so the
-            -- clip box is sized from what was actually drawn.
+            -- clip box is sized from what was drawn.
             local CG = addon.CustomGroups
             local cgComponent = (borderPath == "customGroups") and h.getComponent() or nil
             local cgDb = cgComponent and cgComponent.db
@@ -382,7 +382,7 @@ function Controls:CreatePreview(options)
                 return math.max(PREVIEW_MIN_FONT_SIZE / scaleFactor, size or 14)
             end
 
-            -- Helper: grow the measured content box to cover a string we just placed
+            -- Helper: grow the measured content box to cover a newly placed string
             local function trackText(fs, text, anchor, face, size, style, ox, oy)
                 local tw, th = MeasureString(fs, text, face, size, style)
                 local ex, ey = ElementHalfExtents(anchor, iconW, iconH, ox, oy, tw, th)

@@ -551,7 +551,7 @@ local function InstallFrameToUnitHook()
         if IsEditModeOpen() then return end
         local state = ensureState(frame)
         state.unit = unit
-        -- Cache frame height while we have a safe reference (OOC context)
+        -- Cache frame height while the reference is safe (OOC context)
         if not InCombatLockdown() then
             local ok, h = pcall(frame.GetHeight, frame)
             if ok and type(h) == "number" and h > 0 then
@@ -795,7 +795,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 local db = addon.db and addon.db.profile
                 local ha = db and db.groupFrames and db.groupFrames.auraTracking
                 if ha and ha.spells and next(ha.spells) then
-                    print("|cff00ff66Scoot:|r Aura Tracking feature unavailable — aura data is protected.")
+                    addon:Print("Aura Tracking is unavailable: aura data is protected.")
                 end
             end
             return
@@ -856,7 +856,7 @@ eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 -- Edit Mode Exit Repaint
 --------------------------------------------------------------------------------
 -- UpdateAurasForFrame refuses to run while Edit Mode is open or transitioning,
--- so nothing repaints the custom icons on Edit Mode exit unless we do it here.
+-- so nothing repaints the custom icons on Edit Mode exit unless this hook does.
 -- Hook EditModeManagerFrame's OnHide directly; it fires reliably even when the
 -- EventRegistry exit callback does not (observed under 12.0.5).
 --------------------------------------------------------------------------------

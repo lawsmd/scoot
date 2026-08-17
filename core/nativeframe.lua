@@ -25,10 +25,10 @@
 -- * No Hide() on the frame itself. On an Edit Mode system frame Hide is a Lua
 --   override that writes to the frame's table (EditModeSystemTemplates.lua:35-36);
 --   HideBase would dodge that, but Blizzard calls plain Show() on the next update
---   and we would be back to fighting for the same pixel.
+--   and the fight for the same pixel would resume.
 -- * No fields written to the Blizzard frame. All state lives in the weak-keyed
 --   table below. Writing even one bookkeeping flag onto a system frame is the
---   documented permanent-taint vector (TAINT.md).
+--   documented permanent-taint vector.
 --
 -- Ownership is refcounted, so two components suppressing the same frame cannot
 -- release it out from under each other, and a frame is only ever handed back to
@@ -80,7 +80,7 @@ end
 --- True while Blizzard's Edit Mode manager is on screen.
 ---
 --- Re-parenting is banned in that window. SetParent runs Blizzard's layout
---- handlers synchronously, in our execution, and the Edit Mode manager carries
+--- handlers synchronously, in addon execution, and the Edit Mode manager carries
 --- state into its next pass -- so a re-parent from addon context there taints the
 --- manager rather than just the frame. Every skipped write is picked up by
 --- Reapply() on Edit Mode close.
@@ -200,7 +200,7 @@ local function Park(frame)
 
     if frame:GetParent() ~= hidden then
         -- Captured once, before the first move, so a second Suppress() while
-        -- already parked cannot overwrite the real parent with our holder.
+        -- already parked cannot overwrite the real parent with the holder.
         if d.origParent == nil then
             d.origParent = frame:GetParent()
         end
@@ -315,7 +315,7 @@ end
 --- Re-run one claim, or every claim currently in force.
 ---
 --- The catch-all for writes skipped by the combat and Edit Mode gates, for
---- Blizzard re-parenting a frame while we were not looking, and -- with a frame
+--- Blizzard re-parenting a frame unobserved, and -- with a frame
 --- argument -- for the per-cast alpha re-assert that "alpha" method frames need.
 --- Safe to call freely: it only touches frames Scoot already owns.
 function NativeFrame:Reapply(frame)

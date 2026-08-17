@@ -146,10 +146,10 @@ local function updateHealthOverlay(bar)
         return
     end
 
-    -- IMPORTANT: only re-anchor when the fill texture identity has actually
+    -- IMPORTANT: only re-anchor when the fill texture identity has
     -- changed. Calling ClearAllPoints + SetAllPoints on every UNIT_HEALTH tick
     -- re-stamps the overlay in the bar's render queue, demoting Blizzard's
-    -- (12.0.5+) dispel-highlight texture beneath ours. The fill pointer only
+    -- (12.0.5+) dispel-highlight texture beneath the overlay. The fill pointer only
     -- changes on bar-texture swaps (handled by the SetStatusBarTexture hook),
     -- so SetValue/SetMinMaxValues/OnSizeChanged should be no-ops here.
     if state.lastAnchoredFill ~= fill then
@@ -325,7 +325,7 @@ function RaidFrames.ensureHealthOverlay(bar, cfg)
         -- dispel highlight (rendered into the parent CompactUnitFrame's pass
         -- via PrivateAurasUI in 12.0.5+). Within that pass, BORDER 7 renders
         -- before Blizzard's ARTWORK dispel highlight, so the dispel reliably
-        -- renders above us.
+        -- renders above it.
         local overlay = bar:CreateTexture(nil, "BORDER", nil, 7)
         overlay:SetVertTile(false)
         overlay:SetHorizTile(false)
@@ -467,7 +467,7 @@ function RaidFrames.ensureHealthOverlay(bar, cfg)
     -- Dispel rendering is left entirely to Blizzard (see partyframes/core.lua
     -- for the full rationale and the textures.lua ufLastTexturePath cache).
 
-    -- Build a config fingerprint to detect if settings have actually changed.
+    -- Build a config fingerprint to detect whether settings changed.
     -- Prevents expensive re-styling when ApplyStyles() is called but raid
     -- frame settings haven't changed (e.g., when changing Action Bar settings).
     local fingerprint = string.format("%s|%s|%s|%s|%s",
@@ -1285,7 +1285,7 @@ function RaidFrames.installHooks()
                     C_Timer.After(2.0, function()
                         if not isEditModeActive() then return end -- already cleared
                         if not addon.EditMode.ForceResetIfStuck() then return end
-                        -- State was stuck; schedule the refresh we skipped
+                        -- State was stuck; schedule the refresh that was skipped
                         local inRaid = IsInRaid and IsInRaid()
                         if inRaid then
                             scheduleFullRefresh()
@@ -1342,7 +1342,7 @@ function addon.DebugDumpRaidFrames()
     end
     add(string.format("isEditModeActive(): %s", emGuard))
 
-    -- Check actual Blizzard Edit Mode state
+    -- Check the live Blizzard Edit Mode state
     local mgr = _G.EditModeManagerFrame
     if mgr then
         local ok1, active = pcall(function() return mgr.editModeActive end)

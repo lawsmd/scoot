@@ -771,7 +771,7 @@ function addon:PLAYER_ENTERING_WORLD(event, isInitialLogin, isReloadingUi)
     end
     
     -- Deferred reapply of Player textures to catch any Blizzard resets after initial apply
-    -- Ensures textures persist even if Blizzard updates the frame after our initial styling
+    -- Ensures textures persist even if Blizzard updates the frame after the first styling
     if C_Timer and C_Timer.After and addon.ApplyUnitFrameBarTexturesFor then
         C_Timer.After(0.1, function()
             addon.ApplyUnitFrameBarTexturesFor("Player")
@@ -1020,7 +1020,7 @@ function addon:PLAYER_FOCUS_CHANGED()
 end
 
 -- Boss unit frames can appear/update without target/focus change events.
--- Re-apply our styling after Blizzard updates boss units.
+-- Re-apply styling after Blizzard updates boss units.
 function addon:INSTANCE_ENCOUNTER_ENGAGE_UNIT()
     -- IMPORTANT: Call preemptive hide BEFORE combat check to ensure ReputationColor
     -- (and other visual elements) are hidden immediately, even during combat.
@@ -1118,7 +1118,7 @@ function addon:EDIT_MODE_LAYOUTS_UPDATED()
 	if addon.OnUnitFrameOffscreenUnlockLayoutsUpdated then
 		addon.OnUnitFrameOffscreenUnlockLayoutsUpdated()
 	end
-    -- Layout swaps made through Blizzard's own Edit Mode dropdown bypass our profile
+    -- Layout swaps made through Blizzard's own Edit Mode dropdown bypass the profile
     -- callbacks entirely, so re-assert per-bar enable state here too.
     if addon.ReconcileActionBarsEnabled then
         addon.ReconcileActionBarsEnabled("EDIT_MODE_LAYOUTS_UPDATED")

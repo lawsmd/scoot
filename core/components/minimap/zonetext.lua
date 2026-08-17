@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- Scoot Minimap Component — Zone Text & Coordinates
+-- zonetext.lua - Minimap zone text overlay, PVP colors, and coordinates readout
 --
 -- Zone text overlay, PVP colors, coordinates overlay, zone event updates.
 --------------------------------------------------------------------------------
@@ -88,7 +88,7 @@ end
 local function ApplyFontToBlizzardZoneText(db)
     if not db then return end
 
-    -- Get the FontString - MinimapZoneText is the actual text element
+    -- Get the FontString: MinimapZoneText is the text element
     local fontString = _G.MinimapZoneText
     if not fontString then return end
 

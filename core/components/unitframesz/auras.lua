@@ -2,14 +2,14 @@
 --
 -- Rows are Blizzard AuraContainer intrinsics (12.1), one container per row per
 -- instance, parented inside inst.frame. The container does tracking, filtering
--- and sorting in secure C and hands us buttons through initializeFrame; the
+-- and sorting in secure C and hands back buttons through initializeFrame; the
 -- addon supplies regions and never reads aura data at all. That is the whole
 -- point: 12.1 made C_UnitAuras.GetUnitAuraInstanceIDs return a SECRET vector
 -- while auras are secret (combat, encounters, M+, PvP), so the old Lua pull
 -- went blind exactly when the rows mattered. Nothing here can go blind,
 -- because nothing here reads.
 --
--- TOPOLOGY B, the shape ScootAuras verified in-game: the container is a child
+-- TOPOLOGY B, the shape ScootAuras uses: the container is a child
 -- of inst.frame, so Overall Scale and the opacity trio are inherited rather
 -- than synced. Container frame levels are left at their defaults -- a child
 -- lands at parent+1 and its buttons at parent+2, which reproduces the previous
@@ -31,18 +31,18 @@
 -- lift. Gate on aura SECRECY as well as lockdown: an encounter can restrict
 -- auras without a lockdown.
 --
--- Icons stay click-TRANSPARENT (user decision 2026-08-05, unchanged): clicks
+-- Icons stay click-TRANSPARENT: clicks
 -- fall through to the secure click-to-target overlay. SetMouseClickEnabled is
 -- called INSIDE initializeFrame because that is the only reliably legal
 -- moment; a post-creation write to a button is denied precisely while auras
--- are secret. Motion stays on, so the button's intrinsic tooltip works. We do
--- not (and cannot) SetScript("OnEnter") on it: AuraButton carries the
+-- are secret. Motion stays on, so the button's intrinsic tooltip works. There
+-- is no SetScript("OnEnter") on it, and there cannot be: AuraButton carries the
 -- UntrustedScriptExecution forbidden aspect.
 --
--- Debuff borders are the bedrock "this is a debuff" indicator (user decision
--- 2026-08-06) and are now colored by DISPEL SCHOOL. One solid ring texture per
+-- Debuff borders are the bedrock "this is a debuff" indicator, and are now
+-- colored by DISPEL SCHOOL. One solid ring texture per
 -- debuff button, registered via AddDispelTypeTexture with the PreserveAsset
--- style so the engine keeps our art, plus an EXPLICIT customDispelColorMap.
+-- style so the engine keeps the Scoot art, plus an EXPLICIT customDispelColorMap.
 --
 -- The map is not optional. PreserveAsset on its own calls
 -- AuraUtil.SetAuraBorderColor, which resolves a missing dispel type through
@@ -50,9 +50,9 @@
 -- renders BLACK, not the debuff red this file used to hardcode. The earlier
 -- reading that "None is Blizzard's own red" was wrong, and it was wrong in the
 -- way that matters: it was inferred from source and never verified, then used
--- to justify deleting the color map. Verified black 2026-08-12 on an
+-- to justify deleting the color map. It renders black on an
 -- undispellable enemy debuff. customDispelColorMap is applied after the style
--- pass, so supplying it puts the color back under our control and keeps the
+-- pass, so supplying it puts the color back under Scoot's control and keeps the
 -- undispellable case identical to what shipped before.
 
 local addonName, addon = ...
@@ -68,11 +68,11 @@ local Auras = UFZ.Auras
 local BASE_ICON = 20   -- px per icon at Icon Scale 100
 local ICON_PAD  = 3    -- px between icons on a line
 local LINE_GAP  = 4    -- px between wrapped lines AND between the two row blocks
--- Snug on purpose, tucked INTO the envelope (user 2026-08-06, three jumps:
+-- Snug on purpose, tucked INTO the envelope (three jumps:
 -- 5 read as "far too much", 1 still left "considerable dead space", and -3
 -- still needed a +12 nudge in-game -- the envelope edge carries reserve slack
 -- past the visible ink, and the rows may legally overlap it: they're unboxed
--- children, not envelope content). The -15 rebase makes that verified in-game
+-- children, not envelope content). The -15 rebase makes that settled
 -- position the new 0-point of the user-facing Y-Offset (cfg.auraOffsetY, + = up).
 local FRAME_GAP = -15  -- px from the frame edge to the first line (negative = inside)
 
@@ -200,7 +200,7 @@ local function rowFilter(inst, rowKey)
     if rowKey == "Buffs" then
         -- "Only my buffs" is the PLAYER filter token and nothing else. The
         -- candidateFilters isFromPlayerOrPlayerPet field is NOT this: field
-        -- evidence 2026-08-12 shows it matches auras from ANY player.
+        -- evidence shows it matches auras from ANY player.
         return inst.cfg.auraOnlyPlayerBuffs and "HELPFUL|PLAYER" or "HELPFUL"
     end
     -- Blizzard TargetFrame parity: nameplate-flagged player DoTs are part of
@@ -411,7 +411,7 @@ local function wireButton(inst, rowKey, button)
     -- Text above the swipe so the stack count stays opaque regardless of drain
     -- progress (the groupauras/icons.lua pattern). A child-of-child FontString
     -- is accepted: scootauras wires its elements through exactly this shape and
-    -- that path is verified in-game.
+    -- that path is proven.
     local textHost = CreateFrame("Frame", nil, button)
     textHost:SetAllPoints(button)
     textHost:EnableMouse(false)
@@ -443,7 +443,7 @@ local function wireButton(inst, rowKey, button)
         local clearOk = pcall(button.ClearDispelTypeTextures, button)
         if clearOk then
             -- The style field MUST resolve: the BorderWithIcon default would
-            -- stamp Blizzard atlas art over our asset.
+            -- stamp Blizzard atlas art over the Scoot asset.
             local dOk, dErr = pcall(button.AddDispelTypeTexture, button, ring, {
                 style = DISPEL_PRESERVE,
                 showWhenHarmful = true,
@@ -477,7 +477,7 @@ local function wireButton(inst, rowKey, button)
 
     -- Style it NOW. The engine grows its pool in batches as auras arrive, so a
     -- button can be born long after the last ApplyStyle pass; without this it
-    -- would render at defaults until something else triggered one. We are
+    -- would render at defaults until something else triggered one. This sits
     -- inside initializeFrame, where the tree is guaranteed touchable, so this
     -- is the one moment a brand-new button can always be styled.
     styleButton(inst, rowKey, button, w, h, styleKey(cfg, w, h))
@@ -566,7 +566,7 @@ local function applyContainerLayout(inst, rowKey)
 
     -- AddAuraGroup stamps UntrustedLayoutScriptExecution on the container, and
     -- Blizzard's note on that line warns it makes a container awkward to anchor
-    -- from addon context. Both of ours carry the aspect, so the stacked anchor
+    -- from addon context. Both Scoot regions carry the aspect, so the stacked anchor
     -- is legal, but a refusal would strand a row at its parent's origin with no
     -- error to show for it. Guard and record rather than assume.
     local aOk, aErr = pcall(function()
@@ -712,7 +712,7 @@ end
 ---     IsVisible() and IsEnabled(). UpdateAllAuras on a hidden container
 ---     neither re-registers it nor draws anything, so a row hidden by clearing
 ---     the target stayed dead until a reload. That is the "they show until I
----     clear my target, then never again" report of 2026-08-12.
+---     clear my target, then never again" report.
 ---   * SetUnit early-outs on an unchanged token and the engine does not
 ---     re-parse on a target swap while the frame stays shown, so a new subject
 ---     needs the explicit kick or the row keeps the old unit's auras.
@@ -755,7 +755,7 @@ end
 --- Full pass (_ApplyAll, reset, Copy From, profile switch, mid-session enable).
 function Auras.ApplyAll(inst)
     if not inst or not inst.frame then return end
-    -- Zero-touch: nothing is built until a row is actually turned on.
+    -- Zero-touch: nothing is built until a row is turned on.
     if not inst.auraContainers and not anyRowEnabled(inst.cfg) then return end
 
     -- Only the BUILD is Tier 2 (its buttons carry the access restriction), so

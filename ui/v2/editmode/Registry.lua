@@ -10,7 +10,7 @@ local Brand = addon.EditMode.Brand
 -- State
 --------------------------------------------------------------------------------
 
--- Weak keys so a released frame never pins its entry (see editmode.md, weak-key rule)
+-- Weak keys so a released frame never pins its entry
 local registry = setmetatable({}, { __mode = "k" })
 local order = {}          -- array of frames, for theme re-walks
 local pendingRetry = setmetatable({}, { __mode = "k" })

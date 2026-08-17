@@ -153,7 +153,7 @@ local function SendNextInspect()
     if not canOk or not canInspect then return end
 
     -- hooksecurefunc post-hooks run synchronously inside NotifyInspect, so the
-    -- flag window exactly brackets our own call; pcall guarantees the clear
+    -- flag window exactly brackets the call; pcall guarantees the clear
     -- even if another hook on NotifyInspect errors.
     pending = { guid = entry.guid, unit = entry.unit, sentAt = GetTime() }
     state = STATE_AWAITING
@@ -168,7 +168,7 @@ end
 
 local function EnterForeignBackoff()
     quietUntil = GetTime() + FOREIGN_QUIET
-    -- Abandon our in-flight request without ClearInspectPlayer: the loaded
+    -- Abandon the in-flight request without ClearInspectPlayer: the loaded
     -- inspect data now belongs to whoever asked for it.
     pending = nil
     if state == STATE_SCANNING or state == STATE_AWAITING then
@@ -187,7 +187,7 @@ end
 --------------------------------------------------------------------------------
 
 -- Reads whatever inspect data is currently loaded for `unit` into the cache.
--- Used for our own completed requests and, opportunistically, for foreign
+-- Used for Scoot's own completed requests and, opportunistically, for foreign
 -- INSPECT_READY events — the data is already loaded either way, so reading it
 -- costs no additional inspect request.
 local function HarvestInspectData(guid, unit)
@@ -246,7 +246,7 @@ local function OnInspectReady(inspecteeGUID)
         end
         HarvestInspectData(inspecteeGUID, unit)
 
-        -- Release the inspect slot only when it is provably still ours: the
+        -- Release the inspect slot only when it provably still belongs to Scoot: the
         -- InspectFrame is not up and no foreign inspect claimed it meanwhile.
         if not IsInspectFrameShown() and GetTime() >= quietUntil then
             pcall(ClearInspectPlayer)
@@ -254,7 +254,7 @@ local function OnInspectReady(inspecteeGUID)
         return
     end
 
-    -- Not ours: the user's own inspect, or one of our abandoned requests
+    -- Not Scoot's: the user's own inspect, or an abandoned Scoot request
     -- arriving late. Either way the data is loaded — harvest it for free.
     -- Never ClearInspectPlayer here; the slot belongs to that session.
     local okTok, unit = pcall(UnitTokenFromGUID, inspecteeGUID)
@@ -282,7 +282,7 @@ local function StartTicker()
         if InCombatLockdown() then return end
 
         -- Poll the InspectFrame: a shown frame suspends scanning outright;
-        -- the shown->hidden transition arms the close grace so we don't steal
+        -- the shown->hidden transition arms the close grace so Scoot never steals
         -- the slot between the user's consecutive inspects.
         if IsInspectFrameShown() then
             frameWasShown = true
@@ -304,8 +304,8 @@ local function StartTicker()
         if state == STATE_AWAITING and pending
             and (GetTime() - pending.sentAt) > INFLIGHT_TIMEOUT then
             -- INSPECT_READY never came (target out of range, etc.). Release
-            -- our slot bookkeeping; a late event is still harvested as
-            -- foreign. No ClearInspectPlayer — nothing of ours is loaded.
+            -- the slot bookkeeping; a late event is still harvested as
+            -- foreign. No ClearInspectPlayer: nothing of Scoot's is loaded.
             pending = nil
             state = STATE_SCANNING
         end

@@ -60,7 +60,7 @@ local function showInfoDialog(msg)
 end
 
 --------------------------------------------------------------------------------
--- performImport: executes the actual import
+-- performImport: runs the import
 --------------------------------------------------------------------------------
 
 local function performImport(envelope, targetLayoutName, editModeStr)

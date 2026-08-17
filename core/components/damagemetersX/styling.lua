@@ -185,7 +185,7 @@ local function HookSessionWindowTitleRightClick(sessionWindow)
         if button ~= "RightButton" or InCombatLockdown() then return end
 
         -- Build a Scoot-owned context menu replicating the type-switcher dropdown.
-        -- Using MenuUtil.CreateContextMenu with our overlay (UIParent-parented) as
+        -- Using MenuUtil.CreateContextMenu with the Scoot overlay (UIParent-parented) as
         -- owner avoids taint: the Blizzard dropdown is an Edit Mode system frame
         -- child whose geometry returns secret values when read from addon context.
         MenuUtil.CreateContextMenu(self, function(owner, rootDescription)

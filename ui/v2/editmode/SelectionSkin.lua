@@ -87,7 +87,7 @@ local function EnsureProbed()
 end
 
 --------------------------------------------------------------------------------
--- Fallback: hide Blizzard's nine-slice, draw our own border
+-- Fallback: hide Blizzard's nine-slice, draw a Scoot border
 --------------------------------------------------------------------------------
 
 local function GetFallbackParts(selection)
@@ -228,7 +228,7 @@ function SelectionSkin.Apply(selection)
 
     -- The selection's own nine-slice pieces don't exist yet: the Edit Mode mixin
     -- overrides NineSlicePanelMixin:OnLoad, so no ApplyLayout runs on `self`
-    -- until the first resetSelection() on Edit Mode enter. Our hooks catch that.
+    -- until the first resetSelection() on Edit Mode enter. The hooks below catch that.
     RecolorMouseOverHighlight(selection)
 
     hooksecurefunc(selection, "ShowHighlighted", function(self)

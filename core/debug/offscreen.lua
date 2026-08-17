@@ -1,3 +1,4 @@
+-- offscreen.lua - /scoot debug offscreen: why a dragged frame lands outside the screen
 local addonName, addon = ...
 
 --[[----------------------------------------------------------------------------

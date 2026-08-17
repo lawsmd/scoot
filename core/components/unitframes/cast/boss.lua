@@ -524,7 +524,7 @@ do
 
 				-- Unit-specific per-side pad adjustments for Cast Bar:
 				-- Boss: Similar to Target - StatusBar bounds extend beyond visible bar texture.
-				-- Apply padding adjustments to pull border edges in to match the actual bar visual.
+				-- Apply padding adjustments to pull border edges in to match the visible bar.
 				if enabled then
 					setProp(frame, "borderPadAdjust", {
 						left = -2,
@@ -559,7 +559,7 @@ do
 
 					-- Per-unit fine-tuning for Boss cast bar pixel fallback:
 					-- Boss: Similar to Target - StatusBar bounds extend beyond visible bar texture.
-					-- Pull edges in to match the actual bar visual.
+					-- Pull edges in to match the visible bar.
 					local exLeft, exRight, exTop, exBottom = expandX, expandX, expandY, expandY
 					local name = frame.GetName and frame:GetName()
 					if name and name:match("^Boss%d+TargetFrameSpellBar$") then

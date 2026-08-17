@@ -76,7 +76,7 @@ end
 
 --- Re-assert every claim Z currently holds.
 ---
---- Called on Edit Mode enter and exit. Both matter: Blizzard skips our re-parent
+--- Called on Edit Mode enter and exit. Both matter: Blizzard skips the re-parent
 --- while the Edit Mode manager is open (writing there taints the manager, not just
 --- the frame -- see nativeframe.lua), so entering Edit Mode is where a claim gets
 --- deferred and leaving it is where the deferred claim gets paid.

@@ -3,7 +3,7 @@
 -- Phase 0 validation probe for Cast Bar Z. Answers, against a live cast, the
 -- questions the Cast Bar Z architecture rests on:
 --
---   1. Does UnitCastingDuration -> StatusBar:SetTimerDuration actually animate a
+--   1. Does UnitCastingDuration -> StatusBar:SetTimerDuration animate a
 --      Scoot-owned StatusBar from addon (tainted) context?
 --   2. Does SetText(secretName) render on a Scoot-owned FontString, and can
 --      addon.MeasureTextWidth still measure it via the UIParent ruler?
@@ -15,7 +15,7 @@
 -- Every answer either confirms the design or selects a documented fallback.
 -- Nothing here is shipped code; this file exists to de-risk phases 1-5.
 --
--- Run 1 (2026-07-28, player + a friendly raid member) settled 2, 3 and 4:
+-- Run 1 (player + a friendly raid member) settled 2, 3 and 4:
 --   * The cast restriction covers friendly players too. name, displayName,
 --     textureID, notInterruptible AND castingSpellID were all secret.
 --   * SetText(secret) renders, but the FontString then measures SECRET -- the
@@ -149,7 +149,7 @@ local function Mark(ok)
 end
 
 -- Unwraps a pcall result WITHOUT the `ok and v or nil` idiom, which silently
--- collapses a legitimate `false` into `nil`. That idiom made the 2026-07-28 run
+-- collapses a legitimate `false` into `nil`. That idiom made an early run
 -- report `dur:HasSecretValues() = nil` on the player when the real answer was
 -- `false` -- a documented-impossible value that cost a round of analysis.
 local function Ret(ok, v)
@@ -234,7 +234,7 @@ local function ProbeTextPath(lines, cast)
         table.insert(lines, "        -> SetText rejected the value. Expected AllowedWhenTainted.")
     end
 
-    -- GetText on our OWN FontString: expected to carry the Text secret aspect once
+    -- GetText on a Scoot-OWNED FontString: expected to carry the Text secret aspect once
     -- a secret string was poured in. This is the claim the old castbarZ doc got wrong.
     local okGet, got = pcall(r.fs.GetText, r.fs)
     if okGet then
@@ -294,7 +294,7 @@ local function ProbeInterruptible(lines, cast)
     table.insert(lines, "  " .. Mark(okC) .. "  EvaluateColorFromBoolean(notInterruptible, white, gold)")
     if okC and color then
         -- The returned color's components are secret when the input was; that is
-        -- fine, SetVertexColor accepts them. We only report shape here.
+        -- fine, SetVertexColor accepts them. Only the shape is reported here.
         local okR, rr = pcall(function() return color.r end)
         table.insert(lines, "        color.r = " .. Fmt(okR and rr or nil))
         table.insert(lines, "        -> feed straight into texture:SetVertexColor(); never compare it.")
@@ -379,9 +379,9 @@ local function ProbeDuration(lines, unit, cast, onDone)
 
     table.insert(lines, "  " .. getterName .. " -> " .. Fmt(dur))
 
-    -- HasSecretValues is ReturnsNeverSecret, so this is a plain bool we may
+    -- HasSecretValues is ReturnsNeverSecret, so this is a plain bool safe to
     -- branch on. It is the supported way to know whether SetTimerDuration
-    -- (SecretArguments = AllowedWhenUntainted) will accept this object from our
+    -- (SecretArguments = AllowedWhenUntainted) will accept this object from a
     -- tainted context. Cast Bar Z gates its path on exactly this call.
     if dur.HasSecretValues then
         local okH, hasSecrets = pcall(dur.HasSecretValues, dur)
@@ -431,7 +431,7 @@ local function ProbeDuration(lines, unit, cast, onDone)
     ShowRig(6)
 
     -- Sample the MARKER (a frame anchored to the fill texture), not the fill
-    -- texture itself -- the marker is Cast Bar Z's actual reveal mechanism.
+    -- texture itself -- the marker is Cast Bar Z's reveal mechanism.
     local widths = { a = {}, b = {} }
 
     local function Sample(idx)
@@ -588,7 +588,7 @@ end
 -- Player cast-end event order watcher
 --------------------------------------------------------------------------------
 --
--- Added 2026-07-29 after three failed attempts to reason out which of
+-- Added after three failed tries at reasoning out which of
 -- UNIT_SPELLCAST_STOP / _INTERRUPTED / _FAILED arrives first when a cast is
 -- cancelled, and how far apart they land. Blizzard's own bar does not answer it:
 -- CastingBarMixin branches on a cached `casting` flag and a castID comparison, so
@@ -613,7 +613,7 @@ local END_EVENTS = {
 -- casts do NOT fire UNIT_SPELLCAST_INTERRUPTED -- Blizzard reads the verdict off
 -- these fields instead (CastingBarFrame.lua:266-274) -- so a watcher that logs only
 -- the event NAME cannot see the difference between a released empower and one
--- cancelled by moving. Added 2026-07-30, after exactly that went unnoticed.
+-- cancelled by moving. Added after exactly that went unnoticed.
 local END_PAYLOAD = {
     UNIT_SPELLCAST_CHANNEL_STOP = { interruptedBy = 4 },
     UNIT_SPELLCAST_EMPOWER_STOP = { complete = 4, interruptedBy = 5 },
@@ -621,7 +621,7 @@ local END_PAYLOAD = {
 }
 
 --- Describe a payload field without ever comparing it. On a restricted unit these
---- are secret, so the answer is "what kind of thing is it", not "what is it".
+--- are secret, so the answer is "what sort of thing is it", not "what is it".
 local function DescribeArg(v)
     if type(v) == "nil" then return "nil" end
     if issecretvalue and issecretvalue(v) then return "SECRET " .. type(v) end
@@ -781,9 +781,9 @@ function addon.DebugCastZEndOrder(unitArg)
         local casting = type(name) ~= "nil"
         local chan    = type(UnitChannelInfo(unit)) ~= "nil"
 
-        -- The half wow-ui-source cannot answer. Blizzard consults a cached flag and
+        -- The half the UI source cannot answer. Blizzard consults a cached flag and
         -- a castID; Z re-queries, so what the getter says AT EVENT TIME -- and
-        -- whether it says it in the clear -- is the fact the code actually depends
+        -- whether it says it in the clear -- is the fact the code depends
         -- on. On a restricted unit `casting` stays readable while `secret` goes
         -- true, which is exactly the state Z has to render from.
         local secret = casting and issecretvalue and issecretvalue(name) or false
@@ -842,7 +842,7 @@ local function EmpowerRowForToken(unit)
 end
 
 --- Print one percentages vector, its running total, and the pixel positions it
---- implies at `barW`. Pixel positions are what actually matters -- a vector that
+--- implies at `barW`. Pixel positions are what matter -- a vector that
 --- looks reasonable can still place every pip in the left half.
 local function DumpPercentages(lines, unit, includeHold, barW)
     local label = includeHold and "includeHoldAtMaxTime = true (default)"
@@ -946,7 +946,7 @@ function addon.DebugCastZEmpower(unitArg)
     end
 
     ----------------------------------------------------------------------------
-    -- 4. What the bar actually drew
+    -- 4. What the bar drew
     ----------------------------------------------------------------------------
     table.insert(lines, "")
     table.insert(lines, "-- 4. Segments as drawn --------------------------------")
@@ -1032,7 +1032,7 @@ end
 -- Blizzard's own UpdateCastTimeText does `max - GetValue()` (CastingBarFrame.lua
 -- :761-780), which is arithmetic on a secret the moment the unit is restricted,
 -- and is event-driven besides -- so it is not even a live ticker. The binding
--- samples the duration object engine-side and writes our FontString on its own
+-- samples the duration object engine-side and writes the FontString on its own
 -- schedule, which also keeps Cast Bar Z's no-OnUpdate property intact.
 --
 -- Two things are measured here, and only the first can invalidate the design:
@@ -1205,7 +1205,7 @@ function addon.DebugCastZTime(unitArg)
     end
 
     ----------------------------------------------------------------------------
-    -- 5. Is it actually ticking?
+    -- 5. Is it ticking?
     ----------------------------------------------------------------------------
     table.insert(lines, "")
     table.insert(lines, "-- 5. Live tick ---------------------------------------")

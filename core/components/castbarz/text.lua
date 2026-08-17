@@ -45,7 +45,7 @@ local CAP_CLEARANCE = 4
 --
 -- Red because gold is already the line behind it and the two must not merge.
 --
--- It used to class-color any player unit -- a target, a focus (2026-08-06, user).
+-- It used to class-color any player unit -- a target, a focus.
 -- A target's class is already stated by the target frame the bar is snapped to, so
 -- spending the cast bar's only hue on it says nothing new, while making the one
 -- element whose job is "something is casting at you" change color per pull. One
@@ -220,7 +220,7 @@ end
 --- the backstop rather than the mechanism, and it has to be unconditional because
 --- three separate things can leave the name wider than the bar: the measurement
 --- can under-report, the shrink floor can bite on a long name at a large font
---- size, and a settings change mid-cast re-applies the full size behind us. Z
+--- size, and a settings change mid-cast re-applies the full size behind it. Z
 --- deliberately carries no horizontal clip overflow -- band edges ARE the columns
 --- (frames.lua:20-23) -- so an overflowing name is not merely untidy, it is sliced
 --- off at both ends by the outermost bands. Bounded, the engine ellipsizes.
@@ -228,8 +228,8 @@ end
 --- The measurable / unmeasurable split is decided BEFORE measuring, never inferred
 --- from a nil return. addon.MeasureTextWidth pours whatever it is handed into one
 --- module-local FontString shared by every caller in the addon, and SetText stamps
---- Enum.SecretAspect.Text onto whatever holds it (see
---- secret-text-is-not-measurable.md). One secret target name would therefore
+--- Enum.SecretAspect.Text onto whatever holds it: secret text is not
+--- measurable. One secret target name would therefore
 --- poison that ruler for the rest of the session -- every shrink-to-fit in Scoot
 --- silently stops working, addon-wide, with no error anywhere. The helper now
 --- refuses secrets itself, but the caller must not be relying on that to be safe.

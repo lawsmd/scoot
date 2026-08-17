@@ -2,8 +2,8 @@
 --
 -- Answers one question: "what is eating my mouse at this spot?"
 --
--- Frame LEVEL orders mouse hit-testing, not just drawing (see
--- ADDONCONTEXT/docs/framestrata.md). When a tooltip silently stops appearing,
+-- Frame LEVEL orders mouse hit-testing, not just drawing.
+-- When a tooltip silently stops appearing,
 -- nothing errors and nothing is visible -- some other mouse-enabled frame is
 -- simply higher in the (strata -> level -> insertion order) sort at that pixel.
 -- This probe names it.
@@ -13,7 +13,7 @@
 --
 -- Two independent readings, because they answer different halves:
 --   1. GetMouseFoci() -- the game's own verdict. Whatever is first here is what
---      actually receives OnEnter. Authoritative, but only lists winners.
+--      receives OnEnter. Authoritative, but only lists winners.
 --   2. A full UIParent tree walk for every mouse-enabled frame whose rect
 --      contains the cursor, sorted the way WoW sorts them. This is where the
 --      LOSER shows up, which is the thing you are usually looking for.
@@ -231,7 +231,6 @@ local function buildReport(cx, cy, foci, hits)
         end
     end
     add("")
-    add("Ladder reference: ADDONCONTEXT/docs/framestrata.md")
     add("Frames walked: %d%s", nodeCount, nodeCount > MAX_NODES and " (CAPPED)" or "")
 
     return table.concat(lines, "\n")

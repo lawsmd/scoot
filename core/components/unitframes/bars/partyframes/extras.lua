@@ -27,7 +27,7 @@ local isEditModeActive = addon.BarsPartyFrames._isEditModeActive
 -- Apply Custom Role Icons for Party Frames
 --------------------------------------------------------------------------------
 -- Re-triggers Blizzard's CompactUnitFrame_UpdateRoleIcon on each party frame.
--- Blizzard sets the default atlas, then our post-hook swaps to the custom set.
+-- Blizzard sets the default atlas, then the post-hook swaps to the custom set.
 -- Falls back to direct application if Blizzard's function errors (tainted widget).
 
 function addon.ApplyPartyRoleIcons()
@@ -121,7 +121,7 @@ partyHealthColorEventFrame:SetScript("OnEvent", function(self, event, unit)
     local bar, frame, useDark = getPartyHealthBarForUnit(unit)
     if not bar then return end
 
-    -- Use the frame's actual unit token for color calculation
+    -- Use the frame's own unit token for color calculation
     local actualUnit = unit
     if frame then
         local ok, u = pcall(function() return frame.displayedUnit or frame.unit end)

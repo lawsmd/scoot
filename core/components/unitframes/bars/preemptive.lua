@@ -676,7 +676,7 @@ function Preemptive.installBossFrameHooks()
                     end
                 end
 
-                -- Re-hide LevelText (CheckLevel() calls levelText:Show() and overrides our hide)
+                -- Re-hide LevelText (CheckLevel() calls levelText:Show() and undoes the hide)
                 if cfg.levelTextHidden == true then
                     local levelFS = bossFrame.TargetFrameContent
                         and bossFrame.TargetFrameContent.TargetFrameContentMain
@@ -725,7 +725,7 @@ function Preemptive.installBossFrameHooks()
 
             -- Hook CheckLevel — fires when unit level info resolves. Adds often
             -- spawn before level is known, so CheckLevel() runs AFTER OnShow/Update
-            -- and calls levelText:Show(), undoing our hide.
+            -- and calls levelText:Show(), undoing the hide.
             if bossFrame.CheckLevel and bossState and not bossState.bossCheckLevelHooked then
                 bossState.bossCheckLevelHooked = true
                 _G.hooksecurefunc(bossFrame, "CheckLevel", function()

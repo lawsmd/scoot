@@ -25,8 +25,8 @@
 -- combat-blocked, and combat is exactly when boss slots come and go.
 -- Unconditional chaining is the only legal shape. Blizzard collapses its own
 -- gaps only because BossTargetFrameContainer's VerticalLayoutFrame:Layout()
--- runs in secure context; both local reference addons chain unconditionally for
--- the same reason we do. Encounters fill boss1..N in order, so it rarely shows.
+-- runs in secure context. Encounters fill boss1..N in order, so a gap rarely
+-- shows.
 --
 -- PROTECTION. Boss1 anchors to the box, so the box inherits the frames'
 -- anchor-protection transitively -- SetPoint and SetSize on it are blocked in
@@ -160,7 +160,7 @@ function UFZ._ApplyStack(unitKey)
     -- these read as far apart at every spacing the slider offered. Taking it out
     -- of the step makes the slider measure the distance between what is ON
     -- SCREEN, so 0 is "as close as the content allows" and the frames only ever
-    -- touch, never overlap, when a name actually wraps.
+    -- touch, never overlap, when a name wraps.
     local pitch = env.H - (env.snug or 0) + spacing
 
     -- A set cache implies the box exists (it is only written after the layout

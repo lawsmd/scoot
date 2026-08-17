@@ -34,7 +34,7 @@ local function safeString(value, fallback)
         if value == nil then return end
         -- Try to convert to string
         local str = tostring(value)
-        -- Verify it's actually a string type (not a secret masquerading as one)
+        -- Verify it is a string type (not a secret wearing one)
         if type(str) ~= "string" then return end
         -- Verify it can be used in string operations
         local test = str .. ""
@@ -45,7 +45,7 @@ local function safeString(value, fallback)
         if type(formatted) ~= "string" then return end
         result = str
     end)
-    -- Double-check the result is actually usable
+    -- Double-check the result is usable
     if ok and result and type(result) == "string" then
         -- One more pcall to verify the result is truly usable
         local finalOk = pcall(function()
@@ -326,7 +326,7 @@ local function ShowTableInspectorCopyWindow(title, text)
 end
 
 -- Extract text directly from FrameStackTooltip's displayed lines
--- This reads what Blizzard is actually showing, bypassing GetDebugName() secrets
+-- This reads what Blizzard is showing, bypassing GetDebugName() secrets
 -- IMPORTANT: Must be defined before AttachTableInspectorCopyButton which calls it
 --
 -- CRITICAL: GetText() returns secret values even on Blizzard's own tooltips.

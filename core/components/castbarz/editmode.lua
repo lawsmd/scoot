@@ -2,9 +2,9 @@
 -- castbarz/editmode.lua
 -- LibEditMode registration and position persistence.
 --
--- Phase 1 is free positioning only. Snapping to a unit frame lands in Phase 4,
--- where the drag callback re-applies the snap anchor instead of the dropped
--- position -- kept out of here on purpose, so a snapping bug can never be
+-- Free positioning only. Snapping to a unit frame is handled elsewhere, by a
+-- drag callback that re-applies the snap anchor instead of the dropped
+-- position. Kept out of this file on purpose, so a snapping bug can never be
 -- mistaken for a rendering bug.
 --------------------------------------------------------------------------------
 
@@ -122,13 +122,12 @@ function CBZ._RegisterBarEditMode(bar, row)
                 CBZ._SnapToPixels(x), CBZ._SnapToPixels(y))
         end
         if layoutName then
-            -- Persist the RESOLVED anchor, not the one we asked for.
+            -- Persist the RESOLVED anchor, not the requested one.
             -- LibEditMode's normalizePosition() picks the anchor point per
             -- screen quadrant and does not preserve what you set, so
-            -- storing the requested point drifts the frame on every reload
-            -- (see emcustomframes.md).
+            -- storing the requested point drifts the frame on every reload.
             --
-            -- Reading GetPoint here is safe despite the never-read-our-own-
+            -- Reading GetPoint here is safe despite the never-read-Scoot-
             -- geometry rule: a free-positioned bar is anchored to UIParent,
             -- so its own anchor chain carries no secrets. Only its children
             -- anchor to the fill texture. Step 6's snapped bars must never

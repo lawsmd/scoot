@@ -387,7 +387,7 @@ local function EnterScootMode(dialog, selection, info)
     skin._brand.text:SetTextColor(r, g, b, 1)
 
     -- Read LEM's own answer rather than recomputing it: isDefaultPosition is a
-    -- file-local we can't reach, but UpdateButtons has already stored the result.
+    -- file-local with no external reach, but UpdateButtons has already stored the result.
     local lemBtn = dialog.Buttons and dialog.Buttons.ResetPositionButton
     local enabled = false
     if lemBtn and lemBtn.IsEnabled then
@@ -410,7 +410,7 @@ local function EnterScootMode(dialog, selection, info)
     dialog:SetFixedSize(DIALOG_W, height)
     dialog:SetSize(DIALOG_W, height)   -- correct on this frame, not just after Layout
 
-    -- Only reposition when the selection actually changes, so dragging the
+    -- Only reposition when the selection changes, so dragging the
     -- element (which re-runs Update) doesn't fight a dialog the user has moved.
     if lastPositionedFor ~= selection then
         lastPositionedFor = selection

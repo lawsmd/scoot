@@ -56,7 +56,7 @@ end
 ---   pageState     = { key = "_damageMeterYSelectedWindow", value = 3 },
 --- }
 ---
---- Returns true if navigation was attempted.
+--- Returns true if navigation was tried.
 function addon.UI:OpenToPage(navKey, opts)
     if not navKey then return false end
     opts = opts or {}

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- Scoot Minimap Component — Clock & System Data
+-- clock.lua - Minimap clock overlay, FPS and latency readout, timer management
 --
 -- Clock overlay, system data overlay (FPS/Latency), timer management.
 --------------------------------------------------------------------------------
@@ -93,7 +93,7 @@ end
 local function ApplyFontToBlizzardClock(db)
     if not db then return end
 
-    -- Get the FontString - TimeManagerClockTicker is the actual text element
+    -- Get the FontString: TimeManagerClockTicker is the text element
     local fontString = _G.TimeManagerClockTicker
     if not fontString and TimeManagerClockButton then
         fontString = TimeManagerClockButton.TimeManagerClockTicker

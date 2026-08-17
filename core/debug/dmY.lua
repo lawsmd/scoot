@@ -1,3 +1,4 @@
+-- dmY.lua - /scoot debug dmY: Modern damage meter probes for CVars, GUIDs, and source APIs
 local addonName, addon = ...
 
 --------------------------------------------------------------------------------
@@ -746,7 +747,7 @@ end
 --
 -- Two-phase test:
 --   Phase 1 (OOC): Store a sourceGUID and verify OOC baseline
---   Phase 2 (combat): Attempt to call the source API with stored GUID
+--   Phase 2 (combat): Try the source API with the stored GUID
 --------------------------------------------------------------------------------
 
 local _storedTestGUID = nil
@@ -804,7 +805,7 @@ local function RunDrilldownTest()
         table.insert(lines, string.format("  issecretvalue(storedGUID): %s", FormatSecretResult(TestSecret(_storedTestGUID))))
         table.insert(lines, "")
 
-        -- Test R6/8: OOC baseline — can we call the source API at all?
+        -- Test R6/8: OOC baseline. Is the source API callable at all?
         table.insert(lines, "--- Test R6: OOC Source API Baseline ---")
 
         local okSrc, srcResult = pcall(C_DamageMeter.GetCombatSessionSourceFromType,
@@ -897,7 +898,7 @@ local function RunDrilldownTest()
     table.insert(lines, string.format("Stored GUID: %s", _storedTestGUID))
     table.insert(lines, string.format("Stored name: %s (%s)", _storedTestName or "?", _storedTestClass or "?"))
 
-    -- Verify stored GUID is NOT secret (it's a plain string we saved earlier)
+    -- Verify stored GUID is NOT secret (a plain string saved earlier)
     local guidSecret = TestSecret(_storedTestGUID)
     table.insert(lines, string.format("issecretvalue(storedGUID): %s", FormatSecretResult(guidSecret)))
     if guidSecret == true then
@@ -1682,7 +1683,7 @@ function addon.DebugDMYAbbrev()
     end
     add("")
 
-    -- [2] Config creation attempts (pcall keeps the exact error text)
+    -- [2] Config creation tries (pcall keeps the exact error text)
     local bp10 = DMY._BuildBreakpointTable()
     bp10[#bp10].breakpoint = 10
     local candidates = {
@@ -2025,7 +2026,7 @@ end
 --------------------------------------------------------------------------------
 -- /scoot debug dmY deathprobe — Deaths session + C_DeathRecap secrecy probe
 -- Captures IMMEDIATELY (run it mid-combat — that's the point: it delivers the
--- in-game verdict on whether C_DeathRecap returns plain data during combat).
+-- verdict on whether C_DeathRecap returns plain data during combat).
 -- Display defers to combat end when run in combat (colprobe pattern).
 --------------------------------------------------------------------------------
 

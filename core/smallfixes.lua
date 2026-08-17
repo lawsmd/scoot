@@ -48,7 +48,7 @@ local SETTING_KEY = {
     alt   = "modifierTargetAlt",
 }
 
--- Weak keys throughout: state for frames we do not own lives here, never as
+-- Weak keys throughout: state for frames Scoot does not own lives here, never as
 -- fields written onto the frames themselves.
 local targetProxies = setmetatable({}, { __mode = "k" })
 local attachedFrames = setmetatable({}, { __mode = "k" })
@@ -190,7 +190,7 @@ local function GetTargetProxy(button)
     return proxy
 end
 
--- True when the modifier is currently routed through a delegate we created.
+-- True when the modifier is currently routed through a Scoot-created delegate.
 local function ModifierIsOurs(button, mod)
     local proxy = targetProxies[button]
     if not proxy then return false end
@@ -248,7 +248,7 @@ local function ApplyModifiersToButton(button)
                 touched = true
             end
         elseif ModifierIsOurs(button, mod) then
-            -- Only ever clear routing we installed ourselves.
+            -- Only ever clear routing Scoot installed.
             DetachModifier(button, mod)
             touched = true
         end

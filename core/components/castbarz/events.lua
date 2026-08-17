@@ -106,7 +106,7 @@ local function PickColor(flag, whenTrue, whenFalse)
 
         -- Fallback: the per-component variant, which returns one secret number at a
         -- time and so cannot be defeated by the container being secret. Kept because
-        -- it is the variant with a known production call site in another addon's
+        -- it is the variant with a known production call site in a shipped
         -- cast bar; three calls instead of one, only on a state change.
         local vfn = curve.EvaluateColorValueFromBoolean
         if vfn then
@@ -152,7 +152,7 @@ function CBZ._ApplyInterruptState(bar, notInterruptible)
     -- replaces it with white, which reads as the bar having lost its colors.
     -- frames.lua's _ResolveLineColor already documents this as the rule (":80-81",
     -- "the uninterruptible override never fires" on those units) -- it was written
-    -- as a premise and never actually enforced. Enforced here, once, so the line
+    -- as a premise and never enforced. Enforced here, once, so the line
     -- and the bands cannot disagree about it.
     if CBZ.OWN_CAST_UNITS[bar.unitKey] then ni = false end
 
@@ -168,7 +168,7 @@ function CBZ._ApplyInterruptState(bar, notInterruptible)
     CBZ._ApplyEmpoweredColors(bar, ni)
 
     -- The NAME takes no interruptibility override -- it keeps its ramp whatever the
-    -- flag says (2026-08-06, user). Interruptibility is the LINE's axis and it owns
+    -- flag says. Interruptibility is the LINE's axis and it owns
     -- it outright: white for locked, gold for kickable, right behind the word.
     -- Draining the word to grey-white as well spent the bar's two channels saying
     -- one thing twice, and on a boss it read as the bar having lost its colors
@@ -187,7 +187,7 @@ end
 -- that annotation tests whether the ARGUMENT ITSELF is secret. A LuaDurationObject
 -- is plain userdata that merely holds secrets internally, so the call is accepted
 -- from addon context even on a restricted unit and the secrecy propagates into the
--- bar's value instead. Measured 2026-07-28. Do not gate this on
+-- bar's value instead. Measured in-game. Do not gate this on
 -- dur:HasSecretValues() -- it is informational, not a permission check.
 --
 -- Both duration getters are MayReturnNothing (UnitDocumentation.lua:798, 841), so
@@ -224,7 +224,7 @@ end
 
 local function CancelPendingHide(bar)
     bar.hideToken = (bar.hideToken or 0) + 1
-    -- Bumping the token stops our own timers, but UIFrameFadeOut handed the frame
+    -- Bumping the token stops Scoot's own timers, but UIFrameFadeOut handed the frame
     -- to Blizzard's fade manager, which keeps driving alpha down regardless.
     -- Without this the bar fades out underneath a cast that just started.
     UIFrameFadeRemoveFrame(bar)
@@ -645,7 +645,7 @@ end
 --- Wipe the bar instantly: no hold, no fade, nothing carried over.
 ---
 --- A departed target's bar is not a cast that ended, it is a cast that stopped
---- being any of our business. Routing it through _FinishCast would hold the
+--- being this bar's business. Routing it through _FinishCast would hold the
 --- previous target's spell name on screen for HOLD + FADE, straight over the new
 --- target's cast if one starts inside that window -- and on a secret unit that name
 --- cannot even be inspected to notice. Blizzard resets rather than finishes for the
@@ -721,7 +721,7 @@ function CBZ._RegisterBarEvents(bar, row)
         if event == row.changeEvent then
             -- Coalesced into one deferred pass for the same reason cast-end is: the
             -- client has not necessarily settled at the instant the event fires, and
-            -- UnitCastingInfo can still be answering for the unit we just left.
+            -- UnitCastingInfo can still be answering for the unit just left.
             CBZ._ResetBar(bar)
             C_Timer.After(0, function()
                 CBZ._SyncCastState(row.barKey)

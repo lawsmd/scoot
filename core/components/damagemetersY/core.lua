@@ -234,7 +234,7 @@ addon:RegisterComponentInitializer(function(self)
     end
 
     -- Bootstrap Y on first PLAYER_ENTERING_WORLD.
-    -- The component system's ApplyStyling gate may skip us (proxy/zero-touch),
+    -- The component system's ApplyStyling gate may skip it (proxy/zero-touch),
     -- so it self-bootstraps after DB linking is complete.
     local bootstrapFrame = CreateFrame("Frame")
     bootstrapFrame:RegisterEvent("PLAYER_ENTERING_WORLD")

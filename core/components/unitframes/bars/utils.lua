@@ -158,7 +158,7 @@ function Utils.getJustifyHFromAnchor(anchor)
 end
 
 -- Reposition a LEFT-justified name overlay to achieve true CENTER/RIGHT alignment.
--- Uses actual text width (GetStringWidth) to compute the exact horizontal offset.
+-- Uses rendered text width (GetStringWidth) to compute the exact horizontal offset.
 -- Long names that exceed the container gracefully degrade to left-aligned (start visible).
 function Utils.repositionNameOverlay(overlay, container, anchor, offsetX, offsetY)
     if not overlay or not container then return end
@@ -182,7 +182,7 @@ function Utils.repositionNameOverlay(overlay, container, anchor, offsetX, offset
         end
     end
 
-    -- Get actual rendered text width (addon-owned FontString)
+    -- Get the rendered text width (addon-owned FontString)
     local textWidth = 0
     if overlay.GetStringWidth then
         local ok, tw = pcall(overlay.GetStringWidth, overlay)

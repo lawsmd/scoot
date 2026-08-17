@@ -186,7 +186,7 @@ local function ResolveSettingId(frame, logicalKey)
 
     -- Personal Resource Display: stable enum constants (12.0.7+). The PRD exposes
     -- a single system frame (PersonalResourceDisplayFrame) with no index, so a
-    -- straight logical-key → enum mapping is sufficient.
+    -- straight logical-key → enum mapping is enough.
     local prdEM = _G.Enum and _G.Enum.EditModePersonalResourceDisplaySetting
     if prdEM and frame and frame.system == (_G.Enum and _G.Enum.EditModeSystem and _G.Enum.EditModeSystem.PersonalResourceDisplay) then
         local lk = _lower(logicalKey)
@@ -433,28 +433,28 @@ end
 -- Debug logging: Enable with `/run Scoot._dbgEditMode = true` to trace writes.
 function addon.EditMode.SetSetting(frame, settingId, value)
     if not LEO or not LEO.SetFrameSetting then
-        if addon._dbgEditMode then print("|cFFFF0000[EM.SetSetting]|r LEO not available") end
+        if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SetSetting]|r LEO not available") end
         return nil
     end
     if not (LEO.IsReady and LEO:IsReady()) then
-        if addon._dbgEditMode then print("|cFFFF0000[EM.SetSetting]|r LEO not ready") end
+        if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SetSetting]|r LEO not ready") end
         return nil
     end
     if LEO.AreLayoutsLoaded and not LEO:AreLayoutsLoaded() then
         if LEO.LoadLayouts then
             local ok = pcall(LEO.LoadLayouts, LEO)
             if not ok then
-                if addon._dbgEditMode then print("|cFFFF0000[EM.SetSetting]|r LoadLayouts failed") end
+                if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SetSetting]|r LoadLayouts failed") end
                 return nil
             end
         else
-            if addon._dbgEditMode then print("|cFFFF0000[EM.SetSetting]|r LoadLayouts unavailable") end
+            if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SetSetting]|r LoadLayouts unavailable") end
             return nil
         end
     end
     if addon._dbgEditMode then
         local frameName = frame and frame:GetName() or "?"
-        print("|cFF00FF00[EM.SetSetting]|r frame=" .. tostring(frameName) .. " settingId=" .. tostring(settingId) .. " value=" .. tostring(value))
+        addon.DebugPrint("|cFF00FF00[EM.SetSetting]|r frame=" .. tostring(frameName) .. " settingId=" .. tostring(settingId) .. " value=" .. tostring(value))
     end
     LEO:SetFrameSetting(frame, settingId, value)
 end
@@ -498,7 +498,7 @@ function addon.EditMode.ForceResetIfStuck()
     if ok1 and active == true then return false end -- genuinely active
     local ok2, shown = pcall(mgr.IsShown, mgr)
     if ok2 and shown == true then return false end  -- genuinely shown
-    -- Both checks say not active, but our flag says active — stuck
+    -- Both checks say not active, but the cached flag says active: stuck
     editModeActiveState = false
     addon.EditMode._openingEditMode = nil
     addon.EditMode._exitingEditMode = nil
@@ -628,7 +628,7 @@ function addon.EditMode._FlushPostExit()
     end
 end
 
---- Close Edit Mode, then run onClosed once it has actually exited.
+--- Close Edit Mode, then run onClosed once it has exited.
 ---
 --- Routes through mgr.onCloseCallback rather than a bare HideUIPanel: that is
 --- what surfaces Blizzard's Save/Exit/Cancel prompt when there are unsaved layout
@@ -689,19 +689,19 @@ end
 --
 -- IMPORTANT: The visual refresh depends on LEO:SaveOnly() calling SetActiveLayout in a
 -- deferred context. If settings save but don't apply visually, check:
--- 1. That LEO:SaveOnly() is actually being called (not suppressed)
+-- 1. That LEO:SaveOnly() is being called (not suppressed)
 -- 2. That layoutInfo.activeLayout is valid (not nil, must be >= 1)
 -- 3. That the deferred C_Timer.After callback executes
 function addon.EditMode.SaveOnly()
     if not LEO or not LEO.SaveOnly then
-        if addon._dbgEditMode then print("|cFFFF0000[EM.SaveOnly]|r LEO not available") end
+        if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SaveOnly]|r LEO not available") end
         return
     end
     if _ShouldSuppressWrites() then
-        if addon._dbgEditMode then print("|cFFFF0000[EM.SaveOnly]|r Suppressed by _ShouldSuppressWrites") end
+        if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SaveOnly]|r Suppressed by _ShouldSuppressWrites") end
         return
     end
-    if addon._dbgEditMode then print("|cFF00FF00[EM.SaveOnly]|r Calling LEO:SaveOnly()") end
+    if addon._dbgEditMode then addon.DebugPrint("|cFF00FF00[EM.SaveOnly]|r Calling LEO:SaveOnly()") end
     LEO:SaveOnly()
 end
 
@@ -769,8 +769,8 @@ function addon.EditMode.WriteSetting(frame, settingId, value, opts)
     -- DEPRECATION WARNING: 'updaters' causes taint by calling methods on system frames.
     -- Visual updates happen via deferred SetActiveLayout() in SaveOnly().
     if opts.updaters and addon._dbgEditMode then
-        print("|cFFFF0000[EM.WriteSetting] WARNING: 'updaters' option is deprecated in 12.0+|r")
-        print("|cFFFF0000  Causes taint - remove updaters and rely on deferred SetActiveLayout()|r")
+        addon.DebugPrint("|cFFFF0000[EM.WriteSetting] WARNING: 'updaters' option is deprecated in 12.0+|r")
+        addon.DebugPrint("|cFFFF0000  Causes taint - remove updaters and rely on deferred SetActiveLayout()|r")
     end
 
     -- Never try Edit Mode writes during combat.
@@ -838,7 +838,7 @@ function addon.EditMode.WritePRDSetting(logicalKey, value, opts)
     if not addon.EditMode.WriteSetting then return false end
     local settingId = ResolveSettingId(prd, logicalKey)
     if settingId == nil then return false end
-    -- Avoid a redundant layout rebuild when the value is already what we want.
+    -- Avoid a redundant layout rebuild when the value already matches.
     local current = addon.EditMode.GetSetting(prd, settingId)
     if current ~= nil and tonumber(current) == tonumber(value) then return true end
     addon.EditMode.WriteSetting(prd, settingId, value, opts)
@@ -1094,7 +1094,7 @@ function addon.EditMode.Initialize()
         end
 
         -- Deferred verification: if seeding set editModeActiveState=true,
-        -- re-check 2s later that Edit Mode is ACTUALLY still active. Catches
+        -- re-check 2s later that Edit Mode is still active. Catches
         -- false positives from transient IsShown()/editModeActive during load
         -- or from an EditMode.Enter event without a matching Exit (lock state).
         if editModeActiveState then
@@ -1139,7 +1139,7 @@ function addon.EditMode.Initialize()
 
     -- Fallback hook for clients/builds that don't fire EventRegistry callbacks reliably.
     -- IMPORTANT: Hook EnterEditMode (not OnShow) to avoid accidentally closing the panel
-    -- during our own "bounce EditModeManagerFrame" taint-clearing work.
+    -- during the "bounce EditModeManagerFrame" taint-clearing work.
     --
     -- Also handles per-system settings refresh: when Scoot changes Edit Mode
     -- settings (via SaveOnly/skipApply), the C-side storage is updated but the
@@ -1175,7 +1175,7 @@ function addon.EditMode.Initialize()
     end
 
     -- Compatibility: Action Bars Icon Size behaves like an index slider internally on some clients.
-    -- Force index-based handling in our embedded LEO so raw 50..200 maps to the correct index.
+    -- Force index-based handling in the embedded LEO so raw 50..200 maps to the correct index.
     local LEO_local2 = LibStub and LibStub("LibEditModeOverride-1.0")
     if LEO_local2 and _G and _G.Enum and _G.Enum.EditModeSystem then
         local candidates = {

@@ -257,7 +257,7 @@ do
 			end
 
 			-- Baselines for Boss name text are stored per-boss-index. Guard on every call:
-			-- the style revert in base/core.lua nils this table out from under us.
+			-- the style revert in base/core.lua nils this table out.
 			local function ensureBossBaseline(fs, key, fallbackFrame)
 				addon._ufNameLevelTextBaselines = addon._ufNameLevelTextBaselines or {}
 				addon._ufNameLevelTextBaselines[key] = addon._ufNameLevelTextBaselines[key] or {}
@@ -1312,7 +1312,7 @@ do
 			if not addon.ApplyUnitFrameNameLevelTextFor then return end
 			-- Immediate enforcement (prevents pop-in)
 			addon.ApplyUnitFrameNameLevelTextFor(unit)
-			-- One-tick backup in case a later same-frame Blizzard update path overrides us
+			-- One-tick backup in case a later same-frame Blizzard update path overrides it
 			if _G.C_Timer and _G.C_Timer.After then
 				_G.C_Timer.After(0, function()
 					if addon.ApplyUnitFrameNameLevelTextFor then
@@ -1365,7 +1365,7 @@ do
 	-- Install hooks on first style application
 	local _origApplyAll = addon.ApplyAllUnitFrameNameLevelText
 	addon.ApplyAllUnitFrameNameLevelText = function()
-		-- Zero‑Touch: only install persistence hooks when Name/Level/Backdrop is actually configured.
+		-- Zero-Touch: only install persistence hooks when Name/Level/Backdrop is configured.
 		local db = addon and addon.db and addon.db.profile
 		local unitFrames = db and rawget(db, "unitFrames") or nil
 		local function hasAnyOffset(tbl)

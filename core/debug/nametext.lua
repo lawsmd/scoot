@@ -93,8 +93,8 @@ local SAMPLES = {
 -- only half right, and the half that is wrong is the useful half.
 --
 -- What killed the ramps was never "touching the string". Concatenation, string.format
--- and string.join all accept secrets and hand back a secret result -- our own
--- restriction table records that. What killed the ramps is that building one requires
+-- and string.join all accept secrets and hand back a secret result, as the
+-- restriction table records. What killed the ramps is that building one requires
 -- knowing WHERE THE CHARACTERS ARE: you need #text to count them and text:sub() to cut
 -- between them, and both of those are refused. A ramp has to take the string apart.
 --
@@ -115,7 +115,7 @@ local SAMPLES = {
 --
 -- The catch worth seeing on screen: a small-caps font enlarges every letter that was
 -- uppercase in the SOURCE string, so 'Penumbral Custodian' comes back with two large
--- letters, not one. Which is a look to judge, not a bug to fix -- we cannot know which
+-- letters, not one. Which is a look to judge, not a bug to fix: there is no knowing which
 -- letters those are, only that the font will treat them differently.
 local function effectiveFaceKey()
     if cfg.case == "smallcaps" then return cfg.scFace end
@@ -126,7 +126,7 @@ local frame, nameFS, chromeBG
 local slicePool = {}
 
 local lastResult, lastSource, lastFit
--- currentRaw is what UnitName handed us; currentValue is what actually goes to the
+-- currentRaw is what UnitName returned; currentValue is what goes to the
 -- rulers and the screen. They differ only when a case transform succeeded, and keeping
 -- both is what lets the report say which one you are looking at.
 local currentRaw, currentValue, currentIsSecret
@@ -137,7 +137,7 @@ local lastRamped
 -- finds either number changed is describing a target that is no longer on screen, and
 -- finishing it would paint the previous name over the current one.
 local renderSeq, paintSeq = 0, 0
--- What applySlices actually replayed onto the copies, recorded rather than recomputed
+-- What applySlices replayed onto the copies, recorded rather than recomputed
 -- so the report shows the values that were used, not the values that would be used now.
 local lastSliceSize, lastSliceScale, lastSliceMaxLines, lastSliceFallback
 
@@ -153,7 +153,7 @@ local function safeStr(v)
 end
 
 -- Report a single measurement API as ok / SECRET / error. This per-API tagging is
--- the actual deliverable of the harness.
+-- the deliverable of the harness.
 local function measureOn(obj, method)
     if not obj then return "<no fontstring>" end
     local fn = obj[method]
@@ -182,14 +182,14 @@ end
 -- SetAlphaGradient(start, length) -> isWithinText is the only FontString function
 -- that reports something about a SECRET string's content and is not annotated to go
 -- secret itself: no SecretReturnsForAspect, no SecretWhenAnchoringSecret, only
--- SecretArguments = "AllowedWhenUntainted" -- which constrains what we pass in (plain
+-- SecretArguments = "AllowedWhenUntainted" -- which constrains what goes in (plain
 -- integers), not what comes back (SimpleFontStringAPIDocumentation.lua:463). It has
 -- zero callers in Blizzard's source and no Documentation field, so everything below
 -- was measured rather than read.
 --
 -- Measured semantics: 0-based and inclusive, so count = lastTrueIndex + 1. Counts
 -- UTF-8 CHARACTERS, not bytes. Layout-sensitive: on a constrained FontString it
--- reports the characters that actually RENDERED, which is what makes it a fitter
+-- reports the characters that RENDERED, which is what makes it a fitter
 -- rather than a strlen.
 
 local PROBE_LIMIT = 128
@@ -578,7 +578,7 @@ end
 -- F = 10, spaces = 0, D = 10 at 32pt, and the engine reported two lines for one word.
 --
 -- Capping at Lpred is what exposes it. Lpred is the line count the name WOULD occupy if
--- every break were a space break. If the engine actually needed more lines than that,
+-- every break were a space break. If the engine needed more lines than that,
 -- forcing the cap down to Lpred makes it ellipsize, and the count moves. If Lpred was
 -- right, the cap changes nothing and the count holds. It is a direct question -- "did
 -- you break anywhere I cannot see?" -- rather than an inference from a number.
@@ -606,7 +606,7 @@ end
 -- So instead of detecting it, stay out of its range: require the layout to survive a
 -- box one ellipsis narrower than the real one. A name that renders fully in W - E has
 -- E pixels of slack in W, which is more than the blind spot can hide. It costs about
--- three characters of width -- names come out a little smaller than the box could
+-- three characters of width -- names come out slightly smaller than the box could
 -- strictly hold -- and it is exactly the price of not being able to see the last three
 -- characters. '/scoot debug nametext margin off' turns it off to see the difference.
 --
@@ -691,10 +691,10 @@ local function armRuler(fs, value, size, width, wrap, nonSpaceWrap, maxLines)
     pcall(fs.SetText, fs, value)
 end
 
--- The pixel width of "..." at a given size. That is a literal string of our own, so no
+-- The pixel width of "..." at a given size. That is a harness-authored literal, so no
 -- secret is involved and MeasureTextWidth can do its ordinary SetText/GetStringWidth on
--- it -- the one part of a truncated render we are allowed to look at, and by luck the
--- exact size of the thing we cannot see. Falls back to a size-proportional estimate,
+-- it -- the one part of a truncated render that stays readable, and by luck the
+-- exact size of the thing that cannot be seen. Falls back to a size-proportional estimate,
 -- because a nil here would silently switch off the check that catches the blind spot.
 local function marginFor(size)
     if cfg.margin == "off" then return 0 end
@@ -800,9 +800,9 @@ local function sizeName(value, onDone)
                 row.lpred = st.F - row.d + 1
 
                 -- The margin is the width of "..." at this size. That is a literal
-                -- three-character string of our own, so measuring it involves no secret
-                -- at all -- it is the one piece of the truncated render we are allowed
-                -- to look at, and it happens to be the exact size of the blind spot.
+                -- three-character literal of the harness, so measuring it involves no secret
+                -- at all -- it is the one piece of the truncated render that stays
+                -- readable, and it happens to be the exact size of the blind spot.
                 row.margin = marginFor(row.size)
                 row.narrowWidth = math.max(8, cfg.width - row.margin)
 
@@ -948,7 +948,7 @@ local function applyRamp(result, colors, mode, seq, ps)
 
     -- Inline |cff codes multiply against the text color, so it has to be white.
     nameFS:SetTextColor(1, 1, 1, 1)
-    -- Word wrap stays ON. The explicit "\n" already forces our breaks, so wrap only
+    -- Word wrap stays ON. The explicit "\n" already forces the breaks, so wrap only
     -- ever adds one -- and that is the safety net: |cff hex values shift sub-pixel
     -- kerning by 1-2px (castbarX pitfall #28), so a line sitting on the boundary can
     -- come out fractionally wider than the plain text it was measured from. With wrap
@@ -1270,7 +1270,7 @@ function addon.DebugNameTextSetFont(face)
     addon:Print("Font face: " .. cfg.face)
 end
 
--- Our own literals, so every measurement in the case probe is on readable text and the
+-- Harness literals, so every measurement in the case probe is on readable text and the
 -- ordinary GetStringWidth path applies. Nothing here goes near a name.
 local ALPHA_LOWER = "abcdefghijklmnopqrstuvwxyz"
 local ALPHA_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -1313,7 +1313,7 @@ local function caseProbeRuler(i)
 end
 
 -- Answers the two questions the case feature rests on, neither of which is safe to
--- assume: does the engine let string.upper touch a secret, and do we ship a font that
+-- assume: does the engine let string.upper touch a secret, and does Scoot ship a font that
 -- capitalises without one.
 --
 -- Arms every ruler, then reads them all one frame later. The wait is not politeness --
@@ -1593,7 +1593,7 @@ end
 
 -- The size the fit gives up to stay clear of the blind spot. Exposed because it is a
 -- genuine trade -- 'off' renders every name as large as the box allows and occasionally
--- clips three characters off one; 'auto' never clips and runs a little smaller.
+-- clips three characters off one; 'auto' never clips and runs slightly smaller.
 function addon.DebugNameTextSetMargin(value)
     ensureShown()
     value = tostring(value or ""):lower()
@@ -1755,7 +1755,7 @@ local function buildReport()
     -- side by side -- and any disagreement is the fit being wrong, stated in one line
     -- instead of inferred from four numbers further down. This is only possible on a
     -- readable name, which is exactly why readable names are worth targeting.
-    push("-- Cross-check: the oracle's answer against what the engine actually did --")
+    push("-- Cross-check: the oracle's answer against what the engine did --")
     if currentIsSecret then
         push("  n/a - the name is secret, so the engine will not answer either. That is the")
         push("        condition the oracle exists for; calibrate on a readable name.")
@@ -1878,7 +1878,7 @@ local function buildReport()
 
     -- Everything under "Measurements" above describes the MASTER FontString, which is
     -- held at alpha 0 while the slice stack is drawing. So the master can fit perfectly
-    -- and the screen can still be wrong. These are the copies you are actually looking
+    -- and the screen can still be wrong. These are the copies you are looking
     -- at; any disagreement with the master localises the bug to the replay.
     push("-- Slice stack (what is on screen in slice mode) --")
     local s1 = slicePool[1]
@@ -1923,7 +1923,7 @@ local function buildReport()
     end
     push("")
 
-    -- What actually went onto the FontString. Per-character |cff markup turns every
+    -- What went onto the FontString. Per-character |cff markup turns every
     -- glyph into its own shaping run, so the ramped width is not automatically the
     -- plain width -- compare them here rather than assume.
     push("-- Ramped string --")
@@ -1989,7 +1989,7 @@ function addon.DebugNameTextSetIdentity(which)
                                or "  (class ramp whenever a class token resolves)"))
 end
 
--- Which units, right now, actually report restricted identity? Capital-city NPCs come
+-- Which units, right now, report restricted identity? Capital-city NPCs come
 -- back unrestricted, so "target an NPC" is not a reliable way to exercise the secret
 -- path. This sweeps every unit token worth trying and says which ones qualify.
 local SCAN_UNITS = {
@@ -2059,7 +2059,7 @@ end
 -- The calibration pass that established the oracle's semantics. The primitives it
 -- exercises now live at the top of the file, because the renderer depends on them.
 --
--- Probed on two subjects, because which one answers tells us what it counts:
+-- Probed on two subjects, because which one answers reveals what it counts:
 --   free    -- no width, wrap off: holds the whole string, so its transition is the
 --              STRING length
 --   display -- the harness box: wrapped and possibly ellipsized. A lower transition
@@ -2259,7 +2259,7 @@ local function buildProbeReport()
             "identical (%d) -> nothing was dropped: the name fits on one line at this "
             .. "size and no break character was consumed", freeBest + 1)
     elseif dispBest < freeBest then
-        -- Measured 2026-07-28: a wrap CONSUMES the space it breaks on, so a clean
+        -- Measured: a wrap CONSUMES the space it breaks on, so a clean
         -- two-line layout already reads one short. The gap is dropped characters of
         -- any kind -- breaks plus ellipsis -- not truncation alone.
         layoutNote = string.format(
@@ -2300,7 +2300,7 @@ function addon.DebugNameTextLengthProbe()
     ensureShown()
     if not lastSource then pullTargetName() end
 
-    -- Fit first, so Probe B describes the layout the harness actually renders. Then
+    -- Fit first, so Probe B describes the layout the harness renders. Then
     -- force the PLAIN value back on: under a |cff ramp every index is a markup byte
     -- and both counts become meaningless.
     runFit(function()
@@ -2328,7 +2328,7 @@ end
 --------------------------------------------------------------------------------
 -- The length probe established two things: SetAlphaGradient answers on a secret
 -- string, and its answer is LAYOUT-sensitive -- on a box-constrained FontString it
--- counts the characters that actually rendered. So as the font grows and the engine
+-- counts the characters that rendered. So as the font grows and the engine
 -- starts consuming break characters and ellipsizing, the count falls. Call that
 -- D(size).
 --
@@ -2482,7 +2482,7 @@ local function buildFitProbeReport(rows, freeCount, freeTag, calls, frames)
             .. "('/scoot debug nametext size 90 40') and re-run.",
             safeStr(ceiling))
     elseif not monotonic then
-        -- Measured cause, 2026-07-28: the truncation ellipsis is itself three rendered
+        -- Measured cause: the truncation ellipsis is itself three rendered
         -- characters. The instant the engine starts ellipsizing, D jumps by +3 and then
         -- resumes falling, so the curve has a step back up in it.
         verdict = "NON-MONOTONIC - a larger font reported MORE rendered characters. The "

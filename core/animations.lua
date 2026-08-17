@@ -236,7 +236,7 @@ function Anim.Create(animId, parent, existingTexture)
 		ctrl._multiCtrl = multiCtrl
 
 		-- Alert category: the controller's first animGroup should wire OnFinished
-		-- to hide the frame. We also set up a fallback here.
+		-- to hide the frame. A fallback is set up here as well.
 		if def.category == "alert" and multiCtrl then
 			local origPlay = multiCtrl.Play
 			multiCtrl.Play = function(self)

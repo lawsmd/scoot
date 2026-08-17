@@ -107,7 +107,7 @@ function IconBorders.GetStyle(key)
 end
 
 -- Border thickness is only meaningful for the "square" style, which is drawn from four
--- color-texture edges we size ourselves. Atlas and texture styles are single bitmaps
+-- color-texture edges sized here. Atlas and texture styles are single bitmaps
 -- stretched to a rect; they have no independent edge width, so callers should hide the
 -- Border Thickness control rather than offer a slider that silently does nothing.
 -- Sentinel keys ("off", "hidden", "none") mean no border at all.

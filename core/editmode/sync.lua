@@ -1308,6 +1308,6 @@ function addon.EditMode.RefreshSyncAndNotify(origin)
     -- via control bindings and per-row helpers to avoid right-pane flicker.
 
     if addon._dbgSync and origin then
-        print("Scoot RefreshSyncAndNotify origin=" .. tostring(origin))
+        addon.DebugPrint("Scoot RefreshSyncAndNotify origin=" .. tostring(origin))
     end
 end

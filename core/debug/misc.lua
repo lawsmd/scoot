@@ -1,3 +1,4 @@
+-- misc.lua - Assorted /scoot debug dumps that have no module of their own
 local addonName, addon = ...
 
 --------------------------------------------------------------------------------

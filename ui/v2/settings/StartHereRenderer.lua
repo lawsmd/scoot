@@ -1346,7 +1346,7 @@ function StartHere.Render(panel, scrollContent)
 
         -- Set scroll content height. Sync estimate first (string heights may
         -- under-report before first render), then a deferred pass corrects it
-        -- from actual geometry.
+        -- from measured geometry.
         -- Header height = the taller of the two columns (legend wins in practice)
         local legendUsed = HEADER_TOP_PAD + 2
         for _, fs in ipairs(legendLabels) do

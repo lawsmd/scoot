@@ -44,7 +44,7 @@ local BRAND_R, BRAND_G, BRAND_B = 0.20, 0.90, 0.30
 --------------------------------------------------------------------------------
 
 local SIMPLE_ICONS = {
-    -- Special: use the spell's actual icon
+    -- Special: use the spell's own icon
     { key = "spell" },
     -- Circles
     { key = "CircleMask" },
@@ -867,7 +867,7 @@ end
 --------------------------------------------------------------------------------
 
 -- options (all optional):
---   hideSpellEntry  : omit the "use the spell's actual icon" entry from the
+--   hideSpellEntry  : omit the "use the spell's own icon" entry from the
 --                     Simple tab (callers whose shapes are always atlas art)
 --   hideAnimatedTab : omit the Animated tab entirely
 function addon.ShowIconPicker(anchor, currentValue, callback, options)

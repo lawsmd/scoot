@@ -1,7 +1,7 @@
 -- auras.lua - Buff/debuff frame styling for regular auras in BuffFrame.AuraContainer
 -- and DebuffFrame.AuraContainer. Private auras (DebuffFrame.PrivateAuraAnchors /
--- Blizzard_PrivateAurasUI) are intentionally not touched — see
--- ADDONCONTEXT/docs/buffs&debuffs.md for full rationale.
+-- Blizzard_PrivateAurasUI) are intentionally not touched; the pool frames are
+-- forbidden and Scoot does not customize them.
 local addonName, addon = ...
 local Util = addon.ComponentsUtil
 local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
@@ -77,7 +77,7 @@ local function updateDebuffBorderOverlay(aura, state, iconWidth, iconHeight)
     overlay:ClearAllPoints()
     local icon = aura.Icon or aura.icon or aura.IconTexture
     overlay:SetPoint("CENTER", icon or aura, "CENTER")
-    -- Apply atlas from cached debuff type (prefer actual atlas captured from Blizzard)
+    -- Apply atlas from cached debuff type (prefer the atlas captured from Blizzard)
     local cached = debuffTypeCache[aura]
     local atlas = cached and cached.actualAtlas
     if not atlas then
@@ -455,18 +455,17 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
     end
     -- Note: frame.PrivateAuraAnchors is intentionally NOT iterated here. Private aura
     -- pool frames are forbidden and Scoot does not customize them.
-    -- See ADDONCONTEXT/docs/buffs&debuffs.md for full rationale.
     --
     -- HOWEVER: Blizzard's AuraFrameMixin:AuraFrame_OnLoad
-    -- (wow-ui-source/Blizzard_BuffFrame/BuffFrame.lua:189-191) MIXES the placeholder
+    -- (Blizzard_BuffFrame/BuffFrame.lua:189-191) MIXES the placeholder
     -- private aura anchors (PrivateAuraAnchors[1..6]) into frame.auraFrames alongside
-    -- regular AuraButtonTemplate buttons. So our addCollection(frame.auraFrames) above
-    -- pulls them in even though we don't add PrivateAuraAnchors directly. We must
-    -- skip them in the per-aura loop, otherwise we'd resize anchor.Icon to non-square,
+    -- regular AuraButtonTemplate buttons. So the addCollection(frame.auraFrames) above
+    -- pulls them in even though PrivateAuraAnchors are never added directly. They
+    -- must be skipped in the per-aura loop, or anchor.Icon resizes to non-square,
     -- and Blizzard's BuffFramePrivateAuraAnchorMixin:SetUnit (BuffFrame.lua:1287-1292)
     -- reads anchor.Icon:GetWidth/GetHeight when building iconInfo for AddPrivateAuraAnchor —
-    -- propagating our non-square sizing into the C-side pool-frame registration and
-    -- rendering the private aura icon rectangular even with all our private-aura-specific
+    -- propagating that non-square sizing into the C-side pool-frame registration and
+    -- rendering the private aura icon rectangular even with every private-aura-specific
     -- code removed.
     local privateAuraSkipSet = {}
     if type(frame.PrivateAuraAnchors) == "table" then
@@ -490,7 +489,7 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
                 if forceRestyle or not auraVState or auraVState.lastStyledVersion ~= currentVersion then
 
                     -- Track pcall results: only version-stamp when ALL succeed.
-                    -- Failed buttons get re-attempted on next pass (forceRestyle or version mismatch).
+                    -- Failed buttons are retried on the next pass (forceRestyle or version mismatch).
                     local ok1, ok2, ok3, ok4
 
                     -- PCALL 1: Icon sizing + TexCoord
@@ -709,7 +708,7 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
                     end) -- pcall 4: text styling
 
                     -- Version stamp: only mark styled when ALL pcalls succeeded.
-                    -- Failed buttons keep stale version, ensuring re-attempt on next
+                    -- Failed buttons keep the stale version, forcing a retry on the next
                     -- UpdateAuraButtons call (via forceRestyle or version mismatch).
                     if auraVState and ok1 and ok2 and ok3 and ok4 then
                         auraVState.lastStyledVersion = currentVersion
@@ -794,7 +793,7 @@ local function ApplyAuraFrameStyling(self)
 
                     local cacheEntry = { dispelType = dt, showDispelType = sd }
 
-                    -- Capture the actual atlas Blizzard set on the border region
+                    -- Capture the atlas Blizzard set on the border region
                     local okAtlas, actualAtlas = pcall(borderRegion.GetAtlas, borderRegion)
                     if okAtlas and actualAtlas and not issecretvalue(actualAtlas) and type(actualAtlas) == "string" then
                         cacheEntry.actualAtlas = actualAtlas

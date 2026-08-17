@@ -248,7 +248,7 @@ function Mirror.Build(slot, frame, provider, onRebuild)
                 -- anchoring so nothing about the read can depend on the anchors.
                 -- TOPLEFT + TOPRIGHT is two HORIZONTAL constraints, which leaves
                 -- SetHeight in charge -- mixing axes is what silently overrides it
-                -- (embranding.md, the two-vertical-constraints trap).
+                -- (the two-vertical-constraints trap).
                 local h = row:GetHeight() or 0
 
                 row:ClearAllPoints()

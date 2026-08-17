@@ -68,14 +68,14 @@ end
 -- SetAlphaGradient(start, length) -> isWithinText is the only FontString function
 -- that reports something about a SECRET string's content and is not annotated to go
 -- secret itself: no SecretReturnsForAspect, no SecretWhenAnchoringSecret, only
--- SecretArguments = "AllowedWhenUntainted" -- which constrains what we pass in (plain
+-- SecretArguments = "AllowedWhenUntainted" -- which constrains what goes in (plain
 -- integers), not what comes back (SimpleFontStringAPIDocumentation.lua:463). It has
 -- zero callers in Blizzard's source and no Documentation field, so everything below
 -- was measured rather than read.
 --
 -- Measured semantics: 0-based and inclusive, so count = lastTrueIndex + 1. Counts
 -- UTF-8 CHARACTERS, not bytes. Layout-sensitive: on a constrained FontString it
--- reports the characters that actually RENDERED, which is what makes it a fitter
+-- reports the characters that RENDERED, which is what makes it a fitter
 -- rather than a strlen.
 
 local PROBE_LIMIT = 128
@@ -181,7 +181,7 @@ end
 -- F = 10, spaces = 0, D = 10 at 32pt, and the engine reported two lines for one word.
 --
 -- Capping at Lpred is what exposes it. Lpred is the line count the name WOULD occupy if
--- every break were a space break. If the engine actually needed more lines than that,
+-- every break were a space break. If the engine needed more lines than that,
 -- forcing the cap down to Lpred makes it ellipsize, and the count moves. If Lpred was
 -- right, the cap changes nothing and the count holds. It is a direct question -- "did
 -- you break anywhere I cannot see?" -- rather than an inference from a number.
@@ -209,7 +209,7 @@ end
 -- So instead of detecting it, stay out of its range: require the layout to survive a
 -- box one ellipsis narrower than the real one. A name that renders fully in W - E has
 -- E pixels of slack in W, which is more than the blind spot can hide. It costs about
--- three characters of width -- names come out a little smaller than the box could
+-- three characters of width -- names come out slightly smaller than the box could
 -- strictly hold -- and it is exactly the price of not being able to see the last three
 -- characters. margin = "off" turns it off to see the difference.
 --
@@ -307,10 +307,10 @@ local function armRuler(fs, value, size, width, wrap, nonSpaceWrap, maxLines, fa
     pcall(fs.SetText, fs, value)
 end
 
--- The pixel width of "..." at a given size. That is a literal string of our own, so no
+-- The pixel width of "..." at a given size. That is a Scoot-authored literal, so no
 -- secret is involved and MeasureTextWidth can do its ordinary SetText/GetStringWidth on
--- it -- the one part of a truncated render we are allowed to look at, and by luck the
--- exact size of the thing we cannot see. Falls back to a size-proportional estimate,
+-- it -- the one part of a truncated render that stays readable, and by luck the
+-- exact size of the thing that cannot be seen. Falls back to a size-proportional estimate,
 -- because a nil here would silently switch off the check that catches the blind spot.
 local function marginFor(size, margin, facePath, style)
     if margin == "off" then return 0 end
@@ -455,9 +455,9 @@ function addon.RunBlindFit(value, opts, onDone)
                 row.lpred = st.F - row.d + 1
 
                 -- The margin is the width of "..." at this size. That is a literal
-                -- three-character string of our own, so measuring it involves no secret
-                -- at all -- it is the one piece of the truncated render we are allowed
-                -- to look at, and it happens to be the exact size of the blind spot.
+                -- three-character literal of Scoot's own, so measuring it involves no secret
+                -- at all -- it is the one piece of the truncated render that stays
+                -- readable, and it happens to be the exact size of the blind spot.
                 row.margin = marginFor(row.size, margin, facePath, style)
                 row.narrowWidth = math.max(8, width - row.margin)
 

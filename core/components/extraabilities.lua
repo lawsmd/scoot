@@ -86,7 +86,7 @@ local function startAlphaEnforcement(container)
         if not container or container:IsForbidden() then return end
 
         -- Hide overlays during pet battles (container is a system frame hidden by
-        -- Blizzard's FrameLock, but our overlays are parented to UIParent)
+        -- Blizzard's FrameLock, but the Scoot overlays are parented to UIParent)
         if addon.IsInPetBattle and addon.IsInPetBattle() then
             for btn, overlay in pairs(buttonOverlays) do
                 if overlay:IsShown() then

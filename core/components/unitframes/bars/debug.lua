@@ -34,18 +34,18 @@ local POWERBAR_TRACE_MAX_LINES = 500 -- Max lines to keep in buffer
 addon.SetPowerBarDebugTrace = function(enabled)
     powerBarDebugTraceEnabled = enabled
     if enabled then
-        print("|cff00ff00[Scoot]|r Power bar trace ENABLED (buffering to log)")
-        print("|cff00ff00[Scoot]|r Use '/scoot debug powerbar log' to view, '/scoot debug powerbar clear' to clear")
+        addon:Print("Power bar trace enabled, buffering to log")
+        addon:Print("Use '/scoot debug powerbar log' to view, '/scoot debug powerbar clear' to clear")
         table.insert(powerBarTraceBuffer, "=== Trace started at " .. date("%Y-%m-%d %H:%M:%S") .. " ===")
     else
-        print("|cff00ff00[Scoot]|r Power bar trace DISABLED")
+        addon:Print("Power bar trace disabled")
         table.insert(powerBarTraceBuffer, "=== Trace stopped at " .. date("%Y-%m-%d %H:%M:%S") .. " ===")
     end
 end
 
 addon.ShowPowerBarTraceLog = function()
     if #powerBarTraceBuffer == 0 then
-        print("|cff00ff00[Scoot]|r Power bar trace buffer is empty")
+        addon:Print("Power bar trace buffer is empty")
         return
     end
 
@@ -53,14 +53,14 @@ addon.ShowPowerBarTraceLog = function()
     if addon.DebugShowWindow then
         addon.DebugShowWindow("Power Bar Trace Log (" .. #powerBarTraceBuffer .. " lines)", text)
     else
-        print("|cff00ff00[Scoot]|r Debug window not available. Buffer has " .. #powerBarTraceBuffer .. " lines.")
+        addon:Print("Debug window not available. Buffer has " .. #powerBarTraceBuffer .. " lines.")
     end
 end
 
 addon.ClearPowerBarTraceLog = function()
     local count = #powerBarTraceBuffer
     powerBarTraceBuffer = {}
-    print("|cff00ff00[Scoot]|r Cleared " .. count .. " lines from power bar trace buffer")
+    addon:Print("Cleared " .. count .. " lines from power bar trace buffer")
 end
 
 function Debug.debugTracePowerBar(message, ...)

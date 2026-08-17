@@ -576,7 +576,7 @@ end
 --------------------------------------------------------------------------------
 -- Patch 12.0.7 gave each PRD bar a backdrop texture (the dark background plus a
 -- baked-in frame/border edge) using the atlas "UI-HUD-CoolDownManager-Bar-BG".
--- It is an anonymous BACKGROUND-layer texture (no parentKey), so we locate it by
+-- It is an anonymous BACKGROUND-layer texture (no parentKey), located by
 -- scanning the bar's regions. Hidden via the same recursion-guard alpha pattern.
 local PRD_BG_ATLAS = "UI-HUD-CoolDownManager-Bar-BG"
 

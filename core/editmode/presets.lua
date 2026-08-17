@@ -1,3 +1,4 @@
+-- presets.lua - Edit Mode layout presets written through LibEditModeOverride
 local _, addon = ...
 local LEO = LibStub("LibEditModeOverride-1.0")
 

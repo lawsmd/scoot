@@ -74,7 +74,7 @@ local function getHealthValueCurve()
             local ok1, err1 = pcall(healthValueCurve.AddPoint, healthValueCurve, 0.0, CreateColor(1, 0, 0, 1))    -- Red at 0%
             local ok2, err2 = pcall(healthValueCurve.AddPoint, healthValueCurve, 0.5, CreateColor(1, 1, 0, 1))    -- Yellow at 50%
             local ok3, err3 = pcall(healthValueCurve.AddPoint, healthValueCurve, 1.0, CreateColor(0, 1, 0, 1))    -- Green at 100%
-            if addon.DebugPrint then
+            if addon.debug then
                 if not ok1 then addon.DebugPrint("getHealthValueCurve: AddPoint(0) failed - " .. tostring(err1)) end
                 if not ok2 then addon.DebugPrint("getHealthValueCurve: AddPoint(50) failed - " .. tostring(err2)) end
                 if not ok3 then addon.DebugPrint("getHealthValueCurve: AddPoint(100) failed - " .. tostring(err3)) end
@@ -136,7 +136,7 @@ local function getHealthValueDarkCurve()
             local ok2, err2 = pcall(healthValueDarkCurve.AddPoint, healthValueDarkCurve, 0.5, CreateColor(1, 1, 0, 1))       -- Yellow at 50%
             local ok3, err3 = pcall(healthValueDarkCurve.AddPoint, healthValueDarkCurve, 0.9999, CreateColor(0, 1, 0, 1))    -- Green at 99.99% (matches regular curve)
             local ok4, err4 = pcall(healthValueDarkCurve.AddPoint, healthValueDarkCurve, 1.0, CreateColor(0.23, 0.23, 0.23, 1)) -- Dark gray at 100%
-            if addon.DebugPrint then
+            if addon.debug then
                 if not ok1 then addon.DebugPrint("getHealthValueDarkCurve: AddPoint(0) failed - " .. tostring(err1)) end
                 if not ok2 then addon.DebugPrint("getHealthValueDarkCurve: AddPoint(50) failed - " .. tostring(err2)) end
                 if not ok3 then addon.DebugPrint("getHealthValueDarkCurve: AddPoint(99.99) failed - " .. tostring(err3)) end
@@ -290,7 +290,7 @@ function Textures.applyValueBasedColor(bar, unit, overlay, useDark)
         end
     end
 
-    if addon.DebugPrint and texturesColored > 0 then
+    if addon.debug and texturesColored > 0 then
         if isSecret then
             addon.DebugPrint(string.format("applyValueBasedColor: colored %d textures for %s (secret color)", texturesColored, unit))
         else
@@ -425,11 +425,10 @@ function Textures.applyToBar(bar, textureKey, colorMode, tint, unitForClass, bar
             -- and skip the write when it hasn't changed. Each SetStatusBarTexture
             -- call re-stamps the StatusBar in the parent CompactUnitFrame's
             -- render queue, demoting Blizzard's PrivateAurasUI dispel highlight
-            -- beneath us. CompactUnitFrame_UpdateAll fires on every UNIT_HEALTH
+            -- beneath it. CompactUnitFrame_UpdateAll fires on every UNIT_HEALTH
             -- and triggers applyToHealthBar with the same path almost always —
             -- so >99% of these writes are no-ops that perturb rendering for
-            -- no reason. (Confirmed via empirical bisect 2026-04-27 — see
-            -- ../groupframes/gfhealthbar.md "Investigation Postmortem".)
+            -- no reason. (Confirmed by bisecting the write path.)
             if bar.SetStatusBarTexture and getProp(bar, "ufLastTexturePath") ~= resolvedPath then
                 setProp(bar, "ufInternalTextureWrite", true)
                 pcall(bar.SetStatusBarTexture, bar, resolvedPath)
@@ -642,7 +641,7 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
     local opacity = tonumber(backgroundOpacity) or 50
     opacity = math.max(0, math.min(100, opacity)) / 100
     
-    -- Check if we're using a custom background texture
+    -- Check for a custom background texture
     local isCustomTexture = type(backgroundTextureKey) == "string" and backgroundTextureKey ~= "" and backgroundTextureKey ~= "default"
     local resolvedPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(backgroundTextureKey)
     

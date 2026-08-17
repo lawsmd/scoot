@@ -18,7 +18,7 @@
 -- battery passes, activation moves to config presence (buffsDebuffs) and the
 -- chosen suppression mode ships as the default.
 --
--- Contracts this build relies on (verified in wow-ui-source 12.1.0):
+-- Contracts this build relies on (checked against the 12.1.0 UI source):
 -- * CustomAuraContainerTemplate carries allowUntaintedCreation, so addon
 --   CreateFrame works; buttons are engine-created via AddAuraGroup only.
 -- * initializeFrame receives each button's public object table via
@@ -546,7 +546,7 @@ end
 
 local suppressionWatcher = nil
 
--- Tracks which units have actually had a suppression write applied this
+-- Tracks which units have had a suppression write applied this
 -- session. The "off" revert only runs for touched units, so a session that
 -- never enables suppression never writes to Blizzard's container at all.
 AC.suppressionTouched = {}

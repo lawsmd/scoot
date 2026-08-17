@@ -96,7 +96,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                 local s = ensureProfileActionBarSettings()
                 if not s then return end
                 s["enableBar" .. barNum] = value
-                -- Delegate the actual write: the reconciler carries the combat guard,
+                -- Delegate the write: the reconciler carries the combat guard,
                 -- the settings-readiness check and the deferred verify pass.
                 if addon and addon.ReconcileActionBarsEnabled then
                     addon.ReconcileActionBarsEnabled("UIToggleBar" .. barNum)

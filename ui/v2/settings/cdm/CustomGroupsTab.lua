@@ -102,7 +102,7 @@ local function CreateDropTarget(parent, groupIndex)
     local inner = f:CreateTexture(nil, "ARTWORK", nil, 1)
     inner:SetAllPoints()
     inner:SetColorTexture(0, 0, 0, 0) -- transparent, border is the outer frame
-    -- Actually make a proper border using 4 edge textures
+    -- Build a proper border using 4 edge textures
     border:Hide()
     local function MakeBorderEdge(point1, rel1, point2, rel2, w, h)
         local edge = f:CreateTexture(nil, "OVERLAY")

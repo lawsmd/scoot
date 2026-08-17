@@ -48,10 +48,8 @@ local layoutHooked = false
 -- Debug helper (disabled by default)
 local DEBUG_CLASS_RESOURCE = false
 local function debugPrint(...)
-	if DEBUG_CLASS_RESOURCE and addon and addon.DebugPrint then
+	if DEBUG_CLASS_RESOURCE then
 		addon.DebugPrint("[ClassResource]", ...)
-	elseif DEBUG_CLASS_RESOURCE then
-		print("[Scoot ClassResource]", ...)
 	end
 end
 

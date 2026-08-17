@@ -4,8 +4,7 @@
 -- abbreviated current-health value, both colored by the health color curve,
 -- with the class-gradient name beside the stack, power/level texts riding the
 -- name, and the absorb halo above the numbers. Built and certified in the
--- healthtext debug harness (this file IS that engine, promoted); spec:
--- ADDONCONTEXT/docs/unitframesZ/ufzhealthtext.md.
+-- healthtext debug harness; this file IS that engine, promoted.
 --
 -- ONE INSTANCE PER FRAME (core.lua's UFZ.FRAMES), on the AceDB-backed config
 -- of its unit: inst.cfg IS profile.unitFramesZUnits[inst.unitKey], so every cfg
@@ -225,7 +224,7 @@ end
 
 -- The level pair: "lvl" leads the number on its own FontString (no inline
 -- size markup exists -- the '%' companion precedent) at 75% of the number's
--- size (user spec), separated by a small sub-space gap expressed as a
+-- size, separated by a small sub-space gap expressed as a
 -- fraction of the number's point size (roughly half a space glyph).
 local LEVEL_PREFIX_SCALE  = 0.75
 local LEVEL_PREFIX_GAP_EM = 0.08
@@ -239,13 +238,13 @@ local function applyFonts(inst)
     applyOverrideFace(inst, inst.nameFS, currentNamePoint(inst), face, cfg.nameFace)
     addon.ApplyFontStyle(inst.powerFS, face, cfg.powerSize, cfg.style)
     addon.ApplyFontStyle(inst.altPowerFS, face, cfg.altPowerSize, cfg.style)
-    -- The '%' companion rides at half the number's size (user spec), min 1.
+    -- The '%' companion rides at half the number's size, min 1.
     addon.ApplyFontStyle(inst.altPowerSymbolFS, face, math.max(1, cfg.altPowerSize * 0.5), cfg.style)
-    -- The absorb text shares the value row's settings outright (user spec):
+    -- The absorb text shares the value row's settings outright:
     -- same size, same face override, same style. No keys of its own.
     applyOverrideFace(inst, inst.absorbFS, cfg.valSize, face, cfg.valFace)
     addon.ApplyFontStyle(inst.levelFS, face, cfg.levelSize, cfg.style)
-    -- The "lvl" prefix rides at 75% of the number's size (user spec), min 1.
+    -- The "lvl" prefix rides at 75% of the number's size, min 1.
     addon.ApplyFontStyle(inst.levelPrefixFS, face, math.max(1, cfg.levelSize * LEVEL_PREFIX_SCALE), cfg.style)
 end
 
@@ -367,12 +366,12 @@ end
 local POWER_SIDE_GAP = 6
 
 -- Inward inset for the four name-edge locations: below/above-name text starts
--- a little inside the name box's outer edge instead of flush with it. Baked
+-- slightly inside the name box's outer edge instead of flush with it. Baked
 -- into the anchor, so the offset sliders still read 0 at the default look.
 local POWER_EDGE_INSET = 5
 
 -- Vertical clearance for the same four locations: below-name text drops (and
--- above-name text rises) a little extra so a two-line wrapped name -- which
+-- above-name text rises) further so a two-line wrapped name -- which
 -- overhangs the rect edge the anchor tracks -- never crowds the power text.
 -- Universal by request: no per-line-count logic. Baked in like the inset, so
 -- the offset sliders still read 0 at the default look.
@@ -381,7 +380,7 @@ local POWER_EDGE_DROP = 5
 -- The classification icon's fixed vertical seat, in the same sign convention as
 -- the offset sliders it replaces (positive = up). It rides the name-relative
 -- locations but has no user offsets: a texture only needs to look centred, and
--- the value that centres it is a constant (user-tuned in-game 2026-08-07).
+-- the value that centres it is a constant, tuned in-game.
 -- Derived rather than baked so applyPowerLayout and computeEnvelope cannot
 -- drift apart -- both call this.
 --
@@ -390,15 +389,15 @@ local POWER_EDGE_DROP = 5
 -- tuned +5 cancelled it exactly, and only the top locations were left paying it
 -- twice -- 10px above the name's rect, plus the font's own ascent reserve above
 -- the cap line on top of that. Hence "the icon hovers too high above the name"
--- on a topright frame while a bottom one looked right (user report 2026-08-07,
--- round 3, on Boss and Target alike). The seat now cancels the drop on all four
+-- on a topright frame while a bottom one looked right, on Boss and Target
+-- alike. The seat now cancels the drop on all four
 -- corner locations, so the icon's near edge lands on the name's rect edge and
 -- the only gap left is the font's ascent reserve -- which scales with nameSize,
 -- as it should. nameside takes no drop at all, so it keeps the tuned value.
 --
 -- CLASSIFY_TUCK is the knob for going further: it moves the icon TOWARD the
--- name, into the ascent reserve and then into the caps. A little overlap is
--- sanctioned (same report) -- the name is not the thing that must stay legible
+-- name, into the ascent reserve and then into the caps. Slight overlap is
+-- sanctioned, since the name is not the thing that must stay legible
 -- at the corner.
 local CLASSIFY_TUCK       = 0
 local CLASSIFY_NAMESIDE_Y = 5
@@ -428,7 +427,7 @@ end
 -- both the how and the when: synchronously on the shared ruler, in the same
 -- step as the paint, so this function never sees a half-settled answer). With a
 -- measurement, far-side locations anchor to the justified edge offset by the
--- ink width, tracking the actual first/last letter; without one -- a secret
+-- ink width, tracking the first and last letter; without one -- a secret
 -- name, which no getter and no ruler in 12.0 can size -- they fall back to the
 -- box edge, the pre-round-3 behavior, documented, not fixable blind.
 -- trailW reserves room on the right for a trailing companion (the half-size
@@ -511,7 +510,7 @@ end
 -- The icon and the level pair ride the same five locations, and the icon has no
 -- positioning of its own, so a shared location stacks one on top of the other.
 -- Fresh Target profiles dodge it by defaulting the level to topleft, but every
--- Target profile saved before 2026-08-06 still has both on topright. The icon
+-- Target profile saved before that change still has both on topright. The icon
 -- steps RIGHT until it clears the level block and sits immediately beside it;
 -- the level itself never moves.
 --
@@ -558,12 +557,12 @@ local function classifyShiftReserved(inst)
         or (cfg.classifyLoc == "nameside" and cfg.align == "left")
     local clear = growsRight and levelBlockWidth(cfg) or cfg.classifySize
     -- levelX rides along: the user can nudge the level, and the icon has to
-    -- clear where it actually sits. Clamped at 0 so a level nudged far enough
+    -- clear where it sits. Clamped at 0 so a level nudged far enough
     -- left simply frees the icon rather than dragging it off its own corner.
     return math.max(0, cfg.levelX + clear + CLASSIFY_LEVEL_GAP)
 end
 
--- What the icon actually uses: the same step, dropped when the level painted
+-- What the icon uses: the same step, dropped when the level painted
 -- nothing (hide-at-max, a hidden unknown level, a missing API). Only ever
 -- SMALLER than the reserved step, so an un-stepped icon still lands inside the
 -- envelope and following it never needs a resize.
@@ -583,7 +582,7 @@ local function applyPowerLayout(inst)
     if not inst.frame then return end
     local cfg = inst.cfg
     anchorPowerFS(inst, inst.powerFS, cfg.powerLoc, cfg.powerX, cfg.powerY, 0)
-    -- The level pair rides the same location system (user spec). The "lvl"
+    -- The level pair rides the same location system. The "lvl"
     -- prefix leads the number, so left-justified locations reserve its width
     -- plus the sub-space gap (leadW, the trailW mirror). "lvl" is plain
     -- readable text, so the shared ruler measures it synchronously; the
@@ -629,13 +628,13 @@ local function applyPowerLayout(inst)
         sym:SetPoint("TOPLEFT", inst.altPowerFS, "TOPRIGHT", 0, 0)
     end
     -- The classification icon rides the same five locations as the texts it
-    -- sits among -- name-relative, not frame-edge (ufzstructure.md). No
+    -- sits among -- name-relative, not frame-edge. No
     -- trailW/leadW: a texture has no companion glyph.
     anchorClassify(inst)
 end
 
--- The absorb shield text (user spec 2026-08-05; the glow-only look won the
--- same-day style experiment over a boxed pill): white number on a soft gold
+-- The absorb shield text (the glow-only look won the style experiment over a
+-- boxed pill): white number on a soft gold
 -- halo, above the percent. Fixed look -- constants, not config; only
 -- show/offsets are configurable.
 local ABSORB_GAP    = 15  -- ink-true: the number's INK bottom above the
@@ -663,7 +662,7 @@ local function setAbsorbGlowShown(inst, shown)
     end
 end
 
--- PCT-anchored (user revision 2026-08-05, replacing the frame-top anchor):
+-- PCT-anchored, replacing an earlier frame-top anchor:
 -- the percent's rect top rises with digit-mode size changes, and a fixed spot
 -- let the taller 2-digit rendering climb into it. Riding the rect top keeps
 -- the visual gap constant instead -- the text now moves at the 100->99 and
@@ -707,18 +706,17 @@ end
 -- unlike UnitHealth which does. So no issecretvalue dance, no
 -- SetAlphaFromBoolean, no isZeroAmount launder -- the pcall below is house
 -- style against a missing/erroring API, not a secrecy guard. This is what
--- closed the "readability under restrictions: measure first" open item in
--- ufzstructure.md.
+-- closed the "readability under restrictions: measure first" open item.
 --
 -- SetAtlas fails SILENTLY on an unknown name -- it leaves an invisible or
 -- white region rather than erroring -- so every name here is gated on
--- C_Texture.GetAtlasInfo first (the Cast Bar Z doctrine, ../ingametextures.md).
+-- C_Texture.GetAtlasInfo first, the same doctrine Cast Bar Z follows.
 
 -- Six candidates shipped for the in-game sharpness bake-off (the boss banner
 -- medallion and spikes, three Torghast layer skulls, this one). The raid marker
--- won outright at the size we render at -- everything else read soft -- so the
+-- won outright at the size Scoot renders at -- everything else read soft -- so the
 -- others are gone and the style selector with them. The table keeps its shape
--- because "for now" is the user's word: re-adding a candidate is one entry.
+-- because this is provisional: re-adding a candidate is one entry.
 local DEAD_ICONS = {
     -- 64px inside a 256x256 sheet; `file` is a raw path, not an atlas.
     raidmarker = {
@@ -904,7 +902,7 @@ end
 --
 -- Nobody can see that band on a lone frame. Stacked, it is the whole distance
 -- between two frames, which is why boss frames looked far apart at every
--- spacing the slider offered (user report 2026-08-07). stack.lua subtracts this
+-- spacing the slider offered. stack.lua subtracts this
 -- from the chain step, so the Spacing slider measures the gap between what is
 -- on screen rather than between two reservations.
 --
@@ -924,8 +922,8 @@ end
 
 -- The aura rows' alignment span: the content's horizontal extent, as offsets
 -- from the frame's LEFT edge. The envelope is a deterministic SUPERSET, so a
--- row aligned to the frame edge floats past the visible content (user report
--- 2026-08-06); the rows align to the leftmost ELEMENT instead. Box side: the
+-- row aligned to the frame edge floats past the visible content, so
+-- the rows align to the leftmost ELEMENT instead. Box side: the
 -- centered column's near ink edge, estimated from config -- half the widest
 -- configured rendering at ~0.55 em per glyph (the same size-based-estimate
 -- doctrine as the envelope satellites; non-center layouts are already flush).
@@ -975,7 +973,7 @@ end
 -- in lockdown just like geometry (first combat target-drop proved it:
 -- ADDON_ACTION_BLOCKED on ScootUnitFrameZTarget:Hide()). In-combat show/hide
 -- on unit existence is therefore delegated to Blizzard's secure unit watch
--- (applyUnitWatch below); our own Show/Hide calls run OOC only. Every worker
+-- (applyUnitWatch below); Scoot's own Show/Hide calls run OOC only. Every worker
 -- that touches protected state queues itself here when it lands in lockdown
 -- and pays on PLAYER_REGEN_ENABLED. Flags only, never values: the drain
 -- re-runs the worker, which recomputes fresh.
@@ -1033,8 +1031,8 @@ regenActions.stack = function(inst) UFZ._ApplyStack(inst.unitKey) end
 -- Resize the outer frame to the envelope and seat the numbers box inside it,
 -- flush against the align edge, T below the top. Stateless recompute-and-set.
 -- When a setting changes the extents, the frame resizes around whatever anchor
--- Edit Mode stored, so the content can shift a little on screen until the
--- user re-drags -- accepted (2026-08-05): an analytic keep-the-numbers-still
+-- Edit Mode stored, so the content can shift slightly on screen until the
+-- user re-drags. Accepted: an analytic keep-the-numbers-still
 -- rebase existed briefly and was deleted as a layer of position-store-writing
 -- logic a settings nudge does not justify.
 --
@@ -1074,7 +1072,7 @@ local function applyEnvelope(inst)
     -- growth is paid out of the name's position instead of the frame's edges:
     -- a vertically centred anchor point splits it, lifting the name and the
     -- number stack by half of it while the aura rows below drop by the other
-    -- half (user report 2026-08-10). Stateless -- _RestorePosition recomputes
+    -- half. Stateless -- _RestorePosition recomputes
     -- from the store and the envelope above, so nothing is written back.
     --
     -- A stacked frame's new height also moves every frame below it and resizes
@@ -1097,21 +1095,21 @@ regenActions.envelope = applyEnvelope
 -- reasoning that NAME_BASE_Y and cfg.nameY are a text compensator and a user
 -- nudge that "mean nothing to a texture". Wrong twice over -- the skull read
 -- visibly low against the name on Player and Target alike, both at nameY 0
--- (user report 2026-08-10). First: the icon replaces the health readout, and
+-- First: the icon replaces the health readout, and
 -- the thing the eye lines it up against is the name beside it, so the name's
 -- seat is exactly what it has to inherit. Second: even that seat is the name
--- RECT's midline, and a rect is not its ink. Measured off the reported
--- screenshot the two errors compound to ~10px of droop at the shipped
+-- RECT's midline, and a rect is not its ink. Measured off a screenshot,
+-- the two errors compound to ~10px of droop at the shipped
 -- defaults, and nameInkMidY answers both at once:
 --     NAME_BASE_Y + cfg.nameY      the name's own lift off the gap-midline
 --     namePoint * descent / 2      the rect's dead descender space, which
 --                                  seats the ink above the rect center
 -- Still no user offset on this icon: it follows the name, and the name has the
--- sliders. Self-sufficient rather than fed from applyLayout, so the name fit
+-- sliders. Computed here rather than fed from applyLayout, so the name fit
 -- can re-seat it when a long name lands at a smaller point size.
 --
 -- Size: 100% is HALF the stack it replaces. Filling the whole stack height was
--- the first bake (in-game verdict 2026-08-07: far too big), so the slider's
+-- the first bake (far too big in-game), so the slider's
 -- 100% was rebased rather than its range re-centred -- a saved 100 keeps
 -- meaning "the default", and the old look is still reachable at 200.
 local DEAD_ICON_BASE = 0.5
@@ -1167,7 +1165,7 @@ local function applyLayout(inst)
     -- look the UFZ spec wants). cfg.gap fine-tunes from there; negative is legal.
     -- With digit mode on the row reserves space for the LARGEST digit size, so a
     -- big one-digit rendering never overlaps the value row. Still static config --
-    -- the reserve never moves per tick; the sandwich just sits a little looser
+    -- the reserve never moves per tick; the sandwich sits slightly looser
     -- under the small three-digit rendering.
     local pctRowH = pctRowHeight(cfg)
     -- The name centers on the GAP between the two number rows (the boundary at
@@ -1196,7 +1194,7 @@ local function applyLayout(inst)
         -- size, fixed TOP anchor); the percent is bottom-aligned, its BOTTOM
         -- anchor riding the boundary -- but the rect bottom is NOT the ink
         -- bottom: the font's descent whitespace under the digits scales with
-        -- point size (measured 0.28 px/pt for Anton Wide 1.5x), so the lift
+        -- point size (0.28 px/pt for Anton Wide 1.5x), so the lift
         -- shifts the off-master digit modes to re-pin the INK instead. The old
         -- TOP anchor was worse still: the whole line-box delta moved the ink,
         -- not just the descent share.
@@ -1302,7 +1300,7 @@ end
 -- The shared tail of the flat-value chains (power, absorb): pcall'd formatter
 -- into pcall'd SetText, verdict into last[lastKey]. The caller has already
 -- ClearText'd. getterName labels the verdict strings (default: the power
--- chain's getter). Returns true only when text actually landed -- the absorb
+-- chain's getter). Returns true only when text landed -- the absorb
 -- chain gates its box visibility on it.
 local function paintPowerValue(inst, fs, lastKey, getterOk, value, getterName)
     getterName = getterName or "UnitPower"
@@ -1477,10 +1475,9 @@ end
 -- FontString, GetText() then comes back PLAIN nil for the blank; a non-zero
 -- amount comes back as a string (possibly secret). That nil is the one bit of
 -- a secret number this addon can legally observe -- emptiness has nothing to
--- keep secret -- and it is exactly the bit hide-at-zero needs. Ecosystem-
--- verified 2026-08-05: two independent shipped addons gate absorb TEXT this
--- way in 12.0, one citing Blizzard's legacy health-deficit text as the origin
--- of the technique. Their measured rules, honored below: never == on the
+-- keep secret -- and it is exactly the bit hide-at-zero needs. The technique
+-- is established across the ecosystem, and traces back to Blizzard's own
+-- legacy health-deficit text. Its rules, honored below: never == on the
 -- GetText result (comparing a secret string throws), truthiness/nil test only;
 -- and a secret-tainted empty string compared to "" also throws, which is why
 -- the FontString round-trip exists at all.
@@ -1530,7 +1527,7 @@ end
 
 --------------------------------------------------------------------------------
 -- The absorb shield text. UnitGetTotalAbsorbs is SecretReturns UNCONDITIONALLY
--- (the UnitHealth tier -- wow-ui-source 12.0.7 API docs; no SecretWhenUnit*
+-- (the UnitHealth tier -- the 12.0.7 API docs; no SecretWhenUnit*
 -- predicate exists for absorbs), so the display chain is the value row's
 -- (AbbreviateNumbers is secret-whitelisted). Hide-at-zero is always on and
 -- has two routes: a plain value compares directly; a secret one goes through
@@ -1591,8 +1588,8 @@ end
 -- plain Lua -- so the compares below are legal; the secret branch is
 -- belt-and-braces only. A target above the cap reads -1 ("too high to tell"),
 -- which paints "lvl ??" -- unless hide-at-max is on: -1 means AT LEAST the
--- cap (bosses, skull mobs), so the toggle hides it too (user decision
--- 2026-08-05; it originally painted regardless).
+-- cap (bosses, skull mobs), so the toggle hides it too; it originally
+-- painted regardless.
 --------------------------------------------------------------------------------
 
 -- The sanctioned max test: min(expansion cap for this account,
@@ -1707,7 +1704,7 @@ local function previewLevel(inst)
     return true
 end
 
--- The classification icon only steps aside while the level is actually on
+-- The classification icon only steps aside while the level is on
 -- screen, so a blank level (hide-at-max is the common one) hands the corner
 -- back. Re-anchored on the FLIP only: this runs on every level and target
 -- event, and the anchor is unchanged in between.
@@ -1772,7 +1769,7 @@ local function updateClassification(inst)
 end
 
 --------------------------------------------------------------------------------
--- The name row. Rules from docs/unitframesZ/unitNames.md: gradient start is the
+-- The name row. Gradient start is the
 -- class color darkened 25%, end is the hand-picked class endpoint lightened 10%
 -- (the CastBar X treatment), applied per-character -- which needs readable text,
 -- so a secret name renders raw in solid white (the documented fallback, not a
@@ -1783,7 +1780,7 @@ end
 -- Sizing: the certified blind fit (core/blindfit.lua) picks the point size
 -- asynchronously; refreshName launches it and the paint lands in onDone. The
 -- fit measures the PLAIN string and the paint may apply the ramped one --
--- certified safe (unitNames.md pitfall 12: widths byte-identical).
+-- certified safe (widths byte-identical).
 --
 -- update() never touches this FontString: health ticks must not rebuild the
 -- ramp or refit. Name refresh is event- and command-driven only.
@@ -1806,8 +1803,8 @@ end
 --
 -- Measured SYNCHRONOUSLY on the shared ruler, from the string and the point
 -- size -- never read back off the live name FontString. That is the round-5
--- correction (user report 2026-08-10, the alt power sitting way outside the
--- name). The old path read nameFS:GetWrappedWidth one deferred frame after the
+-- correction for the alt power sitting way outside the
+-- name. The old path read nameFS:GetWrappedWidth one deferred frame after the
 -- paint, and a single deferred shot is wrong twice over:
 --
 --   * It cannot land before the paint it describes. Every far-side satellite
@@ -1832,7 +1829,7 @@ end
 -- ellipsizes against the box instead, which fills it -- hence the box-width
 -- answer, which is the truth in that case rather than a fallback.
 --
--- Secret names stay unmeasurable in every form (unitNames.md's constraint map:
+-- Secret names stay unmeasurable in every form:
 -- every width getter on a FontString holding one is secret, and the ruler
 -- refuses the string outright rather than poisoning itself for every other
 -- caller in the addon). nil, and the box-edge fallback stands -- documented,
@@ -1869,8 +1866,8 @@ end
 -- So they ride the name's own hold. On a NEW subject refreshName blanks the
 -- name until its fit lands, and a satellite left visible across that window is
 -- drawn for those frames at the PREVIOUS subject's geometry and then seen to
--- correct itself -- the same user report's other half, and the reason the
--- synchronous measurement above is not sufficient on its own. The whole name
+-- correct itself -- the other half of the same problem, and the reason the
+-- synchronous measurement above is not enough on its own. The whole name
 -- row now appears at once instead.
 --
 -- Alpha, never Hide: Show/Hide on these belongs to updateClassification and
@@ -1911,7 +1908,7 @@ end
 -- and white first: |cff codes multiply against the text color.
 --
 -- The certified nametext display application in full (the old "no wrap
--- machinery" divergence was REVERSED by user verdict 2026-08-03). Ramp branches
+-- machinery" divergence was REVERSED). Ramp branches
 -- are two-phase, exactly nametext's applyColor/applyRamp: paint the PLAIN
 -- string in the ramp's solid start color at the final size, then one frame
 -- later ask the engine where it broke the lines (DiscoverTextLines reads the
@@ -2120,7 +2117,7 @@ local function refreshName(inst, hold)
         nameFS:SetAlpha(0)
         satelliteAlpha(inst, 0)
         -- The release rides a callback that is ALLOWED not to fire: RunBlindFit
-        -- abandons a superseded same-pool pass silently (unitNames.md). A
+        -- abandons a superseded same-pool pass silently. A
         -- superseding pass bumps the seq and owns its own release, so this only
         -- fires when nothing did -- and it drops the hold rather than leaving a
         -- satellite invisible, which would be a worse failure than a misplaced
@@ -2136,7 +2133,7 @@ local function refreshName(inst, hold)
         face     = nameFaceKey(cfg),
         style    = cfg.style,
         width    = cfg.nameMaxWidth,
-        height   = 200,   -- generous: nameMaxLines is what actually governs the budget
+        height   = 200,   -- generous: nameMaxLines is what governs the budget
         maxLines = cfg.nameMaxLines,
         minSize  = cfg.nameMinSize,
         maxSize  = cfg.nameSize,
@@ -2160,8 +2157,8 @@ local function refreshName(inst, hold)
         applyFonts(inst)
         -- The skull seats on the name's INK midline, which closes back toward
         -- the rect center as the fit shrinks the point size. Re-seat here
-        -- rather than re-running applyLayout: this is two calls on a texture we
-        -- own, against a full relayout that restarts the stretch animations.
+        -- rather than re-running applyLayout: this is two calls on a Scoot-owned
+        -- texture, against a full relayout that restarts the stretch animations.
         layoutDeadIcon(inst)
         -- The certified belt-and-braces from nametext: re-assert the wrap state
         -- alongside the size before the paint (cheap, idempotent).
@@ -2465,7 +2462,7 @@ end
 regenActions.scale = applyScale
 
 -- Whole-frame conditional opacity, the UFX Visibility offering ported (strict
--- parity 2026-08-05: Player-only -- a Target cfg carries no opacity keys and
+-- parity: Player-only -- a Target cfg carries no opacity keys and
 -- resolves to full alpha). Priority: With Target > In Combat > Out of Combat,
 -- the contract the X tooltip advertises. SetAlpha is unprotected, so unlike
 -- the geometry workers this applies live in combat, no queue. 0 is honored --
@@ -2525,7 +2522,7 @@ local function applyClickAttributes(inst)
     -- unit (SELF/TARGET/...) and opens it via UnitPopup_OpenMenu, no
     -- menu-function attribute needed.
     click:SetAttribute("*type2", "togglemenu")
-    -- Our own overlay inherits the 12.0.7 regression that SmallFixes exists to
+    -- The Scoot overlay inherits the 12.0.7 regression that SmallFixes exists to
     -- undo: *type1 = "target" above is exactly the value SecureUnitButton_OnClick
     -- refuses to act on while a modifier is held. No-ops unless the user turned
     -- a modifier on.
@@ -2573,11 +2570,10 @@ end
 -- Secure unit watch: Blizzard's SecureStateDriverManager shows/hides watched
 -- frames on unit existence from its own secure context -- the one channel
 -- that stays legal in combat for a frame whose visibility is protected by the
--- secure click child. The ecosystem-standard pattern (oUF's Enable IS
--- RegisterUnitWatch). The player unit always exists, so only target/focus
+-- secure click child. The player unit always exists, so only target/focus
 -- frames register; register/unregister writes attributes on the protected
 -- manager frame, so this worker is OOC-only and queues like the others.
--- The watch also drops for the Edit Mode stand-in -- a targetless preview
+-- The watch also drops for the Edit Mode stand-in: a targetless preview
 -- would otherwise be re-hidden by the manager's next scan.
 local function applyUnitWatch(inst)
     local frame = inst.frame
@@ -2610,7 +2606,7 @@ local function applyUnitWatch(inst)
 end
 regenActions.watch = applyUnitWatch
 
--- Our own Show/Hide on the outer frame (enable/disable transitions, the
+-- Scoot's own Show/Hide on the outer frame (enable/disable transitions, the
 -- always-existing player unit): protected in lockdown by the click child, so
 -- combat calls queue a fresh visibility pass for regen instead.
 local function setShownSafe(inst, show)
@@ -2641,7 +2637,7 @@ local function ensureFrame(inst)
     -- ladder). The level is explicit because a child of UIParent otherwise
     -- lands at 1, the floor of the band, under every other Scoot overlay.
     -- Both calls MUST stay above the SecureUnitButtonTemplate child created
-    -- below -- once that child SetAllPoints us, the frame is protected.
+    -- below -- once that child SetAllPoints the frame, it is protected.
     addon.Strata.ApplyHUD(frame, 10)
     -- The frame itself stays mouse-dead: Edit Mode dragging is the LibEditMode
     -- selection overlay's job (editmode.lua), and unit interactivity is the
@@ -2664,7 +2660,7 @@ local function ensureFrame(inst)
     -- consults the user's click bindings FIRST -- a spell bound to right-click
     -- casts, and Open Menu fires on whichever button/modifier the user bound
     -- it to -- so no mouse button is hard-coded anywhere in Scoot. The
-    -- template is protected; keeping it a CHILD of our insecure frame means
+    -- template is protected; keeping it a CHILD of the insecure frame means
     -- visibility and geometry ride the parent implicitly, which stays legal in
     -- combat (the overlay doctrine, inverted). Hidden during Edit Mode so the
     -- LEM selection gets the mouse (editmode.lua).
@@ -2678,7 +2674,7 @@ local function ensureFrame(inst)
     -- Button it defaults to click+motion, and the motion half was silently eating
     -- every hover in that reserve: Blizzard's Cooldown Viewer icons (MEDIUM level
     -- 2, and motion-only themselves -- CooldownViewer.lua:350-351) lost their
-    -- tooltips to us at level 11, as did anything else parked there.
+    -- tooltips to this frame at level 11, as did anything else parked there.
     --
     -- Disabling motion costs nothing: SecureUnitButtonTemplate declares an
     -- OnClick and nothing else (SecureTemplates.xml:21-25), and Scoot never wired
@@ -2715,7 +2711,7 @@ local function ensureFrame(inst)
     inst.absorbFS = frame:CreateFontString(nil, "OVERLAY")
     inst.absorbFS:SetJustifyH("CENTER")
     inst.absorbFS:SetTextColor(1, 1, 1, 1)
-    -- The halo (user request 2026-08-05): a soft white-gold glow carrying the
+    -- The halo: a soft white-gold glow carrying the
     -- number, echoing how the base UI paints absorbs. Blizzard's classic
     -- soft-edged gold ring file; its visible ring sits well inside the
     -- texture rect, hence the generous overreach constants. BACKGROUND
@@ -2847,7 +2843,7 @@ local function ensureFrame(inst)
     -- The secure unit watch shows this frame from Blizzard's manager when the
     -- watched unit appears (the only combat-legal channel). update() gates on
     -- IsShown, so the paint that _UpdateVisibility used to run "on the way to
-    -- showing" must re-run here instead. Idempotent for our own OOC shows.
+    -- showing" must re-run here instead. Idempotent for Scoot's own OOC shows.
     frame:SetScript("OnShow", function()
         if inst.previewActive then return end
         update(inst)
@@ -2894,7 +2890,7 @@ local function getConfig(inst)
     return snapshot
 end
 
--- setUnit is gone (2026-08-07). The unit token is structural now -- minted from
+-- setUnit is gone. The unit token is structural now -- minted from
 -- the frame row into inst.unit -- so there is nothing for a setter to write:
 -- five boss frames read one config table and each needs its own token. It was
 -- a harness relic with no caller outside the API table.
@@ -2914,7 +2910,7 @@ local function verifyAppliedFace(inst, fs, wantedFn)
     local wanted = wantedFn()
     if type(wanted) ~= "string" then return end
     local function check(finalCheck)
-        -- Stale guard: the user may have switched faces again while we waited.
+        -- Stale guard: the player may have switched faces while this waited.
         if wantedFn() ~= wanted then return end
         local ok, applied = pcall(fs.GetFont, fs)
         if not ok or type(applied) ~= "string" then return end
@@ -3477,7 +3473,7 @@ local function setAbsorbOffset(inst, x, y)
     anchorAbsorbFS(inst)
 end
 
--- The level text's ONE toggle (user spec: no regular on/off exists).
+-- The level text's ONE toggle: no regular on/off exists.
 local function setLevelHideMax(inst, state)
     ensureApplied(inst)
     state = tostring(state or ""):lower()
@@ -3822,7 +3818,7 @@ local function newInstance(row, cfg)
         -- Secure unit watch bookkeeping (applyUnitWatch): whether the frame is
         -- registered with Blizzard's existence watcher, and for which unit.
         watchRegistered = nil, watchUnit = nil,
-        -- What the last update() actually did, per chain. Report material; never
+        -- What the last update() did, per chain. Report material; never
         -- secrets.
         last = {
             pct = "never ran", val = "never ran", color = "never ran",

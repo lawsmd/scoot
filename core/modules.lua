@@ -26,7 +26,7 @@ addon.FEATURE_GUIDE = {
         color = addon.VARIANT_COLORS.Y,
         tooltipTitle = "Modern",
         tooltipText = "Custom frames that fully replace Blizzard's UI, with dense info, smooth bars, and full layout control.",
-        summary = "Custom frames that replace Blizzard UI elements; these features aim to be clean, informative, efficient frames similar to modern offerings like ElvUI or EllesmereUI.",
+        summary = "Custom frames that replace Blizzard UI elements; these features aim to be clean, informative, efficient frames with dense information and full control over layout.",
     },
     {
         letter = "Z",
@@ -174,7 +174,7 @@ addon.MODULE_CATEGORIES = {
     },
     scootAuras = {
         label = "ScootAuras",
-        -- No variant letter: plain ON/OFF row (maintainer decision 2026-08-13).
+        -- No variant letter: plain ON/OFF row.
         -- No sub-toggles on Features page (dynamic per-tracker IDs)
     },
     cooldownManager = {

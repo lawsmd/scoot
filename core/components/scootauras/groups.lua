@@ -451,7 +451,7 @@ function Groups.SnapShellToVisual(trackerId)
 
     -- The shell's scale can be stale while grouped (styling targets the
     -- visual); set it from the setting first so the offset math lands in the
-    -- scale space the shell will actually use.
+    -- scale space the shell will use.
     local db = SAU.GetDB(trackerId)
     local scale = math.max(((db and db.scale) or 100) / 100, 0.25)
     entry.shell:SetScale(scale)

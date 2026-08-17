@@ -40,14 +40,10 @@ end
 
 local function _DbgPrint(...)
 	if not _DbgEnabled() then return end
-	if addon and addon.DebugPrint then
-		addon.DebugPrint("[OffscreenUnlock]", ...)
-	else
-		print("[Scoot OffscreenUnlock]", ...)
-	end
+	addon.DebugPrint("[OffscreenUnlock]", ...)
 end
 
--- Prefer the Edit Mode registered system frame (what Edit Mode actually drags).
+-- Prefer the Edit Mode registered system frame, which is what Edit Mode drags.
 local function _GetEditModeRegisteredFrame(unit)
 	local mgr = _G.EditModeManagerFrame
 	local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices

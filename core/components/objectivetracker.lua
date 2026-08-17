@@ -1,6 +1,6 @@
+-- objectivetracker.lua - Objective Tracker styling: header fonts, quest text, block colors
 local addonName, addon = ...
 
--- Objective Tracker Component
 -- Targets Blizzard's Objective Tracker (`ObjectiveTrackerFrame`, Edit Mode system id 12) and provides:
 -- - Edit Mode settings: Height, Opacity, Text Size
 -- - Addon-only text styling (Font Face, Font Style, Font Color) for:
@@ -275,7 +275,7 @@ local function EnsureQuestNameHoverColorHook(headerText, ownerBlock)
         if st then st.applyingColor = nil end
     end
 
-    -- Blizzard hover logic changes quest name colors by calling SetTextColor; re-apply ours after.
+    -- Blizzard hover logic changes quest name colors by calling SetTextColor; re-apply the styled color after.
     hooksecurefunc(headerText, "SetTextColor", enforceQuestNameColor)
 
     -- Some templates use SetVertexColor on fontstrings; cover both.

@@ -52,7 +52,7 @@ function CBZ._IsSnapOnly(unitKey)
     return SNAP_ONLY_UNITS[unitKey] == true
 end
 
---- The mode this unit actually renders in, after validation and coercion.
+--- The mode this unit renders in, after validation and coercion.
 --- Never returns something SNAP_ANCHORS cannot answer for, except "free".
 function CBZ._GetPositionMode(unitKey)
     local cfg = CBZ._GetUnitConfig(unitKey)
@@ -68,7 +68,7 @@ function CBZ._GetPositionMode(unitKey)
 end
 
 --------------------------------------------------------------------------------
--- Snap offsets, compartmentalized (user 2026-08-05)
+-- Snap offsets, compartmentalized
 --------------------------------------------------------------------------------
 -- One offset pair per (snap direction, anchor variant). A nudge tuned against
 -- the Blizzard frame (X) is meaningless against the differently-shaped Z frame
@@ -127,8 +127,8 @@ end
 --- but has not built the frame yet, the honest answer is "do not snap", which
 --- leaves the bar at its stored position until the next re-snap corrects it.
 ---
---- Frame names come from the row (core.lua), which takes them from the verified
---- paths in ufboss.md -- never guessed, never derived from the unit token.
+--- Frame names come from the row (core.lua), which takes them from paths
+--- verified in the frame stack -- never guessed, never derived from the unit token.
 function CBZ._ResolveAnchorFrame(bar)
     local row = CBZ._RowForBarKey(bar.barKey)
     if not row or not row.anchorFrame then return nil end

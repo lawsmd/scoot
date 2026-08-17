@@ -24,8 +24,8 @@ local MAX_ICON_SIZE = 64
 --------------------------------------------------------------------------------
 
 -- Inside frame: icon anchors to matching point on the group frame. 9 values.
--- Outside-frame anchoring was removed in the 12.0.5 rework (see gfauratracking.md
--- Background > 12.0.5 architectural lockdown). Visual conflict with Blizzard's
+-- Outside-frame anchoring was removed in the 12.0.5 rework (the 12.0.5
+-- architectural lockdown). Visual conflict with Blizzard's
 -- native icons is now handled by the Hide Blizzard Buff Icons toggle (the
 -- raidFramesDisplayBuffs game setting, 12.1), not by moving Scoot icons outside
 -- the frame.
@@ -87,7 +87,7 @@ local function CreateIconFrame()
     icon:SetSize(16, 16)
     -- MEDIUM (core/strata.lua), not HIGH: Blizzard's raid frames are LOW
     -- (CompactUnitFrame.xml:3), so MEDIUM still covers them -- and unlike HIGH
-    -- it lets an open Blizzard panel cover us. Level unchanged.
+    -- it lets an open Blizzard panel cover the icon. Level unchanged.
     addon.Strata.ApplyHUD(icon, 20)
 
     -- Icon texture

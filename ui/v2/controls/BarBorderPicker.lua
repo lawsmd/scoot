@@ -592,7 +592,7 @@ local function CreateBarBorderPicker()
                 nameText:SetWordWrap(false)
                 btn._nameText = nameText
 
-                -- Border preview frame (uses BackdropTemplate for actual border rendering)
+                -- Border preview frame (BackdropTemplate renders the border)
                 local template = BackdropTemplateMixin and "BackdropTemplate" or nil
                 local previewFrame = CreateFrame("Frame", nil, btn, template)
                 previewFrame:SetSize(PREVIEW_WIDTH, PREVIEW_HEIGHT)

@@ -1,6 +1,6 @@
+-- tooltip.lua - GameTooltip text styling across both sides of every line
 local addonName, addon = ...
 
--- Tooltip Component: Manages GameTooltip text styling
 -- The GameTooltip creates FontStrings dynamically on BOTH sides of each line:
 -- - GameTooltipTextLeft1, GameTooltipTextLeft2, etc. (left side)
 -- - GameTooltipTextRight1, GameTooltipTextRight2, etc. (right side)
@@ -27,7 +27,7 @@ local addonName, addon = ...
 -- The tooltip shown when hovering a Premade Groups search result is also styled by
 -- the Title + Body Text controls. That tooltip reuses GameTooltip but is populated
 -- via direct GameTooltip:AddLine() calls inside LFGListUtil_SetSearchEntryTooltip,
--- bypassing TooltipDataProcessor — so we hook that builder separately.
+-- bypassing TooltipDataProcessor, so that builder is hooked separately.
 
 local COMPARISON_TOOLTIP_NAMES = {
     ShoppingTooltip1 = true,
@@ -357,7 +357,7 @@ local ID_LABELS = {
 }
 table.freeze(ID_LABELS)
 
--- Map Blizzard TooltipDataType enums to our kind strings
+-- Map Blizzard TooltipDataType enums to Scoot kind strings
 local TOOLTIP_DATA_TYPE_MAP = {}
 local function buildTooltipDataTypeMap()
     if not Enum or not Enum.TooltipDataType then return end

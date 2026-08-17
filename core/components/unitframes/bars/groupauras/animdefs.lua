@@ -428,7 +428,7 @@ AE.RegisterAnim({
     end,
     applyColor = function(ctrl, r, g, b, a)
         ctrl.colorR, ctrl.colorG, ctrl.colorB = r, g, b
-        -- Actual color applied per-frame in update (two-face swap)
+        -- Color is applied per-frame in update (two-face swap)
     end,
 })
 

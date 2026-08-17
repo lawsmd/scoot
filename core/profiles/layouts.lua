@@ -470,7 +470,7 @@ function Profiles:PerformCopyLayout(sourceName, rawNewName)
         self.db.profiles[newName] = deepCopy(self._profileTemplate)
     end
 
-    -- Update our internal caches
+    -- Update the internal caches
     addLayoutToCache(self, newName)
 
     -- Copy does NOT switch profiles (no reload needed). Just refresh UI/state.
@@ -523,7 +523,7 @@ function Profiles:PerformCreateLayout(rawNewName)
         end
     end
 
-    -- Blizzard caps layouts per type. We deliberately bypass EditModeManagerFrame to
+    -- Blizzard caps layouts per type. Scoot deliberately bypasses EditModeManagerFrame to
     -- avoid taint, so its AreLayoutsOfTypeMaxed check never runs -- enforce it here.
     local layoutType = Enum.EditModeLayoutType.Account
     local maxPerType = Constants and Constants.EditModeConsts
@@ -660,7 +660,7 @@ function Profiles:PerformDeleteLayout(layoutName)
     end
 
     -- Delete via library (canonical: table.remove + synchronous OnLayoutDeleted, no SaveLayouts between)
-    -- This avoids the double-adjustment bug where our manual activeLayout fix + deferred
+    -- This avoids the double-adjustment bug where the manual activeLayout fix + deferred
     -- OnLayoutDeleted both decrement, causing the wrong profile to become active.
     if LEO and LEO.DeleteLayout and LEO.DoesLayoutExist then
         if not LEO:DoesLayoutExist(layoutName) then

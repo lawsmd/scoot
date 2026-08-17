@@ -33,10 +33,8 @@ local eventFrame = nil
 
 local DEBUG_TOTEM_BAR = false
 local function debugPrint(...)
-    if DEBUG_TOTEM_BAR and addon and addon.DebugPrint then
+    if DEBUG_TOTEM_BAR then
         addon.DebugPrint("[TotemBar]", ...)
-    elseif DEBUG_TOTEM_BAR then
-        print("[Scoot TotemBar]", ...)
     end
 end
 

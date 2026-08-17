@@ -7,7 +7,7 @@ local Debug = addon.Profiles._Debug
 local getCurrentSpecID = addon.Profiles._getCurrentSpecID
 
 -- The layout lookup can never legitimately be empty or preset-free: Blizzard's Modern and
--- Classic presets are always present. An empty or preset-less lookup means we are reading
+-- Classic presets are always present. An empty or preset-less lookup means this is reading
 -- Edit Mode state that has not populated yet, not a real deletion -- and acting on it
 -- destroys profiles or raises a false "deleted outside Scoot" warning.
 local function layoutLookupIsTrustworthy(self)
@@ -93,7 +93,7 @@ function Profiles:CleanupOrphanedProfiles()
         return
     end
 
-    -- Never delete profiles based on a layout list we don't trust.
+    -- Never delete profiles based on an untrusted layout list.
     if not layoutLookupIsTrustworthy(self) then
         Debug("CleanupOrphanedProfiles skipped: layout lookup not trustworthy")
         return

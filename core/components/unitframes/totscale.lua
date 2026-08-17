@@ -23,10 +23,8 @@ end
 -- Debug helper (disabled by default)
 local DEBUG_TOT_SCALE = false
 local function debugPrint(...)
-    if DEBUG_TOT_SCALE and addon and addon.DebugPrint then
+    if DEBUG_TOT_SCALE then
         addon.DebugPrint("[ToTScale]", ...)
-    elseif DEBUG_TOT_SCALE then
-        print("[Scoot ToTScale]", ...)
     end
 end
 

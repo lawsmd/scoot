@@ -6,29 +6,29 @@
 -- with the Hide Raid Frames toggle in visibility.lua. Reads like a book:
 -- group 1 top-left, group 2 top-right, group 3 next row left, and so on.
 --
--- Constraints (see docs/context.md, debugging/secrets.md):
+-- Constraints:
 --  - This is a Scoot-owned frame parented to UIParent. Blizzard frames are
 --    never re-parented, resized, or written to.
 --  - 12.0 secrets: UnitName() returns secret values for raid tokens and no
---    longer accepts secret unit tokens at all. We therefore NEVER call
+--    longer accepts secret unit tokens at all. This file NEVER calls
 --    UnitName(). Names arrive by mirroring SetText on Blizzard's own raid
 --    frame name FontStrings via hooksecurefunc, which is the same technique
 --    raidframes/text.lua uses. Passing a secret to FontString:SetText is
---    explicitly allowed; the secret aspect then sticks to our FontString, so
---    we never call GetText() on our own rows.
+--    explicitly allowed; the secret aspect then sticks to the row FontString,
+--    so GetText() is never called on a row.
 --  - Group numbers come from the frame NAME (CompactRaidGroup<N>Member<M>),
 --    never from GetRaidRosterInfo, which is not documented as secret-safe.
---  - Colour is mirrored the same way, off the SAME FontString we take the text
---    from. UnitClass is secret (secrets.md:351) and raid unit tokens are secret,
---    so there is no legal way to ask "what class is raid7" -- but we do not need
---    to. Whatever the raid frame name is wearing, the overlay row wears too.
+--  - Colour is mirrored the same way, off the SAME FontString the text comes
+--    from. UnitClass is secret and raid unit tokens are secret,
+--    so there is no legal way to ask "what class is raid7", and no need
+--    to ask. Whatever the raid frame name is wearing, the overlay row wears too.
 --  - WHICH FontString that is depends on Scoot's own settings. When Player Name
 --    has any non-default text setting, text.lua hides Blizzard's frame.name
 --    (alpha 0 + Hide) and draws its own state.nameOverlayText, applying the
 --    class/custom colour to that one. Binding to frame.name in that case yields
 --    correct text but Blizzard's default white, because nothing ever calls
 --    SetTextColor on the hidden FontString. resolveNameSource() picks whichever
---    one the user is actually looking at.
+--    one the user is looking at.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -241,24 +241,24 @@ end
 --------------------------------------------------------------------------------
 -- Name mirroring
 --------------------------------------------------------------------------------
--- We never read the name. We hook Blizzard's SetText on the raid frame's name
--- FontString and forward the argument straight through to our own row. Colour
+-- The name is never read. A hook on Blizzard's SetText on the raid frame's name
+-- FontString forwards the argument straight through to the overlay row. Colour
 -- rides along on the same FontString via SetTextColor / SetVertexColor.
 --
 -- Deliberately a straight passthrough with no filtering: the overlay row is
 -- meant to look like the raid frame name it came from. That means class colours
 -- when the raid frames are class-colouring names, and Scoot's configured Player
 -- Name colour when they are not -- both are correct, because both are what the
--- raid frame is actually showing.
+-- raid frame is showing.
 --------------------------------------------------------------------------------
 
 -- Scoot does not colour Blizzard's name FontString. When Player Name has any
 -- non-default text setting, text.lua hides frame.name and draws its own
 -- FontString, applying the class/custom colour to that one instead. Mirror
--- whichever one the user is actually looking at -- taking text from the same
+-- whichever one the user is looking at -- taking text from the same
 -- source also means the row inherits Player Name's Hide Realm processing.
 --
--- We only ever read from and hook nameOverlayText; never SetText on it. It is
+-- nameOverlayText is only ever read from and hooked, never SetText on. It is
 -- created with no font template (text.lua:385-389) and Scoot's own styling pass
 -- is what gives it a font.
 local function resolveNameSource(frame)
@@ -310,7 +310,7 @@ function RosterOverlay:BindRow(sourceFrame, targetFS)
         -- frame name can legitimately be sitting at alpha 0 (Hide Raid Frames
         -- does exactly that), and mirroring it would paint invisible rows onto
         -- a panel that is already carrying its own SetAlpha from the
-        -- transparency slider. Two alphas multiplying is never what we want.
+        -- transparency slider. Two alphas multiplying is never the intent.
         local function forwardColor(_, r, g, b)
             local t = binding.target
             if not t then return end
@@ -403,7 +403,7 @@ end
 -- hidden by anything else.
 --
 -- The unit token is deliberately not consulted. Raid unit tokens are secret in
--- 12.0, and reading frame.unit off a Blizzard frame is exactly the kind of
+-- 12.0, and reading frame.unit off a Blizzard frame is exactly the sort of
 -- content read the secrets rules forbid.
 local function isLiveMemberFrame(frame)
     if not frame or not frame.name then return false end
@@ -448,7 +448,7 @@ function RosterOverlay:Relayout()
     -- layout pass. Reset every pass; stale frames must not survive.
     self._boundPairs = {}
 
-    -- Prefer per-group frames so we can label groups. These only exist while
+    -- Prefer per-group frames so groups can be labelled. These only exist while
     -- raid frames are in separate-groups mode.
     local usedGrouped = false
     local leftY, rightY = -M.padding, -M.padding
@@ -519,7 +519,7 @@ function RosterOverlay:Relayout()
         end
     end
 
-    -- The trailing blockGap on the last block is padding we already have.
+    -- The trailing blockGap on the last block is padding already accounted for.
     if usedGrouped and maxY > M.blockGap then
         maxY = maxY - M.blockGap
     end
@@ -574,7 +574,7 @@ function RosterOverlay:Initialize()
         self:ApplyFromProfile("RaidEvent")
 
         -- Blizzard has not necessarily reflowed its member frames by the time
-        -- GROUP_ROSTER_UPDATE reaches us, so the pass above can read the old
+        -- GROUP_ROSTER_UPDATE arrives, so the pass above can read the old
         -- shape. Re-run once things have settled. Debounced, because a raid
         -- forming fires this event many times in quick succession.
         if self._settlePending then return end

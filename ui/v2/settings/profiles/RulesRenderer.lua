@@ -383,7 +383,7 @@ local function CreateRulesSpecBadge(parent, specID)
     end
     badge._icon = icon
 
-    -- Spec name in class color (NO background per HOLDING3.md)
+    -- Spec name in class color, deliberately with no background behind it.
     local name = badge:CreateFontString(nil, "OVERLAY")
     local fontPath = Theme:GetFont("VALUE")
     name:SetFont(fontPath, 11, "")
@@ -1148,7 +1148,7 @@ local function CreateRulesCard(parent, rule, refreshCallback)
     local card = CreateFrame("Frame", nil, parent)
     card:SetHeight(isEditing and RULES_CARD_HEIGHT_EDIT or RULES_CARD_HEIGHT_DISPLAY)
 
-    -- Gray background (like collapsible section headers per HOLDING3.md)
+    -- Gray background, matching the collapsible section headers.
     local bg = card:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(bgR, bgG, bgB, bgA)

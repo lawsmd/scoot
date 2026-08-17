@@ -13,7 +13,7 @@ local drilldownMenu = nil -- lazy singleton
 local POPUP_WIDTH = 280
 
 -- Meter types where combatSpellDetails is populated with attacker info.
--- Empirical findings 2026-05-20: only DamageTaken (7) and AvoidableDamageTaken (8).
+-- Measured: only DamageTaken (7) and AvoidableDamageTaken (8).
 local DAMAGE_TAKEN_FAMILY = { [7] = true, [8] = true }
 
 -- HealingDone (2) and Hps (3) return per-target rows with empty unitName.
@@ -917,7 +917,7 @@ function DMY._OpenDrilldown(row, columnIndex)
         return
     end
 
-    -- In-combat: attempt a live drilldown with a plain GUID. Any failed link
+    -- In-combat: try a live drilldown with a plain GUID. Any failed link
     -- (unresolvable identity, query rejection, empty data, render throw)
     -- degrades to the pending placeholder — today's exact behavior.
     if DMY._inCombat then
@@ -979,7 +979,7 @@ function DMY._OnCombatEnd_RefreshDrilldown()
     local dd = DMY._activeDrilldown
     if not dd or not drilldownMenu or not drilldownMenu:IsShown() then return end
 
-    -- Resolve GUID from identityKey if we don't have one (clicked during combat)
+    -- Resolve GUID from identityKey when none is set (clicked during combat)
     if not dd.sourceGUID and dd.identityKey then
         local guid = DMY._identityToGUID and DMY._identityToGUID[dd.identityKey]
         if guid and guid ~= false then

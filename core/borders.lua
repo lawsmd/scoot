@@ -128,7 +128,7 @@ function Borders.ApplySquare(frame, opts)
 
     -- Sanity check: refuse to apply borders to frames larger than reasonable for a bar.
     -- Catches cases where the wrong frame is passed (e.g., a parent container instead
-    -- of the actual bar). Skip the check if opts.skipDimensionCheck is set.
+    -- of the visible bar). Skip the check if opts.skipDimensionCheck is set.
     if not opts.skipDimensionCheck then
         local fw = safeDimension(function() return frame:GetWidth() end)
         local fh = safeDimension(function() return frame:GetHeight() end)

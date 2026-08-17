@@ -491,7 +491,7 @@ local function ensurePartyNameOverlay(frame, cfg)
         end
     end
 
-    -- Reposition after initial text copy so CENTER/RIGHT alignment uses actual text width
+    -- Reposition after the first text copy so CENTER/RIGHT alignment uses rendered width
     if state.nameAnchor then
         Utils.repositionNameOverlay(state.overlayText, state.overlayContainer or frame,
             state.nameAnchor, state.nameOffsetX or 0, state.nameOffsetY or 0)
@@ -944,7 +944,7 @@ end
 -- Creates addon-owned FontString overlays on party frames that visually replace
 -- Blizzard's statusText. These overlays persist during combat because only
 -- addon-owned FontStrings are manipulated. Blizzard can reset its own
--- statusText all it wants -- our overlay stays styled.
+-- statusText all it wants; the Scoot overlay stays styled.
 --
 -- Pattern: Mirror text via SetText/SetFormattedText hooks, style on setup,
 -- hide Blizzard's element via SetAlpha(0).
@@ -1131,7 +1131,7 @@ local function ensurePartyStatusTextOverlay(frame, cfg)
                 else
                     pcall(ownerState.statusTextOverlay.SetText, ownerState.statusTextOverlay, text)
                 end
-                -- Mirror visibility: if Blizzard is showing status text, show our overlay
+                -- Mirror visibility: if Blizzard is showing status text, show the overlay
                 if ownerState.statusTextOverlay.Show then
                     ownerState.statusTextOverlay:Show()
                 end

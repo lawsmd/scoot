@@ -344,7 +344,7 @@ do
 			originalAlphas[petFrameFlash] = petFrameFlash:GetAlpha() or 1.0
 		end
 
-		-- Apply visibility/opacity to the actual pet portrait and mask using sticky alpha
+		-- Apply visibility/opacity to the pet portrait and mask using sticky alpha
 		-- (safe technique that avoids taint by only using SetAlpha, not Hide/Show)
 		if petPortrait then
 			local visibleAlpha = hidePortrait and 0.0 or ((originalAlphas[petPortrait] or 1.0) * opacityValue)
@@ -572,7 +572,7 @@ do
 	local function applyZoom(unit, portraitFrame, portraitTexture, zoomPct)
 		if not portraitTexture then
 			if addon.debug then
-				print("Scoot: Portrait zoom - texture not found for", unit)
+				addon.DebugPrint("Scoot: Portrait zoom - texture not found for", unit)
 			end
 			return
 		end
@@ -615,7 +615,7 @@ do
 			if portraitTexture.SetTexCoord then
 				portraitTexture:SetTexCoord(newLeft, newRight, newTop, newBottom)
 				if addon.debug then
-					print(string.format("Scoot: Portrait zoom %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
+					addon.DebugPrint(string.format("Scoot: Portrait zoom %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
 				end
 			end
 		else
@@ -631,7 +631,7 @@ do
 					portraitTexture:SetTexCoord(origCoords.left, origCoords.right, origCoords.top, origCoords.bottom)
 				end
 				if addon.debug then
-					print(string.format("Scoot: Portrait zoom out %d%% for %s - limited by full texture bounds (0,1,0,1)", zoomPct, unit))
+					addon.DebugPrint(string.format("Scoot: Portrait zoom out %d%% for %s - limited by full texture bounds (0,1,0,1)", zoomPct, unit))
 				end
 			else
 				local origCenterX = origCoords.left + (origWidth / 2.0)
@@ -646,7 +646,7 @@ do
 				if portraitTexture.SetTexCoord then
 					portraitTexture:SetTexCoord(newLeft, newRight, newTop, newBottom)
 					if addon.debug then
-						print(string.format("Scoot: Portrait zoom out %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
+						addon.DebugPrint(string.format("Scoot: Portrait zoom out %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
 					end
 				end
 			end
@@ -1270,14 +1270,14 @@ do
 					else
 						-- Override Blizzard's font size with the custom size
 						-- Blizzard calls SetTextHeight(fontHeight) which sets the text region height
-						-- Uses SetFont() with the custom size instead, which sets the actual font size
+						-- Uses SetFont() with the custom size instead, which sets the real font size
 						-- SetFont will properly scale the text, while SetTextHeight just scales the region (causing pixelation)
 						local damageTextCfg = cfg.damageText or {}
 						local customSize = tonumber(damageTextCfg.size) or 14
 						local customFace = addon.ResolveFontFace and addon.ResolveFontFace(damageTextCfg.fontFace or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
 						local customStyle = tostring(damageTextCfg.style or "OUTLINE")
 
-						-- Use SetFont to set the actual font size (not SetTextHeight which just scales the region)
+						-- Use SetFont to set the font size (SetTextHeight only scales the region)
 						-- This must be called after Blizzard's SetTextHeight to override it
 						if addon.ApplyFontStyle then
 							addon.ApplyFontStyle(feedbackFS, customFace, customSize, customStyle)

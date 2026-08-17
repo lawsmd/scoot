@@ -16,7 +16,7 @@ Reports.GroupAnalysis = GA
 
 -- Identity can be secret in instanced content; a blank cell beats an error.
 -- Returns name, realm. UnitName's second return is already nil/"" for units
--- on our own realm, so cross-realm detection needs no comparison of our own.
+-- on the local realm, so cross-realm detection needs no comparison at all.
 local function safeUnitName(unit)
     local ok, n, r = pcall(UnitName, unit)
     if not ok or n == nil then return nil end

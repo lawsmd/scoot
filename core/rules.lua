@@ -217,7 +217,7 @@ local function applyActionValue(actionId, value, reason)
         return
     end
 
-    -- Only log when a change was actually made
+    -- Only log when a change was made
     if changed ~= false and addon and addon.Print then
         addon:Print(string.format("Rules: %s = %s (%s)", label, displayValue, reason or ""))
     end
@@ -898,7 +898,7 @@ function Rules:GetActionsAtPath(pathSegments)
     for _, action in pairs(ACTIONS) do
         local path = action.path
         if path and #path > depth then
-            -- Check if this action's path matches our current path prefix
+            -- Check whether this action's path matches the current path prefix
             local matches = true
             for i = 1, depth do
                 if path[i] ~= pathSegments[i] then

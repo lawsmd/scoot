@@ -17,6 +17,17 @@ function addon:Print(message)
     PrintScootMessage(message)
 end
 
+-- Developer trace sink. Joins its arguments and routes them through the same
+-- chat prefix as Print, so module-level debug helpers do not each reimplement
+-- tostring-and-concat. Every call site gates it behind its own debug flag.
+function addon.DebugPrint(...)
+    local parts = {}
+    for i = 1, select("#", ...) do
+        parts[i] = tostring((select(i, ...)))
+    end
+    PrintScootMessage(table.concat(parts, " "))
+end
+
 -- Open Blizzard's Cooldown Manager / Cooldown Viewer settings UI.
 -- Returns true if a target frame was opened, false otherwise.
 -- No combat check needed - Blizzard's CDM settings work during combat.

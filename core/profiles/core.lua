@@ -15,11 +15,7 @@ local function Debug(...)
         messages[#messages + 1] = tostring(select(i, ...))
     end
     local msg = table.concat(messages, " ")
-    if addon.Print then
-        addon:Print(DEBUG_PREFIX .. " " .. msg)
-    else
-        print(DEBUG_PREFIX, msg)
-    end
+    addon:Print(DEBUG_PREFIX .. " " .. msg)
 end
 
 -- Persistent debug log that survives /reload (stored in addon.db.global)
@@ -308,7 +304,7 @@ end
 -- Only successful lookups are cached. Blizzard creates the PROXY_SHOW_ACTIONBAR_*
 -- settings from a registrar that waits on both VARIABLES_LOADED and
 -- PLAYER_ENTERING_WORLD (Blizzard_SettingsRegistrar.lua), which is strictly after
--- our OnInitialize. Caching a failed lookup would poison every later apply for the
+-- OnInitialize. Caching a failed lookup would poison every later apply for the
 -- rest of the session -- see ensureBarSettingsArrivalHook below.
 local settingObjectCache = {} -- [barNum] = setting object (never false)
 local function getSettingObject(barNum)
@@ -328,8 +324,8 @@ local function areBarSettingsReady()
     return getSettingObject(2) ~= nil
 end
 
--- Set while we are writing a bar setting, so our own back-sync callback can tell
--- our writes apart from the user's. Sound because SettingMixin:TriggerValueChanged
+-- Set while a bar setting is being written, so the back-sync callback can tell
+-- Scoot's writes apart from the user's. Sound because SettingMixin:TriggerValueChanged
 -- runs synchronously inside ApplyValue, on this same call stack.
 local abWriting = false
 
@@ -369,7 +365,7 @@ local installActionBarBackSync
 -- previous profile left them. Must only run once the settings registry is live.
 local function BackfillActionBarEnableState(profile)
     -- rawget/rawset throughout, matching the zero-touch convention in
-    -- core/components/base/core.lua, so we never read or write through an
+    -- core/components/base/core.lua, so nothing reads or writes through an
     -- AceDB-materialized defaults table.
     local s = rawget(profile, "actionBarSettings")
     if s and s.__backfilledV1 then return s end
@@ -491,7 +487,7 @@ function ReconcileActionBarsEnabled(reason)
     end
 end
 
--- The settings we need do not exist at OnInitialize. SETTINGS_LOADED fires
+-- The required settings do not exist at OnInitialize. SETTINGS_LOADED fires
 -- immediately after Blizzard's registrants run (Blizzard_SettingsRegistrar.lua), and
 -- is what Blizzard's own ActionBarController uses to wire up these same seven
 -- settings. Note that registration itself does NOT fire a value-changed event, so
@@ -545,8 +541,8 @@ end
 
 -- Raid frames: Blizzard renders raid-frame debuffs as private auras (forbidden,
 -- secure environment) and enlarges boss/role-specific ones when its
--- "Display Larger Role-Specific Auras" option is on. We can't restyle those
--- borders, but we can flip the CVar that drives them. Setting the CVar fires
+-- "Display Larger Role-Specific Auras" option is on. Those borders cannot be
+-- restyled, but the CVar that drives them can be flipped. Setting the CVar fires
 -- CompactUnitFrameProfiles' CVar callback, which reapplies to all raid +
 -- raid-style party frames automatically (no manual rebuild).
 local function ApplyRaidLargerRoleDebuffsForActiveProfile(reason)
@@ -665,7 +661,7 @@ local function addLayoutToCache(self, layoutName)
     if not layoutName then return end
     self._layoutLookup = self._layoutLookup or {}
     self._layoutLookup[layoutName] = true
-    -- Record that Scoot created this layout during this session. A layout we just made
+    -- Record that Scoot created this layout during this session. A layout just made
     -- cannot have been deleted outside Scoot, and must not be swept up by the orphan
     -- auto-heal if the client's layout list is briefly out of step.
     self._sessionCreatedProfiles = self._sessionCreatedProfiles or {}
@@ -1030,7 +1026,7 @@ function Profiles:PromptReloadToProfile(layoutName, meta)
     if not addon or not addon.Dialogs or not addon.Dialogs.Show then
         return false
     end
-    -- Stash pending activation now; the actual ReloadUI() must come from a hardware event.
+    -- Stash pending activation now; ReloadUI() itself must come from a hardware event.
     self.db.global.pendingProfileActivation = buildPendingActivation(layoutName, meta)
     -- Choose appropriate dialog based on reason
     local dialogName = "SCOOT_PROFILE_RELOAD"
@@ -1147,7 +1143,7 @@ function Profiles:Initialize()
     ApplyDamageMeterEnabledForActiveProfile("Initialize")
     -- Bar enable settings do not exist yet at Initialize (ADDON_LOADED); Blizzard
     -- registers them only after VARIABLES_LOADED + PLAYER_ENTERING_WORLD. Arm the
-    -- SETTINGS_LOADED hook unconditionally -- it is what actually applies the profile
+    -- SETTINGS_LOADED hook unconditionally -- it is what applies the profile
     -- on login. The call below is a harmless no-op until then.
     ensureBarSettingsArrivalHook()
     ReconcileActionBarsEnabled("Initialize")
@@ -1565,7 +1561,7 @@ function Profiles:RefreshFromEditMode(origin)
                 Debug("Reload activation lock: LEO confirms target, lock stays", activeLayout)
                 LogReload("Refresh:lockConfirmed", { lock = activeLayout })
             elseif now < self._reloadActivationLockUntil then
-                -- LEO disagrees with our target and lock hasn't expired; don't override
+                -- LEO disagrees with the target and the lock has not expired; do not override
                 Debug("RefreshFromEditMode blocked by reload lock",
                       "lock=" .. tostring(self._reloadActivationLock),
                       "LEO=" .. tostring(activeLayout))
@@ -1583,7 +1579,7 @@ function Profiles:RefreshFromEditMode(origin)
         -- hot-swapping the profile without the required reload.
         if self._specChangeLock and self._specChangeLockUntil then
             if activeLayout == self._specChangeLock then
-                -- LEO agrees with our intended profile; clear lock
+                -- LEO agrees with the intended profile; clear lock
                 self._specChangeLock = nil
                 self._specChangeLockUntil = nil
                 Debug("Spec-change lock cleared: LEO matches target", activeLayout)

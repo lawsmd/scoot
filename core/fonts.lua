@@ -120,7 +120,7 @@ function addon.BuildFontOptionsContainer()
     return create and container:GetData() or container
 end
 
--- Resolve a font face name to an actual file path for SetFont.
+-- Resolve a font face name to a file path for SetFont.
 -- Falls back to the face of GameFontNormal if unknown.
 function addon.ResolveFontFace(key)
     key = key or "FRIZQT__"
@@ -194,7 +194,7 @@ end
 --   SHADOW*: adds a subtle drop shadow (offset 1, -1) for extra visual weight.
 --   HEAVY*: adds a centered glow effect (offset 0, 0) - thickens without directional shadow.
 --
--- Returns true when the REQUESTED face was actually applied, false when the
+-- Returns true when the REQUESTED face was applied, false when the
 -- client would not load it (the string is left with whatever readable font it
 -- had, or given a fallback if it had none). Callers that care can surface the
 -- "this face needs a full client restart" case -- see verifyAppliedFace in
@@ -234,7 +234,7 @@ function addon.ApplyFontStyle(fs, font, size, style)
     -- that has not been loaded yet (the classic new-machine case: a font file
     -- added since the client started needs a full restart, not a /reload) shows
     -- up as blank or default-looking text with no error. So walk the fallbacks
-    -- and confirm one actually took.
+    -- and confirm one took.
     if fs.SetFont then
         if not applyFontFile(fs, font, size, style) then
             applied = false
@@ -286,7 +286,7 @@ end
 --
 -- The gate cannot be folded into a pcall around the measurement: reading a
 -- dimension on a dirty layout forces a layout flush that fires OnSizeChanged as
--- a side effect, so the error surfaces in the callback rather than in our call.
+-- a side effect, so the error surfaces in the callback rather than in the call.
 --
 -- Addon-owned FontStrings only: "blizzard" mode writes baseLineHeight/minLineHeight
 -- onto the FontString's Lua table, which would taint a Blizzard-owned one.
@@ -294,7 +294,7 @@ end
 -- opts: width, height   -- box size; omit to read them off a two-point-anchored fs
 --       maxLines        -- line budget, further clamped by height
 --       maxSize         -- the ideal size, used when the text already fits
---       minSize         -- floor; below this we accept "..." truncation
+--       minSize         -- floor; below this "..." truncation is accepted
 --       mode            -- "font" (step point size) | "scale" (SetTextScale)
 --                          | "blizzard" (Blizzard's ScaleTextToFit verbatim)
 --       face, style     -- as passed to addon.ApplyFontStyle
@@ -473,7 +473,7 @@ function addon.FitTextToBox(fs, opts)
 
         -- maxLines and a fixed height can disagree: n lines may not physically fit,
         -- in which case IsTruncated() would report false while text spills out of the
-        -- box. Clamp the budget to what this size can actually show.
+        -- box. Clamp the budget to what this size can show.
         local lineHeight = fitSafeNumber(fs, "GetLineHeight")
         if lineHeight and lineHeight > 0 and fs.SetMaxLines then
             local spacing = fitSafeNumber(fs, "GetSpacing") or 0
@@ -519,7 +519,7 @@ end
 --
 -- The geometry getters are annotated SecretWhenAnchoringSecret (see the header on
 -- FitTextToBox above), so measuring a FontString anchored into a Blizzard frame
--- returns a secret on exactly the tainted frames we care about. Anchoring is
+-- returns a secret on exactly the tainted frames that matter. Anchoring is
 -- secret-safe for *writing* geometry, never for *reading* it, and there is no
 -- anchor-based escape hatch -- a proxy region anchored to the same frame inherits
 -- the same secret chain.
@@ -604,13 +604,13 @@ end
 --------------------------------------------------------------------------------
 -- Line Discovery
 --------------------------------------------------------------------------------
--- Recover where a wrapped FontString actually broke its lines, so each line can be
+-- Recover where a wrapped FontString broke its lines, so each line can be
 -- treated independently (per-line color ramps, per-line alignment, etc.).
 --
 -- Primary path asks the engine: CalculateScreenAreaFromCharacterSpan returns one
 -- uiBoundsRect { left, bottom, width, height } per wrapped row that a character span
 -- covers. Blizzard uses it for selection highlighting in ScrollingMessageFrame for
--- exactly that reason. So we never reimplement WoW's line-breaking -- we ask it.
+-- exactly that reason. WoW's line-breaking is never reimplemented here, only asked for.
 --
 -- It is gated on RequiresFontStringTextAccess, which fails for tainted callers once
 -- the FontString carries the Text secret aspect. Pushing one secret name through
@@ -713,7 +713,7 @@ function addon.DiscoverTextLines(fs, plainText)
             if ln then lines[#lines + 1] = ln end
         end
     end
-    -- The engine already told us how many rows there are. If bucketing recovered a
+    -- The engine already reported how many rows there are. If bucketing recovered a
     -- different number, the per-character probe disagreed with the row probe and the
     -- breaks can't be trusted -- report failure rather than a plausible wrong answer.
     if #lines ~= #areas then return nil end
@@ -775,7 +775,7 @@ function addon.WrapTextGreedy(text, opts)
             local w = widthOf(candidate)
             -- Unmeasurable: bail out entirely. Treating nil as "it fits" quietly
             -- concatenates the whole name onto one line, which then renders
-            -- ellipsized -- worse than admitting we could not wrap it.
+            -- ellipsized -- worse than admitting the name could not be wrapped.
             if not w then return nil end
             if w <= width then
                 cur, curLast = candidate, wordLast
@@ -1422,7 +1422,7 @@ end
 -- Font Dropdown Integration
 --------------------------------------------------------------------------------
 
--- Apply font preview to a Settings dropdown by using our custom font picker popup
+-- Apply font preview to a Settings dropdown using the custom font picker popup
 function addon.InitFontDropdown(dropdown, setting, optionsProvider)
     if not dropdown or dropdown._ScootFontPickerInit then return end
 
@@ -1441,7 +1441,7 @@ function addon.InitFontDropdown(dropdown, setting, optionsProvider)
         end
     end
 
-    -- Intercept clicks to show our custom picker instead of Blizzard's menu
+    -- Intercept clicks to show the custom picker instead of Blizzard's menu
     local function showPicker()
         -- Close any open Blizzard menus first
         if _G.MenuUtil and _G.MenuUtil.HideAllMenus then
@@ -1560,7 +1560,7 @@ do
 
     -- Heavy display faces (the font picker's "Display" tab). Anton ships only
     -- the settled 1.5x-wide bake (fonttools x-only stretch, hints stripped);
-    -- the others ship base form. Metrics: docs/unitframesZ/ufzhealthtext.md.
+    -- the others ship base form.
     f.ANTON_WIDE_150 = base .. "AntonWide150.ttf"
     f.RUBIK_MONO_ONE = base .. "RubikMonoOne-Regular.ttf"
     f.TOMORROW_BLACK = base .. "Tomorrow-Black.ttf"
