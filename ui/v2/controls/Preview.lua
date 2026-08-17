@@ -522,7 +522,7 @@ function Controls:CreatePreview(options)
         previewBar._barFill = barFill
         row._barFill = barFill
 
-        -- Bar border (mirrors the live paths in classauras/styling.lua)
+        -- Bar border (mirrors the live paths in scootauras/styling.lua)
         local barBorderStyle = readSetting("barBorderStyle", "none")
         if barBorderStyle and barBorderStyle ~= "none" then
             local barBorderThickness = math.max(1, tonumber(readSetting("barBorderThickness", 1)) or 1)

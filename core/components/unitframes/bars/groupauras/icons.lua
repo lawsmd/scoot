@@ -411,7 +411,7 @@ function HA.StyleIcon(iconFrame, spellId, auraData, groupFrame, unit)
         iconFrame.Cooldown:SetDrawSwipe(false)
     end
 
-    -- Cooldown sweep timing (DurationObject pattern — matches ClassAuras, secret-safe)
+    -- Cooldown sweep timing (DurationObject pattern — matches ScootAuras, secret-safe)
     local cdSet = false
     if auraData and auraData.auraInstanceID and unit
        and C_UnitAuras and C_UnitAuras.GetAuraDuration then

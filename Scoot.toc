@@ -72,17 +72,7 @@ core/components/cooldowns/customgroups/core.lua
 core/components/cooldowns/customgroups/icons.lua
 core/components/cooldowns/customgroups/layout.lua
 core/components/cooldowns/customgroups/tracking.lua
-core/components/classauras/core.lua
-core/components/classauras/layout.lua
-core/components/classauras/styling.lua
-core/components/classauras/cdmborrow.lua
-core/components/classauras/engine.lua
-core/components/classauras/regions.lua
-core/components/classauras/events.lua
-core/components/classauras/mage.lua
-core/components/classauras/shaman.lua
-core/components/classauras/deathknight.lua
-## ScootAuras (user-built aura trackers, replaces Class Auras)
+## ScootAuras (user-built aura trackers)
 core/components/scootauras/core.lua
 core/components/scootauras/layout.lua
 core/components/scootauras/styling.lua
@@ -201,7 +191,6 @@ core/components/damagemetersY/events.lua
 core/components/bosswarnings/core.lua
 core/debug/core.lua
 core/debug/editmode.lua
-core/debug/classauras.lua
 core/debug/offscreen.lua
 core/debug/export.lua
 core/debug/inspector.lua
@@ -271,7 +260,6 @@ ui/v2/settings/cdm/TrackedBarsRenderer.lua
 ui/v2/settings/cdm/CustomGroupsRenderer.lua
 ui/v2/settings/cdm/CustomGroupsTab.lua
 ui/v2/settings/cdm/SpellbookOverlay.lua
-ui/v2/settings/classauras/ClassAurasRenderer.lua
 ui/v2/settings/scootauras/EditorTabs.lua
 ui/v2/settings/scootauras/CDMPicker.lua
 ui/v2/settings/scootauras/CopyFromGlobal.lua

@@ -79,14 +79,11 @@ local COMPONENT_TO_CATEGORY = {
 }
 
 --- Returns the module category for a component ID.
---- Handles dynamic class aura IDs (classAura_*) via prefix check.
+--- Handles dynamic tracker IDs (scootAura_*) via prefix check.
 function addon:GetComponentCategory(componentId)
     if not componentId then return nil end
     local cat = COMPONENT_TO_CATEGORY[componentId]
     if cat then return cat end
-    if componentId:sub(1, 10) == "classAura_" then
-        return "classAuras"
-    end
     if componentId:sub(1, 10) == "scootAura_" then
         return "scootAuras"
     end
@@ -105,7 +102,6 @@ addon.MODULE_CATEGORY_ORDER = {
     -- variant row inside Unit Frames. It stays in this list because init.lua
     -- builds the session module snapshot by walking it.
     "castBars",
-    "classAuras",
     "cooldownManager",
     "damageMeter",
     "extraAbilities",
@@ -175,11 +171,6 @@ addon.MODULE_CATEGORIES = {
               variant = "Z",
               versionBadge = { label = "Z", title = "Cast Bar Z", text = "Scoot's own cast bars, drawn as filling text instead of a bar. They stand alone: positioned freely in Edit Mode and configured on the Cast Bars page under Unit Frames." } },
         },
-    },
-    classAuras = {
-        label = "Class Auras",
-        variant = "X",
-        -- No sub-toggles on Features page (dynamic per-class aura IDs)
     },
     scootAuras = {
         label = "ScootAuras",

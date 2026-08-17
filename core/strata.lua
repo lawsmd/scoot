@@ -35,7 +35,7 @@
 --     ~2   Cast Bar Z                      (inherited, no explicit call)
 --     10   UFZ unit frames                 unitframesz/engine.lua
 --     20   group aura icons                groupauras/icons.lua
---     25   Class Aura containers           classauras/core.lua
+--     25   ScootAuras shells and groups    scootauras/engine.lua, groups.lua
 --     30   CDM Custom Group containers     cooldowns/customgroups/core.lua
 --     35   CDM Tracked Bars vertical       cooldowns/trackedbars/vertical.lua
 --     49   PRD bar background overlay      prd/bars.lua

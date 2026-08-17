@@ -9,7 +9,7 @@
 -- engine call we made succeeded, which is what this surface reports.
 --
 -- The open corners this exists to settle in-game, none of which the slot-shaped
--- classauras port exercised:
+-- ScootAuras port exercised:
 --   1. topology B for GROUPS: does a self-sizing container render correctly
 --      inside a scaled, alpha'd Scoot frame?
 --   2. SetFlowLayout* / SetAuraGroup* acceptance from addon context (no

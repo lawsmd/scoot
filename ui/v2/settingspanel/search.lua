@@ -34,32 +34,7 @@ Search._debounceTimer = nil
 Search._breadcrumbMap = nil
 Search._moduleCategoryMap = nil
 
---------------------------------------------------------------------------------
--- Class Aura Filtering
---------------------------------------------------------------------------------
-
-local CLASS_AURA_TOKENS = {
-    classAurasDeathKnight = "DEATHKNIGHT",
-    classAurasDemonHunter = "DEMONHUNTER",
-    classAurasDruid = "DRUID",
-    classAurasEvoker = "EVOKER",
-    classAurasHunter = "HUNTER",
-    classAurasMage = "MAGE",
-    classAurasMonk = "MONK",
-    classAurasPaladin = "PALADIN",
-    classAurasPriest = "PRIEST",
-    classAurasRogue = "ROGUE",
-    classAurasShaman = "SHAMAN",
-    classAurasWarlock = "WARLOCK",
-    classAurasWarrior = "WARRIOR",
-}
-
 local function ShouldSkipRenderer(key)
-    local classToken = CLASS_AURA_TOKENS[key]
-    if classToken then
-        local _, playerClass = UnitClass("player")
-        return classToken ~= playerClass
-    end
     if key == "debugMenu" then
         local debugEnabled = addon.db and addon.db.profile and addon.db.profile.debugMenuEnabled
         return not debugEnabled

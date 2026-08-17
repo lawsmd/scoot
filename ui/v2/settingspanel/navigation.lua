@@ -649,20 +649,6 @@ local DEFAULTS_RESET_MAP = {
     -- Group Frames
     gfParty             = { strategy = "groupFrame", subKey = "party" },
     gfRaid              = { strategy = "groupFrame", subKey = "raid" },
-    -- Class Auras
-    classAurasDeathKnight = { strategy = "classAuras", classToken = "DEATHKNIGHT" },
-    classAurasDemonHunter = { strategy = "classAuras", classToken = "DEMONHUNTER" },
-    classAurasDruid       = { strategy = "classAuras", classToken = "DRUID" },
-    classAurasEvoker      = { strategy = "classAuras", classToken = "EVOKER" },
-    classAurasHunter      = { strategy = "classAuras", classToken = "HUNTER" },
-    classAurasMage        = { strategy = "classAuras", classToken = "MAGE" },
-    classAurasMonk        = { strategy = "classAuras", classToken = "MONK" },
-    classAurasPaladin     = { strategy = "classAuras", classToken = "PALADIN" },
-    classAurasPriest      = { strategy = "classAuras", classToken = "PRIEST" },
-    classAurasRogue       = { strategy = "classAuras", classToken = "ROGUE" },
-    classAurasShaman      = { strategy = "classAuras", classToken = "SHAMAN" },
-    classAurasWarlock     = { strategy = "classAuras", classToken = "WARLOCK" },
-    classAurasWarrior     = { strategy = "classAuras", classToken = "WARRIOR" },
 }
 
 -- Update Defaults Button Visibility & Anchoring
@@ -757,20 +743,6 @@ function UIPanel:ExecuteDefaultsReset(key, resetInfo)
     elseif strategy == "groupFrame" then
         if profile.groupFrames then
             profile.groupFrames[resetInfo.subKey] = nil
-        end
-
-    elseif strategy == "classAuras" then
-        local CA = addon.ClassAuras
-        if CA and CA.GetClassAuras then
-            local auras = CA.GetClassAuras(resetInfo.classToken)
-            for _, aura in ipairs(auras) do
-                if profile.components then
-                    profile.components["classAura_" .. aura.id] = nil
-                end
-                if profile.classAuraPositions then
-                    profile.classAuraPositions[aura.id] = nil
-                end
-            end
         end
 
     elseif strategy == "profileData" then
@@ -955,7 +927,6 @@ end
 -- Value is the display prefix (allows abbreviation vs NavModel label).
 local TITLE_PREFIX = {
     cdm         = "CDM",
-    classAuras  = "Class Auras",
     scootAuras  = "ScootAuras",
     unitFrames  = "Unit Frames",
     prd         = "Personal Resource",

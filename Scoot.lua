@@ -134,7 +134,7 @@ function SlashCmdList.SCOOT(msg, editBox)
 
         if sub1 == "" then
             addon:Print("Usage:")
-            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|quests|<FrameName>>")
+            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|quests|<FrameName>>")
             addon:Print("  /scoot debug profiles export [\"Profile Name\"]  |  reload")
             addon:Print("  /scoot debug consoleport export")
             addon:Print("  /scoot debug cdmlayers")
@@ -431,26 +431,6 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugHover(sub2)
             else
                 addon:Print("Hover probe not available.")
-            end
-            return
-        end
-
-        -- /scoot debug classauras
-        if sub1 == "classauras" or sub1 == "ca" then
-            if addon.DebugDumpClassAuras then
-                addon.DebugDumpClassAuras()
-            else
-                addon:Print("Class Auras debug not available (debug module missing).")
-            end
-            return
-        end
-
-        -- /scoot debug altertime
-        if sub1 == "altertime" or sub1 == "at" then
-            if addon.DebugAlterTimeHealth then
-                addon.DebugAlterTimeHealth()
-            else
-                addon:Print("Alter Time debug not available (debug module missing).")
             end
             return
         end
@@ -798,7 +778,7 @@ function SlashCmdList.SCOOT(msg, editBox)
 
         local target = args[2]
         if not target or target == "" then
-            addon:Print("Usage: /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|classauras|<FrameName>>")
+            addon:Print("Usage: /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|<FrameName>>")
             return
         end
         if addon.DebugDump then

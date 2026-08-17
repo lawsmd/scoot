@@ -9,7 +9,7 @@
 -- went blind exactly when the rows mattered. Nothing here can go blind,
 -- because nothing here reads.
 --
--- TOPOLOGY B, the shape classauras verified in-game: the container is a child
+-- TOPOLOGY B, the shape ScootAuras verified in-game: the container is a child
 -- of inst.frame, so Overall Scale and the opacity trio are inherited rather
 -- than synced. Container frame levels are left at their defaults -- a child
 -- lands at parent+1 and its buttons at parent+2, which reproduces the previous
@@ -23,7 +23,7 @@
 -- here comes from cfg, and the debuff row reaches its stacked position by
 -- ANCHORING to the buff container rather than measuring it.
 --
--- TIER SPLIT (classauras/engine.lua doctrine). Tier 1 is always legal:
+-- TIER SPLIT (scootauras/engine.lua doctrine). Tier 1 is always legal:
 -- container SetPoint/Show/Hide/SetEnabled, SetAuraGroup*, SetFlowLayout*.
 -- Tier 2 touches the button tree, which carries
 -- DenyTaintedAccessWhenAurasAreSecret, and runs only inside
@@ -130,7 +130,7 @@ local DISPEL_STYLE = Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
 local DISPEL_PRESERVE = (DISPEL_STYLE and DISPEL_STYLE.PreserveAsset) or 3
 
 --------------------------------------------------------------------------------
--- Telemetry (the classauras/engine.lua Record/SetResult pattern)
+-- Telemetry (the scootauras/engine.lua Record/SetResult pattern)
 --------------------------------------------------------------------------------
 
 local results = {}   -- [key] = latest observation string
@@ -410,7 +410,7 @@ local function wireButton(inst, rowKey, button)
 
     -- Text above the swipe so the stack count stays opaque regardless of drain
     -- progress (the groupauras/icons.lua pattern). A child-of-child FontString
-    -- is accepted: classauras wires its elements through exactly this shape and
+    -- is accepted: scootauras wires its elements through exactly this shape and
     -- that path is verified in-game.
     local textHost = CreateFrame("Frame", nil, button)
     textHost:SetAllPoints(button)

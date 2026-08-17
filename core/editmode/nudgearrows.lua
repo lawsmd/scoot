@@ -74,7 +74,7 @@ local function nudge(dx, dy)
             addon.EditMode.SaveOnly()
         end
     else
-        -- Custom Scoot frame (ClassAuras, Custom Groups): use LibEditMode
+        -- Custom Scoot frame (ScootAuras, Custom Groups): use LibEditMode
         if not LEM then
             LEM = addon._LEM or (LibStub and LibStub("LibEditMode", true))
         end

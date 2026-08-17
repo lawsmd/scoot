@@ -138,10 +138,10 @@ local function remapPresetPositions(profileCopy, targetLayoutName)
         end
     end
 
-    -- Remap classAuraPositions[auraId]
-    local auraPositions = profileCopy.classAuraPositions
+    -- Remap scootAuraPositions[t<id>|g<gid>]
+    local auraPositions = profileCopy.scootAuraPositions
     if type(auraPositions) == "table" then
-        for auraId, perLayout in pairs(auraPositions) do
+        for _, perLayout in pairs(auraPositions) do
             if type(perLayout) == "table" then
                 local pos
                 for key, val in pairs(perLayout) do

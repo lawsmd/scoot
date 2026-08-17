@@ -21,7 +21,7 @@ function addon:OnInitialize()
         local sv = _G["ScootDB"]
         if sv and sv.profiles and not (sv.global and sv.global._moduleEnabledDefaultsV2) then
             local KEYS = {
-                "actionBars", "buffsDebuffs", "classAuras", "cooldownManager",
+                "actionBars", "buffsDebuffs", "cooldownManager",
                 "damageMeter", "extraAbilities", "groupFrames", "minimap",
                 "notes", "objectiveTracker", "prd", "sct", "tooltip", "unitFrames",
             }
@@ -220,6 +220,51 @@ function addon:OnInitialize()
         end
     end
 
+    -- Migration V6: clear the saved variables left behind by the Class Auras
+    -- system, deleted in full and replaced by ScootAuras. Nothing reads these
+    -- keys any more, and the component pruner cannot reclaim them: its
+    -- default-strip pass only runs for components that registered this session,
+    -- so a table belonging to a deleted feature survives forever. Runs on raw
+    -- SavedVariables, before AceDB wraps them, so it sees every profile.
+    do
+        local sv = _G["ScootDB"]
+        if sv and not (sv.global and sv.global._classAurasRemovedV6) then
+            for _, profileData in pairs(sv.profiles or {}) do
+                if type(profileData) == "table" then
+                    -- The whole store goes. Clearing only its entries would
+                    -- leave an empty table behind for good: the pruner's
+                    -- empty-profile-table pass works from a fixed key list that
+                    -- never included this one.
+                    profileData.classAuraPositions = nil
+
+                    -- Match on the prefix. Listing the seven shipped aura ids
+                    -- would miss any id introduced by a hand-edited profile or
+                    -- an imported preset. scootAura_* tables are left alone:
+                    -- another character's trackers are legitimately unregistered
+                    -- on this one.
+                    local components = profileData.components
+                    if type(components) == "table" then
+                        for id in pairs(components) do
+                            if type(id) == "string" and id:sub(1, 10) == "classAura_" then
+                                components[id] = nil
+                            end
+                        end
+                    end
+
+                    -- Migration V2 wrote this key as true into every profile it
+                    -- touched, so it is persisted almost everywhere.
+                    local moduleEnabled = profileData.moduleEnabled
+                    if type(moduleEnabled) == "table" then
+                        moduleEnabled.classAuras = nil
+                    end
+                end
+            end
+
+            if not sv.global then sv.global = {} end
+            sv.global._classAurasRemovedV6 = true
+        end
+    end
+
     -- 1. Create the database first so moduleEnabled is available for component gating.
     --    GetDefaults() does not reference self.Components — safe to call before init.
     self.db = LibStub("AceDB-3.0"):New("ScootDB", self:GetDefaults(), true)
@@ -353,7 +398,6 @@ function addon:GetDefaults()
                 actionBars = false,
                 bossWarnings = false,
                 buffsDebuffs = false,
-                classAuras = false,
                 cooldownManager = false,
                 damageMeter = false,
                 extraAbilities = false,
