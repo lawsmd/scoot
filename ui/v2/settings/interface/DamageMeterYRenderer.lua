@@ -109,11 +109,13 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     local ar, ag, ab = 0.2, 0.9, 0.3
     if Theme and Theme.GetAccentColor then ar, ag, ab = Theme:GetAccentColor() end
 
-    local fontNames = db.textNames or {}
-    local fontValues = db.textValues or {}
+    -- Resolved the same way the live window resolves them, so a partially
+    -- stored group (or a fresh Zero-Touch profile that stores nothing) previews
+    -- exactly what the HUD will render.
+    local fontNames = addon:ResolveComponentSubTable(comp, "textNames") or {}
+    local fontValues = addon:ResolveComponentSubTable(comp, "textValues") or {}
     local nameFontPath = ResolveFont(fontNames.fontFace)
     local valueFontPath = ResolveFont(fontValues.fontFace)
-    local titleFontPath = ResolveFont((db.textTitle or {}).fontFace)
 
     local totalHeight = PREVIEW_HEADER_HEIGHT + (#PREVIEW_PLAYERS * (PREVIEW_BAR_HEIGHT + PREVIEW_BAR_SPACING)) + PREVIEW_PADDING * 2 + 4
 
@@ -140,7 +142,20 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     -- Column widths
     local barAreaLeft = PREVIEW_PADDING + PREVIEW_ICON_SIZE + 4 + PREVIEW_NAME_WIDTH + 2
     local barAreaWidth = containerWidth - barAreaLeft - PREVIEW_PADDING
-    local colWidth = numColumns > 0 and math.floor(barAreaWidth / numColumns) or barAreaWidth
+
+    -- Per-column edges mirroring the live window's fraction layout, so widths
+    -- dragged via the Edit Mode dividers are visible in the preview
+    local previewEdges = { [0] = barAreaLeft }
+    do
+        local fractions = (DMY and DMY._GetColumnFractions and cfg)
+            and DMY._GetColumnFractions(cfg, numColumns) or nil
+        local acc = 0
+        for c = 1, numColumns do
+            acc = acc + (fractions and fractions[c] or (1 / math.max(numColumns, 1)))
+            previewEdges[c] = barAreaLeft + math.floor(barAreaWidth * math.min(acc, 1))
+        end
+        previewEdges[numColumns] = containerWidth - PREVIEW_PADDING
+    end
 
     -- Header bg
     local headerBg = container:CreateTexture(nil, "BACKGROUND", nil, -6)
@@ -188,7 +203,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
 
             local colIdx = c -- capture for closure
             local isPrimary = (c == 1)
-            local dropWidth = math.max(60, colWidth - 4)
+            local dropWidth = math.max(60, (previewEdges[c] - previewEdges[c - 1]) - 4)
 
             local colDropdown = Controls:CreateDropdown({
                 parent = container,
@@ -198,6 +213,8 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
                 set = function(val)
                     if val == "_remove" then
                         table.remove(cfg.columns, colIdx)
+                        -- Redistribute the removed column's width share
+                        if DMY.NormalizeColumnFractions then DMY.NormalizeColumnFractions(cfg) end
                     else
                         colDef.format = val
                     end
@@ -207,8 +224,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
                 width = dropWidth, height = 20,
             })
 
-            local rightEdge = containerWidth - PREVIEW_PADDING - (numColumns - c) * colWidth
-            colDropdown:SetPoint("TOPRIGHT", container, "TOPLEFT", rightEdge, -4)
+            colDropdown:SetPoint("TOPRIGHT", container, "TOPLEFT", previewEdges[c], -4)
         end
     end
 
@@ -253,7 +269,10 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
 
         -- Name
         local nameText = container:CreateFontString(nil, "OVERLAY")
-        nameText:SetFont(nameFontPath, fontNames.fontSize or 12, fontNames.fontStyle or "OUTLINE")
+        -- Via ApplyFontStyle, not SetFont: the SHADOW*/HEAVY* styles are Scoot
+        -- compounds, and SetFont only substring-matches OUTLINE/THICKOUTLINE out
+        -- of them -- the shadow half would silently vanish from the preview.
+        addon.ApplyFontStyle(nameText, nameFontPath, fontNames.fontSize or 12, fontNames.fontStyle or "OUTLINE")
         nameText:SetPoint("LEFT", icon, "RIGHT", 3, 0)
         nameText:SetWidth(PREVIEW_NAME_WIDTH)
         nameText:SetJustifyH("LEFT"); nameText:SetWordWrap(false)
@@ -349,33 +368,20 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
             edgeRight:SetColorTexture(cr, cg, cb, 1)
         end
 
-        -- Column value texts overlaid on the bar
+        -- Column value texts overlaid on the bar. Center-anchored like the live
+        -- windows (which hard-clip at the column edges); the preview's bounded
+        -- width stands in for the clip frame.
         for c = 1, numColumns do
             local colDef = columns[c]
             if colDef then
-                local rightEdge = containerWidth - PREVIEW_PADDING - (numColumns - c) * colWidth
-
                 local textParent = showBars and bar or container
                 local valText = textParent:CreateFontString(nil, "OVERLAY")
-                valText:SetFont(valueFontPath, fontValues.fontSize or 11, fontValues.fontStyle or "OUTLINE")
-                valText:SetWidth(colWidth - 8)
-                valText:SetTextColor(1, 1, 1, 1)
+                addon.ApplyFontStyle(valText, valueFontPath, fontValues.fontSize or 11, fontValues.fontStyle or "OUTLINE")
+                valText:SetJustifyH("CENTER")
+                valText:SetWordWrap(false)
+                valText:SetWidth(math.max((previewEdges[c] - previewEdges[c - 1]) - 6, 10))
+                valText:SetPoint("CENTER", container, "TOPLEFT", (previewEdges[c - 1] + previewEdges[c]) / 2, yTop - PREVIEW_BAR_HEIGHT / 2)
                 valText:SetText(FormatPlayerValue(player, colDef.format))
-
-                -- Alignment: 1 col = right; 2+ cols = first left, last right, middle center
-                if numColumns == 1 then
-                    valText:SetJustifyH("RIGHT")
-                    valText:SetPoint("RIGHT", container, "TOPLEFT", rightEdge - 4, yTop - PREVIEW_BAR_HEIGHT / 2)
-                elseif c == 1 then
-                    valText:SetJustifyH("LEFT")
-                    valText:SetPoint("LEFT", container, "TOPLEFT", barAreaLeft + 4, yTop - PREVIEW_BAR_HEIGHT / 2)
-                elseif c == numColumns then
-                    valText:SetJustifyH("RIGHT")
-                    valText:SetPoint("RIGHT", container, "TOPLEFT", rightEdge - 4, yTop - PREVIEW_BAR_HEIGHT / 2)
-                else
-                    valText:SetJustifyH("CENTER")
-                    valText:SetPoint("RIGHT", container, "TOPLEFT", rightEdge - 4, yTop - PREVIEW_BAR_HEIGHT / 2)
-                end
 
                 -- Subtle primary column indicator: slightly brighter text on first column
                 if c == 1 then
@@ -539,7 +545,23 @@ local function CreateWindowSelector(parentFrame, builder)
             onClick = function()
                 if not isOverall then return end
                 if cfg and cfg.columns then
-                    table.insert(cfg.columns, { format = "damage" })
+                    local nOld = #cfg.columns
+                    local newCol = { format = "damage" }
+                    -- Windows with custom column widths: seed the new column
+                    -- at 1/nOld so normalization lands it at exactly 1/nNew
+                    -- while existing columns keep their proportions. Windows
+                    -- in equal-split mode (no stored fractions) stay that way.
+                    local hasFractions = false
+                    for _, col in ipairs(cfg.columns) do
+                        if tonumber(col.widthFraction) then hasFractions = true break end
+                    end
+                    if hasFractions and nOld > 0 then
+                        newCol.widthFraction = 1 / nOld
+                    end
+                    table.insert(cfg.columns, newCol)
+                    if hasFractions and DMY.NormalizeColumnFractions then
+                        DMY.NormalizeColumnFractions(cfg)
+                    end
                     if builder then builder:DeferredRefreshAll() end
                     if DMY and DMY._comp then DMY._ApplyStyling(DMY._comp) end
                 end
@@ -600,9 +622,11 @@ function DMYSettings.Render(panel, scrollContent)
         return winCfg and winCfg[key] or default
     end
     local function setWinSizing(key, value)
-        local winCfg = DMY and DMY._GetWindowConfig and DMY._GetWindowConfig(selectedWindow)
-        if winCfg then winCfg[key] = value end
-        if DMY and DMY._comp then DMY._ApplyStyling(DMY._comp) end
+        -- Shared write path with the Edit Mode mirror (validates + clamps +
+        -- restyles), so the two surfaces cannot drift.
+        if DMY and DMY.SetWindowSizing then
+            DMY.SetWindowSizing(selectedWindow, key, value)
+        end
         builder:DeferredRefreshAll()
     end
 
@@ -749,15 +773,23 @@ function DMYSettings.Render(panel, scrollContent)
 
     -- Shared text property helpers (used by Text and Title Bar sections)
     local TextHelpers = addon.UI.Settings.Helpers
+    -- Resolved against the registered default, the same way the styling pass
+    -- resolves it. The panel must never invent its own fallback: displaying
+    -- ROBOTO_SEMICOND_BOLD here while the HUD rendered a locally hardcoded
+    -- FRIZQT__ is precisely how the fresh-profile font bug stayed invisible.
     local function getTextProp(tableKey, propKey)
-        local t = getSetting(tableKey)
+        local c = h.getComponent()
+        local t = c and addon:ResolveComponentSubTable(c, tableKey) or getSetting(tableKey)
         return t and t[propKey]
     end
     local function setTextProp(tableKey, propKey, value)
         local c = h.getComponent()
-        if c and c.db then
-            c.db[tableKey] = c.db[tableKey] or {}
-            c.db[tableKey][propKey] = value
+        if c then
+            -- Seeded from a copy of the registered default, so changing one
+            -- property never drops its siblings and never aliases (and then
+            -- mutates) the registration table shared by every profile.
+            local t = addon:EnsureComponentSubTable(c, tableKey)
+            if t then t[propKey] = value end
         end
         if c and c.ApplyStyling then
             C_Timer.After(0, function()
@@ -768,7 +800,7 @@ function DMYSettings.Render(panel, scrollContent)
     end
     local function AddTextControls(tabInner, tableKey, defaultSize)
         tabInner:AddFontSelector({ label = "Font",
-            get = function() return getTextProp(tableKey, "fontFace") or "ROBOTO_SEMICOND_BOLD" end,
+            get = function() return getTextProp(tableKey, "fontFace") end,
             set = function(v) setTextProp(tableKey, "fontFace", v) end })
         tabInner:AddSelector({ label = "Font Style",
             values = TextHelpers.fontStyleValues, order = TextHelpers.fontStyleOrder,
@@ -789,7 +821,8 @@ function DMYSettings.Render(panel, scrollContent)
             customValue = "custom", hasAlpha = true })
     end
 
-    builder:AddCollapsibleSection({ title = "Text", componentId = "damageMeterV2", sectionKey = "text", defaultExpanded = false,
+    -- sectionKey stays "text" so users' expand/collapse state survives the rename
+    builder:AddCollapsibleSection({ title = "Bar Texts", componentId = "damageMeterV2", sectionKey = "text", defaultExpanded = false,
         buildContent = function(_, inner)
             inner:AddTabbedSection({
                 componentId = "damageMeterV2", sectionKey = "textTabs",
@@ -808,6 +841,12 @@ function DMYSettings.Render(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     headerRow = function(_, tabInner)
+                        tabInner:AddSelector({ label = "Column Header Names",
+                            description = "Regular shows full metric names. Abbreviated compacts them (e.g., 'Intrpts'). Icons replaces text with a matched metric icon per column.",
+                            values = { regular = "Regular", abbreviated = "Abbreviated", icons = "Icons" },
+                            order = { "regular", "abbreviated", "icons" },
+                            get = function() return getSetting("columnHeaderMode") or "regular" end,
+                            set = function(v) setAndRefresh("columnHeaderMode", v) end })
                         AddTextControls(tabInner, "textHeaders", 10)
                         tabInner:Finalize()
                     end,

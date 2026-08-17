@@ -93,21 +93,26 @@ function DMY._FullRefreshAllWindows()
     -- Ensure column header colors match DB settings
     local db = DMY._comp and DMY._comp.db
     if db then
-        local headerStyle = db.textHeaders or {}
+        local headerStyle = addon:ResolveComponentSubTable(DMY._comp, "textHeaders") or {}
         local useCustom = headerStyle.colorMode == "custom" and headerStyle.color
         for i = 1, DMY.MAX_WINDOWS do
             local win = DMY._windows[i]
             if win then
                 for c = 1, DMY.MAX_COLUMNS do
                     local ch = win.columnHeaders[c]
+                    local hr, hg, hb, ha = 0.8, 0.8, 0.8, 1
+                    if useCustom then
+                        local hc = headerStyle.color
+                        hr, hg, hb, ha = hc[1] or 0.8, hc[2] or 0.8, hc[3] or 0.8, hc[4] or 1
+                    end
                     if ch then
                         ch:SetAlpha(1)
-                        if useCustom then
-                            local hc = headerStyle.color
-                            ch:SetTextColor(hc[1] or 0.8, hc[2] or 0.8, hc[3] or 0.8, hc[4] or 1)
-                        else
-                            ch:SetTextColor(0.8, 0.8, 0.8, 1)
-                        end
+                        ch:SetTextColor(hr, hg, hb, ha)
+                    end
+                    -- Icons header mode: keep the metric icon tint in sync
+                    local hi = win.columnHeaderIcons and win.columnHeaderIcons[c]
+                    if hi and hi:IsShown() then
+                        hi:SetVertexColor(hr, hg, hb, ha)
                     end
                 end
             end
@@ -219,12 +224,14 @@ function DMY._UpdateTimerText(windowIndex)
                 -- Calculate available title width to prevent column header overlap
                 local fw = tonumber(cfg.frameWidth or (db and db.frameWidth)) or 350
 
-                -- Right boundary: before the visible column header text
+                -- Right boundary: the column area's left edge. Headers are
+                -- center-anchored inside their cells now, so geometry replaces
+                -- the old GetStringWidth measurement (which the Icons header
+                -- mode has no text for anyway).
                 local rightBound
-                local ch = win.columnHeaders and win.columnHeaders[1]
-                if ch and ch:IsShown() then
-                    local chW = ch:GetStringWidth()
-                    rightBound = (chW and chW > 0) and (fw - chW - 12) or (fw - 60)
+                local clip = win.columnHeaderClips and win.columnHeaderClips[1]
+                if clip and clip:IsShown() then
+                    rightBound = (win._colEdges and win._colEdges[0] or DMY.BAR_LEFT_OFFSET) - 8
                 else
                     rightBound = fw - 8
                 end

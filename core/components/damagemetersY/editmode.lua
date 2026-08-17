@@ -43,6 +43,74 @@ function DMY._RestorePosition(windowIndex, layoutName)
 end
 
 --------------------------------------------------------------------------------
+-- Edit Mode Mirror
+--------------------------------------------------------------------------------
+
+-- Sizing controls mirrored into the branded Edit Mode dialog for the selected
+-- window. Bounds match the settings panel's Sizing sliders; both surfaces
+-- write through DMY.SetWindowSizing.
+function DMY._EditModeMirror(frame)
+    local i = frame and frame.dmyWindowIndex
+    if not i then return nil end
+    local cfg = DMY._GetWindowConfig(i)
+    if not cfg then return nil end
+
+    local specs = {
+        {
+            kind = "slider", label = "Scale",
+            min = 0.5, max = 2.0, step = 0.05, precision = 2,
+            get = function()
+                local c = DMY._GetWindowConfig(i)
+                return tonumber(c and c.windowScale) or 1.0
+            end,
+            set = function(v) DMY.SetWindowSizing(i, "windowScale", v) end,
+        },
+        {
+            kind = "slider", label = "Width",
+            min = 200, max = 800, step = 10,
+            get = function()
+                local c = DMY._GetWindowConfig(i)
+                return tonumber(c and c.frameWidth) or 350
+            end,
+            set = function(v) DMY.SetWindowSizing(i, "frameWidth", v) end,
+        },
+        {
+            kind = "slider", label = "Height",
+            min = 100, max = 600, step = 10,
+            get = function()
+                local c = DMY._GetWindowConfig(i)
+                return tonumber(c and c.frameHeight) or 250
+            end,
+            set = function(v) DMY.SetWindowSizing(i, "frameHeight", v) end,
+        },
+    }
+
+    -- Column widths only exist for multi-column (Overall) windows
+    if cfg.sessionType == 0 and cfg.columns and #cfg.columns >= 2 then
+        specs[#specs + 1] = {
+            kind = "button", label = "Reset Column Widths",
+            set = function()
+                local c = DMY._GetWindowConfig(i)
+                if c and c.columns then
+                    for _, col in ipairs(c.columns) do
+                        col.widthFraction = nil
+                    end
+                end
+                if DMY._comp then
+                    DMY._CalculateColumnWidths(i, DMY._comp)
+                    DMY._LayoutBarRows(i, DMY._comp)
+                end
+                if DMY.Dividers and DMY.Dividers.Refresh then
+                    DMY.Dividers.Refresh()
+                end
+            end,
+        }
+    end
+
+    return specs
+end
+
+--------------------------------------------------------------------------------
 -- LibEditMode Registration
 --------------------------------------------------------------------------------
 
@@ -81,7 +149,25 @@ function DMY._InitializeEditMode()
                 Brand:Register(win.frame, {
                     navKey    = "damageMeterV2",
                     pageState = { key = "_damageMeterYSelectedWindow", value = i },
+                    mirror    = DMY._EditModeMirror,
                 })
+            end
+
+            -- Column divider lifecycle rides the LEM selection states: LEM
+            -- has no select/deselect callbacks, so hook the selection overlay
+            -- (SelectionSkin pattern). ShowHighlighted is the deselected/
+            -- hover state — it fires when the selection moves elsewhere.
+            local selection = lib.frameSelections and lib.frameSelections[win.frame]
+            if selection and DMY.Dividers then
+                local winIdx = i
+                hooksecurefunc(selection, "ShowSelected", function()
+                    DMY.Dividers.Attach(winIdx)
+                end)
+                hooksecurefunc(selection, "ShowHighlighted", function()
+                    if DMY.Dividers.IsActiveFor(winIdx) then
+                        DMY.Dividers.Detach()
+                    end
+                end)
             end
         end
     end
@@ -106,6 +192,7 @@ function DMY._InitializeEditMode()
 
     lib:RegisterCallback("exit", function()
         DMY._editModeActive = false
+        if DMY.Dividers then DMY.Dividers.Detach() end
         -- Restore normal visibility rules
         if DMY._comp then
             for i = 1, DMY.MAX_WINDOWS do

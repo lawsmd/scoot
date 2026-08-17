@@ -12,6 +12,8 @@ local HEADER_HEIGHT = 24
 local ICON_SIZE = 22
 local NAME_WIDTH = 113
 local PINNED_SEPARATOR_HEIGHT = 1
+-- Where the column area begins: icon + gap + name area + gap
+local BAR_LEFT_OFFSET = ICON_SIZE + 6 + NAME_WIDTH + 8
 
 local function GetDefaultFont()
     if addon.ResolveFontFace then
@@ -601,7 +603,7 @@ function DMY._CreateBarRow(scrollContent, rowIndex, windowIndex)
     row.icon = icon
 
     -- Bar area starts at a fixed offset (icon + gap + name width + gap)
-    local barAreaLeft = ICON_SIZE + 6 + NAME_WIDTH + 8
+    local barAreaLeft = BAR_LEFT_OFFSET
 
     -- Name clip region — rank sits to the left, name fills the rest
     -- Reserve 15px on the left for rank numbers
@@ -655,15 +657,31 @@ function DMY._CreateBarRow(scrollContent, rowIndex, windowIndex)
     rankText:SetTextColor(0.6, 0.6, 0.6, 0.7)
     row.rankText = rankText
 
-    -- Column value texts (up to MAX_COLUMNS, positioned at column offsets)
+    -- Column value texts (up to MAX_COLUMNS), each inside a hard-clipping
+    -- column cell: single CENTER anchor, no width, so over-long strings clip
+    -- into nothing at both cell edges instead of ellipsizing. The fixed frame
+    -- level (row + 2, above the StatusBar) keeps text drawing over the bar
+    -- fill in every bar mode — no per-mode reparenting.
+    row.colClips = {}
     row.valueTexts = {}
     for c = 1, DMY.MAX_COLUMNS do
-        local vt = bar:CreateFontString(nil, "OVERLAY")
+        local clip = CreateFrame("Frame", nil, row)
+        clip:SetClipsChildren(true)
+        clip:SetFrameLevel(row:GetFrameLevel() + 2)
+        clip:Hide()
+
+        -- Inner frame holds the FontString (ClipsChildren clips child frames)
+        local clipInner = CreateFrame("Frame", nil, clip)
+        clipInner:SetAllPoints()
+
+        local vt = clipInner:CreateFontString(nil, "OVERLAY")
         vt:SetFont(GetDefaultFont(), 11, "OUTLINE")
-        vt:SetJustifyH("RIGHT")
+        vt:SetPoint("CENTER", clipInner, "CENTER", 0, 0)
+        vt:SetJustifyH("CENTER")
         vt:SetWordWrap(false)
         vt:SetTextColor(1, 1, 1, 1)
-        vt:Hide()
+
+        row.colClips[c] = clip
         row.valueTexts[c] = vt
     end
 
@@ -709,6 +727,7 @@ function DMY._CreateWindow(windowIndex, comp)
 
     -- Main container
     local frame = CreateFrame("Frame", "ScootDMYWindow" .. windowIndex, UIParent)
+    frame.dmyWindowIndex = windowIndex
     frame:SetSize(fw, fh)
     frame:SetPoint("CENTER", UIParent, "CENTER", -200 + (windowIndex - 1) * 100, 0)
     frame:SetFrameStrata("MEDIUM")
@@ -778,21 +797,43 @@ function DMY._CreateWindow(windowIndex, comp)
 
     -- For vertical title: text is set as stacked characters in _UpdateTimerText
 
-    -- Column headers (right side, created dynamically)
+    -- Column headers (right side), each inside a hard-clipping cell.
+    -- The label FontString (or a metric icon, in the Icons header mode) lives
+    -- on the cell's inner frame and clips at the column edge.
     local columnHeaders = {}
+    local columnHeaderClips = {}
+    local columnHeaderIcons = {}
     local columnClickRegions = {}
     for c = 1, DMY.MAX_COLUMNS do
-        local ch = header:CreateFontString(nil, "OVERLAY")
+        local clip = CreateFrame("Frame", nil, header)
+        clip:SetClipsChildren(true)
+        clip:SetFrameLevel(header:GetFrameLevel() + 1)
+        clip:Hide()
+        columnHeaderClips[c] = clip
+
+        -- Inner frame holds the regions (ClipsChildren clips child frames)
+        local clipInner = CreateFrame("Frame", nil, clip)
+        clipInner:SetAllPoints()
+
+        local ch = clipInner:CreateFontString(nil, "OVERLAY")
         ch:SetFont(GetDefaultFont(), 10, "OUTLINE")
         ch:SetTextColor(0.8, 0.8, 0.8, 1)
-        ch:SetJustifyH("RIGHT")
-        ch:Hide()
+        ch:SetPoint("CENTER", clipInner, "CENTER", 0, 0)
+        ch:SetJustifyH("CENTER")
+        ch:SetWordWrap(false)
         columnHeaders[c] = ch
 
-        -- Invisible overlay for right-click on column header
+        local hi = clipInner:CreateTexture(nil, "OVERLAY")
+        hi:SetPoint("CENTER", clipInner, "CENTER", 0, 0)
+        hi:Hide()
+        columnHeaderIcons[c] = hi
+
+        -- Invisible overlay for right-click on column header — anchored to
+        -- the cell, not the FontString: a width-less CENTER-anchored FontString
+        -- auto-sizes to its text, and the Icons mode has no text at all
         local chClickRegion = CreateFrame("Button", nil, header)
-        chClickRegion:SetAllPoints(ch)
-        chClickRegion:SetFrameLevel(header:GetFrameLevel() + 2)
+        chClickRegion:SetAllPoints(clip)
+        chClickRegion:SetFrameLevel(header:GetFrameLevel() + 3)
         chClickRegion:RegisterForClicks("RightButtonUp")
         chClickRegion:Hide()
         chClickRegion._colIndex = c
@@ -1197,6 +1238,8 @@ function DMY._CreateWindow(windowIndex, comp)
         timerText = timerText,
         verticalTitle = verticalTitle,
         columnHeaders = columnHeaders,
+        columnHeaderClips = columnHeaderClips,
+        columnHeaderIcons = columnHeaderIcons,
         columnClickRegions = columnClickRegions,
         titleClickRegion = titleClickRegion,
         scrollArea = scrollArea,
@@ -1217,3 +1260,4 @@ end
 DMY.HEADER_HEIGHT = HEADER_HEIGHT
 DMY.ICON_SIZE = ICON_SIZE
 DMY.NAME_WIDTH = NAME_WIDTH
+DMY.BAR_LEFT_OFFSET = BAR_LEFT_OFFSET

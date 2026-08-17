@@ -173,17 +173,17 @@ addon:RegisterComponentInitializer(function(self)
             -- Text: Names
             textNames = { type = "addon", default = {
                 fontFace = "ROBOTO_SEMICOND_BOLD", fontStyle = "OUTLINE", fontSize = 12,
-                colorMode = "default", color = { 1, 1, 1, 1 },
+                colorMode = "class", color = { 1, 1, 1, 1 },
             }},
             hideRealmNames = { type = "addon", default = true },
             -- Text: Values
             textValues = { type = "addon", default = {
-                fontFace = "ROBOTO_SEMICOND_BOLD", fontStyle = "OUTLINE", fontSize = 11,
+                fontFace = "ROBOTO_SEMICOND_BLACK", fontStyle = "SHADOWTHICKOUTLINE", fontSize = 11,
                 colorMode = "default", color = { 1, 1, 1, 1 },
             }},
             -- Text: Title
             textTitle = { type = "addon", default = {
-                fontFace = "ROBOTO_SEMICOND_BOLD", fontStyle = "OUTLINE", fontSize = 13,
+                fontFace = "ROBOTO_SEMICOND_BLACK", fontStyle = "SHADOWTHICKOUTLINE", fontSize = 13,
                 colorMode = "default", color = { 1, 1, 1, 1 },
             }},
             -- Text: Timer
@@ -195,9 +195,11 @@ addon:RegisterComponentInitializer(function(self)
             verticalTitleMode = { type = "addon", default = false },
             -- Text: Column Headers
             textHeaders = { type = "addon", default = {
-                fontFace = "ROBOTO_SEMICOND_BOLD", fontStyle = "OUTLINE", fontSize = 10,
+                fontFace = "ROBOTO_SEMICOND_BLACK", fontStyle = "SHADOWTHICKOUTLINE", fontSize = 10,
                 colorMode = "default", color = { 0.8, 0.8, 0.8, 1 },
             }},
+            -- Column header display: "regular" | "abbreviated" | "icons"
+            columnHeaderMode = { type = "addon", default = "regular" },
 
             -- Window
             showBackdrop            = { type = "addon", default = true },
@@ -414,5 +416,28 @@ function DMY.CopyWindowSettings(sourceIdx, destIdx)
     dst.frameHeight = src.frameHeight
     dst.windowScale = src.windowScale
 
+    if DMY._comp then DMY._ApplyStyling(DMY._comp) end
+end
+
+--------------------------------------------------------------------------------
+-- Window Sizing
+--------------------------------------------------------------------------------
+
+-- Single write path for per-window sizing, shared by the settings panel
+-- sliders and the Edit Mode mirror so the two surfaces cannot drift.
+local SIZING_BOUNDS = {
+    windowScale = { min = 0.5, max = 2.0 },
+    frameWidth  = { min = 200, max = 800 },
+    frameHeight = { min = 100, max = 600 },
+}
+
+function DMY.SetWindowSizing(windowIndex, key, value)
+    local bounds = SIZING_BOUNDS[key]
+    if not bounds then return end
+    local cfg = DMY._GetWindowConfig(windowIndex)
+    if not cfg then return end
+    value = tonumber(value)
+    if not value then return end
+    cfg[key] = math.max(bounds.min, math.min(bounds.max, value))
     if DMY._comp then DMY._ApplyStyling(DMY._comp) end
 end

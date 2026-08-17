@@ -153,6 +153,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug dmY colprobe")
             addon:Print("  /scoot debug dmY drillstate")
             addon:Print("  /scoot debug dmY deathprobe")
+            addon:Print("  /scoot debug dmY headericons")
             addon:Print("  /scoot debug widget <spawnchild|releaseall|state>")
             addon:Print("  /scoot debug inspect <state|cache>")
             addon:Print("  /scoot debug nametext [size|lines|range|fallback|mode|font|case|caseprobe|sample|gradient|chrome|margin|slices|class|treatment|scan|lengthprobe|fitprobe|autofit|report]")
@@ -652,6 +653,11 @@ function SlashCmdList.SCOOT(msg, editBox)
                 else addon:Print("DMY debug not available.") end
                 return
             end
+            if sub2 == "headericons" then
+                if addon.DebugDMYHeaderIcons then addon.DebugDMYHeaderIcons()
+                else addon:Print("DMY debug not available.") end
+                return
+            end
             addon:Print("Usage: /scoot debug dmY cvar")
             addon:Print("       /scoot debug dmY api")
             addon:Print("       /scoot debug dmY trace")
@@ -664,6 +670,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("       /scoot debug dmY names")
             addon:Print("       /scoot debug dmY drillstate")
             addon:Print("       /scoot debug dmY deathprobe")
+            addon:Print("       /scoot debug dmY headericons")
             return
         end
 

@@ -20,6 +20,55 @@ DMY._SnapToPixels = SnapToPixels
 -- in both combat (secret values) and OOC (plain values).
 
 --------------------------------------------------------------------------------
+-- Column Width Fractions
+--------------------------------------------------------------------------------
+
+-- Per-column widths are stored as fractions of the column area on each column
+-- entry (cfg.columns[c].widthFraction), set only by dragging the Edit Mode
+-- divider lines. nil = equal split, so existing profiles need no migration.
+
+function DMY._GetColumnFractions(cfg, numColumns)
+    local fractions = {}
+    local sum = 0
+    for c = 1, numColumns do
+        local col = cfg.columns and cfg.columns[c]
+        local f = col and tonumber(col.widthFraction)
+        if not f or f <= 0 then f = 1 / numColumns end
+        fractions[c] = f
+        sum = sum + f
+    end
+    if sum <= 0 then sum = 1 end
+    for c = 1, numColumns do
+        fractions[c] = fractions[c] / sum
+    end
+    return fractions
+end
+
+-- Rescale stored fractions to sum 1.0 after a column add/remove. Windows still
+-- in equal-split mode (no stored fractions anywhere) are left untouched.
+function DMY.NormalizeColumnFractions(cfg)
+    if not cfg or not cfg.columns then return end
+    local n = #cfg.columns
+    if n == 0 then return end
+    local sum, any = 0, false
+    for _, col in ipairs(cfg.columns) do
+        local f = tonumber(col.widthFraction)
+        if f and f > 0 then
+            any = true
+            sum = sum + f
+        else
+            sum = sum + (1 / n)
+        end
+    end
+    if not any or sum <= 0 then return end
+    for _, col in ipairs(cfg.columns) do
+        local f = tonumber(col.widthFraction)
+        if not f or f <= 0 then f = 1 / n end
+        col.widthFraction = f / sum
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Column Width Calculation
 --------------------------------------------------------------------------------
 
@@ -36,44 +85,84 @@ function DMY._CalculateColumnWidths(windowIndex, comp)
     if numColumns == 0 then numColumns = 1 end
     if cfg.sessionType ~= 0 then numColumns = 1 end  -- Current/Expired: single column only
 
-    -- Available width after icon + name
-    local availableWidth = fw - DMY.ICON_SIZE - 6 - DMY.NAME_WIDTH - 8
-    local colWidth = math.floor(availableWidth / numColumns)
+    -- Column area: everything right of icon + name
+    local left = DMY.BAR_LEFT_OFFSET
+    local available = math.max(fw - left, 1)
 
-    win._colWidth = colWidth
+    -- Cumulative pixel edges from the stored fractions (equal split when
+    -- unset). A live divider drag overrides via win._dragFractions. The last
+    -- column absorbs rounding remainder so the edges always tile [left, fw].
+    local fractions = win._dragFractions or DMY._GetColumnFractions(cfg, numColumns)
+    local edges = { [0] = left }
+    local acc = 0
+    for c = 1, numColumns - 1 do
+        acc = acc + (fractions[c] or (1 / numColumns))
+        edges[c] = SnapToPixels(left + available * acc, win.frame)
+    end
+    edges[numColumns] = fw
+
+    win._colEdges = edges
     win._numColumns = numColumns
 
-    -- Position column headers (matching value text alignment)
-    local barLeftOffset = DMY.ICON_SIZE + 6 + DMY.NAME_WIDTH + 8
+    -- Position column header cells; content (text or icon) is hard-clipped
+    -- inside them
     for c = 1, DMY.MAX_COLUMNS do
-        local ch = win.columnHeaders[c]
+        local clip = win.columnHeaderClips and win.columnHeaderClips[c]
         local cr = win.columnClickRegions and win.columnClickRegions[c]
-        if c <= numColumns then
-            ch:ClearAllPoints()
-            local rightEdge = fw - (numColumns - c) * colWidth
-            ch:SetWidth(colWidth - 8)
-            ch:SetText(DMY._GetColumnHeader(cfg.columns[c].format))
-            if numColumns == 1 then
-                ch:SetJustifyH("RIGHT")
-                ch:SetPoint("RIGHT", win.header, "LEFT", rightEdge - 4, 0)
-            elseif c == 1 then
-                ch:SetJustifyH("LEFT")
-                ch:SetPoint("LEFT", win.header, "LEFT", barLeftOffset + 4, 0)
-            elseif c == numColumns then
-                ch:SetJustifyH("RIGHT")
-                ch:SetPoint("RIGHT", win.header, "LEFT", rightEdge - 4, 0)
-            else
-                -- Middle columns: center within column span
-                ch:SetJustifyH("CENTER")
-                local colCenter = rightEdge - colWidth / 2
-                ch:SetPoint("CENTER", win.header, "LEFT", colCenter, 0)
-            end
-            ch:Show()
+        if c <= numColumns and clip then
+            clip:ClearAllPoints()
+            clip:SetPoint("LEFT", win.header, "LEFT", edges[c - 1] + 1, 0)
+            clip:SetPoint("RIGHT", win.header, "LEFT", edges[c] - 1, 0)
+            clip:SetPoint("TOP", win.header, "TOP", 0, 0)
+            clip:SetPoint("BOTTOM", win.header, "BOTTOM", 0, 0)
+            DMY._ApplyColumnHeaderContent(win, c, cfg.columns[c] and cfg.columns[c].format, comp)
+            clip:Show()
             if cr then cr:Show() end
         else
-            ch:Hide()
+            if clip then clip:Hide() end
             if cr then cr:Hide() end
         end
+    end
+
+    -- Keep Edit Mode divider strips glued to the boundaries
+    if DMY.Dividers and DMY.Dividers.Refresh then
+        DMY.Dividers.Refresh()
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Column header content — text (regular/abbreviated) or metric icon
+--------------------------------------------------------------------------------
+
+function DMY._ApplyColumnHeaderContent(win, c, formatKey, comp)
+    local ch = win.columnHeaders[c]
+    local icon = win.columnHeaderIcons and win.columnHeaderIcons[c]
+    if not ch then return end
+
+    local db = comp and comp.db
+    local mode = (db and db.columnHeaderMode) or "regular"
+    local def = formatKey and DMY.COLUMN_FORMATS[formatKey]
+
+    local iconSpec
+    if mode == "icons" and def and def.iconKind and DMY.HEADER_ICONS then
+        iconSpec = DMY.HEADER_ICONS[def.iconKind]
+    end
+
+    if iconSpec and icon then
+        ch:SetText("")
+        ch:Hide()
+        DMY._ConfigureHeaderIcon(icon, iconSpec, comp)
+        icon:Show()
+    else
+        if icon then icon:Hide() end
+        local text
+        if mode == "abbreviated" and def and def.headerAbbrev then
+            text = def.headerAbbrev
+        else
+            text = DMY._GetColumnHeader(formatKey)
+        end
+        ch:SetText(text)
+        ch:Show()
     end
 end
 
@@ -130,38 +219,29 @@ function DMY._LayoutBarRows(windowIndex, comp)
     local barHeight = tonumber(db.barHeight) or 22
     local barSpacing = tonumber(db.barSpacing) or 2
     local numColumns = win._numColumns or 1
-    local colWidth = win._colWidth or 100
+    local barLeftOffset = DMY.BAR_LEFT_OFFSET
 
-    -- Alignment: 1 col = right; 2+ = first left, last right, middle centered in column
-    local barLeftOffset = DMY.ICON_SIZE + 6 + DMY.NAME_WIDTH + 8
+    -- Per-column pixel edges computed by _CalculateColumnWidths
+    local edges = win._colEdges or { [0] = barLeftOffset, [numColumns] = fw }
+
+    -- Value texts sit inside hard-clipping column cells: single CENTER anchor,
+    -- no width — over-long strings clip at both cell edges instead of
+    -- ellipsizing or overflowing into the neighboring column
     local function LayoutRowValueTexts(row)
         for c = 1, DMY.MAX_COLUMNS do
+            local clip = row.colClips and row.colClips[c]
             local vt = row.valueTexts[c]
-            if c <= numColumns then
-                vt:ClearAllPoints()
-                -- Fixed width (matching header SetWidth in _CalculateColumnWidths)
-                -- so over-long strings truncate on the right instead of
-                -- overflowing leftward across the player name
-                vt:SetWidth(math.max(colWidth - 8, 1))
-                local rightEdge = fw - (numColumns - c) * colWidth
-                if numColumns == 1 then
-                    vt:SetJustifyH("RIGHT")
-                    vt:SetPoint("RIGHT", row, "LEFT", rightEdge - 4, 0)
-                elseif c == 1 then
-                    vt:SetJustifyH("LEFT")
-                    vt:SetPoint("LEFT", row, "LEFT", barLeftOffset + 4, 0)
-                elseif c == numColumns then
-                    vt:SetJustifyH("RIGHT")
-                    vt:SetPoint("RIGHT", row, "LEFT", rightEdge - 4, 0)
-                else
-                    -- Middle columns: center within column span
-                    vt:SetJustifyH("CENTER")
-                    local colCenter = rightEdge - colWidth / 2
-                    vt:SetPoint("CENTER", row, "LEFT", colCenter, 0)
-                end
-                vt:Show()
+            if c <= numColumns and clip and edges[c] then
+                clip:ClearAllPoints()
+                clip:SetPoint("LEFT", row, "LEFT", edges[c - 1] + 1, 0)
+                clip:SetPoint("RIGHT", row, "LEFT", edges[c] - 1, 0)
+                clip:SetPoint("TOP", row, "TOP", 0, 0)
+                clip:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
+                clip:Show()
+                if vt then vt:Show() end
             else
-                vt:Hide()
+                if clip then clip:Hide() end
+                if vt then vt:Hide() end
             end
         end
     end
@@ -175,13 +255,10 @@ function DMY._LayoutBarRows(windowIndex, comp)
         for c = 1, DMY.MAX_COLUMNS do
             local btn = row.colClickRegions[c]
             if not btn then break end
-            if numColumns >= 2 and c <= numColumns then
-                local rightEdge = fw - (numColumns - c) * colWidth
-                local leftEdge  = rightEdge - colWidth
-                if c == 1 and leftEdge < barLeftOffset then leftEdge = barLeftOffset end
+            if numColumns >= 2 and c <= numColumns and edges[c] then
                 btn:ClearAllPoints()
-                btn:SetPoint("LEFT",  row, "LEFT", leftEdge,  0)
-                btn:SetPoint("RIGHT", row, "LEFT", rightEdge, 0)
+                btn:SetPoint("LEFT",  row, "LEFT", edges[c - 1], 0)
+                btn:SetPoint("RIGHT", row, "LEFT", edges[c], 0)
                 btn:SetPoint("TOP",    row, "TOP",    0, 0)
                 btn:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
                 btn:Show()
@@ -353,7 +430,7 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
     row.nameText:SetText(displayName or "")
 
     -- Name text color
-    local nameSettings = db and db.textNames or {}
+    local nameSettings = addon:ResolveComponentSubTable(DMY._comp, "textNames") or {}
     local nameColorMode = nameSettings.colorMode or "default"
     if nameColorMode == "class" and player.classFilename then
         local classColor = addon.ClassColors and addon.ClassColors[player.classFilename]
@@ -378,7 +455,9 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
         cr, cg, cb = DMY._GetBarColor(player, db)
     end
 
-    -- Show/hide bar fill and background; mode-aware text parenting
+    -- Show/hide bar fill and background. Value texts live in per-column clip
+    -- cells at a fixed frame level above the StatusBar, so no mode-aware
+    -- reparenting is needed to keep text drawing over the bar fill.
     local barMode = db and db.barMode or "default"
     local showBars = barMode ~= "hidden"
     local barTex = row.bar:GetStatusBarTexture()
@@ -387,35 +466,15 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
         row.bar:Hide()
         row.barBg:Hide()
         if barTex then barTex:SetAlpha(1) end
-        for vc = 1, DMY.MAX_COLUMNS do
-            local vt = row.valueTexts[vc]
-            if vt then vt:SetParent(row) end
-        end
     elseif barMode == "hollow" then
         row.bar:Show()
         row.barBg:Hide()
         if barTex then barTex:SetAlpha(0) end
-        for vc = 1, DMY.MAX_COLUMNS do
-            local vt = row.valueTexts[vc]
-            if vt then vt:SetParent(row.bar) end
-        end
-    elseif barMode == "thin" then
-        row.bar:Show()
-        row.barBg:Show()
-        if barTex then barTex:SetAlpha(1) end
-        for vc = 1, DMY.MAX_COLUMNS do
-            local vt = row.valueTexts[vc]
-            if vt then vt:SetParent(row) end
-        end
     else
-        -- Default mode
+        -- Thin and Default modes
         row.bar:Show()
         row.barBg:Show()
         if barTex then barTex:SetAlpha(1) end
-        for vc = 1, DMY.MAX_COLUMNS do
-            local vt = row.valueTexts[vc]
-            if vt then vt:SetParent(row.bar) end
-        end
     end
 
     -- Rank number — sits to the LEFT of the name, just after the icon.
@@ -518,7 +577,7 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
 
             -- Apply value text color and opacity (same for combat and OOC)
             vt:SetAlpha(1)
-            local valSettings = db and db.textValues or {}
+            local valSettings = addon:ResolveComponentSubTable(DMY._comp, "textValues") or {}
             local valColorMode = valSettings.colorMode or "default"
             if valColorMode == "custom" and valSettings.color then
                 local vc = valSettings.color

@@ -77,9 +77,15 @@ end
 -- Apply text styling to a FontString
 --------------------------------------------------------------------------------
 
+-- Text settings arrive already resolved against their registered defaults (see
+-- ResolveTextSettings below), so there is deliberately no local font fallback
+-- here. A second fallback constant in this file is how the original bug hid:
+-- the settings panel fell back to ROBOTO_SEMICOND_BOLD for display while this
+-- function fell back to FRIZQT__ for rendering, and on a fresh profile -- where
+-- Zero-Touch stores nothing -- the panel and the HUD disagreed.
 local function ApplyTextStyle(fs, textSettings)
     if not fs or not textSettings then return end
-    local face = addon.ResolveFontFace(textSettings.fontFace or "FRIZQT__")
+    local face = addon.ResolveFontFace(textSettings.fontFace)
     local size = textSettings.fontSize or 12
     local style = textSettings.fontStyle or "OUTLINE"
     addon.ApplyFontStyle(fs, face, size, style)
@@ -88,6 +94,71 @@ local function ApplyTextStyle(fs, textSettings)
         local c = textSettings.color
         fs:SetTextColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
     end
+end
+
+--------------------------------------------------------------------------------
+-- Column header metric icons (Icons header mode)
+--------------------------------------------------------------------------------
+
+-- Header Row color resolved the same way ApplyTextStyle treats FontStrings:
+-- custom color when set, the creation-time light gray otherwise.
+function DMY._ResolveHeaderColor(comp)
+    local headers = addon:ResolveComponentSubTable(comp, "textHeaders") or {}
+    if headers.colorMode == "custom" and headers.color then
+        local c = headers.color
+        return c[1] or 0.8, c[2] or 0.8, c[3] or 0.8, c[4] or 1
+    end
+    return 0.8, 0.8, 0.8, 1
+end
+
+-- Applies a DMY.HEADER_ICONS spec to a header icon texture. Size follows the
+-- Header Row font size (clamped to the header height) with a per-icon scale
+-- multiplier so stylistically different sources can be visually normalized.
+--- Returns width, height for a header icon spec fitted inside a `base`-sized
+--- square box (times spec.scale). Atlas sources keep their native aspect
+--- ratio — some are far from square (the ping warning "!" glyph is ~1:2.5)
+--- and would distort badly if stretched. Texture files here are all square.
+function DMY._HeaderIconDims(spec, base)
+    local size = base * (tonumber(spec.scale) or 1.0)
+    local w, h = size, size
+    if spec.atlas and C_Texture and C_Texture.GetAtlasInfo then
+        local info = C_Texture.GetAtlasInfo(spec.atlas)
+        local aw = info and tonumber(info.width)
+        local ah = info and tonumber(info.height)
+        if aw and ah and aw > 0 and ah > 0 and aw ~= ah then
+            if aw > ah then
+                h = size * ah / aw
+            else
+                w = size * aw / ah
+            end
+        end
+    end
+    return w, h
+end
+
+function DMY._ConfigureHeaderIcon(icon, spec, comp)
+    if not icon or not spec then return end
+    local headers = addon:ResolveComponentSubTable(comp, "textHeaders") or {}
+    local base = math.min((tonumber(headers.fontSize) or 10) + 4, (DMY.HEADER_HEIGHT or 24) - 2)
+    icon:SetSize(DMY._HeaderIconDims(spec, base))
+
+    if spec.atlas then
+        icon:SetAtlas(spec.atlas)
+    elseif spec.texture then
+        icon:SetTexture(spec.texture)
+    end
+    if spec.texCoord then
+        icon:SetTexCoord(spec.texCoord[1], spec.texCoord[2], spec.texCoord[3], spec.texCoord[4])
+    else
+        icon:SetTexCoord(0, 1, 0, 1)
+    end
+    icon:SetDesaturated(spec.desaturate ~= false)
+
+    local r, g, b, a = DMY._ResolveHeaderColor(comp)
+    icon:SetVertexColor(r, g, b, a)
+
+    icon:ClearAllPoints()
+    icon:SetPoint("CENTER", icon:GetParent(), "CENTER", 0, tonumber(spec.yOffset) or 0)
 end
 
 --------------------------------------------------------------------------------
@@ -442,10 +513,22 @@ end
 -- Full styling pass for a window
 --------------------------------------------------------------------------------
 
+-- Every text group resolved against its registered default in one place, so a
+-- fresh profile (nothing stored) and a legacy partial table both yield a
+-- complete set of properties.
+local function ResolveTextSettings(comp)
+    return addon:ResolveComponentSubTable(comp, "textNames"),
+           addon:ResolveComponentSubTable(comp, "textValues"),
+           addon:ResolveComponentSubTable(comp, "textTitle"),
+           addon:ResolveComponentSubTable(comp, "textTimer"),
+           addon:ResolveComponentSubTable(comp, "textHeaders")
+end
+
 function DMY._ApplyFullStyling(windowIndex, comp)
     local win = DMY._windows[windowIndex]
     if not win then return end
     local db = comp.db
+    local textNames, textValues, textTitle, textTimer, textHeaders = ResolveTextSettings(comp)
 
     -- Window backdrop
     if db.showBackdrop == false then
@@ -479,12 +562,12 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     end
 
     -- Title and timer text styling (separate settings)
-    if win.titleText then ApplyTextStyle(win.titleText, db.textTitle) end
-    if win.timerText then ApplyTextStyle(win.timerText, db.textTimer or db.textTitle) end
+    if win.titleText then ApplyTextStyle(win.titleText, textTitle) end
+    if win.timerText then ApplyTextStyle(win.timerText, textTimer or textTitle) end
 
     -- Vertical title positioning — tacked on OUTSIDE the frame's left edge
     if win.verticalTitle then
-        ApplyTextStyle(win.verticalTitle, db.textTitle)
+        ApplyTextStyle(win.verticalTitle, textTitle)
         if db.verticalTitleMode then
             win.verticalTitle:ClearAllPoints()
             win.verticalTitle:SetPoint("TOPRIGHT", win.frame, "TOPLEFT", -4, -(DMY.HEADER_HEIGHT or 24) - 4)
@@ -506,7 +589,7 @@ function DMY._ApplyFullStyling(windowIndex, comp)
 
     -- Column header styling
     for c = 1, DMY.MAX_COLUMNS do
-        ApplyTextStyle(win.columnHeaders[c], db.textHeaders)
+        ApplyTextStyle(win.columnHeaders[c], textHeaders)
     end
 
     -- Apply text styling to all bar rows in the pool
@@ -515,12 +598,12 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     local fillAlpha = (barMode == "hollow") and 0 or 1
     -- Rank numbers follow the Names font (one point smaller) but keep their
     -- muted color, so ApplyFontStyle directly instead of ApplyTextStyle
-    local nameFace = addon.ResolveFontFace(db.textNames and db.textNames.fontFace or "FRIZQT__")
-    local nameStyle = db.textNames and db.textNames.fontStyle or "OUTLINE"
-    local rankSize = math.max(6, (db.textNames and db.textNames.fontSize or 12) - 1)
+    local nameFace = addon.ResolveFontFace(textNames.fontFace)
+    local nameStyle = textNames.fontStyle or "OUTLINE"
+    local rankSize = math.max(6, (textNames.fontSize or 12) - 1)
     for r = 1, DMY.MAX_POOL do
         local row = win.barRows[r]
-        ApplyTextStyle(row.nameText, db.textNames)
+        ApplyTextStyle(row.nameText, textNames)
         if row.rankText then addon.ApplyFontStyle(row.rankText, nameFace, rankSize, nameStyle) end
         -- Single full-width bar texture
         if row.bar and barTexPath then
@@ -532,13 +615,13 @@ function DMY._ApplyFullStyling(windowIndex, comp)
         -- Value texts
         for c = 1, DMY.MAX_COLUMNS do
             local vt = row.valueTexts and row.valueTexts[c]
-            if vt then ApplyTextStyle(vt, db.textValues) end
+            if vt then ApplyTextStyle(vt, textValues) end
         end
     end
 
     -- Pinned row styling
     local pinnedRow = win.pinnedRow
-    ApplyTextStyle(pinnedRow.nameText, db.textNames)
+    ApplyTextStyle(pinnedRow.nameText, textNames)
     if pinnedRow.rankText then addon.ApplyFontStyle(pinnedRow.rankText, nameFace, rankSize, nameStyle) end
     if pinnedRow.bar and barTexPath then
         pcall(pinnedRow.bar.SetStatusBarTexture, pinnedRow.bar, barTexPath)
@@ -547,7 +630,7 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     if pinnedBarTex then pinnedBarTex:SetAlpha(fillAlpha) end
     for c = 1, DMY.MAX_COLUMNS do
         local vt = pinnedRow.valueTexts and pinnedRow.valueTexts[c]
-        if vt then ApplyTextStyle(vt, db.textValues) end
+        if vt then ApplyTextStyle(vt, textValues) end
     end
 
     -- Recalculate layout and refresh rows (applies borders + bar visibility)
@@ -591,6 +674,15 @@ function DMY._UpdateVisibility(windowIndex, comp)
     local cfg = DMY._GetWindowConfig(windowIndex)
     if not cfg or not cfg.enabled then
         win.frame:Hide()
+        return
+    end
+
+    -- Edit Mode force-show: enabled windows must stay visible for positioning
+    -- even under "incombat"/"hidden" rules, or any styling pass triggered from
+    -- inside Edit Mode (mirror sliders, header mode changes) re-hides the
+    -- window the user is editing.
+    if DMY._editModeActive then
+        win.frame:Show()
         return
     end
 

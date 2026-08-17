@@ -194,6 +194,7 @@ core/components/damagemetersY/frames.lua
 core/components/damagemetersY/layout.lua
 core/components/damagemetersY/styling.lua
 core/components/damagemetersY/editmode.lua
+core/components/damagemetersY/dividers.lua
 core/components/damagemetersY/export.lua
 core/components/damagemetersY/drilldown.lua
 core/components/damagemetersY/events.lua

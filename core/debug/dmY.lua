@@ -2162,3 +2162,158 @@ function addon.DebugDMYDeathProbe()
         addon.DebugShowWindow("DMY Death Probe", output)
     end
 end
+
+--------------------------------------------------------------------------------
+-- /scoot debug dmY headericons — Icons header mode gallery (visual tuning aid)
+--
+-- Renders every DMY.HEADER_ICONS entry at the three common header font sizes
+-- (desaturated + tinted with the resolved Header Row color, exactly as the
+-- live headers render them) plus an untouched reference copy. Tuning loop:
+-- edit the spec table in columns.lua, /reload, reopen the gallery.
+--------------------------------------------------------------------------------
+
+local headerIconGallery
+
+function addon.DebugDMYHeaderIcons()
+    local DMY = addon.DamageMetersY
+    if not (DMY and DMY.HEADER_ICONS and DMY._ConfigureHeaderIcon) then
+        addon:Print("DMY header icons not available.")
+        return
+    end
+
+    -- Rebuild fresh each open so edited specs show after /reload and repeated
+    -- opens never stack stale textures
+    if headerIconGallery then
+        headerIconGallery:Hide()
+        headerIconGallery:SetParent(nil)
+        headerIconGallery = nil
+    end
+
+    local KIND_ORDER = {
+        "damage", "healing", "absorbs", "interrupts", "dispels",
+        "deaths", "dmgTaken", "avoidable", "enemyDmg",
+    }
+    local SIZES = { 10, 12, 14 } -- header font sizes to simulate
+
+    -- Candidate replacements rendered below the live set for side-by-side
+    -- comparison; adopt one by copying its spec into DMY.HEADER_ICONS
+    local SPELL_ICON_ZOOM = { 0.08, 0.92, 0.08, 0.92 }
+    local ALT_SPECS = {
+        { label = "deaths: ping skull",  spec = { atlas = "Ping_Marker_Icon_Threat", desaturate = true, scale = 1.0 } },
+        -- classic texture files ARE numbered by raid-target index (8 = skull),
+        -- unlike the reverse-ordered GM-raidMarkerN atlases
+        { label = "deaths: classic mark", spec = { texture = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8", desaturate = true, scale = 1.0 } },
+        { label = "avoid: warning tri",  spec = { atlas = "transmog-icon-warning-small", desaturate = true, scale = 1.0 } },
+        { label = "avoid: profession !", spec = { atlas = "Professions_Icon_Warning", desaturate = true, scale = 1.0 } },
+        { label = "avoid: fire",         spec = { texture = "Interface\\Icons\\Spell_Fire_Fire", texCoord = SPELL_ICON_ZOOM, desaturate = true, scale = 1.0 } },
+    }
+
+    local headerH = DMY.HEADER_HEIGHT or 24
+    local rowH = 34
+    local labelW = 110
+    local cellW = 34
+    local width = 16 + labelW + (#SIZES + 1) * cellW + 16
+    local height = 46 + #KIND_ORDER * rowH + 26 + #ALT_SPECS * rowH + 12
+
+    local f = CreateFrame("Frame", "ScootDMYHeaderIconGallery", UIParent)
+    headerIconGallery = f
+    f:SetSize(width, height)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetClampedToScreen(true)
+
+    local bg = f:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.06, 0.06, 0.08, 0.97)
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 12, -10)
+    title:SetText("DMY Header Icons — sizes " .. table.concat(SIZES, "/") .. "pt + raw")
+
+    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", 2, 2)
+    closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetPoint("TOPLEFT", 12, -28)
+    hint:SetText("Tune scale/yOffset/texCoord in damagemetersY/columns.lua, then /reload")
+
+    local function renderRow(labelText, spec, y)
+        local label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOPLEFT", 12, y - 10)
+        label:SetWidth(labelW)
+        label:SetJustifyH("LEFT")
+        label:SetWordWrap(false)
+        label:SetText(labelText)
+
+        if not spec then
+            local missing = f:CreateFontString(nil, "OVERLAY", "GameFontRedSmall")
+            missing:SetPoint("TOPLEFT", 12 + labelW, y - 10)
+            missing:SetText("no HEADER_ICONS entry")
+            return
+        end
+
+        for s, fontSize in ipairs(SIZES) do
+            -- Simulated header cell: same dark ground as a meter header
+            local cell = CreateFrame("Frame", nil, f)
+            cell:SetSize(cellW - 4, headerH)
+            cell:SetPoint("TOPLEFT", 12 + labelW + (s - 1) * cellW, y - (rowH - headerH) / 2)
+            local cellBg = cell:CreateTexture(nil, "BACKGROUND")
+            cellBg:SetAllPoints()
+            cellBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+
+            local icon = cell:CreateTexture(nil, "OVERLAY")
+            -- Mirror _ConfigureHeaderIcon's sizing, with the gallery's
+            -- own font size substituted for the Header Row setting
+            local base = math.min(fontSize + 4, headerH - 2)
+            icon:SetSize(DMY._HeaderIconDims(spec, base))
+            if spec.atlas then
+                icon:SetAtlas(spec.atlas)
+            elseif spec.texture then
+                icon:SetTexture(spec.texture)
+            end
+            if spec.texCoord then
+                icon:SetTexCoord(spec.texCoord[1], spec.texCoord[2], spec.texCoord[3], spec.texCoord[4])
+            end
+            icon:SetDesaturated(spec.desaturate ~= false)
+            local r, g, b, a = 0.8, 0.8, 0.8, 1
+            if DMY._ResolveHeaderColor and DMY._comp then
+                r, g, b, a = DMY._ResolveHeaderColor(DMY._comp)
+            end
+            icon:SetVertexColor(r, g, b, a)
+            icon:SetPoint("CENTER", cell, "CENTER", 0, tonumber(spec.yOffset) or 0)
+        end
+
+        -- Raw reference: no desaturation, no tint, fitted to an 18px box
+        local raw = f:CreateTexture(nil, "OVERLAY")
+        raw:SetSize(DMY._HeaderIconDims(spec, 18))
+        raw:SetPoint("TOPLEFT", 12 + labelW + #SIZES * cellW + 6, y - (rowH - 18) / 2)
+        if spec.atlas then
+            raw:SetAtlas(spec.atlas)
+        elseif spec.texture then
+            raw:SetTexture(spec.texture)
+        end
+        if spec.texCoord then
+            raw:SetTexCoord(spec.texCoord[1], spec.texCoord[2], spec.texCoord[3], spec.texCoord[4])
+        end
+    end
+
+    for i, kind in ipairs(KIND_ORDER) do
+        renderRow(kind, DMY.HEADER_ICONS[kind], -46 - (i - 1) * rowH)
+    end
+
+    local altTop = -46 - #KIND_ORDER * rowH
+    local altHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    altHeader:SetPoint("TOPLEFT", 12, altTop - 8)
+    altHeader:SetText("Alternates — adopt by copying the spec into HEADER_ICONS")
+    for i, alt in ipairs(ALT_SPECS) do
+        renderRow(alt.label, alt.spec, altTop - 26 - (i - 1) * rowH)
+    end
+
+    f:Show()
+end
