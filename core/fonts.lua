@@ -4,6 +4,11 @@ local addonName, addon = ...
 addon.Fonts = addon.Fonts or {}
 addon.WorldTextFontLog = addon.WorldTextFontLog or {}
 
+-- Last-resort face. Stock with the client, so it is the one path that can be
+-- relied on to load in any session.
+local FALLBACK_FONT_PATH = "Fonts\\FRIZQT__.TTF"
+addon.FALLBACK_FONT_PATH = FALLBACK_FONT_PATH
+
 local function SnapshotFontObject(fontObj)
     if type(fontObj) ~= "table" or not fontObj.GetFont then
         return "<unavailable>"
@@ -133,12 +138,70 @@ end
 --------------------------------------------------------------------------------
 -- Font Style Application Helper (supports SHADOW and HEAVY prefixes)
 --------------------------------------------------------------------------------
+
+-- Set a font file on a FontString. Returns true only when the REQUESTED file
+-- was accepted; see the fallback rules inline below.
+--
+-- Scratch list for the fallback walk, reused so the common (successful) path
+-- allocates nothing.
+local fontCandidates = {}
+
+local function applyFontFile(fs, font, size, style)
+    local ok, accepted = pcall(fs.SetFont, fs, font, size, style)
+    -- SetFont returns false (without raising) for a file the client has not
+    -- loaded, so the pcall status alone proves nothing.
+    if ok and accepted ~= false then
+        return true
+    end
+
+    -- The requested face would not load. If the string already carries a font,
+    -- KEEP it -- an existing face is always a better answer than forcing Friz,
+    -- and callers rely on that: unitframesz applies a base face and then an
+    -- optional override precisely so a non-loadable override leaves the base
+    -- showing (see applyOverrideFace in unitframesz/engine.lua).
+    if fs.GetFont and fs:GetFont() ~= nil then
+        return false
+    end
+
+    -- Nothing on the string at all. It MUST get a font here: SetText on an
+    -- unfonted FontString raises "Font not set", so an invisible row would
+    -- become an error. Walk to something the client will accept.
+    for i = #fontCandidates, 1, -1 do
+        fontCandidates[i] = nil
+    end
+    -- Built without nil holes: a hole stops ipairs at the first gap and the
+    -- later fallbacks would never be tried.
+    local gameFont = _G.GameFontNormal and select(1, _G.GameFontNormal:GetFont())
+    if type(gameFont) == "string" and gameFont ~= "" and gameFont ~= font then
+        fontCandidates[#fontCandidates + 1] = gameFont
+    end
+    if font ~= FALLBACK_FONT_PATH and gameFont ~= FALLBACK_FONT_PATH then
+        fontCandidates[#fontCandidates + 1] = FALLBACK_FONT_PATH
+    end
+
+    for _, path in ipairs(fontCandidates) do
+        local fallbackOk, fallbackAccepted = pcall(fs.SetFont, fs, path, size, style)
+        if fallbackOk and fallbackAccepted ~= false then
+            return false  -- readable, but not the face that was asked for
+        end
+    end
+
+    return false
+end
+
 -- Apply font settings to a FontString with support for shadow-prefixed styles.
 -- Supported styles: NONE, OUTLINE, THICKOUTLINE, plus these prefixes:
 --   SHADOW*: adds a subtle drop shadow (offset 1, -1) for extra visual weight.
 --   HEAVY*: adds a centered glow effect (offset 0, 0) - thickens without directional shadow.
+--
+-- Returns true when the REQUESTED face was actually applied, false when the
+-- client would not load it (the string is left with whatever readable font it
+-- had, or given a fallback if it had none). Callers that care can surface the
+-- "this face needs a full client restart" case -- see verifyAppliedFace in
+-- unitframesz/engine.lua.
 function addon.ApplyFontStyle(fs, font, size, style)
     if not fs then return end
+    local applied = true
     style = style or ""
 
     -- Detect prefixes (check longer ones first to avoid partial matches)
@@ -162,9 +225,20 @@ function addon.ApplyFontStyle(fs, font, size, style)
         style = ""
     end
 
-    -- Apply the font
+    -- Apply the font.
+    --
+    -- SetFont does not raise when the file is missing or the client has not
+    -- loaded it this session -- it returns false and leaves the FontString
+    -- UNFONTED, and a later SetText on an unfonted string errors with "Font not
+    -- set". A bare pcall throws that signal away, which is why a bundled face
+    -- that has not been loaded yet (the classic new-machine case: a font file
+    -- added since the client started needs a full restart, not a /reload) shows
+    -- up as blank or default-looking text with no error. So walk the fallbacks
+    -- and confirm one actually took.
     if fs.SetFont then
-        pcall(fs.SetFont, fs, font, size, style)
+        if not applyFontFile(fs, font, size, style) then
+            applied = false
+        end
     end
 
     -- Apply shadow settings
@@ -183,6 +257,8 @@ function addon.ApplyFontStyle(fs, font, size, style)
             pcall(fs.SetShadowOffset, fs, 0, 0)
         end
     end
+
+    return applied
 end
 
 --------------------------------------------------------------------------------

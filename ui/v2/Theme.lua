@@ -174,13 +174,31 @@ end
 -- Font Helper Functions
 --------------------------------------------------------------------------------
 
--- Check if a font file exists/is loadable
+-- Check if a font file exists/is loadable.
+--
+-- SetFont does NOT raise for a missing or not-yet-loaded file -- it returns
+-- false. Testing only the pcall status therefore always answered "true", so
+-- every fallback below was dead code and GetFont happily handed back a path the
+-- client could not render. The boolean is the actual answer.
+--
+-- One probe object, created lazily and reused: the old version minted a fresh
+-- CreateFont global per call from a 100k-name random space.
+-- Results are memoized per path: GetFont runs on nearly every panel widget, and
+-- a file the client did not load at startup will not start loading mid-session
+-- (that needs a full client restart), so the answer cannot change under us.
+local probeFont
+local fontExistsCache = {}
 local function FontExists(path)
     if not path then return false end
-    -- Create a temporary font object to test
-    local testFont = CreateFont("ScootFontTest_" .. math.random(100000))
-    local ok = pcall(testFont.SetFont, testFont, path, 12, "")
-    return ok
+    local cached = fontExistsCache[path]
+    if cached ~= nil then return cached end
+
+    probeFont = probeFont or CreateFont("ScootFontProbe")
+    if not probeFont then return false end
+    local ok, applied = pcall(probeFont.SetFont, probeFont, path, 12, "")
+    local exists = ok and applied ~= false
+    fontExistsCache[path] = exists
+    return exists
 end
 
 -- Get a safe font path (with fallback)
