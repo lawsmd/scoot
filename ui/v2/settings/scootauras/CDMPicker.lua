@@ -12,6 +12,10 @@ local Picker = addon.UI.ScootAuraCDMPicker
 local CELL_W, CELL_H = 90, 60
 local ICON_SIZE = 30
 
+local UnitClass = _G.UnitClass
+local GetNumShapeshiftForms = _G.GetNumShapeshiftForms
+local GetShapeshiftFormInfo = _G.GetShapeshiftFormInfo
+
 --------------------------------------------------------------------------------
 -- Minimal scroll region (wheel + thin thumb), shared with the editor window
 --------------------------------------------------------------------------------
@@ -156,6 +160,69 @@ end
 Picker.BuildCatalog = BuildCatalog
 
 --------------------------------------------------------------------------------
+-- Extra cells per tracker kind
+--------------------------------------------------------------------------------
+
+-- Missing-buff trackers watch buffs the Cooldown Manager mostly does not
+-- list: the player's class raid buff and their forms/stances. The raid buff
+-- is a fixed six-entry table (one per class that has one); forms come from
+-- the shapeshift bar, a plain API that hands back each form's spell ID.
+local CLASS_RAID_BUFF = {
+    DRUID   = 1126,    -- Mark of the Wild
+    MAGE    = 1459,    -- Arcane Intellect
+    WARRIOR = 6673,    -- Battle Shout
+    PRIEST  = 21562,   -- Power Word: Fortitude
+    EVOKER  = 369459,  -- Source of Magic
+    SHAMAN  = 462854,  -- Skyfury
+}
+
+local function MissingKindEntries(seen)
+    local SAU = addon.ScootAuras
+    if not SAU then return {} end
+    local entries = {}
+    local function addSpell(spellId)
+        if type(spellId) ~= "number" or spellId <= 0 or seen[spellId] then return end
+        seen[spellId] = true
+        local name, icon, shownId = SAU.DescribeSpell(spellId)
+        table.insert(entries, {
+            spellId = spellId,
+            baseSpellId = spellId,
+            shownSpellId = shownId,
+            name = name,
+            icon = icon,
+        })
+    end
+
+    local _, classToken = UnitClass("player")
+    addSpell(CLASS_RAID_BUFF[classToken])
+
+    if GetNumShapeshiftForms and GetShapeshiftFormInfo then
+        local okN, count = pcall(GetNumShapeshiftForms)
+        if okN and type(count) == "number" and not issecretvalue(count) then
+            for i = 1, count do
+                local ok, _, _, _, formSpellId = pcall(GetShapeshiftFormInfo, i)
+                if ok and type(formSpellId) == "number" and not issecretvalue(formSpellId) then
+                    addSpell(formSpellId)
+                end
+            end
+        end
+    end
+    return entries
+end
+
+--- Cells prepended for a kind, deduped against the CDM catalog identities.
+local function ExtraEntriesForKind(kind, catalog)
+    if kind ~= "missingbuff" then return {} end
+    local seen = {}
+    for _, entry in ipairs(catalog) do
+        seen[entry.spellId] = true
+        if entry.baseSpellId then seen[entry.baseSpellId] = true end
+        if entry.shownSpellId then seen[entry.shownSpellId] = true end
+    end
+    return MissingKindEntries(seen)
+end
+
+--------------------------------------------------------------------------------
 -- Grid construction
 --------------------------------------------------------------------------------
 
@@ -202,8 +269,8 @@ end
 --------------------------------------------------------------------------------
 
 --- Builds the catalog UI inside `parent`. opts.onPick(spellId) fires on cell
--- click. Returns { Refresh = fn } for rebuilds on show (catalogs shift with
--- spec changes).
+-- click. Returns { Refresh = fn(kind) } for rebuilds on show (catalogs shift
+-- with spec changes) and on kind change (some kinds prepend their own cells).
 function Picker.Attach(parent, opts)
     local theme = addon.UI and addon.UI.Theme
     local onPick = opts and opts.onPick or function() end
@@ -216,7 +283,34 @@ function Picker.Attach(parent, opts)
     local widgets = {}
     local picker = {}
 
-    function picker.Refresh()
+    local function AddHeader(text, y)
+        local fs = child:CreateFontString(nil, "OVERLAY")
+        fs:SetFont(labelFont, 11, "")
+        fs:SetPoint("TOPLEFT", child, "TOPLEFT", 8, -y)
+        fs:SetJustifyH("LEFT")
+        fs:SetText(text)
+        if theme then
+            local dr, dg, db = theme:GetDimTextColor()
+            fs:SetTextColor(dr, dg, db, 1)
+        else
+            fs:SetTextColor(0.6, 0.6, 0.6, 1)
+        end
+        table.insert(widgets, fs)
+        return y + 18
+    end
+
+    local function LayoutGrid(entries, columns, y)
+        for i, entry in ipairs(entries) do
+            local col = (i - 1) % columns
+            local rowIdx = math.floor((i - 1) / columns)
+            local cell = CreateCell(child, entry, onPick)
+            cell:SetPoint("TOPLEFT", child, "TOPLEFT", 4 + col * CELL_W, -y - rowIdx * CELL_H)
+            table.insert(widgets, cell)
+        end
+        return y + math.ceil(#entries / columns) * CELL_H + 4
+    end
+
+    function picker.Refresh(kind)
         for _, w in ipairs(widgets) do
             w:Hide()
             w:SetParent(nil)
@@ -224,31 +318,31 @@ function Picker.Attach(parent, opts)
         widgets = {}
 
         local catalog = BuildCatalog()
+        local extra = ExtraEntriesForKind(kind, catalog)
         local width = child:GetWidth()
         if not width or width < CELL_W then width = parent:GetWidth() or 400 end
         local columns = math.max(3, math.floor(width / CELL_W))
         local y = 4
 
+        if #extra > 0 then
+            y = AddHeader("Class buff and forms", y)
+            y = LayoutGrid(extra, columns, y)
+            y = AddHeader("Cooldown Manager", y + 2)
+        end
+
         if #catalog == 0 then
             local empty = child:CreateFontString(nil, "OVERLAY")
             empty:SetFont(labelFont, 11, "")
-            empty:SetPoint("TOPLEFT", child, "TOPLEFT", 8, -8)
-            empty:SetPoint("TOPRIGHT", child, "TOPRIGHT", -8, -8)
+            empty:SetPoint("TOPLEFT", child, "TOPLEFT", 8, -y - 4)
+            empty:SetPoint("TOPRIGHT", child, "TOPRIGHT", -8, -y - 4)
             empty:SetJustifyH("LEFT")
             empty:SetText("Cooldown Manager data is not available right now. You can still enter a spell ID above.")
             empty:SetTextColor(0.6, 0.6, 0.6, 1)
             table.insert(widgets, empty)
-            y = 40
+            y = y + 36
         end
 
-        for i, entry in ipairs(catalog) do
-            local col = (i - 1) % columns
-            local rowIdx = math.floor((i - 1) / columns)
-            local cell = CreateCell(child, entry, onPick)
-            cell:SetPoint("TOPLEFT", child, "TOPLEFT", 4 + col * CELL_W, -y - rowIdx * CELL_H)
-            table.insert(widgets, cell)
-        end
-        y = y + math.ceil(#catalog / columns) * CELL_H + 4
+        y = LayoutGrid(catalog, columns, y)
 
         child:SetHeight(math.max(y, 1))
         scrollFrame.ResetScroll()

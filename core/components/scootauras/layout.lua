@@ -38,6 +38,20 @@ local OUTSIDE_ANCHORS = {
 --- Shape-driven element visibility, shared with the binding layer.
 function SAU.ResolveVisibility(tracker, db)
     local shape = tracker.shape or "icon"
+    if tracker.kind == "missingbuff" then
+        -- The reminder is a Scoot-owned element set outside the engine button
+        -- (missing.lua); these flags describe THAT set. Inside the button
+        -- nothing may ever be visible, which BindForMode handles on `missing`.
+        return {
+            shape = shape,
+            missing = true,
+            showIcon = (shape ~= "text"),
+            showName = (shape ~= "icon"),
+            showBar = false,
+            showText = false,
+            showStacks = false,
+        }
+    end
     local showIcon
     if shape == "bar" then
         showIcon = db and db.barShowIcon or false
@@ -90,7 +104,7 @@ local function LayoutElements(trackerId, tracker, state)
             texElem.widget:Hide()
         else
             local base = tonumber(db and db.iconSize) or 32
-            if vis.shape == "icon" then
+            if vis.shape == "icon" or vis.missing then
                 local ratio = tonumber(db and db.iconShape) or 0
                 if ratio ~= 0 and addon.IconRatio and addon.IconRatio.CalculateDimensions then
                     iconW, iconH = addon.IconRatio.CalculateDimensions(base, ratio)
@@ -117,6 +131,97 @@ local function LayoutElements(trackerId, tracker, state)
 
     if not vis.showText and textElem then
         textElem.widget:Hide()
+    end
+
+    if vis.missing then
+        -- Missing-buff reminder (missing.lua): the icon and/or the aura name,
+        -- laid out around each other by nameTextOuterAnchor. This element set
+        -- is Scoot-owned and its text is Scoot-written, so measuring the name
+        -- is legal. Nothing else in the set ever shows.
+        if stacksElem then stacksElem.widget:Hide() end
+        local showIcon = texElem ~= nil and vis.showIcon and iconW > 0
+        local showName = nameElem ~= nil and vis.showName
+        if texElem and not showIcon then texElem.widget:Hide() end
+        if nameElem and not showName then nameElem.widget:Hide() end
+        if showIcon then
+            texElem.widget:ClearAllPoints()
+            texElem.widget:SetSize(iconW, iconH)
+            texElem.widget:Show()
+        end
+
+        -- The host doubles as the clip window, so measure generously: an
+        -- under-measured string is sliced, an over-measured one only adds
+        -- transparent margin. Measured on the entry's plain ruler, never on
+        -- the element itself: the live content hangs off the engine-sized
+        -- gate container, and string metrics are SecretWhenAnchoringSecret
+        -- there. Width plus outline slack; height floored at the font size's
+        -- line box.
+        local textW, textH = 0, 0
+        if showName then
+            local fs = nameElem.widget
+            fs:ClearAllPoints()
+            fs:SetWidth(0)
+            fs:SetWordWrap(false)
+            fs:Show()
+            local text = state.reminderText or ""
+            local w, h
+            if SAU.Missing and SAU.Missing.MeasureText then
+                w, h = SAU.Missing.MeasureText(state.entry, text, db)
+            end
+            if type(w) == "number" then textW = math.ceil(w) + 2 end
+            if type(h) == "number" then textH = math.ceil(h) end
+            local fontSize = tonumber(db and db.nameTextSize) or 14
+            textH = math.max(textH, math.ceil(fontSize * 1.4))
+        end
+
+        local anchor = (db and db.nameTextOuterAnchor) or "RIGHT"
+        local nxOff = tonumber(db and db.nameTextOffsetX) or 0
+        local nyOff = tonumber(db and db.nameTextOffsetY) or 0
+        local host = state.container
+
+        -- Offsets move the text away from the icon; the host (= the clip
+        -- window) grows to keep it inside. Along the anchor axis only the
+        -- outward direction needs room; across it the text is centered on
+        -- the icon, so both directions do.
+        if showIcon and showName then
+            local fs = nameElem.widget
+            if anchor == "LEFT" then
+                texElem.widget:SetPoint("RIGHT", host, "RIGHT", 0, 0)
+                fs:SetJustifyH("RIGHT")
+                fs:SetPoint("RIGHT", texElem.widget, "LEFT", -GAP + nxOff, nyOff)
+                SetHostSize(textW + GAP + iconW + math.max(-nxOff, 0),
+                    math.max(iconH, textH) + 2 * math.abs(nyOff))
+            elseif anchor == "ABOVE" then
+                texElem.widget:SetPoint("BOTTOM", host, "BOTTOM", 0, 0)
+                fs:SetJustifyH("CENTER")
+                fs:SetPoint("BOTTOM", texElem.widget, "TOP", nxOff, GAP + nyOff)
+                SetHostSize(math.max(iconW, textW) + 2 * math.abs(nxOff),
+                    iconH + GAP + textH + math.max(nyOff, 0))
+            elseif anchor == "BELOW" then
+                texElem.widget:SetPoint("TOP", host, "TOP", 0, 0)
+                fs:SetJustifyH("CENTER")
+                fs:SetPoint("TOP", texElem.widget, "BOTTOM", nxOff, -GAP + nyOff)
+                SetHostSize(math.max(iconW, textW) + 2 * math.abs(nxOff),
+                    iconH + GAP + textH + math.max(-nyOff, 0))
+            else -- "RIGHT"
+                texElem.widget:SetPoint("LEFT", host, "LEFT", 0, 0)
+                fs:SetJustifyH("LEFT")
+                fs:SetPoint("LEFT", texElem.widget, "RIGHT", GAP + nxOff, nyOff)
+                SetHostSize(iconW + GAP + textW + math.max(nxOff, 0),
+                    math.max(iconH, textH) + 2 * math.abs(nyOff))
+            end
+        elseif showIcon then
+            texElem.widget:SetPoint("CENTER", host, "CENTER", 0, 0)
+            SetHostSize(iconW, iconH)
+        elseif showName then
+            local fs = nameElem.widget
+            fs:SetJustifyH("CENTER")
+            fs:SetPoint("CENTER", host, "CENTER", nxOff, nyOff)
+            SetHostSize(textW + 2 * math.abs(nxOff), textH + 2 * math.abs(nyOff))
+        else
+            SetHostSize(iconW > 0 and iconW or 32, iconH > 0 and iconH or 32)
+        end
+        return
     end
 
     local textPosition = (db and db.textPosition) or "inside"

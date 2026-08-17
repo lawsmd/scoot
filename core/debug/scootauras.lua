@@ -510,7 +510,7 @@ local function LifecycleDump()
 
     -- Pipes are doubled: a bare "|t" in display text parses as a texture escape.
     push("--- Commands (alias: sa) ---")
-    push("/scoot debug sa add <spellId> [player||target||focus] [buff||debuff] [icon||bar||shape]")
+    push("/scoot debug sa add <spellId> [player||target||focus] [buff||debuff||missingbuff] [icon||bar||shape||text||icontext]")
     push("/scoot debug sa del <id> || enable <id> || disable <id>")
     push("/scoot debug sa edit [id]  (editor: existing tracker, or fresh draft)")
     push("/scoot debug sa gadd [name] || gdel <gid> (delete keeps members)")
@@ -518,6 +518,7 @@ local function LifecycleDump()
     push("/scoot debug sa reconcile || flush || list")
     push("/scoot debug sa owners  (every profile: owners, counts, Copy-from-Global buckets)")
     push("/scoot debug sa methods <id>  (button binding inventory)")
+    push("/scoot debug sa missing <id>  (missing-buff reminder: gate container, clip, secrecy, plain read)")
     push("/scoot debug sa spell <N||spellId>  (N from a tN row above; include set, CDM entries, picker cell, live aura check)")
     push("/scoot debug sa catalog  (every picker cell: shown name, stored base)")
     push("/scoot debug sa cadence <id||spellId> [on || off || set <0..1> || alpha <0..1> || mirror <y||off>]  (cadence lock record / probes)")
@@ -888,7 +889,8 @@ end
 --------------------------------------------------------------------------------
 
 local VALID_UNITS = { player = true, target = true, focus = true }
-local VALID_SHAPES = { icon = true, bar = true, shape = true }
+local VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true }
+local VALID_KINDS = { buff = true, debuff = true, missingbuff = true }
 
 function addon.DebugScootAuras(sub, a1, a2, a3, a4)
     sub = sub or ""
@@ -897,17 +899,18 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
     if sub == "add" then
         local spellId = tonumber(a1)
         if not spellId then
-            addon:Print("Usage: /scoot debug sa add <spellId> [player|target|focus] [buff|debuff] [icon|bar|shape]")
+            addon:Print("Usage: /scoot debug sa add <spellId> [player|target|focus] [buff|debuff|missingbuff] [icon|bar|shape|text|icontext]")
             return
         end
         -- Arguments after the spell ID are order-free: any of unit/kind/shape.
-        local unit, shape, kind = nil, "icon", "buff"
+        local unit, shape, kind = nil, nil, "buff"
         for _, a in ipairs({ a2, a3, a4 }) do
             if VALID_UNITS[a or ""] then unit = a end
             if VALID_SHAPES[a or ""] then shape = a end
-            if a == "debuff" then kind = "debuff" end
+            if VALID_KINDS[a or ""] then kind = a end
         end
-        unit = unit or ((kind == "debuff") and "target" or "player")
+        unit = unit or addon.ScootAuras.DefaultUnitForKind(kind)
+        shape = shape or addon.ScootAuras.DefaultShapeForKind(kind)
         local trackerId, err = addon.ScootAuras.CreateTracker({
             spellId = spellId, kind = kind, unit = unit, shape = shape,
         })
@@ -1029,6 +1032,20 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
 
     if sub == "catalog" then
         CatalogDump()
+        return
+    end
+
+    -- Missing-buff reminder: gate container, clip/blink state, secrecy of the
+    -- tracked spell, and a plain read for cross-checking.
+    if sub == "missing" then
+        local SAU = addon.ScootAuras
+        local trackerId = tonumber(a1)
+        if not trackerId or not SAU.Missing then
+            addon:Print("Usage: /scoot debug sa missing <trackerId>")
+            return
+        end
+        local lines = SAU.Missing.DebugInfo(trackerId)
+        addon.DebugShowWindow("ScootAuras Missing Buff t" .. trackerId, table.concat(lines, "\n"))
         return
     end
 

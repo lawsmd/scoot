@@ -223,6 +223,13 @@ function Engine.BindForMode(trackerId, tracker, state)
     local button = entry.button
     local vis = SAU.ResolveVisibility(tracker, db)
 
+    if vis.missing then
+        -- Missing-buff trackers own no button (EnsureBuilt adds a gate group,
+        -- not a slot) and bind nothing; the visible reminder is Scoot-owned
+        -- (missing.lua). Guarded here for an entry that once had a button.
+        return
+    end
+
     for _, elem in ipairs(state.elements or {}) do
         if elem.type == "texture" then
             if tracker.shape == "shape" then
@@ -316,47 +323,54 @@ end
 -- session-permanent, and every Show pass re-runs the full chain, so reuse
 -- across occupants is safe.
 
+--- A Scoot-owned element set with the same record shapes as WireButton, under
+-- `root` (a Scoot frame, never the engine button), so the styling/layout chain
+-- runs on it unchanged. Used by the Edit Mode preview and by the missing-buff
+-- visual (missing.lua). Returns { root, textFrame, elements }.
+function Engine.BuildElementSet(root)
+    local textHost = CreateFrame("Frame", nil, root)
+    textHost:SetAllPoints(root)
+    textHost:SetFrameLevel(root:GetFrameLevel() + 4)
+
+    local elements = {}
+
+    local icon = CreateTextureElement(root, {
+        type = "texture", key = "icon", defaultSize = { 32, 32 },
+    })
+    PreCreateIconBorder(icon, root)
+    -- Pre-created so ApplyShapeStyling never reaches for state.entry.button
+    -- (the engine subtree) on a Scoot-owned pass; the apply re-anchors it.
+    icon.silhouette = root:CreateTexture(nil, "ARTWORK", nil, -1)
+    icon.silhouette:Hide()
+    table.insert(elements, icon)
+
+    table.insert(elements, CreateTextElement(root, {
+        type = "text", key = "duration", source = "duration", baseSize = 24,
+    }, textHost))
+
+    table.insert(elements, CreateBarElement(root, {
+        type = "bar", key = "durationBar", source = "duration", defaultSize = { 120, 12 },
+    }))
+
+    table.insert(elements, CreateTextElement(root, {
+        type = "text", key = "name", source = "name", baseSize = 10,
+    }, textHost))
+
+    table.insert(elements, CreateTextElement(root, {
+        type = "text", key = "stacks", source = "applications", baseSize = 14,
+    }, textHost))
+
+    table.insert(elements, { type = "cooldown", widget = CreateDrainCooldown(root), def = { key = "drain" } })
+
+    return { root = root, textFrame = textHost, elements = elements }
+end
+
 local function BuildPreviewElements(entry)
     local visual = entry.visual
     local pv = CreateFrame("Frame", nil, visual)
     pv:SetFrameLevel(visual:GetFrameLevel() + 10)
     pv:SetAllPoints(visual)
-
-    local textHost = CreateFrame("Frame", nil, pv)
-    textHost:SetAllPoints(pv)
-    textHost:SetFrameLevel(pv:GetFrameLevel() + 4)
-
-    local elements = {}
-
-    local icon = CreateTextureElement(pv, {
-        type = "texture", key = "icon", defaultSize = { 32, 32 },
-    })
-    PreCreateIconBorder(icon, pv)
-    -- Pre-created so ApplyShapeStyling never reaches for state.entry.button
-    -- (the engine subtree) on the preview pass; the apply re-anchors it.
-    icon.silhouette = pv:CreateTexture(nil, "ARTWORK", nil, -1)
-    icon.silhouette:Hide()
-    table.insert(elements, icon)
-
-    table.insert(elements, CreateTextElement(pv, {
-        type = "text", key = "duration", source = "duration", baseSize = 24,
-    }, textHost))
-
-    table.insert(elements, CreateBarElement(pv, {
-        type = "bar", key = "durationBar", source = "duration", defaultSize = { 120, 12 },
-    }))
-
-    table.insert(elements, CreateTextElement(pv, {
-        type = "text", key = "name", source = "name", baseSize = 10,
-    }, textHost))
-
-    table.insert(elements, CreateTextElement(pv, {
-        type = "text", key = "stacks", source = "applications", baseSize = 14,
-    }, textHost))
-
-    table.insert(elements, { type = "cooldown", widget = CreateDrainCooldown(pv), def = { key = "drain" } })
-
-    entry.preview = { root = pv, textFrame = textHost, elements = elements }
+    entry.preview = Engine.BuildElementSet(pv)
     return entry.preview
 end
 
@@ -424,6 +438,17 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
     -- them (idempotent with the live pass: same db, same numbers).
     local shim = { container = pv, elements = preview.elements, entry = entry }
 
+    if tracker.kind == "missingbuff" and SAU.Missing then
+        -- The live visual may be pushed out of view (buff up) or gated off
+        -- (out of combat); the preview paints the reminder as it would look
+        -- while missing, and the live clip hides for the duration.
+        SAU.Missing.PaintElementSet(trackerId, tracker, shim, preview.elements)
+        activePreviews[entry] = nil
+        pv:Show()
+        SAU.Missing.UpdateGate(trackerId)
+        return
+    end
+
     -- ApplyAll's order minus BindForMode: bindings need the engine button;
     -- everything else is element-table driven.
     SAU._ApplyIconMode(trackerId, tracker, shim)
@@ -482,5 +507,10 @@ function Engine.HideEditModePreview(state)
     activePreviews[entry] = nil
     if entry.preview then
         entry.preview.root:Hide()
+    end
+    -- A missing-buff occupant re-evaluates its live gate now that the preview
+    -- no longer stands in for it.
+    if SAU.Missing and entry.occupantId then
+        SAU.Missing.UpdateGate(entry.occupantId)
     end
 end

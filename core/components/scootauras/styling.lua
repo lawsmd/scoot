@@ -436,6 +436,9 @@ local function ApplyStyling(trackerId, tracker)
         -- A disabled tracker keeps no Edit Mode preview (and no ticking
         -- animation record).
         SAU.Engine.HideEditModePreview(state)
+        if tracker.kind == "missingbuff" and SAU.Missing then
+            SAU.Missing.UpdateGate(trackerId)
+        end
         if grouped and SAU.Groups then SAU.Groups.RequestReflow() end
         return
     end
@@ -459,6 +462,18 @@ local function ApplyStyling(trackerId, tracker)
         if SAU.Groups then SAU.Groups.RequestReflow() end
     end
     SAU.Engine.SetEnabledState(trackerId, true)
+    -- Missing-buff reminder: the visible set is Scoot-owned, so its styling,
+    -- layout, combat gate and blink apply here, outside the structural gate;
+    -- ApplyAll only carries the gate container build. Any other kind on an
+    -- entry that once hosted a reminder hides it (UpdateGate is a no-op when
+    -- the entry never built one).
+    if SAU.Missing then
+        if tracker.kind == "missingbuff" then
+            SAU.Missing.Restyle(trackerId, tracker, state)
+        else
+            SAU.Missing.UpdateGate(trackerId)
+        end
+    end
     SAU.Engine.ApplyAll(trackerId)
     -- Restyles while Edit Mode is open (late claims from reconcile, enable
     -- flips, group flushes) repaint the preview. The exit callback clears the

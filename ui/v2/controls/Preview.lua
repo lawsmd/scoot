@@ -1,4 +1,4 @@
--- Preview.lua - Inline preview row for Custom Groups and Class Auras settings
+-- Preview.lua - Inline preview row for Custom Groups and ScootAuras settings
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -115,6 +115,9 @@ end
 --   auraDefaultBarColor  table/nil  Default bar foreground color
 --   caTextSource    string/nil  Source of the CA text element ("duration"/"applications");
 --                            picks the placeholder glyph ("T"/"5") and legend entry
+--   caTextLiteral   string/nil  Exact text for the CA text element instead of the
+--                            countdown placeholder; the ticker leaves it alone (a
+--                            missing-buff reminder shows the aura name)
 --   previewNameLabel string/nil  Aura label shown as the bar's name text when the
 --                            Aura Name feature is enabled (hideNameText false)
 --   useLightDim     bool     Use lighter dim text color
@@ -155,6 +158,7 @@ function Controls:CreatePreview(options)
     local iconTextureOverride = options.iconTexture
     local auraDefaultBarColor = options.auraDefaultBarColor
     local caTextSource = options.caTextSource
+    local caTextLiteral = options.caTextLiteral
     local previewNameLabel = options.previewNameLabel
     local useLightDim = options.useLightDim
     local rowHeight = options.rowHeight or PREVIEW_ROW_HEIGHT
@@ -643,7 +647,7 @@ function Controls:CreatePreview(options)
     end
 
     ----------------------------------------------------------------------------
-    -- CLASS AURA TEXT
+    -- AURA TEXT
     ----------------------------------------------------------------------------
 
     local caTextFS
@@ -690,7 +694,7 @@ function Controls:CreatePreview(options)
         addon.ApplyFontStyle(caTextFS, resolvedCAFont, caDisplaySize, caTextStyle)
         -- "15" is the widest value the animated countdown shows, so the width
         -- measurements below reserve two digits before the ticker takes over.
-        caTextFS:SetText(caTextSource == "applications" and "5" or "15")
+        caTextFS:SetText(caTextLiteral or (caTextSource == "applications" and "5" or "15"))
         row._caTextFS = caTextFS
 
         if type(caTextColor) == "table" then
@@ -792,7 +796,7 @@ function Controls:CreatePreview(options)
                                  PREVIEW_ICON_DISPLAY_SIZE + PREVIEW_CONTENT_PAD)
     local neededRowHeight = math.max(2 * halfH + PREVIEW_CONTENT_PAD, containerHeight) + 20
 
-    -- The caller's row height is a floor, never a ceiling, so Class Auras keeps its 152.
+    -- The caller's row height is a floor, never a ceiling, so ScootAuras keeps its 152.
     rowHeight = math.min(math.max(rowHeight, neededRowHeight), maxRowHeight)
     containerHeight = rowHeight - 20
 
@@ -953,7 +957,7 @@ function Controls:CreatePreview(options)
     -- Hidden frames skip OnUpdate, so hiding the row pauses it for free.
     ----------------------------------------------------------------------------
 
-    local animText = (caTextSource ~= "applications") and row._caTextFS or nil
+    local animText = (caTextSource ~= "applications" and not caTextLiteral) and row._caTextFS or nil
     local animFill = row._barFill
     local animDrain = row._shapeCooldown
     if animText or animFill or animDrain then

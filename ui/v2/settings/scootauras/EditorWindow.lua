@@ -21,6 +21,9 @@ local TOP_H = 423
 local TOP_LEFT_W = 797
 local BOTTOM_LEFT_W = 667
 local PAD = 10
+-- Gap between the quadrant top and the selector block (the builder adds its
+-- own 8 px first-row offset beneath this).
+local SELECTORS_TOP_GAP = 24
 local TITLE_ICON = 16      -- rename pencil, duplicate copy
 local TITLE_ICON_GAP = 5   -- name glyphs to the first icon, and icon to icon
 
@@ -68,6 +71,10 @@ function ctx.get(key)
         local o = SAU().BarShapeStartingValues[key]
         if o ~= nil then v = o end
     end
+    if v == nil and ctx.kind() == "missingbuff" then
+        local o = SAU().MissingKindStartingValues[key]
+        if o ~= nil then v = o end
+    end
     if v == nil then v = DefaultFor(key) end
     return v
 end
@@ -86,6 +93,12 @@ function ctx.shape()
     local tracker = CurrentTracker()
     if tracker then return tracker.shape end
     return (session and session.draft.content.shape) or "icon"
+end
+
+function ctx.kind()
+    local tracker = CurrentTracker()
+    if tracker then return tracker.kind end
+    return (session and session.draft.content.kind) or "buff"
 end
 
 function ctx.refresh()
@@ -138,6 +151,7 @@ local function TryMaterialize()
         unit = c.unit,
         shape = c.shape,
         name = c.name,
+        onlyInCombat = c.onlyInCombat,
     })
     if not id then
         session.statusOverride = err or "Could not create the tracker."
@@ -484,12 +498,12 @@ local function InitializeFrame()
     topLeft:SetSize(TOP_LEFT_W, TOP_H)
     widgets.topLeft = topLeft
 
-    -- Selector block host: fixed width, centered both ways in the quadrant.
-    -- The builder's Finalize() sets its height, and the CENTER anchor
-    -- recenters the block as the progressive reveal adds rows.
+    -- Selector block host: fixed width, centered horizontally and pinned to
+    -- the top of the quadrant. The builder's Finalize() sets its height, so
+    -- the progressive reveal (and per-kind extra fields) grows downward.
     local selectorsHost = CreateFrame("Frame", nil, topLeft)
     selectorsHost:SetSize(640, 100)
-    selectorsHost:SetPoint("CENTER", topLeft, "CENTER", 0, 0)
+    selectorsHost:SetPoint("TOP", topLeft, "TOP", 0, -SELECTORS_TOP_GAP)
     widgets.selectorsHost = selectorsHost
 
     local topRight = CreateFrame("Frame", nil, frame)
@@ -629,16 +643,29 @@ end
 -- Dynamic regions
 --------------------------------------------------------------------------------
 
-local KIND_LABELS = { buff = "a Buff", debuff = "a Debuff" }
+local KIND_LABELS = { buff = "a Buff", debuff = "a Debuff", missingbuff = "a Missing Buff" }
+local KIND_ORDER = { "buff", "debuff", "missingbuff" }
 local UNIT_LABELS = { player = "Myself", target = "My Target", focus = "My Focus" }
+-- Units listed for a kind but not yet offered: shown dimmed and inert.
+local COMING_SOON_UNITS = {
+    missingbuff = { { key = "group", label = "My Group (Coming Soon)" } },
+}
 -- "Horizontal Bar" leaves room in the same selector for vertical bars and
 -- circles later; the internal shape key stays "bar".
 local SHAPE_LABELS = { icon = "an Icon", bar = "a Horizontal Bar", shape = "a Shape" }
+local SHAPE_ORDER = { "icon", "bar", "shape" }
+-- A missing-buff tracker is a reminder: icon, text, or both.
+local MISSING_SHAPE_LABELS = { icon = "an Icon", text = "Text", icontext = "an Icon & Text" }
+local MISSING_SHAPE_ORDER = { "icon", "text", "icontext" }
+local ONLY_IN_COMBAT_LABELS = { yes = "Yes", no = "No" }
+local ONLY_IN_COMBAT_ORDER = { "yes", "no" }
 
 local function ContentValue(field)
     local tracker = CurrentTracker()
     if tracker then return tracker[field] end
-    return session and session.draft.content[field] or nil
+    -- Raw read: a draft's `false` (Only in Combat = No) must survive.
+    if session and session.draft then return session.draft.content[field] end
+    return nil
 end
 
 local function SetContent(field, value)
@@ -649,9 +676,16 @@ local function SetContent(field, value)
     else
         local c = session.draft.content
         c[field] = value
-        -- A kind flip can strand the chosen unit; force a re-choose.
-        if field == "kind" and c.unit and not SAU().VALID_UNITS[value][c.unit] then
-            c.unit = nil
+        -- A kind flip can strand the chosen unit or shape; force a re-choose.
+        if field == "kind" then
+            local units = SAU().VALID_UNITS[value]
+            if c.unit and not (units and units[c.unit]) then
+                c.unit = nil
+            end
+            local shapes = SAU().VALID_SHAPES_BY_KIND[value]
+            if c.shape and not (shapes and shapes[c.shape]) then
+                c.shape = nil
+            end
         end
         TryMaterialize()
     end
@@ -659,18 +693,32 @@ local function SetContent(field, value)
 end
 
 local function UnitOptions(kind)
-    local values, order = {}, {}
+    local values, order, disabled = {}, {}, nil
     for _, unit in ipairs({ "player", "target", "focus" }) do
         if SAU().VALID_UNITS[kind] and SAU().VALID_UNITS[kind][unit] then
             values[unit] = UNIT_LABELS[unit]
             table.insert(order, unit)
         end
     end
-    return values, order
+    for _, entry in ipairs(COMING_SOON_UNITS[kind] or {}) do
+        values[entry.key] = entry.label
+        table.insert(order, entry.key)
+        disabled = disabled or {}
+        disabled[entry.key] = true
+    end
+    return values, order, disabled
+end
+
+local function ShapeOptions(kind)
+    if kind == "missingbuff" then
+        return MISSING_SHAPE_LABELS, MISSING_SHAPE_ORDER
+    end
+    return SHAPE_LABELS, SHAPE_ORDER
 end
 
 -- One selector with an unset state: draft selectors start on "Choose".
-local function AddChoiceSelector(builder, label, valueMap, order, current, onSet)
+-- opts.disabledOptions lists keys that are shown but inert.
+local function AddChoiceSelector(builder, label, valueMap, order, current, onSet, opts)
     local values = {}
     for k, v in pairs(valueMap) do values[k] = v end
     local fullOrder = {}
@@ -688,6 +736,7 @@ local function AddChoiceSelector(builder, label, valueMap, order, current, onSet
         sizeScale = 1.3,
         values = values,
         order = fullOrder,
+        disabledOptions = opts and opts.disabledOptions or nil,
         get = function() return current or "choose" end,
         set = function(v)
             if v ~= "choose" then onSet(v) end
@@ -705,19 +754,31 @@ local function RenderSelectors()
     local shape = ContentValue("shape")
 
     AddChoiceSelector(selBuilder, "I want to track...",
-        KIND_LABELS, { "buff", "debuff" }, kind,
+        KIND_LABELS, KIND_ORDER, kind,
         function(v) SetContent("kind", v) end)
 
     if kind then
-        local uValues, uOrder = UnitOptions(kind)
+        local uValues, uOrder, uDisabled = UnitOptions(kind)
         AddChoiceSelector(selBuilder, "On...", uValues, uOrder, unit,
-            function(v) SetContent("unit", v) end)
+            function(v) SetContent("unit", v) end,
+            { disabledOptions = uDisabled })
     end
 
     if kind and unit then
+        local sValues, sOrder = ShapeOptions(kind)
         AddChoiceSelector(selBuilder, "Shown as...",
-            SHAPE_LABELS, { "icon", "bar", "shape" }, shape,
+            sValues, sOrder, shape,
             function(v) SetContent("shape", v) end)
+    end
+
+    -- Per-kind extras. Missing-buff: whether the reminder may show out of
+    -- combat. Defaults to Yes, so it never sits on "Choose".
+    if kind == "missingbuff" and unit and shape then
+        local onlyInCombat = ContentValue("onlyInCombat")
+        local current = (onlyInCombat == false) and "no" or "yes"
+        AddChoiceSelector(selBuilder, "Only in Combat?",
+            ONLY_IN_COMBAT_LABELS, ONLY_IN_COMBAT_ORDER, current,
+            function(v) SetContent("onlyInCombat", v == "yes") end)
     end
 
     selBuilder:Finalize()
@@ -782,6 +843,54 @@ local function RenderPreview()
         iconTexture = session.validated.icon
     elseif tracker then
         iconTexture = PlainSpellTexture(tracker.spellId)
+    end
+
+    if ctx.kind() == "missingbuff" then
+        -- The reminder as it looks while the buff is missing: the spell icon
+        -- and/or the aura name, laid out around each other by the Aura Name
+        -- tab's keys. The generic preview speaks in duration-text keys, so map
+        -- them onto nameText* and pin the position outside the icon.
+        local spellId = (session and session.validated and session.validated.spellId)
+            or (tracker and tracker.spellId)
+        local nameText = spellId and SAU().DescribeSpell(spellId) or CurrentName()
+        if ctx.get("missingSuffix") == true then
+            nameText = nameText .. " missing!"
+        end
+        local showText = (shape ~= "icon")
+        local keys = { _showCAText = showText or nil }
+        if showText then
+            keys.textFont = "nameTextFont"
+            keys.textStyle = "nameTextStyle"
+            keys.textSize = "nameTextSize"
+            keys.textColor = "nameTextColor"
+            keys.textOuterAnchor = "nameTextOuterAnchor"
+            keys.textOffsetX = "nameTextOffsetX"
+            keys.textOffsetY = "nameTextOffsetY"
+            keys.textPosition = "__missingTextPosition"
+            keys.hideText = "__missingHideText"
+        end
+        prevBuilder:AddPreview({
+            componentId = session and session.trackerId
+                and SAU().GetComponentId(session.trackerId) or "scootAuraDraft",
+            mode = (shape == "text") and "text" or "icon",
+            iconTexture = iconTexture,
+            settingKeys = keys,
+            caTextSource = "duration",
+            caTextLiteral = showText and nameText or nil,
+            rowHeight = 200,
+            previewScale = 1,
+            maxRowHeight = 340,
+            getSetting = function(key)
+                if key == "__missingTextPosition" then return "outside" end
+                if key == "__missingHideText" then return false end
+                return ctx.get(key)
+            end,
+            noBottomBorder = true,
+            noHover = true,
+            noLabel = true,
+        })
+        prevBuilder:Finalize()
+        return
     end
 
     prevBuilder:AddPreview({
@@ -917,6 +1026,7 @@ end
 -- The three content choices gate the other quadrants: an undecided draft
 -- shows only the selectors, so a first-time user has one thing to look at.
 local needCatalogRefresh = false
+local catalogKind          -- kind the catalog was last built for
 
 local function ContentReady()
     if CurrentTracker() then return true end
@@ -947,9 +1057,13 @@ local function RenderDynamic()
         SetQuadrantsShown(true)
         needCatalogRefresh = true
     end
-    if needCatalogRefresh then
+    -- The catalog carries extra cells for some kinds (missing-buff: class
+    -- buff and forms), so a kind change rebuilds it.
+    local kind = ctx.kind()
+    if needCatalogRefresh or kind ~= catalogKind then
         needCatalogRefresh = false
-        if cdmPicker then cdmPicker.Refresh() end
+        catalogKind = kind
+        if cdmPicker then cdmPicker.Refresh(kind) end
     end
     RenderTabs()
     RenderPreview()

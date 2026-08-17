@@ -91,6 +91,8 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+-- Missing-buff trackers with "Only in Combat" gate on plain combat state.
+eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 -- Spell descriptions (name/icon by CDM override chain) cache a base-to-display
 -- map; these are the moments an override can appear or vanish.
@@ -129,6 +131,10 @@ eventFrame:SetScript("OnEvent", function(_, event)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         Engine.TryFlush("regen")
+        if SAU.Missing then SAU.Missing.OnCombatChanged() end
+
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        if SAU.Missing then SAU.Missing.OnCombatChanged() end
 
     elseif event == "ZONE_CHANGED_NEW_AREA" then
         -- Restricted-instance exits open the gate without a regen event.

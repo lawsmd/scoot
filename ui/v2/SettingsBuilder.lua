@@ -613,6 +613,7 @@ function Builder:AddSelector(options)
         disabled = options.disabled,
         isDisabled = options.isDisabled,
         optionInfoIcons = options.optionInfoIcons,
+        disabledOptions = options.disabledOptions,
     })
 
     if selector then
@@ -1864,7 +1865,7 @@ function Builder:AddMultiLineEditBox(options)
 end
 
 --------------------------------------------------------------------------------
--- AddPreview: Inline preview row for Custom Groups / Class Auras
+-- AddPreview: Inline preview row for Custom Groups / ScootAuras
 --------------------------------------------------------------------------------
 
 function Builder:AddPreview(options)
@@ -1883,6 +1884,7 @@ function Builder:AddPreview(options)
         iconTexture = options.iconTexture,
         auraDefaultBarColor = options.auraDefaultBarColor,
         caTextSource = options.caTextSource,
+        caTextLiteral = options.caTextLiteral,
         previewNameLabel = options.previewNameLabel,
         useLightDim = self._useLightDim,
         rowHeight = options.rowHeight,

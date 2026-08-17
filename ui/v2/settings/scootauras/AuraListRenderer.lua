@@ -41,9 +41,12 @@ local state = {
     leftDropHighlight = nil,
 }
 
-local KIND_LABELS = { buff = "Buff", debuff = "Debuff" }
+local KIND_LABELS = { buff = "Buff", debuff = "Debuff", missingbuff = "Missing Buff" }
 local UNIT_LABELS = { player = "Player", target = "Target", focus = "Focus" }
-local SHAPE_LABELS = { icon = "Icon", bar = "Horizontal Bar", shape = "Shape" }
+local SHAPE_LABELS = {
+    icon = "Icon", bar = "Horizontal Bar", shape = "Shape",
+    text = "Text", icontext = "Icon & Text",
+}
 local GROW_LABELS = { RIGHT = "Right", LEFT = "Left", DOWN = "Down", UP = "Up" }
 local GROW_ORDER = { "RIGHT", "LEFT", "DOWN", "UP" }
 

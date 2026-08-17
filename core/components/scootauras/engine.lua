@@ -18,6 +18,7 @@ SAU.Engine = Engine
 
 local pool = {}          -- array of entries, session-permanent
 local byTracker = {}     -- [trackerId] = entry
+local byShell = {}       -- [shell frame] = entry (Edit Mode mirror lookup)
 local pendingWire = {}   -- [trackerId] = true (structural work blocked when queued)
 local flushTicker
 local initialized = false
@@ -229,6 +230,37 @@ end
 -- Edit Mode registration (once per shell, occupant-agnostic)
 --------------------------------------------------------------------------------
 
+-- Mirror provider for the branded Edit Mode dialog: the Sizing tab's Scale
+-- slider on a standalone tracker's shell. Resolved at BUILD time: pool
+-- shells are occupant-agnostic and entry.occupantId changes over the
+-- session, so the tracker id is re-read on every build and the spec closures
+-- capture it. Writes go through SAU.SetTrackerStyling, which ends where the
+-- editor's setAndApply ends (component db, then the restyle), so the two
+-- surfaces cannot drift. Grouped trackers scale through their group's mirror
+-- (groups.lua); their shells are hidden and never selected.
+local function TrackerEditModeMirror(frame)
+    local entry = byShell[frame]
+    local trackerId = entry and entry.occupantId
+    local tracker = trackerId and SAU.GetTracker(trackerId)
+    if not tracker or entry.grouped then return nil end
+
+    return {
+        {
+            kind = "slider", label = "Scale",
+            min = 25, max = 200, step = 5, precision = 0,
+            get = function()
+                local db = SAU.GetDB(trackerId)
+                return tonumber(db and db.scale) or 100
+            end,
+            set = function(v)
+                SAU.SetTrackerStyling(trackerId, { scale = v })
+            end,
+        },
+    }
+end
+
+Engine._EditModeMirror = TrackerEditModeMirror
+
 local function EnsureLEMFrame(entry)
     if entry.lemRegistered then return end
     local lib = LibStub("LibEditMode", true)
@@ -253,7 +285,7 @@ local function EnsureLEMFrame(entry)
 
     local Brand = addon.EditMode and addon.EditMode.Brand
     if Brand then
-        Brand:Register(entry.shell, { navKey = SAU.NAV_KEY })
+        Brand:Register(entry.shell, { navKey = SAU.NAV_KEY, mirror = TrackerEditModeMirror })
     end
 
     -- Frames added while Edit Mode is open miss the enter pass; without this
@@ -302,6 +334,7 @@ local function CreateEntry()
         entry.lockBar = SAU.Cadence.CreateLockBar(visual)
     end
     pool[index] = entry
+    byShell[shell] = entry
     return entry
 end
 
@@ -370,6 +403,9 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
         if SAU.Cadence then
             SAU.Cadence.OnRetire(entry)
         end
+        if SAU.Missing then
+            SAU.Missing.OnRetire(entry)
+        end
     end
 
     local ok, container = pcall(CreateFrame, "AuraContainer", nil, entry.visual, "CustomAuraContainerTemplate")
@@ -379,11 +415,20 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
         return false
     end
 
+    local isMissing = tracker.kind == "missingbuff" and SAU.Missing ~= nil
+
     pcall(container.SetFrameLevel, container, entry.visual:GetFrameLevel() + 5)
-    pcall(container.SetSize, container, 32, 32)
     -- Containers process only while shown and anchored; an unanchored one is
     -- silently dead.
-    pcall(container.SetPoint, container, "CENTER", entry.visual, "CENTER", 0, 0)
+    if isMissing then
+        -- Missing-buff kind: the container itself is the presence gate. Its
+        -- aura group resizes it and the reminder hangs off its right edge
+        -- (missing.lua), so it sits 1 x 1 at the visual's left edge.
+        SAU.Missing.PlaceContainer(entry, container)
+    else
+        pcall(container.SetSize, container, 32, 32)
+        pcall(container.SetPoint, container, "CENTER", entry.visual, "CENTER", 0, 0)
+    end
 
     entry.container = container
     entry.elements = {}
@@ -391,22 +436,37 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
     entry.slotSeq = (entry.slotSeq or 0) + 1
     local slotKey = "scootAura" .. trackerId .. "_" .. entry.slotSeq
 
-    local slotOk, buttonOrErr = pcall(container.AddAuraSlot, container, slotKey, SAU.FilterForKind(tracker.kind), {
-        candidateFilters = BuildCandidateFilters(tracker, trackerId),
-        initializeFrame = function(button)
-            entry.button = button
-            local wok, werr = pcall(Engine.WireButton, trackerId, tracker, state, entry, button)
-            entry.wired = wok and true or false
-            SetResult("wire.t" .. trackerId, wok and "ok" or ("FAILED: " .. SafeToString(werr)))
-        end,
-    })
-    if not slotOk then
-        SetResult("build.t" .. trackerId, "slot FAILED: " .. SafeToString(buttonOrErr))
-        Record("slot-fail", "t" .. trackerId)
-        return false
-    end
-    if not entry.button and buttonOrErr then
-        entry.button = buttonOrErr
+    if isMissing then
+        -- No slot and no button: nothing inside the container is ever bound
+        -- or drawn. The group's frames only feed the layout's size.
+        local gok, gerr = SAU.Missing.AddGateGroup(trackerId, tracker, entry, container,
+            BuildCandidateFilters(tracker, trackerId))
+        if not gok then
+            SetResult("build.t" .. trackerId, "group FAILED: " .. SafeToString(gerr))
+            Record("group-fail", "t" .. trackerId)
+            return false
+        end
+        entry.button = nil
+        entry.wired = true
+        SetResult("wire.t" .. trackerId, "gate group (no button)")
+    else
+        local slotOk, buttonOrErr = pcall(container.AddAuraSlot, container, slotKey, SAU.FilterForKind(tracker.kind), {
+            candidateFilters = BuildCandidateFilters(tracker, trackerId),
+            initializeFrame = function(button)
+                entry.button = button
+                local wok, werr = pcall(Engine.WireButton, trackerId, tracker, state, entry, button)
+                entry.wired = wok and true or false
+                SetResult("wire.t" .. trackerId, wok and "ok" or ("FAILED: " .. SafeToString(werr)))
+            end,
+        })
+        if not slotOk then
+            SetResult("build.t" .. trackerId, "slot FAILED: " .. SafeToString(buttonOrErr))
+            Record("slot-fail", "t" .. trackerId)
+            return false
+        end
+        if not entry.button and buttonOrErr then
+            entry.button = buttonOrErr
+        end
     end
 
     -- Unit LAST, then one kick to sync against current auras.
@@ -419,7 +479,8 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
     entry.wiredSpellId = tracker.spellId
     entry.wiredUnit = tracker.unit
     entry.wiredKind = tracker.kind
-    SetResult("build.t" .. trackerId, "ok (slot=" .. slotKey .. " unit=" .. tracker.unit .. ")")
+    SetResult("build.t" .. trackerId, "ok (" .. (isMissing and ("group=" .. tostring(entry.gateGroupKey))
+        or ("slot=" .. slotKey)) .. " unit=" .. tracker.unit .. ")")
     Record("built", "t" .. trackerId)
     return true
 end
@@ -464,6 +525,17 @@ function Engine.ApplyAll(trackerId)
     state.textFrame = entry.textFrame
 
     ApplyEnabledState(entry, tracker.enabled ~= false)
+
+    if tracker.kind == "missingbuff" then
+        -- Nothing is bound: the container's own layout size is the gate and
+        -- the visible reminder is Scoot-owned, restyled outside the structural
+        -- gate (missing.lua). Building the group above was the gated work.
+        if SAU.Missing then
+            SAU.Missing.Restyle(trackerId, tracker, state)
+        end
+        Record("applied", "t" .. trackerId)
+        return
+    end
 
     -- Static art first, then engine bindings, then fonts/colors, then geometry.
     SAU._ApplyIconMode(trackerId, tracker, state)
@@ -573,6 +645,10 @@ function Engine.ReleaseForTracker(trackerId)
     local state = SAU._activeStates[trackerId]
     if state and Engine.HideEditModePreview then
         Engine.HideEditModePreview(state)
+    end
+    -- After the preview hide, which re-evaluates the reminder's gate.
+    if SAU.Missing then
+        SAU.Missing.OnEntryReleased(entry)
     end
     -- A grouped visual must not stay parented in the group: the next occupant
     -- of this entry would render inside it.

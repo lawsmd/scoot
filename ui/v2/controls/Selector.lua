@@ -58,6 +58,13 @@ function Controls:CreateSelector(options)
     local emphasized = options.emphasized or false
     local isDisabledFn = options.disabled or options.isDisabled
     local optionInfoIcons = options.optionInfoIcons
+    -- disabledOptions = { [key] = true }: the option is listed but inert
+    -- (dimmed, no hover, click ignored, arrows skip it). For "Coming Soon"
+    -- entries that should be visible without being selectable.
+    local disabledOptions = options.disabledOptions
+    local function IsOptionDisabled(key)
+        return disabledOptions ~= nil and disabledOptions[key] == true
+    end
     -- labelAlign = "field" right-aligns the label against the field's left
     -- edge (for description-less selectors; the description anchors to the
     -- label and would follow it rightward).
@@ -483,8 +490,13 @@ function Controls:CreateSelector(options)
         end
         local kList = row._keyList
         local idx = getKeyIndex(row._currentKey)
-        idx = idx - 1
-        if idx < 1 then idx = #kList end
+        -- Step past inert options; give up after a full lap.
+        for _ = 1, #kList do
+            idx = idx - 1
+            if idx < 1 then idx = #kList end
+            if not IsOptionDisabled(kList[idx]) then break end
+        end
+        if IsOptionDisabled(kList[idx]) then return end
         row._currentKey = kList[idx]
         setValue(row._currentKey)
         UpdateDisplay()
@@ -500,8 +512,12 @@ function Controls:CreateSelector(options)
         end
         local kList = row._keyList
         local idx = getKeyIndex(row._currentKey)
-        idx = idx + 1
-        if idx > #kList then idx = 1 end
+        for _ = 1, #kList do
+            idx = idx + 1
+            if idx > #kList then idx = 1 end
+            if not IsOptionDisabled(kList[idx]) then break end
+        end
+        if IsOptionDisabled(kList[idx]) then return end
         row._currentKey = kList[idx]
         setValue(row._currentKey)
         UpdateDisplay()
@@ -650,38 +666,47 @@ function Controls:CreateSelector(options)
 
             -- Highlight current selection
             local isSelected = (key == row._currentKey)
-            if isSelected then
+            local inert = IsOptionDisabled(key)
+            if inert then
+                local dr, dg, dbl = theme:GetDimTextColor()
+                optText:SetTextColor(dr, dg, dbl, 0.6)
+            elseif isSelected then
                 optBg:SetColorTexture(accentR, accentG, accentB, 0.3)
                 optText:SetTextColor(accentR, accentG, accentB, 1)
             else
                 optText:SetTextColor(1, 1, 1, 1)
             end
 
-            -- Hover effects
-            optBtn:SetScript("OnEnter", function(btn)
-                if btn._key ~= row._currentKey then
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.15)
-                else
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.35)
-                end
-            end)
-            optBtn:SetScript("OnLeave", function(btn)
-                if btn._key == row._currentKey then
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.3)
-                else
-                    btn._bg:SetColorTexture(0, 0, 0, 0)
-                end
-            end)
+            if inert then
+                -- Listed, not selectable: no hover fill, click ignored.
+                optBtn:SetScript("OnClick", function() end)
+            else
+                -- Hover effects
+                optBtn:SetScript("OnEnter", function(btn)
+                    if btn._key ~= row._currentKey then
+                        btn._bg:SetColorTexture(accentR, accentG, accentB, 0.15)
+                    else
+                        btn._bg:SetColorTexture(accentR, accentG, accentB, 0.35)
+                    end
+                end)
+                optBtn:SetScript("OnLeave", function(btn)
+                    if btn._key == row._currentKey then
+                        btn._bg:SetColorTexture(accentR, accentG, accentB, 0.3)
+                    else
+                        btn._bg:SetColorTexture(0, 0, 0, 0)
+                    end
+                end)
 
-            -- Click to select
-            optBtn:SetScript("OnClick", function(btn)
-                row._currentKey = btn._key
-                setValue(row._currentKey)
-                UpdateDisplay()
-                CloseDropdown()
-                LockSync()  -- Lock after value change if syncCooldown is configured
-                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-            end)
+                -- Click to select
+                optBtn:SetScript("OnClick", function(btn)
+                    row._currentKey = btn._key
+                    setValue(row._currentKey)
+                    UpdateDisplay()
+                    CloseDropdown()
+                    LockSync()  -- Lock after value change if syncCooldown is configured
+                    PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+                end)
+            end
 
             table.insert(dropdown._optionButtons, optBtn)
         end

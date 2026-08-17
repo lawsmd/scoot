@@ -232,29 +232,62 @@ end
 -- Content validation
 --------------------------------------------------------------------------------
 
-SAU.VALID_KINDS = { buff = true, debuff = true }
-SAU.VALID_SHAPES = { icon = true, bar = true, shape = true }
+-- missingbuff: the visual shows while the player LACKS the buff (missing.lua).
+SAU.VALID_KINDS = { buff = true, debuff = true, missingbuff = true }
+
+-- Shapes per kind. Buff/debuff trackers display the aura; a missing-buff
+-- tracker is a reminder, so it offers icon, text, or both and no bar/shape.
+SAU.VALID_SHAPES_BY_KIND = {
+    buff        = { icon = true, bar = true, shape = true },
+    debuff      = { icon = true, bar = true, shape = true },
+    missingbuff = { icon = true, text = true, icontext = true },
+}
+-- Union, for callers that only need "is this a shape at all".
+SAU.VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true }
 
 -- The friendly-debuff wall: debuff information on friendly units is not
--- acquirable, so Debuff offers hostile-capable units only.
+-- acquirable, so Debuff offers hostile-capable units only. Missing-buff
+-- trackers watch the player alone for now ("My Group" is a later unit).
 SAU.VALID_UNITS = {
-    buff   = { player = true, target = true, focus = true },
-    debuff = { target = true, focus = true },
+    buff        = { player = true, target = true, focus = true },
+    debuff      = { target = true, focus = true },
+    missingbuff = { player = true },
 }
+
+--- The unit a kind falls back to when the chosen one is invalid for it.
+function SAU.DefaultUnitForKind(kind)
+    return (kind == "debuff") and "target" or "player"
+end
+
+--- The shape a kind falls back to when the chosen one is invalid for it:
+-- "icon" wherever a kind offers it, else the kind's first shape.
+function SAU.DefaultShapeForKind(kind)
+    local shapes = SAU.VALID_SHAPES_BY_KIND[kind]
+    if shapes and not shapes.icon then
+        return (next(shapes))
+    end
+    return "icon"
+end
 
 function SAU.ValidateContent(spellId, kind, unit, shape)
     if type(spellId) ~= "number" or spellId <= 0 then return nil, "invalid spell ID" end
-    if not SAU.VALID_KINDS[kind] then return nil, "kind must be buff or debuff" end
+    if not SAU.VALID_KINDS[kind] then return nil, "kind must be buff, debuff, or missingbuff" end
     local units = SAU.VALID_UNITS[kind]
     if not units[unit] then return nil, kind .. " cannot target unit '" .. tostring(unit) .. "'" end
-    if not SAU.VALID_SHAPES[shape] then return nil, "shape must be icon, bar, or shape" end
+    local shapes = SAU.VALID_SHAPES_BY_KIND[kind]
+    if not shapes or not shapes[shape] then
+        return nil, kind .. " cannot use shape '" .. tostring(shape) .. "'"
+    end
     return true
 end
 
 -- Own-cast filtering: a debuff tracker watches the player's own aura on the
 -- enemy; buffs accept any source (external buffs on the player are the point).
+-- A missing-buff tracker matches the same HELPFUL slot; only its rendering
+-- differs (the engine's presence hides the visual instead of showing it).
 function SAU.FilterForKind(kind)
-    return (kind == "debuff") and "HARMFUL|PLAYER" or "HELPFUL"
+    if kind == "debuff" then return "HARMFUL|PLAYER" end
+    return "HELPFUL"
 end
 
 --------------------------------------------------------------------------------
@@ -336,6 +369,9 @@ function SAU.DefaultSettings()
         opacityInCombat         = { type = "addon", default = 100 },
         opacityWithTarget       = { type = "addon", default = 100 },
         opacityOutOfCombat      = { type = "addon", default = 100 },
+        -- Missing-buff kind (missing.lua): text suffix and blink.
+        missingSuffix           = { type = "addon", default = false },
+        blinkWhenShown          = { type = "addon", default = false },
     }
 end
 
@@ -364,24 +400,48 @@ local function StampEqual(a, b)
     return a == b
 end
 
-function SAU.ApplyBarStartingValues(trackerId)
+-- Missing-buff kind: the name text is the whole reminder (or sits beside the
+-- icon), so it starts larger and to the icon's right instead of the bar's
+-- small "above" label. Same stamp/unstamp rules as the bar values.
+SAU.MissingKindStartingValues = {
+    nameTextOuterAnchor = "RIGHT",
+    nameTextSize        = 14,
+}
+
+local function ApplyStartingValues(trackerId, values)
     local db = addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
     if not db then return end
-    for key, value in pairs(SAU.BarShapeStartingValues) do
+    for key, value in pairs(values) do
         if rawget(db, key) == nil then
             db[key] = (type(value) == "table") and CopyTable(value) or value
         end
     end
 end
 
-function SAU.RemoveBarStartingValues(trackerId)
+local function RemoveStartingValues(trackerId, values)
     local db = addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
     if not db then return end
-    for key, value in pairs(SAU.BarShapeStartingValues) do
+    for key, value in pairs(values) do
         if StampEqual(rawget(db, key), value) then
             db[key] = nil
         end
     end
+end
+
+function SAU.ApplyBarStartingValues(trackerId)
+    ApplyStartingValues(trackerId, SAU.BarShapeStartingValues)
+end
+
+function SAU.RemoveBarStartingValues(trackerId)
+    RemoveStartingValues(trackerId, SAU.BarShapeStartingValues)
+end
+
+function SAU.ApplyMissingStartingValues(trackerId)
+    ApplyStartingValues(trackerId, SAU.MissingKindStartingValues)
+end
+
+function SAU.RemoveMissingStartingValues(trackerId)
+    RemoveStartingValues(trackerId, SAU.MissingKindStartingValues)
 end
 
 --------------------------------------------------------------------------------
@@ -559,8 +619,8 @@ function SAU.CreateTracker(spec)
     end
     local spellId = tonumber(spec and spec.spellId)
     local kind = spec and spec.kind or "buff"
-    local unit = spec and spec.unit or ((kind == "debuff") and "target" or "player")
-    local shape = spec and spec.shape or "icon"
+    local unit = spec and spec.unit or SAU.DefaultUnitForKind(kind)
+    local shape = spec and spec.shape or SAU.DefaultShapeForKind(kind)
     local ok, err = SAU.ValidateContent(spellId, kind, unit, shape)
     if not ok then return nil, err end
 
@@ -578,12 +638,19 @@ function SAU.CreateTracker(spec)
         order = trackerId,
         owner = SAU.GetOwnerKey(),
     }
+    if kind == "missingbuff" then
+        -- Content, not styling: it decides when the reminder may show at all.
+        store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat ~= false)
+    end
     SAU.StampOwner(store)
 
     SAU.RegisterTrackerComponent(trackerId)
     addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
     if shape == "bar" then
         SAU.ApplyBarStartingValues(trackerId)
+    end
+    if kind == "missingbuff" then
+        SAU.ApplyMissingStartingValues(trackerId)
     end
     SAU.Engine.ClaimForTracker(trackerId)
     return trackerId
@@ -626,9 +693,10 @@ function SAU.DeleteTracker(trackerId)
     return true
 end
 
---- Applies content edits (spellId/kind/unit/shape) to a live tracker and
--- routes the engine consequence: shape edits rebind, spell/unit/kind edits
--- park the mismatched container immediately and rebuild through the gate.
+--- Applies content edits (spellId/kind/unit/shape/onlyInCombat) to a live
+-- tracker and routes the engine consequence: shape and onlyInCombat edits
+-- restyle in place, spell/unit/kind edits park the mismatched container
+-- immediately and rebuild through the gate.
 function SAU.SetTrackerContent(trackerId, changes)
     local tracker = SAU.GetTracker(trackerId)
     if not tracker then return nil, "no such tracker" end
@@ -636,20 +704,34 @@ function SAU.SetTrackerContent(trackerId, changes)
     local kind = changes.kind or tracker.kind
     local unit = changes.unit or tracker.unit
     local shape = changes.shape or tracker.shape
-    -- A kind flip can strand the current unit (debuff+player); fall to the
-    -- kind's default rather than rejecting the edit.
+    -- A kind flip can strand the current unit (debuff+player) or shape
+    -- (missingbuff+bar); fall to the kind's default rather than rejecting.
     if not SAU.VALID_UNITS[kind] or not SAU.VALID_UNITS[kind][unit] then
-        unit = (kind == "debuff") and "target" or "player"
+        unit = SAU.DefaultUnitForKind(kind)
+    end
+    local shapes = SAU.VALID_SHAPES_BY_KIND[kind]
+    if not shapes or not shapes[shape] then
+        shape = SAU.DefaultShapeForKind(kind)
     end
     local ok, err = SAU.ValidateContent(spellId, kind, unit, shape)
     if not ok then return nil, err end
 
     local oldSpellId = tracker.spellId
     local oldShape = tracker.shape
+    local oldKind = tracker.kind
     tracker.spellId = spellId
     tracker.kind = kind
     tracker.unit = unit
     tracker.shape = shape
+    if kind == "missingbuff" then
+        if changes.onlyInCombat ~= nil then
+            tracker.onlyInCombat = (changes.onlyInCombat ~= false)
+        elseif tracker.onlyInCombat == nil then
+            tracker.onlyInCombat = true
+        end
+    else
+        tracker.onlyInCombat = nil
+    end
     if type(changes.name) == "string" and changes.name ~= "" then
         tracker.name = changes.name
     elseif spellId ~= oldSpellId then
@@ -666,6 +748,11 @@ function SAU.SetTrackerContent(trackerId, changes)
         SAU.ApplyBarStartingValues(trackerId)
     elseif oldShape == "bar" and shape ~= "bar" then
         SAU.RemoveBarStartingValues(trackerId)
+    end
+    if kind == "missingbuff" and oldKind ~= "missingbuff" then
+        SAU.ApplyMissingStartingValues(trackerId)
+    elseif oldKind == "missingbuff" and kind ~= "missingbuff" then
+        SAU.RemoveMissingStartingValues(trackerId)
     end
 
     SAU.Engine.ClaimForTracker(trackerId)
@@ -691,6 +778,7 @@ function SAU.DuplicateTracker(trackerId)
         enabled = source.enabled ~= false,
         order = newId,
         owner = SAU.GetOwnerKey(),
+        onlyInCombat = source.onlyInCombat,
     }
     SAU.StampOwner(store)
 
@@ -718,6 +806,9 @@ function SAU.DuplicateTracker(trackerId)
     addon:EnsureComponentDB(SAU.GetComponentId(newId))
     if source.shape == "bar" then
         SAU.ApplyBarStartingValues(newId)
+    end
+    if source.kind == "missingbuff" then
+        SAU.ApplyMissingStartingValues(newId)
     end
     SAU.Engine.ClaimForTracker(newId)
     return newId
@@ -747,6 +838,24 @@ function SAU.SetTrackerEnabled(trackerId, enabled)
     local tracker = SAU.GetTracker(trackerId)
     if not tracker then return nil, "no such tracker" end
     tracker.enabled = not not enabled
+    if SAU._ApplyStyling then SAU._ApplyStyling(trackerId, tracker) end
+    return true
+end
+
+--- Writes styling keys on the tracker's component db and restyles. The
+-- editor's setAndApply ends in the same two steps (component db write, then
+-- the component's ApplyStyling), so a second surface writing through here
+-- (the Edit Mode mirror) cannot drift from the Sizing tab.
+function SAU.SetTrackerStyling(trackerId, changes)
+    local tracker = SAU.GetTracker(trackerId)
+    if not tracker then return nil, "no such tracker" end
+    local comp = SAU.RegisterTrackerComponent(trackerId)
+    if not comp then return nil, "no component" end
+    if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
+    if not comp.db then return nil, "no component db" end
+    for key, value in pairs(changes or {}) do
+        comp.db[key] = value
+    end
     if SAU._ApplyStyling then SAU._ApplyStyling(trackerId, tracker) end
     return true
 end

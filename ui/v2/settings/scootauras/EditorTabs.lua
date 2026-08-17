@@ -1,6 +1,6 @@
 -- EditorTabs.lua - Styling tab bodies for the ScootAura editor
 --
--- Generalized from the Class Auras renderer's per-aura tabs. Every body reads
+-- Generalized from the retired Class Auras renderer's per-aura tabs. Every body reads
 -- and writes through ctx (draft-aware), never through component helpers
 -- directly, so the same tabs serve a materialized tracker and an unsaved
 -- draft.
@@ -14,7 +14,8 @@
 --   refreshPreview()                      (preview-only re-render; use for
 --                                          value edits, so the tab body is
 --                                          not rebuilt under the cursor)
---   shape()               -> "icon"|"bar"|"shape"
+--   shape()               -> "icon"|"bar"|"shape"|"text"|"icontext"
+--   kind()                -> "buff"|"debuff"|"missingbuff"
 -- }
 local addonName, addon = ...
 
@@ -346,13 +347,26 @@ end
 
 function Tabs.BuildAuraNameTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
+    -- Missing-buff trackers: the name IS the reminder, so there is no hide
+    -- toggle; instead the text can carry a "missing!" suffix. It sits beside
+    -- the icon (Icon & Text) or alone (Text), never on a bar.
+    local isMissing = (ctx.kind and ctx.kind() == "missingbuff")
 
-    tabBuilder:AddToggle({
-        label = "Hide Aura Name",
-        description = "Hide the aura name text on the bar.",
-        get = function() return ctx.get("hideNameText") ~= false end,
-        set = function(v) ctx.setAndApply("hideNameText", v) ctx.refreshPreview() end,
-    })
+    if isMissing then
+        tabBuilder:AddToggle({
+            label = 'Add "___ missing!" to the text',
+            description = 'Show the reminder as "<Aura Name> missing!" instead of the name alone.',
+            get = function() return ctx.get("missingSuffix") == true end,
+            set = function(v) ctx.setAndApply("missingSuffix", v) ctx.refreshPreview() end,
+        })
+    else
+        tabBuilder:AddToggle({
+            label = "Hide Aura Name",
+            description = "Hide the aura name text on the bar.",
+            get = function() return ctx.get("hideNameText") ~= false end,
+            set = function(v) ctx.setAndApply("hideNameText", v) ctx.refreshPreview() end,
+        })
+    end
 
     tabBuilder:AddFontSelector({
         label = "Font",
@@ -383,6 +397,40 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
         set = ColorSet(ctx, "nameTextColor"),
         hasAlpha = true,
     })
+
+    if isMissing then
+        -- Text alone has nothing to position against; Icon & Text places the
+        -- name on one side of the icon.
+        if ctx.shape() == "icontext" then
+            tabBuilder:AddSelector({
+                label = "Position",
+                description = "Which side of the icon the name sits on.",
+                values = OUTSIDE_ANCHOR_VALUES,
+                order = OUTSIDE_ANCHOR_ORDER,
+                get = function() return ctx.get("nameTextOuterAnchor") or "RIGHT" end,
+                set = function(v) ctx.setAndApply("nameTextOuterAnchor", v) ctx.refreshPreview() end,
+            })
+
+            tabBuilder:AddDualSlider({
+                label = "Offset",
+                sliderA = {
+                    axisLabel = "X", min = -50, max = 50, step = 1,
+                    get = function() return ctx.get("nameTextOffsetX") or 0 end,
+                    set = function(v) ctx.setAndApply("nameTextOffsetX", v) ctx.refreshPreview() end,
+                    minLabel = "-50", maxLabel = "+50",
+                },
+                sliderB = {
+                    axisLabel = "Y", min = -50, max = 50, step = 1,
+                    get = function() return ctx.get("nameTextOffsetY") or 0 end,
+                    set = function(v) ctx.setAndApply("nameTextOffsetY", v) ctx.refreshPreview() end,
+                    minLabel = "-50", maxLabel = "+50",
+                },
+            })
+        end
+
+        tabBuilder:Finalize()
+        return
+    end
 
     local currentPos = ctx.get("nameTextPosition") or "inside"
     local bValues = currentPos == "outside" and OUTSIDE_ANCHOR_VALUES or INSIDE_ANCHOR_VALUES
@@ -819,9 +867,29 @@ end
 -- Tab assembly per shape
 --------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------
+-- Animations tab (missing-buff trackers)
+--------------------------------------------------------------------------------
+
+function Tabs.BuildAnimationsTab(tabBuilder, ctx)
+    tabBuilder:AddToggle({
+        label = "Make the tracker blink when present",
+        description = "Pulse the reminder while it is showing, so a missing buff is harder to overlook.",
+        get = function() return ctx.get("blinkWhenShown") == true end,
+        set = function(v) ctx.setAndApply("blinkWhenShown", v) ctx.refreshPreview() end,
+    })
+
+    tabBuilder:Finalize()
+end
+
+--------------------------------------------------------------------------------
+-- Tab assembly per shape
+--------------------------------------------------------------------------------
+
 --- Returns tabs, buildContent for the editor's tabbed section.
 function Tabs.BuildTabSet(ctx)
     local shape = ctx.shape()
+    local kind = ctx.kind and ctx.kind() or "buff"
     local tabs = {}
     local buildContent = {}
 
@@ -833,6 +901,19 @@ function Tabs.BuildTabSet(ctx)
     end
 
     add("sizing", "Sizing", Tabs.BuildSizingTab)
+
+    if kind == "missingbuff" then
+        -- A reminder has no duration or stacks. Icon and/or Aura Name follow
+        -- the shape; Animations carries the blink.
+        if shape ~= "text" then
+            add("icon", "Icon", Tabs.BuildIconTab)
+        end
+        if shape ~= "icon" then
+            add("auraName", "Aura Name", Tabs.BuildAuraNameTab)
+        end
+        add("animations", "Animations", Tabs.BuildAnimationsTab)
+        return tabs, buildContent
+    end
 
     if shape == "bar" then
         add("bar", "Bar", Tabs.BuildBarTab)

@@ -194,10 +194,14 @@ function SAU.CopyTrackerFromSource(src)
     local kind = source.kind or "buff"
     local unit = source.unit
     local shape = source.shape or "icon"
-    -- Foreign data may be stale; fall the unit back to the kind's default
-    -- rather than refusing the copy (SetTrackerContent does the same).
+    -- Foreign data may be stale; fall the unit and shape back to the kind's
+    -- defaults rather than refusing the copy (SetTrackerContent does the same).
     if not SAU.VALID_UNITS[kind] or not SAU.VALID_UNITS[kind][unit] then
-        unit = (kind == "debuff") and "target" or "player"
+        unit = SAU.DefaultUnitForKind(kind)
+    end
+    local shapes = SAU.VALID_SHAPES_BY_KIND[kind]
+    if not shapes or not shapes[shape] then
+        shape = SAU.DefaultShapeForKind(kind)
     end
     local ok, err = SAU.ValidateContent(spellId, kind, unit, shape)
     if not ok then return nil, err end
@@ -217,6 +221,10 @@ function SAU.CopyTrackerFromSource(src)
         order = newId,
         owner = SAU.GetOwnerKey(),
     }
+    if kind == "missingbuff" then
+        -- Explicit branch: `x and false or nil` would drop a `false`.
+        store.trackers[newId].onlyInCombat = (source.onlyInCombat ~= false)
+    end
     SAU.StampOwner(store)
 
     local profile = addon.db and addon.db.profile
@@ -255,6 +263,9 @@ function SAU.CopyTrackerFromSource(src)
     addon:EnsureComponentDB(SAU.GetComponentId(newId))
     if shape == "bar" then
         SAU.ApplyBarStartingValues(newId)
+    end
+    if kind == "missingbuff" then
+        SAU.ApplyMissingStartingValues(newId)
     end
     if Engine and Engine.ClaimForTracker then
         Engine.ClaimForTracker(newId)

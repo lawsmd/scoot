@@ -81,6 +81,7 @@ core/components/scootauras/cadence.lua
 core/components/scootauras/groups.lua
 core/components/scootauras/rearrange.lua
 core/components/scootauras/regions.lua
+core/components/scootauras/missing.lua
 core/components/scootauras/events.lua
 core/components/scootauras/copy.lua
 core/components/actionbars.lua
