@@ -135,9 +135,19 @@ end
 --- and the alternative is throwing from inside a live cast; and if the annotation
 --- ever changes, this degrades to a plain bar instead of an error.
 function CBZ._ResolveEmpowerStages(bar)
+    -- `true` takes the fixed preview vector; a table is a caller-supplied edge
+    -- vector (the local showcase models real three-stage empowers). Copied, and
+    -- closed on 1 like the live path below, so a caller's table is never mutated
+    -- and can never leave a dead strip of track.
     if bar.empowerPreview then
+        local src = type(bar.empowerPreview) == "table" and bar.empowerPreview or PREVIEW_EDGES
         local fracs = {}
-        for i, v in ipairs(PREVIEW_EDGES) do fracs[i] = v end
+        for i, v in ipairs(src) do
+            fracs[i] = v
+            if i >= MAX_SEGMENTS then break end
+        end
+        if #fracs == 0 then return nil end
+        fracs[#fracs] = 1
         return fracs
     end
 

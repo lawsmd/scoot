@@ -164,7 +164,7 @@ CBZ._ForEachBand = ForEachBand
 function CBZ._ApplyBandFonts(bar)
     local face  = addon.ResolveFontFace(CBZ._GetSetting("fontFace"))
     local size  = tonumber(CBZ._GetSetting("fontSize")) or 14
-    local style = tostring(CBZ._GetSetting("fontStyle") or "OUTLINE")
+    local style = tostring(CBZ._GetSetting("fontStyle") or "SHADOWTHICKOUTLINE")
 
     local ramp = CBZ._GetRamp(bar)
 
@@ -239,7 +239,7 @@ end
 local function FitText(bar, text)
     local face  = addon.ResolveFontFace(CBZ._GetSetting("fontFace"))
     local size  = tonumber(CBZ._GetSetting("fontSize")) or 14
-    local style = tostring(CBZ._GetSetting("fontStyle") or "OUTLINE")
+    local style = tostring(CBZ._GetSetting("fontStyle") or "SHADOWTHICKOUTLINE")
     local avail = AvailableWidth(bar)
 
     if not avail then
@@ -281,6 +281,10 @@ local function FitText(bar, text)
     return fitted
 end
 CBZ._FitText = FitText
+-- Exported alongside FitText for the same reason: anything that paints a bar
+-- without a cast (previews, the local showcase) must build its ramp with the
+-- same lerp and the same gradient-off collapse the live bar uses.
+CBZ._BuildRamp = BuildRamp
 
 --- Set the same bytes on every copy, then size them.
 --- `text` may be a secret string; nothing here reads it back.

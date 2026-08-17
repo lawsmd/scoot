@@ -357,7 +357,7 @@ function CBZ._LayoutCastTime(bar)
 
     local face  = addon.ResolveFontFace(CBZ._GetCastTimeFontFace())
     local size  = tonumber(CBZ._GetSetting("castTimeSize")) or 12
-    local style = tostring(CBZ._GetSetting("fontStyle") or "OUTLINE")
+    local style = tostring(CBZ._GetSetting("fontStyle") or "SHADOWTHICKOUTLINE")
     addon.ApplyFontStyle(fs, face, size, style)
     -- Off for the same reason the bands turn it off: nothing scales this text, and
     -- smooth scaling only costs sharpness under a fractional UI scale.

@@ -154,10 +154,10 @@ local CARET_TEXTURE = "Interface\\AddOns\\Scoot\\media\\textures\\flyout-nub"
 
 local SparkBuilders = {}
 
---- Blizzard's pip. The shipped default, and the one spark whose art carries its
---- own hue -- the other three are a solid fill or a white triangle, so they have
---- always drawn in the cast's color and there is nothing in them to desaturate.
---- Tint() is what brings this one into line with them.
+--- Blizzard's pip. The one spark whose art carries its own hue -- the other three
+--- are a solid fill or a white triangle, so they have always drawn in the cast's
+--- color and there is nothing in them to desaturate. Tint() is what brings this
+--- one into line with them.
 function SparkBuilders.blizzard(bar, geom)
     local parts = bar._sparkParts
     local tex = parts.blizzardTex
@@ -334,8 +334,8 @@ function CBZ._BuildSpark(bar, geom)
         end
     end
 
-    local style = tostring(CBZ._GetSetting("sparkStyle") or "blizzard")
-    if not SparkBuilders[style] then style = "blizzard" end
+    local style = tostring(CBZ._GetSetting("sparkStyle") or "caret")
+    if not SparkBuilders[style] then style = "caret" end
 
     -- Only `blizzard` can fail to build, and only if Blizzard renames the pip
     -- atlas out from under us. Fall back to `tick` rather than to nothing: an
@@ -735,7 +735,7 @@ local FX_PAD = {
 --- only when the style actually changed matters: Anim.Create allocates a frame
 --- and its textures, and a settings panel emits a layout pass per slider tick.
 function CBZ._LayoutFinishFX(bar, geom)
-    local style = tostring(CBZ._GetSetting("completionFX") or "none")
+    local style = tostring(CBZ._GetSetting("completionFX") or "glow")
     local animId = FX_IDS[style]
 
     if bar._finishFX and bar._finishStyle == style then
@@ -848,7 +848,7 @@ function CBZ._RecolorFinishFX(bar)
 end
 
 --- Play the completion effect, if one is configured.
---- No-op when the setting is "none" -- the shipped default.
+--- No-op when the setting is "none".
 function CBZ._PlayFinishFX(bar)
     local ctrl = bar._finishFX
     if not ctrl then return end

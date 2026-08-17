@@ -216,51 +216,60 @@ addon:RegisterComponentInitializer(function(self)
         id = "castBarZ",
         name = "Cast Bar Z",
         settings = {
+            -- These defaults are the component's house look, set when Z left beta
+            -- (user, 2026-08-17): Scoot's own face in its heaviest weight, the caret
+            -- spark and the success glow. Every scalar default here must be
+            -- mirrored in SETTING_FALLBACKS below, which serves a bar whose
+            -- component DB is missing.
+            --
+            -- Zero-touch survives at the category level -- a fresh profile has no
+            -- moduleEnabled.castBars key, so no bar exists until Z is selected --
+            -- but not at the key level: component defaults are served through a
+            -- metatable (base/core.lua:52-59), so a profile that never touched a
+            -- key follows a change of default. Accepted, deliberately, for the
+            -- four look-defining keys (fontFace, fontStyle, sparkStyle,
+            -- completionFX). Anything that adds an element rather than restyling
+            -- one -- castTime -- still starts off.
+
             -- Text
-            fontFace   = { type = "addon", default = "FRIZQT__" },
+            fontFace   = { type = "addon", default = "ROBOTO_SEMICOND_BLACK" },
             fontSize   = { type = "addon", default = 14 },
-            fontStyle  = { type = "addon", default = "OUTLINE" },
+            fontStyle  = { type = "addon", default = "SHADOWTHICKOUTLINE" },
 
             -- Fill
             gradient   = { type = "addon", default = true },
             lineHeight = { type = "addon", default = "medium" },
             capSize    = { type = "addon", default = "medium" },
 
-            -- Spark. showSpark is the master switch, sparkStyle picks which art;
-            -- "blizzard" is the default so an existing profile does not move.
+            -- Spark. showSpark is the master switch, sparkStyle picks which art.
             showSpark  = { type = "addon", default = true },
-            sparkStyle = { type = "addon", default = "blizzard" },
+            sparkStyle = { type = "addon", default = "caret" },
 
-            -- Cast completion. Defaults to "none" -- zero-touch means shipped
-            -- behaviour does not change until the user asks for an effect.
-            completionFX = { type = "addon", default = "none" },
+            -- Cast completion. "glow" is the success glow; "none" turns it off.
+            completionFX = { type = "addon", default = "glow" },
 
             -- Color for both flourishes. "spellName" takes the bright end of the
             -- cast's own ramp -- the stop the last band of the name is drawn in --
             -- so on your bar it is your spec color and on a target's it is that
             -- unit's class color. The key says where the value is resolved FROM;
             -- the settings label reads "Spec Color", which is what it amounts to
-            -- on the bar the user is looking at while they set it.
-            --
-            -- These two ARE a departure from the zero-touch precedent that
-            -- completionFX and castTime were both written to honour: defaulting to
-            -- "spellName" recolors Blizzard's pip and every borrowed effect atlas
-            -- on profiles that never ask for it. Taken deliberately (user, 2026-08-03)
-            -- -- the alternative was a third "whatever it is now" mode naming two
-            -- different behaviours depending on the style selected above it.
+            -- on the bar the user is looking at while they set it. There is no
+            -- third "whatever it is now" mode: Blizzard's pip drew in its own gold
+            -- and every other spark drew in the ramp, so one option covering both
+            -- would have named two behaviours (user, 2026-08-03).
             sparkColorMode      = { type = "addon", default = "spellName" },
             sparkColor          = { type = "addon", default = { 1, 1, 1, 1 } },
             completionColorMode = { type = "addon", default = "spellName" },
             completionColor     = { type = "addon", default = { 1, 1, 1, 1 } },
 
-            -- Empowered casts. On by default, unlike completionFX: this is not an
-            -- added flourish, it is the only way an empowered bar can say which
-            -- tier you are about to release at. Off falls back to a plain filling
-            -- bar, which is what Phase 1 drew.
+            -- Empowered casts. On by default: this is not a flourish, it is the
+            -- only way an empowered bar can say which tier you are about to
+            -- release at. Off falls back to a plain filling bar, which is what
+            -- Phase 1 drew.
             empoweredTiers = { type = "addon", default = true },
 
-            -- Cast time readout. Off by default, same precedent as completionFX:
-            -- a new visual element must not change an existing profile. It gets
+            -- Cast time readout. Off by default: it adds an element beside the bar
+            -- rather than restyling one, so it stays opt-in. It gets
             -- its own size (smaller, so it cannot compete with the name it sits
             -- beside) and its own face; style stays shared, since a readout in a
             -- different weight to the name beside it reads as a mistake.
@@ -395,9 +404,9 @@ end
 -- to the documented default instead of erroring mid-cast.
 
 local SETTING_FALLBACKS = {
-    fontFace = "FRIZQT__", fontSize = 14, fontStyle = "OUTLINE",
+    fontFace = "ROBOTO_SEMICOND_BLACK", fontSize = 14, fontStyle = "SHADOWTHICKOUTLINE",
     gradient = true, lineHeight = "medium", capSize = "medium", showSpark = true,
-    sparkStyle = "blizzard", completionFX = "none", empoweredTiers = true,
+    sparkStyle = "caret", completionFX = "glow", empoweredTiers = true,
     sparkColorMode = "spellName", completionColorMode = "spellName",
     castTime = false, castTimeReadout = "remaining", castTimeSize = 12,
     castTimeGap = 10, castTimeOffsetY = 0,

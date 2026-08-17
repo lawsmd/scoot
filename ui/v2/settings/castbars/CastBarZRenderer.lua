@@ -488,7 +488,7 @@ function CBZSettings.Render(panel, scrollContent)
                     caret    = "Playhead Caret",
                 },
                 order = { "blizzard", "tick", "trail", "caret" },
-                get = function() return getSetting("sparkStyle") or "blizzard" end,
+                get = function() return getSetting("sparkStyle") or "caret" end,
                 set = function(v) setSetting("sparkStyle", v) end })
             -- No alpha on either picker. On the completion effects the alpha is
             -- already driven by the animation, so a vertex alpha would multiply
@@ -519,11 +519,11 @@ function CBZSettings.Render(panel, scrollContent)
                     embers = "Rising Embers",
                 },
                 order = { "none", "glow", "sweep", "wipe", "embers" },
-                get = function() return getSetting("completionFX") or "none" end,
+                get = function() return getSetting("completionFX") or "glow" end,
                 set = function(v) setSetting("completionFX", v) end })
             -- Hidden with the effect off, matching how Position hides its offsets on
             -- a free bar: a color for something that does not play is noise.
-            if (getSetting("completionFX") or "none") ~= "none" then
+            if (getSetting("completionFX") or "glow") ~= "none" then
                 inner:AddSelectorColorPicker({ label = "Color", hasAlpha = false,
                     description = COLOR_DESC,
                     values = COLOR_VALUES, order = COLOR_ORDER,
@@ -587,12 +587,12 @@ function CBZSettings.Render(panel, scrollContent)
                 buildContent = {
                     spellName = function(_, tab)
                         tab:AddFontSelector({ label = "Font",
-                            get = function() return getSetting("fontFace") or "FRIZQT__" end,
+                            get = function() return getSetting("fontFace") or "ROBOTO_SEMICOND_BLACK" end,
                             set = function(v) setSetting("fontFace", v) end })
                         tab:AddSelector({ label = "Font Style",
                             description = "Shared with the cast time readout, so the two cannot disagree about weight.",
                             values = TextHelpers.fontStyleValues, order = TextHelpers.fontStyleOrder,
-                            get = function() return getSetting("fontStyle") or "OUTLINE" end,
+                            get = function() return getSetting("fontStyle") or "SHADOWTHICKOUTLINE" end,
                             set = function(v) setSetting("fontStyle", v) end })
                         tab:AddSlider({ label = "Font Size", min = 8, max = 32, step = 1,
                             get = function() return tonumber(getSetting("fontSize")) or 14 end,
@@ -627,7 +627,7 @@ function CBZSettings.Render(panel, scrollContent)
                             -- control never reads as empty.
                             tab:AddFontSelector({ label = "Font",
                                 description = "Matches the spell name font until you choose one here.",
-                                get = function() return CBZ._GetCastTimeFontFace() or "FRIZQT__" end,
+                                get = function() return CBZ._GetCastTimeFontFace() or "ROBOTO_SEMICOND_BLACK" end,
                                 set = function(v) setSetting("castTimeFont", v) end })
                             tab:AddSlider({ label = "Font Size", min = 8, max = 24, step = 1,
                                 get = function() return tonumber(getSetting("castTimeSize")) or 12 end,
