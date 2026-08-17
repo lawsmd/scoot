@@ -414,17 +414,22 @@ function UFZ._InitializeEditMode()
 
         -- Stand-ins can change what a frame renders but never its envelope, so
         -- this is a skip-compare no-op in the normal case. It is here for the
-        -- one that isn't: a frame built for the first time by the loop above.
+        -- one that isn't: a stack whose box has never been sized. The loop above
+        -- cannot build a frame -- it reads _instances -- so a unit enabled while
+        -- Edit Mode is open takes its stand-in from _ApplyAll's tail instead.
+        -- Already guarded: _ApplyStack queues the "stack" slot in lockdown.
         UFZ._ApplyStack("Boss")
 
         -- The secure click overlay yields the mouse to the LEM selection for
-        -- the whole session -- dragging must win over targeting. Hide/Show is
-        -- a protected op, but Edit Mode cannot be open in combat; the guard is
-        -- belt-and-braces (engine _ApplyAll re-asserts the state either way).
+        -- the whole session -- dragging must win over targeting. Hide/Show on
+        -- the protected button is combat-blocked, and Edit Mode CAN be open in
+        -- combat: CanEnterEditMode (EditModeManager.lua:1636-1655) tests the
+        -- EditModeDisabled game rule, NPE restriction and account settings and
+        -- nothing else, so the Game Menu button stays live in a fight and this
+        -- very callback runs from LibEditMode's OnShow hook. The engine worker
+        -- queues a refused write onto PLAYER_REGEN_ENABLED rather than losing it.
         for _, inst in pairs(UFZ._instances) do
-            if inst.clickButton and not InCombatLockdown() then
-                inst.clickButton:Hide()
-            end
+            UFZ._ApplyClickOverlayShown(inst)
         end
     end)
 
@@ -436,11 +441,12 @@ function UFZ._InitializeEditMode()
         -- Edit Mode unapplied lands here on the way out.
         UFZ._ReassertAllSuppression()
 
+        -- Same worker as the enter side, and it matters more here: an exit that
+        -- landed in combat used to drop the Show outright, leaving the overlay
+        -- hidden and click-to-target dead for the rest of the session.
         for _, inst in pairs(UFZ._instances) do
             UFZ._EndEditModePreview(inst)
-            if inst.clickButton and not InCombatLockdown() then
-                inst.clickButton:Show()
-            end
+            UFZ._ApplyClickOverlayShown(inst)
         end
     end)
 end

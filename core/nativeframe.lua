@@ -116,6 +116,18 @@ local function ApplySelection(frame, suppress)
         return
     end
 
+    -- The Selection box is an XML child of a system frame that inherits
+    -- SecureUnitButtonTemplate (PlayerFrame.xml:14), so it is protected by
+    -- parentage and EnableMouse on it is combat-blocked. This path is genuinely
+    -- reachable in lockdown: Reapply runs from both Edit Mode callbacks, and
+    -- CanEnterEditMode (EditModeManager.lua:1636-1655) has no lockdown check, so
+    -- Edit Mode opens and closes mid-fight. Skipping whole rather than dropping
+    -- only the mouse write is deliberate, per the note above: an invisible box
+    -- that still swallows clicks is worse than a visible one. Nothing is lost --
+    -- the state flags are untouched, so the PLAYER_REGEN_ENABLED Reapply below
+    -- re-runs Park/Unpark and lands the writes then.
+    if InCombatLockdown() then return end
+
     local d = State(selection)
 
     if suppress then
@@ -135,6 +147,7 @@ local function ApplySelection(frame, suppress)
             -- the deferral: the hook observes, the timer writes.
             hooksecurefunc(selection, "Show", function(self)
                 C_Timer.After(0, function()
+                    if InCombatLockdown() then return end
                     if State(self).selectionSuppressed then
                         self:SetAlpha(0)
                         self:EnableMouse(false)

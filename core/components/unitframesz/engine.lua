@@ -981,10 +981,14 @@ end
 -- re-runs the worker, which recomputes fresh.
 local pendingRegen = {}
 -- Populated beside each worker's definition; drained in this order so a
--- restored position lands before the resize that happens around it, and the
--- watch settles before the visibility recheck that trusts it.
+-- restored position lands before the resize that happens around it, the watch
+-- settles before the visibility recheck that trusts it, and the Edit Mode
+-- stand-in paints last, onto a frame that is finally shown.
 local regenActions = {}
-local REGEN_ORDER = { "position", "scale", "envelope", "stack", "click", "watch", "visibility" }
+local REGEN_ORDER = {
+    "position", "scale", "envelope", "stack",
+    "click", "clickShown", "watch", "visibility", "preview",
+}
 local regenWatcher
 
 local function queueRegen(inst, what)
@@ -2531,6 +2535,26 @@ local function applyClickAttributes(inst)
 end
 regenActions.click = applyClickAttributes
 
+--- The overlay yields the mouse to the LEM selection for exactly as long as Edit
+--- Mode is open, and Hide/Show on the protected button is combat-blocked. Edit
+--- Mode opens AND closes in combat (CanEnterEditMode, EditModeManager.lua:1636-1655,
+--- has no lockdown check), so this queues like every other protected worker rather
+--- than dropping the write: an exit that landed in combat used to leave the overlay
+--- hidden, which kills click-to-target until the next _ApplyAll.
+local function applyClickShown(inst)
+    local click = inst.clickButton
+    if not click then return end
+    local want = not UFZ._editModeActive
+    if click:IsShown() == want then return end
+    if InCombatLockdown() then
+        queueRegen(inst, "clickShown")
+        return
+    end
+    click:SetShown(want)
+end
+regenActions.clickShown = applyClickShown
+UFZ._ApplyClickOverlayShown = applyClickShown
+
 --- Re-applies the modifier delegates on every live overlay. Called when a
 --- Small Fixes toggle changes; combat-blocked writes ride the existing click
 --- regen action rather than a second deferral of their own.
@@ -3939,16 +3963,17 @@ function UFZ._ApplyAll(inst)
     ensureApplied(inst)
     registerUnitEvents(inst)
     inst.chromeBG:SetShown(inst.cfg.chrome)
-    -- Click overlay self-heal (protected ops, OOC only; combat paths re-reach
-    -- here on the next apply): the unit attribute tracks inst.unit, and the
+    -- Click overlay self-heal: the unit attribute tracks inst.unit, and the
     -- overlay stays hidden for exactly as long as Edit Mode is open --
     -- editmode.lua's enter/exit callbacks are the primary writer, this is the
-    -- backstop for an overlay created mid-session.
-    if inst.clickButton and not InCombatLockdown() then
+    -- backstop for an overlay created mid-session. Both workers carry their own
+    -- lockdown guard and queue, so an _ApplyAll that lands in combat defers the
+    -- writes rather than dropping them.
+    if inst.clickButton then
         if inst.clickButton:GetAttribute("unit") ~= inst.unit then
             applyClickAttributes(inst)
         end
-        inst.clickButton:SetShown(not UFZ._editModeActive)
+        applyClickShown(inst)
     end
     applyScale(inst)
     applyFonts(inst)
@@ -3959,6 +3984,15 @@ function UFZ._ApplyAll(inst)
     -- (all wholesale-change paths funnel through here).
     if UFZ.Auras then UFZ.Auras.ApplyAll(inst) end
     applyOpacity(inst)
+    -- A unit enabled while Edit Mode is already open builds its frame on this
+    -- pass, and would otherwise stand there with no stand-in until Edit Mode was
+    -- re-entered: the enter callback's loop reads _instances and never builds.
+    -- The Cast Bar Z precedent (castbarz/frames.lua:615-623). It has to be the
+    -- tail -- the stand-in paints sample strings that update() and refreshName()
+    -- above would overwrite if it ran any earlier.
+    if UFZ._editModeActive and UFZ._IsUnitEnabled(inst.unitKey) then
+        UFZ._ShowEditModePreview(inst)
+    end
 end
 
 --- The one visibility resolver. The existence axis for target/focus belongs
@@ -3972,9 +4006,11 @@ function UFZ._UpdateVisibility(inst)
     if not inst or not inst.frame then return end
 
     if inst.previewActive then
-        -- Edit Mode is OOC by construction; the watch was dropped by
-        -- _ShowEditModePreview so the manager cannot re-hide the stand-in.
-        if not inst.frame:IsShown() then inst.frame:Show() end
+        -- The watch was dropped by _ShowEditModePreview, so the manager cannot
+        -- re-hide the stand-in. The show still goes through setShownSafe: Edit
+        -- Mode opens in combat and this frame's visibility is protected, so a
+        -- call that lands in lockdown queues rather than throwing.
+        setShownSafe(inst, true)
         applyOpacity(inst)
         return
     end
@@ -4037,9 +4073,23 @@ function UFZ._ShowEditModePreview(inst)
     inst.previewActive = true
     -- Drop the unit watch first (previewActive makes it unwanted): a watched
     -- targetless frame would be re-hidden by the manager's next scan, right
-    -- out from under the stand-in. Edit Mode is OOC, so this runs direct.
+    -- out from under the stand-in. applyUnitWatch queues its own transition in
+    -- lockdown, so it is safe to call either way.
     applyUnitWatch(inst)
-    inst.frame:Show()
+    -- Edit Mode CAN be entered in combat. CanEnterEditMode
+    -- (EditModeManager.lua:1636-1655) tests the EditModeDisabled game rule, NPE
+    -- restriction and account settings, and nothing else, so the Game Menu
+    -- button stays live in a fight and LibEditMode's OnShow hook fires straight
+    -- into here. The click child makes this frame's visibility protected, so the
+    -- show has to queue like every other protected write.
+    setShownSafe(inst, true)
+    -- Nothing below can land on a frame that is still hidden: update() and
+    -- refreshName() no-op there, and every other paint would be invisible. Re-run
+    -- the whole stand-in on regen rather than half-painting one now.
+    if not inst.frame:IsShown() then
+        queueRegen(inst, "preview")
+        return
+    end
     applyOpacity(inst)  -- previewActive branch: a dimmed frame snaps to full
 
     local okEx, ex = pcall(UnitExists, inst.unit)
@@ -4100,6 +4150,13 @@ function UFZ._ShowEditModePreview(inst)
     elseif inst.classifyTex then
         inst.classifyTex:Hide()
     end
+end
+
+-- The drain for a preview whose frame could not be shown in combat. Flags only,
+-- like every other slot, and previewActive is re-read here because Edit Mode may
+-- have closed while the fight was still running.
+regenActions.preview = function(inst)
+    if inst.previewActive then UFZ._ShowEditModePreview(inst) end
 end
 
 function UFZ._EndEditModePreview(inst)
