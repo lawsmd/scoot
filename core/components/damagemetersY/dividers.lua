@@ -1,10 +1,11 @@
 -- damagemetersY/dividers.lua - Draggable column-width dividers in Edit Mode
 --
--- When a multi-column (Overall) DMY window is selected in Edit Mode, thin
--- grayish-white divider lines appear at each interior column boundary. The
--- user drags a divider to resize the two adjacent columns; the result is
--- committed to cfg.columns[c].widthFraction on release. This is the ONLY way
--- per-column widths are set.
+-- When a DMY window is selected in Edit Mode, thin grayish-white divider lines
+-- appear at every column boundary, including the one between the player name
+-- column and the first value column. The user drags a divider to resize the
+-- two adjacent columns; the result is committed to cfg.columns[c].widthFraction
+-- (and cfg.nameWidthFraction for the name boundary) on release. This is the
+-- ONLY way per-column widths are set.
 --
 -- Architecture follows scootauras/rearrange.lua: a DIALOG-strata overlay over
 -- the selected frame (level 110 — under the LEM dialog at 200 and the nudge
@@ -20,8 +21,8 @@ local DMY = addon.DamageMetersY
 DMY.Dividers = {}
 local Dividers = DMY.Dividers
 
-local MIN_COL_WIDTH = 24   -- px floor for both columns adjacent to a drag
-local STRIP_WIDTH   = 8    -- mouse hit width; the visible line is 1px
+local STRIP_WIDTH = 8      -- mouse hit width; the visible line is 1px
+-- Width floors live in frames.lua so the layout pass clamps to the same values.
 
 local IDLE_COLOR  = { 0.8, 0.8, 0.8, 0.55 }
 local HOVER_COLOR = { 1.0, 1.0, 1.0, 0.9 }
@@ -63,7 +64,8 @@ local function GetAttachedWindow()
 end
 
 -- The mode's ground truth: Edit Mode active, this window still the live LEM
--- selection, still an Overall multi-column window, and out of combat.
+-- selection, and out of combat. Every window has at least the name boundary,
+-- so single-column Current and Expired windows qualify too.
 --
 -- checkDialog=false at Attach time: the ShowSelected hook that triggers
 -- Attach can fire before LEM's dialog has recorded the new selection, so the
@@ -76,10 +78,9 @@ local function ConditionsHold(checkDialog)
 
     local win = GetAttachedWindow()
     if not win or not win.frame or not win.frame:IsShown() then return false end
-    if (win._numColumns or 1) < 2 then return false end
+    if not win._colEdges then return false end
 
-    local cfg = DMY._GetWindowConfig(attached)
-    if not cfg or cfg.sessionType ~= 0 then return false end
+    if not DMY._GetWindowConfig(attached) then return false end
 
     if not checkDialog then return true end
 
@@ -103,10 +104,13 @@ local function DragTick()
     local x = CursorLocalX(win.frame)
     if not x then return end
 
+    -- Boundary 0 is the name column's right edge: its left neighbour is the
+    -- pool origin rather than another column edge, and it has its own floor.
     local b = drag.boundary
     local base = drag.baseEdges
-    local minX = base[b - 1] + MIN_COL_WIDTH
-    local maxX = base[b + 1] - MIN_COL_WIDTH
+    local leftLimit = (b == 0) and DMY.NAME_AREA_LEFT or base[b - 1]
+    local minX = leftLimit + ((b == 0) and DMY.MIN_NAME_WIDTH or DMY.MIN_COL_WIDTH)
+    local maxX = base[b + 1] - DMY.MIN_COL_WIDTH
     if maxX < minX then return end -- adjacent columns already at minimum
 
     local newEdge = math.max(minX, math.min(maxX, x))
@@ -118,7 +122,8 @@ local function DragTick()
     -- Rebuild the fraction vector from the base edges with only boundary b
     -- moved; every other boundary stays frozen during this drag.
     local n = win._numColumns or 1
-    local available = base[n] - base[0]
+    local newLeft = (b == 0) and newEdge or base[0]
+    local available = base[n] - newLeft
     if available <= 0 then return end
     local fractions = {}
     for c = 1, n do
@@ -128,6 +133,7 @@ local function DragTick()
     end
 
     win._dragFractions = fractions
+    if b == 0 then win._dragNameEdge = newEdge end
     if DMY._comp then
         DMY._CalculateColumnWidths(attached, DMY._comp)
         DMY._LayoutBarRows(attached, DMY._comp)
@@ -168,9 +174,13 @@ EndDrag = function(cancel)
         local cfg = DMY._GetWindowConfig(attached)
         local edges = win._colEdges
         local n = win._numColumns or 1
-        if cfg and cfg.columns and edges and n >= 2 then
+        if cfg and cfg.columns and edges and edges[0] and edges[n] then
+            local pool = edges[n] - DMY.NAME_AREA_LEFT
+            if pool > 0 then
+                cfg.nameWidthFraction = (edges[0] - DMY.NAME_AREA_LEFT) / pool
+            end
             local available = edges[n] - edges[0]
-            if available > 0 then
+            if available > 0 and n >= 2 then
                 for c = 1, n do
                     if cfg.columns[c] then
                         cfg.columns[c].widthFraction = (edges[c] - edges[c - 1]) / available
@@ -181,6 +191,7 @@ EndDrag = function(cancel)
     end
 
     win._dragFractions = nil
+    win._dragNameEdge = nil
     if attached and DMY._comp then
         DMY._CalculateColumnWidths(attached, DMY._comp)
         DMY._LayoutBarRows(attached, DMY._comp)
@@ -278,9 +289,14 @@ function Dividers.Refresh()
 
     local n = win._numColumns or 1
     local edges = win._colEdges
-    local headerH = DMY.HEADER_HEIGHT or 24
+    -- Real height, not the constant: the header grows for a wrapped session
+    -- title or a stacked dual-metric column header.
+    local headerH = win.header and win.header:GetHeight() or 0
+    if headerH <= 0 then headerH = DMY.HEADER_HEIGHT or 24 end
 
-    for b = 1, n - 1 do
+    -- Boundary 0 is the name column's right edge; 1..n-1 are the interior
+    -- value-column boundaries.
+    for b = 0, n - 1 do
         local strip = AcquireStrip(b)
         if edges[b] then
             strip:ClearAllPoints()
@@ -297,8 +313,8 @@ function Dividers.Refresh()
     end
 end
 
---- Attaches the divider overlay to a window. No-ops unless the window is an
---- Edit-Mode-selected, multi-column Overall window out of combat.
+--- Attaches the divider overlay to a window. No-ops unless the window is
+--- Edit-Mode-selected and out of combat.
 function Dividers.Attach(windowIndex)
     EnsureFrames()
 

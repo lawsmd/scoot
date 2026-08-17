@@ -90,25 +90,6 @@ function DMY._GetWindowConfig(windowIndex)
     return wins and wins[windowIndex]
 end
 
---- Migrate excluded formats (DPS/HPS/combos) in secondary columns to totalAmount equivalents.
-function DMY._MigrateSecondaryColumns()
-    local migMap = DMY.SECONDARY_MIGRATION_MAP
-    if not migMap then return end
-    local wins = DMY._EnsureWindowsDB()
-    if not wins then return end
-    for i = 1, DMY.MAX_WINDOWS do
-        local cfg = wins[i]
-        if cfg and cfg.columns then
-            for c = 2, #cfg.columns do
-                local col = cfg.columns[c]
-                if col and migMap[col.format] then
-                    col.format = migMap[col.format]
-                end
-            end
-        end
-    end
-end
-
 --------------------------------------------------------------------------------
 -- Component Registration
 --------------------------------------------------------------------------------
@@ -345,9 +326,6 @@ function DMY._Initialize(comp)
 
     DMY._EnsureWindowsDB()
 
-    -- Migrate excluded formats in secondary columns to totalAmount equivalents
-    DMY._MigrateSecondaryColumns()
-
     -- Migrate the retired Hide Bars toggle into its Bar Mode equivalent
     if comp.db then
         if comp.db.showBars == false then
@@ -412,6 +390,7 @@ function DMY.CopyWindowSettings(sourceIdx, destIdx)
     end
 
     dst.columns     = deepcopy(src.columns)
+    dst.nameWidthFraction = src.nameWidthFraction
     dst.frameWidth  = src.frameWidth
     dst.frameHeight = src.frameHeight
     dst.windowScale = src.windowScale
@@ -427,7 +406,7 @@ end
 -- sliders and the Edit Mode mirror so the two surfaces cannot drift.
 local SIZING_BOUNDS = {
     windowScale = { min = 0.5, max = 2.0 },
-    frameWidth  = { min = 200, max = 800 },
+    frameWidth  = { min = 100, max = 800 },
     frameHeight = { min = 100, max = 600 },
 }
 

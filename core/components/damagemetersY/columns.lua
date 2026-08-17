@@ -107,28 +107,13 @@ function DMY._GetColumnHeader(formatKey)
     return def and def.headerText or "?"
 end
 
---- Formats excluded from secondary (non-primary) columns.
---- Historical: the old per-GUID source API had no amountPerSecond. The
---- session-correlation path now reads full sources, so rate formats could
---- become legal secondaries later (future enhancement; kept excluded so
---- existing migrated configs stay stable).
-DMY.SECONDARY_EXCLUDED_FORMATS = {
-    dps      = true,
-    hps      = true,
-    dps_dmg  = true,
-    hps_heal = true,
-    dmg_dps  = true,
-    heal_hps = true,
-}
-table.freeze(DMY.SECONDARY_EXCLUDED_FORMATS)
-
---- Migration map: excluded format → totalAmount equivalent for auto-migration.
-DMY.SECONDARY_MIGRATION_MAP = {
-    dps      = "damage",
-    hps      = "healing",
-    dps_dmg  = "damage",
-    hps_heal = "healing",
-    dmg_dps  = "damage",
-    heal_hps = "healing",
-}
-table.freeze(DMY.SECONDARY_MIGRATION_MAP)
+--- Splits a dual-metric header label into two lines: the primary metric on top,
+--- its parenthesised secondary underneath, so "DPS (Damage)" and its
+--- abbreviated form "DPS(Dmg)" each break after the primary metric.
+--- Returns nil when there is no trailing parenthesised part to move down.
+function DMY._StackHeaderLabel(text)
+    if type(text) ~= "string" then return nil end
+    local head, paren = text:match("^(.-)%s*(%b())$")
+    if not head or head == "" then return nil end
+    return head .. "\n" .. paren
+end

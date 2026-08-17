@@ -67,7 +67,7 @@ function DMY._EditModeMirror(frame)
         },
         {
             kind = "slider", label = "Width",
-            min = 200, max = 800, step = 10,
+            min = 100, max = 800, step = 10,
             get = function()
                 local c = DMY._GetWindowConfig(i)
                 return tonumber(c and c.frameWidth) or 350
@@ -85,27 +85,28 @@ function DMY._EditModeMirror(frame)
         },
     }
 
-    -- Column widths only exist for multi-column (Overall) windows
-    if cfg.sessionType == 0 and cfg.columns and #cfg.columns >= 2 then
-        specs[#specs + 1] = {
-            kind = "button", label = "Reset Column Widths",
-            set = function()
-                local c = DMY._GetWindowConfig(i)
-                if c and c.columns then
+    -- Every window has a draggable name column, so every window can reset.
+    specs[#specs + 1] = {
+        kind = "button", label = "Reset Column Widths",
+        set = function()
+            local c = DMY._GetWindowConfig(i)
+            if c then
+                c.nameWidthFraction = nil
+                if c.columns then
                     for _, col in ipairs(c.columns) do
                         col.widthFraction = nil
                     end
                 end
-                if DMY._comp then
-                    DMY._CalculateColumnWidths(i, DMY._comp)
-                    DMY._LayoutBarRows(i, DMY._comp)
-                end
-                if DMY.Dividers and DMY.Dividers.Refresh then
-                    DMY.Dividers.Refresh()
-                end
-            end,
-        }
-    end
+            end
+            if DMY._comp then
+                DMY._CalculateColumnWidths(i, DMY._comp)
+                DMY._LayoutBarRows(i, DMY._comp)
+            end
+            if DMY.Dividers and DMY.Dividers.Refresh then
+                DMY.Dividers.Refresh()
+            end
+        end,
+    }
 
     return specs
 end

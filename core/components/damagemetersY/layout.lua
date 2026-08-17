@@ -26,6 +26,25 @@ DMY._SnapToPixels = SnapToPixels
 -- Per-column widths are stored as fractions of the column area on each column
 -- entry (cfg.columns[c].widthFraction), set only by dragging the Edit Mode
 -- divider lines. nil = equal split, so existing profiles need no migration.
+--
+-- The name column is stored separately as cfg.nameWidthFraction, a fraction of
+-- the whole width pool (frameWidth - NAME_AREA_LEFT), because it sits left of
+-- the column area those per-column fractions divide up. nil falls back to the
+-- old fixed 113px name block at any frame width, so an undragged window keeps
+-- the exact layout it had before the name column became draggable.
+
+-- legacyPx: the name column width to fall back to, in the caller's pixel space
+-- (the settings preview runs the same math at its own scale).
+function DMY._GetNameFraction(cfg, pool, legacyPx)
+    pool = tonumber(pool)
+    if not pool or pool <= 0 then return 0 end
+    local f = cfg and tonumber(cfg.nameWidthFraction)
+    if not f or f <= 0 or f >= 1 then
+        legacyPx = tonumber(legacyPx) or (DMY.BAR_LEFT_OFFSET - DMY.NAME_AREA_LEFT)
+        f = legacyPx / pool
+    end
+    return math.max(0, math.min(1, f))
+end
 
 function DMY._GetColumnFractions(cfg, numColumns)
     local fractions = {}
@@ -85,8 +104,19 @@ function DMY._CalculateColumnWidths(windowIndex, comp)
     if numColumns == 0 then numColumns = 1 end
     if cfg.sessionType ~= 0 then numColumns = 1 end  -- Current/Expired: single column only
 
-    -- Column area: everything right of icon + name
-    local left = DMY.BAR_LEFT_OFFSET
+    -- Column area: everything right of the name column. The name column's own
+    -- width is a fraction of the pool too, so its right edge (edge 0) is
+    -- dragged exactly like the interior boundaries.
+    local nameLeft = DMY.NAME_AREA_LEFT
+    local pool = math.max(fw - nameLeft, 1)
+    local left = win._dragNameEdge
+    if not left then
+        left = nameLeft + pool * DMY._GetNameFraction(cfg, pool)
+    end
+    local maxLeft = fw - numColumns * DMY.MIN_COL_WIDTH
+    local minLeft = nameLeft + DMY.MIN_NAME_WIDTH
+    if maxLeft < minLeft then maxLeft = minLeft end
+    left = SnapToPixels(math.max(minLeft, math.min(maxLeft, left)), win.frame)
     local available = math.max(fw - left, 1)
 
     -- Cumulative pixel edges from the stored fractions (equal split when
@@ -105,7 +135,9 @@ function DMY._CalculateColumnWidths(windowIndex, comp)
     win._numColumns = numColumns
 
     -- Position column header cells; content (text or icon) is hard-clipped
-    -- inside them
+    -- inside them. _ApplyColumnHeaderContent raises _headerLines to 2 when a
+    -- dual-metric label stacks, and the header row grows to fit it.
+    win._headerLines = 1
     for c = 1, DMY.MAX_COLUMNS do
         local clip = win.columnHeaderClips and win.columnHeaderClips[c]
         local cr = win.columnClickRegions and win.columnClickRegions[c]
@@ -122,6 +154,12 @@ function DMY._CalculateColumnWidths(windowIndex, comp)
             if clip then clip:Hide() end
             if cr then cr:Hide() end
         end
+    end
+
+    -- The session title is bounded by edge 0, so refit it here rather than
+    -- waiting for the next timer tick (matters during a live divider drag).
+    if DMY._UpdateTimerText then
+        DMY._UpdateTimerText(windowIndex)
     end
 
     -- Keep Edit Mode divider strips glued to the boundaries
@@ -161,7 +199,25 @@ function DMY._ApplyColumnHeaderContent(win, c, formatKey, comp)
         else
             text = DMY._GetColumnHeader(formatKey)
         end
-        ch:SetText(text)
+
+        -- Dual-metric formats stack over two lines: the primary metric, then
+        -- its parenthesised secondary below. The FontString is CENTER-anchored
+        -- with CENTER justification, so the shorter line centers over the
+        -- longer one.
+        local stacked
+        if def and def.primary ~= nil and def.secondary ~= nil then
+            stacked = DMY._StackHeaderLabel(text)
+        end
+        if stacked then
+            ch:SetWordWrap(true)
+            ch:SetMaxLines(2)
+            ch:SetText(stacked)
+            win._headerLines = 2
+        else
+            ch:SetWordWrap(false)
+            ch:SetMaxLines(1)
+            ch:SetText(text)
+        end
         ch:Show()
     end
 end
@@ -219,10 +275,11 @@ function DMY._LayoutBarRows(windowIndex, comp)
     local barHeight = tonumber(db.barHeight) or 22
     local barSpacing = tonumber(db.barSpacing) or 2
     local numColumns = win._numColumns or 1
-    local barLeftOffset = DMY.BAR_LEFT_OFFSET
 
-    -- Per-column pixel edges computed by _CalculateColumnWidths
-    local edges = win._colEdges or { [0] = barLeftOffset, [numColumns] = fw }
+    -- Per-column pixel edges computed by _CalculateColumnWidths. Edge 0 is the
+    -- dragged name/column boundary, so the bars start there.
+    local edges = win._colEdges or { [0] = DMY.BAR_LEFT_OFFSET, [numColumns] = fw }
+    local barLeftOffset = edges[0] or DMY.BAR_LEFT_OFFSET
 
     -- Value texts sit inside hard-clipping column cells: single CENTER anchor,
     -- no width — over-long strings clip at both cell edges instead of
@@ -244,6 +301,13 @@ function DMY._LayoutBarRows(windowIndex, comp)
                 if vt then vt:Hide() end
             end
         end
+    end
+
+    -- The name clip stretches from the icon to the name column's right edge,
+    -- less the gutter that separates it from column 1.
+    local function LayoutNameClip(row)
+        if not row.nameClip then return end
+        row.nameClip:SetPoint("RIGHT", row, "LEFT", barLeftOffset - DMY.NAME_GUTTER, 0)
     end
 
     local barMode = db.barMode or "default"
@@ -283,7 +347,8 @@ function DMY._LayoutBarRows(windowIndex, comp)
         -- Reposition bar/barBg based on bar mode
         DMY._ApplyBarMode(row, barMode, barLeftOffset)
 
-        -- Position value texts at column offsets
+        -- Position the name clip and the value texts at column offsets
+        LayoutNameClip(row)
         LayoutRowValueTexts(row)
         LayoutColClickRegions(row)
     end
@@ -293,8 +358,8 @@ function DMY._LayoutBarRows(windowIndex, comp)
     pinnedRow:SetHeight(snappedBarHeight)
     local iconSz = math.min(barHeight, DMY.ICON_SIZE)
     pinnedRow.icon:SetSize(iconSz, iconSz)
-    if pinnedRow.nameContainer then pinnedRow.nameContainer:SetHeight(barHeight) end
     DMY._ApplyBarMode(pinnedRow, barMode, barLeftOffset)
+    LayoutNameClip(pinnedRow)
     LayoutRowValueTexts(pinnedRow)
     LayoutColClickRegions(pinnedRow)
 
@@ -534,39 +599,45 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
             if inCombat then
                 local def = DMY.COLUMN_FORMATS[colDef.format]
                 if def then
-                    if c == 1 then
-                        -- Primary column: use session-level combatSources values
-                        local mt = def.primary or def.meterType
-                        local val = player.values[mt]
-                        if val then
-                            if def.primary then
-                                local pAbbr = DMY._UnifiedAbbreviate(val[def.primaryField] or 0)
-                                local sAbbr = DMY._UnifiedAbbreviate(val[def.secondaryField] or 0)
-                                local ok = pcall(vt.SetFormattedText, vt, "%s (%s)", pAbbr, sAbbr)
-                                if not ok then
-                                    vt:SetText(pAbbr)
-                                end
-                            else
-                                vt:SetText(DMY._UnifiedAbbreviate(val[def.valueField or "totalAmount"] or 0))
-                            end
-                        end
+                    -- Resolve this column's { totalAmount, amountPerSecond } record,
+                    -- then render it identically whatever the column index. Every
+                    -- gate reads a plain map; the (possibly secret) amount only ever
+                    -- flows into UnifiedAbbreviate -> SetText/SetFormattedText.
+                    local mt = def.primary or def.meterType
+                    local primaryType = primaryDef and (primaryDef.primary or primaryDef.meterType)
+                    local val, blocked
+                    if c == 1 or mt == primaryType then
+                        -- The row already carries the primary session's record for
+                        -- this meter type, so no secondary query was issued for it.
+                        val = player.values[mt]
                     else
-                        -- Secondary column: identity-correlated session data.
-                        -- All gates are plain maps; the (possibly secret) amount
-                        -- only ever flows into UnifiedAbbreviate -> SetText.
-                        local mt = def.primary or def.meterType
                         local ikey = player.identityKey
                         if ikey and merged.identityCollisions and merged.identityCollisions[ikey] then
-                            vt:SetText("\226\128\148") -- em dash: ambiguous (class+spec collision)
+                            blocked = "\226\128\148" -- em dash: ambiguous (class+spec collision)
                         elseif merged.secondaryQueried and merged.secondaryQueried[mt] then
                             local pres = ikey and merged.secondaryPresence and merged.secondaryPresence[ikey]
                             if pres and pres[mt] then
-                                vt:SetText(DMY._UnifiedAbbreviate(merged.secondaryByIdentity[ikey][mt]))
+                                val = merged.secondaryByIdentity[ikey][mt]
                             else
-                                vt:SetText("0") -- absent from that metric's session = zero
+                                blocked = "0" -- absent from that metric's session = zero
                             end
                         else
-                            vt:SetText("\226\128\148") -- em dash: session query failed
+                            blocked = "\226\128\148" -- em dash: session query failed
+                        end
+                    end
+
+                    if blocked then
+                        vt:SetText(blocked)
+                    elseif val then
+                        if def.primary then
+                            local pAbbr = DMY._UnifiedAbbreviate(val[def.primaryField] or 0)
+                            local sAbbr = DMY._UnifiedAbbreviate(val[def.secondaryField] or 0)
+                            local ok = pcall(vt.SetFormattedText, vt, "%s (%s)", pAbbr, sAbbr)
+                            if not ok then
+                                vt:SetText(pAbbr)
+                            end
+                        else
+                            vt:SetText(DMY._UnifiedAbbreviate(val[def.valueField or "totalAmount"] or 0))
                         end
                     end
                 end

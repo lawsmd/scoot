@@ -139,9 +139,20 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     if containerWidth < 100 then containerWidth = 500 end
     containerWidth = containerWidth - 24 -- account for outer padding
 
-    -- Column widths
-    local barAreaLeft = PREVIEW_PADDING + PREVIEW_ICON_SIZE + 4 + PREVIEW_NAME_WIDTH + 2
-    local barAreaWidth = containerWidth - barAreaLeft - PREVIEW_PADDING
+    -- Column widths. The name column is a dragged fraction of the pool like
+    -- every other column, so the preview runs the same math at its own scale.
+    local nameAreaLeft = PREVIEW_PADDING + PREVIEW_ICON_SIZE + 4
+    local poolRight = containerWidth - PREVIEW_PADDING
+    local previewPool = math.max(poolRight - nameAreaLeft, 1)
+    local nameFraction = (DMY and DMY._GetNameFraction)
+        and DMY._GetNameFraction(cfg, previewPool, PREVIEW_NAME_WIDTH + 2)
+        or ((PREVIEW_NAME_WIDTH + 2) / previewPool)
+    local barAreaLeft = nameAreaLeft + math.floor(previewPool * nameFraction)
+    -- The preview is narrower than the real window, so keep the value columns
+    -- legible even when the live name fraction is large
+    local maxBarAreaLeft = poolRight - numColumns * 20
+    if barAreaLeft > maxBarAreaLeft then barAreaLeft = math.max(nameAreaLeft + 20, maxBarAreaLeft) end
+    local barAreaWidth = math.max(poolRight - barAreaLeft, 1)
 
     -- Per-column edges mirroring the live window's fraction layout, so widths
     -- dragged via the Edit Mode dividers are visible in the preview
@@ -154,7 +165,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
             acc = acc + (fractions and fractions[c] or (1 / math.max(numColumns, 1)))
             previewEdges[c] = barAreaLeft + math.floor(barAreaWidth * math.min(acc, 1))
         end
-        previewEdges[numColumns] = containerWidth - PREVIEW_PADDING
+        previewEdges[numColumns] = poolRight
     end
 
     -- Header bg
@@ -194,11 +205,8 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
                 table.insert(dropOrder, "_remove")
             end
             for _, key in ipairs(metricOrder) do
-                -- Exclude amountPerSecond-based formats from secondary columns
-                if c == 1 or not (DMY and DMY.SECONDARY_EXCLUDED_FORMATS and DMY.SECONDARY_EXCLUDED_FORMATS[key]) then
-                    dropValues[key] = metricValues[key]
-                    table.insert(dropOrder, key)
-                end
+                dropValues[key] = metricValues[key]
+                table.insert(dropOrder, key)
             end
 
             local colIdx = c -- capture for closure
@@ -274,7 +282,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
         -- of them -- the shadow half would silently vanish from the preview.
         addon.ApplyFontStyle(nameText, nameFontPath, fontNames.fontSize or 12, fontNames.fontStyle or "OUTLINE")
         nameText:SetPoint("LEFT", icon, "RIGHT", 3, 0)
-        nameText:SetWidth(PREVIEW_NAME_WIDTH)
+        nameText:SetWidth(math.max(20, barAreaLeft - nameAreaLeft - 2))
         nameText:SetJustifyH("LEFT"); nameText:SetWordWrap(false)
         nameText:SetText(player.name)
 
@@ -638,7 +646,7 @@ function DMYSettings.Render(panel, scrollContent)
         buildContent = function(_, inner)
             inner:AddSlider({ label = "Window Scale", min = 0.5, max = 2.0, step = 0.05, precision = 2,
                 get = function() return getWinSizing("windowScale", 1.0) end, set = function(v) setWinSizing("windowScale", v) end })
-            inner:AddSlider({ label = "Frame Width", min = 200, max = 800, step = 10,
+            inner:AddSlider({ label = "Frame Width", min = 100, max = 800, step = 10,
                 get = function() return getWinSizing("frameWidth", 350) end, set = function(v) setWinSizing("frameWidth", v) end })
             inner:AddSlider({ label = "Frame Height", min = 100, max = 600, step = 10,
                 get = function() return getWinSizing("frameHeight", 250) end, set = function(v) setWinSizing("frameHeight", v) end })

@@ -12,8 +12,17 @@ local HEADER_HEIGHT = 24
 local ICON_SIZE = 22
 local NAME_WIDTH = 113
 local PINNED_SEPARATOR_HEIGHT = 1
--- Where the column area begins: icon + gap + name area + gap
+-- Where the column area begins: icon + gap + name area + gap. Now only the
+-- starting width for a name column that has never been dragged.
 local BAR_LEFT_OFFSET = ICON_SIZE + 6 + NAME_WIDTH + 8
+
+-- The name column is draggable like every other column: its left edge is
+-- NAME_AREA_LEFT, its right edge is win._colEdges[0], and the width between
+-- them is stored as cfg.nameWidthFraction of the window's width pool.
+local NAME_AREA_LEFT = ICON_SIZE + 6
+local NAME_GUTTER = 8      -- gap between the name text clip and column 1
+local MIN_NAME_WIDTH = 40  -- px floor for the name column
+local MIN_COL_WIDTH = 24   -- px floor for each value column
 
 local function GetDefaultFont()
     if addon.ResolveFontFace then
@@ -602,19 +611,22 @@ function DMY._CreateBarRow(scrollContent, rowIndex, windowIndex)
     icon:SetPoint("LEFT", row, "LEFT", 2, 0)
     row.icon = icon
 
-    -- Bar area starts at a fixed offset (icon + gap + name width + gap)
+    -- Starting bar offset; _LayoutBarRows moves it to the window's dragged
+    -- name boundary (win._colEdges[0]) on every geometry pass.
     local barAreaLeft = BAR_LEFT_OFFSET
 
     -- Name clip region — rank sits to the left, name fills the rest
     -- Reserve 15px on the left for rank numbers
-    local nameClipWidth = NAME_WIDTH - 15
+    -- Two-point anchor, not SetWidth: _LayoutBarRows moves the right edge to
+    -- the window's dragged name boundary on every geometry pass.
     local nameClip = CreateFrame("Frame", nil, row)
     nameClip:SetPoint("LEFT", icon, "RIGHT", 19, 0)
+    nameClip:SetPoint("RIGHT", row, "LEFT", BAR_LEFT_OFFSET - NAME_GUTTER, 0)
     nameClip:SetPoint("TOP", row, "TOP")
     nameClip:SetPoint("BOTTOM", row, "BOTTOM")
-    nameClip:SetWidth(nameClipWidth)
     nameClip:SetClipsChildren(true)
     nameClip:SetFrameLevel(row:GetFrameLevel() + 1)
+    row.nameClip = nameClip
 
     -- Inner frame holds the FontString (ClipsChildren clips child frames)
     local nameInner = CreateFrame("Frame", nil, nameClip)
@@ -945,8 +957,7 @@ function DMY._CreateWindow(windowIndex, comp)
             if gi > 1 then columnMenu:AddDivider() end
             for _, key in ipairs(group.keys) do
                 local def = DMY.COLUMN_FORMATS[key]
-                -- Exclude amountPerSecond-based formats from secondary columns
-                if def and (colIdx == 1 or not DMY.SECONDARY_EXCLUDED_FORMATS[key]) then
+                if def then
                     columnMenu:AddRow(def.headerText, { 1, 1, 1, 0.9 }, function()
                         cfg.columns[colIdx].format = key
                         local c = DMY._comp
@@ -1261,3 +1272,7 @@ DMY.HEADER_HEIGHT = HEADER_HEIGHT
 DMY.ICON_SIZE = ICON_SIZE
 DMY.NAME_WIDTH = NAME_WIDTH
 DMY.BAR_LEFT_OFFSET = BAR_LEFT_OFFSET
+DMY.NAME_AREA_LEFT = NAME_AREA_LEFT
+DMY.NAME_GUTTER = NAME_GUTTER
+DMY.MIN_NAME_WIDTH = MIN_NAME_WIDTH
+DMY.MIN_COL_WIDTH = MIN_COL_WIDTH

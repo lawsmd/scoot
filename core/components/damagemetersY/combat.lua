@@ -160,6 +160,26 @@ end
 -- Timer Text
 --------------------------------------------------------------------------------
 
+--- Height the column header row needs. A stacked dual-metric label ("DPS" over
+--- "(Damage)") does not fit the 24px default, so the header grows with the
+--- Header Row font size. Computed rather than measured: GetStringHeight reads
+--- zero until the string has rendered once, which would leave the second line
+--- clipped on the pass that first shows it.
+local function ColumnHeaderHeight(win, comp)
+    local lines = win._headerLines or 1
+    if lines < 2 then return 0 end
+    local headers = addon:ResolveComponentSubTable(comp, "textHeaders") or {}
+    local size = tonumber(headers.fontSize) or 10
+    return lines * math.ceil(size * 1.3) + 6
+end
+
+--- Sizes the header row to whichever of its two contents is taller: a wrapped
+--- session title (passed in) or stacked column headers.
+local function ApplyHeaderHeight(win, comp, titleDriven)
+    local needed = math.max(DMY.HEADER_HEIGHT, titleDriven or 0, ColumnHeaderHeight(win, comp))
+    win.header:SetHeight(DMY._SnapToPixels(needed, win.frame))
+end
+
 function DMY._UpdateTimerText(windowIndex)
     local win = DMY._windows[windowIndex]
     if not win then return end
@@ -215,36 +235,38 @@ function DMY._UpdateTimerText(windowIndex)
             win.titleText:SetText("")
             win.titleText:SetWidth(0)
         end
-        win.header:SetHeight(DMY._SnapToPixels(DMY.HEADER_HEIGHT, win.frame))
+        ApplyHeaderHeight(win, comp)
     else
         if win.verticalTitle then win.verticalTitle:Hide() end
         if win.titleText then
+            -- Available title width: the title shares the name column with the
+            -- player names below it, so it is bounded by the same edge and
+            -- shrinks when that column is dragged narrower.
+            local fw = tonumber(cfg.frameWidth or (db and db.frameWidth)) or 350
+
+            -- Right boundary: the column area's left edge. Headers are
+            -- center-anchored inside their cells now, so geometry replaces
+            -- the old GetStringWidth measurement (which the Icons header
+            -- mode has no text for anyway).
+            local rightBound
+            local clip = win.columnHeaderClips and win.columnHeaderClips[1]
+            if clip and clip:IsShown() then
+                rightBound = (win._colEdges and win._colEdges[0] or DMY.BAR_LEFT_OFFSET) - (DMY.NAME_GUTTER or 8)
+            else
+                rightBound = fw - 8
+            end
+
+            -- Reserve space for timer text
+            local timerW = 0
+            if timerStr ~= "" and win.timerText then
+                timerW = (win.timerText:GetStringWidth() or 0) + 8
+            end
+
+            local maxTitleWidth = rightBound - 26 - timerW
+            if maxTitleWidth < 40 then maxTitleWidth = 40 end
+
             local isSegment = cfg.sessionID ~= nil
             if isSegment then
-                -- Calculate available title width to prevent column header overlap
-                local fw = tonumber(cfg.frameWidth or (db and db.frameWidth)) or 350
-
-                -- Right boundary: the column area's left edge. Headers are
-                -- center-anchored inside their cells now, so geometry replaces
-                -- the old GetStringWidth measurement (which the Icons header
-                -- mode has no text for anyway).
-                local rightBound
-                local clip = win.columnHeaderClips and win.columnHeaderClips[1]
-                if clip and clip:IsShown() then
-                    rightBound = (win._colEdges and win._colEdges[0] or DMY.BAR_LEFT_OFFSET) - 8
-                else
-                    rightBound = fw - 8
-                end
-
-                -- Reserve space for timer text
-                local timerW = 0
-                if timerStr ~= "" and win.timerText then
-                    timerW = (win.timerText:GetStringWidth() or 0) + 8
-                end
-
-                local maxTitleWidth = rightBound - 26 - timerW
-                if maxTitleWidth < 40 then maxTitleWidth = 40 end
-
                 -- Apply constrained title (word wrap handles multi-word names)
                 win.titleText:SetWidth(maxTitleWidth)
                 win.titleText:SetText(label)
@@ -265,16 +287,25 @@ function DMY._UpdateTimerText(windowIndex)
 
                 -- Expand header height if title wrapped to 2 lines
                 local titleH = win.titleText:GetStringHeight() or 15
-                if titleH > 20 then
-                    win.header:SetHeight(DMY._SnapToPixels(math.max(DMY.HEADER_HEIGHT, titleH + 8), win.frame))
-                else
-                    win.header:SetHeight(DMY._SnapToPixels(DMY.HEADER_HEIGHT, win.frame))
-                end
+                ApplyHeaderHeight(win, comp, (titleH > 20) and (titleH + 8) or nil)
             else
-                -- Overall/Current: standard single-line layout
+                -- Overall/Current: standard single-line layout. The width stays
+                -- auto so the timer sits snug against the title; an over-long
+                -- title is truncated instead, keeping both inside the name
+                -- column.
                 win.titleText:SetWidth(0)
                 win.titleText:SetText(label)
-                win.header:SetHeight(DMY._SnapToPixels(DMY.HEADER_HEIGHT, win.frame))
+                local fullW = win.titleText:GetStringWidth()
+                if fullW and fullW > maxTitleWidth then
+                    local trunc = label
+                    while #trunc > 1 do
+                        trunc = trunc:sub(1, -2)
+                        win.titleText:SetText(trunc .. "...")
+                        local tw = win.titleText:GetStringWidth()
+                        if tw and tw <= maxTitleWidth then break end
+                    end
+                end
+                ApplyHeaderHeight(win, comp)
             end
         end
     end

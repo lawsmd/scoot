@@ -440,7 +440,6 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
     if not columns or #columns == 0 then return nil end
 
     local FORMATS = DMY.COLUMN_FORMATS
-    local EXCLUDED = DMY.SECONDARY_EXCLUDED_FORMATS
 
     -- Determine which meter types are needed for the primary column
     local primaryDef = FORMATS[columns[1].format]
@@ -504,16 +503,16 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
     -- session, value ikey from the secondary session) are read in the same
     -- refresh, so values follow players across mid-combat rank changes with
     -- no stored-GUID prerequisite.
-    local secondaryByIdentity  -- { [ikey] = { [mt] = totalAmount (secret ok) / plain deaths count } }
+    local secondaryByIdentity  -- { [ikey] = { [mt] = { totalAmount, amountPerSecond } } } — secret ok; deaths counts are plain
     local secondaryPresence    -- { [ikey] = { [mt] = true } } — plain display gate
     local secondaryQueried     -- { [mt] = true } — query pcall succeeded (nil session = all-zero)
     local identityCollisions   -- { [ikey] = true } — ambiguous rows show the em dash
     if inCombat then
-        -- Collect secondary meter types from non-primary, non-excluded columns
+        -- Collect secondary meter types from non-primary columns
         local secondaryTypes = {}
         for c = 2, #columns do
             local colDef = columns[c]
-            if colDef and not EXCLUDED[colDef.format] then
+            if colDef then
                 local def = FORMATS[colDef.format]
                 if def then
                     local mt = def.primary or def.meterType
@@ -553,13 +552,20 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
                                 -- of an ikey are the same player dying again, so count
                                 -- them (plain integer). Genuine two-player ambiguity is
                                 -- caught by the primary-session duplicate check below.
-                                bucket[mt] = (bucket[mt] or 0) + 1
+                                local prev = bucket[mt] and bucket[mt].totalAmount or 0
+                                bucket[mt] = { totalAmount = prev + 1, amountPerSecond = 0 }
                                 secondaryPresence[ikey][mt] = true
                             elseif seenThisSession[ikey] then
                                 identityCollisions[ikey] = true
                             else
                                 seenThisSession[ikey] = true
-                                bucket[mt] = src.totalAmount -- may be secret; only ever SetText'd
+                                -- Same record shape as player.values[mt] so one render
+                                -- block serves both columns. Both fields may be secret;
+                                -- they are only ever SetText'd.
+                                bucket[mt] = {
+                                    totalAmount = src.totalAmount,
+                                    amountPerSecond = src.amountPerSecond,
+                                }
                                 secondaryPresence[ikey][mt] = true
                             end
                         end

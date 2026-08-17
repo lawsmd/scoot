@@ -1787,7 +1787,6 @@ function addon.DebugDMYColprobe()
 
     -- [2] Window column configs + per-secondary-type session identity dump
     local FORMATS = DMY.COLUMN_FORMATS
-    local EXCLUDED = DMY.SECONDARY_EXCLUDED_FORMATS
     for i = 1, DMY.MAX_WINDOWS do
         local cfg = DMY._GetWindowConfig(i)
         if cfg and cfg.enabled and cfg.columns and #cfg.columns > 1 then
@@ -1803,10 +1802,8 @@ function addon.DebugDMYColprobe()
                 local mt = def and (def.primary or def.meterType)
                 if not def then
                     add("    col %d: %s — UNKNOWN FORMAT", c, tostring(colDef and colDef.format))
-                elseif EXCLUDED[colDef.format] then
-                    add("    col %d: %s — EXCLUDED (rate format)", c, colDef.format)
                 elseif mt == primaryType then
-                    add("    col %d: %s — same meter type as primary", c, colDef.format)
+                    add("    col %d: %s — same meter type as primary (reads the primary session record)", c, colDef.format)
                 else
                     add("    col %d: %s (mt=%d) — session dump:", c, colDef.format, mt)
                     local ok, session
@@ -1864,6 +1861,8 @@ function addon.DebugDMYColprobe()
                 end
                 if not any then add("    collisions: none") end
             end
+            local pDef = FORMATS[cfg.columns[1].format]
+            local pType = pDef and (pDef.primary or pDef.meterType)
             for _, key in ipairs(merged.playerOrder or {}) do
                 local player = merged.players[key]
                 if player then
@@ -1874,6 +1873,8 @@ function addon.DebugDMYColprobe()
                         local outcome
                         if not mt then
                             outcome = "?"
+                        elseif mt == pType then
+                            outcome = "PRIMARY-RECORD"
                         elseif merged.identityCollisions and merged.identityCollisions[player.identityKey] then
                             outcome = "DASH(collision)"
                         elseif merged.secondaryQueried and merged.secondaryQueried[mt] then
