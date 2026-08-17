@@ -43,18 +43,29 @@ local function CopyDefaultValue(value)
     return copy
 end
 
+-- The single source of truth for "what does this setting resolve to when the
+-- profile stores nothing". Both the materialized-table metatable and the
+-- zero-touch proxy read through here so the two can never disagree.
+--
+-- Returns the registration table's value BY REFERENCE for table defaults.
+-- Callers may read it but must never mutate it -- writes go through
+-- addon:EnsureComponentSubTable, which seeds a copy.
+local function registeredDefault(component, key)
+    local settings = component and component.settings
+    local meta = settings and settings[key]
+    if type(meta) == "table" then
+        return meta.default
+    end
+end
+
 -- Metatable fallback: unset keys return their registered defaults.
 local function attachSettingsDefaults(db, component)
     if not db or not component then return end
-    local settings = component.settings
-    if not settings then return end
+    if not component.settings then return end
     if getmetatable(db) then return end  -- don't clobber proxy's metatable
     setmetatable(db, {
         __index = function(_, key)
-            local meta = settings[key]
-            if type(meta) == "table" and meta.default ~= nil then
-                return meta.default
-            end
+            return registeredDefault(component, key)
         end,
     })
 end
@@ -206,7 +217,16 @@ function addon:LinkComponentsToDB()
             component.db = persisted
             attachSettingsDefaults(persisted, component)
         else
-            -- Proxy: reads return nil, first write materializes the real table.
+            -- Proxy: nothing is persisted, so reads resolve to the registered
+            -- defaults and the first write materializes the real table.
+            --
+            -- Resolving defaults here is what makes a fresh profile render the
+            -- same as a configured one. Without it, styling code reads nil and
+            -- silently substitutes its own hardcoded fallback (historically
+            -- FRIZQT__), so any feature whose intended default is a bundled
+            -- Scoot font rendered in Friz Quadrata until the user touched the
+            -- setting -- while the settings panel, which falls back to the real
+            -- default for display, insisted the correct font was already set.
             if not component._ScootDBProxy then
                 local proxy = {}
                 setmetatable(proxy, {
@@ -215,6 +235,7 @@ function addon:LinkComponentsToDB()
                         if real and real ~= proxy then
                             return real[key]
                         end
+                        return registeredDefault(component, key)
                     end,
                     __newindex = function(_, key, value)
                         local realDb = addon:EnsureComponentDB(component)
@@ -262,6 +283,68 @@ function addon:EnsureComponentDB(componentOrId)
     component.db = db
     attachSettingsDefaults(db, component)
     return db
+end
+
+-- Read a settings sub-table (textNames, textStacks, ...) resolved against its
+-- registered default, so a PARTIAL stored table still yields every sibling
+-- property.
+--
+-- Partial tables are not hypothetical: the old write path stored a bare `{}`
+-- through the zero-touch proxy and then set only the edited key, permanently
+-- dropping every sibling. Those profiles are already on disk, so styling code
+-- must heal them at read time -- EnsureComponentSubTable only stops new ones.
+--
+-- Allocates only when the stored table really is partial; the common cases
+-- (nothing stored, or a complete table) return an existing table as-is.
+function addon:ResolveComponentSubTable(component, key)
+    local def = registeredDefault(component, key)
+    local db = component and component.db
+    local stored = db and rawget(db, key) or nil
+
+    if type(stored) ~= "table" then
+        return def
+    end
+    if type(def) ~= "table" then
+        return stored
+    end
+
+    local merged
+    for k, v in pairs(def) do
+        if stored[k] == nil then
+            merged = merged or CopyDefaultValue(stored)
+            merged[k] = CopyDefaultValue(v)
+        end
+    end
+    return merged or stored
+end
+
+-- Materialize a settings sub-table for WRITING, seeded from a copy of the
+-- registered default.
+--
+-- Replaces the `comp.db.textX = comp.db.textX or {}` idiom, which was wrong
+-- both ways: through the proxy it wrote a bare `{}` that shadowed the default
+-- and lost every sibling key, and through the defaults metatable it aliased
+-- the registration table itself into the profile -- so the next `[k] = v`
+-- mutated comp.settings[key].default for every other profile in the session
+-- and serialized the result into SavedVariables.
+function addon:EnsureComponentSubTable(componentOrId, key)
+    local db = self:EnsureComponentDB(componentOrId)
+    if not db then return nil end
+
+    local existing = rawget(db, key)
+    if type(existing) == "table" then
+        return existing
+    end
+
+    local component = componentOrId
+    if type(componentOrId) == "string" then
+        component = self.Components and self.Components[componentOrId]
+    end
+
+    local def = registeredDefault(component, key)
+    local seeded = (type(def) == "table") and CopyDefaultValue(def) or {}
+    rawset(db, key, seeded)
+    return seeded
 end
 
 function addon:ClearFrameLevelState()

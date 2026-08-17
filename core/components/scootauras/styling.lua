@@ -169,7 +169,11 @@ local function ApplyTextStyling(trackerId, tracker, state)
                 size = db.textSize or elem.def.baseSize or 24
                 color = db.textColor
             end
-            local fontFace = addon.ResolveFontFace(fontKey or "FRIZQT__")
+            -- No local fallback: these keys register ROBOTO_SEMICOND_BLACK as
+            -- their default and the component DB resolves it, so substituting
+            -- FRIZQT__ here would only reintroduce the fresh-profile mismatch
+            -- between what the settings panel shows and what the HUD renders.
+            local fontFace = addon.ResolveFontFace(fontKey)
             addon.ApplyFontStyle(elem.widget, fontFace, size, fontStyle or "OUTLINE")
 
             if color and type(color) == "table" then

@@ -762,7 +762,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                         local function setStacksSetting(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textStacks = comp.db.textStacks or {}
+                                addon:EnsureComponentSubTable(comp, "textStacks")
                                 comp.db.textStacks[key] = value
                             end
                             applyText()
@@ -830,7 +830,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textStacks = comp.db.textStacks or {}
+                                        addon:EnsureComponentSubTable(comp, "textStacks")
                                         comp.db.textStacks.offset = comp.db.textStacks.offset or {}
                                         comp.db.textStacks.offset.x = v
                                     end
@@ -851,7 +851,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textStacks = comp.db.textStacks or {}
+                                        addon:EnsureComponentSubTable(comp, "textStacks")
                                         comp.db.textStacks.offset = comp.db.textStacks.offset or {}
                                         comp.db.textStacks.offset.y = v
                                     end
@@ -874,7 +874,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                         local function setCooldownSetting(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textCooldown = comp.db.textCooldown or {}
+                                addon:EnsureComponentSubTable(comp, "textCooldown")
                                 comp.db.textCooldown[key] = value
                             end
                             applyText()
@@ -939,7 +939,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textCooldown = comp.db.textCooldown or {}
+                                        addon:EnsureComponentSubTable(comp, "textCooldown")
                                         comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
                                         comp.db.textCooldown.offset.x = v
                                     end
@@ -957,7 +957,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textCooldown = comp.db.textCooldown or {}
+                                        addon:EnsureComponentSubTable(comp, "textCooldown")
                                         comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
                                         comp.db.textCooldown.offset.y = v
                                     end
@@ -979,7 +979,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                         local function setBindingSetting(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textBindings = comp.db.textBindings or {}
+                                addon:EnsureComponentSubTable(comp, "textBindings")
                                 comp.db.textBindings[key] = value
                             end
                             applyText()
@@ -1071,7 +1071,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textBindings = comp.db.textBindings or {}
+                                        addon:EnsureComponentSubTable(comp, "textBindings")
                                         comp.db.textBindings.offset = comp.db.textBindings.offset or {}
                                         comp.db.textBindings.offset.x = v
                                     end
@@ -1092,7 +1092,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textBindings = comp.db.textBindings or {}
+                                        addon:EnsureComponentSubTable(comp, "textBindings")
                                         comp.db.textBindings.offset = comp.db.textBindings.offset or {}
                                         comp.db.textBindings.offset.y = v
                                     end

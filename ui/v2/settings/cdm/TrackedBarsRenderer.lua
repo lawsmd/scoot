@@ -303,7 +303,7 @@ function TrackedBars.Render(panel, scrollContent)
                         local function setNameSetting(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textName = comp.db.textName or {}
+                                addon:EnsureComponentSubTable(comp, "textName")
                                 comp.db.textName[key] = value
                             end
                             applyText()
@@ -371,7 +371,7 @@ function TrackedBars.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textName = comp.db.textName or {}
+                                        addon:EnsureComponentSubTable(comp, "textName")
                                         comp.db.textName.offset = comp.db.textName.offset or {}
                                         comp.db.textName.offset.x = v
                                     end
@@ -390,7 +390,7 @@ function TrackedBars.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textName = comp.db.textName or {}
+                                        addon:EnsureComponentSubTable(comp, "textName")
                                         comp.db.textName.offset = comp.db.textName.offset or {}
                                         comp.db.textName.offset.y = v
                                     end
@@ -411,7 +411,7 @@ function TrackedBars.Render(panel, scrollContent)
                         local function setDurationSetting(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textDuration = comp.db.textDuration or {}
+                                addon:EnsureComponentSubTable(comp, "textDuration")
                                 comp.db.textDuration[key] = value
                             end
                             applyText()
@@ -479,7 +479,7 @@ function TrackedBars.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textDuration = comp.db.textDuration or {}
+                                        addon:EnsureComponentSubTable(comp, "textDuration")
                                         comp.db.textDuration.offset = comp.db.textDuration.offset or {}
                                         comp.db.textDuration.offset.x = v
                                     end
@@ -498,7 +498,7 @@ function TrackedBars.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textDuration = comp.db.textDuration or {}
+                                        addon:EnsureComponentSubTable(comp, "textDuration")
                                         comp.db.textDuration.offset = comp.db.textDuration.offset or {}
                                         comp.db.textDuration.offset.y = v
                                     end

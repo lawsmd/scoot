@@ -392,7 +392,7 @@ function DamageMetersX.Render(panel, scrollContent)
                         local function setTextNamesProp(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textNames = comp.db.textNames or {}
+                                addon:EnsureComponentSubTable(comp, "textNames")
                                 comp.db.textNames[key] = value
                             end
                             if addon and addon.ApplyStyles then
@@ -486,7 +486,7 @@ function DamageMetersX.Render(panel, scrollContent)
                         local function setTextNumbersProp(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textNumbers = comp.db.textNumbers or {}
+                                addon:EnsureComponentSubTable(comp, "textNumbers")
                                 comp.db.textNumbers[key] = value
                             end
                             if addon and addon.ApplyStyles then
@@ -602,7 +602,7 @@ function DamageMetersX.Render(panel, scrollContent)
                         local function setTextTitleProp(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textTitle = comp.db.textTitle or {}
+                                addon:EnsureComponentSubTable(comp, "textTitle")
                                 comp.db.textTitle[key] = value
                             end
                             if addon and addon.ApplyStyles then
@@ -717,7 +717,7 @@ function DamageMetersX.Render(panel, scrollContent)
                         local function setTextTimerProp(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textTimer = comp.db.textTimer or {}
+                                addon:EnsureComponentSubTable(comp, "textTimer")
                                 comp.db.textTimer[key] = value
                             end
                             if addon and addon.ApplyStyles then

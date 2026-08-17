@@ -94,7 +94,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                             local comp = getComponent()
                             if comp and comp.db then
                                 if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                comp.db.textCharges = comp.db.textCharges or {}
+                                addon:EnsureComponentSubTable(comp, "textCharges")
                                 comp.db.textCharges[key] = value
                             end
                             applyText()
@@ -147,7 +147,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                                     local comp = getComponent()
                                     if comp and comp.db then
                                         if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                        comp.db.textCharges = comp.db.textCharges or {}
+                                        addon:EnsureComponentSubTable(comp, "textCharges")
                                         comp.db.textCharges.offset = comp.db.textCharges.offset or {}
                                         comp.db.textCharges.offset.x = v
                                     end
@@ -165,7 +165,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                                     local comp = getComponent()
                                     if comp and comp.db then
                                         if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                        comp.db.textCharges = comp.db.textCharges or {}
+                                        addon:EnsureComponentSubTable(comp, "textCharges")
                                         comp.db.textCharges.offset = comp.db.textCharges.offset or {}
                                         comp.db.textCharges.offset.y = v
                                     end
@@ -190,7 +190,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                             local comp = getComponent()
                             if comp and comp.db then
                                 if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                comp.db.textCooldown = comp.db.textCooldown or {}
+                                addon:EnsureComponentSubTable(comp, "textCooldown")
                                 comp.db.textCooldown[key] = value
                             end
                             applyText()
@@ -243,7 +243,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                                     local comp = getComponent()
                                     if comp and comp.db then
                                         if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                        comp.db.textCooldown = comp.db.textCooldown or {}
+                                        addon:EnsureComponentSubTable(comp, "textCooldown")
                                         comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
                                         comp.db.textCooldown.offset.x = v
                                     end
@@ -261,7 +261,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                                     local comp = getComponent()
                                     if comp and comp.db then
                                         if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                        comp.db.textCooldown = comp.db.textCooldown or {}
+                                        addon:EnsureComponentSubTable(comp, "textCooldown")
                                         comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
                                         comp.db.textCooldown.offset.y = v
                                     end
@@ -286,7 +286,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                             local comp = getComponent()
                             if comp and comp.db then
                                 if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                comp.db.textHotkey = comp.db.textHotkey or {}
+                                addon:EnsureComponentSubTable(comp, "textHotkey")
                                 comp.db.textHotkey[key] = value
                             end
                             applyText()
@@ -352,7 +352,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                                     local comp = getComponent()
                                     if comp and comp.db then
                                         if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                        comp.db.textHotkey = comp.db.textHotkey or {}
+                                        addon:EnsureComponentSubTable(comp, "textHotkey")
                                         comp.db.textHotkey.offset = comp.db.textHotkey.offset or {}
                                         comp.db.textHotkey.offset.x = v
                                     end
@@ -370,7 +370,7 @@ function ExtraAbilities.Render(panel, scrollContent)
                                     local comp = getComponent()
                                     if comp and comp.db then
                                         if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                        comp.db.textHotkey = comp.db.textHotkey or {}
+                                        addon:EnsureComponentSubTable(comp, "textHotkey")
                                         comp.db.textHotkey.offset = comp.db.textHotkey.offset or {}
                                         comp.db.textHotkey.offset.y = v
                                     end

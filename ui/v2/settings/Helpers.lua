@@ -138,14 +138,17 @@ function Helpers.CreateComponentHelpers(componentId)
         return default
     end
 
+    -- Writes go through EnsureComponentSubTable, which seeds the group from a
+    -- COPY of its registered default. Seeding matters: the old
+    -- `comp.db[tableKey] = comp.db[tableKey] or {}` idiom wrote a bare table on
+    -- a fresh profile, so editing one property (say font size) silently dropped
+    -- every sibling -- including fontFace, which then rendered as Friz Quadrata
+    -- while the panel still displayed the real default.
     h.setSubSetting = function(tableKey, key, value)
         local comp = Helpers.getComponent(componentId)
-        if comp and comp.db then
-            if addon.EnsureComponentDB then
-                addon:EnsureComponentDB(comp)
-            end
-            comp.db[tableKey] = comp.db[tableKey] or {}
-            comp.db[tableKey][key] = value
+        if comp then
+            local t = addon:EnsureComponentSubTable(comp, tableKey)
+            if t then t[key] = value end
         end
         Helpers.applyStyles()
     end

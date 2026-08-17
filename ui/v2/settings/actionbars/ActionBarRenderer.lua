@@ -263,7 +263,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                 local comp = getComponent()
                                 if comp and comp.db then
                                     if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                    comp.db.textStacks = comp.db.textStacks or {}
+                                    addon:EnsureComponentSubTable(comp, "textStacks")
                                     comp.db.textStacks[key] = value
                                 end
                                 applyText()
@@ -316,7 +316,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                         local comp = getComponent()
                                         if comp and comp.db then
                                             if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            comp.db.textStacks = comp.db.textStacks or {}
+                                            addon:EnsureComponentSubTable(comp, "textStacks")
                                             comp.db.textStacks.offset = comp.db.textStacks.offset or {}
                                             comp.db.textStacks.offset.x = v
                                         end
@@ -334,7 +334,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                         local comp = getComponent()
                                         if comp and comp.db then
                                             if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            comp.db.textStacks = comp.db.textStacks or {}
+                                            addon:EnsureComponentSubTable(comp, "textStacks")
                                             comp.db.textStacks.offset = comp.db.textStacks.offset or {}
                                             comp.db.textStacks.offset.y = v
                                         end
@@ -359,7 +359,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                 local comp = getComponent()
                                 if comp and comp.db then
                                     if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                    comp.db.textCooldown = comp.db.textCooldown or {}
+                                    addon:EnsureComponentSubTable(comp, "textCooldown")
                                     comp.db.textCooldown[key] = value
                                 end
                                 applyText()
@@ -412,7 +412,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                         local comp = getComponent()
                                         if comp and comp.db then
                                             if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            comp.db.textCooldown = comp.db.textCooldown or {}
+                                            addon:EnsureComponentSubTable(comp, "textCooldown")
                                             comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
                                             comp.db.textCooldown.offset.x = v
                                         end
@@ -430,7 +430,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                         local comp = getComponent()
                                         if comp and comp.db then
                                             if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            comp.db.textCooldown = comp.db.textCooldown or {}
+                                            addon:EnsureComponentSubTable(comp, "textCooldown")
                                             comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
                                             comp.db.textCooldown.offset.y = v
                                         end
@@ -455,7 +455,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                 local comp = getComponent()
                                 if comp and comp.db then
                                     if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                    comp.db.textHotkey = comp.db.textHotkey or {}
+                                    addon:EnsureComponentSubTable(comp, "textHotkey")
                                     comp.db.textHotkey[key] = value
                                 end
                                 applyText()
@@ -522,7 +522,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                         local comp = getComponent()
                                         if comp and comp.db then
                                             if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            comp.db.textHotkey = comp.db.textHotkey or {}
+                                            addon:EnsureComponentSubTable(comp, "textHotkey")
                                             comp.db.textHotkey.offset = comp.db.textHotkey.offset or {}
                                             comp.db.textHotkey.offset.x = v
                                         end
@@ -540,7 +540,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                         local comp = getComponent()
                                         if comp and comp.db then
                                             if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            comp.db.textHotkey = comp.db.textHotkey or {}
+                                            addon:EnsureComponentSubTable(comp, "textHotkey")
                                             comp.db.textHotkey.offset = comp.db.textHotkey.offset or {}
                                             comp.db.textHotkey.offset.y = v
                                         end
@@ -565,7 +565,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                 local comp = getComponent()
                                 if comp and comp.db then
                                     if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                    comp.db.textMacro = comp.db.textMacro or {}
+                                    addon:EnsureComponentSubTable(comp, "textMacro")
                                     comp.db.textMacro[key] = value
                                 end
                                 applyText()
@@ -632,7 +632,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                         local comp = getComponent()
                                         if comp and comp.db then
                                             if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            comp.db.textMacro = comp.db.textMacro or {}
+                                            addon:EnsureComponentSubTable(comp, "textMacro")
                                             comp.db.textMacro.offset = comp.db.textMacro.offset or {}
                                             comp.db.textMacro.offset.x = v
                                         end
@@ -650,7 +650,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                                         local comp = getComponent()
                                         if comp and comp.db then
                                             if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            comp.db.textMacro = comp.db.textMacro or {}
+                                            addon:EnsureComponentSubTable(comp, "textMacro")
                                             comp.db.textMacro.offset = comp.db.textMacro.offset or {}
                                             comp.db.textMacro.offset.y = v
                                         end

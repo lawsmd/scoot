@@ -36,30 +36,46 @@ local UNIT_FRAME_TEXT_KEYS = {
 
 local FONT_DEFAULT = { fontFace = "FRIZQT__" }
 
--- Generic structure-ensurer driven by declarative specs
+-- Generic structure-ensurer driven by declarative specs.
+--
+-- Under `root = "components"` the item IS a registered component, so its own
+-- registered default is the correct seed -- EnsureComponentSubTable supplies a
+-- copy of it. Seeding the generic FONT_DEFAULT there instead would write a
+-- table holding nothing but `fontFace = "FRIZQT__"`, which then shadows the
+-- component's registered default and strands every sibling property (fontStyle,
+-- fontSize, colorMode, color) at whatever the styling code happens to fall back
+-- to. Profile roots that are not components (unitFrames, groupFrames) have no
+-- registration to consult and keep the declarative seed.
 local function ensureStructures(profile, specs)
     if not profile then return end
     for _, spec in ipairs(specs) do
-        profile[spec.root] = profile[spec.root] or {}
-        local rootTbl = profile[spec.root]
+        local asComponents = (spec.root == "components") and not spec.path
         for _, item in ipairs(spec.items) do
-            rootTbl[item] = rootTbl[item] or {}
-            local container = rootTbl[item]
-            if spec.path then
-                container[spec.path] = container[spec.path] or {}
-                container = container[spec.path]
-            end
-            for _, key in ipairs(spec.keys) do
-                if type(spec.default) == "table" then
-                    container[key] = container[key] or {}
-                    for prop, val in pairs(spec.default) do
-                        if container[key][prop] == nil then
-                            container[key][prop] = val
+            if asComponents and addon.Components and addon.Components[item] then
+                for _, key in ipairs(spec.keys) do
+                    addon:EnsureComponentSubTable(item, key)
+                end
+            else
+                profile[spec.root] = profile[spec.root] or {}
+                local rootTbl = profile[spec.root]
+                rootTbl[item] = rootTbl[item] or {}
+                local container = rootTbl[item]
+                if spec.path then
+                    container[spec.path] = container[spec.path] or {}
+                    container = container[spec.path]
+                end
+                for _, key in ipairs(spec.keys) do
+                    if type(spec.default) == "table" then
+                        container[key] = container[key] or {}
+                        for prop, val in pairs(spec.default) do
+                            if container[key][prop] == nil then
+                                container[key][prop] = val
+                            end
                         end
-                    end
-                else
-                    if container[key] == nil then
-                        container[key] = spec.default
+                    else
+                        if container[key] == nil then
+                            container[key] = spec.default
+                        end
                     end
                 end
             end

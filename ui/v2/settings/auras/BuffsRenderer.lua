@@ -285,7 +285,7 @@ function Buffs.Render(panel, scrollContent)
                         local function setStacksSetting(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textStacks = comp.db.textStacks or {}
+                                addon:EnsureComponentSubTable(comp, "textStacks")
                                 comp.db.textStacks[key] = value
                             end
                             applyStyles()
@@ -343,7 +343,7 @@ function Buffs.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textStacks = comp.db.textStacks or {}
+                                        addon:EnsureComponentSubTable(comp, "textStacks")
                                         comp.db.textStacks.offset = comp.db.textStacks.offset or {}
                                         comp.db.textStacks.offset.x = v
                                     end
@@ -362,7 +362,7 @@ function Buffs.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textStacks = comp.db.textStacks or {}
+                                        addon:EnsureComponentSubTable(comp, "textStacks")
                                         comp.db.textStacks.offset = comp.db.textStacks.offset or {}
                                         comp.db.textStacks.offset.y = v
                                     end
@@ -382,7 +382,7 @@ function Buffs.Render(panel, scrollContent)
                         local function setDurationSetting(key, value)
                             local comp = getComponent()
                             if comp and comp.db then
-                                comp.db.textDuration = comp.db.textDuration or {}
+                                addon:EnsureComponentSubTable(comp, "textDuration")
                                 comp.db.textDuration[key] = value
                             end
                             applyStyles()
@@ -440,7 +440,7 @@ function Buffs.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textDuration = comp.db.textDuration or {}
+                                        addon:EnsureComponentSubTable(comp, "textDuration")
                                         comp.db.textDuration.offset = comp.db.textDuration.offset or {}
                                         comp.db.textDuration.offset.x = v
                                     end
@@ -459,7 +459,7 @@ function Buffs.Render(panel, scrollContent)
                                 set = function(v)
                                     local comp = getComponent()
                                     if comp and comp.db then
-                                        comp.db.textDuration = comp.db.textDuration or {}
+                                        addon:EnsureComponentSubTable(comp, "textDuration")
                                         comp.db.textDuration.offset = comp.db.textDuration.offset or {}
                                         comp.db.textDuration.offset.y = v
                                     end
