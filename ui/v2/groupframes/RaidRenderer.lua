@@ -371,7 +371,7 @@ function GF.RenderRaid(panel, scrollContent)
 
     builder:AddToggle({
         label = "Hide Raid Frames",
-        description = "Hides the raid frames completely, and stops them capturing clicks.",
+        description = "Hides the raid frames and stops them taking clicks, for small screens like ScooterDeck. Party frames are unaffected, and the styling below stays saved.",
         emphasized = true,
         get = function()
             local t = ensureDB() or {}
@@ -387,14 +387,14 @@ function GF.RenderRaid(panel, scrollContent)
         end,
     })
 
-    builder:AddDescription("Useful on ScooterDeck and other small screens, where raid frames take up too much room even at their minimum size. Party frames are unaffected, and the styling options below stay saved for when you turn this back off.")
-
     ----------------------------------------------------------------------------
     -- Roster Overlay
     ----------------------------------------------------------------------------
 
     builder:AddToggleSliderRow({
         label = "Roster Overlay",
+        description = "A compact two-column list of your raid. Drag with the left mouse button to move it. Font and name colours come from Player Name below."
+            .. (isCombineGroups and " Raid frames are set to combine groups, so the overlay lists names in roster order with no group headings." or ""),
         toggle = {
             label = "Enable",
             get = function()
@@ -430,9 +430,6 @@ function GF.RenderRaid(panel, scrollContent)
             end,
         },
     })
-
-    builder:AddDescription("A compact two-column list of everyone in your raid, reading like a book: group 1 top-left, group 2 top-right, and so on. Pairs with Hide Raid Frames when you still want to see who is in the raid. Drag it with the left mouse button to move it. It uses the font from Player Name below, which is where that font is controlled. Each name is shown in the same colour it has on the raid frame itself, so it picks up class colouring wherever your raid frame names are class-coloured."
-        .. (isCombineGroups and " Raid frames are currently set to combine groups, so the overlay lists members in roster order without group headings — switch to separate groups to get them." or ""))
 
     ----------------------------------------------------------------------------
     -- Collapsible Section: Positioning & Sorting

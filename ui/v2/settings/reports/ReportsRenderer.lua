@@ -82,7 +82,6 @@ function ReportsListUI.Render(panel, scrollContent)
         })
         builder:AddSlider({
             label = "Backdrop Opacity",
-            description = "Opacity of the panel behind the widget's menu and every report. Text, borders and icons stay fully opaque. Defaults to match the Scoot settings window.",
             min = 1, max = 100, step = 1,
             get = function() return Reports:GetOpacity() end,
             set = function(value) Reports:SetOpacity(value) end,
