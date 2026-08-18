@@ -91,6 +91,13 @@ function GF.ensureAuraTrackingDB()
         at.replacementStyle = nil
     end
 
+    -- The 12.1 AuraContainer port drops animDurationMode. Shrink, descend and
+    -- ascend all drove an animated icon from a plain remaining/total ratio, and
+    -- that number no longer exists outside the engine: 12.1 binds durations to
+    -- StatusBar, Cooldown and FontString only, and nothing binds scale or
+    -- position. Animated styles keep animating; duration is the drain swipe.
+    at.animDurationMode = nil
+
     -- Per-spell migration: the dual-selector `position` ("inside"/"outside")
     -- field is replaced by a single inside-frame anchor, and ranks are
     -- assigned by the auto-slot helpers. `offsetX` / `offsetY` live on as a

@@ -103,35 +103,6 @@ local TABS = {
 }
 
 --------------------------------------------------------------------------------
--- Animated Duration Mode Selector Data
---------------------------------------------------------------------------------
-
-local ANIM_DURATION_MODES = {
-    { key = "shrink",  label = "Shrink" },
-    { key = "descend", label = "Descend" },
-    { key = "ascend",  label = "Ascend" },
-    { key = "none",    label = "None" },
-}
-
-local function GetAnimDurationMode()
-    local db = addon.db and addon.db.profile
-    local gf = db and db.groupFrames
-    local ha = gf and gf.auraTracking
-    return (ha and ha.animDurationMode) or "shrink"
-end
-
-local function SetAnimDurationMode(mode)
-    local db = addon.db and addon.db.profile
-    if not db then return end
-    db.groupFrames = db.groupFrames or {}
-    db.groupFrames.auraTracking = db.groupFrames.auraTracking or {}
-    db.groupFrames.auraTracking.animDurationMode = mode
-    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
-        addon.AuraTracking.OnConfigChanged()
-    end
-end
-
---------------------------------------------------------------------------------
 -- Module State
 --------------------------------------------------------------------------------
 
@@ -450,8 +421,7 @@ local function CreateIconPicker()
         -- Calculate content height (selector at top of animated tab)
         local numRows = math.ceil(#icons / colCount)
         local gridHeight = (numRows * btnH) + ((numRows - 1) * btnSpacing)
-        local selectorHeight = isAnimTab and 36 or 0  -- duration mode selector above grid
-        local contentHeight = gridHeight + selectorHeight + PADDING
+        local contentHeight = gridHeight + PADDING
         contentFrame:SetHeight(contentHeight)
 
         -- Show/hide scrollbar
@@ -505,7 +475,7 @@ local function CreateIconPicker()
             local col = (i - 1) % colCount
             local row = math.floor((i - 1) / colCount)
             local xOff = col * (btnW + btnSpacing)
-            local yOff = -(row * (btnH + btnSpacing)) - selectorHeight
+            local yOff = -(row * (btnH + btnSpacing))
             btn:ClearAllPoints()
             btn:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", xOff, yOff)
 
@@ -674,130 +644,8 @@ local function CreateIconPicker()
             btn:Show()
         end
 
-        -- Animated duration mode selector (only on animated tab, at top)
-        self:UpdateDurationModeSelector(isAnimTab, contentFrame, ar, ag, ab)
     end
 
-    ----------------------------------------------------------------------------
-    -- Animated Duration Mode Selector (positioned at top of animated tab)
-    ----------------------------------------------------------------------------
-
-    frame._durationModeRow = nil
-
-    function frame:UpdateDurationModeSelector(show, contentFrame, ar, ag, ab)
-        if not show then
-            if self._durationModeRow then
-                self._durationModeRow:Hide()
-            end
-            return
-        end
-
-        local lFont = (GetTheme() and GetTheme().GetFont and GetTheme():GetFont("LABEL")) or "Fonts\\FRIZQT__.TTF"
-        local vFont = (GetTheme() and GetTheme().GetFont and GetTheme():GetFont("VALUE")) or "Fonts\\FRIZQT__.TTF"
-
-        if not self._durationModeRow then
-            local row = CreateFrame("Frame", nil, contentFrame)
-            row:SetHeight(28)
-
-            -- Label
-            local label = row:CreateFontString(nil, "OVERLAY")
-            label:SetFont(lFont, 10, "")
-            label:SetPoint("LEFT", row, "LEFT", 4, 0)
-            label:SetText("Duration:")
-            label:SetTextColor(0.5, 0.5, 0.5, 1)
-            row._label = label
-
-            -- Prev arrow
-            local prevBtn = CreateFrame("Button", nil, row)
-            prevBtn:SetSize(16, 16)
-            prevBtn:SetPoint("LEFT", label, "RIGHT", 6, 0)
-            prevBtn:EnableMouse(true)
-            prevBtn:RegisterForClicks("AnyUp")
-            local prevTxt = prevBtn:CreateFontString(nil, "OVERLAY")
-            prevTxt:SetFont(vFont, 11, "")
-            prevTxt:SetAllPoints()
-            prevTxt:SetText("\226\151\128") -- ◀
-            prevTxt:SetTextColor(ar, ag, ab, 0.8)
-            prevBtn._text = prevTxt
-            row._prevBtn = prevBtn
-
-            -- Value text
-            local valText = row:CreateFontString(nil, "OVERLAY")
-            valText:SetFont(vFont, 10, "")
-            valText:SetPoint("LEFT", prevBtn, "RIGHT", 4, 0)
-            valText:SetTextColor(1, 1, 1, 0.9)
-            row._valText = valText
-
-            -- Next arrow
-            local nextBtn = CreateFrame("Button", nil, row)
-            nextBtn:SetSize(16, 16)
-            nextBtn:SetPoint("LEFT", valText, "RIGHT", 4, 0)
-            nextBtn:EnableMouse(true)
-            nextBtn:RegisterForClicks("AnyUp")
-            local nextTxt = nextBtn:CreateFontString(nil, "OVERLAY")
-            nextTxt:SetFont(vFont, 11, "")
-            nextTxt:SetAllPoints()
-            nextTxt:SetText("\226\150\182") -- ▶
-            nextTxt:SetTextColor(ar, ag, ab, 0.8)
-            nextBtn._text = nextTxt
-            row._nextBtn = nextBtn
-
-            -- Separator line below
-            local sep = row:CreateTexture(nil, "BORDER")
-            sep:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-            sep:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-            sep:SetHeight(1)
-            sep:SetColorTexture(ar, ag, ab, 0.2)
-            row._sep = sep
-
-            -- Navigation logic
-            local function GetCurrentIndex()
-                local current = GetAnimDurationMode()
-                for i, m in ipairs(ANIM_DURATION_MODES) do
-                    if m.key == current then return i end
-                end
-                return 1
-            end
-
-            local function UpdateValue()
-                local idx = GetCurrentIndex()
-                row._valText:SetText(ANIM_DURATION_MODES[idx].label)
-            end
-
-            prevBtn:SetScript("OnClick", function()
-                local idx = GetCurrentIndex()
-                idx = idx - 1
-                if idx < 1 then idx = #ANIM_DURATION_MODES end
-                SetAnimDurationMode(ANIM_DURATION_MODES[idx].key)
-                UpdateValue()
-            end)
-
-            nextBtn:SetScript("OnClick", function()
-                local idx = GetCurrentIndex()
-                idx = idx + 1
-                if idx > #ANIM_DURATION_MODES then idx = 1 end
-                SetAnimDurationMode(ANIM_DURATION_MODES[idx].key)
-                UpdateValue()
-            end)
-
-            row._updateValue = UpdateValue
-            self._durationModeRow = row
-        end
-
-        -- Position at top of content area
-        local row = self._durationModeRow
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
-        row:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", 0, 0)
-        row._updateValue()
-
-        -- Update accent colors
-        if row._sep then row._sep:SetColorTexture(ar, ag, ab, 0.2) end
-        if row._prevBtn and row._prevBtn._text then row._prevBtn._text:SetTextColor(ar, ag, ab, 0.8) end
-        if row._nextBtn and row._nextBtn._text then row._nextBtn._text:SetTextColor(ar, ag, ab, 0.8) end
-
-        row:Show()
-    end
 
     -- ESC key support
     addon.EscapeKey.Attach(frame, function()

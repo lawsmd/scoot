@@ -90,71 +90,13 @@ end
 -- Candidate filters (CDM as a data source for spell variants)
 --------------------------------------------------------------------------------
 
-local CDM_CATEGORIES = (function()
-    local cat = Enum and Enum.CooldownViewerCategory
-    if cat then
-        local out = {}
-        for _, v in pairs(cat) do
-            if type(v) == "number" then table.insert(out, v) end
-        end
-        table.sort(out)
-        if #out > 0 then return out end
-    end
-    return { 0, 1, 2, 3 }
-end)()
-
-local function PlainId(v)
-    if type(v) == "number" and not issecretvalue(v) and v > 0 then return v end
-    return nil
-end
-
--- Every CDM entry whose identity (base spell, override, or tooltip override)
--- is the looked-up ID contributes its whole aura family: base, override,
--- tooltip override, and every linked aura ID. The union across entries is the
--- point. Blizzard keys several entries on one hidden base spell and only some
--- of them carry the real aura as a linked spell: Flame Shock's CDM base is
--- 470411 (the debuff is 188389, never a base anywhere), and for Elemental the
--- Essential entry lists no linked spells while the Tracked Bar entry links
--- 188389. Stopping at the first match built {470411, 470057} and the tracker
--- never fired.
-local function ExpandFromCDM(include, lookupSpellId)
-    if not lookupSpellId or not C_CooldownViewer then return end
-    if not C_CooldownViewer.GetCooldownViewerCategorySet
-        or not C_CooldownViewer.GetCooldownViewerCooldownInfo then
-        return
-    end
-    for _, category in ipairs(CDM_CATEGORIES) do
-        local ok, cooldownIDs = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, category, true)
-        if ok and type(cooldownIDs) == "table" and not issecretvalue(cooldownIDs) then
-            for _, cooldownID in ipairs(cooldownIDs) do
-                if not issecretvalue(cooldownID) then
-                    local iok, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
-                    if iok and type(info) == "table" and not issecretvalue(info) then
-                        local sid = PlainId(info.spellID)
-                        local oid = PlainId(info.overrideSpellID)
-                        local tid = PlainId(info.overrideTooltipSpellID)
-                        if sid == lookupSpellId or oid == lookupSpellId or tid == lookupSpellId then
-                            if sid then include[sid] = true end
-                            if oid then include[oid] = true end
-                            if tid then include[tid] = true end
-                            local linked = info.linkedSpellIDs
-                            if type(linked) == "table" and not issecretvalue(linked) then
-                                for _, lid in ipairs(linked) do
-                                    lid = PlainId(lid)
-                                    if lid then include[lid] = true end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
+-- Spell-variant expansion lives in base/utilities.lua as addon.AuraIds so the
+-- group-frame tracker shares it. The rationale it encodes (union every CDM
+-- entry, never early-return) was learned here: Flame Shock's CDM base is
+-- 470411, the debuff is 188389 and is only a linked ID on some entries.
 
 local function BuildCandidateFilters(tracker, trackerId)
-    local include = { [tracker.spellId] = true }
-    pcall(ExpandFromCDM, include, tracker.spellId)
+    local include = addon.AuraIds.BuildIncludeSet(tracker.spellId)
     if trackerId then
         local ids = {}
         for id in pairs(include) do table.insert(ids, id) end

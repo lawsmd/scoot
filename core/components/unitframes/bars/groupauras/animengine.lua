@@ -1,11 +1,24 @@
 --------------------------------------------------------------------------------
 -- groupauras/animengine.lua
--- Shared OnUpdate engine, animation controller pool, and definition registry
--- for code-driven animated aura icons.
+-- Animation controller registry and pool for code-driven animated aura icons.
+--
+-- Each controller ticks on its OWN frame's OnUpdate rather than a shared one.
+-- On group frames a controller lives under an engine AuraButton whose shown
+-- state is a secret, and OnUpdate only runs while a frame is visible, so a
+-- controller under an absent aura costs nothing and nothing ever has to ask
+-- whether the aura is present. Asking is not possible: the button's visibility
+-- is secret and a truthiness test on it throws.
+--
+-- Rainbow hue comes from GetTime() rather than an accumulator, so every
+-- controller and every static rainbow icon share one phase with no shared state.
+--
+-- Duration-linked modes (shrink / descend / ascend) were removed in the 12.1
+-- port. They needed a plain remaining/total ratio, which no longer exists:
+-- 12.1 binds durations to StatusBar, Cooldown and FontString only, and nothing
+-- binds scale or position. Duration feedback is the Show Duration swipe.
 --
 -- Depends on groupauras/core.lua (HA namespace, HSVtoRGB)
 --------------------------------------------------------------------------------
-
 local addonName, addon = ...
 
 local HA = addon.AuraTracking
@@ -20,22 +33,8 @@ local AE = HA.AnimEngine
 
 local MAX_TEXTURES = 12          -- Fading Ring uses the most (10-12 dots)
 local POOL_PREALLOC = 12
-local RAINBOW_CYCLE_PERIOD = 3.0 -- Match existing rainbow engine
+local RAINBOW_CYCLE_PERIOD = 3.0 -- Match the static rainbow engine in core.lua
 local WHITE8X8 = "Interface\\BUTTONS\\WHITE8X8"
-
--- Shrink: icon scales from 100% → 25% as duration depletes
-local SHRINK_MIN_SCALE = 0.25
-
---------------------------------------------------------------------------------
--- Duration Mode Helper
---------------------------------------------------------------------------------
-
-local function GetAnimDurationMode()
-    local db = addon.db and addon.db.profile
-    local gf = db and db.groupFrames
-    local ha = gf and gf.auraTracking
-    return (ha and ha.animDurationMode) or "shrink"
-end
 
 --------------------------------------------------------------------------------
 -- Animation Definition Registry
@@ -141,16 +140,9 @@ function controllerMT:Stop()
     self.frame:Hide()
 end
 
---- Wire aura duration data into the controller for animated duration display.
--- @param dObj DurationObject from C_UnitAuras.GetAuraDuration (unused, kept for API compat)
--- @param startTime number fallback start time (expirationTime - duration)
--- @param totalDuration number fallback total duration in seconds
--- @param frameHeight number height of the group frame (cached, for descend/ascend travel distance)
-function controllerMT:SetDuration(dObj, startTime, totalDuration, frameHeight)
-    self.durationStart = startTime or 0
-    self.durationTotal = totalDuration or 0
-    self.durationActive = (totalDuration and totalDuration > 0) and true or false
-    self.durationFrameHeight = frameHeight or 36
+--- Duration-linked animation was removed in the 12.1 port; kept as a no-op so a
+--- stale caller cannot error. See the file header.
+function controllerMT:SetDuration()
 end
 
 function controllerMT:Recycle()
@@ -160,15 +152,9 @@ function controllerMT:Recycle()
     self.rainbowMode = false
     self.colorR, self.colorG, self.colorB, self.colorA = 1, 1, 1, 1
 
-    -- Reset duration visual state
     self.frame:SetScale(1)
     self.frame:Hide()
     self.frame:ClearAllPoints()
-    self.durationStart = 0
-    self.durationTotal = 0
-    self.durationActive = false
-    self.durationFrameHeight = 36
-    self._durationDirty = false
 
     for i = 1, MAX_TEXTURES do
         local tex = self.textures[i]
@@ -181,15 +167,42 @@ function controllerMT:Recycle()
 end
 
 --------------------------------------------------------------------------------
+-- Per-controller tick
+--------------------------------------------------------------------------------
+-- On its own frame, so a controller under a hidden button never runs. That is
+-- the whole reason this is not a shared OnUpdate any more: on group frames the
+-- button's shown state is a secret and cannot be tested from Lua, but the
+-- engine's own visibility rule answers it for free.
+
+local function ControllerOnUpdate(frame, elapsed)
+    local ctrl = frame.scootAnimCtrl
+    if not ctrl or not ctrl.playing then return end
+
+    ctrl.progress = (ctrl.progress + elapsed / ctrl.period) % 1
+
+    local def = animDefs[ctrl.animId]
+    if def and def.update then
+        def.update(ctrl, ctrl.progress)
+    end
+
+    if ctrl.rainbowMode and HA.HSVtoRGB and def and def.applyColor then
+        local r, g, b = HA.HSVtoRGB((GetTime() / RAINBOW_CYCLE_PERIOD) % 1, 0.75, 1)
+        def.applyColor(ctrl, r, g, b, 1)
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Controller Creation
 --------------------------------------------------------------------------------
 
-local function CreateController()
+local function CreateController(parent)
     local ctrl = setmetatable({}, controllerMT)
 
-    ctrl.frame = CreateFrame("Frame")
+    ctrl.frame = CreateFrame("Frame", nil, parent)
     ctrl.frame:SetSize(28, 28)
     ctrl.frame:EnableMouse(false)
+    ctrl.frame.scootAnimCtrl = ctrl
+    ctrl.frame:SetScript("OnUpdate", ControllerOnUpdate)
     ctrl.frame:Hide()
 
     ctrl.textures = {}
@@ -208,122 +221,40 @@ local function CreateController()
     ctrl.size = 28
     ctrl.colorR, ctrl.colorG, ctrl.colorB, ctrl.colorA = 1, 1, 1, 1
     ctrl.rainbowMode = false
-    ctrl.rainbowHue = 0
-
-    -- Duration tracking fields
-    ctrl.durationStart = 0
-    ctrl.durationTotal = 0
-    ctrl.durationActive = false
-    ctrl.durationFrameHeight = 36
-    ctrl._durationDirty = false
 
     return ctrl
 end
 
 --------------------------------------------------------------------------------
--- Controller Pool
+-- Controller Pool (settings previews only)
 --------------------------------------------------------------------------------
+-- The icon picker's preview buttons acquire and release from here. Group-frame
+-- controllers are NOT pooled: they are created once under their aura button and
+-- live as long as it does, because a frame created inside initializeFrame can
+-- never be re-parented afterwards.
 
 local controllerPool = {}
+local activeControllers = {}  -- owner -> ctrl (explicit release required)
 
 local function PreallocatePool()
     for i = 1, POOL_PREALLOC do
-        table.insert(controllerPool, CreateController())
+        table.insert(controllerPool, CreateController(UIParent))
     end
 end
-
---------------------------------------------------------------------------------
--- Shared OnUpdate Engine
---------------------------------------------------------------------------------
-
-local activeControllers = {}  -- owner -> ctrl (not weak-keyed: explicit release required)
-local engineFrame = CreateFrame("Frame")
-engineFrame:Hide()
-
-engineFrame:SetScript("OnUpdate", function(self, elapsed)
-    local hasActive = false
-    local durationMode = GetAnimDurationMode()
-    local useShrink = (durationMode == "shrink")
-    local useDescend = (durationMode == "descend")
-    local useAscend = (durationMode == "ascend")
-    local needsTime = useShrink or useDescend or useAscend
-    local now = needsTime and GetTime() or nil
-
-    for owner, ctrl in pairs(activeControllers) do
-        if not ctrl.playing then
-            activeControllers[owner] = nil
-        else
-            hasActive = true
-            ctrl.progress = (ctrl.progress + elapsed / ctrl.period) % 1
-
-            local def = animDefs[ctrl.animId]
-            if def and def.update then
-                def.update(ctrl, ctrl.progress)
-            end
-
-            -- Rainbow color mode: cycle hue and apply
-            if ctrl.rainbowMode and HA.HSVtoRGB then
-                ctrl.rainbowHue = (ctrl.rainbowHue + elapsed / RAINBOW_CYCLE_PERIOD) % 1
-                local r, g, b = HA.HSVtoRGB(ctrl.rainbowHue, 0.75, 1)
-                if def and def.applyColor then
-                    def.applyColor(ctrl, r, g, b, 1)
-                end
-            end
-
-            -- Duration-based effects
-            if ctrl.durationActive and ctrl.durationTotal > 0 and needsTime then
-                now = now or GetTime()
-                local remaining = (ctrl.durationStart + ctrl.durationTotal) - now
-                local ratio = remaining / ctrl.durationTotal
-                ratio = math.max(0, math.min(1, ratio))
-
-                if useShrink then
-                    -- Scale from 1.0 (full) → SHRINK_MIN_SCALE (expired)
-                    local scale = SHRINK_MIN_SCALE + (1 - SHRINK_MIN_SCALE) * ratio
-                    ctrl.frame:SetScale(scale)
-                    ctrl._durationDirty = true
-
-                elseif useDescend then
-                    -- Move downward: 0 offset at full → -frameHeight at expired
-                    local yOffset = -(1 - ratio) * ctrl.durationFrameHeight
-                    ctrl.frame:ClearAllPoints()
-                    ctrl.frame:SetPoint("CENTER", ctrl.frame:GetParent(), "CENTER", 0, yOffset)
-                    ctrl._durationDirty = true
-
-                elseif useAscend then
-                    -- Move upward: 0 offset at full → +frameHeight at expired
-                    local yOffset = (1 - ratio) * ctrl.durationFrameHeight
-                    ctrl.frame:ClearAllPoints()
-                    ctrl.frame:SetPoint("CENTER", ctrl.frame:GetParent(), "CENTER", 0, yOffset)
-                    ctrl._durationDirty = true
-                end
-
-            elseif ctrl._durationDirty then
-                -- Reset visual state when duration mode changes or no active duration
-                ctrl.frame:SetScale(1)
-                ctrl.frame:ClearAllPoints()
-                ctrl.frame:SetPoint("CENTER", ctrl.frame:GetParent(), "CENTER", 0, 0)
-                ctrl._durationDirty = false
-            end
-        end
-    end
-    if not hasActive then
-        self:Hide()
-    end
-end)
 
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
 
+--- Pooled acquire, for settings previews. Re-parents, so never use this for a
+--- controller that must live under an engine aura button.
 function AE.Acquire(owner, parentFrame)
     if not owner or not parentFrame then return nil end
 
-    -- Don't create frames in combat
     local ctrl = table.remove(controllerPool)
     if not ctrl then
         if InCombatLockdown() then return nil end
-        ctrl = CreateController()
+        ctrl = CreateController(UIParent)
     end
 
     ctrl.frame:SetParent(parentFrame)
@@ -331,7 +262,6 @@ function AE.Acquire(owner, parentFrame)
     ctrl.frame:Show()
 
     activeControllers[owner] = ctrl
-    engineFrame:Show()
 
     return ctrl
 end
@@ -342,12 +272,26 @@ function AE.Release(owner)
 
     ctrl:Stop()
     ctrl:Recycle()
+    ctrl.frame:SetParent(UIParent)
     activeControllers[owner] = nil
     table.insert(controllerPool, ctrl)
 end
 
 function AE.GetActive(owner)
     return activeControllers[owner]
+end
+
+--- Un-pooled create, for a controller that must be born under a specific parent
+--- and stay there. This is the group-frame path: the parent is an engine aura
+--- button and creation only ever happens inside its initializeFrame.
+function AE.CreateOwned(parentFrame)
+    if not parentFrame then return nil end
+    local ctrl = CreateController(parentFrame)
+    local ok, level = pcall(parentFrame.GetFrameLevel, parentFrame)
+    if ok and type(level) == "number" and not issecretvalue(level) then
+        ctrl.frame:SetFrameLevel(level + 1)
+    end
+    return ctrl
 end
 
 --------------------------------------------------------------------------------

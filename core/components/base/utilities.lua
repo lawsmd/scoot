@@ -20,6 +20,102 @@ function addon.AurasSecretNow()
     return secret == true
 end
 
+--------------------------------------------------------------------------------
+-- Aura identity expansion (shared by every AuraContainer consumer)
+--------------------------------------------------------------------------------
+-- candidateFilters.includeSpellIDs matches on the exact spell ID the engine
+-- sees, and that is not always the ID a user picked: talent overrides, rank
+-- variants and tooltip proxies all carry their own IDs. Cooldown Manager
+-- config data stays fully readable in 12.1 even when aura data does not, so it
+-- is the ground truth for which IDs are aliases of each other.
+--
+-- No early return anywhere in the walk. Blizzard keys several CDM entries on
+-- one hidden base spell and only some of them carry the real aura as a linked
+-- spell: Flame Shock's CDM base is 470411 (the debuff, 188389, is never a base
+-- anywhere), and on Elemental the Essential entry lists no linked spells at all
+-- while the Tracked Bar entry links 188389. Stopping at the first match built
+-- {470411, 470057} and the tracker never fired. Union every matching entry.
+
+addon.AuraIds = addon.AuraIds or {}
+local AuraIds = addon.AuraIds
+
+-- Enumerated rather than listed: 12.1 added categories 4-8 (GroupBuff,
+-- SpecAgnostic*, EquipSlot*) and a hardcoded list would silently miss them.
+local CDM_CATEGORIES = (function()
+    local cat = Enum and Enum.CooldownViewerCategory
+    if cat then
+        local out = {}
+        for _, v in pairs(cat) do
+            if type(v) == "number" then table.insert(out, v) end
+        end
+        table.sort(out)
+        if #out > 0 then return out end
+    end
+    return { 0, 1, 2, 3 }
+end)()
+
+-- Secret-safe numeric read: anything secret, non-numeric or non-positive
+-- becomes nil.
+local function PlainId(v)
+    if type(v) == "number" and not issecretvalue(v) and v > 0 then return v end
+    return nil
+end
+AuraIds.PlainId = PlainId
+
+--- Unions every CDM alias of `lookupSpellId` into the `include` set.
+--- @param include table set of [spellId] = true, mutated in place
+--- @param lookupSpellId number the picked spell ID
+function AuraIds.ExpandFromCDM(include, lookupSpellId)
+    if not include or not lookupSpellId or not C_CooldownViewer then return end
+    if not C_CooldownViewer.GetCooldownViewerCategorySet
+        or not C_CooldownViewer.GetCooldownViewerCooldownInfo then
+        return
+    end
+    for _, category in ipairs(CDM_CATEGORIES) do
+        local ok, cooldownIDs = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, category, true)
+        if ok and type(cooldownIDs) == "table" and not issecretvalue(cooldownIDs) then
+            for _, cooldownID in ipairs(cooldownIDs) do
+                if not issecretvalue(cooldownID) then
+                    local iok, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
+                    if iok and type(info) == "table" and not issecretvalue(info) then
+                        local sid = PlainId(info.spellID)
+                        local oid = PlainId(info.overrideSpellID)
+                        local tid = PlainId(info.overrideTooltipSpellID)
+                        if sid == lookupSpellId or oid == lookupSpellId or tid == lookupSpellId then
+                            if sid then include[sid] = true end
+                            if oid then include[oid] = true end
+                            if tid then include[tid] = true end
+                            local linked = info.linkedSpellIDs
+                            if type(linked) == "table" and not issecretvalue(linked) then
+                                for _, lid in ipairs(linked) do
+                                    lid = PlainId(lid)
+                                    if lid then include[lid] = true end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+--- Builds a fresh includeSpellIDs set for one tracked spell.
+--- @param spellId number
+--- @param extraIds table|nil array of additional IDs (linked registry variants)
+--- @return table set of [spellId] = true
+function AuraIds.BuildIncludeSet(spellId, extraIds)
+    local include = {}
+    if spellId then include[spellId] = true end
+    if type(extraIds) == "table" then
+        for _, id in ipairs(extraIds) do
+            if type(id) == "number" then include[id] = true end
+        end
+    end
+    pcall(AuraIds.ExpandFromCDM, include, spellId)
+    return include
+end
+
 -- Combat watcher: defers FullPowerFrame reapplies to avoid taint during combat.
 local fullPowerFrameCombatWatcher = nil
 local pendingFullPowerFrames = {}

@@ -430,15 +430,6 @@ function AuraTrackingUI.Render(panel, scrollContent)
         AuraTrackingUI.Render(panel, scrollContent)
     end)
 
-    -- Feature availability check
-    if HA and HA.IsFeatureAvailable and not HA.IsFeatureAvailable() then
-        builder:AddDescription("Aura Tracking is currently unavailable. Blizzard has re-protected these aura spells.", {
-            color = { 1, 0.4, 0.4 },
-        })
-        builder:Finalize()
-        return
-    end
-
     -- Default to player's class on fresh session
     if not AuraTrackingUI._selectedClass then
         local _, classToken = UnitClass("player")
@@ -457,7 +448,8 @@ function AuraTrackingUI.Render(panel, scrollContent)
     builder:AddDescription(
         "Blizzard draws party and raid buff icons in a protected internal system, so addons cannot restyle, shrink, or reposition them individually. "
         .. "Patch 12.1 added a Blizzard setting that can turn those buff icons off entirely; the toggle below controls it. "
-        .. "Scoot's custom tracked icons are drawn separately and work whether Blizzard's icons are shown or hidden.",
+        .. "Scoot's custom tracked icons are drawn separately and work whether Blizzard's icons are shown or hidden. "
+        .. "Each tracked aura keeps its own position, so an aura that is not currently on a group member leaves its spot empty rather than shifting the others.",
         { color = {1, 0.82, 0}, topPadding = 4, bottomPadding = -16 }
     )
 
@@ -577,6 +569,22 @@ function AuraTrackingUI.Render(panel, scrollContent)
         if selectorRow._emphBg then
             selectorRow._emphBg:Hide()
         end
+    end
+
+    --------------------------------------------------------------------------
+    -- Other-class note
+    --------------------------------------------------------------------------
+    -- Tracked icons hold fixed positions, so an enabled spell this character
+    -- cannot cast is filtered out of the layout rather than left holding an
+    -- empty slot. Say so on the tab where it can be enabled by accident.
+    --------------------------------------------------------------------------
+
+    local _, playerClassToken = UnitClass("player")
+    if playerClassToken and AuraTrackingUI._selectedClass ~= playerClassToken then
+        builder:AddDescription(
+            "This is another class's list. On this character, a spell here is only tracked if you turn on Track All Sources for it, since you cannot cast it yourself.",
+            { color = {1, 0.82, 0}, topPadding = 2, bottomPadding = 2 }
+        )
     end
 
     --------------------------------------------------------------------------

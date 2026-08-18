@@ -1,8 +1,30 @@
 --------------------------------------------------------------------------------
 -- groupauras/icons.lua
--- Icon frame pool, styling, sizing, and positioning for aura tracking icons
+-- Button wiring, styling and geometry for group-frame aura tracking
 --
--- Depends on groupauras/core.lua (HA namespace, rainbow engine, state tables)
+-- Every visual here hangs under an engine-managed AuraButton, so the engine's
+-- own show and hide propagate to it and nothing ever asks whether an aura is
+-- present. It cannot ask: ApplyVisibility does SetShown(secretwrap(...)) and a
+-- truthiness test on that throws.
+--
+-- Two rules shape the whole file:
+--
+--   1. Regions are created inside WireButton, which the engine calls from
+--      initializeFrame. That is the only moment the button tree is guaranteed
+--      touchable, and every region handed to a Set*/Add* binding must be a
+--      descendant of its button.
+--   2. Geometry never touches a button. Each slot owns a plain Scoot frame,
+--      the proxy, that the button SetAllPoints at wire time. Moving and sizing
+--      the proxy moves and sizes the button, and a proxy is writable in combat
+--      while a button is not.
+--
+-- Positions are derived from the ENABLED config, not from what is currently up.
+-- Aura presence is secret, so an absent aura leaves its position empty rather
+-- than letting its neighbours slide over. Each spell therefore always occupies
+-- the same spot on every frame.
+--
+-- Depends on groupauras/core.lua (HA namespace, rainbow engine, registry) and
+-- groupauras/engine.lua (containers, slots, the structural gate).
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -14,8 +36,7 @@ if not HA then return end
 -- Constants
 --------------------------------------------------------------------------------
 
-local POOL_PREALLOC = 40
-local BASE_SIZE_RATIO = 0.45  -- Icon base size as ratio of group frame height
+local BASE_SIZE_RATIO = 0.45  -- Icon base size as a ratio of group frame height
 local MIN_ICON_SIZE = 10
 local MAX_ICON_SIZE = 64
 
@@ -23,12 +44,10 @@ local MAX_ICON_SIZE = 64
 -- Anchor Maps
 --------------------------------------------------------------------------------
 
--- Inside frame: icon anchors to matching point on the group frame. 9 values.
--- Outside-frame anchoring was removed in the 12.0.5 rework (the 12.0.5
--- architectural lockdown). Visual conflict with Blizzard's
--- native icons is now handled by the Hide Blizzard Buff Icons toggle (the
--- raidFramesDisplayBuffs game setting, 12.1), not by moving Scoot icons outside
--- the frame.
+-- Inside frame: icon anchors to the matching point on the group frame. 9 values.
+-- Outside-frame anchoring was removed in the 12.0.5 rework. Visual conflict with
+-- Blizzard's native icons is handled by the Hide Blizzard Buff Icons toggle (the
+-- raidFramesDisplayBuffs game setting, 12.1), not by moving Scoot icons out.
 HA.INSIDE_ANCHOR_VALUES = {
     TOPLEFT = "Top-Left", TOP = "Top", TOPRIGHT = "Top-Right",
     LEFT = "Left", CENTER = "Center", RIGHT = "Right",
@@ -57,8 +76,8 @@ table.freeze(ANCHOR_DIRECTION)
 
 -- Vertical flow direction per anchor. Bottom-edge anchors grow upward (rank 4+
 -- wraps to a row ABOVE the first row), keeping icons away from the bottom edge.
--- Every other anchor grows downward (row 2+ sits BELOW row 1). Mirrors Blizzard's
--- Legacy layout which is BottomRightToTopLeft for Buffs.
+-- Every other anchor grows downward. Mirrors Blizzard's Legacy layout, which is
+-- BottomRightToTopLeft for buffs.
 local ROW_GROWTH_DIR = {
     TOPLEFT     = -1,
     TOP         = -1,
@@ -73,132 +92,26 @@ local ROW_GROWTH_DIR = {
 table.freeze(ROW_GROWTH_DIR)
 
 -- Wrap to a new row after this many icons. Matches Blizzard's Legacy /
--- BuffsRightDebuffsLeft layout (3 cols × 2 rows = up to 6 buffs).
+-- BuffsRightDebuffsLeft layout (3 cols x 2 rows = up to 6 buffs).
 local COLS_PER_ROW = 3
 
---------------------------------------------------------------------------------
--- Icon Frame Pool
---------------------------------------------------------------------------------
-
-local iconPool = {}
-
-local function CreateIconFrame()
-    local icon = CreateFrame("Frame", nil, UIParent)
-    icon:SetSize(16, 16)
-    -- MEDIUM (core/strata.lua), not HIGH: Blizzard's raid frames are LOW
-    -- (CompactUnitFrame.xml:3), so MEDIUM still covers them -- and unlike HIGH
-    -- it lets an open Blizzard panel cover the icon. Level unchanged.
-    addon.Strata.ApplyHUD(icon, 20)
-
-    -- Icon texture
-    local tex = icon:CreateTexture(nil, "ARTWORK")
-    tex:SetAllPoints()
-    icon.Icon = tex
-
-    -- Cooldown sweep
-    local cd = CreateFrame("Cooldown", nil, icon, "CooldownFrameTemplate")
-    cd:SetAllPoints(icon)
-    cd:SetDrawEdge(false)
-    cd:SetDrawSwipe(false)
-    cd:SetHideCountdownNumbers(true)
-    icon.Cooldown = cd
-
-    -- Text overlay sits above the Cooldown drain swipe so stack numbers
-    -- stay fully opaque regardless of showDuration progress.
-    local textOverlay = CreateFrame("Frame", nil, icon)
-    textOverlay:SetAllPoints(icon)
-    textOverlay:SetFrameLevel((cd:GetFrameLevel() or icon:GetFrameLevel()) + 5)
-    icon.TextOverlay = textOverlay
-
-    -- Stack count text (parented to the text overlay, anchored to the icon)
-    local count = textOverlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-    count:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -1, 1)
-    count:Hide()
-    icon.CountText = count
-
-    -- Tracking fields
-    icon.spellId = nil
-    icon._isRainbow = false
-
-    icon:Hide()
-    return icon
-end
-
--- Pre-allocate pool
-local function PreallocatePool()
-    for i = 1, POOL_PREALLOC do
-        local icon = CreateIconFrame()
-        table.insert(iconPool, icon)
-    end
-end
-
-function HA.AcquireIcon(parent)
-    local icon = table.remove(iconPool)
-    if not icon then
-        if InCombatLockdown() then
-            -- Cannot create frames during combat; defer
-            return nil
-        end
-        icon = CreateIconFrame()
-    end
-    -- Never SetParent to Blizzard frames — causes taint propagation.
-    -- Icons stay parented to UIParent; anchored to group frames via SetPoint.
-    return icon
-end
-
-function HA.ReleaseIcon(icon)
-    if not icon then return end
-    icon:Hide()
-    icon:ClearAllPoints()
-    icon:SetParent(UIParent)
-    icon.spellId = nil
-
-    -- Detach animation controller
-    HA.DetachAnimation(icon)
-
-    -- Remove from rainbow tracking
-    if icon._isRainbow and icon.Icon then
-        HA.UnregisterRainbowIcon(icon.Icon)
-        icon._isRainbow = false
-    end
-
-    -- Reset cooldown and swipe state
-    if icon.Cooldown then
-        icon.Cooldown:Clear()
-        icon.Cooldown:SetDrawSwipe(true)
-        icon.Cooldown:SetReverse(true)
-        icon.Cooldown:SetSwipeColor(0, 0, 0, 0.85)
-        icon.Cooldown:SetDrawEdge(false)
-        icon.Cooldown:SetDrawBling(false)
-        pcall(function()
-            icon.Cooldown:SetTexCoordRange({ x = 0, y = 0 }, { x = 1, y = 1 })
-        end)
-    end
-
-    -- Reset stack text
-    if icon.CountText then
-        icon.CountText:Hide()
-        icon.CountText:SetText("")
-    end
-
-    -- Reset icon texture and anchoring
-    if icon.Icon then
-        icon.Icon:SetDesaturated(false)
-        icon.Icon:SetVertexColor(1, 1, 1, 1)
-        icon.Icon:ClearAllPoints()
-        icon.Icon:SetAllPoints()
-    end
-
-    -- Reset border backing
-    if icon.BorderTex then
-        icon.BorderTex:Hide()
-    end
-
-    table.insert(iconPool, icon)
-end
+-- Center-anchor compensation: shift the icon CENTER inward so it sits fully
+-- within the frame regardless of scale.
+local INSIDE_CENTER_OFFSET = {
+    TOPLEFT     = {  1, -1 },  -- push right and down
+    TOP         = {  0, -1 },  -- push down
+    TOPRIGHT    = { -1, -1 },  -- push left and down
+    LEFT        = {  1,  0 },  -- push right
+    CENTER      = {  0,  0 },
+    RIGHT       = { -1,  0 },  -- push left
+    BOTTOMLEFT  = {  1,  1 },  -- push right and up
+    BOTTOM      = {  0,  1 },  -- push up
+    BOTTOMRIGHT = { -1,  1 },  -- push left and up
+}
+table.freeze(INSIDE_CENTER_OFFSET)
 
 --------------------------------------------------------------------------------
--- Icon Styling
+-- Config readers
 --------------------------------------------------------------------------------
 
 local function GetSpellConfig(spellId)
@@ -218,317 +131,7 @@ local function GetSpellConfig(spellId)
     return setmetatable(spells[configId], { __index = HA.SPELL_DEFAULTS })
 end
 
--- Exported for ReflowIconsForFrame to resolve per-spell anchor/rank config.
 HA._GetSpellConfig = GetSpellConfig
-
-function HA.StyleIcon(iconFrame, spellId, auraData, groupFrame, unit)
-    if not iconFrame or not spellId then return end
-
-    local config = GetSpellConfig(spellId)
-    iconFrame.spellId = spellId
-
-    -- Parse prefix variants (border:, wide:)
-    local style = config.iconStyle
-    local isBordered = style:sub(1, 7) == "border:"
-    local isWide = style:sub(1, 5) == "wide:"
-    local effectiveStyle = style
-    if isBordered then
-        effectiveStyle = style:sub(8)
-    elseif isWide then
-        effectiveStyle = style:sub(6)
-    end
-
-    -- Set icon texture
-    local tex = iconFrame.Icon
-    local isAnimated = effectiveStyle:sub(1, 5) == "anim:"
-    if isAnimated then
-        -- Animated icon: hide standard texture, use animation controller
-        tex:Hide()
-    elseif effectiveStyle == "spell" then
-        -- Try runtime API first (most accurate), static textureId as fallback
-        tex:Show()
-        HA.DetachAnimation(iconFrame)
-        local spellTex
-        local ok = pcall(function()
-            spellTex = C_Spell.GetSpellTexture(spellId)
-        end)
-        if ok and spellTex then
-            tex:SetTexture(spellTex)
-        else
-            -- Fallback to static textureId (works when API fails, e.g. secrets)
-            local registryEntry = HA.SPELL_REGISTRY_BY_ID and HA.SPELL_REGISTRY_BY_ID[spellId]
-            local staticTex = registryEntry and registryEntry.textureId
-            if staticTex then
-                tex:SetTexture(staticTex)
-            else
-                tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            end
-        end
-    elseif effectiveStyle:sub(1, 5) == "file:" then
-        -- File-based custom texture
-        tex:Show()
-        HA.DetachAnimation(iconFrame)
-        local path = effectiveStyle:sub(6)
-        tex:SetTexture(path)
-    else
-        -- Atlas-based icon
-        tex:Show()
-        HA.DetachAnimation(iconFrame)
-        local atlasOk = pcall(tex.SetAtlas, tex, effectiveStyle)
-        if not atlasOk then
-            tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        end
-    end
-
-    -- Border variant: same-shape black backing with 1px inset
-    if isBordered then
-        if not iconFrame.BorderTex then
-            local bt = iconFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-            bt:SetAllPoints()
-            iconFrame.BorderTex = bt
-        end
-        -- Use the same atlas shape colored black for a matching silhouette border
-        local borderAtlasOk = pcall(iconFrame.BorderTex.SetAtlas, iconFrame.BorderTex, effectiveStyle)
-        if not borderAtlasOk then
-            iconFrame.BorderTex:SetColorTexture(0, 0, 0, 1)
-        end
-        iconFrame.BorderTex:SetDesaturated(true)
-        iconFrame.BorderTex:SetVertexColor(0, 0, 0, 1)
-        iconFrame.BorderTex:Show()
-        tex:ClearAllPoints()
-        tex:SetPoint("TOPLEFT", iconFrame, "TOPLEFT", 1, -1)
-        tex:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT", -1, 1)
-    else
-        if iconFrame.BorderTex then
-            iconFrame.BorderTex:Hide()
-        end
-        tex:ClearAllPoints()
-        tex:SetAllPoints()
-    end
-
-    -- Apply desaturation and color
-    local colorMode = config.iconColor or "original"
-    -- Remove from rainbow if switching away
-    if iconFrame._isRainbow then
-        HA.UnregisterRainbowIcon(tex)
-        iconFrame._isRainbow = false
-    end
-
-    if colorMode == "original" then
-        tex:SetDesaturated(false)
-        tex:SetVertexColor(1, 1, 1, 1)
-    elseif colorMode == "rainbow" then
-        tex:SetDesaturated(true)
-        HA.RegisterRainbowIcon(tex)
-        iconFrame._isRainbow = true
-    elseif colorMode == "custom" then
-        tex:SetDesaturated(true)
-        local c = config.iconCustomColor or { 1, 1, 1, 1 }
-        tex:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
-    else
-        tex:SetDesaturated(true)
-        tex:SetVertexColor(1, 1, 1, 1)
-    end
-
-    -- Size based on group frame height + user scale
-    -- Use OOC-cached height to avoid tainted GetHeight() reads in combat
-    local frameHeight = 36
-    if groupFrame then
-        local state = HA._getState and HA._getState(groupFrame)
-        if state and state.cachedHeight and state.cachedHeight > 0 then
-            frameHeight = state.cachedHeight
-        elseif not InCombatLockdown() then
-            local ok, h = pcall(groupFrame.GetHeight, groupFrame)
-            if ok and type(h) == "number" and h > 0 then
-                frameHeight = h
-                if state then
-                    state.cachedHeight = h
-                end
-            end
-        end
-    end
-    local baseSize = math.max(MIN_ICON_SIZE, frameHeight * BASE_SIZE_RATIO)
-    local userScale = (config.iconScale or 100) / 100
-    local finalSize = math.min(MAX_ICON_SIZE, math.max(MIN_ICON_SIZE, baseSize * userScale))
-    -- Wide variant: 3x width
-    if isWide then
-        iconFrame:SetSize(finalSize * 3, finalSize)
-    else
-        iconFrame:SetSize(finalSize, finalSize)
-    end
-
-    -- Position the icon
-    HA.PositionIcon(iconFrame, config, groupFrame)
-
-    -- Attach animated icon controller (after sizing is finalized)
-    if isAnimated then
-        local animId = effectiveStyle:sub(6)
-        HA.AttachAnimation(iconFrame, animId, config, finalSize)
-    end
-
-    -- Duration display configuration
-    local showDuration = config.showDuration
-    if showDuration == nil then showDuration = true end
-
-    if showDuration and not isAnimated then
-        -- Configure drain swipe: icon "drains" to dark as duration expires
-        iconFrame.Cooldown:SetDrawSwipe(true)
-        iconFrame.Cooldown:SetSwipeColor(0, 0, 0, 0.85)
-        iconFrame.Cooldown:SetReverse(true)
-        iconFrame.Cooldown:SetDrawEdge(false)
-        iconFrame.Cooldown:SetDrawBling(false)
-
-        -- Set swipe texture to match the icon for a shaped drain effect
-        if effectiveStyle == "spell" then
-            local swipeTex
-            pcall(function() swipeTex = C_Spell.GetSpellTexture(spellId) end)
-            if not swipeTex then
-                local entry = HA.SPELL_REGISTRY_BY_ID and HA.SPELL_REGISTRY_BY_ID[spellId]
-                swipeTex = entry and entry.textureId
-            end
-            if swipeTex then
-                iconFrame.Cooldown:SetSwipeTexture(swipeTex)
-            end
-        elseif effectiveStyle:sub(1, 5) == "file:" then
-            iconFrame.Cooldown:SetSwipeTexture(effectiveStyle:sub(6))
-        else
-            -- Atlas-based: resolve to file + tex coords for swipe texture
-            local atlasKey = effectiveStyle
-            if isBordered then atlasKey = effectiveStyle end
-            local atlasInfo = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlasKey)
-            if atlasInfo and (atlasInfo.file or atlasInfo.filename) then
-                iconFrame.Cooldown:SetSwipeTexture(atlasInfo.file or atlasInfo.filename)
-                pcall(function()
-                    iconFrame.Cooldown:SetTexCoordRange(
-                        { x = atlasInfo.leftTexCoord, y = atlasInfo.topTexCoord },
-                        { x = atlasInfo.rightTexCoord, y = atlasInfo.bottomTexCoord }
-                    )
-                end)
-            end
-        end
-    else
-        -- No drain: disable swipe (animated icons handle duration separately)
-        iconFrame.Cooldown:SetDrawSwipe(false)
-    end
-
-    -- Cooldown sweep timing (DurationObject pattern — matches ScootAuras, secret-safe)
-    local cdSet = false
-    if auraData and auraData.auraInstanceID and unit
-       and C_UnitAuras and C_UnitAuras.GetAuraDuration then
-        local dOk, dObj = pcall(C_UnitAuras.GetAuraDuration, unit, auraData.auraInstanceID)
-        if dOk and dObj then
-            pcall(iconFrame.Cooldown.SetCooldownFromDurationObject, iconFrame.Cooldown, dObj)
-            iconFrame.Cooldown:Show()
-            cdSet = true
-        end
-    end
-    if not cdSet then
-        -- Fallback to legacy arithmetic (non-secret values only)
-        if auraData and auraData.expirationTime and auraData.expirationTime > 0
-           and auraData.duration and auraData.duration > 0 then
-            local startTime = auraData.expirationTime - auraData.duration
-            iconFrame.Cooldown:SetCooldown(startTime, auraData.duration)
-            iconFrame.Cooldown:Show()
-        else
-            iconFrame.Cooldown:Clear()
-        end
-    end
-
-    -- Wire duration data to animated icon controller
-    if isAnimated then
-        local AE = HA.AnimEngine
-        local ctrl = AE and AE.GetActive(iconFrame)
-        if ctrl and ctrl.SetDuration then
-            local dObj = nil
-            local fallbackStart = 0
-            local fallbackTotal = 0
-            if auraData and auraData.auraInstanceID and unit
-               and C_UnitAuras and C_UnitAuras.GetAuraDuration then
-                local dOk, d = pcall(C_UnitAuras.GetAuraDuration, unit, auraData.auraInstanceID)
-                if dOk and d then dObj = d end
-            end
-            if auraData and auraData.expirationTime and auraData.expirationTime > 0
-               and auraData.duration and auraData.duration > 0 then
-                fallbackStart = auraData.expirationTime - auraData.duration
-                fallbackTotal = auraData.duration
-            end
-            -- Pass cached group frame height for descend/ascend travel distance
-            ctrl:SetDuration(dObj, fallbackStart, fallbackTotal, frameHeight)
-        end
-    end
-
-    -- Stack count
-    if auraData and auraData.applications and auraData.applications > 1 then
-        iconFrame.CountText:SetText(tostring(auraData.applications))
-
-        -- Apply per-spell stacksText styling when configured. Defaults from
-        -- HA.STACKS_TEXT_DEFAULTS preserve the historical look (white OUTLINE
-        -- 12pt at BOTTOMRIGHT) when the user hasn't touched the tab.
-        local st = config and rawget(config, "stacksText")
-        local defaults = HA.STACKS_TEXT_DEFAULTS or {}
-        local function stGet(k)
-            if st and st[k] ~= nil then return st[k] end
-            return defaults[k]
-        end
-
-        local fontFace = stGet("fontFace") or "FRIZQT__"
-        local size     = tonumber(stGet("size")) or 12
-        local style    = stGet("style") or "OUTLINE"
-        local anchor   = stGet("anchor") or "BOTTOMRIGHT"
-        local offsetX  = tonumber(stGet("offsetX")) or 0
-        local offsetY  = tonumber(stGet("offsetY")) or 0
-        local colorMode = stGet("colorMode") or "default"
-
-        local fontPath = addon.ResolveFontFace and addon.ResolveFontFace(fontFace)
-        if fontPath then
-            if addon.ApplyFontStyle then
-                -- Routes through Scoot's font-style helper so SHADOW / HEAVY /
-                -- STROKE prefixes render correctly, matching other Scoot text.
-                pcall(addon.ApplyFontStyle, iconFrame.CountText, fontPath, size, style)
-            else
-                pcall(iconFrame.CountText.SetFont, iconFrame.CountText, fontPath, size, style)
-            end
-        end
-
-        if colorMode == "custom" then
-            local c = stGet("customColor") or { 1, 1, 1, 1 }
-            pcall(iconFrame.CountText.SetTextColor, iconFrame.CountText,
-                c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
-        else
-            pcall(iconFrame.CountText.SetTextColor, iconFrame.CountText, 1, 1, 1, 1)
-        end
-
-        iconFrame.CountText:ClearAllPoints()
-        iconFrame.CountText:SetPoint(anchor, iconFrame, anchor, offsetX, offsetY)
-
-        iconFrame.CountText:Show()
-    else
-        iconFrame.CountText:Hide()
-    end
-
-    iconFrame:Show()
-end
-
---------------------------------------------------------------------------------
--- Icon Positioning
---------------------------------------------------------------------------------
-
--- Center-anchor compensation: shift icon CENTER inward so it sits fully within
--- the frame regardless of scale. Only the first icon in an anchor group uses
--- its anchor's full compensation; subsequent icons offset along the group's
--- direction axis.
-local INSIDE_CENTER_OFFSET = {
-    TOPLEFT     = {  1, -1 },  -- push right and down
-    TOP         = {  0, -1 },  -- push down
-    TOPRIGHT    = { -1, -1 },  -- push left and down
-    LEFT        = {  1,  0 },  -- push right
-    CENTER      = {  0,  0 },
-    RIGHT       = { -1,  0 },  -- push left
-    BOTTOMLEFT  = {  1,  1 },  -- push right and up
-    BOTTOM      = {  0,  1 },  -- push up
-    BOTTOMRIGHT = { -1,  1 },  -- push left and up
-}
-table.freeze(INSIDE_CENTER_OFFSET)
 
 local function GetGroupSpacing(anchor)
     local db = addon.db and addon.db.profile
@@ -540,84 +143,114 @@ local function GetGroupSpacing(anchor)
     return 2
 end
 
--- Place a single icon at a given horizontal + vertical offset from its anchor.
--- offsetX/offsetY are relative to the anchor point, measured along the group's
--- direction (the direction multipliers are baked in at the call site). The
--- INSIDE_CENTER_OFFSET compensation keeps the icon tucked inside the frame at
--- its anchor corner; vertical row growth is added on top.
-local function PlaceIcon(iconFrame, groupFrame, anchor, offsetX, offsetY)
-    offsetY = offsetY or 0
-    iconFrame:ClearAllPoints()
-    local halfW = iconFrame:GetWidth() * 0.5
-    local halfH = iconFrame:GetHeight() * 0.5
+-- Splits an iconStyle value into its prefix flags and the style underneath.
+local function ParseStyle(style)
+    style = tostring(style or "spell")
+    local isBordered = style:sub(1, 7) == "border:"
+    local isWide = style:sub(1, 5) == "wide:"
+    local effective = style
+    if isBordered then
+        effective = style:sub(8)
+    elseif isWide then
+        effective = style:sub(6)
+    end
+    return effective, isBordered, isWide
+end
+
+--- The own-cast axis rides the PLAYER filter token and nothing else. The
+--- candidateFilters isFromPlayerOrPlayerPet field is NOT this: field evidence
+--- shows it matches auras cast by any player.
+function HA.SlotFilterString(spellId)
+    local cfg = GetSpellConfig(spellId)
+    if cfg.trackAllSources then return "HELPFUL" end
+    return "HELPFUL|PLAYER"
+end
+
+--- The animation id a slot must be built with, or nil for a static icon. This
+--- is the one part of a slot that cannot be re-styled in place, because an
+--- animation's textures exist only if they were created inside initializeFrame.
+function HA.SlotAnimId(spellId)
+    local effective = ParseStyle(GetSpellConfig(spellId).iconStyle)
+    if effective:sub(1, 5) == "anim:" then
+        return effective:sub(6)
+    end
+    return nil
+end
+
+--- Final on-screen size for one slot, derived from the group frame's height.
+local function SlotSize(entry, spellId)
+    local cfg = GetSpellConfig(spellId)
+    local frameHeight = entry.frameHeight or 36
+    local base = math.max(MIN_ICON_SIZE, frameHeight * BASE_SIZE_RATIO)
+    local userScale = (tonumber(cfg.iconScale) or 100) / 100
+    local size = math.min(MAX_ICON_SIZE, math.max(MIN_ICON_SIZE, base * userScale))
+    local _, _, isWide = ParseStyle(cfg.iconStyle)
+    if isWide then return size * 3, size end
+    return size, size
+end
+
+--------------------------------------------------------------------------------
+-- Geometry (TIER 1: proxies only, legal in combat)
+--------------------------------------------------------------------------------
+
+local function PlaceProxy(proxy, host, anchor, offsetX, offsetY, w, h)
+    proxy:SetSize(w, h)
+    proxy:ClearAllPoints()
     local comp = INSIDE_CENTER_OFFSET[anchor] or INSIDE_CENTER_OFFSET.TOPRIGHT
-    iconFrame:SetPoint(
-        "CENTER", groupFrame, anchor,
-        offsetX + comp[1] * halfW,
-        offsetY + comp[2] * halfH
+    proxy:SetPoint(
+        "CENTER", host, anchor,
+        offsetX + comp[1] * w * 0.5,
+        offsetY + comp[2] * h * 0.5
     )
 end
 
--- Reflow all active icons on a frame: group by anchor, sort by rank, offset
--- each icon from the previous by (prev_w/2 + curr_w/2 + positionGroupSpacing)
--- along the anchor's direction.
-function HA.ReflowIconsForFrame(groupFrame)
-    if not groupFrame then return end
-    local state = HA._getState and HA._getState(groupFrame)
-    if not state or not state.iconFrames then return end
+--- Places every slot proxy on one frame. Buckets by anchor, sorts by priority,
+--- offsets each icon from the previous by half-widths plus the anchor's spacing,
+--- and wraps every COLS_PER_ROW icons.
+---
+--- The bucket is the ENABLED config, not the live icons. Presence is secret, so
+--- a missing aura holds its place rather than letting the group re-pack.
+function HA.LayoutFrame(entry)
+    if not entry or not entry.host then return end
 
-    -- Bucket active icons by anchor key
     local groups = {}
-    for spellId, iconFrame in pairs(state.iconFrames) do
-        local cfg = HA._GetSpellConfig and HA._GetSpellConfig(spellId)
-        if cfg then
-            local anchor = cfg.anchor or "BOTTOMRIGHT"
-            if not HA.INSIDE_ANCHOR_VALUES[anchor] then anchor = "BOTTOMRIGHT" end
-            local rank = tonumber(cfg.rank) or 1
-            groups[anchor] = groups[anchor] or {}
-            table.insert(groups[anchor], {
-                iconFrame = iconFrame,
-                rank      = rank,
-                spellId   = spellId,
-                config    = cfg,
-            })
-        end
+    for _, item in ipairs(HA.EnabledSpellList()) do
+        local cfg = item.config
+        local anchor = cfg.anchor or "BOTTOMRIGHT"
+        if not HA.INSIDE_ANCHOR_VALUES[anchor] then anchor = "BOTTOMRIGHT" end
+        groups[anchor] = groups[anchor] or {}
+        table.insert(groups[anchor], {
+            spellId = item.spellId,
+            config  = cfg,
+            rank    = tonumber(cfg.rank) or 1,
+        })
     end
 
-    -- Sort each group by (rank asc, spellId asc) and lay out in a grid that
-    -- wraps to a new row every COLS_PER_ROW icons. Direction per anchor:
-    --   X  →  ANCHOR_DIRECTION  (±1 per step)
-    --   Y  →  ROW_GROWTH_DIR    (±1 per row)
     for anchor, members in pairs(groups) do
         table.sort(members, function(a, b)
             if a.rank ~= b.rank then return a.rank < b.rank end
-            return (a.spellId or 0) < (b.spellId or 0)
+            return a.spellId < b.spellId
         end)
 
         local spacing = GetGroupSpacing(anchor)
         local xDir = ANCHOR_DIRECTION[anchor] or 1
         local yDir = ROW_GROWTH_DIR[anchor] or -1
 
-        -- Row-step height uses the first icon's height as the canonical row
-        -- step for this anchor. Mixed iconScale groups all step by the same
-        -- amount, which keeps rows visually aligned.
-        local rowStep = 0
-        if members[1] then
-            rowStep = members[1].iconFrame:GetHeight() + spacing
-        end
+        -- Row step uses the first icon's height as the canonical step for this
+        -- anchor, so mixed-scale groups still line their rows up.
+        local _, rowHeight = SlotSize(entry, members[1].spellId)
+        local rowStep = rowHeight + spacing
 
-        local rowCursor = 0  -- running horizontal offset magnitude within the current row
+        local rowCursor = 0   -- running horizontal offset within the current row
         local prevHalfW = 0
         local lastRow = -1
 
-        for idx, entry in ipairs(members) do
-            local iconFrame = entry.iconFrame
-            local halfW = iconFrame:GetWidth() * 0.5
-            local col = (idx - 1) % COLS_PER_ROW
+        for idx, member in ipairs(members) do
+            local w, h = SlotSize(entry, member.spellId)
+            local halfW = w * 0.5
             local row = math.floor((idx - 1) / COLS_PER_ROW)
 
             if row ~= lastRow then
-                -- First icon in this row: reset horizontal cursor.
                 rowCursor = 0
                 prevHalfW = halfW
                 lastRow = row
@@ -626,81 +259,398 @@ function HA.ReflowIconsForFrame(groupFrame)
                 prevHalfW = halfW
             end
 
-            local offsetX = rowCursor * xDir
-            local offsetY = row * rowStep * yDir
+            -- Per-icon fine-tune on top of auto-placement. Raw pixels, never
+            -- multiplied by the direction: +X is always right, +Y always up.
+            local offsetX = rowCursor * xDir + (tonumber(member.config.offsetX) or 0)
+            local offsetY = row * rowStep * yDir + (tonumber(member.config.offsetY) or 0)
 
-            -- Per-icon fine-tune on top of auto-placement. Raw pixels, not
-            -- multiplied by xDir/yDir — +X always means right, +Y always up.
-            local cfg = entry.config
-            offsetX = offsetX + (tonumber(cfg and cfg.offsetX) or 0)
-            offsetY = offsetY + (tonumber(cfg and cfg.offsetY) or 0)
-
-            PlaceIcon(iconFrame, groupFrame, anchor, offsetX, offsetY)
+            local slot = entry.slots[member.spellId]
+            if slot and slot.proxy then
+                PlaceProxy(slot.proxy, entry.host, anchor, offsetX, offsetY, w, h)
+            end
         end
     end
 end
 
--- Back-compat API: per-icon positioning was the old single-pass model. The new
--- rank-grouped model requires whole-frame reflow, so this wraps ReflowIcons.
--- Callers that invoke this per-icon still work, but at O(N*M) total (caller
--- iterates N icons, each call reflows all M siblings). For hot paths prefer
--- calling HA.ReflowIconsForFrame once after all sizing updates are done.
-function HA.PositionIcon(iconFrame, config, groupFrame)
-    HA.ReflowIconsForFrame(groupFrame)
+--------------------------------------------------------------------------------
+-- Engine bindings (TIER 2)
+--------------------------------------------------------------------------------
+
+local function CallBinding(slot, button, methodName, region, options)
+    local fn = button[methodName]
+    if not fn then
+        HA.Engine.SetResult("bind." .. slot.spellId .. "." .. methodName, "method missing")
+        return false
+    end
+    local ok, err
+    if options ~= nil then
+        ok, err = pcall(fn, button, region, options)
+    elseif region ~= nil then
+        ok, err = pcall(fn, button, region)
+    else
+        ok, err = pcall(fn, button)
+    end
+    if not ok then
+        HA.Engine.SetResult("bind." .. slot.spellId .. "." .. methodName,
+            "FAILED: " .. HA.Engine.SafeToString(err))
+    end
+    return ok
+end
+
+--- Binds or clears the engine-driven regions for one slot per its config.
+--- Returns true when everything landed; a false leaves the fingerprint
+--- unstamped so the drain retries.
+function HA.ApplySlotBindings(entry, slot, force)
+    local button = slot.button
+    if not button then return false end
+
+    local cfg = GetSpellConfig(slot.spellId)
+    local effective = ParseStyle(cfg.iconStyle)
+    local isAnimated = effective:sub(1, 5) == "anim:"
+
+    -- The engine stamps the matched aura's own icon on a bound texture. Bind
+    -- only when the user asked for the spell's icon; for atlas, file and
+    -- animated styles the art is Scoot's and must not be overwritten.
+    local wantEngineIcon = (effective == "spell")
+
+    local showDuration = cfg.showDuration
+    if showDuration == nil then showDuration = true end
+    local wantCooldown = showDuration and not isAnimated
+
+    local key = tostring(wantEngineIcon) .. ":" .. tostring(wantCooldown)
+    if not force and slot.bindKey == key then return true end
+
+    local ok = true
+    if wantEngineIcon then
+        ok = CallBinding(slot, button, "SetIcon", slot.icon) and ok
+    else
+        ok = CallBinding(slot, button, "ClearIcon") and ok
+    end
+
+    if wantCooldown then
+        ok = CallBinding(slot, button, "SetDurationCooldown", slot.cooldown) and ok
+    else
+        ok = CallBinding(slot, button, "ClearDurationCooldown") and ok
+        pcall(slot.cooldown.Clear, slot.cooldown)
+    end
+
+    -- Always bound. The engine renders nothing at or below one application on
+    -- its own, which is what the old "applications > 1" test bought.
+    ok = CallBinding(slot, button, "SetApplicationCount", slot.count, {}) and ok
+
+    if ok then slot.bindKey = key end
+    return ok
 end
 
 --------------------------------------------------------------------------------
--- Animation Helpers
+-- Styling (TIER 2)
 --------------------------------------------------------------------------------
 
-function HA.AttachAnimation(iconFrame, animId, config, size)
-    local AE = HA.AnimEngine
-    if not AE then return end
+-- One string per slot describing everything ApplySlotStyle would apply, stamped
+-- ONLY after the work lands. A fingerprint written ahead of a refused call would
+-- make the retry skip it and the button would stay wrong for the session.
+local function StyleKey(cfg, w, h)
+    local c = cfg.iconCustomColor or { 1, 1, 1, 1 }
+    local st = rawget(cfg, "stacksText")
+    local defaults = HA.STACKS_TEXT_DEFAULTS or {}
+    local function stGet(k)
+        if st and st[k] ~= nil then return st[k] end
+        return defaults[k]
+    end
+    return table.concat({
+        w, h,
+        tostring(cfg.iconStyle),
+        tostring(cfg.iconColor),
+        c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1,
+        tostring(cfg.showDuration ~= false),
+        tostring(stGet("fontFace")), tostring(stGet("size")), tostring(stGet("style")),
+        tostring(stGet("colorMode")), tostring(stGet("anchor")),
+        tostring(stGet("offsetX")), tostring(stGet("offsetY")),
+    }, ":")
+end
 
-    -- If same animation is already attached, just update size/color
-    local existing = AE.GetActive(iconFrame)
-    if existing and existing.animId == animId then
-        existing:SetSize(size)
-        HA.ApplyAnimColor(existing, config)
+local function ApplyIconArt(slot, spellId, effective, isBordered)
+    local tex = slot.icon
+    local isAnimated = effective:sub(1, 5) == "anim:"
+
+    if isAnimated then
+        tex:Hide()
+    elseif effective == "spell" then
+        tex:Show()
+        -- The engine overwrites this on every aura assignment; the static paint
+        -- is the pre-match backdrop, and the fallback when the API is unhappy.
+        local spellTex
+        if pcall(function() spellTex = C_Spell.GetSpellTexture(spellId) end) and spellTex then
+            pcall(tex.SetTexture, tex, spellTex)
+        else
+            local reg = HA.SPELL_REGISTRY_BY_ID and HA.SPELL_REGISTRY_BY_ID[spellId]
+            pcall(tex.SetTexture, tex, (reg and reg.textureId) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        end
+    elseif effective:sub(1, 5) == "file:" then
+        tex:Show()
+        pcall(tex.SetTexture, tex, effective:sub(6))
+    else
+        tex:Show()
+        if not pcall(tex.SetAtlas, tex, effective) then
+            pcall(tex.SetTexture, tex, "Interface\\Icons\\INV_Misc_QuestionMark")
+        end
+    end
+
+    -- Border variant: same-shape black backing with a 1px inset on the icon.
+    local border = slot.border
+    if isBordered and border then
+        if not pcall(border.SetAtlas, border, effective) then
+            border:SetColorTexture(0, 0, 0, 1)
+        end
+        border:SetDesaturated(true)
+        border:SetVertexColor(0, 0, 0, 1)
+        border:Show()
+        pcall(function()
+            tex:ClearAllPoints()
+            tex:SetPoint("TOPLEFT", slot.button, "TOPLEFT", 1, -1)
+            tex:SetPoint("BOTTOMRIGHT", slot.button, "BOTTOMRIGHT", -1, 1)
+        end)
+    else
+        if border then border:Hide() end
+        pcall(function()
+            tex:ClearAllPoints()
+            tex:SetAllPoints(slot.button)
+        end)
+    end
+end
+
+local function ApplyIconColor(slot, cfg, isAnimated)
+    local tex = slot.icon
+    local mode = cfg.iconColor or "original"
+
+    if slot.isRainbow then
+        HA.UnregisterRainbowIcon(tex)
+        slot.isRainbow = false
+    end
+
+    if isAnimated then
+        local ctrl = slot.anim
+        if ctrl then
+            if mode == "custom" then
+                local c = cfg.iconCustomColor or { 1, 1, 1, 1 }
+                ctrl:SetColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+            elseif mode == "rainbow" then
+                ctrl.rainbowMode = true
+            else
+                ctrl:SetColor(1, 1, 1, 1)
+            end
+        end
         return
     end
 
-    -- Release old, acquire new
-    AE.Release(iconFrame)
-    local ctrl = AE.Acquire(iconFrame, iconFrame)
-    if not ctrl then return end
-    ctrl:Configure(animId, size)
-    HA.ApplyAnimColor(ctrl, config)
-    ctrl:Play()
-end
-
-function HA.DetachAnimation(iconFrame)
-    local AE = HA.AnimEngine
-    if AE then AE.Release(iconFrame) end
-end
-
-function HA.ApplyAnimColor(ctrl, config)
-    local mode = config.iconColor or "original"
-    if mode == "custom" then
-        local c = config.iconCustomColor or { 1, 1, 1, 1 }
-        ctrl:SetColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
-        ctrl.rainbowMode = false
+    if mode == "original" then
+        pcall(tex.SetDesaturated, tex, false)
+        pcall(tex.SetVertexColor, tex, 1, 1, 1, 1)
     elseif mode == "rainbow" then
-        ctrl.rainbowMode = true
+        pcall(tex.SetDesaturated, tex, true)
+        HA.RegisterRainbowIcon(tex)
+        slot.isRainbow = true
+    elseif mode == "custom" then
+        pcall(tex.SetDesaturated, tex, true)
+        local c = cfg.iconCustomColor or { 1, 1, 1, 1 }
+        pcall(tex.SetVertexColor, tex, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
     else
-        ctrl:SetColor(1, 1, 1, 1)
-        ctrl.rainbowMode = false
+        pcall(tex.SetDesaturated, tex, true)
+        pcall(tex.SetVertexColor, tex, 1, 1, 1, 1)
     end
 end
 
+local function ApplySwipe(slot, spellId, cfg, effective, isAnimated)
+    local cd = slot.cooldown
+    if not cd then return end
+
+    local showDuration = cfg.showDuration
+    if showDuration == nil then showDuration = true end
+
+    if not showDuration or isAnimated then
+        pcall(cd.SetDrawSwipe, cd, false)
+        return
+    end
+
+    pcall(cd.SetDrawSwipe, cd, true)
+    pcall(cd.SetSwipeColor, cd, 0, 0, 0, 0.85)
+    -- Reverse: the swipe GROWS as the aura drains, so a full icon is fresh.
+    pcall(cd.SetReverse, cd, true)
+    pcall(cd.SetDrawEdge, cd, false)
+    pcall(cd.SetDrawBling, cd, false)
+
+    -- Shape the swipe to the icon so the drain follows its silhouette.
+    if effective == "spell" then
+        local swipeTex
+        pcall(function() swipeTex = C_Spell.GetSpellTexture(spellId) end)
+        if not swipeTex then
+            local reg = HA.SPELL_REGISTRY_BY_ID and HA.SPELL_REGISTRY_BY_ID[spellId]
+            swipeTex = reg and reg.textureId
+        end
+        if swipeTex then pcall(cd.SetSwipeTexture, cd, swipeTex) end
+    elseif effective:sub(1, 5) == "file:" then
+        pcall(cd.SetSwipeTexture, cd, effective:sub(6))
+    else
+        local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(effective)
+        if info and (info.file or info.filename) then
+            pcall(cd.SetSwipeTexture, cd, info.file or info.filename)
+            pcall(function()
+                cd:SetTexCoordRange(
+                    { x = info.leftTexCoord, y = info.topTexCoord },
+                    { x = info.rightTexCoord, y = info.bottomTexCoord }
+                )
+            end)
+        end
+    end
+end
+
+local function ApplyStacksText(slot, cfg)
+    local fs = slot.count
+    if not fs then return end
+
+    local st = rawget(cfg, "stacksText")
+    local defaults = HA.STACKS_TEXT_DEFAULTS or {}
+    local function stGet(k)
+        if st and st[k] ~= nil then return st[k] end
+        return defaults[k]
+    end
+
+    local fontFace = stGet("fontFace") or "FRIZQT__"
+    local size     = tonumber(stGet("size")) or 12
+    local style    = stGet("style") or "OUTLINE"
+    local anchor   = stGet("anchor") or "BOTTOMRIGHT"
+    local offsetX  = tonumber(stGet("offsetX")) or 0
+    local offsetY  = tonumber(stGet("offsetY")) or 0
+
+    local fontPath = addon.ResolveFontFace and addon.ResolveFontFace(fontFace)
+    if fontPath then
+        if addon.ApplyFontStyle then
+            -- Routes through Scoot's font-style helper so SHADOW and HEAVY
+            -- prefixes render the same as every other Scoot text.
+            pcall(addon.ApplyFontStyle, fs, fontPath, size, style)
+        else
+            pcall(fs.SetFont, fs, fontPath, size, style)
+        end
+    end
+
+    if stGet("colorMode") == "custom" then
+        local c = stGet("customColor") or { 1, 1, 1, 1 }
+        pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+    else
+        pcall(fs.SetTextColor, fs, 1, 1, 1, 1)
+    end
+
+    pcall(function()
+        fs:ClearAllPoints()
+        fs:SetPoint(anchor, slot.button, anchor, offsetX, offsetY)
+    end)
+end
+
+--- Full visual pass for one slot. Returns true when everything landed.
+function HA.ApplySlotStyle(entry, slot, force)
+    local button = slot.button
+    if not button then return false end
+
+    local cfg = GetSpellConfig(slot.spellId)
+    local w, h = SlotSize(entry, slot.spellId)
+    local key = StyleKey(cfg, w, h)
+    if not force and slot.styleKey == key then return true end
+
+    local effective, isBordered = ParseStyle(cfg.iconStyle)
+    local isAnimated = effective:sub(1, 5) == "anim:"
+
+    ApplyIconArt(slot, slot.spellId, effective, isBordered)
+    -- Configure before coloring: the controller resolves its color through the
+    -- animation definition, which it does not have until it is configured.
+    if isAnimated and slot.anim then
+        slot.anim:Configure(effective:sub(6), math.min(w, h))
+    end
+    ApplyIconColor(slot, cfg, isAnimated)
+    ApplySwipe(slot, slot.spellId, cfg, effective, isAnimated)
+    ApplyStacksText(slot, cfg)
+
+    if slot.anim then
+        if isAnimated then slot.anim:Play() else slot.anim:Stop() end
+    end
+
+    local ok = HA.ApplySlotBindings(entry, slot, force)
+    if ok then slot.styleKey = key end
+    return ok
+end
+
+--- Every slot on one frame. Returns true when nothing was refused.
+function HA.ApplyFrameStyle(entry)
+    if not entry or not entry.slots then return true end
+    if not HA.Engine.CanDoStructuralWork() then return false end
+    local allOk = true
+    for _, slot in pairs(entry.slots) do
+        if slot.button and not HA.ApplySlotStyle(entry, slot) then allOk = false end
+    end
+    return allOk
+end
+
 --------------------------------------------------------------------------------
--- Initialization
+-- Button wiring (runs inside initializeFrame)
 --------------------------------------------------------------------------------
 
--- Pre-allocate icon pool after PLAYER_ENTERING_WORLD
-local initFrame = CreateFrame("Frame")
-initFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-initFrame:SetScript("OnEvent", function(self)
-    PreallocatePool()
-    self:UnregisterAllEvents()
-end)
+--- Creates every region for one slot and applies its first style pass. The
+--- caller pcalls this: a throw here aborts the engine's whole frame batch.
+function HA.WireButton(entry, slot, button)
+    -- Anchor to the proxy and never to anything else. This is what makes every
+    -- later move and resize legal in combat.
+    button:ClearAllPoints()
+    button:SetAllPoints(slot.proxy)
+
+    -- Clicks off HERE and only here: a post-creation write is refused exactly
+    -- while auras are secret, which is exactly when a live click surface over a
+    -- group frame would steal targeting. Motion off too; this feature has no
+    -- tooltips and the button's intrinsic one would fire on hover.
+    pcall(button.SetMouseClickEnabled, button, false)
+    pcall(button.SetMouseMotionEnabled, button, false)
+
+    -- Border backing, under the icon: only the inset margin is ever visible.
+    local border = button:CreateTexture(nil, "BACKGROUND", nil, 0)
+    border:SetAllPoints(button)
+    border:Hide()
+    slot.border = border
+
+    local tex = button:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints(button)
+    slot.icon = tex
+
+    local cd = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+    cd:SetAllPoints(button)
+    cd:EnableMouse(false)
+    cd:SetDrawEdge(false)
+    cd:SetDrawBling(false)
+    cd:SetHideCountdownNumbers(true)
+    cd:SetReverse(true)
+    cd:SetDrawSwipe(false)
+    slot.cooldown = cd
+
+    -- Text above the swipe so the stack count stays opaque at any drain depth.
+    -- A child-of-child FontString is accepted: ScootAuras wires its elements
+    -- through exactly this shape and that path is verified in game.
+    local textHost = CreateFrame("Frame", nil, button)
+    textHost:SetAllPoints(button)
+    textHost:EnableMouse(false)
+    local lok, level = pcall(button.GetFrameLevel, button)
+    if lok and type(level) == "number" and not issecretvalue(level) then
+        textHost:SetFrameLevel(level + 5)
+    end
+    slot.textHost = textHost
+
+    local count = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+    slot.count = count
+
+    -- Animated styles need their controller born here or never: a frame created
+    -- after initializeFrame can no longer be parented into the button tree.
+    if slot.animId and HA.AnimEngine and HA.AnimEngine.CreateOwned then
+        slot.anim = HA.AnimEngine.CreateOwned(button)
+    end
+
+    -- Style now. A slot is created long after the last full pass in the common
+    -- case, and this is the one moment a brand new button is always touchable.
+    HA.ApplySlotStyle(entry, slot, true)
+end

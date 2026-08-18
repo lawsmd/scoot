@@ -1181,6 +1181,11 @@ function Profiles:OnProfileChanged(_, _, newProfileKey)
     if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
         addon.ScootAuras.ReconcileForActiveProfile("OnProfileChanged")
     end
+    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
+        -- Group-frame aura slots are per-profile: a switch has to retire the
+        -- old profile's spells and point slots at the new ones.
+        addon.AuraTracking.OnConfigChanged()
+    end
     self._lastActiveLayout = newProfileKey
     self:RequestSync("ProfileChanged")
 end
@@ -1200,6 +1205,11 @@ function Profiles:OnProfileCopied(_, _, sourceKey)
     if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
         addon.ScootAuras.ReconcileForActiveProfile("OnProfileCopied")
     end
+    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
+        -- Group-frame aura slots are per-profile: a switch has to retire the
+        -- old profile's spells and point slots at the new ones.
+        addon.AuraTracking.OnConfigChanged()
+    end
     self:RequestSync("ProfileCopied")
 end
 
@@ -1217,6 +1227,11 @@ function Profiles:OnProfileReset()
     end
     if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
         addon.ScootAuras.ReconcileForActiveProfile("OnProfileReset")
+    end
+    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
+        -- Group-frame aura slots are per-profile: a switch has to retire the
+        -- old profile's spells and point slots at the new ones.
+        addon.AuraTracking.OnConfigChanged()
     end
     self:RequestSync("ProfileReset")
 end

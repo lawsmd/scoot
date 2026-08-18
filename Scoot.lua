@@ -176,6 +176,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug auracontainer [start|stop|probes|filters|suppress|log]")
             addon:Print("  /scoot debug scootauras [add|del|edit|enable|disable|list|reconcile|flush|methods|create|park|revive|fresh|repoint|parkfilter|setunit|budget|clear|log]")
             addon:Print("  /scoot debug ufzauras [log|apply|kick]   (Unit Frames Z aura rows)")
+            addon:Print("  /scoot debug gfauras [log|filters|refresh]  (group frame aura tracking)")
             return
         end
 
@@ -577,6 +578,17 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugUFZAuras(sub2)
             else
                 addon:Print("Unit Frames Z aura debug not available.")
+            end
+            return
+        end
+
+        -- /scoot debug gfauras [log|filters|refresh]
+        -- Group frame aura tracking (12.1 AuraContainer port telemetry)
+        if sub1 == "gfauras" or sub1 == "gfa" then
+            if addon.DebugGroupAuras then
+                addon.DebugGroupAuras(sub2)
+            else
+                addon:Print("Group frame aura debug not available.")
             end
             return
         end

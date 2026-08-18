@@ -2,11 +2,19 @@
 -- groupauras/core.lua
 -- Aura Tracking on group frames (party + raid)
 --
--- Renders custom Scoot-styled icons for tracked auras. Spell registry,
--- event handling, active-set management, rainbow color engine, graceful
--- degradation. Hiding Blizzard's own buff icons is handled by the
--- raidFramesDisplayBuffs CVar (see ApplyGroupBuffIconsHiddenForActiveProfile
--- in core/profiles/core.lua), not by anything in this component.
+-- Spell registry, priority ordering, the enabled-spell list, frame discovery,
+-- events and the rainbow color engine. Containers and slots live in
+-- engine.lua; button regions, styling and geometry live in icons.lua.
+--
+-- The registry is a list of curated suggestions, not a capability boundary.
+-- Under the 12.1 AuraContainer the engine matches spell IDs on its own side,
+-- so any helpful aura on a group member is trackable; the table exists to give
+-- the settings UI something to show. That is a change from the pre-12.1 design,
+-- where the list named the few spells Blizzard had un-secreted.
+--
+-- Hiding Blizzard's own buff icons is handled by the raidFramesDisplayBuffs
+-- CVar (see ApplyGroupBuffIconsHiddenForActiveProfile in core/profiles/core.lua),
+-- not by anything in this component.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -14,7 +22,6 @@ local addonName, addon = ...
 addon.AuraTracking = addon.AuraTracking or {}
 local HA = addon.AuraTracking
 
-local IsAuraFilteredOutByInstanceID = C_UnitAuras and C_UnitAuras.IsAuraFilteredOutByInstanceID
 
 --------------------------------------------------------------------------------
 -- Spell Registry
@@ -153,17 +160,24 @@ table.freeze(HA.LINKED_TO_PRIMARY)
 
 -- spellId → registry entry (for textureId lookup; includes linkedIds → parent entry)
 HA.SPELL_REGISTRY_BY_ID = {}
-for _, spells in pairs(HA.SPELL_REGISTRY) do
+-- spellId → owning class token. Needed because positions are fixed: a spell the
+-- player cannot cast would otherwise hold an empty slot forever (see
+-- RebuildEnabledSpells).
+HA.SPELL_CLASS_BY_ID = {}
+for classToken, spells in pairs(HA.SPELL_REGISTRY) do
     for _, entry in ipairs(spells) do
         HA.SPELL_REGISTRY_BY_ID[entry.id] = entry
+        HA.SPELL_CLASS_BY_ID[entry.id] = classToken
         if entry.linkedIds then
             for _, linkedId in ipairs(entry.linkedIds) do
                 HA.SPELL_REGISTRY_BY_ID[linkedId] = entry
+                HA.SPELL_CLASS_BY_ID[linkedId] = classToken
             end
         end
     end
 end
 table.freeze(HA.SPELL_REGISTRY_BY_ID)
+table.freeze(HA.SPELL_CLASS_BY_ID)
 
 --------------------------------------------------------------------------------
 -- Per-Spell Default Settings
@@ -346,86 +360,63 @@ function HA.ReorderRank(anchor, spellId, newRank)
 end
 
 --------------------------------------------------------------------------------
--- Active Tracked Set
+-- Enabled Spell List
 --------------------------------------------------------------------------------
--- Rebuilt when user changes config. Only enabled spells are in this set.
+-- The set of spells that get a container slot. Rebuilt on every config change
+-- and read by the engine and the layout pass, so it is cached rather than
+-- walked twice per frame.
+--
+-- Linked registry variants (the per-class Blessing of the Bronze IDs and the
+-- like) do NOT get their own slot: they fold into their parent's
+-- includeSpellIDs set, where the engine matches them.
 --------------------------------------------------------------------------------
 
-HA.ACTIVE_TRACKED_IDS = {}
+local enabledSpells = {}
+local enabledDirty = true
 
-function HA.RebuildActiveTrackedSet()
-    wipe(HA.ACTIVE_TRACKED_IDS)
+--- True when an enabled spell can ever produce an icon for this character.
+---
+--- Positions are fixed since the 12.1 port, so every entry in this list holds a
+--- slot whether or not the aura is ever present. That makes an unreachable spell
+--- a visible defect rather than a harmless no-op: the settings page shows one
+--- class tab at a time, so a spell enabled while browsing another class stays
+--- invisible in the UI and silently pushes this character's own icons along the
+--- row. Own-casts-only cannot match a spell this class does not have, so drop it.
+--- "Track all sources" keeps it: watching the raid druid's Rejuvenation as a
+--- priest is a real thing to want.
+local function ReachableByPlayer(spellId, config)
+    if config.trackAllSources then return true end
+    local owner = HA.SPELL_CLASS_BY_ID[spellId]
+    if not owner then return true end
+    local _, playerClass = UnitClass("player")
+    if not playerClass then return true end
+    return owner == playerClass
+end
+HA.ReachableByPlayer = ReachableByPlayer
+
+function HA.RebuildEnabledSpells()
+    wipe(enabledSpells)
     local db = addon.db and addon.db.profile
-    local gf = db and db.groupFrames
-    local ha = gf and gf.auraTracking
+    local ha = db and db.groupFrames and db.groupFrames.auraTracking
     local spells = ha and ha.spells
-    if not spells then return end
-    for spellId, config in pairs(spells) do
-        -- Only track spells that exist in the registry (ignore stale DB entries)
-        if config.enabled and HA.SPELL_REGISTRY_BY_ID[spellId] then
-            local trackMode = config.trackAllSources and "all" or "player"
-            HA.ACTIVE_TRACKED_IDS[spellId] = trackMode
-            -- Also add all linked variants (e.g., Blessing of the Bronze per-class IDs)
-            for _, classSpells in pairs(HA.SPELL_REGISTRY) do
-                for _, entry in ipairs(classSpells) do
-                    if entry.id == spellId and entry.linkedIds then
-                        for _, linkedId in ipairs(entry.linkedIds) do
-                            HA.ACTIVE_TRACKED_IDS[linkedId] = trackMode
-                        end
-                    end
-                end
+    if spells then
+        for spellId, config in pairs(spells) do
+            -- Ignore stale DB entries for spells no longer in the registry
+            if config.enabled and HA.SPELL_REGISTRY_BY_ID[spellId]
+                and ReachableByPlayer(spellId, config) then
+                table.insert(enabledSpells, { spellId = spellId, config = config })
             end
         end
+        -- Deterministic order so slot creation and layout agree run to run
+        table.sort(enabledSpells, function(a, b) return a.spellId < b.spellId end)
     end
+    enabledDirty = false
+    return enabledSpells
 end
 
---------------------------------------------------------------------------------
--- Weak-keyed State Table (taint prevention)
---------------------------------------------------------------------------------
--- Stores all Scoot state per CompactUnitFrame externally.
--- Never write properties directly to Blizzard frames.
---------------------------------------------------------------------------------
-
-local AuraTrackingState = setmetatable({}, { __mode = "k" })
-
-local function getState(frame)
-    if not frame then return nil end
-    return AuraTrackingState[frame]
-end
-
-local function ensureState(frame)
-    if not frame then return nil end
-    if not AuraTrackingState[frame] then
-        AuraTrackingState[frame] = {
-            unit = nil,
-            iconFrames = {},
-        }
-    end
-    return AuraTrackingState[frame]
-end
-
--- Export for icons.lua
-HA._getState = getState
-HA._ensureState = ensureState
-
---------------------------------------------------------------------------------
--- Group Unit Token Set
---------------------------------------------------------------------------------
-
-local GROUP_UNITS = {}
-
-local function RebuildGroupUnits()
-    wipe(GROUP_UNITS)
-    GROUP_UNITS["player"] = true
-    if IsInRaid() then
-        for i = 1, 40 do
-            GROUP_UNITS["raid" .. i] = true
-        end
-    else
-        for i = 1, 4 do
-            GROUP_UNITS["party" .. i] = true
-        end
-    end
+function HA.EnabledSpellList()
+    if enabledDirty then HA.RebuildEnabledSpells() end
+    return enabledSpells
 end
 
 --------------------------------------------------------------------------------
@@ -452,27 +443,28 @@ end
 --------------------------------------------------------------------------------
 -- Rainbow Color Engine
 --------------------------------------------------------------------------------
--- Shared OnUpdate frame, self-disabling when no rainbow icons are active.
--- All icons in rainbow mode share the same hue phase for visual coherence.
+-- Shared OnUpdate frame, self-disabling when no rainbow icon is registered.
+-- Hue comes from GetTime() so static icons and animated controllers share one
+-- phase without sharing state.
+--
+-- Registered textures are colored unconditionally. They hang under engine aura
+-- buttons whose shown state is a SECRET, so IsVisible() on one returns a secret
+-- boolean and testing it throws. Painting a hidden texture costs nothing.
 --------------------------------------------------------------------------------
 
 HA._rainbowIcons = {}
 local rainbowIcons = HA._rainbowIcons
 local RAINBOW_CYCLE_PERIOD = 3.0
-local rainbowHue = 0
 
 local rainbowFrame = CreateFrame("Frame")
-rainbowFrame:SetScript("OnUpdate", function(self, elapsed)
+rainbowFrame:SetScript("OnUpdate", function(self)
     if not next(rainbowIcons) then
         self:Hide()
         return
     end
-    rainbowHue = (rainbowHue + elapsed / RAINBOW_CYCLE_PERIOD) % 1
-    local r, g, b = HA.HSVtoRGB(rainbowHue, 0.75, 1)
+    local r, g, b = HA.HSVtoRGB((GetTime() / RAINBOW_CYCLE_PERIOD) % 1, 0.75, 1)
     for tex in pairs(rainbowIcons) do
-        if tex:IsVisible() then
-            tex:SetVertexColor(r, g, b, 1)
-        end
+        pcall(tex.SetVertexColor, tex, r, g, b, 1)
     end
 end)
 rainbowFrame:Hide()
@@ -487,40 +479,27 @@ function HA.UnregisterRainbowIcon(texture)
 end
 
 --------------------------------------------------------------------------------
--- Graceful Degradation
+-- Group Unit Token Set
 --------------------------------------------------------------------------------
 
-HA._featureAvailable = nil
+local GROUP_UNITS = {}
 
-function HA.IsFeatureAvailable()
-    if HA._featureAvailable ~= nil then
-        return HA._featureAvailable
-    end
-    -- Test a canary spell to see if aura data is readable
-    local ok, info = pcall(function()
-        return C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(774) -- Rejuvenation
-    end)
-    if not ok or not info then
-        HA._featureAvailable = false
-        return false
-    end
-    -- Check if spellID is a secret value
-    if issecretvalue and pcall(issecretvalue, info.spellID) then
-        local isSecret = issecretvalue(info.spellID)
-        if isSecret then
-            HA._featureAvailable = false
-            return false
+local function RebuildGroupUnits()
+    wipe(GROUP_UNITS)
+    GROUP_UNITS["player"] = true
+    if IsInRaid() then
+        for i = 1, 40 do
+            GROUP_UNITS["raid" .. i] = true
+        end
+    else
+        for i = 1, 4 do
+            GROUP_UNITS["party" .. i] = true
         end
     end
-    HA._featureAvailable = true
-    return true
 end
 
 --------------------------------------------------------------------------------
--- Frame-to-Unit Mapping
---------------------------------------------------------------------------------
--- Hooks CompactUnitFrame_SetUnit to cache which unit token each frame has.
--- This avoids reading frame.unit directly (which could be tainted).
+-- Edit Mode guard
 --------------------------------------------------------------------------------
 
 local function IsEditModeOpen()
@@ -539,6 +518,53 @@ local function IsEditModeOpen()
     return false
 end
 
+--------------------------------------------------------------------------------
+-- Frame discovery
+--------------------------------------------------------------------------------
+-- Frames are found by their documented global names, never guessed. A frame
+-- with no unit, or one that is not visible, is parked rather than skipped: its
+-- container would otherwise keep drawing the last subject's auras.
+
+local function SyncFrame(frame)
+    if not frame then return end
+    local unitOk, unit = pcall(function() return frame.unit end)
+    if not unitOk or issecretvalue(unit) or type(unit) ~= "string" then unit = nil end
+
+    local visOk, vis = pcall(frame.IsVisible, frame)
+    if unit and GROUP_UNITS[unit] and visOk and vis then
+        HA.Engine.SyncFrame(frame, unit)
+    else
+        HA.Engine.HideFrame(frame)
+    end
+end
+
+local function DiscoverGroupFrames()
+    for i = 1, 5 do
+        SyncFrame(_G["CompactPartyFrameMember" .. i])
+    end
+    for i = 1, 40 do
+        SyncFrame(_G["CompactRaidFrame" .. i])
+    end
+end
+HA._DiscoverGroupFrames = DiscoverGroupFrames
+
+--- Discovery IS the refresh: SyncFrame runs on every named group frame, and a
+--- frame that lost its unit or its visibility gets parked by the same pass.
+--- Frames Blizzard creates outside the name list arrive through the
+--- CompactUnitFrame_SetUnit hook instead.
+function HA.RefreshAllAuraDisplays()
+    if IsEditModeOpen() then return end
+    DiscoverGroupFrames()
+end
+
+--------------------------------------------------------------------------------
+-- Frame-to-Unit Mapping
+--------------------------------------------------------------------------------
+-- CompactUnitFrame_SetUnit hands the unit token as an argument, so nothing has
+-- to read it off the frame. Re-pointing a container's subject is Tier 1, which
+-- is why a roster change mid-fight still lands.
+--------------------------------------------------------------------------------
+
 local frameToUnitHookInstalled = false
 
 local function InstallFrameToUnitHook()
@@ -549,315 +575,76 @@ local function InstallFrameToUnitHook()
         if not frame then return end
         -- Skip during Edit Mode to avoid taint propagation
         if IsEditModeOpen() then return end
-        local state = ensureState(frame)
-        state.unit = unit
-        -- Cache frame height while the reference is safe (OOC context)
-        if not InCombatLockdown() then
-            local ok, h = pcall(frame.GetHeight, frame)
-            if ok and type(h) == "number" and h > 0 then
-                state.cachedHeight = h
-            end
-        end
+
         if unit and GROUP_UNITS[unit] then
             local visOk, vis = pcall(frame.IsVisible, frame)
             if visOk and vis then
-                HA.UpdateAurasForFrame(frame, unit)
-            else
-                HA.HideAllAurasForFrame(frame)
+                HA.Engine.SetSubject(frame, unit)
+                return
             end
-        else
-            HA.HideAllAurasForFrame(frame)
         end
+        HA.Engine.HideFrame(frame)
     end)
 
     frameToUnitHookInstalled = true
 end
 
 --------------------------------------------------------------------------------
--- Aura Scanning
---------------------------------------------------------------------------------
-
-local function ScanAurasForUnit(unit)
-    local found = {}
-    if not unit or not AuraUtil or not AuraUtil.ForEachAura then return found, false end
-
-    local ok = pcall(function()
-        AuraUtil.ForEachAura(unit, "HELPFUL", nil, function(aura)
-            -- Secret checks first: truthiness on a secret entry/field throws
-            -- (contained by the outer pcall, but it would abort the whole scan)
-            if issecretvalue(aura) or type(aura) ~= "table" then return end
-            local spellId = aura.spellId
-            -- Skip secret spellIds individually (don't abort the whole scan)
-            if issecretvalue(spellId) or not spellId then return end
-            local trackMode = HA.ACTIVE_TRACKED_IDS[spellId]
-            if trackMode then
-                -- Source filtering: only show auras cast by the local player unless
-                -- the spell is configured for "all sources" mode.
-                if trackMode == "player" then
-                    local src = aura.sourceUnit
-                    local isMine = nil
-                    if src and not (issecretvalue and issecretvalue(src)) then
-                        isMine = (src == "player" or src == "pet")
-                    end
-                    if isMine == nil and IsAuraFilteredOutByInstanceID then
-                        local iid = aura.auraInstanceID
-                        if iid and not (issecretvalue and issecretvalue(iid)) then
-                            local ok2, filtered = pcall(IsAuraFilteredOutByInstanceID, unit, iid, "HELPFUL|PLAYER")
-                            if ok2 then isMine = not filtered end
-                        end
-                    end
-                    if isMine == false then return end
-                end
-
-                -- Sanitize every stored field: consumers (icons.lua) boolean-test
-                -- these outside any pcall, so the produced table must be plain-only
-                local icon = aura.icon
-                if issecretvalue(icon) then icon = nil end
-                local duration = aura.duration
-                if issecretvalue(duration) then duration = nil end
-                local expirationTime = aura.expirationTime
-                if issecretvalue(expirationTime) then expirationTime = nil end
-                local applications = aura.applications
-                if issecretvalue(applications) then applications = nil end
-                local auraInstanceID = aura.auraInstanceID
-                if issecretvalue(auraInstanceID) then auraInstanceID = nil end
-
-                found[spellId] = {
-                    spellId = spellId,
-                    icon = icon,
-                    duration = duration or 0,
-                    expirationTime = expirationTime or 0,
-                    applications = applications or 0,
-                    auraInstanceID = auraInstanceID,
-                }
-            end
-        end, true) -- usePackedAura = true
-    end)
-
-    return found, ok
-end
-
-function HA.UpdateAurasForFrame(frame, unit)
-    if not frame or not unit then return end
-    -- Don't show icons on hidden frames — they're UIParent-parented and would float visibly
-    local okVis, visible = pcall(frame.IsVisible, frame)
-    if not okVis or not visible then
-        HA.HideAllAurasForFrame(frame)
-        return
-    end
-    if not next(HA.ACTIVE_TRACKED_IDS) then
-        HA.HideAllAurasForFrame(frame)
-        return
-    end
-
-    -- Skip during Edit Mode
-    if IsEditModeOpen() then return end
-
-    local state = ensureState(frame)
-    local currentAuras, scanOk = ScanAurasForUnit(unit)
-
-    -- 12.1: when aura data is secret in combat the scan aborts and reports
-    -- nothing. Releasing icons on that empty result would strip every tracked
-    -- icon at the pull. Freeze the current icon set instead; swipes keep
-    -- draining from their DurationObjects, and the regen refresh re-syncs.
-    if scanOk then
-        -- Hide icons for auras no longer present
-        for spellId, iconFrame in pairs(state.iconFrames) do
-            if not currentAuras[spellId] then
-                if HA.ReleaseIcon then
-                    HA.ReleaseIcon(iconFrame)
-                end
-                state.iconFrames[spellId] = nil
-            end
-        end
-
-        -- Show/update icons for present auras
-        for spellId, auraData in pairs(currentAuras) do
-            local iconFrame = state.iconFrames[spellId]
-            if not iconFrame and HA.AcquireIcon then
-                iconFrame = HA.AcquireIcon(frame)
-                state.iconFrames[spellId] = iconFrame
-            end
-            if iconFrame and HA.StyleIcon then
-                HA.StyleIcon(iconFrame, spellId, auraData, frame, unit)
-            end
-        end
-
-        -- Single-pass layout for the whole frame: groups icons by anchor, sorts by
-        -- rank, offsets cumulatively. Individual StyleIcon calls above also trigger
-        -- reflow via HA.PositionIcon, but running once more here catches any ordering
-        -- where a later-added icon needs to push earlier siblings.
-        if HA.ReflowIconsForFrame then
-            HA.ReflowIconsForFrame(frame)
-        end
-    end
-end
-
-function HA.HideAllAurasForFrame(frame)
-    if not frame then return end
-    local state = getState(frame)
-    if not state then return end
-    for spellId, iconFrame in pairs(state.iconFrames) do
-        if HA.ReleaseIcon then
-            HA.ReleaseIcon(iconFrame)
-        end
-    end
-    wipe(state.iconFrames)
-end
-
-local function DiscoverGroupFrames()
-    -- Party frames: CompactPartyFrameMember1..5
-    for i = 1, 5 do
-        local frame = _G["CompactPartyFrameMember" .. i]
-        if frame then
-            local ok, unit = pcall(function() return frame.unit end)
-            if ok and unit and GROUP_UNITS[unit] then
-                -- Skip hidden frames: icons are UIParent-parented, so they'd float visibly
-                local visOk, vis = pcall(frame.IsVisible, frame)
-                if visOk and vis then
-                    local state = ensureState(frame)
-                    state.unit = unit
-                    if not InCombatLockdown() then
-                        local hOk, h = pcall(frame.GetHeight, frame)
-                        if hOk and type(h) == "number" and h > 0 then
-                            state.cachedHeight = h
-                        end
-                    end
-                end
-            end
-        end
-    end
-    -- Raid frames: CompactRaidFrame1..40
-    for i = 1, 40 do
-        local frame = _G["CompactRaidFrame" .. i]
-        if frame then
-            local ok, unit = pcall(function() return frame.unit end)
-            if ok and unit and GROUP_UNITS[unit] then
-                -- Skip hidden frames: icons are UIParent-parented, so they'd float visibly
-                local visOk, vis = pcall(frame.IsVisible, frame)
-                if visOk and vis then
-                    local state = ensureState(frame)
-                    state.unit = unit
-                    if not InCombatLockdown() then
-                        local hOk, h = pcall(frame.GetHeight, frame)
-                        if hOk and type(h) == "number" and h > 0 then
-                            state.cachedHeight = h
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
-function HA.RefreshAllAuraDisplays()
-    DiscoverGroupFrames()
-    for frame, state in pairs(AuraTrackingState) do
-        if state.unit and GROUP_UNITS[state.unit] then
-            HA.UpdateAurasForFrame(frame, state.unit)
-        else
-            HA.HideAllAurasForFrame(frame)
-        end
-    end
-end
-
---------------------------------------------------------------------------------
 -- Config Change Refresh
 --------------------------------------------------------------------------------
--- When user enables/disables a spell, rebuild tracked set and refresh all
--- custom icons.
+-- Enable, disable, restyle and re-anchor all land here. Slot creation is the
+-- only part that needs an open structural window; retiring a slot, re-pointing
+-- its filters and moving its proxy are all legal in combat, so a change made
+-- mid-fight is not simply dropped.
 --------------------------------------------------------------------------------
 
 function HA.OnConfigChanged()
-    HA.RebuildActiveTrackedSet()
-
-    if InCombatLockdown() then
-        -- Deferred: the PLAYER_REGEN_ENABLED handler refreshes unconditionally
-        return
-    end
-
+    enabledDirty = true
+    HA.RebuildEnabledSpells()
+    -- Discovery, not a walk of known frames: the first aura a user ever enables
+    -- has no containers yet, and Zero-Touch means nothing was built to walk.
     HA.RefreshAllAuraDisplays()
 end
 
 --------------------------------------------------------------------------------
 -- Event Frame
 --------------------------------------------------------------------------------
+-- UNIT_AURA is deliberately absent. The container tracks its own unit inside
+-- the engine, and an addon-side aura scan is exactly the thing 12.1 removed.
 
 local eventFrame = CreateFrame("Frame")
 
-eventFrame:SetScript("OnEvent", function(self, event, ...)
+eventFrame:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
-        if not HA.IsFeatureAvailable() then
-            -- One-time warning
-            if not HA._secretWarningShown then
-                HA._secretWarningShown = true
-                -- Only warn if user has any spells configured
-                local db = addon.db and addon.db.profile
-                local ha = db and db.groupFrames and db.groupFrames.auraTracking
-                if ha and ha.spells and next(ha.spells) then
-                    addon:Print("Aura Tracking is unavailable: aura data is protected.")
-                end
-            end
-            return
-        end
-
         RebuildGroupUnits()
         InstallFrameToUnitHook()
-        HA.RebuildActiveTrackedSet()
+        HA.RebuildEnabledSpells()
 
-        -- Delayed initial scan (frames need time to initialize)
-        C_Timer.After(1.0, function()
-            HA.RefreshAllAuraDisplays()
-        end)
-
-    elseif event == "UNIT_AURA" then
-        local unit = ...
-        if not GROUP_UNITS[unit] then return end
-        -- Nothing to do when no tracked spells are enabled
-        if not next(HA.ACTIVE_TRACKED_IDS) then return end
-
-        -- Find the frame for this unit and refresh its custom icons.
-        local found = false
-        for frame, state in pairs(AuraTrackingState) do
-            if state.unit == unit then
-                HA.UpdateAurasForFrame(frame, unit)
-                found = true
-            end
-        end
-        if not found then
-            DiscoverGroupFrames()
-            for frame, state in pairs(AuraTrackingState) do
-                if state.unit == unit then
-                    HA.UpdateAurasForFrame(frame, unit)
-                end
-            end
-        end
+        -- Compact frames need a moment to exist and take their units
+        C_Timer.After(1.0, HA.RefreshAllAuraDisplays)
 
     elseif event == "GROUP_ROSTER_UPDATE" then
         RebuildGroupUnits()
-        C_Timer.After(0.1, function()
-            HA.RefreshAllAuraDisplays()
-        end)
+        C_Timer.After(0.1, HA.RefreshAllAuraDisplays)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
-        -- Unconditional: icons frozen during combat secrecy must re-sync even
-        -- when no post-combat UNIT_AURA arrives to trigger it, and this also
-        -- covers config changes deferred by OnConfigChanged during combat
+        -- Frames hidden or re-pointed during the fight, and any slot the engine
+        -- refused to build while auras were secret. The engine's own drain
+        -- watcher covers the queue; this covers discovery.
         HA.RefreshAllAuraDisplays()
     end
 end)
 
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("UNIT_AURA")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 --------------------------------------------------------------------------------
 -- Edit Mode Exit Repaint
 --------------------------------------------------------------------------------
--- UpdateAurasForFrame refuses to run while Edit Mode is open or transitioning,
--- so nothing repaints the custom icons on Edit Mode exit unless this hook does.
--- Hook EditModeManagerFrame's OnHide directly; it fires reliably even when the
+-- Nothing repaints on Edit Mode exit unless this hook does: the guards above
+-- refuse to run while Edit Mode is open or transitioning. Hook
+-- EditModeManagerFrame's OnHide directly; it fires reliably even when the
 -- EventRegistry exit callback does not (observed under 12.0.5).
 --------------------------------------------------------------------------------
 
@@ -869,8 +656,7 @@ local function InstallEditModeExitHook()
         -- MarkExitingEditMode keeps the transition flag true for ~1s; defer the
         -- repaint past that window so IsEditModeOpen() does not block it.
         C_Timer.After(1.05, function()
-            if InCombatLockdown() then return end
-            if HA.RefreshAllAuraDisplays then HA.RefreshAllAuraDisplays() end
+            HA.RefreshAllAuraDisplays()
         end)
     end)
 end
