@@ -524,7 +524,11 @@ function Engine.ApplyAll(trackerId)
     state.elements = entry.elements
     state.textFrame = entry.textFrame
 
-    ApplyEnabledState(entry, tracker.enabled ~= false)
+    -- The same test the styling pass uses: the manual toggle plus the
+    -- tracker's and its group's spec gates. ApplyAll also runs from claim,
+    -- flush, and Edit Mode entry, so reading tracker.enabled alone here
+    -- would revive a container the spec gate had just parked.
+    ApplyEnabledState(entry, SAU.IsTrackerActive(trackerId, tracker))
 
     if tracker.kind == "missingbuff" then
         -- Nothing is bound: the container's own layout size is the gate and

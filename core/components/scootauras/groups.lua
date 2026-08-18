@@ -118,7 +118,7 @@ function Groups._EditModeMirror(frame)
     local members = 0
     for _, trackerId in ipairs(group.memberOrder or {}) do
         local t = SAU.GetTracker(trackerId)
-        if t and t.groupId == gid and t.enabled ~= false then
+        if t and t.groupId == gid and SAU.IsTrackerActive(trackerId, t) then
             members = members + 1
         end
     end
@@ -336,7 +336,7 @@ function Groups.LayoutGroup(gid)
         local tentry = Engine._byTracker[trackerId]
         local tracker = SAU.GetTracker(trackerId)
         if tentry and tentry.grouped and tracker and tracker.groupId == gid
-            and tracker.enabled ~= false then
+            and SAU.IsTrackerActive(trackerId, tracker) then
             local db = SAU.GetDB(trackerId)
             local scale = math.max((tonumber(db and db.scale) or 100) / 100, 0.25)
             local w = tentry.hostW or 32

@@ -429,12 +429,12 @@ local function ApplyStyling(trackerId, tracker)
     local grouped = entry and entry.grouped
     local target = grouped and state.container or state.shell
 
-    local isEnabled = tracker.enabled and SAU.IsModuleActive()
+    local isEnabled = SAU.IsTrackerActive(trackerId, tracker) and SAU.IsModuleActive()
     if not isEnabled then
         SAU.Engine.SetEnabledState(trackerId, false)
         target:Hide()
-        -- A disabled tracker keeps no Edit Mode preview (and no ticking
-        -- animation record).
+        -- A tracker switched off, or gated out by its spec (or its group's),
+        -- keeps no Edit Mode preview and no ticking animation record.
         SAU.Engine.HideEditModePreview(state)
         if tracker.kind == "missingbuff" and SAU.Missing then
             SAU.Missing.UpdateGate(trackerId)

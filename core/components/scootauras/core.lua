@@ -229,6 +229,139 @@ function SAU.IsModuleActive()
 end
 
 --------------------------------------------------------------------------------
+-- Spec gate
+--------------------------------------------------------------------------------
+
+-- A tracker or group may carry `specs`, an array of numeric spec IDs it loads
+-- in. Absent or empty means every spec, so old saved variables read as
+-- unrestricted and nothing is stamped at create.
+
+local classSpecIDs          -- set: this character's class's spec IDs
+local specNameCache = {}
+
+--- This character's current spec ID, nil before the talent data loads.
+-- Delegates rather than adding a third GetSpecialization idiom to the addon.
+function SAU.CurrentSpecID()
+    local get = addon.Profiles and addon.Profiles._getCurrentSpecID
+    if type(get) ~= "function" then return nil end
+    local ok, specID = pcall(get)
+    if ok and type(specID) == "number" and specID > 0 then return specID end
+    return nil
+end
+
+--- Set of the spec IDs this character's class has, from the current-class-only
+-- list Spec Profiles already builds.
+function SAU.ClassSpecIDSet()
+    if classSpecIDs then return classSpecIDs end
+    local set = {}
+    local Profiles = addon.Profiles
+    if Profiles and Profiles.GetSpecOptions then
+        local ok, options = pcall(Profiles.GetSpecOptions, Profiles)
+        if ok and type(options) == "table" then
+            for _, opt in ipairs(options) do
+                if type(opt.specID) == "number" then set[opt.specID] = true end
+            end
+        end
+    end
+    -- Cache only once the class data is really there: an empty set captured
+    -- before login would stick and open every gate for the session.
+    if next(set) then classSpecIDs = set end
+    return set
+end
+
+--- Spec name for any class's spec ID. The list rows describe other characters'
+-- trackers too, so this cannot go through the current-class list.
+function SAU.SpecName(specID)
+    if type(specID) ~= "number" then return "?" end
+    if specNameCache[specID] then return specNameCache[specID] end
+    local getter = _G.GetSpecializationInfoByID
+    if type(getter) == "function" then
+        local ok, _, name = pcall(getter, specID)
+        if ok and type(name) == "string" and name ~= "" then
+            specNameCache[specID] = name
+            return name
+        end
+    end
+    return "Spec " .. tostring(specID)
+end
+
+--- Spec names for a stored list, joined for prose: "Shadow",
+-- "Discipline & Holy", "Discipline, Holy & Shadow". nil when unrestricted, so
+-- callers can append their own " only" and skip the clause entirely.
+function SAU.DescribeSpecs(specs)
+    if type(specs) ~= "table" or #specs == 0 then return nil end
+    local names = {}
+    for _, id in ipairs(specs) do
+        table.insert(names, SAU.SpecName(id))
+    end
+    if #names == 1 then return names[1] end
+    local last = table.remove(names)
+    return table.concat(names, ", ") .. " & " .. last
+end
+
+--- Whether `record` (a tracker or a group) may load in the current spec. Fails
+-- open three ways: no restriction; a restriction naming no spec this class has
+-- (AdoptUnowned can hand a profile's records to another class); and an unknown
+-- current spec during early login.
+function SAU.SpecAllows(record)
+    local specs = record and record.specs
+    if type(specs) ~= "table" or #specs == 0 then return true end
+    local mine = SAU.ClassSpecIDSet()
+    local relevant = false
+    for _, id in ipairs(specs) do
+        if mine[id] then relevant = true break end
+    end
+    if not relevant then return true end
+    local current = SAU.CurrentSpecID()
+    if not current then return true end
+    for _, id in ipairs(specs) do
+        if id == current then return true end
+    end
+    return false
+end
+
+--- The single "should this tracker render" test: the manual toggle, the
+-- tracker's own spec gate, and its group's. Every engine and layout site reads
+-- this; tracker.enabled alone stays the Aura List's ON/OFF pill.
+function SAU.IsTrackerActive(trackerId, tracker)
+    tracker = tracker or SAU.GetTracker(trackerId)
+    if not tracker then return false end
+    if tracker.enabled == false then return false end
+    if not SAU.SpecAllows(tracker) then return false end
+    if tracker.groupId then
+        local group = SAU.GetGroupRaw(tracker.groupId)
+        if group and not SAU.SpecAllows(group) then return false end
+    end
+    return true
+end
+
+-- Numbers only, deduped, sorted. Returns nil for an empty list so
+-- "unrestricted" has one representation rather than two.
+local function NormalizeSpecs(ids)
+    if type(ids) ~= "table" then return nil end
+    local seen, out = {}, {}
+    for _, id in ipairs(ids) do
+        local n = tonumber(id)
+        if n and not seen[n] then
+            seen[n] = true
+            table.insert(out, n)
+        end
+    end
+    if #out == 0 then return nil end
+    table.sort(out)
+    return out
+end
+
+local function ToggledSpecs(specs, specID)
+    local out, found = {}, false
+    for _, id in ipairs(specs or {}) do
+        if id == specID then found = true else table.insert(out, id) end
+    end
+    if not found then table.insert(out, specID) end
+    return out
+end
+
+--------------------------------------------------------------------------------
 -- Content validation
 --------------------------------------------------------------------------------
 
@@ -515,6 +648,7 @@ end
 -- Called on CDM data/override events, spec changes, and talent edits.
 function SAU.InvalidateSpellDescriptions()
     cdmDisplayByBase = nil
+    classSpecIDs = nil
 end
 
 --- The spell ID a stored ID is shown as: CDM override chain, else the
@@ -779,6 +913,7 @@ function SAU.DuplicateTracker(trackerId)
         order = newId,
         owner = SAU.GetOwnerKey(),
         onlyInCombat = source.onlyInCombat,
+        specs = source.specs and CopyTable(source.specs) or nil,
     }
     SAU.StampOwner(store)
 
@@ -840,6 +975,24 @@ function SAU.SetTrackerEnabled(trackerId, enabled)
     tracker.enabled = not not enabled
     if SAU._ApplyStyling then SAU._ApplyStyling(trackerId, tracker) end
     return true
+end
+
+--- Restricts a tracker to a set of spec IDs. An empty or nil list clears the
+-- restriction. Re-styling is the whole consequence: the disabled branch of
+-- _ApplyStyling parks the container and hides the visual, all combat-legal.
+function SAU.SetTrackerSpecs(trackerId, ids)
+    local tracker = SAU.GetTracker(trackerId)
+    if not tracker then return nil, "no such tracker" end
+    tracker.specs = NormalizeSpecs(ids)
+    if SAU._ApplyStyling then SAU._ApplyStyling(trackerId, tracker) end
+    if SAU.Groups then SAU.Groups.RequestReflow() end
+    return true
+end
+
+function SAU.ToggleTrackerSpec(trackerId, specID)
+    local tracker = SAU.GetTracker(trackerId)
+    if not tracker then return nil, "no such tracker" end
+    return SAU.SetTrackerSpecs(trackerId, ToggledSpecs(tracker.specs, specID))
 end
 
 --- Writes styling keys on the tracker's component db and restyles. The
@@ -957,6 +1110,24 @@ function SAU.SetGroupSettings(gid, changes)
     return true
 end
 
+--- Restricts a group to a set of spec IDs. Members gate on their own list and
+-- their group's, so a blocked group lays out zero members and hides its frame
+-- outside Edit Mode (groups.lua).
+function SAU.SetGroupSpecs(gid, ids)
+    local group = SAU.GetGroup(gid)
+    if not group then return nil, "no such group" end
+    group.specs = NormalizeSpecs(ids)
+    SAU.RebuildAll()
+    if SAU.Groups then SAU.Groups.RequestReflow() end
+    return true
+end
+
+function SAU.ToggleGroupSpec(gid, specID)
+    local group = SAU.GetGroup(gid)
+    if not group then return nil, "no such group" end
+    return SAU.SetGroupSpecs(gid, ToggledSpecs(group.specs, specID))
+end
+
 -- Starting grow direction from the group's first member: bars are horizontal,
 -- so stacking them DOWN keeps them apart; everything else reads best in a row
 -- growing RIGHT. (Vertical bars, when they exist, belong on the RIGHT branch.)
@@ -1030,6 +1201,7 @@ function SAU.DuplicateGroup(gid)
         settings = CopyTable(source.settings or SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},
         owner = SAU.GetOwnerKey(),
+        specs = source.specs and CopyTable(source.specs) or nil,
     }
     store.groups[newGid] = newGroup
     SAU.StampOwner(store)

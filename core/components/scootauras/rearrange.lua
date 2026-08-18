@@ -157,7 +157,7 @@ local function BuildOverlays()
             -- LayoutGroup's exact skip conditions: overlays only for members
             -- that render inside the group.
             if tentry and tentry.grouped and tracker and tracker.groupId == mode.gid
-                and tracker.enabled ~= false then
+                and SAU.IsTrackerActive(trackerId, tracker) then
                 n = n + 1
                 local ov = AcquireOverlay(n)
                 ov:ClearAllPoints()

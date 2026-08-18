@@ -517,6 +517,7 @@ local function LifecycleDump()
     push("/scoot debug sa join <id> <gid> [index] || leave <id>")
     push("/scoot debug sa reconcile || flush || list")
     push("/scoot debug sa owners  (every profile: owners, counts, Copy-from-Global buckets)")
+    push("/scoot debug sa specs  (per record: stored specs, current spec, gate verdict)")
     push("/scoot debug sa methods <id>  (button binding inventory)")
     push("/scoot debug sa missing <id>  (missing-buff reminder: gate container, clip, secrecy, plain read)")
     push("/scoot debug sa spell <N||spellId>  (N from a tN row above; include set, CDM entries, picker cell, live aura check)")
@@ -600,6 +601,73 @@ local function OwnersDump()
     end
 
     addon.DebugShowWindow("ScootAuras Owners", table.concat(lines, "\n"))
+end
+
+-- Why a tracker does or does not load in the current spec. SpecAllows fails
+-- open three ways, so the verdict alone is not enough: name the branch.
+local function SpecsDump()
+    local SAU = addon.ScootAuras
+    local lines = {}
+    local function push(str) table.insert(lines, str) end
+
+    local current = SAU.CurrentSpecID()
+    push("=== ScootAuras Spec Gate ===")
+    push("")
+    push("Current spec: " .. tostring(current)
+        .. (current and (" (" .. SAU.SpecName(current) .. ")") or ""))
+    local mine = SAU.ClassSpecIDSet()
+    local ids = {}
+    for id in pairs(mine) do table.insert(ids, id) end
+    table.sort(ids)
+    local named = {}
+    for _, id in ipairs(ids) do
+        table.insert(named, id .. "=" .. SAU.SpecName(id))
+    end
+    push("This class: " .. ((#named > 0) and table.concat(named, ", ") or "(not loaded)"))
+    push("")
+
+    local function reason(record)
+        local specs = record and record.specs
+        if type(specs) ~= "table" or #specs == 0 then return "no restriction" end
+        local relevant = false
+        for _, id in ipairs(specs) do
+            if mine[id] then relevant = true break end
+        end
+        if not relevant then return "open: names no spec this class has" end
+        if not current then return "open: current spec unknown" end
+        for _, id in ipairs(specs) do
+            if id == current then return "match" end
+        end
+        return "blocked"
+    end
+
+    push("--- Trackers ---")
+    local trackerIds = {}
+    for id in pairs(SAU.OwnedTrackers()) do table.insert(trackerIds, id) end
+    table.sort(trackerIds)
+    if #trackerIds == 0 then push("(none)") end
+    for _, id in ipairs(trackerIds) do
+        local t = SAU.GetTracker(id)
+        push(("t%d '%s' specs=%s -> %s | enabled=%s group=%s active=%s"):format(
+            id, tostring(t.name), SAU.DescribeSpecs(t.specs) or "all", reason(t),
+            tostring(t.enabled), tostring(t.groupId),
+            tostring(SAU.IsTrackerActive(id, t))))
+    end
+
+    push("")
+    push("--- Groups ---")
+    local groupIds = {}
+    for gid in pairs(SAU.OwnedGroups()) do table.insert(groupIds, gid) end
+    table.sort(groupIds)
+    if #groupIds == 0 then push("(none)") end
+    for _, gid in ipairs(groupIds) do
+        local g = SAU.GetGroup(gid)
+        push(("g%d '%s' specs=%s -> %s | members=%d"):format(
+            gid, tostring(g.name), SAU.DescribeSpecs(g.specs) or "all", reason(g),
+            #(g.memberOrder or {})))
+    end
+
+    addon.DebugShowWindow("ScootAuras Spec Gate", table.concat(lines, "\n"))
 end
 
 -- Binding-method inventory on a live tracker's engine button; gates the Shape
@@ -1012,6 +1080,11 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
 
     if sub == "owners" then
         OwnersDump()
+        return
+    end
+
+    if sub == "specs" then
+        SpecsDump()
         return
     end
 

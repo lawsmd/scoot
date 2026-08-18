@@ -23,6 +23,14 @@ local BTN_SIZE = 16      -- group box action buttons
 local BTN_GAP = 8
 local ROW_BTN_SIZE = 13  -- tracker row action buttons (smaller rows)
 local ROW_BTN_GAP = 6
+local ROW_TOP_PAD = 6    -- row top to the name line
+local ROW_TEXT_GAP = 2   -- name line to the wrapped meta line
+local ROW_BTN_Y = -7     -- button cluster inset from the row top
+
+-- The spec restriction button. A funnel says "narrow this down", which is
+-- what it does; the flat glyph matches the delete and gear art beside it.
+local SPEC_ATLAS = "ui-questtrackerbutton-filter"
+local SPEC_ATLAS_FALLBACK = "common-icon-undo"
 
 -- The left column holds single rows; the right holds group boxes and earns
 -- the wider share.
@@ -39,6 +47,7 @@ local state = {
     dropGroups = {},      -- [gid] = { box, highlight, icons = { {frame, index} } }
     leftPane = nil,
     leftDropHighlight = nil,
+    textRows = {},        -- rows whose height came from a text measurement
 }
 
 local KIND_LABELS = { buff = "Buff", debuff = "Debuff", missingbuff = "Missing Buff" }
@@ -52,11 +61,17 @@ local GROW_ORDER = { "RIGHT", "LEFT", "DOWN", "UP" }
 
 -- One descriptor for every surface: the tracker row's meta line, the group
 -- icon's hover tooltip, and the Copy from Global rows (which pass
--- includeDisabled = false: another character's enabled state is not news).
-local function TrackerMetaText(tracker, includeDisabled)
+-- includeDisabled = false: another character's enabled state is not news, and
+-- includeSpecs = false: a copy drops the restriction, so naming it would lie).
+local function TrackerMetaText(tracker, includeDisabled, includeSpecs)
     local text = (KIND_LABELS[tracker.kind] or "?") .. " on "
         .. (UNIT_LABELS[tracker.unit] or "?") .. ", shown as "
         .. (SHAPE_LABELS[tracker.shape] or "?")
+    if includeSpecs ~= false then
+        local SAU = addon.ScootAuras
+        local named = SAU and SAU.DescribeSpecs and SAU.DescribeSpecs(tracker.specs)
+        if named then text = text .. ", " .. named .. " only" end
+    end
     if includeDisabled ~= false and tracker.enabled == false then
         text = text .. "  (disabled)"
     end
@@ -283,6 +298,9 @@ end
 
 local function Cleanup(panel)
     if Drag.active then EndDrag(true) end
+    -- The spec fly-out outlives the page (one instance, re-anchored per row),
+    -- so close it before its anchor is destroyed.
+    if addon.UI.ScootAuraSpecFlyout then addon.UI.ScootAuraSpecFlyout.Close() end
     for _, fly in ipairs(state.flyouts) do
         if fly.Cleanup then fly:Cleanup() end
         fly:Hide()
@@ -293,6 +311,7 @@ local function Cleanup(panel)
         row:SetParent(nil)
     end
     state.rows = {}
+    state.textRows = {}
     for gid in pairs(state.dropGroups) do
         state.dropGroups[gid] = nil
     end
@@ -396,7 +415,11 @@ local function CreateIconButton(row, atlas, tooltipLabel, theme, size, glyphScal
     local glyph = size * (glyphScale or 1)
     tex:SetSize(glyph, glyph)
     tex:SetPoint("CENTER", 0, 0)
-    tex:SetAtlas(atlas)
+    -- An atlas name that does not resolve leaves the texture blank rather
+    -- than erroring, so check rather than trust.
+    if not pcall(tex.SetAtlas, tex, atlas) or not tex:GetAtlas() then
+        pcall(tex.SetAtlas, tex, SPEC_ATLAS_FALLBACK)
+    end
     tex:SetDesaturated(true)
     tex:SetVertexColor(ar, ag, ab)
     tex:SetAlpha(0.6)
@@ -483,7 +506,23 @@ end
 -- Left pane: tracker rows
 --------------------------------------------------------------------------------
 
-local function CreateTrackerRow(pane, trackerId, tracker)
+-- Row height from its two text lines. GetStringHeight reports the wrapped
+-- height once the FontString has an explicit width, but it can under-report
+-- before a font has rendered once, so RenderList checks these again a frame
+-- later and restacks if anything moved.
+local function MeasuredRowHeight(name, meta)
+    local nameH = name:GetStringHeight() or 0
+    local metaH = meta:GetStringHeight() or 0
+    if nameH <= 0 then nameH = 10 end
+    if metaH <= 0 then metaH = 9 end
+    return math.max(ROW_H,
+        math.ceil(ROW_TOP_PAD + nameH + ROW_TEXT_GAP + metaH + ROW_TOP_PAD))
+end
+
+-- paneW arrives from the caller because a pane's rect resolves at the end of
+-- the frame, too late for the meta line's wrap width (the group boxes take
+-- their width the same way).
+local function CreateTrackerRow(pane, trackerId, tracker, paneW)
     local theme = addon.UI.Theme
     local ar, ag, ab = theme:GetAccentColor()
     local SAU = addon.ScootAuras
@@ -497,44 +536,60 @@ local function CreateTrackerRow(pane, trackerId, tracker)
     hoverBg:SetColorTexture(ar, ag, ab, 0.08)
     hoverBg:Hide()
 
+    -- Icon and buttons hang from the top, not the middle: the row grows
+    -- downward as the meta line wraps, and both belong on the name's line.
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ROW_ICON, ROW_ICON)
-    icon:SetPoint("LEFT", row, "LEFT", PAD, 0)
+    icon:SetPoint("TOPLEFT", row, "TOPLEFT", PAD, -5)
     local texture = addon.ScootAuras._SpellIcon(tracker.spellId)
     icon:SetTexture(texture)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-    -- Text stops short of where the hover buttons appear, so a long name or
-    -- meta line never runs under them.
-    local textClear = PAD + IND_W + 2 * (ROW_BTN_SIZE + ROW_BTN_GAP) + 6
+    -- Text stops short of the button cluster, so a long name or meta line
+    -- never runs under it. Four buttons now: spec, delete, duplicate, ON.
+    local textClear = PAD + IND_W + 3 * (ROW_BTN_SIZE + ROW_BTN_GAP) + 6
 
     local textLeft = PAD + ROW_ICON + 6
+    local textW = math.max(40, (paneW or 240) - textLeft - textClear)
 
     local name = row:CreateFontString(nil, "OVERLAY")
     name:SetFont(theme:GetFont("LABEL"), 8, "")
-    name:SetPoint("TOPLEFT", row, "TOPLEFT", textLeft, -6)
-    name:SetPoint("TOPRIGHT", row, "TOPRIGHT", -textClear, -6)
+    name:SetPoint("TOPLEFT", row, "TOPLEFT", textLeft, -ROW_TOP_PAD)
+    name:SetWidth(textW)
     name:SetJustifyH("LEFT")
     name:SetWordWrap(false)
     name:SetText(tracker.name or ("Aura " .. tostring(tracker.spellId)))
     name:SetTextColor(0.92, 0.92, 0.92, 1)
 
+    -- Wrapped, not truncated: the list scrolls, so lines are cheaper than a
+    -- descriptor that ends in an ellipsis. An explicit SetWidth is what makes
+    -- GetStringHeight report the wrapped height in this same tick.
     local meta = row:CreateFontString(nil, "OVERLAY")
     meta:SetFont(theme:GetFont("LABEL"), 7, "")
-    meta:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", textLeft, 6)
-    meta:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -textClear, 6)
+    meta:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -ROW_TEXT_GAP)
+    meta:SetWidth(textW)
     meta:SetJustifyH("LEFT")
-    meta:SetWordWrap(false)
+    meta:SetJustifyV("TOP")
+    meta:SetWordWrap(true)
     meta:SetText(TrackerMetaText(tracker))
     meta:SetTextColor(0.55, 0.55, 0.55, 1)
+
+    row._name, row._meta = name, meta
+    row:SetHeight(MeasuredRowHeight(name, meta))
 
     if tracker.enabled == false then
         icon:SetDesaturated(true)
         name:SetTextColor(0.55, 0.55, 0.55, 1)
     end
 
+    -- The spec button stays visible on every row; the other three ride the
+    -- row hover as they always have.
+    local specBtn = CreateIconButton(row, SPEC_ATLAS, "Restrict to Specs", theme, ROW_BTN_SIZE)
+    specBtn:SetPoint("TOPRIGHT", row, "TOPRIGHT", -PAD, ROW_BTN_Y)
+    specBtn:Show()
+
     local deleteBtn = CreateIconButton(row, "common-icon-delete", "Delete", theme, ROW_BTN_SIZE)
-    deleteBtn:SetPoint("RIGHT", row, "RIGHT", -PAD, 0)
+    deleteBtn:SetPoint("RIGHT", specBtn, "LEFT", -ROW_BTN_GAP, 0)
     local duplicateBtn = CreateIconButton(row, "friends-icon-battlenet-copy", "Duplicate", theme, ROW_BTN_SIZE)
     duplicateBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -ROW_BTN_GAP, 0)
 
@@ -574,6 +629,21 @@ local function CreateTrackerRow(pane, trackerId, tracker)
     enabledBtn:SetScript("OnClick", function()
         SAU.SetTrackerEnabled(trackerId, tracker.enabled == false)
         Refresh()
+    end)
+
+    specBtn:SetScript("OnClick", function()
+        if ClickGuard() then return end
+        local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+        if not SpecFlyout then return end
+        SpecFlyout.OpenFor(specBtn, {
+            title = "Load this aura in...",
+            get = function()
+                local t = SAU.GetTracker(trackerId)
+                return t and t.specs
+            end,
+            toggle = function(specID) SAU.ToggleTrackerSpec(trackerId, specID) end,
+            clear = function() SAU.SetTrackerSpecs(trackerId, nil) end,
+        })
     end)
 
     duplicateBtn:SetScript("OnClick", function()
@@ -761,7 +831,9 @@ local function CreateGroupBox(pane, gid, group, boxW)
     nameFS:SetPoint("LEFT", 0, 0)
     nameFS:SetText(group.name or ("Aura Group " .. gid))
     nameFS:SetTextColor(0.92, 0.92, 0.92, 1)
-    nameBtn:SetWidth(math.max(20, math.min(nameFS:GetStringWidth() + 6, boxW - 130)))
+    -- Reserve room for the button cluster, one wider than it used to be.
+    local btnReserve = 130 + BTN_SIZE + BTN_GAP
+    nameBtn:SetWidth(math.max(20, math.min(nameFS:GetStringWidth() + 6, boxW - btnReserve)))
 
     local pencilBtn = CreateFrame("Button", nil, box)
     pencilBtn:SetSize(12, 12)
@@ -778,7 +850,7 @@ local function CreateGroupBox(pane, gid, group, boxW)
     local renameBox = CreateFrame("EditBox", nil, box, "InputBoxTemplate")
     renameBox:SetHeight(18)
     renameBox:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD + 6, -4)
-    renameBox:SetPoint("TOPRIGHT", box, "TOPRIGHT", -90, -4)
+    renameBox:SetPoint("TOPRIGHT", box, "TOPRIGHT", -(90 + BTN_SIZE + BTN_GAP), -4)
     renameBox:SetAutoFocus(false)
     renameBox:SetFontObject("GameFontHighlightSmall")
     renameBox:Hide()
@@ -814,9 +886,28 @@ local function CreateGroupBox(pane, gid, group, boxW)
     nameBtn:SetScript("OnClick", StartRename)
     pencilBtn:SetScript("OnClick", StartRename)
 
-    -- Hover-revealed actions, left to right: layout gear, duplicate, delete.
+    -- The spec button stays visible; the rest are hover-revealed, left to
+    -- right: layout gear, duplicate, delete.
+    local specBtn = CreateIconButton(box, SPEC_ATLAS, "Restrict to Specs", theme)
+    specBtn:SetPoint("TOPRIGHT", box, "TOPRIGHT", -BOX_PAD, -5)
+    specBtn:Show()
+    specBtn:SetScript("OnClick", function()
+        if ClickGuard() then return end
+        local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+        if not SpecFlyout then return end
+        SpecFlyout.OpenFor(specBtn, {
+            title = "Load this group in...",
+            get = function()
+                local g = SAU.GetGroup(gid)
+                return g and g.specs
+            end,
+            toggle = function(specID) SAU.ToggleGroupSpec(gid, specID) end,
+            clear = function() SAU.SetGroupSpecs(gid, nil) end,
+        })
+    end)
+
     local deleteBtn = CreateIconButton(box, "common-icon-delete", "Delete Group", theme)
-    deleteBtn:SetPoint("TOPRIGHT", box, "TOPRIGHT", -BOX_PAD, -5)
+    deleteBtn:SetPoint("RIGHT", specBtn, "LEFT", -BTN_GAP, 0)
     local duplicateBtn = CreateIconButton(box, "friends-icon-battlenet-copy", "Duplicate Group", theme)
     duplicateBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -BTN_GAP, 0)
     local layoutBtn = CreateIconButton(box, "GM-icon-settings", "Layout", theme, BTN_SIZE, 2)
@@ -848,6 +939,22 @@ local function CreateGroupBox(pane, gid, group, boxW)
         end
     end)
 
+    -- A restricted group says so under its name. Groups have no meta line,
+    -- so the header grows by this one when it is there.
+    local headerH = BOX_HEADER_H
+    local groupSpecs = SAU.DescribeSpecs and SAU.DescribeSpecs(group.specs)
+    if groupSpecs then
+        local specFS = box:CreateFontString(nil, "OVERLAY")
+        specFS:SetFont(theme:GetFont("LABEL"), 7, "")
+        specFS:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD, -(BOX_HEADER_H - 6))
+        specFS:SetWidth(math.max(40, boxW - BOX_PAD * 2))
+        specFS:SetJustifyH("LEFT")
+        specFS:SetWordWrap(true)
+        specFS:SetText(groupSpecs .. " only")
+        specFS:SetTextColor(0.55, 0.55, 0.55, 1)
+        headerH = BOX_HEADER_H + math.ceil(math.max(9, specFS:GetStringHeight() or 9)) + 2
+    end
+
     -- Member icon grid, in memberOrder order.
     local icons = {}
     local perRow = math.max(1, math.floor((boxW - BOX_PAD * 2 + ICON_GAP) / (ICON_SIZE + ICON_GAP)))
@@ -863,7 +970,7 @@ local function CreateGroupBox(pane, gid, group, boxW)
             btn:SetSize(ICON_SIZE, ICON_SIZE)
             btn:SetPoint("TOPLEFT", box, "TOPLEFT",
                 BOX_PAD + col * (ICON_SIZE + ICON_GAP),
-                -(BOX_HEADER_H + rowIdx * (ICON_SIZE + ICON_GAP)))
+                -(headerH + rowIdx * (ICON_SIZE + ICON_GAP)))
 
             local tex = btn:CreateTexture(nil, "ARTWORK")
             tex:SetAllPoints()
@@ -901,13 +1008,13 @@ local function CreateGroupBox(pane, gid, group, boxW)
     if shown == 0 then
         local hint = box:CreateFontString(nil, "OVERLAY")
         hint:SetFont(theme:GetFont("LABEL"), 11, "")
-        hint:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD, -(BOX_HEADER_H + 8))
+        hint:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD, -(headerH + 8))
         hint:SetText("Drag trackers here")
         hint:SetTextColor(0.55, 0.55, 0.55, 1)
     end
 
     local iconRows = math.max(1, math.ceil(shown / perRow))
-    box:SetHeight(BOX_HEADER_H + iconRows * (ICON_SIZE + ICON_GAP) + BOX_PAD)
+    box:SetHeight(headerH + iconRows * (ICON_SIZE + ICON_GAP) + BOX_PAD)
 
     box.UpdateHover = function()
         local over = box:IsMouseOver() or (flyout and flyout:IsOpen())
@@ -941,7 +1048,7 @@ local function ColumnLabel(pane, text, theme)
     underline:SetColorTexture(ar, ag, ab, 0.6)
 end
 
-RenderList = function(panel, scrollContent)
+RenderList = function(panel, scrollContent, corrective)
     if Drag.active then EndDrag(true) end
     panel:ClearContent()
 
@@ -959,6 +1066,7 @@ RenderList = function(panel, scrollContent)
     end
 
     state.active = true
+    state.textRows = {}
     state.panel = panel
     state.scrollContent = scrollContent
     panel._scootAurasCleanup = function() Cleanup(panel) end
@@ -1022,15 +1130,18 @@ RenderList = function(panel, scrollContent)
     ColumnLabel(leftPane, "Individual Auras", theme)
     ColumnLabel(rightPane, "Groups", theme)
 
-    -- Left pane: ungrouped trackers.
+    -- Left pane: ungrouped trackers. Rows are no longer a fixed height: the
+    -- meta line wraps, so each row reports what it needs.
+    local leftRowW = math.max(80, leftW - DIVIDER_CLEAR_L)
     local yL = COL_LABEL_H
     for _, item in ipairs(SAU.SortedTrackers()) do
         if item.tracker.groupId == nil then
-            local row = CreateTrackerRow(leftPane, item.id, item.tracker)
+            local row = CreateTrackerRow(leftPane, item.id, item.tracker, leftRowW)
             row:SetPoint("TOPLEFT", leftPane, "TOPLEFT", 0, -yL)
             row:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", 0, -yL)
             table.insert(state.rows, row)
-            yL = yL + ROW_H
+            table.insert(state.textRows, row)
+            yL = yL + row:GetHeight()
         end
     end
 
@@ -1096,7 +1207,19 @@ RenderList = function(panel, scrollContent)
         if state.active and state.scrollContent == scrollContent then
             local vh = (scrollFrame and scrollFrame:GetHeight()) or 0
             if vh > 0 and math.abs(vh - viewH) > 1 then
-                RenderList(panel, scrollContent)
+                RenderList(panel, scrollContent, corrective)
+                return
+            end
+            -- A cold font measures short. Now that the rows have rendered
+            -- once, re-measure and restack if any of them wants more room.
+            -- One corrective pass only: the flag rides the recursion.
+            if corrective then return end
+            for _, row in ipairs(state.textRows) do
+                if row._name and row._meta
+                    and math.abs(MeasuredRowHeight(row._name, row._meta) - (row:GetHeight() or 0)) > 1 then
+                    RenderList(panel, scrollContent, true)
+                    return
+                end
             end
         end
     end)

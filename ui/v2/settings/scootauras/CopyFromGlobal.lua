@@ -35,7 +35,8 @@ local function GetSAU() return addon.ScootAuras end
 local function MetaText(tracker)
     local ui = addon.ScootAurasUI
     if ui and ui.TrackerMetaText then
-        return ui.TrackerMetaText(tracker, false)
+        -- No specs either: CopyTrackerFromSource drops the restriction.
+        return ui.TrackerMetaText(tracker, false, false)
     end
     return ""
 end

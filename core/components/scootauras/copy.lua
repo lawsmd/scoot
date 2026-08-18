@@ -225,6 +225,9 @@ function SAU.CopyTrackerFromSource(src)
         -- Explicit branch: `x and false or nil` would drop a `false`.
         store.trackers[newId].onlyInCombat = (source.onlyInCombat ~= false)
     end
+    -- `specs` is deliberately absent: the source can belong to another class,
+    -- and its spec IDs would gate the copy out of every spec this character
+    -- has, with nothing on screen to explain why. Copies start unrestricted.
     SAU.StampOwner(store)
 
     local profile = addon.db and addon.db.profile

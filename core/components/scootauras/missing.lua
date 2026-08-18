@@ -342,7 +342,7 @@ function Missing.UpdateGate(trackerId)
     local db = SAU.GetDB(trackerId)
     local show = tracker ~= nil
         and tracker.kind == "missingbuff"
-        and tracker.enabled ~= false
+        and SAU.IsTrackerActive(trackerId, tracker)
         and SAU.IsModuleActive()
     if show and tracker.onlyInCombat ~= false and not InCombatLockdown() then
         show = false
@@ -406,6 +406,9 @@ function Missing.DebugInfo(trackerId)
     add("text=%q suffix=%s blink=%s anchor=%s",
         Missing.ReminderText(tracker, db), tostring(db and db.missingSuffix),
         tostring(db and db.blinkWhenShown), tostring(db and db.nameTextOuterAnchor))
+    add("specs=%s specAllows=%s currentSpec=%s active=%s",
+        SAU.DescribeSpecs(tracker.specs) or "all", tostring(SAU.SpecAllows(tracker)),
+        tostring(SAU.CurrentSpecID()), tostring(SAU.IsTrackerActive(trackerId, tracker)))
     add("InCombatLockdown=%s AurasSecretNow=%s editMode=%s",
         tostring(InCombatLockdown()), tostring(addon.AurasSecretNow and addon.AurasSecretNow()),
         tostring(SAU._isEditModeActive and SAU._isEditModeActive()))

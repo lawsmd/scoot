@@ -29,7 +29,8 @@ local function RegisterLEMCallbacks()
         editModeActive = true
         for trackerId, tracker in pairs(SAU.OwnedTrackers()) do
             local state = SAU._activeStates[trackerId]
-            if state and state.shell and tracker.enabled and SAU.IsModuleActive() then
+            if state and state.shell and SAU.IsTrackerActive(trackerId, tracker)
+                and SAU.IsModuleActive() then
                 -- Engine content cannot fake an aura; show Scoot-side preview
                 -- art on the frame instead. Grouped shells stay hidden: the
                 -- group frame is the drag unit, and the preview art rides the
@@ -101,10 +102,30 @@ eventFrame:RegisterEvent("COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED")
 eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 
-eventFrame:SetScript("OnEvent", function(_, event)
+local specResolvePending = false
+
+eventFrame:SetScript("OnEvent", function(_, event, unit)
+    if event == "PLAYER_SPECIALIZATION_CHANGED" then
+        -- Fires for party and raid members too; only the player's own spec
+        -- moves the gate.
+        if unit and unit ~= "player" then return end
+        SAU.InvalidateSpellDescriptions()
+        -- Re-run every tracker's spec gate one frame later: the event can
+        -- arrive before GetSpecialization reports the new spec, and a talent
+        -- swap fires it more than once. Both calls are plain Scoot frame work,
+        -- so this needs no structural gate and no pending queue.
+        if not specResolvePending then
+            specResolvePending = true
+            C_Timer.After(0, function()
+                specResolvePending = false
+                SAU.RebuildAll()
+                if SAU.Groups then SAU.Groups.RequestReflow() end
+            end)
+        end
+        return
+    end
     if event == "COOLDOWN_VIEWER_DATA_LOADED"
         or event == "COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED"
-        or event == "PLAYER_SPECIALIZATION_CHANGED"
         or event == "TRAIT_CONFIG_UPDATED" then
         SAU.InvalidateSpellDescriptions()
         return

@@ -42,6 +42,8 @@ read_globals = {
     "IsInInstance",
     "LibStub",
     "pcall",
+    "PlaySound",
+    "SOUNDKIT",
     "UIParent",
     "UnitGUID",
     "UnitHealth",
