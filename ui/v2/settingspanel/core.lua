@@ -915,7 +915,7 @@ function UIPanel:CreateContentPane()
     homeContent:SetAllPoints(contentPane)
 
     local homeContainer = CreateFrame("Frame", nil, homeContent)
-    homeContainer:SetPoint("CENTER", homeContent, "CENTER", 0, 60)  -- Shifted up to make room for Feature Guide
+    homeContainer:SetPoint("CENTER", homeContent, "CENTER", 0, 80)  -- Shifted up to make room for Feature Guide
 
     local labelFont2 = Theme:GetFont("LABEL")
 
@@ -964,9 +964,11 @@ function UIPanel:CreateContentPane()
 
     -- Feature Guide section
     local GUIDE_INSET = 40
-    local GUIDE_ICON_SIZE = 30
-    local GUIDE_ROW_SPACING = 14  -- Gap between a row's text bottom and the next row's icon
-    local GUIDE_TEXT_MAX_WIDTH = 380
+    local GUIDE_ICON_SIZE = 24
+    local GUIDE_ROW_SPACING = 11  -- Gap between a row's text bottom and the next row's icon
+    local GUIDE_TEXT_MAX_WIDTH = 304
+    local GUIDE_TEXT_SIZE = 11
+    local GUIDE_ICON_TEXT_GAP = 8
 
     local guideDivider = homeContent:CreateTexture(nil, "BORDER")
     guideDivider:SetHeight(1)
@@ -998,20 +1000,20 @@ function UIPanel:CreateContentPane()
         -- Center the icon under the header for the first row; anchor later rows
         -- below the previous row's text so spacing tracks the wrapped height
         if i == 1 then
-            icon:SetPoint("TOP", guideHeader, "BOTTOM", -(GUIDE_TEXT_MAX_WIDTH / 2) - (GUIDE_ICON_SIZE / 2), -14)
+            icon:SetPoint("TOP", guideHeader, "BOTTOM", -(GUIDE_TEXT_MAX_WIDTH / 2) - (GUIDE_ICON_SIZE / 2), -11)
         else
-            icon:SetPoint("TOPLEFT", guideLabels[i - 1], "BOTTOMLEFT", -(GUIDE_ICON_SIZE + 10), -GUIDE_ROW_SPACING)
+            icon:SetPoint("TOPLEFT", guideLabels[i - 1], "BOTTOMLEFT", -(GUIDE_ICON_SIZE + GUIDE_ICON_TEXT_GAP), -GUIDE_ROW_SPACING)
         end
 
         local summaryText = homeContent:CreateFontString(nil, "OVERLAY")
-        summaryText:SetFont(labelFont2, 14, "")
+        summaryText:SetFont(labelFont2, GUIDE_TEXT_SIZE, "")
         local cr, cg, cb = entry.color[1], entry.color[2], entry.color[3]
         summaryText:SetTextColor(cr, cg, cb, 0.55)
         summaryText:SetText(entry.summary)
         summaryText:SetJustifyH("LEFT")
         summaryText:SetWordWrap(true)
         summaryText:SetWidth(GUIDE_TEXT_MAX_WIDTH)
-        summaryText:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -2)
+        summaryText:SetPoint("TOPLEFT", icon, "TOPRIGHT", GUIDE_ICON_TEXT_GAP, -2)
 
         guideIcons[i] = icon
         guideLabels[i] = summaryText
