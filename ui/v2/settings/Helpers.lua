@@ -330,6 +330,94 @@ Helpers.TOOLTIPS = {
 }
 
 --------------------------------------------------------------------------------
+-- Druid per-form text visibility fly-out (Personal Resource Display text tabs)
+--------------------------------------------------------------------------------
+-- Adds a small "Druid Forms" button beside an existing toggle row and a fly-out of
+-- per-form toggles. Storage is per-spec: setting[specIndex][formID] = false to hide.
+-- Only rendered for Druids. Options:
+--   toggleKey  : builder key of the toggle row the button attaches to
+--   settingKey : component setting holding the per-spec form table
+--   getSetting / setSetting : component helpers (Helpers.CreateComponentHelpers)
+function Helpers.AddDruidFormsFlyout(builder, options)
+    local _, playerClass = UnitClass("player")
+    if playerClass ~= "DRUID" then return end
+    if not builder or not options then return end
+    local Controls = addon.UI and addon.UI.Controls
+    if not Controls then return end
+
+    local showToggle = builder:GetControl(options.toggleKey)
+    if not (showToggle and showToggle._label) then return end
+    local getSetting, setSetting, settingKey = options.getSetting, options.setSetting, options.settingKey
+
+    local druidBtn = Controls:CreateButton({
+        parent = showToggle,
+        text = "Druid Forms",
+        height = 20,
+        fontSize = 10,
+        borderWidth = 1,
+        borderAlpha = 0.35,
+    })
+    druidBtn._label:SetTextColor(0.6, 0.6, 0.6, 1)
+    druidBtn:SetWidth(druidBtn._label:GetStringWidth() + 16)
+    druidBtn:SetPoint("LEFT", showToggle._label, "RIGHT", 8, 0)
+    druidBtn:SetFrameLevel(showToggle:GetFrameLevel() + 5)
+
+    local flyout = Controls:CreateFlyout({
+        anchor = druidBtn,
+        direction = "DOWN",
+        width = 260,
+        height = 160,
+        padding = 10,
+        gap = 4,
+    })
+
+    local content = flyout:GetContent()
+    local forms = {
+        { id = 0,  label = "Base / Flight Form" },
+        { id = 1,  label = "Cat Form" },
+        { id = 5,  label = "Bear Form" },
+        { id = 31, label = "Moonkin Form" },
+    }
+
+    local yOff = 0
+    for _, form in ipairs(forms) do
+        local formToggle = Controls:CreateToggle({
+            parent = content,
+            label = form.label,
+            get = function()
+                local tbl = getSetting(settingKey) or {}
+                local specIndex = GetSpecialization and GetSpecialization() or 1
+                local specTbl = tbl[specIndex] or {}
+                return specTbl[form.id] ~= false
+            end,
+            set = function(v)
+                local tbl = getSetting(settingKey) or {}
+                local specIndex = GetSpecialization and GetSpecialization() or 1
+                if not tbl[specIndex] then tbl[specIndex] = {} end
+                if v then
+                    tbl[specIndex][form.id] = nil
+                else
+                    tbl[specIndex][form.id] = false
+                end
+                setSetting(settingKey, tbl)
+            end,
+        })
+        if formToggle then
+            formToggle:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOff)
+            formToggle:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yOff)
+            yOff = yOff - formToggle:GetHeight()
+        end
+    end
+
+    druidBtn:SetScript("OnClick", function()
+        flyout:Toggle()
+    end)
+
+    table.insert(builder._controls, druidBtn)
+    table.insert(builder._controls, flyout)
+end
+
+--------------------------------------------------------------------------------
 -- Return module
 --------------------------------------------------------------------------------
 

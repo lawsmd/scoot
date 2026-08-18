@@ -9,7 +9,6 @@ addon.UI.Settings.PRD.PowerBar = {}
 local PowerBar = addon.UI.Settings.PRD.PowerBar
 local SettingsBuilder = addon.UI.SettingsBuilder
 
-local Controls = addon.UI.Controls
 local Helpers = addon.UI.Settings.Helpers
 local textColorPowerValues = Helpers.textColorPowerValues
 local textColorPowerOrder = Helpers.textColorPowerOrder
@@ -27,6 +26,8 @@ function PowerBar.Render(panel, scrollContent)
     local h = Helpers.CreateComponentHelpers("prdPower")
     local getComponent, getSetting = h.getComponent, h.get
     local setSetting = h.setAndApplyComponent
+    -- Edit Mode mirror push (personal_resource_display/editmode.lua): hideBar, barHeight
+    local syncEditModeSetting = h.sync
 
     -- Build border options
     local function getBorderOptions()
@@ -53,6 +54,21 @@ function PowerBar.Render(panel, scrollContent)
     ---------------------------------------------------------------------------
     -- Sizing Section
     ---------------------------------------------------------------------------
+    ----------------------------------------------------------------------------
+    -- Master Toggle: Hide Power Bar (mirrors Blizzard's Edit Mode setting)
+    ----------------------------------------------------------------------------
+
+    builder:AddToggle({
+        label = "Hide Power Bar",
+        description = "Removes the power bar from the Personal Resource Display; the other bars move up to fill the gap. This is Blizzard's Edit Mode setting, kept in sync both ways.",
+        emphasized = true,
+        get = function() return getSetting("hideBar") or false end,
+        set = function(v)
+            setSetting("hideBar", v)
+            syncEditModeSetting("hideBar")
+        end,
+    })
+
     builder:AddCollapsibleSection({
         title = "Sizing",
         componentId = "prdPower",
@@ -61,13 +77,16 @@ function PowerBar.Render(panel, scrollContent)
         buildContent = function(contentFrame, inner)
             inner:AddSlider({
                 label = "Bar Height",
-                min = 4, max = 40, step = 1,
-                get = function() return getSetting("barHeight") or 8 end,
+                min = 10, max = 30, step = 1,
+                get = function() return getSetting("barHeight") or 15 end,
                 set = function(v) setSetting("barHeight", v) end,
-                minLabel = "4", maxLabel = "40",
+                minLabel = "10", maxLabel = "30",
+                debounceKey = "UI_prdPower_barHeight",
+                debounceDelay = 0.2,
+                onEditModeSync = function() syncEditModeSetting("barHeight") end,
                 infoIcon = {
                     tooltipTitle = "Power Bar Height",
-                    tooltipText = "Width automatically follows the Health Bar width.",
+                    tooltipText = "Blizzard's Edit Mode setting, kept in sync both ways. Also sets the Alternate Power Bar height. Width follows General > Bar Width.",
                 },
             })
 
@@ -75,9 +94,6 @@ function PowerBar.Render(panel, scrollContent)
         end,
     })
 
-    ---------------------------------------------------------------------------
-    -- Style Section
-    ---------------------------------------------------------------------------
     builder:AddCollapsibleSection({
         title = "Style",
         componentId = "prdPower",
@@ -228,79 +244,13 @@ function PowerBar.Render(panel, scrollContent)
                             set = function(v) setSetting("valueTextShow", v) end,
                         })
 
-                        -- Druid per-form visibility: button + flyout
-                        local _, playerClass = UnitClass("player")
-                        if playerClass == "DRUID" then
-                            local showToggle = tabInner:GetControl("valueTextShowToggle")
-                            if showToggle and showToggle._label then
-                                local druidBtn = Controls:CreateButton({
-                                    parent = showToggle,
-                                    text = "Druid Forms",
-                                    height = 20,
-                                    fontSize = 10,
-                                    borderWidth = 1,
-                                    borderAlpha = 0.35,
-                                })
-                                druidBtn._label:SetTextColor(0.6, 0.6, 0.6, 1)
-                                druidBtn:SetWidth(druidBtn._label:GetStringWidth() + 16)
-                                druidBtn:SetPoint("LEFT", showToggle._label, "RIGHT", 8, 0)
-                                druidBtn:SetFrameLevel(showToggle:GetFrameLevel() + 5)
-
-                                local flyout = Controls:CreateFlyout({
-                                    anchor = druidBtn,
-                                    direction = "DOWN",
-                                    width = 260,
-                                    height = 160,
-                                    padding = 10,
-                                    gap = 4,
-                                })
-
-                                local content = flyout:GetContent()
-                                local forms = {
-                                    { id = 0,  label = "Base / Flight Form" },
-                                    { id = 1,  label = "Cat Form" },
-                                    { id = 5,  label = "Bear Form" },
-                                    { id = 31, label = "Moonkin Form" },
-                                }
-
-                                local yOff = 0
-                                for _, form in ipairs(forms) do
-                                    local formToggle = Controls:CreateToggle({
-                                        parent = content,
-                                        label = form.label,
-                                        get = function()
-                                            local tbl = getSetting("valueTextDruidForms") or {}
-                                            local specIndex = GetSpecialization and GetSpecialization() or 1
-                                            local specTbl = tbl[specIndex] or {}
-                                            return specTbl[form.id] ~= false
-                                        end,
-                                        set = function(v)
-                                            local tbl = getSetting("valueTextDruidForms") or {}
-                                            local specIndex = GetSpecialization and GetSpecialization() or 1
-                                            if not tbl[specIndex] then tbl[specIndex] = {} end
-                                            if v then
-                                                tbl[specIndex][form.id] = nil
-                                            else
-                                                tbl[specIndex][form.id] = false
-                                            end
-                                            setSetting("valueTextDruidForms", tbl)
-                                        end,
-                                    })
-                                    if formToggle then
-                                        formToggle:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOff)
-                                        formToggle:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yOff)
-                                        yOff = yOff - formToggle:GetHeight()
-                                    end
-                                end
-
-                                druidBtn:SetScript("OnClick", function()
-                                    flyout:Toggle()
-                                end)
-
-                                table.insert(tabInner._controls, druidBtn)
-                                table.insert(tabInner._controls, flyout)
-                            end
-                        end
+                        -- Druid per-form visibility: button + flyout (Druids only)
+                        Helpers.AddDruidFormsFlyout(tabInner, {
+                            toggleKey = "valueTextShowToggle",
+                            settingKey = "valueTextDruidForms",
+                            getSetting = getSetting,
+                            setSetting = setSetting,
+                        })
 
                         tabInner:AddFontSelector({
                             label = "Font",
@@ -455,12 +405,6 @@ function PowerBar.Render(panel, scrollContent)
         sectionKey = "visibility",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddToggle({
-                label = "Hide Power Bar",
-                get = function() return getSetting("hideBar") or false end,
-                set = function(v) setSetting("hideBar", v) end,
-            })
-
             inner:AddToggle({
                 label = "Hide the Bar but not its Text",
                 get = function() return getSetting("hideTextureOnly") or false end,

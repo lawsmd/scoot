@@ -13,6 +13,7 @@ local setProp = PRD._setProp
 local ensureSettingValue = PRD._ensureSettingValue
 local getHealthContainer = PRD._getHealthContainer
 local getPowerBar = PRD._getPowerBar
+local getAltPowerBar = PRD._getAltPowerBar
 
 --------------------------------------------------------------------------------
 -- Text overlay storage reference (set by text.lua at load time)
@@ -59,17 +60,10 @@ local function applyPRDHealthOpacity()
     local container = getHealthContainer()
     if not container then return end
 
+    -- Scoot's overlays (fill/background/border/text) are children of the container
+    -- and inherit this alpha; nothing else to set.
     local alpha = getPRDOpacityForState("prdHealth")
     pcall(container.SetAlpha, container, alpha)
-
-    -- Also apply to the text overlay if it exists
-    local textOverlays = PRD._textOverlays
-    if textOverlays then
-        local storage = textOverlays.health
-        if storage and storage.overlay then
-            pcall(storage.overlay.SetAlpha, storage.overlay, alpha)
-        end
-    end
 end
 
 -- Apply opacity to prdPower component
@@ -85,17 +79,27 @@ local function applyPRDPowerOpacity()
     local frame = getPowerBar()
     if not frame then return end
 
+    -- Overlays are children of the bar and inherit this alpha.
     local alpha = getPRDOpacityForState("prdPower")
     pcall(frame.SetAlpha, frame, alpha)
+end
 
-    -- Also apply to the text overlay if it exists
-    local textOverlays = PRD._textOverlays
-    if textOverlays then
-        local storage = textOverlays.power
-        if storage and storage.overlay then
-            pcall(storage.overlay.SetAlpha, storage.overlay, alpha)
-        end
-    end
+-- Apply opacity to prdAltPower component
+local function applyPRDAltPowerOpacity()
+    local component = addon.Components and addon.Components.prdAltPower
+    if not component or not component.db then return end
+    -- Zero-Touch: skip unconfigured components (still on proxy DB)
+    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+
+    -- Skip if bar is hidden
+    if component.db.hideBar then return end
+
+    local frame = getAltPowerBar()
+    if not frame then return end
+
+    -- Overlays are children of the bar and inherit this alpha.
+    local alpha = getPRDOpacityForState("prdAltPower")
+    pcall(frame.SetAlpha, frame, alpha)
 end
 
 -- Apply opacity to prdClassResource component
@@ -128,6 +132,7 @@ end
 local function updateAllPRDOpacities()
     applyPRDHealthOpacity()
     applyPRDPowerOpacity()
+    applyPRDAltPowerOpacity()
     applyPRDClassResourceOpacity()
 end
 
@@ -137,6 +142,8 @@ function addon.RefreshPRDOpacity(componentId)
         applyPRDHealthOpacity()
     elseif componentId == "prdPower" then
         applyPRDPowerOpacity()
+    elseif componentId == "prdAltPower" then
+        applyPRDAltPowerOpacity()
     elseif componentId == "prdClassResource" then
         applyPRDClassResourceOpacity()
     else
@@ -181,6 +188,7 @@ PRD._getPRDOpacityForState = getPRDOpacityForState
 PRD._updateAllPRDOpacities = updateAllPRDOpacities
 PRD._applyPRDHealthOpacity = applyPRDHealthOpacity
 PRD._applyPRDPowerOpacity = applyPRDPowerOpacity
+PRD._applyPRDAltPowerOpacity = applyPRDAltPowerOpacity
 PRD._applyPRDClassResourceOpacity = applyPRDClassResourceOpacity
 PRD._storeOriginalAlpha = storeOriginalAlpha
 PRD._applyHiddenAlpha = applyHiddenAlpha

@@ -362,6 +362,11 @@ function addon.EditMode:ImportPresetLayout(preset, opts)
         remapPresetPositions(profileCopy, targetName)
         if type(profileCopy) == "table" then
             profileCopy.__presetLayout = targetName
+            -- Personal Resource Display mirrors: push the preset's explicit PRD values
+            -- into the layout the first time this profile is active with Edit Mode ready.
+            if addon.PRD and addon.PRD.MarkProfilePendingNativePush then
+                addon.PRD.MarkProfilePendingNativePush(profileCopy)
+            end
         end
         addon.db.profiles[targetName] = profileCopy
         
@@ -491,6 +496,9 @@ function addon.EditMode:ImportPresetLayout(preset, opts)
     remapPresetPositions(profileCopy, newLayoutName)
     if type(profileCopy) == "table" then
         profileCopy.__presetLayout = newLayoutName
+        if addon.PRD and addon.PRD.MarkProfilePendingNativePush then
+            addon.PRD.MarkProfilePendingNativePush(profileCopy)
+        end
     end
     addon.db.profiles[newLayoutName] = profileCopy
 

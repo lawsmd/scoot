@@ -28,6 +28,17 @@ function UIPanel:HandleEditModeBackSync(componentId, settingId)
         categoryKey = "actionBars18"
     end
 
+    -- Personal Resource Display component ids differ from their nav keys
+    local PRD_NAV_KEYS = {
+        prdGlobal = "prdGeneral",
+        prdHealth = "prdHealthBar",
+        prdPower = "prdPowerBar",
+        prdAltPower = "prdAltPowerBar",
+    }
+    if PRD_NAV_KEYS[componentId] then
+        categoryKey = PRD_NAV_KEYS[componentId]
+    end
+
     if self._currentCategoryKey == categoryKey then
         C_Timer.After(0, function()
             if self.frame and self.frame:IsShown() then
@@ -637,6 +648,7 @@ local DEFAULTS_RESET_MAP = {
     prdGeneral          = { strategy = "component", id = "prdGlobal" },
     prdHealthBar        = { strategy = "component", id = "prdHealth" },
     prdPowerBar         = { strategy = "component", id = "prdPower" },
+    prdAltPowerBar      = { strategy = "component", id = "prdAltPower" },
     prdClassResource    = { strategy = "component", id = "prdClassResource" },
     -- Unit Frames
     ufPlayer            = { strategy = "unitFrame", unitKey = "Player" },
@@ -731,6 +743,12 @@ function UIPanel:ExecuteDefaultsReset(key, resetInfo)
     local strategy = resetInfo.strategy
 
     if strategy == "component" then
+        -- Personal Resource Display parts mirror Blizzard Edit Mode settings; restore
+        -- those to Blizzard's defaults before the table goes away (SaveLayouts is
+        -- synchronous, so it survives the reload below).
+        if addon.PRD and addon.PRD.PushDefaults then
+            pcall(addon.PRD.PushDefaults, resetInfo.id)
+        end
         if profile.components then
             profile.components[resetInfo.id] = nil
         end

@@ -131,6 +131,14 @@ Navigation.NavModel = {
             { key = "prdGeneral", label = "General", module = "prd" },
             { key = "prdHealthBar", label = "Health Bar", module = "prd" },
             { key = "prdPowerBar", label = "Power Bar", module = "prd" },
+            -- Only Demon Hunter, Evoker, Monk, Priest and Druid have an alternate power bar
+            -- (Devourer / Augmentation / Brewmaster / Shadow / Balance). The page renders
+            -- fine for anyone (profiles are shared across characters); the nav hides it for
+            -- classes that can never see the bar.
+            { key = "prdAltPowerBar", label = "Alternate Power Bar", module = "prd",
+              isVisible = function()
+                  return addon.PRD and addon.PRD.PlayerClassHasAltPowerBar and addon.PRD.PlayerClassHasAltPowerBar()
+              end },
             { key = "prdClassResource", label = "Class Resource", module = "prd" },
         },
     },
@@ -648,7 +656,9 @@ function Navigation:BuildRows(contentFrame)
             for _, child in ipairs(parent.children) do
                 local catDef = child.module and addon.MODULE_CATEGORIES and addon.MODULE_CATEGORIES[child.module]
                 local isMutuallyExclusive = catDef and catDef.mutuallyExclusive
-                if child.variantGroup then
+                if type(child.isVisible) == "function" and not child.isVisible() then
+                    -- Page exists but does not apply to this character (class-gated pages)
+                elseif child.variantGroup then
                     if groupActive and groupActive[child.variantGroup] then
                         if self:IsNavModuleActive(child.module, child.moduleSubId) then
                             visibleChildren[#visibleChildren + 1] = child

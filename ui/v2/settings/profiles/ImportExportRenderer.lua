@@ -146,7 +146,13 @@ local function performImport(envelope, targetLayoutName, editModeStr)
     end
 
     -- Write Scoot profile data
-    addon.db.profiles[targetLayoutName] = CopyTable(envelope.data)
+    local importedProfile = CopyTable(envelope.data)
+    -- Personal Resource Display mirrors: push the imported PRD values into the layout
+    -- the first time this profile is active with Edit Mode ready.
+    if addon.PRD and addon.PRD.MarkProfilePendingNativePush then
+        addon.PRD.MarkProfilePendingNativePush(importedProfile)
+    end
+    addon.db.profiles[targetLayoutName] = importedProfile
 
     -- Set pending activation token
     if addon.db.global then

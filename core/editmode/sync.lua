@@ -20,6 +20,11 @@ end
 
 function addon.EditMode.SyncComponentSettingToEditMode(component, settingId, opts)
     opts = opts or {}
+    -- Components that own their own Edit Mode mirror (the Personal Resource Display parts,
+    -- which share one system frame) supply a method instead of a frameName.
+    if component and component.SyncSettingToEditMode then
+        return component:SyncSettingToEditMode(settingId, opts)
+    end
     local frame = _G[component.frameName]
     if not frame or not addon.EditMode.HasEditModeSettings(frame) then return false end
 

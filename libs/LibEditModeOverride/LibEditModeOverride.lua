@@ -260,7 +260,11 @@ function lib:GetFrameSetting(frame, setting)
       end
       -- IMPORTANT: Some edit-mode UIs internally store Opacity as an index but present raw percent.
       -- We normalize here to raw when we can infer the typical 50..100 range with step 1.
-      if restrictions and restrictions.type == Enum.EditModeSettingDisplayType.Slider and setting == Enum.EditModeCooldownViewerSetting.Opacity then
+      -- Scoped to the Cooldown Viewer: other systems reuse setting id 5 for unrelated sliders
+      -- (Personal Resource Display PowerBarHeight, for one).
+      if restrictions and restrictions.type == Enum.EditModeSettingDisplayType.Slider
+          and setting == Enum.EditModeCooldownViewerSetting.Opacity
+          and frame and frame.system == Enum.EditModeSystem.CooldownViewer then
         local v = item.value
         -- If value looks like index (0..50), convert to 50..100;
         -- if it already looks raw (50..100), pass through.

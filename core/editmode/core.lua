@@ -1250,6 +1250,30 @@ function addon.EditMode.Initialize()
         end
     end
 
+    -- Personal Resource Display sliders (12.0.7+). Size/BarWidth/Padding/Opacity use
+    -- ConvertValueDefault (stored index = (raw - min) / step); HealthBarHeight/PowerBarHeight
+    -- use ConvertValueDiffFromMin (stored = raw - min). Registering both lets Scoot read and
+    -- write UI-facing values (70..150 %, 50..150 %, 0..10, 50..100 %, 10..30 px). The
+    -- DiffFromMin flag on PowerBarHeight (id 5) also keeps it out of the library's
+    -- CDM-opacity heuristic, which is keyed on setting id 5.
+    do
+        local LEO_flag = LibStub and LibStub("LibEditModeOverride-1.0")
+        if LEO_flag and _G and _G.Enum and _G.Enum.EditModeSystem and _G.Enum.EditModePersonalResourceDisplaySetting then
+            local sysPRD = _G.Enum.EditModeSystem.PersonalResourceDisplay
+            local S = _G.Enum.EditModePersonalResourceDisplaySetting
+            LEO_flag._forceIndexBased = LEO_flag._forceIndexBased or {}
+            LEO_flag._forceIndexBased[sysPRD] = LEO_flag._forceIndexBased[sysPRD] or {}
+            LEO_flag._forceDiffFromMin = LEO_flag._forceDiffFromMin or {}
+            LEO_flag._forceDiffFromMin[sysPRD] = LEO_flag._forceDiffFromMin[sysPRD] or {}
+            if S.Size then LEO_flag._forceIndexBased[sysPRD][S.Size] = true end
+            if S.BarWidth then LEO_flag._forceIndexBased[sysPRD][S.BarWidth] = true end
+            if S.Padding then LEO_flag._forceIndexBased[sysPRD][S.Padding] = true end
+            if S.Opacity then LEO_flag._forceIndexBased[sysPRD][S.Opacity] = true end
+            if S.HealthBarHeight then LEO_flag._forceDiffFromMin[sysPRD][S.HealthBarHeight] = true end
+            if S.PowerBarHeight then LEO_flag._forceDiffFromMin[sysPRD][S.PowerBarHeight] = true end
+        end
+    end
+
     -- Compatibility: Some clients persist Cast Bar Bar Size as an index; treat as index-based to avoid snapping to max.
     do
         local LEO_flag2 = LibStub and LibStub("LibEditModeOverride-1.0")

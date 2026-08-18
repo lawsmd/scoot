@@ -8,6 +8,7 @@ addon.UI.Settings.PRD.General = {}
 
 local General = addon.UI.Settings.PRD.General
 local SettingsBuilder = addon.UI.SettingsBuilder
+local Helpers = addon.UI.Settings.Helpers
 
 --------------------------------------------------------------------------------
 -- Render Function
@@ -58,6 +59,7 @@ function General.Render(panel, scrollContent)
     builder:AddToggle({
         label = "Enable Personal Resource Display",
         description = "Show or hide the Personal Resource Display on this profile. Overrides Blizzard's per-character setting in Options > Gameplay > Interface.",
+        emphasized = true,
         get = function()
             local s = getProfilePRDSettings()
             if s and s.enablePRD ~= nil then
@@ -82,6 +84,102 @@ function General.Render(panel, scrollContent)
                     addon:ApplyStyles()
                 end
             end
+        end,
+    })
+
+    ---------------------------------------------------------------------------
+    -- Display: Blizzard's PRD-wide Edit Mode settings, kept in sync both ways
+    -- (personal_resource_display/editmode.lua). Native applies them; Scoot stores
+    -- the value and pushes it on change.
+    ---------------------------------------------------------------------------
+    local h = Helpers.CreateComponentHelpers("prdGlobal")
+    local getSetting = h.get
+    local setSetting = h.setAndApplyComponent
+    local syncEditModeSetting = h.sync
+
+    builder:AddCollapsibleSection({
+        title = "Display",
+        componentId = "prdGlobal",
+        sectionKey = "display",
+        defaultExpanded = true,
+        infoIcon = {
+            tooltipTitle = "Edit Mode Settings",
+            tooltipText = "These are Blizzard's Edit Mode settings for the Personal Resource Display. Changing them here or inside Edit Mode keeps both in step.",
+        },
+        buildContent = function(contentFrame, inner)
+            inner:AddSelector({
+                label = "Visibility",
+                description = "When the Personal Resource Display is shown.",
+                values = {
+                    always = "Always",
+                    combat = "Only in Combat",
+                    never = "Hidden",
+                },
+                order = { "always", "combat", "never" },
+                get = function() return getSetting("visibleSetting") or "always" end,
+                set = function(v)
+                    setSetting("visibleSetting", v or "always")
+                    syncEditModeSetting("visibleSetting")
+                end,
+            })
+
+            inner:AddSlider({
+                label = "Scale",
+                min = 70, max = 150, step = 10,
+                get = function() return getSetting("scale") or 100 end,
+                set = function(v) setSetting("scale", v) end,
+                minLabel = "70%", maxLabel = "150%",
+                debounceKey = "UI_prdGlobal_scale",
+                debounceDelay = 0.2,
+                onEditModeSync = function() syncEditModeSetting("scale") end,
+            })
+
+            inner:AddSlider({
+                label = "Bar Width",
+                min = 50, max = 150, step = 10,
+                get = function() return getSetting("barWidth") or 100 end,
+                set = function(v) setSetting("barWidth", v) end,
+                minLabel = "50%", maxLabel = "150%",
+                debounceKey = "UI_prdGlobal_barWidth",
+                debounceDelay = 0.2,
+                onEditModeSync = function() syncEditModeSetting("barWidth") end,
+                infoIcon = {
+                    tooltipTitle = "Bar Width",
+                    tooltipText = "Width of every bar in the Personal Resource Display, as a percentage of Blizzard's default width.",
+                },
+            })
+
+            inner:AddSlider({
+                label = "Bar Spacing",
+                min = 0, max = 10, step = 1,
+                get = function() return getSetting("barPadding") or 0 end,
+                set = function(v) setSetting("barPadding", v) end,
+                minLabel = "0", maxLabel = "10",
+                debounceKey = "UI_prdGlobal_barPadding",
+                debounceDelay = 0.2,
+                onEditModeSync = function() syncEditModeSetting("barPadding") end,
+                infoIcon = {
+                    tooltipTitle = "Bar Spacing",
+                    tooltipText = "Extra gap between the health, power, alternate power and class resource rows.",
+                },
+            })
+
+            inner:AddSlider({
+                label = "Opacity",
+                min = 50, max = 100, step = 1,
+                get = function() return getSetting("opacity") or 100 end,
+                set = function(v) setSetting("opacity", v) end,
+                minLabel = "50%", maxLabel = "100%",
+                debounceKey = "UI_prdGlobal_opacity",
+                debounceDelay = 0.2,
+                onEditModeSync = function() syncEditModeSetting("opacity") end,
+                infoIcon = {
+                    tooltipTitle = "Opacity",
+                    tooltipText = "Blizzard's opacity for the whole Personal Resource Display. Each bar's own In Combat / With Target / Out of Combat opacity (under Visibility) multiplies on top of it.",
+                },
+            })
+
+            inner:Finalize()
         end,
     })
 

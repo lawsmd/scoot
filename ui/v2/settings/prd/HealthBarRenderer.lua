@@ -23,6 +23,9 @@ function HealthBar.Render(panel, scrollContent)
     local h = Helpers.CreateComponentHelpers("prdHealth")
     local getComponent, getSetting = h.getComponent, h.get
     local setSetting = h.setAndApplyComponent
+    -- Edit Mode mirror push (personal_resource_display/editmode.lua):
+    -- hideBar, barHeight, styleForegroundColorMode (native ShowClassColor)
+    local syncEditModeSetting = h.sync
     local textColorValues, textColorOrder = Helpers.textColorHealthValues, Helpers.textColorHealthOrder
 
     -- Build border options
@@ -48,7 +51,21 @@ function HealthBar.Render(panel, scrollContent)
     end
 
     ---------------------------------------------------------------------------
-    -- Sizing Section
+    -- Master Toggle: Hide Health Bar (mirrors Blizzard's Edit Mode setting)
+    ---------------------------------------------------------------------------
+    builder:AddToggle({
+        label = "Hide Health Bar",
+        description = "Removes the health bar from the Personal Resource Display; the other bars move up to fill the gap. This is Blizzard's Edit Mode setting, kept in sync both ways.",
+        emphasized = true,
+        get = function() return getSetting("hideBar") or false end,
+        set = function(v)
+            setSetting("hideBar", v)
+            syncEditModeSetting("hideBar")
+        end,
+    })
+
+    ---------------------------------------------------------------------------
+    -- Sizing Section (native Edit Mode height; width is PRD-wide under General)
     ---------------------------------------------------------------------------
     builder:AddCollapsibleSection({
         title = "Sizing",
@@ -57,19 +74,18 @@ function HealthBar.Render(panel, scrollContent)
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
             inner:AddSlider({
-                label = "Bar Width",
-                min = 60, max = 600, step = 1,
-                get = function() return getSetting("barWidth") or 200 end,
-                set = function(v) setSetting("barWidth", v) end,
-                minLabel = "60", maxLabel = "600",
-            })
-
-            inner:AddSlider({
                 label = "Bar Height",
-                min = 4, max = 60, step = 1,
-                get = function() return getSetting("barHeight") or 12 end,
+                min = 10, max = 30, step = 1,
+                get = function() return getSetting("barHeight") or 15 end,
                 set = function(v) setSetting("barHeight", v) end,
-                minLabel = "4", maxLabel = "60",
+                minLabel = "10", maxLabel = "30",
+                debounceKey = "UI_prdHealth_barHeight",
+                debounceDelay = 0.2,
+                onEditModeSync = function() syncEditModeSetting("barHeight") end,
+                infoIcon = {
+                    tooltipTitle = "Health Bar Height",
+                    tooltipText = "Blizzard's Edit Mode setting, kept in sync both ways. Width follows General > Bar Width.",
+                },
             })
 
             inner:Finalize()
@@ -140,7 +156,12 @@ function HealthBar.Render(panel, scrollContent)
                 },
                 colorOrder = { "default", "class", "custom" },
                 getColorMode = function() return getSetting("styleForegroundColorMode") or "default" end,
-                setColorMode = function(v) setSetting("styleForegroundColorMode", v) end,
+                -- "Class Color" is also pushed as Blizzard's Edit Mode "Show Class Color" for
+                -- this bar (two-way), so Edit Mode shows the same state.
+                setColorMode = function(v)
+                    setSetting("styleForegroundColorMode", v)
+                    syncEditModeSetting("styleForegroundColorMode")
+                end,
                 getColor = function()
                     local c = getSetting("styleForegroundTint") or {1, 1, 1, 1}
                     return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
@@ -357,12 +378,6 @@ function HealthBar.Render(panel, scrollContent)
         sectionKey = "visibility",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddToggle({
-                label = "Hide Health Bar",
-                get = function() return getSetting("hideBar") or false end,
-                set = function(v) setSetting("hideBar", v) end,
-            })
-
             inner:AddToggle({
                 label = "Hide the Bar but not its Text",
                 get = function() return getSetting("hideTextureOnly") or false end,

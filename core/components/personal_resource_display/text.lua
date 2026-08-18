@@ -23,13 +23,31 @@ local getPowerBar = PRD._getPowerBar
 local textOverlays = {
     health = { lastLeft = nil, lastRight = nil, overlay = nil, leftFS = nil, rightFS = nil },
     power = { lastLeft = nil, lastRight = nil, overlay = nil, leftFS = nil, rightFS = nil },
+    altpower = { lastLeft = nil, lastRight = nil, overlay = nil, leftFS = nil, rightFS = nil },
 }
 
 -- Promote for opacity.lua to access
 PRD._textOverlays = textOverlays
 
+-- Overlay type -> component id
+local OVERLAY_COMPONENT = {
+    health = "prdHealth",
+    power = "prdPower",
+    altpower = "prdAltPower",
+}
+
+-- Which native FontStrings feed which overlay side. Health/power run in the "BOTH"
+-- display mode (LeftText = percent, RightText = value). The alternate power bar has
+-- showPercentage=false, so TextStatusBar writes NUMERIC mode into TextString and
+-- clears/hides Left/Right (Blizzard_TextStatusBar/TextStatusBar.lua) - value only.
+local NATIVE_TEXT_SOURCES = {
+    health = { left = "LeftText", right = "RightText" },
+    power = { left = "LeftText", right = "RightText" },
+    altpower = { right = "TextString" },
+}
+
 -- Hook installation tracking
-local textHooksInstalled = { power = false, health = false }
+local textHooksInstalled = { power = false, health = false, altpower = false }
 
 --------------------------------------------------------------------------------
 -- Native Bar Text (Blizzard 12.0.7+)
@@ -50,9 +68,7 @@ local function hideNativeBarTextOn(bar)
     end
 end
 
--- Hide Blizzard's native PRD bar text across health, power, and alternate power
--- bars. (Only health/power get an overlay; the alt-power bar shows no text,
--- which matches pre-12.0.7 behavior.)
+-- Hide Blizzard's native PRD bar text across health, power, and alternate power bars.
 local function hidePRDNativeBarText()
     local prd = PersonalResourceDisplayFrame
     if not prd then return end
@@ -66,17 +82,15 @@ end
 -- nil = never requested (fresh/default profile — leave the layout untouched).
 local nativeBarTextRequested = nil
 
--- True if the user has configured any PRD bar text (value or percent) on either bar.
+-- True if the user has configured any PRD bar text (value or percent) on any bar.
 local function anyPRDTextConfigured()
     local comps = addon.Components
     if not comps then return false end
-    if comps.prdHealth and comps.prdHealth.db
-        and (comps.prdHealth.db.valueTextShow or comps.prdHealth.db.percentTextShow) then
-        return true
-    end
-    if comps.prdPower and comps.prdPower.db
-        and (comps.prdPower.db.valueTextShow or comps.prdPower.db.percentTextShow) then
-        return true
+    for _, compId in pairs(OVERLAY_COMPONENT) do
+        local comp = comps[compId]
+        if comp and comp.db and (comp.db.valueTextShow or comp.db.percentTextShow) then
+            return true
+        end
     end
     return false
 end
@@ -101,8 +115,16 @@ local function setNativeBarTextEnabled(enabled)
     if enabled then hidePRDNativeBarText() end
 end
 
+-- Forget what we last requested. Used by the Edit Mode read-back when the user turned
+-- Show Bar Text off inside Edit Mode while Scoot text is configured: the next apply
+-- then re-asserts it instead of trusting the stale latch.
+local function resetNativeBarTextLatch()
+    nativeBarTextRequested = nil
+end
+
 PRD._setNativeBarTextEnabled = setNativeBarTextEnabled
 PRD._anyPRDTextConfigured = anyPRDTextConfigured
+PRD._resetNativeBarTextLatch = resetNativeBarTextLatch
 
 --------------------------------------------------------------------------------
 -- Font Resolution
@@ -140,8 +162,10 @@ local function ensureTextOverlay(bar, overlayType)
         return storage.leftFS, storage.rightFS
     end
 
-    -- Create overlay frame parented to UIParent, anchored to PRD bar
-    local overlay = CreateFrame("Frame", nil, UIParent)
+    -- Create overlay frame as a child of the PRD bar (Rule 6), anchored to it. As a
+    -- child it inherits the bar's shown state (native hides, alt bar spec gating), the
+    -- per-part state opacity, and the PRD's native Size / Opacity / visibility mode.
+    local overlay = CreateFrame("Frame", nil, bar)
     overlay:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
     overlay:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
     -- MEDIUM (core/strata.lua): HIGH put the number in front of every Blizzard
@@ -334,8 +358,8 @@ local function onSourceTextChanged(overlayType, side, text)
     end
 
     -- Get the component to check per-text show settings
-    local compId = (overlayType == "power") and "prdPower" or "prdHealth"
-    local comp = addon.Components and addon.Components[compId]
+    local compId = OVERLAY_COMPONENT[overlayType]
+    local comp = compId and addon.Components and addon.Components[compId]
     if not comp or not comp.db then return end
 
     local fs = (side == "left") and storage.leftFS or storage.rightFS
@@ -363,14 +387,16 @@ end
 -- Hook Installation
 --------------------------------------------------------------------------------
 
--- Install hooks on a native PRD bar's own text FontStrings (LeftText = percent,
--- RightText = value). Blizzard populates these via SetText in its own clean
--- context; Scoot mirrors onto the overlay and keeps the native FontStrings hidden.
+-- Install hooks on a native PRD bar's own text FontStrings (per NATIVE_TEXT_SOURCES:
+-- LeftText = percent, RightText = value; TextString = value on the alternate power
+-- bar). Blizzard populates these via SetText in its own clean context; Scoot mirrors
+-- onto the overlay and keeps the native FontStrings hidden.
 local function installNativeBarTextHooks(overlayType, bar)
     if not bar then return false end
 
-    local leftSource = bar.LeftText
-    local rightSource = bar.RightText
+    local sources = NATIVE_TEXT_SOURCES[overlayType] or NATIVE_TEXT_SOURCES.power
+    local leftSource = sources.left and bar[sources.left]
+    local rightSource = sources.right and bar[sources.right]
 
     if leftSource then
         pcall(leftSource.SetAlpha, leftSource, 0)
@@ -437,6 +463,18 @@ local function installHealthTextHooks()
 
     if installNativeBarTextHooks("health", healthBar) then
         textHooksInstalled.health = true
+    end
+end
+
+-- Install hooks on the PRD Alternate Power Bar's own native text (AlternatePowerBar.TextString)
+local function installAltPowerTextHooks()
+    if textHooksInstalled.altpower then return end
+
+    local altBar = PersonalResourceDisplayFrame and PersonalResourceDisplayFrame.AlternatePowerBar
+    if not altBar then return end
+
+    if installNativeBarTextHooks("altpower", altBar) then
+        textHooksInstalled.altpower = true
     end
 end
 
@@ -528,10 +566,46 @@ local function applyHealthTextOverlay(comp)
     applyCachedText("health", db)
 end
 
+-- Apply text overlay for the alternate power bar (called from altPower.ApplyStyling).
+-- Value only: the alt bar has no percent stream.
+local function applyAltPowerTextOverlay(comp)
+    if not comp or not comp.db then return end
+
+    local db = comp.db
+
+    -- Drive Blizzard's native bar text (PRD-wide) based on whether any bar wants text.
+    setNativeBarTextEnabled(anyPRDTextConfigured())
+
+    local showValue = db.valueTextShow
+    if showValue then showValue = isDruidTextVisible(db, "value") end
+
+    if not showValue or db.hideBar then
+        hideTextOverlay("altpower")
+        return
+    end
+
+    local altBar = PersonalResourceDisplayFrame and PersonalResourceDisplayFrame.AlternatePowerBar
+    if not altBar then return end
+
+    installAltPowerTextHooks()
+
+    local leftText, rightText = ensureTextOverlay(altBar, "altpower")
+    if not leftText and not rightText then return end
+
+    showTextOverlay("altpower")
+    applyTextStyle(leftText, rightText, comp, "altpower")
+
+    if leftText then pcall(leftText.Hide, leftText) end
+    if rightText then pcall(rightText.Show, rightText) end
+
+    applyCachedText("altpower", db)
+end
+
 --------------------------------------------------------------------------------
 -- Namespace Promotions
 --------------------------------------------------------------------------------
 
 PRD._applyHealthTextOverlay = applyHealthTextOverlay
 PRD._applyPowerTextOverlay = applyPowerTextOverlay
+PRD._applyAltPowerTextOverlay = applyAltPowerTextOverlay
 PRD._hideTextOverlay = hideTextOverlay

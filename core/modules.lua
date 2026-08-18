@@ -69,7 +69,7 @@ local COMPONENT_TO_CATEGORY = {
     -- Objective Tracker
     objectiveTracker = "objectiveTracker",
     -- Personal Resource Display
-    prdGlobal = "prd", prdHealth = "prd", prdPower = "prd", prdClassResource = "prd",
+    prdGlobal = "prd", prdHealth = "prd", prdPower = "prd", prdAltPower = "prd", prdClassResource = "prd",
     -- Scrolling Combat Text
     sctDamage = "sct",
     -- Tooltip

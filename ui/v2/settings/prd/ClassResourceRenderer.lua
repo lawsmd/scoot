@@ -23,6 +23,23 @@ function ClassResource.Render(panel, scrollContent)
     local h = Helpers.CreateComponentHelpers("prdClassResource")
     local getComponent, getSetting = h.getComponent, h.get
     local setSetting = h.setAndApplyComponent
+    -- Edit Mode mirror push (personal_resource_display/editmode.lua):
+    -- hideBar (HideClassInfo), hideClassInfoOnPlayerFrame
+    local syncEditModeSetting = h.sync
+
+    ---------------------------------------------------------------------------
+    -- Master Toggle: Hide Class Resource (mirrors Blizzard's Edit Mode setting)
+    ---------------------------------------------------------------------------
+    builder:AddToggle({
+        label = "Hide Class Resource",
+        description = "Removes the class resource (combo points, runes, holy power, etc.) from the Personal Resource Display. This is Blizzard's Edit Mode setting, kept in sync both ways.",
+        emphasized = true,
+        get = function() return getSetting("hideBar") or false end,
+        set = function(v)
+            setSetting("hideBar", v)
+            syncEditModeSetting("hideBar")
+        end,
+    })
 
     ---------------------------------------------------------------------------
     -- Textures Section (DK / Mage)
@@ -86,15 +103,12 @@ function ClassResource.Render(panel, scrollContent)
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
             inner:AddToggle({
-                label = "Hide Class Resource",
-                get = function() return getSetting("hideBar") or false end,
-                set = function(v) setSetting("hideBar", v) end,
-            })
-
-            inner:AddToggle({
                 label = "Hide on Player Frame",
                 get = function() return getSetting("hideClassInfoOnPlayerFrame") or false end,
-                set = function(v) setSetting("hideClassInfoOnPlayerFrame", v) end,
+                set = function(v)
+                    setSetting("hideClassInfoOnPlayerFrame", v)
+                    syncEditModeSetting("hideClassInfoOnPlayerFrame")
+                end,
                 infoIcon = {
                     tooltipTitle = "Hide on Player Frame",
                     tooltipText = "Removes the class resource (combo points, runes, holy power, etc.) shown beneath your regular Player unit frame. This is separate from the Personal Resource Display above and does not affect it.",

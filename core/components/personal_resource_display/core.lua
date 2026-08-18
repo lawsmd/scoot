@@ -172,6 +172,8 @@ local function ensureEventFrame()
     prdEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     prdEventFrame:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
     prdEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+    -- Blizzard re-evaluates the alternate power bar on talent updates too.
+    prdEventFrame:RegisterEvent("PLAYER_TALENT_UPDATE")
 
     return prdEventFrame
 end
@@ -205,16 +207,31 @@ PRD.DRUID_FORM_NAMES = {
     [35] = "Moonkin",  -- talent variant, same display name
 }
 
-local MIN_HEALTH_BAR_WIDTH = 60
-local MAX_HEALTH_BAR_WIDTH = 600
-local MIN_HEALTH_BAR_HEIGHT = 4
-local MAX_HEALTH_BAR_HEIGHT = 60
-local MIN_POWER_BAR_WIDTH = 40
-local MAX_POWER_BAR_WIDTH = 600
-local MIN_POWER_BAR_HEIGHT = 4
-local MAX_POWER_BAR_HEIGHT = 40
+-- Sizing is native Edit Mode (12.0.7+): HealthBarHeight / PowerBarHeight are 10..30 px
+-- sliders on PersonalResourceDisplayFrame; BarWidth / Size / Padding / Opacity are
+-- PRD-wide and live on prdGlobal. Ranges below mirror EditModeSettingDisplayInfo.lua.
+local MIN_BAR_HEIGHT = 10
+local MAX_BAR_HEIGHT = 30
+local DEFAULT_BAR_HEIGHT = 15
 local MIN_CLASS_RESOURCE_SCALE_PERCENT = 50
 local MAX_CLASS_RESOURCE_SCALE_PERCENT = 150
+
+-- Classes that Blizzard gives an alternate power bar in the PRD
+-- (CLASS_ALT_POWER_BAR_INFO_MAP, Blizzard_PersonalResourceDisplay.lua). The bar itself
+-- shows only in one spec per class (Devourer, Augmentation, Brewmaster, Shadow, Balance).
+local ALT_POWER_CLASSES = {
+    DEMONHUNTER = true,
+    EVOKER = true,
+    MONK = true,
+    PRIEST = true,
+    DRUID = true,
+}
+PRD.ALT_POWER_CLASSES = ALT_POWER_CLASSES
+
+function PRD.PlayerClassHasAltPowerBar()
+    local _, playerClass = UnitClass("player")
+    return ALT_POWER_CLASSES[playerClass] == true
+end
 
 -- Capture default CVar values to restore them if Static Mode is disabled
 local defaultTopInset = (GetCVarDefault and GetCVarDefault("nameplateSelfTopInset")) or 0.5
@@ -224,26 +241,15 @@ local defaultBottomInset = (GetCVarDefault and GetCVarDefault("nameplateSelfBott
 -- Utility Functions
 --------------------------------------------------------------------------------
 
--- Power Bar height management.
+-- Power Bar hooks.
 --
--- CRITICAL: OnSizeChanged and other nameplate-related methods are no longer hooked.
---
--- The problem: ANY hooksecurefunc callback that runs during Blizzard's nameplate setup
--- chain (including OnSizeChanged which fires when SetShown() is called) will taint the
--- execution context, causing SetTargetClampingInsets() to be blocked.
---
--- Instead, power bar height is applied directly via SetHeight() in applyPowerOffsets().
--- This height may be reset by Blizzard during spec changes, instance transitions, etc.,
--- but that's preferable to causing taint errors. Users can re-apply via settings or /reload.
---
--- NOTE: Width control was removed entirely because Blizzard's SetupClassNameplateBars()
--- continuously re-applies TOPLEFT+TOPRIGHT anchors which control width via the layout system.
--- Power bar width now automatically follows the health bar width.
+-- CRITICAL: no hooksecurefunc on the PRD's bars or their methods (Rule 11). Any hook
+-- callback that runs during Blizzard's setup chain taints the execution context.
+-- Sizing is no longer applied by Scoot at all: bar heights, width, scale and spacing are
+-- Blizzard Edit Mode settings, mirrored two-way by editmode.lua (Edit-Mode-first).
 
 local function ensurePowerBarHooks(component)
     -- INTENTIONALLY EMPTY: No hooks are installed to avoid taint.
-    -- Height is applied directly in applyPowerOffsets().
-    -- See comment block above for explanation.
 end
 
 local function clampValue(value, minValue, maxValue)
@@ -325,6 +331,20 @@ local function getPowerBar()
     return bar
 end
 
+-- The alternate power bar (12.0.7). Blizzard creates it for every class and shows it
+-- only when the class/spec has an alternate resource (alternatePowerRequirementsMet).
+local function getAltPowerBar()
+    local prd = PersonalResourceDisplayFrame
+    if not prd then
+        return nil
+    end
+    local bar = prd.AlternatePowerBar
+    if not bar or (bar.IsForbidden and bar:IsForbidden()) then
+        return nil
+    end
+    return bar
+end
+
 --------------------------------------------------------------------------------
 -- Border Options Builder
 --------------------------------------------------------------------------------
@@ -379,30 +399,42 @@ end
 --------------------------------------------------------------------------------
 
 addon:RegisterComponentInitializer(function(self)
-    -- PRD Global component - settings placeholder for future use.
-    -- PRD positioning is handled entirely via Edit Mode.
-    -- The previous CVar-based "Minimize Vertical Movement" feature has been removed.
+    -- PRD Global component: PRD-wide Blizzard Edit Mode settings, mirrored two-way by
+    -- editmode.lua (native applies them; Scoot only stores and syncs). Positioning is
+    -- handled entirely via Edit Mode.
     local global = Component:New({
         id = "prdGlobal",
         name = "PRD — Global",
         frameName = nil,
         settings = {
-            -- Reserved for future settings
+            -- Native VisibleSetting: always / combat / never (Always, Only in Combat, Hidden)
+            visibleSetting = { type = "addon", default = "always", ui = { hidden = true }},
+            -- Native Size (whole-PRD scale), percent
+            scale = { type = "addon", default = 100, ui = { hidden = true }},
+            -- Native BarWidth, percent of Blizzard's default width; sets every PRD bar
+            barWidth = { type = "addon", default = 100, ui = { hidden = true }},
+            -- Native Padding: extra gap between bars
+            barPadding = { type = "addon", default = 0, ui = { hidden = true }},
+            -- Native Opacity (whole-PRD alpha, 50-100). Per-bar state opacity multiplies on top.
+            opacity = { type = "addon", default = 100, ui = { hidden = true }},
         },
     })
     global.ApplyStyling = function(component)
         if not addon or not addon.Components then
             return
         end
-        -- Trigger re-styling of child components
+        -- Trigger re-styling of child components. Skip parts still on their zero-touch
+        -- proxy: running their applicators would materialize them (write-back
+        -- normalizations) and draw default borders the user never asked for.
         local comps = addon.Components
         local function apply(target)
-            if target and target.ApplyStyling then
-                target:ApplyStyling()
-            end
+            if not target or not target.ApplyStyling then return end
+            if target._ScootDBProxy and target.db == target._ScootDBProxy then return end
+            target:ApplyStyling()
         end
         apply(comps.prdHealth)
         apply(comps.prdPower)
+        apply(comps.prdAltPower)
         apply(comps.prdClassResource)
     end
     ensureHooks(global)
@@ -415,12 +447,9 @@ addon:RegisterComponentInitializer(function(self)
         supportsEmptyStyleSection = true,
         supportsEmptyVisibilitySection = true,
         settings = {
-            barWidth = { type = "addon", default = nil, ui = {
-                label = "Bar Width", widget = "slider", min = MIN_HEALTH_BAR_WIDTH, max = MAX_HEALTH_BAR_WIDTH, step = 1, section = "Sizing", order = 1, disableTextInput = true,
-                tooltip = "Adjusts the health bar width."
-            }},
-            barHeight = { type = "addon", default = nil, ui = {
-                label = "Bar Height", widget = "slider", min = MIN_HEALTH_BAR_HEIGHT, max = MAX_HEALTH_BAR_HEIGHT, step = 1, section = "Sizing", order = 2, disableTextInput = true,
+            -- Native HealthBarHeight (Edit Mode, 10-30 px). Width is PRD-wide: prdGlobal.barWidth.
+            barHeight = { type = "addon", default = DEFAULT_BAR_HEIGHT, ui = {
+                label = "Bar Height", widget = "slider", min = MIN_BAR_HEIGHT, max = MAX_BAR_HEIGHT, step = 1, section = "Sizing", order = 1, disableTextInput = true,
                 tooltip = "Adjusts the health bar height."
             }},
             styleForegroundTexture = { type = "addon", default = "default", ui = { hidden = true }},
@@ -494,11 +523,10 @@ addon:RegisterComponentInitializer(function(self)
         supportsEmptyStyleSection = true,
         supportsEmptyVisibilitySection = true,
         settings = {
-            -- NOTE: Bar Width was removed because Blizzard's SetupClassNameplateBars() continuously
-            -- re-applies dual anchors (TOPLEFT+TOPRIGHT) which override any custom width. This caused
-            -- visible flickering during combat transitions. Width is now controlled by Health Bar width.
-            barHeight = { type = "addon", default = nil, ui = {
-                label = "Bar Height", widget = "slider", min = MIN_POWER_BAR_HEIGHT, max = MAX_POWER_BAR_HEIGHT, step = 1, section = "Sizing", order = 1, disableTextInput = true,
+            -- Native PowerBarHeight (Edit Mode, 10-30 px). Blizzard applies the same height to
+            -- the alternate power bar. Width is PRD-wide: prdGlobal.barWidth.
+            barHeight = { type = "addon", default = DEFAULT_BAR_HEIGHT, ui = {
+                label = "Bar Height", widget = "slider", min = MIN_BAR_HEIGHT, max = MAX_BAR_HEIGHT, step = 1, section = "Sizing", order = 1, disableTextInput = true,
                 tooltip = "Adjusts the power bar height."
             }},
             styleForegroundTexture = { type = "addon", default = "default", ui = { hidden = true }},
@@ -591,6 +619,73 @@ addon:RegisterComponentInitializer(function(self)
     ensureHooks(power)
     self:RegisterComponent(power)
 
+    -- Alternate power bar (12.0.7): PersonalResourceDisplayFrame.AlternatePowerBar.
+    -- Same PersonalResourceStatusBar template as the power bar, minus the full-power /
+    -- feedback / mana-cost children and minus a percent stream (value only, in TextString).
+    -- Height follows the power bar natively; width is PRD-wide.
+    local altPower = Component:New({
+        id = "prdAltPower",
+        name = "PRD — Alternate Power Bar",
+        frameName = nil,
+        supportsEmptyStyleSection = true,
+        supportsEmptyVisibilitySection = true,
+        settings = {
+            styleForegroundTexture = { type = "addon", default = "default", ui = { hidden = true }},
+            -- "default" follows Blizzard's live colour (stagger thresholds, void metamorphosis, mana)
+            styleForegroundColorMode = { type = "addon", default = "default", ui = { hidden = true }},
+            styleForegroundTint = { type = "addon", default = {1, 1, 1, 1}, ui = { hidden = true }},
+            styleBackgroundTexture = { type = "addon", default = "default", ui = { hidden = true }},
+            styleBackgroundColorMode = { type = "addon", default = "default", ui = { hidden = true }},
+            styleBackgroundTint = { type = "addon", default = {0, 0, 0, 1}, ui = { hidden = true }},
+            styleBackgroundOpacity = { type = "addon", default = 50, ui = { hidden = true }},
+            borderStyle = { type = "addon", default = "square", ui = {
+                label = "Border Style", widget = "dropdown", section = "Border", order = 1,
+                optionsProvider = buildPRDBorderOptions,
+            }},
+            borderTintEnable = { type = "addon", default = false, ui = {
+                label = "Border Tint", widget = "checkbox", section = "Border", order = 2,
+            }},
+            borderTintColor = { type = "addon", default = {1, 1, 1, 1}, ui = {
+                label = "Tint Color", widget = "color", section = "Border", order = 3,
+            }},
+            borderThickness = { type = "addon", default = 1, ui = {
+                label = "Border Thickness", widget = "slider", min = 1, max = 8, step = 0.5, section = "Border", order = 4,
+            }},
+            borderInset = { type = "addon", default = 0, ui = { hidden = true }},
+            borderInsetH = { type = "addon", default = 0 },
+            borderInsetV = { type = "addon", default = 0 },
+            borderHiddenEdges = { type = "addon", default = nil },
+            -- Mirrors native HideAltPower (Edit Mode)
+            hideBar = { type = "addon", default = false, ui = {
+                label = "Hide Alternate Power Bar", widget = "checkbox", section = "Misc", order = 1,
+            }},
+            hideTextureOnly = { type = "addon", default = false, ui = {
+                label = "Hide the Bar but not its Text", widget = "checkbox", section = "Misc", order = 2,
+            }},
+            hideBarBackground = { type = "addon", default = false, ui = { hidden = true }},
+            -- Opacity settings (addon-only, 1-100 percentage)
+            opacityInCombat = { type = "addon", default = 100, ui = { hidden = true }},
+            opacityWithTarget = { type = "addon", default = 100, ui = { hidden = true }},
+            opacityOutOfCombat = { type = "addon", default = 100, ui = { hidden = true }},
+            -- Value text only (the alt bar has no percent stream)
+            valueTextShow = { type = "addon", default = false, ui = { hidden = true }},
+            valueTextFont = { type = "addon", default = "Friz Quadrata TT", ui = { hidden = true }},
+            valueTextFontSize = { type = "addon", default = 10, ui = { hidden = true }},
+            valueTextFontFlags = { type = "addon", default = "OUTLINE", ui = { hidden = true }},
+            valueTextColor = { type = "addon", default = {1, 1, 1, 1}, ui = { hidden = true }},
+            valueTextColorMode = { type = "addon", default = "default", ui = { hidden = true }},
+            valueTextAlignment = { type = "addon", default = "RIGHT", ui = { hidden = true }},
+            -- Druid per-form text visibility (Balance shows a mana alt bar in every form)
+            valueTextDruidForms = { type = "addon", default = {}, ui = { hidden = true }},
+        },
+    })
+    altPower.ApplyStyling = function(comp)
+        -- Late-bound: bars.lua sets PRD._applyAltPowerOffsets
+        PRD._applyAltPowerOffsets(comp)
+    end
+    ensureHooks(altPower)
+    self:RegisterComponent(altPower)
+
     local classRes = Component:New({
         id = "prdClassResource",
         name = "PRD — Class Resource",
@@ -631,6 +726,7 @@ PRD._setProp = setProp
 PRD._isPRDEnabledByCVar = isPRDEnabledByCVar
 PRD._getHealthContainer = getHealthContainer
 PRD._getPowerBar = getPowerBar
+PRD._getAltPowerBar = getAltPowerBar
 PRD._clampValue = clampValue
 PRD._copyValue = copyValue
 PRD._ensureSettingValue = ensureSettingValue
@@ -639,11 +735,8 @@ PRD._ensureColorSetting = ensureColorSetting
 PRD._queueAfterCombat = queueAfterCombat
 PRD._buildPRDBorderOptions = buildPRDBorderOptions
 PRD._ensurePowerBarHooks = ensurePowerBarHooks
-PRD._MIN_HEALTH_BAR_WIDTH = MIN_HEALTH_BAR_WIDTH
-PRD._MAX_HEALTH_BAR_WIDTH = MAX_HEALTH_BAR_WIDTH
-PRD._MIN_HEALTH_BAR_HEIGHT = MIN_HEALTH_BAR_HEIGHT
-PRD._MAX_HEALTH_BAR_HEIGHT = MAX_HEALTH_BAR_HEIGHT
-PRD._MIN_POWER_BAR_HEIGHT = MIN_POWER_BAR_HEIGHT
-PRD._MAX_POWER_BAR_HEIGHT = MAX_POWER_BAR_HEIGHT
+PRD._MIN_BAR_HEIGHT = MIN_BAR_HEIGHT
+PRD._MAX_BAR_HEIGHT = MAX_BAR_HEIGHT
+PRD._DEFAULT_BAR_HEIGHT = DEFAULT_BAR_HEIGHT
 PRD._MIN_CLASS_RESOURCE_SCALE_PERCENT = MIN_CLASS_RESOURCE_SCALE_PERCENT
 PRD._MAX_CLASS_RESOURCE_SCALE_PERCENT = MAX_CLASS_RESOURCE_SCALE_PERCENT

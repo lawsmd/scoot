@@ -91,6 +91,7 @@ core/components/personal_resource_display/core.lua
 core/components/personal_resource_display/opacity.lua
 core/components/personal_resource_display/text.lua
 core/components/personal_resource_display/bars.lua
+core/components/personal_resource_display/editmode.lua
 core/components/scrollingcombattext.lua
 core/components/unitframes/text/core.lua
 core/components/unitframes/text/health.lua
@@ -276,6 +277,7 @@ ui/v2/settings/actionbars/ExtraAbilitiesRenderer.lua
 ui/v2/settings/prd/GeneralRenderer.lua
 ui/v2/settings/prd/HealthBarRenderer.lua
 ui/v2/settings/prd/PowerBarRenderer.lua
+ui/v2/settings/prd/AltPowerBarRenderer.lua
 ui/v2/settings/prd/ClassResourceRenderer.lua
 ui/v2/settings/interface/MinimapRenderer.lua
 ui/v2/settings/interface/ChatRenderer.lua

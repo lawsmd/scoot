@@ -265,6 +265,73 @@ function addon:OnInitialize()
         end
     end
 
+    -- Migration V7: Personal Resource Display sizing moved from Scoot pixel values
+    -- to Blizzard's native Edit Mode sliders (12.0.7 settings). Convert what a
+    -- profile stored, then flag the profile so its explicit PRD mirror values get
+    -- pushed into its Edit Mode layout once (personal_resource_display/editmode.lua
+    -- consumes the flag on the first read pass with Edit Mode ready). Runs on raw
+    -- SavedVariables, before AceDB wraps them, so it sees every profile.
+    do
+        local sv = _G["ScootDB"]
+        if sv and not (sv.global and sv.global._prdNativeMirrorsV7) then
+            local function clampRound(v, lo, hi, step)
+                v = tonumber(v)
+                if v == nil then return nil end
+                step = step or 1
+                v = lo + math.floor(((v - lo) / step) + 0.5) * step
+                if v < lo then v = lo elseif v > hi then v = hi end
+                return v
+            end
+            for _, profileData in pairs(sv.profiles or {}) do
+                if type(profileData) == "table" then
+                    local components = profileData.components
+                    if type(components) == "table" then
+                        local health = components.prdHealth
+                        local power = components.prdPower
+                        local touched = false
+
+                        -- Health bar width (px of a 200 px default bar) -> PRD-wide
+                        -- Bar Width percent (native BarWidth: 50..150 %, step 10).
+                        if type(health) == "table" and type(health.barWidth) == "number" then
+                            local pct = clampRound(health.barWidth / 200 * 100, 50, 150, 10)
+                            components.prdGlobal = components.prdGlobal or {}
+                            if pct ~= 100 then
+                                components.prdGlobal.barWidth = pct
+                            end
+                            health.barWidth = nil
+                            touched = true
+                        end
+                        -- Bar heights (px) -> native HealthBarHeight / PowerBarHeight (10..30 px).
+                        if type(health) == "table" and type(health.barHeight) == "number" then
+                            health.barHeight = clampRound(health.barHeight, 10, 30, 1)
+                            touched = true
+                        end
+                        if type(power) == "table" and type(power.barHeight) == "number" then
+                            power.barHeight = clampRound(power.barHeight, 10, 30, 1)
+                            touched = true
+                        end
+
+                        -- Any PRD configuration at all (hides included, which the
+                        -- applicators used to re-push on every apply) gets one push.
+                        for id in pairs(components) do
+                            if type(id) == "string" and id:sub(1, 3) == "prd" then
+                                touched = true
+                                break
+                            end
+                        end
+                        if touched then
+                            profileData.prdSettings = profileData.prdSettings or {}
+                            profileData.prdSettings.pendingNativePush = true
+                        end
+                    end
+                end
+            end
+
+            if not sv.global then sv.global = {} end
+            sv.global._prdNativeMirrorsV7 = true
+        end
+    end
+
     -- 1. Create the database first so moduleEnabled is available for component gating.
     --    GetDefaults() does not reference self.Components — safe to call before init.
     self.db = LibStub("AceDB-3.0"):New("ScootDB", self:GetDefaults(), true)

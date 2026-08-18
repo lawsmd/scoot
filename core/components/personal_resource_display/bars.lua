@@ -2,7 +2,11 @@
 -- personal_resource_display/bars.lua
 -- Bar overlays, foreground/background styling, texture hiding, borders,
 -- mana cost prediction, health loss animation, visuals orchestrators,
--- all three applicators.
+-- the four applicators (health, power, alternate power, class resource).
+--
+-- Native Edit Mode settings (per-part hides, heights, width, scale, spacing, opacity,
+-- visibility) are NOT written here: editmode.lua pushes them on user action and reads
+-- them back on Edit Mode commits. Applicators only read db.hideBar to hide Scoot's own art.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -17,17 +21,12 @@ local setProp = PRD._setProp
 local isPRDEnabledByCVar = PRD._isPRDEnabledByCVar
 local getHealthContainer = PRD._getHealthContainer
 local getPowerBar = PRD._getPowerBar
+local getAltPowerBar = PRD._getAltPowerBar
 local clampValue = PRD._clampValue
 local ensureSettingValue = PRD._ensureSettingValue
 local setSettingValue = PRD._setSettingValue
 local ensureColorSetting = PRD._ensureColorSetting
 local queueAfterCombat = PRD._queueAfterCombat
-local MIN_HEALTH_BAR_WIDTH = PRD._MIN_HEALTH_BAR_WIDTH
-local MAX_HEALTH_BAR_WIDTH = PRD._MAX_HEALTH_BAR_WIDTH
-local MIN_HEALTH_BAR_HEIGHT = PRD._MIN_HEALTH_BAR_HEIGHT
-local MAX_HEALTH_BAR_HEIGHT = PRD._MAX_HEALTH_BAR_HEIGHT
-local MIN_POWER_BAR_HEIGHT = PRD._MIN_POWER_BAR_HEIGHT
-local MAX_POWER_BAR_HEIGHT = PRD._MAX_POWER_BAR_HEIGHT
 local MIN_CLASS_RESOURCE_SCALE_PERCENT = PRD._MIN_CLASS_RESOURCE_SCALE_PERCENT
 local MAX_CLASS_RESOURCE_SCALE_PERCENT = PRD._MAX_CLASS_RESOURCE_SCALE_PERCENT
 
@@ -35,19 +34,14 @@ local MAX_CLASS_RESOURCE_SCALE_PERCENT = PRD._MAX_CLASS_RESOURCE_SCALE_PERCENT
 -- PRD._getPRDOpacityForState accessed inside function bodies at runtime
 
 -- Import from text (late-bound for function bodies — text.lua loads before bars.lua)
--- PRD._applyHealthTextOverlay, PRD._applyPowerTextOverlay, PRD._hideTextOverlay
--- accessed inside function bodies at runtime
+-- PRD._applyHealthTextOverlay, PRD._applyPowerTextOverlay, PRD._applyAltPowerTextOverlay,
+-- PRD._hideTextOverlay accessed inside function bodies at runtime
 
--- 12.0.7: drive a native Personal Resource Display Edit Mode setting (by logical key)
--- through the centralized, combat-safe, Edit-Mode-first write path. Used to re-point
--- per-part hides onto Blizzard's own SetHide* handlers, which SetShown() the bar and
--- reflow the layout in an untainted context. Safe no-op until the Edit Mode layer is
--- ready, and skips redundant writes (so it never triggers a layout rebuild on a value
--- that already matches — preserving the zero-touch policy on fresh profiles).
-local function writePRDNative(logicalKey, enabled)
-    local EM = addon.EditMode
-    if EM and EM.WritePRDSetting then
-        EM.WritePRDSetting(logicalKey, enabled and 1 or 0)
+-- Write a normalized value back only when it differs: a write through the zero-touch
+-- proxy materializes the component, so routine normalization must never write.
+local function normalizeSettingValue(component, key, value)
+    if component and component.db and component.db[key] ~= value then
+        setSettingValue(component, key, value)
     end
 end
 
@@ -98,14 +92,31 @@ end
 --------------------------------------------------------------------------------
 -- Bar Overlay System
 -- Uses overlay textures anchored to StatusBarTexture (auto-follows fill level).
--- Overlay frames are parented to UIParent to avoid taint on nameplate frames.
+-- Overlay frames are children of the PRD bar they decorate (Rule 6: creating a child
+-- under a system frame is safe), so they inherit the bar's shown state (native
+-- HideHealth/HidePower/HideAltPower and the alt bar's spec gating), the per-part state
+-- opacity, and the PRD's native Size, Opacity and visibility mode. Strata and levels
+-- are set absolutely so the ordering does not depend on the parent.
 -- Pattern matches Boss/Party/Raid frame overlays (secret-safe, no secret values).
 --------------------------------------------------------------------------------
 
 local prdBarOverlays = {
     health = { frame = nil, fgTexture = nil, bgFrame = nil, bgTexture = nil, origFillHidden = false, hookedTexture = nil },
     power = { frame = nil, fgTexture = nil, bgFrame = nil, bgTexture = nil, origFillHidden = false, hookedTexture = nil },
+    altpower = { frame = nil, fgTexture = nil, bgFrame = nil, bgTexture = nil, origFillHidden = false, hookedTexture = nil },
 }
+
+-- The alternate power bar's own colour is dynamic for two classes (Monk stagger
+-- thresholds, Demon Hunter void metamorphosis). While the alt overlay shows a custom
+-- texture in the "default" colour mode, re-sample the bar's colour on a light ticker.
+local altPowerColorTicker = nil
+
+local function stopAltPowerColorTicker()
+    if altPowerColorTicker then
+        altPowerColorTicker:Cancel()
+        altPowerColorTicker = nil
+    end
+end
 
 -- Create or re-anchor the foreground overlay for a PRD bar.
 -- The overlay texture is anchored directly to the StatusBarTexture, so it
@@ -119,7 +130,7 @@ local function ensurePRDForegroundOverlay(bar, barType)
     if not statusBarTex then return nil end
 
     if not storage.frame then
-        local overlayFrame = CreateFrame("Frame", nil, UIParent)
+        local overlayFrame = CreateFrame("Frame", nil, bar)
         overlayFrame:SetFrameStrata("MEDIUM")
         overlayFrame:SetFrameLevel(50)
 
@@ -152,7 +163,7 @@ local function ensurePRDBackgroundOverlay(bar, barType)
     if not storage then return nil end
 
     if not storage.bgFrame then
-        local bgFrame = CreateFrame("Frame", nil, UIParent)
+        local bgFrame = CreateFrame("Frame", nil, bar)
         bgFrame:SetFrameStrata("MEDIUM")
         bgFrame:SetFrameLevel(49)
 
@@ -235,6 +246,7 @@ local function applyPRDForegroundStyle(bar, barType, component)
             storage.frame:Hide()
         end
         showPRDOriginalFill(bar, barType)
+        if barType == "altpower" then stopAltPowerColorTicker() end
         return
     end
 
@@ -282,6 +294,14 @@ local function applyPRDForegroundStyle(bar, barType, component)
         elseif barType == "power" then
             local pr, pg, pb = addon.GetPowerColorRGB("player")
             r, g, b, a = pr or 1, pg or 1, pb or 1, 1
+        elseif barType == "altpower" then
+            -- The alt bar's colour is whatever Blizzard last set on it (mana blue, Ebon
+            -- Might, stagger green/yellow/red, void metamorphosis). Pass it straight
+            -- through: no arithmetic, no compare, so a secret-tagged colour is still fine.
+            local ok, cr, cg, cb = pcall(bar.GetStatusBarColor, bar)
+            if ok and cr ~= nil then
+                r, g, b, a = cr, cg, cb, 1
+            end
         end
     end
     pcall(storage.fgTexture.SetVertexColor, storage.fgTexture, r, g, b, a)
@@ -290,6 +310,31 @@ local function applyPRDForegroundStyle(bar, barType, component)
     storage.frame:Show()
     storage.fgTexture:Show()
     hidePRDOriginalFill(bar, barType)
+
+    -- Alt bar, default colour: keep following Blizzard's colour swaps for the two
+    -- classes whose alt bar recolours itself between PRD events.
+    if barType == "altpower" then
+        local _, playerClass = UnitClass("player")
+        local dynamic = (playerClass == "MONK" or playerClass == "DEMONHUNTER")
+        if colorMode == "default" and dynamic then
+            if not altPowerColorTicker and C_Timer and C_Timer.NewTicker then
+                altPowerColorTicker = C_Timer.NewTicker(0.2, function()
+                    local st = prdBarOverlays.altpower
+                    local altBar = getAltPowerBar()
+                    if not (st and st.frame and st.frame:IsVisible() and altBar) then
+                        stopAltPowerColorTicker()
+                        return
+                    end
+                    local okc, nr, ng, nb = pcall(altBar.GetStatusBarColor, altBar)
+                    if okc and nr ~= nil then
+                        pcall(st.fgTexture.SetVertexColor, st.fgTexture, nr, ng, nb, 1)
+                    end
+                end)
+            end
+        else
+            stopAltPowerColorTicker()
+        end
+    end
 end
 
 -- Apply background texture overlay to a PRD bar.
@@ -302,7 +347,7 @@ local function applyPRDBackgroundStyle(bar, barType, component)
     local opacity = ensureSettingValue(component, "styleBackgroundOpacity")
     opacity = tonumber(opacity) or 50
     opacity = clampValue(math.floor(opacity + 0.5), 0, 100)
-    setSettingValue(component, "styleBackgroundOpacity", opacity)
+    normalizeSettingValue(component, "styleBackgroundOpacity", opacity)
 
     local isDefaultTex = (bgTextureKey == nil or bgTextureKey == "" or bgTextureKey == "default")
     local isDefaultColor = (colorMode == nil or colorMode == "" or colorMode == "default")
@@ -357,6 +402,7 @@ local function hidePRDBarOverlay(barType)
     end
     storage.origFillHidden = false
     storage.hookedTexture = nil
+    if barType == "altpower" then stopAltPowerColorTicker() end
 end
 
 --------------------------------------------------------------------------------
@@ -386,9 +432,9 @@ local function applyPRDBarBorder(component, statusBar)
     local insetV = tonumber(db.borderInsetV) or tonumber(db.borderInset) or 0
     insetH = clampValue(math.floor(insetH + 0.5), -4, 4)
     insetV = clampValue(math.floor(insetV + 0.5), -4, 4)
-    setSettingValue(component, "borderThickness", thickness)
-    setSettingValue(component, "borderInsetH", insetH)
-    setSettingValue(component, "borderInsetV", insetV)
+    normalizeSettingValue(component, "borderThickness", thickness)
+    normalizeSettingValue(component, "borderInsetH", insetH)
+    normalizeSettingValue(component, "borderInsetV", insetV)
     local color
     if tintEnabled then
         color = tintColor
@@ -437,6 +483,8 @@ local function applyPRDBarBorder(component, statusBar)
             layer = "OVERLAY",
             layerSublevel = 3,
             levelOffset = 51,
+            -- Child of the bar, so it hides/dims/scales with it (see overlay parenting note)
+            containerParent = statusBar,
             expandX = expandX,
             expandY = expandY,
             hiddenEdges = hiddenEdges,
@@ -699,12 +747,12 @@ local function applyPRDHealthVisuals(component, container)
     if not statusBar then
         return
     end
-    -- Bar visibility is driven natively in applyHealthOffsets (Edit Mode HideHealth,
-    -- which SetShown()s the container and reflows the rest of the PRD). This path runs
-    -- only when the bar is shown; apply Scoot's state-based opacity on top.
+    -- Bar visibility is driven natively (Edit Mode HideHealth, mirrored by editmode.lua,
+    -- SetShown()s the container and reflows the rest of the PRD). This path runs only
+    -- when the bar is shown; apply Scoot's state-based opacity on the container. The
+    -- status bar and every Scoot overlay are children of it and inherit the alpha.
     local alpha = PRD._getPRDOpacityForState("prdHealth")
     pcall(container.SetAlpha, container, alpha)
-    pcall(statusBar.SetAlpha, statusBar, alpha)
     local hideTextureOnly = ensureSettingValue(component, "hideTextureOnly") and true or false
     local hideBarBackground = ensureSettingValue(component, "hideBarBackground") and true or false
     -- The 12.0.7 backdrop art is hidden when either the texture-only mode or the
@@ -762,14 +810,10 @@ local function applyPRDClassResourceVisibility(component, frame)
     if not component or not frame then
         return
     end
+    -- Native HideClassInfo / HideClassInfoOnPlayerFrame are Edit Mode settings mirrored
+    -- by editmode.lua (pushed on user action, read back on commits). Here we only skip
+    -- Scoot's own styling while the part is hidden.
     local hide = ensureSettingValue(component, "hideBar") and true or false
-    setSettingValue(component, "hideBar", hide)
-    -- 12.0.7: native HideClassInfo SetShown()s + reflows the ClassFrameContainer.
-    writePRDNative("hide_class_info", hide)
-    -- 12.0.7: independent native toggle that removes the class resource from the
-    -- regular Player Frame (not the PRD). Event-driven on Blizzard's side.
-    local hideOnPlayer = ensureSettingValue(component, "hideClassInfoOnPlayerFrame") and true or false
-    writePRDNative("hide_class_info_on_player_frame", hideOnPlayer)
     if hide then
         return
     end
@@ -827,7 +871,7 @@ local function resolveClassResourceScale(component)
     end
     local value = tonumber(component.db.scale) or 100
     value = clampValue(math.floor(value + 0.5), MIN_CLASS_RESOURCE_SCALE_PERCENT, MAX_CLASS_RESOURCE_SCALE_PERCENT)
-    component.db.scale = value
+    normalizeSettingValue(component, "scale", value)
     return value / 100
 end
 
@@ -838,10 +882,12 @@ end
 -- Blizzard reshowed it) was retired in 12.0.7. Hiding now flows through the native
 -- HideHealth Edit Mode setting, so Blizzard's own clean rebuild owns the container's
 -- shown state — removing a hook on a system-frame-tree member (taint risk, Rule 11).
+-- Sizing likewise moved to native Edit Mode (HealthBarHeight / PowerBarHeight / BarWidth /
+-- Size / Padding), mirrored by editmode.lua; the applicators no longer size anything.
 
 local function applyHealthOffsets(component)
     -- PRD is PersonalResourceDisplayFrame (parented to UIParent), not a nameplate.
-    -- Positioning is handled by Edit Mode; this function applies sizing, styling, and visibility.
+    -- Positioning and sizing are handled by Edit Mode; this function applies styling.
     if not isPRDEnabledByCVar() then
         -- PRD is disabled; clear any existing borders/overlays and bail out
         local container = getHealthContainer()
@@ -859,12 +905,10 @@ local function applyHealthOffsets(component)
         return
     end
 
-    -- 12.0.7: drive Blizzard's native HideHealth via Edit Mode. It SetShown()s the
-    -- HealthBarsContainer and reflows the rest of the PRD (power moves up to fill the
-    -- gap) in an untainted context — replacing the old container:Hide() + Show-hook,
-    -- which touched the system-frame tree.
+    -- Native HideHealth (Edit Mode, mirrored by editmode.lua) SetShown()s the
+    -- HealthBarsContainer and reflows the rest of the PRD in an untainted context.
+    -- Here we only park Scoot's own art while the part is hidden.
     local hide = ensureSettingValue(component, "hideBar") and true or false
-    writePRDNative("hide_health", hide)
     if hide then
         local statusBar = container.healthBar or container.HealthBar
         if statusBar then
@@ -873,61 +917,6 @@ local function applyHealthOffsets(component)
         hidePRDBarOverlay("health")
         PRD._hideTextOverlay("health")
         return
-    end
-
-    -- Sizing: apply barWidth/barHeight
-    local baseWidth = getProp(container, "_ScootBaseWidth")
-    if not baseWidth or baseWidth <= 0 then
-        local ok, w = pcall(container.GetWidth, container)
-        baseWidth = (ok and w and w > 0) and w or 200
-        setProp(container, "_ScootBaseWidth", baseWidth)
-    end
-
-    if component.settings and component.settings.barWidth then
-        local defaultWidth = math.floor(baseWidth + 0.5)
-        if component.settings.barWidth.default ~= defaultWidth then
-            component.settings.barWidth.default = defaultWidth
-        end
-    end
-
-    local storedWidth = component.db and component.db.barWidth
-    if storedWidth then
-        storedWidth = clampValue(math.floor(storedWidth + 0.5), MIN_HEALTH_BAR_WIDTH, MAX_HEALTH_BAR_WIDTH)
-    end
-
-    local baseHeight = getProp(container, "_ScootBaseHeight")
-    if not baseHeight or baseHeight <= 0 then
-        local ok, h = pcall(container.GetHeight, container)
-        baseHeight = (ok and h and h > 0) and h or 12
-        setProp(container, "_ScootBaseHeight", baseHeight)
-    end
-
-    if component.settings and component.settings.barHeight then
-        local defaultHeight = math.floor(baseHeight + 0.5)
-        if component.settings.barHeight.default ~= defaultHeight then
-            component.settings.barHeight.default = defaultHeight
-        end
-    end
-
-    local storedHeight = component.db and component.db.barHeight
-    if storedHeight then
-        storedHeight = clampValue(math.floor(storedHeight + 0.5), MIN_HEALTH_BAR_HEIGHT, MAX_HEALTH_BAR_HEIGHT)
-    end
-
-    local desiredWidth = storedWidth or baseWidth
-    local desiredHeight = storedHeight or baseHeight
-
-    -- Apply sizing
-    if desiredWidth ~= baseWidth then
-        pcall(container.SetWidth, container, desiredWidth)
-    end
-    if desiredHeight ~= baseHeight then
-        pcall(container.SetHeight, container, desiredHeight)
-    end
-
-    local statusBar = container.healthBar or container.HealthBar
-    if statusBar then
-        pcall(statusBar.SetAllPoints, statusBar, container)
     end
 
     -- Apply visuals (styling, borders, text overlays)
@@ -951,10 +940,9 @@ local function applyPowerOffsets(component)
         return
     end
 
-    -- 12.0.7: drive Blizzard's native HidePower via Edit Mode (PowerBar:SetShown() +
-    -- layout reflow), replacing the direct Hide()/SetAlpha(0).
+    -- Native HidePower (Edit Mode, mirrored by editmode.lua) SetShown()s the PowerBar
+    -- and reflows the layout. Here we only park Scoot's own art while hidden.
     local hide = ensureSettingValue(component, "hideBar") and true or false
-    writePRDNative("hide_power", hide)
 
     -- Child frame features (operates on child frames: FullPowerFrame, FeedbackFrame)
     if Util then
@@ -977,32 +965,67 @@ local function applyPowerOffsets(component)
         return
     end
 
-    -- Sizing: apply barHeight
-    local baseHeight = getProp(frame, "_ScootBaseHeight")
-    if not baseHeight or baseHeight <= 0 then
-        local ok, h = pcall(frame.GetHeight, frame)
-        baseHeight = (ok and h and h > 0) and h or 8
-        setProp(frame, "_ScootBaseHeight", baseHeight)
-    end
-
-    if component.settings and component.settings.barHeight then
-        local defaultHeight = math.floor(baseHeight + 0.5)
-        if component.settings.barHeight.default ~= defaultHeight then
-            component.settings.barHeight.default = defaultHeight
-        end
-    end
-
-    local storedHeight = component.db and component.db.barHeight
-    if storedHeight then
-        storedHeight = clampValue(math.floor(storedHeight + 0.5), MIN_POWER_BAR_HEIGHT, MAX_POWER_BAR_HEIGHT)
-        if storedHeight ~= baseHeight then
-            pcall(frame.SetHeight, frame, storedHeight)
-        end
-    end
-
     -- Apply visuals (styling, text overlays)
     if frame.GetStatusBarTexture then
         applyPRDPowerVisuals(component, frame)
+    end
+end
+
+-- Alternate power bar (12.0.7). Blizzard owns presence: the bar is shown only while
+-- the class/spec has an alternate resource, and native HideAltPower SetShown()s it.
+-- Scoot's overlays are children of the bar, so they follow both without a Lua gate.
+local function applyPRDAltPowerVisuals(component, frame)
+    if not component or not frame then
+        return
+    end
+    local alpha = PRD._getPRDOpacityForState("prdAltPower")
+    pcall(frame.SetAlpha, frame, alpha)
+    local hideTextureOnly = ensureSettingValue(component, "hideTextureOnly") and true or false
+    local hideBarBackground = ensureSettingValue(component, "hideBarBackground") and true or false
+    setNativeBarBackgroundHidden(frame, "altpower", hideTextureOnly or hideBarBackground)
+    if hideTextureOnly then
+        hidePRDBarTextures(frame, "altpower", true)
+        hidePRDBarOverlay("altpower")
+        clearBarBorder(frame)
+        setBlizzardBorderVisible(frame, false)
+        PRD._applyAltPowerTextOverlay(component)
+        return
+    end
+    hidePRDBarTextures(frame, "altpower", false)
+    applyPRDForegroundStyle(frame, "altpower", component)
+    applyPRDBackgroundStyle(frame, "altpower", component)
+    applyPRDBarBorder(component, frame)
+    PRD._applyAltPowerTextOverlay(component)
+end
+
+local function applyAltPowerOffsets(component)
+    if not isPRDEnabledByCVar() then
+        local frame = getAltPowerBar()
+        if frame then
+            clearBarBorder(frame)
+            hidePRDBarOverlay("altpower")
+            PRD._hideTextOverlay("altpower")
+        end
+        return
+    end
+
+    local frame = getAltPowerBar()
+    if not frame then
+        return
+    end
+
+    -- Native HideAltPower (Edit Mode, mirrored by editmode.lua). Park Scoot's art while hidden.
+    local hide = ensureSettingValue(component, "hideBar") and true or false
+    if hide then
+        clearBarBorder(frame)
+        setBlizzardBorderVisible(frame, false)
+        hidePRDBarOverlay("altpower")
+        PRD._hideTextOverlay("altpower")
+        return
+    end
+
+    if frame.GetStatusBarTexture then
+        applyPRDAltPowerVisuals(component, frame)
     end
 end
 
@@ -1055,5 +1078,6 @@ end
 
 PRD._applyHealthOffsets = applyHealthOffsets
 PRD._applyPowerOffsets = applyPowerOffsets
+PRD._applyAltPowerOffsets = applyAltPowerOffsets
 PRD._applyClassResourceOffsets = applyClassResourceOffsets
 PRD._hidePRDBarOverlay = hidePRDBarOverlay
