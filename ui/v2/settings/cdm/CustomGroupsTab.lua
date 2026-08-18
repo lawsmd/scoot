@@ -5,6 +5,8 @@ local addonName, addon = ...
 local CG = addon.CustomGroups
 
 local SCOOT_ICON = "Interface\\AddOns\\Scoot\\ScootIcon"
+-- Backdrop keyed out, so the logo sits on the tab graphic instead of on a black square.
+local SCOOT_ICON_TRANSPARENT = "Interface\\AddOns\\Scoot\\ScootIconTransparent"
 local DISPLAY_MODE = "scoot"
 local ICON_SIZE = 38
 local ICON_PADDING = 8
@@ -903,7 +905,7 @@ local function CreateTabButton(cdmFrame)
 
     -- ARTWORK layer: Scoot icon
     tab.Icon = tab:CreateTexture(nil, "ARTWORK")
-    tab.Icon:SetTexture(SCOOT_ICON)
+    tab.Icon:SetTexture(SCOOT_ICON_TRANSPARENT)
     tab.Icon:SetSize(28, 28)
     tab.Icon:SetPoint("CENTER", -2, 0)
 
@@ -940,8 +942,10 @@ local function CreateTabButton(cdmFrame)
     tab:SetScript("OnEnter", tab.OnEnter)
     tab:SetScript("OnLeave", tab.OnLeave)
 
-    -- Position below AurasTab
-    tab:SetPoint("TOP", cdmFrame.AurasTab, "BOTTOM", 0, -3)
+    -- Position below Blizzard's last side tab. 12.1 added GroupBuffsTab at the slot
+    -- Scoot used to hold, anchored identically, so Scoot moves one slot down.
+    local anchorTab = cdmFrame.GroupBuffsTab or cdmFrame.AurasTab
+    tab:SetPoint("TOP", anchorTab, "BOTTOM", 0, -3)
 
     return tab
 end
@@ -951,25 +955,46 @@ end
 -- no Blizzard array mutation, no method calls on system frames)
 --------------------------------------------------------------------------------
 
-local function ActivateScootTab(cdmFrame, contentFrameRef, blizzElements, tab)
+-- Blizzard's two content panes. CooldownScroll and GroupBuffFilter (12.1) are mutually
+-- exclusive, keyed off displayMode, so they are hidden and restored as a pair and never
+-- shown blindly. GroupBuffFilter is nil on a pre-12.1 client.
+local function HideBlizzardContent(cdmFrame)
+    if cdmFrame.CooldownScroll then cdmFrame.CooldownScroll:Hide() end
+    if cdmFrame.GroupBuffFilter then cdmFrame.GroupBuffFilter:Hide() end
+end
+
+-- displayMode arrives as the SetDisplayMode post-hook's own argument, so the common path
+-- reads nothing off the frame. The cdmFrame read covers the OnHide path, which has no
+-- argument to work from.
+local function RestoreBlizzardContent(cdmFrame, blizzChrome, displayMode)
+    local isGroupBuffs = (displayMode or cdmFrame.displayMode) == "groupBuffs"
+    if cdmFrame.CooldownScroll then cdmFrame.CooldownScroll:SetShown(not isGroupBuffs) end
+    if cdmFrame.GroupBuffFilter then cdmFrame.GroupBuffFilter:SetShown(isGroupBuffs) end
+    for _, el in ipairs(blizzChrome) do
+        if el then el:Show() end
+    end
+end
+
+local function ActivateScootTab(cdmFrame, contentFrameRef, blizzChrome, tab)
     if isScootTabActive then return end
     isScootTabActive = true
 
-    -- Uncheck all Blizzard tabs (C-side widget ops — safe)
+    -- Uncheck all Blizzard tabs (C-side widget ops, safe)
     for _, btn in ipairs(cdmFrame.TabButtons) do
         btn:SetChecked(false)
     end
     tab:SetChecked(true)
 
-    -- Hide Blizzard content elements (C-side widget ops — safe)
-    for _, el in ipairs(blizzElements) do
+    -- Hide Blizzard content elements (C-side widget ops, safe)
+    for _, el in ipairs(blizzChrome) do
         if el then el:Hide() end
     end
+    HideBlizzardContent(cdmFrame)
 
     -- Show the Scoot content
     contentFrameRef:Show()
 
-    -- Set portrait (C-side texture op — safe, avoids calling frame method)
+    -- Set portrait (C-side texture op, safe, avoids calling frame method)
     cdmFrame.PortraitContainer.portrait:SetTexture(SCOOT_ICON)
 end
 
@@ -983,9 +1008,9 @@ local function InjectScootTab()
 
     injected = true
 
-    -- Elements to hide/show when toggling the Scoot tab
-    local blizzElements = {
-        cdmFrame.CooldownScroll,
+    -- Chrome: visibility does not depend on Blizzard's display mode, so it is
+    -- restored verbatim. The two content panes are handled by the helpers above.
+    local blizzChrome = {
         cdmFrame.SearchBox,
         cdmFrame.SettingsDropdown,
         cdmFrame.UndoButton,
@@ -1004,27 +1029,25 @@ local function InjectScootTab()
         tab:Hide()
     end
 
-    -- Tab click: activate the Scoot tab (NO call to cdmFrame:SetDisplayMode — avoids taint)
+    -- Tab click: activate the Scoot tab (NO call to cdmFrame:SetDisplayMode, avoids taint)
     tab:SetCustomOnMouseUpHandler(function(t, button, upInside)
         if button == "LeftButton" and upInside then
-            ActivateScootTab(cdmFrame, content, blizzElements, tab)
+            ActivateScootTab(cdmFrame, content, blizzChrome, tab)
         end
     end)
 
     -- DO NOT insert tab into cdmFrame.TabButtons (would mutate Blizzard array)
-    -- Tab is already anchored below AurasTab in CreateTabButton
+    -- Tab is already anchored below Blizzard's last side tab in CreateTabButton
 
-    -- Hook SetDisplayMode for deactivation (replaces method override — taint-safe)
+    -- Hook SetDisplayMode for deactivation (replaces method override, taint-safe)
     hooksecurefunc(cdmFrame, "SetDisplayMode", function(self, displayMode)
         if isScootTabActive then
             isScootTabActive = false
             content:Hide()
             tab:SetChecked(false)
-            -- Blizzard's SetDisplayMode already ran and restored its content.
-            -- Re-show the elements hidden earlier as a safety measure:
-            for _, el in ipairs(blizzElements) do
-                if el then el:Show() end
-            end
+            -- Blizzard's SetDisplayMode already ran. Restore what we hid, matching
+            -- the mode it just switched to.
+            RestoreBlizzardContent(cdmFrame, blizzChrome, displayMode)
         end
     end)
 
@@ -1032,30 +1055,33 @@ local function InjectScootTab()
     hooksecurefunc(cdmFrame, "RefreshLayout", function(self)
         if isScootTabActive then
             cdmFrame.PortraitContainer.portrait:SetTexture(SCOOT_ICON)
+            -- Defensive: 12.1 added GroupBuffFilter:Refresh() to RefreshLayout. It does
+            -- not show the frame today; keep our content on top if that ever changes.
+            HideBlizzardContent(cdmFrame)
         end
     end)
 
-    -- Cleanup on CDM window close
+    -- Cleanup on CDM window close. Blizzard's OnShow calls RefreshLayout rather than
+    -- SetDisplayMode when displayMode is already set, and RefreshLayout restores
+    -- neither content pane, so the window has to be left in a correct state here.
     cdmFrame:HookScript("OnHide", function()
         if isScootTabActive then
             isScootTabActive = false
             content:Hide()
             tab:SetChecked(false)
-            for _, el in ipairs(blizzElements) do
-                if el then el:Show() end
-            end
+            RestoreBlizzardContent(cdmFrame, blizzChrome, nil)
         end
     end)
 
     -- Expose for external callers (e.g. spellbook overlay button)
     addon.ActivateCDMCustomGroupsTab = function()
-        ActivateScootTab(cdmFrame, content, blizzElements, tab)
+        ActivateScootTab(cdmFrame, content, blizzChrome, tab)
     end
 
     -- Check if someone requested activation before injection was ready
     if addon._pendingCDMCustomGroupsTabActivation then
         addon._pendingCDMCustomGroupsTabActivation = nil
-        ActivateScootTab(cdmFrame, content, blizzElements, tab)
+        ActivateScootTab(cdmFrame, content, blizzChrome, tab)
     end
 end
 
