@@ -18,10 +18,33 @@ local function showCombatFontRestartWarning()
     end
 end
 
+-- World text scale is an engine CVar. 12.0.0 (build 65655) renamed the floating
+-- combat text CVar family with a _v2 suffix; SetCVar on the old name silently
+-- does nothing, so resolve the live name at apply time.
+local WORLD_TEXT_SCALE_CVAR_CANDIDATES = { "WorldTextScale_v2", "WorldTextScale" }
+
+local function cvarExists(name)
+    if _G.C_CVar and _G.C_CVar.GetCVar then
+        local ok, value = pcall(_G.C_CVar.GetCVar, name)
+        return ok and value ~= nil
+    end
+    return false
+end
+
+local function resolveWorldTextScaleCVar()
+    for _, name in ipairs(WORLD_TEXT_SCALE_CVAR_CANDIDATES) do
+        if cvarExists(name) then
+            return name
+        end
+    end
+    return WORLD_TEXT_SCALE_CVAR_CANDIDATES[1]
+end
+addon.ResolveWorldTextScaleCVar = resolveWorldTextScaleCVar
+
 local function clampPercent(value)
     local num = tonumber(value) or 100
-    if num < 50 then
-        num = 50
+    if num < 20 then
+        num = 20
     elseif num > 150 then
         num = 150
     end
@@ -107,13 +130,23 @@ local function applyWorldTextStyling(self)
 
     local scalar = scalePercent / 100
     local scaledValue = string.format("%.2f", scalar)
+    local cvarName = resolveWorldTextScaleCVar()
     if _G.C_CVar and _G.C_CVar.SetCVar then
-        _G.C_CVar.SetCVar("WorldTextScale", scaledValue)
+        pcall(_G.C_CVar.SetCVar, cvarName, scaledValue)
     elseif _G.SetCVar then
-        pcall(_G.SetCVar, "WorldTextScale", scaledValue)
+        pcall(_G.SetCVar, cvarName, scaledValue)
     end
     if addon.LogWorldTextFont then
-        addon.LogWorldTextFont("applyWorldTextStyling:WorldTextScale", { scale = scaledValue })
+        local readback
+        if _G.C_CVar and _G.C_CVar.GetCVar then
+            local ok, value = pcall(_G.C_CVar.GetCVar, cvarName)
+            readback = ok and value or nil
+        end
+        addon.LogWorldTextFont("applyWorldTextStyling:WorldTextScale", {
+            cvar = cvarName,
+            requested = scaledValue,
+            readback = tostring(readback),
+        })
     end
 
     -- Mark initial load as complete after first styling pass
@@ -144,7 +177,7 @@ addon:RegisterComponentInitializer(function(self)
             fontScale = { type = "addon", default = 100, ui = {
                 label = "Font Scale",
                 widget = "slider",
-                min = 50,
+                min = 20,
                 max = 150,
                 step = 1,
                 section = "Font",

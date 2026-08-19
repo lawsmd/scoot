@@ -150,6 +150,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug consoleport export")
             addon:Print("  /scoot debug cdmlayers")
             addon:Print("  /scoot debug cdm   -- CDM styling pipeline state")
+            addon:Print("  /scoot debug sct   -- world text font/scale log and CVar state")
             addon:Print("  /scoot debug hover [seconds]  -- what is eating the mouse at the cursor")
             addon:Print("  /scoot debug dm export [overall|current|expired]")
             addon:Print("  /scoot debug dm frames")
@@ -423,6 +424,25 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugCDMLayers()
             else
                 addon:Print("CDM layers debug not available.")
+            end
+            return
+        end
+
+        -- /scoot debug sct   -- world text font/scale log + live CVar state
+        if sub1 == "sct" then
+            if addon.LogWorldTextFont then
+                local state = {}
+                for _, name in ipairs({ "WorldTextScale_v2", "WorldTextScale", "WorldTextMinSize" }) do
+                    local ok, value = pcall(_G.C_CVar.GetCVar, name)
+                    state[name] = (ok and value ~= nil) and tostring(value) or "<absent>"
+                end
+                state.resolved = addon.ResolveWorldTextScaleCVar and addon.ResolveWorldTextScaleCVar() or "?"
+                addon.LogWorldTextFont("debug sct:cvars", state)
+            end
+            if addon.ShowWorldTextFontLog then
+                addon.ShowWorldTextFontLog()
+            else
+                addon:Print("World text log not available.")
             end
             return
         end

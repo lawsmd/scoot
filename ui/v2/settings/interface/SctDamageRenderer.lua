@@ -45,7 +45,7 @@ function SctDamage.Render(panel, scrollContent)
     builder:AddSlider({
         label = "Font Scale",
         description = "Scale of floating combat text numbers (affects all world text).",
-        min = 50,
+        min = 20,
         max = 150,
         step = 1,
         get = function()
@@ -58,7 +58,7 @@ function SctDamage.Render(panel, scrollContent)
                 comp:ApplyStyling()
             end
         end,
-        minLabel = "50%",
+        minLabel = "20%",
         maxLabel = "150%",
     })
 
