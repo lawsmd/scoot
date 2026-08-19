@@ -164,9 +164,12 @@ Picker.BuildCatalog = BuildCatalog
 --------------------------------------------------------------------------------
 
 -- Missing-buff trackers watch buffs the Cooldown Manager mostly does not
--- list: the player's class raid buff and their forms/stances. The raid buff
--- is a fixed six-entry table (one per class that has one); forms come from
--- the shapeshift bar, a plain API that hands back each form's spell ID.
+-- list: group buffs and the player's forms/stances. C_CooldownViewer's group
+-- buff list is Blizzard's own roster, the same one the Cooldown Manager
+-- settings show under Group Buffs, so it stays right as classes gain and lose
+-- buffs; the fixed table below covers a client that does not have the API.
+-- Forms come from the shapeshift bar, a plain API that hands back each form's
+-- spell ID.
 local CLASS_RAID_BUFF = {
     DRUID   = 1126,    -- Mark of the Wild
     MAGE    = 1459,    -- Arcane Intellect
@@ -193,8 +196,24 @@ local function MissingKindEntries(seen)
         })
     end
 
-    local _, classToken = UnitClass("player")
-    addSpell(CLASS_RAID_BUFF[classToken])
+    -- isKnown filters the list to buffs this character can actually cast, so
+    -- a Shaman sees Skyfury and not Arcane Intellect.
+    local listed = false
+    if C_CooldownViewer and C_CooldownViewer.GetGroupBuffItems then
+        local ok, items = pcall(C_CooldownViewer.GetGroupBuffItems)
+        if ok and type(items) == "table" and not issecretvalue(items) then
+            for _, item in ipairs(items) do
+                if type(item) == "table" and item.isKnown == true then
+                    addSpell(item.spellID)
+                    listed = true
+                end
+            end
+        end
+    end
+    if not listed then
+        local _, classToken = UnitClass("player")
+        addSpell(CLASS_RAID_BUFF[classToken])
+    end
 
     if GetNumShapeshiftForms and GetShapeshiftFormInfo then
         local okN, count = pcall(GetNumShapeshiftForms)

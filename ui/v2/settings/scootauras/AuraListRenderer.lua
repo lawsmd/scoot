@@ -19,10 +19,16 @@ local ICON_GAP = 4
 local BOX_HEADER_H = 26
 local BOX_PAD = 8
 local BOX_GAP = 10
+local NOT_LOADED_TOP_GAP = 10   -- loaded block to the Not Loaded rule
+local NOT_LOADED_HEADER_H = 37   -- gap + rule + label, before the first grayed row
+local NONE_LOADED_TOP_GAP = 6    -- column label to the "None Loaded" placeholder
+local NONE_LOADED_H = 26         -- the placeholder line and the gap under it
 local BTN_SIZE = 16      -- group box action buttons
 local BTN_GAP = 8
 local ROW_BTN_SIZE = 13  -- tracker row action buttons (smaller rows)
 local ROW_BTN_GAP = 6
+local MEMBER_BTN_SIZE = 11  -- badges on a group member icon (ICON_SIZE is 26)
+local MEMBER_BTN_GAP = 1
 local ROW_TOP_PAD = 6    -- row top to the name line
 local ROW_TEXT_GAP = 2   -- name line to the wrapped meta line
 local ROW_BTN_Y = -7     -- button cluster inset from the row top
@@ -38,20 +44,29 @@ local LEFT_FRACTION = 0.38
 local DIVIDER_CLEAR_L = 12   -- left pane edge to divider
 local DIVIDER_CLEAR_R = 14   -- divider to group boxes
 
+-- One color for the whole drag language: the insertion line, the outline every
+-- zone wears while a drag can land in it, and the wash on the one under the
+-- cursor. Anything green on this page means "the aura goes here".
+local DROP_R, DROP_G, DROP_B = 0.3, 0.9, 0.3
+
 local state = {
     active = false,
     panel = nil,
     scrollContent = nil,
     rows = {},
     flyouts = {},
-    dropGroups = {},      -- [gid] = { box, highlight, icons = { {frame, index} } }
+    dropGroups = {},      -- [gid] = { box, zone, icons = { {frame, index} } }
     leftPane = nil,
-    leftDropHighlight = nil,
+    leftDropZone = nil,
+    specButtons = {},     -- [key] = { button, reveal } for the spec fly-out
+    hoverables = {},      -- every frame carrying an UpdateHover
     textRows = {},        -- rows whose height came from a text measurement
 }
 
 local KIND_LABELS = { buff = "Buff", debuff = "Debuff", missingbuff = "Missing Buff" }
-local UNIT_LABELS = { player = "Player", target = "Target", focus = "Focus" }
+local UNIT_LABELS = {
+    player = "Player", group = "Group", target = "Target", focus = "Focus",
+}
 local SHAPE_LABELS = {
     icon = "Icon", bar = "Horizontal Bar", shape = "Shape",
     text = "Text", icontext = "Icon & Text",
@@ -59,10 +74,8 @@ local SHAPE_LABELS = {
 local GROW_LABELS = { RIGHT = "Right", LEFT = "Left", DOWN = "Down", UP = "Up" }
 local GROW_ORDER = { "RIGHT", "LEFT", "DOWN", "UP" }
 
--- One descriptor for every surface: the tracker row's meta line, the group
--- icon's hover tooltip, and the Copy from Global rows (which pass
--- includeDisabled = false: another character's enabled state is not news, and
--- includeSpecs = false: a copy drops the restriction, so naming it would lie).
+-- One descriptor for every surface: the tracker row's meta line and the group
+-- icon's hover tooltip.
 local function TrackerMetaText(tracker, includeDisabled, includeSpecs)
     local text = (KIND_LABELS[tracker.kind] or "?") .. " on "
         .. (UNIT_LABELS[tracker.unit] or "?") .. ", shown as "
@@ -111,19 +124,113 @@ local function ClickGuard()
     return Drag.active or Drag.justEndedAt == GetTime()
 end
 
+-- Drop-zone art on a frame that can receive the drag: an outline while the
+-- drag is live, plus a wash while the cursor is inside it. The wash sits in
+-- BACKGROUND so member icons and row text stay on top of it, the outline in
+-- OVERLAY so the box's own border does not swallow it.
+local function CreateDropZone(frame)
+    local zone = {}
+
+    local fill = frame:CreateTexture(nil, "BACKGROUND", nil, -7)
+    fill:SetAllPoints()
+    fill:SetColorTexture(DROP_R, DROP_G, DROP_B, 0.10)
+    fill:Hide()
+
+    local edges = {}
+    local top = frame:CreateTexture(nil, "OVERLAY", nil, 3)
+    top:SetPoint("TOPLEFT", 0, 0)
+    top:SetPoint("TOPRIGHT", 0, 0)
+    top:SetHeight(1)
+    local bottom = frame:CreateTexture(nil, "OVERLAY", nil, 3)
+    bottom:SetPoint("BOTTOMLEFT", 0, 0)
+    bottom:SetPoint("BOTTOMRIGHT", 0, 0)
+    bottom:SetHeight(1)
+    local left = frame:CreateTexture(nil, "OVERLAY", nil, 3)
+    left:SetPoint("TOPLEFT", 0, -1)
+    left:SetPoint("BOTTOMLEFT", 0, 1)
+    left:SetWidth(1)
+    local right = frame:CreateTexture(nil, "OVERLAY", nil, 3)
+    right:SetPoint("TOPRIGHT", 0, -1)
+    right:SetPoint("BOTTOMRIGHT", 0, 1)
+    right:SetWidth(1)
+    for _, tex in ipairs({ top, bottom, left, right }) do
+        tex:SetColorTexture(DROP_R, DROP_G, DROP_B, 1)
+        tex:Hide()
+        table.insert(edges, tex)
+    end
+
+    -- nil: no drag, or nothing can land here. "armed": a live drag could land
+    -- here. "hot": the cursor is inside it and a drop lands now.
+    function zone:SetState(dropState)
+        for _, tex in ipairs(edges) do
+            tex:SetShown(dropState ~= nil)
+            tex:SetAlpha(dropState == "hot" and 0.95 or 0.3)
+        end
+        fill:SetShown(dropState == "hot")
+    end
+
+    zone:SetState(nil)
+    return zone
+end
+
+-- The ghost under the cursor: the spell icon in a green frame, and a line
+-- naming what a drop does here. Over dead space the line is hidden, so the
+-- absence of a label reads as "this drop does nothing".
 local function GetDragCursor()
     if Drag.cursor then return Drag.cursor end
+    local theme = addon.UI.Theme
     local f = CreateFrame("Frame", "ScootAuraListDragCursor", UIParent)
     f:SetSize(ICON_SIZE, ICON_SIZE)
     f:SetFrameStrata("TOOLTIP")
     f:SetFrameLevel(100)
     local tex = f:CreateTexture(nil, "ARTWORK")
-    tex:SetAllPoints()
+    tex:SetPoint("TOPLEFT", 1, -1)
+    tex:SetPoint("BOTTOMRIGHT", -1, 1)
     tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     f._tex = tex
+
+    local function edge(p1, p2, w, h)
+        local e = f:CreateTexture(nil, "OVERLAY")
+        e:SetColorTexture(DROP_R, DROP_G, DROP_B, 0.9)
+        e:SetPoint(p1, 0, 0)
+        e:SetPoint(p2, 0, 0)
+        if w then e:SetWidth(w) end
+        if h then e:SetHeight(h) end
+    end
+    edge("TOPLEFT", "TOPRIGHT", nil, 1)
+    edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 1)
+    edge("TOPLEFT", "BOTTOMLEFT", 1, nil)
+    edge("TOPRIGHT", "BOTTOMRIGHT", 1, nil)
+
+    local hint = CreateFrame("Frame", nil, f)
+    hint:SetPoint("TOP", f, "BOTTOM", 0, -4)
+    hint:SetSize(10, 16)
+    local plate = hint:CreateTexture(nil, "BACKGROUND")
+    plate:SetAllPoints()
+    plate:SetColorTexture(0, 0, 0, 0.8)
+    local label = hint:CreateFontString(nil, "OVERLAY")
+    label:SetFont(theme:GetFont("LABEL"), 10, "")
+    label:SetPoint("CENTER", 0, 0)
+    label:SetTextColor(DROP_R, DROP_G, DROP_B, 1)
+    hint:Hide()
+    f._hint, f._hintLabel = hint, label
+
     f:Hide()
     Drag.cursor = f
     return f
+end
+
+-- Sizes the plate to the text, so it never reads as an empty box.
+local function SetDragHint(text)
+    local cursor = Drag.cursor
+    if not cursor then return end
+    if not text then
+        cursor._hint:Hide()
+        return
+    end
+    cursor._hintLabel:SetText(text)
+    cursor._hint:SetSize(math.max(20, (cursor._hintLabel:GetStringWidth() or 20) + 10), 16)
+    cursor._hint:Show()
 end
 
 local function GetDragMarker()
@@ -134,7 +241,7 @@ local function GetDragMarker()
     f:SetFrameLevel(99)
     local tex = f:CreateTexture(nil, "OVERLAY")
     tex:SetAllPoints()
-    tex:SetColorTexture(0.3, 0.9, 0.3, 1)
+    tex:SetColorTexture(DROP_R, DROP_G, DROP_B, 1)
     f:Hide()
     Drag.marker = f
     return f
@@ -150,12 +257,66 @@ local function FrameContains(frame, x, y, margin)
         and y >= bottom - margin and y <= top + margin
 end
 
+-- Every group box takes a drag; the tracker list only takes one that is
+-- leaving a group, so it arms for that drag alone.
+local function LeftPaneTakesDrop()
+    return Drag.sourceGid ~= nil
+end
+
 local function ClearDropFeedback()
     if Drag.marker then Drag.marker:Hide() end
     for _, reg in pairs(state.dropGroups) do
-        if reg.highlight then reg.highlight:Hide() end
+        if reg.zone then reg.zone:SetState(nil) end
     end
-    if state.leftDropHighlight then state.leftDropHighlight:Hide() end
+    if state.leftDropZone then state.leftDropZone:SetState(nil) end
+end
+
+-- Outlines every zone the drag could land in, and fills the one the cursor is
+-- inside. Called with no target at drag start, so the zones are visible before
+-- the cursor reaches one.
+local function PaintDropFeedback(gid, anchorFrame, side, ungroup)
+    if Drag.marker then Drag.marker:Hide() end
+    for id, reg in pairs(state.dropGroups) do
+        if reg.zone then reg.zone:SetState(id == gid and "hot" or "armed") end
+    end
+    if state.leftDropZone then
+        if not LeftPaneTakesDrop() then
+            state.leftDropZone:SetState(nil)
+        else
+            state.leftDropZone:SetState(ungroup and "hot" or "armed")
+        end
+    end
+    if gid and anchorFrame then
+        local marker = GetDragMarker()
+        marker:ClearAllPoints()
+        if side == "LEFT" then
+            marker:SetPoint("RIGHT", anchorFrame, "LEFT", -1, 0)
+        else
+            marker:SetPoint("LEFT", anchorFrame, "RIGHT", 1, 0)
+        end
+        marker:Show()
+    end
+end
+
+-- What a drop here does, in the words the list uses for the same action.
+local function DropHintText(gid, ungroup)
+    if ungroup then return "Remove from group" end
+    if not gid then return nil end
+    local SAU = addon.ScootAuras
+    local group = SAU and SAU.GetGroup(gid)
+    local name = (group and group.name) or ("Aura Group " .. tostring(gid))
+    if Drag.sourceGid == gid then return "Reorder in " .. name end
+    if Drag.sourceGid then return "Move to " .. name end
+    return "Add to " .. name
+end
+
+-- Rows, group boxes and member icons all paint on hover. Their own
+-- OnEnter/OnLeave cannot fire when a drag starts or ends under a still
+-- pointer, so both ends of a drag repaint the lot.
+local function RefreshHoverArt()
+    for _, frame in ipairs(state.hoverables) do
+        if frame.UpdateHover then frame.UpdateHover() end
+    end
 end
 
 -- Returns (gid, insertIndex, anchorFrame, anchorSide, ungroup). The insert
@@ -208,8 +369,15 @@ local function BeginDrag(trackerId, sourceGid, sourceIndex, texture, sourceFrame
     local cursor = GetDragCursor()
     cursor._tex:SetTexture(texture or 134400)
     cursor:SetAlpha(0.85)
+    SetDragHint(nil)
     cursor:Show()
     if sourceFrame then sourceFrame:SetAlpha(0.4) end
+
+    Drag.paintedGid, Drag.paintedIndex, Drag.paintedUngroup = nil, nil, nil
+    PaintDropFeedback(nil, nil, nil, false)
+    -- A row lit by the pointer under the ghost reads as a drop target it is
+    -- not, so the hover art is off for the length of the drag.
+    RefreshHoverArt()
 
     cursor:SetScript("OnUpdate", function(self)
         local cx, cy = GetCursorPosition()
@@ -221,22 +389,13 @@ local function BeginDrag(trackerId, sourceGid, sourceIndex, texture, sourceFrame
         local gid, index, anchorFrame, side, ungroup = FindDropTarget(cx, cy)
         Drag.targetGid, Drag.targetIndex, Drag.targetUngroup = gid, index, ungroup
 
-        ClearDropFeedback()
-        if gid then
-            local reg = state.dropGroups[gid]
-            if reg and reg.highlight then reg.highlight:Show() end
-            if anchorFrame then
-                local marker = GetDragMarker()
-                marker:ClearAllPoints()
-                if side == "LEFT" then
-                    marker:SetPoint("RIGHT", anchorFrame, "LEFT", -1, 0)
-                else
-                    marker:SetPoint("LEFT", anchorFrame, "RIGHT", 1, 0)
-                end
-                marker:Show()
-            end
-        elseif ungroup and state.leftDropHighlight then
-            state.leftDropHighlight:Show()
+        -- This runs every frame; repaint only when the target moves. The
+        -- insert index carries the marker's position, so it is the whole test.
+        if gid ~= Drag.paintedGid or index ~= Drag.paintedIndex
+            or ungroup ~= Drag.paintedUngroup then
+            Drag.paintedGid, Drag.paintedIndex, Drag.paintedUngroup = gid, index, ungroup
+            PaintDropFeedback(gid, anchorFrame, side, ungroup)
+            SetDragHint(DropHintText(gid, ungroup))
         end
     end)
 
@@ -259,6 +418,7 @@ EndDrag = function(cancelled)
     if not Drag.active then return end
     if Drag.cursor then
         Drag.cursor:SetScript("OnUpdate", nil)
+        SetDragHint(nil)
         Drag.cursor:Hide()
     end
     if Drag.eventFrame then
@@ -276,6 +436,7 @@ EndDrag = function(cancelled)
     Drag.trackerId, Drag.sourceGid, Drag.sourceIndex, Drag.sourceFrame = nil, nil, nil, nil
     Drag.targetGid, Drag.targetIndex, Drag.targetUngroup = nil, nil, false
     Drag.justEndedAt = GetTime()
+    RefreshHoverArt()
 
     if cancelled or not trackerId then return end
     local SAU = addon.ScootAuras
@@ -299,8 +460,10 @@ end
 local function Cleanup(panel)
     if Drag.active then EndDrag(true) end
     -- The spec fly-out outlives the page (one instance, re-anchored per row),
-    -- so close it before its anchor is destroyed.
-    if addon.UI.ScootAuraSpecFlyout then addon.UI.ScootAuraSpecFlyout.Close() end
+    -- so close it before its anchor is destroyed. The exception is a re-render
+    -- it asked for: RenderList hands it the rebuilt trigger instead.
+    local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+    if SpecFlyout and not SpecFlyout.IsReanchoring() then SpecFlyout.Close() end
     for _, fly in ipairs(state.flyouts) do
         if fly.Cleanup then fly:Cleanup() end
         fly:Hide()
@@ -312,29 +475,29 @@ local function Cleanup(panel)
     end
     state.rows = {}
     state.textRows = {}
+    state.hoverables = {}
+    state.specButtons = {}
     for gid in pairs(state.dropGroups) do
         state.dropGroups[gid] = nil
     end
     state.leftPane = nil
-    state.leftDropHighlight = nil
+    state.leftDropZone = nil
     state.active = false
     panel._scootAurasCleanup = nil
 
-    -- Header pieces this page borrows: the two action buttons and the
-    -- restyled subtitle. The buttons and the copy fly-out are built once per
-    -- window and cached (not in state.flyouts, whose entries are destroyed
-    -- here), so hide and close rather than tear down.
+    -- Header pieces this page borrows: the Import button and the restyled
+    -- subtitle. The button is built once per window and cached (not in
+    -- state.flyouts, whose entries are destroyed here), so hide it rather than
+    -- tear it down.
     local contentPane = panel.frame and panel.frame._contentPane
-    if contentPane then
-        if contentPane._scootAuraCopyBtn then contentPane._scootAuraCopyBtn:Hide() end
-        if contentPane._scootAuraImportBtn then contentPane._scootAuraImportBtn:Hide() end
-        if contentPane._scootAuraCopyFlyout then contentPane._scootAuraCopyFlyout:Close() end
+    if contentPane and contentPane._scootAuraImportBtn then
+        contentPane._scootAuraImportBtn:Hide()
     end
     if panel.ResetHeaderSubtitle then panel:ResetHeaderSubtitle() end
 end
 
 --------------------------------------------------------------------------------
--- Header actions: "Import" (placeholder) and "Copy from Global"
+-- Header action: "Import" (placeholder)
 --------------------------------------------------------------------------------
 
 -- Built once per settings window on the shared page header, right of the
@@ -342,27 +505,10 @@ end
 -- settingspanel/core.lua). Shown by RenderList, hidden by Cleanup.
 local function EnsureHeaderButtons(contentPane)
     if not contentPane or not contentPane._header then return end
-    if contentPane._scootAuraCopyBtn then return end
+    if contentPane._scootAuraImportBtn then return end
     local Controls = addon.UI.Controls
     if not Controls or not Controls.CreateButton then return end
     local header = contentPane._header
-
-    local copyBtn = Controls:CreateButton({
-        parent = header,
-        name = "ScootAuraCopyFromGlobalBtn",
-        text = "Copy from Global",
-        height = 17,
-        fontSize = 10,
-        borderWidth = 1,
-        borderAlpha = 0.6,
-        onClick = function()
-            local fly = contentPane._scootAuraCopyFlyout
-            if fly then fly:Toggle() end
-        end,
-    })
-    copyBtn:SetPoint("TOPRIGHT", header, "TOPRIGHT", -16, -12)
-    copyBtn:Hide()
-    contentPane._scootAuraCopyBtn = copyBtn
 
     local importBtn = Controls:CreateButton({
         parent = header,
@@ -373,7 +519,7 @@ local function EnsureHeaderButtons(contentPane)
         borderWidth = 1,
         borderAlpha = 0.6,
     })
-    importBtn:SetPoint("RIGHT", copyBtn, "LEFT", -8, 0)
+    importBtn:SetPoint("TOPRIGHT", header, "TOPRIGHT", -16, -12)
     importBtn:Hide()
     -- Placeholder: no action yet. HookScript, because the button control owns
     -- OnEnter/OnLeave for its hover fill.
@@ -390,16 +536,20 @@ local function EnsureHeaderButtons(contentPane)
         end
     end)
     contentPane._scootAuraImportBtn = importBtn
-
-    local CopyFlyout = addon.UI.ScootAuraCopyFlyout
-    if CopyFlyout and CopyFlyout.Create then
-        contentPane._scootAuraCopyFlyout = CopyFlyout.Create(copyBtn)
-    end
 end
 
 --------------------------------------------------------------------------------
 -- Shared row pieces
 --------------------------------------------------------------------------------
+
+-- The spec fly-out outlives a re-render; its trigger does not. Every surface
+-- carrying one files it under the record's own key ("t<id>" for a tracker,
+-- "g<gid>" for a group), so the open panel finds the replacement once the
+-- rebuilt rows exist. A tracker is a list row or a group member, never both,
+-- so one key covers both surfaces.
+local function RegisterSpecButton(key, button, reveal)
+    state.specButtons[key] = { button = button, reveal = reveal }
+end
 
 -- Flat glyph button: desaturated atlas tinted accent, brightening on hover,
 -- named by tooltip. All three actions (gear, duplicate, delete) draw from the
@@ -522,7 +672,7 @@ end
 -- paneW arrives from the caller because a pane's rect resolves at the end of
 -- the frame, too late for the meta line's wrap width (the group boxes take
 -- their width the same way).
-local function CreateTrackerRow(pane, trackerId, tracker, paneW)
+local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     local theme = addon.UI.Theme
     local ar, ag, ab = theme:GetAccentColor()
     local SAU = addon.ScootAuras
@@ -577,16 +727,21 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW)
     row._name, row._meta = name, meta
     row:SetHeight(MeasuredRowHeight(name, meta))
 
-    if tracker.enabled == false then
+    -- An unloaded aura is grayed in place: the wrong spec, or switched off. It
+    -- stays fully interactive, because editing one is how it gets loaded.
+    if loaded == false then
+        icon:SetDesaturated(true)
+        icon:SetAlpha(0.45)
+        name:SetTextColor(0.5, 0.5, 0.5, 1)
+        meta:SetTextColor(0.42, 0.42, 0.42, 1)
+    elseif tracker.enabled == false then
         icon:SetDesaturated(true)
         name:SetTextColor(0.55, 0.55, 0.55, 1)
     end
 
-    -- The spec button stays visible on every row; the other three ride the
-    -- row hover as they always have.
-    local specBtn = CreateIconButton(row, SPEC_ATLAS, "Restrict to Specs", theme, ROW_BTN_SIZE)
+    -- All four buttons ride the row hover.
+    local specBtn = CreateIconButton(row, SPEC_ATLAS, "Loaded on these specs", theme, ROW_BTN_SIZE)
     specBtn:SetPoint("TOPRIGHT", row, "TOPRIGHT", -PAD, ROW_BTN_Y)
-    specBtn:Show()
 
     local deleteBtn = CreateIconButton(row, "common-icon-delete", "Delete", theme, ROW_BTN_SIZE)
     deleteBtn:SetPoint("RIGHT", specBtn, "LEFT", -ROW_BTN_GAP, 0)
@@ -604,15 +759,25 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW)
     end)
 
     -- IsMouseOver covers children, so moving onto a button keeps the row lit.
+    -- A live drag turns the hover art off: the pointer under the ghost passes
+    -- over rows that are not drop targets, and a lit row says they are. The
+    -- pane's own green wash is the answer for that drag.
     row.UpdateHover = function()
-        local over = row:IsMouseOver()
+        local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+        local over = not Drag.active
+            and (row:IsMouseOver()
+                or (SpecFlyout and SpecFlyout.IsOpenFor(specBtn))
+                or false)
         hoverBg:SetShown(over)
+        specBtn:SetShown(over)
         deleteBtn:SetShown(over)
         duplicateBtn:SetShown(over)
         enabledBtn:SetShown(over)
     end
     row:SetScript("OnEnter", row.UpdateHover)
     row:SetScript("OnLeave", row.UpdateHover)
+    table.insert(state.hoverables, row)
+    RegisterSpecButton("t" .. tostring(trackerId), specBtn, row.UpdateHover)
 
     row:SetScript("OnMouseUp", function(_, button)
         if ClickGuard() then return end
@@ -637,12 +802,12 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW)
         if not SpecFlyout then return end
         SpecFlyout.OpenFor(specBtn, {
             title = "Load this aura in...",
+            key = "t" .. tostring(trackerId),
             get = function()
                 local t = SAU.GetTracker(trackerId)
                 return t and t.specs
             end,
             toggle = function(specID) SAU.ToggleTrackerSpec(trackerId, specID) end,
-            clear = function() SAU.SetTrackerSpecs(trackerId, nil) end,
         })
     end)
 
@@ -783,7 +948,7 @@ local function CreateGroupFlyout(anchorBtn, gid)
     return flyout
 end
 
-local function CreateGroupBox(pane, gid, group, boxW)
+local function CreateGroupBox(pane, gid, group, boxW, loaded)
     local theme = addon.UI.Theme
     local ar, ag, ab = theme:GetAccentColor()
     local SAU = addon.ScootAuras
@@ -795,10 +960,7 @@ local function CreateGroupBox(pane, gid, group, boxW)
     bg:SetAllPoints()
     bg:SetColorTexture(ar, ag, ab, 0.04)
 
-    local highlight = box:CreateTexture(nil, "BACKGROUND", nil, -7)
-    highlight:SetAllPoints()
-    highlight:SetColorTexture(ar, ag, ab, 0.12)
-    highlight:Hide()
+    local zone = CreateDropZone(box)
 
     local function edge()
         local tex = box:CreateTexture(nil, "BORDER")
@@ -886,23 +1048,21 @@ local function CreateGroupBox(pane, gid, group, boxW)
     nameBtn:SetScript("OnClick", StartRename)
     pencilBtn:SetScript("OnClick", StartRename)
 
-    -- The spec button stays visible; the rest are hover-revealed, left to
-    -- right: layout gear, duplicate, delete.
-    local specBtn = CreateIconButton(box, SPEC_ATLAS, "Restrict to Specs", theme)
+    -- Hover-revealed, right to left: spec filter, delete, duplicate, layout gear.
+    local specBtn = CreateIconButton(box, SPEC_ATLAS, "Loaded on these specs", theme)
     specBtn:SetPoint("TOPRIGHT", box, "TOPRIGHT", -BOX_PAD, -5)
-    specBtn:Show()
     specBtn:SetScript("OnClick", function()
         if ClickGuard() then return end
         local SpecFlyout = addon.UI.ScootAuraSpecFlyout
         if not SpecFlyout then return end
         SpecFlyout.OpenFor(specBtn, {
             title = "Load this group in...",
+            key = "g" .. tostring(gid),
             get = function()
                 local g = SAU.GetGroup(gid)
                 return g and g.specs
             end,
             toggle = function(specID) SAU.ToggleGroupSpec(gid, specID) end,
-            clear = function() SAU.SetGroupSpecs(gid, nil) end,
         })
     end)
 
@@ -910,14 +1070,19 @@ local function CreateGroupBox(pane, gid, group, boxW)
     deleteBtn:SetPoint("RIGHT", specBtn, "LEFT", -BTN_GAP, 0)
     local duplicateBtn = CreateIconButton(box, "friends-icon-battlenet-copy", "Duplicate Group", theme)
     duplicateBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -BTN_GAP, 0)
-    local layoutBtn = CreateIconButton(box, "GM-icon-settings", "Layout", theme, BTN_SIZE, 2)
-    layoutBtn:SetPoint("RIGHT", duplicateBtn, "LEFT", -BTN_GAP, 0)
+    -- Layout settings describe a group that is on screen. An unloaded group has
+    -- none, so it carries no gear and builds no fly-out.
+    local layoutBtn, flyout
+    if loaded ~= false then
+        layoutBtn = CreateIconButton(box, "GM-icon-settings", "Layout", theme, BTN_SIZE, 2)
+        layoutBtn:SetPoint("RIGHT", duplicateBtn, "LEFT", -BTN_GAP, 0)
 
-    local flyout = CreateGroupFlyout(layoutBtn, gid)
-    layoutBtn:SetScript("OnClick", function()
-        if ClickGuard() then return end
-        flyout:Toggle()
-    end)
+        flyout = CreateGroupFlyout(layoutBtn, gid)
+        layoutBtn:SetScript("OnClick", function()
+            if ClickGuard() then return end
+            flyout:Toggle()
+        end)
+    end
 
     duplicateBtn:SetScript("OnClick", function()
         if SAU.DuplicateGroup(gid) then Refresh() end
@@ -977,10 +1142,85 @@ local function CreateGroupBox(pane, gid, group, boxW)
             local texture = addon.ScootAuras._SpellIcon(tracker.spellId)
             tex:SetTexture(texture)
             tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            if tracker.enabled == false then tex:SetDesaturated(true) end
+            if loaded == false or not SAU.IsTrackerActive(memberId, tracker) then
+                tex:SetDesaturated(true)
+                tex:SetAlpha(0.45)
+            end
+
+            -- A group is shared by the whole account, but its members are often
+            -- one class each. Both badges live in the icon's top-right corner so
+            -- a member's spec list and an in-group copy are reachable without
+            -- pulling it out of the group first. They sit inside the icon rect:
+            -- an outset badge would cover the neighbour, and IsMouseOver tests
+            -- the parent's own rect, so the badge would hide itself under the
+            -- pointer. An unloaded member keeps both, the way a grayed tracker
+            -- row does, because the spec badge is how an aura gets loaded.
+            local memberSpecBtn = CreateIconButton(btn, SPEC_ATLAS,
+                "Loaded on these specs", theme, MEMBER_BTN_SIZE)
+            memberSpecBtn:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 0, 0)
+            local memberDupBtn = CreateIconButton(btn, "friends-icon-battlenet-copy",
+                "Duplicate in Group", theme, MEMBER_BTN_SIZE)
+            memberDupBtn:SetPoint("RIGHT", memberSpecBtn, "LEFT", -MEMBER_BTN_GAP, 0)
+
+            -- The accent glyph would sink into bright spell art. CreateIconButton
+            -- draws it in ARTWORK, so a BACKGROUND plate sits under it.
+            for _, badge in ipairs({ memberSpecBtn, memberDupBtn }) do
+                local shade = badge:CreateTexture(nil, "BACKGROUND")
+                shade:SetAllPoints()
+                shade:SetColorTexture(0, 0, 0, 0.72)
+                -- The badges cover the icon's corner and would otherwise eat a
+                -- drag started there.
+                badge:RegisterForDrag("LeftButton")
+                badge:SetScript("OnDragStart", function()
+                    BeginDrag(memberId, gid, index, texture, btn)
+                end)
+            end
+
+            btn.UpdateHover = function()
+                local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+                local over = not Drag.active
+                    and (btn:IsMouseOver()
+                        or (SpecFlyout and SpecFlyout.IsOpenFor(btn))
+                        or false)
+                memberSpecBtn:SetShown(over)
+                memberDupBtn:SetShown(over)
+                if box.UpdateHover then box.UpdateHover() end
+            end
+            table.insert(state.hoverables, btn)
+            RegisterSpecButton("t" .. tostring(memberId), btn, btn.UpdateHover)
+
+            -- Anchored to the icon, not to the badge in its corner: a panel
+            -- hung off an 11px badge inside the art puts its nub across the
+            -- spell icon. From the icon the nub clears both.
+            memberSpecBtn:SetScript("OnClick", function()
+                if ClickGuard() then return end
+                local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+                if not SpecFlyout then return end
+                SpecFlyout.OpenFor(btn, {
+                    title = "Load this aura in...",
+                    key = "t" .. tostring(memberId),
+                    get = function()
+                        local t = SAU.GetTracker(memberId)
+                        return t and t.specs
+                    end,
+                    toggle = function(specID) SAU.ToggleTrackerSpec(memberId, specID) end,
+                })
+            end)
+
+            -- Copies the member into its group beside itself. The editor's own
+            -- duplicate then edits the copy; here the user is browsing the list,
+            -- so it stays put.
+            memberDupBtn:SetScript("OnClick", function()
+                if ClickGuard() then return end
+                if SAU.DuplicateTrackerInGroup(memberId) then
+                    GameTooltip:Hide()
+                    Refresh()
+                end
+            end)
 
             btn:SetScript("OnEnter", function(self)
-                if box.UpdateHover then box.UpdateHover() end
+                btn.UpdateHover()
+                if Drag.active then return end
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(tracker.name or ("Aura " .. tostring(tracker.spellId)), 1, 1, 1)
                 GameTooltip:AddLine(TrackerMetaText(tracker), 0.7, 0.7, 0.7, true)
@@ -988,7 +1228,7 @@ local function CreateGroupBox(pane, gid, group, boxW)
             end)
             btn:SetScript("OnLeave", function()
                 GameTooltip:Hide()
-                if box.UpdateHover then box.UpdateHover() end
+                btn.UpdateHover()
             end)
             btn:SetScript("OnClick", function()
                 if ClickGuard() then return end
@@ -1017,15 +1257,23 @@ local function CreateGroupBox(pane, gid, group, boxW)
     box:SetHeight(headerH + iconRows * (ICON_SIZE + ICON_GAP) + BOX_PAD)
 
     box.UpdateHover = function()
-        local over = box:IsMouseOver() or (flyout and flyout:IsOpen())
+        local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+        local over = not Drag.active
+            and (box:IsMouseOver()
+                or (flyout and flyout:IsOpen())
+                or (SpecFlyout and SpecFlyout.IsOpenFor(specBtn))
+                or false)
+        specBtn:SetShown(over)
         deleteBtn:SetShown(over)
         duplicateBtn:SetShown(over)
-        layoutBtn:SetShown(over)
+        if layoutBtn then layoutBtn:SetShown(over) end
     end
     box:SetScript("OnEnter", box.UpdateHover)
     box:SetScript("OnLeave", box.UpdateHover)
+    table.insert(state.hoverables, box)
+    RegisterSpecButton("g" .. tostring(gid), specBtn, box.UpdateHover)
 
-    state.dropGroups[gid] = { box = box, highlight = highlight, icons = icons }
+    state.dropGroups[gid] = { box = box, zone = zone, icons = icons }
     return box
 end
 
@@ -1048,14 +1296,57 @@ local function ColumnLabel(pane, text, theme)
     underline:SetColorTexture(ar, ag, ab, 0.6)
 end
 
+-- Section heading for the Not Loaded block: a hairline rule, then a dim label.
+-- Returns the height it consumed.
+local function NotLoadedHeading(pane, y, theme)
+    local ar, ag, ab = theme:GetAccentColor()
+    local rule = pane:CreateTexture(nil, "BORDER")
+    rule:SetHeight(1)
+    rule:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -(y + NOT_LOADED_TOP_GAP))
+    rule:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -(y + NOT_LOADED_TOP_GAP))
+    rule:SetColorTexture(ar, ag, ab, 0.25)
+
+    local fs = pane:CreateFontString(nil, "OVERLAY")
+    fs:SetFont(theme:GetFont("LABEL"), 11, "")
+    fs:SetPoint("TOP", pane, "TOP", 0, -(y + NOT_LOADED_TOP_GAP + 10))
+    fs:SetText("Not Loaded")
+    local dr, dg, db = theme:GetDimTextColor()
+    fs:SetTextColor(dr, dg, db, 1)
+
+    return NOT_LOADED_HEADER_H
+end
+
+-- Stand-in for an empty loaded block, so a pane holding only grayed records
+-- reads as a state rather than a rendering gap. Returns the height it consumed.
+local function NoneLoadedText(pane, y, theme)
+    local fs = pane:CreateFontString(nil, "OVERLAY")
+    fs:SetFont(theme:GetFont("LABEL"), 11, "")
+    fs:SetPoint("TOP", pane, "TOP", 0, -(y + NONE_LOADED_TOP_GAP))
+    fs:SetText("None Loaded")
+    local dr, dg, db = theme:GetDimTextColor()
+    fs:SetTextColor(dr, dg, db, 1)
+
+    return NONE_LOADED_H
+end
+
 RenderList = function(panel, scrollContent, corrective)
     if Drag.active then EndDrag(true) end
+
+    -- An open spec fly-out survives the rebuild that its own edit asked for.
+    -- Its trigger does not, so it is unpinned here and handed the replacement
+    -- once the new rows exist; every re-render path runs through this bracket,
+    -- the deferred corrective pass included.
+    local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+    local specKey = SpecFlyout and SpecFlyout.GetOpenKey() or nil
+    if specKey and not SpecFlyout.BeginReanchor() then specKey = nil end
+
     panel:ClearContent()
 
     local SAU = addon.ScootAuras
     local SettingsBuilder = addon.UI.SettingsBuilder
 
     if not (SAU and SAU.IsModuleActive()) then
+        if specKey then SpecFlyout.EndReanchor(nil) end
         local builder = SettingsBuilder:CreateFor(scrollContent)
         panel._currentBuilder = builder
         builder:AddDescription(
@@ -1085,7 +1376,7 @@ RenderList = function(panel, scrollContent, corrective)
     if contentPane and contentPane._headerSubtitle and contentPane._header then
         local sub = contentPane._headerSubtitle
         sub:SetText(
-            "Click a tracker to edit it. Drag trackers into groups; drag a group's icons to reorder or remove them. Position frames in Edit Mode.")
+            "Auras are shared by every character on your account and load in the specializations you pick. Click a tracker to edit it. Drag trackers into groups; drag a group's icons to reorder or remove them. Position frames in Edit Mode.")
         sub:ClearAllPoints()
         sub:SetPoint("TOPLEFT", contentPane._header, "TOPLEFT", 16, -36)
         sub:SetPoint("BOTTOMRIGHT", contentPane._header, "BOTTOMRIGHT", -16, 4)
@@ -1100,8 +1391,7 @@ RenderList = function(panel, scrollContent, corrective)
 
     -- Header actions, right of the title.
     EnsureHeaderButtons(contentPane)
-    if contentPane and contentPane._scootAuraCopyBtn then
-        contentPane._scootAuraCopyBtn:Show()
+    if contentPane and contentPane._scootAuraImportBtn then
         contentPane._scootAuraImportBtn:Show()
     end
 
@@ -1116,11 +1406,9 @@ RenderList = function(panel, scrollContent, corrective)
     state.leftPane = leftPane
     table.insert(state.rows, leftPane)
 
-    local leftHl = leftPane:CreateTexture(nil, "BACKGROUND", nil, -8)
-    leftHl:SetAllPoints()
-    leftHl:SetColorTexture(ar, ag, ab, 0.06)
-    leftHl:Hide()
-    state.leftDropHighlight = leftHl
+    -- The tracker list takes a drop as one target: it is ordered by name, so
+    -- there is no position to aim at and no insertion line to draw.
+    state.leftDropZone = CreateDropZone(leftPane)
 
     local rightPane = CreateFrame("Frame", nil, scrollContent)
     rightPane:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", rightX, 0)
@@ -1134,9 +1422,17 @@ RenderList = function(panel, scrollContent, corrective)
     -- meta line wraps, so each row reports what it needs.
     local leftRowW = math.max(80, leftW - DIVIDER_CLEAR_L)
     local yL = COL_LABEL_H
+    local loadedT, unloadedT = {}, {}
     for _, item in ipairs(SAU.SortedTrackers()) do
         if item.tracker.groupId == nil then
-            local row = CreateTrackerRow(leftPane, item.id, item.tracker, leftRowW)
+            local bucket = SAU.IsTrackerActive(item.id, item.tracker) and loadedT or unloadedT
+            table.insert(bucket, item)
+        end
+    end
+
+    local function AddTrackerRows(items, loaded)
+        for _, item in ipairs(items) do
+            local row = CreateTrackerRow(leftPane, item.id, item.tracker, leftRowW, loaded)
             row:SetPoint("TOPLEFT", leftPane, "TOPLEFT", 0, -yL)
             row:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", 0, -yL)
             table.insert(state.rows, row)
@@ -1145,16 +1441,44 @@ RenderList = function(panel, scrollContent, corrective)
         end
     end
 
+    if #loadedT > 0 then
+        AddTrackerRows(loadedT, true)
+    else
+        yL = yL + NoneLoadedText(leftPane, yL, theme)
+    end
+    if #unloadedT > 0 then
+        yL = yL + NotLoadedHeading(leftPane, yL, theme)
+        AddTrackerRows(unloadedT, false)
+    end
+
     -- Right pane: group boxes. Widths come from the content frame (pane rects
     -- resolve at end of frame, too late for the icon wrap).
     local rightW = math.max(120, totalW - rightX)
     local yR = COL_LABEL_H
+    local loadedG, unloadedG = {}, {}
     for _, item in ipairs(SAU.SortedGroups()) do
-        local box = CreateGroupBox(rightPane, item.id, item.group, rightW)
-        box:SetPoint("TOPLEFT", rightPane, "TOPLEFT", 0, -yR)
-        box:SetPoint("TOPRIGHT", rightPane, "TOPRIGHT", 0, -yR)
-        table.insert(state.rows, box)
-        yR = yR + box:GetHeight() + BOX_GAP
+        local bucket = SAU.IsGroupActive(item.id, item.group) and loadedG or unloadedG
+        table.insert(bucket, item)
+    end
+
+    local function AddGroupBoxes(items, loaded)
+        for _, item in ipairs(items) do
+            local box = CreateGroupBox(rightPane, item.id, item.group, rightW, loaded)
+            box:SetPoint("TOPLEFT", rightPane, "TOPLEFT", 0, -yR)
+            box:SetPoint("TOPRIGHT", rightPane, "TOPRIGHT", 0, -yR)
+            table.insert(state.rows, box)
+            yR = yR + box:GetHeight() + BOX_GAP
+        end
+    end
+
+    if #loadedG > 0 then
+        AddGroupBoxes(loadedG, true)
+    else
+        yR = yR + NoneLoadedText(rightPane, yR, theme)
+    end
+    if #unloadedG > 0 then
+        yR = yR + NotLoadedHeading(rightPane, yR, theme)
+        AddGroupBoxes(unloadedG, false)
     end
 
     -- Content height: enough for the longer list plus the add buttons, but
@@ -1193,6 +1517,14 @@ RenderList = function(panel, scrollContent, corrective)
     sepTex:SetAllPoints()
     sepTex:SetColorTexture(ar, ag, ab, 0.2)
     table.insert(state.rows, sep)
+
+    -- Hand the fly-out its rebuilt trigger. A record that moved between the
+    -- Loaded and Not Loaded blocks has a new button at a new height, so the
+    -- panel jumps with it; one that is gone from the page closes it.
+    if specKey then
+        local entry = state.specButtons[specKey]
+        SpecFlyout.EndReanchor(entry and entry.button, entry and entry.reveal)
+    end
 
     -- The shared content scrollbar re-measures on the next frame. The first
     -- render after a page switch can also read a stale viewport height (the

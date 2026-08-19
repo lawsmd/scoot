@@ -174,6 +174,14 @@ local function buildSpecCache()
         return tostring(a.name) < tostring(b.name)
     end)
 
+    -- Cache only once the class data is really there: an empty build captured
+    -- before login would stick for the session and strand every caller.
+    if #SPEC_CACHE == 0 then
+        local empty, emptyById = SPEC_CACHE, SPEC_BY_ID
+        SPEC_CACHE, SPEC_BY_ID = nil, nil
+        return empty, emptyById
+    end
+
     return SPEC_CACHE, SPEC_BY_ID
 end
 

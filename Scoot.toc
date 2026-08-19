@@ -2,7 +2,7 @@
 ## Title: Scoot
 ## Notes: A modern, cosmetic-only UI addon.
 ## Author: Scooter
-## Version: 2.0.0
+## Version: 2.0.1
 ## IconTexture: Interface\AddOns\Scoot\ScootIcon
 ## OptionalDeps: Blizzard_Settings, Blizzard_Settings_Shared, LibSharedMedia-3.0
 ## SavedVariables: ScootDB
@@ -83,7 +83,6 @@ core/components/scootauras/rearrange.lua
 core/components/scootauras/regions.lua
 core/components/scootauras/missing.lua
 core/components/scootauras/events.lua
-core/components/scootauras/copy.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua
 core/components/auras.lua
@@ -266,7 +265,6 @@ ui/v2/settings/cdm/CustomGroupsTab.lua
 ui/v2/settings/cdm/SpellbookOverlay.lua
 ui/v2/settings/scootauras/EditorTabs.lua
 ui/v2/settings/scootauras/CDMPicker.lua
-ui/v2/settings/scootauras/CopyFromGlobal.lua
 ui/v2/settings/scootauras/SpecFlyout.lua
 ui/v2/settings/scootauras/TitleCarousel.lua
 ui/v2/settings/scootauras/EditorWindow.lua

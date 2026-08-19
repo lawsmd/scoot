@@ -25,6 +25,7 @@ read_globals = {
     "C_CurveUtil",
     "C_EditMode",
     "C_Secrets",
+    "C_SpellActivationOverlay",
     "C_StringUtil",
     "C_Timer",
     "C_UnitAuras",
@@ -60,6 +61,13 @@ read_globals = {
     "UnitExists",
     "UnitInRange",
     "UnitIsPlayer",
+    -- Plain in 12.1 (no SecretReturns): the group missing-buff scan gates on
+    -- them before it reads an aura on a group member. The last two let an AI
+    -- companion in a follower dungeon or a walk-in party count as a member.
+    "UnitIsConnected",
+    "UnitIsVisible",
+    "UnitInPartyIsAI",
+    "UnitTreatAsPlayerForDisplay",
     -- Both plain reads in 12.0 (no SecretReturns in UnitDocumentation.lua):
     -- the dead skull and the elite/rare icon branch on them directly.
     "UnitIsDeadOrGhost",

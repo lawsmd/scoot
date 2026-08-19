@@ -53,8 +53,7 @@ end
 
 local function ApplySavedPosition(entry)
     if not entry.occupantId then return end
-    local profile = addon.db and addon.db.profile
-    local store = profile and rawget(profile, "scootAuraPositions")
+    local store = SAU.GetPositionStore(false)
     local perKey = store and store["g" .. entry.occupantId]
     local layoutName = Engine.GetActiveLayoutName()
     local pos = layoutName and perKey and perKey[layoutName]
@@ -85,6 +84,8 @@ function Groups._EditModeMirror(frame)
     local gid = entry and entry.occupantId
     local group = gid and SAU.GetGroup(gid)
     if not group then return nil end
+    -- An unloaded group has no Edit Mode presence, so it offers no controls.
+    if not SAU.IsGroupActive(gid, group) then return nil end
 
     local specs = {
         -- The menu fly-out's ranges, in the fly-out's order. Short labels on
@@ -370,9 +371,12 @@ function Groups.LayoutGroup(gid)
         entry.frame:SetSize(maxCross, totalMain)
     end
 
-    -- Empty groups stay positionable in Edit Mode and invisible outside it.
+    -- Empty groups stay positionable in Edit Mode and invisible outside it. A
+    -- group gated out by its specs lays out zero members and so reads as empty,
+    -- but it must not appear in Edit Mode either: an unloaded group is not
+    -- draggable and shows no preview.
     local editing = SAU._isEditModeActive and SAU._isEditModeActive() or false
-    entry.frame:SetShown(count > 0 or editing)
+    entry.frame:SetShown(SAU.IsGroupActive(gid, group) and (count > 0 or editing))
 end
 
 function Groups.ReflowAll()
@@ -399,7 +403,12 @@ end
 --- Aligns the group pool with the store: claims live groups, releases stale
 -- entries, reconciles member parenting, and lays everything out.
 function Groups.ApplyAll()
-    local groups = SAU.IsModuleActive() and SAU.OwnedGroups() or {}
+    local groups = {}
+    if SAU.IsModuleActive() then
+        for gid, group in pairs(SAU.AllGroups()) do
+            if SAU.IsGroupActive(gid, group) then groups[gid] = group end
+        end
+    end
 
     local toRelease = {}
     for gid in pairs(byGroup) do

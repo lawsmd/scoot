@@ -645,11 +645,11 @@ end
 
 local KIND_LABELS = { buff = "a Buff", debuff = "a Debuff", missingbuff = "a Missing Buff" }
 local KIND_ORDER = { "buff", "debuff", "missingbuff" }
-local UNIT_LABELS = { player = "Myself", target = "My Target", focus = "My Focus" }
--- Units listed for a kind but not yet offered: shown dimmed and inert.
-local COMING_SOON_UNITS = {
-    missingbuff = { { key = "group", label = "My Group (Coming Soon)" } },
+local UNIT_LABELS = {
+    player = "Myself", group = "My Group", target = "My Target", focus = "My Focus",
 }
+-- Units listed for a kind but not yet offered: shown dimmed and inert.
+local COMING_SOON_UNITS = {}
 -- "Horizontal Bar" leaves room in the same selector for vertical bars and
 -- circles later; the internal shape key stays "bar".
 local SHAPE_LABELS = { icon = "an Icon", bar = "a Horizontal Bar", shape = "a Shape" }
@@ -676,6 +676,12 @@ local function SetContent(field, value)
     else
         local c = session.draft.content
         c[field] = value
+        -- A raid buff goes up between pulls, so a reminder that only shows in
+        -- combat would arrive after the moment to act on it. Myself keeps the
+        -- Yes default; an explicit choice already made is left alone.
+        if field == "unit" and value == "group" and c.onlyInCombat == nil then
+            c.onlyInCombat = false
+        end
         -- A kind flip can strand the chosen unit or shape; force a re-choose.
         if field == "kind" then
             local units = SAU().VALID_UNITS[value]
@@ -694,7 +700,7 @@ end
 
 local function UnitOptions(kind)
     local values, order, disabled = {}, {}, nil
-    for _, unit in ipairs({ "player", "target", "focus" }) do
+    for _, unit in ipairs({ "player", "group", "target", "focus" }) do
         if SAU().VALID_UNITS[kind] and SAU().VALID_UNITS[kind][unit] then
             values[unit] = UNIT_LABELS[unit]
             table.insert(order, unit)

@@ -1,10 +1,13 @@
 -- scootauras/core.lua - User-built aura trackers: store, settings, CRUD, reconcile
 --
--- Content (spell, kind, unit, shape, name, enabled, grouping) lives in
--- profile.scootAuras; styling lives in profile.components["scootAura_<id>"];
--- positions in profile.scootAuraPositions. Content writes go through the API
--- here so engine consequences route through the structural gate; styling
--- writes go through the normal component setAndApply path.
+-- Auras are account-wide. One store, db.global.scootAuras, holds content
+-- (spell, kind, unit, shape, name, enabled, grouping, specs), styling keyed by
+-- component id, and positions keyed t<id>/g<gid> then by Edit Mode layout. Every
+-- character sees every aura; the spec list on each record decides where it
+-- loads. Content writes go through the API here so engine consequences route
+-- through the structural gate; styling writes go through the normal component
+-- setAndApply path, which reaches the global table through the component's
+-- GetContainer hook.
 local addonName, addon = ...
 
 addon.ScootAuras = addon.ScootAuras or {}
@@ -28,91 +31,70 @@ SAU._activeStates = {}
 
 -- Read-only: never materializes tables (zero-touch).
 function SAU.GetStore()
-    local profile = addon.db and addon.db.profile
-    return profile and rawget(profile, "scootAuras") or nil
+    local global = addon.db and addon.db.global
+    return global and rawget(global, "scootAuras") or nil
 end
 
 function SAU.EnsureStore()
-    local profile = addon.db and addon.db.profile
-    if not profile then return nil end
-    local store = rawget(profile, "scootAuras")
+    local global = addon.db and addon.db.global
+    if not global then return nil end
+    local store = rawget(global, "scootAuras")
     if type(store) ~= "table" then
-        store = { nextId = 1, trackers = {}, groups = {} }
-        profile.scootAuras = store
+        store = { nextId = 1, trackers = {}, groups = {}, styling = {}, positions = {} }
+        global.scootAuras = store
     end
     store.trackers = store.trackers or {}
     store.groups = store.groups or {}
+    store.styling = store.styling or {}
+    store.positions = store.positions or {}
     store.nextId = store.nextId or 1
     -- Left behind by the first cadence-lock build; nothing reads it.
     store.learnedDurations = nil
     return store
 end
 
+--- The table holding every tracker component's settings, handed to the base
+-- component layer through each component's GetContainer hook.
+function SAU.GetStylingContainer(create)
+    local store = create and SAU.EnsureStore() or SAU.GetStore()
+    if not store then return nil end
+    if create then store.styling = store.styling or {} end
+    return rawget(store, "styling")
+end
+
+--- The position store, keyed "t<id>"/"g<gid>" then by Edit Mode layout name.
+function SAU.GetPositionStore(create)
+    local store = create and SAU.EnsureStore() or SAU.GetStore()
+    if not store then return nil end
+    if create then store.positions = store.positions or {} end
+    return rawget(store, "positions")
+end
+
 --------------------------------------------------------------------------------
--- Ownership
+-- Record access
 --
--- A profile is an Edit Mode layout, and several characters can share one, so
--- trackers and groups are character-specific inside the profile: each record
--- carries `owner` (the AceDB char key, "Name - Realm"). The getters below are
--- the single choke point: anything resolved through GetTracker/GetGroup or the
--- Owned*/Sorted* views belongs to this character. Other characters' records
--- stay in the store untouched (their styling tables in profile.components are
--- unregistered here and the pruner leaves non-empty ones alone).
+-- Auras are account-wide: every character sees every tracker and group, and the
+-- spec list on each record decides where it loads. There is no per-character
+-- filtering at this layer, so these getters are plain store reads.
 --------------------------------------------------------------------------------
 
-function SAU.GetOwnerKey()
-    local db = addon.db
-    return db and db.keys and db.keys.char or nil
-end
-
-function SAU.GetOwnerClassToken()
-    if addon.GetClassTokenForUnit then
-        local token = addon.GetClassTokenForUnit("player")
-        if type(token) == "string" then return token end
-    end
-    return nil
-end
-
-function SAU.IsOwnedByMe(record)
-    if type(record) ~= "table" or record.owner == nil then return false end
-    return record.owner == SAU.GetOwnerKey()
-end
-
---- Records this character's class beside its trackers so other characters can
--- class-color its name in the copy list. Write paths only.
-function SAU.StampOwner(store)
-    local me = SAU.GetOwnerKey()
-    if not store or not me then return end
-    local token = SAU.GetOwnerClassToken()
-    store.owners = store.owners or {}
-    local rec = store.owners[me]
-    if type(rec) ~= "table" then
-        store.owners[me] = { class = token }
-    elseif token and rec.class ~= token then
-        rec.class = token
-    end
-end
-
--- Unfiltered access, for hygiene passes, debug output, and the copy scan.
-function SAU.GetTrackerRaw(trackerId)
+function SAU.GetTracker(trackerId)
     local store = SAU.GetStore()
     return store and store.trackers and store.trackers[trackerId] or nil
 end
 
-function SAU.GetGroupRaw(gid)
+function SAU.GetGroup(gid)
     local store = SAU.GetStore()
     return store and store.groups and store.groups[gid] or nil
 end
 
---- This character's trackers as { [id] = tracker }. Fresh table; never
--- materializes the store.
-function SAU.OwnedTrackers()
+--- Every tracker as { [id] = tracker }. Fresh table; never materializes the store.
+function SAU.AllTrackers()
     local out = {}
     local store = SAU.GetStore()
-    local me = SAU.GetOwnerKey()
-    if store and store.trackers and me then
+    if store and store.trackers then
         for id, tracker in pairs(store.trackers) do
-            if type(tracker) == "table" and tracker.owner == me then
+            if type(tracker) == "table" then
                 out[id] = tracker
             end
         end
@@ -120,13 +102,12 @@ function SAU.OwnedTrackers()
     return out
 end
 
-function SAU.OwnedGroups()
+function SAU.AllGroups()
     local out = {}
     local store = SAU.GetStore()
-    local me = SAU.GetOwnerKey()
-    if store and store.groups and me then
+    if store and store.groups then
         for gid, group in pairs(store.groups) do
-            if type(group) == "table" and group.owner == me then
+            if type(group) == "table" then
                 out[gid] = group
             end
         end
@@ -134,38 +115,10 @@ function SAU.OwnedGroups()
     return out
 end
 
---- Migration: records without an owner (created before ownership existed)
--- belong to the first character that loads the profile. Writes nothing when
--- nothing is unowned, so it is safe on every init and reconcile pass.
-function SAU.AdoptUnowned(reason)
-    local store = SAU.GetStore()
-    local me = SAU.GetOwnerKey()
-    if not store or not me then return 0 end
-    local adopted = 0
-    for _, tracker in pairs(store.trackers or {}) do
-        if type(tracker) == "table" and tracker.owner == nil then
-            tracker.owner = me
-            adopted = adopted + 1
-        end
-    end
-    for _, group in pairs(store.groups or {}) do
-        if type(group) == "table" and group.owner == nil then
-            group.owner = me
-            adopted = adopted + 1
-        end
-    end
-    if adopted > 0 then
-        SAU.StampOwner(store)
-        if SAU.Engine and SAU.Engine.Record then
-            SAU.Engine.Record("adopt", tostring(reason) .. "=" .. adopted)
-        end
-    end
-    return adopted
-end
-
--- Ids are shared between trackers and groups and unique across owners within
--- a profile. Bumping past any id already in use guards a hand-merged store
--- whose nextId lags behind its records.
+-- Ids are shared between trackers and groups and unique account-wide, which is
+-- what keeps the styling key "scootAura_<id>" and the position keys "t<id>" and
+-- "g<gid>" unambiguous. Bumping past any id already in use guards a hand-merged
+-- store whose nextId lags behind its records.
 local function AllocateId(store)
     local id = tonumber(store.nextId) or 1
     while (store.trackers and store.trackers[id]) or (store.groups and store.groups[id]) do
@@ -176,17 +129,10 @@ local function AllocateId(store)
 end
 SAU._AllocateId = AllocateId
 
---- Owner-filtered: nil for another character's tracker.
-function SAU.GetTracker(trackerId)
-    local tracker = SAU.GetTrackerRaw(trackerId)
-    if tracker and SAU.IsOwnedByMe(tracker) then return tracker end
-    return nil
-end
-
 --- Returns a sorted array of { id, tracker } for stable iteration.
 function SAU.SortedTrackers()
     local out = {}
-    for id, tracker in pairs(SAU.OwnedTrackers()) do
+    for id, tracker in pairs(SAU.AllTrackers()) do
         table.insert(out, { id = id, tracker = tracker })
     end
     table.sort(out, function(a, b)
@@ -198,17 +144,10 @@ function SAU.SortedTrackers()
     return out
 end
 
---- Owner-filtered: nil for another character's group.
-function SAU.GetGroup(gid)
-    local group = SAU.GetGroupRaw(gid)
-    if group and SAU.IsOwnedByMe(group) then return group end
-    return nil
-end
-
 --- Returns a sorted array of { id, group } for stable iteration.
 function SAU.SortedGroups()
     local out = {}
-    for gid, group in pairs(SAU.OwnedGroups()) do
+    for gid, group in pairs(SAU.AllGroups()) do
         table.insert(out, { id = gid, group = group })
     end
     table.sort(out, function(a, b) return a.id < b.id end)
@@ -232,11 +171,11 @@ end
 -- Spec gate
 --------------------------------------------------------------------------------
 
--- A tracker or group may carry `specs`, an array of numeric spec IDs it loads
--- in. Absent or empty means every spec, so old saved variables read as
--- unrestricted and nothing is stamped at create.
+-- Every tracker and group carries `specs`, an array of numeric spec IDs it
+-- loads in, stamped at create with every spec of the creating character's
+-- class. The gate fails closed: an empty list loads nowhere, which the Aura
+-- List shows as Not Loaded and the spec fly-out fixes.
 
-local classSpecIDs          -- set: this character's class's spec IDs
 local specNameCache = {}
 
 --- This character's current spec ID, nil before the talent data loads.
@@ -249,24 +188,46 @@ function SAU.CurrentSpecID()
     return nil
 end
 
---- Set of the spec IDs this character's class has, from the current-class-only
--- list Spec Profiles already builds.
-function SAU.ClassSpecIDSet()
-    if classSpecIDs then return classSpecIDs end
-    local set = {}
+--- Spec IDs for a class token ("PRIEST"), in Blizzard's own order. Sits on the
+-- Rules spec buckets so the addon keeps one enumeration of every class's specs.
+function SAU.SpecIDsForClassToken(token)
+    local out = {}
+    if type(token) ~= "string" then return out end
+    local Rules = addon.Rules
+    if not (Rules and Rules.GetSpecBuckets) then return out end
+    local ok, buckets = pcall(Rules.GetSpecBuckets, Rules)
+    if not ok or type(buckets) ~= "table" then return out end
+    for _, classEntry in ipairs(buckets) do
+        if classEntry.file == token then
+            for _, spec in ipairs(classEntry.specs or {}) do
+                if type(spec.specID) == "number" then
+                    table.insert(out, spec.specID)
+                end
+            end
+            break
+        end
+    end
+    return out
+end
+
+--- Every spec of the player's own class, stamped onto records at create.
+function SAU.DefaultSpecsForPlayer()
+    local token = addon.GetClassTokenForUnit and addon.GetClassTokenForUnit("player") or nil
+    local ids = SAU.SpecIDsForClassToken(token)
+    if #ids > 0 then return ids end
+    -- Class data missing this early is not a reason to write an empty list: an
+    -- aura stamped with nothing would load nowhere and read as broken.
+    local out = {}
     local Profiles = addon.Profiles
     if Profiles and Profiles.GetSpecOptions then
         local ok, options = pcall(Profiles.GetSpecOptions, Profiles)
         if ok and type(options) == "table" then
             for _, opt in ipairs(options) do
-                if type(opt.specID) == "number" then set[opt.specID] = true end
+                if type(opt.specID) == "number" then table.insert(out, opt.specID) end
             end
         end
     end
-    -- Cache only once the class data is really there: an empty set captured
-    -- before login would stick and open every gate for the session.
-    if next(set) then classSpecIDs = set end
-    return set
+    return out
 end
 
 --- Spec name for any class's spec ID. The list rows describe other characters'
@@ -300,24 +261,26 @@ function SAU.DescribeSpecs(specs)
 end
 
 --- Whether `record` (a tracker or a group) may load in the current spec. Fails
--- open three ways: no restriction; a restriction naming no spec this class has
--- (AdoptUnowned can hand a profile's records to another class); and an unknown
--- current spec during early login.
+-- closed: an empty list loads nowhere, and an unresolved spec during early login
+-- blocks everything until the PLAYER_ENTERING_WORLD and spec-change passes
+-- re-run activation.
 function SAU.SpecAllows(record)
     local specs = record and record.specs
-    if type(specs) ~= "table" or #specs == 0 then return true end
-    local mine = SAU.ClassSpecIDSet()
-    local relevant = false
-    for _, id in ipairs(specs) do
-        if mine[id] then relevant = true break end
-    end
-    if not relevant then return true end
+    if type(specs) ~= "table" or #specs == 0 then return false end
     local current = SAU.CurrentSpecID()
-    if not current then return true end
+    if not current then return false end
     for _, id in ipairs(specs) do
         if id == current then return true end
     end
     return false
+end
+
+--- Whether a group loads in the current spec. The list, the group layout, and
+-- the Edit Mode mirror all ask this one function.
+function SAU.IsGroupActive(gid, group)
+    group = group or SAU.GetGroup(gid)
+    if not group then return false end
+    return SAU.SpecAllows(group)
 end
 
 --- The single "should this tracker render" test: the manual toggle, the
@@ -329,14 +292,14 @@ function SAU.IsTrackerActive(trackerId, tracker)
     if tracker.enabled == false then return false end
     if not SAU.SpecAllows(tracker) then return false end
     if tracker.groupId then
-        local group = SAU.GetGroupRaw(tracker.groupId)
+        local group = SAU.GetGroup(tracker.groupId)
         if group and not SAU.SpecAllows(group) then return false end
     end
     return true
 end
 
--- Numbers only, deduped, sorted. Returns nil for an empty list so
--- "unrestricted" has one representation rather than two.
+-- Numbers only, deduped, sorted. Returns nil for an empty list so "loads
+-- nowhere" has one representation rather than two.
 local function NormalizeSpecs(ids)
     if type(ids) ~= "table" then return nil end
     local seen, out = {}, {}
@@ -361,6 +324,54 @@ local function ToggledSpecs(specs, specID)
     return out
 end
 
+--- Finishes migration V8. Records moved out of the per-profile stores carry
+-- `_pendingSpecClass` instead of a spec list, because turning a class token into
+-- spec IDs needs class data the migration cannot count on at ADDON_LOADED.
+-- `true` means the record had no known owner, so it goes to whoever loads first,
+-- the rule the old adoption pass used. Writes nothing when nothing is pending.
+function SAU.ResolvePendingSpecStamps()
+    local store = SAU.GetStore()
+    if not store then return 0 end
+    local resolved = 0
+    local mine
+    for _, record in pairs(store.trackers or {}) do
+        if type(record) == "table" and record._pendingSpecClass ~= nil then
+            local ids
+            if record._pendingSpecClass == true then
+                mine = mine or SAU.DefaultSpecsForPlayer()
+                ids = mine
+            else
+                ids = SAU.SpecIDsForClassToken(record._pendingSpecClass)
+            end
+            if #ids > 0 then
+                record.specs = NormalizeSpecs(ids)
+                record._pendingSpecClass = nil
+                resolved = resolved + 1
+            end
+        end
+    end
+    for _, record in pairs(store.groups or {}) do
+        if type(record) == "table" and record._pendingSpecClass ~= nil then
+            local ids
+            if record._pendingSpecClass == true then
+                mine = mine or SAU.DefaultSpecsForPlayer()
+                ids = mine
+            else
+                ids = SAU.SpecIDsForClassToken(record._pendingSpecClass)
+            end
+            if #ids > 0 then
+                record.specs = NormalizeSpecs(ids)
+                record._pendingSpecClass = nil
+                resolved = resolved + 1
+            end
+        end
+    end
+    if resolved > 0 and SAU.Engine and SAU.Engine.Record then
+        SAU.Engine.Record("specstamp", tostring(resolved))
+    end
+    return resolved
+end
+
 --------------------------------------------------------------------------------
 -- Content validation
 --------------------------------------------------------------------------------
@@ -380,11 +391,12 @@ SAU.VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontex
 
 -- The friendly-debuff wall: debuff information on friendly units is not
 -- acquirable, so Debuff offers hostile-capable units only. Missing-buff
--- trackers watch the player alone for now ("My Group" is a later unit).
+-- trackers offer the player and "group", which is the whole party or raid
+-- rather than one token (missing.lua resolves it).
 SAU.VALID_UNITS = {
     buff        = { player = true, target = true, focus = true },
     debuff      = { target = true, focus = true },
-    missingbuff = { player = true },
+    missingbuff = { player = true, group = true },
 }
 
 --- The unit a kind falls back to when the chosen one is invalid for it.
@@ -421,6 +433,16 @@ end
 function SAU.FilterForKind(kind)
     if kind == "debuff" then return "HARMFUL|PLAYER" end
     return "HELPFUL"
+end
+
+--- The unit an AuraContainer binds to for a tracker. "group" is not a unit
+-- token: a group missing-buff tracker keeps the player container as its own
+-- presence gate and reads the rest of the group in plain Lua (missing.lua), so
+-- flipping Myself and My Group needs no rebuild.
+function SAU.EngineUnitFor(tracker)
+    local unit = tracker and tracker.unit
+    if unit == "group" then return "player" end
+    return unit
 end
 
 --------------------------------------------------------------------------------
@@ -648,7 +670,6 @@ end
 -- Called on CDM data/override events, spec changes, and talent edits.
 function SAU.InvalidateSpellDescriptions()
     cdmDisplayByBase = nil
-    classSpecIDs = nil
 end
 
 --- The spell ID a stored ID is shown as: CDM override chain, else the
@@ -720,9 +741,10 @@ function SAU.RegisterTrackerComponent(trackerId)
         id = componentId,
         name = "ScootAura: " .. trackerId,
         settings = SAU.DefaultSettings(),
+        -- Auras are account-wide, so their styling lives beside their content in
+        -- db.global.scootAuras rather than in profile.components.
+        GetContainer = SAU.GetStylingContainer,
         ApplyStyling = function()
-            -- Resolve through the live store: profile switches replace the
-            -- tracker table under the same id.
             local tracker = SAU.GetTracker(trackerId)
             if tracker and SAU._ApplyStyling then
                 SAU._ApplyStyling(trackerId, tracker)
@@ -735,8 +757,7 @@ end
 
 -- Registered at init so LinkComponentsToDB picks up persisted styling tables.
 addon:RegisterComponentInitializer(function(self)
-    SAU.AdoptUnowned("init")
-    for trackerId in pairs(SAU.OwnedTrackers()) do
+    for trackerId in pairs(SAU.AllTrackers()) do
         SAU.RegisterTrackerComponent(trackerId)
     end
 end, SAU.MODULE_CATEGORY)
@@ -763,6 +784,9 @@ function SAU.CreateTracker(spec)
 
     local trackerId = AllocateId(store)
     store.trackers[trackerId] = {
+        -- Every spec of this character's class. The aura is listed on every
+        -- character on the account and loads only where its specs say.
+        specs = SAU.DefaultSpecsForPlayer(),
         spellId = spellId,
         kind = kind,
         unit = unit,
@@ -770,13 +794,11 @@ function SAU.CreateTracker(spec)
         name = spec.name or PlainSpellName(spellId),
         enabled = true,
         order = trackerId,
-        owner = SAU.GetOwnerKey(),
     }
     if kind == "missingbuff" then
         -- Content, not styling: it decides when the reminder may show at all.
         store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat ~= false)
     end
-    SAU.StampOwner(store)
 
     SAU.RegisterTrackerComponent(trackerId)
     addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
@@ -815,13 +837,10 @@ function SAU.DeleteTracker(trackerId)
     local componentId = SAU.GetComponentId(trackerId)
     if addon.Components then addon.Components[componentId] = nil end
 
-    local profile = addon.db and addon.db.profile
-    if profile then
-        local components = rawget(profile, "components")
-        if components then components[componentId] = nil end
-        local positions = rawget(profile, "scootAuraPositions")
-        if positions then positions["t" .. trackerId] = nil end
-    end
+    local styling = SAU.GetStylingContainer(false)
+    if styling then styling[componentId] = nil end
+    local positions = SAU.GetPositionStore(false)
+    if positions then positions["t" .. trackerId] = nil end
     store.trackers[trackerId] = nil
     if SAU.Groups then SAU.Groups.RequestReflow() end
     return true
@@ -911,30 +930,25 @@ function SAU.DuplicateTracker(trackerId)
         name = (source.name or PlainSpellName(source.spellId)) .. " copy",
         enabled = source.enabled ~= false,
         order = newId,
-        owner = SAU.GetOwnerKey(),
         onlyInCombat = source.onlyInCombat,
         specs = source.specs and CopyTable(source.specs) or nil,
     }
-    SAU.StampOwner(store)
 
-    local profile = addon.db and addon.db.profile
-    if profile then
-        -- Styling copy must land in profile.components BEFORE EnsureComponentDB
-        -- links the new component, or the copy arrives as defaults.
-        local components = rawget(profile, "components")
-        local sourceStyling = components and components[SAU.GetComponentId(trackerId)]
-        if sourceStyling and next(sourceStyling) then
-            components[SAU.GetComponentId(newId)] = CopyTable(sourceStyling)
+    -- Styling copy must land in the container BEFORE EnsureComponentDB links
+    -- the new component, or the copy arrives as defaults.
+    local styling = SAU.GetStylingContainer(true)
+    local sourceStyling = styling and styling[SAU.GetComponentId(trackerId)]
+    if styling and sourceStyling and next(sourceStyling) then
+        styling[SAU.GetComponentId(newId)] = CopyTable(sourceStyling)
+    end
+    local positions = SAU.GetPositionStore(true)
+    local sourcePos = positions and positions["t" .. trackerId]
+    if positions and sourcePos then
+        local copy = {}
+        for layoutName, pos in pairs(sourcePos) do
+            copy[layoutName] = { point = pos.point, x = (pos.x or 0) + 20, y = (pos.y or 0) - 20 }
         end
-        local positions = rawget(profile, "scootAuraPositions")
-        local sourcePos = positions and positions["t" .. trackerId]
-        if sourcePos then
-            local copy = {}
-            for layoutName, pos in pairs(sourcePos) do
-                copy[layoutName] = { point = pos.point, x = (pos.x or 0) + 20, y = (pos.y or 0) - 20 }
-            end
-            positions["t" .. newId] = copy
-        end
+        positions["t" .. newId] = copy
     end
 
     SAU.RegisterTrackerComponent(newId)
@@ -973,18 +987,18 @@ function SAU.SetTrackerEnabled(trackerId, enabled)
     local tracker = SAU.GetTracker(trackerId)
     if not tracker then return nil, "no such tracker" end
     tracker.enabled = not not enabled
-    if SAU._ApplyStyling then SAU._ApplyStyling(trackerId, tracker) end
+    SAU.ReconcileActivation("enable:" .. tostring(trackerId))
     return true
 end
 
---- Restricts a tracker to a set of spec IDs. An empty or nil list clears the
--- restriction. Re-styling is the whole consequence: the disabled branch of
--- _ApplyStyling parks the container and hides the visual, all combat-legal.
+--- Sets the specs a tracker loads in. An empty or nil list means it loads
+-- nowhere. Activation is the whole consequence: claiming and releasing are both
+-- combat-legal, and a released tracker leaves Edit Mode with its frame.
 function SAU.SetTrackerSpecs(trackerId, ids)
     local tracker = SAU.GetTracker(trackerId)
     if not tracker then return nil, "no such tracker" end
     tracker.specs = NormalizeSpecs(ids)
-    if SAU._ApplyStyling then SAU._ApplyStyling(trackerId, tracker) end
+    SAU.ReconcileActivation("specs:t" .. tostring(trackerId))
     if SAU.Groups then SAU.Groups.RequestReflow() end
     return true
 end
@@ -1045,9 +1059,8 @@ function SAU.CreateGroup(name)
         name = (type(name) == "string" and name ~= "") and name or ("Aura Group " .. gid),
         settings = CopyTable(SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},
-        owner = SAU.GetOwnerKey(),
+        specs = SAU.DefaultSpecsForPlayer(),
     }
-    SAU.StampOwner(store)
     SAU.Groups.ClaimForGroup(gid)
     SAU.Groups.LayoutGroup(gid)
     return gid
@@ -1070,11 +1083,8 @@ function SAU.DeleteGroup(gid)
     store.groups[gid] = nil
     SAU.Groups.ReleaseForGroup(gid)
 
-    local profile = addon.db and addon.db.profile
-    if profile then
-        local positions = rawget(profile, "scootAuraPositions")
-        if positions then positions["g" .. gid] = nil end
-    end
+    local positions = SAU.GetPositionStore(false)
+    if positions then positions["g" .. gid] = nil end
     SAU.Groups.ApplyMembership()
     return true
 end
@@ -1117,7 +1127,7 @@ function SAU.SetGroupSpecs(gid, ids)
     local group = SAU.GetGroup(gid)
     if not group then return nil, "no such group" end
     group.specs = NormalizeSpecs(ids)
-    SAU.RebuildAll()
+    SAU.ReconcileActivation("specs:g" .. tostring(gid))
     if SAU.Groups then SAU.Groups.RequestReflow() end
     return true
 end
@@ -1148,9 +1158,6 @@ function SAU.SetTrackerGroup(trackerId, gid, index)
     local group = (gid ~= nil) and SAU.GetGroup(gid) or nil
     if gid ~= nil and not group then
         return nil, "no such group"
-    end
-    if group and group.owner ~= tracker.owner then
-        return nil, "tracker and group belong to different characters"
     end
 
     local oldGid = tracker.groupId
@@ -1200,11 +1207,9 @@ function SAU.DuplicateGroup(gid)
         name = (source.name or ("Aura Group " .. gid)) .. " copy",
         settings = CopyTable(source.settings or SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},
-        owner = SAU.GetOwnerKey(),
         specs = source.specs and CopyTable(source.specs) or nil,
     }
     store.groups[newGid] = newGroup
-    SAU.StampOwner(store)
 
     for _, memberId in ipairs(source.memberOrder or {}) do
         if SAU.GetTracker(memberId) then
@@ -1217,17 +1222,14 @@ function SAU.DuplicateGroup(gid)
         end
     end
 
-    local profile = addon.db and addon.db.profile
-    if profile then
-        local positions = rawget(profile, "scootAuraPositions")
-        local sourcePos = positions and positions["g" .. gid]
-        if sourcePos then
-            local copy = {}
-            for layoutName, pos in pairs(sourcePos) do
-                copy[layoutName] = { point = pos.point, x = (pos.x or 0) + 20, y = (pos.y or 0) - 20 }
-            end
-            positions["g" .. newGid] = copy
+    local positions = SAU.GetPositionStore(true)
+    local sourcePos = positions and positions["g" .. gid]
+    if positions and sourcePos then
+        local copy = {}
+        for layoutName, pos in pairs(sourcePos) do
+            copy[layoutName] = { point = pos.point, x = (pos.x or 0) + 20, y = (pos.y or 0) - 20 }
         end
+        positions["g" .. newGid] = copy
     end
 
     SAU.Groups.ClaimForGroup(newGid)
@@ -1244,11 +1246,11 @@ function SAU.ValidateGroupData()
     local trackers = store.trackers or {}
     local groups = store.groups or {}
 
-    -- Whole-store pass (every owner): a dangling groupId, or membership across
-    -- two characters, hides the tracker from both panes of its owner's list.
+    -- A dangling groupId hides the tracker from both panes of the Aura List:
+    -- it is filtered out of the individual column and its group is gone.
     for _, tracker in pairs(trackers) do
         local group = tracker.groupId ~= nil and groups[tracker.groupId] or nil
-        if tracker.groupId ~= nil and (not group or group.owner ~= tracker.owner) then
+        if tracker.groupId ~= nil and not group then
             tracker.groupId = nil
         end
     end
@@ -1276,43 +1278,72 @@ end
 -- Profile / Edit Mode layout reconcile
 --------------------------------------------------------------------------------
 
--- Switching Edit Mode layout is a profile switch is a mass tracker
--- create/delete with no reload. Idempotent over current pool occupancy;
--- positions re-applied last because the LibEditMode layout callback and the
--- AceDB profile callback race on the same user action.
+-- Switching Edit Mode layout switches profile, which no longer decides which
+-- auras exist: the store is account-wide. What it can change is the module
+-- toggle and the active layout name, so this re-runs activation and re-applies
+-- positions last, because the LibEditMode layout callback and the AceDB profile
+-- callback race on the same user action.
 function SAU.ReconcileForActiveProfile(reason)
     local Engine = SAU.Engine
     if not Engine or not Engine.IsInitialized() then return end
 
-    -- Adopt before validating so the owner-consistency repair never splits a
-    -- pre-ownership group from its members.
-    if SAU.IsModuleActive() then SAU.AdoptUnowned("reconcile:" .. tostring(reason)) end
     SAU.ValidateGroupData()
-    local trackers = SAU.IsModuleActive() and SAU.OwnedTrackers() or {}
+    -- Cheap when nothing is pending, and the PEW pass is skipped entirely while
+    -- the module is off, so this is the second chance after it is turned on.
+    SAU.ResolvePendingSpecStamps()
+    SAU.ReconcileActivation("reconcile:" .. tostring(reason))
+    Engine.ApplyPositionsForActiveLayout()
+    if Engine.Record then Engine.Record("reconcile", tostring(reason)) end
+end
 
-    -- Park pool occupants absent from (or stale in) the new profile, and any
-    -- that belong to another character.
-    Engine.ReleaseAllExcept(trackers)
+--- Claims every tracker that should be live and releases every one that should
+-- not. With account-wide auras most records are gated out on any given
+-- character, and a released tracker holds no pool entry and no container.
+--
+-- This is also what makes the ON/OFF pill work from a cold start: _ApplyStyling
+-- early-returns without an active state, so a tracker that was never claimed
+-- could not be switched on by a restyle alone.
+function SAU.ReconcileActivation(reason)
+    local Engine = SAU.Engine
+    if not Engine or not Engine.IsInitialized() then return end
 
-    -- Claim/create the new profile's trackers. Claim verifies wired content
-    -- against the tracker (same id can mean a different spell per profile).
-    for trackerId in pairs(trackers) do
-        SAU.RegisterTrackerComponent(trackerId)
-        addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
+    local active = {}
+    if SAU.IsModuleActive() then
+        for trackerId, tracker in pairs(SAU.AllTrackers()) do
+            -- Every tracker gets a component, loaded or not: the editor opens on
+            -- unloaded auras too, and without a registered component its reads
+            -- resolve to nil and its writes go nowhere. Linking (rather than
+            -- EnsureComponentDB) leaves an unconfigured aura on the defaults
+            -- proxy instead of materializing an empty styling table for it.
+            SAU.RegisterTrackerComponent(trackerId)
+            local comp = addon.Components and addon.Components[SAU.GetComponentId(trackerId)]
+            if comp and not comp.db then addon:LinkComponent(comp) end
+            if SAU.IsTrackerActive(trackerId, tracker) then
+                active[trackerId] = tracker
+            end
+        end
+    end
+
+    Engine.ReleaseAllExcept(active)
+
+    for trackerId in pairs(active) do
         Engine.ClaimForTracker(trackerId)
     end
 
     -- Groups after trackers: membership reparents claimed visuals.
     if SAU.Groups then SAU.Groups.ApplyAll() end
 
-    Engine.ApplyPositionsForActiveLayout()
-    SAU.RebuildAll()
-    if Engine.Record then Engine.Record("reconcile", tostring(reason)) end
+    if SAU._ApplyStyling then
+        for trackerId, tracker in pairs(active) do
+            SAU._ApplyStyling(trackerId, tracker)
+        end
+    end
+
+    if Engine.Record then Engine.Record("activation", tostring(reason)) end
 end
 
-function SAU.RebuildAll()
-    if not SAU._ApplyStyling then return end
-    for trackerId, tracker in pairs(SAU.OwnedTrackers()) do
-        SAU._ApplyStyling(trackerId, tracker)
-    end
+--- Re-runs the whole gate. Kept under its old name because the engine, the
+-- editor, and the spec handler all call it.
+function SAU.RebuildAll(reason)
+    SAU.ReconcileActivation(reason or "rebuild")
 end

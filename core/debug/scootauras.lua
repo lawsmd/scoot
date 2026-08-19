@@ -414,47 +414,25 @@ local function LifecycleDump()
     push("Aura restrictions active: " .. tostring(addon.AurasSecretNow and addon.AurasSecretNow()))
     push("Engine initialized: " .. tostring(SAU.Engine.IsInitialized()))
     push("Pending queue: " .. tostring(SAU.Engine.HasPendingWork()))
-    push("Me: " .. tostring(SAU.GetOwnerKey()) .. " class=" .. tostring(SAU.GetOwnerClassToken()))
+    push("Current spec: " .. tostring(SAU.CurrentSpecID()))
     push("")
 
     local store = SAU.GetStore()
-    local ownedRows = SAU.SortedTrackers()
+    local rows = SAU.SortedTrackers()
     if not store or not next(store.trackers or {}) then
         push("No trackers. Start with: /scoot debug sa add <spellId> [unit] [buff|debuff] [icon|bar|shape]")
-    elseif #ownedRows == 0 then
-        push("--- Trackers (profile, this character) ---")
-        push("(none owned by this character)")
     else
-        push("--- Trackers (profile, this character) ---")
-        for _, row in ipairs(ownedRows) do
+        local loaded, notLoaded = 0, 0
+        push("--- Trackers (account-wide) ---")
+        for _, row in ipairs(rows) do
             local t = row.tracker
-            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s wired=%s owner=%s"):format(
+            local active = SAU.IsTrackerActive(row.id, t)
+            if active then loaded = loaded + 1 else notLoaded = notLoaded + 1 end
+            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s wired=%s loaded=%s"):format(
                 row.id, tostring(t.name), tostring(t.spellId), t.kind, t.unit, t.shape,
-                tostring(t.enabled), tostring(SAU.Engine.IsWired(row.id)), tostring(t.owner)))
+                tostring(t.enabled), tostring(SAU.Engine.IsWired(row.id)), tostring(active)))
         end
-    end
-    if store then
-        -- Other characters' records share the store; they are hidden here.
-        local hiddenT, hiddenG = 0, 0
-        for _, t in pairs(store.trackers or {}) do
-            if type(t) == "table" and not SAU.IsOwnedByMe(t) then hiddenT = hiddenT + 1 end
-        end
-        for _, g in pairs(store.groups or {}) do
-            if type(g) == "table" and not SAU.IsOwnedByMe(g) then hiddenG = hiddenG + 1 end
-        end
-        if hiddenT > 0 or hiddenG > 0 then
-            push(("(hidden: %d trackers / %d groups owned by other characters; see /scoot debug sa owners)"):format(
-                hiddenT, hiddenG))
-        end
-        local owners = rawget(store, "owners")
-        if type(owners) == "table" and next(owners) then
-            local parts = {}
-            for key, rec in pairs(owners) do
-                table.insert(parts, tostring(key) .. "=" .. tostring(type(rec) == "table" and rec.class))
-            end
-            table.sort(parts)
-            push("Owners: " .. table.concat(parts, ", "))
-        end
+        push(("(%d loaded / %d not loaded; see /scoot debug sa specs)"):format(loaded, notLoaded))
     end
     push("")
 
@@ -510,16 +488,15 @@ local function LifecycleDump()
 
     -- Pipes are doubled: a bare "|t" in display text parses as a texture escape.
     push("--- Commands (alias: sa) ---")
-    push("/scoot debug sa add <spellId> [player||target||focus] [buff||debuff||missingbuff] [icon||bar||shape||text||icontext]")
+    push("/scoot debug sa add <spellId> [player||group||target||focus] [buff||debuff||missingbuff] [icon||bar||shape||text||icontext]")
     push("/scoot debug sa del <id> || enable <id> || disable <id>")
     push("/scoot debug sa edit [id]  (editor: existing tracker, or fresh draft)")
     push("/scoot debug sa gadd [name] || gdel <gid> (delete keeps members)")
     push("/scoot debug sa join <id> <gid> [index] || leave <id>")
     push("/scoot debug sa reconcile || flush || list")
-    push("/scoot debug sa owners  (every profile: owners, counts, Copy-from-Global buckets)")
     push("/scoot debug sa specs  (per record: stored specs, current spec, gate verdict)")
     push("/scoot debug sa methods <id>  (button binding inventory)")
-    push("/scoot debug sa missing <id>  (missing-buff reminder: gate container, clip, secrecy, plain read)")
+    push("/scoot debug sa missing <id>  (missing-buff reminder: gate container, clip, secrecy, group scan)")
     push("/scoot debug sa spell <N||spellId>  (N from a tN row above; include set, CDM entries, picker cell, live aura check)")
     push("/scoot debug sa catalog  (every picker cell: shown name, stored base)")
     push("/scoot debug sa cadence <id||spellId> [on || off || set <0..1> || alpha <0..1> || mirror <y||off>]  (cadence lock record / probes)")
@@ -527,84 +504,8 @@ local function LifecycleDump()
     addon.DebugShowWindow("ScootAuras Lifecycle", table.concat(lines, "\n"))
 end
 
--- Ownership across the whole account: per profile, who owns what; then the
--- Copy-from-Global buckets exactly as the fly-out would list them.
-local function OwnersDump()
-    local SAU = addon.ScootAuras
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
-
-    push("=== ScootAuras Owners ===")
-    push("")
-    push("Me: " .. tostring(SAU.GetOwnerKey()) .. " class=" .. tostring(SAU.GetOwnerClassToken()))
-    local db = addon.db
-    local active = db and db.GetCurrentProfile and db:GetCurrentProfile() or nil
-    push("Active profile: " .. tostring(active))
-    push("")
-
-    local names = {}
-    for name in pairs((db and db.profiles) or {}) do table.insert(names, name) end
-    table.sort(names)
-    for _, name in ipairs(names) do
-        local profile = db.profiles[name]
-        local store = type(profile) == "table" and rawget(profile, "scootAuras") or nil
-        if store then
-            local byOwnerT, byOwnerG = {}, {}
-            for _, t in pairs(rawget(store, "trackers") or {}) do
-                if type(t) == "table" then
-                    local k = tostring(t.owner or "(unowned)")
-                    byOwnerT[k] = (byOwnerT[k] or 0) + 1
-                end
-            end
-            for _, g in pairs(rawget(store, "groups") or {}) do
-                if type(g) == "table" then
-                    local k = tostring(g.owner or "(unowned)")
-                    byOwnerG[k] = (byOwnerG[k] or 0) + 1
-                end
-            end
-            push(("--- Profile '%s'%s (nextId=%s) ---"):format(name, (name == active) and " [active]" or "",
-                tostring(rawget(store, "nextId"))))
-            local owners = rawget(store, "owners")
-            local keys = {}
-            for k in pairs(byOwnerT) do keys[k] = true end
-            for k in pairs(byOwnerG) do keys[k] = true end
-            if type(owners) == "table" then
-                for k in pairs(owners) do keys[tostring(k)] = true end
-            end
-            local sorted = {}
-            for k in pairs(keys) do table.insert(sorted, k) end
-            table.sort(sorted)
-            if #sorted == 0 then push("(empty store)") end
-            for _, k in ipairs(sorted) do
-                local rec = type(owners) == "table" and owners[k] or nil
-                push(("%s: trackers=%d groups=%d class=%s"):format(
-                    k, byOwnerT[k] or 0, byOwnerG[k] or 0,
-                    tostring(type(rec) == "table" and rec.class or nil)))
-            end
-            push("")
-        end
-    end
-
-    push("--- Copy from Global buckets (as listed for this character) ---")
-    local buckets = SAU.CollectCopySources and SAU.CollectCopySources() or {}
-    if #buckets == 0 then push("(none)") end
-    for _, b in ipairs(buckets) do
-        push(("%s [%s] class=%s: %d source(s)"):format(
-            b.displayName, tostring(b.ownerKey), tostring(b.classToken), #b.sources))
-        for _, src in ipairs(b.sources) do
-            local t = src.tracker
-            push(("   t%s '%s' spell=%s %s on %s as %s  (profile '%s'%s)"):format(
-                tostring(src.trackerId), tostring(t.name), tostring(t.spellId),
-                tostring(t.kind), tostring(t.unit), tostring(t.shape), tostring(src.profileName),
-                src.styling and "" or ", no styling"))
-        end
-    end
-
-    addon.DebugShowWindow("ScootAuras Owners", table.concat(lines, "\n"))
-end
-
--- Why a tracker does or does not load in the current spec. SpecAllows fails
--- open three ways, so the verdict alone is not enough: name the branch.
+-- Why a tracker does or does not load in the current spec. This mirrors
+-- SpecAllows branch by branch, so the two must move together.
 local function SpecsDump()
     local SAU = addon.ScootAuras
     local lines = {}
@@ -615,12 +516,8 @@ local function SpecsDump()
     push("")
     push("Current spec: " .. tostring(current)
         .. (current and (" (" .. SAU.SpecName(current) .. ")") or ""))
-    local mine = SAU.ClassSpecIDSet()
-    local ids = {}
-    for id in pairs(mine) do table.insert(ids, id) end
-    table.sort(ids)
     local named = {}
-    for _, id in ipairs(ids) do
+    for _, id in ipairs(SAU.DefaultSpecsForPlayer()) do
         table.insert(named, id .. "=" .. SAU.SpecName(id))
     end
     push("This class: " .. ((#named > 0) and table.concat(named, ", ") or "(not loaded)"))
@@ -628,13 +525,11 @@ local function SpecsDump()
 
     local function reason(record)
         local specs = record and record.specs
-        if type(specs) ~= "table" or #specs == 0 then return "no restriction" end
-        local relevant = false
-        for _, id in ipairs(specs) do
-            if mine[id] then relevant = true break end
+        if record and record._pendingSpecClass ~= nil then
+            return "migration stamp pending (" .. tostring(record._pendingSpecClass) .. ")"
         end
-        if not relevant then return "open: names no spec this class has" end
-        if not current then return "open: current spec unknown" end
+        if type(specs) ~= "table" or #specs == 0 then return "no specs (loads nowhere)" end
+        if not current then return "current spec unknown" end
         for _, id in ipairs(specs) do
             if id == current then return "match" end
         end
@@ -643,13 +538,13 @@ local function SpecsDump()
 
     push("--- Trackers ---")
     local trackerIds = {}
-    for id in pairs(SAU.OwnedTrackers()) do table.insert(trackerIds, id) end
+    for id in pairs(SAU.AllTrackers()) do table.insert(trackerIds, id) end
     table.sort(trackerIds)
     if #trackerIds == 0 then push("(none)") end
     for _, id in ipairs(trackerIds) do
         local t = SAU.GetTracker(id)
         push(("t%d '%s' specs=%s -> %s | enabled=%s group=%s active=%s"):format(
-            id, tostring(t.name), SAU.DescribeSpecs(t.specs) or "all", reason(t),
+            id, tostring(t.name), SAU.DescribeSpecs(t.specs) or "none", reason(t),
             tostring(t.enabled), tostring(t.groupId),
             tostring(SAU.IsTrackerActive(id, t))))
     end
@@ -657,13 +552,13 @@ local function SpecsDump()
     push("")
     push("--- Groups ---")
     local groupIds = {}
-    for gid in pairs(SAU.OwnedGroups()) do table.insert(groupIds, gid) end
+    for gid in pairs(SAU.AllGroups()) do table.insert(groupIds, gid) end
     table.sort(groupIds)
     if #groupIds == 0 then push("(none)") end
     for _, gid in ipairs(groupIds) do
         local g = SAU.GetGroup(gid)
         push(("g%d '%s' specs=%s -> %s | members=%d"):format(
-            gid, tostring(g.name), SAU.DescribeSpecs(g.specs) or "all", reason(g),
+            gid, tostring(g.name), SAU.DescribeSpecs(g.specs) or "none", reason(g),
             #(g.memberOrder or {})))
     end
 
@@ -956,7 +851,7 @@ end
 -- Dispatch
 --------------------------------------------------------------------------------
 
-local VALID_UNITS = { player = true, target = true, focus = true }
+local VALID_UNITS = { player = true, group = true, target = true, focus = true }
 local VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true }
 local VALID_KINDS = { buff = true, debuff = true, missingbuff = true }
 
@@ -967,7 +862,7 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
     if sub == "add" then
         local spellId = tonumber(a1)
         if not spellId then
-            addon:Print("Usage: /scoot debug sa add <spellId> [player|target|focus] [buff|debuff|missingbuff] [icon|bar|shape|text|icontext]")
+            addon:Print("Usage: /scoot debug sa add <spellId> [player|group|target|focus] [buff|debuff|missingbuff] [icon|bar|shape|text|icontext]")
             return
         end
         -- Arguments after the spell ID are order-free: any of unit/kind/shape.
@@ -1078,10 +973,6 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
         return
     end
 
-    if sub == "owners" then
-        OwnersDump()
-        return
-    end
 
     if sub == "specs" then
         SpecsDump()

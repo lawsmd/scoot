@@ -139,24 +139,8 @@ local function remapPresetPositions(profileCopy, targetLayoutName)
         end
     end
 
-    -- Remap scootAuraPositions[t<id>|g<gid>]
-    local auraPositions = profileCopy.scootAuraPositions
-    if type(auraPositions) == "table" then
-        for _, perLayout in pairs(auraPositions) do
-            if type(perLayout) == "table" then
-                local pos
-                for key, val in pairs(perLayout) do
-                    if key ~= targetLayoutName then
-                        pos = pos or val
-                    end
-                end
-                if pos then
-                    wipe(perLayout)
-                    perLayout[targetLayoutName] = pos
-                end
-            end
-        end
-    end
+    -- ScootAura positions are account-wide (db.global.scootAuras.positions), so
+    -- a preset's profile payload carries none to remap.
 end
 
 local function _NormalizeLayoutName(name)

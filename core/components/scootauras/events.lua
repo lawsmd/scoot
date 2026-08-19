@@ -27,7 +27,7 @@ local function RegisterLEMCallbacks()
 
     lib:RegisterCallback("enter", function()
         editModeActive = true
-        for trackerId, tracker in pairs(SAU.OwnedTrackers()) do
+        for trackerId, tracker in pairs(SAU.AllTrackers()) do
             local state = SAU._activeStates[trackerId]
             if state and state.shell and SAU.IsTrackerActive(trackerId, tracker)
                 and SAU.IsModuleActive() then
@@ -71,16 +71,13 @@ local function InitializeFromProfile()
     Engine.SetInitialized()
     RegisterLEMCallbacks()
     if not SAU.IsModuleActive() then return end
-    -- Adopt before validating (see ReconcileForActiveProfile).
-    SAU.AdoptUnowned("pew")
     SAU.ValidateGroupData()
-    for trackerId in pairs(SAU.OwnedTrackers()) do
-        SAU.RegisterTrackerComponent(trackerId)
-        addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
-        Engine.ClaimForTracker(trackerId)
-    end
-    -- Groups after trackers: membership reparents claimed visuals.
-    if SAU.Groups then SAU.Groups.ApplyAll() end
+    -- Records migrated from the per-profile stores carry a class token instead
+    -- of a spec list, because the migration runs before class data is loaded.
+    SAU.ResolvePendingSpecStamps()
+    -- Claims only what loads in this character's current spec; the rest is
+    -- listed under Not Loaded and holds no container.
+    SAU.ReconcileActivation("pew")
 end
 
 --------------------------------------------------------------------------------
@@ -101,14 +98,29 @@ eventFrame:RegisterEvent("COOLDOWN_VIEWER_DATA_LOADED")
 eventFrame:RegisterEvent("COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED")
 eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
+-- The group half of a missing-buff reminder: the glow the game shows on its
+-- own action buttons, and the roster the scan is measured against. Both
+-- payloads are plain (SpellActivationOverlayDocumentation.lua).
+eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
+eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
+eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 
 local specResolvePending = false
 
-eventFrame:SetScript("OnEvent", function(_, event, unit)
+-- arg1 is the first payload of whichever event arrived: a unit token for
+-- PLAYER_SPECIALIZATION_CHANGED, a spell id for the two glow events.
+eventFrame:SetScript("OnEvent", function(_, event, arg1)
+    if event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW"
+        or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
+        if SAU.Missing then
+            SAU.Missing.OnOverlayGlow(arg1, event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
+        end
+        return
+    end
     if event == "PLAYER_SPECIALIZATION_CHANGED" then
         -- Fires for party and raid members too; only the player's own spec
         -- moves the gate.
-        if unit and unit ~= "player" then return end
+        if arg1 and arg1 ~= "player" then return end
         SAU.InvalidateSpellDescriptions()
         -- Re-run every tracker's spec gate one frame later: the event can
         -- arrive before GetSpecialization reports the new spec, and a talent
@@ -160,5 +172,8 @@ eventFrame:SetScript("OnEvent", function(_, event, unit)
     elseif event == "ZONE_CHANGED_NEW_AREA" then
         -- Restricted-instance exits open the gate without a regen event.
         Engine.TryFlush("zone")
+
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        if SAU.Missing then SAU.Missing.RefreshGroupTrackers() end
     end
 end)

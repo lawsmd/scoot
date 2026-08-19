@@ -128,13 +128,9 @@ local function DefaultPositionFor(entry)
 end
 
 local function SavePosition(key, layoutName, point, x, y)
-    local profile = addon.db and addon.db.profile
-    if not profile or not key or not layoutName then return end
-    local store = rawget(profile, "scootAuraPositions")
-    if type(store) ~= "table" then
-        store = {}
-        profile.scootAuraPositions = store
-    end
+    if not key or not layoutName then return end
+    local store = SAU.GetPositionStore(true)
+    if type(store) ~= "table" then return end
     store[key] = store[key] or {}
     store[key][layoutName] = { point = point, x = x, y = y }
 end
@@ -147,8 +143,7 @@ Engine.GetActiveLayoutName = GetActiveLayoutName
 -- restores the occupant's saved position (or the entry default).
 local function ApplySavedPosition(entry)
     if not entry.occupantId then return end
-    local profile = addon.db and addon.db.profile
-    local store = profile and rawget(profile, "scootAuraPositions")
+    local store = SAU.GetPositionStore(false)
     local perKey = store and store["t" .. entry.occupantId]
     local layoutName = GetActiveLayoutName()
     local pos = layoutName and perKey and perKey[layoutName]
@@ -283,7 +278,7 @@ end
 local function ContentMatches(entry, tracker)
     return entry.container ~= nil
         and entry.wiredSpellId == tracker.spellId
-        and entry.wiredUnit == tracker.unit
+        and entry.wiredUnit == SAU.EngineUnitFor(tracker)
         and entry.wiredKind == tracker.kind
 end
 
@@ -411,18 +406,21 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
         end
     end
 
-    -- Unit LAST, then one kick to sync against current auras.
-    local uok, uerr = pcall(container.SetUnit, container, tracker.unit)
+    -- Unit LAST, then one kick to sync against current auras. "group" binds the
+    -- container to the player; the rest of the group is read in plain Lua.
+    local engineUnit = SAU.EngineUnitFor(tracker)
+    local uok, uerr = pcall(container.SetUnit, container, engineUnit)
     if not uok then
         SetResult("build.t" .. trackerId, "SetUnit FAILED: " .. SafeToString(uerr))
     end
     pcall(container.UpdateAllAuras, container)
 
     entry.wiredSpellId = tracker.spellId
-    entry.wiredUnit = tracker.unit
+    entry.wiredUnit = engineUnit
     entry.wiredKind = tracker.kind
     SetResult("build.t" .. trackerId, "ok (" .. (isMissing and ("group=" .. tostring(entry.gateGroupKey))
-        or ("slot=" .. slotKey)) .. " unit=" .. tracker.unit .. ")")
+        or ("slot=" .. slotKey)) .. " unit=" .. tostring(tracker.unit)
+        .. " engine=" .. tostring(engineUnit) .. ")")
     Record("built", "t" .. trackerId)
     return true
 end

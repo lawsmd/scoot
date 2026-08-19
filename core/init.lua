@@ -332,6 +332,144 @@ function addon:OnInitialize()
         end
     end
 
+    -- Migration V8: ScootAuras moves from per-profile stores to one account-wide
+    -- store. Auras used to belong to one character inside one profile, reachable
+    -- from another character only by copying; now every character sees every
+    -- aura and a per-record spec list decides where it loads.
+    --
+    -- Ids were allocated per profile, so profile A's tracker 3 and profile B's
+    -- tracker 3 are different auras sharing an id, a styling key
+    -- ("scootAura_3") and a position key ("t3"). Everything is renumbered into
+    -- one id space; nothing can be carried over as-is. Duplicates across copied
+    -- profiles survive as separate auras by decision.
+    --
+    -- Spec lists are not written here. Turning a class token into spec IDs needs
+    -- class data that is not guaranteed at ADDON_LOADED, so records carry
+    -- `_pendingSpecClass` and SAU.ResolvePendingSpecStamps finishes the job at
+    -- PLAYER_ENTERING_WORLD (the V7 pendingNativePush precedent).
+    do
+        local sv = _G["ScootDB"]
+        if sv and not (sv.global and sv.global._scootAurasAccountWideV8) then
+            local names = {}
+            for profileName in pairs(sv.profiles or {}) do
+                if type(profileName) == "string" then
+                    table.insert(names, profileName)
+                end
+            end
+            table.sort(names)
+
+            local merged = { nextId = 1, trackers = {}, groups = {}, styling = {}, positions = {} }
+            local moved = 0
+
+            for _, profileName in ipairs(names) do
+                local profileData = sv.profiles[profileName]
+                if type(profileData) == "table" then
+                    local store = profileData.scootAuras
+                    local components = profileData.components
+                    local positions = profileData.scootAuraPositions
+                    local owners = type(store) == "table" and store.owners or nil
+
+                    -- oldId -> newId, shared between trackers and groups exactly
+                    -- as the old id space was.
+                    local remap = {}
+
+                    local function claimId(oldId)
+                        if remap[oldId] then return remap[oldId] end
+                        local newId = merged.nextId
+                        merged.nextId = newId + 1
+                        remap[oldId] = newId
+                        return newId
+                    end
+
+                    local function stampClass(record)
+                        if type(record.specs) == "table" and #record.specs > 0 then return end
+                        local ownerRec = owners and record.owner and owners[record.owner]
+                        local class = type(ownerRec) == "table" and ownerRec.class or nil
+                        record._pendingSpecClass = (type(class) == "string") and class or true
+                    end
+
+                    local function carry(oldId, newId, prefix)
+                        if type(components) == "table" then
+                            local styling = components["scootAura_" .. oldId]
+                            if type(styling) == "table" then
+                                merged.styling["scootAura_" .. newId] = styling
+                            end
+                        end
+                        if type(positions) == "table" then
+                            local perKey = positions[prefix .. oldId]
+                            if type(perKey) == "table" then
+                                merged.positions[prefix .. newId] = perKey
+                            end
+                        end
+                    end
+
+                    if type(store) == "table" then
+                        -- Ids first, so group references resolve however the
+                        -- pairs order falls out.
+                        for oldId, record in pairs(store.trackers or {}) do
+                            if type(record) == "table" then claimId(oldId) end
+                        end
+                        for oldGid, record in pairs(store.groups or {}) do
+                            if type(record) == "table" then claimId(oldGid) end
+                        end
+
+                        for oldId, record in pairs(store.trackers or {}) do
+                            if type(record) == "table" then
+                                local newId = remap[oldId]
+                                -- Before owner is cleared: the class token the
+                                -- deferred spec stamp needs is looked up by it.
+                                stampClass(record)
+                                record.owner = nil
+                                record.order = newId
+                                if record.groupId ~= nil then
+                                    record.groupId = remap[record.groupId]
+                                end
+                                merged.trackers[newId] = record
+                                carry(oldId, newId, "t")
+                                moved = moved + 1
+                            end
+                        end
+
+                        for oldGid, record in pairs(store.groups or {}) do
+                            if type(record) == "table" then
+                                local newGid = remap[oldGid]
+                                stampClass(record)
+                                record.owner = nil
+                                local order = {}
+                                for _, memberId in ipairs(record.memberOrder or {}) do
+                                    if remap[memberId] then
+                                        table.insert(order, remap[memberId])
+                                    end
+                                end
+                                record.memberOrder = order
+                                merged.groups[newGid] = record
+                                carry(oldGid, newGid, "g")
+                                moved = moved + 1
+                            end
+                        end
+                    end
+
+                    profileData.scootAuras = nil
+                    profileData.scootAuraPositions = nil
+                    if type(components) == "table" then
+                        for id in pairs(components) do
+                            if type(id) == "string" and id:sub(1, 10) == "scootAura_" then
+                                components[id] = nil
+                            end
+                        end
+                    end
+                end
+            end
+
+            if not sv.global then sv.global = {} end
+            -- Zero-touch: an account that never built an aura gets no store.
+            if moved > 0 then
+                sv.global.scootAuras = merged
+            end
+            sv.global._scootAurasAccountWideV8 = true
+        end
+    end
+
     -- 1. Create the database first so moduleEnabled is available for component gating.
     --    GetDefaults() does not reference self.Components — safe to call before init.
     self.db = LibStub("AceDB-3.0"):New("ScootDB", self:GetDefaults(), true)

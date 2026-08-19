@@ -70,6 +70,77 @@ local function attachSettingsDefaults(db, component)
     })
 end
 
+-- Most components persist into profile.components. A component that carries
+-- GetContainer owns its storage instead, keyed by the same component id:
+-- ScootAuras trackers are account-wide, so theirs live in
+-- db.global.scootAuras.styling. `create` materializes the container; without it
+-- nothing is written, which is what keeps zero-touch detection honest.
+local function componentContainer(component, create)
+    if component and component.GetContainer then
+        local ok, container = pcall(component.GetContainer, create)
+        if ok and type(container) == "table" then return container end
+        return nil
+    end
+    local profile = addon.db and addon.db.profile
+    if not profile then return nil end
+    local components = rawget(profile, "components")
+    if create and type(components) ~= "table" then
+        components = {}
+        profile.components = components
+    end
+    return components
+end
+addon.ComponentsUtil.GetContainerFor = componentContainer
+
+-- Drops component tables with no content, then strips values that exactly match
+-- a registered scalar default, so the rawget-based zero-touch guard keeps
+-- working. Runs over any container, not just profile.components.
+local function pruneComponentContainer(container, registry)
+    for id, tbl in pairs(container) do
+        if type(tbl) == "table" then
+            local hasContent = false
+            for _, v in next, tbl do
+                if type(v) ~= "table" then
+                    hasContent = true
+                    break
+                end
+                for _ in next, v do
+                    hasContent = true
+                    break
+                end
+                if hasContent then break end
+            end
+            if not hasContent then
+                container[id] = nil
+            end
+        end
+    end
+
+    for id, tbl in pairs(container) do
+        if type(tbl) == "table" then
+            local comp = registry[id]
+            if comp and comp.settings then
+                for key, value in pairs(tbl) do
+                    local def = comp.settings[key]
+                    if type(def) == "table" and def.default ~= nil
+                       and type(def.default) ~= "table" and value == def.default then
+                        tbl[key] = nil
+                    end
+                end
+                -- Strip position values — ephemeral mirrors of the frame's
+                -- Edit Mode position, re-derived every EDIT_MODE_LAYOUTS_UPDATED
+                -- via SyncComponentPositionFromEditMode. They must not keep a
+                -- component table alive and defeat zero-touch detection.
+                if rawget(tbl, "positionX") ~= nil then tbl.positionX = nil end
+                if rawget(tbl, "positionY") ~= nil then tbl.positionY = nil end
+                if next(tbl) == nil then
+                    container[id] = nil
+                end
+            end
+        end
+    end
+end
+
 local Component = {}
 Component.__index = Component
 
@@ -140,27 +211,31 @@ function addon:LinkComponentsToDB()
     local profile = self.db and self.db.profile
     local components = profile and rawget(profile, "components") or nil
 
-    -- Auto-prune empty component tables left by prior materialization bugs.
-    if components then
-        for id, tbl in pairs(components) do
-            if type(tbl) == "table" then
-                local hasContent = false
-                for k, v in next, tbl do
-                    if type(v) ~= "table" then
-                        hasContent = true
-                        break
-                    end
-                    for _ in next, v do
-                        hasContent = true
-                        break
-                    end
-                    if hasContent then break end
-                end
-                if not hasContent then
-                    components[id] = nil
-                end
-            end
+    -- Every distinct container backing a registered component. Components that
+    -- own their storage (ScootAuras trackers) must be pruned and linked too, or
+    -- their saved styling reads as "nothing persisted" and resolves to defaults.
+    local containers = {}
+    if components then containers[components] = true end
+    for _, component in pairs(self.Components) do
+        if component.GetContainer then
+            local owned = componentContainer(component, false)
+            if owned then containers[owned] = true end
         end
+    end
+
+    -- Auto-prune empty component tables left by prior materialization bugs, then
+    -- strip AceDB-materialized default values.
+    -- GetDefaults() previously registered scalar defaults for all component
+    -- settings, causing AceDB's copyDefaults to write them into profile tables
+    -- via rawset. This defeated rawget-based zero-touch detection, causing
+    -- ApplyStyling to run for components the user never configured.
+    for container in pairs(containers) do
+        pruneComponentContainer(container, self.Components)
+    end
+
+    if components and next(components) == nil then
+        rawset(profile, "components", nil)
+        components = nil
     end
 
     -- Auto-prune empty profile-level settings tables.
@@ -175,44 +250,29 @@ function addon:LinkComponentsToDB()
         end
     end
 
-    -- Strip AceDB-materialized default values from component tables.
-    -- GetDefaults() previously registered scalar defaults for all component
-    -- settings, causing AceDB's copyDefaults to write them into profile tables
-    -- via rawset. This defeated rawget-based zero-touch detection, causing
-    -- ApplyStyling to run for components the user never configured.
-    -- Strip values that exactly match registered scalar defaults so the
-    -- zero-touch rawget guard works correctly.
-    if components then
-        for id, tbl in pairs(components) do
-            if type(tbl) == "table" then
-                local comp = self.Components[id]
-                if comp and comp.settings then
-                    for key, value in pairs(tbl) do
-                        local def = comp.settings[key]
-                        if type(def) == "table" and def.default ~= nil
-                           and type(def.default) ~= "table" and value == def.default then
-                            tbl[key] = nil
-                        end
-                    end
-                    -- Strip position values — ephemeral mirrors of the frame's
-                    -- Edit Mode position, re-derived every EDIT_MODE_LAYOUTS_UPDATED
-                    -- via SyncComponentPositionFromEditMode. They must not keep a
-                    -- component table alive and defeat zero-touch detection.
-                    if rawget(tbl, "positionX") ~= nil then tbl.positionX = nil end
-                    if rawget(tbl, "positionY") ~= nil then tbl.positionY = nil end
-                    if next(tbl) == nil then
-                        components[id] = nil
-                    end
-                end
-            end
-        end
-        if next(components) == nil then
-            rawset(profile, "components", nil)
-        end
+    for _, component in pairs(self.Components) do
+        self:LinkComponent(component, components)
     end
+end
 
-    for id, component in pairs(self.Components) do
-        local persisted = components and rawget(components, id) or nil
+--- Points one component at its persisted settings table, or at a defaults proxy
+-- when nothing is persisted. Split out of LinkComponentsToDB so a component
+-- registered mid-session can be linked without materializing anything, which
+-- EnsureComponentDB would do.
+function addon:LinkComponent(component, profileComponents)
+    local id = component and component.id
+    if not id then return end
+    do
+        local container
+        if component.GetContainer then
+            container = componentContainer(component, false)
+        elseif profileComponents ~= nil then
+            container = profileComponents
+        else
+            local profile = self.db and self.db.profile
+            container = profile and rawget(profile, "components") or nil
+        end
+        local persisted = container and rawget(container, id) or nil
         if persisted then
             component.db = persisted
             attachSettingsDefaults(persisted, component)
@@ -266,14 +326,9 @@ function addon:EnsureComponentDB(componentOrId)
     if not component or not component.id then
         return nil
     end
-    local profile = self.db and self.db.profile
-    if not profile then
-        return nil
-    end
-    local components = rawget(profile, "components")
+    local components = componentContainer(component, true)
     if type(components) ~= "table" then
-        components = {}
-        profile.components = components
+        return nil
     end
     local db = rawget(components, component.id)
     if type(db) ~= "table" then
@@ -419,11 +474,12 @@ function addon:ApplyStyles()
         end
         return
     end
-    local profile = self.db and self.db.profile
-    local componentsCfg = profile and rawget(profile, "components") or nil
-    for id, component in pairs(self.Components) do
-        -- Zero-Touch: skip unconfigured components.
-        local hasConfig = componentsCfg and rawget(componentsCfg, id) ~= nil
+    for _, component in pairs(self.Components) do
+        -- Zero-Touch: skip unconfigured components. A proxy db is exactly the
+        -- state LinkComponentsToDB leaves behind when nothing is persisted, and
+        -- unlike a profile.components lookup it holds for components that own
+        -- their storage.
+        local hasConfig = component.db and component.db ~= component._ScootDBProxy
         if hasConfig and component.ApplyStyling then
             component:ApplyStyling()
         end
@@ -531,10 +587,8 @@ function addon:ApplyStyles()
 end
 
 function addon:ApplyEarlyComponentStyles()
-    local profile = self.db and self.db.profile
-    local componentsCfg = profile and rawget(profile, "components") or nil
-    for id, component in pairs(self.Components) do
-        local hasConfig = componentsCfg and rawget(componentsCfg, id) ~= nil
+    for _, component in pairs(self.Components) do
+        local hasConfig = component.db and component.db ~= component._ScootDBProxy
         if hasConfig and component.ApplyStyling and component.applyDuringInit then
             component:ApplyStyling()
         end
