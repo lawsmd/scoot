@@ -277,7 +277,7 @@ function Missing.OnEntryReleased(entry)
     end
     if m.blink:IsPlaying() then m.blink:Stop() end
     m.content:SetAlpha(1)
-    Missing.SyncGroupTicker()
+    Missing.SyncTickers()
 end
 
 --------------------------------------------------------------------------------
@@ -351,8 +351,9 @@ function Missing.Restyle(trackerId, tracker, state)
     if not entry then return end
     local m = EnsureVisual(entry)
     PaintLive(trackerId, tracker, entry, m)
-    -- A tracker may have just become (or stopped being) a group tracker.
-    Missing.SyncGroupTicker()
+    -- A tracker may have just become (or stopped being) a group tracker, or be
+    -- the first reminder either poll needs to run for.
+    Missing.SyncTickers()
     -- Text metrics settle a frame after a font change; one deferred repaint
     -- picks up the settled width so the host, and with it the clip window,
     -- is never left a frame stale.
@@ -391,6 +392,13 @@ end
 
 local GROUP_POLL_SECONDS = 1
 local GLOW_LOG_SIZE = 20
+-- Yards, and the square the distance read is compared against. Group-wide
+-- buffs name this radius in their own tooltips ("all party and raid members
+-- within 100 yards"), so a member inside it is one the player's cast would
+-- reach. Only used when the tracked spell carries no range of its own, which
+-- every self-cast raid buff is.
+local GROUP_RANGE_YARDS = 100
+local GROUP_RANGE_SQUARED = GROUP_RANGE_YARDS * GROUP_RANGE_YARDS
 
 local glowLog = {}
 local glowNext = 1
@@ -408,13 +416,20 @@ local function Plain(fn, arg)
 end
 
 --- Ids the tracked spell can appear under: talent overrides, rank variants and
--- tooltip proxies all carry their own. Cached per tracker and rebuilt whenever
--- the spell changes, which is the only thing that invalidates it.
+-- tooltip proxies all carry their own. Cached per tracker, and rebuilt when the
+-- spell changes or when the Cooldown Manager catalog behind the expansion does.
+-- The epoch is the shared one AuraIds keeps, so this record and the expansion
+-- it was built from cannot drift; a set built before COOLDOWN_VIEWER_DATA_LOADED
+-- used to hold the bare spell id forever, taking the memoised range and
+-- provider verdicts on the same record down with it.
 local idSets = {}
 
 local function IdSet(trackerId, tracker)
+    local version = addon.AuraIds.GetVersion and addon.AuraIds.GetVersion() or 0
     local set = idSets[trackerId]
-    if set and set.spellId == tracker.spellId then return set end
+    if set and set.spellId == tracker.spellId and set.version == version then
+        return set
+    end
     local ids = {}
     local ok, include = pcall(addon.AuraIds.BuildIncludeSet, tracker.spellId)
     if ok and type(include) == "table" then
@@ -422,7 +437,7 @@ local function IdSet(trackerId, tracker)
     end
     if #ids == 0 then ids[1] = tracker.spellId end
     table.sort(ids)
-    set = { spellId = tracker.spellId, ids = ids }
+    set = { spellId = tracker.spellId, ids = ids, version = version }
     idSets[trackerId] = set
     return set
 end
@@ -435,6 +450,35 @@ local function IsNeverSecret(spellId)
     if not ok then return false end
     if issecretvalue and issecretvalue(level) then return false end
     return level == never
+end
+
+--- The first id in the set whose spell carries a real range AND can be cast on
+-- a friendly target, or nil when none does. A targeted buff (Earth Shield and
+-- its like) qualifies and the engine can then answer the range question
+-- exactly; a self-cast raid buff carries no range, so the distance test stands
+-- in. The helpful test matters: an include set can hold a harmful id with a
+-- range of its own, and asking that spell about a friendly unit answers false
+-- for every group member, which would hold the whole scan shut. Resolved once
+-- per id set, and so re-resolved whenever the tracked spell changes.
+local function RangeSpellId(set)
+    if set.rangeId == nil then
+        set.rangeId = false
+        local hasRange = C_Spell and C_Spell.SpellHasRange
+        local isHelpful = C_Spell and C_Spell.IsSpellHelpful
+        if type(hasRange) == "function" and type(isHelpful) == "function" then
+            for _, id in ipairs(set.ids) do
+                local rok, ranged = pcall(hasRange, id)
+                local hok, helpful = pcall(isHelpful, id)
+                if rok and hok
+                    and not (issecretvalue and (issecretvalue(ranged) or issecretvalue(helpful)))
+                    and ranged == true and helpful == true then
+                    set.rangeId = id
+                    break
+                end
+            end
+        end
+    end
+    return set.rangeId or nil
 end
 
 --- "scan" when the engine hands plain aura data for this spell on other units,
@@ -474,14 +518,47 @@ local function GroupUnits()
     return groupUnits
 end
 
+--- Whether the buff could reach this unit from where the player stands. Two
+-- plain reads, the more precise one first:
+--   C_Spell.IsSpellInRange   the spell's own answer (no SecretReturns in
+--                            SpellDocumentation.lua); nil for a spell with no
+--                            range, which every self-cast raid buff is
+--   UnitDistanceSquared      distance and checkedDistance, both plain
+--                            (UnitDocumentation.lua); checkedDistance is false
+--                            for a unit the client cannot place, which is the
+--                            other zone this gate was added for
+-- UnitInRange, the obvious call, carries SecretReturns = true and cannot be
+-- branched on from addon context at all. Neither read answering means the unit
+-- is skipped, the same fail-closed rule the other gates follow. The second
+-- return names the verdict for the debug table: a string, or the squared
+-- distance, which only the report turns into yards.
+local function InGroupRange(unit, rangeId)
+    if rangeId then
+        local ok, inRange = pcall(C_Spell.IsSpellInRange, rangeId, unit)
+        if ok and type(inRange) == "boolean" and not (issecretvalue and issecretvalue(inRange)) then
+            return inRange, inRange and "in spell range" or "out of spell range"
+        end
+    end
+    local ok, dist, checked = pcall(UnitDistanceSquared, unit)
+    if ok and type(dist) == "number"
+        and not (issecretvalue and issecretvalue(dist))
+        and not (issecretvalue and issecretvalue(checked))
+        and checked == true then
+        return dist <= GROUP_RANGE_SQUARED, dist
+    end
+    return false, "unplaceable"
+end
+
 --- Whether a unit's answer counts, and when it does not, which test refused
 -- it. A unit we cannot see is skipped, never counted as missing:
 -- GetUnitAuraBySpellID returns nil for a unit that is not visible (its own
 -- documentation says so), so counting them would pin the reminder on for any
 -- raid spread across a room. UnitInRange is the tighter test and is
 -- SecretReturns in instances, which is why UnitIsVisible stands in here, the
--- same substitution Blizzard's raid frames make.
-local function UnitCounts(unit)
+-- same substitution Blizzard's raid frames make. Visibility alone is too
+-- loose: members in another zone passed it and were counted missing, so
+-- InGroupRange has the last word.
+local function UnitCounts(unit, rangeId)
     if Plain(UnitExists, unit) ~= true then return false, "absent" end
     -- Party slots hold real players and, in follower dungeons and walk-in
     -- parties, AI companions. Both take group buffs, and neither is a pet:
@@ -496,32 +573,43 @@ local function UnitCounts(unit)
     if Plain(UnitIsConnected, unit) ~= true then return false, "offline" end
     if Plain(UnitIsVisible, unit) ~= true then return false, "not visible" end
     if Plain(UnitIsDeadOrGhost, unit) ~= false then return false, "dead" end
-    return true
+    local inRange, detail = InGroupRange(unit, rangeId)
+    if not inRange then return false, detail end
+    return true, detail
+end
+
+local function UnitCarriesId(fn, unit, id)
+    local ok, aura = pcall(fn, unit, id)
+    return ok and aura ~= nil and not (issecretvalue and issecretvalue(aura))
 end
 
 --- True when the unit plainly carries one of the ids. A nil return is "no aura
--- here", which is what the scan wants; the getter never throws.
-local function UnitHasAura(unit, ids)
+-- here", which is what the scan wants; the getter never throws. `extraId` is
+-- the substituted spell the include set does not hold (see ScanGroup).
+local function UnitHasAura(unit, ids, extraId)
     local fn = C_UnitAuras and C_UnitAuras.GetUnitAuraBySpellID
     if type(fn) ~= "function" then return false end
     for _, id in ipairs(ids) do
-        local ok, aura = pcall(fn, unit, id)
-        if ok and aura ~= nil and not (issecretvalue and issecretvalue(aura)) then
-            return true
-        end
+        if UnitCarriesId(fn, unit, id) then return true end
     end
-    return false
+    return extraId ~= nil and UnitCarriesId(fn, unit, extraId) or false
 end
 
 --- True when at least one counted unit lacks every id. `report`, when given,
 -- collects the per-unit verdicts for the debug window and turns off the early
--- exit.
-local function ScanGroup(ids, report)
+-- exit. `escaping` is the spell the game has substituted for the tracked one:
+-- this scan reads the player's own row (GroupUnits leads with "player" solo,
+-- and raid tokens include them), so without it a form swap counts the player
+-- as missing and forces the reminder on for the whole window.
+local function ScanGroup(set, report, escaping)
+    local ids = set.ids
+    local rangeId = RangeSpellId(set)
     local missing = false
     for _, unit in ipairs(GroupUnits()) do
-        local counts, why = UnitCounts(unit)
-        local has = counts and UnitHasAura(unit, ids) or false
+        local counts, why = UnitCounts(unit, rangeId)
+        local has = counts and UnitHasAura(unit, ids, escaping) or false
         if report then
+            if type(why) == "number" then why = string.format("%.0f yd", math.sqrt(why)) end
             table.insert(report, { unit = unit, counted = counts, why = why, has = has })
         end
         if counts and not has then
@@ -554,7 +642,7 @@ function Missing.GroupSignalActive(trackerId, tracker, report)
     end
     local set = IdSet(trackerId, tracker)
     if Missing.Provider(trackerId, tracker) == "scan" then
-        return ScanGroup(set.ids, report)
+        return ScanGroup(set, report, SAU.EscapingOverrideFor(tracker.spellId))
     end
     return GlowActive(set.ids)
 end
@@ -619,12 +707,141 @@ function Missing.RefreshGroupTrackers(providerOnly)
             Missing.UpdateGate(trackerId)
         end
     end
-    Missing.SyncGroupTicker()
+    Missing.SyncTickers()
 end
 
 --------------------------------------------------------------------------------
--- Plain-state gate: enable, Only in Combat, Edit Mode, blink
+-- Substituted spells: noticing a form swap
+--
+-- C_Spell.GetOverrideSpell carries no event of its own, and most forms and
+-- stances are not Cooldown Manager entries, so the CDM override event does not
+-- cover them either. The events are the fast path and this poll is the
+-- guarantee. It stays deliberately thin: one C call per DISTINCT live tracked
+-- spell, and no downstream work at all unless an answer moved. It must never
+-- call SAU.DisplaySpellFor (which walks the whole catalog while that catalog is
+-- still empty) or the group signal (a walk of up to forty units, and the group
+-- ticker's job at a quarter the rate).
 --------------------------------------------------------------------------------
+
+local OVERRIDE_POLL_SECONDS = 0.25
+local overrideTicker = nil
+local overrideSeen = {}
+local liveSpellIds = {}
+local overrideChanged = {}
+
+--- The distinct spell ids the live reminders watch. Reused table.
+local function LiveMissingSpellIds()
+    wipe(liveSpellIds)
+    for trackerId in pairs(SAU._activeStates) do
+        local tracker = SAU.GetTracker(trackerId)
+        if tracker and tracker.kind == "missingbuff" and type(tracker.spellId) == "number" then
+            liveSpellIds[tracker.spellId] = true
+        end
+    end
+    return liveSpellIds
+end
+
+--- Repaints and re-gates the reminders watching one spell, or every reminder
+-- when none is named. Restyle is Tier 1 (Scoot frames only), so it is legal
+-- mid-combat, which is where every form swap happens.
+function Missing.RefreshOverrideDependents(spellId)
+    for trackerId, state in pairs(SAU._activeStates) do
+        local tracker = SAU.GetTracker(trackerId)
+        if tracker and tracker.kind == "missingbuff"
+            and (spellId == nil or tracker.spellId == spellId) then
+            Missing.Restyle(trackerId, tracker, state)
+        end
+    end
+end
+
+-- Collect first, dispatch second: the refresh re-enters enough of this file
+-- that iterating the reused table across it would be a trap. Returns whether
+-- anything was dispatched.
+local function PollOverrides(forceSpellId)
+    wipe(overrideChanged)
+    for spellId in pairs(LiveMissingSpellIds()) do
+        local ok, id = pcall(C_Spell.GetOverrideSpell, spellId)
+        id = (ok and type(id) == "number"
+            and not (issecretvalue and issecretvalue(id))) and id or spellId
+        if overrideSeen[spellId] ~= id or spellId == forceSpellId then
+            overrideSeen[spellId] = id
+            table.insert(overrideChanged, spellId)
+        end
+    end
+    for _, spellId in ipairs(overrideChanged) do
+        Missing.RefreshOverrideDependents(spellId)
+    end
+    return #overrideChanged > 0
+end
+
+--- COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED, and the coalesced pass behind
+-- UPDATE_SHAPESHIFT_FORM and SPELLS_CHANGED. `baseSpellID`, when the payload
+-- carries one, is refreshed even if GetOverrideSpell did not move: the map
+-- behind DisplaySpellFor can shift on its own.
+function Missing.OnOverrideChanged(baseSpellID)
+    local id = (type(baseSpellID) == "number"
+        and not (issecretvalue and issecretvalue(baseSpellID))) and baseSpellID or nil
+    -- A tracker may store a tooltip-override or a linked id rather than the
+    -- base the event names, so a payload matching nothing live is no proof
+    -- that nothing moved. Repaint every reminder in that case: one Tier 1 pass
+    -- over a handful of frames, and only when the game reports a substitution.
+    if not PollOverrides(id) then
+        Missing.RefreshOverrideDependents()
+    end
+end
+
+--- Whether any reminder is live at all. The events feeding the override poll
+-- are noisy and fire on the shared frame for every user, so they read this
+-- before doing anything.
+function Missing.AnyLive()
+    for trackerId in pairs(SAU._activeStates) do
+        local tracker = SAU.GetTracker(trackerId)
+        if tracker and tracker.kind == "missingbuff" then return true end
+    end
+    return false
+end
+
+--- Starts or stops the override poll to match the live reminders.
+function Missing.SyncOverrideTicker()
+    if Missing.AnyLive() then
+        if not overrideTicker then
+            overrideTicker = C_Timer.NewTicker(OVERRIDE_POLL_SECONDS, function()
+                PollOverrides()
+            end)
+        end
+    elseif overrideTicker then
+        overrideTicker:Cancel()
+        overrideTicker = nil
+        wipe(overrideSeen)
+    end
+end
+
+--- Both polls, synced together. Every site that used to call SyncGroupTicker
+-- calls this instead, so neither can be missed.
+function Missing.SyncTickers()
+    Missing.SyncGroupTicker()
+    Missing.SyncOverrideTicker()
+end
+
+--------------------------------------------------------------------------------
+-- Plain-state gate: enable, Only in Combat, Only in Instances, Edit Mode, blink
+--------------------------------------------------------------------------------
+
+-- Housing interiors and neighbourhoods are instanced but are not content, and
+-- Blizzard excludes both ahead of its own generic test (Blizzard_FrameXML/
+-- InstanceDifficulty.lua:101). Everything else IsInInstance reports is content:
+-- dungeons, raids, battlegrounds, arenas, and scenarios, which is what a delve
+-- runs as. Delves have reported as instances since 12.0.5.
+local NON_CONTENT_INSTANCES = { none = true, interior = true, neighborhood = true }
+
+--- Whether the player is inside instanced content. Plain throughout, so it may
+-- be branched on freely.
+local function PlayerInInstance()
+    if type(IsInInstance) ~= "function" then return false end
+    local ok, inInstance, instanceType = pcall(IsInInstance)
+    if not ok then return false end
+    return inInstance == true and not NON_CONTENT_INSTANCES[instanceType or "none"]
+end
 
 --- Shows or hides the clip window from plain state only, then re-evaluates
 -- the group signal. The player's own presence is never consulted: the engine
@@ -645,22 +862,48 @@ function Missing.UpdateGate(trackerId)
     if show and tracker.onlyInCombat ~= false and not InCombatLockdown() then
         show = false
     end
+    -- Reads `== true`, not `~= false`: this gate defaults OFF, so a tracker that
+    -- predates the field (nil) keeps showing everywhere, as it always has.
+    if show and tracker.onlyInInstances == true and not PlayerInInstance() then
+        show = false
+    end
     if show and SAU._isEditModeActive and SAU._isEditModeActive() then
         -- The Edit Mode preview stands in for the live reminder.
         show = false
     end
-    m.clip:SetShown(show)
+
+    -- The player's own half, and nothing else. The container answers "does the
+    -- player have it" by geometry, but its candidate filter matches exact ids:
+    -- a spell the game has substituted is invisible to it, so the aura group
+    -- stays empty, the container stays 1 x 1, and the geometry reads "missing"
+    -- for a buff the player plainly has. Hide it here instead. `show` itself
+    -- stays untouched: it is the permission gate and it governs both halves.
+    local escaping = show and tracker and SAU.EscapingOverrideFor(tracker.spellId) or nil
 
     -- The group half. Plain throughout, so it may be branched on, and it only
     -- ever forces the reminder on: the anchor moves, the clip and the blink
-    -- stay on plain state.
+    -- stay on plain state. Derived from the permission gate, never from the
+    -- self half above.
     local forced = show and Missing.GroupSignalActive(trackerId, tracker) or false
     if m.forced ~= forced then
         m.forced = forced
         Missing.ApplyContentAnchor(entry, trackerId)
     end
 
-    local wantBlink = show and db ~= nil and db.blinkWhenShown == true
+    -- Forced wins: the group's verdict is a separate question and outranks the
+    -- player's own satisfied state, exactly as it outranks the container.
+    local lit = show and (forced or not escaping) or false
+    m.clip:SetShown(lit)
+
+    if Engine._SetResult then
+        Engine._SetResult("gatereason.t" .. trackerId,
+            (not show and "gated off")
+            or (escaping and not forced and ("override " .. tostring(escaping)))
+            or (forced and "group forced")
+            or "container")
+    end
+
+    local wantBlink = lit and db ~= nil and db.blinkWhenShown == true
     if wantBlink then
         if not m.blink:IsPlaying() then m.blink:Play() end
     else
@@ -669,15 +912,15 @@ function Missing.UpdateGate(trackerId)
     end
 end
 
---- Regen events: re-evaluate every live reminder's gate.
-function Missing.OnCombatChanged()
+--- Regen and zone events: re-evaluate every live reminder's gate.
+function Missing.RefreshGates()
     for trackerId in pairs(SAU._activeStates) do
         local tracker = SAU.GetTracker(trackerId)
         if tracker and tracker.kind == "missingbuff" then
             Missing.UpdateGate(trackerId)
         end
     end
-    Missing.SyncGroupTicker()
+    Missing.SyncTickers()
 end
 
 --------------------------------------------------------------------------------
@@ -730,6 +973,9 @@ function Missing.AddGroupDebug(add, trackerId, tracker)
     end
 
     if provider == "scan" then
+        local rangeId = RangeSpellId(IdSet(trackerId, tracker))
+        add("range gate: %s", rangeId and ("IsSpellInRange on spell " .. rangeId)
+            or (GROUP_RANGE_YARDS .. " yd (no tracked spell carries a range)"))
         local report = {}
         local verdict = Missing.GroupSignalActive(trackerId, tracker, report)
         add("scan verdict=%s over %d unit(s)", tostring(verdict), #report)
@@ -757,9 +1003,10 @@ function Missing.DebugInfo(trackerId)
         return lines
     end
     local db = SAU.GetDB(trackerId)
-    add("t%d spell=%d kind=%s shape=%s onlyInCombat=%s enabled=%s",
+    add("t%d spell=%d kind=%s shape=%s onlyInCombat=%s onlyInInstances=%s enabled=%s",
         trackerId, tracker.spellId, tostring(tracker.kind), tostring(tracker.shape),
-        tostring(tracker.onlyInCombat), tostring(tracker.enabled))
+        tostring(tracker.onlyInCombat), tostring(tracker.onlyInInstances),
+        tostring(tracker.enabled))
     add("unit=%s engine=%s", tostring(tracker.unit), tostring(SAU.EngineUnitFor(tracker)))
     add("text=%q suffix=%s blink=%s anchor=%s",
         Missing.ReminderText(tracker, db), tostring(db and db.missingSuffix),
@@ -770,11 +1017,36 @@ function Missing.DebugInfo(trackerId)
     add("InCombatLockdown=%s AurasSecretNow=%s editMode=%s",
         tostring(InCombatLockdown()), tostring(addon.AurasSecretNow and addon.AurasSecretNow()),
         tostring(SAU._isEditModeActive and SAU._isEditModeActive()))
+    -- The raw instanceType matters: without it a housing interior and a delve
+    -- that failed to register both read as a bare "false".
+    local iok, _, instanceType = pcall(IsInInstance)
+    add("inInstance=%s instanceType=%s", tostring(PlayerInInstance()),
+        iok and tostring(instanceType) or "error")
 
     local sok, secrecy = pcall(function()
         return C_Secrets and C_Secrets.GetSpellAuraSecrecy and C_Secrets.GetSpellAuraSecrecy(tracker.spellId)
     end)
     add("GetSpellAuraSecrecy=%s", sok and SecrecyName(secrecy) or "error")
+
+    -- The substitution test. `escaping` non-nil means the game has swapped this
+    -- spell for one the container's filter cannot match, so the reminder is
+    -- held dark in Lua rather than by the container's geometry. A spell that
+    -- reads escaping forever has a talent override no Cooldown Manager entry
+    -- carries: its container could never match either aura, and the reminder
+    -- is dark for that reason rather than because the buff is up.
+    local escaping = SAU.EscapingOverrideFor(tracker.spellId)
+    local ook, rawOverride = pcall(C_Spell.GetOverrideSpell, tracker.spellId)
+    add("escaping=%s resolvedTo=%s displayedAs=%d GetOverrideSpell=%s idSetVersion=%s",
+        escaping and tostring(escaping) or "none",
+        tostring(SAU.ResolvedSpellFor(tracker.spellId)),
+        SAU.DisplaySpellFor(tracker.spellId),
+        ook and tostring(rawOverride) or "error",
+        tostring(addon.AuraIds.GetVersion and addon.AuraIds.GetVersion()))
+    add("gatereason=%s", tostring(Engine._results and Engine._results["gatereason.t" .. trackerId]))
+    if tracker.unit ~= "group" then
+        -- The group branch prints this per id with its own secrecy verdicts.
+        add("includeSpellIDs=%s", table.concat(Missing.SpellIds(trackerId, tracker), ","))
+    end
 
     if tracker.unit == "group" then
         Missing.AddGroupDebug(add, trackerId, tracker)

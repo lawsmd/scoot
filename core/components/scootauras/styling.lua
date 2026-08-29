@@ -410,6 +410,34 @@ local function ApplyBarStyling(trackerId, tracker, state)
 end
 
 --------------------------------------------------------------------------------
+-- The combat gate
+--------------------------------------------------------------------------------
+
+-- Kinds whose "Only in Combat" verdict is applied by hiding the whole frame.
+-- A missing-buff reminder is not one of them: its own gate drives a clip window
+-- over the engine-sized container (missing.lua, Missing.UpdateGate), and that
+-- mechanism stays its sole owner.
+local SHELL_GATED_KINDS = { buff = true, debuff = true }
+
+-- Grouped visuals live under the group frame; the shell stays hidden and
+-- scale/opacity/shown apply to the visual itself. The flag is physical (set by
+-- the parenting reconcile), so a membership change still waiting on the
+-- structural gate keeps styling the current home.
+local function StyleTarget(state)
+    local entry = state.entry
+    local grouped = entry and entry.grouped
+    return (grouped and state.container or state.shell), grouped
+end
+
+-- Whether this tracker's frame may be shown right now. Both frames are plain
+-- Scoot frames, so hiding one is legal in combat and takes the container, the
+-- button and every element with it.
+local function ShellShown(tracker)
+    if not SHELL_GATED_KINDS[tracker.kind] then return true end
+    return SAU.CombatGateOpen(tracker)
+end
+
+--------------------------------------------------------------------------------
 -- Tier 1 entry
 --------------------------------------------------------------------------------
 
@@ -421,13 +449,7 @@ local function ApplyStyling(trackerId, tracker)
 
     local db = SAU.GetDB(trackerId)
 
-    -- Grouped visuals live under the group frame; the shell stays hidden and
-    -- scale/opacity/shown apply to the visual itself. The flag is physical
-    -- (set by the parenting reconcile), so a membership change still waiting
-    -- on the structural gate keeps styling the current home.
-    local entry = state.entry
-    local grouped = entry and entry.grouped
-    local target = grouped and state.container or state.shell
+    local target, grouped = StyleTarget(state)
 
     local isEnabled = SAU.IsTrackerActive(trackerId, tracker) and SAU.IsModuleActive()
     if not isEnabled then
@@ -456,7 +478,10 @@ local function ApplyStyling(trackerId, tracker)
     end
     target:SetAlpha(opacityValue / 100)
 
-    target:Show()
+    -- A tracker set to "Only in Combat" is hidden outright out of combat. Edit
+    -- Mode forces it back: the preview and the draggable frame live under this
+    -- one, and the group layout skips a member the gate hid.
+    target:SetShown(ShellShown(tracker))
     if grouped then
         state.shell:Hide()
         if SAU.Groups then SAU.Groups.RequestReflow() end
@@ -481,6 +506,34 @@ local function ApplyStyling(trackerId, tracker)
     if SAU._isEditModeActive and SAU._isEditModeActive() then
         SAU.Engine.ShowEditModePreview(trackerId, tracker, state)
     end
+end
+
+--- Both regen edges: re-apply the combat gate for every live tracker carrying
+-- it. Deliberately narrower than a restyle. Nothing else moved at a combat
+-- edge, and a restyle would run the whole element chain per tracker on every
+-- pull. Also called on Edit Mode enter, where the gate reads open.
+function SAU.RefreshCombatGates()
+    local reflow = false
+    for trackerId, state in pairs(SAU._activeStates) do
+        local tracker = SAU.GetTracker(trackerId)
+        if tracker and SHELL_GATED_KINDS[tracker.kind] and SAU.OnlyInCombat(tracker)
+            and state.shell and SAU.IsTrackerActive(trackerId, tracker)
+            and SAU.IsModuleActive() then
+            local target, grouped = StyleTarget(state)
+            local shown = SAU.CombatGateOpen(tracker)
+            if target and target:IsShown() ~= shown then
+                target:SetShown(shown)
+                if grouped then reflow = true end
+                -- A hidden container runs no OnUpdate, so one re-shown at the
+                -- pull has processed nothing since it was gated off.
+                if shown then SAU.Engine.KickTracker(trackerId, "combat-gate") end
+            end
+        end
+    end
+    -- Reflowed now, not queued: the deferred reflow lands a frame later, which
+    -- would show a returning member at the anchor it held before its group
+    -- closed the gap. Group layout is plain frame math and legal in combat.
+    if reflow and SAU.Groups then SAU.Groups.ReflowAll() end
 end
 
 --------------------------------------------------------------------------------

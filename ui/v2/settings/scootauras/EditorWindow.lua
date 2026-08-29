@@ -152,6 +152,7 @@ local function TryMaterialize()
         shape = c.shape,
         name = c.name,
         onlyInCombat = c.onlyInCombat,
+        onlyInInstances = c.onlyInInstances,
     })
     if not id then
         session.statusOverride = err or "Could not create the tracker."
@@ -657,8 +658,9 @@ local SHAPE_ORDER = { "icon", "bar", "shape" }
 -- A missing-buff tracker is a reminder: icon, text, or both.
 local MISSING_SHAPE_LABELS = { icon = "an Icon", text = "Text", icontext = "an Icon & Text" }
 local MISSING_SHAPE_ORDER = { "icon", "text", "icontext" }
-local ONLY_IN_COMBAT_LABELS = { yes = "Yes", no = "No" }
-local ONLY_IN_COMBAT_ORDER = { "yes", "no" }
+-- Shared by both missing-buff gate rows.
+local YES_NO_LABELS = { yes = "Yes", no = "No" }
+local YES_NO_ORDER = { "yes", "no" }
 
 local function ContentValue(field)
     local tracker = CurrentTracker()
@@ -777,14 +779,32 @@ local function RenderSelectors()
             function(v) SetContent("shape", v) end)
     end
 
-    -- Per-kind extras. Missing-buff: whether the reminder may show out of
-    -- combat. Defaults to Yes, so it never sits on "Choose".
-    if kind == "missingbuff" and unit and shape then
-        local onlyInCombat = ContentValue("onlyInCombat")
-        local current = (onlyInCombat == false) and "no" or "yes"
+    -- Extras. Every kind gates on combat; the instance gate is missing-buff
+    -- only. Both carry a value rather than nil, so neither sits on "Choose".
+    if kind and unit and shape then
+        local combatCurrent
+        if session and session.trackerId then
+            -- A tracker saved before its kind carried the field reads through
+            -- the same resolver the gate does, so the selector never shows Yes
+            -- on a tracker that is in fact ungated.
+            combatCurrent = SAU().OnlyInCombat(CurrentTracker()) and "yes" or "no"
+        else
+            combatCurrent = (ContentValue("onlyInCombat") == false) and "no" or "yes"
+        end
         AddChoiceSelector(selBuilder, "Only in Combat?",
-            ONLY_IN_COMBAT_LABELS, ONLY_IN_COMBAT_ORDER, current,
+            YES_NO_LABELS, YES_NO_ORDER, combatCurrent,
             function(v) SetContent("onlyInCombat", v == "yes") end)
+    end
+
+    if kind == "missingbuff" and unit and shape then
+        -- Dungeons, raids, delves, scenarios, battlegrounds and arenas. Unlike
+        -- the combat gate this one defaults to No, so an existing reminder
+        -- keeps showing everywhere until the user asks for otherwise.
+        local onlyInInstances = ContentValue("onlyInInstances")
+        local instanceCurrent = (onlyInInstances == true) and "yes" or "no"
+        AddChoiceSelector(selBuilder, "Only in Instances?",
+            YES_NO_LABELS, YES_NO_ORDER, instanceCurrent,
+            function(v) SetContent("onlyInInstances", v == "yes") end)
     end
 
     selBuilder:Finalize()

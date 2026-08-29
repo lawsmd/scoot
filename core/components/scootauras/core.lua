@@ -298,6 +298,30 @@ function SAU.IsTrackerActive(trackerId, tracker)
     return true
 end
 
+--- Whether this tracker is set to show only while the player is in combat.
+-- Only a tracker saved before the option existed carries no value: a
+-- missing-buff reminder has always been gated by default, and a buff or debuff
+-- tracker has always shown whenever its aura was up, which an upgrade must not
+-- change under its owner.
+function SAU.OnlyInCombat(tracker)
+    if not tracker then return false end
+    if tracker.onlyInCombat ~= nil then return tracker.onlyInCombat ~= false end
+    return tracker.kind == "missingbuff"
+end
+
+--- The combat gate: whether an "Only in Combat" tracker may show right now.
+-- Edit Mode forces it open, because the preview and the draggable frame live
+-- under the frame the gate hides.
+--
+-- Never fold this into IsTrackerActive. That one drives claim and release, and
+-- a release is a teardown whose rebuild waits behind CanDoStructuralWork until
+-- the fight ends. This decides visibility only.
+function SAU.CombatGateOpen(tracker)
+    if not SAU.OnlyInCombat(tracker) then return true end
+    if InCombatLockdown() then return true end
+    return (SAU._isEditModeActive and SAU._isEditModeActive()) or false
+end
+
 -- Numbers only, deduped, sorted. Returns nil for an empty list so "loads
 -- nowhere" has one representation rather than two.
 local function NormalizeSpecs(ids)
@@ -667,15 +691,36 @@ local function BuildCDMDisplayMap()
 end
 
 --- Drops the cached CDM base-to-display map; rebuilt on the next description.
--- Called on CDM data/override events, spec changes, and talent edits.
+-- Called when the catalog itself moves: data loads, hotfixes, spec changes,
+-- and talent edits. A runtime substitution goes through NoteSpellOverride.
 function SAU.InvalidateSpellDescriptions()
     cdmDisplayByBase = nil
 end
 
---- The spell ID a stored ID is shown as: CDM override chain, else the
--- player's own override, else the ID itself.
-function SAU.DisplaySpellFor(spellId)
-    if type(spellId) ~= "number" then return spellId end
+--- Records one runtime substitution against the cached map.
+-- The catalog does not move when a spell is substituted, but the entry's own
+-- overrideSpellID does: Blizzard patches it in place the moment this event
+-- lands (CooldownViewerItemDataMixin:SetOverrideSpell), and the map above is
+-- built from that field, so leaving the map alone freezes the substitution out
+-- of every answer this file gives. Patch the one base instead of dropping the
+-- whole map, which would walk every category again on the next description.
+-- The removal branch also repairs a map built while a substitution was already
+-- live, which is what a reload in Voidform produces.
+function SAU.NoteSpellOverride(baseSpellID, overrideSpellID)
+    local base = PlainNumber(baseSpellID)
+    if not base or not cdmDisplayByBase then return end
+    local shown = PlainNumber(overrideSpellID)
+    if shown and shown ~= base then
+        cdmDisplayByBase[base] = shown
+    elseif cdmDisplayByBase[base] and cdmDisplayByBase[base] ~= base then
+        cdmDisplayByBase[base] = base
+    end
+end
+
+-- The ID the game resolves a stored ID to right now: CDM override chain, else
+-- the player's own override, else the ID itself. What DisplaySpellFor used to
+-- return outright, before the substitution test below.
+local function DisplayCandidate(spellId)
     if not cdmDisplayByBase then
         local map, count = BuildCDMDisplayMap()
         -- An empty catalog means the CDM data has not loaded yet; keep
@@ -691,6 +736,44 @@ function SAU.DisplaySpellFor(spellId)
     override = ok and PlainNumber(override) or nil
     if override then return override end
     return spellId
+end
+
+--- The override the engine's own candidate filter cannot match, or nil.
+-- A talent override is unioned into the include set by ExpandFromCDM, so it
+-- never escapes and the container matches its aura as usual. A form swap is
+-- reachable from no CDM entry, so the container stays blind to it and its
+-- geometry stops answering the question the caller thinks it answers.
+function SAU.EscapingOverrideFor(spellId)
+    if type(spellId) ~= "number" then return nil end
+    local candidate = DisplayCandidate(spellId)
+    if candidate == spellId then return nil end
+    if addon.AuraIds and addon.AuraIds.IncludesId(spellId, candidate) then
+        return nil
+    end
+    return candidate
+end
+
+--- The spell ID a stored ID is shown as. Never an ID the engine's filter
+-- cannot match: a spell the game has substituted (Shadowform while Voidform is
+-- up) is a replacement for what the user picked, not a description of it, and
+-- describing by it renames trackers, repaints icons, and can be stamped into a
+-- saved auto name.
+function SAU.DisplaySpellFor(spellId)
+    if type(spellId) ~= "number" then return spellId end
+    local candidate = DisplayCandidate(spellId)
+    if candidate == spellId then return spellId end
+    if addon.AuraIds and addon.AuraIds.IncludesId(spellId, candidate) then
+        return candidate
+    end
+    return spellId
+end
+
+--- The ID the game resolves this one to, matchable by the engine's filter or
+-- not. Only the debug readout wants this: every display path goes through
+-- DisplaySpellFor, which hides a substitution the filter cannot match.
+function SAU.ResolvedSpellFor(spellId)
+    if type(spellId) ~= "number" then return spellId end
+    return DisplayCandidate(spellId)
 end
 
 --- Name, icon (fileID), and the ID they came from, for a stored spell ID.
@@ -795,9 +878,13 @@ function SAU.CreateTracker(spec)
         enabled = true,
         order = trackerId,
     }
+    -- Content, not styling: they decide when the tracker may show at all. Every
+    -- kind carries the combat gate, and a new tracker starts gated unless the
+    -- editor says otherwise (a My Group reminder passes false, since raid buffs
+    -- go up between pulls). The instance gate is a missing-buff field.
+    store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat ~= false)
     if kind == "missingbuff" then
-        -- Content, not styling: it decides when the reminder may show at all.
-        store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat ~= false)
+        store.trackers[trackerId].onlyInInstances = (spec.onlyInInstances == true)
     end
 
     SAU.RegisterTrackerComponent(trackerId)
@@ -846,8 +933,8 @@ function SAU.DeleteTracker(trackerId)
     return true
 end
 
---- Applies content edits (spellId/kind/unit/shape/onlyInCombat) to a live
--- tracker and routes the engine consequence: shape and onlyInCombat edits
+--- Applies content edits (spellId/kind/unit/shape/onlyInCombat/onlyInInstances)
+-- to a live tracker and routes the engine consequence: shape and gate edits
 -- restyle in place, spell/unit/kind edits park the mismatched container
 -- immediately and rebuild through the gate.
 function SAU.SetTrackerContent(trackerId, changes)
@@ -876,14 +963,26 @@ function SAU.SetTrackerContent(trackerId, changes)
     tracker.kind = kind
     tracker.unit = unit
     tracker.shape = shape
+    if changes.onlyInCombat ~= nil then
+        tracker.onlyInCombat = (changes.onlyInCombat ~= false)
+    elseif tracker.onlyInCombat == nil then
+        -- A tracker saved before its kind carried this field. Freeze the
+        -- reading it has been running on rather than seeding a default, so
+        -- editing a legacy buff or debuff tracker's spell does not silently
+        -- start hiding it. The kind read here is already the new one, which is
+        -- what a flip to missingbuff wants.
+        tracker.onlyInCombat = SAU.OnlyInCombat(tracker)
+    end
     if kind == "missingbuff" then
-        if changes.onlyInCombat ~= nil then
-            tracker.onlyInCombat = (changes.onlyInCombat ~= false)
-        elseif tracker.onlyInCombat == nil then
-            tracker.onlyInCombat = true
+        -- Backfills to false, not true: this gate defaults off, so a tracker
+        -- that predates it keeps showing outside instances as it always has.
+        if changes.onlyInInstances ~= nil then
+            tracker.onlyInInstances = (changes.onlyInInstances == true)
+        elseif tracker.onlyInInstances == nil then
+            tracker.onlyInInstances = false
         end
     else
-        tracker.onlyInCombat = nil
+        tracker.onlyInInstances = nil
     end
     if type(changes.name) == "string" and changes.name ~= "" then
         tracker.name = changes.name
@@ -931,6 +1030,7 @@ function SAU.DuplicateTracker(trackerId)
         enabled = source.enabled ~= false,
         order = newId,
         onlyInCombat = source.onlyInCombat,
+        onlyInInstances = source.onlyInInstances,
         specs = source.specs and CopyTable(source.specs) or nil,
     }
 

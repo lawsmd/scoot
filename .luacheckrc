@@ -68,6 +68,9 @@ read_globals = {
     "UnitIsVisible",
     "UnitInPartyIsAI",
     "UnitTreatAsPlayerForDisplay",
+    -- Plain too, and the range gate on that scan: UnitInRange above is
+    -- SecretReturns and unusable, so distance stands in for it.
+    "UnitDistanceSquared",
     -- Both plain reads in 12.0 (no SecretReturns in UnitDocumentation.lua):
     -- the dead skull and the elite/rare icon branch on them directly.
     "UnitIsDeadOrGhost",

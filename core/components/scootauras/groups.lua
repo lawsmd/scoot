@@ -336,8 +336,11 @@ function Groups.LayoutGroup(gid)
     for _, trackerId in ipairs(group.memberOrder or {}) do
         local tentry = Engine._byTracker[trackerId]
         local tracker = SAU.GetTracker(trackerId)
+        -- A member hidden by its combat gate gives up its slot, the same as a
+        -- disabled one, so the rest close the gap instead of leaving a hole.
         if tentry and tentry.grouped and tracker and tracker.groupId == gid
-            and SAU.IsTrackerActive(trackerId, tracker) then
+            and SAU.IsTrackerActive(trackerId, tracker)
+            and SAU.CombatGateOpen(tracker) then
             local db = SAU.GetDB(trackerId)
             local scale = math.max((tonumber(db and db.scale) or 100) / 100, 0.25)
             local w = tentry.hostW or 32

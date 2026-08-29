@@ -428,9 +428,10 @@ local function LifecycleDump()
             local t = row.tracker
             local active = SAU.IsTrackerActive(row.id, t)
             if active then loaded = loaded + 1 else notLoaded = notLoaded + 1 end
-            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s wired=%s loaded=%s"):format(
+            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s oic=%s wired=%s loaded=%s"):format(
                 row.id, tostring(t.name), tostring(t.spellId), t.kind, t.unit, t.shape,
-                tostring(t.enabled), tostring(SAU.Engine.IsWired(row.id)), tostring(active)))
+                tostring(t.enabled), tostring(SAU.OnlyInCombat(t)),
+                tostring(SAU.Engine.IsWired(row.id)), tostring(active)))
         end
         push(("(%d loaded / %d not loaded; see /scoot debug sa specs)"):format(loaded, notLoaded))
     end
@@ -875,7 +876,10 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
         unit = unit or addon.ScootAuras.DefaultUnitForKind(kind)
         shape = shape or addon.ScootAuras.DefaultShapeForKind(kind)
         local trackerId, err = addon.ScootAuras.CreateTracker({
+            -- Ungated on purpose: a probe tracker that stays invisible until
+            -- you pull something reads as a broken probe.
             spellId = spellId, kind = kind, unit = unit, shape = shape,
+            onlyInCombat = false,
         })
         if trackerId then
             addon:Print(("ScootAuras t%d created: spell %d (%s on %s as %s)"):format(
