@@ -394,6 +394,26 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
         if iconState then iconState.lastIconBorder = nil end
     end
 
+    -- The icon border draws on iconFrame at OVERLAY 7, the ceiling, so nothing on that
+    -- frame can be layered over it. Blizzard's Applications element is a child frame on
+    -- some builds and a bare FontString on others: raise the frame, move the FontString.
+    -- Same intent as raiseBlizzardTextFrames in cooldowns/core.lua.
+    local applications = iconFrame and iconFrame.Applications
+    if applications then
+        if applications.GetObjectType and applications:GetObjectType() == "FontString" then
+            if iconBorderEnabled and shouldShowIconBorder() then
+                addon.PromoteIconText(applications, iconFrame, iconFrame)
+            else
+                addon.DemoteIconText(applications)
+            end
+        elseif applications.SetFrameLevel and iconFrame.GetFrameLevel then
+            local okLvl, lvl = pcall(iconFrame.GetFrameLevel, iconFrame)
+            if okLvl and type(lvl) == "number" then
+                pcall(applications.SetFrameLevel, applications, lvl + 1)
+            end
+        end
+    end
+
     -- Text styling — only when user has explicitly configured text settings.
     -- Without rawget guards, TB.applyTextStyling overwrites Blizzard's native
     -- tracked bar fonts with hardcoded fallback values, violating zero-touch.
@@ -483,7 +503,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
 
         if rawget(db, "textName") and nameFS and nameFS.SetFont then
             local cfg = rawget(db, "textName")
-            pcall(nameFS.SetDrawLayer, nameFS, "OVERLAY", 10)
+            pcall(nameFS.SetDrawLayer, nameFS, "OVERLAY", 7)
             TB.applyTextStyling(nameFS, cfg, defaultFace)
             if nameFS.SetJustifyH then pcall(nameFS.SetJustifyH, nameFS, "LEFT") end
             local ox = (cfg.offset and cfg.offset.x) or 0
@@ -497,7 +517,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
 
         if rawget(db, "textDuration") and durFS and durFS.SetFont then
             local cfg = rawget(db, "textDuration")
-            pcall(durFS.SetDrawLayer, durFS, "OVERLAY", 10)
+            pcall(durFS.SetDrawLayer, durFS, "OVERLAY", 7)
             TB.applyTextStyling(durFS, cfg, defaultFace)
             if durFS.SetJustifyH then pcall(durFS.SetJustifyH, durFS, "RIGHT") end
             local ox = (cfg.offset and cfg.offset.x) or 0
@@ -526,7 +546,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
 
         if rawget(db, "textStacks") and stacksFS and stacksFS.SetFont then
             local cfg = rawget(db, "textStacks")
-            pcall(stacksFS.SetDrawLayer, stacksFS, "OVERLAY", 10)
+            pcall(stacksFS.SetDrawLayer, stacksFS, "OVERLAY", 7)
             TB.applyTextStyling(stacksFS, cfg, defaultFace)
             if stacksFS.SetJustifyH then pcall(stacksFS.SetJustifyH, stacksFS, "CENTER") end
             local ox = (cfg.offset and cfg.offset.x) or 0

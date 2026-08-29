@@ -328,6 +328,18 @@ local function styleButton(inst, rowKey, button, w, h, key)
             pcall(container.SetSize, container, w, h)
             pcall(container.EnableMouse, container, false)
         end
+        -- The count's host was levelled at button + 5 when the button was wired, which
+        -- is exactly where the border container lands; equal levels fall back to
+        -- creation order and the container is created later, so it would win. Re-level
+        -- the host above whatever the border actually got.
+        local countFS = button.scootCount
+        if countFS and countFS.GetParent then
+            local okHost, host = pcall(countFS.GetParent, countFS)
+            local borderLevel = addon.GetIconBorderLevel and addon.GetIconBorderLevel(tex)
+            if okHost and host and host ~= button and borderLevel then
+                pcall(host.SetFrameLevel, host, borderLevel + 1)
+            end
+        end
     elseif tex and addon.Borders and addon.Borders.HideAll then
         addon.Borders.HideAll(tex)
         local container = borderContainer(tex)

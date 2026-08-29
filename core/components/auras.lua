@@ -270,7 +270,7 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
         -- OPT-26 Change 1: Font key cache — skip SetDrawLayer + ApplyFontStyle when unchanged
         local fontKey = face .. "|" .. size .. "|" .. style
         if not state or state.lastFontKey ~= fontKey then
-            pcall(fs.SetDrawLayer, fs, "OVERLAY", 10)
+            pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
             if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, style) else fs:SetFont(face, size, style) end
             if state then
                 state.lastFontKey = fontKey
@@ -698,6 +698,16 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
                     ok4 = pcall(function()
                     local stacksFS = aura.Count or aura.count or aura.Applications
                     if stacksFS and stacksFS.GetObjectType and stacksFS:GetObjectType() == "FontString" then
+                        -- Scoot's border art sits on a frame above the aura button, so the
+                        -- count has to move above that too. Gated on the border, not on the
+                        -- text config below: the number stays Blizzard's until the user
+                        -- styles it, but it still has to be readable.
+                        local auraSt = getState(aura)
+                        if borderEnabled or (auraSt and auraSt._wantNonSquareOverlay) then
+                            addon.PromoteIconText(stacksFS, aura, icon)
+                        else
+                            addon.DemoteIconText(stacksFS)
+                        end
                         applyAuraText(stacksFS, "textStacks", 16, aura)
                     end
 

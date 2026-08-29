@@ -202,6 +202,11 @@ do
 									container:SetSize(ratioWidth, ratioHeight)
 								end
 							end
+							-- The border container outranks the aura frame, so the stack count has to
+							-- move above it as well (PromoteIconText in base/iconborders.lua).
+							if auraFrame.Count then
+								addon.PromoteIconText(auraFrame.Count, auraFrame, icon)
+							end
 						else
 							-- Restore Blizzard's default border and hide any custom border textures
 							if addon.Borders and addon.Borders.HideAll then
@@ -220,6 +225,9 @@ do
 								elseif blizzBorder.SetAlpha then
 									blizzBorder:SetAlpha(1)
 								end
+							end
+							if auraFrame.Count then
+								addon.DemoteIconText(auraFrame.Count)
 							end
 						end
 					end

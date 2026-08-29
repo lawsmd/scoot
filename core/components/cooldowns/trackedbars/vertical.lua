@@ -403,7 +403,14 @@ local function createVerticalStack()
     stack.iconRegion:EnableMouse(true)
     stack.iconTexture = stack.iconRegion:CreateTexture(nil, "ARTWORK")
     stack.iconTexture:SetAllPoints(stack.iconRegion)
-    stack.applicationsFS = stack.iconRegion:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    -- Stack count on its own frame above iconRegion: the icon border draws on
+    -- iconRegion at OVERLAY 7 and there is no sublevel above that. Mouse-dead, so
+    -- iconRegion keeps the tooltip.
+    stack.iconTextHost = CreateFrame("Frame", nil, stack.iconRegion)
+    stack.iconTextHost:SetAllPoints(stack.iconRegion)
+    stack.iconTextHost:EnableMouse(false)
+    stack.iconTextHost:SetFrameLevel(stack.iconRegion:GetFrameLevel() + 1)
+    stack.applicationsFS = stack.iconTextHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     stack.applicationsFS:SetPoint("BOTTOMRIGHT", stack.iconRegion, "BOTTOMRIGHT", -2, 2)
     stack.applicationsFS:SetJustifyH("RIGHT")
 
@@ -828,6 +835,15 @@ local function styleVerticalStack(stack, component)
         if addon.Borders and addon.Borders.HideAll then addon.Borders.HideAll(stack.iconRegion) end
         local iconState = getState(stack.iconRegion)
         if iconState then iconState.lastIconBorder = nil end
+    end
+    -- The icon border draws on iconRegion itself at OVERLAY 7, the ceiling, so the
+    -- stack count lives on its own frame one level up. Re-levelled here because the
+    -- stack is reparented to vertContainer on apply, which can move iconRegion.
+    if stack.iconTextHost and stack.iconRegion and stack.iconRegion.GetFrameLevel then
+        local okLvl, lvl = pcall(stack.iconRegion.GetFrameLevel, stack.iconRegion)
+        if okLvl and type(lvl) == "number" then
+            pcall(stack.iconTextHost.SetFrameLevel, stack.iconTextHost, lvl + 1)
+        end
     end
 
     -- Text styling — only when user has explicitly configured text settings

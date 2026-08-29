@@ -436,10 +436,12 @@ local function ApplyActionBarStyling(self)
             -- Restore Blizzard default art, remove custom borders
             if addon.Borders and addon.Borders.HideAll then addon.Borders.HideAll(btn) end
             toggleDefaultButtonArt(btn, true)
+            if btn.Count and not inCombat then addon.DemoteIconText(btn.Count) end
         elseif styleKey == "hidden" then
             -- Hide everything
             if addon.Borders and addon.Borders.HideAll then addon.Borders.HideAll(btn) end
             toggleDefaultButtonArt(btn, false)
+            if btn.Count and not inCombat then addon.DemoteIconText(btn.Count) end
         else
             -- Apply custom border
             if styleKey == "square" and addon.Borders and addon.Borders.ApplySquare then
@@ -497,6 +499,13 @@ local function ApplyActionBarStyling(self)
                 })
             end
             toggleDefaultButtonArt(btn, false)
+            -- Border art lands either on btn itself at OVERLAY 7, the ceiling, or on a
+            -- container above it (the Pet bar path at levelOffset = 5). Either way the
+            -- stack count has to sit on a frame above whatever got the art. Skipped in
+            -- combat with the rest of the reparenting work on these protected buttons.
+            if btn.Count and not inCombat then
+                addon.PromoteIconText(btn.Count, btn, btn.ScootSquareBorderContainer or btn)
+            end
         end
 
         do
@@ -527,7 +536,7 @@ local function ApplyActionBarStyling(self)
                 local size = tonumber(cfg.size) or 14
                 local style = cfg.style or "OUTLINE"
                 local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace or "FRIZQT__") or defaultFace
-                pcall(fs.SetDrawLayer, fs, "OVERLAY", 10)
+                pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
                 if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, style) else fs:SetFont(face, size, style) end
                 local c = cfg.color or {1,1,1,1}
                 if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1) end

@@ -36,7 +36,7 @@ end
 
 local function getOverlayHotkeyFS(overlay)
     if overlay.hotkeyText then return overlay.hotkeyText end
-    local fs = overlay:CreateFontString(nil, "OVERLAY", nil, 10)  -- sublevel 10, above borders at 7
+    local fs = overlay:CreateFontString(nil, "OVERLAY", nil, 7)  -- sublevel 7 is the ceiling; PromoteIconText moves it above the border
     fs:SetFontObject(GameFontNormalSmall)  -- default font so SetText() doesn't error before deferred styling
     fs:SetPoint("TOPRIGHT", overlay, "TOPRIGHT", -2, -2)
     fs:SetJustifyH("RIGHT")
@@ -292,7 +292,7 @@ local function ApplyExtraAbilitiesStyling(self)
         local oy = (cfg.offset and cfg.offset.y) or 0
         C_Timer.After(0, function()
             if not fs or fs:IsForbidden() then return end
-            pcall(fs.SetDrawLayer, fs, "OVERLAY", 10)
+            pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
             if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, style) else pcall(fs.SetFont, fs, face, size, style) end
             if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1) end
             if justify and fs.SetJustifyH then pcall(fs.SetJustifyH, fs, justify) end
@@ -361,6 +361,7 @@ local function ApplyExtraAbilitiesStyling(self)
                     addon.Borders.HideAll(overlay)
                 end
             end
+            if btn.Count then addon.DemoteIconText(btn.Count) end
         else
             local overlay = getButtonOverlay(btn)
             overlay:Show()
@@ -393,6 +394,15 @@ local function ApplyExtraAbilitiesStyling(self)
                     insetV = borderInsetV,
                     defaultThickness = (self.settings and self.settings.borderThickness and self.settings.borderThickness.default) or 1,
                 })
+            end
+            -- The overlay carrying the border sits at btn level + 5, so the button's own
+            -- charge count draws underneath it, and the overlay's hotkey text ties with
+            -- the border art at OVERLAY 7, the ceiling. Both move above the border.
+            if overlay.hotkeyText then
+                addon.PromoteIconText(overlay.hotkeyText, overlay, overlay)
+            end
+            if btn.Count then
+                addon.PromoteIconText(btn.Count, btn, overlay)
             end
         end
 

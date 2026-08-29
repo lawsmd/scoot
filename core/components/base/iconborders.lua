@@ -120,6 +120,88 @@ local function setIconBorderContainer(frame, container)
     end
 end
 
+--------------------------------------------------------------------------------
+-- Icon text hosts
+--------------------------------------------------------------------------------
+-- Border art lands on OVERLAY sublevel 7, and when ApplyIconBorderStyle is handed a
+-- Texture the art lands on a container frame at parent level + 5. Frame level outranks
+-- draw layer, so a stack count living on the icon's own frame cannot be lifted over the
+-- border by SetDrawLayer at any sublevel. Move it onto a frame we own, one level above
+-- whatever the border landed on, and hand it back when the border is switched off. Same
+-- shape as the cast bar text overlay in unitframes/cast/styling.lua.
+
+-- The frame level the border art for `target` actually ended up on.
+function addon.GetIconBorderLevel(target)
+    if not target then return nil end
+    local frame = getIconBorderContainer(target) or target
+    if not frame.GetFrameLevel then return nil end
+    local ok, level = pcall(frame.GetFrameLevel, frame)
+    if not ok or type(level) ~= "number" or issecretvalue(level) then return nil end
+    return level
+end
+
+-- One mouse-dead host per owner frame, re-levelled on every call: the border container
+-- is created lazily on the first ApplyIconBorderStyle pass, so a host built earlier has
+-- nothing to measure against yet.
+local function ensureIconTextHost(ownerFrame, borderTarget)
+    if not ownerFrame or not ownerFrame.GetFrameLevel then return nil end
+    local st = getState(ownerFrame)
+    if not st then return nil end
+    local host = st.ScootIconTextHost
+    if not host then
+        local ok, created = pcall(CreateFrame, "Frame", nil, ownerFrame)
+        if not ok or not created then return nil end
+        host = created
+        pcall(host.EnableMouse, host, false)
+        st.ScootIconTextHost = host
+    end
+    pcall(host.ClearAllPoints, host)
+    pcall(host.SetAllPoints, host, ownerFrame)
+    local borderLevel = addon.GetIconBorderLevel(borderTarget or ownerFrame)
+    if borderLevel then
+        pcall(host.SetFrameLevel, host, borderLevel + 1)
+    end
+    pcall(host.Show, host)
+    return host
+end
+addon.EnsureIconTextHost = ensureIconTextHost
+
+-- Reparents `fs` onto the host so it draws over the border. The original parent and draw
+-- layer are recorded on the first promote so DemoteIconText can put both back.
+function addon.PromoteIconText(fs, ownerFrame, borderTarget)
+    if not fs or not fs.SetParent then return nil end
+    local host = ensureIconTextHost(ownerFrame, borderTarget)
+    if not host then return nil end
+    local fsState = getState(fs)
+    if fsState and fsState.ScootTextOriginalParent == nil then
+        local okParent, parent = pcall(fs.GetParent, fs)
+        if okParent and parent then fsState.ScootTextOriginalParent = parent end
+        local okLayer, layer, sublevel = pcall(fs.GetDrawLayer, fs)
+        if okLayer and type(layer) == "string" then
+            fsState.ScootTextOriginalLayer = layer
+            fsState.ScootTextOriginalSublevel = tonumber(sublevel) or 0
+        end
+    end
+    pcall(fs.SetParent, fs, host)
+    pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
+    return host
+end
+
+-- Puts `fs` back where Blizzard had it. Safe to call when nothing was ever promoted.
+function addon.DemoteIconText(fs)
+    if not fs or not fs.SetParent then return end
+    local fsState = getState(fs)
+    local original = fsState and fsState.ScootTextOriginalParent
+    if not original then return end
+    pcall(fs.SetParent, fs, original)
+    if fsState.ScootTextOriginalLayer then
+        pcall(fs.SetDrawLayer, fs, fsState.ScootTextOriginalLayer, fsState.ScootTextOriginalSublevel or 0)
+        fsState.ScootTextOriginalLayer = nil
+        fsState.ScootTextOriginalSublevel = nil
+    end
+    fsState.ScootTextOriginalParent = nil
+end
+
 local function wipeTexture(tex)
     if not tex then return end
     tex:Hide()
