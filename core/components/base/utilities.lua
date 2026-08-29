@@ -100,21 +100,94 @@ function AuraIds.ExpandFromCDM(include, lookupSpellId)
     end
 end
 
+-- The walk above is not cheap: no early return, every category, one
+-- GetCooldownViewerCooldownInfo per entry in each. It used to run once per
+-- container build. It now also answers "could the engine's filter match this
+-- id" for every spell description, so the expansion is memoised per spell and
+-- the whole memo is dropped whenever the catalog itself can move. The
+-- invalidator lives here rather than in a component because both ScootAuras
+-- and the group-frame aura tracker read it and either module may be off.
+local expansionCache = {}
+local expansionVersion = 1
+
+--- Bumps the epoch and drops every memoised expansion.
+function AuraIds.InvalidateIncludeSets()
+    expansionCache = {}
+    expansionVersion = expansionVersion + 1
+end
+
+--- The current epoch, for callers memoising anything derived from an expansion
+-- (scootauras/missing.lua IdSet holds ids, range and provider verdicts).
+function AuraIds.GetVersion()
+    return expansionVersion
+end
+
+--- The memoised CDM alias set for one spell, as [spellId] = true. Read-only;
+-- a caller that needs a table of its own goes through BuildIncludeSet.
+function AuraIds.GetExpansion(spellId)
+    if type(spellId) ~= "number" then return nil end
+    local set = expansionCache[spellId]
+    if set then return set end
+    set = { [spellId] = true }
+    pcall(AuraIds.ExpandFromCDM, set, spellId)
+    expansionCache[spellId] = set
+    return set
+end
+
+--- True when `id` is one of the ids a filter built for `spellId` would match.
+-- Allocates nothing, so it is safe on a per-description path.
+function AuraIds.IncludesId(spellId, id)
+    if type(id) ~= "number" then return false end
+    if spellId == id then return true end
+    local set = AuraIds.GetExpansion(spellId)
+    return (set and set[id]) and true or false
+end
+
 --- Builds a fresh includeSpellIDs set for one tracked spell.
 --- @param spellId number
 --- @param extraIds table|nil array of additional IDs (linked registry variants)
 --- @return table set of [spellId] = true
 function AuraIds.BuildIncludeSet(spellId, extraIds)
+    -- A fresh table every call: the result goes straight to the engine as
+    -- candidateFilters.includeSpellIDs, and two live containers must never
+    -- share one. extraIds stays out of the memo for the same reason, since
+    -- only the group-frame tracker passes any.
     local include = {}
-    if spellId then include[spellId] = true end
+    local set = AuraIds.GetExpansion(spellId)
+    if set then
+        for id in pairs(set) do include[id] = true end
+    elseif spellId then
+        include[spellId] = true
+    end
     if type(extraIds) == "table" then
         for _, id in ipairs(extraIds) do
             if type(id) == "number" then include[id] = true end
         end
     end
-    pcall(AuraIds.ExpandFromCDM, include, spellId)
     return include
 end
+
+-- The catalog moves on these and nothing else.
+-- COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED is deliberately absent: it reports one
+-- spell being substituted, not the catalog changing, and invalidating there
+-- would drop the whole memo every time a player shifts form.
+local auraIdWatcher = CreateFrame("Frame")
+for _, event in ipairs({
+    "COOLDOWN_VIEWER_DATA_LOADED",
+    "COOLDOWN_VIEWER_TABLE_HOTFIXED",
+    "TRAIT_CONFIG_UPDATED",
+    "PLAYER_SPECIALIZATION_CHANGED",
+    "PLAYER_ENTERING_WORLD",
+}) do
+    pcall(auraIdWatcher.RegisterEvent, auraIdWatcher, event)
+end
+auraIdWatcher:SetScript("OnEvent", function(_, event, arg1)
+    -- PLAYER_SPECIALIZATION_CHANGED fires for party and raid members too.
+    if event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 and arg1 ~= "player" then
+        return
+    end
+    AuraIds.InvalidateIncludeSets()
+end)
 
 -- Combat watcher: defers FullPowerFrame reapplies to avoid taint during combat.
 local fullPowerFrameCombatWatcher = nil

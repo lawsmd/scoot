@@ -95,15 +95,19 @@ end
 -- entry, never early-return) was learned here: Flame Shock's CDM base is
 -- 470411, the debuff is 188389 and is only a linked ID on some entries.
 
+-- Returns the filters and the key that identifies them: the sorted id list,
+-- joined. The key is stamped on the entry at build so a later catalog move can
+-- be detected without recomputing anything in the acquire path.
 local function BuildCandidateFilters(tracker, trackerId)
     local include = addon.AuraIds.BuildIncludeSet(tracker.spellId)
+    local ids = {}
+    for id in pairs(include) do table.insert(ids, id) end
+    table.sort(ids)
+    local key = table.concat(ids, ",")
     if trackerId then
-        local ids = {}
-        for id in pairs(include) do table.insert(ids, id) end
-        table.sort(ids)
-        SetResult("filters.t" .. trackerId, table.concat(ids, ","))
+        SetResult("filters.t" .. trackerId, key)
     end
-    return { includeSpellIDs = include }
+    return { includeSpellIDs = include }, key
 end
 
 Engine._BuildCandidateFilters = BuildCandidateFilters
@@ -275,11 +279,18 @@ local function CreateEntry()
     return entry
 end
 
+-- filtersStale is a flag, never a recomputation. Rebuilding the include set
+-- here would walk the whole Cooldown Manager catalog on every acquire, and it
+-- would thrash: mid-spec-change the catalog is briefly empty, the expansion
+-- degenerates to the bare spell id, the key flips, a rebuild fires, the catalog
+-- settles and the key flips back. MarkStaleFilters does the comparison once per
+-- settle event instead.
 local function ContentMatches(entry, tracker)
     return entry.container ~= nil
         and entry.wiredSpellId == tracker.spellId
         and entry.wiredUnit == SAU.EngineUnitFor(tracker)
         and entry.wiredKind == tracker.kind
+        and not entry.filtersStale
 end
 
 -- Prefer a free entry whose parked container already matches the tracker's
@@ -372,12 +383,12 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
     state.elements = entry.elements
     entry.slotSeq = (entry.slotSeq or 0) + 1
     local slotKey = "scootAura" .. trackerId .. "_" .. entry.slotSeq
+    local filters, filterKey = BuildCandidateFilters(tracker, trackerId)
 
     if isMissing then
         -- No slot and no button: nothing inside the container is ever bound
         -- or drawn. The group's frames only feed the layout's size.
-        local gok, gerr = SAU.Missing.AddGateGroup(trackerId, tracker, entry, container,
-            BuildCandidateFilters(tracker, trackerId))
+        local gok, gerr = SAU.Missing.AddGateGroup(trackerId, tracker, entry, container, filters)
         if not gok then
             SetResult("build.t" .. trackerId, "group FAILED: " .. SafeToString(gerr))
             Record("group-fail", "t" .. trackerId)
@@ -388,7 +399,7 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
         SetResult("wire.t" .. trackerId, "gate group (no button)")
     else
         local slotOk, buttonOrErr = pcall(container.AddAuraSlot, container, slotKey, SAU.FilterForKind(tracker.kind), {
-            candidateFilters = BuildCandidateFilters(tracker, trackerId),
+            candidateFilters = filters,
             initializeFrame = function(button)
                 entry.button = button
                 local wok, werr = pcall(Engine.WireButton, trackerId, tracker, state, entry, button)
@@ -418,6 +429,8 @@ local function EnsureBuilt(trackerId, tracker, state, entry)
     entry.wiredSpellId = tracker.spellId
     entry.wiredUnit = engineUnit
     entry.wiredKind = tracker.kind
+    entry.wiredFilterKey = filterKey
+    entry.filtersStale = nil
     SetResult("build.t" .. trackerId, "ok (" .. (isMissing and ("group=" .. tostring(entry.gateGroupKey))
         or ("slot=" .. slotKey)) .. " unit=" .. tostring(tracker.unit)
         .. " engine=" .. tostring(engineUnit) .. ")")
@@ -525,6 +538,49 @@ function Engine.TryFlush(reason)
     if Engine.CanDoStructuralWork() then
         Engine.FlushPending(reason)
     end
+end
+
+local markStalePending = false
+
+--- Settle events only: recompute each live entry's filter key once, flag the
+-- ones whose Cooldown Manager expansion has actually moved, and let the normal
+-- gate rebuild them. A container used to keep the include set it was built
+-- with for its whole life, so a talent change left the engine matching the
+-- wrong ids with nothing to notice.
+--
+-- Deferred by a frame on purpose. The expansion memo is invalidated by its own
+-- event frame in base/utilities.lua, and two frames registered for one event
+-- have no defined order, so comparing in the handler could read the memo the
+-- settle event was meant to drop.
+function Engine.MarkStaleFilters(reason)
+    if markStalePending then return end
+    markStalePending = true
+    C_Timer.After(0, function()
+        markStalePending = false
+        local marked = {}
+        for trackerId, entry in pairs(byTracker) do
+            local tracker = SAU.GetTracker(trackerId)
+            if tracker and entry.container and entry.wiredFilterKey then
+                local _, key = BuildCandidateFilters(tracker, nil)
+                -- Never rebuild toward a degenerate key. An empty or partial
+                -- catalog expands to the bare spell id, and acting on that
+                -- would retire a good container only to rebuild it again once
+                -- the catalog settled.
+                local degenerate = key == tostring(tracker.spellId)
+                    and #entry.wiredFilterKey > #key
+                if key ~= entry.wiredFilterKey and not degenerate then
+                    entry.filtersStale = true
+                    table.insert(marked, trackerId)
+                end
+            end
+        end
+        SetResult("markstale", (reason or "?") .. ": " .. #marked)
+        -- ApplyAll rebuilds now when the structural window is open and queues
+        -- into pendingWire when it is not, so a respec mid-key lands on regen.
+        for _, trackerId in ipairs(marked) do
+            Engine.ApplyAll(trackerId)
+        end
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -654,6 +710,18 @@ function Engine.KickUnit(unitToken, reason)
                 SetResult("kick.t" .. trackerId, "FAILED (" .. (reason or "?") .. "): " .. SafeToString(err))
             end
         end
+    end
+end
+
+--- Resyncs one tracker's container. A container processes only while shown, so
+-- a tracker hidden by the combat gate has parsed nothing since it went dark;
+-- UpdateAllAuras is the same call KickUnit already makes in combat.
+function Engine.KickTracker(trackerId, reason)
+    local entry = byTracker[trackerId]
+    if not entry or not entry.container then return end
+    local ok, err = pcall(entry.container.UpdateAllAuras, entry.container)
+    if not ok then
+        SetResult("kick.t" .. trackerId, "FAILED (" .. (reason or "?") .. "): " .. SafeToString(err))
     end
 end
 
