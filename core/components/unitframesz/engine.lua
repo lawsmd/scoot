@@ -238,7 +238,9 @@ local function applyFonts(inst)
     applyOverrideFace(inst, inst.nameFS, currentNamePoint(inst), face, cfg.nameFace)
     addon.ApplyFontStyle(inst.powerFS, face, cfg.powerSize, cfg.style)
     addon.ApplyFontStyle(inst.altPowerFS, face, cfg.altPowerSize, cfg.style)
-    -- The '%' companion rides at half the number's size, min 1.
+    -- The '%' companions ride at half their number's size, min 1. Both power
+    -- rows have one: either can render as a percent (mana).
+    addon.ApplyFontStyle(inst.powerSymbolFS, face, math.max(1, cfg.powerSize * 0.5), cfg.style)
     addon.ApplyFontStyle(inst.altPowerSymbolFS, face, math.max(1, cfg.altPowerSize * 0.5), cfg.style)
     -- The absorb text shares the value row's settings outright:
     -- same size, same face override, same style. No keys of its own.
@@ -271,7 +273,7 @@ local function applyStretch(inst)
     local fx = cfg.stretch or 1
     local edgeOrigin = (cfg.align == "left") and "LEFT" or "RIGHT"
     for _, fs in ipairs({ inst.pctFS, inst.valFS, inst.symbolFS, inst.nameFS,
-        inst.powerFS, inst.altPowerFS, inst.altPowerSymbolFS, inst.absorbFS,
+        inst.powerFS, inst.powerSymbolFS, inst.altPowerFS, inst.altPowerSymbolFS, inst.absorbFS,
         inst.levelFS, inst.levelPrefixFS }) do
         if fs then
             -- Centered number rows stretch about their shared centerline; the name
@@ -575,13 +577,42 @@ local function anchorClassify(inst)
     anchorPowerFS(inst, tex, cfg.classifyLoc, shift, classifySeatY(cfg), 0, 0)
 end
 
+-- The width a '%' companion takes off a right-justified power row, so the
+-- SIGN lands on the alignment edge instead of poking past it. '%' is plain
+-- readable text, so the shared ruler measures it synchronously; the estimate
+-- only covers a missing ruler. Zero when the row is not a percent or the sign
+-- is off.
+local function powerSymbolReserve(inst, size, isPct)
+    local cfg = inst.cfg
+    if not (cfg.powerSymbol and isPct) then return 0 end
+    local symSize = math.max(1, size * 0.5)
+    local w
+    if addon.MeasureTextWidth then
+        w = addon.MeasureTextWidth("%", addon.ResolveFontFace(cfg.face), symSize, cfg.style)
+    end
+    if type(w) ~= "number" or w <= 0 then w = symSize * 0.9 end
+    return w
+end
+
+-- The sign always hangs off its number's trailing edge, superscript
+-- top-aligned (the health row's symbol treatment). Anchor resolution is
+-- engine-side, so the number's secret rendered width is never read; the sign
+-- only draws when updatePower gave it text.
+local function anchorPowerSymbol(symFS, numFS)
+    if not symFS then return end
+    symFS:ClearAllPoints()
+    symFS:SetPoint("TOPLEFT", numFS, "TOPRIGHT", 0, 0)
+end
+
 -- Separate from applyLayout so the loc/offset setters can re-anchor the power
 -- texts alone -- applyLayout restarts the stretch animations (see probeDigits),
 -- churn a positioning nudge does not need.
 local function applyPowerLayout(inst)
     if not inst.frame then return end
     local cfg = inst.cfg
-    anchorPowerFS(inst, inst.powerFS, cfg.powerLoc, cfg.powerX, cfg.powerY, 0)
+    anchorPowerFS(inst, inst.powerFS, cfg.powerLoc, cfg.powerX, cfg.powerY,
+        powerSymbolReserve(inst, cfg.powerSize, inst.powerIsPct))
+    anchorPowerSymbol(inst.powerSymbolFS, inst.powerFS)
     -- The level pair rides the same location system. The "lvl"
     -- prefix leads the number, so left-justified locations reserve its width
     -- plus the sub-space gap (leadW, the trailW mirror). "lvl" is plain
@@ -605,28 +636,9 @@ local function applyPowerLayout(inst)
         pre:SetPoint("BOTTOMRIGHT", inst.levelFS, "BOTTOMLEFT", -lvlGap,
             (cfg.levelSize - lvlPrefixSize) * cfg.descent)
     end
-    -- When the alt text is a percent with the sign enabled, right-justified
-    -- locations reserve the sign's width. '%' is plain readable text, so the
-    -- shared ruler measures it synchronously; the estimate only covers a
-    -- missing ruler.
-    local trailW = 0
-    if cfg.powerSymbol and inst.altPowerIsPct then
-        local symSize = math.max(1, cfg.altPowerSize * 0.5)
-        if addon.MeasureTextWidth then
-            trailW = addon.MeasureTextWidth("%", addon.ResolveFontFace(cfg.face), symSize, cfg.style)
-        end
-        if type(trailW) ~= "number" or trailW <= 0 then trailW = symSize * 0.9 end
-    end
-    anchorPowerFS(inst, inst.altPowerFS, cfg.altPowerLoc, cfg.altPowerX, cfg.altPowerY, trailW)
-    -- The sign always hangs off the number's trailing edge, superscript
-    -- top-aligned (the health row's symbol treatment). Anchor resolution is
-    -- engine-side, so the number's secret rendered width is never read; the
-    -- sign only draws when updatePower gave it text.
-    local sym = inst.altPowerSymbolFS
-    if sym then
-        sym:ClearAllPoints()
-        sym:SetPoint("TOPLEFT", inst.altPowerFS, "TOPRIGHT", 0, 0)
-    end
+    anchorPowerFS(inst, inst.altPowerFS, cfg.altPowerLoc, cfg.altPowerX, cfg.altPowerY,
+        powerSymbolReserve(inst, cfg.altPowerSize, inst.altPowerIsPct))
+    anchorPowerSymbol(inst.altPowerSymbolFS, inst.altPowerFS)
     -- The classification icon rides the same five locations as the texts it
     -- sits among -- name-relative, not frame-edge. No
     -- trailW/leadW: a texture has no companion glyph.
@@ -1499,8 +1511,10 @@ end
 -- The power texts: primary + alternate resource, flat values through the exact
 -- value-row chain (UnitPower is only conditionally secret, but the chain never
 -- needs it readable -- AbbreviateNumbers is secret-whitelisted); the one
--- exception is alt MANA, which renders as a percent via UnitPowerPercent
--- (user round 3 -- a flat mana pool number is meaningless). Alternate
+-- exception is MANA on EITHER row, which renders as a percent via
+-- UnitPowerPercent (user round 3 -- a flat mana pool number is
+-- meaningless -- extended to the primary 2026-08-22, where a healer's mana
+-- lives). Alternate
 -- power IS UnitPower(unit, secondary type): Blizzard's readable global
 -- GetUnitSecondaryPowerInfo maps class + primary type to the secondary bar
 -- (DRUID/PRIEST/SHAMAN -> MANA, TRAVELER -> ENERGY); two plain returns
@@ -1543,13 +1557,60 @@ local function paintPowerValue(inst, fs, lastKey, getterOk, value, getterName)
     return false
 end
 
+-- Is the unit's CURRENT primary resource mana? UnitPowerType is readable (no
+-- secret annotation) but MayReturnNothing, and mana is power type 0, so the
+-- file's guard order applies in full: type -> issecretvalue -> compare.
+local function primaryIsMana(unit)
+    local ok, pt = pcall(UnitPowerType, unit)
+    if not ok or type(pt) ~= "number" then return false end
+    if issecretvalue and issecretvalue(pt) then return false end
+    return pt == 0
+end
+
+-- The percent chain both power rows share. Same shape as the health percent
+-- row: UnitPowerPercent is the documented power analog (secret-tolerant, takes
+-- the shared 0->0/1->100 curve) and the C_StringUtil formatter honors
+-- cfg.round. The '%' sign is its own half-size FontString (cfg.powerSymbol
+-- toggles it), never part of the number's string. The caller has already
+-- ClearText'd both; returns the verdict for last[lastKey].
+local function paintPowerPercent(inst, fs, symFS, powerType)
+    local cfg = inst.cfg
+    local curve = ensurePctCurve()
+    if not (curve and _G.UnitPowerPercent and _G.C_StringUtil) then
+        return "percent API missing (C_CurveUtil / UnitPowerPercent / C_StringUtil)"
+    end
+    local okP, num = pcall(UnitPowerPercent, inst.unit, powerType, false, curve)
+    if not okP or type(num) ~= "number" then
+        return okP and ("UnitPowerPercent returned " .. type(num))
+            or ("UnitPowerPercent error: " .. tostring(num))
+    end
+    local fmt = (cfg.round == "round") and C_StringUtil.RoundToNearestString
+        or C_StringUtil.FloorToNearestString
+    if not fmt then return "C_StringUtil formatter missing" end
+    local okF, str = pcall(fmt, num)
+    if not (okF and type(str) == "string") then
+        return okF and ("formatter returned " .. type(str))
+            or ("formatter error: " .. tostring(str))
+    end
+    if not pcall(fs.SetText, fs, str) then return "SetText failed" end
+    if cfg.powerSymbol and symFS then
+        pcall(symFS.SetText, symFS, "%")
+    end
+    return cfg.powerSymbol and "ok (mana %)" or "ok (mana %, sign off)"
+end
+
 local function updatePower(inst)
     local cfg, last = inst.cfg, inst.last
     if not abbrevBuildTried then rebuildAbbrevConfig() end
 
     -- Primary. ClearText first, always: a failed chain or a gate must show an
     -- empty row, and ClearText is the only call that releases the Text aspect.
+    -- The '%' companion clears with it and is re-set only by a successful
+    -- percent paint.
     if inst.powerFS.ClearText then inst.powerFS:ClearText() end
+    if inst.powerSymbolFS and inst.powerSymbolFS.ClearText then inst.powerSymbolFS:ClearText() end
+    local wasPrimaryPct = inst.powerIsPct
+    inst.powerIsPct = false
     if not cfg.powerShow then
         last.power = "off"
     else
@@ -1565,8 +1626,16 @@ local function updatePower(inst)
             last.power = "max 0 (no resource)"
         end
         if not gated then
-            local okP, pv = pcall(UnitPower, inst.unit)  -- no type arg = current primary
-            paintPowerValue(inst, inst.powerFS, "power", okP, pv)
+            if primaryIsMana(inst.unit) then
+                -- A healer's own mana: the pool number says nothing at a
+                -- glance, so the primary reads as a percent too (same rule the
+                -- alternate row has followed since round 3).
+                inst.powerIsPct = true
+                last.power = paintPowerPercent(inst, inst.powerFS, inst.powerSymbolFS, 0)
+            else
+                local okP, pv = pcall(UnitPower, inst.unit)  -- no type arg = current primary
+                paintPowerValue(inst, inst.powerFS, "power", okP, pv)
+            end
         end
     end
 
@@ -1592,42 +1661,10 @@ local function updatePower(inst)
             last.altPower = "no alt bar"
         elseif altName == "MANA" then
             -- Alt mana reads as a PERCENT (user round 3): a flat mana pool
-            -- number is meaningless at a glance. Same shape as the health
-            -- percent row -- UnitPowerPercent is the documented power analog
-            -- (secret-tolerant, takes the shared 0->0/1->100 curve), the
-            -- C_StringUtil formatter honors cfg.round. The '%' sign is its own
-            -- half-size FontString (cfg.powerSymbol toggles it), never part of
-            -- the number's string.
+            -- number is meaningless at a glance.
             inst.altPowerName = altName   -- color cache for applyPowerColor
             inst.altPowerIsPct = true
-            local curve = ensurePctCurve()
-            if curve and _G.UnitPowerPercent and _G.C_StringUtil then
-                local okP, num = pcall(UnitPowerPercent, inst.unit, altType, false, curve)
-                if okP and type(num) == "number" then
-                    local fmt = (cfg.round == "round") and C_StringUtil.RoundToNearestString
-                        or C_StringUtil.FloorToNearestString
-                    local ok2, str = false, nil
-                    if fmt then ok2, str = pcall(fmt, num) end
-                    if ok2 and type(str) == "string" then
-                        local ok3 = pcall(inst.altPowerFS.SetText, inst.altPowerFS, str)
-                        if ok3 and cfg.powerSymbol and inst.altPowerSymbolFS then
-                            pcall(inst.altPowerSymbolFS.SetText, inst.altPowerSymbolFS, "%")
-                        end
-                        last.altPower = ok3
-                            and (cfg.powerSymbol and "ok (mana %)" or "ok (mana %, sign off)")
-                            or "SetText failed"
-                    else
-                        last.altPower = fmt and (ok2 and ("formatter returned " .. type(str))
-                            or ("formatter error: " .. tostring(str)))
-                            or "C_StringUtil formatter missing"
-                    end
-                else
-                    last.altPower = okP and ("UnitPowerPercent returned " .. type(num))
-                        or ("UnitPowerPercent error: " .. tostring(num))
-                end
-            else
-                last.altPower = "percent API missing (C_CurveUtil / UnitPowerPercent / C_StringUtil)"
-            end
+            last.altPower = paintPowerPercent(inst, inst.altPowerFS, inst.altPowerSymbolFS, altType)
         else
             inst.altPowerName = altName   -- color cache for applyPowerColor
             local okP, pv = pcall(UnitPower, inst.unit, altType)
@@ -1635,9 +1672,12 @@ local function updatePower(inst)
         end
     end
 
-    -- Percent-ness flipped (spec swap, unit change): the sign reserve baked
-    -- into the right-justified anchors is stale -- re-anchor once.
-    if inst.altPowerIsPct ~= wasPct then applyPowerLayout(inst) end
+    -- Percent-ness flipped on either row (spec swap, shapeshift, unit change):
+    -- the sign reserve baked into the right-justified anchors is stale --
+    -- re-anchor once, both rows together.
+    if inst.altPowerIsPct ~= wasPct or inst.powerIsPct ~= wasPrimaryPct then
+        applyPowerLayout(inst)
+    end
 end
 
 local function applyPowerColor(inst)
@@ -1645,19 +1685,21 @@ local function applyPowerColor(inst)
     if cfg.powerColorMode == "custom" then
         pcall(inst.powerFS.SetTextColor, inst.powerFS,
             cfg.powerColorR, cfg.powerColorG, cfg.powerColorB, cfg.powerColorA)
+        pcall(inst.powerSymbolFS.SetTextColor, inst.powerSymbolFS,
+            cfg.powerColorR, cfg.powerColorG, cfg.powerColorB, cfg.powerColorA)
         inst.last.powerColor = "custom"
     else
         local r, g, b = addon.GetPowerColorRGB(inst.unit)
         local tag = "power"
-        -- UnitPowerType is readable (no secret annotation) but MayReturnNothing;
-        -- re-resolved every pass, never cached. Mana gets the same +0.25 lighten
-        -- the UFX classPower text mode uses -- the bar blue is too dark for text.
-        local okT, pt = pcall(UnitPowerType, inst.unit)
-        if okT and type(pt) == "number" and pt == 0 then
+        -- Mana gets the same +0.25 lighten the UFX classPower text mode uses --
+        -- the bar blue is too dark for text. Re-resolved every pass through
+        -- primaryIsMana, never cached (UnitPowerType MayReturnNothing).
+        if primaryIsMana(inst.unit) then
             r, g, b = addon.LightenColor(r, g, b, 0.25)
             tag = "power (mana +0.25)"
         end
         pcall(inst.powerFS.SetTextColor, inst.powerFS, r, g, b, 1)
+        pcall(inst.powerSymbolFS.SetTextColor, inst.powerSymbolFS, r, g, b, 1)
         inst.last.powerColor = tag
     end
     if cfg.altPowerColorMode == "custom" then
@@ -2084,10 +2126,10 @@ end
 -- Alpha, never Hide: Show/Hide on these belongs to updateClassification and
 -- applyLayout, and a hold must not fight the state they own. Nothing else in
 -- the file writes alpha on any of them (inst.symbolFS, which update() does
--- drive by alpha, is the percent's '%', not altPowerSymbolFS).
+-- drive by alpha, is the health percent's '%', not the power rows' companions).
 local function satelliteAlpha(inst, a)
-    for _, region in ipairs({ inst.powerFS, inst.altPowerFS, inst.altPowerSymbolFS,
-        inst.levelFS, inst.levelPrefixFS, inst.classifyTex }) do
+    for _, region in ipairs({ inst.powerFS, inst.powerSymbolFS, inst.altPowerFS,
+        inst.altPowerSymbolFS, inst.levelFS, inst.levelPrefixFS, inst.classifyTex }) do
         if region then region:SetAlpha(a) end
     end
 end
@@ -2508,6 +2550,7 @@ local function update(inst)
         if pctFS.ClearText then pctFS:ClearText() end
         if valFS.ClearText then valFS:ClearText() end
         if inst.powerFS.ClearText then inst.powerFS:ClearText() end
+        if inst.powerSymbolFS and inst.powerSymbolFS.ClearText then inst.powerSymbolFS:ClearText() end
         if inst.altPowerFS.ClearText then inst.altPowerFS:ClearText() end
         if inst.altPowerSymbolFS and inst.altPowerSymbolFS.ClearText then inst.altPowerSymbolFS:ClearText() end
         if inst.absorbFS and inst.absorbFS.ClearText then inst.absorbFS:ClearText() end
@@ -2937,6 +2980,7 @@ local function ensureFrame(inst)
     inst.symbolFS = frame:CreateFontString(nil, "OVERLAY")
     inst.nameFS = frame:CreateFontString(nil, "OVERLAY")
     inst.powerFS = frame:CreateFontString(nil, "OVERLAY")
+    inst.powerSymbolFS = frame:CreateFontString(nil, "OVERLAY")
     inst.altPowerFS = frame:CreateFontString(nil, "OVERLAY")
     inst.altPowerSymbolFS = frame:CreateFontString(nil, "OVERLAY")
     -- The absorb text: fixed white (spec), set once -- applyColor never touches
@@ -3605,7 +3649,7 @@ local function setPowerShowImpl(inst, which, state)
 end
 
 -- One shared toggle, not per-power: it governs the '%' companion on every
--- power text that renders as a percent (alt mana today).
+-- power text that renders as a percent (mana, primary or alternate).
 local function setPowerSymbolImpl(inst, state)
     ensureApplied(inst)
     state = tostring(state or ""):lower()
@@ -4020,7 +4064,7 @@ local function newInstance(row, cfg)
         frame = nil,
         chromeBG = nil,
         pctFS = nil, valFS = nil, symbolFS = nil, nameFS = nil, rulerFS = nil,
-        powerFS = nil, altPowerFS = nil, altPowerSymbolFS = nil,
+        powerFS = nil, powerSymbolFS = nil, altPowerFS = nil, altPowerSymbolFS = nil,
         -- 12.1 ping: the receiver and the name-row carve-out inside it.
         pingReceiver = nil, pingNameBox = nil,
         appliedPingRect = nil, appliedPingName = nil,
@@ -4036,8 +4080,9 @@ local function newInstance(row, cfg)
         -- The alternate power's token ("MANA"/"ENERGY"), written by updatePower
         -- and read by applyPowerColor. Readable string, never a secret.
         altPowerName = nil,
-        -- Whether the alt text currently renders as a percent (alt mana);
-        -- drives the '%' companion and its right-edge anchor reserve.
+        -- Whether each power text currently renders as a percent (mana, either
+        -- row); drives the '%' companion and its right-edge anchor reserve.
+        powerIsPct = false,
         altPowerIsPct = false,
         -- Digit-mode probe state. lastDigitCount is the cache the feature pivots
         -- on: nil until the oracle answers, then 1-3.
@@ -4350,6 +4395,10 @@ function UFZ._ShowEditModePreview(inst)
         inst.powerFS:SetTextColor(0.35, 0.55, 1.0, 1)
         inst.altPowerFS:SetText("100")
         inst.altPowerFS:SetTextColor(0.55, 0.65, 1.0, 1)
+        -- Both samples are flat numbers, so a '%' left over from the last live
+        -- mana paint would contradict them.
+        if inst.powerSymbolFS and inst.powerSymbolFS.ClearText then inst.powerSymbolFS:ClearText() end
+        if inst.altPowerSymbolFS and inst.altPowerSymbolFS.ClearText then inst.altPowerSymbolFS:ClearText() end
 
         -- The name and the level both go through the normal chains, which
         -- previewStandIn has just routed to their stand-in paints: the name

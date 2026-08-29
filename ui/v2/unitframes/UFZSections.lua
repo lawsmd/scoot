@@ -352,7 +352,7 @@ local function AddUnitSection(builder, opts)
                         })
                         tabInner:AddToggle({
                             label = "Percent Sign",
-                            description = "The small % on percent-rendered resources (alternate mana). Drawn at half the number's size.",
+                            description = "The small % on percent-rendered resources (mana, primary or alternate). Drawn at half the number's size.",
                             get = function() return htCfg().powerSymbol and true or false end,
                             set = function(v) call("SetPowerSymbol", v and "on" or "off") end,
                         })

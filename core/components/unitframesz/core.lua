@@ -181,7 +181,7 @@ local UNIT_DEFAULTS_SHARED = {
     altPowerColorG    = 1,
     altPowerColorB    = 1,
     altPowerColorA    = 1,
-    -- The small '%' companion on percent-rendered power (alt mana today).
+    -- The small '%' companion on percent-rendered power (mana, either row).
     powerSymbol       = true,
     -- Absorb shield text: shares the value row's font settings by design; the
     -- halo look is fixed constants in the engine. Hide-at-zero is ALWAYS ON.
