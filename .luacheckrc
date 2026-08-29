@@ -81,6 +81,9 @@ read_globals = {
 
     -- WoW frame methods/mixins (accessed as globals in some patterns)
     "BackdropTemplateMixin",
+    "Mixin",
+    -- 12.1 ping receivers: used VERBATIM on unit frames, never overridden
+    "PingableType_UnitFrameMixin",
     "GameTooltip",
     "PlayerFrame",
     "TargetFrame",
@@ -103,6 +106,7 @@ read_globals = {
     "C_ClassColor",
     "C_CooldownViewer",
     "C_Covenants",
+    "C_CVar",
     "C_DamageMeter",
     "C_DeathRecap",
     "C_PaperDollInfo",

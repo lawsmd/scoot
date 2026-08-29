@@ -53,6 +53,9 @@ end
 local function RefreshSpellCooldown(icon)
     if not icon.entry or icon.entry.type ~= "spell" then return nil end
     local spellID = ResolveSpellID(icon.entry.id)
+    -- The ping callout announces the cooldown this icon displays, so it reads the
+    -- resolved override rather than the base (customgroups/icons.lua CG_PING).
+    icon._pingSpellID = spellID
     icon._chargeDesatHandled = nil
 
     -- Refresh texture to match current override state

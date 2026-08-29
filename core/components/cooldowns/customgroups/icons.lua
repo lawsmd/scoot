@@ -17,6 +17,57 @@ local activeIcons = CG._activeIcons
 local ICON_TEXCOORD_INSET = 0.07  -- crop outer ~7% to hide baked-in border art
 
 --------------------------------------------------------------------------------
+-- Ping receiver (12.1)
+--------------------------------------------------------------------------------
+-- 12.1 lets a player ping an ability to call out "ready" or its remaining
+-- cooldown (Enum.PingSubjectType gained ActionReady, ActionOnCooldown,
+-- ActionUnavailable and ActionNotReady). Blizzard opted its own Essential and
+-- Utility cooldown items in through PingableCooldownViewerItemTemplate; custom
+-- group icons are addon-owned, so they have to opt themselves in.
+--
+-- The contract: carry the "ping-receiver" attribute so the C-side hit test in
+-- C_PingSecure.GetTargetPingReceiver finds the icon, then answer the three mixin
+-- methods PingManager calls on whatever it found. Scoot cannot send the ping
+-- itself; C_PingSecure is SecureOnly.
+--
+-- Writing our own mixin here is safe in a way it is NOT on a unit frame. A unit
+-- ping carries a GUID that goes secret under identity restrictions, and addon Lua
+-- in that gather breaks the securecopy at the secure boundary (see the purity
+-- rule in unitframesz/engine.lua). A spell or item ping carries plain numbers, so
+-- there is nothing secret to fail on.
+--
+-- GetIsPingable returning false does NOT pass the ping through: PingManager reads
+-- a found-but-unpingable frame as blocking UI and fails the ping outright. That is
+-- why a pooled icon has its attribute CLEARED rather than being left to answer
+-- false, which is what Blizzard does with empty action buttons.
+local CG_PING = {}
+
+function CG_PING:GetIsPingable()
+    local entry = self.entry
+    return entry ~= nil and (entry.type == "spell" or entry.type == "item")
+end
+
+-- Contextual pings only, matching Blizzard's cooldown item and action button.
+function CG_PING:GetAllowRadialWheel()
+    return false
+end
+
+function CG_PING:GetTargetInfo()
+    local entry = self.entry
+    if not entry then return {} end
+    if entry.type == "item" then
+        -- Blizzard's cooldown item prefers a spellCategoryID for health items, so
+        -- its ping means "a health potion". A custom group entry is one specific
+        -- item, so it pings that item.
+        return { itemID = entry.id }
+    end
+    -- The override, not the base: _pingSpellID is stamped by the cooldown refresh
+    -- from the same ResolveSpellID the swipe is driven by, so the callout matches
+    -- what the icon is showing for a spell that transforms when cast.
+    return { spellID = self._pingSpellID or entry.id }
+end
+
+--------------------------------------------------------------------------------
 -- Icon Creation
 --------------------------------------------------------------------------------
 
@@ -88,6 +139,9 @@ local function CreateIconFrame(parent)
         GameTooltip:Hide()
     end)
 
+    Mixin(icon, CG_PING)
+    icon:SetAttribute("ping-receiver", true)
+
     CG.EnsureIconBorderTextures(icon)
 
     return icon
@@ -106,6 +160,8 @@ function CG._AcquireIcon(groupIndex, parent)
         icon:SetParent(parent)
     end
     icon:EnableMouse(true)
+    -- Back in play as a ping target. Plain frame, so the write is legal in combat.
+    icon:SetAttribute("ping-receiver", true)
     icon:Show()
     return icon
 end
@@ -135,6 +191,10 @@ local function ReleaseIcon(groupIndex, icon)
         addon.ClearIconMask(icon.Icon)
     end
     icon:SetScript("OnUpdate", nil)
+    -- Cleared rather than left to answer false: an unpingable receiver BLOCKS the
+    -- ping instead of passing it through.
+    icon:ClearAttribute("ping-receiver")
+    icon._pingSpellID = nil
     icon.entry = nil
     icon.entryIndex = nil
     icon._groupIndex = nil

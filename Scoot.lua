@@ -178,6 +178,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug scootauras [add|del|edit|enable|disable|list|reconcile|flush|methods|create|park|revive|fresh|repoint|parkfilter|setunit|budget|clear|log]")
             addon:Print("  /scoot debug ufzauras [log|apply|kick]   (Unit Frames Z aura rows)")
             addon:Print("  /scoot debug gfauras [log|filters|refresh]  (group frame aura tracking)")
+            addon:Print("  /scoot debug ping [seconds]              (12.1 ping receiver readiness)")
             return
         end
 
@@ -609,6 +610,17 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugGroupAuras(sub2)
             else
                 addon:Print("Group frame aura debug not available.")
+            end
+            return
+        end
+
+        -- /scoot debug ping [seconds]
+        -- 12.1 ping-receiver readiness on Scoot-owned frames
+        if sub1 == "ping" then
+            if addon.DebugPing then
+                addon.DebugPing(sub2)
+            else
+                addon:Print("Ping probe not available.")
             end
             return
         end
