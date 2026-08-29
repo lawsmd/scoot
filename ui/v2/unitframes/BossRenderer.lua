@@ -625,7 +625,7 @@ function UF.RenderBoss(panel, scrollContent)
                             },
                             order = {"default", "leftOfFrame", "centeredUnderPower", "underBossName"},
                             get = function() local t = getCastBarDB() or {}; return t.anchorMode or "default" end,
-                            set = function(v) local t = ensureCastBarDB(); if t then t.anchorMode = v; applyCastBar() end end,
+                            set = function(v) local t = ensureCastBarDB(); if t then t.anchorMode = v; if addon.MarkBossCastBarOnSideDirty then addon.MarkBossCastBarOnSideDirty() end; applyCastBar() end end,
                         })
                         tabInner:AddDualSlider({
                             label = "Offset",

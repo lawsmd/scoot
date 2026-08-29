@@ -37,6 +37,16 @@ do
 	local bossActiveAnchorModes = {}
 	local bossPendingReapply = {}
 
+	-- CastBarOnSide is pushed to Edit Mode only when the user changes the anchor mode
+	-- through the Scoot UI (consume-once marker, set by the Boss renderer). A passive
+	-- value comparison at styling time cannot tell a user change from a stale local
+	-- profile copy at a cross-machine login, and Edit Mode owns the layout, so styling
+	-- passes never write on their own.
+	local bossCastOnSideDirty = false
+	function addon.MarkBossCastBarOnSideDirty()
+		bossCastOnSideDirty = true
+	end
+
 	-- Track Boss indices that were reanchored during combat and need a full re-apply after combat ends
 	local pendingBossPostCombatRefresh = {}
 
@@ -238,8 +248,11 @@ do
 						local ok, v = pcall(addon.EditMode.GetSetting, bossSystemFrame, settingId)
 						if ok and v then currentVal = v end
 					end
-					if currentVal ~= desiredOnSide and addon.EditMode.WriteSetting then
-						addon.EditMode.WriteSetting(bossSystemFrame, settingId, desiredOnSide)
+					if bossCastOnSideDirty then
+						bossCastOnSideDirty = false
+						if currentVal ~= desiredOnSide and addon.EditMode.WriteSetting then
+							addon.EditMode.WriteSetting(bossSystemFrame, settingId, desiredOnSide)
+						end
 					end
 				end
 			end

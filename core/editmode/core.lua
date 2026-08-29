@@ -687,6 +687,21 @@ end
 -- Primary "apply settings visually" entry point for Scoot writes.
 -- Debug logging: Enable with `/run Scoot._dbgEditMode = true` to trace save calls.
 --
+-- Scoot-authored Edit Mode writes are only valid when the active AceDB profile and the
+-- active Edit Mode layout agree (they are keyed 1:1 by name). They disagree in exactly
+-- two situations: a cross-machine login where the account-synced layout differs from
+-- this machine's last-used profile, and the post-reload window where the C API still
+-- reports the previous session's layout. In both, a write would land data from one
+-- profile in another profile's layout, so callers skip. Skipped syncs are retried by
+-- the SaveLayouts 3-pass hook once RefreshFromEditMode aligns profile and layout.
+function addon.EditMode.ProfileMatchesActiveLayout()
+    if not (LEO and LEO.AreLayoutsLoaded and LEO:AreLayoutsLoaded()) then return false end
+    local ok, layoutName = pcall(LEO.GetActiveLayout, LEO)
+    if not ok or type(layoutName) ~= "string" then return false end
+    local prof = addon.db and addon.db.GetCurrentProfile and addon.db:GetCurrentProfile()
+    return prof == layoutName
+end
+
 -- IMPORTANT: The visual refresh depends on LEO:SaveOnly() calling SetActiveLayout in a
 -- deferred context. If settings save but don't apply visually, check:
 -- 1. That LEO:SaveOnly() is being called (not suppressed)
@@ -699,6 +714,10 @@ function addon.EditMode.SaveOnly()
     end
     if _ShouldSuppressWrites() then
         if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SaveOnly]|r Suppressed by _ShouldSuppressWrites") end
+        return
+    end
+    if not addon.EditMode.ProfileMatchesActiveLayout() then
+        if addon._dbgEditMode then addon.DebugPrint("|cFFFF6600[EM.SaveOnly]|r Skipped: profile ~= active layout") end
         return
     end
     if addon._dbgEditMode then addon.DebugPrint("|cFF00FF00[EM.SaveOnly]|r Calling LEO:SaveOnly()") end
@@ -765,6 +784,14 @@ function addon.EditMode.WriteSetting(frame, settingId, value, opts)
     if not addon.EditMode or not addon.EditMode.SetSetting then return end
 
     opts = opts or {}
+
+    -- Refuse writes while the AceDB profile and the active Edit Mode layout disagree
+    -- (cross-machine login, post-reload stale window). Checked before the combat queue
+    -- so a doomed write is never queued for post-combat replay.
+    if not opts.allowLayoutMismatch and not addon.EditMode.ProfileMatchesActiveLayout() then
+        if addon._dbgEditMode then addon.DebugPrint("|cFFFF6600[EM.WriteSetting]|r Skipped: profile ~= active layout") end
+        return
+    end
 
     -- DEPRECATION WARNING: 'updaters' causes taint by calling methods on system frames.
     -- Visual updates happen via deferred SetActiveLayout() in SaveOnly().

@@ -323,10 +323,12 @@ function lib:LoadLayouts()
   layoutInfo.layouts = tmp
 end
 
--- SaveOnly: Persist layouts and trigger visual refresh via deferred SetActiveLayout.
+-- SaveOnly: Persist the active layout and trigger visual refresh via deferred SetActiveLayout.
 --
 -- This function is CRITICAL for Edit Mode visual updates. The flow is:
--- 1. C_EditMode.SaveLayouts(layoutInfo) - persists settings to C-side storage
+-- 1. C_EditMode.SaveLayouts(payload) - persists to C-side storage. The payload is a
+--    fresh C_EditMode.GetLayouts() with only the ACTIVE layout's entry replaced by the
+--    cached (edited) copy, so a save can never rewrite other layouts from this cache.
 -- 2. C_Timer.After(0, ...) - defers SetActiveLayout to next frame (clean context)
 -- 3. C_EditMode.SetActiveLayout(activeLayout) - triggers Blizzard's visual rebuild
 --
@@ -346,13 +348,93 @@ function lib:SaveOnly()
     print("|cFF00FF00[LEO:SaveOnly]|r Called")
   end
 
-  C_EditMode.SaveLayouts(layoutInfo)
+  -- Scoped save (Scoot modification, August 2026): only the active layout's entry may
+  -- carry local edits. Every other layout is written back exactly as the persisted store
+  -- holds it, taken from a fresh C_EditMode.GetLayouts() call. Edit Mode layouts sync
+  -- across machines through the account; the old full-cache save re-persisted ALL
+  -- layouts from this client's cache on every settings change, letting one machine
+  -- rewrite layouts that belong to sessions on other machines.
+  --
+  -- Index spaces: GetLayouts().layouts contains only saved Account/Character layouts,
+  -- while .activeLayout indexes the presets-prepended space (presets occupy slots
+  -- 1..NumValues). LEO's cache mirrors the prepended shape via LoadLayouts.
+  -- C_EditMode.SaveLayouts accepts either shape; the C side filters preset entries.
+  local presetCount = (Enum.EditModePresetLayoutsMeta and Enum.EditModePresetLayoutsMeta.NumValues) or 2
+  local cachedActive = layoutInfo.layouts[layoutInfo.activeLayout]
+  local fresh = C_EditMode.GetLayouts()
+  if not (fresh and fresh.layouts and cachedActive) then
+    lib._scopedSaveSkips = (lib._scopedSaveSkips or 0) + 1
+    if dbgEM then
+      print("|cFFFF0000[LEO:SaveOnly]|r SKIPPING save - no fresh layout data or no cached active entry")
+    end
+    reconciledLayouts = true
+    return
+  end
+
+  local newActiveIndex
+  if cachedActive.layoutType == Enum.EditModeLayoutType.Preset then
+    -- Preset active: presets are immutable, nothing to swap. Persist the fresh data
+    -- unchanged with the preset slot as the active index.
+    newActiveIndex = layoutInfo.activeLayout
+  else
+    -- Locate the active layout in the fresh data by name + type; try the positional
+    -- candidate first, fall back to a unique name scan.
+    local pos = layoutInfo.activeLayout - presetCount
+    local freshIdx
+    local cand = fresh.layouts[pos]
+    if cand and cand.layoutName == cachedActive.layoutName and cand.layoutType == cachedActive.layoutType then
+      freshIdx = pos
+    else
+      local matches = 0
+      for i, l in ipairs(fresh.layouts) do
+        if l.layoutName == cachedActive.layoutName and l.layoutType == cachedActive.layoutType then
+          matches = matches + 1
+          freshIdx = i
+        end
+      end
+      if matches ~= 1 then freshIdx = nil end
+    end
+    if not freshIdx then
+      -- Ambiguous or missing in the persisted store: writing anything here could land
+      -- edits in the wrong layout. Skip the save and the deferred SetActiveLayout.
+      lib._scopedSaveSkips = (lib._scopedSaveSkips or 0) + 1
+      if dbgEM then
+        print("|cFFFF0000[LEO:SaveOnly]|r SKIPPING save - active layout '" .. tostring(cachedActive.layoutName) .. "' not uniquely matched in persisted store")
+      end
+      reconciledLayouts = true
+      return
+    end
+
+    if dbgEM and tCompare then
+      -- Evidence log: any cached non-active entry that differs from the persisted store
+      -- is data the pre-scoped SaveOnly would have written over the server copy.
+      for i, cachedEntry in ipairs(layoutInfo.layouts) do
+        if i ~= layoutInfo.activeLayout and cachedEntry.layoutType ~= Enum.EditModeLayoutType.Preset then
+          for _, freshEntry in ipairs(fresh.layouts) do
+            if freshEntry.layoutName == cachedEntry.layoutName and freshEntry.layoutType == cachedEntry.layoutType then
+              if not tCompare(cachedEntry, freshEntry, 10) then
+                print("|cFFFF6600[LEO:SaveOnly]|r Cache differs from persisted store for non-active layout '" .. tostring(cachedEntry.layoutName) .. "' (a full-cache save would have overwritten it)")
+              end
+              break
+            end
+          end
+        end
+      end
+    end
+
+    fresh.layouts[freshIdx] = cachedActive
+    newActiveIndex = freshIdx + presetCount
+    layoutInfo.activeLayout = newActiveIndex
+  end
+
+  fresh.activeLayout = newActiveIndex
+  C_EditMode.SaveLayouts(fresh)
 
   -- Defer SetActiveLayout to a fresh execution context.
   -- Calling it synchronously from addon code puts the entire UpdateSystems chain
   -- in a tainted context where C_Spell.GetSpellCooldown (and similar combat APIs)
   -- return secret values, permanently tainting CDM item frame fields.
-  local activeLayout = layoutInfo.activeLayout
+  local activeLayout = newActiveIndex
 
   -- DEBUG: Log activeLayout value
   if dbgEM then

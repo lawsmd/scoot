@@ -147,6 +147,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("Usage:")
             addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|quests|<FrameName>>")
             addon:Print("  /scoot debug profiles export [\"Profile Name\"]  |  reload")
+            addon:Print("  /scoot debug layoutdump \"Layout Name\"   -- persisted Edit Mode anchors")
             addon:Print("  /scoot debug consoleport export")
             addon:Print("  /scoot debug cdmlayers")
             addon:Print("  /scoot debug cdm   -- CDM styling pipeline state")
@@ -252,6 +253,50 @@ function SlashCmdList.SCOOT(msg, editBox)
             end
             addon:Print("Usage: /scoot debug profiles export [\"Profile Name\"]")
             addon:Print("       /scoot debug profiles reload")
+            return
+        end
+
+        -- Read-only dump of one layout's persisted anchor data, straight from
+        -- C_EditMode.GetLayouts(). For before/after comparison when verifying that
+        -- cross-machine sessions leave a layout's stored geometry untouched.
+        if sub1 == "layoutdump" then
+            local name = args[3]
+            if not name or name == "" then
+                addon:Print("Usage: /scoot debug layoutdump \"Layout Name\"")
+                return
+            end
+            local li = _G.C_EditMode and _G.C_EditMode.GetLayouts and _G.C_EditMode.GetLayouts()
+            if not (li and li.layouts) then
+                addon:Print("C_EditMode.GetLayouts() returned no data.")
+                return
+            end
+            local found
+            for _, layout in ipairs(li.layouts) do
+                if layout.layoutName == name then found = layout break end
+            end
+            if not found then
+                local names = {}
+                for _, layout in ipairs(li.layouts) do table.insert(names, tostring(layout.layoutName)) end
+                addon:Print("Layout not found: " .. tostring(name))
+                addon:Print("Available: " .. table.concat(names, ", "))
+                return
+            end
+            local lines = {}
+            table.insert(lines, string.format("Layout '%s' (layoutType=%s), %d systems",
+                tostring(found.layoutName), tostring(found.layoutType), #(found.systems or {})))
+            for _, sys in ipairs(found.systems or {}) do
+                local a = sys.anchorInfo or {}
+                table.insert(lines, string.format("system=%s index=%s default=%s | %s -> %s/%s (%.2f, %.2f)",
+                    tostring(sys.system), tostring(sys.systemIndex), tostring(sys.isInDefaultPosition),
+                    tostring(a.point), tostring(a.relativeTo), tostring(a.relativePoint),
+                    tonumber(a.offsetX) or 0, tonumber(a.offsetY) or 0))
+            end
+            local text = table.concat(lines, "\n")
+            if addon.DebugShowWindow then
+                addon.DebugShowWindow("Layout dump: " .. name, text)
+            else
+                for _, l in ipairs(lines) do addon:Print(l) end
+            end
             return
         end
 

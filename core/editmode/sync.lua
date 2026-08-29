@@ -724,6 +724,12 @@ function addon.EditMode.SyncEditModeSettingToComponent(component, settingId)
 
     if addon.EditMode._syncingEM then return false end
 
+    -- Only pull Edit Mode values into the profile that owns the active layout. At a
+    -- cross-machine login (or during the post-reload stale window) the current AceDB
+    -- profile can belong to a different layout than the one Edit Mode has active;
+    -- pulling then would stamp another layout's values into this profile.
+    if addon.EditMode.ProfileMatchesActiveLayout and not addon.EditMode.ProfileMatchesActiveLayout() then return false end
+
     local setting = component.settings[settingId]
     if not setting or setting.type ~= "editmode" then return false end
 
@@ -1113,6 +1119,10 @@ function addon.EditMode.SyncComponentPositionFromEditMode(component)
     if UnitAffectingCombat and UnitAffectingCombat("player") then
         return false
     end
+    -- Same profile-vs-layout gate as SyncEditModeSettingToComponent: live frame
+    -- geometry from another layout (and another machine's screen shape) must not be
+    -- recorded into this profile's position mirror.
+    if addon.EditMode.ProfileMatchesActiveLayout and not addon.EditMode.ProfileMatchesActiveLayout() then return false end
     local frame = _G[component.frameName]
     if not frame or (frame.IsForbidden and frame:IsForbidden()) then return false end
 
@@ -1286,6 +1296,9 @@ end
 function addon.EditMode.RefreshSyncAndNotify(origin)
     if LEO and LEO.IsReady and LEO:IsReady() and LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
 
+    local matchedBeforePull = addon.EditMode.ProfileMatchesActiveLayout
+        and addon.EditMode.ProfileMatchesActiveLayout()
+
     addon:SyncAllEditModeSettings()
 
     if origin and addon.EditMode and addon.EditMode.QueueAuraIconSizeBackfill then
@@ -1307,6 +1320,15 @@ function addon.EditMode.RefreshSyncAndNotify(origin)
 
     if addon and addon.Profiles and addon.Profiles.RefreshFromEditMode then
         addon.Profiles:RefreshFromEditMode(origin)
+    end
+
+    -- If the pull above was skipped because profile and layout disagreed, and
+    -- RefreshFromEditMode has just aligned them, run the pull now so back-sync is
+    -- not starved until the next external trigger.
+    if not matchedBeforePull
+        and addon.EditMode.ProfileMatchesActiveLayout
+        and addon.EditMode.ProfileMatchesActiveLayout() then
+        addon:SyncAllEditModeSettings()
     end
 
     -- Settings list is not refreshed here; routine Edit Mode saves are reflected
