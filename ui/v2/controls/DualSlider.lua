@@ -146,11 +146,7 @@ function Controls:CreateDualSlider(options)
     row:SetHeight(rowHeight)
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row border (subtle line below)
     local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
@@ -279,38 +275,11 @@ function Controls:CreateDualSlider(options)
         thumb._bg = thumbBg
 
         -- Thumb border
-        local thumbBorder = {}
-        local tbw = 1
-
-        local thumbTop = thumb:CreateTexture(nil, "ARTWORK", nil, 1)
-        thumbTop:SetPoint("TOPLEFT", thumb, "TOPLEFT", 0, 0)
-        thumbTop:SetPoint("TOPRIGHT", thumb, "TOPRIGHT", 0, 0)
-        thumbTop:SetHeight(tbw)
-        thumbTop:SetColorTexture(0, 0, 0, 0.5)
-        thumbBorder.TOP = thumbTop
-
-        local thumbBottom = thumb:CreateTexture(nil, "ARTWORK", nil, 1)
-        thumbBottom:SetPoint("BOTTOMLEFT", thumb, "BOTTOMLEFT", 0, 0)
-        thumbBottom:SetPoint("BOTTOMRIGHT", thumb, "BOTTOMRIGHT", 0, 0)
-        thumbBottom:SetHeight(tbw)
-        thumbBottom:SetColorTexture(0, 0, 0, 0.5)
-        thumbBorder.BOTTOM = thumbBottom
-
-        local thumbLeft = thumb:CreateTexture(nil, "ARTWORK", nil, 1)
-        thumbLeft:SetPoint("TOPLEFT", thumb, "TOPLEFT", 0, -tbw)
-        thumbLeft:SetPoint("BOTTOMLEFT", thumb, "BOTTOMLEFT", 0, tbw)
-        thumbLeft:SetWidth(tbw)
-        thumbLeft:SetColorTexture(0, 0, 0, 0.5)
-        thumbBorder.LEFT = thumbLeft
-
-        local thumbRight = thumb:CreateTexture(nil, "ARTWORK", nil, 1)
-        thumbRight:SetPoint("TOPRIGHT", thumb, "TOPRIGHT", 0, -tbw)
-        thumbRight:SetPoint("BOTTOMRIGHT", thumb, "BOTTOMRIGHT", 0, tbw)
-        thumbRight:SetWidth(tbw)
-        thumbRight:SetColorTexture(0, 0, 0, 0.5)
-        thumbBorder.RIGHT = thumbRight
-
-        thumb._border = thumbBorder
+        thumb._border = Controls.CreateBorder(thumb, {
+            layer = "ARTWORK",
+            sublevel = 1,
+            color = { 0, 0, 0, 0.5 },
+        })
         trackFrame._thumb = thumb
 
         -- Right arrow button (increment)
@@ -756,11 +725,6 @@ function Controls:CreateDualSlider(options)
         if row._rowBorder then
             row._rowBorder:SetColorTexture(r, g, b, 0.2)
         end
-        -- Update hover bg
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
-
         -- Update both mini sliders
         for _, miniSlider in ipairs({row._sliderA, row._sliderB}) do
             if miniSlider then

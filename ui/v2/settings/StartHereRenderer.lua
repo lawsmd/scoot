@@ -132,38 +132,12 @@ local function CreateIndicator(parent, theme)
     indicator:SetSize(INDICATOR_WIDTH, INDICATOR_HEIGHT)
     indicator:RegisterForClicks("AnyUp")
 
-    -- Border textures
-    local border = {}
-
-    local top = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    top:SetPoint("TOPLEFT", 0, 0)
-    top:SetPoint("TOPRIGHT", 0, 0)
-    top:SetHeight(INDICATOR_BORDER)
-    top:SetColorTexture(ar, ag, ab, 1)
-    border.TOP = top
-
-    local bottom = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(INDICATOR_BORDER)
-    bottom:SetColorTexture(ar, ag, ab, 1)
-    border.BOTTOM = bottom
-
-    local left = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    left:SetPoint("TOPLEFT", 0, -INDICATOR_BORDER)
-    left:SetPoint("BOTTOMLEFT", 0, INDICATOR_BORDER)
-    left:SetWidth(INDICATOR_BORDER)
-    left:SetColorTexture(ar, ag, ab, 1)
-    border.LEFT = left
-
-    local right = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    right:SetPoint("TOPRIGHT", 0, -INDICATOR_BORDER)
-    right:SetPoint("BOTTOMRIGHT", 0, INDICATOR_BORDER)
-    right:SetWidth(INDICATOR_BORDER)
-    right:SetColorTexture(ar, ag, ab, 1)
-    border.RIGHT = right
-
-    indicator._border = border
+    -- Border: static color; UpdateState owns the tinting (accent, variant
+    -- colors, dim) via the pairs(self._border) repaint loops below.
+    indicator._border = addon.UI.Controls.CreateBorder(indicator, {
+        thickness = INDICATOR_BORDER,
+        color = { ar, ag, ab },
+    })
 
     -- Fill background (visible when ON)
     local fill = indicator:CreateTexture(nil, "BACKGROUND", nil, -7)
@@ -223,38 +197,12 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
     selector:SetSize(INDICATOR_WIDTH, INDICATOR_HEIGHT)
     selector:RegisterForClicks("AnyUp")
 
-    -- Border textures (same pattern as CreateIndicator)
-    local border = {}
-
-    local top = selector:CreateTexture(nil, "BORDER", nil, -1)
-    top:SetPoint("TOPLEFT", 0, 0)
-    top:SetPoint("TOPRIGHT", 0, 0)
-    top:SetHeight(INDICATOR_BORDER)
-    top:SetColorTexture(ar, ag, ab, 0.4)
-    border.TOP = top
-
-    local bottom = selector:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(INDICATOR_BORDER)
-    bottom:SetColorTexture(ar, ag, ab, 0.4)
-    border.BOTTOM = bottom
-
-    local left = selector:CreateTexture(nil, "BORDER", nil, -1)
-    left:SetPoint("TOPLEFT", 0, -INDICATOR_BORDER)
-    left:SetPoint("BOTTOMLEFT", 0, INDICATOR_BORDER)
-    left:SetWidth(INDICATOR_BORDER)
-    left:SetColorTexture(ar, ag, ab, 0.4)
-    border.LEFT = left
-
-    local right = selector:CreateTexture(nil, "BORDER", nil, -1)
-    right:SetPoint("TOPRIGHT", 0, -INDICATOR_BORDER)
-    right:SetPoint("BOTTOMRIGHT", 0, INDICATOR_BORDER)
-    right:SetWidth(INDICATOR_BORDER)
-    right:SetColorTexture(ar, ag, ab, 0.4)
-    border.RIGHT = right
-
-    selector._border = border
+    -- Border: static color, same state-machine pattern as CreateIndicator.
+    selector._border = addon.UI.Controls.CreateBorder(selector, {
+        thickness = INDICATOR_BORDER,
+        color = { ar, ag, ab },
+        alpha = 0.4,
+    })
 
     -- Fill background
     local fill = selector:CreateTexture(nil, "BACKGROUND", nil, -7)

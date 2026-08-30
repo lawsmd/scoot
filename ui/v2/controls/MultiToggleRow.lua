@@ -84,11 +84,7 @@ function Controls:CreateMultiToggleRow(options)
     local row = CreateFrame("Frame", name, parent)
     row:SetHeight(rowHeight)
 
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
     rowBorder:SetPoint("BOTTOMLEFT", 0, 0)
@@ -231,7 +227,6 @@ function Controls:CreateMultiToggleRow(options)
     theme:Subscribe(subscribeKey, function(r, g, b)
         if row._label then row._label:SetTextColor(r, g, b, 1) end
         if row._rowBorder then row._rowBorder:SetColorTexture(r, g, b, 0.2) end
-        if row._hoverBg then row._hoverBg:SetColorTexture(r, g, b, 0.08) end
         for _, toggle in ipairs(row._toggles) do
             if toggle._updateVisual then toggle._updateVisual() end
         end

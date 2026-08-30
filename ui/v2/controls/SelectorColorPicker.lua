@@ -85,18 +85,13 @@ function Controls:CreateSelectorColorPicker(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
     row:SetHeight(rowHeight)
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row border (subtle line below)
     local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
@@ -172,44 +167,10 @@ function Controls:CreateSelectorColorPicker(options)
     selector:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_PADDING, 0)
 
     -- Selector border
-    local selBorder = {}
-
-    local selTop = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selTop:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, 0)
-    selTop:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, 0)
-    selTop:SetHeight(1)
-    selTop:SetColorTexture(ar, ag, ab, SELECTOR_BORDER_ALPHA)
-    selBorder.TOP = selTop
-
-    local selBottom = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selBottom:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 0)
-    selBottom:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 0)
-    selBottom:SetHeight(1)
-    selBottom:SetColorTexture(ar, ag, ab, SELECTOR_BORDER_ALPHA)
-    selBorder.BOTTOM = selBottom
-
-    local selLeft = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selLeft:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, -1)
-    selLeft:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 1)
-    selLeft:SetWidth(1)
-    selLeft:SetColorTexture(ar, ag, ab, SELECTOR_BORDER_ALPHA)
-    selBorder.LEFT = selLeft
-
-    local selRight = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selRight:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, -1)
-    selRight:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 1)
-    selRight:SetWidth(1)
-    selRight:SetColorTexture(ar, ag, ab, SELECTOR_BORDER_ALPHA)
-    selBorder.RIGHT = selRight
-
-    selector._border = selBorder
+    selector._border = Controls.CreateBorder(selector, { alpha = SELECTOR_BORDER_ALPHA })
 
     -- Selector background
-    local selBg = selector:CreateTexture(nil, "BACKGROUND", nil, -7)
-    selBg:SetPoint("TOPLEFT", 1, -1)
-    selBg:SetPoint("BOTTOMRIGHT", -1, 1)
-    selBg:SetColorTexture(bgR, bgG, bgB, bgA)
-    selector._bg = selBg
+    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
     -- Left arrow button
     local leftArrow = CreateFrame("Button", nil, selector)
@@ -308,37 +269,11 @@ function Controls:CreateSelectorColorPicker(options)
     swatch:Hide()
 
     -- Swatch border
-    local swatchBorder = {}
-
-    local sTop = swatch:CreateTexture(nil, "BORDER", nil, 1)
-    sTop:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, 0)
-    sTop:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, 0)
-    sTop:SetHeight(SELECTOR_SWATCH_BORDER)
-    sTop:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.TOP = sTop
-
-    local sBottom = swatch:CreateTexture(nil, "BORDER", nil, 1)
-    sBottom:SetPoint("BOTTOMLEFT", swatch, "BOTTOMLEFT", 0, 0)
-    sBottom:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 0, 0)
-    sBottom:SetHeight(SELECTOR_SWATCH_BORDER)
-    sBottom:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.BOTTOM = sBottom
-
-    local sLeft = swatch:CreateTexture(nil, "BORDER", nil, 1)
-    sLeft:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, -SELECTOR_SWATCH_BORDER)
-    sLeft:SetPoint("BOTTOMLEFT", swatch, "BOTTOMLEFT", 0, SELECTOR_SWATCH_BORDER)
-    sLeft:SetWidth(SELECTOR_SWATCH_BORDER)
-    sLeft:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.LEFT = sLeft
-
-    local sRight = swatch:CreateTexture(nil, "BORDER", nil, 1)
-    sRight:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, -SELECTOR_SWATCH_BORDER)
-    sRight:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 0, SELECTOR_SWATCH_BORDER)
-    sRight:SetWidth(SELECTOR_SWATCH_BORDER)
-    sRight:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.RIGHT = sRight
-
-    swatch._border = swatchBorder
+    swatch._border = Controls.CreateBorder(swatch, {
+        thickness = SELECTOR_SWATCH_BORDER,
+        sublevel = 1,
+        getAlpha = function(self) return self:IsMouseOver() and 1 or 0.8 end,
+    })
 
     -- Swatch background (checkerboard for alpha)
     local checkerBg = swatch:CreateTexture(nil, "BACKGROUND", nil, 0)
@@ -582,19 +517,13 @@ function Controls:CreateSelectorColorPicker(options)
     -- Swatch hover handlers
     swatch:SetScript("OnEnter", function(self)
         row._hoverBg:Show()
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
+        self._border:Refresh()
     end)
     swatch:SetScript("OnLeave", function(self)
         if not row:IsMouseOver() then
             row._hoverBg:Hide()
         end
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.8)
-        end
+        self._border:Refresh()
     end)
 
     -- Swatch click opens color picker
@@ -656,22 +585,16 @@ function Controls:CreateSelectorColorPicker(options)
     end)
 
     -- Dropdown menu frame (created once, reused)
-    local dropdown = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local dropdown = CreateFrame("Frame", nil, UIParent)
     dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
     dropdown:SetFrameLevel(100)
     dropdown:SetClampedToScreen(true)
     dropdown:Hide()
     row._dropdown = dropdown
 
-    -- Dropdown backdrop/border
-    dropdown:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    local ddBgR, ddBgG, ddBgB = theme:GetBackgroundSolidColor()
-    dropdown:SetBackdropColor(ddBgR, ddBgG, ddBgB, 0.98)
-    dropdown:SetBackdropBorderColor(ar, ag, ab, 0.8)
+    -- Dropdown chrome: solid fill plus a 1px accent border
+    Controls.AddBackground(dropdown, { alpha = 0.98 })
+    dropdown._border = Controls.CreateBorder(dropdown, { alpha = 0.8 })
 
     -- Track dropdown option buttons
     dropdown._optionButtons = {}
@@ -862,16 +785,6 @@ function Controls:CreateSelectorColorPicker(options)
         if row._rowBorder then
             row._rowBorder:SetColorTexture(r, g, b, 0.2)
         end
-        -- Update hover bg
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
-        -- Update selector border
-        if selector._border then
-            for _, tex in pairs(selector._border) do
-                tex:SetColorTexture(r, g, b, SELECTOR_BORDER_ALPHA)
-            end
-        end
         -- Update separators
         if selector._leftSep then
             selector._leftSep:SetColorTexture(r, g, b, 0.4)
@@ -886,17 +799,7 @@ function Controls:CreateSelectorColorPicker(options)
         if rightArrow._text then
             rightArrow._text:SetTextColor(r, g, b, 1)
         end
-        -- Update swatch border
-        if swatch._border and swatch:IsShown() then
-            local alpha = swatch:IsMouseOver() and 1 or 0.8
-            for _, tex in pairs(swatch._border) do
-                tex:SetColorTexture(r, g, b, alpha)
-            end
-        end
         -- Update dropdown border color
-        if dropdown and dropdown.SetBackdropBorderColor then
-            dropdown:SetBackdropBorderColor(r, g, b, 0.8)
-        end
     end)
 
     -- Public methods

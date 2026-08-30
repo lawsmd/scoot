@@ -88,7 +88,7 @@ local function PaintBox(box, state, accentR, accentG, accentB)
 
     if box._bg then box._bg:SetColorTexture(bgR, bgG, bgB, bgA) end
     if box._borders then
-        for _, tex in ipairs(box._borders) do
+        for _, tex in pairs(box._borders) do
             tex:SetColorTexture(bdR, bdG, bdB, bdA)
         end
     end
@@ -199,21 +199,12 @@ function Controls:CreateRankSelector(options)
         icon:Hide()
         box._icon = icon
 
-        box._borders = {}
-        for _, side in ipairs({ "TOP", "BOTTOM" }) do
-            local t = box:CreateTexture(nil, "BORDER")
-            t:SetPoint(side .. "LEFT")
-            t:SetPoint(side .. "RIGHT")
-            t:SetHeight(1)
-            table.insert(box._borders, t)
-        end
-        for _, side in ipairs({ "LEFT", "RIGHT" }) do
-            local t = box:CreateTexture(nil, "BORDER")
-            t:SetPoint("TOP" .. side)
-            t:SetPoint("BOTTOM" .. side)
-            t:SetWidth(1)
-            table.insert(box._borders, t)
-        end
+        -- Static color: RepaintBox owns all tinting (per-state colors).
+        box._borders = Controls.CreateBorder(box, {
+            corners = "overlap",
+            sublevel = 0,
+            color = { 0, 0, 0, 0 },
+        })
 
         local number = row:CreateFontString(nil, "OVERLAY")
         if theme and theme.ApplyValueFont then

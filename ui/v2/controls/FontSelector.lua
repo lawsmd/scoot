@@ -57,18 +57,13 @@ function Controls:CreateFontSelector(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
     row:SetHeight(rowHeight)
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row border (subtle line below)
     local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
@@ -108,45 +103,14 @@ function Controls:CreateFontSelector(options)
     selector:EnableMouse(true)
     selector:RegisterForClicks("AnyUp")
 
-    -- Selector border
-    local selBorder = {}
-
-    local selTop = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selTop:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, 0)
-    selTop:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, 0)
-    selTop:SetHeight(1)
-    selTop:SetColorTexture(ar, ag, ab, FONT_SELECTOR_BORDER_ALPHA)
-    selBorder.TOP = selTop
-
-    local selBottom = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selBottom:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 0)
-    selBottom:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 0)
-    selBottom:SetHeight(1)
-    selBottom:SetColorTexture(ar, ag, ab, FONT_SELECTOR_BORDER_ALPHA)
-    selBorder.BOTTOM = selBottom
-
-    local selLeft = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selLeft:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, -1)
-    selLeft:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 1)
-    selLeft:SetWidth(1)
-    selLeft:SetColorTexture(ar, ag, ab, FONT_SELECTOR_BORDER_ALPHA)
-    selBorder.LEFT = selLeft
-
-    local selRight = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selRight:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, -1)
-    selRight:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 1)
-    selRight:SetWidth(1)
-    selRight:SetColorTexture(ar, ag, ab, FONT_SELECTOR_BORDER_ALPHA)
-    selBorder.RIGHT = selRight
-
-    selector._border = selBorder
+    -- Selector border (brightens on hover)
+    selector._border = Controls.CreateBorder(selector, {
+        alpha = FONT_SELECTOR_BORDER_ALPHA,
+        getAlpha = function(self) return self:IsMouseOver() and 0.8 or FONT_SELECTOR_BORDER_ALPHA end,
+    })
 
     -- Selector background
-    local selBg = selector:CreateTexture(nil, "BACKGROUND", nil, -7)
-    selBg:SetPoint("TOPLEFT", 1, -1)
-    selBg:SetPoint("BOTTOMRIGHT", -1, 1)
-    selBg:SetColorTexture(bgR, bgG, bgB, bgA)
-    selector._bg = selBg
+    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
     -- Font value display text (shows font name in that font)
     local valueText = selector:CreateFontString(nil, "OVERLAY")
@@ -203,19 +167,14 @@ function Controls:CreateFontSelector(options)
     selector:SetScript("OnEnter", function(self)
         local r, g, b = theme:GetAccentColor()
         self._bg:SetColorTexture(r, g, b, 0.1)
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.8)
-        end
+        self._border:Refresh()
         row._hoverBg:Show()
     end)
 
     selector:SetScript("OnLeave", function(self)
         local bgRc, bgGc, bgBc, bgAc = theme:GetBackgroundSolidColor()
         self._bg:SetColorTexture(bgRc, bgGc, bgBc, bgAc)
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, FONT_SELECTOR_BORDER_ALPHA)
-        end
+        self._border:Refresh()
         row._hoverBg:Hide()
     end)
 
@@ -259,11 +218,7 @@ function Controls:CreateFontSelector(options)
     theme:Subscribe(subscribeKey, function(r, g, b)
         labelFS:SetTextColor(r, g, b, 1)
         rowBorder:SetColorTexture(r, g, b, 0.2)
-        hoverBg:SetColorTexture(r, g, b, 0.08)
         arrowText:SetTextColor(r, g, b, 0.8)
-        for _, tex in pairs(selBorder) do
-            tex:SetColorTexture(r, g, b, FONT_SELECTOR_BORDER_ALPHA)
-        end
     end)
     row._subscribeKey = subscribeKey
 

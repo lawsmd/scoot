@@ -76,9 +76,7 @@ function Controls:CreateDropdown(options)
     end
 
     -- Get theme colors
-    local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB = theme:GetDimTextColor()
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Create the dropdown button frame
     local dropdown = CreateFrame("Button", name, parent)
@@ -87,51 +85,16 @@ function Controls:CreateDropdown(options)
     dropdown:RegisterForClicks("AnyUp")
 
     -- Dropdown border
-    local border = {}
-
-    local bTop = dropdown:CreateTexture(nil, "BORDER", nil, -1)
-    bTop:SetPoint("TOPLEFT", dropdown, "TOPLEFT", 0, 0)
-    bTop:SetPoint("TOPRIGHT", dropdown, "TOPRIGHT", 0, 0)
-    bTop:SetHeight(1)
-    bTop:SetColorTexture(ar, ag, ab, DROPDOWN_BORDER_ALPHA)
-    border.TOP = bTop
-
-    local bBottom = dropdown:CreateTexture(nil, "BORDER", nil, -1)
-    bBottom:SetPoint("BOTTOMLEFT", dropdown, "BOTTOMLEFT", 0, 0)
-    bBottom:SetPoint("BOTTOMRIGHT", dropdown, "BOTTOMRIGHT", 0, 0)
-    bBottom:SetHeight(1)
-    bBottom:SetColorTexture(ar, ag, ab, DROPDOWN_BORDER_ALPHA)
-    border.BOTTOM = bBottom
-
-    local bLeft = dropdown:CreateTexture(nil, "BORDER", nil, -1)
-    bLeft:SetPoint("TOPLEFT", dropdown, "TOPLEFT", 0, -1)
-    bLeft:SetPoint("BOTTOMLEFT", dropdown, "BOTTOMLEFT", 0, 1)
-    bLeft:SetWidth(1)
-    bLeft:SetColorTexture(ar, ag, ab, DROPDOWN_BORDER_ALPHA)
-    border.LEFT = bLeft
-
-    local bRight = dropdown:CreateTexture(nil, "BORDER", nil, -1)
-    bRight:SetPoint("TOPRIGHT", dropdown, "TOPRIGHT", 0, -1)
-    bRight:SetPoint("BOTTOMRIGHT", dropdown, "BOTTOMRIGHT", 0, 1)
-    bRight:SetWidth(1)
-    bRight:SetColorTexture(ar, ag, ab, DROPDOWN_BORDER_ALPHA)
-    border.RIGHT = bRight
-
-    dropdown._border = border
+    dropdown._border = Controls.CreateBorder(dropdown, {
+        alpha = DROPDOWN_BORDER_ALPHA,
+        getAlpha = function(self) return self:IsMouseOver() and 0.9 or DROPDOWN_BORDER_ALPHA end,
+    })
 
     -- Dropdown background
-    local bg = dropdown:CreateTexture(nil, "BACKGROUND", nil, -7)
-    bg:SetPoint("TOPLEFT", 1, -1)
-    bg:SetPoint("BOTTOMRIGHT", -1, 1)
-    bg:SetColorTexture(bgR, bgG, bgB, bgA)
-    dropdown._bg = bg
+    dropdown._bg = Controls.AddBackground(dropdown, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
     -- Hover background
-    local hoverBg = dropdown:CreateTexture(nil, "BACKGROUND", nil, -6)
-    hoverBg:SetPoint("TOPLEFT", 1, -1)
-    hoverBg:SetPoint("BOTTOMRIGHT", -1, 1)
-    hoverBg:SetColorTexture(ar, ag, ab, 0)
-    dropdown._hoverBg = hoverBg
+    dropdown._hoverBg = Controls.AddHoverFill(dropdown, { alpha = 0.15, inset = 1, sublevel = Controls.SUBLEVEL_HOVER })
 
     -- Value text
     local valueText = dropdown:CreateFontString(nil, "OVERLAY")
@@ -177,40 +140,28 @@ function Controls:CreateDropdown(options)
     -- Hover effects
     dropdown:SetScript("OnEnter", function(self)
         local r, g, b = theme:GetAccentColor()
-        self._hoverBg:SetColorTexture(r, g, b, 0.15)
+        self._hoverBg:Show()
         self._dropIndicator:SetTextColor(r, g, b, 1)
-        -- Brighten border on hover
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.9)
-        end
+        self._border:Refresh()
     end)
     dropdown:SetScript("OnLeave", function(self)
-        local r, g, b = theme:GetAccentColor()
         local dr, dg, db = theme:GetDimTextColor()
-        self._hoverBg:SetColorTexture(r, g, b, 0)
+        self._hoverBg:Hide()
         self._dropIndicator:SetTextColor(dr, dg, db, 0.7)
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, DROPDOWN_BORDER_ALPHA)
-        end
+        self._border:Refresh()
     end)
 
     -- Dropdown menu frame (created once, reused)
-    local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local menu = CreateFrame("Frame", nil, UIParent)
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetFrameLevel(100)
     menu:SetClampedToScreen(true)
     menu:Hide()
     dropdown._menu = menu
 
-    -- Menu backdrop/border
-    menu:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    local menuBgR, menuBgG, menuBgB = theme:GetBackgroundSolidColor()
-    menu:SetBackdropColor(menuBgR, menuBgG, menuBgB, 0.98)
-    menu:SetBackdropBorderColor(ar, ag, ab, 0.8)
+    -- Menu chrome: solid fill plus a 1px accent border
+    Controls.AddBackground(menu, { alpha = 0.98 })
+    menu._border = Controls.CreateBorder(menu, { alpha = 0.8 })
 
     -- Track menu option buttons
     menu._optionButtons = {}
@@ -348,24 +299,6 @@ function Controls:CreateDropdown(options)
             CloseMenu()
         else
             ShowMenu()
-        end
-    end)
-
-    -- Theme subscription
-    local subscribeKey = "Dropdown_" .. (name or tostring(dropdown))
-    dropdown._subscribeKey = subscribeKey
-
-    theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update border
-        if dropdown._border then
-            local alpha = dropdown:IsMouseOver() and 0.9 or DROPDOWN_BORDER_ALPHA
-            for _, tex in pairs(dropdown._border) do
-                tex:SetColorTexture(r, g, b, alpha)
-            end
-        end
-        -- Update menu border color
-        if menu and menu.SetBackdropBorderColor then
-            menu:SetBackdropBorderColor(r, g, b, 0.8)
         end
     end)
 

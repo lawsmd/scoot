@@ -229,48 +229,20 @@ function Controls:CreateFlyout(options)
     -- Background
     ---------------------------------------------------------------------------
 
-    local bg = panel:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetPoint("TOPLEFT", FLYOUT_BORDER_WIDTH, -FLYOUT_BORDER_WIDTH)
-    bg:SetPoint("BOTTOMRIGHT", -FLYOUT_BORDER_WIDTH, FLYOUT_BORDER_WIDTH)
-    bg:SetColorTexture(bgR, bgG, bgB, FLYOUT_BG_ALPHA)
-    panel._bg = bg
+    panel._bg = Controls.AddBackground(panel, {
+        inset = FLYOUT_BORDER_WIDTH,
+        alpha = FLYOUT_BG_ALPHA,
+    })
     panel._bgAlpha = FLYOUT_BG_ALPHA
 
     ---------------------------------------------------------------------------
     -- Border (4 edges, matching Dropdown.lua pattern)
     ---------------------------------------------------------------------------
 
-    local border = {}
-
-    local bTop = panel:CreateTexture(nil, "BORDER", nil, -1)
-    bTop:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-    bTop:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, 0)
-    bTop:SetHeight(FLYOUT_BORDER_WIDTH)
-    bTop:SetColorTexture(ar, ag, ab, FLYOUT_BORDER_ALPHA)
-    border.TOP = bTop
-
-    local bBottom = panel:CreateTexture(nil, "BORDER", nil, -1)
-    bBottom:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 0, 0)
-    bBottom:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 0)
-    bBottom:SetHeight(FLYOUT_BORDER_WIDTH)
-    bBottom:SetColorTexture(ar, ag, ab, FLYOUT_BORDER_ALPHA)
-    border.BOTTOM = bBottom
-
-    local bLeft = panel:CreateTexture(nil, "BORDER", nil, -1)
-    bLeft:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -FLYOUT_BORDER_WIDTH)
-    bLeft:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 0, FLYOUT_BORDER_WIDTH)
-    bLeft:SetWidth(FLYOUT_BORDER_WIDTH)
-    bLeft:SetColorTexture(ar, ag, ab, FLYOUT_BORDER_ALPHA)
-    border.LEFT = bLeft
-
-    local bRight = panel:CreateTexture(nil, "BORDER", nil, -1)
-    bRight:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -FLYOUT_BORDER_WIDTH)
-    bRight:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, FLYOUT_BORDER_WIDTH)
-    bRight:SetWidth(FLYOUT_BORDER_WIDTH)
-    bRight:SetColorTexture(ar, ag, ab, FLYOUT_BORDER_ALPHA)
-    border.RIGHT = bRight
-
-    panel._border = border
+    panel._border = Controls.CreateBorder(panel, {
+        thickness = FLYOUT_BORDER_WIDTH,
+        alpha = FLYOUT_BORDER_ALPHA,
+    })
 
     ---------------------------------------------------------------------------
     -- Nub (two-triangle bordered approach)
@@ -337,9 +309,6 @@ function Controls:CreateFlyout(options)
     panel._subscribeKey = subscribeKey
 
     theme:Subscribe(subscribeKey, function(r, g, b)
-        for _, tex in pairs(panel._border) do
-            tex:SetColorTexture(r, g, b, FLYOUT_BORDER_ALPHA)
-        end
         panel._nubBorder:SetVertexColor(r, g, b, FLYOUT_BORDER_ALPHA)
     end)
 

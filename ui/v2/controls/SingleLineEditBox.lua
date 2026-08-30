@@ -41,8 +41,6 @@ function Controls:CreateSingleLineEditBox(options)
     local justifyH = options.justifyH
 
     -- Theme colors
-    local ar, ag, ab = theme:GetAccentColor()
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
     local dimR, dimG, dimB = theme:GetDimTextColor()
 
     -- Calculate total height including optional label
@@ -72,44 +70,14 @@ function Controls:CreateSingleLineEditBox(options)
     bordered:SetSize(width, INPUT_HEIGHT)
 
     -- Background
-    local bg = bordered:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetPoint("TOPLEFT", BORDER_WIDTH, -BORDER_WIDTH)
-    bg:SetPoint("BOTTOMRIGHT", -BORDER_WIDTH, BORDER_WIDTH)
-    bg:SetColorTexture(bgR, bgG, bgB, bgA)
-    bordered._bg = bg
+    bordered._bg = Controls.AddBackground(bordered, { inset = BORDER_WIDTH })
 
     -- Border textures
-    local border = {}
-
-    local bTop = bordered:CreateTexture(nil, "BORDER", nil, -1)
-    bTop:SetPoint("TOPLEFT", bordered, "TOPLEFT", 0, 0)
-    bTop:SetPoint("TOPRIGHT", bordered, "TOPRIGHT", 0, 0)
-    bTop:SetHeight(BORDER_WIDTH)
-    bTop:SetColorTexture(ar, ag, ab, BORDER_ALPHA_NORMAL)
-    border.TOP = bTop
-
-    local bBottom = bordered:CreateTexture(nil, "BORDER", nil, -1)
-    bBottom:SetPoint("BOTTOMLEFT", bordered, "BOTTOMLEFT", 0, 0)
-    bBottom:SetPoint("BOTTOMRIGHT", bordered, "BOTTOMRIGHT", 0, 0)
-    bBottom:SetHeight(BORDER_WIDTH)
-    bBottom:SetColorTexture(ar, ag, ab, BORDER_ALPHA_NORMAL)
-    border.BOTTOM = bBottom
-
-    local bLeft = bordered:CreateTexture(nil, "BORDER", nil, -1)
-    bLeft:SetPoint("TOPLEFT", bordered, "TOPLEFT", 0, -BORDER_WIDTH)
-    bLeft:SetPoint("BOTTOMLEFT", bordered, "BOTTOMLEFT", 0, BORDER_WIDTH)
-    bLeft:SetWidth(BORDER_WIDTH)
-    bLeft:SetColorTexture(ar, ag, ab, BORDER_ALPHA_NORMAL)
-    border.LEFT = bLeft
-
-    local bRight = bordered:CreateTexture(nil, "BORDER", nil, -1)
-    bRight:SetPoint("TOPRIGHT", bordered, "TOPRIGHT", 0, -BORDER_WIDTH)
-    bRight:SetPoint("BOTTOMRIGHT", bordered, "BOTTOMRIGHT", 0, BORDER_WIDTH)
-    bRight:SetWidth(BORDER_WIDTH)
-    bRight:SetColorTexture(ar, ag, ab, BORDER_ALPHA_NORMAL)
-    border.RIGHT = bRight
-
-    bordered._border = border
+    bordered._border = Controls.CreateBorder(bordered, {
+        thickness = BORDER_WIDTH,
+        alpha = BORDER_ALPHA_NORMAL,
+        getAlpha = function() return container._isFocused and BORDER_ALPHA_FOCUS or BORDER_ALPHA_NORMAL end,
+    })
     container._bordered = bordered
 
     -- EditBox (single-line, no ScrollFrame)
@@ -162,24 +130,16 @@ function Controls:CreateSingleLineEditBox(options)
         UpdatePlaceholder()
     end
 
-    -- Focus / border highlight
-    local function SetBorderAlpha(alpha)
-        for _, tex in pairs(bordered._border) do
-            local r, g, b = GetTheme():GetAccentColor()
-            tex:SetColorTexture(r, g, b, alpha)
-        end
-    end
-
     editBox:SetScript("OnEditFocusGained", function(self)
         container._isFocused = true
         container._committedText = self:GetText()
-        SetBorderAlpha(BORDER_ALPHA_FOCUS)
+        bordered._border:Refresh()
         if container._updatePlaceholder then container._updatePlaceholder() end
     end)
 
     editBox:SetScript("OnEditFocusLost", function(self)
         container._isFocused = false
-        SetBorderAlpha(BORDER_ALPHA_NORMAL)
+        bordered._border:Refresh()
         if container._updatePlaceholder then container._updatePlaceholder() end
         -- Commit text on focus loss (same as Enter)
         container._committedText = self:GetText()
@@ -208,16 +168,6 @@ function Controls:CreateSingleLineEditBox(options)
     bordered:EnableMouse(true)
     bordered:SetScript("OnMouseDown", function()
         editBox:SetFocus()
-    end)
-
-    -- Theme subscription
-    local subscribeKey = "SingleLineEditBox_" .. tostring(container)
-    container._subscribeKey = subscribeKey
-
-    theme:Subscribe(subscribeKey, function(r, g, b)
-        for _, tex in pairs(bordered._border) do
-            tex:SetColorTexture(r, g, b, container._isFocused and BORDER_ALPHA_FOCUS or BORDER_ALPHA_NORMAL)
-        end
     end)
 
     -- Public API

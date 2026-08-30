@@ -87,40 +87,6 @@ end
 -- Frame construction
 --------------------------------------------------------------------------------
 
-local function CreateBorder(parent, width)
-    local r, g, b = GetAccent()
-    local edges = {}
-
-    local top = parent:CreateTexture(nil, "BORDER", nil, -1)
-    top:SetPoint("TOPLEFT")
-    top:SetPoint("TOPRIGHT")
-    top:SetHeight(width)
-    edges.TOP = top
-
-    local bottom = parent:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT")
-    bottom:SetPoint("BOTTOMRIGHT")
-    bottom:SetHeight(width)
-    edges.BOTTOM = bottom
-
-    local left = parent:CreateTexture(nil, "BORDER", nil, -1)
-    left:SetPoint("TOPLEFT", 0, -width)
-    left:SetPoint("BOTTOMLEFT", 0, width)
-    left:SetWidth(width)
-    edges.LEFT = left
-
-    local right = parent:CreateTexture(nil, "BORDER", nil, -1)
-    right:SetPoint("TOPRIGHT", 0, -width)
-    right:SetPoint("BOTTOMRIGHT", 0, width)
-    right:SetWidth(width)
-    edges.RIGHT = right
-
-    for _, tex in pairs(edges) do
-        tex:SetColorTexture(r, g, b, 1)
-    end
-    return edges
-end
-
 local function FollowCursor(self)
     local x, y = GetCursorPosition()
     local scale = UIParent:GetEffectiveScale()
@@ -150,7 +116,7 @@ local function EnsureFrame()
     bg:SetColorTexture(bgR, bgG, bgB, 0.98)
     frame._bg = bg
 
-    frame._border = CreateBorder(frame, BORDER_WIDTH)
+    frame._border = addon.UI.Controls.CreateBorder(frame, { thickness = BORDER_WIDTH })
 
     local brand = Tooltip.BuildBrandRow(frame, BRAND_SIZE)
     brand.icon:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + BORDER_WIDTH, -(PAD + BORDER_WIDTH))
@@ -232,9 +198,6 @@ local theme = addon.UI and addon.UI.Theme
 if theme and theme.Subscribe then
     theme:Subscribe("ScootEditModeTooltip", function(r, g, b)
         if not frame then return end
-        for _, tex in pairs(frame._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
         frame._title:SetTextColor(r, g, b, 1)
         frame._brand.text:SetTextColor(r, g, b, 1)
     end)

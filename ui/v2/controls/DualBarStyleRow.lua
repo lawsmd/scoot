@@ -79,51 +79,21 @@ local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Create the selector frame
     local mini = CreateFrame("Frame", nil, parentContainer)
     mini:SetHeight(CONTROL_HEIGHT)
 
-    -- Border
-    local border = {}
-
-    local bTop = mini:CreateTexture(nil, "BORDER", nil, -1)
-    bTop:SetPoint("TOPLEFT", mini, "TOPLEFT", 0, 0)
-    bTop:SetPoint("TOPRIGHT", mini, "TOPRIGHT", 0, 0)
-    bTop:SetHeight(1)
-    bTop:SetColorTexture(ar, ag, ab, BORDER_ALPHA)
-    border.TOP = bTop
-
-    local bBottom = mini:CreateTexture(nil, "BORDER", nil, -1)
-    bBottom:SetPoint("BOTTOMLEFT", mini, "BOTTOMLEFT", 0, 0)
-    bBottom:SetPoint("BOTTOMRIGHT", mini, "BOTTOMRIGHT", 0, 0)
-    bBottom:SetHeight(1)
-    bBottom:SetColorTexture(ar, ag, ab, BORDER_ALPHA)
-    border.BOTTOM = bBottom
-
-    local bLeft = mini:CreateTexture(nil, "BORDER", nil, -1)
-    bLeft:SetPoint("TOPLEFT", mini, "TOPLEFT", 0, -1)
-    bLeft:SetPoint("BOTTOMLEFT", mini, "BOTTOMLEFT", 0, 1)
-    bLeft:SetWidth(1)
-    bLeft:SetColorTexture(ar, ag, ab, BORDER_ALPHA)
-    border.LEFT = bLeft
-
-    local bRight = mini:CreateTexture(nil, "BORDER", nil, -1)
-    bRight:SetPoint("TOPRIGHT", mini, "TOPRIGHT", 0, -1)
-    bRight:SetPoint("BOTTOMRIGHT", mini, "BOTTOMRIGHT", 0, 1)
-    bRight:SetWidth(1)
-    bRight:SetColorTexture(ar, ag, ab, BORDER_ALPHA)
-    border.RIGHT = bRight
-
-    mini._border = border
+    -- Border (brightens while the value button is hovered)
+    mini._border = Controls.CreateBorder(mini, {
+        alpha = BORDER_ALPHA,
+        getAlpha = function(f)
+            return (f._valueBtn and f._valueBtn:IsMouseOver()) and 0.8 or BORDER_ALPHA
+        end,
+    })
 
     -- Background
-    local bg = mini:CreateTexture(nil, "BACKGROUND", nil, -7)
-    bg:SetPoint("TOPLEFT", 1, -1)
-    bg:SetPoint("BOTTOMRIGHT", -1, 1)
-    bg:SetColorTexture(bgR, bgG, bgB, bgA)
-    mini._bg = bg
+    mini._bg = Controls.AddBackground(mini, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
     -- Value button (full width, shows texture name + dropdown arrow)
     local valueBtn = CreateFrame("Button", nil, mini)
@@ -174,9 +144,7 @@ local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
     valueBtn:SetScript("OnEnter", function(btn)
         local r, g, b = theme:GetAccentColor()
         btn._bg:SetColorTexture(r, g, b, 0.1)
-        for _, tex in pairs(mini._border) do
-            tex:SetColorTexture(r, g, b, 0.8)
-        end
+        mini._border:Refresh()
         if btn._dropArrow then
             btn._dropArrow:SetTextColor(r, g, b, 1)
         end
@@ -184,10 +152,7 @@ local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
     valueBtn:SetScript("OnLeave", function(btn)
         local bgRc, bgGc, bgBc, bgAc = theme:GetBackgroundSolidColor()
         btn._bg:SetColorTexture(bgRc, bgGc, bgBc, 0)
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(mini._border) do
-            tex:SetColorTexture(r, g, b, BORDER_ALPHA)
-        end
+        mini._border:Refresh()
         local dr, dg, db = theme:GetDimTextColor()
         if btn._dropArrow then
             btn._dropArrow:SetTextColor(dr, dg, db, 0.7)
@@ -247,7 +212,6 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Build ordered key list
     local keyList = {}
@@ -269,44 +233,10 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     mini:SetHeight(CONTROL_HEIGHT)
 
     -- Border
-    local border = {}
-
-    local bTop = mini:CreateTexture(nil, "BORDER", nil, -1)
-    bTop:SetPoint("TOPLEFT", mini, "TOPLEFT", 0, 0)
-    bTop:SetPoint("TOPRIGHT", mini, "TOPRIGHT", 0, 0)
-    bTop:SetHeight(1)
-    bTop:SetColorTexture(ar, ag, ab, BORDER_ALPHA)
-    border.TOP = bTop
-
-    local bBottom = mini:CreateTexture(nil, "BORDER", nil, -1)
-    bBottom:SetPoint("BOTTOMLEFT", mini, "BOTTOMLEFT", 0, 0)
-    bBottom:SetPoint("BOTTOMRIGHT", mini, "BOTTOMRIGHT", 0, 0)
-    bBottom:SetHeight(1)
-    bBottom:SetColorTexture(ar, ag, ab, BORDER_ALPHA)
-    border.BOTTOM = bBottom
-
-    local bLeft = mini:CreateTexture(nil, "BORDER", nil, -1)
-    bLeft:SetPoint("TOPLEFT", mini, "TOPLEFT", 0, -1)
-    bLeft:SetPoint("BOTTOMLEFT", mini, "BOTTOMLEFT", 0, 1)
-    bLeft:SetWidth(1)
-    bLeft:SetColorTexture(ar, ag, ab, BORDER_ALPHA)
-    border.LEFT = bLeft
-
-    local bRight = mini:CreateTexture(nil, "BORDER", nil, -1)
-    bRight:SetPoint("TOPRIGHT", mini, "TOPRIGHT", 0, -1)
-    bRight:SetPoint("BOTTOMRIGHT", mini, "BOTTOMRIGHT", 0, 1)
-    bRight:SetWidth(1)
-    bRight:SetColorTexture(ar, ag, ab, BORDER_ALPHA)
-    border.RIGHT = bRight
-
-    mini._border = border
+    mini._border = Controls.CreateBorder(mini, { alpha = BORDER_ALPHA })
 
     -- Background
-    local bg = mini:CreateTexture(nil, "BACKGROUND", nil, -7)
-    bg:SetPoint("TOPLEFT", 1, -1)
-    bg:SetPoint("BOTTOMRIGHT", -1, 1)
-    bg:SetColorTexture(bgR, bgG, bgB, bgA)
-    mini._bg = bg
+    mini._bg = Controls.AddBackground(mini, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
     -- Left arrow button
     local leftArrow = CreateFrame("Button", nil, mini)
@@ -404,37 +334,11 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     swatch:Hide()
 
     -- Swatch border
-    local swatchBorder = {}
-
-    local sTop = swatch:CreateTexture(nil, "BORDER", nil, 1)
-    sTop:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, 0)
-    sTop:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, 0)
-    sTop:SetHeight(SWATCH_BORDER)
-    sTop:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.TOP = sTop
-
-    local sBottom = swatch:CreateTexture(nil, "BORDER", nil, 1)
-    sBottom:SetPoint("BOTTOMLEFT", swatch, "BOTTOMLEFT", 0, 0)
-    sBottom:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 0, 0)
-    sBottom:SetHeight(SWATCH_BORDER)
-    sBottom:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.BOTTOM = sBottom
-
-    local sLeft = swatch:CreateTexture(nil, "BORDER", nil, 1)
-    sLeft:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, -SWATCH_BORDER)
-    sLeft:SetPoint("BOTTOMLEFT", swatch, "BOTTOMLEFT", 0, SWATCH_BORDER)
-    sLeft:SetWidth(SWATCH_BORDER)
-    sLeft:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.LEFT = sLeft
-
-    local sRight = swatch:CreateTexture(nil, "BORDER", nil, 1)
-    sRight:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, -SWATCH_BORDER)
-    sRight:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 0, SWATCH_BORDER)
-    sRight:SetWidth(SWATCH_BORDER)
-    sRight:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.RIGHT = sRight
-
-    swatch._border = swatchBorder
+    swatch._border = Controls.CreateBorder(swatch, {
+        thickness = SWATCH_BORDER,
+        sublevel = 1,
+        getAlpha = function(self) return self:IsMouseOver() and 1 or 0.8 end,
+    })
 
     -- Swatch background (checkerboard for alpha)
     local checkerBg = swatch:CreateTexture(nil, "BACKGROUND", nil, 0)
@@ -559,16 +463,10 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
 
     -- Swatch hover handlers
     swatch:SetScript("OnEnter", function(self)
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
+        self._border:Refresh()
     end)
     swatch:SetScript("OnLeave", function(self)
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.8)
-        end
+        self._border:Refresh()
     end)
 
     -- Swatch click opens color picker
@@ -627,21 +525,15 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     end)
 
     -- Dropdown menu frame
-    local dropdown = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local dropdown = CreateFrame("Frame", nil, UIParent)
     dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
     dropdown:SetFrameLevel(100)
     dropdown:SetClampedToScreen(true)
     dropdown:Hide()
     mini._dropdown = dropdown
 
-    dropdown:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    local ddBgR, ddBgG, ddBgB = theme:GetBackgroundSolidColor()
-    dropdown:SetBackdropColor(ddBgR, ddBgG, ddBgB, 0.98)
-    dropdown:SetBackdropBorderColor(ar, ag, ab, 0.8)
+    Controls.AddBackground(dropdown, { alpha = 0.98 })
+    dropdown._border = Controls.CreateBorder(dropdown, { alpha = 0.8 })
 
     dropdown._optionButtons = {}
 
@@ -841,11 +733,7 @@ function Controls:CreateDualBarStyleRow(options)
     row:SetHeight(rowHeight)
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row border (subtle line below)
     local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
@@ -1022,10 +910,6 @@ function Controls:CreateDualBarStyleRow(options)
         if row._rowBorder then
             row._rowBorder:SetColorTexture(r, g, b, 0.2)
         end
-        -- Update hover bg
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
         -- Update mini-labels
         local dr, dg, db = theme:GetDimTextColor()
         if row._textureLabelFS then
@@ -1038,11 +922,6 @@ function Controls:CreateDualBarStyleRow(options)
         -- Update texture mini
         local tMini = row._textureMini
         if tMini then
-            if tMini._border then
-                for _, tex in pairs(tMini._border) do
-                    tex:SetColorTexture(r, g, b, BORDER_ALPHA)
-                end
-            end
             if tMini._valueBtn and tMini._valueBtn._dropArrow then
                 local dr, dg, db = theme:GetDimTextColor()
                 tMini._valueBtn._dropArrow:SetTextColor(dr, dg, db, 0.7)
@@ -1052,11 +931,6 @@ function Controls:CreateDualBarStyleRow(options)
         -- Update color mini
         local cMini = row._colorMini
         if cMini then
-            if cMini._border then
-                for _, tex in pairs(cMini._border) do
-                    tex:SetColorTexture(r, g, b, BORDER_ALPHA)
-                end
-            end
             if cMini._leftSep then
                 cMini._leftSep:SetColorTexture(r, g, b, 0.4)
             end
@@ -1069,15 +943,6 @@ function Controls:CreateDualBarStyleRow(options)
                 end
                 if cMini._rightArrow and cMini._rightArrow._text then
                     cMini._rightArrow._text:SetTextColor(r, g, b, 1)
-                end
-            end
-            if cMini._dropdown and cMini._dropdown.SetBackdropBorderColor then
-                cMini._dropdown:SetBackdropBorderColor(r, g, b, 0.8)
-            end
-            -- Update swatch border
-            if cMini._swatch and cMini._swatch:IsShown() and cMini._swatch._border then
-                for _, tex in pairs(cMini._swatch._border) do
-                    tex:SetColorTexture(r, g, b, 0.8)
                 end
             end
         end

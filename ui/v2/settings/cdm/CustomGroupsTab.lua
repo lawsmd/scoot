@@ -96,29 +96,14 @@ local function CreateDropTarget(parent, groupIndex)
     hl:SetAllPoints()
     hl:SetColorTexture(0.3, 0.9, 0.3, 0.2)
 
-    -- Border
-    local border = f:CreateTexture(nil, "OVERLAY")
-    border:SetPoint("TOPLEFT", -1, 1)
-    border:SetPoint("BOTTOMRIGHT", 1, -1)
-    border:SetColorTexture(0.3, 0.9, 0.3, 0.4)
-    local inner = f:CreateTexture(nil, "ARTWORK", nil, 1)
-    inner:SetAllPoints()
-    inner:SetColorTexture(0, 0, 0, 0) -- transparent, border is the outer frame
-    -- Build a proper border using 4 edge textures
-    border:Hide()
-    local function MakeBorderEdge(point1, rel1, point2, rel2, w, h)
-        local edge = f:CreateTexture(nil, "OVERLAY")
-        edge:SetColorTexture(0.3, 0.9, 0.3, 0.5)
-        edge:SetPoint(point1, f, rel1)
-        edge:SetPoint(point2, f, rel2)
-        if w then edge:SetWidth(w) end
-        if h then edge:SetHeight(h) end
-        return edge
-    end
-    MakeBorderEdge("TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", nil, 1)
-    MakeBorderEdge("BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", nil, 1)
-    MakeBorderEdge("TOPLEFT", "TOPLEFT", "BOTTOMLEFT", "BOTTOMLEFT", 1, nil)
-    MakeBorderEdge("TOPRIGHT", "TOPRIGHT", "BOTTOMRIGHT", "BOTTOMRIGHT", 1, nil)
+    -- Border (static green; never follows the accent)
+    f._border = addon.UI.Controls.CreateBorder(f, {
+        layer = "OVERLAY",
+        sublevel = 0,
+        corners = "overlap",
+        color = { 0.3, 0.9, 0.3 },
+        alpha = 0.5,
+    })
 
     f:EnableMouse(true)
 

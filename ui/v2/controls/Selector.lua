@@ -111,40 +111,29 @@ function Controls:CreateSelector(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
     row:SetHeight(rowHeight)
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row border (subtle line below, plus left accent border for emphasized)
-    local rowBorder = {}
     row._emphasized = emphasized
-
-    local bottom = row:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(1)
-    bottom:SetColorTexture(ar, ag, ab, 0.2)
-    if noBottomBorder then bottom:Hide() end
-    rowBorder.BOTTOM = bottom
-
-    -- Add left accent border for emphasized selectors
+    local rowSides = { "BOTTOM" }
     if emphasized and leftBorderWidth > 0 then
-        local leftBorder = row:CreateTexture(nil, "BORDER", nil, -1)
-        leftBorder:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-        leftBorder:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-        leftBorder:SetWidth(leftBorderWidth)
-        leftBorder:SetColorTexture(ar, ag, ab, 1)
-        rowBorder.LEFT = leftBorder
+        table.insert(rowSides, "LEFT")
+    end
+    row._rowBorder = Controls.CreateBorder(row, {
+        sides = rowSides,
+        thickness = { BOTTOM = 1, LEFT = leftBorderWidth },
+        alpha = 0.2,
+        sideAlphas = { LEFT = 1 },
+    })
+    if noBottomBorder then row._rowBorder.BOTTOM:Hide() end
 
+    if emphasized and leftBorderWidth > 0 then
         -- Faint background highlight for emphasized
         local emphBg = row:CreateTexture(nil, "BACKGROUND", nil, -7)
         emphBg:SetPoint("TOPLEFT", leftBorderWidth, 0)
@@ -152,8 +141,6 @@ function Controls:CreateSelector(options)
         emphBg:SetColorTexture(ar, ag, ab, 0.03)
         row._emphBg = emphBg
     end
-
-    row._rowBorder = rowBorder
 
     -- Calculate label padding (account for left border on emphasized)
     local labelLeftPad = sc(SELECTOR_PADDING) + leftBorderWidth
@@ -232,44 +219,10 @@ function Controls:CreateSelector(options)
     end
 
     -- Selector border
-    local selBorder = {}
-
-    local selTop = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selTop:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, 0)
-    selTop:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, 0)
-    selTop:SetHeight(1)
-    selTop:SetColorTexture(ar, ag, ab, SELECTOR_BORDER_ALPHA)
-    selBorder.TOP = selTop
-
-    local selBottom = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selBottom:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 0)
-    selBottom:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 0)
-    selBottom:SetHeight(1)
-    selBottom:SetColorTexture(ar, ag, ab, SELECTOR_BORDER_ALPHA)
-    selBorder.BOTTOM = selBottom
-
-    local selLeft = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selLeft:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, -1)
-    selLeft:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 1)
-    selLeft:SetWidth(1)
-    selLeft:SetColorTexture(ar, ag, ab, SELECTOR_BORDER_ALPHA)
-    selBorder.LEFT = selLeft
-
-    local selRight = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selRight:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, -1)
-    selRight:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 1)
-    selRight:SetWidth(1)
-    selRight:SetColorTexture(ar, ag, ab, SELECTOR_BORDER_ALPHA)
-    selBorder.RIGHT = selRight
-
-    selector._border = selBorder
+    selector._border = Controls.CreateBorder(selector, { alpha = SELECTOR_BORDER_ALPHA })
 
     -- Selector background
-    local selBg = selector:CreateTexture(nil, "BACKGROUND", nil, -7)
-    selBg:SetPoint("TOPLEFT", 1, -1)
-    selBg:SetPoint("BOTTOMRIGHT", -1, 1)
-    selBg:SetColorTexture(bgR, bgG, bgB, bgA)
-    selector._bg = selBg
+    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
     -- Left arrow button
     local leftArrow = CreateFrame("Button", nil, selector)
@@ -526,22 +479,16 @@ function Controls:CreateSelector(options)
     end)
 
     -- Dropdown menu frame (created once, reused)
-    local dropdown = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local dropdown = CreateFrame("Frame", nil, UIParent)
     dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
     dropdown:SetFrameLevel(100)
     dropdown:SetClampedToScreen(true)
     dropdown:Hide()
     row._dropdown = dropdown
 
-    -- Dropdown backdrop/border
-    dropdown:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    local ddBgR, ddBgG, ddBgB = theme:GetBackgroundSolidColor()
-    dropdown:SetBackdropColor(ddBgR, ddBgG, ddBgB, 0.98)
-    dropdown:SetBackdropBorderColor(ar, ag, ab, 0.8)
+    -- Dropdown chrome: solid fill plus a 1px accent border
+    Controls.AddBackground(dropdown, { alpha = 0.98 })
+    dropdown._border = Controls.CreateBorder(dropdown, { alpha = 0.8 })
 
     -- Track dropdown option buttons
     dropdown._optionButtons = {}
@@ -751,25 +698,6 @@ function Controls:CreateSelector(options)
         if row._label then
             row._label:SetTextColor(r, g, b, 1)
         end
-        -- Update row border (_rowBorder is a table of textures, not a texture)
-        if row._rowBorder then
-            if row._rowBorder.BOTTOM then
-                row._rowBorder.BOTTOM:SetColorTexture(r, g, b, 0.2)
-            end
-            if row._rowBorder.LEFT then
-                row._rowBorder.LEFT:SetColorTexture(r, g, b, 1)
-            end
-        end
-        -- Update hover bg
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
-        -- Update selector border
-        if selector._border then
-            for _, tex in pairs(selector._border) do
-                tex:SetColorTexture(r, g, b, SELECTOR_BORDER_ALPHA)
-            end
-        end
         -- Update separators
         if selector._leftSep then
             selector._leftSep:SetColorTexture(r, g, b, 0.4)
@@ -785,9 +713,6 @@ function Controls:CreateSelector(options)
             rightArrow._text:SetTextColor(r, g, b, 1)
         end
         -- Update dropdown border color
-        if dropdown and dropdown.SetBackdropBorderColor then
-            dropdown:SetBackdropBorderColor(r, g, b, 0.8)
-        end
     end)
 
     -- Public methods

@@ -213,11 +213,7 @@ function Controls:CreatePreview(options)
 
     -- Hover background
     if not options.noHover then
-        local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-        hoverBg:SetAllPoints()
-        hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-        hoverBg:Hide()
-        row._hoverBg = hoverBg
+        row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
         row:SetScript("OnEnter", function(self) self._hoverBg:Show() end)
         row:SetScript("OnLeave", function(self) self._hoverBg:Hide() end)
@@ -538,42 +534,21 @@ function Controls:CreatePreview(options)
             local borderColor = (barBorderTintEnable and barBorderTintColor) or { 0, 0, 0, 1 }
 
             if barBorderStyle == "square" then
-                -- Edges live in their own child frame ABOVE the fill StatusBar: regions of
+                -- Edges live in their own container ABOVE the fill StatusBar: regions of
                 -- previewBar itself would draw below the barFill child frame regardless of layer.
-                local bf = CreateFrame("Frame", nil, previewBar)
-                bf:SetFrameLevel(barFill:GetFrameLevel() + 1)
-                bf:SetAllPoints(previewBar)
-                local edges = {
-                    Top = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-                    Bottom = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-                    Left = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-                    Right = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-                }
-                local bR, bG, bB, bA = borderColor[1] or 0, borderColor[2] or 0, borderColor[3] or 0, borderColor[4] or 1
-                for _, tex in pairs(edges) do tex:SetColorTexture(bR, bG, bB, bA) end
-
-                edges.Top:SetPoint("TOPLEFT", bf, "TOPLEFT", -barBorderInsetH, barBorderInsetV)
-                edges.Top:SetPoint("TOPRIGHT", bf, "TOPRIGHT", barBorderInsetH, barBorderInsetV)
-                edges.Top:SetHeight(barBorderThickness)
-
-                edges.Bottom:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -barBorderInsetH, -barBorderInsetV)
-                edges.Bottom:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", barBorderInsetH, -barBorderInsetV)
-                edges.Bottom:SetHeight(barBorderThickness)
-
-                edges.Left:SetPoint("TOPLEFT", bf, "TOPLEFT", -barBorderInsetH, barBorderInsetV - barBorderThickness)
-                edges.Left:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -barBorderInsetH, -barBorderInsetV + barBorderThickness)
-                edges.Left:SetWidth(barBorderThickness)
-
-                edges.Right:SetPoint("TOPRIGHT", bf, "TOPRIGHT", barBorderInsetH, barBorderInsetV - barBorderThickness)
-                edges.Right:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", barBorderInsetH, -barBorderInsetV + barBorderThickness)
-                edges.Right:SetWidth(barBorderThickness)
-
-                if hiddenEdges then
-                    if hiddenEdges.top then edges.Top:Hide() end
-                    if hiddenEdges.bottom then edges.Bottom:Hide() end
-                    if hiddenEdges.left then edges.Left:Hide() end
-                    if hiddenEdges.right then edges.Right:Hide() end
-                end
+                addon.Borders.ApplySquare(barFill, {
+                    size = barBorderThickness,
+                    color = borderColor,
+                    layer = "OVERLAY",
+                    layerSublevel = 1,
+                    levelOffset = 1,
+                    containerParent = previewBar,
+                    containerAnchorRegion = previewBar,
+                    expandX = barBorderInsetH,
+                    expandY = barBorderInsetV,
+                    hiddenEdges = hiddenEdges,
+                    skipDimensionCheck = true,
+                })
             elseif addon.BarBorders and addon.BarBorders.ApplyToBarFrame then
                 addon.BarBorders.ApplyToBarFrame(barFill, barBorderStyle, {
                     thickness = barBorderThickness,
@@ -930,9 +905,6 @@ function Controls:CreatePreview(options)
     row._subscribeKey = subscribeKey
 
     theme:Subscribe(subscribeKey, function(r, g, b)
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
         if row._bottomBorder then
             row._bottomBorder:SetColorTexture(r, g, b, 0.2)
         end

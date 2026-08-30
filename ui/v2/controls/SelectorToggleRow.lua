@@ -24,7 +24,6 @@ local ROW_HEIGHT = 36 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
 local ROW_HEIGHT_WITH_DESC = 80 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
 local PADDING = 12
 local GAP = 12
-local BORDER_ALPHA = 0.5
 local DEFAULT_CONTAINER_WIDTH = 360
 local LABEL_RIGHT_MARGIN = 12
 local MINI_TOGGLE_WIDTH = 70
@@ -60,53 +59,24 @@ local function CreateMiniToggle(opts, parentContainer, theme, useLightDim)
     toggle:EnableMouse(true)
     toggle:RegisterForClicks("AnyUp")
 
-    -- Border (2px, matching Toggle.lua indicator style)
-    local border = {}
-
-    local bTop = toggle:CreateTexture(nil, "BORDER", nil, -1)
-    bTop:SetPoint("TOPLEFT", 0, 0)
-    bTop:SetPoint("TOPRIGHT", 0, 0)
-    bTop:SetHeight(TOGGLE_BORDER)
-    bTop:SetColorTexture(ar, ag, ab, 0.4)
-    border.TOP = bTop
-
-    local bBottom = toggle:CreateTexture(nil, "BORDER", nil, -1)
-    bBottom:SetPoint("BOTTOMLEFT", 0, 0)
-    bBottom:SetPoint("BOTTOMRIGHT", 0, 0)
-    bBottom:SetHeight(TOGGLE_BORDER)
-    bBottom:SetColorTexture(ar, ag, ab, 0.4)
-    border.BOTTOM = bBottom
-
-    local bLeft = toggle:CreateTexture(nil, "BORDER", nil, -1)
-    bLeft:SetPoint("TOPLEFT", 0, -TOGGLE_BORDER)
-    bLeft:SetPoint("BOTTOMLEFT", 0, TOGGLE_BORDER)
-    bLeft:SetWidth(TOGGLE_BORDER)
-    bLeft:SetColorTexture(ar, ag, ab, 0.4)
-    border.LEFT = bLeft
-
-    local bRight = toggle:CreateTexture(nil, "BORDER", nil, -1)
-    bRight:SetPoint("TOPRIGHT", 0, -TOGGLE_BORDER)
-    bRight:SetPoint("BOTTOMRIGHT", 0, TOGGLE_BORDER)
-    bRight:SetWidth(TOGGLE_BORDER)
-    bRight:SetColorTexture(ar, ag, ab, 0.4)
-    border.RIGHT = bRight
-
+    -- Border (2px, matching Toggle.lua indicator style). Static color:
+    -- UpdateVisual owns all tinting (state-dependent color and alpha).
+    local border = Controls.CreateBorder(toggle, {
+        thickness = TOGGLE_BORDER,
+        color = { ar, ag, ab },
+        alpha = 0.4,
+    })
     toggle._border = border
 
     -- Background fill (accent color, shown when ON)
-    local bg = toggle:CreateTexture(nil, "BACKGROUND", nil, -7)
-    bg:SetPoint("TOPLEFT", TOGGLE_BORDER, -TOGGLE_BORDER)
-    bg:SetPoint("BOTTOMRIGHT", -TOGGLE_BORDER, TOGGLE_BORDER)
-    bg:SetColorTexture(ar, ag, ab, 1)
-    bg:Hide()
-    toggle._bg = bg
+    toggle._bg = Controls.AddHoverFill(toggle, { alpha = 1, inset = TOGGLE_BORDER })
 
     -- Hover background
-    local hoverBg = toggle:CreateTexture(nil, "BACKGROUND", nil, -6)
-    hoverBg:SetPoint("TOPLEFT", TOGGLE_BORDER, -TOGGLE_BORDER)
-    hoverBg:SetPoint("BOTTOMRIGHT", -TOGGLE_BORDER, TOGGLE_BORDER)
-    hoverBg:SetColorTexture(ar, ag, ab, 0)
-    toggle._hoverBg = hoverBg
+    toggle._hoverBg = Controls.AddHoverFill(toggle, {
+        alpha = 0.15,
+        inset = TOGGLE_BORDER,
+        sublevel = Controls.SUBLEVEL_HOVER,
+    })
 
     -- ON/OFF text
     local text = toggle:CreateFontString(nil, "OVERLAY")
@@ -155,13 +125,12 @@ local function CreateMiniToggle(opts, parentContainer, theme, useLightDim)
 
     -- Hover effects
     toggle:SetScript("OnEnter", function(self)
-        if not self._isDisabled then
-            local r, g, b = theme:GetAccentColor()
-            self._hoverBg:SetColorTexture(r, g, b, self._value and 0 or 0.15)
+        if not self._isDisabled and not self._value then
+            self._hoverBg:Show()
         end
     end)
     toggle:SetScript("OnLeave", function(self)
-        self._hoverBg:SetColorTexture(0, 0, 0, 0)
+        self._hoverBg:Hide()
     end)
 
     -- Click to toggle
@@ -230,11 +199,7 @@ function Controls:CreateSelectorToggleRow(options)
     row:SetHeight(rowHeight)
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row border (bottom line)
     local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
@@ -348,17 +313,11 @@ function Controls:CreateSelectorToggleRow(options)
     theme:Subscribe(subscribeKey, function(r, g, b)
         if row._label then row._label:SetTextColor(r, g, b, 1) end
         if row._rowBorder then row._rowBorder:SetColorTexture(r, g, b, 0.2) end
-        if row._hoverBg then row._hoverBg:SetColorTexture(r, g, b, 0.08) end
         if row._toggleLabelFS then row._toggleLabelFS:SetTextColor(r, g, b, 0.5) end
 
         -- Update mini-selector
         local sel = row._selector
         if sel then
-            if sel._border then
-                for _, tex in pairs(sel._border) do
-                    tex:SetColorTexture(r, g, b, BORDER_ALPHA)
-                end
-            end
             if sel._leftSep then sel._leftSep:SetColorTexture(r, g, b, 0.4) end
             if sel._rightSep then sel._rightSep:SetColorTexture(r, g, b, 0.4) end
             if not sel._syncLocked then

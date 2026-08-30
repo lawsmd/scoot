@@ -113,41 +113,10 @@ function Controls:CreateTabbedSection(options)
     section._contentContainer = contentContainer
 
     -- Content border textures (all 4 sides)
-    local contentBorders = {}
-
-    -- TOP border
-    local topBorder = contentContainer:CreateTexture(nil, "BORDER", nil, -1)
-    topBorder:SetPoint("TOPLEFT", contentContainer, "TOPLEFT", 0, 0)
-    topBorder:SetPoint("TOPRIGHT", contentContainer, "TOPRIGHT", 0, 0)
-    topBorder:SetHeight(TABBED_BORDER_WIDTH)
-    topBorder:SetColorTexture(ar, ag, ab, TABBED_BORDER_ALPHA)
-    contentBorders.TOP = topBorder
-
-    -- LEFT border
-    local leftBorder = contentContainer:CreateTexture(nil, "BORDER", nil, -1)
-    leftBorder:SetPoint("TOPLEFT", contentContainer, "TOPLEFT", 0, -TABBED_BORDER_WIDTH)
-    leftBorder:SetPoint("BOTTOMLEFT", contentContainer, "BOTTOMLEFT", 0, TABBED_BORDER_WIDTH)
-    leftBorder:SetWidth(TABBED_BORDER_WIDTH)
-    leftBorder:SetColorTexture(ar, ag, ab, TABBED_BORDER_ALPHA)
-    contentBorders.LEFT = leftBorder
-
-    -- RIGHT border
-    local rightBorder = contentContainer:CreateTexture(nil, "BORDER", nil, -1)
-    rightBorder:SetPoint("TOPRIGHT", contentContainer, "TOPRIGHT", 0, -TABBED_BORDER_WIDTH)
-    rightBorder:SetPoint("BOTTOMRIGHT", contentContainer, "BOTTOMRIGHT", 0, TABBED_BORDER_WIDTH)
-    rightBorder:SetWidth(TABBED_BORDER_WIDTH)
-    rightBorder:SetColorTexture(ar, ag, ab, TABBED_BORDER_ALPHA)
-    contentBorders.RIGHT = rightBorder
-
-    -- BOTTOM border
-    local bottomBorder = contentContainer:CreateTexture(nil, "BORDER", nil, -1)
-    bottomBorder:SetPoint("BOTTOMLEFT", contentContainer, "BOTTOMLEFT", 0, 0)
-    bottomBorder:SetPoint("BOTTOMRIGHT", contentContainer, "BOTTOMRIGHT", 0, 0)
-    bottomBorder:SetHeight(TABBED_BORDER_WIDTH)
-    bottomBorder:SetColorTexture(ar, ag, ab, TABBED_BORDER_ALPHA)
-    contentBorders.BOTTOM = bottomBorder
-
-    section._contentBorders = contentBorders
+    section._contentBorders = Controls.CreateBorder(contentContainer, {
+        thickness = TABBED_BORDER_WIDTH,
+        alpha = TABBED_BORDER_ALPHA,
+    })
 
     -- Content background
     local contentBg = contentContainer:CreateTexture(nil, "BACKGROUND", nil, -8)
@@ -200,53 +169,17 @@ function Controls:CreateTabbedSection(options)
         tabBtn:SetWidth(btnWidth)
 
         -- Selected fill background (accent color, shown when selected)
-        local selectedFill = tabBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
-        selectedFill:SetPoint("TOPLEFT", 1, -1)
-        selectedFill:SetPoint("BOTTOMRIGHT", -1, 1)
-        selectedFill:SetColorTexture(ar, ag, ab, 1)
-        selectedFill:Hide()
-        tabBtn._selectedFill = selectedFill
+        tabBtn._selectedFill = Controls.AddHoverFill(tabBtn, { alpha = 1, inset = 1 })
 
         -- Hover background (subtle highlight)
-        local hoverBg = tabBtn:CreateTexture(nil, "BACKGROUND", nil, -8)
-        hoverBg:SetPoint("TOPLEFT", 1, -1)
-        hoverBg:SetPoint("BOTTOMRIGHT", -1, 1)
-        hoverBg:SetColorTexture(ar, ag, ab, 0.15)
-        hoverBg:Hide()
-        tabBtn._hoverBg = hoverBg
+        tabBtn._hoverBg = Controls.AddHoverFill(tabBtn, {
+            alpha = 0.15,
+            inset = 1,
+            sublevel = Controls.SUBLEVEL_BG,
+        })
 
         -- Tab border (full box)
-        local tabBorders = {}
-
-        local tabTopBorder = tabBtn:CreateTexture(nil, "BORDER", nil, -1)
-        tabTopBorder:SetPoint("TOPLEFT", tabBtn, "TOPLEFT", 0, 0)
-        tabTopBorder:SetPoint("TOPRIGHT", tabBtn, "TOPRIGHT", 0, 0)
-        tabTopBorder:SetHeight(1)
-        tabTopBorder:SetColorTexture(ar, ag, ab, TABBED_BORDER_ALPHA)
-        tabBorders.TOP = tabTopBorder
-
-        local tabBottomBorder = tabBtn:CreateTexture(nil, "BORDER", nil, -1)
-        tabBottomBorder:SetPoint("BOTTOMLEFT", tabBtn, "BOTTOMLEFT", 0, 0)
-        tabBottomBorder:SetPoint("BOTTOMRIGHT", tabBtn, "BOTTOMRIGHT", 0, 0)
-        tabBottomBorder:SetHeight(1)
-        tabBottomBorder:SetColorTexture(ar, ag, ab, TABBED_BORDER_ALPHA)
-        tabBorders.BOTTOM = tabBottomBorder
-
-        local tabLeftBorder = tabBtn:CreateTexture(nil, "BORDER", nil, -1)
-        tabLeftBorder:SetPoint("TOPLEFT", tabBtn, "TOPLEFT", 0, -1)
-        tabLeftBorder:SetPoint("BOTTOMLEFT", tabBtn, "BOTTOMLEFT", 0, 1)
-        tabLeftBorder:SetWidth(1)
-        tabLeftBorder:SetColorTexture(ar, ag, ab, TABBED_BORDER_ALPHA)
-        tabBorders.LEFT = tabLeftBorder
-
-        local tabRightBorder = tabBtn:CreateTexture(nil, "BORDER", nil, -1)
-        tabRightBorder:SetPoint("TOPRIGHT", tabBtn, "TOPRIGHT", 0, -1)
-        tabRightBorder:SetPoint("BOTTOMRIGHT", tabBtn, "BOTTOMRIGHT", 0, 1)
-        tabRightBorder:SetWidth(1)
-        tabRightBorder:SetColorTexture(ar, ag, ab, TABBED_BORDER_ALPHA)
-        tabBorders.RIGHT = tabRightBorder
-
-        tabBtn._borders = tabBorders
+        tabBtn._borders = Controls.CreateBorder(tabBtn, { alpha = TABBED_BORDER_ALPHA })
 
         -- Label (offset left if info icon present)
         local labelStr = tabBtn:CreateFontString(nil, "OVERLAY")
@@ -428,28 +361,9 @@ function Controls:CreateTabbedSection(options)
     section._subscribeKey = subscribeKey
 
     theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update content borders
-        for _, tex in pairs(section._contentBorders) do
-            tex:SetColorTexture(r, g, b, TABBED_BORDER_ALPHA)
-        end
-
-        -- Update tab buttons
+        -- Borders and fills retint via Utils; only the labels need per-state handling
         for key, tabBtn in pairs(section._tabButtons) do
-            local isSelected = (key == section._selectedTabKey)
-
-            -- Update selected fill color
-            tabBtn._selectedFill:SetColorTexture(r, g, b, 1)
-            tabBtn._hoverBg:SetColorTexture(r, g, b, 0.15)
-
-            -- Update tab borders
-            if tabBtn._borders then
-                for _, tex in pairs(tabBtn._borders) do
-                    tex:SetColorTexture(r, g, b, TABBED_BORDER_ALPHA)
-                end
-            end
-
-            -- Update label color based on selected state
-            if isSelected then
+            if key == section._selectedTabKey then
                 tabBtn._label:SetTextColor(0, 0, 0, 1)  -- Dark text on accent fill
             else
                 tabBtn._label:SetTextColor(r, g, b, 1)  -- Accent text

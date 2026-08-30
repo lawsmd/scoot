@@ -36,7 +36,6 @@ local function GetOrCreateTooltip()
 
     local theme = GetTheme()
     local ar, ag, ab = theme:GetAccentColor()
-    local bgR, bgG, bgB = theme:GetBackgroundSolidColor()
 
     local tooltip = CreateFrame("Frame", "ScootInfoTooltip", UIParent)
     tooltip:SetFrameStrata("TOOLTIP")
@@ -44,44 +43,13 @@ local function GetOrCreateTooltip()
     tooltip:Hide()
 
     -- Background
-    local bg = tooltip:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetPoint("TOPLEFT", TOOLTIP_BORDER_WIDTH, -TOOLTIP_BORDER_WIDTH)
-    bg:SetPoint("BOTTOMRIGHT", -TOOLTIP_BORDER_WIDTH, TOOLTIP_BORDER_WIDTH)
-    bg:SetColorTexture(bgR, bgG, bgB, 0.98)
-    tooltip._bg = bg
+    tooltip._bg = Controls.AddBackground(tooltip, { inset = TOOLTIP_BORDER_WIDTH, alpha = 0.98 })
 
     -- Border (four edges)
-    local border = {}
-
-    local top = tooltip:CreateTexture(nil, "BORDER", nil, -1)
-    top:SetPoint("TOPLEFT", tooltip, "TOPLEFT", 0, 0)
-    top:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", 0, 0)
-    top:SetHeight(TOOLTIP_BORDER_WIDTH)
-    top:SetColorTexture(ar, ag, ab, 1)
-    border.TOP = top
-
-    local bottom = tooltip:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", tooltip, "BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", tooltip, "BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(TOOLTIP_BORDER_WIDTH)
-    bottom:SetColorTexture(ar, ag, ab, 1)
-    border.BOTTOM = bottom
-
-    local left = tooltip:CreateTexture(nil, "BORDER", nil, -1)
-    left:SetPoint("TOPLEFT", tooltip, "TOPLEFT", 0, 0)
-    left:SetPoint("BOTTOMLEFT", tooltip, "BOTTOMLEFT", 0, 0)
-    left:SetWidth(TOOLTIP_BORDER_WIDTH)
-    left:SetColorTexture(ar, ag, ab, 1)
-    border.LEFT = left
-
-    local right = tooltip:CreateTexture(nil, "BORDER", nil, -1)
-    right:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", 0, 0)
-    right:SetPoint("BOTTOMRIGHT", tooltip, "BOTTOMRIGHT", 0, 0)
-    right:SetWidth(TOOLTIP_BORDER_WIDTH)
-    right:SetColorTexture(ar, ag, ab, 1)
-    border.RIGHT = right
-
-    tooltip._border = border
+    tooltip._border = Controls.CreateBorder(tooltip, {
+        thickness = TOOLTIP_BORDER_WIDTH,
+        corners = "overlap",
+    })
 
     -- Title text (accent colored)
     local titleFont = theme:GetFont("BUTTON")
@@ -106,9 +74,6 @@ local function GetOrCreateTooltip()
     tooltip._bodyText = bodyText
 
     theme:Subscribe("ScootInfoTooltip", function(r, g, b)
-        for _, tex in pairs(tooltip._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
         tooltip._titleText:SetTextColor(r, g, b, 1)
     end)
 
@@ -174,7 +139,6 @@ function Controls:CreateInfoIcon(options)
     else
         ar, ag, ab = theme:GetAccentColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     local icon = CreateFrame("Button", name, parent)
     icon:SetSize(width, size)
@@ -184,50 +148,17 @@ function Controls:CreateInfoIcon(options)
     local parentLevel = parent:GetFrameLevel() or 1
     icon:SetFrameLevel(parentLevel + 10)
 
-    local bg = icon:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetAllPoints(icon)
-    bg:SetColorTexture(bgR, bgG, bgB, 0.6)
-    icon._bg = bg
+    icon._bg = Controls.AddBackground(icon, { alpha = 0.6 })
 
-    local border = {}
-
-    local top = icon:CreateTexture(nil, "BORDER", nil, -1)
-    top:SetPoint("TOPLEFT", icon, "TOPLEFT", 0, 0)
-    top:SetPoint("TOPRIGHT", icon, "TOPRIGHT", 0, 0)
-    top:SetHeight(BORDER_WIDTH)
-    top:SetColorTexture(ar, ag, ab, 0.6)
-    border.TOP = top
-
-    local bottom = icon:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", icon, "BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(BORDER_WIDTH)
-    bottom:SetColorTexture(ar, ag, ab, 0.6)
-    border.BOTTOM = bottom
-
-    local left = icon:CreateTexture(nil, "BORDER", nil, -1)
-    left:SetPoint("TOPLEFT", icon, "TOPLEFT", 0, -BORDER_WIDTH)
-    left:SetPoint("BOTTOMLEFT", icon, "BOTTOMLEFT", 0, BORDER_WIDTH)
-    left:SetWidth(BORDER_WIDTH)
-    left:SetColorTexture(ar, ag, ab, 0.6)
-    border.LEFT = left
-
-    local right = icon:CreateTexture(nil, "BORDER", nil, -1)
-    right:SetPoint("TOPRIGHT", icon, "TOPRIGHT", 0, -BORDER_WIDTH)
-    right:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, BORDER_WIDTH)
-    right:SetWidth(BORDER_WIDTH)
-    right:SetColorTexture(ar, ag, ab, 0.6)
-    border.RIGHT = right
-
-    icon._border = border
+    icon._border = Controls.CreateBorder(icon, {
+        thickness = BORDER_WIDTH,
+        color = colorOverride,
+        alpha = 0.6,
+        getAlpha = function(self) return self:IsMouseOver() and 1 or 0.6 end,
+    })
 
     -- Hover highlight background
-    local hoverBg = icon:CreateTexture(nil, "BACKGROUND", nil, -7)
-    hoverBg:SetPoint("TOPLEFT", BORDER_WIDTH, -BORDER_WIDTH)
-    hoverBg:SetPoint("BOTTOMRIGHT", -BORDER_WIDTH, BORDER_WIDTH)
-    hoverBg:SetColorTexture(ar, ag, ab, HOVER_ALPHA)
-    hoverBg:Hide()
-    icon._hoverBg = hoverBg
+    icon._hoverBg = Controls.AddHoverFill(icon, { alpha = HOVER_ALPHA, inset = BORDER_WIDTH })
 
     local iconText = icon:CreateFontString(nil, "OVERLAY")
     local fontPath = theme:GetFont("BUTTON")
@@ -253,9 +184,7 @@ function Controls:CreateInfoIcon(options)
         self._hoverBg:SetColorTexture(r, g, b, HOVER_ALPHA)
         self._hoverBg:Show()
 
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
+        self._border:Refresh()
 
         -- Position above icon to avoid cursor blocking
         local tooltip = GetOrCreateTooltip()
@@ -281,15 +210,7 @@ function Controls:CreateInfoIcon(options)
 
     icon:SetScript("OnLeave", function(self)
         self._hoverBg:Hide()
-        local r, g, b
-        if self._colorOverride then
-            r, g, b = self._colorOverride[1], self._colorOverride[2], self._colorOverride[3]
-        else
-            r, g, b = theme:GetAccentColor()
-        end
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.6)
-        end
+        self._border:Refresh()
 
         local tooltip = GetOrCreateTooltip()
         tooltip:Hide()
@@ -300,15 +221,6 @@ function Controls:CreateInfoIcon(options)
 
     if not colorOverride then
         theme:Subscribe(subscribeKey, function(r, g, b)
-            if icon._border then
-                local alpha = icon:IsMouseOver() and 1 or 0.6
-                for _, tex in pairs(icon._border) do
-                    tex:SetColorTexture(r, g, b, alpha)
-                end
-            end
-            if icon._hoverBg then
-                icon._hoverBg:SetColorTexture(r, g, b, HOVER_ALPHA)
-            end
             if icon._iconText then
                 icon._iconText:SetTextColor(r, g, b, 1)
             end

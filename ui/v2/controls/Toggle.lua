@@ -85,35 +85,23 @@ function Controls:CreateToggle(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Row hover background (hidden by default)
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row border (subtle line below only, plus left accent border for emphasized)
-    local rowBorder = {}
-    local borderAlpha = 0.2
-
-    local bottom = row:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(TOGGLE_BORDER)
-    bottom:SetColorTexture(ar, ag, ab, borderAlpha)
-    rowBorder.BOTTOM = bottom
-
-    -- Add left accent border for emphasized toggles
+    local rowSides = { "BOTTOM" }
     if emphasized and leftBorderWidth > 0 then
-        local leftBorder = row:CreateTexture(nil, "BORDER", nil, -1)
-        leftBorder:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-        leftBorder:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-        leftBorder:SetWidth(leftBorderWidth)
-        leftBorder:SetColorTexture(ar, ag, ab, 1)
-        rowBorder.LEFT = leftBorder
+        table.insert(rowSides, "LEFT")
+    end
+    row._rowBorder = Controls.CreateBorder(row, {
+        sides = rowSides,
+        thickness = { BOTTOM = TOGGLE_BORDER, LEFT = leftBorderWidth },
+        alpha = 0.2,
+        sideAlphas = { LEFT = 1 },
+    })
 
+    if emphasized and leftBorderWidth > 0 then
         -- Faint background highlight for emphasized
         local emphBg = row:CreateTexture(nil, "BACKGROUND", nil, -7)
         emphBg:SetPoint("TOPLEFT", leftBorderWidth, 0)
@@ -121,8 +109,6 @@ function Controls:CreateToggle(options)
         emphBg:SetColorTexture(ar, ag, ab, 0.03)
         row._emphBg = emphBg
     end
-
-    row._rowBorder = rowBorder
     row._emphasized = emphasized
 
     -- Calculate label padding (account for left border on emphasized)
@@ -195,50 +181,15 @@ function Controls:CreateToggle(options)
     indicator:SetSize(indicatorWidth, indicatorHeight)
     indicator:SetPoint("RIGHT", row, "RIGHT", -TOGGLE_PADDING, 0)
 
-    -- Indicator border (edges inset to avoid corner overlap)
-    local indBorder = {}
-
-    -- Top edge spans full width
-    local indTop = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    indTop:SetPoint("TOPLEFT", indicator, "TOPLEFT", 0, 0)
-    indTop:SetPoint("TOPRIGHT", indicator, "TOPRIGHT", 0, 0)
-    indTop:SetHeight(BORDER_WIDTH)
-    indTop:SetColorTexture(ar, ag, ab, 1)
-    indBorder.TOP = indTop
-
-    -- Bottom edge spans full width
-    local indBottom = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    indBottom:SetPoint("BOTTOMLEFT", indicator, "BOTTOMLEFT", 0, 0)
-    indBottom:SetPoint("BOTTOMRIGHT", indicator, "BOTTOMRIGHT", 0, 0)
-    indBottom:SetHeight(BORDER_WIDTH)
-    indBottom:SetColorTexture(ar, ag, ab, 1)
-    indBorder.BOTTOM = indBottom
-
-    -- Left edge inset to avoid overlapping top/bottom corners
-    local indLeft = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    indLeft:SetPoint("TOPLEFT", indicator, "TOPLEFT", 0, -BORDER_WIDTH)
-    indLeft:SetPoint("BOTTOMLEFT", indicator, "BOTTOMLEFT", 0, BORDER_WIDTH)
-    indLeft:SetWidth(BORDER_WIDTH)
-    indLeft:SetColorTexture(ar, ag, ab, 1)
-    indBorder.LEFT = indLeft
-
-    -- Right edge inset to avoid overlapping top/bottom corners
-    local indRight = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    indRight:SetPoint("TOPRIGHT", indicator, "TOPRIGHT", 0, -BORDER_WIDTH)
-    indRight:SetPoint("BOTTOMRIGHT", indicator, "BOTTOMRIGHT", 0, BORDER_WIDTH)
-    indRight:SetWidth(BORDER_WIDTH)
-    indRight:SetColorTexture(ar, ag, ab, 1)
-    indBorder.RIGHT = indRight
-
-    indicator._border = indBorder
+    -- Indicator border (edges inset to avoid corner overlap). Static color:
+    -- UpdateVisual owns all indicator tinting (state-dependent color and alpha).
+    indicator._border = Controls.CreateBorder(indicator, {
+        thickness = BORDER_WIDTH,
+        color = { ar, ag, ab },
+    })
 
     -- Indicator background (shown when ON)
-    local indBg = indicator:CreateTexture(nil, "BACKGROUND", nil, -7)
-    indBg:SetPoint("TOPLEFT", BORDER_WIDTH, -BORDER_WIDTH)
-    indBg:SetPoint("BOTTOMRIGHT", -BORDER_WIDTH, BORDER_WIDTH)
-    indBg:SetColorTexture(ar, ag, ab, 1)
-    indBg:Hide()
-    indicator._bg = indBg
+    indicator._bg = Controls.AddHoverFill(indicator, { alpha = 1, inset = BORDER_WIDTH })
 
     -- Indicator text
     local indText = indicator:CreateFontString(nil, "OVERLAY")
@@ -340,22 +291,8 @@ function Controls:CreateToggle(options)
     local subscribeKey = "Toggle_" .. (name or tostring(row))
     row._subscribeKey = subscribeKey
 
-    -- Subscribe to theme updates
+    -- Subscribe to theme updates (hover fill and row border retint via Utils)
     theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update hover bg color
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
-        -- Update row borders (emphasized left border stays at full alpha)
-        if row._rowBorder then
-            for side, tex in pairs(row._rowBorder) do
-                if side == "LEFT" and row._emphasized then
-                    tex:SetColorTexture(r, g, b, 1)  -- Full opacity for emphasized left border
-                else
-                    tex:SetColorTexture(r, g, b, 0.2)
-                end
-            end
-        end
         -- Update emphasized background
         if row._emphBg then
             row._emphBg:SetColorTexture(r, g, b, 0.03)

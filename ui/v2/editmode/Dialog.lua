@@ -63,40 +63,6 @@ end
 -- Chrome
 --------------------------------------------------------------------------------
 
-local function CreateBorder(parent, width)
-    local edges = {}
-
-    local top = parent:CreateTexture(nil, "BORDER", nil, -1)
-    top:SetPoint("TOPLEFT")
-    top:SetPoint("TOPRIGHT")
-    top:SetHeight(width)
-    edges.TOP = top
-
-    local bottom = parent:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT")
-    bottom:SetPoint("BOTTOMRIGHT")
-    bottom:SetHeight(width)
-    edges.BOTTOM = bottom
-
-    local left = parent:CreateTexture(nil, "BORDER", nil, -1)
-    left:SetPoint("TOPLEFT", 0, -width)
-    left:SetPoint("BOTTOMLEFT", 0, width)
-    left:SetWidth(width)
-    edges.LEFT = left
-
-    local right = parent:CreateTexture(nil, "BORDER", nil, -1)
-    right:SetPoint("TOPRIGHT", 0, -width)
-    right:SetPoint("BOTTOMRIGHT", 0, width)
-    right:SetWidth(width)
-    edges.RIGHT = right
-
-    local r, g, b = GetAccent()
-    for _, tex in pairs(edges) do
-        tex:SetColorTexture(r, g, b, 1)
-    end
-    return edges
-end
-
 local function CreateCloseButton(parent, onClick)
     local theme = GetTheme()
     local r, g, b = GetAccent()
@@ -161,7 +127,7 @@ local function EnsureSkin(dialog)
     bg:SetColorTexture(bgR, bgG, bgB, 0.98)
     skin._bg = bg
 
-    skin._border = CreateBorder(skin, BORDER)
+    skin._border = addon.UI.Controls.CreateBorder(skin, { thickness = BORDER })
 
     local Tooltip = addon.EditMode.Tooltip
     local brand = Tooltip.BuildBrandRow(skin, BRAND_SIZE)
@@ -525,9 +491,6 @@ local theme = addon.UI and addon.UI.Theme
 if theme and theme.Subscribe then
     theme:Subscribe("ScootEditModeDialog", function(r, g, b)
         if not skin then return end
-        for _, tex in pairs(skin._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
         skin._title:SetTextColor(r, g, b, 1)
         skin._brand.text:SetTextColor(r, g, b, 1)
         skin._close._bg:SetColorTexture(r, g, b, 1)

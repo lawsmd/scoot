@@ -59,7 +59,6 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Build ordered key list
     local keyList = {}
@@ -82,44 +81,10 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
     -- Width will be set by the parent after deferred measurement
 
     -- Selector border
-    local selBorder = {}
-
-    local selTop = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selTop:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, 0)
-    selTop:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, 0)
-    selTop:SetHeight(1)
-    selTop:SetColorTexture(ar, ag, ab, DUAL_SELECTOR_BORDER_ALPHA)
-    selBorder.TOP = selTop
-
-    local selBottom = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selBottom:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 0)
-    selBottom:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 0)
-    selBottom:SetHeight(1)
-    selBottom:SetColorTexture(ar, ag, ab, DUAL_SELECTOR_BORDER_ALPHA)
-    selBorder.BOTTOM = selBottom
-
-    local selLeft = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selLeft:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, -1)
-    selLeft:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 1)
-    selLeft:SetWidth(1)
-    selLeft:SetColorTexture(ar, ag, ab, DUAL_SELECTOR_BORDER_ALPHA)
-    selBorder.LEFT = selLeft
-
-    local selRight = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selRight:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, -1)
-    selRight:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 1)
-    selRight:SetWidth(1)
-    selRight:SetColorTexture(ar, ag, ab, DUAL_SELECTOR_BORDER_ALPHA)
-    selBorder.RIGHT = selRight
-
-    selector._border = selBorder
+    selector._border = Controls.CreateBorder(selector, { alpha = DUAL_SELECTOR_BORDER_ALPHA })
 
     -- Selector background
-    local selBg = selector:CreateTexture(nil, "BACKGROUND", nil, -7)
-    selBg:SetPoint("TOPLEFT", 1, -1)
-    selBg:SetPoint("BOTTOMRIGHT", -1, 1)
-    selBg:SetColorTexture(bgR, bgG, bgB, bgA)
-    selector._bg = selBg
+    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
     -- Left arrow button
     local leftArrow = CreateFrame("Button", nil, selector)
@@ -339,22 +304,16 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
     end)
 
     -- Dropdown menu frame (created once, reused)
-    local dropdown = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local dropdown = CreateFrame("Frame", nil, UIParent)
     dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
     dropdown:SetFrameLevel(100)
     dropdown:SetClampedToScreen(true)
     dropdown:Hide()
     selector._dropdown = dropdown
 
-    -- Dropdown backdrop/border
-    dropdown:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    local ddBgR, ddBgG, ddBgB = theme:GetBackgroundSolidColor()
-    dropdown:SetBackdropColor(ddBgR, ddBgG, ddBgB, 0.98)
-    dropdown:SetBackdropBorderColor(ar, ag, ab, 0.8)
+    -- Dropdown chrome: solid fill plus a 1px accent border
+    Controls.AddBackground(dropdown, { alpha = 0.98 })
+    dropdown._border = Controls.CreateBorder(dropdown, { alpha = 0.8 })
 
     -- Track dropdown option buttons
     dropdown._optionButtons = {}
@@ -574,11 +533,7 @@ function Controls:CreateDualSelector(options)
     row:SetHeight(rowHeight)
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row border (subtle line below)
     local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
@@ -728,20 +683,9 @@ function Controls:CreateDualSelector(options)
         if row._rowBorder then
             row._rowBorder:SetColorTexture(r, g, b, 0.2)
         end
-        -- Update hover bg
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
-
         -- Update both mini selectors
         for _, miniSel in ipairs({row._selectorA, row._selectorB}) do
             if miniSel then
-                -- Update selector border
-                if miniSel._border then
-                    for _, tex in pairs(miniSel._border) do
-                        tex:SetColorTexture(r, g, b, DUAL_SELECTOR_BORDER_ALPHA)
-                    end
-                end
                 -- Update separators
                 if miniSel._leftSep then
                     miniSel._leftSep:SetColorTexture(r, g, b, 0.4)
@@ -759,9 +703,6 @@ function Controls:CreateDualSelector(options)
                     end
                 end
                 -- Update dropdown border color
-                if miniSel._dropdown and miniSel._dropdown.SetBackdropBorderColor then
-                    miniSel._dropdown:SetBackdropBorderColor(r, g, b, 0.8)
-                end
             end
         end
     end)

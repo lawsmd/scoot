@@ -276,11 +276,7 @@ function Controls:CreateToggleSliderRow(options)
     local row = CreateFrame("Frame", name, parent)
     row:SetHeight(rowHeight)
 
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
     rowBorder:SetPoint("BOTTOMLEFT", 0, 0)
@@ -460,7 +456,6 @@ function Controls:CreateToggleSliderRow(options)
     theme:Subscribe(subscribeKey, function(r, g, b)
         if row._label then row._label:SetTextColor(r, g, b, 1) end
         if row._rowBorder then row._rowBorder:SetColorTexture(r, g, b, 0.2) end
-        if row._hoverBg then row._hoverBg:SetColorTexture(r, g, b, 0.08) end
         if row._toggle and row._toggle._updateVisual then row._toggle._updateVisual() end
         if row._slider and row._slider._updateVisual then row._slider._updateVisual() end
     end)

@@ -78,59 +78,19 @@ function Controls:CreateButton(options)
 
     -- Get theme colors
     local ar, ag, ab = theme:GetAccentColor()
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Background (dark, shown always)
-    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetPoint("TOPLEFT", borderWidth, -borderWidth)
-    bg:SetPoint("BOTTOMRIGHT", -borderWidth, borderWidth)
-    bg:SetColorTexture(bgR, bgG, bgB, bgA)
-    btn._bg = bg
+    btn._bg = Controls.AddBackground(btn, { inset = borderWidth })
 
     -- Hover fill (accent color, hidden by default)
-    local hoverFill = btn:CreateTexture(nil, "BACKGROUND", nil, -7)
-    hoverFill:SetPoint("TOPLEFT", borderWidth, -borderWidth)
-    hoverFill:SetPoint("BOTTOMRIGHT", -borderWidth, borderWidth)
-    hoverFill:SetColorTexture(ar, ag, ab, 1)
-    hoverFill:Hide()
-    btn._hoverFill = hoverFill
+    btn._hoverFill = Controls.AddHoverFill(btn, { alpha = 1, inset = borderWidth })
 
     -- Border (four edges)
-    local border = {}
-
-    -- TOP
-    local top = btn:CreateTexture(nil, "BORDER", nil, -1)
-    top:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
-    top:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 0, 0)
-    top:SetHeight(borderWidth)
-    top:SetColorTexture(ar, ag, ab, borderAlpha)
-    border.TOP = top
-
-    -- BOTTOM
-    local bottom = btn:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(borderWidth)
-    bottom:SetColorTexture(ar, ag, ab, borderAlpha)
-    border.BOTTOM = bottom
-
-    -- LEFT
-    local left = btn:CreateTexture(nil, "BORDER", nil, -1)
-    left:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
-    left:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 0)
-    left:SetWidth(borderWidth)
-    left:SetColorTexture(ar, ag, ab, borderAlpha)
-    border.LEFT = left
-
-    -- RIGHT
-    local right = btn:CreateTexture(nil, "BORDER", nil, -1)
-    right:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 0, 0)
-    right:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-    right:SetWidth(borderWidth)
-    right:SetColorTexture(ar, ag, ab, borderAlpha)
-    border.RIGHT = right
-
-    btn._border = border
+    btn._border = Controls.CreateBorder(btn, {
+        thickness = borderWidth,
+        corners = "overlap",
+        alpha = borderAlpha,
+    })
 
     -- Label text
     local label = btn:CreateFontString(nil, "OVERLAY")
@@ -172,8 +132,6 @@ function Controls:CreateButton(options)
 
     -- Hover handlers
     btn:SetScript("OnEnter", function(self)
-        local r, g, b = theme:GetAccentColor()
-        self._hoverFill:SetColorTexture(r, g, b, 1)
         self._hoverFill:Show()
         self._label:SetTextColor(0, 0, 0, 1)  -- Dark text on accent bg
     end)
@@ -247,19 +205,8 @@ function Controls:CreateButton(options)
     local subscribeKey = "Button_" .. (name or tostring(btn))
     btn._subscribeKey = subscribeKey
 
-    -- Subscribe to theme updates
+    -- Subscribe to theme updates (border and hover fill retint via Utils)
     theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update border (using stored alpha)
-        if btn._border then
-            local alpha = btn._borderAlpha or 1
-            for _, tex in pairs(btn._border) do
-                tex:SetColorTexture(r, g, b, alpha)
-            end
-        end
-        -- Update hover fill color (in case it's showing)
-        if btn._hoverFill then
-            btn._hoverFill:SetColorTexture(r, g, b, 1)
-        end
         -- Update label if not hovering
         if btn._label and not btn:IsMouseOver() then
             btn._label:SetTextColor(r, g, b, 1)
@@ -297,24 +244,15 @@ function Controls:CreateButton(options)
     end
 
     function btn:SetEnabled(enabled)
+        local r, g, b = theme:GetAccentColor()
         if enabled then
             self:Enable()
-            local r, g, b = theme:GetAccentColor()
-            local alpha = self._borderAlpha or 1
-            for _, tex in pairs(self._border) do
-                tex:SetColorTexture(r, g, b, alpha)
-            end
+            self._border:SetAlpha(self._borderAlpha or 1)
             self._label:SetTextColor(r, g, b, 1)
         else
             self:Disable()
             -- Dim the button when disabled (relative to base alpha)
-            local baseAlpha = self._borderAlpha or 1
-            local dimAlpha = baseAlpha * 0.4
-            for _, tex in pairs(self._border) do
-                local r, g, b = theme:GetAccentColor()
-                tex:SetColorTexture(r, g, b, dimAlpha)
-            end
-            local r, g, b = theme:GetAccentColor()
+            self._border:SetAlpha((self._borderAlpha or 1) * 0.4)
             self._label:SetTextColor(r, g, b, 0.4)
         end
     end

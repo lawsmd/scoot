@@ -80,12 +80,15 @@ local function ShowSpecPicker(anchor, rule, callback)
 
     -- Create frame if needed
     if not rulesSpecPickerFrame then
-        local frame = CreateFrame("Frame", "ScootSpecPicker", UIParent, "BackdropTemplate")
+        local frame = CreateFrame("Frame", "ScootSpecPicker", UIParent)
         frame:SetFrameStrata("FULLSCREEN_DIALOG")
         frame:SetFrameLevel(200)
         frame:SetClampedToScreen(true)
         frame:EnableMouse(true)
         frame:Hide()
+
+        Controls.AddBackground(frame, { alpha = 0.98 })
+        frame._border = Controls.CreateBorder(frame, { thickness = 2, alpha = 0.9 })
 
         -- ESC to close
         addon.EscapeKey.Attach(frame, function()
@@ -135,15 +138,6 @@ local function ShowSpecPicker(anchor, rule, callback)
         local x, y = GetCursorPosition()
         frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
     end
-
-    -- Update backdrop
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 2,
-    })
-    frame:SetBackdropColor(bgR, bgG, bgB, 0.98)
-    frame:SetBackdropBorderColor(ar, ag, ab, 0.9)
 
     -- Title bar
     local titleBar = CreateFrame("Frame", nil, frame)
@@ -1141,62 +1135,20 @@ local function CreateRulesCard(parent, rule, refreshCallback)
 
     -- Get theme colors
     local ar, ag, ab = Theme:GetAccentColor()
-    local bgR, bgG, bgB, bgA = Theme:GetCollapsibleBgColor()
-    local dimR, dimG, dimB = Theme:GetDimTextColor()
 
     -- Card container with TUI styling (gray background within border)
     local card = CreateFrame("Frame", nil, parent)
     card:SetHeight(isEditing and RULES_CARD_HEIGHT_EDIT or RULES_CARD_HEIGHT_DISPLAY)
 
     -- Gray background, matching the collapsible section headers.
-    local bg = card:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(bgR, bgG, bgB, bgA)
-    card._bg = bg
+    card._bg = Controls.AddBackground(card, { color = "collapsible" })
 
     -- Border
-    local borderAlpha = 0.6
-    local borders = {}
-    local function createBorder(side)
-        local tex = card:CreateTexture(nil, "BORDER")
-        tex:SetColorTexture(ar, ag, ab, borderAlpha)
-        if side == "TOP" then
-            tex:SetHeight(1)
-            tex:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
-            tex:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, 0)
-        elseif side == "BOTTOM" then
-            tex:SetHeight(1)
-            tex:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 0, 0)
-            tex:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", 0, 0)
-        elseif side == "LEFT" then
-            tex:SetWidth(1)
-            tex:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
-            tex:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 0, 0)
-        elseif side == "RIGHT" then
-            tex:SetWidth(1)
-            tex:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, 0)
-            tex:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", 0, 0)
-        end
-        borders[side] = tex
-    end
-    createBorder("TOP")
-    createBorder("BOTTOM")
-    createBorder("LEFT")
-    createBorder("RIGHT")
-    card._borders = borders
-
-    -- Theme subscription
-    local subscribeKey = "RulesCard_" .. (rule.id or tostring(card))
-    Theme:Subscribe(subscribeKey, function(r, g, b)
-        for _, tex in pairs(borders) do
-            tex:SetColorTexture(r, g, b, borderAlpha)
-        end
-    end)
-    card._subscribeKey = subscribeKey
+    card._border = Controls.CreateBorder(card, { corners = "overlap", sublevel = 0, alpha = 0.6 })
 
     card.Cleanup = function(self)
-        if self._subscribeKey then
-            Theme:Unsubscribe(self._subscribeKey)
+        if self._border then
+            self._border:Destroy()
         end
         -- Clean up spec badges
         if self._specBadges then

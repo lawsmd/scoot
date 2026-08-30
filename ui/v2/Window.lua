@@ -45,15 +45,6 @@ function Window:Create(name, parent, width, height)
     -- self:CreateGlowBorder(frame)  -- Disabled: needs gradient texture for real glow
     self:CreateSolidBorder(frame)
 
-    -- Subscribe to accent color changes
-    local subscribeKey = name .. "_UIWindow"
-    Theme:Subscribe(subscribeKey, function(r, g, b, a)
-        self:UpdateBorderColors(frame, r, g, b)
-    end)
-
-    -- Store subscription key for cleanup
-    frame._themeSubscribeKey = subscribeKey
-
     -- NOTE: Dragging is NOT registered on the main frame.
     -- The SettingsPanel creates a title bar that handles dragging instead,
     -- so users can only drag the window by the title bar area (not the entire window).
@@ -70,11 +61,7 @@ end
 --------------------------------------------------------------------------------
 
 function Window:CreateBackground(frame)
-    local bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetAllPoints()
-    local r, g, b, a = Theme:GetBackgroundColor()
-    bg:SetColorTexture(r, g, b, a)
-    frame._bg = bg
+    frame._bg = addon.UI.Controls.AddBackground(frame, { color = "window" })
 end
 
 --------------------------------------------------------------------------------
@@ -111,60 +98,10 @@ end
 --------------------------------------------------------------------------------
 
 function Window:CreateSolidBorder(frame)
-    local ar, ag, ab = Theme:GetBorderColor()
-    local borderWidth = Theme.BORDER_WIDTH or 3
-    local border = {}
-
-    -- TOP edge (extends full width including corners)
-    local top = frame:CreateTexture(nil, "BORDER", nil, -1)
-    top:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -borderWidth, 0)
-    top:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", borderWidth, 0)
-    top:SetHeight(borderWidth)
-    top:SetColorTexture(ar, ag, ab, 1)
-    border.TOP = top
-
-    -- BOTTOM edge (extends full width including corners)
-    local bottom = frame:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", -borderWidth, 0)
-    bottom:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", borderWidth, 0)
-    bottom:SetHeight(borderWidth)
-    bottom:SetColorTexture(ar, ag, ab, 1)
-    border.BOTTOM = bottom
-
-    -- LEFT edge (between top and bottom borders)
-    local left = frame:CreateTexture(nil, "BORDER", nil, -1)
-    left:SetPoint("TOPRIGHT", frame, "TOPLEFT", 0, 0)
-    left:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", 0, 0)
-    left:SetWidth(borderWidth)
-    left:SetColorTexture(ar, ag, ab, 1)
-    border.LEFT = left
-
-    -- RIGHT edge (between top and bottom borders)
-    local right = frame:CreateTexture(nil, "BORDER", nil, -1)
-    right:SetPoint("TOPLEFT", frame, "TOPRIGHT", 0, 0)
-    right:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", 0, 0)
-    right:SetWidth(borderWidth)
-    right:SetColorTexture(ar, ag, ab, 1)
-    border.RIGHT = right
-
-    frame._border = border
-end
-
---------------------------------------------------------------------------------
--- Color Update (called by theme subscriber)
---------------------------------------------------------------------------------
-
-function Window:UpdateBorderColors(frame, r, g, b)
-    if not frame then return end
-
-    -- Update solid border
-    if frame._border then
-        for _, tex in pairs(frame._border) do
-            if tex and tex.SetColorTexture then
-                tex:SetColorTexture(r, g, b, 1)
-            end
-        end
-    end
+    frame._border = addon.UI.Controls.CreateBorder(frame, {
+        thickness = Theme.BORDER_WIDTH or 3,
+        corners = "outset",
+    })
 end
 
 --------------------------------------------------------------------------------
@@ -174,9 +111,8 @@ end
 function Window:Destroy(frame)
     if not frame then return end
 
-    -- Unsubscribe from theme
-    if frame._themeSubscribeKey then
-        Theme:Unsubscribe(frame._themeSubscribeKey)
+    if frame._border and frame._border.Destroy then
+        frame._border:Destroy()
     end
 
     -- Hide and clear

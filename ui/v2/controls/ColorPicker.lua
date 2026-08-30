@@ -63,29 +63,16 @@ function Controls:CreateColorPicker(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Main row frame
     local row = CreateFrame("Frame", name, parent)
     row:SetHeight(height)
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row bottom border
-    local rowBorder = {}
-    local borderAlpha = 0.2
-    local bottom = row:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(1)
-    bottom:SetColorTexture(ar, ag, ab, borderAlpha)
-    rowBorder.BOTTOM = bottom
-    row._rowBorder = rowBorder
+    row._rowBorder = Controls.CreateBorder(row, { sides = {"BOTTOM"}, alpha = 0.2 })
 
     -- Label text (left side)
     local labelFS = row:CreateFontString(nil, "OVERLAY")
@@ -155,37 +142,10 @@ function Controls:CreateColorPicker(options)
     swatch:RegisterForClicks("AnyUp")
 
     -- Swatch border (four edges)
-    local swatchBorder = {}
-
-    local sTop = swatch:CreateTexture(nil, "BORDER", nil, -1)
-    sTop:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, 0)
-    sTop:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, 0)
-    sTop:SetHeight(COLOR_SWATCH_BORDER)
-    sTop:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.TOP = sTop
-
-    local sBottom = swatch:CreateTexture(nil, "BORDER", nil, -1)
-    sBottom:SetPoint("BOTTOMLEFT", swatch, "BOTTOMLEFT", 0, 0)
-    sBottom:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 0, 0)
-    sBottom:SetHeight(COLOR_SWATCH_BORDER)
-    sBottom:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.BOTTOM = sBottom
-
-    local sLeft = swatch:CreateTexture(nil, "BORDER", nil, -1)
-    sLeft:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, -COLOR_SWATCH_BORDER)
-    sLeft:SetPoint("BOTTOMLEFT", swatch, "BOTTOMLEFT", 0, COLOR_SWATCH_BORDER)
-    sLeft:SetWidth(COLOR_SWATCH_BORDER)
-    sLeft:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.LEFT = sLeft
-
-    local sRight = swatch:CreateTexture(nil, "BORDER", nil, -1)
-    sRight:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, -COLOR_SWATCH_BORDER)
-    sRight:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 0, COLOR_SWATCH_BORDER)
-    sRight:SetWidth(COLOR_SWATCH_BORDER)
-    sRight:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.RIGHT = sRight
-
-    swatch._border = swatchBorder
+    swatch._border = Controls.CreateBorder(swatch, {
+        thickness = COLOR_SWATCH_BORDER,
+        getAlpha = function(self) return self:IsMouseOver() and 1 or 0.8 end,
+    })
 
     -- Inner color display (checkerboard background for alpha visualization)
     local checkerBg = swatch:CreateTexture(nil, "BACKGROUND", nil, -7)
@@ -255,19 +215,13 @@ function Controls:CreateColorPicker(options)
     -- Hover handlers for swatch (highlight border)
     swatch:SetScript("OnEnter", function(self)
         row._hoverBg:Show()
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
+        self._border:Refresh()
     end)
     swatch:SetScript("OnLeave", function(self)
         if not row:IsMouseOver() then
             row._hoverBg:Hide()
         end
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.8)
-        end
+        self._border:Refresh()
     end)
 
     -- Click to open color picker
@@ -303,22 +257,8 @@ function Controls:CreateColorPicker(options)
     -- Theme subscription
     local subscribeKey = "ColorPicker_" .. (name or tostring(row))
     theme:Subscribe(subscribeKey, function(r, g, b)
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
-        if row._rowBorder then
-            for _, tex in pairs(row._rowBorder) do
-                tex:SetColorTexture(r, g, b, 0.2)
-            end
-        end
         if row._label then
             row._label:SetTextColor(r, g, b, 1)
-        end
-        if swatch._border then
-            local alpha = swatch:IsMouseOver() and 1 or 0.8
-            for _, tex in pairs(swatch._border) do
-                tex:SetColorTexture(r, g, b, alpha)
-            end
         end
     end)
     row._subscribeKey = subscribeKey

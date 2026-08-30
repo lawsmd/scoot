@@ -91,7 +91,6 @@ function Controls:CreateCollapsibleSection(options)
     local ar, ag, ab = theme:GetAccentColor()
     local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
     local dimR, dimG, dimB = theme:GetDimTextColor()
-    local collBgR, collBgG, collBgB, collBgA = theme:GetCollapsibleBgColor()
 
     -- Calculate total height
     local totalHeight = expanded and (COLLAPSIBLE_HEADER_HEIGHT + contentHeight + COLLAPSIBLE_BORDER_WIDTH) or COLLAPSIBLE_HEADER_HEIGHT
@@ -116,17 +115,10 @@ function Controls:CreateCollapsibleSection(options)
     header:RegisterForClicks("AnyUp")
 
     -- Solid gray background (always visible for visual distinction)
-    local solidBg = header:CreateTexture(nil, "BACKGROUND", nil, -8)
-    solidBg:SetAllPoints()
-    solidBg:SetColorTexture(collBgR, collBgG, collBgB, collBgA)
-    header._solidBg = solidBg
+    header._solidBg = Controls.AddBackground(header, { color = "collapsible" })
 
     -- Hover background (on top of solid bg)
-    local hoverBg = header:CreateTexture(nil, "BACKGROUND", nil, -7)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    header._hoverBg = hoverBg
+    header._hoverBg = Controls.AddHoverFill(header)
 
     -- Header border textures (stored for updating)
     header._borders = {}
@@ -223,10 +215,7 @@ function Controls:CreateCollapsibleSection(options)
     content._rightBorder = contentRightBorder
 
     -- Content background (matching header gray for visual consistency)
-    local contentBg = content:CreateTexture(nil, "BACKGROUND", nil, -8)
-    contentBg:SetAllPoints()
-    contentBg:SetColorTexture(collBgR, collBgG, collBgB, collBgA)
-    content._bg = contentBg
+    content._bg = Controls.AddBackground(content, { color = "collapsible" })
 
     section._content = content
 
@@ -310,7 +299,6 @@ function Controls:CreateCollapsibleSection(options)
             tex:SetColorTexture(r, g, b, 0.6)
         end
         -- Update header elements
-        header._hoverBg:SetColorTexture(r, g, b, 0.08)
         header._indicator:SetTextColor(r, g, b, 1)
         -- Title stays white (not accent)
         -- Update content borders (dimmed)

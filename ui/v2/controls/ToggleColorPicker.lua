@@ -67,7 +67,6 @@ function Controls:CreateToggleColorPicker(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Main row frame (Button for click handling)
     local row = CreateFrame("Button", name, parent)
@@ -76,22 +75,14 @@ function Controls:CreateToggleColorPicker(options)
     row:RegisterForClicks("AnyUp")
 
     -- Row hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND", nil, -8)
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
+    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Row bottom border
-    local rowBorder = {}
-    local borderAlpha = 0.2
-    local bottom = row:CreateTexture(nil, "BORDER", nil, -1)
-    bottom:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(TOGGLE_BORDER)
-    bottom:SetColorTexture(ar, ag, ab, borderAlpha)
-    rowBorder.BOTTOM = bottom
-    row._rowBorder = rowBorder
+    row._rowBorder = Controls.CreateBorder(row, {
+        sides = {"BOTTOM"},
+        thickness = TOGGLE_BORDER,
+        alpha = 0.2,
+    })
 
     -- Label text (left side)
     local labelFS = row:CreateFontString(nil, "OVERLAY")
@@ -158,46 +149,15 @@ function Controls:CreateToggleColorPicker(options)
     indicator:SetSize(TOGGLE_INDICATOR_WIDTH, TOGGLE_INDICATOR_HEIGHT)
     indicator:SetPoint("RIGHT", row, "RIGHT", -TOGGLE_PADDING, 0)
 
-    -- Indicator border
-    local indBorder = {}
-
-    local indTop = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    indTop:SetPoint("TOPLEFT", indicator, "TOPLEFT", 0, 0)
-    indTop:SetPoint("TOPRIGHT", indicator, "TOPRIGHT", 0, 0)
-    indTop:SetHeight(BORDER_WIDTH)
-    indTop:SetColorTexture(ar, ag, ab, 1)
-    indBorder.TOP = indTop
-
-    local indBottom = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    indBottom:SetPoint("BOTTOMLEFT", indicator, "BOTTOMLEFT", 0, 0)
-    indBottom:SetPoint("BOTTOMRIGHT", indicator, "BOTTOMRIGHT", 0, 0)
-    indBottom:SetHeight(BORDER_WIDTH)
-    indBottom:SetColorTexture(ar, ag, ab, 1)
-    indBorder.BOTTOM = indBottom
-
-    local indLeft = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    indLeft:SetPoint("TOPLEFT", indicator, "TOPLEFT", 0, -BORDER_WIDTH)
-    indLeft:SetPoint("BOTTOMLEFT", indicator, "BOTTOMLEFT", 0, BORDER_WIDTH)
-    indLeft:SetWidth(BORDER_WIDTH)
-    indLeft:SetColorTexture(ar, ag, ab, 1)
-    indBorder.LEFT = indLeft
-
-    local indRight = indicator:CreateTexture(nil, "BORDER", nil, -1)
-    indRight:SetPoint("TOPRIGHT", indicator, "TOPRIGHT", 0, -BORDER_WIDTH)
-    indRight:SetPoint("BOTTOMRIGHT", indicator, "BOTTOMRIGHT", 0, BORDER_WIDTH)
-    indRight:SetWidth(BORDER_WIDTH)
-    indRight:SetColorTexture(ar, ag, ab, 1)
-    indBorder.RIGHT = indRight
-
-    indicator._border = indBorder
+    -- Indicator border. Static color: UpdateVisual owns all indicator tinting
+    -- (state-dependent color and alpha).
+    indicator._border = Controls.CreateBorder(indicator, {
+        thickness = BORDER_WIDTH,
+        color = { ar, ag, ab },
+    })
 
     -- Indicator background (shown when ON)
-    local indBg = indicator:CreateTexture(nil, "BACKGROUND", nil, -7)
-    indBg:SetPoint("TOPLEFT", BORDER_WIDTH, -BORDER_WIDTH)
-    indBg:SetPoint("BOTTOMRIGHT", -BORDER_WIDTH, BORDER_WIDTH)
-    indBg:SetColorTexture(ar, ag, ab, 1)
-    indBg:Hide()
-    indicator._bg = indBg
+    indicator._bg = Controls.AddHoverFill(indicator, { alpha = 1, inset = BORDER_WIDTH })
 
     -- Indicator text
     local indText = indicator:CreateFontString(nil, "OVERLAY")
@@ -219,37 +179,10 @@ function Controls:CreateToggleColorPicker(options)
     swatch:Hide()
 
     -- Swatch border
-    local swatchBorder = {}
-
-    local sTop = swatch:CreateTexture(nil, "BORDER", nil, -1)
-    sTop:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, 0)
-    sTop:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, 0)
-    sTop:SetHeight(TOGGLE_COLOR_SWATCH_BORDER)
-    sTop:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.TOP = sTop
-
-    local sBottom = swatch:CreateTexture(nil, "BORDER", nil, -1)
-    sBottom:SetPoint("BOTTOMLEFT", swatch, "BOTTOMLEFT", 0, 0)
-    sBottom:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 0, 0)
-    sBottom:SetHeight(TOGGLE_COLOR_SWATCH_BORDER)
-    sBottom:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.BOTTOM = sBottom
-
-    local sLeft = swatch:CreateTexture(nil, "BORDER", nil, -1)
-    sLeft:SetPoint("TOPLEFT", swatch, "TOPLEFT", 0, -TOGGLE_COLOR_SWATCH_BORDER)
-    sLeft:SetPoint("BOTTOMLEFT", swatch, "BOTTOMLEFT", 0, TOGGLE_COLOR_SWATCH_BORDER)
-    sLeft:SetWidth(TOGGLE_COLOR_SWATCH_BORDER)
-    sLeft:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.LEFT = sLeft
-
-    local sRight = swatch:CreateTexture(nil, "BORDER", nil, -1)
-    sRight:SetPoint("TOPRIGHT", swatch, "TOPRIGHT", 0, -TOGGLE_COLOR_SWATCH_BORDER)
-    sRight:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 0, TOGGLE_COLOR_SWATCH_BORDER)
-    sRight:SetWidth(TOGGLE_COLOR_SWATCH_BORDER)
-    sRight:SetColorTexture(ar, ag, ab, 1)
-    swatchBorder.RIGHT = sRight
-
-    swatch._border = swatchBorder
+    swatch._border = Controls.CreateBorder(swatch, {
+        thickness = TOGGLE_COLOR_SWATCH_BORDER,
+        getAlpha = function(self) return self:IsMouseOver() and 1 or 0.8 end,
+    })
 
     -- Swatch background (checkerboard for alpha)
     local checkerBg = swatch:CreateTexture(nil, "BACKGROUND", nil, -7)
@@ -377,19 +310,13 @@ function Controls:CreateToggleColorPicker(options)
     -- Swatch hover handlers
     swatch:SetScript("OnEnter", function(self)
         row._hoverBg:Show()
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
+        self._border:Refresh()
     end)
     swatch:SetScript("OnLeave", function(self)
         if not row:IsMouseOver() then
             row._hoverBg:Hide()
         end
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.8)
-        end
+        self._border:Refresh()
     end)
 
     -- Swatch click opens color picker
@@ -421,20 +348,6 @@ function Controls:CreateToggleColorPicker(options)
     -- Theme subscription
     local subscribeKey = "ToggleColorPicker_" .. (name or tostring(row))
     theme:Subscribe(subscribeKey, function(r, g, b)
-        if row._hoverBg then
-            row._hoverBg:SetColorTexture(r, g, b, 0.08)
-        end
-        if row._rowBorder then
-            for _, tex in pairs(row._rowBorder) do
-                tex:SetColorTexture(r, g, b, 0.2)
-            end
-        end
-        if swatch._border and swatch:IsShown() then
-            local alpha = swatch:IsMouseOver() and 1 or 0.8
-            for _, tex in pairs(swatch._border) do
-                tex:SetColorTexture(r, g, b, alpha)
-            end
-        end
         UpdateVisual()
     end)
     row._subscribeKey = subscribeKey

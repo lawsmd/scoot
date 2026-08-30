@@ -46,44 +46,6 @@ local modalBackdrop
 local dialogRegistry = {}
 
 --------------------------------------------------------------------------------
--- Helper: Create Border
---------------------------------------------------------------------------------
-
-local function CreateBorder(parent, borderWidth, r, g, b, a)
-    local border = {}
-
-    local top = parent:CreateTexture(nil, "BORDER", nil, 1)
-    top:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    top:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
-    top:SetHeight(borderWidth)
-    top:SetColorTexture(r, g, b, a)
-    border.TOP = top
-
-    local bottom = parent:CreateTexture(nil, "BORDER", nil, 1)
-    bottom:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(borderWidth)
-    bottom:SetColorTexture(r, g, b, a)
-    border.BOTTOM = bottom
-
-    local left = parent:CreateTexture(nil, "BORDER", nil, 1)
-    left:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    left:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 0)
-    left:SetWidth(borderWidth)
-    left:SetColorTexture(r, g, b, a)
-    border.LEFT = left
-
-    local right = parent:CreateTexture(nil, "BORDER", nil, 1)
-    right:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
-    right:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
-    right:SetWidth(borderWidth)
-    right:SetColorTexture(r, g, b, a)
-    border.RIGHT = right
-
-    return border
-end
-
---------------------------------------------------------------------------------
 -- Helper: Create TUI-Styled Button
 --------------------------------------------------------------------------------
 
@@ -113,7 +75,7 @@ local function CreateDialogButton(parent, text, width)
     btn._hoverFill = hoverFill
 
     -- Border
-    btn._border = CreateBorder(btn, 2, ar, ag, ab, 1)
+    btn._border = Controls.CreateBorder(btn, { thickness = 2, corners = "overlap", sublevel = 1 })
 
     -- Label
     local label = btn:CreateFontString(nil, "OVERLAY")
@@ -144,9 +106,6 @@ local function CreateDialogButton(parent, text, width)
 
     function btn:UpdateTheme()
         local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
         self._hoverFill:SetColorTexture(r, g, b, 1)
         if not self:IsMouseOver() then
             self._label:SetTextColor(r, g, b, 1)
@@ -182,7 +141,7 @@ local function CreateListContainer(parent, height)
     container._bg = bg
 
     -- Border
-    container._border = CreateBorder(container, 1, ar, ag, ab, 0.6)
+    container._border = Controls.CreateBorder(container, { corners = "overlap", sublevel = 1, alpha = 0.6 })
 
     -- Scroll frame for items (no template - custom scrollbar built below)
     local scrollFrame = CreateFrame("ScrollFrame", nil, container)
@@ -530,10 +489,6 @@ local function CreateListContainer(parent, height)
 
     function container:UpdateTheme()
         local r, g, b = theme:GetAccentColor()
-        -- Update container border
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.6)
-        end
         -- Update scrollbar
         if self._scrollbar then
             self._scrollbar._track:SetColorTexture(r, g, b, 0.1)
@@ -660,7 +615,7 @@ local function CreateDialogFrame()
     f._bg = bg
 
     -- Border
-    f._border = CreateBorder(f, BORDER_WIDTH, ar, ag, ab, 1)
+    f._border = Controls.CreateBorder(f, { thickness = BORDER_WIDTH, corners = "overlap", sublevel = 1 })
 
     -- Title bar area (for dragging)
     local titleBar = CreateFrame("Frame", nil, f)
@@ -716,22 +671,22 @@ local function CreateDialogFrame()
     editBg:SetColorTexture(0.08, 0.08, 0.10, 1)
     editBox._bg = editBg
 
-    -- Edit box border
-    editBox._border = CreateBorder(editBox, 1, ar, ag, ab, 0.6)
+    -- Edit box border; alpha follows focus, including across accent changes
+    editBox._border = Controls.CreateBorder(editBox, {
+        corners = "overlap",
+        sublevel = 1,
+        alpha = Controls.BORDER_ALPHA_NORMAL,
+        getAlpha = function()
+            return editBox:HasFocus() and Controls.BORDER_ALPHA_FOCUS or Controls.BORDER_ALPHA_NORMAL
+        end,
+    })
 
-    -- Edit box focus highlight
     editBox:SetScript("OnEditFocusGained", function(self)
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
+        self._border:Refresh()
     end)
 
     editBox:SetScript("OnEditFocusLost", function(self)
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.6)
-        end
+        self._border:Refresh()
     end)
 
     f._editBox = editBox
@@ -764,22 +719,12 @@ local function CreateDialogFrame()
     -- Theme subscription
     local subscribeKey = "Dialog_Main"
     theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update border
-        for _, tex in pairs(f._border) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
         -- Update title
         f._title:SetTextColor(r, g, b, 1)
         -- Update buttons
         f._acceptBtn:UpdateTheme()
         f._cancelBtn:UpdateTheme()
         f._closeBtn:UpdateTheme()
-        -- Update edit box border
-        if f._editBox._border then
-            for _, tex in pairs(f._editBox._border) do
-                tex:SetColorTexture(r, g, b, 0.6)
-            end
-        end
         -- Update list container if present
         if f._listContainer and f._listContainer.UpdateTheme then
             f._listContainer:UpdateTheme()

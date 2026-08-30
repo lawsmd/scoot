@@ -171,34 +171,7 @@ local function CreateIconPicker()
     frame._bg = bg
 
     -- Border (1px accent)
-    local borders = {}
-    local bw = 1
-
-    local topB = frame:CreateTexture(nil, "BORDER", nil, -1)
-    topB:SetPoint("TOPLEFT") topB:SetPoint("TOPRIGHT")
-    topB:SetHeight(bw)
-    topB:SetColorTexture(accentR, accentG, accentB, 0.8)
-    borders.TOP = topB
-
-    local bottomB = frame:CreateTexture(nil, "BORDER", nil, -1)
-    bottomB:SetPoint("BOTTOMLEFT") bottomB:SetPoint("BOTTOMRIGHT")
-    bottomB:SetHeight(bw)
-    bottomB:SetColorTexture(accentR, accentG, accentB, 0.8)
-    borders.BOTTOM = bottomB
-
-    local leftB = frame:CreateTexture(nil, "BORDER", nil, -1)
-    leftB:SetPoint("TOPLEFT", 0, -bw) leftB:SetPoint("BOTTOMLEFT", 0, bw)
-    leftB:SetWidth(bw)
-    leftB:SetColorTexture(accentR, accentG, accentB, 0.8)
-    borders.LEFT = leftB
-
-    local rightB = frame:CreateTexture(nil, "BORDER", nil, -1)
-    rightB:SetPoint("TOPRIGHT", 0, -bw) rightB:SetPoint("BOTTOMRIGHT", 0, bw)
-    rightB:SetWidth(bw)
-    rightB:SetColorTexture(accentR, accentG, accentB, 0.8)
-    borders.RIGHT = rightB
-
-    frame._borders = borders
+    frame._borders = Controls.CreateBorder(frame, { alpha = 0.8 })
 
     -- Title
     local titleFont = (theme and theme.GetFont and theme:GetFont("HEADER")) or "Fonts\\FRIZQT__.TTF"
@@ -674,10 +647,6 @@ local function CreateIconPicker()
         theme:Subscribe("IconPicker_Frame", function(r, g, b)
             frame._accentR, frame._accentG, frame._accentB = r, g, b
 
-            -- Update borders
-            for _, border in pairs(frame._borders) do
-                border:SetColorTexture(r, g, b, 0.8)
-            end
             -- Tab separator
             frame._tabSep:SetColorTexture(r, g, b, 0.4)
             -- Close button
