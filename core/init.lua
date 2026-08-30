@@ -470,6 +470,44 @@ function addon:OnInitialize()
         end
     end
 
+    -- Migration V9: Deep Shadow becomes the Unit Frames Z house font style.
+    -- Every UFZ text (name, health block, both power texts, level pair) is a
+    -- Scoot-created FontString fed by Lua SetText, so the companion black copy
+    -- works on all of them.
+    --
+    -- Unlike a component served by AceDB defaults, the UFZ per-unit DB
+    -- materializes every declared default into the profile the first time a
+    -- unit is touched (_EnsureUnitDB). A stored "SHADOWTHICKOUTLINE" is
+    -- therefore indistinguishable from a hand-picked one, and changing the
+    -- declared default alone would reach only fresh profiles. So rewrite the
+    -- old default in place: a profile that chose any OTHER style keeps it.
+    -- Runs on raw SavedVariables, before AceDB wraps them.
+    do
+        local sv = _G["ScootDB"]
+        if sv and not (sv.global and sv.global._unitFramesZDeepShadowV9) then
+            local STYLE_KEYS = { "style", "nameStyle", "powerStyle", "levelStyle" }
+            for _, profileData in pairs(sv.profiles or {}) do
+                if type(profileData) == "table" then
+                    local units = profileData.unitFramesZUnits
+                    if type(units) == "table" then
+                        for _, cfg in pairs(units) do
+                            if type(cfg) == "table" then
+                                for _, key in ipairs(STYLE_KEYS) do
+                                    if cfg[key] == "SHADOWTHICKOUTLINE" then
+                                        cfg[key] = "DEEPSHADOWTHICKOUTLINE"
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            if not sv.global then sv.global = {} end
+            sv.global._unitFramesZDeepShadowV9 = true
+        end
+    end
+
     -- 1. Create the database first so moduleEnabled is available for component gating.
     --    GetDefaults() does not reference self.Components — safe to call before init.
     self.db = LibStub("AceDB-3.0"):New("ScootDB", self:GetDefaults(), true)

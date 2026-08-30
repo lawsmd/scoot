@@ -131,7 +131,7 @@ local function AddUnitSection(builder, opts)
                             label = "Font Style",
                             values = styleValues,
                             order = styleOrder,
-                            get = function() return htCfg().nameStyle or "SHADOWTHICKOUTLINE" end,
+                            get = function() return htCfg().nameStyle or "DEEPSHADOWTHICKOUTLINE" end,
                             set = function(v) call("SetNameStyle", v) end,
                         })
                         tabInner:AddSlider({
@@ -227,7 +227,7 @@ local function AddUnitSection(builder, opts)
                             description = "Shared by the percent and value rows, and the absorb text.",
                             values = styleValues,
                             order = styleOrder,
-                            get = function() return htCfg().style or "SHADOWTHICKOUTLINE" end,
+                            get = function() return htCfg().style or "DEEPSHADOWTHICKOUTLINE" end,
                             set = function(v) call("SetStyle", v) end,
                         })
                         tabInner:AddSlider({
@@ -318,7 +318,7 @@ local function AddUnitSection(builder, opts)
                             description = "Shared by the primary and alternate power texts.",
                             values = styleValues,
                             order = styleOrder,
-                            get = function() return htCfg().powerStyle or "SHADOWTHICKOUTLINE" end,
+                            get = function() return htCfg().powerStyle or "DEEPSHADOWTHICKOUTLINE" end,
                             set = function(v) call("SetPowerStyle", v) end,
                         })
                         tabInner:AddToggle({
@@ -472,7 +472,7 @@ local function AddUnitSection(builder, opts)
                             label = "Font Style",
                             values = styleValues,
                             order = styleOrder,
-                            get = function() return htCfg().levelStyle or "SHADOWTHICKOUTLINE" end,
+                            get = function() return htCfg().levelStyle or "DEEPSHADOWTHICKOUTLINE" end,
                             set = function(v) call("SetLevelStyle", v) end,
                         })
                         tabInner:Finalize()

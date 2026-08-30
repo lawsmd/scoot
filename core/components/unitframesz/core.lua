@@ -117,11 +117,13 @@ local UNIT_DEFAULTS_SHARED = {
     face         = "ANTON_WIDE_150",
     -- Font Style, per text block: style is the health block's (percent, '%',
     -- value and absorb rows); the other three cover the name, both power texts
-    -- and the level pair. All four default to the certified bake.
-    style        = "SHADOWTHICKOUTLINE",
-    nameStyle    = "SHADOWTHICKOUTLINE",
-    powerStyle   = "SHADOWTHICKOUTLINE",
-    levelStyle   = "SHADOWTHICKOUTLINE",
+    -- and the level pair. All four ship Deep Shadow (house default since
+    -- 2026-08-30, migration V9): every UFZ text is a Scoot-created FontString
+    -- fed by Lua SetText, which is what the companion copy needs.
+    style        = "DEEPSHADOWTHICKOUTLINE",
+    nameStyle    = "DEEPSHADOWTHICKOUTLINE",
+    powerStyle   = "DEEPSHADOWTHICKOUTLINE",
+    levelStyle   = "DEEPSHADOWTHICKOUTLINE",
     pctSize      = 32,               -- digits-off static percent size
     valSize      = 10,
     valFace      = "follow",         -- value row face: "follow" = track cfg.face
