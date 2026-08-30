@@ -44,30 +44,7 @@ local function _DbgPrint(...)
 end
 
 -- Prefer the Edit Mode registered system frame, which is what Edit Mode drags.
-local function _GetEditModeRegisteredFrame(unit)
-	local mgr = _G.EditModeManagerFrame
-	local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-	local EMSys = _G.Enum and _G.Enum.EditModeSystem
-	if not (mgr and EM and EMSys and mgr.GetRegisteredSystemFrame) then
-		return nil
-	end
-	local idx
-	if unit == "Player" then idx = EM.Player
-	elseif unit == "Target" then idx = EM.Target
-	elseif unit == "Focus" then idx = EM.Focus
-	elseif unit == "Pet" then idx = EM.Pet
-	end
-	if not idx then return nil end
-	return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-end
-
-local function _GetFrameForUnit(unit)
-	local f = _GetEditModeRegisteredFrame(unit)
-	if f then return f end
-	-- Fallback: globals (may not be the same frame Edit Mode moves in some builds)
-	if unit == "Player" then return _G.PlayerFrame end
-	if unit == "Target" then return _G.TargetFrame end
-end
+local _GetEditModeRegisteredFrame = addon.GetEditModeUnitFrame
 
 local function _AddUniqueFrame(list, seen, f)
 	if not f or type(f) ~= "table" then return end

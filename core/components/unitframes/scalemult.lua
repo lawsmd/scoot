@@ -14,7 +14,10 @@ local function debugPrint(...)
     end
 end
 
--- Resolve unit frame for a given unit key
+-- Resolve unit frame for a given unit key.
+-- Deliberately raw _G globals, not addon.GetUnitFrame: this is the frame that
+-- receives SetScale, kept distinct from the Edit Mode frame whose FrameSize
+-- setting is read below (refactor #22).
 local function getUnitFrameFor(unit)
     if unit == "Player" then
         return _G.PlayerFrame
@@ -28,22 +31,7 @@ local function getUnitFrameFor(unit)
 end
 
 -- Get the Edit Mode registered frame for a unit
-local function getEditModeFrameFor(unit)
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
-    if not (mgr and EM and EMSys and mgr.GetRegisteredSystemFrame) then return nil end
-    
-    local idx
-    if unit == "Player" then idx = EM.Player
-    elseif unit == "Target" then idx = EM.Target
-    elseif unit == "Focus" then idx = EM.Focus
-    elseif unit == "Pet" then idx = EM.Pet
-    end
-    if not idx then return nil end
-    
-    return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-end
+local getEditModeFrameFor = addon.GetEditModeUnitFrame
 
 -- Read Edit Mode's FrameSize setting for a unit (returns 100-200, or nil if unavailable)
 local function getEditModeScale(unit)
@@ -135,8 +123,7 @@ end
 
 -- Apply scale multiplier to all unit frames
 local function applyAllScaleMults()
-    local units = { "Player", "Target", "Focus", "Pet" }
-    for _, unit in ipairs(units) do
+    for _, unit in ipairs(addon.Frames.CORE_UNITS) do
         applyScaleMultFor(unit)
     end
 end

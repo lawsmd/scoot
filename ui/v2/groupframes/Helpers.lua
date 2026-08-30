@@ -14,11 +14,7 @@ local GF = addon.UI.GroupFrames
 local FRAME_PREFIX = { party = "Party", raid = "Raid" }
 
 function GF.getFrame(frameKey)
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
-    if not (mgr and EM and EMSys and mgr.GetRegisteredSystemFrame) then return nil end
-    return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, EM[FRAME_PREFIX[frameKey]])
+    return addon.GetEditModeUnitFrame(FRAME_PREFIX[frameKey])
 end
 
 --------------------------------------------------------------------------------

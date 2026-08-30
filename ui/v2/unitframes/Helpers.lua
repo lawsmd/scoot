@@ -9,16 +9,8 @@ local UF = addon.UI.UnitFrames
 -- Unit Key Mapping
 --------------------------------------------------------------------------------
 
--- Map componentId to unit key for database access
-local UNIT_KEY_MAP = {
-    ufPlayer = "Player",
-    ufTarget = "Target",
-    ufFocus = "Focus",
-    ufPet = "Pet",
-    ufToT = "TargetOfTarget",
-    ufBoss = "Boss",
-    ufFocusTarget = "FocusTarget",
-}
+-- Map componentId to unit key for database access (shared catalog, refactor #22)
+local UNIT_KEY_MAP = addon.Frames.UNIT_KEY_BY_COMPONENT
 
 function UF.getUnitKey(componentId)
     return UNIT_KEY_MAP[componentId]
@@ -283,23 +275,11 @@ end
 -- Edit Mode Integration
 --------------------------------------------------------------------------------
 
--- Get the unit frame from Edit Mode system
+-- Get the unit frame from Edit Mode system. Strict on purpose: the consumers
+-- below read/write Edit Mode settings, so ufToT/ufFocusTarget must keep
+-- returning nil (they are not Edit Mode systems).
 function UF.getUnitFrame(componentId)
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
-    if not (mgr and EM and EMSys and mgr.GetRegisteredSystemFrame) then return nil end
-
-    local idx = nil
-    if componentId == "ufPlayer" then idx = EM.Player
-    elseif componentId == "ufTarget" then idx = EM.Target
-    elseif componentId == "ufFocus" then idx = EM.Focus
-    elseif componentId == "ufPet" then idx = EM.Pet
-    elseif componentId == "ufBoss" then idx = EM.Boss
-    end
-
-    if not idx then return nil end
-    return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
+    return addon.GetEditModeUnitFrame(UF.getUnitKey(componentId))
 end
 
 -- Read Edit Mode Frame Size setting

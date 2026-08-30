@@ -317,14 +317,9 @@ local UNIT_FRAME_NAMES = {
     ufFocusTarget = "Target of Focus",
 }
 
-local UNIT_FRAME_KEYS = {
-    ufPlayer = "Player",
-    ufTarget = "Target",
-    ufFocus = "Focus",
-    ufPet = "Pet",
-    ufToT = "TargetOfTarget",
-    ufFocusTarget = "FocusTarget",
-}
+-- Shared componentId-to-unitKey catalog (refactor #22). Includes ufBoss, but the
+-- copy tables above never offer it, so copy flows cannot reach a Boss key.
+local UNIT_FRAME_KEYS = addon.Frames.UNIT_KEY_BY_COMPONENT
 
 local FULL_UNIT_FRAME_ORDER = { "ufPlayer", "ufTarget", "ufFocus", "ufPet" }
 
