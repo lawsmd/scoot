@@ -28,6 +28,33 @@ function HealthBar.Render(panel, scrollContent)
     local syncEditModeSetting = h.sync
     local textColorValues, textColorOrder = Helpers.textColorHealthValues, Helpers.textColorHealthOrder
 
+    -- Maps the composite's field vocabulary onto this file's flat per-prefix
+    -- keys (valueTextFont, percentTextFontSize, ...). Writes do not apply;
+    -- the composite calls apply after each write.
+    local function flatTextAccessors(map)
+        local function get(field)
+            local key = map[field]
+            if not key then return nil end
+            return getSetting(key)
+        end
+        local function set(field, value)
+            local key = map[field]
+            if key then h.set(key, value) end
+        end
+        return get, set
+    end
+
+    -- The apply half of h.setAndApplyComponent: defer the component's own
+    -- ApplyStyling rather than the global styling pass.
+    local function applyComponent()
+        local comp = getComponent()
+        if comp and comp.ApplyStyling then
+            C_Timer.After(0, function()
+                if comp and comp.ApplyStyling then comp:ApplyStyling() end
+            end)
+        end
+    end
+
     -- Build border options
     local function getBorderOptions()
         local values = { none = "None", square = "Default (Square)" }
@@ -249,55 +276,25 @@ function HealthBar.Render(panel, scrollContent)
                             set = function(v) setSetting("valueTextShow", v) end,
                         })
 
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function() return getSetting("valueTextFont") or "Friz Quadrata TT" end,
-                            set = function(v) setSetting("valueTextFont", v) end,
+                        -- PRD text is Scoot-drawn, so the paired Deep Shadow
+                        -- styles are offered (outline-first order).
+                        local get, set = flatTextAccessors({
+                            fontFace = "valueTextFont",
+                            style = "valueTextFontFlags",
+                            size = "valueTextFontSize",
+                            colorMode = "valueTextColorMode",
+                            color = "valueTextColor",
+                            alignment = "valueTextAlignment",
                         })
-
-                        tabInner:AddSlider({
-                            label = "Font Size",
-                            min = 6, max = 36, step = 1,
-                            get = function() return getSetting("valueTextFontSize") or 10 end,
-                            set = function(v) setSetting("valueTextFontSize", v) end,
-                            minLabel = "6", maxLabel = "36",
-                        })
-
-                        tabInner:AddSelector({
-                            label = "Font Style",
-                            values = Helpers.fontStyleValues,
-                            order = { "OUTLINE", "NONE", "THICKOUTLINE", "HEAVYTHICKOUTLINE", "SHADOW", "SHADOWOUTLINE", "SHADOWTHICKOUTLINE" },
-                            get = function() return getSetting("valueTextFontFlags") or "OUTLINE" end,
-                            set = function(v) setSetting("valueTextFontFlags", v) end,
-                        })
-
-                        tabInner:AddSelectorColorPicker({
-                            label = "Font Color",
-                            values = textColorValues,
-                            order = textColorOrder,
-                            get = function() return getSetting("valueTextColorMode") or "default" end,
-                            set = function(v) setSetting("valueTextColorMode", v or "default") end,
-                            getColor = function()
-                                local c = getSetting("valueTextColor") or {1, 1, 1, 1}
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setSetting("valueTextColor", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        tabInner:AddSelector({
-                            label = "Text Alignment",
-                            values = {
-                                LEFT = "Left",
-                                CENTER = "Center",
-                                RIGHT = "Right",
-                            },
-                            order = { "RIGHT", "LEFT", "CENTER" },
-                            get = function() return getSetting("valueTextAlignment") or "RIGHT" end,
-                            set = function(v) setSetting("valueTextAlignment", v) end,
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = applyComponent,
+                            defaults = { fontFace = "Friz Quadrata TT", size = 10 },
+                            style = { order = Helpers.fontStyleOrderOutlineFirstPaired },
+                            size = { min = 6, max = 36, minLabel = "6", maxLabel = "36" },
+                            color = { values = textColorValues, order = textColorOrder },
+                            alignment = { kind = "align", label = "Text Alignment",
+                                default = "RIGHT", order = { "RIGHT", "LEFT", "CENTER" } },
+                            offset = false,
                         })
 
                         tabInner:Finalize()
@@ -309,55 +306,23 @@ function HealthBar.Render(panel, scrollContent)
                             set = function(v) setSetting("percentTextShow", v) end,
                         })
 
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function() return getSetting("percentTextFont") or "Friz Quadrata TT" end,
-                            set = function(v) setSetting("percentTextFont", v) end,
+                        local get, set = flatTextAccessors({
+                            fontFace = "percentTextFont",
+                            style = "percentTextFontFlags",
+                            size = "percentTextFontSize",
+                            colorMode = "percentTextColorMode",
+                            color = "percentTextColor",
+                            alignment = "percentTextAlignment",
                         })
-
-                        tabInner:AddSlider({
-                            label = "Font Size",
-                            min = 6, max = 36, step = 1,
-                            get = function() return getSetting("percentTextFontSize") or 10 end,
-                            set = function(v) setSetting("percentTextFontSize", v) end,
-                            minLabel = "6", maxLabel = "36",
-                        })
-
-                        tabInner:AddSelector({
-                            label = "Font Style",
-                            values = Helpers.fontStyleValues,
-                            order = { "OUTLINE", "NONE", "THICKOUTLINE", "HEAVYTHICKOUTLINE", "SHADOW", "SHADOWOUTLINE", "SHADOWTHICKOUTLINE" },
-                            get = function() return getSetting("percentTextFontFlags") or "OUTLINE" end,
-                            set = function(v) setSetting("percentTextFontFlags", v) end,
-                        })
-
-                        tabInner:AddSelectorColorPicker({
-                            label = "Font Color",
-                            values = textColorValues,
-                            order = textColorOrder,
-                            get = function() return getSetting("percentTextColorMode") or "default" end,
-                            set = function(v) setSetting("percentTextColorMode", v or "default") end,
-                            getColor = function()
-                                local c = getSetting("percentTextColor") or {1, 1, 1, 1}
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setSetting("percentTextColor", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        tabInner:AddSelector({
-                            label = "Text Alignment",
-                            values = {
-                                LEFT = "Left",
-                                CENTER = "Center",
-                                RIGHT = "Right",
-                            },
-                            order = { "LEFT", "RIGHT", "CENTER" },
-                            get = function() return getSetting("percentTextAlignment") or "LEFT" end,
-                            set = function(v) setSetting("percentTextAlignment", v) end,
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = applyComponent,
+                            defaults = { fontFace = "Friz Quadrata TT", size = 10 },
+                            style = { order = Helpers.fontStyleOrderOutlineFirstPaired },
+                            size = { min = 6, max = 36, minLabel = "6", maxLabel = "36" },
+                            color = { values = textColorValues, order = textColorOrder },
+                            alignment = { kind = "align", label = "Text Alignment",
+                                default = "LEFT", order = { "LEFT", "RIGHT", "CENTER" } },
+                            offset = false,
                         })
 
                         tabInner:Finalize()

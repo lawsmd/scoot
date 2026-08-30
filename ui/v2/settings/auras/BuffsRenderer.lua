@@ -265,9 +265,6 @@ function Buffs.Render(panel, scrollContent)
         sectionKey = "text",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            local fontStyleValues = Helpers.fontStyleValues
-            local fontStyleOrder = Helpers.fontStyleOrder
-
             inner:AddTabbedSection({
                 tabs = {
                     { key = "stacks", label = "Stacks" },
@@ -277,197 +274,29 @@ function Buffs.Render(panel, scrollContent)
                 sectionKey = "textTabs",
                 buildContent = {
                     stacks = function(tabContent, tabBuilder)
-                        local function getStacksSetting(key, default)
-                            local ts = getSetting("textStacks")
-                            if ts and ts[key] ~= nil then return ts[key] end
-                            return default
-                        end
-                        local function setStacksSetting(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textStacks")
-                                comp.db.textStacks[key] = value
-                            end
-                            applyStyles()
-                        end
-
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for stack count text.",
-                            get = function() return getStacksSetting("fontFace", "FRIZQT__") end,
-                            set = function(v) setStacksSetting("fontFace", v) end,
+                        -- Stack and duration text are Blizzard FontStrings on
+                        -- the aura buttons styled in place, so the plain style
+                        -- order applies (no paired Deep Shadow styles).
+                        local s = Helpers.CreateSubTableHelpers("buffs", "textStacks", { apply = applyStyles })
+                        tabBuilder:AddTextStyleBlock({
+                            get = s.get, set = s.set, apply = applyStyles,
+                            defaults = { size = 16 },
+                            font = { description = "The font used for stack count text." },
+                            size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
+                            color = { kind = "plain" },
+                            offset = { range = 50 },
                         })
-
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            min = 6,
-                            max = 32,
-                            step = 1,
-                            get = function() return getStacksSetting("size", 16) end,
-                            set = function(v) setStacksSetting("size", v) end,
-                            minLabel = "6",
-                            maxLabel = "32",
-                        })
-
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function() return getStacksSetting("style", "OUTLINE") end,
-                            set = function(v) setStacksSetting("style", v) end,
-                        })
-
-                        tabBuilder:AddColorPicker({
-                            label = "Font Color",
-                            get = function()
-                                local c = getStacksSetting("color", {1,1,1,1})
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            set = function(r, g, b, a)
-                                setStacksSetting("color", {r, g, b, a})
-                            end,
-                            hasAlpha = true,
-                        })
-
-                        tabBuilder:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -50,
-                                max = 50,
-                                step = 1,
-                                get = function()
-                                    local offset = getStacksSetting("offset", {x=0, y=0})
-                                    return offset.x or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textStacks")
-                                        comp.db.textStacks.offset = comp.db.textStacks.offset or {}
-                                        comp.db.textStacks.offset.x = v
-                                    end
-                                    applyStyles()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -50,
-                                max = 50,
-                                step = 1,
-                                get = function()
-                                    local offset = getStacksSetting("offset", {x=0, y=0})
-                                    return offset.y or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textStacks")
-                                        comp.db.textStacks.offset = comp.db.textStacks.offset or {}
-                                        comp.db.textStacks.offset.y = v
-                                    end
-                                    applyStyles()
-                                end,
-                            },
-                        })
-
                         tabBuilder:Finalize()
                     end,
                     duration = function(tabContent, tabBuilder)
-                        local function getDurationSetting(key, default)
-                            local td = getSetting("textDuration")
-                            if td and td[key] ~= nil then return td[key] end
-                            return default
-                        end
-                        local function setDurationSetting(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textDuration")
-                                comp.db.textDuration[key] = value
-                            end
-                            applyStyles()
-                        end
-
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for remaining time text.",
-                            get = function() return getDurationSetting("fontFace", "FRIZQT__") end,
-                            set = function(v) setDurationSetting("fontFace", v) end,
+                        local s = Helpers.CreateSubTableHelpers("buffs", "textDuration", { apply = applyStyles })
+                        tabBuilder:AddTextStyleBlock({
+                            get = s.get, set = s.set, apply = applyStyles,
+                            font = { description = "The font used for remaining time text." },
+                            size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
+                            color = { kind = "plain" },
+                            offset = { range = 50 },
                         })
-
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            min = 6,
-                            max = 32,
-                            step = 1,
-                            get = function() return getDurationSetting("size", 14) end,
-                            set = function(v) setDurationSetting("size", v) end,
-                            minLabel = "6",
-                            maxLabel = "32",
-                        })
-
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function() return getDurationSetting("style", "OUTLINE") end,
-                            set = function(v) setDurationSetting("style", v) end,
-                        })
-
-                        tabBuilder:AddColorPicker({
-                            label = "Font Color",
-                            get = function()
-                                local c = getDurationSetting("color", {1,1,1,1})
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            set = function(r, g, b, a)
-                                setDurationSetting("color", {r, g, b, a})
-                            end,
-                            hasAlpha = true,
-                        })
-
-                        tabBuilder:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -50,
-                                max = 50,
-                                step = 1,
-                                get = function()
-                                    local offset = getDurationSetting("offset", {x=0, y=0})
-                                    return offset.x or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textDuration")
-                                        comp.db.textDuration.offset = comp.db.textDuration.offset or {}
-                                        comp.db.textDuration.offset.x = v
-                                    end
-                                    applyStyles()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -50,
-                                max = 50,
-                                step = 1,
-                                get = function()
-                                    local offset = getDurationSetting("offset", {x=0, y=0})
-                                    return offset.y or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textDuration")
-                                        comp.db.textDuration.offset = comp.db.textDuration.offset or {}
-                                        comp.db.textDuration.offset.y = v
-                                    end
-                                    applyStyles()
-                                end,
-                            },
-                        })
-
                         tabBuilder:Finalize()
                     end,
                 },

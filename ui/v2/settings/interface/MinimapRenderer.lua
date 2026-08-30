@@ -14,15 +14,26 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 
 local Helpers = addon.UI.Settings.Helpers
 local h = Helpers.CreateComponentHelpers("minimapStyle")
-local getComponent = h.getComponent
 local getSetting = h.get
 local setSetting = h.setAndApply
 
-local fontStyleValues = Helpers.fontStyleValues
-local fontStyleOrder = Helpers.fontStyleOrder
+local applyStyles = Helpers.applyStyles
 
-local colorModeValues = Helpers.textColorValues
-local colorModeOrder = Helpers.textColorOrder
+-- Maps the composite's field vocabulary onto this file's flat per-prefix
+-- keys (zoneTextFont, clockFontSize, ...). Writes do not apply; the
+-- composite calls apply after each write.
+local function flatTextAccessors(map)
+    local function get(field)
+        local key = map[field]
+        if not key then return nil end
+        return getSetting(key)
+    end
+    local function set(field, value)
+        local key = map[field]
+        if key then h.set(key, value) end
+    end
+    return get, set
+end
 
 -- Time source options
 local timeSourceValues = {
@@ -294,89 +305,32 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        tabBuilder:AddSelectorColorPicker({
-                            label = "Color",
-                            description = "How to color the zone text. PVP Type colors based on zone type.",
-                            values = zoneColorModeValues,
-                            order = zoneColorModeOrder,
-                            get = function()
-                                return getSetting("zoneTextColorMode") or "pvp"
-                            end,
-                            set = function(v)
-                                setSetting("zoneTextColorMode", v)
-                            end,
-                            getColor = function()
-                                local c = getSetting("zoneTextCustomColor") or {1, 0.82, 0, 1}
-                                return c[1], c[2], c[3], c[4]
-                            end,
-                            setColor = function(r, g, b, a)
-                                setSetting("zoneTextCustomColor", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
+                        local zoneGet, zoneSet = flatTextAccessors({
+                            fontFace = "zoneTextFont",
+                            style = "zoneTextFontStyle",
+                            size = "zoneTextFontSize",
+                            colorMode = "zoneTextColorMode",
+                            color = "zoneTextCustomColor",
+                            offsetX = "zoneTextOffsetX",
+                            offsetY = "zoneTextOffsetY",
                         })
-
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for zone text.",
-                            get = function()
-                                return getSetting("zoneTextFont") or "FRIZQT__"
-                            end,
-                            set = function(v)
-                                setSetting("zoneTextFont", v)
-                            end,
-                        })
-
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            description = "The size of the zone text.",
-                            min = 8,
-                            max = 24,
-                            step = 1,
-                            get = function()
-                                return getSetting("zoneTextFontSize") or 12
-                            end,
-                            set = function(v)
-                                setSetting("zoneTextFontSize", v)
-                            end,
-                            minLabel = "8",
-                            maxLabel = "24",
-                        })
-
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            description = "The outline style for zone text.",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function()
-                                return getSetting("zoneTextFontStyle") or "OUTLINE"
-                            end,
-                            set = function(v)
-                                setSetting("zoneTextFontStyle", v)
-                            end,
-                        })
-
-                        -- Only show offset controls when position is not "dock"
+                        -- Offset applies only to the custom overlay, not the dock
                         local currentPosition = getSetting("zoneTextPosition") or "dock"
-                        if currentPosition ~= "dock" then
-                            tabBuilder:AddDualSlider({
-                                label = "Offset",
-                                sliderA = {
-                                    axisLabel = "X",
-                                    min = -50, max = 50, step = 1,
-                                    get = function() return getSetting("zoneTextOffsetX") or 0 end,
-                                    set = function(v) setSetting("zoneTextOffsetX", v) end,
-                                    minLabel = "-50", maxLabel = "+50",
-                                },
-                                sliderB = {
-                                    axisLabel = "Y",
-                                    min = -50, max = 50, step = 1,
-                                    get = function() return getSetting("zoneTextOffsetY") or 0 end,
-                                    set = function(v) setSetting("zoneTextOffsetY", v) end,
-                                    minLabel = "-50", maxLabel = "+50",
-                                },
-                            })
-                        end
+                        tabBuilder:AddTextStyleBlock({
+                            get = zoneGet, set = zoneSet, apply = applyStyles,
+                            defaults = { size = 12, colorMode = "pvp", color = { 1, 0.82, 0, 1 } },
+                            font = { description = "The font used for zone text." },
+                            style = { description = "The outline style for zone text." },
+                            size = { min = 8, max = 24, minLabel = "8", maxLabel = "24",
+                                description = "The size of the zone text." },
+                            color = {
+                                values = zoneColorModeValues, order = zoneColorModeOrder,
+                                description = "How to color the zone text. PVP Type colors based on zone type.",
+                            },
+                            offset = currentPosition ~= "dock"
+                                and { range = 50, minLabel = "-50", maxLabel = "+50" }
+                                or false,
+                        })
 
                         tabBuilder:Finalize()
                     end,
@@ -439,89 +393,29 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for the clock.",
-                            get = function()
-                                return getSetting("clockFont") or "FRIZQT__"
-                            end,
-                            set = function(v)
-                                setSetting("clockFont", v)
-                            end,
+                        local clockGet, clockSet = flatTextAccessors({
+                            fontFace = "clockFont",
+                            style = "clockFontStyle",
+                            size = "clockFontSize",
+                            colorMode = "clockColorMode",
+                            color = "clockCustomColor",
+                            offsetX = "clockOffsetX",
+                            offsetY = "clockOffsetY",
                         })
-
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            description = "The size of the clock text.",
-                            min = 8,
-                            max = 24,
-                            step = 1,
-                            get = function()
-                                return getSetting("clockFontSize") or 12
-                            end,
-                            set = function(v)
-                                setSetting("clockFontSize", v)
-                            end,
-                            minLabel = "8",
-                            maxLabel = "24",
-                        })
-
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            description = "The outline style for the clock.",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function()
-                                return getSetting("clockFontStyle") or "OUTLINE"
-                            end,
-                            set = function(v)
-                                setSetting("clockFontStyle", v)
-                            end,
-                        })
-
-                        tabBuilder:AddSelectorColorPicker({
-                            label = "Color",
-                            description = "The color of the clock text.",
-                            values = colorModeValues,
-                            order = colorModeOrder,
-                            get = function()
-                                return getSetting("clockColorMode") or "default"
-                            end,
-                            set = function(v)
-                                setSetting("clockColorMode", v)
-                            end,
-                            getColor = function()
-                                local c = getSetting("clockCustomColor") or {1, 1, 1, 1}
-                                return c[1], c[2], c[3], c[4]
-                            end,
-                            setColor = function(r, g, b, a)
-                                setSetting("clockCustomColor", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        -- Only show offset controls when position is not "dock"
+                        -- Offset applies only to the custom overlay, not the dock
                         local currentPosition = getSetting("clockPosition") or "dock"
-                        if currentPosition ~= "dock" then
-                            tabBuilder:AddDualSlider({
-                                label = "Offset",
-                                sliderA = {
-                                    axisLabel = "X",
-                                    min = -50, max = 50, step = 1,
-                                    get = function() return getSetting("clockOffsetX") or 0 end,
-                                    set = function(v) setSetting("clockOffsetX", v) end,
-                                    minLabel = "-50", maxLabel = "+50",
-                                },
-                                sliderB = {
-                                    axisLabel = "Y",
-                                    min = -50, max = 50, step = 1,
-                                    get = function() return getSetting("clockOffsetY") or 0 end,
-                                    set = function(v) setSetting("clockOffsetY", v) end,
-                                    minLabel = "-50", maxLabel = "+50",
-                                },
-                            })
-                        end
+                        tabBuilder:AddTextStyleBlock({
+                            get = clockGet, set = clockSet, apply = applyStyles,
+                            defaults = { size = 12 },
+                            font = { description = "The font used for the clock." },
+                            style = { description = "The outline style for the clock." },
+                            size = { min = 8, max = 24, minLabel = "8", maxLabel = "24",
+                                description = "The size of the clock text." },
+                            color = { description = "The color of the clock text." },
+                            offset = currentPosition ~= "dock"
+                                and { range = 50, minLabel = "-50", maxLabel = "+50" }
+                                or false,
+                        })
 
                         tabBuilder:Finalize()
                     end,
@@ -568,97 +462,42 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for system data.",
-                            get = function()
-                                return getSetting("systemDataFont") or "FRIZQT__"
-                            end,
-                            set = function(v)
-                                setSetting("systemDataFont", v)
-                            end,
+                        local sdGet, sdSet = flatTextAccessors({
+                            fontFace = "systemDataFont",
+                            style = "systemDataFontStyle",
+                            size = "systemDataFontSize",
+                            colorMode = "systemDataColorMode",
+                            color = "systemDataCustomColor",
+                            anchor = "systemDataAnchor",
+                            offsetX = "systemDataOffsetX",
+                            offsetY = "systemDataOffsetY",
                         })
-
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            description = "The size of the system data text.",
-                            min = 8,
-                            max = 24,
-                            step = 1,
-                            get = function()
-                                return getSetting("systemDataFontSize") or 11
+                        -- System data always renders on the Scoot-drawn
+                        -- overlay, so the paired Deep Shadow styles are
+                        -- offered here (unlike zone text and clock, which can
+                        -- style Blizzard's own FontStrings in dock mode).
+                        tabBuilder:AddTextStyleBlock({
+                            get = function(field)
+                                -- Y offset defaults below the minimap
+                                if field == "offsetY" then
+                                    local v = sdGet("offsetY")
+                                    if v == nil then return -18 end
+                                    return v
+                                end
+                                return sdGet(field)
                             end,
-                            set = function(v)
-                                setSetting("systemDataFontSize", v)
-                            end,
-                            minLabel = "8",
-                            maxLabel = "24",
-                        })
-
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            description = "The outline style for system data.",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function()
-                                return getSetting("systemDataFontStyle") or "OUTLINE"
-                            end,
-                            set = function(v)
-                                setSetting("systemDataFontStyle", v)
-                            end,
-                        })
-
-                        tabBuilder:AddSelectorColorPicker({
-                            label = "Color",
-                            description = "The color of the system data text.",
-                            values = colorModeValues,
-                            order = colorModeOrder,
-                            get = function()
-                                return getSetting("systemDataColorMode") or "default"
-                            end,
-                            set = function(v)
-                                setSetting("systemDataColorMode", v)
-                            end,
-                            getColor = function()
-                                local c = getSetting("systemDataCustomColor") or {1, 1, 1, 1}
-                                return c[1], c[2], c[3], c[4]
-                            end,
-                            setColor = function(r, g, b, a)
-                                setSetting("systemDataCustomColor", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        tabBuilder:AddSelector({
-                            label = "Anchor",
-                            description = "Where to position the system data relative to the minimap.",
-                            values = anchorOptions,
-                            order = anchorOrder,
-                            get = function()
-                                return getSetting("systemDataAnchor") or "BOTTOM"
-                            end,
-                            set = function(v)
-                                setSetting("systemDataAnchor", v)
-                            end,
-                        })
-
-                        tabBuilder:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -50, max = 50, step = 1,
-                                get = function() return getSetting("systemDataOffsetX") or 0 end,
-                                set = function(v) setSetting("systemDataOffsetX", v) end,
-                                minLabel = "-50", maxLabel = "+50",
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -50, max = 50, step = 1,
-                                get = function() return getSetting("systemDataOffsetY") or -18 end,
-                                set = function(v) setSetting("systemDataOffsetY", v) end,
-                                minLabel = "-50", maxLabel = "+50",
-                            },
+                            set = sdSet, apply = applyStyles,
+                            defaults = { size = 11 },
+                            font = { description = "The font used for system data." },
+                            style = { order = Helpers.fontStyleOrderPaired,
+                                description = "The outline style for system data." },
+                            size = { min = 8, max = 24, minLabel = "8", maxLabel = "24",
+                                description = "The size of the system data text." },
+                            color = { description = "The color of the system data text." },
+                            alignment = { kind = "anchor9", default = "BOTTOM",
+                                values = anchorOptions, order = anchorOrder,
+                                description = "Where to position the system data relative to the minimap." },
+                            offset = { range = 50, minLabel = "-50", maxLabel = "+50" },
                         })
 
                         tabBuilder:Finalize()

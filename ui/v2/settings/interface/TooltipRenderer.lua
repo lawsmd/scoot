@@ -23,101 +23,32 @@ function Tooltip.Render(panel, scrollContent)
 
     local Helpers = addon.UI.Settings.Helpers
     local h = Helpers.CreateComponentHelpers("tooltip")
-    local getComponent, getSetting = h.getComponent, h.get
+    local getSetting = h.get
     local setSetting = h.setAndApply
 
-    -- Helper to get text config sub-table
-    local function getTextConfig(key)
-        local comp = getComponent()
-        local db = comp and comp.db
-        if db and type(db[key]) == "table" then
-            return db[key]
+    local function applyText()
+        if addon and addon.ApplyStyles then
+            addon:ApplyStyles()
         end
     end
 
-    local function ensureTextConfig(key)
-        local comp = getComponent()
-        if not comp then return nil end
-        local db = comp.db
-        if not db then return nil end
-        local t = rawget(db, key)
-        if not t then
-            t = {}
-            rawset(db, key, t)
-        end
-        return t
-    end
-
-    local fontStyleValues = Helpers.fontStyleValues
-    local fontStyleOrder = Helpers.fontStyleOrder
-
-    -- Helper to build text tab content (used by all three tabs)
-    local function buildTextTabContent(tabBuilder, dbKey)
-        -- Font selector
-        tabBuilder:AddFontSelector({
-            label = "Font",
-            description = "The font used for this text element.",
-            get = function()
-                local t = getTextConfig(dbKey)
-                return (t and t.fontFace) or "FRIZQT__"
-            end,
-            set = function(fontKey)
-                local t = ensureTextConfig(dbKey)
-                if t then
-                    t.fontFace = fontKey or "FRIZQT__"
-                    if addon and addon.ApplyStyles then
-                        addon:ApplyStyles()
-                    end
-                end
-            end,
+    -- Shared text block for all three tabs: font/size/style only, no color
+    -- or offset. Tooltip text is Blizzard-drawn and styled in place, so the
+    -- plain style order applies and the style default is NONE. Writes route
+    -- through EnsureComponentSubTable so a fresh profile keeps its sibling
+    -- defaults (the old rawset idiom dropped them).
+    local function addTextStyleBlock(tabBuilder, dbKey)
+        local s = Helpers.CreateSubTableHelpers("tooltip", dbKey, { apply = applyText })
+        tabBuilder:AddTextStyleBlock({
+            get = s.get, set = s.set, apply = applyText,
+            defaults = { style = "NONE", size = 12 },
+            font = { description = "The font used for this text element." },
+            style = { description = "The outline style for this text." },
+            size = { min = 6, max = 32, minLabel = "6", maxLabel = "32",
+                description = "The size of this text element." },
+            color = false,
+            offset = false,
         })
-
-        -- Font size slider
-        tabBuilder:AddSlider({
-            label = "Font Size",
-            description = "The size of this text element.",
-            min = 6,
-            max = 32,
-            step = 1,
-            get = function()
-                local t = getTextConfig(dbKey)
-                return (t and t.size) or 12
-            end,
-            set = function(v)
-                local t = ensureTextConfig(dbKey)
-                if t then
-                    t.size = v or 12
-                    if addon and addon.ApplyStyles then
-                        addon:ApplyStyles()
-                    end
-                end
-            end,
-            minLabel = "6",
-            maxLabel = "32",
-        })
-
-        -- Font style selector
-        tabBuilder:AddSelector({
-            label = "Font Style",
-            description = "The outline style for this text.",
-            values = fontStyleValues,
-            order = fontStyleOrder,
-            get = function()
-                local t = getTextConfig(dbKey)
-                return (t and t.style) or "NONE"
-            end,
-            set = function(v)
-                local t = ensureTextConfig(dbKey)
-                if t then
-                    t.style = v or "NONE"
-                    if addon and addon.ApplyStyles then
-                        addon:ApplyStyles()
-                    end
-                end
-            end,
-        })
-
-        tabBuilder:Finalize()
     end
 
     -- Parent-level toggle: Show Tooltip IDs
@@ -200,69 +131,7 @@ function Tooltip.Render(panel, scrollContent)
                 sectionKey = "textTabs",
                 buildContent = {
                     nameTitle = function(tabContent, tabBuilder)
-                        -- Font selector
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for this text element.",
-                            get = function()
-                                local t = getTextConfig("textTitle")
-                                return (t and t.fontFace) or "FRIZQT__"
-                            end,
-                            set = function(fontKey)
-                                local t = ensureTextConfig("textTitle")
-                                if t then
-                                    t.fontFace = fontKey or "FRIZQT__"
-                                    if addon and addon.ApplyStyles then
-                                        addon:ApplyStyles()
-                                    end
-                                end
-                            end,
-                        })
-
-                        -- Font size slider
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            description = "The size of this text element.",
-                            min = 6,
-                            max = 32,
-                            step = 1,
-                            get = function()
-                                local t = getTextConfig("textTitle")
-                                return (t and t.size) or 12
-                            end,
-                            set = function(v)
-                                local t = ensureTextConfig("textTitle")
-                                if t then
-                                    t.size = v or 12
-                                    if addon and addon.ApplyStyles then
-                                        addon:ApplyStyles()
-                                    end
-                                end
-                            end,
-                            minLabel = "6",
-                            maxLabel = "32",
-                        })
-
-                        -- Font style selector
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            description = "The outline style for this text.",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function()
-                                local t = getTextConfig("textTitle")
-                                return (t and t.style) or "NONE"
-                            end,
-                            set = function(v)
-                                local t = ensureTextConfig("textTitle")
-                                if t then
-                                    t.style = v or "NONE"
-                                    if addon and addon.ApplyStyles then
-                                        addon:ApplyStyles()
-                                    end
-                                end
-                            end,
-                        })
+                        addTextStyleBlock(tabBuilder, "textTitle")
 
                         -- Class color toggle for player names
                         tabBuilder:AddToggle({
@@ -279,10 +148,12 @@ function Tooltip.Render(panel, scrollContent)
                         tabBuilder:Finalize()
                     end,
                     everythingElse = function(tabContent, tabBuilder)
-                        buildTextTabContent(tabBuilder, "textEverythingElse")
+                        addTextStyleBlock(tabBuilder, "textEverythingElse")
+                        tabBuilder:Finalize()
                     end,
                     comparison = function(tabContent, tabBuilder)
-                        buildTextTabContent(tabBuilder, "textComparison")
+                        addTextStyleBlock(tabBuilder, "textComparison")
+                        tabBuilder:Finalize()
                     end,
                 },
             })

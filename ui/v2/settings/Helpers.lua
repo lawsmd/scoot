@@ -157,20 +157,79 @@ function Helpers.CreateComponentHelpers(componentId)
 end
 
 --------------------------------------------------------------------------------
+-- Sub-table Helper Factory
+--------------------------------------------------------------------------------
+-- Curries one component sub-table (textStacks, textCooldown, ...) into the
+-- get/set field pair that SettingsBuilder:AddTextStyleBlock consumes. Reads
+-- never materialize; writes route through EnsureComponentSubTable (see
+-- setSubSetting above for why seeding from the registered default matters).
+-- The offsetX/offsetY fields map to x/y of the nested offset table.
+-- Usage:
+--   local s = Helpers.CreateSubTableHelpers("utilityCooldowns", "textStacks",
+--       { apply = applyText })
+--   s.get("size")                -- nil if unset (caller supplies the default)
+--   s.set("size", 16)            -- no apply
+--   s.setAndApply("enabled", v)  -- set + opts.apply (default Helpers.applyStyles)
+--------------------------------------------------------------------------------
+
+function Helpers.CreateSubTableHelpers(componentId, subKey, opts)
+    opts = opts or {}
+    local apply = opts.apply or Helpers.applyStyles
+    local s = {}
+
+    s.getTable = function()
+        return Helpers.getSetting(componentId, subKey)
+    end
+
+    s.ensure = function()
+        local comp = Helpers.getComponent(componentId)
+        if not comp then return nil end
+        return addon:EnsureComponentSubTable(comp, subKey)
+    end
+
+    s.get = function(field)
+        local t = s.getTable()
+        if not t then return nil end
+        if field == "offsetX" or field == "offsetY" then
+            local o = t.offset
+            if type(o) ~= "table" then return nil end
+            return o[field == "offsetX" and "x" or "y"]
+        end
+        return t[field]
+    end
+
+    s.set = function(field, value)
+        local t = s.ensure()
+        if not t then return end
+        if field == "offsetX" or field == "offsetY" then
+            if type(t.offset) ~= "table" then t.offset = {} end
+            t.offset[field == "offsetX" and "x" or "y"] = value
+        else
+            t[field] = value
+        end
+    end
+
+    s.setAndApply = function(field, value)
+        s.set(field, value)
+        apply()
+    end
+
+    s.apply = apply
+    return s
+end
+
+--------------------------------------------------------------------------------
 -- Common Dropdown/Selector Options
 --------------------------------------------------------------------------------
 
--- Font style options
-Helpers.fontStyleValues = {
-    NONE = "Regular",
-    OUTLINE = "Outline",
-    THICKOUTLINE = "Thick Outline",
-    HEAVYTHICKOUTLINE = "Heavy Thick Outline",
-    SHADOW = "Shadow",
-    SHADOWOUTLINE = "Shadow Outline",
-    SHADOWTHICKOUTLINE = "Shadow Thick Outline",
-}
-Helpers.fontStyleOrder = { "NONE", "OUTLINE", "THICKOUTLINE", "HEAVYTHICKOUTLINE", "SHADOW", "SHADOWOUTLINE", "SHADOWTHICKOUTLINE" }
+-- Font style options. The catalog in core/fonts.lua is the source of truth;
+-- the *Paired orders add the Deep Shadow keys and are used only by dropdowns
+-- whose every targeted FontString is Scoot-created with Scoot-fed text.
+Helpers.fontStyleValues = addon.FontStyles.values
+Helpers.fontStyleOrder = addon.FontStyles.order
+Helpers.fontStyleOrderPaired = addon.FontStyles.orderPaired
+Helpers.fontStyleOrderOutlineFirst = addon.FontStyles.orderOutlineFirst
+Helpers.fontStyleOrderOutlineFirstPaired = addon.FontStyles.orderOutlineFirstPaired
 
 
 -- Text color mode options
@@ -223,6 +282,18 @@ Helpers.alignmentValues = {
     RIGHT = "Right",
 }
 Helpers.alignmentOrder = { "LEFT", "CENTER", "RIGHT" }
+
+-- Nine-point anchor options
+Helpers.anchorValues = {
+    TOPLEFT = "Top-Left", TOP = "Top-Center", TOPRIGHT = "Top-Right",
+    LEFT = "Left", CENTER = "Center", RIGHT = "Right",
+    BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom-Center", BOTTOMRIGHT = "Bottom-Right",
+}
+Helpers.anchorOrder = {
+    "TOPLEFT", "TOP", "TOPRIGHT",
+    "LEFT", "CENTER", "RIGHT",
+    "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT",
+}
 
 --------------------------------------------------------------------------------
 -- Icon Border & Backdrop Options Builders

@@ -27,30 +27,11 @@ function ObjectiveTracker.Render(panel, scrollContent)
     local setSetting = h.setAndApply
     local syncEditModeSetting = h.sync
 
-    -- Helper to get text config sub-table
-    local function getTextConfig(key)
-        local comp = getComponent()
-        local db = comp and comp.db
-        if db and type(db[key]) == "table" then
-            return db[key]
+    local function applyText()
+        if addon and addon.ApplyStyles then
+            addon:ApplyStyles()
         end
     end
-
-    local function ensureTextConfig(key)
-        local comp = getComponent()
-        if not comp then return nil end
-        local db = comp.db
-        if not db then return nil end
-        local t = rawget(db, key)
-        if not t then
-            t = {}
-            rawset(db, key, t)
-        end
-        return t
-    end
-
-    local fontStyleValues = Helpers.fontStyleValues
-    local fontStyleOrder = Helpers.fontStyleOrder
 
     -- Font color mode options (for UISelectorColorPicker)
     local fontColorValues = {
@@ -163,85 +144,24 @@ function ObjectiveTracker.Render(panel, scrollContent)
         end,
     })
 
-    -- Helper to build text tab content (used by all three tabs)
-    local function buildTextTabContent(tabBuilder, dbKey, defaults)
-        -- Font selector
-        tabBuilder:AddFontSelector({
-            label = "Font",
-            description = "The font used for this text element.",
-            get = function()
-                local t = getTextConfig(dbKey)
-                return (t and t.fontFace) or defaults.fontFace
-            end,
-            set = function(fontKey)
-                local t = ensureTextConfig(dbKey)
-                if t then
-                    t.fontFace = fontKey or defaults.fontFace
-                    if addon and addon.ApplyStyles then
-                        addon:ApplyStyles()
-                    end
-                end
-            end,
+    -- Shared text block for the three Text tabs: font/style/color only (text
+    -- size comes from the Sizing section). Writes route through
+    -- EnsureComponentSubTable so a fresh profile keeps its sibling defaults
+    -- (the old rawset idiom dropped them).
+    local function addTextStyleBlock(tabBuilder, dbKey, defaults)
+        local s = Helpers.CreateSubTableHelpers("objectiveTracker", dbKey, { apply = applyText })
+        tabBuilder:AddTextStyleBlock({
+            get = s.get, set = s.set, apply = applyText,
+            defaults = defaults,
+            font = { description = "The font used for this text element." },
+            style = { description = "The outline style for this text." },
+            size = false,
+            color = {
+                values = fontColorValues, order = fontColorOrder,
+                description = "Color mode for this text. Select 'Custom' to choose a specific color.",
+            },
+            offset = false,
         })
-
-        -- Font style selector
-        tabBuilder:AddSelector({
-            label = "Font Style",
-            description = "The outline style for this text.",
-            values = fontStyleValues,
-            order = fontStyleOrder,
-            get = function()
-                local t = getTextConfig(dbKey)
-                return (t and t.style) or defaults.style
-            end,
-            set = function(v)
-                local t = ensureTextConfig(dbKey)
-                if t then
-                    t.style = v or defaults.style
-                    if addon and addon.ApplyStyles then
-                        addon:ApplyStyles()
-                    end
-                end
-            end,
-        })
-
-        -- Font color selector with inline swatch (UISelectorColorPicker)
-        tabBuilder:AddSelectorColorPicker({
-            label = "Font Color",
-            description = "Color mode for this text. Select 'Custom' to choose a specific color.",
-            values = fontColorValues,
-            order = fontColorOrder,
-            get = function()
-                local t = getTextConfig(dbKey)
-                return (t and t.colorMode) or defaults.colorMode
-            end,
-            set = function(v)
-                local t = ensureTextConfig(dbKey)
-                if t then
-                    t.colorMode = v or defaults.colorMode
-                    if addon and addon.ApplyStyles then
-                        addon:ApplyStyles()
-                    end
-                end
-            end,
-            getColor = function()
-                local t = getTextConfig(dbKey)
-                local c = (t and type(t.color) == "table" and t.color) or defaults.color
-                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-            end,
-            setColor = function(r, g, b, a)
-                local t = ensureTextConfig(dbKey)
-                if t then
-                    t.color = { r or 1, g or 1, b or 1, a or 1 }
-                    if addon and addon.ApplyStyles then
-                        addon:ApplyStyles()
-                    end
-                end
-            end,
-            customValue = "custom",
-            hasAlpha = true,
-        })
-
         tabBuilder:Finalize()
     end
 
@@ -262,7 +182,7 @@ function ObjectiveTracker.Render(panel, scrollContent)
                 sectionKey = "textTabs",
                 buildContent = {
                     header = function(tabContent, tabBuilder)
-                        buildTextTabContent(tabBuilder, "textHeader", {
+                        addTextStyleBlock(tabBuilder, "textHeader", {
                             fontFace = "FRIZQT__",
                             style = "OUTLINE",
                             colorMode = "default",
@@ -270,7 +190,7 @@ function ObjectiveTracker.Render(panel, scrollContent)
                         })
                     end,
                     questName = function(tabContent, tabBuilder)
-                        buildTextTabContent(tabBuilder, "textQuestName", {
+                        addTextStyleBlock(tabBuilder, "textQuestName", {
                             fontFace = "FRIZQT__",
                             style = "OUTLINE",
                             colorMode = "default",
@@ -278,7 +198,7 @@ function ObjectiveTracker.Render(panel, scrollContent)
                         })
                     end,
                     questObjective = function(tabContent, tabBuilder)
-                        buildTextTabContent(tabBuilder, "textQuestObjective", {
+                        addTextStyleBlock(tabBuilder, "textQuestObjective", {
                             fontFace = "FRIZQT__",
                             style = "OUTLINE",
                             colorMode = "default",
@@ -305,17 +225,12 @@ function ObjectiveTracker.Render(panel, scrollContent)
         end
     end
 
+    -- Seeds from the registered default on first write, so a fresh profile
+    -- keeps its sibling defaults (the old rawset idiom dropped them).
     local function ensureDTConfig()
         local comp = getComponent()
         if not comp then return nil end
-        local db = comp.db
-        if not db then return nil end
-        local t = rawget(db, "dungeonTracker")
-        if not t then
-            t = {}
-            rawset(db, "dungeonTracker", t)
-        end
-        return t
+        return addon:EnsureComponentSubTable(comp, "dungeonTracker")
     end
 
     -- Generic read/write helpers for nested DT sub-tables (stageText, keyLevelText, timerText)
@@ -367,95 +282,31 @@ function ObjectiveTracker.Render(panel, scrollContent)
             })
 
             -- Tabbed section: Instance Name | Key Level | Timer Text | Visibility
-            -- Helper to build a standard text-styling tab (Font, Size, Style, Color)
+            -- Standard text-styling tab over the nested dungeonTracker sub-tables.
+            -- These sit two levels down (component db > dungeonTracker > dbKey),
+            -- below EnsureComponentSubTable's reach, so the accessors stay local.
             local function buildDTTextTab(tabBuilder, dbKey, defaults)
-                tabBuilder:AddFontSelector({
-                    label = "Font",
-                    description = "The font used for this text element.",
-                    get = function()
+                tabBuilder:AddTextStyleBlock({
+                    get = function(field)
                         local t = getDTSubConfig(dbKey)
-                        return (t and t.fontFace) or defaults.fontFace
+                        return t and t[field]
                     end,
-                    set = function(fontKey)
+                    set = function(field, value)
                         local t = ensureDTSubConfig(dbKey)
-                        if t then
-                            t.fontFace = fontKey or defaults.fontFace
-                            applyDT()
-                        end
+                        if t then t[field] = value end
                     end,
+                    apply = applyDT,
+                    defaults = defaults,
+                    font = { description = "The font used for this text element." },
+                    style = { description = "The outline style for this text." },
+                    size = { min = 6, max = 32, minLabel = "6", maxLabel = "32",
+                        description = "Size of this text element." },
+                    color = {
+                        values = fontColorValues, order = fontColorOrder,
+                        description = "Color mode for this text. Select 'Custom' to choose a specific color.",
+                    },
+                    offset = false,
                 })
-
-                tabBuilder:AddSlider({
-                    label = "Font Size",
-                    description = "Size of this text element.",
-                    min = 6,
-                    max = 32,
-                    step = 1,
-                    get = function()
-                        local t = getDTSubConfig(dbKey)
-                        return (t and t.size) or defaults.size
-                    end,
-                    set = function(v)
-                        local t = ensureDTSubConfig(dbKey)
-                        if t then
-                            t.size = v
-                            applyDT()
-                        end
-                    end,
-                    minLabel = "6",
-                    maxLabel = "32",
-                })
-
-                tabBuilder:AddSelector({
-                    label = "Font Style",
-                    description = "The outline style for this text.",
-                    values = fontStyleValues,
-                    order = fontStyleOrder,
-                    get = function()
-                        local t = getDTSubConfig(dbKey)
-                        return (t and t.style) or defaults.style
-                    end,
-                    set = function(v)
-                        local t = ensureDTSubConfig(dbKey)
-                        if t then
-                            t.style = v or defaults.style
-                            applyDT()
-                        end
-                    end,
-                })
-
-                tabBuilder:AddSelectorColorPicker({
-                    label = "Font Color",
-                    description = "Color mode for this text. Select 'Custom' to choose a specific color.",
-                    values = fontColorValues,
-                    order = fontColorOrder,
-                    get = function()
-                        local t = getDTSubConfig(dbKey)
-                        return (t and t.colorMode) or defaults.colorMode
-                    end,
-                    set = function(v)
-                        local t = ensureDTSubConfig(dbKey)
-                        if t then
-                            t.colorMode = v or defaults.colorMode
-                            applyDT()
-                        end
-                    end,
-                    getColor = function()
-                        local t = getDTSubConfig(dbKey)
-                        local c = (t and type(t.color) == "table" and t.color) or defaults.color
-                        return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                    end,
-                    setColor = function(r, g, b, a)
-                        local t = ensureDTSubConfig(dbKey)
-                        if t then
-                            t.color = { r or 1, g or 1, b or 1, a or 1 }
-                            applyDT()
-                        end
-                    end,
-                    customValue = "custom",
-                    hasAlpha = true,
-                })
-
                 tabBuilder:Finalize()
             end
 

@@ -23,7 +23,7 @@ function DamageMetersX.Render(panel, scrollContent)
 
     local Helpers = addon.UI.Settings.Helpers
     local h = Helpers.CreateComponentHelpers("damageMeter")
-    local getComponent, getSetting = h.getComponent, h.get
+    local getSetting = h.get
     local setSetting = h.setAndApply
     local syncEditModeSetting = h.sync
 
@@ -232,8 +232,28 @@ function DamageMetersX.Render(panel, scrollContent)
         end,
     })
 
-    local fontStyleValues = Helpers.fontStyleValues
-    local fontStyleOrder = Helpers.fontStyleOrder
+    local function applyText()
+        if addon and addon.ApplyStyles then
+            C_Timer.After(0, function()
+                if addon and addon.ApplyStyles then addon:ApplyStyles() end
+            end)
+        end
+    end
+
+    -- The text sub-tables store the style under "fontStyle" rather than
+    -- "style"; the accessors translate the composite's field names.
+    local function subTextAccessors(subKey)
+        local s = Helpers.CreateSubTableHelpers("damageMeter", subKey, { apply = applyText })
+        local function get(field)
+            if field == "style" then field = "fontStyle" end
+            return s.get(field)
+        end
+        local function set(field, value)
+            if field == "style" then field = "fontStyle" end
+            s.set(field, value)
+        end
+        return get, set, s
+    end
 
     -- Bars section (collapsible with tabs inside)
     builder:AddCollapsibleSection({
@@ -384,23 +404,7 @@ function DamageMetersX.Render(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     namesText = function(tabContent, tabInner)
-                        -- Helper to get/set textNames sub-table
-                        local function getTextNames()
-                            local t = getSetting("textNames")
-                            return t or {}
-                        end
-                        local function setTextNamesProp(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textNames")
-                                comp.db.textNames[key] = value
-                            end
-                            if addon and addon.ApplyStyles then
-                                C_Timer.After(0, function()
-                                    if addon and addon.ApplyStyles then addon:ApplyStyles() end
-                                end)
-                            end
-                        end
+                        local get, set, s = subTextAccessors("textNames")
 
                         tabInner:AddSlider({
                             label = "Text Size",
@@ -419,82 +423,25 @@ function DamageMetersX.Render(panel, scrollContent)
                             description = "Multiplies the Edit Mode 'Text Size' setting.",
                             min = 0.5, max = 1.5, step = 0.05,
                             precision = 2,
-                            get = function()
-                                local t = getTextNames()
-                                return t.scaleMultiplier or 1.0
-                            end,
-                            set = function(value)
-                                setTextNamesProp("scaleMultiplier", value)
-                            end,
+                            get = function() return get("scaleMultiplier") or 1.0 end,
+                            set = function(value) s.setAndApply("scaleMultiplier", value) end,
                         })
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function()
-                                local t = getTextNames()
-                                return t.fontFace or "FRIZQT__"
-                            end,
-                            set = function(value)
-                                setTextNamesProp("fontFace", value)
-                            end,
-                        })
-                        tabInner:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function()
-                                local t = getTextNames()
-                                return t.fontStyle or "OUTLINE"
-                            end,
-                            set = function(value)
-                                setTextNamesProp("fontStyle", value)
-                            end,
-                        })
-                        tabInner:AddSelectorColorPicker({
-                            label = "Color",
-                            values = {
-                                ["default"] = "Default",
-                                ["custom"] = "Custom",
+                        -- Bar names render on Scoot-drawn overlay FontStrings,
+                        -- so the paired Deep Shadow styles are offered here.
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = applyText,
+                            style = { order = Helpers.fontStyleOrderPaired },
+                            size = false,
+                            color = {
+                                values = { ["default"] = "Default", ["custom"] = "Custom" },
+                                order = { "default", "custom" },
                             },
-                            order = { "default", "custom" },
-                            get = function()
-                                local t = getTextNames()
-                                return t.colorMode or "default"
-                            end,
-                            set = function(value)
-                                setTextNamesProp("colorMode", value)
-                            end,
-                            getColor = function()
-                                local t = getTextNames()
-                                local c = t.color
-                                if c then return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end
-                                return 1, 1, 1, 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setTextNamesProp("color", { r, g, b, a or 1 })
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
+                            offset = false,
                         })
                         tabInner:Finalize()
                     end,
                     numbersText = function(tabContent, tabInner)
-                        -- Helper to get/set textNumbers sub-table
-                        local function getTextNumbers()
-                            local t = getSetting("textNumbers")
-                            return t or {}
-                        end
-                        local function setTextNumbersProp(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textNumbers")
-                                comp.db.textNumbers[key] = value
-                            end
-                            if addon and addon.ApplyStyles then
-                                C_Timer.After(0, function()
-                                    if addon and addon.ApplyStyles then addon:ApplyStyles() end
-                                end)
-                            end
-                        end
+                        local get, set, s = subTextAccessors("textNumbers")
 
                         tabInner:AddSlider({
                             label = "Text Size",
@@ -513,61 +460,20 @@ function DamageMetersX.Render(panel, scrollContent)
                             description = "Multiplies the Edit Mode 'Text Size' setting.",
                             min = 0.5, max = 1.5, step = 0.05,
                             precision = 2,
-                            get = function()
-                                local t = getTextNumbers()
-                                return t.scaleMultiplier or 1.0
-                            end,
-                            set = function(value)
-                                setTextNumbersProp("scaleMultiplier", value)
-                            end,
+                            get = function() return get("scaleMultiplier") or 1.0 end,
+                            set = function(value) s.setAndApply("scaleMultiplier", value) end,
                         })
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function()
-                                local t = getTextNumbers()
-                                return t.fontFace or "FRIZQT__"
-                            end,
-                            set = function(value)
-                                setTextNumbersProp("fontFace", value)
-                            end,
-                        })
-                        tabInner:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function()
-                                local t = getTextNumbers()
-                                return t.fontStyle or "OUTLINE"
-                            end,
-                            set = function(value)
-                                setTextNumbersProp("fontStyle", value)
-                            end,
-                        })
-                        tabInner:AddSelectorColorPicker({
-                            label = "Color",
-                            values = {
-                                ["default"] = "Default",
-                                ["custom"] = "Custom",
+                        -- Bar numbers render on Scoot-drawn overlay FontStrings,
+                        -- so the paired Deep Shadow styles are offered here.
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = applyText,
+                            style = { order = Helpers.fontStyleOrderPaired },
+                            size = false,
+                            color = {
+                                values = { ["default"] = "Default", ["custom"] = "Custom" },
+                                order = { "default", "custom" },
                             },
-                            order = { "default", "custom" },
-                            get = function()
-                                local t = getTextNumbers()
-                                return t.colorMode or "default"
-                            end,
-                            set = function(value)
-                                setTextNumbersProp("colorMode", value)
-                            end,
-                            getColor = function()
-                                local t = getTextNumbers()
-                                local c = t.color
-                                if c then return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end
-                                return 1, 1, 1, 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setTextNumbersProp("color", { r, g, b, a or 1 })
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
+                            offset = false,
                         })
                         tabInner:Finalize()
                     end,
@@ -594,23 +500,7 @@ function DamageMetersX.Render(panel, scrollContent)
                 },
                 buildContent = {
                     titleText = function(tabContent, tabInner)
-                        -- Helper to get/set textTitle sub-table
-                        local function getTextTitle()
-                            local t = getSetting("textTitle")
-                            return t or {}
-                        end
-                        local function setTextTitleProp(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textTitle")
-                                comp.db.textTitle[key] = value
-                            end
-                            if addon and addon.ApplyStyles then
-                                C_Timer.After(0, function()
-                                    if addon and addon.ApplyStyles then addon:ApplyStyles() end
-                                end)
-                            end
-                        end
+                        local get, set, s = subTextAccessors("textTitle")
 
                         -- Scale Multiplier slider (0.5-1.5)
                         tabInner:AddSlider({
@@ -618,69 +508,20 @@ function DamageMetersX.Render(panel, scrollContent)
                             description = "Adjusts the size of title text.",
                             min = 0.5, max = 1.5, step = 0.05,
                             precision = 2,
-                            get = function()
-                                local t = getTextTitle()
-                                return t.scaleMultiplier or 1.0
-                            end,
-                            set = function(value)
-                                setTextTitleProp("scaleMultiplier", value)
-                            end,
+                            get = function() return get("scaleMultiplier") or 1.0 end,
+                            set = function(value) s.setAndApply("scaleMultiplier", value) end,
                         })
 
-                        -- Font selector
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function()
-                                local t = getTextTitle()
-                                return t.fontFace or "FRIZQT__"
-                            end,
-                            set = function(value)
-                                setTextTitleProp("fontFace", value)
-                            end,
-                        })
-
-                        -- Font Style selector
-                        tabInner:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function()
-                                local t = getTextTitle()
-                                return t.fontStyle or "OUTLINE"
-                            end,
-                            set = function(value)
-                                setTextTitleProp("fontStyle", value)
-                            end,
-                        })
-
-                        -- Color with default/custom mode
                         -- Blizzard default is GameFontNormalMed1 gold: r=1.0, g=0.82, b=0
-                        local TITLE_DEFAULT_COLOR = { 1.0, 0.82, 0, 1 }
-                        tabInner:AddSelectorColorPicker({
-                            label = "Color",
-                            values = {
-                                ["default"] = "Default (Gold)",
-                                ["custom"] = "Custom",
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = applyText,
+                            defaults = { color = { 1.0, 0.82, 0, 1 } },
+                            size = false,
+                            color = {
+                                values = { ["default"] = "Default (Gold)", ["custom"] = "Custom" },
+                                order = { "default", "custom" },
                             },
-                            order = { "default", "custom" },
-                            get = function()
-                                local t = getTextTitle()
-                                return t.colorMode or "default"
-                            end,
-                            set = function(value)
-                                setTextTitleProp("colorMode", value)
-                            end,
-                            getColor = function()
-                                local t = getTextTitle()
-                                local c = t.color
-                                if c then return c[1] or TITLE_DEFAULT_COLOR[1], c[2] or TITLE_DEFAULT_COLOR[2], c[3] or TITLE_DEFAULT_COLOR[3], c[4] or TITLE_DEFAULT_COLOR[4] end
-                                return TITLE_DEFAULT_COLOR[1], TITLE_DEFAULT_COLOR[2], TITLE_DEFAULT_COLOR[3], TITLE_DEFAULT_COLOR[4]
-                            end,
-                            setColor = function(r, g, b, a)
-                                setTextTitleProp("color", { r, g, b, a or 1 })
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
+                            offset = false,
                         })
 
                         -- Show Session in Title toggle
@@ -709,77 +550,18 @@ function DamageMetersX.Render(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     timerText = function(tabContent, tabInner)
-                        -- Helper to get/set textTimer sub-table
-                        local function getTextTimer()
-                            local t = getSetting("textTimer")
-                            return t or {}
-                        end
-                        local function setTextTimerProp(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textTimer")
-                                comp.db.textTimer[key] = value
-                            end
-                            if addon and addon.ApplyStyles then
-                                C_Timer.After(0, function()
-                                    if addon and addon.ApplyStyles then addon:ApplyStyles() end
-                                end)
-                            end
-                        end
+                        local get, set = subTextAccessors("textTimer")
 
-                        -- Font selector
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function()
-                                local t = getTextTimer()
-                                return t.fontFace or "FRIZQT__"
-                            end,
-                            set = function(value)
-                                setTextTimerProp("fontFace", value)
-                            end,
-                        })
-
-                        -- Font Style selector
-                        tabInner:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function()
-                                local t = getTextTimer()
-                                return t.fontStyle or "OUTLINE"
-                            end,
-                            set = function(value)
-                                setTextTimerProp("fontStyle", value)
-                            end,
-                        })
-
-                        -- Color with default/custom mode
-                        local TIMER_DEFAULT_COLOR = { 1.0, 0.82, 0, 1 }
-                        tabInner:AddSelectorColorPicker({
-                            label = "Color",
-                            values = {
-                                ["default"] = "Default (Gold)",
-                                ["custom"] = "Custom",
+                        -- Default is GameFontNormalMed1 gold, same as the title
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = applyText,
+                            defaults = { color = { 1.0, 0.82, 0, 1 } },
+                            size = false,
+                            color = {
+                                values = { ["default"] = "Default (Gold)", ["custom"] = "Custom" },
+                                order = { "default", "custom" },
                             },
-                            order = { "default", "custom" },
-                            get = function()
-                                local t = getTextTimer()
-                                return t.colorMode or "default"
-                            end,
-                            set = function(value)
-                                setTextTimerProp("colorMode", value)
-                            end,
-                            getColor = function()
-                                local t = getTextTimer()
-                                local c = t.color
-                                if c then return c[1] or TIMER_DEFAULT_COLOR[1], c[2] or TIMER_DEFAULT_COLOR[2], c[3] or TIMER_DEFAULT_COLOR[3], c[4] or TIMER_DEFAULT_COLOR[4] end
-                                return TIMER_DEFAULT_COLOR[1], TIMER_DEFAULT_COLOR[2], TIMER_DEFAULT_COLOR[3], TIMER_DEFAULT_COLOR[4]
-                            end,
-                            setColor = function(r, g, b, a)
-                                setTextTimerProp("color", { r, g, b, a or 1 })
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
+                            offset = false,
                         })
                         tabInner:Finalize()
                     end,
@@ -1146,4 +928,4 @@ addon.UI.SettingsPanel:RegisterRenderer("damageMeter", function(panel, scrollCon
     DamageMetersX.Render(panel, scrollContent)
 end)
 
-return DamageMeter
+return DamageMetersX

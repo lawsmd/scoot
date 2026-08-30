@@ -16,6 +16,7 @@
 --                                          not rebuilt under the cursor)
 --   shape()               -> "icon"|"bar"|"shape"|"text"|"icontext"
 --   kind()                -> "buff"|"debuff"|"missingbuff"
+--   missingVisual()       -> resolved missing-state token, "none" when unset
 -- }
 local addonName, addon = ...
 
@@ -59,6 +60,32 @@ local function ColorSet(ctx, key)
         ctx.setAndApply(key, { r, g, b, a })
         ctx.refreshPreview()
     end
+end
+
+-- Adapts ctx to AddTextStyleBlock's field vocabulary for one text prefix.
+-- ctx.setAndApply writes and applies the aura config; the composite's apply
+-- then refreshes the preview.
+local function TextAccessors(ctx, map)
+    local function get(field)
+        local key = map[field]
+        if not key then return nil end
+        return ctx.get(key)
+    end
+    local function set(field, value)
+        local key = map[field]
+        if key then ctx.setAndApply(key, value) end
+    end
+    return get, set
+end
+
+-- Standalone X/Y offset pair over two flat ctx keys
+local function AddCtxOffsetPair(tabBuilder, ctx, keyX, keyY)
+    tabBuilder:AddOffsetPair({
+        range = 50, minLabel = "-50", maxLabel = "+50",
+        get = function(axis) return ctx.get(axis == "x" and keyX or keyY) end,
+        set = function(axis, v) ctx.setAndApply(axis == "x" and keyX or keyY, v) end,
+        apply = ctx.refreshPreview,
+    })
 end
 
 --------------------------------------------------------------------------------
@@ -135,7 +162,13 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
     end
 
     local function iconControlsDisabled()
-        return isBar and not ctx.get("barShowIcon")
+        if not isBar then return false end
+        if ctx.get("barShowIcon") then return false end
+        -- A bar-icon missing visual consumes these settings even with Show
+        -- Icon off (underlay.lua paints the centered icon from them).
+        local traits = ctx.missingVisual
+            and addon.ScootAuras.MissingVisualTraits(ctx.missingVisual())
+        return not (traits and traits.art == "baricon")
     end
 
     tabBuilder:AddSlider({
@@ -359,43 +392,36 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
             get = function() return ctx.get("missingSuffix") == true end,
             set = function(v) ctx.setAndApply("missingSuffix", v) ctx.refreshPreview() end,
         })
-    else
-        tabBuilder:AddToggle({
-            label = "Hide Aura Name",
-            description = "Hide the aura name text on the bar.",
-            get = function() return ctx.get("hideNameText") ~= false end,
-            set = function(v) ctx.setAndApply("hideNameText", v) ctx.refreshPreview() end,
-        })
     end
 
-    tabBuilder:AddFontSelector({
-        label = "Font",
-        description = "The font used for the aura name.",
-        get = function() return ctx.get("nameTextFont") or "FRIZQT__" end,
-        set = function(v) ctx.setAndApply("nameTextFont", v) ctx.refreshPreview() end,
+    -- Scoot Aura text is Scoot-drawn, so the paired Deep Shadow styles are
+    -- offered on every text tab. The font default mirrors the registered
+    -- component default, not a panel-local fallback.
+    local get, set = TextAccessors(ctx, {
+        hidden = "hideNameText",
+        fontFace = "nameTextFont",
+        style = "nameTextStyle",
+        size = "nameTextSize",
+        color = "nameTextColor",
     })
-
-    tabBuilder:AddSelector({
-        label = "Font Style",
-        values = Helpers.fontStyleValues,
-        order = Helpers.fontStyleOrder,
-        get = function() return ctx.get("nameTextStyle") or "OUTLINE" end,
-        set = function(v) ctx.setAndApply("nameTextStyle", v) ctx.refreshPreview() end,
-    })
-
-    tabBuilder:AddSlider({
-        label = "Font Size",
-        min = 6, max = 48, step = 1,
-        get = function() return ctx.get("nameTextSize") or 10 end,
-        set = function(v) ctx.setAndApply("nameTextSize", v) ctx.refreshPreview() end,
-        minLabel = "6pt", maxLabel = "48pt",
-    })
-
-    tabBuilder:AddColorPicker({
-        label = "Font Color",
-        get = ColorGet(ctx, "nameTextColor"),
-        set = ColorSet(ctx, "nameTextColor"),
-        hasAlpha = true,
+    tabBuilder:AddTextStyleBlock({
+        -- The hide toggle defaults on: nil reads as hidden
+        get = function(field)
+            if field == "hidden" then return ctx.get("hideNameText") ~= false end
+            return get(field)
+        end,
+        set = set,
+        apply = ctx.refreshPreview,
+        defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", size = 10 },
+        hideToggle = (not isMissing) and {
+            label = "Hide Aura Name",
+            description = "Hide the aura name text on the bar.",
+        } or nil,
+        font = { description = "The font used for the aura name." },
+        style = { order = Helpers.fontStyleOrderPaired },
+        size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt" },
+        color = { kind = "plain" },
+        offset = false,
     })
 
     if isMissing then
@@ -411,21 +437,7 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
                 set = function(v) ctx.setAndApply("nameTextOuterAnchor", v) ctx.refreshPreview() end,
             })
 
-            tabBuilder:AddDualSlider({
-                label = "Offset",
-                sliderA = {
-                    axisLabel = "X", min = -50, max = 50, step = 1,
-                    get = function() return ctx.get("nameTextOffsetX") or 0 end,
-                    set = function(v) ctx.setAndApply("nameTextOffsetX", v) ctx.refreshPreview() end,
-                    minLabel = "-50", maxLabel = "+50",
-                },
-                sliderB = {
-                    axisLabel = "Y", min = -50, max = 50, step = 1,
-                    get = function() return ctx.get("nameTextOffsetY") or 0 end,
-                    set = function(v) ctx.setAndApply("nameTextOffsetY", v) ctx.refreshPreview() end,
-                    minLabel = "-50", maxLabel = "+50",
-                },
-            })
+            AddCtxOffsetPair(tabBuilder, ctx, "nameTextOffsetX", "nameTextOffsetY")
         end
 
         tabBuilder:Finalize()
@@ -477,21 +489,7 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
         },
     })
 
-    tabBuilder:AddDualSlider({
-        label = "Offset",
-        sliderA = {
-            axisLabel = "X", min = -50, max = 50, step = 1,
-            get = function() return ctx.get("nameTextOffsetX") or 0 end,
-            set = function(v) ctx.setAndApply("nameTextOffsetX", v) ctx.refreshPreview() end,
-            minLabel = "-50", maxLabel = "+50",
-        },
-        sliderB = {
-            axisLabel = "Y", min = -50, max = 50, step = 1,
-            get = function() return ctx.get("nameTextOffsetY") or 0 end,
-            set = function(v) ctx.setAndApply("nameTextOffsetY", v) ctx.refreshPreview() end,
-            minLabel = "-50", maxLabel = "+50",
-        },
-    })
+    AddCtxOffsetPair(tabBuilder, ctx, "nameTextOffsetX", "nameTextOffsetY")
 
     tabBuilder:Finalize()
 end
@@ -503,42 +501,28 @@ end
 function Tabs.BuildDurationTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
 
-    tabBuilder:AddToggle({
-        label = "Hide Duration Text",
-        description = "Hide the remaining-time text.",
-        get = function() return ctx.get("hideText") or false end,
-        set = function(v) ctx.setAndApply("hideText", v) ctx.refreshPreview() end,
+    -- Scoot Aura text is Scoot-drawn, so the paired Deep Shadow styles are
+    -- offered here.
+    local get, set = TextAccessors(ctx, {
+        hidden = "hideText",
+        fontFace = "textFont",
+        style = "textStyle",
+        size = "textSize",
+        color = "textColor",
     })
-
-    tabBuilder:AddFontSelector({
-        label = "Font",
-        description = "The font used for the duration text.",
-        get = function() return ctx.get("textFont") end,
-        set = function(v) ctx.setAndApply("textFont", v) ctx.refreshPreview() end,
-    })
-
-    tabBuilder:AddSelector({
-        label = "Font Style",
-        values = Helpers.fontStyleValues,
-        order = Helpers.fontStyleOrder,
-        get = function() return ctx.get("textStyle") or "OUTLINE" end,
-        set = function(v) ctx.setAndApply("textStyle", v) ctx.refreshPreview() end,
-    })
-
-    tabBuilder:AddSlider({
-        label = "Font Size",
-        description = "Size of the duration text in points.",
-        min = 6, max = 48, step = 1,
-        get = function() return ctx.get("textSize") or 24 end,
-        set = function(v) ctx.setAndApply("textSize", v) ctx.refreshPreview() end,
-        minLabel = "6pt", maxLabel = "48pt",
-    })
-
-    tabBuilder:AddColorPicker({
-        label = "Font Color",
-        get = ColorGet(ctx, "textColor"),
-        set = ColorSet(ctx, "textColor"),
-        hasAlpha = true,
+    tabBuilder:AddTextStyleBlock({
+        get = get, set = set, apply = ctx.refreshPreview,
+        defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", size = 24 },
+        hideToggle = {
+            label = "Hide Duration Text",
+            description = "Hide the remaining-time text.",
+        },
+        font = { description = "The font used for the duration text." },
+        style = { order = Helpers.fontStyleOrderPaired },
+        size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt",
+            description = "Size of the duration text in points." },
+        color = { kind = "plain" },
+        offset = false,
     })
 
     local shape = ctx.shape()
@@ -588,21 +572,7 @@ function Tabs.BuildDurationTab(tabBuilder, ctx)
         },
     })
 
-    tabBuilder:AddDualSlider({
-        label = "Offset",
-        sliderA = {
-            axisLabel = "X", min = -50, max = 50, step = 1,
-            get = function() return ctx.get("textOffsetX") or 0 end,
-            set = function(v) ctx.setAndApply("textOffsetX", v) ctx.refreshPreview() end,
-            minLabel = "-50", maxLabel = "+50",
-        },
-        sliderB = {
-            axisLabel = "Y", min = -50, max = 50, step = 1,
-            get = function() return ctx.get("textOffsetY") or 0 end,
-            set = function(v) ctx.setAndApply("textOffsetY", v) ctx.refreshPreview() end,
-            minLabel = "-50", maxLabel = "+50",
-        },
-    })
+    AddCtxOffsetPair(tabBuilder, ctx, "textOffsetX", "textOffsetY")
 
     tabBuilder:Finalize()
 end
@@ -614,42 +584,28 @@ end
 function Tabs.BuildStacksTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
 
-    tabBuilder:AddToggle({
-        label = "Hide Stacks Text",
-        description = "Hide the stack counter.",
-        get = function() return ctx.get("hideStackText") or false end,
-        set = function(v) ctx.setAndApply("hideStackText", v) ctx.refreshPreview() end,
+    -- Scoot Aura text is Scoot-drawn, so the paired Deep Shadow styles are
+    -- offered here.
+    local get, set = TextAccessors(ctx, {
+        hidden = "hideStackText",
+        fontFace = "stackTextFont",
+        style = "stackTextStyle",
+        size = "stackTextSize",
+        color = "stackTextColor",
     })
-
-    tabBuilder:AddFontSelector({
-        label = "Font",
-        description = "The font used for the stack counter.",
-        get = function() return ctx.get("stackTextFont") end,
-        set = function(v) ctx.setAndApply("stackTextFont", v) ctx.refreshPreview() end,
-    })
-
-    tabBuilder:AddSelector({
-        label = "Font Style",
-        values = Helpers.fontStyleValues,
-        order = Helpers.fontStyleOrder,
-        get = function() return ctx.get("stackTextStyle") or "OUTLINE" end,
-        set = function(v) ctx.setAndApply("stackTextStyle", v) ctx.refreshPreview() end,
-    })
-
-    tabBuilder:AddSlider({
-        label = "Font Size",
-        description = "Size of the stack counter in points.",
-        min = 6, max = 48, step = 1,
-        get = function() return ctx.get("stackTextSize") or 14 end,
-        set = function(v) ctx.setAndApply("stackTextSize", v) ctx.refreshPreview() end,
-        minLabel = "6pt", maxLabel = "48pt",
-    })
-
-    tabBuilder:AddColorPicker({
-        label = "Font Color",
-        get = ColorGet(ctx, "stackTextColor"),
-        set = ColorSet(ctx, "stackTextColor"),
-        hasAlpha = true,
+    tabBuilder:AddTextStyleBlock({
+        get = get, set = set, apply = ctx.refreshPreview,
+        defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", size = 14 },
+        hideToggle = {
+            label = "Hide Stacks Text",
+            description = "Hide the stack counter.",
+        },
+        font = { description = "The font used for the stack counter." },
+        style = { order = Helpers.fontStyleOrderPaired },
+        size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt",
+            description = "Size of the stack counter in points." },
+        color = { kind = "plain" },
+        offset = false,
     })
 
     local shape = ctx.shape()
@@ -699,21 +655,7 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
         },
     })
 
-    tabBuilder:AddDualSlider({
-        label = "Offset",
-        sliderA = {
-            axisLabel = "X", min = -50, max = 50, step = 1,
-            get = function() return ctx.get("stackTextOffsetX") or 0 end,
-            set = function(v) ctx.setAndApply("stackTextOffsetX", v) ctx.refreshPreview() end,
-            minLabel = "-50", maxLabel = "+50",
-        },
-        sliderB = {
-            axisLabel = "Y", min = -50, max = 50, step = 1,
-            get = function() return ctx.get("stackTextOffsetY") or 0 end,
-            set = function(v) ctx.setAndApply("stackTextOffsetY", v) ctx.refreshPreview() end,
-            minLabel = "-50", maxLabel = "+50",
-        },
-    })
+    AddCtxOffsetPair(tabBuilder, ctx, "stackTextOffsetX", "stackTextOffsetY")
 
     tabBuilder:Finalize()
 end

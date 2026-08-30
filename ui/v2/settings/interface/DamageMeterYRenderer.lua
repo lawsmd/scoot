@@ -800,6 +800,9 @@ function DMYSettings.Render(panel, scrollContent)
             local t = addon:EnsureComponentSubTable(c, tableKey)
             if t then t[propKey] = value end
         end
+    end
+    local function applyText()
+        local c = h.getComponent()
         if c and c.ApplyStyling then
             C_Timer.After(0, function()
                 if c and c.ApplyStyling then c:ApplyStyling() end
@@ -807,27 +810,24 @@ function DMYSettings.Render(panel, scrollContent)
         end
         builder:DeferredRefreshAll()
     end
+    -- All meter text is Scoot-drawn, so the paired Deep Shadow styles are
+    -- offered on every tab. The sub-tables store style/size under
+    -- fontStyle/fontSize; the accessors translate the composite's field names.
+    local FIELD_KEYS = { style = "fontStyle", size = "fontSize" }
     local function AddTextControls(tabInner, tableKey, defaultSize)
-        tabInner:AddFontSelector({ label = "Font",
-            get = function() return getTextProp(tableKey, "fontFace") end,
-            set = function(v) setTextProp(tableKey, "fontFace", v) end })
-        tabInner:AddSelector({ label = "Font Style",
-            values = TextHelpers.fontStyleValues, order = TextHelpers.fontStyleOrder,
-            get = function() return getTextProp(tableKey, "fontStyle") or "OUTLINE" end,
-            set = function(v) setTextProp(tableKey, "fontStyle", v) end })
-        tabInner:AddSlider({ label = "Font Size", min = 6, max = 24, step = 1,
-            get = function() return getTextProp(tableKey, "fontSize") or defaultSize end,
-            set = function(v) setTextProp(tableKey, "fontSize", v) end })
-        tabInner:AddSelectorColorPicker({ label = "Color",
-            values = TextHelpers.textColorValues, order = TextHelpers.textColorOrder,
-            get = function() return getTextProp(tableKey, "colorMode") or "default" end,
-            set = function(v) setTextProp(tableKey, "colorMode", v) end,
-            getColor = function()
-                local clr = getTextProp(tableKey, "color") or {1,1,1,1}
-                return clr[1] or 1, clr[2] or 1, clr[3] or 1, clr[4] or 1
+        tabInner:AddTextStyleBlock({
+            get = function(field)
+                return getTextProp(tableKey, FIELD_KEYS[field] or field)
             end,
-            setColor = function(r,g,b,a) setTextProp(tableKey, "color", {r,g,b,a or 1}) end,
-            customValue = "custom", hasAlpha = true })
+            set = function(field, value)
+                setTextProp(tableKey, FIELD_KEYS[field] or field, value)
+            end,
+            apply = applyText,
+            defaults = { size = defaultSize },
+            style = { order = TextHelpers.fontStyleOrderPaired },
+            size = { min = 6, max = 24 },
+            offset = false,
+        })
     end
 
     -- sectionKey stays "text" so users' expand/collapse state survives the rename

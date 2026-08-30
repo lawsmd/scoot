@@ -24,7 +24,6 @@ function TrackedBars.Render(panel, scrollContent)
     local getComponent, getSetting = h.getComponent, h.get
     local setSetting = h.setAndApply
     local syncEditModeSetting = h.sync
-    local textColorValues, textColorOrder = Helpers.textColorValues, Helpers.textColorOrder
 
     local function getIconBorderOptions()
         return Helpers.getIconBorderOptions({{"none","None"}})
@@ -274,17 +273,12 @@ function TrackedBars.Render(panel, scrollContent)
         sectionKey = "text",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            -- Helper to apply text styling
             local function applyText()
                 if addon and addon.ApplyStyles then
                     C_Timer.After(0, function() addon:ApplyStyles() end)
                 end
             end
 
-            local fontStyleValues = Helpers.fontStyleValues
-            local fontStyleOrder = Helpers.fontStyleOrder
-
-            -- Tabbed section for Spell Name and Timer text settings
             inner:AddTabbedSection({
                 tabs = {
                     { key = "spellName", label = "Spell Name" },
@@ -294,219 +288,26 @@ function TrackedBars.Render(panel, scrollContent)
                 sectionKey = "textTabs",
                 buildContent = {
                     spellName = function(tabContent, tabBuilder)
-                        -- Helper to get/set textName sub-properties
-                        local function getNameSetting(key, default)
-                            local tn = getSetting("textName")
-                            if tn and tn[key] ~= nil then return tn[key] end
-                            return default
-                        end
-                        local function setNameSetting(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textName")
-                                comp.db.textName[key] = value
-                            end
-                            applyText()
-                        end
-
-                        -- Font selector
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for spell name text.",
-                            get = function() return getNameSetting("fontFace", "FRIZQT__") end,
-                            set = function(v) setNameSetting("fontFace", v) end,
+                        -- Styled in place on Blizzard FontStrings in default
+                        -- mode, so the plain style order applies (no paired
+                        -- Deep Shadow styles).
+                        local s = Helpers.CreateSubTableHelpers("trackedBars", "textName", { apply = applyText })
+                        tabBuilder:AddTextStyleBlock({
+                            get = s.get, set = s.set, apply = applyText,
+                            font = { description = "The font used for spell name text." },
+                            size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
                         })
-
-                        -- Font Size slider
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            min = 6,
-                            max = 32,
-                            step = 1,
-                            get = function() return getNameSetting("size", 14) end,
-                            set = function(v) setNameSetting("size", v) end,
-                            minLabel = "6",
-                            maxLabel = "32",
-                        })
-
-                        -- Font Style selector
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function() return getNameSetting("style", "OUTLINE") end,
-                            set = function(v) setNameSetting("style", v) end,
-                        })
-
-                        -- Font Color picker
-                        tabBuilder:AddSelectorColorPicker({
-                            label = "Font Color",
-                            values = textColorValues,
-                            order = textColorOrder,
-                            get = function() return getNameSetting("colorMode", "default") end,
-                            set = function(v) setNameSetting("colorMode", v or "default") end,
-                            getColor = function()
-                                local c = getNameSetting("color", {1,1,1,1})
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setNameSetting("color", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        -- Offset X/Y dual slider
-                        tabBuilder:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    local offset = getNameSetting("offset", {x=0, y=0})
-                                    return offset.x or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textName")
-                                        comp.db.textName.offset = comp.db.textName.offset or {}
-                                        comp.db.textName.offset.x = v
-                                    end
-                                    applyText()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    local offset = getNameSetting("offset", {x=0, y=0})
-                                    return offset.y or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textName")
-                                        comp.db.textName.offset = comp.db.textName.offset or {}
-                                        comp.db.textName.offset.y = v
-                                    end
-                                    applyText()
-                                end,
-                            },
-                        })
-
                         tabBuilder:Finalize()
                     end,
                     timer = function(tabContent, tabBuilder)
-                        -- Helper to get/set textDuration sub-properties
-                        local function getDurationSetting(key, default)
-                            local td = getSetting("textDuration")
-                            if td and td[key] ~= nil then return td[key] end
-                            return default
-                        end
-                        local function setDurationSetting(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textDuration")
-                                comp.db.textDuration[key] = value
-                            end
-                            applyText()
-                        end
-
-                        -- Font selector
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for timer/duration text.",
-                            get = function() return getDurationSetting("fontFace", "FRIZQT__") end,
-                            set = function(v) setDurationSetting("fontFace", v) end,
+                        -- Styled in place on Blizzard FontStrings in default
+                        -- mode; plain style order, same as spell name.
+                        local s = Helpers.CreateSubTableHelpers("trackedBars", "textDuration", { apply = applyText })
+                        tabBuilder:AddTextStyleBlock({
+                            get = s.get, set = s.set, apply = applyText,
+                            font = { description = "The font used for timer/duration text." },
+                            size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
                         })
-
-                        -- Font Size slider
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            min = 6,
-                            max = 32,
-                            step = 1,
-                            get = function() return getDurationSetting("size", 14) end,
-                            set = function(v) setDurationSetting("size", v) end,
-                            minLabel = "6",
-                            maxLabel = "32",
-                        })
-
-                        -- Font Style selector
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function() return getDurationSetting("style", "OUTLINE") end,
-                            set = function(v) setDurationSetting("style", v) end,
-                        })
-
-                        -- Font Color picker
-                        tabBuilder:AddSelectorColorPicker({
-                            label = "Font Color",
-                            values = textColorValues,
-                            order = textColorOrder,
-                            get = function() return getDurationSetting("colorMode", "default") end,
-                            set = function(v) setDurationSetting("colorMode", v or "default") end,
-                            getColor = function()
-                                local c = getDurationSetting("color", {1,1,1,1})
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setDurationSetting("color", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        -- Offset X/Y dual slider
-                        tabBuilder:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    local offset = getDurationSetting("offset", {x=0, y=0})
-                                    return offset.x or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textDuration")
-                                        comp.db.textDuration.offset = comp.db.textDuration.offset or {}
-                                        comp.db.textDuration.offset.x = v
-                                    end
-                                    applyText()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    local offset = getDurationSetting("offset", {x=0, y=0})
-                                    return offset.y or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textDuration")
-                                        comp.db.textDuration.offset = comp.db.textDuration.offset or {}
-                                        comp.db.textDuration.offset.y = v
-                                    end
-                                    applyText()
-                                end,
-                            },
-                        })
-
                         tabBuilder:Finalize()
                     end,
                 },

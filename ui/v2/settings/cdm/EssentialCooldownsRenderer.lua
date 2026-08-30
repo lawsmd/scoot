@@ -24,9 +24,8 @@ function EssentialCooldowns.Render(panel, scrollContent)
 
     local Helpers = addon.UI.Settings.Helpers
     local h = Helpers.CreateComponentHelpers("essentialCooldowns")
-    local getComponent, getSetting, setSetting = h.getComponent, h.get, h.set
+    local getSetting, setSetting = h.get, h.set
     local syncEditModeSetting = h.sync
-    local textColorValues, textColorOrder = Helpers.textColorValues, Helpers.textColorOrder
 
     -- Collapsible section: Positioning
     builder:AddCollapsibleSection({
@@ -729,17 +728,12 @@ function EssentialCooldowns.Render(panel, scrollContent)
         sectionKey = "text",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            -- Helper to apply text styling
             local function applyText()
                 if addon and addon.ApplyStyles then
                     C_Timer.After(0, function() addon:ApplyStyles() end)
                 end
             end
 
-            local fontStyleValues = Helpers.fontStyleValues
-            local fontStyleOrder = Helpers.fontStyleOrder
-
-            -- Tabbed section for Charges, Cooldowns, and Keybinds text settings
             inner:AddTabbedSection({
                 tabs = {
                     { key = "charges", label = "Charges" },
@@ -753,354 +747,49 @@ function EssentialCooldowns.Render(panel, scrollContent)
                 sectionKey = "textTabs",
                 buildContent = {
                     charges = function(tabContent, tabBuilder)
-                        -- Helper to get/set textStacks sub-properties
-                        local function getStacksSetting(key, default)
-                            local ts = getSetting("textStacks")
-                            if ts and ts[key] ~= nil then return ts[key] end
-                            return default
-                        end
-                        local function setStacksSetting(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textStacks")
-                                comp.db.textStacks[key] = value
-                            end
-                            applyText()
-                        end
-
-                        -- Font selector
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for charges/stacks text.",
-                            get = function() return getStacksSetting("fontFace", "FRIZQT__") end,
-                            set = function(v) setStacksSetting("fontFace", v) end,
+                        -- Charge/stack text is a Blizzard FontString styled in
+                        -- place, so the plain style order applies (no paired
+                        -- Deep Shadow styles).
+                        local s = Helpers.CreateSubTableHelpers("essentialCooldowns", "textStacks", { apply = applyText })
+                        tabBuilder:AddTextStyleBlock({
+                            get = s.get, set = s.set, apply = applyText,
+                            defaults = { size = 16 },
+                            font = { description = "The font used for charges/stacks text." },
+                            size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
                         })
-
-                        -- Font Size slider
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            min = 6,
-                            max = 32,
-                            step = 1,
-                            get = function() return getStacksSetting("size", 16) end,
-                            set = function(v) setStacksSetting("size", v) end,
-                            minLabel = "6",
-                            maxLabel = "32",
-                        })
-
-                        -- Font Style selector
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function() return getStacksSetting("style", "OUTLINE") end,
-                            set = function(v) setStacksSetting("style", v) end,
-                        })
-
-                        -- Font Color picker
-                        tabBuilder:AddSelectorColorPicker({
-                            label = "Font Color",
-                            values = textColorValues,
-                            order = textColorOrder,
-                            get = function() return getStacksSetting("colorMode", "default") end,
-                            set = function(v) setStacksSetting("colorMode", v or "default") end,
-                            getColor = function()
-                                local c = getStacksSetting("color", {1,1,1,1})
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setStacksSetting("color", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        -- Offset dual slider (X and Y side-by-side)
-                        tabBuilder:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    local offset = getStacksSetting("offset", {x=0, y=0})
-                                    return offset.x or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textStacks")
-                                        comp.db.textStacks.offset = comp.db.textStacks.offset or {}
-                                        comp.db.textStacks.offset.x = v
-                                    end
-                                    applyText()
-                                end,
-                                minLabel = "-100",
-                                maxLabel = "+100",
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    local offset = getStacksSetting("offset", {x=0, y=0})
-                                    return offset.y or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textStacks")
-                                        comp.db.textStacks.offset = comp.db.textStacks.offset or {}
-                                        comp.db.textStacks.offset.y = v
-                                    end
-                                    applyText()
-                                end,
-                                minLabel = "-100",
-                                maxLabel = "+100",
-                            },
-                        })
-
                         tabBuilder:Finalize()
                     end,
                     cooldowns = function(tabContent, tabBuilder)
-                        -- Helper to get/set textCooldown sub-properties
-                        local function getCooldownSetting(key, default)
-                            local tc = getSetting("textCooldown")
-                            if tc and tc[key] ~= nil then return tc[key] end
-                            return default
-                        end
-                        local function setCooldownSetting(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textCooldown")
-                                comp.db.textCooldown[key] = value
-                            end
-                            applyText()
-                        end
-
-                        -- Font selector
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for cooldown timer text.",
-                            get = function() return getCooldownSetting("fontFace", "FRIZQT__") end,
-                            set = function(v) setCooldownSetting("fontFace", v) end,
+                        -- Cooldown text is a Blizzard FontString styled in
+                        -- place; plain style order, same as charges.
+                        local s = Helpers.CreateSubTableHelpers("essentialCooldowns", "textCooldown", { apply = applyText })
+                        tabBuilder:AddTextStyleBlock({
+                            get = s.get, set = s.set, apply = applyText,
+                            font = { description = "The font used for cooldown timer text." },
+                            size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
                         })
-
-                        -- Font Size slider
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            min = 6,
-                            max = 32,
-                            step = 1,
-                            get = function() return getCooldownSetting("size", 14) end,
-                            set = function(v) setCooldownSetting("size", v) end,
-                            minLabel = "6",
-                            maxLabel = "32",
-                        })
-
-                        -- Font Style selector
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function() return getCooldownSetting("style", "OUTLINE") end,
-                            set = function(v) setCooldownSetting("style", v) end,
-                        })
-
-                        -- Font Color picker
-                        tabBuilder:AddSelectorColorPicker({
-                            label = "Font Color",
-                            values = textColorValues,
-                            order = textColorOrder,
-                            get = function() return getCooldownSetting("colorMode", "default") end,
-                            set = function(v) setCooldownSetting("colorMode", v or "default") end,
-                            getColor = function()
-                                local c = getCooldownSetting("color", {1,1,1,1})
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setCooldownSetting("color", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        tabBuilder:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local offset = getCooldownSetting("offset", {x=0, y=0})
-                                    return offset.x or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textCooldown")
-                                        comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
-                                        comp.db.textCooldown.offset.x = v
-                                    end
-                                    applyText()
-                                end,
-                                minLabel = "-100", maxLabel = "+100",
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local offset = getCooldownSetting("offset", {x=0, y=0})
-                                    return offset.y or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textCooldown")
-                                        comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
-                                        comp.db.textCooldown.offset.y = v
-                                    end
-                                    applyText()
-                                end,
-                                minLabel = "-100", maxLabel = "+100",
-                            },
-                        })
-
                         tabBuilder:Finalize()
                     end,
                     bindings = function(tabContent, tabBuilder)
-                        -- Helper to get/set textBindings sub-properties
-                        local function getBindingSetting(key, default)
-                            local tb = getSetting("textBindings")
-                            if tb and tb[key] ~= nil then return tb[key] end
-                            return default
-                        end
-                        local function setBindingSetting(key, value)
-                            local comp = getComponent()
-                            if comp and comp.db then
-                                addon:EnsureComponentSubTable(comp, "textBindings")
-                                comp.db.textBindings[key] = value
-                            end
-                            applyText()
-                        end
+                        local s = Helpers.CreateSubTableHelpers("essentialCooldowns", "textBindings", { apply = applyText })
 
                         -- Enable toggle
                         tabBuilder:AddToggle({
                             label = "Show Keybinds",
                             description = "Display keybind text on cooldown icons.",
-                            get = function() return getBindingSetting("enabled", false) end,
-                            set = function(v) setBindingSetting("enabled", v) end,
+                            get = function() return not not s.get("enabled") end,
+                            set = function(v) s.setAndApply("enabled", v) end,
                         })
 
-                        -- Font selector
-                        tabBuilder:AddFontSelector({
-                            label = "Font",
-                            description = "The font used for keybind text.",
-                            get = function() return getBindingSetting("fontFace", "FRIZQT__") end,
-                            set = function(v) setBindingSetting("fontFace", v) end,
-                        })
-
-                        -- Font Size slider
-                        tabBuilder:AddSlider({
-                            label = "Font Size",
-                            min = 6,
-                            max = 32,
-                            step = 1,
-                            get = function() return getBindingSetting("size", 12) end,
-                            set = function(v) setBindingSetting("size", v) end,
-                            minLabel = "6",
-                            maxLabel = "32",
-                        })
-
-                        -- Font Style selector
-                        tabBuilder:AddSelector({
-                            label = "Font Style",
-                            values = fontStyleValues,
-                            order = fontStyleOrder,
-                            get = function() return getBindingSetting("style", "OUTLINE") end,
-                            set = function(v) setBindingSetting("style", v) end,
-                        })
-
-                        -- Font Color picker
-                        tabBuilder:AddSelectorColorPicker({
-                            label = "Font Color",
-                            values = textColorValues,
-                            order = textColorOrder,
-                            get = function() return getBindingSetting("colorMode", "default") end,
-                            set = function(v) setBindingSetting("colorMode", v or "default") end,
-                            getColor = function()
-                                local c = getBindingSetting("color", {1,1,1,1})
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                setBindingSetting("color", {r, g, b, a})
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        -- Anchor selector (9-point)
-                        local anchorPoints = {
-                            TOPLEFT = "Top-Left", TOP = "Top-Center", TOPRIGHT = "Top-Right",
-                            LEFT = "Left", CENTER = "Center", RIGHT = "Right",
-                            BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom-Center", BOTTOMRIGHT = "Bottom-Right",
-                        }
-                        local anchorPointOrder = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
-
-                        tabBuilder:AddSelector({
-                            label = "Anchor",
-                            values = anchorPoints,
-                            order = anchorPointOrder,
-                            get = function() return getBindingSetting("anchor", "TOPLEFT") end,
-                            set = function(v) setBindingSetting("anchor", v) end,
-                        })
-
-                        -- Offset dual slider (X and Y)
-                        tabBuilder:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    local offset = getBindingSetting("offset", {x=0, y=0})
-                                    return offset.x or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textBindings")
-                                        comp.db.textBindings.offset = comp.db.textBindings.offset or {}
-                                        comp.db.textBindings.offset.x = v
-                                    end
-                                    applyText()
-                                end,
-                                minLabel = "-100",
-                                maxLabel = "+100",
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    local offset = getBindingSetting("offset", {x=0, y=0})
-                                    return offset.y or 0
-                                end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        addon:EnsureComponentSubTable(comp, "textBindings")
-                                        comp.db.textBindings.offset = comp.db.textBindings.offset or {}
-                                        comp.db.textBindings.offset.y = v
-                                    end
-                                    applyText()
-                                end,
-                                minLabel = "-100",
-                                maxLabel = "+100",
-                            },
+                        -- Keybind text is Scoot-drawn, so the paired Deep
+                        -- Shadow styles are offered here
+                        tabBuilder:AddTextStyleBlock({
+                            get = s.get, set = s.set, apply = applyText,
+                            defaults = { size = 12 },
+                            font = { description = "The font used for keybind text." },
+                            style = { order = Helpers.fontStyleOrderPaired },
+                            size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
+                            alignment = { kind = "anchor9", default = "TOPLEFT" },
                         })
 
                         tabBuilder:Finalize()

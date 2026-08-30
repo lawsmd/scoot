@@ -32,7 +32,7 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
     builder:SetOnRefresh(refreshFn)
 
     local h = Helpers.CreateComponentHelpers(componentId)
-    local getComponent, getSetting = h.getComponent, h.get
+    local getSetting = h.get
     local setSetting = h.setAndApply
     local syncEditModeSetting = h.sync
 
@@ -233,9 +233,6 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                     end
                 end
 
-                local fontStyleValues = Helpers.fontStyleValues
-                local fontStyleOrder = Helpers.fontStyleOrder
-
                 -- Determine tabs based on bar type
                 -- Action Bars and Pet Bar have 4 tabs: Charges, Cooldowns, Hotkey, Macro Name
                 local tabs = {
@@ -254,95 +251,18 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                         -- Charges (textStacks) Tab
                         -------------------------------------------------------
                         charges = function(tabContent, tabBuilder)
-                            local function getStacksSetting(key, default)
-                                local ts = getSetting("textStacks")
-                                if ts and ts[key] ~= nil then return ts[key] end
-                                return default
-                            end
-                            local function setStacksSetting(key, value)
-                                local comp = getComponent()
-                                if comp and comp.db then
-                                    if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                    addon:EnsureComponentSubTable(comp, "textStacks")
-                                    comp.db.textStacks[key] = value
-                                end
-                                applyText()
-                            end
-
-                            tabBuilder:AddFontSelector({
-                                label = "Font",
-                                get = function() return getStacksSetting("fontFace", "FRIZQT__") end,
-                                set = function(v) setStacksSetting("fontFace", v) end,
+                            -- Charge/stack text is a Blizzard FontString on
+                            -- the action button styled in place, so the plain
+                            -- style order applies (no paired Deep Shadow
+                            -- styles).
+                            local s = Helpers.CreateSubTableHelpers(componentId, "textStacks", { apply = applyText })
+                            tabBuilder:AddTextStyleBlock({
+                                get = s.get, set = s.set, apply = applyText,
+                                defaults = { size = 16 },
+                                size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
+                                color = { kind = "plain" },
+                                offset = { range = 50 },
                             })
-
-                            tabBuilder:AddSlider({
-                                label = "Font Size",
-                                min = 6, max = 32, step = 1,
-                                get = function() return getStacksSetting("size", 16) end,
-                                set = function(v) setStacksSetting("size", v) end,
-                                minLabel = "6", maxLabel = "32",
-                            })
-
-                            tabBuilder:AddSelector({
-                                label = "Font Style",
-                                values = fontStyleValues,
-                                order = fontStyleOrder,
-                                get = function() return getStacksSetting("style", "OUTLINE") end,
-                                set = function(v) setStacksSetting("style", v) end,
-                            })
-
-                            tabBuilder:AddColorPicker({
-                                label = "Font Color",
-                                get = function()
-                                    local c = getStacksSetting("color", {1,1,1,1})
-                                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                                end,
-                                set = function(r, g, b, a)
-                                    setStacksSetting("color", {r, g, b, a})
-                                end,
-                                hasAlpha = true,
-                            })
-
-                            tabBuilder:AddDualSlider({
-                                label = "Offset",
-                                sliderA = {
-                                    axisLabel = "X",
-                                    min = -50, max = 50, step = 1,
-                                    get = function()
-                                        local offset = getStacksSetting("offset", {x=0, y=0})
-                                        return (type(offset) == "table" and offset.x) or 0
-                                    end,
-                                    set = function(v)
-                                        local comp = getComponent()
-                                        if comp and comp.db then
-                                            if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            addon:EnsureComponentSubTable(comp, "textStacks")
-                                            comp.db.textStacks.offset = comp.db.textStacks.offset or {}
-                                            comp.db.textStacks.offset.x = v
-                                        end
-                                        applyText()
-                                    end,
-                                },
-                                sliderB = {
-                                    axisLabel = "Y",
-                                    min = -50, max = 50, step = 1,
-                                    get = function()
-                                        local offset = getStacksSetting("offset", {x=0, y=0})
-                                        return (type(offset) == "table" and offset.y) or 0
-                                    end,
-                                    set = function(v)
-                                        local comp = getComponent()
-                                        if comp and comp.db then
-                                            if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            addon:EnsureComponentSubTable(comp, "textStacks")
-                                            comp.db.textStacks.offset = comp.db.textStacks.offset or {}
-                                            comp.db.textStacks.offset.y = v
-                                        end
-                                        applyText()
-                                    end,
-                                },
-                            })
-
                             tabBuilder:Finalize()
                         end,
 
@@ -350,95 +270,15 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                         -- Cooldowns (textCooldown) Tab
                         -------------------------------------------------------
                         cooldowns = function(tabContent, tabBuilder)
-                            local function getCooldownSetting(key, default)
-                                local tc = getSetting("textCooldown")
-                                if tc and tc[key] ~= nil then return tc[key] end
-                                return default
-                            end
-                            local function setCooldownSetting(key, value)
-                                local comp = getComponent()
-                                if comp and comp.db then
-                                    if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                    addon:EnsureComponentSubTable(comp, "textCooldown")
-                                    comp.db.textCooldown[key] = value
-                                end
-                                applyText()
-                            end
-
-                            tabBuilder:AddFontSelector({
-                                label = "Font",
-                                get = function() return getCooldownSetting("fontFace", "FRIZQT__") end,
-                                set = function(v) setCooldownSetting("fontFace", v) end,
+                            -- Cooldown text is a Blizzard FontString styled
+                            -- in place; plain style order, same as charges.
+                            local s = Helpers.CreateSubTableHelpers(componentId, "textCooldown", { apply = applyText })
+                            tabBuilder:AddTextStyleBlock({
+                                get = s.get, set = s.set, apply = applyText,
+                                size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
+                                color = { kind = "plain" },
+                                offset = { range = 50 },
                             })
-
-                            tabBuilder:AddSlider({
-                                label = "Font Size",
-                                min = 6, max = 32, step = 1,
-                                get = function() return getCooldownSetting("size", 14) end,
-                                set = function(v) setCooldownSetting("size", v) end,
-                                minLabel = "6", maxLabel = "32",
-                            })
-
-                            tabBuilder:AddSelector({
-                                label = "Font Style",
-                                values = fontStyleValues,
-                                order = fontStyleOrder,
-                                get = function() return getCooldownSetting("style", "OUTLINE") end,
-                                set = function(v) setCooldownSetting("style", v) end,
-                            })
-
-                            tabBuilder:AddColorPicker({
-                                label = "Font Color",
-                                get = function()
-                                    local c = getCooldownSetting("color", {1,1,1,1})
-                                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                                end,
-                                set = function(r, g, b, a)
-                                    setCooldownSetting("color", {r, g, b, a})
-                                end,
-                                hasAlpha = true,
-                            })
-
-                            tabBuilder:AddDualSlider({
-                                label = "Offset",
-                                sliderA = {
-                                    axisLabel = "X",
-                                    min = -50, max = 50, step = 1,
-                                    get = function()
-                                        local offset = getCooldownSetting("offset", {x=0, y=0})
-                                        return (type(offset) == "table" and offset.x) or 0
-                                    end,
-                                    set = function(v)
-                                        local comp = getComponent()
-                                        if comp and comp.db then
-                                            if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            addon:EnsureComponentSubTable(comp, "textCooldown")
-                                            comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
-                                            comp.db.textCooldown.offset.x = v
-                                        end
-                                        applyText()
-                                    end,
-                                },
-                                sliderB = {
-                                    axisLabel = "Y",
-                                    min = -50, max = 50, step = 1,
-                                    get = function()
-                                        local offset = getCooldownSetting("offset", {x=0, y=0})
-                                        return (type(offset) == "table" and offset.y) or 0
-                                    end,
-                                    set = function(v)
-                                        local comp = getComponent()
-                                        if comp and comp.db then
-                                            if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            addon:EnsureComponentSubTable(comp, "textCooldown")
-                                            comp.db.textCooldown.offset = comp.db.textCooldown.offset or {}
-                                            comp.db.textCooldown.offset.y = v
-                                        end
-                                        applyText()
-                                    end,
-                                },
-                            })
-
                             tabBuilder:Finalize()
                         end,
 
@@ -446,109 +286,27 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                         -- Hotkey (textHotkey) Tab
                         -------------------------------------------------------
                         hotkey = function(tabContent, tabBuilder)
-                            local function getHotkeySetting(key, default)
-                                local th = getSetting("textHotkey")
-                                if th and th[key] ~= nil then return th[key] end
-                                return default
-                            end
-                            local function setHotkeySetting(key, value)
-                                local comp = getComponent()
-                                if comp and comp.db then
-                                    if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                    addon:EnsureComponentSubTable(comp, "textHotkey")
-                                    comp.db.textHotkey[key] = value
-                                end
-                                applyText()
-                            end
-
-                            -- Hide Hotkey toggle (stored as textHotkeyHidden)
-                            tabBuilder:AddToggle({
-                                label = "Hide Hotkey Text",
-                                get = function() return getSetting("textHotkeyHidden") or false end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                        comp.db.textHotkeyHidden = v
+                            local s = Helpers.CreateSubTableHelpers(componentId, "textHotkey", { apply = applyText })
+                            tabBuilder:AddTextStyleBlock({
+                                -- The hide flag is a flat component key
+                                -- (textHotkeyHidden), not a sub-table field
+                                get = function(field)
+                                    if field == "hidden" then return getSetting("textHotkeyHidden") end
+                                    return s.get(field)
+                                end,
+                                set = function(field, value)
+                                    if field == "hidden" then
+                                        h.set("textHotkeyHidden", value)
+                                    else
+                                        s.set(field, value)
                                     end
-                                    applyText()
                                 end,
+                                apply = applyText,
+                                hideToggle = { label = "Hide Hotkey Text" },
+                                size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
+                                color = { kind = "plain" },
+                                offset = { range = 50 },
                             })
-
-                            tabBuilder:AddFontSelector({
-                                label = "Font",
-                                get = function() return getHotkeySetting("fontFace", "FRIZQT__") end,
-                                set = function(v) setHotkeySetting("fontFace", v) end,
-                            })
-
-                            tabBuilder:AddSlider({
-                                label = "Font Size",
-                                min = 6, max = 32, step = 1,
-                                get = function() return getHotkeySetting("size", 14) end,
-                                set = function(v) setHotkeySetting("size", v) end,
-                                minLabel = "6", maxLabel = "32",
-                            })
-
-                            tabBuilder:AddSelector({
-                                label = "Font Style",
-                                values = fontStyleValues,
-                                order = fontStyleOrder,
-                                get = function() return getHotkeySetting("style", "OUTLINE") end,
-                                set = function(v) setHotkeySetting("style", v) end,
-                            })
-
-                            tabBuilder:AddColorPicker({
-                                label = "Font Color",
-                                get = function()
-                                    local c = getHotkeySetting("color", {1,1,1,1})
-                                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                                end,
-                                set = function(r, g, b, a)
-                                    setHotkeySetting("color", {r, g, b, a})
-                                end,
-                                hasAlpha = true,
-                            })
-
-                            tabBuilder:AddDualSlider({
-                                label = "Offset",
-                                sliderA = {
-                                    axisLabel = "X",
-                                    min = -50, max = 50, step = 1,
-                                    get = function()
-                                        local offset = getHotkeySetting("offset", {x=0, y=0})
-                                        return (type(offset) == "table" and offset.x) or 0
-                                    end,
-                                    set = function(v)
-                                        local comp = getComponent()
-                                        if comp and comp.db then
-                                            if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            addon:EnsureComponentSubTable(comp, "textHotkey")
-                                            comp.db.textHotkey.offset = comp.db.textHotkey.offset or {}
-                                            comp.db.textHotkey.offset.x = v
-                                        end
-                                        applyText()
-                                    end,
-                                },
-                                sliderB = {
-                                    axisLabel = "Y",
-                                    min = -50, max = 50, step = 1,
-                                    get = function()
-                                        local offset = getHotkeySetting("offset", {x=0, y=0})
-                                        return (type(offset) == "table" and offset.y) or 0
-                                    end,
-                                    set = function(v)
-                                        local comp = getComponent()
-                                        if comp and comp.db then
-                                            if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            addon:EnsureComponentSubTable(comp, "textHotkey")
-                                            comp.db.textHotkey.offset = comp.db.textHotkey.offset or {}
-                                            comp.db.textHotkey.offset.y = v
-                                        end
-                                        applyText()
-                                    end,
-                                },
-                            })
-
                             tabBuilder:Finalize()
                         end,
 
@@ -556,107 +314,26 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
                         -- Macro Name (textMacro) Tab
                         -------------------------------------------------------
                         macroName = function(tabContent, tabBuilder)
-                            local function getMacroSetting(key, default)
-                                local tm = getSetting("textMacro")
-                                if tm and tm[key] ~= nil then return tm[key] end
-                                return default
-                            end
-                            local function setMacroSetting(key, value)
-                                local comp = getComponent()
-                                if comp and comp.db then
-                                    if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                    addon:EnsureComponentSubTable(comp, "textMacro")
-                                    comp.db.textMacro[key] = value
-                                end
-                                applyText()
-                            end
-
-                            -- Hide Macro Name toggle (stored as textMacroHidden)
-                            tabBuilder:AddToggle({
-                                label = "Hide Macro Name",
-                                get = function() return getSetting("textMacroHidden") or false end,
-                                set = function(v)
-                                    local comp = getComponent()
-                                    if comp and comp.db then
-                                        if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                        comp.db.textMacroHidden = v
+                            local s = Helpers.CreateSubTableHelpers(componentId, "textMacro", { apply = applyText })
+                            tabBuilder:AddTextStyleBlock({
+                                -- The hide flag is a flat component key
+                                -- (textMacroHidden), not a sub-table field
+                                get = function(field)
+                                    if field == "hidden" then return getSetting("textMacroHidden") end
+                                    return s.get(field)
+                                end,
+                                set = function(field, value)
+                                    if field == "hidden" then
+                                        h.set("textMacroHidden", value)
+                                    else
+                                        s.set(field, value)
                                     end
-                                    applyText()
                                 end,
-                            })
-
-                            tabBuilder:AddFontSelector({
-                                label = "Font",
-                                get = function() return getMacroSetting("fontFace", "FRIZQT__") end,
-                                set = function(v) setMacroSetting("fontFace", v) end,
-                            })
-
-                            tabBuilder:AddSlider({
-                                label = "Font Size",
-                                min = 6, max = 32, step = 1,
-                                get = function() return getMacroSetting("size", 14) end,
-                                set = function(v) setMacroSetting("size", v) end,
-                                minLabel = "6", maxLabel = "32",
-                            })
-
-                            tabBuilder:AddSelector({
-                                label = "Font Style",
-                                values = fontStyleValues,
-                                order = fontStyleOrder,
-                                get = function() return getMacroSetting("style", "OUTLINE") end,
-                                set = function(v) setMacroSetting("style", v) end,
-                            })
-
-                            tabBuilder:AddColorPicker({
-                                label = "Font Color",
-                                get = function()
-                                    local c = getMacroSetting("color", {1,1,1,1})
-                                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                                end,
-                                set = function(r, g, b, a)
-                                    setMacroSetting("color", {r, g, b, a})
-                                end,
-                                hasAlpha = true,
-                            })
-
-                            tabBuilder:AddDualSlider({
-                                label = "Offset",
-                                sliderA = {
-                                    axisLabel = "X",
-                                    min = -50, max = 50, step = 1,
-                                    get = function()
-                                        local offset = getMacroSetting("offset", {x=0, y=0})
-                                        return (type(offset) == "table" and offset.x) or 0
-                                    end,
-                                    set = function(v)
-                                        local comp = getComponent()
-                                        if comp and comp.db then
-                                            if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            addon:EnsureComponentSubTable(comp, "textMacro")
-                                            comp.db.textMacro.offset = comp.db.textMacro.offset or {}
-                                            comp.db.textMacro.offset.x = v
-                                        end
-                                        applyText()
-                                    end,
-                                },
-                                sliderB = {
-                                    axisLabel = "Y",
-                                    min = -50, max = 50, step = 1,
-                                    get = function()
-                                        local offset = getMacroSetting("offset", {x=0, y=0})
-                                        return (type(offset) == "table" and offset.y) or 0
-                                    end,
-                                    set = function(v)
-                                        local comp = getComponent()
-                                        if comp and comp.db then
-                                            if addon.EnsureComponentDB then addon:EnsureComponentDB(comp) end
-                                            addon:EnsureComponentSubTable(comp, "textMacro")
-                                            comp.db.textMacro.offset = comp.db.textMacro.offset or {}
-                                            comp.db.textMacro.offset.y = v
-                                        end
-                                        applyText()
-                                    end,
-                                },
+                                apply = applyText,
+                                hideToggle = { label = "Hide Macro Name" },
+                                size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
+                                color = { kind = "plain" },
+                                offset = { range = 50 },
                             })
 
                             tabBuilder:Finalize()
