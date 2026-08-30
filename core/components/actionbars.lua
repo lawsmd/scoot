@@ -120,16 +120,11 @@ end
 -- OPT-21: Blizzard's action bar init (layout application, EDIT_MODE_LAYOUTS_UPDATED) runs
 -- during/shortly after PLAYER_ENTERING_WORLD and can overwrite Scoot's per-button styling.
 -- Delay fingerprint guard activation so early ApplyStyles() calls always run per-button work.
-do
-    local activator = CreateFrame("Frame")
-    activator:RegisterEvent("PLAYER_ENTERING_WORLD")
-    activator:SetScript("OnEvent", function(self)
-        self:UnregisterAllEvents()
-        C_Timer.After(1, function()
-            fingerprintReady = true
-        end)
+addon.Events.Once("ActionBars", "PLAYER_ENTERING_WORLD", function()
+    C_Timer.After(1, function()
+        fingerprintReady = true
     end)
-end
+end)
 
 local function ApplyActionBarStyling(self)
     local bar = _G[self.frameName]

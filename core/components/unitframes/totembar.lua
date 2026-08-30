@@ -280,16 +280,16 @@ local function setupEventWatcher()
         return
     end
 
-    eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("PLAYER_TOTEM_UPDATE")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-
-    eventFrame:SetScript("OnEvent", function(self, event, ...)
+    local function onEvent()
         -- Defer to allow Blizzard to finish its updates
         C_Timer.After(0.1, function()
             addon.ApplyTotemBarStyling()
         end)
-    end)
+    end
+    eventFrame = {
+        addon.Events.On("UnitFrames:TotemBar", "PLAYER_TOTEM_UPDATE", onEvent),
+        addon.Events.On("UnitFrames:TotemBar", "PLAYER_ENTERING_WORLD", onEvent),
+    }
 
     debugPrint("Event watcher registered")
 end
@@ -299,13 +299,10 @@ end
 --------------------------------------------------------------------------------
 
 -- Hook into addon initialization
-local initFrame = CreateFrame("Frame")
-initFrame:RegisterEvent("PLAYER_LOGIN")
-initFrame:SetScript("OnEvent", function(self, event)
+addon.Events.Once("UnitFrames:TotemBar", "PLAYER_LOGIN", function()
     -- Defer initialization to ensure all systems are ready
     C_Timer.After(0.5, function()
         setupEventWatcher()
         addon.ApplyTotemBarStyling()
     end)
-    self:UnregisterEvent("PLAYER_LOGIN")
 end)

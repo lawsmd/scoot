@@ -136,14 +136,7 @@ addon:RegisterComponentInitializer(function()
     -- Safety net: the Blizzard addon normally loads at startup, but
     -- AllowLoadGameType can keep it out of some game modes.
     if not hooksInstalled then
-        local listener = CreateFrame("Frame")
-        listener:RegisterEvent("ADDON_LOADED")
-        listener:SetScript("OnEvent", function(self, _, loadedAddon)
-            if loadedAddon == "Blizzard_EncounterWarnings" then
-                tryInstallHooks()
-                self:UnregisterEvent("ADDON_LOADED")
-            end
-        end)
+        addon.Events.OnAddonLoaded("Blizzard_EncounterWarnings", tryInstallHooks)
     end
 
     -- Apply saved font when entering Edit Mode (deferred past layout updates).

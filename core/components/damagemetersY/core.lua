@@ -236,10 +236,7 @@ addon:RegisterComponentInitializer(function(self)
     -- Bootstrap Y on first PLAYER_ENTERING_WORLD.
     -- The component system's ApplyStyling gate may skip it (proxy/zero-touch),
     -- so it self-bootstraps after DB linking is complete.
-    local bootstrapFrame = CreateFrame("Frame")
-    bootstrapFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    bootstrapFrame:SetScript("OnEvent", function(f)
-        f:UnregisterAllEvents()
+    addon.Events.OnWorldEntered(function()
         if comp.db then
             DMY._ApplyStyling(comp)
         end

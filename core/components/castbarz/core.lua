@@ -302,10 +302,7 @@ addon:RegisterComponentInitializer(function(self)
     -- Bootstrap on the first PLAYER_ENTERING_WORLD. The component system's
     -- ApplyStyling gate can skip it on a fresh profile, so Z self-bootstraps
     -- once DB linking is complete (mirrors damagemetersY/core.lua).
-    local bootstrapFrame = CreateFrame("Frame")
-    bootstrapFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    bootstrapFrame:SetScript("OnEvent", function(f)
-        f:UnregisterAllEvents()
+    addon.Events.OnWorldEntered(function()
         if comp.db then
             CBZ._ApplyStyling(comp)
         end

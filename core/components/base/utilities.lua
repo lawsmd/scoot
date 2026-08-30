@@ -171,7 +171,15 @@ end
 -- COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED is deliberately absent: it reports one
 -- spell being substituted, not the catalog changing, and invalidating there
 -- would drop the whole memo every time a player shifts form.
-local auraIdWatcher = CreateFrame("Frame")
+local function onCatalogEvent(event, arg1)
+    -- PLAYER_SPECIALIZATION_CHANGED fires for party and raid members too.
+    if event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 and arg1 ~= "player" then
+        return
+    end
+    AuraIds.InvalidateIncludeSets()
+end
+-- Events.On tolerates names this client build rejects (returns a dead handle),
+-- covering the COOLDOWN_VIEWER_* PTR drift the old pcall loop guarded against.
 for _, event in ipairs({
     "COOLDOWN_VIEWER_DATA_LOADED",
     "COOLDOWN_VIEWER_TABLE_HOTFIXED",
@@ -179,15 +187,8 @@ for _, event in ipairs({
     "PLAYER_SPECIALIZATION_CHANGED",
     "PLAYER_ENTERING_WORLD",
 }) do
-    pcall(auraIdWatcher.RegisterEvent, auraIdWatcher, event)
+    addon.Events.On("AuraIds", event, onCatalogEvent)
 end
-auraIdWatcher:SetScript("OnEvent", function(_, event, arg1)
-    -- PLAYER_SPECIALIZATION_CHANGED fires for party and raid members too.
-    if event == "PLAYER_SPECIALIZATION_CHANGED" and arg1 and arg1 ~= "player" then
-        return
-    end
-    AuraIds.InvalidateIncludeSets()
-end)
 
 -- Combat watcher: defers FullPowerFrame reapplies to avoid taint during combat.
 local fullPowerFrameCombatWatcher = nil

@@ -1587,17 +1587,13 @@ do
 	end
 
 	-- Install hooks after PLAYER_ENTERING_WORLD
-	local totHookFrame = CreateFrame("Frame")
-	totHookFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	totHookFrame:SetScript("OnEvent", function(self, event)
-		if event == "PLAYER_ENTERING_WORLD" then
-			if _G.C_Timer and _G.C_Timer.After then
-				_G.C_Timer.After(0.5, function()
-					installToTHooks()
-					-- Apply initial styling
-					applyToTNameText()
-				end)
-			end
+	addon.Events.On("UnitFrames:Names", "PLAYER_ENTERING_WORLD", function()
+		if _G.C_Timer and _G.C_Timer.After then
+			_G.C_Timer.After(0.5, function()
+				installToTHooks()
+				-- Apply initial styling
+				applyToTNameText()
+			end)
 		end
 	end)
 end
@@ -1773,17 +1769,13 @@ do
 	end
 
 	-- Install hooks after PLAYER_ENTERING_WORLD
-	local fotHookFrame = CreateFrame("Frame")
-	fotHookFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	fotHookFrame:SetScript("OnEvent", function(self, event)
-		if event == "PLAYER_ENTERING_WORLD" then
-			if _G.C_Timer and _G.C_Timer.After then
-				_G.C_Timer.After(0.5, function()
-					installFoTHooks()
-					-- Apply initial styling
-					applyFoTNameText()
-				end)
-			end
+	addon.Events.On("UnitFrames:Names", "PLAYER_ENTERING_WORLD", function()
+		if _G.C_Timer and _G.C_Timer.After then
+			_G.C_Timer.After(0.5, function()
+				installFoTHooks()
+				-- Apply initial styling
+				applyFoTNameText()
+			end)
 		end
 	end)
 end

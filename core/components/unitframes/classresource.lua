@@ -26,9 +26,7 @@ local function ensureClassResourceZoneWatcher()
 	if classResourceZoneWatcher then
 		return
 	end
-	classResourceZoneWatcher = CreateFrame("Frame")
-	classResourceZoneWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
-	classResourceZoneWatcher:SetScript("OnEvent", function()
+	classResourceZoneWatcher = addon.Events.On("UnitFrames:ClassResource", "PLAYER_ENTERING_WORLD", function()
 		-- Defer to allow Blizzard to finish any post-load layout passes first.
 		C_Timer.After(0.1, function()
 			if addon and addon.ApplyUnitFrameClassResource then

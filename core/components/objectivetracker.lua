@@ -1046,10 +1046,7 @@ local function InstallCollapseOtherOnKeyStart(componentSelf)
     if _collapseOtherOnKeyStart_installed then return end
     _collapseOtherOnKeyStart_installed = true
 
-    local eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("CHALLENGE_MODE_START")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    eventFrame:SetScript("OnEvent", function(_, event, ...)
+    local function onEvent(event)
         -- Check setting live each time (handles profile switches, toggle changes).
         local dtDB = GetDungeonTrackerDB(componentSelf)
         if not dtDB then return end
@@ -1076,7 +1073,9 @@ local function InstallCollapseOtherOnKeyStart(componentSelf)
                 end
             end
         end
-    end)
+    end
+    addon.Events.On("ObjectiveTracker", "CHALLENGE_MODE_START", onEvent)
+    addon.Events.On("ObjectiveTracker", "PLAYER_ENTERING_WORLD", onEvent)
 end
 
 -- Install hooks on ScenarioObjectiveTracker so styling is re-applied after Blizzard rebuilds.

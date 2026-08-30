@@ -468,10 +468,7 @@ addon:RegisterComponentInitializer(function(self)
 
     -- Bootstrap on the first PLAYER_ENTERING_WORLD (mirrors castbarz/core.lua:
     -- the component system's ApplyStyling gate can skip this on a fresh profile).
-    local bootstrapFrame = CreateFrame("Frame")
-    bootstrapFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    bootstrapFrame:SetScript("OnEvent", function(f)
-        f:UnregisterAllEvents()
+    addon.Events.OnWorldEntered(function()
         if comp.db then
             UFZ._ApplyStyling(comp)
         end

@@ -471,10 +471,8 @@ local function InstallDynamicHooks(comp)
     -- system frame tree members — may cause table-level taint in 12.0)
     if not buttonsHooked.zoneAbilityEvents then
         buttonsHooked.zoneAbilityEvents = true
-        local zoneEventFrame = CreateFrame("Frame")
-        zoneEventFrame:RegisterEvent("SPELLS_CHANGED")
         local pendingRestyle = false
-        zoneEventFrame:SetScript("OnEvent", function()
+        addon.Events.On("ExtraAbilities:ZoneAbility", "SPELLS_CHANGED", function()
             if pendingRestyle then return end
             pendingRestyle = true
             C_Timer.After(0.5, function()
@@ -584,11 +582,9 @@ addon:RegisterComponentInitializer(function(self)
     self:RegisterComponent(extraAbilities)
 
     -- Also install hooks after PLAYER_ENTERING_WORLD since frames may not exist initially
-    local eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    eventFrame:SetScript("OnEvent", function()
+    extraAbilities:On("PLAYER_ENTERING_WORLD", function(comp)
         C_Timer.After(1, function()
-            InstallDynamicHooks(extraAbilities)
+            InstallDynamicHooks(comp)
             RestoreContainerAnchor()
         end)
     end)

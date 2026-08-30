@@ -827,12 +827,7 @@ end
 -- all of them and re-probes rather than assuming. Fails open: a drain that
 -- finds nothing queued costs one table walk.
 
-local watcher = CreateFrame("Frame")
-watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
-watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
-watcher:RegisterEvent("ENCOUNTER_END")
-watcher:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-watcher:SetScript("OnEvent", function()
+local function drainOnLift()
     if not Auras.CanDoStructuralWork() then return end
     local queued = pendingStyle
     pendingStyle = {}
@@ -848,4 +843,12 @@ watcher:SetScript("OnEvent", function()
         if not inst.previewActive then Auras.ForceRefresh(inst) end
     end
     Record("drain", "lift")
-end)
+end
+for _, event in ipairs({
+    "PLAYER_ENTERING_WORLD",
+    "PLAYER_REGEN_ENABLED",
+    "ENCOUNTER_END",
+    "ZONE_CHANGED_NEW_AREA",
+}) do
+    addon.Events.On("UnitFramesZ:Auras", event, drainOnLift)
+end

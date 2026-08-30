@@ -277,7 +277,7 @@ end
 -- TooltipDataProcessor, so the AllTypes post-call hook never fires for it. Hook
 -- the builder directly to re-run the existing Title/Body styling pipeline.
 local directTooltipHooked = false
-local directHookListenerFrame
+local directHookListenerArmed
 
 local function ApplyStylingForDirectGameTooltip()
     local comp = addon.Components and addon.Components.tooltip
@@ -306,17 +306,12 @@ local function RegisterDirectTooltipHooks()
     end
 
     -- Blizzard_GroupFinder is on-demand loaded the first time the LFG UI opens.
-    -- Wait for it via ADDON_LOADED, then install the hook.
-    if not directHookListenerFrame then
-        directHookListenerFrame = CreateFrame("Frame")
-        directHookListenerFrame:RegisterEvent("ADDON_LOADED")
-        directHookListenerFrame:SetScript("OnEvent", function(self, _, loadedAddon)
-            if loadedAddon == "Blizzard_GroupFinder" then
-                if InstallLFGSearchEntryHook() then
-                    directTooltipHooked = true
-                    self:UnregisterEvent("ADDON_LOADED")
-                    self:SetScript("OnEvent", nil)
-                end
+    -- Wait for it, then install the hook.
+    if not directHookListenerArmed then
+        directHookListenerArmed = true
+        addon.Events.OnAddonLoaded("Blizzard_GroupFinder", function()
+            if InstallLFGSearchEntryHook() then
+                directTooltipHooked = true
             end
         end)
     end

@@ -179,16 +179,12 @@ do
 	hookCharacterFrameOnShow()
 
 	-- Also listen for PLAYER_ENTERING_WORLD to install hooks (CharacterFrame may load later)
-	local hookFrame = CreateFrame("Frame")
-	hookFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	hookFrame:SetScript("OnEvent", function(self, event)
-		if event == "PLAYER_ENTERING_WORLD" then
-			-- Defer to ensure CharacterFrame is loaded
-			if _G.C_Timer and _G.C_Timer.After then
-				_G.C_Timer.After(1, function()
-					hookCharacterFrameOnShow()
-				end)
-			end
+	addon.Events.On("UnitFrames:Text", "PLAYER_ENTERING_WORLD", function()
+		-- Defer to ensure CharacterFrame is loaded
+		if _G.C_Timer and _G.C_Timer.After then
+			_G.C_Timer.After(1, function()
+				hookCharacterFrameOnShow()
+			end)
 		end
 	end)
 
