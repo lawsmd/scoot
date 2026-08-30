@@ -519,8 +519,8 @@ function Preemptive.hideBossElements()
 
     -- Only hide if useCustomBorders is enabled
     if cfg.useCustomBorders then
-        for i = 1, 5 do
-            local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+        for i = 1, addon.NUM_BOSS_FRAMES do
+            local bossFrame = addon.GetBossFrame(i)
             if bossFrame then
                 -- Hide ReputationColor immediately
                 hideRepColorOnBoss(bossFrame)
@@ -549,18 +549,15 @@ function Preemptive.hideBossElements()
         -- AFTER the synchronous pre-emptive hide
         if _G.C_Timer and _G.C_Timer.After then
             _G.C_Timer.After(0, function()
-                for i = 1, 5 do
-                    local bossFrame = _G["Boss" .. i .. "TargetFrame"]
-                    hideRepColorOnBoss(bossFrame)
-                end
+                addon.ForEachBossFrame(hideRepColorOnBoss)
             end)
         end
     end
 
     -- Hide frame texture if healthBarHideBorder is enabled (separate from useCustomBorders)
     if cfg.healthBarHideBorder then
-        for i = 1, 5 do
-            local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+        for i = 1, addon.NUM_BOSS_FRAMES do
+            local bossFrame = addon.GetBossFrame(i)
             if bossFrame then
                 local ft = bossFrame.TargetFrameContainer and bossFrame.TargetFrameContainer.FrameTexture
                 if ft and ft.SetAlpha then
@@ -575,8 +572,8 @@ function Preemptive.hideBossElements()
     if cfg.healthBarHideTextureOnly then
         local Util = addon.ComponentsUtil
         if Util and Util.SetHealthBarTextureOnlyHidden then
-            for i = 1, 5 do
-                local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+            for i = 1, addon.NUM_BOSS_FRAMES do
+                local bossFrame = addon.GetBossFrame(i)
                 if bossFrame then
                     local hb = bossFrame.healthbar
                     if hb then
@@ -593,12 +590,11 @@ function Preemptive.hideBossElements()
                     if not cfg2 or not cfg2.healthBarHideTextureOnly then return end
                     local Util2 = addon.ComponentsUtil
                     if not Util2 or not Util2.SetHealthBarTextureOnlyHidden then return end
-                    for i = 1, 5 do
-                        local bf = _G["Boss" .. i .. "TargetFrame"]
-                        if bf and bf.healthbar then
+                    addon.ForEachBossFrame(function(bf)
+                        if bf.healthbar then
                             Util2.SetHealthBarTextureOnlyHidden(bf.healthbar, true)
                         end
-                    end
+                    end)
                 end)
             end
         end
@@ -629,8 +625,8 @@ function Preemptive.installBossFrameHooks()
         local cfg = unitFrames and rawget(unitFrames, "Boss")
         if not cfg then return end
 
-        for i = 1, 5 do
-            local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+        for i = 1, addon.NUM_BOSS_FRAMES do
+            local bossFrame = addon.GetBossFrame(i)
             if bossFrame then
                 if cfg.useCustomBorders then
                     -- Re-hide ReputationColor
@@ -700,8 +696,8 @@ function Preemptive.installBossFrameHooks()
     end
 
     -- Install hooks on individual Boss frames
-    for i = 1, 5 do
-        local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+    for i = 1, addon.NUM_BOSS_FRAMES do
+        local bossFrame = addon.GetBossFrame(i)
         if bossFrame then
             -- Hook OnShow to re-hide elements when the frame becomes visible
             local bossState = getState(bossFrame)

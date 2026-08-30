@@ -198,8 +198,8 @@ do
             if InCombatLockdown and InCombatLockdown() then
                 queueUnitFrameTextureReapply("Boss")
             else
-                for i = 1, 5 do
-                    local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+                for i = 1, addon.NUM_BOSS_FRAMES do
+                    local bossFrame = addon.GetBossFrame(i)
                     if bossFrame then
                         -- FrameTexture (hide for useCustomBorders OR healthBarHideBorder)
                         local bossFT = bossFrame.TargetFrameContainer and bossFrame.TargetFrameContainer.FrameTexture
@@ -324,8 +324,8 @@ do
                 return cfgBoss.useCustomBorders and 0 or 1
             end
 
-            for i = 1, 5 do
-                local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+            for i = 1, addon.NUM_BOSS_FRAMES do
+                local bossFrame = addon.GetBossFrame(i)
                 if bossFrame then
                     local bossRepColor = bossFrame.TargetFrameContent
                         and bossFrame.TargetFrameContent.TargetFrameContentMain
@@ -343,7 +343,7 @@ do
                             local bossIndex = i  -- Capture loop variable for closure
                             _G.C_Timer.After(0, function()
                                 -- Re-resolve in case the texture object changed
-                                local bossFrame2 = _G["Boss" .. bossIndex .. "TargetFrame"]
+                                local bossFrame2 = addon.GetBossFrame(bossIndex)
                                 local repColor2 = bossFrame2 and bossFrame2.TargetFrameContent
                                     and bossFrame2.TargetFrameContent.TargetFrameContentMain
                                     and bossFrame2.TargetFrameContent.TargetFrameContentMain.ReputationColor
@@ -498,8 +498,8 @@ do
                 if mb and mb.ManaBarMask then return mb.ManaBarMask end
             end
 
-            for i = 1, 5 do
-                local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+            for i = 1, addon.NUM_BOSS_FRAMES do
+                local bossFrame = addon.GetBossFrame(i)
                 local unitId = "boss" .. i
                 -- Apply styling whenever the frame exists. Let resolveHealthBar/resolvePowerBar
                 -- handle finding the bars within the frame structure.
@@ -1074,8 +1074,8 @@ do
             end
 
             -- Boss frame art: Handle all 5 Boss frames (Boss1TargetFrame through Boss5TargetFrame)
-            for i = 1, 5 do
-                local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+            for i = 1, addon.NUM_BOSS_FRAMES do
+                local bossFrame = addon.GetBossFrame(i)
                 if bossFrame and bossFrame.TargetFrameContainer then
                     local bossFT = bossFrame.TargetFrameContainer.FrameTexture
                     if bossFT then
@@ -2912,8 +2912,8 @@ do
         -- Unlike other unit frames where there's a single frame per unit, Boss frames have 5 individual frames
         -- that all share the same config (db.unitFrames.Boss). Apply hiding to each one.
         if unit == "Boss" then
-            for i = 1, 5 do
-                local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+            for i = 1, addon.NUM_BOSS_FRAMES do
+                local bossFrame = addon.GetBossFrame(i)
                 if bossFrame and bossFrame.TargetFrameContainer then
                     local bossFT = bossFrame.TargetFrameContainer.FrameTexture
                     if bossFT then
@@ -3165,7 +3165,8 @@ do
         "width", "height", "x", "y", "fontFace", "size", "style", "color", "alignment",
     }
 
-    local SNAPSHOT_UNITS = { "Player", "Target", "Focus", "Boss", "Pet", "TargetOfTarget", "FocusTarget" }
+    -- Frames.UNITS is frozen in this order; snapshot strings serialize by it.
+    local SNAPSHOT_UNITS = addon.Frames.UNITS
     local SEP = "\1"
     local NIL_SENTINEL = "\0"
 

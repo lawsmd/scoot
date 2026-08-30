@@ -66,7 +66,7 @@ do
 		local offsetY = tonumber(cfg.offsetY) or 0
 
 		if anchorMode == "centeredUnderPower" then
-			local bossFrame = _G["Boss" .. index .. "TargetFrame"]
+			local bossFrame = addon.GetBossFrame(index)
 			local manaBar
 			if addon.BarsResolvers and addon.BarsResolvers.resolveBossManaBar then
 				manaBar = addon.BarsResolvers.resolveBossManaBar(bossFrame)
@@ -79,7 +79,7 @@ do
 				setProp(frame, "ignoreSetPoint", nil)
 			end
 		elseif anchorMode == "underBossName" then
-			local bossFrame = _G["Boss" .. index .. "TargetFrame"]
+			local bossFrame = addon.GetBossFrame(index)
 			local nameFS
 			if addon.ResolveBossNameFS then
 				nameFS = addon.ResolveBossNameFS(bossFrame)
@@ -236,12 +236,9 @@ do
 		-- Programmatically sync Edit Mode "CastBarOnSide" setting to match anchor mode
 		do
 			local desiredOnSide = (anchorMode == "leftOfFrame") and 1 or 0
-			local mgr = _G.EditModeManagerFrame
-			local EMSys = _G.Enum and _G.Enum.EditModeSystem
-			local idx = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices and _G.Enum.EditModeUnitFrameSystemIndices.Boss
 			local settingId = _G.Enum and _G.Enum.EditModeUnitFrameSetting and _G.Enum.EditModeUnitFrameSetting.CastBarOnSide
-			if mgr and EMSys and idx and mgr.GetRegisteredSystemFrame and settingId then
-				local bossSystemFrame = mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
+			if settingId then
+				local bossSystemFrame = addon.GetEditModeUnitFrame("Boss")
 				if bossSystemFrame and addon.EditMode then
 					local currentVal = 0
 					if addon.EditMode.GetSetting then
@@ -289,7 +286,7 @@ do
 					local offsetY = tonumber(cfg.offsetY) or 0
 
 					if anchorMode == "centeredUnderPower" then
-						local bossFrame = _G["Boss" .. index .. "TargetFrame"]
+						local bossFrame = addon.GetBossFrame(index)
 						local manaBar
 						if addon.BarsResolvers and addon.BarsResolvers.resolveBossManaBar then
 							manaBar = addon.BarsResolvers.resolveBossManaBar(bossFrame)
@@ -303,7 +300,7 @@ do
 							anchorApplied = true
 						end
 					elseif anchorMode == "underBossName" then
-						local bossFrame = _G["Boss" .. index .. "TargetFrame"]
+						local bossFrame = addon.GetBossFrame(index)
 						local nameFS
 						if addon.ResolveBossNameFS then
 							nameFS = addon.ResolveBossNameFS(bossFrame)
@@ -824,7 +821,7 @@ do
 		if not hasConfig then return end
 
 		-- Apply to all 5 Boss cast bar frames
-		for i = 1, 5 do
+		for i = 1, addon.NUM_BOSS_FRAMES do
 			local frame = resolveBossCastBarFrame(i)
 			if frame then
 				applyBossCastBarToFrame(frame, i, cfg)

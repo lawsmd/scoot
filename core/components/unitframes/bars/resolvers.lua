@@ -17,38 +17,10 @@ local Resolvers = addon.BarsResolvers
 -- Unit Frame Resolution
 --------------------------------------------------------------------------------
 
--- Get the main unit frame for a given unit type
-function Resolvers.getUnitFrameFor(unit)
-    -- ToT is not an Edit Mode frame - resolve directly from TargetFrame
-    if unit == "TargetOfTarget" then
-        return _G.TargetFrameToT
-    end
-    -- FocusTarget is not an Edit Mode frame - resolve directly from FocusFrame
-    if unit == "FocusTarget" then
-        return _G.FocusFrameToT
-    end
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
-    if not (mgr and EMSys and mgr.GetRegisteredSystemFrame) then
-        if unit == "Pet" then return _G.PetFrame end
-        return nil
-    end
-    local idx = nil
-    if EM then
-        idx = (unit == "Player" and EM.Player)
-            or (unit == "Target" and EM.Target)
-            or (unit == "Focus" and EM.Focus)
-            or (unit == "Pet" and EM.Pet)
-            or (unit == "Boss" and EM.Boss)
-    end
-    if idx then
-        return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-    end
-    if unit == "Pet" then return _G.PetFrame end
-    -- Fallback for Boss if EM.Boss is unavailable
-    if unit == "Boss" then return _G.Boss1TargetFrame end
-end
+-- Get the main unit frame for a given unit type.
+-- The body moved to core/frames.lua as addon.GetUnitFrame (refactor #22);
+-- the alias stays because bars.lua upvalues Resolvers.getUnitFrameFor.
+Resolvers.getUnitFrameFor = addon.GetUnitFrame
 
 --------------------------------------------------------------------------------
 -- Status Bar Resolution Helpers

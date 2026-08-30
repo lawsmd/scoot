@@ -116,8 +116,8 @@ local function raiseUnitTextLayers(unit, targetLevel)
         return
     end
     if unit == "Boss" then
-        for i = 1, 5 do
-            local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+        for i = 1, addon.NUM_BOSS_FRAMES do
+            local bossFrame = addon.GetBossFrame(i)
             if bossFrame then
                 local hbContainer = bossFrame.TargetFrameContent
                     and bossFrame.TargetFrameContent.TargetFrameContentMain
@@ -194,8 +194,8 @@ local function ensureTextAndBorderOrdering(unit)
 
     -- Boss frames: ensure text containers are above border anchor frames for all Boss1-Boss5
     if unit == "Boss" then
-        for i = 1, 5 do
-            local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+        for i = 1, addon.NUM_BOSS_FRAMES do
+            local bossFrame = addon.GetBossFrame(i)
             if bossFrame then
                 -- Health bar text ordering
                 local hbContainer = bossFrame.TargetFrameContent
