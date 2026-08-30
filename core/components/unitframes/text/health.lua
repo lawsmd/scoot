@@ -26,28 +26,7 @@ do
     -- Cache for resolved health text fontstrings per unit so combat-time hooks stay cheap.
     addon._ufHealthTextFonts = addon._ufHealthTextFonts or {}
 
-    local function getUnitFrameFor(unit)
-        local mgr = _G.EditModeManagerFrame
-		local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-		local EMSys = _G.Enum and _G.Enum.EditModeSystem
-		if not (mgr and EMSys and mgr.GetRegisteredSystemFrame) then
-			-- Fallback for environments where Edit Mode indices aren't available
-			if unit == "Pet" then return _G.PetFrame end
-			return nil
-		end
-		local idx = nil
-		if EM then
-			idx = (unit == "Player" and EM.Player)
-				or (unit == "Target" and EM.Target)
-				or (unit == "Focus" and EM.Focus)
-				or (unit == "Pet" and EM.Pet)
-		end
-		if idx then
-			return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-		end
-		-- If no index was resolved (older builds lacking EM.Pet), try known globals
-		if unit == "Pet" then return _G.PetFrame end
-    end
+    local getUnitFrameFor = addon.GetUnitFrame
 
     --weak-key cache for health text FontString lookups
     local _htFSCache = setmetatable({}, { __mode = "k" })
@@ -411,7 +390,7 @@ do
             if styleCfg.alignmentMode == "name" and baselineKey and baselineKey:find("^Boss") then
                 local bossIdx = baselineKey:match("^Boss(%d+)")
                 if bossIdx then
-                    local bossFrame = _G and _G["Boss" .. bossIdx .. "TargetFrame"] or nil
+                    local bossFrame = addon.GetBossFrame(bossIdx)
                     local nameFS = bossFrame and addon.ResolveBossNameFS(bossFrame) or nil
                     if nameFS then
                         local anchorKey = styleCfg.nameAnchor or "RIGHT_OF_NAME"
@@ -702,8 +681,8 @@ do
             return
         end
 
-        for i = 1, 5 do
-            local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+        for i = 1, addon.NUM_BOSS_FRAMES do
+            local bossFrame = addon.GetBossFrame(i)
             local hbContainer = bossFrame
                 and bossFrame.TargetFrameContent
                 and bossFrame.TargetFrameContent.TargetFrameContentMain
@@ -833,8 +812,8 @@ do
 
         -- Boss frames: apply to Boss1..Boss5 deterministically (no cache dependency).
         if unit == "Boss" then
-            for i = 1, 5 do
-                local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+            for i = 1, addon.NUM_BOSS_FRAMES do
+                local bossFrame = addon.GetBossFrame(i)
                 local hbContainer = bossFrame
                     and bossFrame.TargetFrameContent
                     and bossFrame.TargetFrameContent.TargetFrameContentMain

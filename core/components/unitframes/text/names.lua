@@ -24,23 +24,7 @@ local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 
 --- Unit Frames: Apply Name & Level Text styling (visibility, font, size, style, color, offset)
 do
-	local function getUnitFrameFor(unit)
-		local mgr = _G.EditModeManagerFrame
-		local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-		local EMSys = _G.Enum and _G.Enum.EditModeSystem
-		if not (mgr and EMSys and mgr.GetRegisteredSystemFrame) then
-			if unit == "Pet" then return _G.PetFrame end
-			return nil
-		end
-		local idx = nil
-		if unit == "Player" then idx = EM.Player
-		elseif unit == "Target" then idx = EM.Target
-		elseif unit == "Focus" then idx = EM.Focus
-		elseif unit == "Pet" then idx = EM.Pet
-		end
-		if not idx then return nil end
-		return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-	end
+	local getUnitFrameFor = addon.GetUnitFrame
 
 	-- Local resolvers for this block (backdrop anchoring helpers)
 	local function resolveUFContentMain_NLT(unit)
@@ -225,9 +209,7 @@ do
 			-- Apply to all five boss frames when any Boss name/backdrop setting is configured.
 			-- Zero‑Touch remains intact because this block is only reached when cfg exists AND
 			-- at least one relevant setting was explicitly set above.
-			local function resolveBossFrame(i)
-				return _G and _G["Boss" .. i .. "TargetFrame"] or nil
-			end
+			local resolveBossFrame = addon.GetBossFrame
 
 			local resolveBossNameFS = addon.ResolveBossNameFS
 
@@ -645,7 +627,7 @@ do
 				end
 			end
 
-			for i = 1, 5 do
+			for i = 1, addon.NUM_BOSS_FRAMES do
 				applyBossIndex(i)
 			end
 			return

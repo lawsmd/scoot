@@ -25,28 +25,7 @@ end
 
 -- Unit Frames: Overall visibility (opacity) per unit
 do
-    local function getUnitFrameFor(unit)
-        local mgr = _G.EditModeManagerFrame
-        local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-        local EMSys = _G.Enum and _G.Enum.EditModeSystem
-        if not (mgr and EMSys and mgr.GetRegisteredSystemFrame) then
-            -- Fallback for environments where Edit Mode indices aren't available
-            if unit == "Pet" then return _G.PetFrame end
-            return nil
-        end
-        local idx = nil
-        if EM then
-            idx = (unit == "Player" and EM.Player)
-                or (unit == "Target" and EM.Target)
-                or (unit == "Focus" and EM.Focus)
-                or (unit == "Pet" and EM.Pet)
-        end
-        if idx then
-            return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-        end
-        -- If no index was resolved (older builds lacking EM.Pet), try known globals
-        if unit == "Pet" then return _G.PetFrame end
-    end
+    local getUnitFrameFor = addon.GetUnitFrame
 
     local function applyVisibilityForUnit(unit)
         if not addon:IsModuleEnabled("unitFrames", unit) then return end
@@ -239,7 +218,7 @@ do
     local _originalBossThreatAlpha = {}
 
     local function getBossThreatCounterFrame(index)
-        local parentFrame = _G["Boss" .. tostring(index) .. "TargetFrame"]
+        local parentFrame = addon.GetBossFrame(index)
         if not parentFrame then return nil end
         local content = parentFrame.TargetFrameContent
         if not content then return nil end
@@ -350,7 +329,7 @@ do
     local _originalBossHighLevelAlpha = {}
 
     local function getBossHighLevelIconFrame(index)
-        local parentFrame = _G["Boss" .. tostring(index) .. "TargetFrame"]
+        local parentFrame = addon.GetBossFrame(index)
         if not parentFrame then return nil end
         local content = parentFrame.TargetFrameContent
         if not content then return nil end
@@ -1020,13 +999,7 @@ do
     local _originalPetFrameAlpha = nil
 
     local function getPetFrame()
-        local mgr = _G.EditModeManagerFrame
-        local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-        local EMSys = _G.Enum and _G.Enum.EditModeSystem
-        if mgr and EMSys and mgr.GetRegisteredSystemFrame and EM and EM.Pet then
-            return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, EM.Pet)
-        end
-        return _G.PetFrame
+        return addon.GetUnitFrame("Pet")
     end
 
     local function applyPetFrameHiddenState()
