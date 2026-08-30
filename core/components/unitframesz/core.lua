@@ -39,7 +39,7 @@ local UFZ = addon.UnitFramesZ
 -- (suppression.lua) and a nav/renderer pair.
 
 UFZ.UNITS = { "Player", "Target", "Boss" }   -- config keys
-UFZ.NUM_BOSS_FRAMES = 5
+UFZ.NUM_BOSS_FRAMES = addon.NUM_BOSS_FRAMES
 
 UFZ.FRAMES = {
     { frameKey = "Player", unitKey = "Player", token = "player" },

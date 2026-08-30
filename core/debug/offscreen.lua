@@ -61,11 +61,7 @@ local function _CollectOffscreenCandidates(unitKey)
         table.insert(out, f)
     end
 
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
-    local idx = EM and ((unitKey == "Player" and EM.Player) or (unitKey == "Target" and EM.Target) or nil) or nil
-    local reg = (mgr and idx and EMSys and mgr.GetRegisteredSystemFrame) and mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx) or nil
+    local reg = addon.GetEditModeUnitFrame(unitKey)
     add(reg)
     if reg then
         add(rawget(reg, "DragHandle"))

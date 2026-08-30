@@ -307,7 +307,7 @@ local function ApplyCoreFrames()
     TryGlobal("FocusFrame")
     TryGlobal("FocusFrameToT")
     TryGlobal("PetFrame")
-    for i = 1, 5 do
+    for i = 1, addon.NUM_BOSS_FRAMES do
         TryGlobal("Boss" .. i .. "TargetFrame")
     end
 end

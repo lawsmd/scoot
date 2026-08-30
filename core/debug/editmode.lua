@@ -30,19 +30,10 @@ local function ResolveFrameByKey(key)
         pet    = "PetFrame",
     }
     -- Special-case resolution for Unit Frames using Edit Mode's registry for reliability
-    if key == "player" or key == "target" or key == "focus" or key == "pet" then
-        local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-        local EMSys = _G.Enum and _G.Enum.EditModeSystem
-        local mgr = _G.EditModeManagerFrame
-        local idx = EM and (
-            key == "player" and EM.Player or
-            key == "target" and EM.Target or
-            key == "focus"  and EM.Focus  or
-            key == "pet"    and EM.Pet    or nil)
-        if mgr and idx and EMSys and mgr.GetRegisteredSystemFrame then
-            local f = mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-            if f then return f, (map[key] or key) end
-        end
+    local UNIT_KEYS = { player = "Player", target = "Target", focus = "Focus", pet = "Pet" }
+    if UNIT_KEYS[key] then
+        local f = addon.GetEditModeUnitFrame(UNIT_KEYS[key])
+        if f then return f, (map[key] or key) end
     end
     local name = map[key] or key -- allow raw global name
     return _G[name], name

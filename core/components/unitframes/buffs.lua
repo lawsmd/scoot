@@ -19,26 +19,7 @@ do
 	-- Store original positions per aura frame so offsets remain relative to stock layout
 	local originalAuraPositions = {}
 
-	local function resolveUnitFrame(unit)
-		local mgr = _G.EditModeManagerFrame
-		local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-		local EMSys = _G.Enum and _G.Enum.EditModeSystem
-		if mgr and EM and EMSys and mgr.GetRegisteredSystemFrame then
-			local idx = (unit == "Target" and EM.Target) or (unit == "Focus" and EM.Focus) or nil
-			if idx then
-				local frame = mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-				if frame then
-					return frame
-				end
-			end
-		end
-		-- Fallback to global frames if Edit Mode lookup is unavailable
-		if unit == "Target" then
-			return _G.TargetFrame
-		elseif unit == "Focus" then
-			return _G.FocusFrame
-		end
-	end
+	local resolveUnitFrame = addon.GetUnitFrame
 
 	-- Internal implementation that accepts a visualOnly flag for combat-safe styling
 	local function applyBuffsDebuffsForUnitInternal(unit, visualOnly)

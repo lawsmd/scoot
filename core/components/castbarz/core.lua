@@ -33,7 +33,7 @@ CBZ.UNIT_LABELS = {
     Pet = "Pet", Boss = "Boss",
 }
 
-CBZ.NUM_BOSS_BARS = 5
+CBZ.NUM_BOSS_BARS = addon.NUM_BOSS_FRAMES
 
 -- One row per BAR. `changeEvent` is the event after which this bar's unit may be a
 -- different creature entirely, and is what triggers a hard reset + resync.

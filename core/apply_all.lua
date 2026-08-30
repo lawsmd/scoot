@@ -24,7 +24,7 @@ local BG_TEXTURE_KEYS = {
 -- Ensure font tables exist before ApplyAll traverses them
 
 -- Unit Frame font structures
-local UNIT_FRAME_UNITS = { "Player", "Target", "Focus", "Pet" }
+local UNIT_FRAME_UNITS = addon.Frames.CORE_UNITS
 local UNIT_FRAME_TEXT_KEYS = {
     "textHealthPercent",
     "textHealthValue",
