@@ -134,6 +134,9 @@ local function updateAllPRDOpacities()
     applyPRDPowerOpacity()
     applyPRDAltPowerOpacity()
     applyPRDClassResourceOpacity()
+    -- A Deep Shadow copy tapers itself against the alpha it inherits, and the
+    -- alpha above just moved. core/fontpair.lua coalesces the pass.
+    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
 end
 
 -- Exposed function for settings changes (immediate slider feedback)
@@ -148,7 +151,9 @@ function addon.RefreshPRDOpacity(componentId)
         applyPRDClassResourceOpacity()
     else
         updateAllPRDOpacities()
+        return
     end
+    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
 end
 
 local function storeOriginalAlpha(frame, storageKey)

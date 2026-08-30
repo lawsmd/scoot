@@ -2733,6 +2733,7 @@ local function applyOpacity(inst)
     -- Edit Mode must never offer a dimmed or invisible grab target.
     if inst.previewActive then
         frame:SetAlpha(1)
+        if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
         return
     end
     local cfg = inst.cfg
@@ -2752,6 +2753,10 @@ local function applyOpacity(inst)
     end
     if pct < 0 then pct = 0 elseif pct > 100 then pct = 100 end
     frame:SetAlpha(pct / 100)
+    -- A Deep Shadow name copy tapers itself against the alpha it inherits, and
+    -- the alpha above just moved. core/fontpair.lua coalesces the pass, so a
+    -- whole party fading at once costs one walk.
+    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
 end
 
 -- Anchors + attributes for the secure click overlay. Both are combat-blocked
