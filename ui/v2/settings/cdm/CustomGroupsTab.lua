@@ -407,19 +407,12 @@ function BeginDrag(groupIndex, entryIndex, sourceFrame)
         end
     end)
 
-    -- Use an event frame to detect global mouse up (more reliable than OnMouseUp
-    -- on the cursor frame, which requires the frame to have received OnMouseDown)
-    if not DragState._eventFrame then
-        DragState._eventFrame = CreateFrame("Frame")
-    end
-    DragState._eventFrame:SetScript("OnEvent", function(self, event, ...)
-        if event == "GLOBAL_MOUSE_UP" then
-            local button = ...
-            self:UnregisterEvent("GLOBAL_MOUSE_UP")
-            EndDrag(button == "RightButton")
-        end
+    -- Drop detection uses GLOBAL_MOUSE_UP (more reliable than OnMouseUp on the
+    -- cursor frame, which requires the frame to have received OnMouseDown).
+    -- The handle lives from here to EndDrag.
+    DragState._mouseUpHandle = addon.Events.On("UI:CustomGroupsTab", "GLOBAL_MOUSE_UP", function(_, button)
+        EndDrag(button == "RightButton")
     end)
-    DragState._eventFrame:RegisterEvent("GLOBAL_MOUSE_UP")
 end
 
 function EndDrag(cancelled)
@@ -433,9 +426,11 @@ function EndDrag(cancelled)
         cursor:Hide()
     end
 
-    -- Ensure event frame is cleaned up
-    if DragState._eventFrame then
-        DragState._eventFrame:UnregisterEvent("GLOBAL_MOUSE_UP")
+    -- Off() from inside the GLOBAL_MOUSE_UP dispatch itself is safe: the bus
+    -- tombstones the entry and compacts after the dispatch unwinds.
+    if DragState._mouseUpHandle then
+        DragState._mouseUpHandle:Off()
+        DragState._mouseUpHandle = nil
     end
     if marker then
         marker:Hide()
@@ -824,7 +819,7 @@ local function CreateContentFrame(cdmFrame)
     end)
 
     -- Event-driven refresh for visibility changes (items acquired, spells learned)
-    local refreshEventFrame = CreateFrame("Frame")
+    local refreshHandles = nil
     local refreshPending = false
 
     local function DebouncedRefresh()
@@ -839,16 +834,18 @@ local function CreateContentFrame(cdmFrame)
         end
     end
 
-    refreshEventFrame:SetScript("OnEvent", function()
-        DebouncedRefresh()
-    end)
-
     -- Refresh on show
     f:SetScript("OnShow", function()
-        -- Register visibility events while tab is open
-        refreshEventFrame:RegisterEvent("BAG_UPDATE")
-        refreshEventFrame:RegisterEvent("SPELLS_CHANGED")
-        refreshEventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+        -- Visibility events are live only while the tab is open. Guarded: a
+        -- repeat Events.On would stack a second handler, where the old frame's
+        -- repeat RegisterEvent was a no-op.
+        if not refreshHandles then
+            refreshHandles = {
+                addon.Events.On("UI:CustomGroupsTab", "BAG_UPDATE", DebouncedRefresh),
+                addon.Events.On("UI:CustomGroupsTab", "SPELLS_CHANGED", DebouncedRefresh),
+                addon.Events.On("UI:CustomGroupsTab", "PLAYER_SPECIALIZATION_CHANGED", DebouncedRefresh),
+            }
+        end
 
         -- Ensure scroll child width matches
         scrollChild:SetWidth(f:GetWidth() or 300)
@@ -866,7 +863,12 @@ local function CreateContentFrame(cdmFrame)
     end)
 
     f:SetScript("OnHide", function()
-        refreshEventFrame:UnregisterAllEvents()
+        if refreshHandles then
+            for _, handle in ipairs(refreshHandles) do
+                handle:Off()
+            end
+            refreshHandles = nil
+        end
     end)
 
     contentFrame = f
@@ -1094,23 +1096,20 @@ end
 -- Trigger injection from multiple entry points (all converge on idempotent fn)
 --------------------------------------------------------------------------------
 
--- When Blizzard_CooldownViewer loads, also hook OpenCooldownManagerSettings
--- once it exists (Scoot.lua loads after this file in the TOC)
-local loader = CreateFrame("Frame")
-loader:RegisterEvent("ADDON_LOADED")
-loader:SetScript("OnEvent", function(self, event, loadedAddon)
-    if loadedAddon == "Blizzard_CooldownViewer" then
-        C_Timer.After(0, InjectScootTab)
-    end
-    if loadedAddon == addonName and addon.OpenCooldownManagerSettings then
-        self:UnregisterEvent("ADDON_LOADED")
+-- Inject when Blizzard_CooldownViewer loads; OnAddonLoaded runs the callback
+-- immediately when the addon is already in (the old CooldownViewerSettings
+-- immediate check), and this subscription outlives Scoot's own load, so a
+-- late on-demand load of the viewer still injects.
+addon.Events.OnAddonLoaded("Blizzard_CooldownViewer", function()
+    C_Timer.After(0, InjectScootTab)
+end)
+
+-- Once Scoot itself finishes loading, also hook OpenCooldownManagerSettings
+-- (Scoot.lua loads after this file in the TOC).
+addon.Events.OnAddonLoaded(addonName, function()
+    if addon.OpenCooldownManagerSettings then
         hooksecurefunc(addon, "OpenCooldownManagerSettings", function()
             C_Timer.After(0, InjectScootTab)
         end)
     end
 end)
-
--- Immediate check (e.g., after /reload when addon is already loaded)
-if CooldownViewerSettings then
-    C_Timer.After(0, InjectScootTab)
-end

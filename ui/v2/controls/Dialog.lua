@@ -1051,23 +1051,17 @@ local function SetupDialogIntegration()
     end
 end
 
--- Setup integration when addon loads
--- Use a frame to defer setup until ADDON_LOADED
-local integrationFrame = CreateFrame("Frame")
-integrationFrame:RegisterEvent("ADDON_LOADED")
-integrationFrame:SetScript("OnEvent", function(self, event, loadedAddon)
-    if loadedAddon == addonName then
-        -- Defer slightly to ensure all modules are loaded
-        C_Timer.After(0, function()
-            SetupDialogIntegration()
-            -- Copy existing registrations
-            if originalDialogs and type(originalDialogs) == "table" then
-                -- The original dialogs.lua stores registrations in a local table
-                -- Pre-registered dialogs are re-registered automatically when Show is called
-            end
-        end)
-        self:UnregisterEvent("ADDON_LOADED")
-    end
+-- Setup integration once Scoot itself finishes loading
+addon.Events.OnAddonLoaded(addonName, function()
+    -- Defer slightly to ensure all modules are loaded
+    C_Timer.After(0, function()
+        SetupDialogIntegration()
+        -- Copy existing registrations
+        if originalDialogs and type(originalDialogs) == "table" then
+            -- The original dialogs.lua stores registrations in a local table
+            -- Pre-registered dialogs are re-registered automatically when Show is called
+        end
+    end)
 end)
 
 --------------------------------------------------------------------------------

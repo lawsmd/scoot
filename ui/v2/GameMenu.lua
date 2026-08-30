@@ -463,12 +463,6 @@ function GameMenu:InstallHook()
     end)
 end
 
--- Register hook installation on PLAYER_ENTERING_WORLD
-local hookFrame = CreateFrame("Frame")
-hookFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-hookFrame:SetScript("OnEvent", function(self, event)
-    if event == "PLAYER_ENTERING_WORLD" then
-        GameMenu:InstallHook()
-        self:UnregisterEvent("PLAYER_ENTERING_WORLD")
-    end
+addon.Events.Once("UI:GameMenu", "PLAYER_ENTERING_WORLD", function()
+    GameMenu:InstallHook()
 end)

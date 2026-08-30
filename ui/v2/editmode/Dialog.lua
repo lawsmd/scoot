@@ -474,14 +474,14 @@ function Dialog.Cleanup()
     end
 end
 
-local retryHooked = false
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:SetScript("OnEvent", function()
+-- One shot on the first world entry: EditModeManagerFrame exists at login, so
+-- the OnShow retry installed here covers every later Edit Mode open. The old
+-- frame re-ran this on every loading screen; those runs were no-ops once the
+-- retry was in.
+addon.Events.OnWorldEntered(function()
     -- The dialog only exists after the first AddFrame, so retry on Edit Mode
-    -- open. Install that retry once, not on every loading screen.
-    if EditModeManagerFrame and not retryHooked then
-        retryHooked = true
+    -- open.
+    if EditModeManagerFrame then
         EditModeManagerFrame:HookScript("OnShow", Dialog.EnsureHooked)
     end
     Dialog.EnsureHooked()

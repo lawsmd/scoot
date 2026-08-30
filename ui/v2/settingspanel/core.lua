@@ -1178,10 +1178,7 @@ end
 
 UIPanel._closedByCombat = false
 
-local combatFrame = CreateFrame("Frame")
-combatFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-combatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-combatFrame:SetScript("OnEvent", function(self, event)
+local function onCombatEvent(event)
     if event == "PLAYER_REGEN_DISABLED" then
         if UIPanel.frame and UIPanel.frame:IsShown() then
             UIPanel._closedByCombat = true
@@ -1200,7 +1197,10 @@ combatFrame:SetScript("OnEvent", function(self, event)
             end)
         end
     end
-end)
+end
+
+addon.Events.On("UI:SettingsPanel", "PLAYER_REGEN_DISABLED", onCombatEvent)
+addon.Events.On("UI:SettingsPanel", "PLAYER_REGEN_ENABLED", onCombatEvent)
 
 -- Cross-file promotions (consumed by navigation.lua)
 

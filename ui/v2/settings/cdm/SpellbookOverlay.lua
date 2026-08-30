@@ -134,18 +134,11 @@ local function SetupSpellbookHooks()
     UpdateButtonVisibility()
 end
 
-local loader = CreateFrame("Frame")
-loader:RegisterEvent("ADDON_LOADED")
-loader:SetScript("OnEvent", function(self, _, loadedAddon)
-    if loadedAddon == "Blizzard_PlayerSpells" then
-        self:UnregisterEvent("ADDON_LOADED")
-        C_Timer.After(0, SetupSpellbookHooks)
-    end
-end)
-
-if _G.PlayerSpellsFrame then
+-- OnAddonLoaded runs the callback immediately when Blizzard_PlayerSpells is
+-- already in (the old PlayerSpellsFrame immediate check).
+addon.Events.OnAddonLoaded("Blizzard_PlayerSpells", function()
     C_Timer.After(0, SetupSpellbookHooks)
-end
+end)
 
 --------------------------------------------------------------------------------
 -- Refresh hook: re-check visibility when group enable toggles change

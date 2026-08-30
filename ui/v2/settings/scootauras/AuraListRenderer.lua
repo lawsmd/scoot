@@ -400,18 +400,11 @@ local function BeginDrag(trackerId, sourceGid, sourceIndex, texture, sourceFrame
     end)
 
     -- The cursor frame never received OnMouseDown, so drop detection rides
-    -- GLOBAL_MOUSE_UP (right button up cancels).
-    if not Drag.eventFrame then
-        Drag.eventFrame = CreateFrame("Frame")
-    end
-    Drag.eventFrame:SetScript("OnEvent", function(self, event, ...)
-        if event == "GLOBAL_MOUSE_UP" then
-            local button = ...
-            self:UnregisterEvent("GLOBAL_MOUSE_UP")
-            EndDrag(button == "RightButton")
-        end
+    -- GLOBAL_MOUSE_UP (right button up cancels). The handle lives from here
+    -- to EndDrag.
+    Drag.mouseUpHandle = addon.Events.On("UI:AuraList", "GLOBAL_MOUSE_UP", function(_, button)
+        EndDrag(button == "RightButton")
     end)
-    Drag.eventFrame:RegisterEvent("GLOBAL_MOUSE_UP")
 end
 
 EndDrag = function(cancelled)
@@ -421,8 +414,11 @@ EndDrag = function(cancelled)
         SetDragHint(nil)
         Drag.cursor:Hide()
     end
-    if Drag.eventFrame then
-        Drag.eventFrame:UnregisterEvent("GLOBAL_MOUSE_UP")
+    -- Off() from inside the GLOBAL_MOUSE_UP dispatch itself is safe: the bus
+    -- tombstones the entry and compacts after the dispatch unwinds.
+    if Drag.mouseUpHandle then
+        Drag.mouseUpHandle:Off()
+        Drag.mouseUpHandle = nil
     end
     ClearDropFeedback()
     if Drag.sourceFrame then Drag.sourceFrame:SetAlpha(1) end
