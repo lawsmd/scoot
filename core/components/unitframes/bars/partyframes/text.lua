@@ -51,13 +51,9 @@ local function applyTextToPartyFrame(frame, cfg)
     local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
     local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
 
-    local success = pcall(nameFS.SetFont, nameFS, resolvedFace, fontSize, fontStyle)
-    if not success then
-        local fallback = _G.GameFontNormal and select(1, _G.GameFontNormal:GetFont())
-        if fallback then
-            pcall(nameFS.SetFont, nameFS, fallback, fontSize, fontStyle)
-        end
-    end
+    -- ApplyFontStyle decodes the pseudo-style (shadow half included) and does
+    -- its own fallback walk when the face will not load.
+    addon.ApplyFontStyle(nameFS, resolvedFace, fontSize, fontStyle)
 
     if nameFS.SetTextColor then
         pcall(nameFS.SetTextColor, nameFS, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
@@ -200,14 +196,9 @@ local function stylePartyNameOverlay(frame, cfg)
     local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
     local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
 
-    -- Apply font
-    local success = pcall(overlay.SetFont, overlay, resolvedFace, fontSize, fontStyle)
-    if not success then
-        local fallback = _G.GameFontNormal and select(1, _G.GameFontNormal:GetFont())
-        if fallback then
-            pcall(overlay.SetFont, overlay, fallback, fontSize, fontStyle)
-        end
-    end
+    -- Apply font (ApplyFontStyle decodes the pseudo-style and falls back on
+    -- its own when the face will not load)
+    addon.ApplyFontStyle(overlay, resolvedFace, fontSize, fontStyle)
 
     -- Determine color based on colorMode
     local colorMode = cfg.colorMode or "default"
@@ -720,13 +711,7 @@ local function applyTextToFontString_PartyTitle(fs, ownerFrame, cfg)
     local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
     local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
 
-    local success = pcall(fs.SetFont, fs, resolvedFace, fontSize, fontStyle)
-    if not success then
-        local fallback = _G.GameFontNormal and select(1, _G.GameFontNormal:GetFont())
-        if fallback then
-            pcall(fs.SetFont, fs, fallback, fontSize, fontStyle)
-        end
-    end
+    addon.ApplyFontStyle(fs, resolvedFace, fontSize, fontStyle)
 
     if fs.SetTextColor then
         pcall(fs.SetTextColor, fs, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
@@ -973,13 +958,7 @@ local function stylePartyStatusTextOverlay(frame, cfg)
     local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
     local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
 
-    local success = pcall(overlay.SetFont, overlay, resolvedFace, fontSize, fontStyle)
-    if not success then
-        local fallback = _G.GameFontNormal and select(1, _G.GameFontNormal:GetFont())
-        if fallback then
-            pcall(overlay.SetFont, overlay, fallback, fontSize, fontStyle)
-        end
-    end
+    addon.ApplyFontStyle(overlay, resolvedFace, fontSize, fontStyle)
 
     -- Apply color (direct color only, no colorMode for status text)
     local color = cfg.color or { 1, 1, 1, 1 }

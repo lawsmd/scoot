@@ -297,7 +297,8 @@ end
 -- previous probe measures a different question, and nothing about the number that comes
 -- back would look wrong.
 local function armRuler(fs, value, size, width, wrap, nonSpaceWrap, maxLines, facePath, style)
-    addon.ApplyFontStyle(fs, facePath, size, style)
+    -- MetricStyle: a DEEPSHADOW style must not build companion copies on rulers.
+    addon.ApplyFontStyle(fs, facePath, size, addon.FontStyles.MetricStyle(style))
     if fs.SetTextScale then pcall(fs.SetTextScale, fs, 1) end
     if fs.SetWidth then pcall(fs.SetWidth, fs, width) end
     if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, wrap) end

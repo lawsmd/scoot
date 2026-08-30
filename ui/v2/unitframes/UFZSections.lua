@@ -48,6 +48,12 @@ local function AddUnitSection(builder, opts)
     }
     local locOrder = { "bottomleft", "bottomright", "topleft", "topright", "nameside" }
 
+    -- Font Style options. Every text here is a Scoot-created FontString, so
+    -- the paired (Deep Shadow) entries qualify on all four dropdowns.
+    local UFHelpers = addon.UI.UnitFrames
+    local styleValues = (UFHelpers and UFHelpers.fontStyleValues) or addon.FontStyles.values
+    local styleOrder = (UFHelpers and UFHelpers.fontStyleOrderPaired) or addon.FontStyles.orderPaired
+
     if opts.stacked then
         builder:AddDescription("Scoot's text-first " .. (opts.unitWord or "boss") .. " frames. All five share these settings and stack vertically as one block -- position the block in Edit Mode, where Overall Scale is also mirrored.")
     else
@@ -120,6 +126,13 @@ local function AddUnitSection(builder, opts)
                                 return (c.nameFace ~= "follow" and c.nameFace) or c.face
                             end,
                             set = function(key) call("SetNameFont", key) end,
+                        })
+                        tabInner:AddSelector({
+                            label = "Font Style",
+                            values = styleValues,
+                            order = styleOrder,
+                            get = function() return htCfg().nameStyle or "SHADOWTHICKOUTLINE" end,
+                            set = function(v) call("SetNameStyle", v) end,
                         })
                         tabInner:AddSlider({
                             label = "Size",
@@ -209,6 +222,14 @@ local function AddUnitSection(builder, opts)
                             get = function() return htCfg().face or "ANTON_WIDE_150" end,
                             set = function(key) call("SetFont", key) end,
                         })
+                        tabInner:AddSelector({
+                            label = "Font Style",
+                            description = "Shared by the percent and value rows, and the absorb text.",
+                            values = styleValues,
+                            order = styleOrder,
+                            get = function() return htCfg().style or "SHADOWTHICKOUTLINE" end,
+                            set = function(v) call("SetStyle", v) end,
+                        })
                         tabInner:AddSlider({
                             label = "% Font Size",
                             description = "Master size (the 2-digit rendering); the 1- and 3-digit sizes scale along proportionally.",
@@ -292,6 +313,14 @@ local function AddUnitSection(builder, opts)
                 sectionKey = "power_tabs",
                 buildContent = {
                     fontSize = function(cf, tabInner)
+                        tabInner:AddSelector({
+                            label = "Font Style",
+                            description = "Shared by the primary and alternate power texts.",
+                            values = styleValues,
+                            order = styleOrder,
+                            get = function() return htCfg().powerStyle or "SHADOWTHICKOUTLINE" end,
+                            set = function(v) call("SetPowerStyle", v) end,
+                        })
                         tabInner:AddToggle({
                             label = "Primary Power",
                             description = "The unit's main resource as a flat value (mana, rage, energy...).",
@@ -438,6 +467,13 @@ local function AddUnitSection(builder, opts)
                             min = 6, max = 30, step = 0.5, precision = 1,
                             get = function() return htCfg().levelSize or 8 end,
                             set = function(v) call("SetLevelSize", v) end,
+                        })
+                        tabInner:AddSelector({
+                            label = "Font Style",
+                            values = styleValues,
+                            order = styleOrder,
+                            get = function() return htCfg().levelStyle or "SHADOWTHICKOUTLINE" end,
+                            set = function(v) call("SetLevelStyle", v) end,
                         })
                         tabInner:Finalize()
                     end,

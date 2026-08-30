@@ -427,7 +427,7 @@ function RosterOverlay:Relayout()
         fs:SetPoint("TOPLEFT", frame, "TOPLEFT", columnX(colIndex), y)
         fs:SetWidth(M.columnWidth)
         fs:SetHeight(height)
-        fs:SetFont(font, size, style)
+        addon.ApplyFontStyle(fs, font, size, style)
         fs:Show()
     end
 
@@ -589,7 +589,7 @@ function RosterOverlay:Initialize()
     self:ApplyFromProfile("Initialize")
 end
 
--- Exported for GF.applyRaidStyles()
+-- Exported for GF.applyStyles("raid")
 function addon.ApplyRaidRosterOverlay(reason)
     if addon.RaidRosterOverlay then
         addon.RaidRosterOverlay:ApplyFromProfile(reason or "ApplyStyles")

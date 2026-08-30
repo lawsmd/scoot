@@ -174,18 +174,14 @@ local function applyTimerTextStyling(duration, cfg)
     -- Show the duration text
     pcall(duration.SetAlpha, duration, 1)
 
-    -- Apply font settings
+    -- Apply font settings (ApplyFontStyle decodes the pseudo-style, shadow
+    -- half included, and normalizes NONE itself)
     local fontFace = cfg.fontFace or "FRIZQT__"
     local face = addon.ResolveFontFace and addon.ResolveFontFace(fontFace) or "Fonts\\FRIZQT__.TTF"
     local size = tonumber(cfg.size) or 12
     local style = cfg.style or "OUTLINE"
 
-    -- Normalize style
-    if style == "NONE" then
-        style = ""
-    end
-
-    pcall(duration.SetFont, duration, face, size, style)
+    addon.ApplyFontStyle(duration, face, size, style)
     debugPrint("Set font:", face, size, style)
 
     -- Apply color
@@ -227,8 +223,7 @@ local function applyTimerTextStyling(duration, cfg)
                     local f = addon.ResolveFontFace and addon.ResolveFontFace(ff) or "Fonts\\FRIZQT__.TTF"
                     local s = tonumber(tcfg.size) or 12
                     local st = tcfg.style or "OUTLINE"
-                    if st == "NONE" then st = "" end
-                    pcall(self.SetFont, self, f, s, st)
+                    addon.ApplyFontStyle(self, f, s, st)
                     local col = tcfg.color or { 1, 1, 1, 1 }
                     pcall(self.SetTextColor, self, col[1] or 1, col[2] or 1, col[3] or 1, col[4] or 1)
                 end)

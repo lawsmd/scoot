@@ -136,6 +136,150 @@ function addon.ResolveFontFace(key)
 end
 
 --------------------------------------------------------------------------------
+-- Font Style Catalog
+--------------------------------------------------------------------------------
+-- The one source of truth for the Font Style enum. Every dropdown reads these
+-- tables (through aliases in the ui/v2 Helpers files) and ApplyFontStyle
+-- decodes the keys. Keys are pseudo-styles, not engine flags: the
+-- SHADOW*/HEAVY*/DEEPSHADOW* prefixes and the *SLUG suffix are decoded by
+-- ApplyFontStyle below.
+
+local slugSupported = false
+local slugSeparator = " "
+do
+    -- The crisp styles need the vector text renderer. Two gates: the API
+    -- surface must exist, and SetFont must accept a SLUG-bearing flag string.
+    -- Invalid flags error instead of no-op as of 12.0.7, and the accepted
+    -- separator form is undocumented, so probe the candidates.
+    local probe = UIParent and UIParent:CreateFontString(nil, "ARTWORK")
+    if probe and probe.SetSmoothScaling ~= nil then
+        for _, sep in ipairs({ " ", ", ", "," }) do
+            local ok, accepted = pcall(probe.SetFont, probe, FALLBACK_FONT_PATH, 12, "OUTLINE" .. sep .. "SLUG")
+            if ok and accepted ~= false then
+                local readOk, _, _, flags = pcall(probe.GetFont, probe)
+                if readOk and type(flags) == "string" and flags:find("SLUG", 1, true) then
+                    slugSupported = true
+                    slugSeparator = sep
+                    break
+                end
+            end
+        end
+    end
+    if probe then probe:Hide() end
+end
+
+addon.FontStyles = {
+    -- The master label table. Gated keys keep their labels here so a stored
+    -- value still displays its name when hidden from the option list
+    -- (Selector shows values[currentKey] even for keys absent from order).
+    values = {
+        NONE = "Regular",
+        OUTLINE = "Outline",
+        THICKOUTLINE = "Thick Outline",
+        HEAVYTHICKOUTLINE = "Heavy Thick Outline",
+        SHADOW = "Shadow",
+        SHADOWOUTLINE = "Shadow Outline",
+        SHADOWTHICKOUTLINE = "Shadow Thick Outline",
+        OUTLINESLUG = "Crisp Outline",
+        THICKOUTLINESLUG = "Crisp Thick Outline",
+        SHADOWTHICKOUTLINESLUG = "Crisp Shadow Thick Outline",
+        DEEPSHADOWOUTLINE = "Deep Shadow Outline",
+        DEEPSHADOWTHICKOUTLINE = "Deep Shadow Thick Outline",
+    },
+    slugSupported = slugSupported,
+    slugSeparator = slugSeparator,
+}
+
+do
+    local BASE = { "NONE", "OUTLINE", "THICKOUTLINE", "HEAVYTHICKOUTLINE", "SHADOW", "SHADOWOUTLINE", "SHADOWTHICKOUTLINE" }
+    -- The PRD dropdowns list OUTLINE first because it is their default.
+    local OUTLINE_FIRST = { "OUTLINE", "NONE", "THICKOUTLINE", "HEAVYTHICKOUTLINE", "SHADOW", "SHADOWOUTLINE", "SHADOWTHICKOUTLINE" }
+    local CRISP = { "OUTLINESLUG", "THICKOUTLINESLUG", "SHADOWTHICKOUTLINESLUG" }
+    -- Deep Shadow draws a mirrored copy of the string, so it is offered only
+    -- where every targeted FontString is Scoot-created with Scoot-fed text;
+    -- those dropdowns opt in by using a *Paired order table.
+    local PAIRED = { "DEEPSHADOWOUTLINE", "DEEPSHADOWTHICKOUTLINE" }
+
+    local function buildOrder(base, includePaired)
+        local order = {}
+        for _, k in ipairs(base) do order[#order + 1] = k end
+        if slugSupported then
+            for _, k in ipairs(CRISP) do order[#order + 1] = k end
+        end
+        if includePaired then
+            for _, k in ipairs(PAIRED) do order[#order + 1] = k end
+        end
+        return order
+    end
+
+    addon.FontStyles.order = buildOrder(BASE, false)
+    addon.FontStyles.orderPaired = buildOrder(BASE, true)
+    addon.FontStyles.orderOutlineFirst = buildOrder(OUTLINE_FIRST, false)
+    addon.FontStyles.orderOutlineFirstPaired = buildOrder(OUTLINE_FIRST, true)
+end
+
+-- The style a measurement ruler should apply. DEEPSHADOW* decodes to the same
+-- engine flags as its base style plus a companion copy, and a companion on a
+-- hidden ruler is permanent hooks and per-measure mirroring for nothing --
+-- strip the prefix; the metrics are identical.
+function addon.FontStyles.MetricStyle(style)
+    if type(style) == "string" and style:sub(1, 10) == "DEEPSHADOW" then
+        return style:sub(11)
+    end
+    return style
+end
+
+-- /scoot debug slug: ground truth for the SLUG flag on the live client. Shows
+-- each candidate flag string rendered side by side and prints what SetFont
+-- and GetFont report for it, plus the load-time probe verdict.
+function addon.FontStyles.DebugSlugProbe()
+    local candidates = { "OUTLINE", "OUTLINE SLUG", "OUTLINE, SLUG", "OUTLINE,SLUG", "SLUG" }
+    local f = addon._slugProbeFrame
+    if not f then
+        f = CreateFrame("Frame", "ScootSlugProbe", UIParent)
+        f:SetSize(460, 30 + #candidates * 36)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:SetScript("OnMouseDown", function(self, button)
+            if button == "RightButton" then self:Hide() end
+        end)
+        local bg = f:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0, 0, 0, 0.75)
+        f.rows = {}
+        for i = 1, #candidates do
+            local fs = f:CreateFontString(nil, "ARTWORK")
+            fs:SetPoint("TOPLEFT", 16, -(16 + (i - 1) * 36))
+            f.rows[i] = fs
+        end
+        addon._slugProbeFrame = f
+    end
+    addon:Print(string.format("slug probe: SetSmoothScaling %s; load verdict supported=%s separator=%q",
+        f.rows[1].SetSmoothScaling ~= nil and "present" or "absent",
+        tostring(addon.FontStyles.slugSupported), addon.FontStyles.slugSeparator))
+    for i, flags in ipairs(candidates) do
+        local fs = f.rows[i]
+        local ok, accepted = pcall(fs.SetFont, fs, FALLBACK_FONT_PATH, 24, flags)
+        local rejected = not (ok and accepted ~= false)
+        if rejected then
+            -- Keep the row readable: a failed SetFont can leave it unfonted.
+            pcall(fs.SetFont, fs, FALLBACK_FONT_PATH, 24, "OUTLINE")
+        end
+        local _, _, _, readFlags = pcall(fs.GetFont, fs)
+        fs:SetText(string.format("[%s]%s The quick brown fox 0123", flags, rejected and " REJECTED" or ""))
+        addon:Print(string.format("slug[%d] %q -> ok=%s accepted=%s readback=%s",
+            i, flags, tostring(ok), tostring(accepted), tostring(readFlags)))
+    end
+    f:Show()
+    addon:Print("slug probe window shown (right-click to close)")
+end
+
+--------------------------------------------------------------------------------
 -- Font Style Application Helper (supports SHADOW and HEAVY prefixes)
 --------------------------------------------------------------------------------
 
@@ -152,6 +296,16 @@ local function applyFontFile(fs, font, size, style)
     -- loaded, so the pcall status alone proves nothing.
     if ok and accepted ~= false then
         return true
+    end
+
+    -- A SLUG flag the client rejects must not cost the face: retry once with
+    -- SLUG stripped before starting the fallback walk.
+    if type(style) == "string" and style:find("SLUG", 1, true) then
+        local stripped = (style:gsub("%s*,?%s*SLUG", ""))
+        ok, accepted = pcall(fs.SetFont, fs, font, size, stripped)
+        if ok and accepted ~= false then
+            return true
+        end
     end
 
     -- The requested face would not load. If the string already carries a font,
@@ -189,10 +343,21 @@ local function applyFontFile(fs, font, size, style)
     return false
 end
 
--- Apply font settings to a FontString with support for shadow-prefixed styles.
--- Supported styles: NONE, OUTLINE, THICKOUTLINE, plus these prefixes:
---   SHADOW*: adds a subtle drop shadow (offset 1, -1) for extra visual weight.
---   HEAVY*: adds a centered glow effect (offset 0, 0) - thickens without directional shadow.
+-- Shared with core/fontpair.lua so the paired copy gets the same face
+-- resolution and fallback behavior as the string it mirrors.
+addon.ApplyFontFile = applyFontFile
+
+-- Apply font settings to a FontString. Style keys are pseudo-styles decoded
+-- here, not raw engine flags. NONE, OUTLINE, and THICKOUTLINE pass through;
+-- the rest compose:
+--   SHADOW*: drop shadow, SetShadowColor(0,0,0,0.8) + SetShadowOffset(1,-1).
+--   HEAVY*: upper-right shadow, SetShadowColor(0,0,0,0.9) + SetShadowOffset(1,1);
+--     thickens the glyph opposite the drop-shadow direction.
+--   *SLUG: appends the SLUG engine flag (vector text renderer) when the client
+--     accepts it (addon.FontStyles.slugSupported); dropped silently otherwise,
+--     so a stored crisp value renders its base style on incapable clients.
+--   DEEPSHADOW*: draws a black offset copy of the string behind it via
+--     addon.FontPair (core/fontpair.lua); the built-in shadow stays zeroed.
 --
 -- Returns true when the REQUESTED face was applied, false when the
 -- client would not load it (the string is left with whatever readable font it
@@ -204,11 +369,22 @@ function addon.ApplyFontStyle(fs, font, size, style)
     local applied = true
     style = style or ""
 
+    -- Suffix first: the crisp variants wrap a base key.
+    local wantSlug = false
+    if style:sub(-4) == "SLUG" then
+        wantSlug = true
+        style = style:sub(1, -5)
+    end
+
     -- Detect prefixes (check longer ones first to avoid partial matches)
     local heavy = false
     local shadow = false
+    local paired = false
 
-    if style:sub(1, 11) == "HEAVYSHADOW" then
+    if style:sub(1, 10) == "DEEPSHADOW" then
+        paired = true
+        style = style:sub(11) -- Strip DEEPSHADOW prefix
+    elseif style:sub(1, 11) == "HEAVYSHADOW" then
         -- Backward compat: HEAVYSHADOW* saved settings render as regular SHADOW
         shadow = true
         style = style:sub(12) -- Strip HEAVYSHADOW prefix
@@ -223,6 +399,11 @@ function addon.ApplyFontStyle(fs, font, size, style)
     -- Normalize "NONE" to empty string (Blizzard convention)
     if style == "NONE" or style == "" then
         style = ""
+    end
+
+    if wantSlug and addon.FontStyles.slugSupported then
+        style = (style == "") and "SLUG"
+            or (style .. addon.FontStyles.slugSeparator .. "SLUG")
     end
 
     -- Apply the font.
@@ -255,6 +436,16 @@ function addon.ApplyFontStyle(fs, font, size, style)
             -- No shadow: transparent with no offset
             pcall(fs.SetShadowColor, fs, 0, 0, 0, 0)
             pcall(fs.SetShadowOffset, fs, 0, 0)
+        end
+    end
+
+    -- Deep Shadow: the depth comes from a black copy behind the string, so
+    -- keep the companion in sync, and hide it when the style moves away.
+    if addon.FontPair then
+        if paired then
+            addon.FontPair.Apply(fs, font, size, style)
+        elseif fs.__scootPair then
+            addon.FontPair.Hide(fs)
         end
     end
 
@@ -583,7 +774,7 @@ function addon.MeasureTextWidth(text, face, size, style)
         if fitSafeBool(fs, "IsAnchoringSecret") ~= false then return nil end
     end
 
-    addon.ApplyFontStyle(fs, face, size, style)
+    addon.ApplyFontStyle(fs, face, size, addon.FontStyles.MetricStyle(style))
     if not pcall(fs.SetText, fs, text) then return nil end
     local w = fitSafeNumber(fs, "GetUnboundedStringWidth")
 

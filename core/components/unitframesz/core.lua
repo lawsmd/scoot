@@ -99,11 +99,13 @@ UFZ._editModeActive = false
 -- which shares its cosmetics). Flat scalar keys ONLY: Reset and GetConfig rely
 -- on shallow copies, and a nested table would survive Reset.
 --
--- Keys not surfaced in the settings UI (style, digits, digitSize1/3, center,
+-- Keys not surfaced in the settings UI (digits, digitSize1/3, center,
 -- centerOffset, descent, stretch, symbolSize, align, color, round, usePredicted,
 -- chrome, width, height, valFace, pctSize, nameFit, nameMinSize) are the
 -- certified-look tuning constants from the harness; they ride along as declared
 -- defaults so a future setting can surface any of them without a migration.
+-- (style was on that list until the Font Style dropdowns landed; it is now the
+-- health block's style, with nameStyle/powerStyle/levelStyle beside it.)
 --
 -- The unit token is NOT here. It used to live as cfg.unit, which cannot work
 -- once five boss frames share one config table -- it is now structural, minted
@@ -113,7 +115,13 @@ UFZ._editModeActive = false
 local UNIT_DEFAULTS_SHARED = {
     -- Anton Wide 1.5x: the settled shipping bake.
     face         = "ANTON_WIDE_150",
+    -- Font Style, per text block: style is the health block's (percent, '%',
+    -- value and absorb rows); the other three cover the name, both power texts
+    -- and the level pair. All four default to the certified bake.
     style        = "SHADOWTHICKOUTLINE",
+    nameStyle    = "SHADOWTHICKOUTLINE",
+    powerStyle   = "SHADOWTHICKOUTLINE",
+    levelStyle   = "SHADOWTHICKOUTLINE",
     pctSize      = 32,               -- digits-off static percent size
     valSize      = 10,
     valFace      = "follow",         -- value row face: "follow" = track cfg.face

@@ -197,10 +197,10 @@ end
 -- FontString that would mean NO font object at all -- an invisible row. Applying
 -- the main face first guarantees the row always renders; a loadable override
 -- then simply wins.
-local function applyOverrideFace(inst, fs, size, baseFace, overrideKey)
-    addon.ApplyFontStyle(fs, baseFace, size, inst.cfg.style)
+local function applyOverrideFace(fs, size, baseFace, overrideKey, style)
+    addon.ApplyFontStyle(fs, baseFace, size, style)
     if overrideKey ~= "follow" then
-        addon.ApplyFontStyle(fs, addon.ResolveFontFace(overrideKey), size, inst.cfg.style)
+        addon.ApplyFontStyle(fs, addon.ResolveFontFace(overrideKey), size, style)
     end
 end
 
@@ -229,25 +229,29 @@ end
 local LEVEL_PREFIX_SCALE  = 0.75
 local LEVEL_PREFIX_GAP_EM = 0.08
 
+-- Style keys are per text block: cfg.style covers the health block (percent,
+-- '%', value and absorb rows); nameStyle, powerStyle and levelStyle cover
+-- their own blocks. Every measurement of a block's text below uses the same
+-- key, so the rulers always answer for what is actually rendered.
 local function applyFonts(inst)
     local cfg = inst.cfg
     local face = addon.ResolveFontFace(cfg.face)
     addon.ApplyFontStyle(inst.pctFS, face, currentPctPoint(inst), cfg.style)
-    applyOverrideFace(inst, inst.valFS, cfg.valSize, face, cfg.valFace)
+    applyOverrideFace(inst.valFS, cfg.valSize, face, cfg.valFace, cfg.style)
     addon.ApplyFontStyle(inst.symbolFS, face, currentSymbolPoint(inst), cfg.style)
-    applyOverrideFace(inst, inst.nameFS, currentNamePoint(inst), face, cfg.nameFace)
-    addon.ApplyFontStyle(inst.powerFS, face, cfg.powerSize, cfg.style)
-    addon.ApplyFontStyle(inst.altPowerFS, face, cfg.altPowerSize, cfg.style)
+    applyOverrideFace(inst.nameFS, currentNamePoint(inst), face, cfg.nameFace, cfg.nameStyle)
+    addon.ApplyFontStyle(inst.powerFS, face, cfg.powerSize, cfg.powerStyle)
+    addon.ApplyFontStyle(inst.altPowerFS, face, cfg.altPowerSize, cfg.powerStyle)
     -- The '%' companions ride at half their number's size, min 1. Both power
     -- rows have one: either can render as a percent (mana).
-    addon.ApplyFontStyle(inst.powerSymbolFS, face, math.max(1, cfg.powerSize * 0.5), cfg.style)
-    addon.ApplyFontStyle(inst.altPowerSymbolFS, face, math.max(1, cfg.altPowerSize * 0.5), cfg.style)
+    addon.ApplyFontStyle(inst.powerSymbolFS, face, math.max(1, cfg.powerSize * 0.5), cfg.powerStyle)
+    addon.ApplyFontStyle(inst.altPowerSymbolFS, face, math.max(1, cfg.altPowerSize * 0.5), cfg.powerStyle)
     -- The absorb text shares the value row's settings outright:
     -- same size, same face override, same style. No keys of its own.
-    applyOverrideFace(inst, inst.absorbFS, cfg.valSize, face, cfg.valFace)
-    addon.ApplyFontStyle(inst.levelFS, face, cfg.levelSize, cfg.style)
+    applyOverrideFace(inst.absorbFS, cfg.valSize, face, cfg.valFace, cfg.style)
+    addon.ApplyFontStyle(inst.levelFS, face, cfg.levelSize, cfg.levelStyle)
     -- The "lvl" prefix rides at 75% of the number's size, min 1.
-    addon.ApplyFontStyle(inst.levelPrefixFS, face, math.max(1, cfg.levelSize * LEVEL_PREFIX_SCALE), cfg.style)
+    addon.ApplyFontStyle(inst.levelPrefixFS, face, math.max(1, cfg.levelSize * LEVEL_PREFIX_SCALE), cfg.levelStyle)
 end
 
 --------------------------------------------------------------------------------
@@ -534,9 +538,9 @@ local function levelBlockWidth(cfg)
     local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.face)
     local prefixW, digitsW = nil, 0
     if addon.MeasureTextWidth then
-        prefixW = addon.MeasureTextWidth("lvl", face, prefixSize, cfg.style)
+        prefixW = addon.MeasureTextWidth("lvl", face, prefixSize, cfg.levelStyle)
         for _, field in ipairs(LEVEL_DIGIT_FIELDS) do
-            local w = addon.MeasureTextWidth(field, face, cfg.levelSize, cfg.style)
+            local w = addon.MeasureTextWidth(field, face, cfg.levelSize, cfg.levelStyle)
             if type(w) == "number" and w > digitsW then digitsW = w end
         end
     end
@@ -588,7 +592,7 @@ local function powerSymbolReserve(inst, size, isPct)
     local symSize = math.max(1, size * 0.5)
     local w
     if addon.MeasureTextWidth then
-        w = addon.MeasureTextWidth("%", addon.ResolveFontFace(cfg.face), symSize, cfg.style)
+        w = addon.MeasureTextWidth("%", addon.ResolveFontFace(cfg.face), symSize, cfg.powerStyle)
     end
     if type(w) ~= "number" or w <= 0 then w = symSize * 0.9 end
     return w
@@ -622,7 +626,7 @@ local function applyPowerLayout(inst)
     local lvlGap = cfg.levelSize * LEVEL_PREFIX_GAP_EM
     local leadW = 0
     if addon.MeasureTextWidth then
-        leadW = addon.MeasureTextWidth("lvl", addon.ResolveFontFace(cfg.face), lvlPrefixSize, cfg.style)
+        leadW = addon.MeasureTextWidth("lvl", addon.ResolveFontFace(cfg.face), lvlPrefixSize, cfg.levelStyle)
     end
     if type(leadW) ~= "number" or leadW <= 0 then leadW = lvlPrefixSize * 1.2 end
     anchorPowerFS(inst, inst.levelFS, cfg.levelLoc, cfg.levelX, cfg.levelY, 0, leadW + lvlGap)
@@ -2092,11 +2096,11 @@ local function measureNameInk(inst, name)
     if not addon.MeasureTextWidth then return nil end
     local face = addon.ResolveFontFace(nameFaceKey(cfg))
     local size = currentNamePoint(inst)
-    local w = addon.MeasureTextWidth(name, face, size, cfg.style)
+    local w = addon.MeasureTextWidth(name, face, size, cfg.nameStyle)
     if type(w) ~= "number" or w <= 0 then return nil end
     if w <= cfg.nameMaxWidth then return w end
     local lines = addon.WrapTextGreedy and addon.WrapTextGreedy(name, {
-        width = cfg.nameMaxWidth, face = face, size = size, style = cfg.style,
+        width = cfg.nameMaxWidth, face = face, size = size, style = cfg.nameStyle,
     })
     local widest = 0
     if lines then
@@ -2253,7 +2257,7 @@ local function applyNameText(inst, name, seq)
                 width = cfg.nameMaxWidth,
                 face  = addon.ResolveFontFace(nameFaceKey(cfg)),
                 size  = currentNamePoint(inst),
-                style = cfg.style,
+                style = cfg.nameStyle,
             })
             route = lines and "greedy"
         end
@@ -2386,7 +2390,7 @@ local function refreshName(inst, hold)
     addon.RunBlindFit(name, {
         poolKey  = inst.poolKey,
         face     = nameFaceKey(cfg),
-        style    = cfg.style,
+        style    = cfg.nameStyle,
         width    = cfg.nameMaxWidth,
         height   = 200,   -- generous: nameMaxLines is what governs the budget
         maxLines = cfg.nameMaxLines,
@@ -3221,14 +3225,15 @@ local function setFont(inst, face)
     verifyAppliedFace(inst)
 end
 
-local function setStyle(inst, style)
+-- One impl for all four style keys: an outline flag changes glyph metrics, so
+-- the full worker list runs -- setFont's, minus the face verification.
+local function setStyleImpl(inst, key, style)
     ensureApplied(inst)
-    if style and style ~= "" then inst.cfg.style = style end
+    if style and style ~= "" then inst.cfg[key] = style end
     applyFonts(inst)
     applyLayout(inst)
     update(inst)
     refreshName(inst)
-    addon:Print("Style: " .. inst.cfg.style)
 end
 
 local function setPctSize(inst, n)
@@ -4119,7 +4124,10 @@ end
 local API = {
     GetConfig = getConfig,
     SetFont = setFont,
-    SetStyle = setStyle,
+    SetStyle = function(inst, s) return setStyleImpl(inst, "style", s) end,
+    SetNameStyle = function(inst, s) return setStyleImpl(inst, "nameStyle", s) end,
+    SetPowerStyle = function(inst, s) return setStyleImpl(inst, "powerStyle", s) end,
+    SetLevelStyle = function(inst, s) return setStyleImpl(inst, "levelStyle", s) end,
     SetPctSize = setPctSize,
     SetValSize = setValSize,
     SetValFont = setValFont,

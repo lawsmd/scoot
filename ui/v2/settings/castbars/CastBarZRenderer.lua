@@ -591,7 +591,7 @@ function CBZSettings.Render(panel, scrollContent)
                             set = function(v) setSetting("fontFace", v) end })
                         tab:AddSelector({ label = "Font Style",
                             description = "Shared with the cast time readout, so the two cannot disagree about weight.",
-                            values = TextHelpers.fontStyleValues, order = TextHelpers.fontStyleOrder,
+                            values = TextHelpers.fontStyleValues, order = TextHelpers.fontStyleOrderPaired,
                             get = function() return getSetting("fontStyle") or "SHADOWTHICKOUTLINE" end,
                             set = function(v) setSetting("fontStyle", v) end })
                         tab:AddSlider({ label = "Font Size", min = 8, max = 32, step = 1,

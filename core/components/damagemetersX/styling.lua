@@ -352,7 +352,7 @@ local function ApplyTitleStyling(sessionWindow, db)
                     local scale = titleCfg.scaleMultiplier or 1.0
                     local size = baseSize * scale
                     local flags = titleCfg.fontStyle or "OUTLINE"
-                    pcall(fs.SetFont, fs, face, size, flags)
+                    addon.ApplyFontStyle(fs, face, size, flags)
                 end
             end
         end
@@ -399,7 +399,7 @@ local function ApplyTimerStyling(sessionWindow, db)
         local face = addon.ResolveFontFace(timerCfg.fontFace)
         local baseSize = 12
         local flags = timerCfg.fontStyle or "OUTLINE"
-        pcall(timerFS.SetFont, timerFS, face, baseSize, flags)
+        addon.ApplyFontStyle(timerFS, face, baseSize, flags)
     end
 
     -- Color

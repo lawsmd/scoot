@@ -29,12 +29,9 @@ end
 -- Module-level storage for captured FontObjects (used to read live Edit Mode text size)
 local _capturedFontObjects = {}
 
-local function SafeSetFont(fs, face, size, flags)
-    if not (fs and fs.SetFont) then return false end
-    if not face or not size then return false end
-
-    -- Capture the original FontObject BEFORE calling SetFont (which detaches the fontstring).
-    -- Allows reading the live text size during Edit Mode preview.
+-- Capture the original FontObject BEFORE the first SetFont (which detaches
+-- the fontstring). Allows reading the live text size during Edit Mode preview.
+local function CaptureFontObject(fs)
     local state = getState(fs)
     if state and not state.originalFontObject then
         local ok, fontObj = pcall(fs.GetFontObject, fs)
@@ -43,7 +40,12 @@ local function SafeSetFont(fs, face, size, flags)
             _capturedFontObjects[fontObj] = true
         end
     end
+end
 
+local function SafeSetFont(fs, face, size, flags)
+    if not (fs and fs.SetFont) then return false end
+    if not face or not size then return false end
+    CaptureFontObject(fs)
     return pcall(fs.SetFont, fs, face, size, flags)
 end
 
@@ -184,15 +186,36 @@ local function ApplyFontFaceAndStylePreservingSize(fs, cfg, sizeOverride)
     end
 
     local face = cfg.fontFace and (addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace) or cfg.fontFace) or nil
-    local flags = cfg.style or curFlags or nil
-    if face then
-        SafeSetFont(fs, face, size, flags)
-    elseif cfg.style ~= nil then
-        -- If only style is specified, keep existing face and just update flags.
-        local curFace = select(1, GetCurrentFont(fs))
-        if curFace then
-            SafeSetFont(fs, curFace, size, flags)
+    if not face then
+        -- Only style is specified: keep the existing face.
+        face = select(1, GetCurrentFont(fs))
+    end
+    if not face then return end
+
+    if cfg.style ~= nil then
+        -- Styled path: ApplyFontStyle decodes the pseudo-style, so the
+        -- SHADOW*/HEAVY* half renders instead of being dropped by SetFont.
+        CaptureFontObject(fs)
+        addon.ApplyFontStyle(fs, face, size, cfg.style)
+    else
+        -- Face-only path: keep the string's current flags, sanitized.
+        -- GetFont() readback can carry SLUG, which SetFont rejects as of
+        -- 12.0.7, so re-feed only tokens SetFont accepts and leave the
+        -- existing shadow untouched.
+        local flags = nil
+        if type(curFlags) == "string" and curFlags ~= "" then
+            local kept = {}
+            if curFlags:find("THICKOUTLINE", 1, true) then
+                kept[#kept + 1] = "THICKOUTLINE"
+            elseif curFlags:find("OUTLINE", 1, true) then
+                kept[#kept + 1] = "OUTLINE"
+            end
+            if curFlags:find("MONOCHROME", 1, true) then
+                kept[#kept + 1] = "MONOCHROME"
+            end
+            if #kept > 0 then flags = table.concat(kept, ", ") end
         end
+        SafeSetFont(fs, face, size, flags)
     end
 end
 

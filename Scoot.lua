@@ -152,6 +152,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug cdmlayers")
             addon:Print("  /scoot debug cdm   -- CDM styling pipeline state")
             addon:Print("  /scoot debug sct   -- world text font/scale log and CVar state")
+            addon:Print("  /scoot debug slug  -- SLUG font-flag acceptance probe")
             addon:Print("  /scoot debug hover [seconds]  -- what is eating the mouse at the cursor")
             addon:Print("  /scoot debug dm export [overall|current|expired]")
             addon:Print("  /scoot debug dm frames")
@@ -180,6 +181,15 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug ufzauras [log|apply|kick]   (Unit Frames Z aura rows)")
             addon:Print("  /scoot debug gfauras [log|filters|refresh]  (group frame aura tracking)")
             addon:Print("  /scoot debug ping [seconds]              (12.1 ping receiver readiness)")
+            return
+        end
+
+        if sub1 == "slug" then
+            if addon.FontStyles and addon.FontStyles.DebugSlugProbe then
+                addon.FontStyles.DebugSlugProbe()
+            else
+                addon:Print("Slug probe not loaded.")
+            end
             return
         end
 

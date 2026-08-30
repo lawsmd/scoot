@@ -105,11 +105,8 @@ local function ApplyFontToBlizzardClock(db)
         or (select(1, _G.GameFontNormal:GetFont()))
     local fontSize = tonumber(db.clockFontSize) or 12
     local fontStyle = db.clockFontStyle or "OUTLINE"
-    if fontStyle == "NONE" then fontStyle = "" end
 
-    pcall(function()
-        fontString:SetFont(fontFace, fontSize, fontStyle)
-    end)
+    addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 
     -- Apply color
     local r, g, b, a = 1, 1, 1, 1
@@ -182,9 +179,8 @@ local function ApplyClockStyle(db)
         or (select(1, _G.GameFontNormal:GetFont()))
     local fontSize = tonumber(db.clockFontSize) or 12
     local fontStyle = db.clockFontStyle or "OUTLINE"
-    if fontStyle == "NONE" then fontStyle = "" end
 
-    fontString:SetFont(fontFace, fontSize, fontStyle)
+    addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 
     -- Apply color
     local r, g, b, a = 1, 1, 1, 1
@@ -315,9 +311,8 @@ local function ApplySystemDataStyle(db)
         or (select(1, _G.GameFontNormal:GetFont()))
     local fontSize = tonumber(db.systemDataFontSize) or 11
     local fontStyle = db.systemDataFontStyle or "OUTLINE"
-    if fontStyle == "NONE" then fontStyle = "" end
 
-    fontString:SetFont(fontFace, fontSize, fontStyle)
+    addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 
     -- Apply color
     local r, g, b, a = 1, 1, 1, 1

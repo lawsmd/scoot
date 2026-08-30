@@ -70,10 +70,12 @@ local function ResolveFontConfig(cfg, defaults)
     return face, size, style
 end
 
--- Helper: Apply pre-resolved font face/size/style to a FontString
+-- Helper: Apply pre-resolved font face/size/style to a FontString.
+-- ApplyFontStyle decodes the pseudo-style, so SHADOW*/HEAVY* styles render
+-- their shadow half instead of SetFont silently dropping it.
 local function ApplyFontSettings(fontString, face, size, style)
-    if not fontString or not fontString.SetFont then return end
-    pcall(fontString.SetFont, fontString, face, size, style)
+    if not fontString then return end
+    addon.ApplyFontStyle(fontString, face, size, style)
 end
 
 local function ApplyGameTooltipText(db)

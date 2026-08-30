@@ -97,11 +97,8 @@ local function ApplyFontToBlizzardZoneText(db)
         or (select(1, _G.GameFontNormal:GetFont()))
     local fontSize = tonumber(db.zoneTextFontSize) or 12
     local fontStyle = db.zoneTextFontStyle or "OUTLINE"
-    if fontStyle == "NONE" then fontStyle = "" end
 
-    pcall(function()
-        fontString:SetFont(fontFace, fontSize, fontStyle)
-    end)
+    addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 
     -- Apply color
     UpdateZoneTextColor(fontString, db)
@@ -156,9 +153,8 @@ local function ApplyZoneTextStyle(db)
         or (select(1, _G.GameFontNormal:GetFont()))
     local fontSize = tonumber(db.zoneTextFontSize) or 12
     local fontStyle = db.zoneTextFontStyle or "OUTLINE"
-    if fontStyle == "NONE" then fontStyle = "" end
 
-    fontString:SetFont(fontFace, fontSize, fontStyle)
+    addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 
     -- Position using the custom anchor
     local offsetX = tonumber(db.zoneTextOffsetX) or 0
@@ -267,7 +263,6 @@ local function ApplyZoneCoordinatesStyle(db)
         or (select(1, _G.GameFontNormal:GetFont()))
     local fontSize = tonumber(db.zoneTextFontSize) or 12
     local fontStyle = db.zoneTextFontStyle or "OUTLINE"
-    if fontStyle == "NONE" then fontStyle = "" end
 
     local position = db.zoneTextPosition or "dock"
 
@@ -291,7 +286,7 @@ local function ApplyZoneCoordinatesStyle(db)
         local fontString = frame.fontString
         if not fontString then return end
 
-        fontString:SetFont(fontFace, fontSize, fontStyle)
+        addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
         UpdateZoneTextColor(fontString, db)
 
         local zoneTextFS = _G.MinimapZoneText
@@ -318,7 +313,7 @@ local function ApplyZoneCoordinatesStyle(db)
         end
 
         local fs = zoneFrame.coordsFontString
-        fs:SetFont(fontFace, fontSize, fontStyle)
+        addon.ApplyFontStyle(fs, fontFace, fontSize, fontStyle)
         UpdateZoneTextColor(fs, db)
 
         fs:ClearAllPoints()
