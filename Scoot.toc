@@ -20,6 +20,7 @@ libs/LibDBIcon-1.0/lib.xml
 libs/AceSerializer-3.0/AceSerializer-3.0.xml
 libs/LibDeflate/LibDeflate.lua
 
+core/events.lua
 core/framestate.lua
 core/escapekey.lua
 core/strata.lua
@@ -249,6 +250,7 @@ ui/v2/controls/ThreeColumnChecklist.lua
 ui/v2/controls/MultiLineEditBox.lua
 ui/v2/controls/SingleLineEditBox.lua
 ui/v2/controls/Flyout.lua
+ui/v2/controls/SelectorGear.lua
 ui/v2/HighScoreWindow.lua
 ui/v2/reports/WidgetMenu.lua
 ui/v2/reports/GroupAnalysisPanel.lua

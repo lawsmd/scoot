@@ -4,6 +4,8 @@ local addonName, addon = ...
 addon.Profiles = addon.Profiles or {}
 local Profiles = addon.Profiles
 
+local Events = addon.Events
+
 local LEO = LibStub and LibStub("LibEditModeOverride-1.0")
 
 local DEBUG_PREFIX = "|cffa0ff00ScootProfiles|r"
@@ -101,16 +103,7 @@ local function ApplyCooldownViewerEnabledForActiveProfile(reason)
         end
     end
 
-    if InCombatLockdown and InCombatLockdown() then
-        local f = CreateFrame("Frame")
-        f:RegisterEvent("PLAYER_REGEN_ENABLED")
-        f:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            applyCVar()
-        end)
-    else
-        applyCVar()
-    end
+    Events.RunOutOfCombat(applyCVar, "Profiles:cdmCVar")
 
     -- Important: setting the CVar does not reliably hide already-visible CDM frames
     -- until the user toggles Blizzard's checkbox UI. If the profile explicitly disables
@@ -175,16 +168,7 @@ local function ApplyPRDEnabledForActiveProfile(reason)
         end
     end
 
-    if InCombatLockdown and InCombatLockdown() then
-        local f = CreateFrame("Frame")
-        f:RegisterEvent("PLAYER_REGEN_ENABLED")
-        f:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            applyCVar()
-        end)
-    else
-        applyCVar()
-    end
+    Events.RunOutOfCombat(applyCVar, "Profiles:prdCVar")
 
     -- If disabling, trigger a re-apply so borders/overlays get cleared
     if desired == false then
@@ -212,16 +196,9 @@ local function ApplyDamageMeterEnabledForActiveProfile(reason)
                 pcall(SetCVar, "damageMeterEnabled", "0")
             end
         end
-        if InCombatLockdown and InCombatLockdown() then
-            local f = CreateFrame("Frame")
-            f:RegisterEvent("PLAYER_REGEN_ENABLED")
-            f:SetScript("OnEvent", function(self)
-                self:UnregisterAllEvents()
-                applyV2CVar()
-            end)
-        else
-            applyV2CVar()
-        end
+        -- Same key as the V1 path below: both write damageMeterEnabled, so a
+        -- V1/V2 flip mid-combat must resolve to the latest write only.
+        Events.RunOutOfCombat(applyV2CVar, "Profiles:dmCVar")
         -- Hide Blizzard meter frame
         if not (InCombatLockdown and InCombatLockdown()) then
             local frame = _G and _G["DamageMeter"]
@@ -251,16 +228,7 @@ local function ApplyDamageMeterEnabledForActiveProfile(reason)
         end
     end
 
-    if InCombatLockdown and InCombatLockdown() then
-        local f = CreateFrame("Frame")
-        f:RegisterEvent("PLAYER_REGEN_ENABLED")
-        f:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            applyCVar()
-        end)
-    else
-        applyCVar()
-    end
+    Events.RunOutOfCombat(applyCVar, "Profiles:dmCVar")
 
     -- Hide damage meter if disabling (same pattern as CDM)
     if desired == false then
@@ -347,11 +315,10 @@ local function applyBarSettingsAPI(barNum, desired)
     return ok
 end
 
--- Reconciler state. One shared frame for combat deferral (the old code created one
--- frame per bar per apply and closed over stale values, so two profile switches in
--- one combat resolved in arbitrary order).
-local abCombatFrame          -- lazily created, registered for PLAYER_REGEN_ENABLED
-local abReconcilePending     -- reason string queued while in combat
+-- Reconciler state. Combat deferral goes through Events.RunOutOfCombat with one
+-- shared key, so two profile switches in one combat resolve to the latest reason
+-- (the old code created one frame per bar per apply and closed over stale
+-- values, so they resolved in arbitrary order).
 local abArrivalHookInstalled -- SETTINGS_LOADED hook installed once per session
 local abBackSyncInstalled    -- value-changed callbacks installed once per session
 local abVerifyScheduled      -- collapses parallel reconciles into one verify pass
@@ -413,20 +380,12 @@ function ReconcileActionBarsEnabled(reason)
     end
 
     -- Writing these settings shows/hides the secure MultiBar frames, so it is
-    -- forbidden in combat. Queue and re-read the profile when combat ends.
+    -- forbidden in combat. Queue and re-read the profile when combat ends; the
+    -- drained call re-checks combat and re-defers if a new fight started.
     if InCombatLockdown and InCombatLockdown() then
-        abReconcilePending = reason
-        if not abCombatFrame then
-            abCombatFrame = CreateFrame("Frame")
-            abCombatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-            abCombatFrame:SetScript("OnEvent", function()
-                local queued = abReconcilePending
-                abReconcilePending = nil
-                if queued then
-                    ReconcileActionBarsEnabled(queued .. "+PostCombat")
-                end
-            end)
-        end
+        Events.RunOutOfCombat(function()
+            ReconcileActionBarsEnabled(reason .. "+PostCombat")
+        end, "Profiles:abReconcile")
         Debug("Deferred action bar reconcile until combat ends", "reason=" .. reason)
         return
     end
@@ -496,10 +455,7 @@ function ensureBarSettingsArrivalHook()
     if abArrivalHookInstalled then return end
     abArrivalHookInstalled = true
 
-    local f = CreateFrame("Frame")
-    f:RegisterEvent("SETTINGS_LOADED")
-    f:SetScript("OnEvent", function(self)
-        self:UnregisterAllEvents()
+    Events.Once("Profiles", "SETTINGS_LOADED", function()
         ReconcileActionBarsEnabled("SettingsLoaded")
     end)
 end
@@ -563,16 +519,7 @@ local function ApplyRaidLargerRoleDebuffsForActiveProfile(reason)
         end
     end
 
-    if InCombatLockdown and InCombatLockdown() then
-        local f = CreateFrame("Frame")
-        f:RegisterEvent("PLAYER_REGEN_ENABLED")
-        f:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            applyCVar()
-        end)
-    else
-        applyCVar()
-    end
+    Events.RunOutOfCombat(applyCVar, "Profiles:raidRoleDebuffsCVar")
 
     Debug("Applied raidFramesDisplayLargerRoleSpecificDebuffs from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
 end
@@ -615,16 +562,7 @@ local function ApplyGroupBuffIconsHiddenForActiveProfile(reason)
         end
     end
 
-    if InCombatLockdown and InCombatLockdown() then
-        local f = CreateFrame("Frame")
-        f:RegisterEvent("PLAYER_REGEN_ENABLED")
-        f:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            applyCVar()
-        end)
-    else
-        applyCVar()
-    end
+    Events.RunOutOfCombat(applyCVar, "Profiles:groupBuffIconsCVar")
 
     Debug("Applied raidFramesDisplayBuffs from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
 end

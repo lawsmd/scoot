@@ -170,6 +170,33 @@ function Component:SyncEditModeSettings()
     return changed
 end
 
+-- Event API (refactor #33): thin forwards to addon.Events, owner-keyed by the
+-- stable string id so InitializeComponents' wipe-and-rerun tears down the old
+-- generation's registrations. Handlers fire even for UNCONFIGURED components:
+-- the Zero-Touch gate belongs to styling call sites (ApplyStyles below,
+-- RefreshOpacityState in core/init.lua), not to event delivery, because hook
+-- installers must run pre-config. A handler that styles must self-guard:
+--   if self.db == self._ScootDBProxy then return end
+function Component:On(event, handler)
+    addon.Events._MarkComponentOwner(self.id)
+    local component = self
+    return addon.Events.On(self.id, event, function(...)
+        handler(component, ...)
+    end)
+end
+
+function Component:Once(event, handler)
+    addon.Events._MarkComponentOwner(self.id)
+    local component = self
+    return addon.Events.Once(self.id, event, function(...)
+        handler(component, ...)
+    end)
+end
+
+function Component:RunOutOfCombat(fn, key)
+    return addon.Events.RunOutOfCombat(fn, key and (self.id .. ":" .. key) or nil)
+end
+
 addon.ComponentPrototype = Component
 
 function addon:RegisterComponent(component)
@@ -191,6 +218,13 @@ function addon:InitializeComponents()
         wipe(self.Components)
     else
         self.Components = {}
+    end
+
+    -- Tear down the previous generation's Component:On registrations before the
+    -- initializers re-run; otherwise orphaned handlers keep firing on the old
+    -- component tables.
+    if self.Events and self.Events.ResetComponentOwners then
+        self.Events.ResetComponentOwners()
     end
 
     for _, entry in ipairs(self.ComponentInitializers) do

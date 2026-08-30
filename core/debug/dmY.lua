@@ -332,16 +332,11 @@ function addon.DebugDMYAPI()
 
     if InCombatLockdown() then
         addon:Print("DMY API test collected. Results will show after combat ends.")
-        -- Defer showing the window to avoid taint from UI creation during combat
-        local waitFrame = CreateFrame("Frame")
-        waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-        waitFrame:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            addon.DebugShowWindow("DMY API Secrecy Test", output)
-        end)
-    else
-        addon.DebugShowWindow("DMY API Secrecy Test", output)
     end
+    -- Deferred in combat to avoid taint from UI creation during combat
+    addon.Events.RunOutOfCombat(function()
+        addon.DebugShowWindow("DMY API Secrecy Test", output)
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -729,15 +724,10 @@ function addon.DebugDMYFields()
 
     if InCombatLockdown() then
         addon:Print("DMY field dump collected. Results will show after combat ends.")
-        local waitFrame = CreateFrame("Frame")
-        waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-        waitFrame:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            addon.DebugShowWindow("DMY Field Dump", output)
-        end)
-    else
-        addon.DebugShowWindow("DMY Field Dump", output)
     end
+    addon.Events.RunOutOfCombat(function()
+        addon.DebugShowWindow("DMY Field Dump", output)
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -1158,15 +1148,10 @@ function addon.DebugDMYDrilldown()
 
     if InCombatLockdown() then
         addon:Print("DMY drill-down test collected. Results will show after combat ends.")
-        local waitFrame = CreateFrame("Frame")
-        waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-        waitFrame:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            addon.DebugShowWindow("DMY Drill-Down Feasibility Test", output)
-        end)
-    else
-        addon.DebugShowWindow("DMY Drill-Down Feasibility Test", output)
     end
+    addon.Events.RunOutOfCombat(function()
+        addon.DebugShowWindow("DMY Drill-Down Feasibility Test", output)
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -1423,15 +1408,10 @@ function addon.DebugDMYMulticol()
 
     if InCombatLockdown() then
         addon:Print("DMY multi-column test collected. Results will show after combat ends.")
-        local waitFrame = CreateFrame("Frame")
-        waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-        waitFrame:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            addon.DebugShowWindow("DMY Multi-Column Live Combat Test", output)
-        end)
-    else
-        addon.DebugShowWindow("DMY Multi-Column Live Combat Test", output)
     end
+    addon.Events.RunOutOfCombat(function()
+        addon.DebugShowWindow("DMY Multi-Column Live Combat Test", output)
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -1904,16 +1884,9 @@ function addon.DebugDMYColprobe()
     add("[4] Drilldown GUID cache: %d entries, %d identity collisions", cacheCount, collisionCount)
 
     local output = table.concat(lines, "\n")
-    if InCombatLockdown() then
-        local waitFrame = CreateFrame("Frame")
-        waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-        waitFrame:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            addon.DebugShowWindow("DMY Column Probe", output)
-        end)
-    else
+    addon.Events.RunOutOfCombat(function()
         addon.DebugShowWindow("DMY Column Probe", output)
-    end
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -2153,16 +2126,9 @@ function addon.DebugDMYDeathProbe()
         c.recapOk or 0, c.recapEmpty or 0, c.recapFail or 0, c.segHit or 0, c.segMiss or 0)
 
     local output = table.concat(lines, "\n")
-    if InCombatLockdown() then
-        local waitFrame = CreateFrame("Frame")
-        waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-        waitFrame:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            addon.DebugShowWindow("DMY Death Probe", output)
-        end)
-    else
+    addon.Events.RunOutOfCombat(function()
         addon.DebugShowWindow("DMY Death Probe", output)
-    end
+    end)
 end
 
 --------------------------------------------------------------------------------
