@@ -33,7 +33,7 @@ local HOVER_COLOR = { 1.0, 1.0, 1.0, 0.9 }
 
 local container   -- overlay, reparented onto the attached window
 local strips = {} -- pooled divider strips
-local eventFrame  -- PLAYER_REGEN_DISABLED + GLOBAL_MOUSE_UP
+local mouseUpHandle -- GLOBAL_MOUSE_UP subscription, live only during a drag
 local attached    -- window index while active, nil otherwise
 local drag        -- live drag state, nil otherwise
 
@@ -154,7 +154,9 @@ local function BeginDrag(boundary)
         lastApplied = nil,
     }
 
-    eventFrame:RegisterEvent("GLOBAL_MOUSE_UP")
+    mouseUpHandle = addon.Events.On("DamageMetersY:Dividers", "GLOBAL_MOUSE_UP", function(_, button)
+        EndDrag(button == "RightButton")
+    end)
     container._updater:Show()
 end
 
@@ -162,7 +164,10 @@ end
 EndDrag = function(cancel)
     if not drag then return end
     drag = nil
-    eventFrame:UnregisterEvent("GLOBAL_MOUSE_UP")
+    if mouseUpHandle then
+        mouseUpHandle:Off()
+        mouseUpHandle = nil
+    end
     if container and container._updater then container._updater:Hide() end
 
     local win = GetAttachedWindow()
@@ -263,15 +268,8 @@ local function EnsureFrames()
     updater:SetScript("OnUpdate", DragTick)
     container._updater = updater
 
-    eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    eventFrame:SetScript("OnEvent", function(self, event, ...)
-        if event == "PLAYER_REGEN_DISABLED" then
-            Dividers.Detach()
-        elseif event == "GLOBAL_MOUSE_UP" then
-            local button = ...
-            EndDrag(button == "RightButton")
-        end
+    addon.Events.On("DamageMetersY:Dividers", "PLAYER_REGEN_DISABLED", function()
+        Dividers.Detach()
     end)
 end
 

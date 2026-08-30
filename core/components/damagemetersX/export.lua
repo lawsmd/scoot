@@ -746,33 +746,16 @@ local function CreateExportMenu(exportBtn, sessionWindow)
         SendExportToChat(sessionWindow)
     end)
 
-    -- Menu show/hide logic
-    menu:SetScript("OnShow", function(self)
-        UpdateChannelText()
-        UpdateSliderLabel()
-        local comp = addon.Components and addon.Components["damageMeter"]
-        local count = comp and comp.db and comp.db.exportChatLineCount or 5
-        slider:SetValue(count)
+    -- Events live only while the menu is shown; handles armed in OnShow,
+    -- released in OnHide.
+    local menuEventHandles = nil
 
-        -- Close on click-away via GLOBAL_MOUSE_DOWN
-        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-        self:RegisterEvent("PLAYER_REGEN_DISABLED")
-    end)
-
-    menu:SetScript("OnHide", function(self)
-        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-        self:UnregisterEvent("PLAYER_REGEN_DISABLED")
-        if activeExportMenu == self then
-            activeExportMenu = nil
-        end
-    end)
-
-    menu:SetScript("OnEvent", function(self, event)
+    local function onMenuEvent(event)
         if event == "PLAYER_REGEN_DISABLED" then
             CloseExportMenu()
         elseif event == "GLOBAL_MOUSE_DOWN" then
             C_Timer.After(0.05, function()
-                if not self:IsShown() then return end
+                if not menu:IsShown() then return end
                 local foci = GetMouseFoci()
                 local focus = foci and foci[1]
                 if not focus then return end
@@ -780,11 +763,38 @@ local function CreateExportMenu(exportBtn, sessionWindow)
                 -- Walk parent chain: if focus is menu or any child of menu, stay open
                 local f = focus
                 while f do
-                    if f == self then return end
+                    if f == menu then return end
                     f = f:GetParent()
                 end
                 CloseExportMenu()
             end)
+        end
+    end
+
+    -- Menu show/hide logic
+    menu:SetScript("OnShow", function()
+        UpdateChannelText()
+        UpdateSliderLabel()
+        local comp = addon.Components and addon.Components["damageMeter"]
+        local count = comp and comp.db and comp.db.exportChatLineCount or 5
+        slider:SetValue(count)
+
+        -- Close on click-away via GLOBAL_MOUSE_DOWN
+        menuEventHandles = {
+            addon.Events.On("DamageMetersX:Export", "GLOBAL_MOUSE_DOWN", onMenuEvent),
+            addon.Events.On("DamageMetersX:Export", "PLAYER_REGEN_DISABLED", onMenuEvent),
+        }
+    end)
+
+    menu:SetScript("OnHide", function(self)
+        if menuEventHandles then
+            for _, handle in ipairs(menuEventHandles) do
+                handle:Off()
+            end
+            menuEventHandles = nil
+        end
+        if activeExportMenu == self then
+            activeExportMenu = nil
         end
     end)
 

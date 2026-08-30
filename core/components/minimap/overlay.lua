@@ -9,7 +9,7 @@ local addonName, addon = ...
 
 -- Module state
 local overlayButtonFrame = nil
-local overlayEventFrame = nil
+local overlayEventHandles = nil
 local darkeningFrame = nil
 local wasActiveBeforeCombat = false
 local wasActiveBeforeEditMode = false
@@ -348,39 +348,39 @@ end
 -- Combat Event Handling
 --------------------------------------------------------------------------------
 
-local function EnsureEventFrame()
-    if overlayEventFrame then return overlayEventFrame end
+local function onCombatEvent(event)
+    local db = getMinimapDB()
+    if not db or not db.overlayEnabled then return end
 
-    overlayEventFrame = CreateFrame("Frame", "ScootMinimapOverlayEvents", UIParent)
-    overlayEventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    overlayEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    overlayEventFrame:SetScript("OnEvent", function(_, event)
-        local db = getMinimapDB()
-        if not db or not db.overlayEnabled then return end
-
-        if event == "PLAYER_REGEN_DISABLED" then
-            -- Entering combat
-            if db.overlayCombatHide and db.overlayActive then
-                wasActiveBeforeCombat = true
-                DeactivateOverlay(true) -- skip persist so we can restore
-                UpdateOverlayButtonState(db)
-            end
-        elseif event == "PLAYER_REGEN_ENABLED" then
-            -- Exiting combat
-            if wasActiveBeforeCombat then
-                wasActiveBeforeCombat = false
-                C_Timer.After(0, function()
-                    local dbAfter = getMinimapDB()
-                    if dbAfter and dbAfter.overlayEnabled then
-                        ActivateOverlay(dbAfter)
-                        UpdateOverlayButtonState(dbAfter)
-                    end
-                end)
-            end
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- Entering combat
+        if db.overlayCombatHide and db.overlayActive then
+            wasActiveBeforeCombat = true
+            DeactivateOverlay(true) -- skip persist so we can restore
+            UpdateOverlayButtonState(db)
         end
-    end)
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        -- Exiting combat
+        if wasActiveBeforeCombat then
+            wasActiveBeforeCombat = false
+            C_Timer.After(0, function()
+                local dbAfter = getMinimapDB()
+                if dbAfter and dbAfter.overlayEnabled then
+                    ActivateOverlay(dbAfter)
+                    UpdateOverlayButtonState(dbAfter)
+                end
+            end)
+        end
+    end
+end
 
-    return overlayEventFrame
+local function EnsureCombatEvents()
+    if overlayEventHandles then return end
+
+    overlayEventHandles = {
+        addon.Events.On("Minimap:Overlay", "PLAYER_REGEN_DISABLED", onCombatEvent),
+        addon.Events.On("Minimap:Overlay", "PLAYER_REGEN_ENABLED", onCombatEvent),
+    }
 end
 
 --------------------------------------------------------------------------------
@@ -434,15 +434,17 @@ local function ApplyOverlaySettings(db)
         if db.overlayActive then
             DeactivateOverlay()
         end
-        if overlayEventFrame then
-            overlayEventFrame:UnregisterAllEvents()
-            overlayEventFrame = nil
+        if overlayEventHandles then
+            for _, handle in ipairs(overlayEventHandles) do
+                handle:Off()
+            end
+            overlayEventHandles = nil
         end
         return
     end
 
     -- Ensure subsystems are set up
-    EnsureEventFrame()
+    EnsureCombatEvents()
     InstallEditModeHooks()
 
     -- Create and configure button

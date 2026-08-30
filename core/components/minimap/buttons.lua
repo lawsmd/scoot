@@ -25,7 +25,7 @@ local trackingButtonFrame = nil
 
 -- Mail button state
 local mailButtonFrame = nil
-local mailEventFrame = nil
+local mailEventsArmed = nil
 
 --------------------------------------------------------------------------------
 -- Addon Button Container
@@ -754,11 +754,10 @@ local function ApplyMailButtonStyle(db)
 end
 
 local function EnsureMailEventHandler()
-    if mailEventFrame then return end
+    if mailEventsArmed then return end
+    mailEventsArmed = true
 
-    mailEventFrame = CreateFrame("Frame")
-    mailEventFrame:RegisterEvent("UPDATE_PENDING_MAIL")
-    mailEventFrame:SetScript("OnEvent", function(self, event)
+    addon.Events.On("Minimap:Buttons", "UPDATE_PENDING_MAIL", function()
         local db = getMinimapDB()
         if db then
             ApplyMailButtonStyle(db)

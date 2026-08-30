@@ -79,10 +79,7 @@ function DJ._SeasonDebug()
 end
 
 -- Event wiring
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE")
-frame:SetScript("OnEvent", function(_, event)
+local function onSeasonEvent(event)
     if event == "PLAYER_ENTERING_WORLD" then
         requestMapInfo()
         refreshSnapshot()
@@ -91,4 +88,6 @@ frame:SetScript("OnEvent", function(_, event)
         refreshSnapshot()
         if DJ.RefreshAllVisible then DJ.RefreshAllVisible() end
     end
-end)
+end
+addon.Events.On("DungeonJournal:Season", "PLAYER_ENTERING_WORLD", onSeasonEvent)
+addon.Events.On("DungeonJournal:Season", "CHALLENGE_MODE_MAPS_UPDATE", onSeasonEvent)

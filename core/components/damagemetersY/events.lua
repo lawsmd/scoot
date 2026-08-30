@@ -6,11 +6,10 @@ local DMY = addon.DamageMetersY
 -- Event System
 --------------------------------------------------------------------------------
 
-local eventFrame = nil
 local updatePending = false
 local resetPending = false
 
-local function OnEvent(self, event, ...)
+local function OnEvent(event, ...)
     if not DMY._initialized then return end
 
     -- Resolution/UI-scale changed: pixel-snapped layout offsets are stale
@@ -147,18 +146,21 @@ end
 --------------------------------------------------------------------------------
 
 function DMY._InitializeEvents(comp)
-    -- Event frame
-    eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("DAMAGE_METER_COMBAT_SESSION_UPDATED")
-    eventFrame:RegisterEvent("DAMAGE_METER_CURRENT_SESSION_UPDATED")
-    eventFrame:RegisterEvent("DAMAGE_METER_RESET")
-    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    eventFrame:RegisterEvent("UI_SCALE_CHANGED")
-    eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
-    eventFrame:SetScript("OnEvent", OnEvent)
+    -- Events. Registered once (_Initialize latches), so the file-scoped owner
+    -- keeps them alive across component re-initialization.
+    for _, event in ipairs({
+        "DAMAGE_METER_COMBAT_SESSION_UPDATED",
+        "DAMAGE_METER_CURRENT_SESSION_UPDATED",
+        "DAMAGE_METER_RESET",
+        "PLAYER_REGEN_ENABLED",
+        "PLAYER_REGEN_DISABLED",
+        "PLAYER_ENTERING_WORLD",
+        "GROUP_ROSTER_UPDATE",
+        "UI_SCALE_CHANGED",
+        "DISPLAY_SIZE_CHANGED",
+    }) do
+        addon.Events.On("DamageMetersY", event, OnEvent)
+    end
 
     -- Timer ticker
     timerFrame = CreateFrame("Frame")

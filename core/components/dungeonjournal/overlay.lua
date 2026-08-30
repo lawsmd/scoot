@@ -258,14 +258,6 @@ local function installHooks()
     DJ.RefreshAllVisible()
 end
 
-local loadFrame = CreateFrame("Frame")
-loadFrame:RegisterEvent("ADDON_LOADED")
-loadFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-loadFrame:SetScript("OnEvent", function(self, event, arg1)
-    if event == "ADDON_LOADED" and arg1 == "Blizzard_EncounterJournal" then
-        installHooks()
-    elseif event == "PLAYER_ENTERING_WORLD" then
-        -- EJ may already be loaded (UI reload); try once on first PEW.
-        installHooks()
-    end
-end)
+-- OnAddonLoaded runs installHooks immediately when the EJ is already loaded
+-- (UI reload), which covers the old first-PEW retry.
+addon.Events.OnAddonLoaded("Blizzard_EncounterJournal", installHooks)

@@ -616,13 +616,8 @@ addon:RegisterComponentInitializer(function(self)
     SnapshotResetZone()
 
     -- Re-snapshot after PLAYER_ENTERING_WORLD so GetInstanceInfo() has difficulty info
-    local snapshotRefreshFrame = CreateFrame("Frame")
-    snapshotRefreshFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    snapshotRefreshFrame:SetScript("OnEvent", function(self, _, isInitialLogin, isReloadingUi)
-        if isInitialLogin or isReloadingUi then
-            SnapshotResetZone()
-            self:UnregisterAllEvents()
-        end
+    addon.Events.OnWorldEntered(function()
+        SnapshotResetZone()
     end)
 
     -- Event-driven restyling (replaces Rule 11-violating hooksecurefunc on system frames)
@@ -630,12 +625,7 @@ addon:RegisterComponentInitializer(function(self)
     -- These events fire when Blizzard refreshes the meter, matching the old hook triggers.
     local dmEventPending = false
     local dmResetPending = false
-    local dmEventFrame = CreateFrame("Frame")
-    dmEventFrame:RegisterEvent("DAMAGE_METER_COMBAT_SESSION_UPDATED")
-    dmEventFrame:RegisterEvent("DAMAGE_METER_RESET")
-    dmEventFrame:RegisterEvent("DAMAGE_METER_CURRENT_SESSION_UPDATED")
-    dmEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    dmEventFrame:SetScript("OnEvent", function(_, event)
+    local function onDamageMeterEvent(_, event)
         local comp = addon.Components and addon.Components["damageMeter"]
         if not comp or not comp.db then return end
         if comp._ScootDBProxy and comp.db == comp._ScootDBProxy then return end
@@ -665,7 +655,15 @@ addon:RegisterComponentInitializer(function(self)
                 end
             end
         end)
-    end)
+    end
+    for _, event in ipairs({
+        "DAMAGE_METER_COMBAT_SESSION_UPDATED",
+        "DAMAGE_METER_RESET",
+        "DAMAGE_METER_CURRENT_SESSION_UPDATED",
+        "PLAYER_REGEN_ENABLED",
+    }) do
+        damageMeter:On(event, onDamageMeterEvent)
+    end
 
     -- Overlay sync ticker: keeps overlays current with ScrollBox state.
     -- Runs every 0.1s using RefreshVisibleOverlays (lightweight, OPT-18 cached)
@@ -726,9 +724,7 @@ addon:RegisterComponentInitializer(function(self)
     end)
 
     -- Auto-reset data event handler
-    local resetFrame = CreateFrame("Frame")
-    resetFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    resetFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
+    damageMeter:On("PLAYER_ENTERING_WORLD", function(_, _, isInitialLogin, isReloadingUi)
         if isInitialLogin or isReloadingUi then return end
 
         local comp = addon.Components and addon.Components["damageMeter"]

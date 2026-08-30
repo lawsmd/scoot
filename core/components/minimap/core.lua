@@ -411,42 +411,43 @@ end
 -- Event Handler for Zone Changes
 --------------------------------------------------------------------------------
 
-local zoneEventFrame = nil
+local zoneEventsArmed = nil
 
 local function EnsureZoneEventHandler()
-    if zoneEventFrame then return end
+    if zoneEventsArmed then return end
+    zoneEventsArmed = true
 
-    zoneEventFrame = CreateFrame("Frame")
-    zoneEventFrame:RegisterEvent("ZONE_CHANGED")
-    zoneEventFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
-    zoneEventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-    zoneEventFrame:SetScript("OnEvent", function()
+    local function onZoneEvent()
         MM._UpdateZoneText()
         MM._UpdateZoneCoordinates()
-    end)
+    end
+    addon.Events.On("Minimap:Zone", "ZONE_CHANGED", onZoneEvent)
+    addon.Events.On("Minimap:Zone", "ZONE_CHANGED_INDOORS", onZoneEvent)
+    addon.Events.On("Minimap:Zone", "ZONE_CHANGED_NEW_AREA", onZoneEvent)
 end
 
 --------------------------------------------------------------------------------
 -- HybridMinimap / TimeManager Handler
 --------------------------------------------------------------------------------
 
-local addonLoadedFrame = nil
+local addonLoadedArmed = nil
 
 local function EnsureAddonLoadedHandler()
-    if addonLoadedFrame then return end
+    if addonLoadedArmed then return end
+    addonLoadedArmed = true
 
-    addonLoadedFrame = CreateFrame("Frame")
-    addonLoadedFrame:RegisterEvent("ADDON_LOADED")
-    addonLoadedFrame:SetScript("OnEvent", function(self, event, loadedAddon)
-        if event ~= "ADDON_LOADED" then return end
-
+    -- OnAddonLoaded runs the callback immediately when the addon is already
+    -- loaded; both appliers are idempotent re-applies of the current db.
+    addon.Events.OnAddonLoaded("Blizzard_HybridMinimap", function()
         local db = getMinimapDB()
-        if not db then return end
-
-        if loadedAddon == "Blizzard_HybridMinimap" then
+        if db then
             ApplyMinimapShape(db)
-        elseif loadedAddon == "Blizzard_TimeManager" then
-            -- TimeManager just loaded - apply clock settings now that TimeManagerClockButton exists
+        end
+    end)
+    addon.Events.OnAddonLoaded("Blizzard_TimeManager", function()
+        -- Apply clock settings now that TimeManagerClockButton exists
+        local db = getMinimapDB()
+        if db then
             MM._ApplyClockStyle(db)
         end
     end)

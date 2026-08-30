@@ -464,11 +464,7 @@ end
 -- Combat Event Handling
 --------------------------------------------------------------------------------
 
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:SetScript("OnEvent", function(_, event)
+local function onWidgetEvent(event)
     local comp = getComponent()
     if not comp then return end
     if event == "PLAYER_ENTERING_WORLD" then
@@ -476,7 +472,10 @@ eventFrame:SetScript("OnEvent", function(_, event)
     else
         W:_ApplyOpacity()
     end
-end)
+end
+addon.Events.On("Widget", "PLAYER_REGEN_DISABLED", onWidgetEvent)
+addon.Events.On("Widget", "PLAYER_REGEN_ENABLED", onWidgetEvent)
+addon.Events.On("Widget", "PLAYER_ENTERING_WORLD", onWidgetEvent)
 
 --------------------------------------------------------------------------------
 -- Component Registration
