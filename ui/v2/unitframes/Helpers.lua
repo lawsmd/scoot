@@ -17,6 +17,7 @@ local UNIT_KEY_MAP = {
     ufPet = "Pet",
     ufToT = "TargetOfTarget",
     ufBoss = "Boss",
+    ufFocusTarget = "FocusTarget",
 }
 
 function UF.getUnitKey(componentId)
@@ -52,6 +53,11 @@ end
 function UF.getMiscDB(unitKey)
     local t = UF.getUFDB(unitKey)
     return t and rawget(t, "misc") or nil
+end
+
+function UF.getBuffsDebuffsDB(unitKey)
+    local t = UF.getUFDB(unitKey)
+    return t and rawget(t, "buffsDebuffs") or nil
 end
 
 --------------------------------------------------------------------------------
@@ -97,6 +103,14 @@ function UF.ensureMiscDB(unitKey)
     if not t then return nil end
     t.misc = t.misc or {}
     return t.misc
+end
+
+-- Ensure buffs/debuffs settings sub-table exists
+function UF.ensureBuffsDebuffsDB(unitKey)
+    local t = UF.ensureUFDB(unitKey)
+    if not t then return nil end
+    t.buffsDebuffs = t.buffsDebuffs or {}
+    return t.buffsDebuffs
 end
 
 --------------------------------------------------------------------------------
@@ -149,6 +163,120 @@ function UF.applyStyles()
     if addon and addon.ApplyStyles then
         addon:ApplyStyles()
     end
+end
+
+function UF.applyNameLevelText(unitKey)
+    if addon.ApplyUnitFrameNameLevelTextFor then
+        addon.ApplyUnitFrameNameLevelTextFor(unitKey)
+    end
+    UF.applyStyles()
+end
+
+function UF.applyBuffsDebuffs(unitKey)
+    if addon.ApplyUnitFrameBuffsDebuffsFor then
+        addon.ApplyUnitFrameBuffsDebuffsFor(unitKey)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Composite Text Accessors
+--------------------------------------------------------------------------------
+-- get/set closure pairs speaking AddTextStyleBlock's field vocabulary
+-- (see settings/BuilderComposites.lua). get is read-only; set materializes.
+
+-- Accessors for a unit's text sub-table (textHealthPercent, textName, ...).
+-- The hidden flag lives on the parent unit table under a key derived from
+-- textKey (textHealthPercent -> healthPercentHidden) unless opts.hiddenKey
+-- overrides (name/level text uses nameTextHidden/levelTextHidden).
+-- offsetX/offsetY map to the nested offset.x/offset.y pair.
+function UF.textAccessors(unitKey, textKey, opts)
+    local hiddenKey = opts and opts.hiddenKey
+    if not hiddenKey then
+        local stripped = textKey:gsub("^text", "")
+        hiddenKey = stripped:sub(1, 1):lower() .. stripped:sub(2) .. "Hidden"
+    end
+    local function get(field)
+        if field == "hidden" then
+            local t = UF.getUFDB(unitKey)
+            return t and rawget(t, hiddenKey)
+        end
+        local s = UF.getTextDB(unitKey, textKey)
+        if not s then return nil end
+        if field == "offsetX" or field == "offsetY" then
+            local o = s.offset
+            return o and o[field == "offsetX" and "x" or "y"]
+        end
+        return s[field]
+    end
+    local function set(field, value)
+        if field == "hidden" then
+            local t = UF.ensureUFDB(unitKey)
+            if t then t[hiddenKey] = value end
+            return
+        end
+        local s = UF.ensureTextDB(unitKey, textKey)
+        if not s then return end
+        if field == "offsetX" or field == "offsetY" then
+            s.offset = s.offset or {}
+            s.offset[field == "offsetX" and "x" or "y"] = value
+        else
+            s[field] = value
+        end
+    end
+    return get, set
+end
+
+-- Accessors for a cast bar text sub-table (spellNameText, castTimeText).
+function UF.castBarTextAccessors(unitKey, tableKey)
+    local function get(field)
+        local cb = UF.getCastBarDB(unitKey)
+        local s = cb and rawget(cb, tableKey)
+        if not s then return nil end
+        return s[field]
+    end
+    local function set(field, value)
+        local cb = UF.ensureCastBarDB(unitKey)
+        if not cb then return end
+        cb[tableKey] = cb[tableKey] or {}
+        cb[tableKey][field] = value
+    end
+    return get, set
+end
+
+--------------------------------------------------------------------------------
+-- Bound Helpers
+--------------------------------------------------------------------------------
+
+-- Per-unit helpers bound by UF.BindUnit; each takes unitKey first.
+local BIND_NAMES = {
+    "ensureUFDB", "ensureTextDB", "ensurePortraitDB", "ensureCastBarDB",
+    "ensureMiscDB", "ensureBuffsDebuffsDB",
+    "getUFDB", "getTextDB", "getPortraitDB", "getCastBarDB", "getMiscDB",
+    "getBuffsDebuffsDB",
+    "applyBarTextures", "applyHealthText", "applyPowerText", "applyPortrait",
+    "applyCastBar", "applyVisibility", "applyScaleMult", "applyNameLevelText",
+    "applyBuffsDebuffs",
+    "textAccessors", "castBarTextAccessors",
+}
+
+-- Returns a table with the helpers above bound to unitKey, plus applyStyles.
+-- Replaces the wrapper preambles in the unit frame renderers. overrides
+-- replaces entries by name (Boss passes its own applyCastBar).
+function UF.BindUnit(unitKey, overrides)
+    local B = {}
+    for _, name in ipairs(BIND_NAMES) do
+        local fn = UF[name]
+        B[name] = function(...)
+            return fn(unitKey, ...)
+        end
+    end
+    B.applyStyles = UF.applyStyles
+    if overrides then
+        for name, fn in pairs(overrides) do
+            B[name] = fn
+        end
+    end
+    return B
 end
 
 --------------------------------------------------------------------------------
@@ -263,17 +391,10 @@ UF.TOOLTIPS = {
 -- Selector/Dropdown Options
 --------------------------------------------------------------------------------
 
--- Font style options
-UF.fontStyleValues = {
-    NONE = "Regular",
-    OUTLINE = "Outline",
-    THICKOUTLINE = "Thick Outline",
-    HEAVYTHICKOUTLINE = "Heavy Thick Outline",
-    SHADOW = "Shadow",
-    SHADOWOUTLINE = "Shadow Outline",
-    SHADOWTHICKOUTLINE = "Shadow Thick Outline",
-}
-UF.fontStyleOrder = { "NONE", "OUTLINE", "THICKOUTLINE", "HEAVYTHICKOUTLINE", "SHADOW", "SHADOWOUTLINE", "SHADOWTHICKOUTLINE" }
+-- Font style options; the catalog in core/fonts.lua is the source of truth.
+UF.fontStyleValues = addon.FontStyles.values
+UF.fontStyleOrder = addon.FontStyles.order
+UF.fontStyleOrderPaired = addon.FontStyles.orderPaired
 
 -- Text alignment options
 UF.alignmentValues = {

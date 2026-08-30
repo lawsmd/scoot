@@ -42,6 +42,37 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
         return apb and rawget(apb, textKey) or nil
     end
 
+    -- Alt power text tables sit two levels down (unit db > altPowerBar >
+    -- textPercent/textValue), below UF.textAccessors' reach, so the field
+    -- mapping is local. Hide toggles live in the Visibility tab.
+    local function buildAltPowerTextTab(tabInner, textKey, defaultAlignment)
+        tabInner:AddTextStyleBlock({
+            get = function(field)
+                local s = getAltPowerTextDB(textKey)
+                if not s then return nil end
+                if field == "offsetX" or field == "offsetY" then
+                    local o = s.offset
+                    return o and o[field == "offsetX" and "x" or "y"]
+                end
+                return s[field]
+            end,
+            set = function(field, value)
+                local s = ensureAltPowerTextDB(textKey)
+                if not s then return end
+                if field == "offsetX" or field == "offsetY" then
+                    s.offset = s.offset or {}
+                    s.offset[field == "offsetX" and "x" or "y"] = value
+                else
+                    s[field] = value
+                end
+            end,
+            apply = applyBarTexturesFn,
+            color = { values = UF.fontColorPowerValues, order = UF.fontColorPowerOrder },
+            alignment = { kind = "align", default = defaultAlignment },
+        })
+        tabInner:Finalize()
+    end
+
     local altPowerTabs = {
         { key = "positioning", label = "Positioning" },
         { key = "sizing", label = "Sizing" },
@@ -462,262 +493,10 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
                         tabInner:Finalize()
                     end,
                     percentText = function(cf, tabInner)
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function()
-                                local s = getAltPowerTextDB("textPercent") or {}
-                                return s.fontFace or "FRIZQT__"
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textPercent")
-                                if not s then return end
-                                s.fontFace = v
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddSelector({
-                            label = "Style",
-                            values = UF.fontStyleValues,
-                            order = UF.fontStyleOrder,
-                            get = function()
-                                local s = getAltPowerTextDB("textPercent") or {}
-                                return s.style or "OUTLINE"
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textPercent")
-                                if not s then return end
-                                s.style = v
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddSlider({
-                            label = "Size",
-                            min = 6, max = 48, step = 1,
-                            get = function()
-                                local s = getAltPowerTextDB("textPercent") or {}
-                                return tonumber(s.size) or 14
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textPercent")
-                                if not s then return end
-                                s.size = tonumber(v) or 14
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddSelectorColorPicker({
-                            label = "Color",
-                            values = UF.fontColorPowerValues,
-                            order = UF.fontColorPowerOrder,
-                            get = function()
-                                local s = getAltPowerTextDB("textPercent") or {}
-                                return s.colorMode or "default"
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textPercent")
-                                if not s then return end
-                                s.colorMode = v or "default"
-                                applyBarTexturesFn()
-                            end,
-                            getColor = function()
-                                local s = getAltPowerTextDB("textPercent") or {}
-                                local c = s.color or {1, 1, 1, 1}
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                local s = ensureAltPowerTextDB("textPercent")
-                                if not s then return end
-                                s.color = {r or 1, g or 1, b or 1, a or 1}
-                                applyBarTexturesFn()
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        tabInner:AddSelector({
-                            label = "Alignment",
-                            values = UF.alignmentValues,
-                            order = UF.alignmentOrder,
-                            get = function()
-                                local s = getAltPowerTextDB("textPercent") or {}
-                                return s.alignment or "LEFT"
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textPercent")
-                                if not s then return end
-                                s.alignment = v or "LEFT"
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local s = getAltPowerTextDB("textPercent") or {}
-                                    local o = s.offset or {}
-                                    return tonumber(o.x) or 0
-                                end,
-                                set = function(v)
-                                    local s = ensureAltPowerTextDB("textPercent")
-                                    if not s then return end
-                                    s.offset = s.offset or {}
-                                    s.offset.x = tonumber(v) or 0
-                                    applyBarTexturesFn()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local s = getAltPowerTextDB("textPercent") or {}
-                                    local o = s.offset or {}
-                                    return tonumber(o.y) or 0
-                                end,
-                                set = function(v)
-                                    local s = ensureAltPowerTextDB("textPercent")
-                                    if not s then return end
-                                    s.offset = s.offset or {}
-                                    s.offset.y = tonumber(v) or 0
-                                    applyBarTexturesFn()
-                                end,
-                            },
-                        })
-
-                        tabInner:Finalize()
+                        buildAltPowerTextTab(tabInner, "textPercent", "LEFT")
                     end,
                     valueText = function(cf, tabInner)
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function()
-                                local s = getAltPowerTextDB("textValue") or {}
-                                return s.fontFace or "FRIZQT__"
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textValue")
-                                if not s then return end
-                                s.fontFace = v
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddSelector({
-                            label = "Style",
-                            values = UF.fontStyleValues,
-                            order = UF.fontStyleOrder,
-                            get = function()
-                                local s = getAltPowerTextDB("textValue") or {}
-                                return s.style or "OUTLINE"
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textValue")
-                                if not s then return end
-                                s.style = v
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddSlider({
-                            label = "Size",
-                            min = 6, max = 48, step = 1,
-                            get = function()
-                                local s = getAltPowerTextDB("textValue") or {}
-                                return tonumber(s.size) or 14
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textValue")
-                                if not s then return end
-                                s.size = tonumber(v) or 14
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddSelectorColorPicker({
-                            label = "Color",
-                            values = UF.fontColorPowerValues,
-                            order = UF.fontColorPowerOrder,
-                            get = function()
-                                local s = getAltPowerTextDB("textValue") or {}
-                                return s.colorMode or "default"
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textValue")
-                                if not s then return end
-                                s.colorMode = v or "default"
-                                applyBarTexturesFn()
-                            end,
-                            getColor = function()
-                                local s = getAltPowerTextDB("textValue") or {}
-                                local c = s.color or {1, 1, 1, 1}
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                local s = ensureAltPowerTextDB("textValue")
-                                if not s then return end
-                                s.color = {r or 1, g or 1, b or 1, a or 1}
-                                applyBarTexturesFn()
-                            end,
-                            customValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        tabInner:AddSelector({
-                            label = "Alignment",
-                            values = UF.alignmentValues,
-                            order = UF.alignmentOrder,
-                            get = function()
-                                local s = getAltPowerTextDB("textValue") or {}
-                                return s.alignment or "RIGHT"
-                            end,
-                            set = function(v)
-                                local s = ensureAltPowerTextDB("textValue")
-                                if not s then return end
-                                s.alignment = v or "RIGHT"
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local s = getAltPowerTextDB("textValue") or {}
-                                    local o = s.offset or {}
-                                    return tonumber(o.x) or 0
-                                end,
-                                set = function(v)
-                                    local s = ensureAltPowerTextDB("textValue")
-                                    if not s then return end
-                                    s.offset = s.offset or {}
-                                    s.offset.x = tonumber(v) or 0
-                                    applyBarTexturesFn()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local s = getAltPowerTextDB("textValue") or {}
-                                    local o = s.offset or {}
-                                    return tonumber(o.y) or 0
-                                end,
-                                set = function(v)
-                                    local s = ensureAltPowerTextDB("textValue")
-                                    if not s then return end
-                                    s.offset = s.offset or {}
-                                    s.offset.y = tonumber(v) or 0
-                                    applyBarTexturesFn()
-                                end,
-                            },
-                        })
-
-                        tabInner:Finalize()
+                        buildAltPowerTextTab(tabInner, "textValue", "RIGHT")
                     end,
                 },
             })
@@ -972,110 +751,34 @@ function UF.PlayerSections.buildTotemBar(builder, COMPONENT_ID)
                         tabInner:Finalize()
                     end,
                     timerText = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Hide Timer Text",
-                            get = function()
-                                local cfg = getTotemBarTimerTextDB() or {}
-                                return cfg.hidden == true
+                        -- Timer text stores its hide flag inside its own
+                        -- table (cfg.hidden), unlike unit text tables
+                        tabInner:AddTextStyleBlock({
+                            get = function(field)
+                                local cfg = getTotemBarTimerTextDB()
+                                if not cfg then return nil end
+                                if field == "offsetX" or field == "offsetY" then
+                                    local o = cfg.offset
+                                    return o and o[field == "offsetX" and "x" or "y"]
+                                end
+                                return cfg[field]
                             end,
-                            set = function(v)
+                            set = function(field, value)
                                 local cfg = ensureTotemBarTimerTextDB()
                                 if not cfg then return end
-                                cfg.hidden = (v == true)
-                                applyTotemBar()
-                            end,
-                        })
-                        tabInner:AddFontSelector({
-                            label = "Font Face",
-                            get = function()
-                                local cfg = getTotemBarTimerTextDB() or {}
-                                return cfg.fontFace or "FRIZQT__"
-                            end,
-                            set = function(v)
-                                local cfg = ensureTotemBarTimerTextDB()
-                                if not cfg then return end
-                                cfg.fontFace = v or "FRIZQT__"
-                                applyTotemBar()
-                            end,
-                        })
-                        tabInner:AddSlider({
-                            label = "Font Size",
-                            min = 6, max = 24, step = 1,
-                            get = function()
-                                local cfg = getTotemBarTimerTextDB() or {}
-                                return tonumber(cfg.size) or 12
-                            end,
-                            set = function(v)
-                                local cfg = ensureTotemBarTimerTextDB()
-                                if not cfg then return end
-                                cfg.size = tonumber(v) or 12
-                                applyTotemBar()
-                            end,
-                        })
-                        tabInner:AddSelector({
-                            label = "Font Style",
-                            values = UF.fontStyleValues,
-                            order = UF.fontStyleOrder,
-                            get = function()
-                                local cfg = getTotemBarTimerTextDB() or {}
-                                return cfg.style or "OUTLINE"
-                            end,
-                            set = function(v)
-                                local cfg = ensureTotemBarTimerTextDB()
-                                if not cfg then return end
-                                cfg.style = v or "OUTLINE"
-                                applyTotemBar()
-                            end,
-                        })
-                        tabInner:AddColorPicker({
-                            label = "Font Color",
-                            hasAlpha = true,
-                            get = function()
-                                local cfg = getTotemBarTimerTextDB() or {}
-                                local c = cfg.color or { 1, 1, 1, 1 }
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            set = function(r, g, b, a)
-                                local cfg = ensureTotemBarTimerTextDB()
-                                if not cfg then return end
-                                cfg.color = { r or 1, g or 1, b or 1, a or 1 }
-                                applyTotemBar()
-                            end,
-                        })
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -50, max = 50, step = 1,
-                                get = function()
-                                    local cfg = getTotemBarTimerTextDB() or {}
-                                    local o = cfg.offset or {}
-                                    return tonumber(o.x) or 0
-                                end,
-                                set = function(v)
-                                    local cfg = ensureTotemBarTimerTextDB()
-                                    if not cfg then return end
+                                if field == "offsetX" or field == "offsetY" then
                                     cfg.offset = cfg.offset or {}
-                                    cfg.offset.x = tonumber(v) or 0
-                                    applyTotemBar()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -50, max = 50, step = 1,
-                                get = function()
-                                    local cfg = getTotemBarTimerTextDB() or {}
-                                    local o = cfg.offset or {}
-                                    return tonumber(o.y) or 0
-                                end,
-                                set = function(v)
-                                    local cfg = ensureTotemBarTimerTextDB()
-                                    if not cfg then return end
-                                    cfg.offset = cfg.offset or {}
-                                    cfg.offset.y = tonumber(v) or 0
-                                    applyTotemBar()
-                                end,
-                            },
+                                    cfg.offset[field == "offsetX" and "x" or "y"] = value
+                                else
+                                    cfg[field] = value
+                                end
+                            end,
+                            apply = applyTotemBar,
+                            defaults = { size = 12 },
+                            hideToggle = { label = "Hide Timer Text" },
+                            size = { min = 6, max = 24 },
+                            color = { kind = "plain" },
+                            offset = { range = 50 },
                         })
                         tabInner:Finalize()
                     end,

@@ -11,84 +11,10 @@ local COMPONENT_ID = "ufPet"
 local UNIT_KEY = "Pet"
 
 --------------------------------------------------------------------------------
--- Database Access
+-- Bound Helpers
 --------------------------------------------------------------------------------
 
-local function ensureUFDB()
-    return UF.ensureUFDB(UNIT_KEY)
-end
-
-local function ensureTextDB(key)
-    return UF.ensureTextDB(UNIT_KEY, key)
-end
-
-local function ensurePortraitDB()
-    return UF.ensurePortraitDB(UNIT_KEY)
-end
-
-local function ensureNameLevelDB(textKey)
-    local t = UF.ensureUFDB(UNIT_KEY)
-    if not t then return nil end
-    t[textKey] = t[textKey] or {}
-    return t[textKey]
-end
-
--- Read-only accessors (no materialization — used in get callbacks)
-local function getUFDB()
-    return UF.getUFDB(UNIT_KEY)
-end
-
-local function getTextDB(key)
-    return UF.getTextDB(UNIT_KEY, key)
-end
-
-local function getPortraitDB()
-    return UF.getPortraitDB(UNIT_KEY)
-end
-
-local function getNameLevelDB(textKey)
-    local t = UF.getUFDB(UNIT_KEY)
-    return t and rawget(t, textKey) or nil
-end
-
---------------------------------------------------------------------------------
--- Apply Functions
---------------------------------------------------------------------------------
-
-local function applyBarTextures()
-    UF.applyBarTextures(UNIT_KEY)
-end
-
-local function applyHealthText()
-    UF.applyHealthText(UNIT_KEY)
-end
-
-local function applyPowerText()
-    UF.applyPowerText(UNIT_KEY)
-end
-
-local function applyPortrait()
-    UF.applyPortrait(UNIT_KEY)
-end
-
-local function applyScaleMult()
-    UF.applyScaleMult(UNIT_KEY)
-end
-
-local function applyVisibility()
-    UF.applyVisibility(UNIT_KEY)
-end
-
-local function applyStyles()
-    UF.applyStyles()
-end
-
-local function applyNameLevelText()
-    if addon and addon.ApplyUnitFrameNameLevelTextFor then
-        addon.ApplyUnitFrameNameLevelTextFor(UNIT_KEY)
-    end
-    UF.applyStyles()
-end
+local B = UF.BindUnit(UNIT_KEY)
 
 --------------------------------------------------------------------------------
 -- Health Bar Tab Builders
@@ -98,38 +24,38 @@ local function buildHealthStyleTab(inner)
     inner:AddDualBarStyleRow({
         label = "Foreground",
         getTexture = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return t.healthBarTexture or "default"
         end,
         setTexture = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarTexture = v or "default"
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         colorValues = UF.healthColorValues,
         colorOrder = UF.healthColorOrder,
         colorInfoIcons = UF.healthColorInfoIcons,
         getColorMode = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return t.healthBarColorMode or "default"
         end,
         setColorMode = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarColorMode = v or "default"
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         getColor = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             local c = t.healthBarTint or {1, 1, 1, 1}
             return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
         end,
         setColor = function(r, g, b, a)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarTint = {r or 1, g or 1, b or 1, a or 1}
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         customColorValue = "custom",
         hasAlpha = true,
@@ -140,37 +66,37 @@ local function buildHealthStyleTab(inner)
     inner:AddDualBarStyleRow({
         label = "Background",
         getTexture = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return t.healthBarBackgroundTexture or "default"
         end,
         setTexture = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBackgroundTexture = v or "default"
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         colorValues = UF.bgColorValues,
         colorOrder = UF.bgColorOrder,
         getColorMode = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return t.healthBarBackgroundColorMode or "default"
         end,
         setColorMode = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBackgroundColorMode = v or "default"
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         getColor = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             local c = t.healthBarBackgroundTint or {0, 0, 0, 1}
             return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
         end,
         setColor = function(r, g, b, a)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBackgroundTint = {r or 0, g or 0, b or 0, a or 1}
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         customColorValue = "custom",
         hasAlpha = true,
@@ -182,14 +108,14 @@ local function buildHealthStyleTab(inner)
         max = 100,
         step = 1,
         get = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return tonumber(t.healthBarBackgroundOpacity) or 50
         end,
         set = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBackgroundOpacity = tonumber(v) or 50
-            applyBarTextures()
+            B.applyBarTextures()
         end,
     })
 
@@ -198,7 +124,7 @@ end
 
 local function buildHealthBorderTab(inner)
     local function isEnabled()
-        local t = getUFDB() or {}
+        local t = B.getUFDB() or {}
         return not not t.useCustomBorders
     end
 
@@ -206,49 +132,49 @@ local function buildHealthBorderTab(inner)
         label = "Border Style",
         includeNone = true,
         get = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return t.healthBarBorderStyle or "square"
         end,
         set = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBorderStyle = v or "square"
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         getHiddenEdges = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return t.healthBarBorderHiddenEdges
         end,
         setHiddenEdges = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBorderHiddenEdges = v
-            applyBarTextures()
+            B.applyBarTextures()
         end,
     })
 
     inner:AddToggleColorPicker({
         label = "Border Tint",
         get = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return not not t.healthBarBorderTintEnable
         end,
         set = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBorderTintEnable = not not v
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         getColor = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             local c = t.healthBarBorderTintColor or {1, 1, 1, 1}
             return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
         end,
         setColor = function(r, g, b, a)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBorderTintColor = {r or 1, g or 1, b or 1, a or 1}
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         hasAlpha = true,
     })
@@ -260,15 +186,15 @@ local function buildHealthBorderTab(inner)
         step = 0.5,
         precision = 1,
         get = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             local v = tonumber(t.healthBarBorderThickness) or 1
             return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2))
         end,
         set = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2))
-            applyBarTextures()
+            B.applyBarTextures()
         end,
     })
 
@@ -277,28 +203,28 @@ local function buildHealthBorderTab(inner)
         sliderA = {
             axisLabel = "H", min = -4, max = 4, step = 1,
             get = function()
-                local t = getUFDB() or {}
+                local t = B.getUFDB() or {}
                 return tonumber(t.healthBarBorderInsetH) or tonumber(t.healthBarBorderInset) or 0
             end,
             set = function(v)
-                local t = ensureUFDB()
+                local t = B.ensureUFDB()
                 if not t then return end
                 t.healthBarBorderInsetH = tonumber(v) or 0
-                applyBarTextures()
+                B.applyBarTextures()
             end,
             minLabel = "-4", maxLabel = "+4",
         },
         sliderB = {
             axisLabel = "V", min = -4, max = 4, step = 1,
             get = function()
-                local t = getUFDB() or {}
+                local t = B.getUFDB() or {}
                 return tonumber(t.healthBarBorderInsetV) or tonumber(t.healthBarBorderInset) or 0
             end,
             set = function(v)
-                local t = ensureUFDB()
+                local t = B.ensureUFDB()
                 if not t then return end
                 t.healthBarBorderInsetV = tonumber(v) or 0
-                applyBarTextures()
+                B.applyBarTextures()
             end,
             minLabel = "-4", maxLabel = "+4",
         },
@@ -311,14 +237,14 @@ local function buildHealthVisibilityTab(inner)
     inner:AddToggle({
         label = "Hide the Bar but not its Text",
         get = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return not not t.healthBarHideTextureOnly
         end,
         set = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.healthBarHideTextureOnly = v and true or false
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         infoIcon = {
             tooltipTitle = "Hide the Bar but not its Text",
@@ -330,310 +256,26 @@ local function buildHealthVisibilityTab(inner)
 end
 
 local function buildHealthPercentTextTab(inner)
-    inner:AddToggle({
-        label = "Disable % Text",
-        get = function()
-            local t = getUFDB() or {}
-            return not not t.healthPercentHidden
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.healthPercentHidden = v and true or false
-            applyHealthText()
-        end,
+    local get, set = B.textAccessors("textHealthPercent")
+    inner:AddTextStyleBlock({
+        get = get, set = set, apply = B.applyStyles,
+        applyHidden = B.applyHealthText,
+        hideToggle = { label = "Disable % Text" },
+        color = { values = UF.fontColorHealthValues, order = UF.fontColorHealthOrder },
+        alignment = { kind = "align", default = "LEFT" },
     })
-
-    inner:AddFontSelector({
-        label = "% Text Font",
-        get = function()
-            local s = getTextDB("textHealthPercent") or {}
-            return s.fontFace or "FRIZQT__"
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthPercent = t.textHealthPercent or {}
-            t.textHealthPercent.fontFace = v
-            applyStyles()
-        end,
-    })
-
-    inner:AddSelector({
-        label = "% Text Style",
-        values = UF.fontStyleValues,
-        order = UF.fontStyleOrder,
-        get = function()
-            local s = getTextDB("textHealthPercent") or {}
-            return s.style or "OUTLINE"
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthPercent = t.textHealthPercent or {}
-            t.textHealthPercent.style = v
-            applyStyles()
-        end,
-    })
-
-    inner:AddSlider({
-        label = "% Text Size",
-        min = 6,
-        max = 48,
-        step = 1,
-        get = function()
-            local s = getTextDB("textHealthPercent") or {}
-            return tonumber(s.size) or 14
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthPercent = t.textHealthPercent or {}
-            t.textHealthPercent.size = tonumber(v) or 14
-            applyStyles()
-        end,
-    })
-
-    inner:AddSelectorColorPicker({
-        label = "% Text Color",
-        values = UF.fontColorHealthValues,
-        order = UF.fontColorHealthOrder,
-        get = function()
-            local s = getTextDB("textHealthPercent") or {}
-            return s.colorMode or "default"
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthPercent = t.textHealthPercent or {}
-            t.textHealthPercent.colorMode = v or "default"
-            applyStyles()
-        end,
-        getColor = function()
-            local s = getTextDB("textHealthPercent") or {}
-            local c = s.color or {1, 1, 1, 1}
-            return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-        end,
-        setColor = function(r, g, b, a)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthPercent = t.textHealthPercent or {}
-            t.textHealthPercent.color = {r or 1, g or 1, b or 1, a or 1}
-            applyStyles()
-        end,
-        customValue = "custom",
-        hasAlpha = true,
-    })
-
-    inner:AddSelector({
-        label = "% Text Alignment",
-        values = UF.alignmentValues,
-        order = UF.alignmentOrder,
-        get = function()
-            local s = getTextDB("textHealthPercent") or {}
-            return s.alignment or "LEFT"
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthPercent = t.textHealthPercent or {}
-            t.textHealthPercent.alignment = v or "LEFT"
-            applyStyles()
-        end,
-    })
-
-    inner:AddDualSlider({
-        label = "% Text Offset",
-        sliderA = {
-            axisLabel = "X",
-            min = -100, max = 100, step = 1,
-            get = function()
-                local s = getTextDB("textHealthPercent") or {}
-                local o = s.offset or {}
-                return tonumber(o.x) or 0
-            end,
-            set = function(v)
-                local t = ensureUFDB()
-                if not t then return end
-                t.textHealthPercent = t.textHealthPercent or {}
-                t.textHealthPercent.offset = t.textHealthPercent.offset or {}
-                t.textHealthPercent.offset.x = tonumber(v) or 0
-                applyStyles()
-            end,
-        },
-        sliderB = {
-            axisLabel = "Y",
-            min = -100, max = 100, step = 1,
-            get = function()
-                local s = getTextDB("textHealthPercent") or {}
-                local o = s.offset or {}
-                return tonumber(o.y) or 0
-            end,
-            set = function(v)
-                local t = ensureUFDB()
-                if not t then return end
-                t.textHealthPercent = t.textHealthPercent or {}
-                t.textHealthPercent.offset = t.textHealthPercent.offset or {}
-                t.textHealthPercent.offset.y = tonumber(v) or 0
-                applyStyles()
-            end,
-        },
-    })
-
     inner:Finalize()
 end
 
 local function buildHealthValueTextTab(inner)
-    inner:AddToggle({
-        label = "Disable Value Text",
-        get = function()
-            local t = getUFDB() or {}
-            return not not t.healthValueHidden
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.healthValueHidden = v and true or false
-            applyHealthText()
-        end,
+    local get, set = B.textAccessors("textHealthValue")
+    inner:AddTextStyleBlock({
+        get = get, set = set, apply = B.applyStyles,
+        applyHidden = B.applyHealthText,
+        hideToggle = { label = "Disable Value Text" },
+        color = { values = UF.fontColorHealthValues, order = UF.fontColorHealthOrder },
+        alignment = { kind = "align", default = "RIGHT" },
     })
-
-    inner:AddFontSelector({
-        label = "Value Text Font",
-        get = function()
-            local s = getTextDB("textHealthValue") or {}
-            return s.fontFace or "FRIZQT__"
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthValue = t.textHealthValue or {}
-            t.textHealthValue.fontFace = v
-            applyStyles()
-        end,
-    })
-
-    inner:AddSelector({
-        label = "Value Text Style",
-        values = UF.fontStyleValues,
-        order = UF.fontStyleOrder,
-        get = function()
-            local s = getTextDB("textHealthValue") or {}
-            return s.style or "OUTLINE"
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthValue = t.textHealthValue or {}
-            t.textHealthValue.style = v
-            applyStyles()
-        end,
-    })
-
-    inner:AddSlider({
-        label = "Value Text Size",
-        min = 6,
-        max = 48,
-        step = 1,
-        get = function()
-            local s = getTextDB("textHealthValue") or {}
-            return tonumber(s.size) or 14
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthValue = t.textHealthValue or {}
-            t.textHealthValue.size = tonumber(v) or 14
-            applyStyles()
-        end,
-    })
-
-    inner:AddSelectorColorPicker({
-        label = "Value Text Color",
-        values = UF.fontColorHealthValues,
-        order = UF.fontColorHealthOrder,
-        get = function()
-            local s = getTextDB("textHealthValue") or {}
-            return s.colorMode or "default"
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthValue = t.textHealthValue or {}
-            t.textHealthValue.colorMode = v or "default"
-            applyStyles()
-        end,
-        getColor = function()
-            local s = getTextDB("textHealthValue") or {}
-            local c = s.color or {1, 1, 1, 1}
-            return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-        end,
-        setColor = function(r, g, b, a)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthValue = t.textHealthValue or {}
-            t.textHealthValue.color = {r or 1, g or 1, b or 1, a or 1}
-            applyStyles()
-        end,
-        customValue = "custom",
-        hasAlpha = true,
-    })
-
-    inner:AddSelector({
-        label = "Value Text Alignment",
-        values = UF.alignmentValues,
-        order = UF.alignmentOrder,
-        get = function()
-            local s = getTextDB("textHealthValue") or {}
-            return s.alignment or "RIGHT"
-        end,
-        set = function(v)
-            local t = ensureUFDB()
-            if not t then return end
-            t.textHealthValue = t.textHealthValue or {}
-            t.textHealthValue.alignment = v or "RIGHT"
-            applyStyles()
-        end,
-    })
-
-    inner:AddDualSlider({
-        label = "Value Text Offset",
-        sliderA = {
-            axisLabel = "X",
-            min = -100, max = 100, step = 1,
-            get = function()
-                local s = getTextDB("textHealthValue") or {}
-                local o = s.offset or {}
-                return tonumber(o.x) or 0
-            end,
-            set = function(v)
-                local t = ensureUFDB()
-                if not t then return end
-                t.textHealthValue = t.textHealthValue or {}
-                t.textHealthValue.offset = t.textHealthValue.offset or {}
-                t.textHealthValue.offset.x = tonumber(v) or 0
-                applyStyles()
-            end,
-        },
-        sliderB = {
-            axisLabel = "Y",
-            min = -100, max = 100, step = 1,
-            get = function()
-                local s = getTextDB("textHealthValue") or {}
-                local o = s.offset or {}
-                return tonumber(o.y) or 0
-            end,
-            set = function(v)
-                local t = ensureUFDB()
-                if not t then return end
-                t.textHealthValue = t.textHealthValue or {}
-                t.textHealthValue.offset = t.textHealthValue.offset or {}
-                t.textHealthValue.offset.y = tonumber(v) or 0
-                applyStyles()
-            end,
-        },
-    })
-
     inner:Finalize()
 end
 
@@ -660,15 +302,15 @@ function UF.RenderPet(panel, scrollContent)
         description = "REQUIRED for custom borders. Hides default frame art.",
         emphasized = true,
         get = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return not not t.useCustomBorders
         end,
         set = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.useCustomBorders = not not v
             if not v then t.healthBarHideBorder = false end
-            applyBarTextures()
+            B.applyBarTextures()
         end,
         infoIcon = UF.TOOLTIPS.hideBlizzardArt,
     })
@@ -698,14 +340,14 @@ function UF.RenderPet(panel, scrollContent)
         step = 0.05,
         precision = 2,
         get = function()
-            local t = getUFDB() or {}
+            local t = B.getUFDB() or {}
             return tonumber(t.scaleMult) or 1.0
         end,
         set = function(v)
-            local t = ensureUFDB()
+            local t = B.ensureUFDB()
             if not t then return end
             t.scaleMult = tonumber(v) or 1.0
-            applyScaleMult()
+            B.applyScaleMult()
         end,
         minLabel = "1.0x",
         maxLabel = "2.0x",
@@ -763,75 +405,75 @@ function UF.RenderPet(panel, scrollContent)
                             sliderA = {
                                 axisLabel = "X",
                                 min = -100, max = 100, step = 1,
-                                get = function() local t = getUFDB() or {}; return tonumber(t.powerBarOffsetX) or 0 end,
-                                set = function(v) local t = ensureUFDB(); if t then t.powerBarOffsetX = tonumber(v) or 0; applyBarTextures() end end,
+                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarOffsetX) or 0 end,
+                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarOffsetX = tonumber(v) or 0; B.applyBarTextures() end end,
                             },
                             sliderB = {
                                 axisLabel = "Y",
                                 min = -100, max = 100, step = 1,
-                                get = function() local t = getUFDB() or {}; return tonumber(t.powerBarOffsetY) or 0 end,
-                                set = function(v) local t = ensureUFDB(); if t then t.powerBarOffsetY = tonumber(v) or 0; applyBarTextures() end end,
+                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarOffsetY) or 0 end,
+                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarOffsetY = tonumber(v) or 0; B.applyBarTextures() end end,
                             },
                         })
                         tabInner:Finalize()
                     end,
                     sizing = function(cf, tabInner)
                         tabInner:AddSlider({ label = "Height %", min = 10, max = 200, step = 5,
-                            get = function() local t = getUFDB() or {}; return tonumber(t.powerBarHeightPct) or 100 end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarHeightPct = tonumber(v) or 100; applyBarTextures() end end })
+                            get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarHeightPct) or 100 end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarHeightPct = tonumber(v) or 100; B.applyBarTextures() end end })
                         tabInner:Finalize()
                     end,
                     style = function(cf, tabInner)
                         tabInner:AddBarTextureSelector({ label = "Foreground Texture",
-                            get = function() local t = getUFDB() or {}; return t.powerBarTexture or "default" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarTexture = v or "default"; applyBarTextures() end end })
+                            get = function() local t = B.getUFDB() or {}; return t.powerBarTexture or "default" end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarTexture = v or "default"; B.applyBarTextures() end end })
                         tabInner:AddSelectorColorPicker({ label = "Foreground Color", values = UF.powerColorValues, order = UF.powerColorOrder,
-                            get = function() local t = getUFDB() or {}; return t.powerBarColorMode or "default" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarColorMode = v or "default"; applyBarTextures() end end,
-                            getColor = function() local t = getUFDB() or {}; local c = t.powerBarTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t.powerBarTint = {r,g,b,a}; applyBarTextures() end end,
+                            get = function() local t = B.getUFDB() or {}; return t.powerBarColorMode or "default" end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarColorMode = v or "default"; B.applyBarTextures() end end,
+                            getColor = function() local t = B.getUFDB() or {}; local c = t.powerBarTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.powerBarTint = {r,g,b,a}; B.applyBarTextures() end end,
                             customValue = "custom", hasAlpha = true })
                         tabInner:AddSpacer(8)
                         tabInner:AddBarTextureSelector({ label = "Background Texture",
-                            get = function() local t = getUFDB() or {}; return t.powerBarBackgroundTexture or "default" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarBackgroundTexture = v or "default"; applyBarTextures() end end })
+                            get = function() local t = B.getUFDB() or {}; return t.powerBarBackgroundTexture or "default" end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundTexture = v or "default"; B.applyBarTextures() end end })
                         tabInner:AddSelectorColorPicker({ label = "Background Color", values = UF.bgColorValues, order = UF.bgColorOrder,
-                            get = function() local t = getUFDB() or {}; return t.powerBarBackgroundColorMode or "default" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarBackgroundColorMode = v or "default"; applyBarTextures() end end,
-                            getColor = function() local t = getUFDB() or {}; local c = t.powerBarBackgroundTint or {0,0,0,1}; return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t.powerBarBackgroundTint = {r,g,b,a}; applyBarTextures() end end,
+                            get = function() local t = B.getUFDB() or {}; return t.powerBarBackgroundColorMode or "default" end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundColorMode = v or "default"; B.applyBarTextures() end end,
+                            getColor = function() local t = B.getUFDB() or {}; local c = t.powerBarBackgroundTint or {0,0,0,1}; return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.powerBarBackgroundTint = {r,g,b,a}; B.applyBarTextures() end end,
                             customValue = "custom", hasAlpha = true })
                         tabInner:AddSlider({ label = "Background Opacity", min = 0, max = 100, step = 1,
-                            get = function() local t = getUFDB() or {}; return tonumber(t.powerBarBackgroundOpacity) or 50 end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarBackgroundOpacity = tonumber(v) or 50; applyBarTextures() end end })
+                            get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarBackgroundOpacity) or 50 end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundOpacity = tonumber(v) or 50; B.applyBarTextures() end end })
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
                         tabInner:AddBarBorderSelector({ label = "Border Style", includeNone = true,
-                            get = function() local t = getUFDB() or {}; return t.powerBarBorderStyle or "square" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarBorderStyle = v or "square"; applyBarTextures() end end,
-                            getHiddenEdges = function() local t = getUFDB() or {}; return t.powerBarBorderHiddenEdges end,
-                            setHiddenEdges = function(v) local t = ensureUFDB(); if t then t.powerBarBorderHiddenEdges = v; applyBarTextures() end end })
+                            get = function() local t = B.getUFDB() or {}; return t.powerBarBorderStyle or "square" end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderStyle = v or "square"; B.applyBarTextures() end end,
+                            getHiddenEdges = function() local t = B.getUFDB() or {}; return t.powerBarBorderHiddenEdges end,
+                            setHiddenEdges = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderHiddenEdges = v; B.applyBarTextures() end end })
                         tabInner:AddToggleColorPicker({ label = "Border Tint",
-                            get = function() local t = getUFDB() or {}; return not not t.powerBarBorderTintEnable end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarBorderTintEnable = not not v; applyBarTextures() end end,
-                            getColor = function() local t = getUFDB() or {}; local c = t.powerBarBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t.powerBarBorderTintColor = {r,g,b,a}; applyBarTextures() end end,
+                            get = function() local t = B.getUFDB() or {}; return not not t.powerBarBorderTintEnable end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderTintEnable = not not v; B.applyBarTextures() end end,
+                            getColor = function() local t = B.getUFDB() or {}; local c = t.powerBarBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.powerBarBorderTintColor = {r,g,b,a}; B.applyBarTextures() end end,
                             hasAlpha = true })
                         tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() local t = getUFDB() or {}; local v = tonumber(t.powerBarBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); applyBarTextures() end end })
+                            get = function() local t = B.getUFDB() or {}; local v = tonumber(t.powerBarBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyBarTextures() end end })
                         tabInner:AddDualSlider({ label = "Border Inset",
                             sliderA = {
                                 axisLabel = "H", min = -4, max = 4, step = 1,
-                                get = function() local t = getUFDB() or {}; return tonumber(t.powerBarBorderInsetH) or tonumber(t.powerBarBorderInset) or 0 end,
-                                set = function(v) local t = ensureUFDB(); if t then t.powerBarBorderInsetH = tonumber(v) or 0; applyBarTextures() end end,
+                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarBorderInsetH) or tonumber(t.powerBarBorderInset) or 0 end,
+                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderInsetH = tonumber(v) or 0; B.applyBarTextures() end end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                             sliderB = {
                                 axisLabel = "V", min = -4, max = 4, step = 1,
-                                get = function() local t = getUFDB() or {}; return tonumber(t.powerBarBorderInsetV) or tonumber(t.powerBarBorderInset) or 0 end,
-                                set = function(v) local t = ensureUFDB(); if t then t.powerBarBorderInsetV = tonumber(v) or 0; applyBarTextures() end end,
+                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarBorderInsetV) or tonumber(t.powerBarBorderInset) or 0 end,
+                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderInsetV = tonumber(v) or 0; B.applyBarTextures() end end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                         })
@@ -839,52 +481,28 @@ function UF.RenderPet(panel, scrollContent)
                     end,
                     visibility = function(cf, tabInner)
                         tabInner:AddToggle({ label = "Hide Power Bar",
-                            get = function() local t = getUFDB() or {}; return not not t.powerBarHidden end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerBarHidden = v and true or false; applyBarTextures() end end })
+                            get = function() local t = B.getUFDB() or {}; return not not t.powerBarHidden end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarHidden = v and true or false; B.applyBarTextures() end end })
                         tabInner:Finalize()
                     end,
                     percentText = function(cf, tabInner)
-                        tabInner:AddToggle({ label = "Disable % Text",
-                            get = function() local t = getUFDB() or {}; return not not t.powerPercentHidden end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerPercentHidden = v and true or false; applyPowerText() end end })
-                        tabInner:AddFontSelector({ label = "% Text Font",
-                            get = function() local s = getTextDB("textPowerPercent") or {}; return s.fontFace or "FRIZQT__" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.textPowerPercent = t.textPowerPercent or {}; t.textPowerPercent.fontFace = v; applyStyles() end end })
-                        tabInner:AddSelector({ label = "% Text Style", values = UF.fontStyleValues, order = UF.fontStyleOrder,
-                            get = function() local s = getTextDB("textPowerPercent") or {}; return s.style or "OUTLINE" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.textPowerPercent = t.textPowerPercent or {}; t.textPowerPercent.style = v; applyStyles() end end })
-                        tabInner:AddSlider({ label = "% Text Size", min = 6, max = 48, step = 1,
-                            get = function() local s = getTextDB("textPowerPercent") or {}; return tonumber(s.size) or 14 end,
-                            set = function(v) local t = ensureUFDB(); if t then t.textPowerPercent = t.textPowerPercent or {}; t.textPowerPercent.size = tonumber(v) or 14; applyStyles() end end })
-                        tabInner:AddSelectorColorPicker({ label = "% Text Color",
-                            values = UF.fontColorValues, order = UF.fontColorOrder,
-                            get = function() local s = getTextDB("textPowerPercent") or {}; return s.colorMode or "default" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.textPowerPercent = t.textPowerPercent or {}; t.textPowerPercent.colorMode = v or "default"; applyStyles() end end,
-                            getColor = function() local s = getTextDB("textPowerPercent") or {}; local c = s.color or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t.textPowerPercent = t.textPowerPercent or {}; t.textPowerPercent.color = {r,g,b,a}; applyStyles() end end,
-                            customValue = "custom", hasAlpha = true })
+                        local get, set = B.textAccessors("textPowerPercent")
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = B.applyStyles,
+                            applyHidden = B.applyPowerText,
+                            hideToggle = { label = "Disable % Text" },
+                            offset = false,
+                        })
                         tabInner:Finalize()
                     end,
                     valueText = function(cf, tabInner)
-                        tabInner:AddToggle({ label = "Disable Value Text",
-                            get = function() local t = getUFDB() or {}; return not not t.powerValueHidden end,
-                            set = function(v) local t = ensureUFDB(); if t then t.powerValueHidden = v and true or false; applyPowerText() end end })
-                        tabInner:AddFontSelector({ label = "Value Text Font",
-                            get = function() local s = getTextDB("textPowerValue") or {}; return s.fontFace or "FRIZQT__" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.textPowerValue = t.textPowerValue or {}; t.textPowerValue.fontFace = v; applyStyles() end end })
-                        tabInner:AddSelector({ label = "Value Text Style", values = UF.fontStyleValues, order = UF.fontStyleOrder,
-                            get = function() local s = getTextDB("textPowerValue") or {}; return s.style or "OUTLINE" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.textPowerValue = t.textPowerValue or {}; t.textPowerValue.style = v; applyStyles() end end })
-                        tabInner:AddSlider({ label = "Value Text Size", min = 6, max = 48, step = 1,
-                            get = function() local s = getTextDB("textPowerValue") or {}; return tonumber(s.size) or 14 end,
-                            set = function(v) local t = ensureUFDB(); if t then t.textPowerValue = t.textPowerValue or {}; t.textPowerValue.size = tonumber(v) or 14; applyStyles() end end })
-                        tabInner:AddSelectorColorPicker({ label = "Value Text Color",
-                            values = UF.fontColorValues, order = UF.fontColorOrder,
-                            get = function() local s = getTextDB("textPowerValue") or {}; return s.colorMode or "default" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.textPowerValue = t.textPowerValue or {}; t.textPowerValue.colorMode = v or "default"; applyStyles() end end,
-                            getColor = function() local s = getTextDB("textPowerValue") or {}; local c = s.color or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t.textPowerValue = t.textPowerValue or {}; t.textPowerValue.color = {r,g,b,a}; applyStyles() end end,
-                            customValue = "custom", hasAlpha = true })
+                        local get, set = B.textAccessors("textPowerValue")
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = B.applyStyles,
+                            applyHidden = B.applyPowerText,
+                            hideToggle = { label = "Disable Value Text" },
+                            offset = false,
+                        })
                         tabInner:Finalize()
                     end,
                 },
@@ -915,128 +533,78 @@ function UF.RenderPet(panel, scrollContent)
                 buildContent = {
                     backdrop = function(cf, tabInner)
                         tabInner:AddToggle({ label = "Enable Backdrop",
-                            get = function() local t = getUFDB() or {}; return not not t.nameBackdropEnabled end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropEnabled = not not v; applyNameLevelText() end end })
+                            get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropEnabled end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropEnabled = not not v; B.applyNameLevelText() end end })
                         tabInner:AddBarTextureSelector({ label = "Backdrop Texture",
-                            get = function() local t = getUFDB() or {}; return t.nameBackdropTexture or "" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropTexture = v; applyNameLevelText() end end })
+                            get = function() local t = B.getUFDB() or {}; return t.nameBackdropTexture or "" end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropTexture = v; B.applyNameLevelText() end end })
                         tabInner:AddSelectorColorPicker({ label = "Backdrop Color", values = UF.bgColorValues, order = UF.bgColorOrder,
-                            get = function() local t = getUFDB() or {}; return t.nameBackdropColorMode or "default" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropColorMode = v or "default"; applyNameLevelText() end end,
-                            getColor = function() local t = getUFDB() or {}; local c = t.nameBackdropTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t.nameBackdropTint = {r,g,b,a}; applyNameLevelText() end end,
+                            get = function() local t = B.getUFDB() or {}; return t.nameBackdropColorMode or "default" end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropColorMode = v or "default"; B.applyNameLevelText() end end,
+                            getColor = function() local t = B.getUFDB() or {}; local c = t.nameBackdropTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.nameBackdropTint = {r,g,b,a}; B.applyNameLevelText() end end,
                             customValue = "custom", hasAlpha = true })
                         tabInner:AddSlider({ label = "Backdrop Width (%)", min = 25, max = 300, step = 1,
-                            get = function() local t = getUFDB() or {}; return tonumber(t.nameBackdropWidthPct) or 100 end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropWidthPct = tonumber(v) or 100; applyNameLevelText() end end })
+                            get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropWidthPct) or 100 end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropWidthPct = tonumber(v) or 100; B.applyNameLevelText() end end })
                         tabInner:AddSlider({ label = "Backdrop Opacity", min = 0, max = 100, step = 1,
-                            get = function() local t = getUFDB() or {}; return tonumber(t.nameBackdropOpacity) or 50 end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropOpacity = tonumber(v) or 50; applyNameLevelText() end end })
+                            get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropOpacity) or 50 end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropOpacity = tonumber(v) or 50; B.applyNameLevelText() end end })
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
                         tabInner:AddToggle({ label = "Enable Border",
-                            get = function() local t = getUFDB() or {}; return not not t.nameBackdropBorderEnabled end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropBorderEnabled = not not v; applyNameLevelText() end end })
+                            get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropBorderEnabled end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderEnabled = not not v; B.applyNameLevelText() end end })
                         local borderValues, borderOrder = UF.buildBarBorderOptions()
                         tabInner:AddSelector({ label = "Border Style", values = borderValues, order = borderOrder,
-                            get = function() local t = getUFDB() or {}; return t.nameBackdropBorderStyle or "square" end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropBorderStyle = v or "square"; applyNameLevelText() end end })
+                            get = function() local t = B.getUFDB() or {}; return t.nameBackdropBorderStyle or "square" end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderStyle = v or "square"; B.applyNameLevelText() end end })
                         tabInner:AddToggleColorPicker({ label = "Border Tint",
-                            get = function() local t = getUFDB() or {}; return not not t.nameBackdropBorderTintEnable end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropBorderTintEnable = not not v; applyNameLevelText() end end,
-                            getColor = function() local t = getUFDB() or {}; local c = t.nameBackdropBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureUFDB(); if t then t.nameBackdropBorderTintColor = {r,g,b,a}; applyNameLevelText() end end,
+                            get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropBorderTintEnable end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderTintEnable = not not v; B.applyNameLevelText() end end,
+                            getColor = function() local t = B.getUFDB() or {}; local c = t.nameBackdropBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.nameBackdropBorderTintColor = {r,g,b,a}; B.applyNameLevelText() end end,
                             hasAlpha = true })
                         tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() local t = getUFDB() or {}; local v = tonumber(t.nameBackdropBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameBackdropBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); applyNameLevelText() end end })
+                            get = function() local t = B.getUFDB() or {}; local v = tonumber(t.nameBackdropBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyNameLevelText() end end })
                         tabInner:AddDualSlider({ label = "Border Inset",
                             sliderA = {
                                 axisLabel = "H", min = -4, max = 4, step = 1,
-                                get = function() local t = getUFDB() or {}; return tonumber(t.nameBackdropBorderInsetH) or tonumber(t.nameBackdropBorderInset) or 0 end,
-                                set = function(v) local t = ensureUFDB(); if t then t.nameBackdropBorderInsetH = tonumber(v) or 0; applyNameLevelText() end end,
+                                get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropBorderInsetH) or tonumber(t.nameBackdropBorderInset) or 0 end,
+                                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderInsetH = tonumber(v) or 0; B.applyNameLevelText() end end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                             sliderB = {
                                 axisLabel = "V", min = -4, max = 4, step = 1,
-                                get = function() local t = getUFDB() or {}; return tonumber(t.nameBackdropBorderInsetV) or tonumber(t.nameBackdropBorderInset) or 0 end,
-                                set = function(v) local t = ensureUFDB(); if t then t.nameBackdropBorderInsetV = tonumber(v) or 0; applyNameLevelText() end end,
+                                get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropBorderInsetV) or tonumber(t.nameBackdropBorderInset) or 0 end,
+                                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderInsetV = tonumber(v) or 0; B.applyNameLevelText() end end,
                                 minLabel = "-4", maxLabel = "+4",
                             },
                         })
                         tabInner:Finalize()
                     end,
                     nameText = function(cf, tabInner)
-                        tabInner:AddToggle({ label = "Disable Name Text",
-                            get = function() local t = getUFDB() or {}; return not not t.nameTextHidden end,
-                            set = function(v) local t = ensureUFDB(); if t then t.nameTextHidden = v and true or false; applyNameLevelText() end end })
-                        tabInner:AddFontSelector({ label = "Name Text Font",
-                            get = function() local s = getNameLevelDB("textName") or {}; return s.fontFace or "FRIZQT__" end,
-                            set = function(v) local t = ensureNameLevelDB("textName"); if t then t.fontFace = v; applyNameLevelText() end end })
-                        tabInner:AddSelector({ label = "Name Text Style", values = UF.fontStyleValues, order = UF.fontStyleOrder,
-                            get = function() local s = getNameLevelDB("textName") or {}; return s.style or "OUTLINE" end,
-                            set = function(v) local t = ensureNameLevelDB("textName"); if t then t.style = v; applyNameLevelText() end end })
-                        tabInner:AddSlider({ label = "Name Text Size", min = 6, max = 48, step = 1,
-                            get = function() local s = getNameLevelDB("textName") or {}; return tonumber(s.size) or 14 end,
-                            set = function(v) local t = ensureNameLevelDB("textName"); if t then t.size = tonumber(v) or 14; applyNameLevelText() end end })
-                        tabInner:AddSelectorColorPicker({ label = "Name Text Color",
-                            values = { default = "Default", custom = "Custom" }, order = { "default", "custom" },
-                            get = function() local s = getNameLevelDB("textName") or {}; return s.colorMode or "default" end,
-                            set = function(v) local t = ensureNameLevelDB("textName"); if t then t.colorMode = v or "default"; applyNameLevelText() end end,
-                            getColor = function() local s = getNameLevelDB("textName") or {}; local c = s.color or {1,0.82,0,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureNameLevelDB("textName"); if t then t.color = {r,g,b,a}; applyNameLevelText() end end,
-                            customValue = "custom", hasAlpha = true })
-                        tabInner:AddDualSlider({
-                            label = "Name Text Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function() local s = getNameLevelDB("textName") or {}; local o = s.offset or {}; return tonumber(o.x) or 0 end,
-                                set = function(v) local t = ensureNameLevelDB("textName"); if t then t.offset = t.offset or {}; t.offset.x = tonumber(v) or 0; applyNameLevelText() end end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function() local s = getNameLevelDB("textName") or {}; local o = s.offset or {}; return tonumber(o.y) or 0 end,
-                                set = function(v) local t = ensureNameLevelDB("textName"); if t then t.offset = t.offset or {}; t.offset.y = tonumber(v) or 0; applyNameLevelText() end end,
+                        local get, set = B.textAccessors("textName", { hiddenKey = "nameTextHidden" })
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = B.applyNameLevelText,
+                            defaults = { color = {1, 0.82, 0, 1} },
+                            hideToggle = { label = "Disable Name Text" },
+                            -- Pet name text has no class-color mode
+                            color = {
+                                values = { default = "Default", custom = "Custom" },
+                                order = { "default", "custom" },
                             },
                         })
                         tabInner:Finalize()
                     end,
                     levelText = function(cf, tabInner)
-                        tabInner:AddToggle({ label = "Disable Level Text",
-                            get = function() local t = getUFDB() or {}; return not not t.levelTextHidden end,
-                            set = function(v) local t = ensureUFDB(); if t then t.levelTextHidden = v and true or false; applyNameLevelText() end end })
-                        tabInner:AddFontSelector({ label = "Level Text Font",
-                            get = function() local s = getNameLevelDB("textLevel") or {}; return s.fontFace or "FRIZQT__" end,
-                            set = function(v) local t = ensureNameLevelDB("textLevel"); if t then t.fontFace = v; applyNameLevelText() end end })
-                        tabInner:AddSelector({ label = "Level Text Style", values = UF.fontStyleValues, order = UF.fontStyleOrder,
-                            get = function() local s = getNameLevelDB("textLevel") or {}; return s.style or "OUTLINE" end,
-                            set = function(v) local t = ensureNameLevelDB("textLevel"); if t then t.style = v; applyNameLevelText() end end })
-                        tabInner:AddSlider({ label = "Level Text Size", min = 6, max = 48, step = 1,
-                            get = function() local s = getNameLevelDB("textLevel") or {}; return tonumber(s.size) or 14 end,
-                            set = function(v) local t = ensureNameLevelDB("textLevel"); if t then t.size = tonumber(v) or 14; applyNameLevelText() end end })
-                        tabInner:AddSelectorColorPicker({ label = "Level Text Color", values = UF.fontColorValues, order = UF.fontColorOrder,
-                            get = function() local s = getNameLevelDB("textLevel") or {}; return s.colorMode or "default" end,
-                            set = function(v) local t = ensureNameLevelDB("textLevel"); if t then t.colorMode = v or "default"; applyNameLevelText() end end,
-                            getColor = function() local s = getNameLevelDB("textLevel") or {}; local c = s.color or {1,0.82,0,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = ensureNameLevelDB("textLevel"); if t then t.color = {r,g,b,a}; applyNameLevelText() end end,
-                            customValue = "custom", hasAlpha = true })
-                        tabInner:AddDualSlider({
-                            label = "Level Text Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function() local s = getNameLevelDB("textLevel") or {}; local o = s.offset or {}; return tonumber(o.x) or 0 end,
-                                set = function(v) local t = ensureNameLevelDB("textLevel"); if t then t.offset = t.offset or {}; t.offset.x = tonumber(v) or 0; applyNameLevelText() end end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function() local s = getNameLevelDB("textLevel") or {}; local o = s.offset or {}; return tonumber(o.y) or 0 end,
-                                set = function(v) local t = ensureNameLevelDB("textLevel"); if t then t.offset = t.offset or {}; t.offset.y = tonumber(v) or 0; applyNameLevelText() end end,
-                            },
+                        local get, set = B.textAccessors("textLevel", { hiddenKey = "levelTextHidden" })
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = B.applyNameLevelText,
+                            defaults = { color = {1, 0.82, 0, 1} },
+                            hideToggle = { label = "Disable Level Text" },
                         })
                         tabInner:Finalize()
                     end,
@@ -1058,12 +626,12 @@ function UF.RenderPet(panel, scrollContent)
             max = 200,
             step = 1,
             get = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 return tonumber(t.scale) or 100
             end,
             set = function(v)
-                local t = ensurePortraitDB()
-                if t then t.scale = tonumber(v) or 100; applyPortrait() end
+                local t = B.ensurePortraitDB()
+                if t then t.scale = tonumber(v) or 100; B.applyPortrait() end
             end,
             minLabel = "50%",
             maxLabel = "200%",
@@ -1078,12 +646,12 @@ function UF.RenderPet(panel, scrollContent)
             max = 200,
             step = 1,
             get = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 return tonumber(t.zoom) or 100
             end,
             set = function(v)
-                local t = ensurePortraitDB()
-                if t then t.zoom = tonumber(v) or 100; applyPortrait() end
+                local t = B.ensurePortraitDB()
+                if t then t.zoom = tonumber(v) or 100; B.applyPortrait() end
             end,
             minLabel = "100%",
             maxLabel = "200%",
@@ -1095,12 +663,12 @@ function UF.RenderPet(panel, scrollContent)
         inner:AddToggle({
             label = "Use Custom Border",
             get = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 return not not t.portraitBorderEnable
             end,
             set = function(v)
-                local t = ensurePortraitDB()
-                if t then t.portraitBorderEnable = not not v; applyPortrait() end
+                local t = B.ensurePortraitDB()
+                if t then t.portraitBorderEnable = not not v; B.applyPortrait() end
             end,
         })
 
@@ -1116,16 +684,16 @@ function UF.RenderPet(panel, scrollContent)
             values = borderStyleValues,
             order = borderStyleOrder,
             get = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 local current = t.portraitBorderStyle or "texture_c"
                 if current == "default" then return "texture_c" end
                 return current
             end,
             set = function(v)
-                local t = ensurePortraitDB()
+                local t = B.ensurePortraitDB()
                 if t then
                     t.portraitBorderStyle = v or "texture_c"
-                    applyPortrait()
+                    B.applyPortrait()
                 end
             end,
         })
@@ -1137,13 +705,13 @@ function UF.RenderPet(panel, scrollContent)
             step = 0.5,
             precision = 1,
             get = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 local v = tonumber(t.portraitBorderThickness) or 1
                 return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2))
             end,
             set = function(v)
-                local t = ensurePortraitDB()
-                if t then t.portraitBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); applyPortrait() end
+                local t = B.ensurePortraitDB()
+                if t then t.portraitBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyPortrait() end
             end,
         })
 
@@ -1159,21 +727,21 @@ function UF.RenderPet(panel, scrollContent)
             values = colorModeValues,
             order = colorModeOrder,
             get = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 return t.portraitBorderColorMode or "texture"
             end,
             set = function(v)
-                local t = ensurePortraitDB()
-                if t then t.portraitBorderColorMode = v or "texture"; applyPortrait() end
+                local t = B.ensurePortraitDB()
+                if t then t.portraitBorderColorMode = v or "texture"; B.applyPortrait() end
             end,
             getColor = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 local c = t.portraitBorderTintColor or {1, 1, 1, 1}
                 return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
             end,
             setColor = function(r, g, b, a)
-                local t = ensurePortraitDB()
-                if t then t.portraitBorderTintColor = {r or 1, g or 1, b or 1, a or 1}; applyPortrait() end
+                local t = B.ensurePortraitDB()
+                if t then t.portraitBorderTintColor = {r or 1, g or 1, b or 1, a or 1}; B.applyPortrait() end
             end,
             customValue = "custom",
             hasAlpha = true,
@@ -1186,12 +754,12 @@ function UF.RenderPet(panel, scrollContent)
         inner:AddToggle({
             label = "Hide Portrait",
             get = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 return not not t.hidePortrait
             end,
             set = function(v)
-                local t = ensurePortraitDB()
-                if t then t.hidePortrait = v and true or false; applyPortrait() end
+                local t = B.ensurePortraitDB()
+                if t then t.hidePortrait = v and true or false; B.applyPortrait() end
             end,
         })
 
@@ -1201,12 +769,12 @@ function UF.RenderPet(panel, scrollContent)
             max = 100,
             step = 1,
             get = function()
-                local t = getPortraitDB() or {}
+                local t = B.getPortraitDB() or {}
                 return tonumber(t.opacity) or 100
             end,
             set = function(v)
-                local t = ensurePortraitDB()
-                if t then t.opacity = tonumber(v) or 100; applyPortrait() end
+                local t = B.ensurePortraitDB()
+                if t then t.opacity = tonumber(v) or 100; B.applyPortrait() end
             end,
         })
 
@@ -1214,81 +782,31 @@ function UF.RenderPet(panel, scrollContent)
     end
 
     local function buildPortraitPersonalTextTab(inner)
-        inner:AddToggle({
-            label = "Hide Personal Text",
-            get = function()
-                local t = getPortraitDB() or {}
-                return not not t.damageTextDisabled
+        -- Portrait damage text: the hide flag and text table live in the
+        -- portrait sub-table, not the unit table
+        inner:AddTextStyleBlock({
+            get = function(field)
+                local t = B.getPortraitDB()
+                if not t then return nil end
+                if field == "hidden" then return t.damageTextDisabled end
+                local s = rawget(t, "damageText")
+                if not s then return nil end
+                return s[field]
             end,
-            set = function(v)
-                local t = ensurePortraitDB()
-                if t then t.damageTextDisabled = v and true or false; applyPortrait() end
-            end,
-        })
-        inner:AddFontSelector({
-            label = "Personal Text Font",
-            get = function()
-                local t = getPortraitDB() or {}
-                local s = t.damageText or {}
-                return s.fontFace or "FRIZQT__"
-            end,
-            set = function(v)
-                local t = ensurePortraitDB()
+            set = function(field, value)
+                local t = B.ensurePortraitDB()
                 if not t then return end
+                if field == "hidden" then
+                    t.damageTextDisabled = value
+                    return
+                end
                 t.damageText = t.damageText or {}
-                t.damageText.fontFace = v
-                applyPortrait()
+                t.damageText[field] = value
             end,
-        })
-        inner:AddSelector({
-            label = "Personal Text Style",
-            values = UF.fontStyleValues,
-            order = UF.fontStyleOrder,
-            get = function()
-                local t = getPortraitDB() or {}
-                local s = t.damageText or {}
-                return s.style or "OUTLINE"
-            end,
-            set = function(v)
-                local t = ensurePortraitDB()
-                if not t then return end
-                t.damageText = t.damageText or {}
-                t.damageText.style = v
-                applyPortrait()
-            end,
-        })
-        inner:AddSlider({
-            label = "Personal Text Size",
-            min = 6, max = 48, step = 1,
-            get = function()
-                local t = getPortraitDB() or {}
-                local s = t.damageText or {}
-                return tonumber(s.size) or 14
-            end,
-            set = function(v)
-                local t = ensurePortraitDB()
-                if not t then return end
-                t.damageText = t.damageText or {}
-                t.damageText.size = tonumber(v) or 14
-                applyPortrait()
-            end,
-        })
-        inner:AddColorPicker({
-            label = "Personal Text Color",
-            get = function()
-                local t = getPortraitDB() or {}
-                local s = t.damageText or {}
-                local c = s.color or {1, 1, 1, 1}
-                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-            end,
-            set = function(r, g, b, a)
-                local t = ensurePortraitDB()
-                if not t then return end
-                t.damageText = t.damageText or {}
-                t.damageText.color = {r, g, b, a}
-                applyPortrait()
-            end,
-            hasAlpha = true,
+            apply = B.applyPortrait,
+            hideToggle = { label = "Hide Personal Text" },
+            color = { kind = "plain" },
+            offset = false,
         })
         inner:Finalize()
     end
@@ -1335,11 +853,11 @@ function UF.RenderPet(panel, scrollContent)
                 label = "Hide Entire Pet Frame",
                 description = "Completely hides the Pet frame. Useful for ConsolePort users who prefer the Pet Ring.",
                 get = function()
-                    local t = getUFDB() or {}
+                    local t = B.getUFDB() or {}
                     return t.hideEntireFrame == true
                 end,
                 set = function(v)
-                    local t = ensureUFDB()
+                    local t = B.ensureUFDB()
                     if not t then return end
                     t.hideEntireFrame = v
                     if addon.ApplyPetFrameVisibility then
@@ -1356,14 +874,14 @@ function UF.RenderPet(panel, scrollContent)
                 max = 100,
                 step = 1,
                 get = function()
-                    local t = getUFDB() or {}
+                    local t = B.getUFDB() or {}
                     return tonumber(t.opacityOutOfCombat) or 100
                 end,
                 set = function(v)
-                    local t = ensureUFDB()
+                    local t = B.ensureUFDB()
                     if not t then return end
                     t.opacityOutOfCombat = tonumber(v) or 100
-                    applyVisibility()
+                    B.applyVisibility()
                 end,
                 infoIcon = UF.TOOLTIPS.visibilityPriority,
             })
@@ -1375,14 +893,14 @@ function UF.RenderPet(panel, scrollContent)
                 max = 100,
                 step = 1,
                 get = function()
-                    local t = getUFDB() or {}
+                    local t = B.getUFDB() or {}
                     return tonumber(t.opacityInCombat) or 100
                 end,
                 set = function(v)
-                    local t = ensureUFDB()
+                    local t = B.ensureUFDB()
                     if not t then return end
                     t.opacityInCombat = tonumber(v) or 100
-                    applyVisibility()
+                    B.applyVisibility()
                 end,
             })
 
@@ -1393,14 +911,14 @@ function UF.RenderPet(panel, scrollContent)
                 max = 100,
                 step = 1,
                 get = function()
-                    local t = getUFDB() or {}
+                    local t = B.getUFDB() or {}
                     return tonumber(t.opacityWithTarget) or 100
                 end,
                 set = function(v)
-                    local t = ensureUFDB()
+                    local t = B.ensureUFDB()
                     if not t then return end
                     t.opacityWithTarget = tonumber(v) or 100
-                    applyVisibility()
+                    B.applyVisibility()
                 end,
             })
 
