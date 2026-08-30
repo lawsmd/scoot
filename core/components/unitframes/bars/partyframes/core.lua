@@ -581,6 +581,11 @@ end
 -- The previous SetBackdrop() pattern on a child frame caused borders to draw
 -- on top of the selection highlight because child frame layers draw after parent
 -- frame layers (even if both are OVERLAY).
+--
+-- The square branch delegates to Borders.ApplySquare: engine-owned edges on
+-- the CompactUnitFrame, anchored to the health bar, tracked in the engine's
+-- weak tables. The textured branch keeps the caller-owned edge textures below.
+-- Each branch hides the other's edges on a style switch.
 --------------------------------------------------------------------------------
 
 -- Clear health bar border for a single bar
@@ -589,7 +594,12 @@ local function clearHealthBarBorder(bar)
     local unitFrame = bar.GetParent and bar:GetParent()
     if not unitFrame then return end
 
-    -- Hide edge textures if they exist (stored in PartyFrameState, not on frame)
+    -- Hide engine-owned square edges
+    if addon.Borders and addon.Borders.HideAll then
+        addon.Borders.HideAll(unitFrame)
+    end
+
+    -- Hide textured edge textures if they exist (stored in PartyFrameState, not on frame)
     local ufState = getState(unitFrame)
     local edges = ufState and ufState.ScootBorderEdges
     if edges then
@@ -622,6 +632,61 @@ local function applyHealthBarBorder(bar, cfg)
     local unitFrame = bar.GetParent and bar:GetParent()
     if not unitFrame then return end
 
+    -- Get border settings
+    local tintEnabled = cfg.healthBarBorderTintEnable
+    local tintColor = cfg.healthBarBorderTintColor or {1, 1, 1, 1}
+    local thickness = tonumber(cfg.healthBarBorderThickness) or 1
+    local insetH = tonumber(cfg.healthBarBorderInsetH) or tonumber(cfg.healthBarBorderInset) or 0
+    local insetV = tonumber(cfg.healthBarBorderInsetV) or tonumber(cfg.healthBarBorderInset) or 0
+    local hiddenEdges = cfg.healthBarBorderHiddenEdges
+
+    if styleKey == "square" then
+        -- Simple square border via the shared engine. Hide caller-owned textured
+        -- edges from a prior style first.
+        local prevState = getState(unitFrame)
+        local texturedEdges = prevState and prevState.ScootBorderEdges
+        if texturedEdges then
+            for _, tex in pairs(texturedEdges) do
+                if tex and tex.Hide then tex:Hide() end
+            end
+        end
+
+        local r, g, b, a
+        if tintEnabled then
+            r, g, b, a = tintColor[1] or 1, tintColor[2] or 1, tintColor[3] or 1, tintColor[4] or 1
+        else
+            -- Default square border is black
+            r, g, b, a = 0, 0, 0, 1
+        end
+
+        addon.Borders.ApplySquare(unitFrame, {
+            size = math.max(1, math.floor(thickness + 0.5)),
+            color = { r, g, b, a },
+            layer = "OVERLAY",
+            layerSublevel = -8,
+            anchorRegion = bar,
+            expandX = math.max(0, 1 - insetH),
+            expandY = math.max(0, 1 - insetV),
+            hiddenEdges = hiddenEdges,
+            skipDimensionCheck = true,
+        })
+        return
+    end
+
+    local style = addon.BarBorders and addon.BarBorders.GetStyle and addon.BarBorders.GetStyle(styleKey)
+    if not (style and style.texture) then
+        -- Unknown style, hide border
+        clearHealthBarBorder(bar)
+        return
+    end
+
+    -- Traditional border style with texture: caller-owned edge textures (the
+    -- engine draws solid squares only). Hide engine-owned square edges from a
+    -- prior style first.
+    if addon.Borders and addon.Borders.HideAll then
+        addon.Borders.HideAll(unitFrame)
+    end
+
     -- Create edge textures on the CompactUnitFrame if they don't exist
     -- Use OVERLAY layer with lowest sublevel (-8) to appear above health bar
     -- content but below selection highlight (which uses higher sublevels)
@@ -647,41 +712,14 @@ local function applyHealthBarBorder(bar, cfg)
         ufState.ScootBorderEdges = edges
     end
 
-    -- Get border settings
-    local tintEnabled = cfg.healthBarBorderTintEnable
-    local tintColor = cfg.healthBarBorderTintColor or {1, 1, 1, 1}
-    local thickness = tonumber(cfg.healthBarBorderThickness) or 1
-    local insetH = tonumber(cfg.healthBarBorderInsetH) or tonumber(cfg.healthBarBorderInset) or 0
-    local insetV = tonumber(cfg.healthBarBorderInsetV) or tonumber(cfg.healthBarBorderInset) or 0
-    local hiddenEdges = cfg.healthBarBorderHiddenEdges
-
-    -- Calculate edge size and padding based on style
-    local style = addon.BarBorders and addon.BarBorders.GetStyle and addon.BarBorders.GetStyle(styleKey)
-    local edgeSize, padH, padV, texturePath
-
-    if styleKey == "square" then
-        -- Simple square border using solid color texture
-        edgeSize = math.max(1, math.floor(thickness + 0.5))
-        padH = 1 - insetH
-        padV = 1 - insetV
-        if padH < 0 then padH = 0 end
-        if padV < 0 then padV = 0 end
-        texturePath = "Interface\\Buttons\\WHITE8x8"
-    elseif style and style.texture then
-        -- Traditional border style with texture
-        edgeSize = math.max(1, math.floor(thickness * 1.35 * (style.thicknessScale or 1) + 0.5))
-        local paddingMult = style.paddingMultiplier or 0.5
-        local basePad = math.floor(edgeSize * paddingMult + 0.5)
-        padH = basePad - insetH
-        padV = basePad - insetV
-        if padH < 0 then padH = 0 end
-        if padV < 0 then padV = 0 end
-        texturePath = style.texture
-    else
-        -- Unknown style, hide border
-        clearHealthBarBorder(bar)
-        return
-    end
+    local edgeSize = math.max(1, math.floor(thickness * 1.35 * (style.thicknessScale or 1) + 0.5))
+    local paddingMult = style.paddingMultiplier or 0.5
+    local basePad = math.floor(edgeSize * paddingMult + 0.5)
+    local padH = basePad - insetH
+    local padV = basePad - insetV
+    if padH < 0 then padH = 0 end
+    if padV < 0 then padV = 0 end
+    local texturePath = style.texture
 
     -- Position edges around the health bar
     -- Horizontal edges span full width including corners
@@ -710,9 +748,6 @@ local function applyHealthBarBorder(bar, cfg)
     local r, g, b, a
     if tintEnabled then
         r, g, b, a = tintColor[1] or 1, tintColor[2] or 1, tintColor[3] or 1, tintColor[4] or 1
-    elseif styleKey == "square" then
-        -- Default square border is black
-        r, g, b, a = 0, 0, 0, 1
     else
         -- Default for texture borders is white (shows texture's natural colors)
         r, g, b, a = 1, 1, 1, 1

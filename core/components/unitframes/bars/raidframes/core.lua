@@ -536,12 +536,21 @@ end
 -- Health Bar Borders
 --------------------------------------------------------------------------------
 -- Applies Scoot bar borders to raid frame health bars.
--- Uses addon-owned anchor frames to avoid taint.
+-- The square branch is the party implementation (see partyframes/core.lua):
+-- engine-owned edges on the parent CompactUnitFrame at OVERLAY sublevel -8,
+-- below Blizzard's selection highlight, with live inset sliders and whole-edge
+-- hiddenEdges. Textured borders keep the addon-owned BackdropTemplate anchor
+-- frame to avoid taint. Each branch hides the other's border on a style switch.
 --------------------------------------------------------------------------------
 
 -- Clear health bar border for a single bar
 local function clearHealthBarBorder(bar)
     if not bar then return end
+    -- Hide engine-owned square edges on the parent CompactUnitFrame
+    local unitFrame = bar.GetParent and bar:GetParent()
+    if unitFrame and addon.Borders and addon.Borders.HideAll then
+        addon.Borders.HideAll(unitFrame)
+    end
     local state = getState(bar)
     if state and state.borderAnchor then
         if addon.BarBorders and addon.BarBorders.ClearBarFrame then
@@ -559,6 +568,60 @@ local function applyHealthBarBorder(bar, cfg)
     if not styleKey or styleKey == "none" then
         clearHealthBarBorder(bar)
         return
+    end
+
+    -- Border settings
+    local tintEnabled = cfg.healthBarBorderTintEnable
+    local tintColor = cfg.healthBarBorderTintColor or {1, 1, 1, 1}
+    local thickness = tonumber(cfg.healthBarBorderThickness) or 1
+    local insetH = tonumber(cfg.healthBarBorderInsetH) or tonumber(cfg.healthBarBorderInset) or 0
+    local insetV = tonumber(cfg.healthBarBorderInsetV) or tonumber(cfg.healthBarBorderInset) or 0
+    local hiddenEdges = cfg.healthBarBorderHiddenEdges
+
+    if styleKey == "square" then
+        -- Simple square border via the shared engine: the same call as
+        -- partyframes/core.lua, so raid and party render identically. Engine
+        -- edges sit on the CompactUnitFrame at OVERLAY sublevel -8, below
+        -- Blizzard's selection highlight, with live insets and whole-edge
+        -- hiddenEdges.
+        local unitFrame = bar.GetParent and bar:GetParent()
+        if not unitFrame then return end
+
+        -- Hide the BackdropTemplate anchor from a prior textured style
+        local prevState = getState(bar)
+        if prevState and prevState.borderAnchor then
+            prevState.borderAnchor:Hide()
+        end
+
+        local r, g, b, a
+        if tintEnabled then
+            r, g, b, a = tintColor[1] or 1, tintColor[2] or 1, tintColor[3] or 1, tintColor[4] or 1
+        else
+            -- Default square border is black
+            r, g, b, a = 0, 0, 0, 1
+        end
+
+        addon.Borders.ApplySquare(unitFrame, {
+            size = math.max(1, math.floor(thickness + 0.5)),
+            color = { r, g, b, a },
+            layer = "OVERLAY",
+            layerSublevel = -8,
+            anchorRegion = bar,
+            expandX = math.max(0, 1 - insetH),
+            expandY = math.max(0, 1 - insetV),
+            hiddenEdges = hiddenEdges,
+            skipDimensionCheck = true,
+        })
+        return
+    end
+
+    -- Textured border: addon-owned BackdropTemplate anchor. Hide engine-owned
+    -- square edges from a prior style first.
+    do
+        local unitFrame = bar.GetParent and bar:GetParent()
+        if unitFrame and addon.Borders and addon.Borders.HideAll then
+            addon.Borders.HideAll(unitFrame)
+        end
     end
 
     local state = ensureState(bar)
@@ -604,14 +667,6 @@ local function applyHealthBarBorder(bar, cfg)
     end
     anchor:SetFrameLevel(barLevel + 10)
     anchor:Show()
-
-    -- Apply border via BarBorders
-    local tintEnabled = cfg.healthBarBorderTintEnable
-    local tintColor = cfg.healthBarBorderTintColor or {1, 1, 1, 1}
-    local thickness = tonumber(cfg.healthBarBorderThickness) or 1
-    local insetH = tonumber(cfg.healthBarBorderInsetH) or tonumber(cfg.healthBarBorderInset) or 0
-    local insetV = tonumber(cfg.healthBarBorderInsetV) or tonumber(cfg.healthBarBorderInset) or 0
-    local hiddenEdges = cfg.healthBarBorderHiddenEdges
 
     if addon.BarBorders then
         anchor:ClearAllPoints()
@@ -659,34 +714,6 @@ local function applyHealthBarBorder(bar, cfg)
                 if anchor.SetBackdropColor then
                     anchor:SetBackdropColor(0, 0, 0, 0)
                 end
-            end
-        elseif styleKey == "square" and anchor.SetBackdrop then
-            -- Simple square border
-            local edgeSize = math.max(1, math.floor(thickness + 0.5))
-            anchor:ClearAllPoints()
-            anchor:SetSize(barWidth + 2, barHeight + 2)
-
-            pcall(anchor.SetBackdrop, anchor, {
-                bgFile = nil,
-                edgeFile = "Interface\\Buttons\\WHITE8x8",
-                tile = false,
-                edgeSize = edgeSize,
-                insets = { left = 0, right = 0, top = 0, bottom = 0 },
-            })
-
-            -- Anchor AFTER SetBackdrop
-            anchor:SetPoint("TOPLEFT", bar, "TOPLEFT", -1, 1)
-            anchor:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 1, -1)
-
-            if anchor.SetBackdropBorderColor then
-                if tintEnabled then
-                    anchor:SetBackdropBorderColor(tintColor[1] or 1, tintColor[2] or 1, tintColor[3] or 1, tintColor[4] or 1)
-                else
-                    anchor:SetBackdropBorderColor(0, 0, 0, 1)
-                end
-            end
-            if anchor.SetBackdropColor then
-                anchor:SetBackdropColor(0, 0, 0, 0)
             end
         else
             -- Unknown style, hide border
@@ -780,8 +807,8 @@ function RaidFrames.styleNameOverlay(nameOverlay, cfg)
 
     -- Resolve font path
     local fontPath = addon.Media and addon.Media.ResolveFontPath and addon.Media.ResolveFontPath(fontFace)
-    if fontPath and nameOverlay.SetFont then
-        pcall(nameOverlay.SetFont, nameOverlay, fontPath, size, style)
+    if fontPath then
+        addon.ApplyFontStyle(nameOverlay, fontPath, size, style)
     end
 
     if nameOverlay.SetTextColor then

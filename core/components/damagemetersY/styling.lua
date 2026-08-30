@@ -181,60 +181,33 @@ local function ResolveBorderColor(player, db)
     return { 0, 0, 0, 1 }
 end
 
-local function EnsureSquareBorder(row)
-    if row._sqBorder then return row._sqBorder end
-    local f = CreateFrame("Frame", nil, row)
-    f:SetFrameLevel(row:GetFrameLevel() + 3)
-    f:SetAllPoints(row)
-    local edges = { frame = f }
-    edges.top = f:CreateTexture(nil, "OVERLAY")
-    edges.bottom = f:CreateTexture(nil, "OVERLAY")
-    edges.left = f:CreateTexture(nil, "OVERLAY")
-    edges.right = f:CreateTexture(nil, "OVERLAY")
-    row._sqBorder = edges
-    return edges
-end
-
+-- untrimmedCorners keeps the full-height verticals (and their double-blended
+-- corners on translucent colors) this component has always drawn.
 local function ApplySquareBorder(row, color, thickness)
-    local edges = EnsureSquareBorder(row)
     local t = math.max(1, math.floor((tonumber(thickness) or 1) + 0.5))
-    local r, g, b, a = color[1] or 0, color[2] or 0, color[3] or 0, color[4] or 1
-    local bar = row.bar
-
-    edges.top:ClearAllPoints()
-    edges.top:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
-    edges.top:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
-    edges.top:SetHeight(t)
-    edges.top:SetColorTexture(r, g, b, a)
-    edges.top:Show()
-
-    edges.bottom:ClearAllPoints()
-    edges.bottom:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
-    edges.bottom:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-    edges.bottom:SetHeight(t)
-    edges.bottom:SetColorTexture(r, g, b, a)
-    edges.bottom:Show()
-
-    edges.left:ClearAllPoints()
-    edges.left:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
-    edges.left:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
-    edges.left:SetWidth(t)
-    edges.left:SetColorTexture(r, g, b, a)
-    edges.left:Show()
-
-    edges.right:ClearAllPoints()
-    edges.right:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
-    edges.right:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-    edges.right:SetWidth(t)
-    edges.right:SetColorTexture(r, g, b, a)
-    edges.right:Show()
-
-    edges.frame:Show()
+    -- Steady state: class-color mode recolors every combat refresh while the
+    -- geometry only changes with the thickness, so an unchanged signature
+    -- needs a recolor at most.
+    if row._sqBorderSig == t and addon.Borders.RecolorSquare(row.bar, color) then
+        return
+    end
+    -- Container level bar+2 = row+3, where the old holder frame sat.
+    addon.Borders.ApplySquare(row.bar, {
+        size = t,
+        color = color,
+        layer = "OVERLAY",
+        levelOffset = 2,
+        containerParent = row,
+        untrimmedCorners = true,
+        skipDimensionCheck = true,
+    })
+    row._sqBorderSig = t
 end
 
 local function HideSquareBorder(row)
-    if not row._sqBorder then return end
-    row._sqBorder.frame:Hide()
+    row._sqBorderSig = nil
+    local container = row.bar and addon.Borders.GetSquareContainer(row.bar)
+    if container then container:Hide() end
 end
 
 --------------------------------------------------------------------------------
@@ -381,19 +354,8 @@ local function EnsureWindowBorder(frame)
     local holder = CreateFrame("Frame", nil, frame, BackdropTemplateMixin and "BackdropTemplate")
     holder:SetFrameLevel(frame:GetFrameLevel() + 10)
     local border = { frame = holder }
-    border.top = holder:CreateTexture(nil, "OVERLAY")
-    border.bottom = holder:CreateTexture(nil, "OVERLAY")
-    border.left = holder:CreateTexture(nil, "OVERLAY")
-    border.right = holder:CreateTexture(nil, "OVERLAY")
     frame._winBorder = border
     return border
-end
-
-local function HideWindowSquareEdges(border)
-    border.top:Hide()
-    border.bottom:Hide()
-    border.left:Hide()
-    border.right:Hide()
 end
 
 local function ApplyWindowSquareBorder(frame, color, thickness)
@@ -407,45 +369,19 @@ local function ApplyWindowSquareBorder(frame, color, thickness)
 
     -- Windows carry fractional effective scale; snap to whole physical pixels
     local t = DMY._SnapToPixels(tonumber(thickness) or 1, frame, 1)
-    local r, g, b, a = color[1] or 0, color[2] or 0, color[3] or 0, color[4] or 1
-
-    border.top:ClearAllPoints()
-    border.top:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
-    border.top:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, 0)
-    border.top:SetHeight(t)
-    border.top:SetColorTexture(r, g, b, a)
-    border.top:Show()
-
-    border.bottom:ClearAllPoints()
-    border.bottom:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, 0)
-    border.bottom:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, 0)
-    border.bottom:SetHeight(t)
-    border.bottom:SetColorTexture(r, g, b, a)
-    border.bottom:Show()
-
-    -- Left/right inset vertically by t so translucent colors don't
-    -- double-blend where edges would overlap at the corners
-    border.left:ClearAllPoints()
-    border.left:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -t)
-    border.left:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, t)
-    border.left:SetWidth(t)
-    border.left:SetColorTexture(r, g, b, a)
-    border.left:Show()
-
-    border.right:ClearAllPoints()
-    border.right:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, -t)
-    border.right:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, t)
-    border.right:SetWidth(t)
-    border.right:SetColorTexture(r, g, b, a)
-    border.right:Show()
-
+    addon.Borders.ApplySquare(holder, {
+        size = t,
+        color = color,
+        layer = "OVERLAY",
+        skipDimensionCheck = true,
+    })
     holder:Show()
 end
 
 local function ApplyWindowEdgeBorder(frame, texture, color, thickness)
     local border = EnsureWindowBorder(frame)
     local holder = border.frame
-    HideWindowSquareEdges(border)
+    addon.Borders.HideAll(holder)
     if not holder.SetBackdrop then
         holder:Hide()
         return

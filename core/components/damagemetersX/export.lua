@@ -471,20 +471,12 @@ local function CreateExportMenu(exportBtn, sessionWindow)
     bg:SetColorTexture(0.06, 0.06, 0.08, 0.95)
 
     -- Thin border
-    local borderColor = { 0.3, 0.3, 0.35, 0.8 }
-    local bw = 1
-    local bTop = menu:CreateTexture(nil, "BORDER")
-    bTop:SetPoint("TOPLEFT") bTop:SetPoint("TOPRIGHT") bTop:SetHeight(bw)
-    bTop:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
-    local bBot = menu:CreateTexture(nil, "BORDER")
-    bBot:SetPoint("BOTTOMLEFT") bBot:SetPoint("BOTTOMRIGHT") bBot:SetHeight(bw)
-    bBot:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
-    local bLeft = menu:CreateTexture(nil, "BORDER")
-    bLeft:SetPoint("TOPLEFT", 0, -bw) bLeft:SetPoint("BOTTOMLEFT", 0, bw) bLeft:SetWidth(bw)
-    bLeft:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
-    local bRight = menu:CreateTexture(nil, "BORDER")
-    bRight:SetPoint("TOPRIGHT", 0, -bw) bRight:SetPoint("BOTTOMRIGHT", 0, bw) bRight:SetWidth(bw)
-    bRight:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
+    addon.Borders.ApplySquare(menu, {
+        size = 1,
+        color = { 0.3, 0.3, 0.35, 0.8 },
+        layer = "BORDER",
+        skipDimensionCheck = true,
+    })
 
     local yOff = -8
     local defaultFont = select(1, _G.GameFontNormal:GetFont()) or "Fonts\\FRIZQT__.TTF"
@@ -602,20 +594,12 @@ local function CreateExportMenu(exportBtn, sessionWindow)
             subBg:SetColorTexture(0.08, 0.08, 0.10, 0.98)
 
             -- Thin border (same style as parent menu)
-            local bc = { 0.3, 0.3, 0.35, 0.8 }
-            local sbw = 1
-            local sbTop = sub:CreateTexture(nil, "BORDER")
-            sbTop:SetPoint("TOPLEFT") sbTop:SetPoint("TOPRIGHT") sbTop:SetHeight(sbw)
-            sbTop:SetColorTexture(bc[1], bc[2], bc[3], bc[4])
-            local sbBot = sub:CreateTexture(nil, "BORDER")
-            sbBot:SetPoint("BOTTOMLEFT") sbBot:SetPoint("BOTTOMRIGHT") sbBot:SetHeight(sbw)
-            sbBot:SetColorTexture(bc[1], bc[2], bc[3], bc[4])
-            local sbLeft = sub:CreateTexture(nil, "BORDER")
-            sbLeft:SetPoint("TOPLEFT", 0, -sbw) sbLeft:SetPoint("BOTTOMLEFT", 0, sbw) sbLeft:SetWidth(sbw)
-            sbLeft:SetColorTexture(bc[1], bc[2], bc[3], bc[4])
-            local sbRight = sub:CreateTexture(nil, "BORDER")
-            sbRight:SetPoint("TOPRIGHT", 0, -sbw) sbRight:SetPoint("BOTTOMRIGHT", 0, sbw) sbRight:SetWidth(sbw)
-            sbRight:SetColorTexture(bc[1], bc[2], bc[3], bc[4])
+            addon.Borders.ApplySquare(sub, {
+                size = 1,
+                color = { 0.3, 0.3, 0.35, 0.8 },
+                layer = "BORDER",
+                skipDimensionCheck = true,
+            })
 
             local allChannels = {
                 { key = "SAY", label = "Say" },

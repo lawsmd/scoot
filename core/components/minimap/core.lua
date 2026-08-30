@@ -358,41 +358,6 @@ end
 -- Border Overlay
 --------------------------------------------------------------------------------
 
-local function CreateBorderOverlay()
-    local overlays = ensureOverlayTable()
-    if not overlays then return nil end
-
-    if overlays.border then
-        return overlays.border
-    end
-
-    local minimap = _G.Minimap
-
-    -- Create frame parented to UIParent to avoid taint
-    local border = CreateFrame("Frame", nil, UIParent)
-    border:SetFrameStrata("BACKGROUND")
-    border:SetFrameLevel(1)
-
-    -- Create edge textures
-    border.edges = {}
-
-    local function createEdge(name)
-        local tex = border:CreateTexture(nil, "BACKGROUND")
-        tex:SetColorTexture(0, 0, 0, 1)
-        border.edges[name] = tex
-        return tex
-    end
-
-    createEdge("top")
-    createEdge("bottom")
-    createEdge("left")
-    createEdge("right")
-
-    overlays.border = border
-    addon.RegisterPetBattleFrame(border)
-    return border
-end
-
 local function UpdateBorderOverlay(db, forceShow)
     local overlays = ensureOverlayTable()
     if not overlays then return end
@@ -412,9 +377,6 @@ local function UpdateBorderOverlay(db, forceShow)
         return
     end
 
-    local border = overlays.border or CreateBorderOverlay()
-    if not border then return end
-
     local thickness = tonumber(db.borderThickness) or 2
     if thickness < 1 then thickness = 1 end
     if thickness > 8 then thickness = 8 end
@@ -428,43 +390,21 @@ local function UpdateBorderOverlay(db, forceShow)
         a = db.borderColor[4] or 1
     end
 
-    -- Position border around minimap
-    border:ClearAllPoints()
-    border:SetPoint("TOPLEFT", minimap, "TOPLEFT", -thickness, thickness)
-    border:SetPoint("BOTTOMRIGHT", minimap, "BOTTOMRIGHT", thickness, -thickness)
-
-    -- Position and color edges
-    local edges = border.edges
-
-    -- Top edge
-    edges.top:ClearAllPoints()
-    edges.top:SetPoint("TOPLEFT", border, "TOPLEFT", 0, 0)
-    edges.top:SetPoint("TOPRIGHT", border, "TOPRIGHT", 0, 0)
-    edges.top:SetHeight(thickness)
-    edges.top:SetColorTexture(r, g, b, a)
-
-    -- Bottom edge
-    edges.bottom:ClearAllPoints()
-    edges.bottom:SetPoint("BOTTOMLEFT", border, "BOTTOMLEFT", 0, 0)
-    edges.bottom:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", 0, 0)
-    edges.bottom:SetHeight(thickness)
-    edges.bottom:SetColorTexture(r, g, b, a)
-
-    -- Left edge
-    edges.left:ClearAllPoints()
-    edges.left:SetPoint("TOPLEFT", border, "TOPLEFT", 0, -thickness)
-    edges.left:SetPoint("BOTTOMLEFT", border, "BOTTOMLEFT", 0, thickness)
-    edges.left:SetWidth(thickness)
-    edges.left:SetColorTexture(r, g, b, a)
-
-    -- Right edge
-    edges.right:ClearAllPoints()
-    edges.right:SetPoint("TOPRIGHT", border, "TOPRIGHT", 0, -thickness)
-    edges.right:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", 0, thickness)
-    edges.right:SetWidth(thickness)
-    edges.right:SetColorTexture(r, g, b, a)
-
-    border:Show()
+    -- Edges live on a UIParent-parented container (taint avoidance) pinned to
+    -- the BACKGROUND strata at level 1, expanded outward by the thickness.
+    local _, container = addon.Borders.ApplySquare(minimap, {
+        size = thickness,
+        color = { r, g, b, a },
+        layer = "BACKGROUND",
+        containerStrata = "BACKGROUND",
+        containerLevel = 1,
+        expand = thickness,
+        skipDimensionCheck = true,
+    })
+    if container and not overlays.border then
+        addon.RegisterPetBattleFrame(container)
+    end
+    overlays.border = container
 end
 
 --------------------------------------------------------------------------------

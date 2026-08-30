@@ -366,33 +366,16 @@ local function createOverlayFrame(parent)
     borderFrame:EnableMouse(false)
     overlay.borderFrame = borderFrame
 
-    -- Border textures live on borderFrame (low level, below glow)
-    overlay.borderEdges = {
-        Top = borderFrame:CreateTexture(nil, "BORDER", nil, 1),
-        Bottom = borderFrame:CreateTexture(nil, "BORDER", nil, 1),
-        Left = borderFrame:CreateTexture(nil, "BORDER", nil, 1),
-        Right = borderFrame:CreateTexture(nil, "BORDER", nil, 1),
-    }
-
-    -- Create atlas border texture for non-square styles
-    overlay.atlasBorder = borderFrame:CreateTexture(nil, "BORDER", nil, 1)
-    overlay.atlasBorder:Hide()
+    -- Border art lives on borderFrame (low level, below glow), applied through
+    -- addon.ApplyIconBorderStyle in applyBorderToOverlay.
 
     -- Propagate overlay visibility to borderFrame automatically
     overlay:HookScript("OnShow", function() borderFrame:Show() end)
     overlay:HookScript("OnHide", function() borderFrame:Hide() end)
 
-    -- Text FontStrings on overlay (high level, above glow)
-    overlay.cooldownText = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    overlay.cooldownText:SetDrawLayer("OVERLAY", 7)
-    overlay.cooldownText:SetPoint("CENTER", overlay, "CENTER", 0, 0)
-    overlay.cooldownText:Hide()
-
-    overlay.chargeText = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    overlay.chargeText:SetDrawLayer("OVERLAY", 7)
-    overlay.chargeText:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", -2, 2)
-    overlay.chargeText:Hide()
-
+    -- Text FontString on overlay (high level, above glow). Cooldown and
+    -- charge text style Blizzard's own FontStrings (applyFontStyleDirect);
+    -- only the keybind text is drawn by Scoot.
     overlay.keybindText = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     overlay.keybindText:SetDrawLayer("OVERLAY", 7)
     overlay.keybindText:SetPoint("TOPLEFT", overlay, "TOPLEFT", 2, -2)
@@ -425,14 +408,6 @@ local function releaseOverlay(overlay)
         overlay.borderFrame:ClearAllPoints()
         overlay.borderFrame:SetParent(UIParent)
     end
-    if overlay.cooldownText then
-        overlay.cooldownText:SetText("")
-        overlay.cooldownText:Hide()
-    end
-    if overlay.chargeText then
-        overlay.chargeText:SetText("")
-        overlay.chargeText:Hide()
-    end
     if overlay.keybindText then
         overlay.keybindText:SetText("")
         overlay.keybindText:Hide()
@@ -444,170 +419,76 @@ end
 -- Border Application (overlay frames, not Blizzard's)
 --------------------------------------------------------------------------------
 
--- Hide edge-based square border textures
-local function hideEdgeBorder(overlay)
-    if not overlay or not overlay.borderEdges then return end
-    for _, tex in pairs(overlay.borderEdges) do
-        tex:Hide()
-    end
-end
-
--- Hide atlas-based border texture
-local function hideAtlasBorder(overlay)
-    if not overlay or not overlay.atlasBorder then return end
-    overlay.atlasBorder:Hide()
-end
-
--- Apply square border (edges meet at corners, no gaps)
-local function applySquareBorder(overlay, opts)
-    if not overlay or not overlay.borderEdges then return end
-
-    -- Hide atlas border if it was previously shown
-    hideAtlasBorder(overlay)
-
-    local edges = overlay.borderEdges
-    local thickness = math.max(1, tonumber(opts.thickness) or 1)
-    local col = opts.color or {0, 0, 0, 1}
-    local r, g, b, a = col[1] or 0, col[2] or 0, col[3] or 0, col[4] or 1
-
-    -- Set color on all edges
-    for _, tex in pairs(edges) do
-        tex:SetColorTexture(r, g, b, a)
-    end
-
-    -- Inset: positive = move border inward, negative = move outward
-    local insetH = tonumber(opts.insetH) or tonumber(opts.inset) or 0
-    local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
-
-    -- Fractional insets need pixel-grid snapping relaxed or they round back to whole pixels
-    if addon.SetBorderTexturePixelSnap then
-        local subPixel = addon.BorderInsetIsSubPixel(insetH, insetV)
-        for _, tex in pairs(edges) do
-            addon.SetBorderTexturePixelSnap(tex, subPixel)
-        end
-    end
-
-    -- Horizontal edges span full width; vertical edges trimmed to avoid corner overlap
-    edges.Top:ClearAllPoints()
-    edges.Top:SetPoint("TOPLEFT", overlay, "TOPLEFT", -insetH, insetV)
-    edges.Top:SetPoint("TOPRIGHT", overlay, "TOPRIGHT", insetH, insetV)
-    edges.Top:SetHeight(thickness)
-
-    edges.Bottom:ClearAllPoints()
-    edges.Bottom:SetPoint("BOTTOMLEFT", overlay, "BOTTOMLEFT", -insetH, -insetV)
-    edges.Bottom:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", insetH, -insetV)
-    edges.Bottom:SetHeight(thickness)
-
-    -- Vertical edges: trimmed by thickness at top/bottom to avoid corner overlap
-    edges.Left:ClearAllPoints()
-    edges.Left:SetPoint("TOPLEFT", overlay, "TOPLEFT", -insetH, insetV - thickness)
-    edges.Left:SetPoint("BOTTOMLEFT", overlay, "BOTTOMLEFT", -insetH, -insetV + thickness)
-    edges.Left:SetWidth(thickness)
-
-    edges.Right:ClearAllPoints()
-    edges.Right:SetPoint("TOPRIGHT", overlay, "TOPRIGHT", insetH, insetV - thickness)
-    edges.Right:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", insetH, -insetV + thickness)
-    edges.Right:SetWidth(thickness)
-
-    for _, tex in pairs(edges) do
-        tex:Show()
-    end
-end
-
--- Apply atlas-based border style
-local function applyAtlasBorder(overlay, opts, styleDef)
-    if not overlay or not overlay.atlasBorder then return end
-
-    -- Hide square border edges
-    hideEdgeBorder(overlay)
-
-    local atlasTex = overlay.atlasBorder
-
-    -- For atlas borders: use style's default color (typically white) unless tint is enabled
-    -- Lets the atlas texture show its natural colors when tint is off
-    local col
-    if opts.tintEnabled and opts.tintColor then
-        col = opts.tintColor
-    else
-        col = styleDef.defaultColor or {1, 1, 1, 1}
-    end
-    local r, g, b, a = col[1] or 1, col[2] or 1, col[3] or 1, col[4] or 1
-
-    local atlasName = styleDef.atlas
-    if not atlasName then return end
-
-    atlasTex:SetAtlas(atlasName, true)
-    atlasTex:SetVertexColor(r, g, b, a)
-
-    -- Calculate expansion based on style definition and inset
-    local baseExpandX = styleDef.expandX or 0
-    local baseExpandY = styleDef.expandY or baseExpandX
-    local insetH = tonumber(opts.insetH) or tonumber(opts.inset) or 0
-    local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
-    local expandX = baseExpandX - insetH
-    local expandY = baseExpandY - insetV
-
-    -- Fractional insets need pixel-grid snapping relaxed or they round back to whole pixels
-    if addon.SetBorderTexturePixelSnap then
-        addon.SetBorderTexturePixelSnap(atlasTex, addon.BorderInsetIsSubPixel(insetH, insetV))
-    end
-
-    -- Position the atlas texture
-    atlasTex:ClearAllPoints()
-    atlasTex:SetPoint("TOPLEFT", overlay, "TOPLEFT", -expandX, expandY)
-    atlasTex:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", expandX, -expandY)
-    atlasTex:Show()
-end
+-- Everything the border art depends on, so unchanged applies can be skipped.
+-- Keyed by borderFrame (weak): pooled overlays keep their border art across
+-- reuse, and the edges are anchored to borderFrame, so geometry follows the
+-- frame without a re-apply. Cleared on every hide, or the skip would leave
+-- hidden edges hidden on the next apply.
+local borderFingerprints = setmetatable({}, { __mode = "k" })
 
 local function applyBorderToOverlay(overlay, opts)
-    if not overlay then return end
+    if not overlay or not overlay.borderFrame then return end
+    local borderFrame = overlay.borderFrame
 
     local style = opts.style or "square"
+    local thickness = math.max(1, tonumber(opts.thickness) or 1)
+    local insetH = tonumber(opts.insetH) or tonumber(opts.inset) or 0
+    local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
+    local tinted = (opts.tintEnabled and opts.tintColor) and true or false
+    local tint = tinted and opts.tintColor or nil
 
-    -- Get style definition for non-square styles
-    local styleDef = nil
-    if style ~= "square" and addon.IconBorders and addon.IconBorders.GetStyle then
-        styleDef = addon.IconBorders.GetStyle(style)
+    local fp = borderFingerprints[borderFrame]
+    if fp
+        and fp.style == style
+        and fp.thickness == thickness
+        and fp.insetH == insetH
+        and fp.insetV == insetV
+        and fp.tinted == tinted
+        and (not tinted or (fp.tintR == tint[1] and fp.tintG == tint[2]
+            and fp.tintB == tint[3] and fp.tintA == tint[4]))
+    then
+        return
     end
 
-    -- Apply the appropriate border type
-    if styleDef and styleDef.type == "atlas" and styleDef.atlas then
-        applyAtlasBorder(overlay, opts, styleDef)
-    else
-        -- Default to square border (with chamfered corners)
-        applySquareBorder(overlay, opts)
+    -- This dispatcher's square branch has always been outward-positive; the shared
+    -- dispatcher is inward-positive, so square styles negate. Atlas styles were
+    -- inward-positive here already and pass through unchanged.
+    local styleDef = addon.IconBorders and addon.IconBorders.GetStyle and addon.IconBorders.GetStyle(style)
+    local dispatchH, dispatchV = insetH, insetV
+    if not styleDef or styleDef.type == "square" then
+        dispatchH, dispatchV = -insetH, -insetV
     end
+
+    addon.ApplyIconBorderStyle(borderFrame, style, {
+        thickness = thickness,
+        insetH = dispatchH,
+        insetV = dispatchV,
+        tintEnabled = tinted,
+        color = tint,
+        simpleTint = true,
+        manageSubPixel = true,
+        expandClamp = 12,
+    })
+
+    borderFingerprints[borderFrame] = {
+        style = style,
+        thickness = thickness,
+        insetH = insetH,
+        insetV = insetV,
+        tinted = tinted,
+        tintR = tint and tint[1],
+        tintG = tint and tint[2],
+        tintB = tint and tint[3],
+        tintA = tint and tint[4],
+    }
 end
 
 local function hideBorderOnOverlay(overlay)
-    hideEdgeBorder(overlay)
-    hideAtlasBorder(overlay)
-end
-
---------------------------------------------------------------------------------
--- Text Overlay Application (overlay FontStrings, not Blizzard's)
---------------------------------------------------------------------------------
-
-local function applyTextStyleToFontString(fontString, cfg, defaultSize)
-    if not fontString then return end
-
-    local size = tonumber(cfg and cfg.size) or defaultSize or 14
-    local style = (cfg and cfg.style) or "OUTLINE"
-    local fontFace = getDefaultFontFace()
-
-    if cfg and cfg.fontFace and addon.ResolveFontFace then
-        fontFace = addon.ResolveFontFace(cfg.fontFace) or fontFace
+    if not overlay or not overlay.borderFrame then return end
+    borderFingerprints[overlay.borderFrame] = nil
+    if addon.Borders and addon.Borders.HideAll then
+        addon.Borders.HideAll(overlay.borderFrame)
     end
-
-    if addon.ApplyFontStyle then
-        addon.ApplyFontStyle(fontString, fontFace, size, style)
-    else
-        fontString:SetFont(fontFace, size, style)
-    end
-
-    local color = resolveCDMColor(cfg)
-    local r, g, b, a = color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1
-    fontString:SetTextColor(r, g, b, a)
 end
 
 --------------------------------------------------------------------------------
@@ -736,6 +617,8 @@ local function getChargeTextSettings(componentId)
 end
 
 -- Apply font styling directly to a Blizzard FontString (no GetText!)
+-- Routes through ApplyFontStyle so the pseudo-style prefixes (SHADOW*/HEAVY*)
+-- decode into their shadow calls instead of being dropped by SetFont.
 -- isChargeText: if true, uses BOTTOMRIGHT anchor; otherwise uses CENTER
 -- parentFrame: the frame to anchor to (defaults to fontString's parent)
 local function applyFontStyleDirect(fontString, cfg, isChargeText, parentFrame, skipColor)
@@ -750,12 +633,18 @@ local function applyFontStyleDirect(fontString, cfg, isChargeText, parentFrame, 
         fontFace = addon.ResolveFontFace(cfg.fontFace) or fontFace
     end
 
-    pcall(fontString.SetFont, fontString, fontFace, size, style)
+    addon.ApplyFontStyle(fontString, fontFace, size, style)
     if not skipColor then
         pcall(fontString.SetTextColor, fontString, r, g, b, a)
     end
 
+    -- Debug knob: explicit offsets override the style's own shadow. The
+    -- applier zeroes the shadow for shadowless styles, so give the offset a
+    -- visible color in that case.
     if cfg.shadowX or cfg.shadowY then
+        if not (style:find("SHADOW", 1, true) or style:find("HEAVY", 1, true)) then
+            pcall(fontString.SetShadowColor, fontString, 0, 0, 0, 0.8)
+        end
         pcall(fontString.SetShadowOffset, fontString, cfg.shadowX or 1, cfg.shadowY or -1)
     end
 

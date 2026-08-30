@@ -71,28 +71,10 @@ end
 -- Icon Creation
 --------------------------------------------------------------------------------
 
--- Border texture setup, split out so the settings-panel preview can build an icon frame that
--- CG.ApplyBorderToIcon accepts. Idempotent: safe to call on a frame that already has them.
+-- Border art is created lazily by addon.ApplyIconBorderStyle on first apply.
+-- Kept as a stub because the settings-panel preview calls it before
+-- CG.ApplyBorderToIcon.
 function CG.EnsureIconBorderTextures(frame)
-    if not frame then return frame end
-
-    if not frame.borderEdges then
-        frame.borderEdges = {
-            Top = frame:CreateTexture(nil, "OVERLAY", nil, 1),
-            Bottom = frame:CreateTexture(nil, "OVERLAY", nil, 1),
-            Left = frame:CreateTexture(nil, "OVERLAY", nil, 1),
-            Right = frame:CreateTexture(nil, "OVERLAY", nil, 1),
-        }
-        for _, tex in pairs(frame.borderEdges) do
-            tex:Hide()
-        end
-    end
-
-    if not frame.atlasBorder then
-        frame.atlasBorder = frame:CreateTexture(nil, "OVERLAY", nil, 1)
-        frame.atlasBorder:Hide()
-    end
-
     return frame
 end
 
@@ -183,10 +165,9 @@ local function ReleaseIcon(groupIndex, icon)
     end
     icon:SetAlpha(1.0)
     -- Hide borders
-    for _, tex in pairs(icon.borderEdges) do
-        tex:Hide()
+    if addon.Borders and addon.Borders.HideAll then
+        addon.Borders.HideAll(icon)
     end
-    icon.atlasBorder:Hide()
     if addon.ClearIconMask then
         addon.ClearIconMask(icon.Icon)
     end
@@ -246,127 +227,46 @@ end
 --------------------------------------------------------------------------------
 
 local function HideIconBorder(icon)
-    for _, tex in pairs(icon.borderEdges) do
-        tex:Hide()
+    if addon.Borders and addon.Borders.HideAll then
+        addon.Borders.HideAll(icon)
     end
-    icon.atlasBorder:Hide()
     if addon.ClearIconMask then
         addon.ClearIconMask(icon.Icon)
     end
-end
-
-local function ApplySquareBorder(icon, opts)
-    icon.atlasBorder:Hide()
-
-    local edges = icon.borderEdges
-    local thickness = math.max(1, tonumber(opts.thickness) or 1)
-    local col = opts.color or {0, 0, 0, 1}
-    local r, g, b, a = col[1] or 0, col[2] or 0, col[3] or 0, col[4] or 1
-    local insetH = tonumber(opts.insetH) or tonumber(opts.inset) or 0
-    local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
-    local subPixel = addon.BorderInsetIsSubPixel and addon.BorderInsetIsSubPixel(insetH, insetV)
-
-    for _, tex in pairs(edges) do
-        tex:SetColorTexture(r, g, b, a)
-        if addon.SetBorderTexturePixelSnap then
-            addon.SetBorderTexturePixelSnap(tex, subPixel)
-        end
-    end
-
-    edges.Top:ClearAllPoints()
-    edges.Top:SetPoint("TOPLEFT", icon, "TOPLEFT", -insetH, insetV)
-    edges.Top:SetPoint("TOPRIGHT", icon, "TOPRIGHT", insetH, insetV)
-    edges.Top:SetHeight(thickness)
-
-    edges.Bottom:ClearAllPoints()
-    edges.Bottom:SetPoint("BOTTOMLEFT", icon, "BOTTOMLEFT", -insetH, -insetV)
-    edges.Bottom:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", insetH, -insetV)
-    edges.Bottom:SetHeight(thickness)
-
-    edges.Left:ClearAllPoints()
-    edges.Left:SetPoint("TOPLEFT", icon, "TOPLEFT", -insetH, insetV - thickness)
-    edges.Left:SetPoint("BOTTOMLEFT", icon, "BOTTOMLEFT", -insetH, -insetV + thickness)
-    edges.Left:SetWidth(thickness)
-
-    edges.Right:ClearAllPoints()
-    edges.Right:SetPoint("TOPRIGHT", icon, "TOPRIGHT", insetH, insetV - thickness)
-    edges.Right:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", insetH, -insetV + thickness)
-    edges.Right:SetWidth(thickness)
-
-    for _, tex in pairs(edges) do
-        tex:Show()
-    end
-
-    -- How far the art reaches outside the icon frame, for callers that need to reserve room.
-    return insetH, insetV
-end
-
-local function ApplyAtlasBorder(icon, opts, styleDef)
-    -- Hide square borders
-    for _, tex in pairs(icon.borderEdges) do
-        tex:Hide()
-    end
-
-    local atlasTex = icon.atlasBorder
-    local col
-    if opts.tintEnabled and opts.tintColor then
-        col = opts.tintColor
-    else
-        col = styleDef.defaultColor or {1, 1, 1, 1}
-    end
-    local r, g, b, a = col[1] or 1, col[2] or 1, col[3] or 1, col[4] or 1
-
-    local atlasName = styleDef.atlas
-    if not atlasName then return end
-
-    atlasTex:SetAtlas(atlasName, true)
-    atlasTex:SetVertexColor(r, g, b, a)
-
-    local baseExpandX = styleDef.expandX or 0
-    local baseExpandY = styleDef.expandY or baseExpandX
-    local insetH = tonumber(opts.insetH) or tonumber(opts.inset) or 0
-    local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
-    local expandX = baseExpandX - insetH
-    local expandY = baseExpandY - insetV
-
-    if addon.SetBorderTexturePixelSnap then
-        addon.SetBorderTexturePixelSnap(atlasTex, addon.BorderInsetIsSubPixel(insetH, insetV))
-    end
-
-    local adjL = styleDef.adjustLeft or 0
-    local adjR = styleDef.adjustRight or 0
-    local adjT = styleDef.adjustTop or 0
-    local adjB = styleDef.adjustBottom or 0
-
-    atlasTex:ClearAllPoints()
-    atlasTex:SetPoint("TOPLEFT", icon, "TOPLEFT", -expandX - adjL, expandY + adjT)
-    atlasTex:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", expandX + adjR, -expandY - adjB)
-    atlasTex:Show()
-
-    -- How far the art reaches outside the icon frame, for callers that need to reserve room.
-    return expandX + math.max(adjL, adjR), expandY + math.max(adjT, adjB)
 end
 
 -- Exported so the settings-panel preview draws its border through the same code the HUD does.
 -- Returns the outward reach of the applied art on each axis.
 function CG.ApplyBorderToIcon(icon, opts)
     local style = opts.style or "square"
-    local styleDef = nil
-    if style ~= "square" and addon.IconBorders and addon.IconBorders.GetStyle then
-        styleDef = addon.IconBorders.GetStyle(style)
+
+    -- This dispatcher's square branch has always been outward-positive; the shared
+    -- dispatcher is inward-positive, so square styles negate. Atlas styles were
+    -- inward-positive here already and pass through unchanged.
+    local styleDef = addon.IconBorders and addon.IconBorders.GetStyle and addon.IconBorders.GetStyle(style)
+    local insetH = tonumber(opts.insetH) or tonumber(opts.inset) or 0
+    local insetV = tonumber(opts.insetV) or tonumber(opts.inset) or 0
+    if not styleDef or styleDef.type == "square" then
+        insetH, insetV = -insetH, -insetV
     end
 
-    -- Round the icon to match rounded frame art, so its square corners can't poke out
-    -- past the arc. These are addon-owned textures, so masking them is always safe.
-    if addon.ApplyIconMask then
-        addon.ApplyIconMask(icon.Icon, icon, style)
-    end
+    local tinted = (opts.tintEnabled and opts.tintColor) and true or false
 
-    if styleDef and styleDef.type == "atlas" and styleDef.atlas then
-        return ApplyAtlasBorder(icon, opts, styleDef)
-    else
-        return ApplySquareBorder(icon, opts)
-    end
+    local _, reachX, reachY = addon.ApplyIconBorderStyle(icon, style, {
+        thickness = opts.thickness,
+        insetH = insetH,
+        insetV = insetV,
+        tintEnabled = tinted,
+        color = tinted and opts.tintColor or nil,
+        simpleTint = true,
+        manageSubPixel = true,
+        styleAdjusts = true,
+        expandClamp = 12,
+        -- These are addon-owned textures, so masking them is always safe.
+        maskTarget = icon.Icon,
+        maskOwner = icon,
+    })
+    return reachX, reachY
 end
 local ApplyBorderToIcon = CG.ApplyBorderToIcon
 

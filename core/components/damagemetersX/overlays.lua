@@ -154,28 +154,6 @@ local function CreateEntryOverlay(parentFrame)
     iconBg:SetColorTexture(0, 0, 0, 0)
     iconBg:Hide()
 
-    -- Square border edges for the bar (on barOverlay so they render above its fill)
-    overlay._squareBorderEdges = {
-        top = barOverlay:CreateTexture(nil, "OVERLAY", nil, 5),
-        bottom = barOverlay:CreateTexture(nil, "OVERLAY", nil, 5),
-        left = barOverlay:CreateTexture(nil, "OVERLAY", nil, 5),
-        right = barOverlay:CreateTexture(nil, "OVERLAY", nil, 5),
-    }
-    for _, edge in pairs(overlay._squareBorderEdges) do
-        edge:Hide()
-    end
-
-    -- Icon border edges (on iconFrame so they render above its content)
-    overlay._iconBorderEdges = {
-        top = iconFrame:CreateTexture(nil, "OVERLAY", nil, 5),
-        bottom = iconFrame:CreateTexture(nil, "OVERLAY", nil, 5),
-        left = iconFrame:CreateTexture(nil, "OVERLAY", nil, 5),
-        right = iconFrame:CreateTexture(nil, "OVERLAY", nil, 5),
-    }
-    for _, edge in pairs(overlay._iconBorderEdges) do
-        edge:Hide()
-    end
-
     overlay.bgBase = bgBase
     overlay.barOverlay = barOverlay
     overlay.bgTexture = bgTexture
@@ -275,7 +253,7 @@ local function ApplyOverlayBorders(overlay, db, sessionWindow, isBorderedStyle)
     -- Clear any active Scoot borders and return.
     if isBorderedStyle then
         overlay.bgEdge:Hide()
-        for _, edge in pairs(overlay._squareBorderEdges) do edge:Hide() end
+        addon.Borders.HideAll(overlay.barOverlay)
         if addon.BarBorders and addon.BarBorders.ClearBarFrame then
             addon.BarBorders.ClearBarFrame(overlay.barOverlay)
         end
@@ -302,40 +280,18 @@ local function ApplyOverlayBorders(overlay, db, sessionWindow, isBorderedStyle)
         overlay.bgEdge:Hide()
     end
 
-    -- Square border edges
-    local edges = overlay._squareBorderEdges
+    -- Square border edges. hiddenEdges is deliberately not passed: this
+    -- component has never honored barBorderHiddenEdges on the square style.
     if borderStyle == "square" then
-        edges.top:ClearAllPoints()
-        edges.top:SetPoint("TOPLEFT", barOverlay, "TOPLEFT", 0, 0)
-        edges.top:SetPoint("TOPRIGHT", barOverlay, "TOPRIGHT", 0, 0)
-        edges.top:SetHeight(thickness)
-        edges.top:SetColorTexture(r, g, b, a)
-        edges.top:Show()
-
-        edges.bottom:ClearAllPoints()
-        edges.bottom:SetPoint("BOTTOMLEFT", barOverlay, "BOTTOMLEFT", 0, 0)
-        edges.bottom:SetPoint("BOTTOMRIGHT", barOverlay, "BOTTOMRIGHT", 0, 0)
-        edges.bottom:SetHeight(thickness)
-        edges.bottom:SetColorTexture(r, g, b, a)
-        edges.bottom:Show()
-
-        edges.left:ClearAllPoints()
-        edges.left:SetPoint("TOPLEFT", barOverlay, "TOPLEFT", 0, -thickness)
-        edges.left:SetPoint("BOTTOMLEFT", barOverlay, "BOTTOMLEFT", 0, thickness)
-        edges.left:SetWidth(thickness)
-        edges.left:SetColorTexture(r, g, b, a)
-        edges.left:Show()
-
-        edges.right:ClearAllPoints()
-        edges.right:SetPoint("TOPRIGHT", barOverlay, "TOPRIGHT", 0, -thickness)
-        edges.right:SetPoint("BOTTOMRIGHT", barOverlay, "BOTTOMRIGHT", 0, thickness)
-        edges.right:SetWidth(thickness)
-        edges.right:SetColorTexture(r, g, b, a)
-        edges.right:Show()
+        addon.Borders.ApplySquare(barOverlay, {
+            size = thickness,
+            color = { r, g, b, a },
+            layer = "OVERLAY",
+            layerSublevel = 5,
+            skipDimensionCheck = true,
+        })
     else
-        for _, edge in pairs(edges) do
-            edge:Hide()
-        end
+        addon.Borders.HideAll(barOverlay)
     end
 
     -- Textured borders (BarBorders system) — holder parented to barOverlay (inherits strata/visibility)
@@ -354,23 +310,22 @@ local function ApplyOverlayBorders(overlay, db, sessionWindow, isBorderedStyle)
     end
 end
 
--- Apply icon border to overlay
+-- Scratch color for ApplyOverlayIconBorder; the dispatcher reads it synchronously.
+local iconBorderColor = { 0, 0, 0, 1 }
+
+-- Apply icon border to overlay. Always square; insets here have always been
+-- inward-positive, matching the shared dispatcher, so they pass through as-is.
 local function ApplyOverlayIconBorder(overlay, db)
     if not overlay or not db then return end
 
-    local edges = overlay._iconBorderEdges
     local iconFrame = overlay.iconFrame
 
     if not db.iconBorderEnable or not iconFrame:IsShown() then
-        for _, edge in pairs(edges) do
-            edge:Hide()
+        if addon.Borders and addon.Borders.HideAll then
+            addon.Borders.HideAll(iconFrame)
         end
         return
     end
-
-    local thickness = db.iconBorderThickness or 1
-    local insetH = tonumber(db.iconBorderInsetH) or 0
-    local insetV = tonumber(db.iconBorderInsetV) or 2
 
     local r, g, b, a = 0, 0, 0, 1
     if db.iconBorderTintEnable and db.iconBorderTintColor then
@@ -380,34 +335,15 @@ local function ApplyOverlayIconBorder(overlay, db)
         b = c.b or c[3] or 0
         a = c.a or c[4] or 1
     end
+    iconBorderColor[1], iconBorderColor[2], iconBorderColor[3], iconBorderColor[4] = r, g, b, a
 
-    edges.top:ClearAllPoints()
-    edges.top:SetPoint("TOPLEFT", iconFrame, "TOPLEFT", insetH, -insetV)
-    edges.top:SetPoint("TOPRIGHT", iconFrame, "TOPRIGHT", -insetH, -insetV)
-    edges.top:SetHeight(thickness)
-    edges.top:SetColorTexture(r, g, b, a)
-    edges.top:Show()
-
-    edges.bottom:ClearAllPoints()
-    edges.bottom:SetPoint("BOTTOMLEFT", iconFrame, "BOTTOMLEFT", insetH, insetV)
-    edges.bottom:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT", -insetH, insetV)
-    edges.bottom:SetHeight(thickness)
-    edges.bottom:SetColorTexture(r, g, b, a)
-    edges.bottom:Show()
-
-    edges.left:ClearAllPoints()
-    edges.left:SetPoint("TOPLEFT", iconFrame, "TOPLEFT", insetH, -(insetV + thickness))
-    edges.left:SetPoint("BOTTOMLEFT", iconFrame, "BOTTOMLEFT", insetH, insetV + thickness)
-    edges.left:SetWidth(thickness)
-    edges.left:SetColorTexture(r, g, b, a)
-    edges.left:Show()
-
-    edges.right:ClearAllPoints()
-    edges.right:SetPoint("TOPRIGHT", iconFrame, "TOPRIGHT", -insetH, -(insetV + thickness))
-    edges.right:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT", -insetH, insetV + thickness)
-    edges.right:SetWidth(thickness)
-    edges.right:SetColorTexture(r, g, b, a)
-    edges.right:Show()
+    addon.ApplyIconBorderStyle(iconFrame, "square", {
+        thickness = db.iconBorderThickness or 1,
+        insetH = tonumber(db.iconBorderInsetH) or 0,
+        insetV = tonumber(db.iconBorderInsetV) or 2,
+        tintEnabled = true,
+        color = iconBorderColor,
+    })
 end
 
 -- Update bar foreground color on Scoot-owned overlay (combat-safe, no taint)
@@ -561,7 +497,7 @@ local function PopulateEntryOverlay(overlay, entry, db, sessionWindow)
             local baseFontSize = cfg.fontSize or OVERLAY_DEFAULT_FONT_SIZE
             local editModeScale = (db.textSize or 100) / 100
             local addonScale = cfg.scaleMultiplier or 1.0
-            overlay.nameFS:SetFont(face, baseFontSize * editModeScale * addonScale, cfg.fontStyle or OVERLAY_DEFAULT_FONT_FLAGS)
+            addon.ApplyFontStyle(overlay.nameFS, face, baseFontSize * editModeScale * addonScale, cfg.fontStyle or OVERLAY_DEFAULT_FONT_FLAGS)
         end
         if cfg.colorMode == "custom" and cfg.color then
             local c = cfg.color
@@ -587,7 +523,7 @@ local function PopulateEntryOverlay(overlay, entry, db, sessionWindow)
             local baseFontSize = cfg.fontSize or OVERLAY_DEFAULT_FONT_SIZE
             local editModeScale = (db.textSize or 100) / 100
             local addonScale = cfg.scaleMultiplier or 1.0
-            overlay.valueFS:SetFont(face, baseFontSize * editModeScale * addonScale, cfg.fontStyle or OVERLAY_DEFAULT_FONT_FLAGS)
+            addon.ApplyFontStyle(overlay.valueFS, face, baseFontSize * editModeScale * addonScale, cfg.fontStyle or OVERLAY_DEFAULT_FONT_FLAGS)
         end
         if cfg.colorMode == "custom" and cfg.color then
             local c = cfg.color

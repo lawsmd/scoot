@@ -63,6 +63,8 @@ local function AtlasFromShapeKey(key)
 end
 
 SAU._AtlasFromShapeKey = AtlasFromShapeKey
+-- The underlay's desaturated-shape variant grays this resolved tint.
+SAU._ResolveShapeColor = ResolveShapeColor
 
 local function ApplyShapeStyling(trackerId, tracker, state)
     if tracker.shape ~= "shape" then
@@ -198,61 +200,35 @@ local function ApplyBorders(trackerId, tracker, state)
             bf:SetAllPoints(elem.widget)
 
             if not wantBorder or style == "none" then
-                for _, tex in pairs(bf.borderEdges) do tex:Hide() end
-                bf.atlasBorder:Hide()
+                if addon.Borders and addon.Borders.HideAll then
+                    addon.Borders.HideAll(bf)
+                end
                 bf:Hide()
             else
                 bf:Show()
-                local thickness = math.max(1, tonumber(db.borderThickness) or 1)
                 local insetH = tonumber(db.borderInsetH) or 0
                 local insetV = tonumber(db.borderInsetV) or 0
-                local color = db.borderTintEnable and db.borderTintColor or { 0, 0, 0, 1 }
 
-                local styleDef = nil
-                if style ~= "square" and addon.IconBorders and addon.IconBorders.GetStyle then
-                    styleDef = addon.IconBorders.GetStyle(style)
+                -- This dispatcher's square branch has always been outward-positive;
+                -- the shared dispatcher is inward-positive, so square styles negate.
+                -- Atlas styles were inward-positive here already.
+                local styleDef = addon.IconBorders and addon.IconBorders.GetStyle and addon.IconBorders.GetStyle(style)
+                if not styleDef or styleDef.type == "square" then
+                    insetH, insetV = -insetH, -insetV
                 end
 
-                if styleDef and styleDef.type == "atlas" and styleDef.atlas then
-                    for _, tex in pairs(bf.borderEdges) do tex:Hide() end
-                    local atlasTex = bf.atlasBorder
-                    local col = db.borderTintEnable and db.borderTintColor or styleDef.defaultColor or { 1, 1, 1, 1 }
-                    atlasTex:SetAtlas(styleDef.atlas, true)
-                    atlasTex:SetVertexColor(col[1] or 1, col[2] or 1, col[3] or 1, col[4] or 1)
-                    local expandX = (styleDef.expandX or 0) - insetH
-                    local expandY = (styleDef.expandY or styleDef.expandX or 0) - insetV
-                    atlasTex:ClearAllPoints()
-                    atlasTex:SetPoint("TOPLEFT", bf, "TOPLEFT", -expandX - (styleDef.adjustLeft or 0), expandY + (styleDef.adjustTop or 0))
-                    atlasTex:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", expandX + (styleDef.adjustRight or 0), -expandY - (styleDef.adjustBottom or 0))
-                    atlasTex:Show()
-                else
-                    bf.atlasBorder:Hide()
-                    local edges = bf.borderEdges
-                    local r, g, b, a = color[1] or 0, color[2] or 0, color[3] or 0, color[4] or 1
-                    for _, tex in pairs(edges) do tex:SetColorTexture(r, g, b, a) end
+                local tinted = (db.borderTintEnable and db.borderTintColor) and true or false
 
-                    edges.Top:ClearAllPoints()
-                    edges.Top:SetPoint("TOPLEFT", bf, "TOPLEFT", -insetH, insetV)
-                    edges.Top:SetPoint("TOPRIGHT", bf, "TOPRIGHT", insetH, insetV)
-                    edges.Top:SetHeight(thickness)
-
-                    edges.Bottom:ClearAllPoints()
-                    edges.Bottom:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -insetH, -insetV)
-                    edges.Bottom:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", insetH, -insetV)
-                    edges.Bottom:SetHeight(thickness)
-
-                    edges.Left:ClearAllPoints()
-                    edges.Left:SetPoint("TOPLEFT", bf, "TOPLEFT", -insetH, insetV - thickness)
-                    edges.Left:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -insetH, -insetV + thickness)
-                    edges.Left:SetWidth(thickness)
-
-                    edges.Right:ClearAllPoints()
-                    edges.Right:SetPoint("TOPRIGHT", bf, "TOPRIGHT", insetH, insetV - thickness)
-                    edges.Right:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", insetH, -insetV + thickness)
-                    edges.Right:SetWidth(thickness)
-
-                    for _, tex in pairs(edges) do tex:Show() end
-                end
+                addon.ApplyIconBorderStyle(bf, style, {
+                    thickness = db.borderThickness,
+                    insetH = insetH,
+                    insetV = insetV,
+                    tintEnabled = tinted,
+                    color = tinted and db.borderTintColor or nil,
+                    simpleTint = true,
+                    styleAdjusts = true,
+                    expandClamp = 12,
+                })
             end
         end
     end
@@ -325,66 +301,28 @@ local function ApplyBarStyling(trackerId, tracker, state)
             if db.barBorderTintEnable and db.barBorderTintColor then
                 borderColor = db.barBorderTintColor
             end
-            local bR, bG, bB, bA = borderColor[1] or 0, borderColor[2] or 0, borderColor[3] or 0, borderColor[4] or 1
-
             if borderStyle == "square" then
                 if addon.BarBorders then
                     addon.BarBorders.ClearBarFrame(elem.barFill)
                 end
-                if not elem.squareBorder then
-                    local bf = CreateFrame("Frame", nil, elem.widget)
-                    bf:SetFrameLevel(elem.widget:GetFrameLevel() + 2)
-                    bf.edges = {
-                        Top = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-                        Bottom = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-                        Left = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-                        Right = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-                    }
-                    elem.squareBorder = bf
-                end
-
-                local bf = elem.squareBorder
-                bf:ClearAllPoints()
-                bf:SetAllPoints(elem.widget)
-                bf:Show()
-
-                local edges = bf.edges
-                for _, tex in pairs(edges) do tex:SetColorTexture(bR, bG, bB, bA) end
-
-                edges.Top:ClearAllPoints()
-                edges.Top:SetPoint("TOPLEFT", bf, "TOPLEFT", -borderInsetH, borderInsetV)
-                edges.Top:SetPoint("TOPRIGHT", bf, "TOPRIGHT", borderInsetH, borderInsetV)
-                edges.Top:SetHeight(borderThickness)
-
-                edges.Bottom:ClearAllPoints()
-                edges.Bottom:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -borderInsetH, -borderInsetV)
-                edges.Bottom:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", borderInsetH, -borderInsetV)
-                edges.Bottom:SetHeight(borderThickness)
-
-                edges.Left:ClearAllPoints()
-                edges.Left:SetPoint("TOPLEFT", bf, "TOPLEFT", -borderInsetH, borderInsetV - borderThickness)
-                edges.Left:SetPoint("BOTTOMLEFT", bf, "BOTTOMLEFT", -borderInsetH, -borderInsetV + borderThickness)
-                edges.Left:SetWidth(borderThickness)
-
-                edges.Right:ClearAllPoints()
-                edges.Right:SetPoint("TOPRIGHT", bf, "TOPRIGHT", borderInsetH, borderInsetV - borderThickness)
-                edges.Right:SetPoint("BOTTOMRIGHT", bf, "BOTTOMRIGHT", borderInsetH, -borderInsetV + borderThickness)
-                edges.Right:SetWidth(borderThickness)
-
-                for _, tex in pairs(edges) do tex:Show() end
-
-                if hiddenEdges then
-                    if hiddenEdges.top then edges.Top:Hide() end
-                    if hiddenEdges.bottom then edges.Bottom:Hide() end
-                    if hiddenEdges.left then edges.Left:Hide() end
-                    if hiddenEdges.right then edges.Right:Hide() end
-                end
+                -- Edges live in a container parented to the widget, above it:
+                -- the cadence clip frame must not own them, or the lock would
+                -- clip the border too.
+                addon.Borders.ApplySquare(elem.widget, {
+                    size = borderThickness,
+                    color = borderColor,
+                    layer = "OVERLAY",
+                    layerSublevel = 1,
+                    levelOffset = 2,
+                    containerParent = elem.widget,
+                    expandX = borderInsetH,
+                    expandY = borderInsetV,
+                    hiddenEdges = hiddenEdges,
+                    skipDimensionCheck = true,
+                })
 
             elseif borderStyle ~= "none" and addon.BarBorders and addon.BarBorders.ApplyToBarFrame then
-                if elem.squareBorder then
-                    for _, tex in pairs(elem.squareBorder.edges) do tex:Hide() end
-                    elem.squareBorder:Hide()
-                end
+                addon.Borders.HideAll(elem.widget)
                 addon.BarBorders.ApplyToBarFrame(elem.barFill, borderStyle, {
                     thickness = borderThickness,
                     insetH = borderInsetH,
@@ -397,10 +335,7 @@ local function ApplyBarStyling(trackerId, tracker, state)
                     sizeProxyParent = elem.widget,
                 })
             else
-                if elem.squareBorder then
-                    for _, tex in pairs(elem.squareBorder.edges) do tex:Hide() end
-                    elem.squareBorder:Hide()
-                end
+                addon.Borders.HideAll(elem.widget)
                 if addon.BarBorders then
                     addon.BarBorders.ClearBarFrame(elem.barFill)
                 end
@@ -461,6 +396,8 @@ local function ApplyStyling(trackerId, tracker)
         if tracker.kind == "missingbuff" and SAU.Missing then
             SAU.Missing.UpdateGate(trackerId)
         end
+        -- Also stops a running blink; the Hide above already conceals it.
+        if SAU.Underlay then SAU.Underlay.UpdateGate(trackerId) end
         if grouped and SAU.Groups then SAU.Groups.RequestReflow() end
         return
     end
@@ -499,6 +436,12 @@ local function ApplyStyling(trackerId, tracker)
             SAU.Missing.UpdateGate(trackerId)
         end
     end
+    -- Missing-state underlay (underlay.lua): Scoot-owned art on the visual,
+    -- so it repaints here even while ApplyAll queues behind the structural
+    -- gate. Runs for every kind so a stale underlay hides on a kind flip.
+    if SAU.Underlay then
+        SAU.Underlay.Sync(trackerId, tracker, state)
+    end
     SAU.Engine.ApplyAll(trackerId)
     -- Restyles while Edit Mode is open (late claims from reconcile, enable
     -- flips, group flushes) repaint the preview. The exit callback clears the
@@ -508,24 +451,28 @@ local function ApplyStyling(trackerId, tracker)
     end
 end
 
---- Both regen edges: re-apply the combat gate for every live tracker carrying
--- it. Deliberately narrower than a restyle. Nothing else moved at a combat
--- edge, and a restyle would run the whole element chain per tracker on every
--- pull. Also called on Edit Mode enter, where the gate reads open.
+--- Both regen edges, Edit Mode enter, and the events.lua poll: re-apply the
+-- combat gate for every live tracker carrying it. Deliberately narrower than a
+-- restyle. Nothing else moved at a combat edge, and a restyle would run the
+-- whole element chain per tracker on every pull. The poll exists because a
+-- 2026-08-29 in-combat dump caught an Only-in-Combat shell still hidden with
+-- every gate input reading true: the regen edge alone does not land reliably.
+-- A converged pass changes nothing, so the poll cost is a few plain reads.
 function SAU.RefreshCombatGates()
     local reflow = false
     for trackerId, state in pairs(SAU._activeStates) do
         local tracker = SAU.GetTracker(trackerId)
         if tracker and SHELL_GATED_KINDS[tracker.kind] and SAU.OnlyInCombat(tracker)
-            and state.shell and SAU.IsTrackerActive(trackerId, tracker)
+            and state.shell
+            and SAU.IsTrackerActive(trackerId, tracker)
             and SAU.IsModuleActive() then
             local target, grouped = StyleTarget(state)
             local shown = SAU.CombatGateOpen(tracker)
             if target and target:IsShown() ~= shown then
                 target:SetShown(shown)
                 if grouped then reflow = true end
-                -- A hidden container runs no OnUpdate, so one re-shown at the
-                -- pull has processed nothing since it was gated off.
+                -- A hidden container runs no OnUpdate, so one re-shown at
+                -- the pull has processed nothing since it was gated off.
                 if shown then SAU.Engine.KickTracker(trackerId, "combat-gate") end
             end
         end
