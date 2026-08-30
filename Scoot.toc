@@ -214,6 +214,7 @@ core/debug/scootauras.lua
 core/debug/ufzauras.lua
 core/debug/gfauras.lua
 core/debug/ping.lua
+core/debug/fontpair.lua
 core/taintdebug.lua
 core/dialogs.lua
 core/importexport.lua

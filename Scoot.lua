@@ -150,6 +150,7 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("  /scoot debug layoutdump \"Layout Name\"   -- persisted Edit Mode anchors")
             addon:Print("  /scoot debug consoleport export")
             addon:Print("  /scoot debug cdmlayers")
+            addon:Print("  /scoot debug fontpair")
             addon:Print("  /scoot debug cdm   -- CDM styling pipeline state")
             addon:Print("  /scoot debug sct   -- world text font/scale log and CVar state")
             addon:Print("  /scoot debug slug  -- SLUG font-flag acceptance probe")
@@ -470,6 +471,16 @@ function SlashCmdList.SCOOT(msg, editBox)
                 addon.DebugDumpRaidFrames()
             else
                 addon:Print("Raid Frames debug not available (raidframes module missing).")
+            end
+            return
+        end
+
+        -- /scoot debug fontpair   -- Deep Shadow copy draw order
+        if sub1 == "fontpair" then
+            if addon.DebugFontPair then
+                addon.DebugFontPair()
+            else
+                addon:Print("Deep Shadow pair debug not available.")
             end
             return
         end
