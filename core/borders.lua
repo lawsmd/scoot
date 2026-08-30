@@ -72,7 +72,7 @@ local function hideLegacy(frame)
     -- No mask textures used in the final design, so nothing else to clear here.
 end
 
-local function ensureContainer(frame, strata, levelOffset, parent, anchorRegion)
+local function ensureContainer(frame, strata, levelOffset, parent, anchorRegion, absoluteLevel)
     local f = borderContainers[frame]
     if not f then
         f = CreateFrame("Frame", nil, parent or UIParent)
@@ -86,7 +86,11 @@ local function ensureContainer(frame, strata, levelOffset, parent, anchorRegion)
     f:SetPoint("TOPLEFT", anchor, "TOPLEFT", 0, 0)
     f:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", 0, 0)
     f:SetFrameStrata(desiredStrata)
-    f:SetFrameLevel(safeDimension(function() return frame:GetFrameLevel() end) + lvlOffset)
+    if absoluteLevel ~= nil then
+        f:SetFrameLevel(tonumber(absoluteLevel) or 1)
+    else
+        f:SetFrameLevel(safeDimension(function() return frame:GetFrameLevel() end) + lvlOffset)
+    end
     f:Show()
     return f
 end
@@ -146,16 +150,22 @@ function Borders.ApplySquare(frame, opts)
     local layer = (type(opts.layer) == "string") and opts.layer or "ARTWORK"
     local layerSublevel = tonumber(opts.layerSublevel) or 0
     local container
-    -- Create a container if either containerStrata OR levelOffset is specified.
+    -- Create a container if containerStrata, levelOffset, or containerLevel is specified.
     -- If containerStrata is nil, ensureContainer will inherit the parent frame's strata,
     -- which keeps borders below Blizzard menus while still allowing elevated frame level.
-    if opts.containerStrata or opts.levelOffset then
-        container = ensureContainer(frame, opts.containerStrata, opts.levelOffset, opts.containerParent, opts.containerAnchorRegion)
+    if opts.containerStrata or opts.levelOffset or opts.containerLevel then
+        container = ensureContainer(frame, opts.containerStrata, opts.levelOffset, opts.containerParent, opts.containerAnchorRegion, opts.containerLevel)
     end
     local e = ensureSquare(frame, layer, layerSublevel, container)
     colorEdges(e, r, g, b, a)
-    local anchor = container or frame
-    local target = anchor
+    -- Sub-pixel snap management runs only for callers that pass opts.subPixel
+    -- (true or false); edges are cached, so each apply must re-assert the state.
+    if opts.subPixel ~= nil and addon.SetBorderTexturePixelSnap then
+        for _, t in pairs(e) do addon.SetBorderTexturePixelSnap(t, opts.subPixel) end
+    end
+    -- Textures live on the container when one exists; opts.anchorRegion lets a
+    -- container-less caller anchor edges to a different region than their parent.
+    local target = container or opts.anchorRegion or frame
     local expand = tonumber(opts.expand) or 0
     local ex = tonumber(opts.expandX) or expand
     local ey = tonumber(opts.expandY) or expand
@@ -164,41 +174,26 @@ function Borders.ApplySquare(frame, opts)
     local exRight = (opts.expandRight ~= nil) and tonumber(opts.expandRight) or ex
     local eyTop   = (opts.expandTop   ~= nil) and tonumber(opts.expandTop)   or ey
     local eyBottom= (opts.expandBottom~= nil) and tonumber(opts.expandBottom)or ey
-    -- Optional per-edge thickness overrides (e.g., thicker bottom edge for Player Power Bar Spark)
-    local sizeTop    = (opts.sizeTop    ~= nil) and math.max(1, tonumber(opts.sizeTop))    or size
-    local sizeBottom = (opts.sizeBottom ~= nil) and math.max(1, tonumber(opts.sizeBottom)) or size
-    local sizeLeft   = (opts.sizeLeft   ~= nil) and math.max(1, tonumber(opts.sizeLeft))   or size
-    local sizeRight  = (opts.sizeRight  ~= nil) and math.max(1, tonumber(opts.sizeRight))  or size
     -- Prevent corner over-darkening without leaving gaps:
     -- let horizontal edges span the full width; trim vertical edges by the thickness.
     -- This yields a single-draw corner (from the horizontal edge) at each corner.
-    e.Top:ClearAllPoints();    e.Top:SetPoint("TOPLEFT", target, "TOPLEFT", -exLeft, eyTop);        e.Top:SetPoint("TOPRIGHT", target, "TOPRIGHT", exRight, eyTop);        e.Top:SetHeight(sizeTop)
-    e.Bottom:ClearAllPoints(); e.Bottom:SetPoint("BOTTOMLEFT", target, "BOTTOMLEFT", -exLeft, -eyBottom); e.Bottom:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", exRight, -eyBottom); e.Bottom:SetHeight(sizeBottom)
-    e.Left:ClearAllPoints();   e.Left:SetPoint("TOPLEFT", target, "TOPLEFT", -exLeft, eyTop - sizeTop);        e.Left:SetPoint("BOTTOMLEFT", target, "BOTTOMLEFT", -exLeft, (-eyBottom) + sizeBottom);   e.Left:SetWidth(sizeLeft)
-    e.Right:ClearAllPoints();  e.Right:SetPoint("TOPRIGHT", target, "TOPRIGHT", exRight, eyTop - sizeTop);     e.Right:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", exRight, (-eyBottom) + sizeBottom); e.Right:SetWidth(sizeRight)
-    -- Defer Show() for managed frames (PetFrame, etc.) to break taint chain
+    -- opts.untrimmedCorners keeps full-height verticals for callers that draw the
+    -- legacy double-blended corner on purpose.
+    local vTrim = opts.untrimmedCorners and 0 or size
+    e.Top:ClearAllPoints();    e.Top:SetPoint("TOPLEFT", target, "TOPLEFT", -exLeft, eyTop);        e.Top:SetPoint("TOPRIGHT", target, "TOPRIGHT", exRight, eyTop);        e.Top:SetHeight(size)
+    e.Bottom:ClearAllPoints(); e.Bottom:SetPoint("BOTTOMLEFT", target, "BOTTOMLEFT", -exLeft, -eyBottom); e.Bottom:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", exRight, -eyBottom); e.Bottom:SetHeight(size)
+    e.Left:ClearAllPoints();   e.Left:SetPoint("TOPLEFT", target, "TOPLEFT", -exLeft, eyTop - vTrim);        e.Left:SetPoint("BOTTOMLEFT", target, "BOTTOMLEFT", -exLeft, (-eyBottom) + vTrim);   e.Left:SetWidth(size)
+    e.Right:ClearAllPoints();  e.Right:SetPoint("TOPRIGHT", target, "TOPRIGHT", exRight, eyTop - vTrim);     e.Right:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", exRight, (-eyBottom) + vTrim); e.Right:SetWidth(size)
+    for _, t in pairs(e) do if t.Show then t:Show() end end
     local hiddenEdges = opts.hiddenEdges
-    if opts.deferShow then
-        C_Timer.After(0, function()
-            for _, t in pairs(e) do if t.Show then t:Show() end end
-            if hiddenEdges then
-                if hiddenEdges.top and e.Top then e.Top:Hide() end
-                if hiddenEdges.bottom and e.Bottom then e.Bottom:Hide() end
-                if hiddenEdges.left and e.Left then e.Left:Hide() end
-                if hiddenEdges.right and e.Right then e.Right:Hide() end
-            end
-            if container and container.Show then container:Show() end
-        end)
-    else
-        for _, t in pairs(e) do if t.Show then t:Show() end end
-        if hiddenEdges then
-            if hiddenEdges.top and e.Top then e.Top:Hide() end
-            if hiddenEdges.bottom and e.Bottom then e.Bottom:Hide() end
-            if hiddenEdges.left and e.Left then e.Left:Hide() end
-            if hiddenEdges.right and e.Right then e.Right:Hide() end
-        end
-        if container and container.Show then container:Show() end
+    if hiddenEdges then
+        if hiddenEdges.top and e.Top then e.Top:Hide() end
+        if hiddenEdges.bottom and e.Bottom then e.Bottom:Hide() end
+        if hiddenEdges.left and e.Left then e.Left:Hide() end
+        if hiddenEdges.right and e.Right then e.Right:Hide() end
     end
+    if container and container.Show then container:Show() end
+    return e, container
 end
 
 function Borders.HideAll(frame)
@@ -548,6 +543,26 @@ end
 function Borders.GetTextureTintOverlay(frame)
     local overlays = tintOverlays[frame]
     return overlays and overlays.texture
+end
+
+function Borders.GetSquareEdges(frame)
+    local container = borderContainers[frame]
+    return borderEdges[container or frame]
+end
+
+function Borders.GetSquareContainer(frame)
+    return borderContainers[frame]
+end
+
+-- Recolor-only fast path for hot callers (per-row class colors). Returns false when
+-- no square border exists yet so the caller can fall back to ApplySquare.
+function Borders.RecolorSquare(frame, color)
+    local container = borderContainers[frame]
+    local edges = borderEdges[container or frame]
+    if not edges then return false end
+    local col = color or {0, 0, 0, 1}
+    colorEdges(edges, col[1] or 0, col[2] or 0, col[3] or 0, col[4] or 1)
+    return true
 end
 
 function Borders.SetAtlasTintOverlay(frame, texture)

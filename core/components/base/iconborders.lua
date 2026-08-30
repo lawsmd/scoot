@@ -221,21 +221,6 @@ local function ResetIconBorderTarget(target)
     wipeTexture(addon.Borders.GetTextureBorder and addon.Borders.GetTextureBorder(target))
     wipeTexture(addon.Borders.GetAtlasTintOverlay and addon.Borders.GetAtlasTintOverlay(target))
     wipeTexture(addon.Borders.GetTextureTintOverlay and addon.Borders.GetTextureTintOverlay(target))
-
-    if target.ScootSquareBorderEdges then
-        for _, edge in pairs(target.ScootSquareBorderEdges) do
-            if edge then edge:Hide() end
-        end
-    end
-
-    if target.ScootSquareBorder and target.ScootSquareBorder.edges then
-        for _, tex in pairs(target.ScootSquareBorder.edges) do
-            if tex and tex.Hide then tex:Hide() end
-        end
-    end
-    if target.ScootSquareBorderContainer and target.ScootSquareBorderContainer.Hide then
-        target.ScootSquareBorderContainer:Hide()
-    end
 end
 Util.ResetIconBorderTarget = ResetIconBorderTarget
 
@@ -389,9 +374,32 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
     local baseExpandY = styleDef.expandY or baseExpandX
     local insetValueH = tonumber(opts and opts.insetH) or tonumber(opts and opts.inset) or 0
     local insetValueV = tonumber(opts and opts.insetV) or tonumber(opts and opts.inset) or 0
-    local expandX = clamp(baseExpandX + (-insetValueH), -8, 8)
-    local expandY = clamp(baseExpandY + (-insetValueV), -8, 8)
+    -- Dispatchers whose inset sliders never clamped expansion (CDM, custom groups,
+    -- scoot auras) pass expandClamp to keep e.g. baseExpand 8 + outward inset 4 intact.
+    local expandLimit = tonumber(opts and opts.expandClamp) or 8
+    local expandX = clamp(baseExpandX + (-insetValueH), -expandLimit, expandLimit)
+    local expandY = clamp(baseExpandY + (-insetValueV), -expandLimit, expandLimit)
     local subPixel = addon.BorderInsetIsSubPixel(insetValueH, insetValueV)
+
+    -- Per-side style adjusts (opt-in): honors styleDef.adjustLeft/Right/Top/Bottom the
+    -- way the custom-groups dispatcher established. Callers that never used adjusts
+    -- keep symmetric expands and their historical geometry.
+    local adjL, adjR, adjT, adjB = 0, 0, 0, 0
+    if opts and opts.styleAdjusts then
+        adjL = styleDef.adjustLeft or 0
+        adjR = styleDef.adjustRight or 0
+        adjT = styleDef.adjustTop or 0
+        adjB = styleDef.adjustBottom or 0
+    end
+    local hasAdjusts = (adjL ~= 0) or (adjR ~= 0) or (adjT ~= 0) or (adjB ~= 0)
+
+    -- Sub-pixel snap on square edges is likewise opt-in (opts.manageSubPixel): the
+    -- dispatchers that historically relaxed snapping for fractional insets keep doing
+    -- so; everyone else keeps creation-time snapping.
+    local squareSubPixel = nil
+    if opts and opts.manageSubPixel then
+        squareSubPixel = subPixel and true or false
+    end
 
     -- Round the icon to match rounded frame art. Only callers that own their icon
     -- texture pass maskTarget; Blizzard-owned icons (action buttons, CooldownViewer)
@@ -409,6 +417,12 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             tintColor = baseApplyColor,
             expandX = expandX,
             expandY = expandY,
+            offsets = hasAdjusts and {
+                left = -(expandX + adjL),
+                top = expandY + adjT,
+                right = expandX + adjR,
+                bottom = -(expandY + adjB),
+            } or nil,
             layer = styleDef.layer or "OVERLAY",
             layerSublevel = styleDef.layerSublevel or 7,
         })
@@ -420,6 +434,12 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             tintColor = baseApplyColor,
             expandX = expandX,
             expandY = expandY,
+            offsets = hasAdjusts and {
+                left = -(expandX + adjL),
+                top = expandY + adjT,
+                right = expandX + adjR,
+                bottom = -(expandY + adjB),
+            } or nil,
             layer = styleDef.layer or "OVERLAY",
             layerSublevel = styleDef.layerSublevel or 7,
         })
@@ -432,17 +452,8 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             layerSublevel = styleDef.layerSublevel or 7,
             expandX = expandX,
             expandY = expandY,
+            subPixel = squareSubPixel,
         })
-        local container = targetFrame.ScootSquareBorderContainer or targetFrame
-        local edges = (container and container.ScootSquareBorderEdges) or targetFrame.ScootSquareBorderEdges
-        if edges then
-            for _, edge in pairs(edges) do
-                if edge and edge.SetColorTexture then
-                    edge:SetColorTexture(baseApplyColor[1] or 0, baseApplyColor[2] or 0, baseApplyColor[3] or 0, (baseApplyColor[4] == nil and 1) or baseApplyColor[4])
-                end
-                addon.SetBorderTexturePixelSnap(edge, subPixel)
-            end
-        end
         local atlasOverlay = addon.Borders.GetAtlasTintOverlay(targetFrame)
         local textureOverlay = addon.Borders.GetTextureTintOverlay(targetFrame)
         if atlasOverlay then atlasOverlay:Hide() end
@@ -485,7 +496,32 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             return tex
         end
 
-        if tintEnabled then
+        -- Wipes any tint overlay left from a previous full-tint apply. The base
+        -- texture already carries its final color from the apply above.
+        local function wipeTintOverlays()
+            local overlays = {
+                addon.Borders.GetAtlasTintOverlay(targetFrame),
+                addon.Borders.GetTextureTintOverlay(targetFrame),
+            }
+            for _, ov in ipairs(overlays) do
+                if ov then
+                    ov:Hide()
+                    if ov.SetTexture then pcall(ov.SetTexture, ov, nil) end
+                    if ov.SetAtlas then pcall(ov.SetAtlas, ov, nil) end
+                    if ov.SetVertexColor then pcall(ov.SetVertexColor, ov, 1, 1, 1, 0) end
+                    if ov.SetBlendMode then pcall(ov.SetBlendMode, ov, styleDef.baseBlendMode or styleDef.layerBlendMode or "BLEND") end
+                end
+            end
+        end
+
+        if tintEnabled and opts and opts.simpleTint then
+            -- Simple tint: vertex-color the border art itself, with no tint overlay
+            -- and no blend-mode or desaturation heuristics. The conservative path for
+            -- dispatchers that have always tinted this way.
+            appliedTexture:SetVertexColor(tintColor[1] or 1, tintColor[2] or 1, tintColor[3] or 1, tintColor[4] or 1)
+            appliedTexture:SetAlpha(1)
+            wipeTintOverlays()
+        elseif tintEnabled then
             overlay = ensureOverlay()
             addon.SetBorderTexturePixelSnap(overlay, subPixel)
             local layer, sublevel = appliedTexture:GetDrawLayer()
@@ -511,64 +547,11 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             overlay:Show()
             appliedTexture:SetAlpha(0)
         else
-            local overlays = {
-                addon.Borders.GetAtlasTintOverlay(frame),
-                addon.Borders.GetTextureTintOverlay(frame),
-            }
-            for _, ov in ipairs(overlays) do
-                if ov then
-                    ov:Hide()
-                    if ov.SetTexture then pcall(ov.SetTexture, ov, nil) end
-                    if ov.SetAtlas then pcall(ov.SetAtlas, ov, nil) end
-                    if ov.SetVertexColor then pcall(ov.SetVertexColor, ov, 1, 1, 1, 0) end
-                    if ov.SetBlendMode then pcall(ov.SetBlendMode, ov, styleDef.baseBlendMode or styleDef.layerBlendMode or "BLEND") end
-                end
-            end
-
-            if addon.Borders and addon.Borders.HideAll then addon.Borders.HideAll(frame) end
-
-            if styleDef.type == "atlas" and styleDef.atlas then
-                addon.Borders.ApplyAtlas(frame, {
-                    atlas = styleDef.atlas,
-                    color = baseColor,
-                    tintColor = baseColor,
-                    expandX = expandX,
-                    expandY = expandY,
-                    layer = styleDef.layer or "OVERLAY",
-                    layerSublevel = styleDef.layerSublevel or 7,
-                })
-                appliedTexture = addon.Borders.GetAtlasBorder(frame)
-            elseif styleDef.type == "texture" and styleDef.texture then
-                addon.Borders.ApplyTexture(frame, {
-                    texture = styleDef.texture,
-                    color = baseColor,
-                    tintColor = baseColor,
-                    expandX = expandX,
-                    expandY = expandY,
-                    layer = styleDef.layer or "OVERLAY",
-                    layerSublevel = styleDef.layerSublevel or 7,
-                })
-                appliedTexture = addon.Borders.GetTextureBorder(frame)
-            else
-                addon.Borders.ApplySquare(frame, {
-                    size = thickness,
-                    color = baseColor or {0, 0, 0, 1},
-                    layer = styleDef.layer or "OVERLAY",
-                    layerSublevel = styleDef.layerSublevel or 7,
-                })
-            end
-
-            if appliedTexture then
-                addon.SetBorderTexturePixelSnap(appliedTexture, subPixel)
-                appliedTexture:SetAlpha(baseColor[4] or 1)
-                if appliedTexture.SetDesaturated then pcall(appliedTexture.SetDesaturated, appliedTexture, false) end
-                if appliedTexture.SetBlendMode then pcall(appliedTexture.SetBlendMode, appliedTexture, styleDef.baseBlendMode or styleDef.layerBlendMode or "BLEND") end
-                appliedTexture:SetVertexColor(baseColor[1] or 1, baseColor[2] or 1, baseColor[3] or 1, baseColor[4] or 1)
-            end
+            wipeTintOverlays()
         end
     end
 
-    -- expandX/expandY are the outward reach of the applied art, for callers that need to
+    -- The outward reach of the applied art on each axis, for callers that need to
     -- reserve room around the icon (the settings preview sizes its clip box from these).
-    return styleDef.type, expandX, expandY
+    return styleDef.type, expandX + math.max(adjL, adjR), expandY + math.max(adjT, adjB)
 end

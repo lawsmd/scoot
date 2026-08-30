@@ -463,28 +463,6 @@ local function ApplyActionBarStyling(self)
                     containerParent = iconRegion and btn or nil,
                     containerAnchorRegion = iconRegion,
                 })
-                local container = btn.ScootSquareBorderContainer or btn
-                local edges = (container and container.ScootSquareBorderEdges) or btn.ScootSquareBorderEdges
-                if edges and edges.Right then
-                    edges.Right:ClearAllPoints()
-                    local rX = shaped and (0 - borderInsetH) or (-1 + borderInsetH)
-                    edges.Right:SetPoint("TOPRIGHT", container or btn, "TOPRIGHT", rX, 0)
-                    edges.Right:SetPoint("BOTTOMRIGHT", container or btn, "BOTTOMRIGHT", rX, 0)
-                end
-                if edges and edges.Top then
-                    edges.Top:ClearAllPoints()
-                    local tRX = shaped and (0 + borderInsetH) or (-1 + borderInsetH)
-                    local tY = shaped and (0 - borderInsetV) or (1 - borderInsetV)
-                    edges.Top:SetPoint("TOPLEFT", container or btn, "TOPLEFT", 0 - borderInsetH, tY)
-                    edges.Top:SetPoint("TOPRIGHT", container or btn, "TOPRIGHT", tRX, tY)
-                end
-                if edges and edges.Bottom then
-                    edges.Bottom:ClearAllPoints()
-                    local bRX = shaped and (0 + borderInsetH) or (-1 + borderInsetH)
-                    local bY = shaped and (0 + borderInsetV) or (1 - borderInsetV)
-                    edges.Bottom:SetPoint("BOTTOMLEFT", container or btn, "BOTTOMLEFT", 0 - borderInsetH, bY)
-                    edges.Bottom:SetPoint("BOTTOMRIGHT", container or btn, "BOTTOMRIGHT", bRX, bY)
-                end
             else
                 addon.ApplyIconBorderStyle(btn, styleKey, {
                     thickness = thickness,
@@ -504,7 +482,7 @@ local function ApplyActionBarStyling(self)
             -- stack count has to sit on a frame above whatever got the art. Skipped in
             -- combat with the rest of the reparenting work on these protected buttons.
             if btn.Count and not inCombat then
-                addon.PromoteIconText(btn.Count, btn, btn.ScootSquareBorderContainer or btn)
+                addon.PromoteIconText(btn.Count, btn, addon.Borders.GetSquareContainer(btn) or btn)
             end
         end
 
