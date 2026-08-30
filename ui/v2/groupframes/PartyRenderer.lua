@@ -9,46 +9,10 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 local COMPONENT_ID = "gfParty"
 
 --------------------------------------------------------------------------------
--- Database Access
+-- Bound Helpers
 --------------------------------------------------------------------------------
 
-local function ensureDB()
-    return GF.ensurePartyDB()
-end
-
-local function ensureTextDB(key)
-    return GF.ensurePartyTextDB(key)
-end
-
---------------------------------------------------------------------------------
--- Apply Functions
---------------------------------------------------------------------------------
-
-local function applyStyles()
-    GF.applyPartyStyles()
-end
-
-local function applyText()
-    GF.applyPartyText()
-end
-
---------------------------------------------------------------------------------
--- Edit Mode Helpers
---------------------------------------------------------------------------------
-
-local function getPartyFrame()
-    return GF.getPartyFrame()
-end
-
-local function getEditModeSetting(settingId)
-    local frame = getPartyFrame()
-    return GF.getEditModeSetting(frame, settingId)
-end
-
-local function setEditModeSetting(settingId, value, options)
-    local frame = getPartyFrame()
-    GF.setEditModeSetting(frame, settingId, value, options)
-end
+local B = GF.BindFrame("party")
 
 --------------------------------------------------------------------------------
 -- Shared Tab Builders
@@ -58,11 +22,11 @@ local function buildStyleTab(inner, barPrefix, applyFn)
     inner:AddDualBarStyleRow({
         label = "Foreground",
         getTexture = function()
-            local t = ensureDB() or {}
+            local t = B.ensureDB() or {}
             return t[barPrefix .. "Texture"] or "default"
         end,
         setTexture = function(v)
-            local t = ensureDB()
+            local t = B.ensureDB()
             if not t then return end
             t[barPrefix .. "Texture"] = v or "default"
             applyFn()
@@ -71,22 +35,22 @@ local function buildStyleTab(inner, barPrefix, applyFn)
         colorOrder = GF.healthColorOrder,
         colorInfoIcons = GF.healthColorInfoIcons,
         getColorMode = function()
-            local t = ensureDB() or {}
+            local t = B.ensureDB() or {}
             return t[barPrefix .. "ColorMode"] or "default"
         end,
         setColorMode = function(v)
-            local t = ensureDB()
+            local t = B.ensureDB()
             if not t then return end
             t[barPrefix .. "ColorMode"] = v or "default"
             applyFn()
         end,
         getColor = function()
-            local t = ensureDB() or {}
+            local t = B.ensureDB() or {}
             local c = t[barPrefix .. "Tint"] or {1, 1, 1, 1}
             return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
         end,
         setColor = function(r, g, b, a)
-            local t = ensureDB()
+            local t = B.ensureDB()
             if not t then return end
             t[barPrefix .. "Tint"] = {r or 1, g or 1, b or 1, a or 1}
             applyFn()
@@ -100,11 +64,11 @@ local function buildStyleTab(inner, barPrefix, applyFn)
     inner:AddDualBarStyleRow({
         label = "Background",
         getTexture = function()
-            local t = ensureDB() or {}
+            local t = B.ensureDB() or {}
             return t[barPrefix .. "BackgroundTexture"] or "default"
         end,
         setTexture = function(v)
-            local t = ensureDB()
+            local t = B.ensureDB()
             if not t then return end
             t[barPrefix .. "BackgroundTexture"] = v or "default"
             applyFn()
@@ -112,22 +76,22 @@ local function buildStyleTab(inner, barPrefix, applyFn)
         colorValues = GF.bgColorValues,
         colorOrder = GF.bgColorOrder,
         getColorMode = function()
-            local t = ensureDB() or {}
+            local t = B.ensureDB() or {}
             return t[barPrefix .. "BackgroundColorMode"] or "default"
         end,
         setColorMode = function(v)
-            local t = ensureDB()
+            local t = B.ensureDB()
             if not t then return end
             t[barPrefix .. "BackgroundColorMode"] = v or "default"
             applyFn()
         end,
         getColor = function()
-            local t = ensureDB() or {}
+            local t = B.ensureDB() or {}
             local c = t[barPrefix .. "BackgroundTint"] or {0, 0, 0, 1}
             return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
         end,
         setColor = function(r, g, b, a)
-            local t = ensureDB()
+            local t = B.ensureDB()
             if not t then return end
             t[barPrefix .. "BackgroundTint"] = {r or 0, g or 0, b or 0, a or 1}
             applyFn()
@@ -142,11 +106,11 @@ local function buildStyleTab(inner, barPrefix, applyFn)
         max = 100,
         step = 1,
         get = function()
-            local t = ensureDB() or {}
+            local t = B.ensureDB() or {}
             return tonumber(t[barPrefix .. "BackgroundOpacity"]) or 50
         end,
         set = function(v)
-            local t = ensureDB()
+            local t = B.ensureDB()
             if not t then return end
             t[barPrefix .. "BackgroundOpacity"] = tonumber(v) or 50
             applyFn()
@@ -157,188 +121,24 @@ local function buildStyleTab(inner, barPrefix, applyFn)
 end
 
 local function buildTextTab(inner, textKey, applyFn, includeHideToggle, hideLabel, defaultAnchor)
-    if includeHideToggle then
-        inner:AddToggle({
-            label = hideLabel or "Hide",
-            get = function()
-                local s = ensureTextDB(textKey) or {}
-                return not not s.hide
-            end,
-            set = function(v)
-                local t = ensureDB()
-                if not t then return end
-                t[textKey] = t[textKey] or {}
-                t[textKey].hide = v and true or false
-                applyFn()
-            end,
-        })
-    end
-
-    if textKey == "textPlayerName" then
-        inner:AddToggle({
-            label = "Hide Realm Name",
+    local get, set = B.textAccessors(textKey)
+    inner:AddTextStyleBlock({
+        get = get, set = set, apply = applyFn,
+        defaults = { size = 12 },
+        hideToggle = includeHideToggle and { label = hideLabel or "Hide" } or nil,
+        hideRealmToggle = textKey == "textPlayerName" and {
             description = "Shows only the player name without server (e.g., 'Player' instead of 'Player-Realm')",
-            get = function()
-                local s = ensureTextDB(textKey) or {}
-                return not not s.hideRealm
-            end,
-            set = function(v)
-                local t = ensureDB()
-                if not t then return end
-                t[textKey] = t[textKey] or {}
-                t[textKey].hideRealm = v and true or false
-                applyFn()
-            end,
-        })
-    end
-
-    -- Font
-    inner:AddFontSelector({
-        label = "Font",
-        get = function()
-            local s = ensureTextDB(textKey) or {}
-            return s.fontFace or "FRIZQT__"
-        end,
-        set = function(v)
-            local t = ensureDB()
-            if not t then return end
-            t[textKey] = t[textKey] or {}
-            t[textKey].fontFace = v
-            applyFn()
-        end,
-    })
-
-    -- Style
-    inner:AddSelector({
-        label = "Style",
-        values = GF.fontStyleValues,
-        order = GF.fontStyleOrder,
-        get = function()
-            local s = ensureTextDB(textKey) or {}
-            return s.style or "OUTLINE"
-        end,
-        set = function(v)
-            local t = ensureDB()
-            if not t then return end
-            t[textKey] = t[textKey] or {}
-            t[textKey].style = v
-            applyFn()
-        end,
-    })
-
-    -- Size
-    inner:AddSlider({
-        label = "Size",
-        min = 6,
-        max = 32,
-        step = 1,
-        get = function()
-            local s = ensureTextDB(textKey) or {}
-            return tonumber(s.size) or 12
-        end,
-        set = function(v)
-            local t = ensureDB()
-            if not t then return end
-            t[textKey] = t[textKey] or {}
-            t[textKey].size = tonumber(v) or 12
-            applyFn()
-        end,
-    })
-
-    -- Color
-    inner:AddSelectorColorPicker({
-        label = "Color",
-        values = GF.fontColorValues,
-        order = GF.fontColorOrder,
-        get = function()
-            local s = ensureTextDB(textKey) or {}
-            return s.colorMode or "default"
-        end,
-        set = function(v)
-            local t = ensureDB()
-            if not t then return end
-            t[textKey] = t[textKey] or {}
-            t[textKey].colorMode = v or "default"
-            applyFn()
-        end,
-        getColor = function()
-            local s = ensureTextDB(textKey) or {}
-            local c = s.color or {1, 1, 1, 1}
-            return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-        end,
-        setColor = function(r, g, b, a)
-            local t = ensureDB()
-            if not t then return end
-            t[textKey] = t[textKey] or {}
-            t[textKey].color = {r or 1, g or 1, b or 1, a or 1}
-            applyFn()
-        end,
-        customValue = "custom",
-        hasAlpha = true,
-    })
-
-    -- Alignment (9-way anchor)
-    local anchorDefault = defaultAnchor or "TOPLEFT"
-    inner:AddSelector({
-        label = "Alignment",
-        values = GF.anchorValues,
-        order = GF.anchorOrder,
-        get = function()
-            local s = ensureTextDB(textKey) or {}
-            return s.anchor or anchorDefault
-        end,
-        set = function(v)
-            local t = ensureDB()
-            if not t then return end
-            t[textKey] = t[textKey] or {}
-            t[textKey].anchor = v or anchorDefault
-            applyFn()
-        end,
-    })
-
-    -- Offset X/Y
-    inner:AddDualSlider({
-        label = "Offset",
-        sliderA = {
-            axisLabel = "X",
-            min = -50,
-            max = 50,
-            step = 1,
-            get = function()
-                local s = ensureTextDB(textKey) or {}
-                local o = s.offset or {}
-                return tonumber(o.x) or 0
-            end,
-            set = function(v)
-                local t = ensureDB()
-                if not t then return end
-                t[textKey] = t[textKey] or {}
-                t[textKey].offset = t[textKey].offset or {}
-                t[textKey].offset.x = tonumber(v) or 0
-                applyFn()
-            end,
+        } or nil,
+        size = { min = 6, max = 32 },
+        alignment = {
+            kind = "anchor9",
+            label = "Alignment",
+            default = defaultAnchor or "TOPLEFT",
+            values = GF.anchorValues,
+            order = GF.anchorOrder,
         },
-        sliderB = {
-            axisLabel = "Y",
-            min = -50,
-            max = 50,
-            step = 1,
-            get = function()
-                local s = ensureTextDB(textKey) or {}
-                local o = s.offset or {}
-                return tonumber(o.y) or 0
-            end,
-            set = function(v)
-                local t = ensureDB()
-                if not t then return end
-                t[textKey] = t[textKey] or {}
-                t[textKey].offset = t[textKey].offset or {}
-                t[textKey].offset.y = tonumber(v) or 0
-                applyFn()
-            end,
-        },
+        offset = { range = 50 },
     })
-
     inner:Finalize()
 end
 
@@ -368,13 +168,13 @@ function GF.RenderParty(panel, scrollContent)
         emphasized = true,
         get = function()
             if not EM or not EM.UseRaidStylePartyFrames then return false end
-            local v = getEditModeSetting(EM.UseRaidStylePartyFrames)
+            local v = B.getEditModeSetting(EM.UseRaidStylePartyFrames)
             return v and v ~= 0
         end,
         set = function(v)
             if not EM or not EM.UseRaidStylePartyFrames then return end
             C_Timer.After(0, function()
-                setEditModeSetting(EM.UseRaidStylePartyFrames, v and 1 or 0, {
+                B.setEditModeSetting(EM.UseRaidStylePartyFrames, v and 1 or 0, {
                     skipApply = true,
                     suspendDuration = 0.25,
                 })
@@ -393,13 +193,13 @@ function GF.RenderParty(panel, scrollContent)
             label = "Show Party Frame Background",
             get = function()
                 if not EM or not EM.ShowPartyFrameBackground then return true end
-                local v = getEditModeSetting(EM.ShowPartyFrameBackground)
+                local v = B.getEditModeSetting(EM.ShowPartyFrameBackground)
                 return v and v ~= 0
             end,
             set = function(v)
                 if not EM or not EM.ShowPartyFrameBackground then return end
                 C_Timer.After(0, function()
-                    setEditModeSetting(EM.ShowPartyFrameBackground, v and 1 or 0, {
+                    B.setEditModeSetting(EM.ShowPartyFrameBackground, v and 1 or 0, {
                         suspendDuration = 0.25,
                     })
                 end)
@@ -422,13 +222,13 @@ function GF.RenderParty(panel, scrollContent)
                     label = "Use Horizontal Layout",
                     get = function()
                         if not EM or not EM.UseHorizontalGroups then return false end
-                        local v = getEditModeSetting(EM.UseHorizontalGroups)
+                        local v = B.getEditModeSetting(EM.UseHorizontalGroups)
                         return v and v ~= 0
                     end,
                     set = function(v)
                         if not EM or not EM.UseHorizontalGroups then return end
                         C_Timer.After(0, function()
-                            setEditModeSetting(EM.UseHorizontalGroups, v and 1 or 0, {
+                            B.setEditModeSetting(EM.UseHorizontalGroups, v and 1 or 0, {
                                 suspendDuration = 0.25,
                             })
                         end)
@@ -441,12 +241,12 @@ function GF.RenderParty(panel, scrollContent)
                     order = GF.partySortByOrder,
                     get = function()
                         if not EM or not EM.SortPlayersBy then return 0 end
-                        return getEditModeSetting(EM.SortPlayersBy) or 0
+                        return B.getEditModeSetting(EM.SortPlayersBy) or 0
                     end,
                     set = function(v)
                         if not EM or not EM.SortPlayersBy then return end
                         C_Timer.After(0, function()
-                            setEditModeSetting(EM.SortPlayersBy, v, {
+                            B.setEditModeSetting(EM.SortPlayersBy, v, {
                                 suspendDuration = 0.25,
                             })
                         end)
@@ -477,12 +277,12 @@ function GF.RenderParty(panel, scrollContent)
                     step = 2,
                     get = function()
                         if not EM or not EM.FrameWidth then return 72 end
-                        return getEditModeSetting(EM.FrameWidth) or 72
+                        return B.getEditModeSetting(EM.FrameWidth) or 72
                     end,
                     set = function(v)
                         if not EM or not EM.FrameWidth then return end
                         C_Timer.After(0, function()
-                            setEditModeSetting(EM.FrameWidth, v, {
+                            B.setEditModeSetting(EM.FrameWidth, v, {
                                 suspendDuration = 0.25,
                             })
                         end)
@@ -496,12 +296,12 @@ function GF.RenderParty(panel, scrollContent)
                     step = 2,
                     get = function()
                         if not EM or not EM.FrameHeight then return 36 end
-                        return getEditModeSetting(EM.FrameHeight) or 36
+                        return B.getEditModeSetting(EM.FrameHeight) or 36
                     end,
                     set = function(v)
                         if not EM or not EM.FrameHeight then return end
                         C_Timer.After(0, function()
-                            setEditModeSetting(EM.FrameHeight, v, {
+                            B.setEditModeSetting(EM.FrameHeight, v, {
                                 suspendDuration = 0.25,
                             })
                         end)
@@ -515,7 +315,7 @@ function GF.RenderParty(panel, scrollContent)
                     step = 5,
                     get = function()
                         if not EM or not EM.FrameSize then return 100 end
-                        local v = getEditModeSetting(EM.FrameSize)
+                        local v = B.getEditModeSetting(EM.FrameSize)
                         -- Edit Mode may return index 0..20; normalize to 100..200
                         if v and v <= 20 then return 100 + (v * 5) end
                         return math.max(100, math.min(200, v or 100))
@@ -523,7 +323,7 @@ function GF.RenderParty(panel, scrollContent)
                     set = function(v)
                         if not EM or not EM.FrameSize then return end
                         C_Timer.After(0, function()
-                            setEditModeSetting(EM.FrameSize, v, {
+                            B.setEditModeSetting(EM.FrameSize, v, {
                                 suspendDuration = 0.25,
                             })
                         end)
@@ -546,7 +346,7 @@ function GF.RenderParty(panel, scrollContent)
         sectionKey = "style",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            buildStyleTab(inner, "healthBar", applyStyles)
+            buildStyleTab(inner, "healthBar", B.applyStyles)
         end,
     })
 
@@ -566,13 +366,13 @@ function GF.RenderParty(panel, scrollContent)
                     description = "Shows Blizzard's default border around the party group.",
                     get = function()
                         if not EM or not EM.DisplayBorder then return false end
-                        local v = getEditModeSetting(EM.DisplayBorder)
+                        local v = B.getEditModeSetting(EM.DisplayBorder)
                         return v and v ~= 0
                     end,
                     set = function(v)
                         if not EM or not EM.DisplayBorder then return end
                         C_Timer.After(0, function()
-                            setEditModeSetting(EM.DisplayBorder, v and 1 or 0, {
+                            B.setEditModeSetting(EM.DisplayBorder, v and 1 or 0, {
                                 suspendDuration = 0.25,
                             })
                         end)
@@ -587,49 +387,49 @@ function GF.RenderParty(panel, scrollContent)
                     label = "Border Style",
                     includeNone = true,
                     get = function()
-                        local cfg = ensureDB() or {}
+                        local cfg = B.ensureDB() or {}
                         return cfg.healthBarBorderStyle or "none"
                     end,
                     set = function(v)
-                        local cfg = ensureDB()
+                        local cfg = B.ensureDB()
                         if not cfg then return end
                         cfg.healthBarBorderStyle = v or "none"
-                        GF.applyPartyHealthBarBorders()
+                        B.applyHealthBarBorders()
                     end,
                     getHiddenEdges = function()
-                        local cfg = ensureDB() or {}
+                        local cfg = B.ensureDB() or {}
                         return cfg.healthBarBorderHiddenEdges
                     end,
                     setHiddenEdges = function(v)
-                        local cfg = ensureDB()
+                        local cfg = B.ensureDB()
                         if not cfg then return end
                         cfg.healthBarBorderHiddenEdges = v
-                        GF.applyPartyHealthBarBorders()
+                        B.applyHealthBarBorders()
                     end,
                 })
 
                 inner:AddToggleColorPicker({
                     label = "Border Tint",
                     get = function()
-                        local cfg = ensureDB() or {}
+                        local cfg = B.ensureDB() or {}
                         return not not cfg.healthBarBorderTintEnable
                     end,
                     set = function(v)
-                        local cfg = ensureDB()
+                        local cfg = B.ensureDB()
                         if not cfg then return end
                         cfg.healthBarBorderTintEnable = not not v
-                        GF.applyPartyHealthBarBorders()
+                        B.applyHealthBarBorders()
                     end,
                     getColor = function()
-                        local cfg = ensureDB() or {}
+                        local cfg = B.ensureDB() or {}
                         local c = cfg.healthBarBorderTintColor or {1, 1, 1, 1}
                         return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
                     end,
                     setColor = function(r, g, b, a)
-                        local cfg = ensureDB()
+                        local cfg = B.ensureDB()
                         if not cfg then return end
                         cfg.healthBarBorderTintColor = {r or 1, g or 1, b or 1, a or 1}
-                        GF.applyPartyHealthBarBorders()
+                        B.applyHealthBarBorders()
                     end,
                     hasAlpha = true,
                 })
@@ -641,14 +441,14 @@ function GF.RenderParty(panel, scrollContent)
                     step = 0.5,
                     precision = 1,
                     get = function()
-                        local cfg = ensureDB() or {}
+                        local cfg = B.ensureDB() or {}
                         return tonumber(cfg.healthBarBorderThickness) or 1
                     end,
                     set = function(v)
-                        local cfg = ensureDB()
+                        local cfg = B.ensureDB()
                         if not cfg then return end
                         cfg.healthBarBorderThickness = tonumber(v) or 1
-                        GF.applyPartyHealthBarBorders()
+                        B.applyHealthBarBorders()
                     end,
                 })
 
@@ -657,28 +457,28 @@ function GF.RenderParty(panel, scrollContent)
                     sliderA = {
                         axisLabel = "H", min = -4, max = 4, step = 1,
                         get = function()
-                            local cfg = ensureDB() or {}
+                            local cfg = B.ensureDB() or {}
                             return tonumber(cfg.healthBarBorderInsetH) or tonumber(cfg.healthBarBorderInset) or 0
                         end,
                         set = function(v)
-                            local cfg = ensureDB()
+                            local cfg = B.ensureDB()
                             if not cfg then return end
                             cfg.healthBarBorderInsetH = tonumber(v) or 0
-                            GF.applyPartyHealthBarBorders()
+                            B.applyHealthBarBorders()
                         end,
                         minLabel = "-4", maxLabel = "+4",
                     },
                     sliderB = {
                         axisLabel = "V", min = -4, max = 4, step = 1,
                         get = function()
-                            local cfg = ensureDB() or {}
+                            local cfg = B.ensureDB() or {}
                             return tonumber(cfg.healthBarBorderInsetV) or tonumber(cfg.healthBarBorderInset) or 0
                         end,
                         set = function(v)
-                            local cfg = ensureDB()
+                            local cfg = B.ensureDB()
                             if not cfg then return end
                             cfg.healthBarBorderInsetV = tonumber(v) or 0
-                            GF.applyPartyHealthBarBorders()
+                            B.applyHealthBarBorders()
                         end,
                         minLabel = "-4", maxLabel = "+4",
                     },
@@ -709,13 +509,13 @@ function GF.RenderParty(panel, scrollContent)
                 sectionKey = "text_tabs",
                 buildContent = {
                     playerName = function(cf, tabInner)
-                        buildTextTab(tabInner, "textPlayerName", applyText, false)
+                        buildTextTab(tabInner, "textPlayerName", B.applyText, false)
                     end,
                     statusText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textStatusText", applyText, false, nil, "CENTER")
+                        buildTextTab(tabInner, "textStatusText", B.applyText, false, nil, "CENTER")
                     end,
                     partyTitle = function(cf, tabInner)
-                        buildTextTab(tabInner, "textPartyTitle", applyText, true, "Hide Party Title")
+                        buildTextTab(tabInner, "textPartyTitle", B.applyText, true, "Hide Party Title")
                     end,
                 },
             })
@@ -748,28 +548,28 @@ function GF.RenderParty(panel, scrollContent)
                                 values = GF.roleIconSetValues,
                                 order = GF.roleIconSetOrder,
                                 get = function()
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     return db and db.roleIconSet or "default"
                                 end,
                                 set = function(v)
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     if db then
                                         db.roleIconSet = v
-                                        GF.applyPartyRoleIcons()
+                                        B.applyRoleIcons()
                                     end
                                 end,
                             },
                             toggle = {
                                 label = "Desaturate",
                                 get = function()
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     return db and db.roleIconDesaturate or false
                                 end,
                                 set = function(v)
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     if db then
                                         db.roleIconDesaturate = v
-                                        GF.applyPartyRoleIcons()
+                                        B.applyRoleIcons()
                                     end
                                 end,
                             },
@@ -784,14 +584,14 @@ function GF.RenderParty(panel, scrollContent)
                             },
                             order = { "showAll", "hideDPS", "hideAll" },
                             get = function()
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 return db and db.roleIconVisibility or "showAll"
                             end,
                             set = function(v)
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 if db then
                                     db.roleIconVisibility = v
-                                    GF.applyPartyRoleIcons()
+                                    B.applyRoleIcons()
                                 end
                             end,
                         })
@@ -804,14 +604,14 @@ function GF.RenderParty(panel, scrollContent)
                             step = 5,
                             displaySuffix = "%",
                             get = function()
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 return db and db.roleIconScale or 100
                             end,
                             set = function(v)
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 if db then
                                     db.roleIconScale = v
-                                    GF.applyPartyRoleIcons()
+                                    B.applyRoleIcons()
                                 end
                             end,
                         })
@@ -830,14 +630,14 @@ function GF.RenderParty(panel, scrollContent)
                             values = roleAnchorValues,
                             order = roleAnchorOrder,
                             get = function()
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 return db and db.roleIconAnchor or "default"
                             end,
                             set = function(v)
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 if db then
                                     db.roleIconAnchor = v
-                                    GF.applyPartyRoleIcons()
+                                    B.applyRoleIcons()
                                 end
                             end,
                         })
@@ -849,14 +649,14 @@ function GF.RenderParty(panel, scrollContent)
                                 axisLabel = "X",
                                 min = -50, max = 50, step = 1,
                                 get = function()
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     return db and db.roleIconOffsetX or 0
                                 end,
                                 set = function(v)
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     if db then
                                         db.roleIconOffsetX = v
-                                        GF.applyPartyRoleIcons()
+                                        B.applyRoleIcons()
                                     end
                                 end,
                             },
@@ -864,14 +664,14 @@ function GF.RenderParty(panel, scrollContent)
                                 axisLabel = "Y",
                                 min = -50, max = 50, step = 1,
                                 get = function()
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     return db and db.roleIconOffsetY or 0
                                 end,
                                 set = function(v)
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     if db then
                                         db.roleIconOffsetY = v
-                                        GF.applyPartyRoleIcons()
+                                        B.applyRoleIcons()
                                     end
                                 end,
                             },
@@ -889,14 +689,14 @@ function GF.RenderParty(panel, scrollContent)
                             },
                             order = { "default", "desaturated" },
                             get = function()
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 return db and db.groupLeadIconSet or "default"
                             end,
                             set = function(v)
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 if db then
                                     db.groupLeadIconSet = v
-                                    GF.applyPartyGroupLeadIcons()
+                                    B.applyGroupLeadIcons()
                                 end
                             end,
                         })
@@ -906,14 +706,14 @@ function GF.RenderParty(panel, scrollContent)
                             label = "Show Group Lead Icon",
                             description = "Displays a crown icon on the group/raid leader's frame.",
                             get = function()
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 return db and db.groupLeadIconShow or false
                             end,
                             set = function(v)
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 if db then
                                     db.groupLeadIconShow = v
-                                    GF.applyPartyGroupLeadIcons()
+                                    B.applyGroupLeadIcons()
                                 end
                             end,
                         })
@@ -926,14 +726,14 @@ function GF.RenderParty(panel, scrollContent)
                             step = 5,
                             displaySuffix = "%",
                             get = function()
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 return db and db.groupLeadIconScale or 100
                             end,
                             set = function(v)
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 if db then
                                     db.groupLeadIconScale = v
-                                    GF.applyPartyGroupLeadIcons()
+                                    B.applyGroupLeadIcons()
                                 end
                             end,
                         })
@@ -951,14 +751,14 @@ function GF.RenderParty(panel, scrollContent)
                             values = leadAnchorValues,
                             order = leadAnchorOrder,
                             get = function()
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 return db and db.groupLeadIconAnchor or "TOPLEFT"
                             end,
                             set = function(v)
-                                local db = GF.ensurePartyDB()
+                                local db = B.ensureDB()
                                 if db then
                                     db.groupLeadIconAnchor = v
-                                    GF.applyPartyGroupLeadIcons()
+                                    B.applyGroupLeadIcons()
                                 end
                             end,
                         })
@@ -970,14 +770,14 @@ function GF.RenderParty(panel, scrollContent)
                                 axisLabel = "X",
                                 min = -50, max = 50, step = 1,
                                 get = function()
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     return db and db.groupLeadIconOffsetX or 0
                                 end,
                                 set = function(v)
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     if db then
                                         db.groupLeadIconOffsetX = v
-                                        GF.applyPartyGroupLeadIcons()
+                                        B.applyGroupLeadIcons()
                                     end
                                 end,
                             },
@@ -985,14 +785,14 @@ function GF.RenderParty(panel, scrollContent)
                                 axisLabel = "Y",
                                 min = -50, max = 50, step = 1,
                                 get = function()
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     return db and db.groupLeadIconOffsetY or 0
                                 end,
                                 set = function(v)
-                                    local db = GF.ensurePartyDB()
+                                    local db = B.ensureDB()
                                     if db then
                                         db.groupLeadIconOffsetY = v
-                                        GF.applyPartyGroupLeadIcons()
+                                        B.applyGroupLeadIcons()
                                     end
                                 end,
                             },
@@ -1020,45 +820,45 @@ function GF.RenderParty(panel, scrollContent)
                 label = "Hide Heal Prediction",
                 description = "Hides incoming heal prediction bars (both your heals and others' heals).",
                 get = function()
-                    local db = GF.ensurePartyDB()
+                    local db = B.ensureDB()
                     return db and db.hideHealPrediction or false
                 end,
                 set = function(v)
-                    local db = GF.ensurePartyDB()
+                    local db = B.ensureDB()
                     if db then
                         db.hideHealPrediction = v
                     end
-                    GF.applyPartyStyles()
+                    B.applyStyles()
                 end,
             })
             inner:AddToggle({
                 label = "Hide Absorb Bars",
                 description = "Hides absorb shield overlays and related glow effects on health bars.",
                 get = function()
-                    local db = GF.ensurePartyDB()
+                    local db = B.ensureDB()
                     return db and db.hideAbsorbBars or false
                 end,
                 set = function(v)
-                    local db = GF.ensurePartyDB()
+                    local db = B.ensureDB()
                     if db then
                         db.hideAbsorbBars = v
                     end
-                    GF.applyPartyStyles()
+                    B.applyStyles()
                 end,
             })
             inner:AddToggle({
                 label = "Hide Over Absorb Glow",
                 description = "Hides the glow effect when absorb shields exceed health bar width.",
                 get = function()
-                    local db = GF.ensurePartyDB()
+                    local db = B.ensureDB()
                     return db and db.hideOverAbsorbGlow or false
                 end,
                 set = function(v)
-                    local db = GF.ensurePartyDB()
+                    local db = B.ensureDB()
                     if db then
                         db.hideOverAbsorbGlow = v
                     end
-                    GF.applyPartyStyles()
+                    B.applyStyles()
                 end,
             })
             inner:Finalize()

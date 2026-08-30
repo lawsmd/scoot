@@ -904,25 +904,12 @@ function AuraTrackingUI.Render(panel, scrollContent)
                     -- against the slider's bottom rule; a small spacer separates them.
                     tabBuilder:AddSpacer(8)
 
-                    tabBuilder:AddDualSlider({
-                        label = "Offset",
-                        sliderA = {
-                            axisLabel = "X",
-                            min = -50,
-                            max = 50,
-                            step = 1,
-                            get = function() return getSetting(selectedId, "offsetX") or 0 end,
-                            set = function(v) setSetting(selectedId, "offsetX", v) end,
-                        },
-                        sliderB = {
-                            axisLabel = "Y",
-                            min = -50,
-                            max = 50,
-                            step = 1,
-                            get = function() return getSetting(selectedId, "offsetY") or 0 end,
-                            set = function(v) setSetting(selectedId, "offsetY", v) end,
-                        },
+                    -- setSetting applies on its own, so no apply is passed
+                    tabBuilder:AddOffsetPair({
+                        range = 50,
                         disabled = function() return not isEnabled end,
+                        get = function(axis) return getSetting(selectedId, axis == "x" and "offsetX" or "offsetY") end,
+                        set = function(axis, v) setSetting(selectedId, axis == "x" and "offsetX" or "offsetY", v) end,
                     })
                 end,
 
@@ -931,12 +918,6 @@ function AuraTrackingUI.Render(panel, scrollContent)
                 --------------------------------------------------------
                 stacksText = function(tabContent, tabBuilder)
                     local Helpers = addon.UI.Settings and addon.UI.Settings.Helpers or GF
-                    local fontStyleValues = (Helpers and Helpers.fontStyleValues) or GF.fontStyleValues or {
-                        NONE = "Regular", OUTLINE = "Outline", THICKOUTLINE = "Thick Outline",
-                    }
-                    local fontStyleOrder = (Helpers and Helpers.fontStyleOrder) or GF.fontStyleOrder or {
-                        "NONE", "OUTLINE", "THICKOUTLINE",
-                    }
                     local DEFAULTS = (HA and HA.STACKS_TEXT_DEFAULTS) or {
                         fontFace = "FRIZQT__", size = 12, style = "OUTLINE",
                         colorMode = "default", customColor = { 1, 1, 1, 1 },
@@ -957,84 +938,39 @@ function AuraTrackingUI.Render(panel, scrollContent)
                             cfg.stacksText = {}
                         end
                         cfg.stacksText[key] = value
+                    end
+
+                    local function applyST()
                         if HA and HA.OnConfigChanged then HA.OnConfigChanged() end
                     end
 
-                    tabBuilder:AddFontSelector({
-                        label = "Font",
-                        description = "Font used for the stack count text.",
-                        get = function() return getST("fontFace") end,
-                        set = function(v) setST("fontFace", v) end,
+                    -- Composite fields map straight onto the stacksText keys;
+                    -- only the custom color is stored under customColor
+                    local FIELD_KEYS = { color = "customColor" }
+                    tabBuilder:AddTextStyleBlock({
+                        get = function(field) return getST(FIELD_KEYS[field] or field) end,
+                        set = function(field, value) setST(FIELD_KEYS[field] or field, value) end,
+                        apply = applyST,
                         disabled = function() return not isEnabled end,
-                    })
-
-                    tabBuilder:AddSlider({
-                        label = "Font Size",
-                        min = 6,
-                        max = 32,
-                        step = 1,
-                        get = function() return getST("size") end,
-                        set = function(v) setST("size", v) end,
-                        disabled = function() return not isEnabled end,
-                    })
-
-                    tabBuilder:AddSelector({
-                        label = "Font Style",
-                        values = fontStyleValues,
-                        order = fontStyleOrder,
-                        get = function() return getST("style") end,
-                        set = function(v) setST("style", v) end,
-                        disabled = function() return not isEnabled end,
-                    })
-
-                    tabBuilder:AddSelectorColorPicker({
-                        key = "stacksTextColor",
-                        label = "Font Color",
-                        values = { ["default"] = "Default (White)", ["custom"] = "Custom" },
-                        order = { "default", "custom" },
-                        customValue = "custom",
-                        hasAlpha = true,
-                        get = function() return getST("colorMode") end,
-                        set = function(v) setST("colorMode", v) end,
-                        getColor = function()
-                            local c = getST("customColor") or { 1, 1, 1, 1 }
-                            return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                        end,
-                        setColor = function(r, g, b, a)
-                            setST("customColor", { r, g, b, a })
-                        end,
-                        disabled = function() return not isEnabled end,
-                    })
-
-                    tabBuilder:AddSelector({
-                        label = "Position",
-                        description = "Where the stacks text sits within the icon's bounding box.",
-                        values = ANCHOR_VALUES,
-                        order = ANCHOR_ORDER,
-                        get = function() return getST("anchor") end,
-                        set = function(v) setST("anchor", v) end,
-                        disabled = function() return not isEnabled end,
-                    })
-
-                    tabBuilder:AddDualSlider({
-                        label = "Offset",
-                        sliderA = {
-                            axisLabel = "X",
-                            min = -50,
-                            max = 50,
-                            step = 1,
-                            get = function() return getST("offsetX") end,
-                            set = function(v) setST("offsetX", v) end,
+                        defaults = { size = 12 },
+                        font = { description = "Font used for the stack count text." },
+                        -- Paired order: stack counts are Scoot-drawn
+                        -- FontStrings, so the Deep Shadow styles are offered
+                        style = { order = Helpers.fontStyleOrderPaired or GF.fontStyleOrderPaired },
+                        size = { min = 6, max = 32 },
+                        color = {
+                            key = "stacksTextColor",
+                            values = { ["default"] = "Default (White)", ["custom"] = "Custom" },
+                            order = { "default", "custom" },
                         },
-                        sliderB = {
-                            axisLabel = "Y",
-                            min = -50,
-                            max = 50,
-                            step = 1,
-                            get = function() return getST("offsetY") end,
-                            set = function(v) setST("offsetY", v) end,
+                        alignment = {
+                            kind = "anchor9",
+                            label = "Position",
+                            description = "Where the stacks text sits within the icon's bounding box.",
+                            values = ANCHOR_VALUES,
+                            order = ANCHOR_ORDER,
                         },
-                        disabled = function() return not isEnabled end,
+                        offset = { range = 50 },
                     })
                 end,
             },

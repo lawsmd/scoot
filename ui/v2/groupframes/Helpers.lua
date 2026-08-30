@@ -6,43 +6,31 @@ addon.UI.GroupFrames = addon.UI.GroupFrames or {}
 local GF = addon.UI.GroupFrames
 
 --------------------------------------------------------------------------------
--- Edit Mode Frame Getters
+-- Edit Mode Frame Getter
 --------------------------------------------------------------------------------
 
-function GF.getPartyFrame()
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
-    if not (mgr and EM and EMSys and mgr.GetRegisteredSystemFrame) then return nil end
-    return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, EM.Party)
-end
+-- frameKey is "party" or "raid" throughout this file; it doubles as the
+-- groupFrames db key and as addon.ApplyGroupFrame*For's argument.
+local FRAME_PREFIX = { party = "Party", raid = "Raid" }
 
-function GF.getRaidFrame()
+function GF.getFrame(frameKey)
     local mgr = _G.EditModeManagerFrame
     local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
     local EMSys = _G.Enum and _G.Enum.EditModeSystem
     if not (mgr and EM and EMSys and mgr.GetRegisteredSystemFrame) then return nil end
-    return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, EM.Raid)
+    return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, EM[FRAME_PREFIX[frameKey]])
 end
 
 --------------------------------------------------------------------------------
 -- Database Access
 --------------------------------------------------------------------------------
 
-function GF.ensurePartyDB()
+function GF.ensureDB(frameKey)
     local db = addon and addon.db and addon.db.profile
     if not db then return nil end
     db.groupFrames = db.groupFrames or {}
-    db.groupFrames.party = db.groupFrames.party or {}
-    return db.groupFrames.party
-end
-
-function GF.ensureRaidDB()
-    local db = addon and addon.db and addon.db.profile
-    if not db then return nil end
-    db.groupFrames = db.groupFrames or {}
-    db.groupFrames.raid = db.groupFrames.raid or {}
-    return db.groupFrames.raid
+    db.groupFrames[frameKey] = db.groupFrames[frameKey] or {}
+    return db.groupFrames[frameKey]
 end
 
 local OUTSIDE_TO_INSIDE_ANCHOR = {
@@ -160,156 +148,150 @@ function GF.ensureAuraTrackingDB()
     return at
 end
 
-function GF.ensurePartyTextDB(textKey)
-    local t = GF.ensurePartyDB()
+function GF.ensureTextDB(frameKey, textKey)
+    local t = GF.ensureDB(frameKey)
     if not t then return nil end
     t[textKey] = t[textKey] or {}
     return t[textKey]
 end
 
-function GF.ensureRaidTextDB(textKey)
-    local t = GF.ensureRaidDB()
-    if not t then return nil end
-    t[textKey] = t[textKey] or {}
-    return t[textKey]
+-- Read-only accessors (no materialization — used in get callbacks)
+
+function GF.getDB(frameKey)
+    local db = addon and addon.db and addon.db.profile
+    if not db then return nil end
+    local gf = rawget(db, "groupFrames")
+    return gf and rawget(gf, frameKey) or nil
+end
+
+function GF.getTextDB(frameKey, textKey)
+    local t = GF.getDB(frameKey)
+    return t and rawget(t, textKey) or nil
 end
 
 --------------------------------------------------------------------------------
 -- Apply Functions
 --------------------------------------------------------------------------------
 
-function GF.applyPartyStyles()
+-- Fallback applier lists for builds without ApplyGroupFrameStylesFor: apply
+-- only this frame's functions instead of global ApplyStyles, so the frames
+-- don't refresh when unrelated settings change.
+local STYLE_APPLIER_NAMES = {
+    party = {
+        "ApplyPartyFrameHealthBarStyle", "ApplyPartyFrameHealthOverlays",
+        "ApplyPartyFrameNameOverlays", "ApplyPartyFrameHealthBarBorders",
+        "ApplyPartyFrameTitleStyle", "ApplyPartyFrameStatusTextStyle",
+        "ApplyPartyOverAbsorbGlowVisibility", "ApplyPartyHealPredictionVisibility",
+        "ApplyPartyAbsorbBarsVisibility", "ApplyPartyHealPredictionClipping",
+        "ApplyPartyGroupLeadIcons",
+    },
+    raid = {
+        "ApplyRaidFrameHealthBarStyle", "ApplyRaidFrameHealthOverlays",
+        "ApplyRaidFrameNameOverlays", "ApplyRaidFrameHealthBarBorders",
+        "ApplyRaidFrameStatusTextStyle", "ApplyRaidFrameGroupTitlesStyle",
+        "ApplyRaidOverAbsorbGlowVisibility", "ApplyRaidHealPredictionVisibility",
+        "ApplyRaidAbsorbBarsVisibility", "ApplyRaidHealPredictionClipping",
+        "ApplyRaidGroupLeadIcons", "ApplyRaidContainerVisibility",
+        "ApplyRaidRosterOverlay",
+    },
+}
+
+function GF.applyStyles(frameKey)
     if addon and addon.ApplyGroupFrameStylesFor then
-        addon.ApplyGroupFrameStylesFor("party")
+        addon.ApplyGroupFrameStylesFor(frameKey)
         return
     end
-    -- Apply only party-specific functions instead of global ApplyStyles
-    -- Prevents party frames from refreshing when unrelated settings change
-    if addon.ApplyPartyFrameHealthBarStyle then
-        addon.ApplyPartyFrameHealthBarStyle()
-    end
-    if addon.ApplyPartyFrameHealthOverlays then
-        addon.ApplyPartyFrameHealthOverlays()
-    end
-    if addon.ApplyPartyFrameNameOverlays then
-        addon.ApplyPartyFrameNameOverlays()
-    end
-    if addon.ApplyPartyFrameHealthBarBorders then
-        addon.ApplyPartyFrameHealthBarBorders()
-    end
-    if addon.ApplyPartyFrameTitleStyle then
-        addon.ApplyPartyFrameTitleStyle()
-    end
-    if addon.ApplyPartyFrameStatusTextStyle then
-        addon.ApplyPartyFrameStatusTextStyle()
-    end
-    if addon.ApplyPartyOverAbsorbGlowVisibility then
-        addon.ApplyPartyOverAbsorbGlowVisibility()
-    end
-    if addon.ApplyPartyHealPredictionVisibility then
-        addon.ApplyPartyHealPredictionVisibility()
-    end
-    if addon.ApplyPartyAbsorbBarsVisibility then
-        addon.ApplyPartyAbsorbBarsVisibility()
-    end
-    if addon.ApplyPartyHealPredictionClipping then
-        addon.ApplyPartyHealPredictionClipping()
-    end
-    if addon.ApplyPartyGroupLeadIcons then
-        addon.ApplyPartyGroupLeadIcons()
+    for _, name in ipairs(STYLE_APPLIER_NAMES[frameKey] or {}) do
+        if addon[name] then addon[name]() end
     end
 end
 
-function GF.applyRaidStyles()
-    if addon and addon.ApplyGroupFrameStylesFor then
-        addon.ApplyGroupFrameStylesFor("raid")
-        return
-    end
-    -- Apply only raid-specific functions instead of global ApplyStyles
-    -- Prevents raid frames from refreshing when unrelated settings change
-    if addon.ApplyRaidFrameHealthBarStyle then
-        addon.ApplyRaidFrameHealthBarStyle()
-    end
-    if addon.ApplyRaidFrameHealthOverlays then
-        addon.ApplyRaidFrameHealthOverlays()
-    end
-    if addon.ApplyRaidFrameNameOverlays then
-        addon.ApplyRaidFrameNameOverlays()
-    end
-    if addon.ApplyRaidFrameHealthBarBorders then
-        addon.ApplyRaidFrameHealthBarBorders()
-    end
-    if addon.ApplyRaidFrameStatusTextStyle then
-        addon.ApplyRaidFrameStatusTextStyle()
-    end
-    if addon.ApplyRaidFrameGroupTitlesStyle then
-        addon.ApplyRaidFrameGroupTitlesStyle()
-    end
-    if addon.ApplyRaidOverAbsorbGlowVisibility then
-        addon.ApplyRaidOverAbsorbGlowVisibility()
-    end
-    if addon.ApplyRaidHealPredictionVisibility then
-        addon.ApplyRaidHealPredictionVisibility()
-    end
-    if addon.ApplyRaidAbsorbBarsVisibility then
-        addon.ApplyRaidAbsorbBarsVisibility()
-    end
-    if addon.ApplyRaidHealPredictionClipping then
-        addon.ApplyRaidHealPredictionClipping()
-    end
-    if addon.ApplyRaidGroupLeadIcons then
-        addon.ApplyRaidGroupLeadIcons()
-    end
-    if addon.ApplyRaidContainerVisibility then
-        addon.ApplyRaidContainerVisibility()
-    end
-    if addon.ApplyRaidRosterOverlay then
-        addon.ApplyRaidRosterOverlay()
-    end
-end
-
-function GF.applyPartyText()
+function GF.applyText(frameKey)
     if addon and addon.ApplyGroupFrameTextFor then
-        addon.ApplyGroupFrameTextFor("party")
+        addon.ApplyGroupFrameTextFor(frameKey)
     else
-        GF.applyPartyStyles()
+        GF.applyStyles(frameKey)
     end
 end
 
-function GF.applyRaidText()
-    if addon and addon.ApplyGroupFrameTextFor then
-        addon.ApplyGroupFrameTextFor("raid")
-    else
-        GF.applyRaidStyles()
+function GF.applyRoleIcons(frameKey)
+    local fn = addon["Apply" .. FRAME_PREFIX[frameKey] .. "RoleIcons"]
+    if fn then fn() end
+end
+
+function GF.applyGroupLeadIcons(frameKey)
+    local fn = addon["Apply" .. FRAME_PREFIX[frameKey] .. "GroupLeadIcons"]
+    if fn then fn() end
+end
+
+function GF.applyHealthBarBorders(frameKey)
+    local fn = addon["Apply" .. FRAME_PREFIX[frameKey] .. "FrameHealthBarBorders"]
+    if fn then fn() end
+end
+
+--------------------------------------------------------------------------------
+-- Composite Text Accessors
+--------------------------------------------------------------------------------
+
+-- get/set closure pair speaking AddTextStyleBlock's field vocabulary for a
+-- frame's text sub-table (textPlayerName, textGroupNumbers, ...). The hide
+-- flag lives inside the text table (s.hide); offsetX/offsetY map to the
+-- nested offset.x/offset.y pair. get is read-only; set materializes.
+function GF.textAccessors(frameKey, textKey)
+    local function get(field)
+        local s = GF.getTextDB(frameKey, textKey)
+        if not s then return nil end
+        if field == "hidden" then return s.hide end
+        if field == "offsetX" or field == "offsetY" then
+            local o = s.offset
+            return o and o[field == "offsetX" and "x" or "y"]
+        end
+        return s[field]
     end
-end
-
-function GF.applyPartyRoleIcons()
-    if addon.ApplyPartyRoleIcons then addon.ApplyPartyRoleIcons() end
-end
-
-function GF.applyRaidRoleIcons()
-    if addon.ApplyRaidRoleIcons then addon.ApplyRaidRoleIcons() end
-end
-
-function GF.applyPartyGroupLeadIcons()
-    if addon.ApplyPartyGroupLeadIcons then addon.ApplyPartyGroupLeadIcons() end
-end
-
-function GF.applyRaidGroupLeadIcons()
-    if addon.ApplyRaidGroupLeadIcons then addon.ApplyRaidGroupLeadIcons() end
-end
-
-function GF.applyPartyHealthBarBorders()
-    if addon and addon.ApplyPartyFrameHealthBarBorders then
-        addon.ApplyPartyFrameHealthBarBorders()
+    local function set(field, value)
+        local s = GF.ensureTextDB(frameKey, textKey)
+        if not s then return end
+        if field == "hidden" then
+            s.hide = value
+        elseif field == "offsetX" or field == "offsetY" then
+            s.offset = s.offset or {}
+            s.offset[field == "offsetX" and "x" or "y"] = value
+        else
+            s[field] = value
+        end
     end
+    return get, set
 end
 
-function GF.applyRaidHealthBarBorders()
-    if addon and addon.ApplyRaidFrameHealthBarBorders then
-        addon.ApplyRaidFrameHealthBarBorders()
+--------------------------------------------------------------------------------
+-- Bound Helpers
+--------------------------------------------------------------------------------
+
+-- Per-frame helpers bound by GF.BindFrame; each takes frameKey first.
+local BIND_NAMES = {
+    "ensureDB", "ensureTextDB", "getDB", "getTextDB", "getFrame",
+    "applyStyles", "applyText", "applyRoleIcons", "applyGroupLeadIcons",
+    "applyHealthBarBorders", "textAccessors",
+}
+
+-- Returns a table with the helpers above bound to frameKey, plus Edit Mode
+-- setting accessors resolving the frame on each call. Replaces the wrapper
+-- preambles in the party/raid renderers.
+function GF.BindFrame(frameKey)
+    local B = {}
+    for _, name in ipairs(BIND_NAMES) do
+        local fn = GF[name]
+        B[name] = function(...)
+            return fn(frameKey, ...)
+        end
     end
+    B.getEditModeSetting = function(settingId)
+        return GF.getEditModeSetting(GF.getFrame(frameKey), settingId)
+    end
+    B.setEditModeSetting = function(settingId, value, options)
+        GF.setEditModeSetting(GF.getFrame(frameKey), settingId, value, options)
+    end
+    return B
 end
 
 --------------------------------------------------------------------------------
@@ -334,17 +316,12 @@ end
 -- Selector/Dropdown Options
 --------------------------------------------------------------------------------
 
--- Font style options (same as Unit Frames)
-GF.fontStyleValues = {
-    NONE = "Regular",
-    OUTLINE = "Outline",
-    THICKOUTLINE = "Thick Outline",
-    HEAVYTHICKOUTLINE = "Heavy Thick Outline",
-    SHADOW = "Shadow",
-    SHADOWOUTLINE = "Shadow Outline",
-    SHADOWTHICKOUTLINE = "Shadow Thick Outline",
-}
-GF.fontStyleOrder = { "NONE", "OUTLINE", "THICKOUTLINE", "HEAVYTHICKOUTLINE", "SHADOW", "SHADOWOUTLINE", "SHADOWTHICKOUTLINE" }
+-- Font style options; the catalog in core/fonts.lua is the source of truth.
+-- The paired order adds the Deep Shadow keys for dropdowns whose targets are
+-- all Scoot-created FontStrings (aura tracking stacks).
+GF.fontStyleValues = addon.FontStyles.values
+GF.fontStyleOrder = addon.FontStyles.order
+GF.fontStyleOrderPaired = addon.FontStyles.orderPaired
 
 -- 9-way alignment anchor options
 GF.anchorValues = {
@@ -443,7 +420,7 @@ end
 
 -- Check if party is in Raid-Style mode
 function GF.isRaidStyleParty()
-    local frame = GF.getPartyFrame()
+    local frame = GF.getFrame("party")
     local EM = _G.Enum and _G.Enum.EditModeUnitFrameSetting
     if not (frame and EM and EM.UseRaidStylePartyFrames) then return false end
     local v = GF.getEditModeSetting(frame, EM.UseRaidStylePartyFrames)
@@ -452,7 +429,7 @@ end
 
 -- Check if raid is in Separate Groups mode
 function GF.isRaidSeparateGroups()
-    local frame = GF.getRaidFrame()
+    local frame = GF.getFrame("raid")
     local EM = _G.Enum and _G.Enum.EditModeUnitFrameSetting
     local RGD = _G.Enum and _G.Enum.RaidGroupDisplayType
     if not (frame and EM and RGD and EM.RaidGroupDisplayType) then return false end

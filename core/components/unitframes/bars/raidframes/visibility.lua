@@ -245,7 +245,7 @@ function RaidVisibility:Initialize()
     self:ApplyFromProfile("Initialize")
 end
 
--- Exported for GF.applyRaidStyles()
+-- Exported for GF.applyStyles("raid")
 function addon.ApplyRaidContainerVisibility(reason)
     if addon.RaidVisibility then
         addon.RaidVisibility:ApplyFromProfile(reason or "ApplyStyles")
