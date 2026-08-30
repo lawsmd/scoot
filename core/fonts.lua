@@ -218,16 +218,23 @@ do
     addon.FontStyles.orderOutlineFirstPaired = buildOrder(OUTLINE_FIRST, true)
 end
 
--- The style a measurement ruler should apply. DEEPSHADOW* decodes to the same
--- engine flags as its base style plus a companion copy, and a companion on a
--- hidden ruler is permanent hooks and per-measure mirroring for nothing --
--- strip the prefix; the metrics are identical.
-function addon.FontStyles.MetricStyle(style)
+-- DEEPSHADOW* stripped back to its base style, which decodes to the same
+-- engine flags without the companion copy. Two callers want this.
+--
+-- A FontString whose text arrives from anywhere but Lua SetText: the copy is
+-- fed by hooks on the real string, so an engine-written string (an aura
+-- container binding) leaves the copy permanently empty. A stored Deep Shadow
+-- value on such a string renders as its base style rather than as nothing.
+function addon.FontStyles.Unpaired(style)
     if type(style) == "string" and style:sub(1, 10) == "DEEPSHADOW" then
         return style:sub(11)
     end
     return style
 end
+
+-- And a measurement ruler, where a companion is permanent hooks and per-measure
+-- mirroring for nothing. The metrics are identical either way.
+addon.FontStyles.MetricStyle = addon.FontStyles.Unpaired
 
 -- /scoot debug slug: ground truth for the SLUG flag on the live client. Shows
 -- each candidate flag string rendered side by side and prints what SetFont

@@ -954,9 +954,12 @@ function AuraTrackingUI.Render(panel, scrollContent)
                         disabled = function() return not isEnabled end,
                         defaults = { size = 12 },
                         font = { description = "Font used for the stack count text." },
-                        -- Paired order: stack counts are Scoot-drawn
-                        -- FontStrings, so the Deep Shadow styles are offered
-                        style = { order = Helpers.fontStyleOrderPaired or GF.fontStyleOrderPaired },
+                        -- Plain order: the stack count string is bound to the
+                        -- aura container (SetApplicationCount), so the engine
+                        -- writes the text natively and a Deep Shadow copy,
+                        -- which is fed by hooks on Lua SetText, would stay
+                        -- empty. True since the container port.
+                        style = { order = Helpers.fontStyleOrder or GF.fontStyleOrder },
                         size = { min = 6, max = 32 },
                         color = {
                             key = "stacksTextColor",

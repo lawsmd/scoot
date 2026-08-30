@@ -418,7 +418,12 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
             description = "Hide the aura name text on the bar.",
         } or nil,
         font = { description = "The font used for the aura name." },
-        style = { order = Helpers.fontStyleOrderPaired },
+        -- Deep Shadow needs a FontString Scoot both creates and writes: the
+        -- copy is fed by hooks on SetText. Only the missing-buff reminder
+        -- qualifies. On a buff or debuff tracker the aura container writes the
+        -- spell name natively, so the copy would stay empty.
+        style = { order = isMissing and Helpers.fontStyleOrderPaired
+            or Helpers.fontStyleOrder },
         size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt" },
         color = { kind = "plain" },
         offset = false,
@@ -518,7 +523,8 @@ function Tabs.BuildDurationTab(tabBuilder, ctx)
             description = "Hide the remaining-time text.",
         },
         font = { description = "The font used for the duration text." },
-        style = { order = Helpers.fontStyleOrderPaired },
+        -- Engine-written text: no Deep Shadow (see the aura name block).
+        style = { order = Helpers.fontStyleOrder },
         size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt",
             description = "Size of the duration text in points." },
         color = { kind = "plain" },
@@ -601,7 +607,8 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
             description = "Hide the stack counter.",
         },
         font = { description = "The font used for the stack counter." },
-        style = { order = Helpers.fontStyleOrderPaired },
+        -- Engine-written text: no Deep Shadow (see the aura name block).
+        style = { order = Helpers.fontStyleOrder },
         size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt",
             description = "Size of the stack counter in points." },
         color = { kind = "plain" },

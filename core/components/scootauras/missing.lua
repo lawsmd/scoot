@@ -157,7 +157,9 @@ function Missing.MeasureText(entry, text, db)
     local style = (db and db.nameTextStyle) or "OUTLINE"
     local ruler = entry and EnsureRuler(entry) or nil
     if ruler then
-        addon.ApplyFontStyle(ruler, face, size, style)
+        -- MetricStyle: a Deep Shadow style must not build a companion copy on
+        -- a hidden ruler. The metrics are the same either way.
+        addon.ApplyFontStyle(ruler, face, size, addon.FontStyles.MetricStyle(style))
         ruler:SetText(text or "")
         local ok, w = pcall(ruler.GetUnboundedStringWidth, ruler)
         local ok2, h = pcall(ruler.GetStringHeight, ruler)

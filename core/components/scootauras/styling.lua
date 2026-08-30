@@ -176,7 +176,17 @@ local function ApplyTextStyling(trackerId, tracker, state)
             -- FRIZQT__ here would only reintroduce the fresh-profile mismatch
             -- between what the settings panel shows and what the HUD renders.
             local fontFace = addon.ResolveFontFace(fontKey)
-            addon.ApplyFontStyle(elem.widget, fontFace, size, fontStyle or "OUTLINE")
+            -- The aura container writes duration, stack count, and on buff and
+            -- debuff trackers the spell name into these FontStrings natively.
+            -- A Deep Shadow copy is fed by hooks on Lua SetText, so it would
+            -- never see that text. The missing-buff reminder writes its own
+            -- name (missing.lua), so it is the one text here that keeps the
+            -- copy; every other style drops to its base.
+            local style = fontStyle or "OUTLINE"
+            if source ~= "name" or tracker.kind ~= "missingbuff" then
+                style = addon.FontStyles.Unpaired(style)
+            end
+            addon.ApplyFontStyle(elem.widget, fontFace, size, style)
 
             if color and type(color) == "table" then
                 elem.widget:SetTextColor(color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)

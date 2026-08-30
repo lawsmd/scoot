@@ -526,8 +526,13 @@ local function ApplyStacksText(slot, cfg)
     if fontPath then
         if addon.ApplyFontStyle then
             -- Routes through Scoot's font-style helper so SHADOW and HEAVY
-            -- prefixes render the same as every other Scoot text.
-            pcall(addon.ApplyFontStyle, fs, fontPath, size, style)
+            -- prefixes render the same as every other Scoot text. Unpaired:
+            -- SetApplicationCount binds this string, so the engine writes the
+            -- count natively and a Deep Shadow copy, fed by hooks on Lua
+            -- SetText, would never see it.
+            local unpaired = addon.FontStyles and addon.FontStyles.Unpaired
+            pcall(addon.ApplyFontStyle, fs, fontPath, size,
+                unpaired and unpaired(style) or style)
         else
             pcall(fs.SetFont, fs, fontPath, size, style)
         end
