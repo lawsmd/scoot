@@ -450,6 +450,54 @@ function SAU.ValidateContent(spellId, kind, unit, shape)
     return true
 end
 
+-- The "When it's missing, show..." options a shape offers. The field is
+-- content (tracker.missingVisual); nil means Nothing, so trackers saved before
+-- the field existed need no migration. The visuals are reveal-shaped: Scoot
+-- art beneath the engine button (underlay.lua), never a presence read. Icon
+-- and shape share tokens, so a flip between them carries the choice; a bar
+-- token strands on any other shape and coerces to nil like a stranded unit.
+SAU.VALID_MISSING_VISUALS_BY_SHAPE = {
+    icon  = { desat = true, blink = true, blinkdesat = true },
+    bar   = { emptybar = true, blinkemptybar = true, blinkicon = true, blinkdesaticon = true },
+    shape = { desat = true, blink = true, blinkdesat = true },
+}
+
+-- Token traits, so no caller string-matches tokens. art "self" reuses the
+-- shape's own art; "emptybar" shows the bar frame with no fill; "baricon"
+-- centers an icon on the bar rect.
+local MISSING_VISUAL_TRAITS = {
+    desat          = { desat = true,  blink = false, art = "self" },
+    blink          = { desat = false, blink = true,  art = "self" },
+    blinkdesat     = { desat = true,  blink = true,  art = "self" },
+    emptybar       = { desat = false, blink = false, art = "emptybar" },
+    blinkemptybar  = { desat = false, blink = true,  art = "emptybar" },
+    blinkicon      = { desat = false, blink = true,  art = "baricon" },
+    blinkdesaticon = { desat = true,  blink = true,  art = "baricon" },
+}
+
+--- The one scope switch for missing-state visuals. Debuff only by decision
+-- (2026-08-29): the Missing Buff kind owns the buff case.
+function SAU.KindSupportsMissingVisual(kind)
+    return kind == "debuff"
+end
+
+--- Resolves a tracker's missing-state visual to a token, or "none". nil, a
+-- token the shape does not offer, and an unsupported kind all read as none.
+function SAU.MissingVisualFor(tracker)
+    if not tracker then return "none" end
+    local token = tracker.missingVisual
+    if not token then return "none" end
+    if not SAU.KindSupportsMissingVisual(tracker.kind) then return "none" end
+    local valid = SAU.VALID_MISSING_VISUALS_BY_SHAPE[tracker.shape]
+    if not valid or not valid[token] then return "none" end
+    return token
+end
+
+--- Trait record for a token, or nil for "none" and anything unknown.
+function SAU.MissingVisualTraits(token)
+    return token and MISSING_VISUAL_TRAITS[token] or nil
+end
+
 -- Own-cast filtering: a debuff tracker watches the player's own aura on the
 -- enemy; buffs accept any source (external buffs on the player are the point).
 -- A missing-buff tracker matches the same HELPFUL slot; only its rendering
@@ -886,6 +934,11 @@ function SAU.CreateTracker(spec)
     if kind == "missingbuff" then
         store.trackers[trackerId].onlyInInstances = (spec.onlyInInstances == true)
     end
+    local missingValid = SAU.KindSupportsMissingVisual(kind)
+        and SAU.VALID_MISSING_VISUALS_BY_SHAPE[shape]
+    if missingValid and missingValid[spec.missingVisual] then
+        store.trackers[trackerId].missingVisual = spec.missingVisual
+    end
 
     SAU.RegisterTrackerComponent(trackerId)
     addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
@@ -933,8 +986,8 @@ function SAU.DeleteTracker(trackerId)
     return true
 end
 
---- Applies content edits (spellId/kind/unit/shape/onlyInCombat/onlyInInstances)
--- to a live tracker and routes the engine consequence: shape and gate edits
+--- Applies content edits (spellId/kind/unit/shape/onlyInCombat/onlyInInstances/
+-- missingVisual) to a live tracker and routes the engine consequence: shape and gate edits
 -- restyle in place, spell/unit/kind edits park the mismatched container
 -- immediately and rebuild through the gate.
 function SAU.SetTrackerContent(trackerId, changes)
@@ -984,6 +1037,20 @@ function SAU.SetTrackerContent(trackerId, changes)
     else
         tracker.onlyInInstances = nil
     end
+    if changes.missingVisual ~= nil then
+        -- Explicit write: "none" clears, and the `changes.X or tracker.X`
+        -- idiom cannot clear a field.
+        tracker.missingVisual = (changes.missingVisual ~= "none") and changes.missingVisual or nil
+    end
+    -- One coercion covers every flip: a kind that does not carry the field and
+    -- a token the new shape does not offer both clear it.
+    if tracker.missingVisual ~= nil then
+        local missingValid = SAU.KindSupportsMissingVisual(kind)
+            and SAU.VALID_MISSING_VISUALS_BY_SHAPE[shape]
+        if not missingValid or not missingValid[tracker.missingVisual] then
+            tracker.missingVisual = nil
+        end
+    end
     if type(changes.name) == "string" and changes.name ~= "" then
         tracker.name = changes.name
     elseif spellId ~= oldSpellId then
@@ -1031,6 +1098,7 @@ function SAU.DuplicateTracker(trackerId)
         order = newId,
         onlyInCombat = source.onlyInCombat,
         onlyInInstances = source.onlyInInstances,
+        missingVisual = source.missingVisual,
         specs = source.specs and CopyTable(source.specs) or nil,
     }
 

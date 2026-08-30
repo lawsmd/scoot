@@ -66,6 +66,9 @@ local PUSH = 4096
 local CONTENT_TEMPLATE = "DisableUntrustedLayoutScriptsTemplate"
 local BLINK_LOW_ALPHA = 0.15
 local BLINK_SECONDS = 0.5
+-- Shared with underlay.lua, so both reveal blinks run one cadence.
+Missing.BLINK_LOW_ALPHA = BLINK_LOW_ALPHA
+Missing.BLINK_SECONDS = BLINK_SECONDS
 -- The clip window is the host rect plus this margin on every side, so icon
 -- border art that draws outside the icon (up to 8 px) and pixel snapping
 -- never slice the reminder while it sits in place. The present-state push

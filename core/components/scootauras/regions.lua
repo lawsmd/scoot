@@ -110,21 +110,13 @@ local function CreateDrainCooldown(parent)
     return drain
 end
 
--- Icon border frame structure ApplyBorders expects, parented to the button so
--- it hides with it.
+-- Icon border host frame ApplyBorders expects, parented to the button so it
+-- hides with it. The border art itself is created lazily on this frame by
+-- addon.ApplyIconBorderStyle.
 local function PreCreateIconBorder(elem, button)
     if elem.type ~= "texture" or elem.borderFrame then return end
     local bf = CreateFrame("Frame", nil, button)
     bf:SetFrameLevel(button:GetFrameLevel() + 2)
-    bf.borderEdges = {
-        Top = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-        Bottom = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-        Left = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-        Right = bf:CreateTexture(nil, "OVERLAY", nil, 1),
-    }
-    for _, tex in pairs(bf.borderEdges) do tex:Hide() end
-    bf.atlasBorder = bf:CreateTexture(nil, "OVERLAY", nil, 2)
-    bf.atlasBorder:Hide()
     elem.borderFrame = bf
 end
 
@@ -193,6 +185,51 @@ end
 -- Engine bindings per shape
 --------------------------------------------------------------------------------
 
+-- The engine's default duration formatter appends a unit letter ("10s") and
+-- switches units at the minute. Scoot shows plain seconds at every magnitude:
+-- a 90 s debuff reads "90", never "90s" or "1m". One band, ceiling rounding,
+-- so a fresh application reads its full duration and the last partial second
+-- reads "1", not "0". Shared across trackers; the formatter holds breakpoints
+-- and nothing per-caller (the casttime.lua precedent). On any failure the
+-- binding falls back to the engine default.
+local sharedDurationFormatter
+local durationFormatterFailed = false
+
+local function GetDurationFormatter()
+    if sharedDurationFormatter then return sharedDurationFormatter end
+    if durationFormatterFailed then return nil end
+
+    local su = C_StringUtil
+    local up = Enum and Enum.NumericRuleFormatRounding
+        and Enum.NumericRuleFormatRounding.Up
+    if not (su and su.CreateNumericRuleFormatter and up) then
+        durationFormatterFailed = true
+        SetResult("durfmt", "API missing; engine default text")
+        return nil
+    end
+
+    local ok, f = pcall(su.CreateNumericRuleFormatter)
+    if not ok or not f then
+        durationFormatterFailed = true
+        SetResult("durfmt", "create failed; engine default text")
+        return nil
+    end
+
+    -- rounding is annotated Nilable = false despite carrying a default
+    -- (NumericRuleFormatterSharedDocumentation.lua:25); sent explicitly.
+    local okSet = pcall(f.SetBreakpoints, f, {
+        { threshold = 0, step = 1, rounding = up, format = "%.0f" },
+    })
+    if not okSet then
+        durationFormatterFailed = true
+        SetResult("durfmt", "breakpoints rejected; engine default text")
+        return nil
+    end
+
+    sharedDurationFormatter = f
+    return sharedDurationFormatter
+end
+
 local function CallBinding(trackerId, button, methodName, region, options)
     local fn = button[methodName]
     if not fn then
@@ -245,7 +282,9 @@ function Engine.BindForMode(trackerId, tracker, state)
             local source = elem.def.source
             if source == "duration" then
                 if vis.showText then
-                    CallBinding(trackerId, button, "SetDurationText", elem.widget, {})
+                    local formatter = GetDurationFormatter()
+                    local options = formatter and { textFormatter = formatter } or {}
+                    CallBinding(trackerId, button, "SetDurationText", elem.widget, options)
                 else
                     CallBinding(trackerId, button, "ClearDurationText")
                 end
@@ -438,6 +477,10 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
     -- them (idempotent with the live pass: same db, same numbers).
     local shim = { container = pv, elements = preview.elements, entry = entry }
 
+    -- The preview stands in for the missing-state underlay too; its gate
+    -- reads the Edit Mode flag and hides it (underlay.lua).
+    if SAU.Underlay then SAU.Underlay.UpdateGate(trackerId) end
+
     if tracker.kind == "missingbuff" and SAU.Missing then
         -- The live visual may be pushed out of view (buff up) or gated off
         -- (out of combat); the preview paints the reminder as it would look
@@ -509,8 +552,11 @@ function Engine.HideEditModePreview(state)
         entry.preview.root:Hide()
     end
     -- A missing-buff occupant re-evaluates its live gate now that the preview
-    -- no longer stands in for it.
+    -- no longer stands in for it; the missing-state underlay does the same.
     if SAU.Missing and entry.occupantId then
         SAU.Missing.UpdateGate(entry.occupantId)
+    end
+    if SAU.Underlay and entry.occupantId then
+        SAU.Underlay.UpdateGate(entry.occupantId)
     end
 end

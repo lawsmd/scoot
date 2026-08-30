@@ -245,6 +245,37 @@ end
 -- Grid construction
 --------------------------------------------------------------------------------
 
+-- The cell the pointer is on. Cells are destroyed rather than pooled, so a
+-- rebuild or an editor close can take a cell out from under the pointer
+-- without OnLeave firing, and the tooltip would be left on screen.
+local hoveredCell = nil
+
+--- Drops a tooltip left on a cell the caller is about to destroy or hide.
+function Picker.HideTooltip()
+    if not hoveredCell then return end
+    hoveredCell = nil
+    GameTooltip:Hide()
+end
+
+-- Blizzard's own spell tooltip, described by the ID the cell is named and
+-- iconed from rather than the one it stores, so the tooltip always agrees with
+-- the art under the pointer (base 470411 reads "Voltaic Blaze" while the talent
+-- is taken). The ID line repeats what the Tooltip component's Show Tooltip IDs
+-- option adds through the data processor, whose per-pass dedup cannot see a
+-- line added after SetSpellByID returns, so it is skipped when that option is
+-- on and copies its AddDoubleLine format when it is off.
+local function ShowCellTooltip(cell, entry)
+    local id = entry.shownSpellId or entry.spellId
+    if type(id) ~= "number" then return end
+    GameTooltip:SetOwner(cell, "ANCHOR_RIGHT")
+    GameTooltip:SetSpellByID(id)
+    local comp = addon.Components and addon.Components.tooltip
+    if not (comp and comp.db and comp.db.showTooltipIDs) then
+        GameTooltip:AddDoubleLine("Spell ID:", tostring(id), 0.5, 0.5, 1.0, 1, 1, 1)
+    end
+    GameTooltip:Show()
+end
+
 local function CreateCell(parent, entry, onPick)
     local theme = addon.UI and addon.UI.Theme
     local cell = CreateFrame("Button", nil, parent)
@@ -277,8 +308,16 @@ local function CreateCell(parent, entry, onPick)
     name:SetText(entry.name)
     name:SetTextColor(0.85, 0.85, 0.85, 1)
 
-    cell:SetScript("OnEnter", function() hover:Show() end)
-    cell:SetScript("OnLeave", function() hover:Hide() end)
+    cell:SetScript("OnEnter", function()
+        hover:Show()
+        hoveredCell = cell
+        ShowCellTooltip(cell, entry)
+    end)
+    cell:SetScript("OnLeave", function()
+        hover:Hide()
+        if hoveredCell == cell then hoveredCell = nil end
+        GameTooltip:Hide()
+    end)
     cell:SetScript("OnClick", function() onPick(entry.spellId) end)
     return cell
 end
@@ -330,6 +369,7 @@ function Picker.Attach(parent, opts)
     end
 
     function picker.Refresh(kind)
+        Picker.HideTooltip()
         for _, w in ipairs(widgets) do
             w:Hide()
             w:SetParent(nil)

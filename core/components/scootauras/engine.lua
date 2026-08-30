@@ -650,6 +650,9 @@ function Engine.ReleaseForTracker(trackerId)
     if SAU.Missing then
         SAU.Missing.OnEntryReleased(entry)
     end
+    if SAU.Underlay then
+        SAU.Underlay.OnEntryReleased(entry)
+    end
     -- A grouped visual must not stay parented in the group: the next occupant
     -- of this entry would render inside it.
     if SAU.Groups then

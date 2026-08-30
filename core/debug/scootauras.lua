@@ -428,9 +428,10 @@ local function LifecycleDump()
             local t = row.tracker
             local active = SAU.IsTrackerActive(row.id, t)
             if active then loaded = loaded + 1 else notLoaded = notLoaded + 1 end
-            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s oic=%s wired=%s loaded=%s"):format(
+            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s oic=%s miss=%s wired=%s loaded=%s"):format(
                 row.id, tostring(t.name), tostring(t.spellId), t.kind, t.unit, t.shape,
                 tostring(t.enabled), tostring(SAU.OnlyInCombat(t)),
+                tostring(SAU.MissingVisualFor(t)),
                 tostring(SAU.Engine.IsWired(row.id)), tostring(active)))
         end
         push(("(%d loaded / %d not loaded; see /scoot debug sa specs)"):format(loaded, notLoaded))

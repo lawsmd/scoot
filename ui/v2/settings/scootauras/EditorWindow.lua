@@ -101,6 +101,14 @@ function ctx.kind()
     return (session and session.draft.content.kind) or "buff"
 end
 
+-- Resolved token ("none" when unset); the Icon tab reads it to keep the icon
+-- controls editable while a bar-icon missing visual consumes them.
+function ctx.missingVisual()
+    local tracker = CurrentTracker()
+    if tracker then return SAU().MissingVisualFor(tracker) end
+    return (session and session.draft.content.missingVisual) or "none"
+end
+
 function ctx.refresh()
     Editor.DeferredRefresh()
 end
@@ -153,6 +161,7 @@ local function TryMaterialize()
         name = c.name,
         onlyInCombat = c.onlyInCombat,
         onlyInInstances = c.onlyInInstances,
+        missingVisual = c.missingVisual,
     })
     if not id then
         session.statusOverride = err or "Could not create the tracker."
@@ -661,6 +670,31 @@ local MISSING_SHAPE_ORDER = { "icon", "text", "icontext" }
 -- Shared by both missing-buff gate rows.
 local YES_NO_LABELS = { yes = "Yes", no = "No" }
 local YES_NO_ORDER = { "yes", "no" }
+-- "When it's missing, show..." per shape (debuff only; the tokens and their
+-- per-shape validity live in core.lua). Every visual is a reveal: art beneath
+-- the engine button, uncovered when the slot empties.
+local MISSING_VISUAL_LABELS_ICON = {
+    none = "Nothing",
+    desat = "a Desaturated Icon",
+    blink = "a Blinking Icon",
+    blinkdesat = "a Blinking, Desaturated Icon",
+}
+local MISSING_VISUAL_ORDER_ICON = { "none", "desat", "blink", "blinkdesat" }
+local MISSING_VISUAL_LABELS_BAR = {
+    none = "Nothing",
+    emptybar = "an Empty Bar",
+    blinkemptybar = "a Blinking Empty Bar",
+    blinkicon = "a Blinking Icon",
+    blinkdesaticon = "a Blinking, Desaturated Icon",
+}
+local MISSING_VISUAL_ORDER_BAR = { "none", "emptybar", "blinkemptybar", "blinkicon", "blinkdesaticon" }
+local MISSING_VISUAL_LABELS_SHAPE = {
+    none = "Nothing",
+    desat = "a Desaturated Shape",
+    blink = "a Blinking Shape",
+    blinkdesat = "a Blinking, Desaturated Shape",
+}
+local MISSING_VISUAL_ORDER_SHAPE = { "none", "desat", "blink", "blinkdesat" }
 
 local function ContentValue(field)
     local tracker = CurrentTracker()
@@ -684,6 +718,11 @@ local function SetContent(field, value)
         if field == "unit" and value == "group" and c.onlyInCombat == nil then
             c.onlyInCombat = false
         end
+        -- "Nothing" is stored as absence, the reading every saved tracker
+        -- without the field already has.
+        if field == "missingVisual" and value == "none" then
+            c.missingVisual = nil
+        end
         -- A kind flip can strand the chosen unit or shape; force a re-choose.
         if field == "kind" then
             local units = SAU().VALID_UNITS[value]
@@ -693,6 +732,17 @@ local function SetContent(field, value)
             local shapes = SAU().VALID_SHAPES_BY_KIND[value]
             if c.shape and not (shapes and shapes[c.shape]) then
                 c.shape = nil
+            end
+            if c.missingVisual and not SAU().KindSupportsMissingVisual(value) then
+                c.missingVisual = nil
+            end
+        end
+        -- A shape flip can strand the missing-state token (bar tokens on an
+        -- icon shape); cleared rather than re-chosen, Nothing is the default.
+        if field == "shape" and c.missingVisual then
+            local valid = SAU().VALID_MISSING_VISUALS_BY_SHAPE[value]
+            if not valid or not valid[c.missingVisual] then
+                c.missingVisual = nil
             end
         end
         TryMaterialize()
@@ -722,6 +772,15 @@ local function ShapeOptions(kind)
         return MISSING_SHAPE_LABELS, MISSING_SHAPE_ORDER
     end
     return SHAPE_LABELS, SHAPE_ORDER
+end
+
+local function MissingVisualOptions(shape)
+    if shape == "bar" then
+        return MISSING_VISUAL_LABELS_BAR, MISSING_VISUAL_ORDER_BAR
+    elseif shape == "shape" then
+        return MISSING_VISUAL_LABELS_SHAPE, MISSING_VISUAL_ORDER_SHAPE
+    end
+    return MISSING_VISUAL_LABELS_ICON, MISSING_VISUAL_ORDER_ICON
 end
 
 -- One selector with an unset state: draft selectors start on "Choose".
@@ -777,6 +836,24 @@ local function RenderSelectors()
         AddChoiceSelector(selBuilder, "Shown as...",
             sValues, sOrder, shape,
             function(v) SetContent("shape", v) end)
+    end
+
+    -- Missing-state visual, debuff only (the Missing Buff kind owns the buff
+    -- case). Options follow the shape; the row always carries a value, so it
+    -- never sits on "Choose".
+    if kind and unit and shape and SAU().KindSupportsMissingVisual(kind) then
+        local mValues, mOrder = MissingVisualOptions(shape)
+        local missingCurrent
+        if session and session.trackerId then
+            -- The resolver, not the raw field, so a stale token reads Nothing
+            -- here exactly as it renders.
+            missingCurrent = SAU().MissingVisualFor(CurrentTracker())
+        else
+            missingCurrent = ContentValue("missingVisual") or "none"
+        end
+        AddChoiceSelector(selBuilder, "When it's missing, show...",
+            mValues, mOrder, missingCurrent,
+            function(v) SetContent("missingVisual", v) end)
     end
 
     -- Extras. Every kind gates on combat; the instance gate is missing-buff
@@ -1146,6 +1223,9 @@ function Editor.Open(trackerId)
 end
 
 function Editor.Close()
+    -- Hiding an ancestor does not reliably fire OnLeave on a hovered catalog
+    -- cell, which would leave its tooltip on screen.
+    addon.UI.ScootAuraCDMPicker.HideTooltip()
     if frame then frame:Hide() end
     if widgets.carousel then widgets.carousel:Reset() end
     session = nil

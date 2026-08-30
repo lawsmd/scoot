@@ -224,9 +224,11 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     elseif event == "PLAYER_TARGET_CHANGED" then
         -- Containers bound to "target" do not self-refresh on retarget.
         Engine.KickUnit("target", "retarget")
+        if SAU.Underlay then SAU.Underlay.RefreshUnit("target") end
 
     elseif event == "PLAYER_FOCUS_CHANGED" then
         Engine.KickUnit("focus", "refocus")
+        if SAU.Underlay then SAU.Underlay.RefreshUnit("focus") end
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         Engine.TryFlush("regen")
@@ -244,5 +246,22 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
 
     elseif event == "GROUP_ROSTER_UPDATE" then
         if SAU.Missing then SAU.Missing.RefreshGroupTrackers() end
+    end
+end)
+
+-- 2026-08-29: an in-combat dump caught an Only-in-Combat shell still hidden
+-- with every gate input reading true, so the combat edge cannot ride on the
+-- regen events alone. This poll re-asserts the gate four times a second;
+-- RefreshCombatGates no-ops once converged, so the regen handlers stay the
+-- fast path and this catches whatever they miss. The missing-buff gates are
+-- heavier and re-run only when the lockdown state actually diverges from the
+-- last one applied.
+local lastLockdown
+C_Timer.NewTicker(0.25, function()
+    SAU.RefreshCombatGates()
+    local now = InCombatLockdown()
+    if now ~= lastLockdown then
+        lastLockdown = now
+        if SAU.Missing then SAU.Missing.RefreshGates() end
     end
 end)
