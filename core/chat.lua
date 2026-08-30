@@ -157,16 +157,14 @@ function Chat:Initialize()
     self._initialized = true
 
     -- Lightweight event-based re-apply for cases where the chat UI is rebuilt.
-    local f = CreateFrame("Frame")
-    f:RegisterEvent("PLAYER_ENTERING_WORLD")
-    f:RegisterEvent("UPDATE_CHAT_WINDOWS")
-    f:RegisterEvent("UPDATE_FLOATING_CHAT_WINDOWS")
-    f:SetScript("OnEvent", function()
+    local function onChatEvent()
         if addon and addon.Chat and addon.Chat.ApplyFromProfile then
             addon.Chat:ApplyFromProfile("ChatEvent")
         end
-    end)
-    self._eventFrame = f
+    end
+    addon.Events.On("Chat", "PLAYER_ENTERING_WORLD", onChatEvent)
+    addon.Events.On("Chat", "UPDATE_CHAT_WINDOWS", onChatEvent)
+    addon.Events.On("Chat", "UPDATE_FLOATING_CHAT_WINDOWS", onChatEvent)
 
     self:ApplyFromProfile("Initialize")
 end

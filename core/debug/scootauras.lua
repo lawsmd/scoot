@@ -152,13 +152,11 @@ end
 -- Retarget kicks (target/focus containers do not self-refresh)
 --------------------------------------------------------------------------------
 
-local kickFrame
-local function EnsureKickFrame()
-    if kickFrame then return end
-    kickFrame = CreateFrame("Frame")
-    kickFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-    kickFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
-    kickFrame:SetScript("OnEvent", function(_, event)
+local kickEventsArmed
+local function EnsureKickEvents()
+    if kickEventsArmed then return end
+    kickEventsArmed = true
+    local function onRetarget(event)
         local unit = (event == "PLAYER_FOCUS_CHANGED") and "focus" or "target"
         for _, id in ipairs(SA.order) do
             local probe = SA.probes[id]
@@ -170,7 +168,9 @@ local function EnsureKickFrame()
                 end
             end
         end
-    end)
+    end
+    addon.Events.On("Debug:ScootAuras", "PLAYER_TARGET_CHANGED", onRetarget)
+    addon.Events.On("Debug:ScootAuras", "PLAYER_FOCUS_CHANGED", onRetarget)
 end
 
 --------------------------------------------------------------------------------
@@ -186,7 +186,7 @@ local function CreateProbe(spellId, unit, kind)
     local closed = GateClosed()
     if closed then return nil, "structural window closed (" .. closed .. "); run out of combat and outside restricted content" end
 
-    EnsureKickFrame()
+    EnsureKickEvents()
     SA.count = SA.count + 1
     local id = "p" .. SA.count
 

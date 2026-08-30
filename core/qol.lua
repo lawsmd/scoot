@@ -262,38 +262,30 @@ end
 -- Event Frame
 --------------------------------------------------------------------------------
 
-local qolEventFrame = CreateFrame("Frame")
-qolEventFrame:RegisterEvent("MERCHANT_SHOW")
-qolEventFrame:RegisterEvent("LOOT_READY")
-qolEventFrame:RegisterEvent("ADDON_LOADED")
-qolEventFrame:RegisterEvent("QUEST_LOG_UPDATE")
-qolEventFrame:RegisterEvent("QUEST_ACCEPTED")
-qolEventFrame:RegisterEvent("QUEST_REMOVED")
-qolEventFrame:RegisterEvent("QUEST_TURNED_IN")
-
-qolEventFrame:SetScript("OnEvent", function(self, event, ...)
-    if event == "MERCHANT_SHOW" then
-        onMerchantShow()
-    elseif event == "LOOT_READY" then
-        onLootReady(...)
-    elseif event == "ADDON_LOADED" then
-        local loadedAddon = ...
-        if loadedAddon == "Blizzard_UIPanels_Game" then
-            initQuestCount()
-        end
-        if loadedAddon == "Blizzard_WorldMap" then
-            initMapCoordinates()
-        end
-    elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_ACCEPTED"
-        or event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN" then
-        if not questCountInitialized and QuestScrollFrame then
-            initQuestCount()
-        end
-        updateQuestCount()
-    end
+addon.Events.On("QoL", "MERCHANT_SHOW", function()
+    onMerchantShow()
 end)
 
--- Fallback: if WorldMapFrame already exists (addon loaded after Blizzard_WorldMap)
-if WorldMapFrame then
+addon.Events.On("QoL", "LOOT_READY", function(_, ...)
+    onLootReady(...)
+end)
+
+-- OnAddonLoaded runs the callback immediately when the addon is already
+-- loaded, which covers the old "WorldMapFrame already exists" fallback.
+addon.Events.OnAddonLoaded("Blizzard_UIPanels_Game", function()
+    initQuestCount()
+end)
+addon.Events.OnAddonLoaded("Blizzard_WorldMap", function()
     initMapCoordinates()
+end)
+
+local function onQuestEvent()
+    if not questCountInitialized and QuestScrollFrame then
+        initQuestCount()
+    end
+    updateQuestCount()
 end
+addon.Events.On("QoL", "QUEST_LOG_UPDATE", onQuestEvent)
+addon.Events.On("QoL", "QUEST_ACCEPTED", onQuestEvent)
+addon.Events.On("QoL", "QUEST_REMOVED", onQuestEvent)
+addon.Events.On("QoL", "QUEST_TURNED_IN", onQuestEvent)

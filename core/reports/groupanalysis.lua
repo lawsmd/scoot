@@ -184,23 +184,25 @@ end
 --------------------------------------------------------------------------------
 
 local subscriberCallback = nil
-local eventFrame = nil
+local eventHandles = nil
+
+local function onEvent(event)
+    if subscriberCallback then
+        subscriberCallback(event)
+    end
+end
 
 function GA.Subscribe(cb)
     subscriberCallback = cb
 
-    if not eventFrame then
-        eventFrame = CreateFrame("Frame")
-        eventFrame:SetScript("OnEvent", function(_, event)
-            if subscriberCallback then
-                subscriberCallback(event)
-            end
-        end)
+    if not eventHandles then
+        eventHandles = {
+            addon.Events.On("Reports:GroupAnalysis", "GROUP_ROSTER_UPDATE", onEvent),
+            addon.Events.On("Reports:GroupAnalysis", "PLAYER_REGEN_ENABLED", onEvent),
+            -- Role is a live read, not inspect-cache data, so it needs its own event.
+            addon.Events.On("Reports:GroupAnalysis", "PLAYER_ROLES_ASSIGNED", onEvent),
+        }
     end
-    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    -- Role is a live read, not inspect-cache data, so it needs its own event.
-    eventFrame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
 
     addon:RegisterMessage("SCOOT_INSPECT_UPDATED", function(_, guid)
         if subscriberCallback then
@@ -211,8 +213,11 @@ end
 
 function GA.Unsubscribe()
     subscriberCallback = nil
-    if eventFrame then
-        eventFrame:UnregisterAllEvents()
+    if eventHandles then
+        for _, handle in ipairs(eventHandles) do
+            handle:Off()
+        end
+        eventHandles = nil
     end
     addon:UnregisterMessage("SCOOT_INSPECT_UPDATED")
 end

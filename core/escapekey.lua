@@ -75,9 +75,7 @@ function EscapeKey.Attach(frame, onEscape)
     end
 end
 
-local watcher = CreateFrame("Frame")
-watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
-watcher:SetScript("OnEvent", function()
+addon.Events.On("EscapeKey", "PLAYER_REGEN_ENABLED", function()
     for frame in pairs(pending) do
         if arm(frame) then
             pending[frame] = nil

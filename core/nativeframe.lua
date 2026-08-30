@@ -335,9 +335,8 @@ function NativeFrame:Reapply(frame)
     end
 end
 
-local driver = CreateFrame("Frame")
-driver:RegisterEvent("PLAYER_ENTERING_WORLD")
-driver:RegisterEvent("PLAYER_REGEN_ENABLED")
-driver:SetScript("OnEvent", function()
+local function reapplyAll()
     NativeFrame:Reapply()
-end)
+end
+addon.Events.On("NativeFrame", "PLAYER_ENTERING_WORLD", reapplyAll)
+addon.Events.On("NativeFrame", "PLAYER_REGEN_ENABLED", reapplyAll)

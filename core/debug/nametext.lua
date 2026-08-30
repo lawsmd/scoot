@@ -1146,18 +1146,18 @@ local function ensureFrame()
     nameFS:SetJustifyV("MIDDLE")
     nameFS:SetTextColor(1, 1, 1, 1)
 
-    frame:RegisterEvent("PLAYER_TARGET_CHANGED")
     -- A name is not always known the instant the unit is: for anything not yet cached
     -- the first UnitName comes back "Unknown" and the real one arrives by event. Without
-    -- this the box would size and render "Unknown" and then never correct itself.
-    frame:RegisterEvent("UNIT_NAME_UPDATE")
-    frame:SetScript("OnEvent", function(_, event, unit)
+    -- UNIT_NAME_UPDATE the box would size and render "Unknown" and then never correct itself.
+    local function onEvent(event, unit)
         if event == "UNIT_NAME_UPDATE" and unit ~= "target" then return end
         -- A name update is the SAME unit arriving late, so hold whatever is on screen
         -- and swap when the new fit lands. Blanking on it would mean two flickers for
         -- every uncached target instead of none.
         addon.DebugNameTextRefresh(event == "UNIT_NAME_UPDATE")
-    end)
+    end
+    addon.Events.On("Debug:NameText", "PLAYER_TARGET_CHANGED", onEvent)
+    addon.Events.On("Debug:NameText", "UNIT_NAME_UPDATE", onEvent)
 
     -- CreateFrame returns a shown frame; start hidden so the first toggle reveals it.
     frame:Hide()

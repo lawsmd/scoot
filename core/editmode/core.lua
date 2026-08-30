@@ -742,12 +742,8 @@ end
 local function _EnsureEditModeCombatWriteWatcher()
     if not addon or not addon.EditMode then return end
     if addon.EditMode._combatWriteWatcher then return end
-    if not _G.CreateFrame then return end
 
-    local f = _G.CreateFrame("Frame")
-    addon.EditMode._combatWriteWatcher = f
-    f:RegisterEvent("PLAYER_REGEN_ENABLED")
-    f:SetScript("OnEvent", function()
+    addon.EditMode._combatWriteWatcher = addon.Events.On("EditMode", "PLAYER_REGEN_ENABLED", function()
         -- Defer a tick to let Blizzard finish post-combat churn.
         if _G.C_Timer and _G.C_Timer.After then
             _G.C_Timer.After(0, function()

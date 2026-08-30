@@ -43,11 +43,7 @@ local function RestoreAll()
 end
 
 -- Events
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("PET_BATTLE_OPENING_START")
-eventFrame:RegisterEvent("PET_BATTLE_CLOSE")
-eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:SetScript("OnEvent", function(_, event)
+local function onEvent(event)
     if event == "PET_BATTLE_OPENING_START" then
         isInPetBattle = true
         HideAll()
@@ -61,4 +57,7 @@ eventFrame:SetScript("OnEvent", function(_, event)
             HideAll()
         end
     end
-end)
+end
+addon.Events.On("PetBattle", "PET_BATTLE_OPENING_START", onEvent)
+addon.Events.On("PetBattle", "PET_BATTLE_CLOSE", onEvent)
+addon.Events.On("PetBattle", "PLAYER_ENTERING_WORLD", onEvent)

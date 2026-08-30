@@ -98,9 +98,7 @@ local function installTraceHooks(unit)
     end
 end
 
-local installer = CreateFrame("Frame")
-installer:RegisterEvent("PLAYER_ENTERING_WORLD")
-installer:SetScript("OnEvent", function()
+addon.Events.On("Debug:RepColor", "PLAYER_ENTERING_WORLD", function()
     installTraceHooks("Target")
     installTraceHooks("Focus")
     addon.RepColorTrace("init", "trace hooks installed (PLAYER_ENTERING_WORLD)")

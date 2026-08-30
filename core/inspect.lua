@@ -44,7 +44,6 @@ local queue = {}          -- array of { guid, unit }
 local state = STATE_IDLE
 local pending = nil       -- { guid, unit, sentAt } for our own in-flight request
 local ticker = nil
-local eventFrame = nil
 local started = false
 local serviceCallInProgress = false  -- discriminates our NotifyInspect from foreign ones in the hook
 local quietUntil = 0
@@ -332,7 +331,7 @@ end
 -- Events
 --------------------------------------------------------------------------------
 
-local function OnEvent(self, event, ...)
+local function OnEvent(event, ...)
     if event == "INSPECT_READY" then
         OnInspectReady(...)
     elseif event == "GROUP_ROSTER_UPDATE" then
@@ -392,14 +391,16 @@ function Inspect:EnsureStarted()
 
     hooksecurefunc("NotifyInspect", OnNotifyInspectHook)
 
-    eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("INSPECT_READY")
-    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    eventFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
-    eventFrame:SetScript("OnEvent", OnEvent)
+    for _, event in ipairs({
+        "INSPECT_READY",
+        "GROUP_ROSTER_UPDATE",
+        "PLAYER_REGEN_DISABLED",
+        "PLAYER_REGEN_ENABLED",
+        "PLAYER_ENTERING_WORLD",
+        "UNIT_INVENTORY_CHANGED",
+    }) do
+        addon.Events.On("Inspect", event, OnEvent)
+    end
 
     if IsInGroup() and not InCombatLockdown() then
         RebuildQueue()

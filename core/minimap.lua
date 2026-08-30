@@ -28,25 +28,20 @@ local ScootLDB = LDB:NewDataObject("Scoot", {
 })
 
 -- Register the minimap icon on PLAYER_LOGIN
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("PLAYER_LOGIN")
-frame:SetScript("OnEvent", function(self, event)
-    if event == "PLAYER_LOGIN" then
-        -- Get the minimap DB from addon.db, creating it if needed
-        local db = addon.db
-        if db and db.profile then
-            if not db.profile.minimap then
-                db.profile.minimap = {
-                    hide = false,
-                    minimapPos = 220,
-                }
-            end
-            LDBIcon:Register("Scoot", ScootLDB, db.profile.minimap)
-        else
-            -- Fallback if DB isn't ready yet (shouldn't happen with proper load order)
-            LDBIcon:Register("Scoot", ScootLDB, { hide = false, minimapPos = 220 })
+addon.Events.Once("Minimap", "PLAYER_LOGIN", function()
+    -- Get the minimap DB from addon.db, creating it if needed
+    local db = addon.db
+    if db and db.profile then
+        if not db.profile.minimap then
+            db.profile.minimap = {
+                hide = false,
+                minimapPos = 220,
+            }
         end
-        self:UnregisterEvent("PLAYER_LOGIN")
+        LDBIcon:Register("Scoot", ScootLDB, db.profile.minimap)
+    else
+        -- Fallback if DB isn't ready yet (shouldn't happen with proper load order)
+        LDBIcon:Register("Scoot", ScootLDB, { hide = false, minimapPos = 220 })
     end
 end)
 

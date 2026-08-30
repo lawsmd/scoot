@@ -408,13 +408,12 @@ function SmallFixes.EnsureHooks()
         end)
     end
 
-    local eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    eventFrame:RegisterEvent("ARENA_OPPONENT_UPDATE")
-    eventFrame:SetScript("OnEvent", function()
+    local function onRosterEvent()
         if not AnyModifierEnabled() then return end
         C_Timer.After(0, function() SmallFixes.ApplyAll() end)
-    end)
+    end
+    addon.Events.On("SmallFixes", "GROUP_ROSTER_UPDATE", onRosterEvent)
+    addon.Events.On("SmallFixes", "ARENA_OPPONENT_UPDATE", onRosterEvent)
 end
 
 --- Setter used by the settings renderer. mod is "shift", "ctrl" or "alt".
@@ -442,9 +441,7 @@ end
 -- Bootstrap
 --------------------------------------------------------------------------------
 
-local bootstrap = CreateFrame("Frame")
-bootstrap:RegisterEvent("PLAYER_ENTERING_WORLD")
-bootstrap:SetScript("OnEvent", function()
+addon.Events.On("SmallFixes", "PLAYER_ENTERING_WORLD", function()
     if not AnyModifierEnabled() then return end
     SmallFixes.EnsureHooks()
     -- Unit frames finish their own setup well after this event.

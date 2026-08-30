@@ -305,10 +305,7 @@ function addon.EditMode.InitNudgeArrows()
         installHooks()
     else
         -- Fallback: wait for EDIT_MODE_LAYOUTS_UPDATED
-        local f = CreateFrame("Frame")
-        f:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
-        f:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
+        addon.Events.Once("EditMode:NudgeArrows", "EDIT_MODE_LAYOUTS_UPDATED", function()
             if EditModeManagerFrame then
                 installHooks()
             end

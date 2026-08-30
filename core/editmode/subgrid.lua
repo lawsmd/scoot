@@ -188,14 +188,13 @@ local function installHooks()
     end)
 
     -- Redraw on resolution/scale changes
-    local eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
-    eventFrame:RegisterEvent("UI_SCALE_CHANGED")
-    eventFrame:SetScript("OnEvent", function()
+    local function onDisplayChanged()
         if subGridFrame and subGridFrame:IsShown() then
             updateSubGrid()
         end
-    end)
+    end
+    addon.Events.On("EditMode:SubGrid", "DISPLAY_SIZE_CHANGED", onDisplayChanged)
+    addon.Events.On("EditMode:SubGrid", "UI_SCALE_CHANGED", onDisplayChanged)
 
     -- Seed cachedSpacing if grid already has a value
     if grid.gridSpacing then
@@ -211,10 +210,7 @@ function addon.EditMode.InitSubGrid()
     if EditModeManagerFrame and EditModeManagerFrame.Grid then
         installHooks()
     else
-        local f = CreateFrame("Frame")
-        f:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
-        f:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
+        addon.Events.Once("EditMode:SubGrid", "EDIT_MODE_LAYOUTS_UPDATED", function()
             if EditModeManagerFrame and EditModeManagerFrame.Grid then
                 installHooks()
             end
