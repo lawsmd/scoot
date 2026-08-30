@@ -342,22 +342,7 @@ local bagUpdatePending = false
 local spellCDDirty = false
 local itemCDDirty = false
 
-local cgEventFrame = CreateFrame("Frame")
-cgEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-cgEventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
-cgEventFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
-cgEventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
-cgEventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-cgEventFrame:RegisterEvent("PLAYER_TALENT_UPDATE")
-cgEventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
-cgEventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
-cgEventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-cgEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-cgEventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-cgEventFrame:RegisterEvent("ITEM_DATA_LOAD_RESULT")
-cgEventFrame:RegisterEvent("BAG_UPDATE")
-
-cgEventFrame:SetScript("OnEvent", function(self, event, ...)
+local function onCustomGroupEvent(event)
     if event == "PLAYER_ENTERING_WORLD" then
         if not cgInitialized then
             InitializeContainers()
@@ -434,7 +419,25 @@ cgEventFrame:SetScript("OnEvent", function(self, event, ...)
             end
         end
     end
-end)
+end
+
+for _, event in ipairs({
+    "PLAYER_ENTERING_WORLD",
+    "SPELL_UPDATE_COOLDOWN",
+    "SPELL_UPDATE_CHARGES",
+    "BAG_UPDATE_COOLDOWN",
+    "PLAYER_SPECIALIZATION_CHANGED",
+    "PLAYER_TALENT_UPDATE",
+    "TRAIT_CONFIG_UPDATED",
+    "PLAYER_EQUIPMENT_CHANGED",
+    "PLAYER_REGEN_DISABLED",
+    "PLAYER_REGEN_ENABLED",
+    "PLAYER_TARGET_CHANGED",
+    "ITEM_DATA_LOAD_RESULT",
+    "BAG_UPDATE",
+}) do
+    addon.Events.On("Cooldowns:CustomGroups", event, onCustomGroupEvent)
+end
 
 --------------------------------------------------------------------------------
 -- Data Model Callback → HUD Updates

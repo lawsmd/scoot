@@ -474,12 +474,10 @@ local function ScheduleRebuild()
 end
 
 --------------------------------------------------------------------------------
--- Event Frame
+-- Events
 --------------------------------------------------------------------------------
 
-local eventFrame = CreateFrame("Frame")
-
-local function OnEvent(self, event, ...)
+local function OnEvent(event)
     if event == "PLAYER_REGEN_ENABLED" then
         -- Deferred rebuild after leaving combat
         if rebuildPending then
@@ -495,20 +493,29 @@ local function OnEvent(self, event, ...)
     end
 end
 
-eventFrame:SetScript("OnEvent", OnEvent)
+local eventsArmed = false
 
 --------------------------------------------------------------------------------
 -- Initialize — Build initial cache, register events
 --------------------------------------------------------------------------------
 
 function SpellBindings.Initialize()
-    eventFrame:RegisterEvent("UPDATE_BINDINGS")
-    eventFrame:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
-    eventFrame:RegisterEvent("ACTIONBAR_PAGE_CHANGED")
-    eventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
-    eventFrame:RegisterEvent("PLAYER_TALENT_UPDATE")
-    eventFrame:RegisterEvent("SPELLS_CHANGED")
-    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    -- Latched: Initialize re-runs with component re-initialization, and the
+    -- old frame's repeat RegisterEvent calls were no-ops.
+    if not eventsArmed then
+        eventsArmed = true
+        for _, event in ipairs({
+            "UPDATE_BINDINGS",
+            "ACTIONBAR_SLOT_CHANGED",
+            "ACTIONBAR_PAGE_CHANGED",
+            "UPDATE_BONUS_ACTIONBAR",
+            "PLAYER_TALENT_UPDATE",
+            "SPELLS_CHANGED",
+            "PLAYER_REGEN_ENABLED",
+        }) do
+            addon.Events.On("Cooldowns:Keybinds", event, OnEvent)
+        end
+    end
 
     -- Build initial cache (deferred to ensure action bars are loaded)
     C_Timer.After(1.0, function()

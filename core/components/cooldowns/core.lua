@@ -2016,14 +2016,6 @@ end
 -- Event Handling
 --------------------------------------------------------------------------------
 
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("UNIT_AURA")
-eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
-eventFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
-eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")  -- Combat start
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")   -- Combat end
 -- UNIT_SPELLCAST_SUCCEEDED removed: SecretWhenUnitSpellCastRestricted makes arg1=="player"
 -- fail silently during combat. Path 3 (SetCooldown/Clear timing) handles this instead.
 
@@ -2043,7 +2035,7 @@ local function throttledRefresh(viewerName, componentId)
     end)
 end
 
-eventFrame:SetScript("OnEvent", function(self, event, arg1, ...)
+local function onCDMEvent(event, arg1)
     if event == "PLAYER_ENTERING_WORLD" then
         initRetryCount = 0
         C_Timer.After(1.0, function()
@@ -2104,7 +2096,19 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, ...)
         applyPerIconCooldownOpacity("UtilityCooldownViewer", "utilityCooldowns")
 
     end
-end)
+end
+
+for _, event in ipairs({
+    "PLAYER_ENTERING_WORLD",
+    "UNIT_AURA",
+    "PLAYER_TARGET_CHANGED",
+    "SPELL_UPDATE_COOLDOWN",
+    "SPELL_UPDATE_CHARGES",
+    "PLAYER_REGEN_DISABLED",  -- Combat start
+    "PLAYER_REGEN_ENABLED",   -- Combat end
+}) do
+    addon.Events.On("Cooldowns", event, onCDMEvent)
+end
 
 --------------------------------------------------------------------------------
 -- Settings Change Handler

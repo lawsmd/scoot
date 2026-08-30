@@ -23,7 +23,8 @@ local overlays = {}
 local shownOverlays = 0
 local ghost
 local marker
-local eventFrame
+local regenHandle    -- PLAYER_REGEN_DISABLED subscription, live only while the mode is active
+local mouseUpHandle  -- GLOBAL_MOUSE_UP subscription, live only during a member drag
 
 local ICON_SIZE = 26
 
@@ -109,17 +110,6 @@ local function EnsureFrames()
             and d.selection.parent == mode.entry.frame
         if not selectionOk or mode.entry.occupantId ~= mode.gid then
             Rearrange.ForceEnd()
-        end
-    end)
-
-    eventFrame = CreateFrame("Frame")
-    eventFrame:SetScript("OnEvent", function(self, event, ...)
-        if event == "PLAYER_REGEN_DISABLED" then
-            Rearrange.ForceEnd()
-        elseif event == "GLOBAL_MOUSE_UP" then
-            local button = ...
-            self:UnregisterEvent("GLOBAL_MOUSE_UP")
-            EndDrag(button == "RightButton")
         end
     end)
 end
@@ -307,7 +297,9 @@ BeginMemberDrag = function(ov)
 
     -- The overlay never received OnMouseDown, so drop detection rides
     -- GLOBAL_MOUSE_UP (right button up cancels the drag, not the mode).
-    eventFrame:RegisterEvent("GLOBAL_MOUSE_UP")
+    mouseUpHandle = addon.Events.On("ScootAuras:Rearrange", "GLOBAL_MOUSE_UP", function(_, button)
+        EndDrag(button == "RightButton")
+    end)
 end
 
 EndDrag = function(cancelled)
@@ -317,7 +309,12 @@ EndDrag = function(cancelled)
         ghost:Hide()
     end
     if marker then marker:Hide() end
-    if eventFrame then eventFrame:UnregisterEvent("GLOBAL_MOUSE_UP") end
+    -- Off() from inside the GLOBAL_MOUSE_UP dispatch itself is safe: the bus
+    -- tombstones the entry and compacts after the dispatch unwinds.
+    if mouseUpHandle then
+        mouseUpHandle:Off()
+        mouseUpHandle = nil
+    end
     if drag.visual then drag.visual:SetAlpha(1) end
 
     local trackerId = drag.trackerId
@@ -351,7 +348,9 @@ function Rearrange.Begin(gid)
     container:SetAllPoints(entry.frame)
     BuildOverlays()
     container:Show()
-    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    regenHandle = addon.Events.On("ScootAuras:Rearrange", "PLAYER_REGEN_DISABLED", function()
+        Rearrange.ForceEnd()
+    end)
 end
 
 --- Teardown only. The Done button's own rebuild wrapper refreshes the mirror
@@ -361,7 +360,11 @@ function Rearrange.End()
     if not mode then return end
     if drag then EndDrag(true) end
     container:Hide()
-    eventFrame:UnregisterEvent("PLAYER_REGEN_DISABLED")
+    -- Off() from inside the regen dispatch (combat force-end) is tombstone-safe.
+    if regenHandle then
+        regenHandle:Off()
+        regenHandle = nil
+    end
     mode = nil
 end
 

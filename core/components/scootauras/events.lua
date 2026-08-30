@@ -88,40 +88,40 @@ end
 -- Events
 --------------------------------------------------------------------------------
 
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-eventFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
--- Trackers with "Only in Combat" gate on plain combat state: a missing-buff
--- reminder through its clip window, every other kind by hiding its frame.
-eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
--- Missing-buff trackers with "Only in Instances" gate on plain instance state,
--- which only ever moves across one of these two.
-eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
--- Spell descriptions (name/icon by CDM override chain) cache a base-to-display
--- map; these are the moments the catalog behind it can move.
-eventFrame:RegisterEvent("COOLDOWN_VIEWER_DATA_LOADED")
-eventFrame:RegisterEvent("COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED")
-eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
--- A spell being substituted for another (Shadowform while Voidform is up).
--- The CDM event covers catalog entries; forms and stances mostly are not
--- entries, so the two below are what reaches those. Guarded because a client
--- that does not know an event name errors on registration.
-for _, event in ipairs({
+local SAU_EVENTS = {
+    "PLAYER_ENTERING_WORLD",
+    "PLAYER_TARGET_CHANGED",
+    "PLAYER_FOCUS_CHANGED",
+    "PLAYER_REGEN_ENABLED",
+    -- Trackers with "Only in Combat" gate on plain combat state: a missing-buff
+    -- reminder through its clip window, every other kind by hiding its frame.
+    "PLAYER_REGEN_DISABLED",
+    -- Missing-buff trackers with "Only in Instances" gate on plain instance state,
+    -- which only ever moves across one of these two.
+    "ZONE_CHANGED_NEW_AREA",
+    -- Spell descriptions (name/icon by CDM override chain) cache a base-to-display
+    -- map; these are the moments the catalog behind it can move.
+    "COOLDOWN_VIEWER_DATA_LOADED",
+    "COOLDOWN_VIEWER_SPELL_OVERRIDE_UPDATED",
+    "PLAYER_SPECIALIZATION_CHANGED",
+    "TRAIT_CONFIG_UPDATED",
+    -- A spell being substituted for another (Shadowform while Voidform is up).
+    -- The CDM event covers catalog entries; forms and stances mostly are not
+    -- entries, so the two below are what reaches those. A client that does not
+    -- know an event name errors on registration; Events.On absorbs that and
+    -- returns an inert handle, so the three formerly pcall-guarded names
+    -- (COOLDOWN_VIEWER_TABLE_HOTFIXED, UPDATE_SHAPESHIFT_FORM, SPELLS_CHANGED)
+    -- sit in the plain list.
     "COOLDOWN_VIEWER_TABLE_HOTFIXED",
     "UPDATE_SHAPESHIFT_FORM",
     "SPELLS_CHANGED",
-}) do
-    pcall(eventFrame.RegisterEvent, eventFrame, event)
-end
--- The group half of a missing-buff reminder: the glow the game shows on its
--- own action buttons, and the roster the scan is measured against. Both
--- payloads are plain (SpellActivationOverlayDocumentation.lua).
-eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
-eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
-eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    -- The group half of a missing-buff reminder: the glow the game shows on its
+    -- own action buttons, and the roster the scan is measured against. Both
+    -- payloads are plain (SpellActivationOverlayDocumentation.lua).
+    "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW",
+    "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE",
+    "GROUP_ROSTER_UPDATE",
+}
 
 local specResolvePending = false
 local overrideResolvePending = false
@@ -145,7 +145,7 @@ end
 -- arg1 is the first payload of whichever event arrived: a unit token for
 -- PLAYER_SPECIALIZATION_CHANGED, a spell id for the two glow events, a base
 -- spell id for the override event, whose arg2 is the spell replacing it.
-eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
+local function onAuraEvent(event, arg1, arg2)
     if event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW"
         or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
         if SAU.Missing then
@@ -247,7 +247,11 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     elseif event == "GROUP_ROSTER_UPDATE" then
         if SAU.Missing then SAU.Missing.RefreshGroupTrackers() end
     end
-end)
+end
+
+for _, event in ipairs(SAU_EVENTS) do
+    addon.Events.On("ScootAuras", event, onAuraEvent)
+end
 
 -- 2026-08-29: an in-combat dump caught an Only-in-Combat shell still hidden
 -- with every gate input reading true, so the combat edge cannot ride on the

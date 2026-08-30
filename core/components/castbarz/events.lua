@@ -737,10 +737,9 @@ end
 function CBZ._InitializeEvents(comp)
     -- Spec changes re-resolve the ramp; talent swaps do not, but a spec swap is
     -- the only thing that moves SPEC_GRADIENT_COLORS.
-    local specFrame = CreateFrame("Frame")
-    specFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-    specFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    specFrame:SetScript("OnEvent", function(_, event)
+    -- Registered once (_Initialize latches), so the file-scoped owner keeps the
+    -- handlers alive across component re-initialization.
+    local function onSpecEvent(event)
         if event == "PLAYER_ENTERING_WORLD" then
             -- Catches a Blizzard bar that did not exist when Z first reconciled,
             -- and any alpha reset across the loading screen.
@@ -758,6 +757,7 @@ function CBZ._InitializeEvents(comp)
                 end
             end
         end
-    end)
-    CBZ._specFrame = specFrame
+    end
+    addon.Events.On("CastBarZ:Spec", "PLAYER_SPECIALIZATION_CHANGED", onSpecEvent)
+    addon.Events.On("CastBarZ:Spec", "PLAYER_ENTERING_WORLD", onSpecEvent)
 end

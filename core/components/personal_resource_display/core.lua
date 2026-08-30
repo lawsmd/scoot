@@ -128,7 +128,7 @@ local function scheduleComponentApply(component)
     end
 end
 
-local function onPRDEvent(self, event, ...)
+local function onPRDEvent(event)
     if not (C_Timer and C_Timer.After) then return end
     local function doApply()
         for component, _ in pairs(prdRegisteredComponents) do
@@ -158,22 +158,28 @@ local function ensureEventFrame()
         return prdEventFrame
     end
 
+    -- The frame exists only for RegisterUnitEvent: C-side unit filtering is a
+    -- 12.x secrecy requirement, and the bus carries no unit-event API.
     prdEventFrame = CreateFrame("Frame")
-    prdEventFrame:SetScript("OnEvent", onPRDEvent)
+    prdEventFrame:SetScript("OnEvent", function(_, event) onPRDEvent(event) end)
+    prdEventFrame:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
 
     -- Register events that indicate PRD state may have changed
     -- These fire AFTER Blizzard's nameplate setup completes
-    prdEventFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
-    prdEventFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
-    prdEventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-    prdEventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    prdEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    prdEventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-    prdEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    prdEventFrame:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
-    prdEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
-    -- Blizzard re-evaluates the alternate power bar on talent updates too.
-    prdEventFrame:RegisterEvent("PLAYER_TALENT_UPDATE")
+    for _, event in ipairs({
+        "NAME_PLATE_UNIT_ADDED",
+        "NAME_PLATE_UNIT_REMOVED",
+        "PLAYER_TARGET_CHANGED",
+        "PLAYER_REGEN_DISABLED",
+        "PLAYER_REGEN_ENABLED",
+        "PLAYER_SPECIALIZATION_CHANGED",
+        "PLAYER_ENTERING_WORLD",
+        "UPDATE_SHAPESHIFT_FORM",
+        -- Blizzard re-evaluates the alternate power bar on talent updates too.
+        "PLAYER_TALENT_UPDATE",
+    }) do
+        addon.Events.On("PRD", event, onPRDEvent)
+    end
 
     return prdEventFrame
 end
