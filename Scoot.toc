@@ -25,6 +25,7 @@ core/framestate.lua
 core/escapekey.lua
 core/strata.lua
 core/secretsafe.lua
+core/frames.lua
 core/nativeframe.lua
 core/media.lua
 core/lsm.lua

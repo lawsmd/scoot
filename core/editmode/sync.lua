@@ -7,7 +7,7 @@ local ResolveSettingId = addon.EditMode._ResolveSettingId
 local getEditModeState = addon.EditMode._getEditModeState
 local roundPositionValue = addon.EditMode._roundPositionValue
 local _ForceObjectiveTrackerRelayout = addon.EditMode._ForceObjectiveTrackerRelayout
-local _GetUnitFrameForUnit = addon.EditMode._GetUnitFrameForUnit
+local _GetUnitFrameForUnit = addon.GetEditModeUnitFrame
 
 local function _lower(s)
     if type(s) ~= "string" then return "" end

@@ -48,32 +48,6 @@ local function _lower(s)
     return string.lower(s)
 end
 
-local function _GetUnitFrameForUnit(unit)
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
-    if not (mgr and EM and EMSys and mgr.GetRegisteredSystemFrame) then
-        return nil
-    end
-
-    local idx
-    if unit == "Player" then
-        idx = EM.Player
-    elseif unit == "Target" then
-        idx = EM.Target
-    elseif unit == "Focus" then
-        idx = EM.Focus
-    elseif unit == "Pet" then
-        idx = EM.Pet
-    end
-
-    if not idx then
-        return nil
-    end
-
-    return mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-end
-
 --[[----------------------------------------------------------------------------
     Copy helpers (Edit Mode only)
 ----------------------------------------------------------------------------]]--
@@ -108,19 +82,8 @@ function addon.EditMode.CopyUnitFrameFrameSize(sourceUnit, destUnit)
     local UFSetting = _G.Enum and _G.Enum.EditModeUnitFrameSetting
     if not (mgr and EM and EMSys and UFSetting and mgr.GetRegisteredSystemFrame) then return false, "env_unavailable" end
 
-    local function idxFor(unit)
-        if unit == "Player" then return EM.Player end
-        if unit == "Target" then return EM.Target end
-        if unit == "Focus"  then return EM.Focus end
-        if unit == "Pet"    then return EM.Pet end
-    end
-
-    local srcIdx = idxFor(src)
-    local dstIdx = idxFor(dst)
-    if not srcIdx or not dstIdx then return false, "invalid_unit" end
-
-    local srcFrame = mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, srcIdx)
-    local dstFrame = mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, dstIdx)
+    local srcFrame = addon.GetEditModeUnitFrame(src)
+    local dstFrame = addon.GetEditModeUnitFrame(dst)
     if not srcFrame or not dstFrame then return false, "frame_missing" end
 
     -- Read source Frame Size; library is configured to return RAW (100..200)
@@ -944,7 +907,6 @@ addon.EditMode._ResolveSettingId = ResolveSettingId
 addon.EditMode._getEditModeState = getEditModeState
 addon.EditMode._roundPositionValue = roundPositionValue
 addon.EditMode._ForceObjectiveTrackerRelayout = _ForceObjectiveTrackerRelayout
-addon.EditMode._GetUnitFrameForUnit = _GetUnitFrameForUnit
 
 -- Initialize Edit Mode integration
 function addon.EditMode.Initialize()
