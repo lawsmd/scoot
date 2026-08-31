@@ -464,9 +464,11 @@ SAU.VALID_MISSING_VISUALS_BY_SHAPE = {
 
 -- Token traits, so no caller string-matches tokens. art "self" reuses the
 -- shape's own art; "emptybar" shows the bar frame with no fill; "baricon"
--- centers an icon on the bar rect.
+-- centers an icon on the bar rect. `opacity` marks the tokens that carry the
+-- Opacity sub-option: the editor puts a gear in the selector field for exactly
+-- those, and underlay.lua reads missingVisualOpacity for exactly those.
 local MISSING_VISUAL_TRAITS = {
-    desat          = { desat = true,  blink = false, art = "self" },
+    desat          = { desat = true,  blink = false, art = "self", opacity = true },
     blink          = { desat = false, blink = true,  art = "self" },
     blinkdesat     = { desat = true,  blink = true,  art = "self" },
     emptybar       = { desat = false, blink = false, art = "emptybar" },
@@ -596,6 +598,11 @@ function SAU.DefaultSettings()
         opacityInCombat         = { type = "addon", default = 100 },
         opacityWithTarget       = { type = "addon", default = 100 },
         opacityOutOfCombat      = { type = "addon", default = 100 },
+        -- Missing-state visual on a debuff tracker (underlay.lua). Read only
+        -- for tokens whose traits carry `opacity`. The underlay root is a
+        -- child of the visual, so this multiplies with the tracker's own
+        -- opacity rather than replacing it.
+        missingVisualOpacity    = { type = "addon", default = 100 },
         -- Missing-buff kind (missing.lua): text suffix and blink.
         missingSuffix           = { type = "addon", default = false },
         blinkWhenShown          = { type = "addon", default = false },

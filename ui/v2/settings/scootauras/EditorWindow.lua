@@ -696,6 +696,66 @@ local MISSING_VISUAL_LABELS_SHAPE = {
 }
 local MISSING_VISUAL_ORDER_SHAPE = { "none", "desat", "blink", "blinkdesat" }
 
+-- Sub-options for one missing-state visual, opened by the gear that sits
+-- inside the "When it's missing, show..." field
+-- (ui/v2/controls/SelectorGear.lua). One page table shared by every token that
+-- offers it, so Icon and Shape build one panel body between them.
+--
+-- The slider writes through ctx.setAndApply, which restyles the tracker
+-- without re-rendering the selectors. A page that called ctx.refresh() would
+-- destroy the gear its own fly-out is anchored to.
+local MISSING_OPACITY_PAGE = {
+    tooltip = "Options for this missing-state visual",
+    width = 310,
+    height = 112,
+    build = function(page)
+        local Controls = addon.UI.Controls
+        local theme = addon.UI.Theme
+
+        local slider = Controls:CreateSlider({
+            parent = page,
+            label = "Opacity",
+            min = 0, max = 100, step = 1,
+            width = 110,
+            inputWidth = 40,
+            minLabel = "Hidden",
+            maxLabel = "100%",
+            noBottomBorder = true,
+            get = function() return ctx.get("missingVisualOpacity") or 100 end,
+            set = function(v) ctx.setAndApply("missingVisualOpacity", v) end,
+        })
+        if not slider then return end
+        slider:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+        slider:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 0)
+
+        local hint = page:CreateFontString(nil, "OVERLAY")
+        hint:SetFont(theme:GetFont("VALUE"), 11, "")
+        hint:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", 12, -2)
+        hint:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", -12, -2)
+        hint:SetJustifyH("LEFT")
+        hint:SetWordWrap(true)
+        hint:SetText("Applies to the missing-state art alone. The tracker's own opacity multiplies with it.")
+        local dimR, dimG, dimB = theme:GetDimTextColor()
+        hint:SetTextColor(dimR, dimG, dimB, 1)
+    end,
+}
+
+-- Gear config for the missing-state selector, or nil when no token in this
+-- shape's list carries sub-options. Visibility falls out of the pages table:
+-- a token with a page shows the gear, a token without one does not.
+local function MissingVisualGear(order)
+    local pages
+    for _, token in ipairs(order) do
+        local traits = SAU().MissingVisualTraits(token)
+        if traits and traits.opacity then
+            pages = pages or {}
+            pages[token] = MISSING_OPACITY_PAGE
+        end
+    end
+    if not pages then return nil end
+    return { direction = "DOWN", gap = 8, pages = pages }
+end
+
 local function ContentValue(field)
     local tracker = CurrentTracker()
     if tracker then return tracker[field] end
@@ -784,7 +844,8 @@ local function MissingVisualOptions(shape)
 end
 
 -- One selector with an unset state: draft selectors start on "Choose".
--- opts.disabledOptions lists keys that are shown but inert.
+-- opts.disabledOptions lists keys that are shown but inert; opts.gear is an
+-- in-field gear config (ui/v2/controls/SelectorGear.lua).
 local function AddChoiceSelector(builder, label, valueMap, order, current, onSet, opts)
     local values = {}
     for k, v in pairs(valueMap) do values[k] = v end
@@ -804,6 +865,7 @@ local function AddChoiceSelector(builder, label, valueMap, order, current, onSet
         values = values,
         order = fullOrder,
         disabledOptions = opts and opts.disabledOptions or nil,
+        gear = opts and opts.gear or nil,
         get = function() return current or "choose" end,
         set = function(v)
             if v ~= "choose" then onSet(v) end
@@ -853,7 +915,8 @@ local function RenderSelectors()
         end
         AddChoiceSelector(selBuilder, "When it's missing, show...",
             mValues, mOrder, missingCurrent,
-            function(v) SetContent("missingVisual", v) end)
+            function(v) SetContent("missingVisual", v) end,
+            { gear = MissingVisualGear(mOrder) })
     end
 
     -- Extras. Every kind gates on combat; the instance gate is missing-buff

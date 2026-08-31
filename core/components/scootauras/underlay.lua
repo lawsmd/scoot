@@ -151,6 +151,18 @@ end
 -- Restyle, gate, lifecycle
 --------------------------------------------------------------------------------
 
+--- Alpha for the reveal root, 1 for every token that does not carry the
+-- Opacity sub-option. The root is a child of the visual, so this multiplies
+-- with the tracker's own opacity (styling.lua) instead of replacing it: a
+-- tracker at 60% with a 50% reveal shows the reveal at 30% of full.
+local function RevealAlpha(trackerId, traits)
+    if not (traits and traits.opacity) then return 1 end
+    local db = SAU.GetDB(trackerId)
+    local pct = tonumber(db and db.missingVisualOpacity) or 100
+    if pct < 0 then pct = 0 elseif pct > 100 then pct = 100 end
+    return pct / 100
+end
+
 --- Full Tier 1 pass for one live tracker: build the art on first use, run the
 -- shared styling/layout chain on it, settle the variant, apply the gate.
 function Underlay.Restyle(trackerId, tracker, state)
@@ -227,7 +239,9 @@ function Underlay.UpdateGate(trackerId)
         if not u.blink:IsPlaying() then u.blink:Play() end
     else
         if u.blink:IsPlaying() then u.blink:Stop() end
-        u.root:SetAlpha(1)
+        -- Set after the stop: an Alpha animation drives the root while it
+        -- plays and hands the value back on Stop.
+        u.root:SetAlpha(RevealAlpha(trackerId, traits))
     end
 end
 
