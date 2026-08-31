@@ -689,9 +689,7 @@ local function installRaidNameOverlayHooks()
     -- Event-driven re-application for raid composition changes.
     if not addon._RaidNameRosterEventInstalled then
         addon._RaidNameRosterEventInstalled = true
-        local rosterFrame = CreateFrame("Frame")
-        rosterFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-        rosterFrame:SetScript("OnEvent", function()
+        addon.Events.On("UnitFrames:RaidText", "GROUP_ROSTER_UPDATE", function()
             if isEditModeActive() then return end
 
             local cfg = getCfg()

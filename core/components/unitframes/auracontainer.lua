@@ -473,9 +473,9 @@ function AC.KickContainer(unitKey, reason)
     end
 end
 
-local eventsFrame = nil
+local eventsRegistered = false
 
-local function onEvent(_, event)
+local function onEvent(event)
     if event == "PLAYER_TARGET_CHANGED" then
         AC.KickContainer("Target", event)
     elseif event == "PLAYER_FOCUS_CHANGED" then
@@ -494,14 +494,13 @@ local function onEvent(_, event)
     end
 end
 
-local function ensureEventsFrame()
-    if eventsFrame then return end
-    eventsFrame = CreateFrame("Frame")
-    eventsFrame:SetScript("OnEvent", onEvent)
-    eventsFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-    eventsFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
-    eventsFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    eventsFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+local function ensureEvents()
+    if eventsRegistered then return end
+    eventsRegistered = true
+    addon.Events.On("UnitFrames:AuraContainer", "PLAYER_TARGET_CHANGED", onEvent)
+    addon.Events.On("UnitFrames:AuraContainer", "PLAYER_FOCUS_CHANGED", onEvent)
+    addon.Events.On("UnitFrames:AuraContainer", "PLAYER_ENTERING_WORLD", onEvent)
+    addon.Events.On("UnitFrames:AuraContainer", "PLAYER_REGEN_ENABLED", onEvent)
 end
 
 --------------------------------------------------------------------------------
@@ -514,7 +513,7 @@ function AC.Start()
         return false, "cannot start now (combat or restricted); try again out of combat"
     end
     AC.enabled = true
-    ensureEventsFrame()
+    ensureEvents()
     AC.BuildContainer("Target")
     AC.BuildContainer("Focus")
     AC.ApplyConfig("Target")

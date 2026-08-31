@@ -1301,10 +1301,7 @@ function RaidFrames.installHooks()
             end
         end
 
-        local integrityEventFrame = CreateFrame("Frame")
-        integrityEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-        integrityEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-        integrityEventFrame:SetScript("OnEvent", function()
+        local function onIntegrityEvent()
             if isEditModeActive() then
                 -- Guard is active — schedule a deferred check to detect stuck state.
                 -- 2s delay lets Blizzard state settle after load/group-join transitions.
@@ -1340,7 +1337,9 @@ function RaidFrames.installHooks()
                     pendingRefreshTimer = nil
                 end
             end
-        end)
+        end
+        addon.Events.On("UnitFrames:RaidFrames", "GROUP_ROSTER_UPDATE", onIntegrityEvent)
+        addon.Events.On("UnitFrames:RaidFrames", "PLAYER_ENTERING_WORLD", onIntegrityEvent)
     end
 end
 

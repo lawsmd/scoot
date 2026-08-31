@@ -223,13 +223,12 @@ function RaidVisibility:Initialize()
 
     -- Member frames are created and recycled as the roster changes, so newly
     -- spawned frames need the treatment applied to them too.
-    local f = CreateFrame("Frame")
-    f:RegisterEvent("PLAYER_ENTERING_WORLD")
-    f:RegisterEvent("GROUP_ROSTER_UPDATE")
-    -- Settles any mouse changes that ApplyHidden / RestoreBaseline had to defer
-    -- because they would have been blocked during combat.
-    f:RegisterEvent("PLAYER_REGEN_ENABLED")
-    f:SetScript("OnEvent", function(_, event)
+    --
+    -- Ordering: this GROUP_ROSTER_UPDATE registration must precede
+    -- RaidRosterOverlay's. The bus dispatches in registration order, and
+    -- init.lua initializes RaidVisibility first, so the overlay reads
+    -- member-frame geometry only after this handler has mutated visibility.
+    local function onEvent(event)
         local self = addon and addon.RaidVisibility
         if not self then return end
         if event == "PLAYER_REGEN_ENABLED" then
@@ -239,8 +238,12 @@ function RaidVisibility:Initialize()
             return
         end
         self:ApplyFromProfile("RaidEvent")
-    end)
-    self._eventFrame = f
+    end
+    addon.Events.On("UnitFrames:RaidVisibility", "PLAYER_ENTERING_WORLD", onEvent)
+    addon.Events.On("UnitFrames:RaidVisibility", "GROUP_ROSTER_UPDATE", onEvent)
+    -- Settles any mouse changes that ApplyHidden / RestoreBaseline had to defer
+    -- because they would have been blocked during combat.
+    addon.Events.On("UnitFrames:RaidVisibility", "PLAYER_REGEN_ENABLED", onEvent)
 
     self:ApplyFromProfile("Initialize")
 end

@@ -524,6 +524,10 @@ function addon:OnInitialize()
         self.Chat:Initialize()
     end
     -- Raid frame hiding is likewise combat-safe and enforced outside ApplyStyles().
+    -- Order matters: RaidVisibility registers its GROUP_ROSTER_UPDATE handler
+    -- here and RaidRosterOverlay registers its own just below; the event bus
+    -- dispatches in registration order, and the overlay must read member-frame
+    -- geometry only after visibility has mutated it.
     if self.RaidVisibility and self.RaidVisibility.Initialize then
         self.RaidVisibility:Initialize()
     end

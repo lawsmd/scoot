@@ -650,9 +650,7 @@ local function installPartyNameOverlayHooks()
     -- GROUP_ROSTER_UPDATE provides a reliable secondary trigger.
     if not addon._PartyNameRosterEventInstalled then
         addon._PartyNameRosterEventInstalled = true
-        local rosterFrame = CreateFrame("Frame")
-        rosterFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-        rosterFrame:SetScript("OnEvent", function()
+        addon.Events.On("UnitFrames:PartyText", "GROUP_ROSTER_UPDATE", function()
             if isEditModeActive() then return end
 
             local db = addon and addon.db and addon.db.profile

@@ -1269,12 +1269,7 @@ function PartyFrames.installHooks()
     if not addon._RoleIconSafetyNetInstalled then
         addon._RoleIconSafetyNetInstalled = true
         local safetyNetTimer = nil
-        local roleIconEventFrame = CreateFrame("Frame")
-        roleIconEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-        roleIconEventFrame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
-        roleIconEventFrame:RegisterEvent("UNIT_PET")
-        roleIconEventFrame:RegisterEvent("UNIT_NAME_UPDATE")
-        roleIconEventFrame:SetScript("OnEvent", function(self, event, unit)
+        local function onRoleIconEvent(event, unit)
             if isEditModeActive() then return end
             -- Filter unit-specific events to party units only
             if unit and event ~= "GROUP_ROSTER_UPDATE" and event ~= "PLAYER_ROLES_ASSIGNED" then
@@ -1312,7 +1307,11 @@ function PartyFrames.installHooks()
                     end
                 end
             end)
-        end)
+        end
+        addon.Events.On("UnitFrames:PartyFrames", "GROUP_ROSTER_UPDATE", onRoleIconEvent)
+        addon.Events.On("UnitFrames:PartyFrames", "PLAYER_ROLES_ASSIGNED", onRoleIconEvent)
+        addon.Events.On("UnitFrames:PartyFrames", "UNIT_PET", onRoleIconEvent)
+        addon.Events.On("UnitFrames:PartyFrames", "UNIT_NAME_UPDATE", onRoleIconEvent)
     end
 
     -- Re-apply role icons after Edit Mode exit transition window (1.0s _exitingEditMode flag).
@@ -1447,10 +1446,7 @@ function PartyFrames.installHooks()
     if not addon._GroupLeadIconEventInstalled then
         addon._GroupLeadIconEventInstalled = true
         local leadIconTimer = nil
-        local leadIconEventFrame = CreateFrame("Frame")
-        leadIconEventFrame:RegisterEvent("PARTY_LEADER_CHANGED")
-        leadIconEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-        leadIconEventFrame:SetScript("OnEvent", function()
+        local function onLeadIconEvent()
             if isEditModeActive() then return end
             -- Early-out if feature is off in both party and raid
             local db = addon and addon.db and addon.db.profile
@@ -1481,7 +1477,9 @@ function PartyFrames.installHooks()
                     end
                 end
             end)
-        end)
+        end
+        addon.Events.On("UnitFrames:PartyFrames", "PARTY_LEADER_CHANGED", onLeadIconEvent)
+        addon.Events.On("UnitFrames:PartyFrames", "GROUP_ROSTER_UPDATE", onLeadIconEvent)
     end
 
     -- SetUnit hook: deferred to avoid taint
@@ -1589,10 +1587,7 @@ function PartyFrames.installHooks()
             end
         end
 
-        local integrityEventFrame = CreateFrame("Frame")
-        integrityEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-        integrityEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-        integrityEventFrame:SetScript("OnEvent", function()
+        local function onIntegrityEvent()
             if isEditModeActive() then
                 -- Guard is active — schedule a deferred check to detect stuck state.
                 if addon.EditMode and addon.EditMode.ForceResetIfStuck then
@@ -1615,7 +1610,9 @@ function PartyFrames.installHooks()
                 integrityTicker:Cancel()
                 integrityTicker = nil
             end
-        end)
+        end
+        addon.Events.On("UnitFrames:PartyFrames", "GROUP_ROSTER_UPDATE", onIntegrityEvent)
+        addon.Events.On("UnitFrames:PartyFrames", "PLAYER_ENTERING_WORLD", onIntegrityEvent)
     end
 end
 

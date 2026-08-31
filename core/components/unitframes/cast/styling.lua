@@ -1242,14 +1242,6 @@ do
 
 	-- Empowered cast event tracking + stage tier texture replacement
 	do
-		local ef = CreateFrame("Frame")
-		ef:RegisterEvent("UNIT_SPELLCAST_EMPOWER_START")
-		ef:RegisterEvent("UNIT_SPELLCAST_EMPOWER_STOP")
-		ef:RegisterEvent("UNIT_SPELLCAST_STOP")
-		ef:RegisterEvent("UNIT_SPELLCAST_FAILED")
-		ef:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-		ef:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-
 		local tokenToUnit = { player = "Player", target = "Target", focus = "Focus" }
 
 		-- Background swap helpers: hide ScootBG and restore stock Background during
@@ -1479,7 +1471,7 @@ do
 			return cfg and cfg.castBarMode == "textFill"
 		end
 
-		ef:SetScript("OnEvent", function(self, event, unit, ...)
+		local function onCastEvent(event, unit)
 			if event == "UNIT_SPELLCAST_EMPOWER_START" then
 				empoweredCastActive[unit] = true
 				local textFill = isTextFillMode(unit)
@@ -1558,7 +1550,13 @@ do
 					end
 				end
 			end
-		end)
+		end
+		addon.Events.On("UnitFrames:CastStyling", "UNIT_SPELLCAST_EMPOWER_START", onCastEvent)
+		addon.Events.On("UnitFrames:CastStyling", "UNIT_SPELLCAST_EMPOWER_STOP", onCastEvent)
+		addon.Events.On("UnitFrames:CastStyling", "UNIT_SPELLCAST_STOP", onCastEvent)
+		addon.Events.On("UnitFrames:CastStyling", "UNIT_SPELLCAST_FAILED", onCastEvent)
+		addon.Events.On("UnitFrames:CastStyling", "UNIT_SPELLCAST_INTERRUPTED", onCastEvent)
+		addon.Events.On("UnitFrames:CastStyling", "UNIT_SPELLCAST_CHANNEL_START", onCastEvent)
 	end
 
 	-- Zero‑Touch hook installation: install cast bar persistence hooks ONLY when the profile

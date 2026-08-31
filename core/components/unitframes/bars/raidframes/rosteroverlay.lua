@@ -564,10 +564,10 @@ function RosterOverlay:Initialize()
     end
     self._initialized = true
 
-    local f = CreateFrame("Frame")
-    f:RegisterEvent("PLAYER_ENTERING_WORLD")
-    f:RegisterEvent("GROUP_ROSTER_UPDATE")
-    f:SetScript("OnEvent", function()
+    -- Ordering: RaidVisibility's GROUP_ROSTER_UPDATE handler is already on the
+    -- bus (init.lua initializes it first), so this one runs after member-frame
+    -- visibility has been applied and reads the resulting geometry.
+    local function onEvent()
         local self = addon and addon.RaidRosterOverlay
         if not self then return end
 
@@ -583,8 +583,9 @@ function RosterOverlay:Initialize()
             self._settlePending = nil
             self:ApplyFromProfile("RaidEventSettle")
         end)
-    end)
-    self._eventFrame = f
+    end
+    addon.Events.On("UnitFrames:RaidRosterOverlay", "PLAYER_ENTERING_WORLD", onEvent)
+    addon.Events.On("UnitFrames:RaidRosterOverlay", "GROUP_ROSTER_UPDATE", onEvent)
 
     self:ApplyFromProfile("Initialize")
 end

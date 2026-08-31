@@ -493,14 +493,7 @@ end
 -- Aura secrecy lifts on more edges than combat ends on, so listen to all of
 -- them and re-probe rather than assume.
 
-local watcher = CreateFrame("Frame")
-watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
-watcher:RegisterEvent("ENCOUNTER_END")
-watcher:RegisterEvent("ZONE_CHANGED_NEW_AREA")
--- A spec change rewrites the Cooldown Manager rows the include sets are built
--- from, so the memo has to go with it and every live slot re-point.
-watcher:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-watcher:SetScript("OnEvent", function(_, event, unit)
+local function onRestrictionLift(event, unit)
     if event == "PLAYER_SPECIALIZATION_CHANGED" then
         if unit and unit ~= "player" then return end
         Engine.InvalidateFilters()
@@ -516,4 +509,11 @@ watcher:SetScript("OnEvent", function(_, event, unit)
         Record("respec", "filters rebuilt")
     end
     Engine.Drain(event)
-end)
+end
+
+addon.Events.On("UnitFrames:GroupAurasEngine", "PLAYER_REGEN_ENABLED", onRestrictionLift)
+addon.Events.On("UnitFrames:GroupAurasEngine", "ENCOUNTER_END", onRestrictionLift)
+addon.Events.On("UnitFrames:GroupAurasEngine", "ZONE_CHANGED_NEW_AREA", onRestrictionLift)
+-- A spec change rewrites the Cooldown Manager rows the include sets are built
+-- from, so the memo has to go with it and every live slot re-point.
+addon.Events.On("UnitFrames:GroupAurasEngine", "PLAYER_SPECIALIZATION_CHANGED", onRestrictionLift)

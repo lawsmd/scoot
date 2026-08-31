@@ -111,11 +111,7 @@ local function getPartyHealthBarForUnit(unit)
     end
 end
 
-local partyHealthColorEventFrame = CreateFrame("Frame")
-partyHealthColorEventFrame:RegisterEvent("UNIT_HEALTH")
-partyHealthColorEventFrame:RegisterEvent("UNIT_MAXHEALTH")
-partyHealthColorEventFrame:RegisterEvent("UNIT_HEAL_PREDICTION")
-partyHealthColorEventFrame:SetScript("OnEvent", function(self, event, unit)
+local function onPartyHealthEvent(event, unit)
     if not unit or not isPartyUnit(unit) then return end
 
     local bar, frame, useDark = getPartyHealthBarForUnit(unit)
@@ -135,7 +131,11 @@ partyHealthColorEventFrame:SetScript("OnEvent", function(self, event, unit)
     elseif addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
         addon.BarsTextures.applyValueBasedColor(bar, actualUnit, nil, useDark)
     end
-end)
+end
+
+addon.Events.On("UnitFrames:PartyExtras", "UNIT_HEALTH", onPartyHealthEvent)
+addon.Events.On("UnitFrames:PartyExtras", "UNIT_MAXHEALTH", onPartyHealthEvent)
+addon.Events.On("UnitFrames:PartyExtras", "UNIT_HEAL_PREDICTION", onPartyHealthEvent)
 
 --------------------------------------------------------------------------------
 -- Over Absorb Glow Visibility

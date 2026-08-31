@@ -612,9 +612,7 @@ end
 -- UNIT_AURA is deliberately absent. The container tracks its own unit inside
 -- the engine, and an addon-side aura scan is exactly the thing 12.1 removed.
 
-local eventFrame = CreateFrame("Frame")
-
-eventFrame:SetScript("OnEvent", function(self, event)
+local function onEvent(event)
     if event == "PLAYER_ENTERING_WORLD" then
         RebuildGroupUnits()
         InstallFrameToUnitHook()
@@ -633,11 +631,11 @@ eventFrame:SetScript("OnEvent", function(self, event)
         -- watcher covers the queue; this covers discovery.
         HA.RefreshAllAuraDisplays()
     end
-end)
+end
 
-eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+addon.Events.On("UnitFrames:GroupAuras", "PLAYER_ENTERING_WORLD", onEvent)
+addon.Events.On("UnitFrames:GroupAuras", "GROUP_ROSTER_UPDATE", onEvent)
+addon.Events.On("UnitFrames:GroupAuras", "PLAYER_REGEN_ENABLED", onEvent)
 
 --------------------------------------------------------------------------------
 -- Edit Mode Exit Repaint
@@ -664,12 +662,14 @@ end
 if _G.EditModeManagerFrame then
     InstallEditModeExitHook()
 else
-    local hookWaitFrame = CreateFrame("Frame")
-    hookWaitFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    hookWaitFrame:SetScript("OnEvent", function(self)
+    -- Retry each world entry until the manager frame exists, then release.
+    -- Off() from inside the handler's own dispatch is safe: the bus tombstones
+    -- the entry and compacts after the dispatch unwinds.
+    local handle
+    handle = addon.Events.On("UnitFrames:GroupAuras", "PLAYER_ENTERING_WORLD", function()
         if _G.EditModeManagerFrame then
             InstallEditModeExitHook()
-            self:UnregisterAllEvents()
+            handle:Off()
         end
     end)
 end

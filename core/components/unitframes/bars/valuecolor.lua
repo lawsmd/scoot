@@ -129,11 +129,7 @@ do
     -- - UNIT_MAXHEALTH: When max health changes (buffs, potions that heal to cap)
     -- - UNIT_HEAL_PREDICTION: Incoming heal updates that may affect display
     -- Fixes "stuck colors" when healing to exactly 100% (no subsequent UNIT_HEALTH fires)
-    local healthColorEventFrame = CreateFrame("Frame")
-    healthColorEventFrame:RegisterEvent("UNIT_HEALTH")
-    healthColorEventFrame:RegisterEvent("UNIT_MAXHEALTH")
-    healthColorEventFrame:RegisterEvent("UNIT_HEAL_PREDICTION")
-    healthColorEventFrame:SetScript("OnEvent", function(self, event, unit)
+    local function onHealthEvent(event, unit)
         if not unit then return end
 
         local bar, useDark = getHealthBarForUnit(unit)
@@ -155,13 +151,14 @@ do
 
         -- Update health text coloring (independent of bar color mode)
         applyHealthTextValueColor(unit)
-    end)
+    end
+    addon.Events.On("UnitFrames:ValueColor", "UNIT_HEALTH", onHealthEvent)
+    addon.Events.On("UnitFrames:ValueColor", "UNIT_MAXHEALTH", onHealthEvent)
+    addon.Events.On("UnitFrames:ValueColor", "UNIT_HEAL_PREDICTION", onHealthEvent)
 
-    -- Also register for PLAYER_TARGET_CHANGED and PLAYER_FOCUS_CHANGED
+    -- Also handle PLAYER_TARGET_CHANGED and PLAYER_FOCUS_CHANGED
     -- to apply initial color when target/focus changes
-    healthColorEventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-    healthColorEventFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
-    healthColorEventFrame:HookScript("OnEvent", function(self, event, ...)
+    local function onUnitChanged(event)
         if event == "PLAYER_TARGET_CHANGED" then
             local bar, useDark = getHealthBarForUnit("target")
             if bar and addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
@@ -177,7 +174,9 @@ do
             end
             applyHealthTextValueColor("focus")
         end
-    end)
+    end
+    addon.Events.On("UnitFrames:ValueColor", "PLAYER_TARGET_CHANGED", onUnitChanged)
+    addon.Events.On("UnitFrames:ValueColor", "PLAYER_FOCUS_CHANGED", onUnitChanged)
 
     -- SetValue hooks for instant color updates (bypasses UNIT_HEALTH event delay)
     -- SetValue fires immediately when health changes, providing zero-delay response.
