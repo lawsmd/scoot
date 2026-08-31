@@ -573,6 +573,12 @@ end
 --   noBottomBorder : Optional boolean to hide the 1px row bottom border
 --   sizeScale   : Optional factor scaling the whole control (fonts, heights);
 --                 not supported together with description or emphasized
+--   gear        : Optional in-field gear button opening a sub-options fly-out.
+--                 { pages = { [optionKey] = { build = function(content, panel,
+--                 key), tooltip, width, height } }, width, height, direction }.
+--                 The gear shows only while an option carrying a page is
+--                 selected. See ui/v2/controls/SelectorGear.lua. A sub-option
+--                 whose set triggers a page re-render closes the fly-out.
 --------------------------------------------------------------------------------
 
 function Builder:AddSelector(options)
@@ -614,6 +620,7 @@ function Builder:AddSelector(options)
         isDisabled = options.isDisabled,
         optionInfoIcons = options.optionInfoIcons,
         disabledOptions = options.disabledOptions,
+        gear = options.gear,
     })
 
     if selector then

@@ -338,6 +338,11 @@ function Controls:CreateSelector(options)
         local currentKey = row._currentKey
         local displayText = row._values[currentKey] or currentKey or "—"
         valueText:SetText(displayText)
+        -- One hook covering every path that changes the value: both arrows, the
+        -- dropdown, SetValue and Refresh all land here.
+        if row._onDisplayChanged then
+            row._onDisplayChanged(currentKey)
+        end
     end
     row._updateDisplay = UpdateDisplay
 
@@ -686,6 +691,8 @@ function Controls:CreateSelector(options)
         self._hoverBg:Show()
     end)
     row:SetScript("OnLeave", function(self)
+        -- The in-field gear is a descendant, so entering it leaves the row.
+        if self._gear and self._gear:IsMouseOver() then return end
         self._hoverBg:Hide()
     end)
 
@@ -844,6 +851,20 @@ function Controls:CreateSelector(options)
 
     function row:GetDescriptionFontString()
         return self._description
+    end
+
+    -- In-field gear opening a per-option sub-options fly-out. The config is
+    -- copied so the caller's table can be shared across rows, and the gear
+    -- scales with a scaled control. See ui/v2/controls/SelectorGear.lua.
+    if options.gear and Controls.AttachSelectorGear then
+        local gearConfig = {}
+        for k, v in pairs(options.gear) do
+            gearConfig[k] = v
+        end
+        if gearConfig.sizeScale == nil then
+            gearConfig.sizeScale = S
+        end
+        Controls.AttachSelectorGear(row, gearConfig)
     end
 
     return row
