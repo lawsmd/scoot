@@ -91,20 +91,7 @@ end
 -- Frame resolution (Blizzard side, read-only)
 --------------------------------------------------------------------------------
 
-local function resolveUnitFrame(unitKey)
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
-    if mgr and EM and EMSys and mgr.GetRegisteredSystemFrame then
-        local idx = (unitKey == "Target" and EM.Target) or (unitKey == "Focus" and EM.Focus) or nil
-        if idx then
-            local frame = mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, idx)
-            if frame then return frame end
-        end
-    end
-    if unitKey == "Target" then return _G.TargetFrame end
-    if unitKey == "Focus" then return _G.FocusFrame end
-end
+local resolveUnitFrame = addon.GetUnitFrame
 
 local function resolveBlizzardAuraContainer(unitKey)
     local frame = resolveUnitFrame(unitKey)

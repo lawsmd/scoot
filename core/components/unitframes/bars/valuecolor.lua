@@ -49,8 +49,8 @@ do
             local colorMode = cfg and cfg.healthBarColorMode
             if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark") then return nil, nil end
             local bossIndex = tonumber(unit:match("^boss(%d)$"))
-            if bossIndex and bossIndex >= 1 and bossIndex <= 5 then
-                local bossFrame = _G["Boss" .. bossIndex .. "TargetFrame"]
+            if bossIndex and bossIndex >= 1 and bossIndex <= addon.NUM_BOSS_FRAMES then
+                local bossFrame = addon.GetBossFrame(bossIndex)
                 local hb = bossFrame and bossFrame.TargetFrameContent
                     and bossFrame.TargetFrameContent.TargetFrameContentMain
                     and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
@@ -231,17 +231,16 @@ do
             hookSetValueForValueColor(focusHB, "Focus", "focus")
         end
 
-        -- Boss frames (1-5)
-        for i = 1, 5 do
-            local bossFrame = _G["Boss" .. i .. "TargetFrame"]
-            local bossHB = bossFrame and bossFrame.TargetFrameContent
+        -- Boss frames
+        addon.ForEachBossFrame(function(bossFrame, i)
+            local bossHB = bossFrame.TargetFrameContent
                 and bossFrame.TargetFrameContent.TargetFrameContentMain
                 and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
                 and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
             if bossHB then
                 hookSetValueForValueColor(bossHB, "Boss", "boss" .. i)
             end
-        end
+        end)
 
         -- TargetOfTarget
         local totHB = TargetFrameToT and TargetFrameToT.HealthBar

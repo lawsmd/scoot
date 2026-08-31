@@ -1150,15 +1150,12 @@ end
 -- Get the current raid group orientation from Edit Mode settings
 -- Returns "horizontal" or "vertical"
 local function getGroupOrientation()
-    local mgr = _G.EditModeManagerFrame
-    local EM = _G.Enum and _G.Enum.EditModeUnitFrameSystemIndices
-    local EMSys = _G.Enum and _G.Enum.EditModeSystem
     local EMSetting = _G.Enum and _G.Enum.EditModeUnitFrameSetting
     local RGD = _G.Enum and _G.Enum.RaidGroupDisplayType
-    if not (mgr and EM and EMSys and EMSetting and RGD and mgr.GetRegisteredSystemFrame) then
+    if not (EMSetting and RGD) then
         return "vertical" -- Default fallback
     end
-    local raidFrame = mgr:GetRegisteredSystemFrame(EMSys.UnitFrame, EM.Raid)
+    local raidFrame = addon.GetEditModeUnitFrame("Raid")
     if not raidFrame then return "vertical" end
     if not (addon and addon.EditMode and addon.EditMode.GetSetting) then
         return "vertical"
