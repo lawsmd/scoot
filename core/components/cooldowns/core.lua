@@ -3,6 +3,7 @@ local addonName, addon = ...
 
 local Component = addon.ComponentPrototype
 local Util = addon.ComponentsUtil
+local SS = addon.SecretSafe
 
 --------------------------------------------------------------------------------
 -- Overlay-based icon styling for CooldownViewer frames
@@ -522,6 +523,10 @@ end
 
 -- Find the cooldown text FontString inside a Cooldown frame
 local function getCooldownFontString(cooldownFrame)
+    -- Above the cache read, not just the writes: the lookup below is already
+    -- keyed on cooldownFrame, and a secret key marks scootFontStrings secret
+    -- for the rest of the session.
+    cooldownFrame = SS.plainFrame(cooldownFrame)
     if not cooldownFrame then return nil end
 
     -- Use cached reference if available
@@ -532,7 +537,10 @@ local function getCooldownFontString(cooldownFrame)
     -- Prefer the dedicated Cooldown widget API (C++-managed countdown FontString)
     if cooldownFrame.GetCountdownFontString then
         local ok, fs = pcall(cooldownFrame.GetCountdownFontString, cooldownFrame)
-        if ok and fs then
+        -- Screen the result too. A secret is safe as a table value, but
+        -- applyFontStyleDirect would index it and the cache would then serve
+        -- that throw for the rest of the session.
+        if ok and SS.plainFrame(fs) then
             scootFontStrings[cooldownFrame] = fs
             return fs
         end
@@ -541,7 +549,7 @@ local function getCooldownFontString(cooldownFrame)
     -- Fallback: scan regions (for non-Cooldown frame types)
     if cooldownFrame.GetRegions then
         for _, region in ipairs({cooldownFrame:GetRegions()}) do
-            if region and region.GetObjectType and region:GetObjectType() == "FontString" then
+            if SS.plainFrame(region) and region.GetObjectType and region:GetObjectType() == "FontString" then
                 scootFontStrings[cooldownFrame] = region
                 return region
             end
@@ -551,6 +559,7 @@ end
 
 -- Find the charge/stack count FontString inside an icon frame
 local function getChargeCountFontString(iconFrame)
+    iconFrame = SS.plainFrame(iconFrame)
     if not iconFrame then return nil end
 
     -- ChargeCount (for cooldowns with charges)
@@ -586,15 +595,17 @@ end
 
 -- Identify which CDM viewer a cooldown belongs to
 local function identifyCooldownSource(cooldownFrame)
+    cooldownFrame = SS.plainFrame(cooldownFrame)
     if not cooldownFrame then return nil end
 
-    local parent = cooldownFrame:GetParent()
+    local parent = SS.plainFrame(cooldownFrame:GetParent())
     if not parent then return nil end
 
     -- parent should be the icon frame, check its parent for the viewer
-    local viewerFrame = parent:GetParent()
+    local viewerFrame = SS.plainFrame(parent:GetParent())
     if viewerFrame and viewerFrame.GetName then
-        local viewerName = viewerFrame:GetName()
+        -- A secret string used as a table key throws, so screen before the lookup
+        local viewerName = SS.plainString(viewerFrame:GetName())
         if viewerName and CDM_VIEWER_NAMES[viewerName] then
             return CDM_VIEWER_NAMES[viewerName]
         end
@@ -668,16 +679,27 @@ addon.ApplyFontStyleDirect = applyFontStyleDirect
 
 -- Apply cooldown text styling when a cooldown is set
 local function applyCooldownTextStyle(cooldownFrame)
+    -- Reachable from the CooldownFrame_Set hook and from
+    -- addon.RefreshCDMTextStyling, which passes child.Cooldown straight off a
+    -- viewer, so the screen lives here rather than at either caller.
+    cooldownFrame = SS.plainFrame(cooldownFrame)
     if not cooldownFrame then return end
     if cooldownFrame.IsForbidden and cooldownFrame:IsForbidden() then return end
 
     -- Skip action bar cooldowns to avoid taint
-    local parent = cooldownFrame:GetParent()
+    local parent = SS.plainFrame(cooldownFrame:GetParent())
     if parent then
-        local parentName = parent:GetName() or ""
-        if parentName:match("ActionButton") or parentName:match("MultiBar") or
-           parentName:match("PetActionButton") or parentName:match("StanceButton") then
-            return
+        local rawName = parent.GetName and parent:GetName()
+        -- type() is legal on a secret and reports "string" for a secret string,
+        -- so it tells an unnamed frame apart from a name we may not read without
+        -- comparing anything. :match on a secret string throws.
+        if type(rawName) == "string" then
+            local parentName = SS.plainString(rawName)
+            if not parentName then return end
+            if parentName:match("ActionButton") or parentName:match("MultiBar") or
+               parentName:match("PetActionButton") or parentName:match("StanceButton") then
+                return
+            end
         end
     end
 
@@ -711,6 +733,47 @@ local function applyCooldownTextStyle(cooldownFrame)
     end
 end
 
+-- Diagnostic record for /scoot debug cdm: how often a secret frame reached the
+-- CooldownFrame_Set hook. Frame identity is unreadable by design, so only counts
+-- and the probe shape of the last reject are kept.
+local hookStats = { calls = 0, rejects = 0, lastReject = nil, lastShape = nil }
+Overlays._hookStats = hookStats
+
+-- Probe a value without indexing or comparing it. Returns a short plain token,
+-- so nothing secret can reach the debug window's table.concat.
+local function probeToken(fn, v)
+    if type(fn) ~= "function" then return "n/a" end
+    local ok, result = pcall(fn, v)
+    if not ok then return "err" end
+    if type(result) ~= "boolean" then return "?" end
+    return result and "yes" or "no"
+end
+
+-- Record which restriction tripped. issecretvalue=yes means the handle itself is
+-- secret, which points at a secure-environment caller (private auras, target
+-- frame aura buttons). issecretvalue=no with canaccesstable=no means the handle
+-- is plain but its table is closed to us, which points at a forbidden object
+-- table (the arena CC-remover frames). Different subsystems, and nothing else
+-- tells them apart.
+local function recordSecretReject(frame)
+    hookStats.rejects = hookStats.rejects + 1
+    local now = GetTime()
+    -- Counting is free; probing is three pcalls and a format, and this runs
+    -- inside a hook on a global Blizzard calls constantly. The first reject plus
+    -- one per second after it is enough to name the subsystem.
+    if hookStats.lastShape and hookStats.lastReject and (now - hookStats.lastReject) < 1 then
+        hookStats.lastReject = now
+        return
+    end
+    hookStats.lastReject = now
+    hookStats.lastShape = string.format(
+        "type=%s issecretvalue=%s issecrettable=%s canaccesstable=%s",
+        type(frame),
+        probeToken(_G.issecretvalue, frame),
+        probeToken(_G.issecrettable, frame),
+        probeToken(_G.canaccesstable, frame))
+end
+
 -- Hook into Blizzard's cooldown system to intercept updates
 local function hookCooldownTextStyling()
     if directTextStyleHooked then return end
@@ -718,14 +781,27 @@ local function hookCooldownTextStyling()
     -- Hook CooldownFrame_Set (the main function that updates cooldowns)
     if CooldownFrame_Set then
         hooksecurefunc("CooldownFrame_Set", function(cooldownFrame, start, duration, enable, forceShowDrawEdge, modRate)
-            if not cooldownFrame then return end
-            if cooldownFrame.IsForbidden and cooldownFrame:IsForbidden() then return end
+            hookStats.calls = hookStats.calls + 1
+
+            -- Blizzard calls this global from scopes we cannot enter: private
+            -- auras and target frame aura buttons run in a secure environment,
+            -- and the arena CC-remover frames come from a forbidden object
+            -- table. Those handles arrive secret and the first index throws, so
+            -- the screen has to be the first thing that touches the argument.
+            -- Nothing may be inserted above it, a truthiness test included.
+            local frame = SS.plainFrame(cooldownFrame)
+            if not frame then
+                if type(cooldownFrame) == "table" then
+                    recordSecretReject(cooldownFrame)
+                end
+                return
+            end
+            if frame.IsForbidden and frame:IsForbidden() then return end
 
             -- Defer text styling to next frame for safety
             C_Timer.After(0, function()
-                if cooldownFrame and not (cooldownFrame.IsForbidden and cooldownFrame:IsForbidden()) then
-                    pcall(applyCooldownTextStyle, cooldownFrame)
-                end
+                if frame.IsForbidden and frame:IsForbidden() then return end
+                pcall(applyCooldownTextStyle, frame)
             end)
         end)
     end
@@ -755,6 +831,9 @@ local function hookProcGlowResizing()
     if not ActionButtonSpellAlertManager then return end
 
     hooksecurefunc(ActionButtonSpellAlertManager, "ShowAlert", function(_, actionButton)
+        -- actionButton keys the sizedIcons weak table below
+        actionButton = SS.plainFrame(actionButton)
+        if not actionButton then return end
         local sizeInfo = sizedIcons[actionButton]
         if sizeInfo then
             resizeProcGlow(actionButton, sizeInfo.width, sizeInfo.height)
@@ -838,6 +917,8 @@ local function hookProcGlowResizing()
 
     -- Hook HideAlert to clean up pixel glows and proc start overlays
     hooksecurefunc(ActionButtonSpellAlertManager, "HideAlert", function(_, actionButton)
+        actionButton = SS.plainFrame(actionButton)
+        if not actionButton then return end
         if addon.PixelGlow then
             addon.PixelGlow.RemovePending(actionButton)
             addon.PixelGlow.ReleaseForIcon(actionButton)
@@ -1871,6 +1952,8 @@ end
 --------------------------------------------------------------------------------
 
 local function applyTextCooldownAlpha(cooldownFrame, durObj, containerAlpha, textDimAlpha, isGCD, isOffCooldownMode)
+    -- cooldownFrame keys the textAlphaDecoupled weak table below
+    cooldownFrame = SS.plainFrame(cooldownFrame)
     if not cooldownFrame then return end
     pcall(cooldownFrame.SetIgnoreParentAlpha, cooldownFrame, true)
     textAlphaDecoupled[cooldownFrame] = true
@@ -1890,6 +1973,7 @@ local function applyTextCooldownAlpha(cooldownFrame, durObj, containerAlpha, tex
 end
 
 local function resetTextAlpha(cooldownFrame)
+    cooldownFrame = SS.plainFrame(cooldownFrame)
     if cooldownFrame and textAlphaDecoupled[cooldownFrame] then
         pcall(cooldownFrame.SetIgnoreParentAlpha, cooldownFrame, false)
         pcall(cooldownFrame.SetAlpha, cooldownFrame, 1.0)

@@ -58,6 +58,52 @@ function addon.DebugCDMState()
     push("Edit Mode override library ready: " .. fmtBool(leoReady))
     push("")
 
+    -- CooldownFrame_Set is a global Blizzard also calls from scopes we cannot
+    -- enter. Those frames arrive secret and are turned away before anything
+    -- indexes them. Only counts are kept: reading identity off a secret handle
+    -- is the thing being prevented.
+    local hs = Overlays and Overlays._hookStats
+    push("CooldownFrame_Set hook")
+    if not hs then
+        push("  (not installed)")
+    else
+        push(string.format("  total calls ...... %d", hs.calls or 0))
+        push(string.format("  secret rejects ... %d", hs.rejects or 0))
+        if hs.lastReject then
+            push(string.format("  last reject ...... %.1fs ago", now - hs.lastReject))
+            push("  last reject probe: " .. tostring(hs.lastShape or "?"))
+        else
+            push("  last reject ...... (none)")
+        end
+    end
+
+    -- Tripwire: every live CDM cooldown frame must pass the same screen the hook
+    -- applies. A non-zero rejected count means the guard is turning away frames
+    -- it is supposed to be styling.
+    local SS = addon.SecretSafe
+    local censusOk, censusRejected = 0, 0
+    for viewerName in pairs(addon.CDM_VIEWERS or {}) do
+        local viewer = _G[viewerName]
+        local okKids, kids = pcall(function() return { viewer:GetChildren() } end)
+        if okKids then
+            for _, child in ipairs(kids) do
+                local cd = SS.plainFrame(child) and child.Cooldown
+                if cd ~= nil then
+                    if SS.plainFrame(cd) then
+                        censusOk = censusOk + 1
+                    else
+                        censusRejected = censusRejected + 1
+                    end
+                end
+            end
+        end
+    end
+    push(string.format("  live CDM cooldowns: %d indexable, %d rejected", censusOk, censusRejected))
+    if censusRejected > 0 then
+        push("  WARNING: a rejected count above zero means the guard is over-rejecting")
+    end
+    push("")
+
     for viewerName, componentId in pairs(addon.CDM_VIEWERS or {}) do
         push(string.format("[%s] -> %s", viewerName, componentId))
         local viewer = _G[viewerName]
