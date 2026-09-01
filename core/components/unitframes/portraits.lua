@@ -5,6 +5,7 @@ local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
 
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
+local SS = addon.SecretSafe
 
 local function getState(frame)
     return FS.Get(frame)
@@ -1220,6 +1221,8 @@ do
 	-- Hook UnitFramePortrait_Update which is called when portraits need refreshing
 	if _G.UnitFramePortrait_Update then
 		_G.hooksecurefunc("UnitFramePortrait_Update", function(unitFrame)
+			-- Screen before unitFrame.unit: indexing a secret handle throws
+			unitFrame = SS.plainFrame(unitFrame)
 			if unitFrame and unitFrame.unit then
 				local unit = unitFrame.unit
 				local unitKey = nil
@@ -1242,6 +1245,11 @@ do
 	-- CombatFeedback_OnUpdate also receives PlayerFrame/PetFrame as 'self'
 	if _G.CombatFeedback_OnCombatEvent then
 		_G.hooksecurefunc("CombatFeedback_OnCombatEvent", function(self, event, flags, amount, type)
+			-- Comparing a secret throws just like indexing one, so screen before the
+			-- PlayerFrame/PetFrame test below.
+			self = SS.plainFrame(self)
+			if not self then return end
+
 			-- Dispatch: determine unit key and feedback FontString
 			-- For Pet, use _G.PetHitIndicator directly (avoids reading PetFrame's Lua table)
 			local unitKey, feedbackFS
@@ -1294,6 +1302,10 @@ do
 	-- Critical because OnUpdate runs every frame and will override the alpha setting
 	if _G.CombatFeedback_OnUpdate then
 		_G.hooksecurefunc("CombatFeedback_OnUpdate", function(self, elapsed)
+			-- Comparing a secret throws just like indexing one, so screen first
+			self = SS.plainFrame(self)
+			if not self then return end
+
 			-- Dispatch: determine unit key and feedback FontString
 			local unitKey, feedbackFS
 			if self == _G.PlayerFrame then

@@ -12,6 +12,7 @@ local addonName, addon = ...
 -- Get modules
 local Utils = addon.BarsUtils
 local Combat = addon.BarsCombat
+local SS = addon.SecretSafe
 
 -- Get module namespace (created in core.lua)
 local PartyFrames = addon.BarsPartyFrames
@@ -562,6 +563,8 @@ local function installPartyNameOverlayHooks()
         _G.hooksecurefunc("CompactUnitFrame_UpdateAll", function(frame)
             -- CRITICAL: Skip ALL processing when Edit Mode is active to avoid taint
             if isEditModeActive() then return end
+            -- Screen before frame.name: indexing a secret handle throws
+            frame = SS.plainFrame(frame)
             if not frame or not frame.name or not Utils.isPartyFrame(frame) then return end
 
             local db = addon and addon.db and addon.db.profile
@@ -591,6 +594,8 @@ local function installPartyNameOverlayHooks()
         _G.hooksecurefunc("CompactUnitFrame_SetUnit", function(frame, unit)
             -- CRITICAL: Skip ALL processing when Edit Mode is active to avoid taint
             if isEditModeActive() then return end
+            -- Screen before frame.name: indexing a secret handle throws
+            frame = SS.plainFrame(frame)
             if not unit or not frame or not frame.name or not Utils.isPartyFrame(frame) then return end
 
             local db = addon and addon.db and addon.db.profile
@@ -620,6 +625,8 @@ local function installPartyNameOverlayHooks()
         _G.hooksecurefunc("CompactUnitFrame_UpdateName", function(frame)
             -- CRITICAL: Skip ALL processing when Edit Mode is active to avoid taint
             if isEditModeActive() then return end
+            -- Screen before frame.name: indexing a secret handle throws
+            frame = SS.plainFrame(frame)
             if not frame or not frame.name or not Utils.isPartyFrame(frame) then return end
 
             local db = addon and addon.db and addon.db.profile
@@ -1262,6 +1269,8 @@ local function installPartyStatusTextHooks()
     if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateAll then
         _G.hooksecurefunc("CompactUnitFrame_UpdateAll", function(frame)
             if isEditModeActive() then return end
+            -- Screen before frame.statusText: indexing a secret handle throws
+            frame = SS.plainFrame(frame)
             if not (frame and frame.statusText and Utils.isPartyFrame(frame)) then return end
             local cfg = getCfg()
             if not Utils.hasCustomTextSettings(cfg) then return end

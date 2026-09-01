@@ -3,6 +3,7 @@ local addonName, addon = ...
 
 addon.SmallFixes = addon.SmallFixes or {}
 local SmallFixes = addon.SmallFixes
+local SS = addon.SecretSafe
 
 --------------------------------------------------------------------------------
 -- DB Helpers
@@ -391,6 +392,10 @@ function SmallFixes.EnsureHooks()
     -- Global function hook, not a hook on any system frame tree member.
     if type(_G.CompactUnitFrame_SetUpFrame) == "function" then
         hooksecurefunc("CompactUnitFrame_SetUpFrame", function(frame)
+            -- Screen before the frame is captured by the deferred closure below.
+            -- Blizzard can call this global with a frame we may not index.
+            frame = SS.plainFrame(frame)
+            if not frame then return end
             if not AnyModifierEnabled() then return end
             if InCombatLockdown() then
                 QueueApply()
