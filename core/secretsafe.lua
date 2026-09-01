@@ -86,3 +86,30 @@ function SS.safeDimension(func)
     local num = SS.safeNumber(value)
     return num or 0
 end
+
+-- Screen a frame handle that arrived from Blizzard.
+-- Globals we hook (CooldownFrame_Set, CompactUnitFrame_*, UnitFramePortrait_Update) are
+-- also called by Blizzard's secure-environment and forbidden-object-table code. Those
+-- frames reach our tainted callbacks as secret values. Indexing one throws, comparing one
+-- throws, and using one as a table key marks that table secret forever.
+-- type() and issecretvalue() are the only operations legal on a secret, and a truthiness
+-- test is not proof of plainness, so screen with both.
+function SS.plainFrame(v)
+    if type(v) ~= "table" then return nil end
+    if issecretvalue then
+        local ok, secret = pcall(issecretvalue, v)
+        if not ok or secret then return nil end
+    end
+    return v
+end
+
+-- Same screen for a string read off a Blizzard frame. A secret string throws on every
+-- string.* call except concat and format, so :match and table-key use both need this.
+function SS.plainString(v)
+    if type(v) ~= "string" then return nil end
+    if issecretvalue then
+        local ok, secret = pcall(issecretvalue, v)
+        if not ok or secret then return nil end
+    end
+    return v
+end
