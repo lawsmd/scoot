@@ -45,9 +45,8 @@ end
 local function ResolveShapeColor(db)
     local mode = db.shapeColorMode or "class"
     if mode == "class" then
-        local classColor = RAID_CLASS_COLORS[playerClassToken]
-        if classColor then return classColor.r, classColor.g, classColor.b, 1 end
-        return 1, 1, 1, 1
+        local r, g, b = addon.GetClassColorRGB("player")
+        return r or 1, g or 1, b or 1, 1
     end
     local c = db.shapeTint or { 1, 1, 1, 1 }
     return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
@@ -264,9 +263,9 @@ local function ApplyBarStyling(trackerId, tracker, state)
             local fgColorMode = db.barForegroundColorMode or "class"
             local fgR, fgG, fgB, fgA = 1, 1, 1, 1
             if fgColorMode == "class" then
-                local classColor = RAID_CLASS_COLORS[playerClassToken]
-                if classColor then
-                    fgR, fgG, fgB, fgA = classColor.r, classColor.g, classColor.b, 1
+                local r, g, b = addon.GetClassColorRGB("player")
+                if r ~= nil then
+                    fgR, fgG, fgB, fgA = r, g, b, 1
                 end
             elseif fgColorMode == "custom" then
                 local c = db.barForegroundTint or { 1, 1, 1, 1 }

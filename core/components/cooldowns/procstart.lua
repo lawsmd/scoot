@@ -467,12 +467,8 @@ local overlayPool = {}  -- [animId] -> { ctrl, ctrl, ... }
 --------------------------------------------------------------------------------
 
 local function getClassColor()
-    local _, classToken = UnitClass("player")
-    if classToken and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken] then
-        local c = RAID_CLASS_COLORS[classToken]
-        return c.r, c.g, c.b, 1
-    end
-    return 1, 1, 1, 1
+    local r, g, b = addon.GetClassColorRGB("player")
+    return r or 1, g or 1, b or 1, 1
 end
 
 local function applyColor(ctrl, colorMode, customColor)

@@ -84,12 +84,8 @@ local function getMinimapDB()
 end
 
 local function getClassColor()
-    local _, class = UnitClass("player")
-    if class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class] then
-        local c = RAID_CLASS_COLORS[class]
-        return c.r, c.g, c.b, 1
-    end
-    return 1, 1, 1, 1
+    local r, g, b = addon.GetClassColorRGB("player")
+    return r or 1, g or 1, b or 1, 1
 end
 
 local function ensureOverlayTable()

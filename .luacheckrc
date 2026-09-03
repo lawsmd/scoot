@@ -119,6 +119,7 @@ read_globals = {
     "CreateColor",
     "GetClassAtlas",
     "RAID_CLASS_COLORS",
+    "CUSTOM_CLASS_COLORS",
     "GetSpecialization",
     "GetSpecializationInfo",
 

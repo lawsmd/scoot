@@ -220,12 +220,11 @@ local function RegisterTooltipPostProcessor()
                 if ok and unitToken then
                     local isPlayerOk, isPlayer = pcall(UnitIsPlayer, unitToken)
                     if isPlayerOk and isPlayer then
-                        local classOk, _, classToken = pcall(UnitClass, unitToken)
-                        if classOk and classToken and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken] then
-                            local classColor = RAID_CLASS_COLORS[classToken]
+                        local r, g, b = addon.GetClassColorRGB(unitToken)
+                        if r ~= nil then
                             local titleFS = _G["GameTooltipTextLeft1"]
                             if titleFS and titleFS.SetTextColor then
-                                pcall(titleFS.SetTextColor, titleFS, classColor.r, classColor.g, classColor.b, 1)
+                                pcall(titleFS.SetTextColor, titleFS, r, g, b, 1)
                             end
                         end
                     end

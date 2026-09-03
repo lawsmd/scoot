@@ -154,6 +154,9 @@ local _playerClassTokenCache = select(2, UnitClass("player"))
 -- and the RGB triple alone can't be turned back into one.
 function addon.GetClassTokenForUnit(unitOrClassToken)
 	local classToken = nil
+	-- A secret input cannot be compared or used as a table key below; bail
+	-- before the first comparison (tooltip unit tokens can arrive secret)
+	if issecretvalue(unitOrClassToken) then return nil end
 	if type(unitOrClassToken) == "string" then
 		-- Fast path: "player" uses load-time cache (immune to taint/secrets)
 		if unitOrClassToken == "player" and _playerClassTokenCache then
@@ -192,9 +195,155 @@ function addon.GetClassColorRGB(unitOrClassToken)
 	if not classToken then
 		return nil, nil, nil -- no class resolved; callers decide fallback
 	end
-	-- Use the static table first; fall back to RAID_CLASS_COLORS when available
-	local c = addon.ClassColors[classToken]
+	-- CUSTOM_CLASS_COLORS must come before the static table: the static table
+	-- covers all 13 classes, so any later position would mask it. Without a
+	-- class-color addon the global is nil and the chain behaves as before.
+	local c = _G.CUSTOM_CLASS_COLORS and _G.CUSTOM_CLASS_COLORS[classToken]
+	if not c then c = addon.ClassColors[classToken] end
 	if not c and _G.RAID_CLASS_COLORS then c = _G.RAID_CLASS_COLORS[classToken] end
 	if c and c.r and c.g and c.b then return c.r, c.g, c.b end
 	return nil, nil, nil
+end
+
+--------------------------------------------------------------------------------
+-- Shared colorMode resolution
+--------------------------------------------------------------------------------
+
+-- Stock cast bar yellow from the CastingBarFrame mixin
+addon.CastDefaultColor = { r = 1.0, g = 0.7, b = 0.0 }
+
+function addon.GetCastDefaultColorRGB()
+	local c = addon.CastDefaultColor
+	if c and c.r and c.g and c.b then return c.r, c.g, c.b end
+	return 1.0, 0.7, 0.0
+end
+
+-- value/valueDark are live-update machinery (color-by-value hooks), never a
+-- static color; callers detect them with this and run their own applier.
+function addon.IsValueColorMode(mode)
+	return mode == "value" or mode == "valueDark"
+end
+
+local NON_DEFAULT_COLOR_MODES = {
+	custom = true, class = true, texture = true,
+	value = true, valueDark = true,
+	power = true, classPower = true, dkSpec = true,
+	classGradient = true, specGradient = true, customGradient = true,
+	rainbow = true,
+}
+
+-- True for any mode that asks for something other than the stock default.
+function addon.IsNonDefaultColorMode(mode)
+	return NON_DEFAULT_COLOR_MODES[mode] == true
+end
+
+local function legacyNonWhite(tint)
+	return type(tint) == "table"
+		and (tint[1] ~= 1 or tint[2] ~= 1 or tint[3] ~= 1 or (tint[4] or 1) ~= 1)
+end
+
+-- One resolver for the custom/class/texture/default colorMode switch.
+-- Returns r, g, b, a, source as a tuple: several callers sit inside
+-- SetStatusBarColor-hook hot paths and must not allocate. For the same reason
+-- opts at hot sites is a file-scope scratch table whose per-call fields are
+-- overwritten before each call; the resolver never calls back into caller code.
+--
+-- opts (all optional; opts itself may be nil):
+--   barKind        "health"|"power"|"altpower"|"cast" - stock color for the
+--                  default branch, and the class-miss fallback (health only)
+--   unitForClass   unit token or bare class token; default "player"
+--   unitForPower   power-color unit; cascade unitForPower, unitForClass, "player"
+--   fbR..fbA       default-branch fallback, four scalars returned verbatim
+--                  (no arithmetic or compares, so secret-tagged values survive)
+--   classPowerMode, dkSpecMode
+--                  enable those branches; left off, the modes fall through to
+--                  the default branch like any unknown mode
+--   lightenMana    classPower only: lighten mana blue by 0.25 for readability
+--   legacySniff    nil mode with a stored non-white tint resolves as custom
+--   legacySniffDefault
+--                  extends the sniff to an explicit "default" mode
+--
+-- source is one of "custom", "legacy", "class", "classDefault", "classMiss",
+-- "texture", "classPower", "dkSpec", "default", "fallback". "classMiss" lets
+-- the party/raid text fingerprints suppress caching on unresolved class data.
+--
+-- Never handled here: value/valueDark (IsValueColorMode), the gradient modes
+-- (6-tuple resolvers; colorramp.lua loads after this file), texture-restore
+-- else-branches, and dialects whose default writes nothing.
+function addon.ResolveColorRGBA(colorMode, tint, opts)
+	local mode = colorMode
+	if mode == nil or mode == "" then
+		if opts and opts.legacySniff and legacyNonWhite(tint) then
+			return tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1, "legacy"
+		end
+		mode = "default"
+	elseif mode == "default" and opts and opts.legacySniffDefault and legacyNonWhite(tint) then
+		return tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1, "legacy"
+	end
+
+	if mode == "custom" then
+		if type(tint) == "table" then
+			return tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1, "custom"
+		end
+		return 1, 1, 1, 1, "custom"
+	end
+
+	if mode == "class" then
+		local r, g, b = addon.GetClassColorRGB((opts and opts.unitForClass) or "player")
+		if r ~= nil then
+			return r, g, b, 1, "class"
+		end
+		if opts and opts.barKind == "health" then
+			r, g, b = addon.GetDefaultHealthColorRGB()
+			return r, g, b, 1, "classDefault"
+		end
+		return 1, 1, 1, 1, "classMiss"
+	end
+
+	if mode == "texture" then
+		return 1, 1, 1, 1, "texture"
+	end
+
+	if opts and mode == "classPower" and opts.classPowerMode then
+		local unit = opts.unitForPower or opts.unitForClass or "player"
+		local r, g, b = addon.GetPowerColorRGB(unit)
+		if opts.lightenMana then
+			local ok, powerType = pcall(UnitPowerType, unit)
+			if ok and powerType == 0 then -- MANA
+				r = (r or 0) + (1 - (r or 0)) * 0.25
+				g = (g or 0) + (1 - (g or 0)) * 0.25
+				b = (b or 0) + (1 - (b or 0)) * 0.25
+			end
+		end
+		return r or 1, g or 1, b or 1, 1, "classPower"
+	end
+
+	if opts and mode == "dkSpec" and opts.dkSpecMode then
+		local r, g, b = addon.GetDKSpecColorRGB()
+		return r, g, b, 1, "dkSpec"
+	end
+
+	-- Default branch: "default", its legacy "power" alias, gated-off modes,
+	-- unknown modes. barKind stock outranks the caller fallback; that matches
+	-- bars/textures.lua, where the captured original vertex is the final else.
+	local barKind = opts and opts.barKind
+	if barKind == "cast" then
+		local r, g, b = addon.GetCastDefaultColorRGB()
+		return r, g, b, 1, "default"
+	elseif barKind == "health" then
+		local r, g, b = addon.GetDefaultHealthColorRGB()
+		return r, g, b, 1, "default"
+	elseif barKind == "power" or barKind == "altpower" then
+		local r, g, b = addon.GetPowerColorRGB(opts.unitForPower or opts.unitForClass or "player")
+		return r or 1, g or 1, b or 1, 1, "default"
+	end
+	if opts and opts.fbR ~= nil then
+		return opts.fbR, opts.fbG, opts.fbB, opts.fbA, "fallback"
+	end
+	return 1, 1, 1, 1, "default"
+end
+
+-- Convenience wrapper for cfg tables using exactly the colorMode/color keys.
+function addon.ResolveColor(cfg, opts)
+	return addon.ResolveColorRGBA(cfg and cfg.colorMode, cfg and cfg.color, opts)
 end

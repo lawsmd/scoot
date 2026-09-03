@@ -50,12 +50,8 @@ end
 --------------------------------------------------------------------------------
 
 local function getClassColor()
-    local _, classToken = UnitClass("player")
-    if classToken then
-        local color = RAID_CLASS_COLORS[classToken]
-        if color then return color.r, color.g, color.b end
-    end
-    return 1, 1, 1
+    local r, g, b = addon.GetClassColorRGB("player")
+    return r or 1, g or 1, b or 1
 end
 
 --------------------------------------------------------------------------------
@@ -163,10 +159,12 @@ function controllerMT:Configure(style, colorMode, customColor, speed)
     end
     ensureSegments(self, count, segW, segH)
 
-    -- Pre-resolve static color
-    if colorMode == "class" then
+    -- Pre-resolve static color. Branch on the defaulted mode and always write
+    -- all three channels, so a nil or unrecognized mode cannot leave a stale
+    -- color from an earlier Configure. Rainbow overwrites per frame in OnUpdate.
+    if self.colorMode == "class" then
         self.resolvedR, self.resolvedG, self.resolvedB = getClassColor()
-    elseif colorMode == "custom" then
+    else
         self.resolvedR = self.customColor[1] or 1
         self.resolvedG = self.customColor[2] or 0.84
         self.resolvedB = self.customColor[3] or 0
