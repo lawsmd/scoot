@@ -78,10 +78,10 @@ end
 -- Apply styling to the overlay FontString
 local function stylePartyNameOverlay(frame, cfg)
     local state = getState(frame)
-    if not frame or not state or not state.overlayText or not cfg then return end
+    if not frame or not state or not state.nameOverlayText or not cfg then return end
 
-    local overlay = state.overlayText
-    local container = state.overlayContainer or frame
+    local overlay = state.nameOverlayText
+    local container = state.nameOverlayContainer or frame
 
     local fontFace = cfg.fontFace or "FRIZQT__"
     local resolvedFace
@@ -216,13 +216,13 @@ local function ensurePartyNameOverlay(frame, cfg)
 
     local hasCustom = Utils.hasCustomTextSettings(cfg)
     local state = ensureState(frame)
-    state.overlayActive = hasCustom
+    state.nameOverlayActive = hasCustom
     state.hideRealmEnabled = cfg and cfg.hideRealm and true or false
 
     if not hasCustom then
         -- Disable overlay, show Blizzard's text
-        if state.overlayText then
-            state.overlayText:Hide()
+        if state.nameOverlayText then
+            state.nameOverlayText:Hide()
         end
         showBlizzardPartyNameText(frame)
         return
@@ -231,7 +231,7 @@ local function ensurePartyNameOverlay(frame, cfg)
     -- Ensure an addon-owned clipping container for name text.
     -- IMPORTANT: This container must span the full available unit-frame area so 9-way alignment
     -- (e.g., BOTTOM / BOTTOMRIGHT) can genuinely reach the bottom of the frame.
-    if not state.overlayContainer then
+    if not state.nameOverlayContainer then
         local container = CreateFrame("Frame", nil, frame)
         container:SetClipsChildren(true)
 
@@ -246,15 +246,15 @@ local function ensurePartyNameOverlay(frame, cfg)
             pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
         end
 
-        state.overlayContainer = container
+        state.nameOverlayContainer = container
     end
 
     -- Create overlay FontString if it doesn't exist
-    if not state.overlayText then
-        local parentForText = state.overlayContainer or frame
+    if not state.nameOverlayText then
+        local parentForText = state.nameOverlayContainer or frame
         local overlay = parentForText:CreateFontString(nil, "OVERLAY", nil)
         overlay:SetDrawLayer("OVERLAY", 7) -- High sublayer to ensure visibility
-        state.overlayText = overlay
+        state.nameOverlayText = overlay
 
         -- Install SetText hook on Blizzard's name FontString to mirror text
         -- Store hook state in the addon lookup table, not on Blizzard's frame
@@ -263,7 +263,7 @@ local function ensurePartyNameOverlay(frame, cfg)
             -- Capture state reference for the closure
             local frameState = state
             _G.hooksecurefunc(frame.name, "SetText", function(self, text)
-                if frameState and frameState.overlayText and frameState.overlayActive then
+                if frameState and frameState.nameOverlayText and frameState.nameOverlayActive then
                     -- text may be a secret value in 12.0; branch on type
                     if type(text) == "string" and not issecretvalue(text) then
                         local displayText = text
@@ -273,15 +273,15 @@ local function ensurePartyNameOverlay(frame, cfg)
                             displayText = displayText:match("^([^%-]+)") or displayText
                             displayText = displayText:match("^(%S+)") or displayText
                         end
-                        frameState.overlayText:SetText(displayText)
+                        frameState.nameOverlayText:SetText(displayText)
                     else
                         -- Secret or other type — SetText handles secrets natively
-                        pcall(frameState.overlayText.SetText, frameState.overlayText, text)
+                        pcall(frameState.nameOverlayText.SetText, frameState.nameOverlayText, text)
                     end
                     -- Reposition after text change so CENTER/RIGHT alignment adapts to new text width
                     if frameState.nameAnchor then
-                        Utils.repositionNameOverlay(frameState.overlayText,
-                            frameState.overlayContainer or frame,
+                        Utils.repositionNameOverlay(frameState.nameOverlayText,
+                            frameState.nameOverlayContainer or frame,
                             frameState.nameAnchor, frameState.nameOffsetX or 0, frameState.nameOffsetY or 0)
                     end
                 end
@@ -318,7 +318,7 @@ local function ensurePartyNameOverlay(frame, cfg)
     -- allows re-styling on every call until the class resolves.
     local classKeyUnresolved = (fpColorMode == "class" and classKey == "" and frame.unit ~= nil)
 
-    if not classKeyUnresolved and state.lastNameFingerprint == fingerprint and state.overlayText:IsShown() then
+    if not classKeyUnresolved and state.lastNameFingerprint == fingerprint and state.nameOverlayText:IsShown() then
         return
     end
     state.lastNameFingerprint = classKeyUnresolved and nil or fingerprint
@@ -339,7 +339,7 @@ local function ensurePartyNameOverlay(frame, cfg)
                 displayText = displayText:match("^([^%-]+)") or displayText
                 displayText = displayText:match("^(%S+)") or displayText
             end
-            state.overlayText:SetText(displayText)
+            state.nameOverlayText:SetText(displayText)
             textCopied = true
         end
     end
@@ -353,7 +353,7 @@ local function ensurePartyNameOverlay(frame, cfg)
                 displayText = displayText:match("^([^%-]+)") or displayText
                 displayText = displayText:match("^(%S+)") or displayText
             end
-            state.overlayText:SetText(displayText)
+            state.nameOverlayText:SetText(displayText)
             textCopied = true
         end
     end
@@ -363,17 +363,17 @@ local function ensurePartyNameOverlay(frame, cfg)
     if not textCopied and frame.name and frame.name.GetText then
         local ok, rawText = pcall(frame.name.GetText, frame.name)
         if ok then
-            pcall(state.overlayText.SetText, state.overlayText, rawText)
+            pcall(state.nameOverlayText.SetText, state.nameOverlayText, rawText)
         end
     end
 
     -- Reposition after the first text copy so CENTER/RIGHT alignment uses rendered width
     if state.nameAnchor then
-        Utils.repositionNameOverlay(state.overlayText, state.overlayContainer or frame,
+        Utils.repositionNameOverlay(state.nameOverlayText, state.nameOverlayContainer or frame,
             state.nameAnchor, state.nameOffsetX or 0, state.nameOffsetY or 0)
     end
 
-    state.overlayText:Show()
+    state.nameOverlayText:Show()
 end
 
 -- Disable overlay and restore Blizzard's appearance for a frame
@@ -381,9 +381,9 @@ local function disablePartyNameOverlay(frame)
     if not frame then return end
     local state = getState(frame)
     if state then
-        state.overlayActive = false
-        if state.overlayText then
-            state.overlayText:Hide()
+        state.nameOverlayActive = false
+        if state.nameOverlayText then
+            state.nameOverlayText:Hide()
         end
     end
     showBlizzardPartyNameText(frame)
@@ -419,7 +419,7 @@ function addon.ApplyPartyFrameNameOverlays()
             local state = getState(frame)
             if not (InCombatLockdown and InCombatLockdown()) then
                 ensurePartyNameOverlay(frame, cfg)
-            elseif state and state.overlayText then
+            elseif state and state.nameOverlayText then
                 -- Already have overlay, just update styling (safe during combat for addon-owned FontString)
                 stylePartyNameOverlay(frame, cfg)
             end
@@ -460,7 +460,7 @@ local function installPartyNameOverlayHooks()
                     _G.C_Timer.After(0, function()
                         if not frame then return end
                         local state = getState(frame)
-                        if not state or not state.overlayText then
+                        if not state or not state.nameOverlayText then
                             if InCombatLockdown and InCombatLockdown() then
                                 Combat.queuePartyFrameReapply()
                                 return
@@ -491,7 +491,7 @@ local function installPartyNameOverlayHooks()
                     _G.C_Timer.After(0, function()
                         if not frame then return end
                         local state = getState(frame)
-                        if not state or not state.overlayText then
+                        if not state or not state.nameOverlayText then
                             if InCombatLockdown and InCombatLockdown() then
                                 Combat.queuePartyFrameReapply()
                                 return
@@ -522,7 +522,7 @@ local function installPartyNameOverlayHooks()
                     _G.C_Timer.After(0, function()
                         if not frame then return end
                         local state = getState(frame)
-                        if not state or not state.overlayText then
+                        if not state or not state.nameOverlayText then
                             if InCombatLockdown and InCombatLockdown() then
                                 Combat.queuePartyFrameReapply()
                                 return
@@ -819,7 +819,7 @@ local function stylePartyStatusTextOverlay(frame, cfg)
     if not state or not state.statusTextOverlay then return end
 
     local overlay = state.statusTextOverlay
-    local container = state.overlayContainer or frame
+    local container = state.nameOverlayContainer or frame
 
     local fontFace = cfg.fontFace or "FRIZQT__"
     local resolvedFace
@@ -950,7 +950,7 @@ local function ensurePartyStatusTextOverlay(frame, cfg)
     end
 
     -- Ensure shared clipping container (reuse the same container as name overlay)
-    if not frameState.overlayContainer then
+    if not frameState.nameOverlayContainer then
         local container = CreateFrame("Frame", nil, frame)
         container:SetClipsChildren(true)
 
@@ -964,12 +964,12 @@ local function ensurePartyStatusTextOverlay(frame, cfg)
             pcall(roleIcon.SetDrawLayer, roleIcon, "OVERLAY", 6)
         end
 
-        frameState.overlayContainer = container
+        frameState.nameOverlayContainer = container
     end
 
     -- Create overlay FontString if it doesn't exist
     if frameState and not frameState.statusTextOverlay then
-        local parentForText = frameState.overlayContainer or frame
+        local parentForText = frameState.nameOverlayContainer or frame
         local overlay = parentForText:CreateFontString(nil, "OVERLAY", nil)
         overlay:SetDrawLayer("OVERLAY", 5) -- Below name text (7) and role icon (6)
         frameState.statusTextOverlay = overlay
