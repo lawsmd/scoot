@@ -1,6 +1,9 @@
 -- actionbars.lua - Action bar component: opacity, hover behavior, Edit Mode integration
 local addonName, addon = ...
 
+-- Font-half opts for the button texts
+local abTextFontOpts = { size = 14 }
+
 local Component = addon.ComponentPrototype
 local Util = addon.ComponentsUtil
 
@@ -503,14 +506,10 @@ local function ApplyActionBarStyling(self)
         end
 
         do
-            local defaultFace = (select(1, GameFontNormal:GetFont()))
             local function applyTextToFontString(fs, cfg, justify, anchorPoint, relTo)
                 if not fs or not fs.SetFont then return end
-                local size = tonumber(cfg.size) or 14
-                local style = cfg.style or "OUTLINE"
-                local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace or "FRIZQT__") or defaultFace
                 pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
-                if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, style) else fs:SetFont(face, size, style) end
+                addon.ApplyTextFont(fs, cfg, abTextFontOpts)
                 local c = cfg.color or {1,1,1,1}
                 if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1) end
                 if justify and fs.SetJustifyH then pcall(fs.SetJustifyH, fs, justify) end

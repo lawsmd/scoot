@@ -144,7 +144,8 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
         end
     end
 
-    local defaultFace = (select(1, GameFontNormal:GetFont()))
+    local auraHookFontOpts = { size = 16 }
+    local auraApplyFontOpts = {}
 
     local function getTextConfig(key)
         local cfg = db[key]
@@ -185,14 +186,8 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
         local function reapplyFont(st)
             local cfg = db[key]
             if type(cfg) ~= "table" then return end
-            local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace or "FRIZQT__") or defaultFace
-            local size = tonumber(cfg.size) or 16
-            local style = cfg.style or "OUTLINE"
-            if addon.ApplyFontStyle then
-                pcall(addon.ApplyFontStyle, fs, face, size, style)
-            else
-                pcall(fs.SetFont, fs, face, size, style)
-            end
+            local face, size, style = addon.ResolveTextFont(cfg, auraHookFontOpts)
+            pcall(addon.ApplyFontStyle, fs, face, size, style)
             st.lastFontKey = face .. "|" .. size .. "|" .. style
         end
 
@@ -264,14 +259,14 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
         if not cfg then return end  -- Zero-touch: no user config, skip text styling
         ensureTextHooks(fs, key)
         local state = getState(fs)
-        local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace or "FRIZQT__") or defaultFace
-        local size = tonumber(cfg.size) or defaultSize
-        local style = cfg.style or "OUTLINE"
+        auraApplyFontOpts.size = defaultSize
+        local face, size, style = addon.ResolveTextFont(cfg, auraApplyFontOpts)
         -- OPT-26 Change 1: Font key cache — skip SetDrawLayer + ApplyFontStyle when unchanged
+        -- (key built from the same resolved triple that gets applied)
         local fontKey = face .. "|" .. size .. "|" .. style
         if not state or state.lastFontKey ~= fontKey then
             pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
-            if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, style) else fs:SetFont(face, size, style) end
+            addon.ApplyFontStyle(fs, face, size, style)
             if state then
                 state.lastFontKey = fontKey
             end

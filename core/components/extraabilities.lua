@@ -1,6 +1,9 @@
 -- extraabilities.lua - Extra Abilities (Zone Ability + Extra Action Button) component
 local addonName, addon = ...
 
+-- Font-half opts for the button texts
+local eaTextFontOpts = { size = 14 }
+
 local Component = addon.ComponentPrototype
 local Util = addon.ComponentsUtil
 
@@ -280,20 +283,17 @@ local function ApplyExtraAbilitiesStyling(self)
     local chargesCfg = self.db and self.db.textCharges or { size = 16, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }
     local cooldownCfg = self.db and self.db.textCooldown or { size = 16, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }
     local hotkeyCfg = self.db and self.db.textHotkey or { size = 14, style = "OUTLINE", color = {1,1,1,1}, offset = { x = 0, y = 0 }, fontFace = "FRIZQT__" }
-    local defaultFace = (select(1, GameFontNormal:GetFont()))
-
     local function applyTextToFontString(fs, cfg, justify, anchorPoint, relTo)
         if not fs or not fs.SetFont then return end
-        local size = tonumber(cfg.size) or 14
-        local style = cfg.style or "OUTLINE"
-        local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace or "FRIZQT__") or defaultFace
+        -- Resolve eagerly; only the widget writes are deferred
+        local face, size, style = addon.ResolveTextFont(cfg, eaTextFontOpts)
         local c = cfg.color or {1,1,1,1}
         local ox = (cfg.offset and cfg.offset.x) or 0
         local oy = (cfg.offset and cfg.offset.y) or 0
         C_Timer.After(0, function()
             if not fs or fs:IsForbidden() then return end
             pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
-            if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, style) else pcall(fs.SetFont, fs, face, size, style) end
+            addon.ApplyFontStyle(fs, face, size, style)
             if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1) end
             if justify and fs.SetJustifyH then pcall(fs.SetJustifyH, fs, justify) end
             if (ox ~= 0 or oy ~= 0) and fs.ClearAllPoints and fs.SetPoint then
