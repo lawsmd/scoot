@@ -32,26 +32,11 @@ local CDM_VIEWERS = addon.CDM_VIEWERS
 -- Shared Utility Functions
 --------------------------------------------------------------------------------
 
--- Internal: returns r, g, b, a directly (no table allocation)
+-- Internal: returns r, g, b, a directly (no table allocation). legacySniff
+-- keeps the historical "no mode set but a non-white color stored" inference.
+local CDM_COLOR_OPTS = { legacySniff = true }
 local function resolveCDMColorRGBA(cfg)
-    local colorMode = cfg and cfg.colorMode
-    if not colorMode then
-        local c = cfg and cfg.color
-        if c and (c[1] ~= 1 or c[2] ~= 1 or c[3] ~= 1 or (c[4] or 1) ~= 1) then
-            return c[1], c[2], c[3], c[4] or 1
-        end
-        return 1, 1, 1, 1
-    end
-    if colorMode == "class" then
-        local cr, cg, cb = addon.GetClassColorRGB("player")
-        return cr or 1, cg or 1, cb or 1, 1
-    elseif colorMode == "custom" then
-        local c = cfg and cfg.color
-        if c then return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end
-        return 1, 1, 1, 1
-    else
-        return 1, 1, 1, 1
-    end
+    return addon.ResolveColorRGBA(cfg and cfg.colorMode, cfg and cfg.color, CDM_COLOR_OPTS)
 end
 
 -- Exported: returns table (backward compat for external consumers)

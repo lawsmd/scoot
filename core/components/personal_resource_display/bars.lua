@@ -30,6 +30,9 @@ local queueAfterCombat = PRD._queueAfterCombat
 local MIN_CLASS_RESOURCE_SCALE_PERCENT = PRD._MIN_CLASS_RESOURCE_SCALE_PERCENT
 local MAX_CLASS_RESOURCE_SCALE_PERCENT = PRD._MAX_CLASS_RESOURCE_SCALE_PERCENT
 
+-- Scratch opts for ResolveColorRGBA: per-call fields overwritten before each call
+local prdBarColorOpts = {}
+
 -- Import from opacity (late-bound for function bodies — opacity.lua loads before bars.lua)
 -- PRD._getPRDOpacityForState accessed inside function bodies at runtime
 
@@ -274,36 +277,22 @@ local function applyPRDForegroundStyle(bar, barType, component)
         end
     end
 
-    -- Apply color
-    local r, g, b, a = 1, 1, 1, 1
-    if colorMode == "custom" and type(tint) == "table" then
-        r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-    elseif colorMode == "class" then
-        local cr, cg, cb = addon.GetClassColorRGB("player")
-        r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-    elseif colorMode == "power" and barType == "power" then
-        local pr, pg, pb = addon.GetPowerColorRGB("player")
-        r, g, b, a = pr or 1, pg or 1, pb or 1, 1
-    elseif colorMode == "texture" then
-        r, g, b, a = 1, 1, 1, 1  -- Raw texture colors unmodified
-    elseif colorMode == "default" then
-        -- Blizzard's intended bar color
-        if barType == "health" then
-            local hr, hg, hb = addon.GetDefaultHealthColorRGB()
-            r, g, b, a = hr or 0, hg or 1, hb or 0, 1
-        elseif barType == "power" then
-            local pr, pg, pb = addon.GetPowerColorRGB("player")
-            r, g, b, a = pr or 1, pg or 1, pb or 1, 1
-        elseif barType == "altpower" then
-            -- The alt bar's colour is whatever Blizzard last set on it (mana blue, Ebon
-            -- Might, stagger green/yellow/red, void metamorphosis). Pass it straight
-            -- through: no arithmetic, no compare, so a secret-tagged colour is still fine.
-            local ok, cr, cg, cb = pcall(bar.GetStatusBarColor, bar)
-            if ok and cr ~= nil then
-                r, g, b, a = cr, cg, cb, 1
-            end
+    -- Apply color. Health and power take their stock defaults from barKind;
+    -- the alt bar instead passes its live color through as the resolver
+    -- fallback: whatever Blizzard last set on it (mana blue, Ebon Might,
+    -- stagger green/yellow/red, void metamorphosis), no arithmetic, no
+    -- compare, so a secret-tagged colour is still fine.
+    prdBarColorOpts.fbR, prdBarColorOpts.fbG, prdBarColorOpts.fbB, prdBarColorOpts.fbA = nil, nil, nil, nil
+    if barType == "altpower" then
+        prdBarColorOpts.barKind = nil
+        local ok, cr, cg, cb = pcall(bar.GetStatusBarColor, bar)
+        if ok and cr ~= nil then
+            prdBarColorOpts.fbR, prdBarColorOpts.fbG, prdBarColorOpts.fbB, prdBarColorOpts.fbA = cr, cg, cb, 1
         end
+    else
+        prdBarColorOpts.barKind = barType
     end
+    local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, prdBarColorOpts)
     pcall(storage.fgTexture.SetVertexColor, storage.fgTexture, r, g, b, a)
 
     -- Show overlay, hide original fill

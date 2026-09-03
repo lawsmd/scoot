@@ -4,7 +4,6 @@ local addonName, addon = ...
 local TB = addon.TB
 local Util = addon.ComponentsUtil
 local getState = Util._getState
-local resolveCDMColor = addon.ResolveCDMColor
 
 -- OPT-25: file-scope weak-key cache for tracked bar FontString lookups
 local _tbFSCache = setmetatable({}, { __mode = "k" })

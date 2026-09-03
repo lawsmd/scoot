@@ -27,6 +27,10 @@ local function setProp(frame, key, value)
     end
 end
 
+-- Scratch opts for ResolveColorRGBA: per-call fields overwritten before each
+-- call, so the hook-driven apply paths never allocate.
+local ufColorOpts = {}
+
 -- Create module namespace
 addon.BarsTextures = addon.BarsTextures or {}
 local Textures = addon.BarsTextures
@@ -501,38 +505,19 @@ function Textures.applyToBar(bar, textureKey, colorMode, tint, unitForClass, bar
         end
         -- Re-fetch the current texture after swapping to ensure subsequent operations target the new texture
         tex = bar:GetStatusBarTexture()
-        local r, g, b, a = 1, 1, 1, 1
-        if colorMode == "custom" and type(tint) == "table" then
-            r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-        elseif colorMode == "class" then
-            if addon.GetClassColorRGB then
-                local cr, cg, cb = addon.GetClassColorRGB(unitForClass or "player")
-                if cr == nil and barKind == "health" and addon.GetDefaultHealthColorRGB then
-                    cr, cg, cb = addon.GetDefaultHealthColorRGB()
-                end
-                r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-            end
-        elseif colorMode == "texture" then
-            -- Apply white (no tint) to preserve texture's original colors
-            r, g, b, a = 1, 1, 1, 1
-        elseif colorMode == "default" or colorMode == "power" then
-            -- When using a custom texture, "Default" should tint to the stock bar color
-            -- ("power" is a legacy alias for "default" on power bars)
-            if barKind == "cast" then
-                -- Stock cast bar yellow from CastingBarFrame mixin.
-                r, g, b, a = 1.0, 0.7, 0.0, 1
-            elseif barKind == "health" and addon.GetDefaultHealthColorRGB then
-                local hr, hg, hb = addon.GetDefaultHealthColorRGB()
-                r, g, b, a = hr or 0, hg or 1, hb or 0, 1
-            elseif (barKind == "power" or barKind == "altpower") and addon.GetPowerColorRGB then
-                -- Power and Alternate Power bars both use the player's power color for Default.
-                local pr, pg, pb = addon.GetPowerColorRGB(unitForPower or unitForClass or "player")
-                r, g, b, a = pr or 1, pg or 1, pb or 1, 1
-            else
-                local ov = getProp(bar, "ufOrigVertex")
-                if type(ov) == "table" then r, g, b, a = ov[1] or 1, ov[2] or 1, ov[3] or 1, ov[4] or 1 end
-            end
+        -- With a custom texture, "Default" tints to the stock bar color per
+        -- barKind ("power" is a legacy alias for "default" on power bars); the
+        -- captured original vertex is the fallback for barKinds without one.
+        ufColorOpts.barKind = barKind
+        ufColorOpts.unitForClass = unitForClass
+        ufColorOpts.unitForPower = unitForPower
+        local ov = getProp(bar, "ufOrigVertex")
+        if type(ov) == "table" then
+            ufColorOpts.fbR, ufColorOpts.fbG, ufColorOpts.fbB, ufColorOpts.fbA = ov[1] or 1, ov[2] or 1, ov[3] or 1, ov[4] or 1
+        else
+            ufColorOpts.fbR, ufColorOpts.fbG, ufColorOpts.fbB, ufColorOpts.fbA = nil, nil, nil, nil
         end
+        local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, ufColorOpts)
         if tex and tex.SetVertexColor then pcall(tex.SetVertexColor, tex, r, g, b, a) end
     else
         -- Default texture path. If the user selected Class/Custom color, avoid restoring
@@ -541,15 +526,11 @@ function Textures.applyToBar(bar, textureKey, colorMode, tint, unitForClass, bar
         local r, g, b, a = 1, 1, 1, 1
         local wantsNeutral = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class")
         if wantsNeutral then
-            if colorMode == "custom" then
-                r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-            elseif colorMode == "class" and addon.GetClassColorRGB then
-                local cr, cg, cb = addon.GetClassColorRGB(unitForClass or "player")
-                if cr == nil and barKind == "health" and addon.GetDefaultHealthColorRGB then
-                    cr, cg, cb = addon.GetDefaultHealthColorRGB()
-                end
-                r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-            end
+            ufColorOpts.barKind = barKind
+            ufColorOpts.unitForClass = unitForClass
+            ufColorOpts.unitForPower = unitForPower
+            ufColorOpts.fbR, ufColorOpts.fbG, ufColorOpts.fbB, ufColorOpts.fbA = nil, nil, nil, nil
+            r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, ufColorOpts)
             if tex and tex.SetColorTexture then pcall(tex.SetColorTexture, tex, 1, 1, 1, 1) end
         else
             -- Default color: restore Blizzard's original fill
@@ -579,9 +560,9 @@ function Textures.applyToBar(bar, textureKey, colorMode, tint, unitForClass, bar
                 end
             end
             if barKind == "cast" then
-                -- Use Blizzard's stock cast bar yellow as the default color.
-                -- Based on Blizzard_CastingBarFrame.lua (CastingBarFrameMixin).
-                r, g, b, a = 1.0, 0.7, 0.0, 1
+                -- Blizzard's stock cast bar yellow (CastingBarFrameMixin).
+                r, g, b = addon.GetCastDefaultColorRGB()
+                a = 1
             else
                 local ov = getProp(bar, "ufOrigVertex") or {1,1,1,1}
                 r, g, b, a = ov[1] or 1, ov[2] or 1, ov[3] or 1, ov[4] or 1

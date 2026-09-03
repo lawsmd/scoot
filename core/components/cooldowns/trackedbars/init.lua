@@ -140,17 +140,10 @@ end
 -- Shared Styling Helpers (used by default.lua and vertical.lua)
 --------------------------------------------------------------------------------
 
+local tbColorOpts = {}
 function TB.resolveBarColor(colorMode, tint, defaultR, defaultG, defaultB, defaultA)
-    if colorMode == "custom" and type(tint) == "table" then
-        return tint[1] or defaultR, tint[2] or defaultG, tint[3] or defaultB, tint[4] or defaultA
-    elseif colorMode == "class" and addon.GetClassColorRGB then
-        local cr, cg, cb = addon.GetClassColorRGB("player")
-        return cr or defaultR, cg or defaultG, cb or defaultB, defaultA
-    elseif colorMode == "texture" then
-        return 1, 1, 1, 1
-    else -- "default"
-        return defaultR, defaultG, defaultB, defaultA
-    end
+    tbColorOpts.fbR, tbColorOpts.fbG, tbColorOpts.fbB, tbColorOpts.fbA = defaultR, defaultG, defaultB, defaultA
+    return addon.ResolveColorRGBA(colorMode, tint, tbColorOpts)
 end
 
 function TB.applyTextStyling(fontString, cfg, defaultFace)
