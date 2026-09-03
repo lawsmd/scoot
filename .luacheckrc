@@ -1,17 +1,34 @@
 -- Luacheck configuration for Scoot addon
 -- Enforces Lua 5.1 compatibility (WoW runtime)
+--
+-- read_globals lists every Blizzard global the addon reads, so a W113
+-- ("accessing undefined variable") on any other name is a broken reference:
+-- a local declared after its first use, a deleted helper, or a typo. Keep the
+-- list current when a new API is adopted; do not silence W113 inline.
 
 std = "lua51"
 max_line_length = false
+
+-- Vendored libraries are not ours to lint
+exclude_files = { "libs/" }
 
 -- Suppress unused variable warnings for common WoW patterns
 unused_args = false
 unused_secondaries = false
 
--- WoW global environment
+-- Globals the addon defines or mutates on purpose
 globals = {
     -- Scoot addon
     "Scoot",
+    -- Slash commands (Scoot.lua)
+    "SLASH_SCOOT1",
+    "SLASH_SCOOT2",
+    "SLASH_SCOOTCDM1",
+    "SLASH_SCOOTDMSHOW1",
+    "SLASH_SCOOTDMRESET1",
+    "SlashCmdList",
+    -- Popup registry written by core/dialogs.lua
+    "StaticPopupDialogs",
 }
 
 read_globals = {
@@ -140,6 +157,214 @@ read_globals = {
     -- Player class probe (core/catalogs.lua)
     "UnitClass",
 
+    -- C_ namespaces read across the components (census 2026-09-03)
+    "C_ChallengeMode",
+    "C_Container",
+    "C_Crypto",
+    "C_DurationUtil",
+    "C_EventUtils",
+    "C_GameRules",
+    "C_Item",
+    "C_Map",
+    "C_Minimap",
+    "C_MythicPlus",
+    "C_PetBattles",
+    "C_PvP",
+    "C_QuestLog",
+    "C_RestrictedActions",
+    "C_SpellBook",
+    "C_SplashScreen",
+    "C_StorePublic",
+
+    -- Unit, spell, cast, and action queries
+    "FindBaseSpellByID",
+    "GetActionInfo",
+    "GetBindingKey",
+    "GetMacroSpell",
+    "GetRaidRosterInfo",
+    "GetShapeshiftFormID",
+    "IsPlayerSpell",
+    "IsSpellKnown",
+    "UnitAffectingCombat",
+    "UnitCastingDuration",
+    "UnitCastingInfo",
+    "UnitChannelDuration",
+    "UnitChannelInfo",
+    "UnitClassBase",
+    "UnitEmpoweredStagePercentages",
+    "UnitFactionGroup",
+    "UnitGroupRolesAssigned",
+    "UnitHasVehicleUI",
+    "UnitInVehicle",
+    "UnitIsGroupLeader",
+    "UnitRace",
+    "GetUnitName",
+
+    -- Class and specialization catalogs
+    "GetClassInfo",
+    "GetNumClasses",
+    "GetNumSpecializations",
+    "GetNumSpecializationsForClassID",
+    "GetSpecializationInfoForClassID",
+    "GetSpecializationNameByID",
+
+    -- CVars, client, realm, and session state
+    "GetCVar",
+    "GetCVarBool",
+    "GetCVarDefault",
+    "SetCVar",
+    "GetCurrentRegion",
+    "GetCurrentRegionName",
+    "GetFramerate",
+    "GetGameTime",
+    "GetInstanceInfo",
+    "GetLocale",
+    "GetNetStats",
+    "GetRealmName",
+    "GetScreenHeight",
+    "GetZonePVPInfo",
+    "IsAddOnLoaded",
+    "IsInGuild",
+    "IsLoggedIn",
+    "ReloadUI",
+    "WOW_PROJECT_ID",
+    "WOW_PROJECT_MAINLINE",
+    "LE_PARTY_CATEGORY_INSTANCE",
+
+    -- Input, cursor, and merchant/loot helpers (core/qol.lua)
+    "IsControlKeyDown",
+    "IsShiftKeyDown",
+    "ClearCursor",
+    "GetCursorInfo",
+    "ResetCursor",
+    "SetCursor",
+    "CanMerchantRepair",
+    "GetRepairAllCost",
+    "RepairAllItems",
+    "GetNumLootItems",
+    "LootSlot",
+    "SendChatMessage",
+
+    -- FrameXML utilities and mixins
+    "AbbreviateLargeNumbers",
+    "BreakUpLargeNumbers",
+    "AuraUtil",
+    "Constants",
+    "CopyTable",
+    "CreateFont",
+    "CreateMinimalSliderFormatter",
+    "CreateObjectPool",
+    "CreateUnsecuredObjectPool",
+    "GenerateClosure",
+    "Menu",
+    "MenuUtil",
+    "PixelUtil",
+    "Round",
+    "ScrollUtil",
+    "tAppendAll",
+    "tCompare",
+    "DefaultTooltipMixin",
+    "MinimalSliderWithSteppersMixin",
+    "SidePanelTabButtonMixin",
+    "TooltipDataProcessor",
+    "UIDropDownMenu_SetSelectedValue",
+    "UIDropDownMenu_SetText",
+    "UIFrameFadeOut",
+    "UIFrameFadeRemoveFrame",
+    "CooldownFrame_Set",
+    "CompactUnitFrame_SetUnit",
+    "CompactUnitFrame_UpdateRoleIcon",
+    "SecureHandlerSetFrameRef",
+    "SecureUnitButton_OnLoad",
+    "StaticPopup_Hide",
+    "StaticPopup_Show",
+    "HideUIPanel",
+    "ShowUIPanel",
+    "ShowMacroFrame",
+    "ToggleHelpFrame",
+    "EJ_GetInstanceInfo",
+    "FormatUnreadMailTooltip",
+    "GetLatestThreeSenders",
+    "GetMinimapShape",
+    "GetMinimapZoneText",
+    "HasNewMail",
+
+    -- Blizzard frames and managers
+    "AccountStoreFrame",
+    "AccountStoreUtil",
+    "ActionButtonSpellAlertManager",
+    "AddonCompartmentFrame",
+    "AddonList",
+    "ColorPickerFrame",
+    "CooldownViewerSettings",
+    "DamageMeter",
+    "DEFAULT_CHAT_FRAME",
+    "EditModePresetLayoutManager",
+    "EditModeSettingDisplayInfoManager",
+    "EditModeSystemSettingsDialog",
+    "FocusFrameToT",
+    "GameMenuFrame",
+    "GameTimeFrame",
+    "HybridMinimap",
+    "ItemRefTooltip",
+    "Minimap",
+    "MinimapCluster",
+    "MinimapCompassTexture",
+    "MinimapZoneTextButton",
+    "PersonalResourceDisplayFrame",
+    "PlayerSpellsFrame",
+    "QuestScrollFrame",
+    "SettingsTooltip",
+    "StoreMicroButton",
+    "TargetFrameToT",
+    "TimeManagerClockButton",
+    "UISpecialFrames",
+    "WorldMapFrame",
+
+    -- Font objects and color constants
+    "ChatFontNormal",
+    "GameFontNormalSmall",
+    "DISABLED_FONT_COLOR",
+    "NORMAL_FONT_COLOR",
+    "WHITE_FONT_COLOR",
+    "TOOLTIP_DEFAULT_BACKGROUND_COLOR",
+
+    -- Localized strings and enum-like constants
+    "ACCEPT",
+    "CANCEL",
+    "CLOSE",
+    "NO",
+    "OKAY",
+    "YES",
+    "FAILED",
+    "INTERRUPTED",
+    "HAVE_MAIL",
+    "HAVE_MAIL_FROM",
+    "HUD_EDIT_MODE_INVALID_LAYOUT_NAME",
+    "NUM_CHAT_WINDOWS",
+    "RESET_TO_DEFAULT",
+    "RUNE_STATE_READY",
+    "DAMAGE_METER_ABSORBS",
+    "DAMAGE_METER_AVOIDABLE_DAMAGE_TAKEN",
+    "DAMAGE_METER_CATEGORY_ACTIONS",
+    "DAMAGE_METER_CATEGORY_DAMAGE",
+    "DAMAGE_METER_CATEGORY_HEALING",
+    "DAMAGE_METER_DAMAGE_DONE",
+    "DAMAGE_METER_DAMAGE_TAKEN",
+    "DAMAGE_METER_DISPELS",
+    "DAMAGE_METER_DPS",
+    "DAMAGE_METER_HEALING_DONE",
+    "DAMAGE_METER_HPS",
+    "DAMAGE_METER_INTERRUPTS",
+    "DAMAGE_METER_TYPE_DEATHS",
+    "DAMAGE_METER_TYPE_ENEMY_DAMAGE_TAKEN",
+
+    -- WoW Lua runtime extras
+    "debugprofilestop",
+    "geterrorhandler",
+    "seterrorhandler",
+    "issecurevalue",
+
     -- Standard Lua globals WoW provides
     "string", "table", "math", "pairs", "ipairs", "type", "tostring", "tonumber",
     "select", "unpack", "wipe", "tinsert", "tremove", "sort",
@@ -150,10 +375,7 @@ read_globals = {
     "setmetatable", "getmetatable", "rawget", "rawset",
     "next", "date", "time", "debugstack",
 
-    -- WoW event/frame scripting
-    "SLASH_SCOOT1",
-    "SLASH_SCOOT2",
-    "SlashCmdList",
+    -- Settings panel integration
     "Settings",
     "SettingsPanel",
     "InterfaceOptions_AddCategory",
