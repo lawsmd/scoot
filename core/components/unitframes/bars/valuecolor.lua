@@ -108,19 +108,19 @@ do
 
         -- Check health percent text (leftFS)
         local percentCfg = cfg.textHealthPercent
-        if percentCfg and percentCfg.colorMode == "value" and cache.leftFS then
-            addon.BarsTextures.applyHealthTextColor(cache.leftFS, unit)
+        if percentCfg and addon.IsValueColorMode(percentCfg.colorMode) and cache.leftFS then
+            addon.BarsTextures.applyHealthTextColor(cache.leftFS, unit, percentCfg.colorMode == "valueDark")
         end
 
         -- Check health value text (rightFS)
         local valueCfg = cfg.textHealthValue
-        if valueCfg and valueCfg.colorMode == "value" and cache.rightFS then
-            addon.BarsTextures.applyHealthTextColor(cache.rightFS, unit)
+        if valueCfg and addon.IsValueColorMode(valueCfg.colorMode) and cache.rightFS then
+            addon.BarsTextures.applyHealthTextColor(cache.rightFS, unit, valueCfg.colorMode == "valueDark")
         end
 
         -- Check center TextString (used in NUMERIC display mode)
-        if valueCfg and valueCfg.colorMode == "value" and cache.textStringFS then
-            addon.BarsTextures.applyHealthTextColor(cache.textStringFS, unit)
+        if valueCfg and addon.IsValueColorMode(valueCfg.colorMode) and cache.textStringFS then
+            addon.BarsTextures.applyHealthTextColor(cache.textStringFS, unit, valueCfg.colorMode == "valueDark")
         end
     end
 

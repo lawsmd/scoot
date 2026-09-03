@@ -6,6 +6,11 @@
 
 local addonName, addon = ...
 
+-- Health text opts for ResolveColorRGBA. The sniff pair keeps the historical
+-- behavior: nil mode or an explicit "default" with a stored non-white color
+-- applies that color; no barKind, so a class miss stays white, not green
+local ufHealthTextColorOpts = { legacySniff = true, legacySniffDefault = true }
+
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
@@ -312,35 +317,22 @@ do
 
         -- Resolve color based on colorMode
         local colorMode = styleCfg.colorMode or "default"
-        local c
-        if colorMode == "class" then
-            -- Extract unit token from baselineKey (e.g., "Player:left" → "player")
-            local unitToken = baselineKey and baselineKey:match("^(.-):")
-            if unitToken then unitToken = unitToken:lower() end
-            local cr, cg, cb = addon.GetClassColorRGB(unitToken or "player")
-            c = {cr or 1, cg or 1, cb or 1, 1}
-        elseif colorMode == "value" then
+        -- Extract unit token from baselineKey (e.g., "Player:left" -> "player")
+        local unitToken = baselineKey and baselineKey:match("^(.-):")
+        if unitToken then unitToken = unitToken:lower() end
+        if addon.IsValueColorMode(colorMode) then
             -- "Color by Value": use health-based color curve (secret-safe)
-            local unitToken = baselineKey and baselineKey:match("^(.-):")
-            if unitToken then unitToken = unitToken:lower() end
             if unitToken and addon.BarsTextures and addon.BarsTextures.applyHealthTextColor then
-                addon.BarsTextures.applyHealthTextColor(fs, unitToken)
-            else
-                c = {0, 1, 0, 1} -- fallback green
+                addon.BarsTextures.applyHealthTextColor(fs, unitToken, colorMode == "valueDark")
+            elseif fs.SetTextColor then
+                pcall(fs.SetTextColor, fs, 0, 1, 0, 1) -- fallback green
             end
-        elseif colorMode == "custom" then
-            c = styleCfg.color or {1, 1, 1, 1}
         else
-            -- "default" or nil: backward compat - use custom color if non-white, else white
-            local raw = styleCfg.color
-            if raw and (raw[1] ~= 1 or raw[2] ~= 1 or raw[3] ~= 1 or (raw[4] or 1) ~= 1) then
-                c = raw
-            else
-                c = {1, 1, 1, 1}
+            ufHealthTextColorOpts.unitForClass = unitToken or "player"
+            local cr, cg, cb, ca = addon.ResolveColorRGBA(colorMode, styleCfg.color, ufHealthTextColorOpts)
+            if fs.SetTextColor then
+                pcall(fs.SetTextColor, fs, cr, cg, cb, ca)
             end
-        end
-        if c and fs.SetTextColor then
-            pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
         end
 
         -- Only modify layout if alignment or offset is explicitly configured (avoids

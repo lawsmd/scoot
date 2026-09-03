@@ -237,31 +237,14 @@ local function isDruidTextVisible(db, textType)
 end
 
 -- Apply text styling from component settings (per-text independent settings)
-local function resolveColorMode(colorMode, rawColor, overlayType)
-    -- Backward compat: existing custom color without mode = treat as custom
-    if not colorMode then
-        local c = rawColor
-        if c and (c[1] ~= 1 or c[2] ~= 1 or c[3] ~= 1 or (c[4] or 1) ~= 1) then
-            colorMode = "custom"
-        else
-            colorMode = "default"
-        end
-    end
-
-    if colorMode == "class" then
-        local cr, cg, cb = addon.GetClassColorRGB("player")
-        return {cr or 1, cg or 1, cb or 1, 1}
-    elseif colorMode == "classPower" and overlayType == "power" then
-        local pr, pg, pb = addon.GetPowerColorRGB("player")
-        return {pr or 1, pg or 1, pb or 1, 1}
-    elseif colorMode == "dkSpec" and overlayType == "power" then
-        local dr, dg, db = addon.GetDKSpecColorRGB()
-        return {dr or 1, dg or 1, db or 1, 1}
-    elseif colorMode == "custom" then
-        return rawColor or {1, 1, 1, 1}
-    else
-        return {1, 1, 1, 1}
-    end
+local prdTextColorOpts = { legacySniff = true }
+local function resolveColorModeRGBA(colorMode, rawColor, overlayType)
+    -- classPower and dkSpec apply on the power overlay only; on any other
+    -- overlay they fall through to the default branch (white), as before
+    local isPower = (overlayType == "power")
+    prdTextColorOpts.classPowerMode = isPower
+    prdTextColorOpts.dkSpecMode = isPower
+    return addon.ResolveColorRGBA(colorMode, rawColor, prdTextColorOpts)
 end
 
 local function applyTextStyle(leftText, rightText, component, overlayType)
@@ -279,11 +262,11 @@ local function applyTextStyle(leftText, rightText, component, overlayType)
             function() return db.percentTextColorMode end,
             function() return db.percentTextColorModeDK end
         )
-        local color = resolveColorMode(effectivePercentMode, db.percentTextColor, overlayType)
+        local cr, cg, cb, ca = resolveColorModeRGBA(effectivePercentMode, db.percentTextColor, overlayType)
         local align = db.percentTextAlignment or "LEFT"
         local path = resolveFontPath(font)
         addon.ApplyFontStyle(leftText, path, size, flags)
-        pcall(leftText.SetTextColor, leftText, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
+        pcall(leftText.SetTextColor, leftText, cr, cg, cb, ca)
         pcall(leftText.SetJustifyH, leftText, align)
         if storage then
             applyTextAlignment(leftText, storage.overlay, align)
@@ -299,11 +282,11 @@ local function applyTextStyle(leftText, rightText, component, overlayType)
             function() return db.valueTextColorMode end,
             function() return db.valueTextColorModeDK end
         )
-        local color = resolveColorMode(effectiveValueMode, db.valueTextColor, overlayType)
+        local cr, cg, cb, ca = resolveColorModeRGBA(effectiveValueMode, db.valueTextColor, overlayType)
         local align = db.valueTextAlignment or "RIGHT"
         local path = resolveFontPath(font)
         addon.ApplyFontStyle(rightText, path, size, flags)
-        pcall(rightText.SetTextColor, rightText, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
+        pcall(rightText.SetTextColor, rightText, cr, cg, cb, ca)
         pcall(rightText.SetJustifyH, rightText, align)
         if storage then
             applyTextAlignment(rightText, storage.overlay, align)

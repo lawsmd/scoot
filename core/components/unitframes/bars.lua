@@ -1,6 +1,9 @@
 -- bars.lua: Unit Frame bar styling orchestrator. Delegates to bars/ submodules.
 
 local addonName, addon = ...
+
+-- APB text opts for ResolveColorRGBA (classPower with the mana lighten; no dkSpec)
+local apbTextColorOpts = { classPowerMode = true, lightenMana = true }
 local Util = addon.ComponentsUtil
 local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
 local ClampOpacity = Util.ClampOpacity
@@ -2244,33 +2247,12 @@ do
                             if fsState then fsState.applyingFont = true end
                             if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, outline) elseif fs.SetFont then pcall(fs.SetFont, fs, face, size, outline) end
                             if fsState then fsState.applyingFont = nil end
-                            -- Determine effective color based on colorMode
-                            local c = styleCfg.color or {1, 1, 1, 1}
+                            -- Determine effective color based on colorMode. dkSpecMode stays off:
+                            -- this dialect never resolved dkSpec (APB text offers classPower only)
                             local colorMode = styleCfg.colorMode or "default"
-                            if colorMode == "classPower" then
-                                -- Use the class's power bar color (Energy = yellow, Rage = red, Mana = blue, etc.)
-                                if addon.GetPowerColorRGB then
-                                    local pr, pg, pb = addon.GetPowerColorRGB("player")
-                                    -- Lighten mana blue for text readability (mana = powerType 0)
-                                    local powerType = UnitPowerType("player")
-                                    if powerType == 0 then -- MANA
-                                        local lightenFactor = 0.25
-                                        pr = (pr or 0) + (1 - (pr or 0)) * lightenFactor
-                                        pg = (pg or 0) + (1 - (pg or 0)) * lightenFactor
-                                        pb = (pb or 0) + (1 - (pb or 0)) * lightenFactor
-                                    end
-                                    c = {pr or 1, pg or 1, pb or 1, 1}
-                                end
-                            elseif colorMode == "class" then
-                                local cr, cg, cb = addon.GetClassColorRGB("player")
-                                c = {cr or 1, cg or 1, cb or 1, 1}
-                            elseif colorMode == "default" then
-                                -- Default white for Blizzard's standard bar text color
-                                c = {1, 1, 1, 1}
-                            end
-                            -- colorMode == "custom" uses styleCfg.color as-is
+                            local cr2, cg2, cb2, ca2 = addon.ResolveColorRGBA(colorMode, styleCfg.color, apbTextColorOpts)
                             if fs.SetTextColor then
-                                pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+                                pcall(fs.SetTextColor, fs, cr2, cg2, cb2, ca2)
                             end
 
                             -- Apply text alignment using two-point anchoring (matches text.lua pattern).
