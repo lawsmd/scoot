@@ -122,17 +122,7 @@ local function GetCurrentFont(fs)
 end
 
 local function IsEditModeActive()
-    local mgr = _G.EditModeManagerFrame
-    if not mgr then return false end
-    if mgr.IsEditModeActive then
-        local ok, active = pcall(mgr.IsEditModeActive, mgr)
-        if ok then return active == true end
-    end
-    if mgr.IsShown then
-        local ok, shown = pcall(mgr.IsShown, mgr)
-        if ok then return shown == true end
-    end
-    return false
+    return addon.EditMode.IsEditModeActiveOrOpening()
 end
 
 local function GetObjectiveTrackerTextSize(componentSelf, preferLiveFontObject)

@@ -35,6 +35,7 @@ core/petbattle.lua
 core/colors.lua
 core/fonts.lua
 core/fontpair.lua
+core/abbrev.lua
 core/colorramp.lua
 core/blindfit.lua
 core/barborders.lua

@@ -6,29 +6,9 @@ local DMY = addon.DamageMetersY
 -- Number Formatting
 --------------------------------------------------------------------------------
 
-local function FloorPart(n, sig, frac)
-    local v = math.floor(n / sig) / frac
-    if frac > 1 then
-        local s = string.format("%.1f", v)
-        return (s:gsub("%.0$", ""))  -- "2.0" → "2", matching engine output
-    end
-    return string.format("%d", v)
-end
-
--- Mirrors the AbbreviateNumbers breakpoint config (floor-pair semantics) so
--- drilldown rows, the settings preview, and the degraded fallback match the
--- live meter. Keep in sync with BuildBreakpointTable below.
-function DMY._FormatCompact(n)
-    n = tonumber(n)
-    if not n or n ~= n or n <= 0 then return "0" end
-    if n >= 1e10 then return FloorPart(n, 1e9, 1) .. "B"
-    elseif n >= 1e9 then return FloorPart(n, 1e8, 10) .. "B"
-    elseif n >= 1e7 then return FloorPart(n, 1e6, 1) .. "M"
-    elseif n >= 1e6 then return FloorPart(n, 1e5, 10) .. "M"
-    elseif n >= 1e4 then return FloorPart(n, 1e3, 1) .. "K"
-    elseif n >= 1e3 then return FloorPart(n, 1e2, 10) .. "K"
-    else return string.format("%d", math.floor(n)) end
-end
+-- The shared floor-pair formatter (core/abbrev.lua) keeps drilldown rows,
+-- the settings preview, and the degraded fallback matching the live meter.
+DMY._FormatCompact = addon.FormatCompactNumber
 
 function DMY._FormatDuration(sec)
     if not sec or sec <= 0 then return "0:00" end
@@ -703,59 +683,15 @@ end
 --------------------------------------------------------------------------------
 -- Unified number abbreviation (same function used OOC and in combat)
 --
--- Root cause of the old sub-1K raw-float bug (fixed 2026-07): the previous
--- breakpoint table omitted the REQUIRED significandDivisor field
--- (NumberAbbreviationBreakpoint requires breakpoint, abbreviation,
--- significandDivisor, fractionDivisor; formula:
---   floor(value / significandDivisor) / fractionDivisor).
--- CreateAbbreviateConfig raised a validation error that pcall swallowed,
--- _abbrevOpts stayed nil, and AbbreviateNumbers(value, nil) used the engine
--- DEFAULT breakpoints, which have no base (breakpoint=1) entry — so sub-1K
--- amountPerSecond floats passed through raw ("999.989898989898").
--- The fixed table supplies both divisors plus a base entry so sub-1K floats
--- floor to integers. Creation errors are kept in DMY._abbrevError for
--- inspection via /scoot debug dmY abbrev.
+-- The breakpoint builder and the bp=1-then-bp=10 retry ladder live in
+-- core/abbrev.lua (the sub-1K raw-float root cause and the restricted-
+-- validation retry are documented there). DMY's containment for the bp=10
+-- degraded shape: values below 10 pass through raw but sit inside the fixed
+-- value-text widths (layout.lua). Creation errors are kept in
+-- DMY._abbrevError for inspection via /scoot debug dmY abbrev.
 --------------------------------------------------------------------------------
 
-local function BaseBreakpoint()
-    -- Floors sub-1K values to whole numbers ("999", not "999.9898...").
-    return { breakpoint = 1, abbreviation = "",
-             significandDivisor = 1, fractionDivisor = 1,
-             abbreviationIsGlobal = false }
-end
-
-local function BuildBreakpointTable()
-    local t
-    -- Prefer live engine defaults (locale-correct); copy, never mutate the API table.
-    if C_StringUtil and C_StringUtil.GetDefaultAbbreviationBreakpoints then
-        local ok, defaults = pcall(C_StringUtil.GetDefaultAbbreviationBreakpoints)
-        if ok and type(defaults) == "table" and #defaults > 0 then
-            t = {}
-            for i, bp in ipairs(defaults) do
-                t[i] = { breakpoint = bp.breakpoint, abbreviation = bp.abbreviation,
-                         significandDivisor = bp.significandDivisor,
-                         fractionDivisor = bp.fractionDivisor,
-                         abbreviationIsGlobal = bp.abbreviationIsGlobal }
-            end
-        end
-    end
-    if not t then
-        -- Hand-authored mirror of the classic paired defaults (enUS-style)
-        t = {
-            { breakpoint = 1e10, abbreviation = "B", significandDivisor = 1e9, fractionDivisor = 1,  abbreviationIsGlobal = false },
-            { breakpoint = 1e9,  abbreviation = "B", significandDivisor = 1e8, fractionDivisor = 10, abbreviationIsGlobal = false },
-            { breakpoint = 1e7,  abbreviation = "M", significandDivisor = 1e6, fractionDivisor = 1,  abbreviationIsGlobal = false },
-            { breakpoint = 1e6,  abbreviation = "M", significandDivisor = 1e5, fractionDivisor = 10, abbreviationIsGlobal = false },
-            { breakpoint = 1e4,  abbreviation = "K", significandDivisor = 1e3, fractionDivisor = 1,  abbreviationIsGlobal = false },
-            { breakpoint = 1e3,  abbreviation = "K", significandDivisor = 1e2, fractionDivisor = 10, abbreviationIsGlobal = false },
-        }
-    end
-    t[#t + 1] = BaseBreakpoint()
-    -- NumberAbbrevOptions docs: "Order these from largest to smallest."
-    table.sort(t, function(a, b) return a.breakpoint > b.breakpoint end)
-    return t
-end
-DMY._BuildBreakpointTable = BuildBreakpointTable   -- used by the debug battery
+DMY._BuildBreakpointTable = addon.GetDefaultAbbrevBreakpoints   -- used by the debug battery
 
 DMY._abbrevError = nil
 local _abbrevOpts = nil
@@ -763,28 +699,7 @@ local _abbrevBuildTried = false
 
 function DMY._RebuildAbbrevConfig()
     _abbrevBuildTried = true
-    _abbrevOpts, DMY._abbrevError = nil, nil
-    if not CreateAbbreviateConfig then
-        DMY._abbrevError = "CreateAbbreviateConfig API missing"
-        return nil
-    end
-    local ok, result = pcall(CreateAbbreviateConfig, BuildBreakpointTable())
-    if ok and result then
-        _abbrevOpts = { config = result }
-        return _abbrevOpts
-    end
-    DMY._abbrevError = "bp=1: " .. tostring(result)
-    -- breakpoint=1 may trip restricted validation (NotMultipleOfTen); retry bp=10.
-    -- Values below 10 then pass through raw but are contained by the fixed
-    -- value-text widths (layout.lua).
-    local retry = BuildBreakpointTable()
-    retry[#retry].breakpoint = 10
-    ok, result = pcall(CreateAbbreviateConfig, retry)
-    if ok and result then
-        _abbrevOpts = { config = result }
-    else
-        DMY._abbrevError = DMY._abbrevError .. " | bp=10: " .. tostring(result)
-    end
+    _abbrevOpts, DMY._abbrevError = addon.CreateAbbrevConfig(addon.GetDefaultAbbrevBreakpoints)
     return _abbrevOpts
 end
 

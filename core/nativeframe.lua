@@ -77,15 +77,16 @@ local function Holder()
     return holder
 end
 
---- True while Blizzard's Edit Mode manager is on screen.
+--- True while Blizzard's Edit Mode manager is on screen, opening, or exiting.
 ---
 --- Re-parenting is banned in that window. SetParent runs Blizzard's layout
 --- handlers synchronously, in addon execution, and the Edit Mode manager carries
 --- state into its next pass -- so a re-parent from addon context there taints the
 --- manager rather than just the frame. Every skipped write is picked up by
---- Reapply() on Edit Mode close.
+--- Reapply() on Edit Mode close. The canonical check covers the opening and
+--- exiting transition windows, which the old IsShown-only probe missed.
 local function EditModeOpen()
-    return EditModeManagerFrame ~= nil and EditModeManagerFrame:IsShown()
+    return addon.EditMode.IsEditModeActiveOrOpening()
 end
 
 local function Resolve(frame)

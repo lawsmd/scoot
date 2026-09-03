@@ -261,14 +261,11 @@ function addon.GatherDamageMeterExportData(sessionType, primaryMeterType, sessio
         if ok then duration = dur end
     end
 
-    -- Helpers
-    local function FormatNumber(n)
-        if not n or n == 0 then return "0" end
-        if n >= 1000000000 then return string.format("%.1fB", n / 1000000000)
-        elseif n >= 1000000 then return string.format("%.1fM", n / 1000000)
-        elseif n >= 1000 then return string.format("%.1fK", n / 1000)
-        else return string.format("%.0f", n) end
-    end
+    -- Helpers. The shared floor-pair formatter keeps exported numbers matching
+    -- the DamageMetersY on-screen meter (the old inline copy here predated the
+    -- 2026-07 sub-1K fix: it rounded where the meter floors, so exports like
+    -- "45.7K" disagreed with the rendered "45.6K").
+    local FormatNumber = addon.FormatCompactNumber
 
     local function FormatDuration(sec)
         if not sec or sec <= 0 then return "0s" end

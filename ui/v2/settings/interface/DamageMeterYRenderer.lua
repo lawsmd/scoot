@@ -627,7 +627,9 @@ function DMYSettings.Render(panel, scrollContent)
     -- Sizing (per-window) — first because it's per-window and most relevant to selected window
     local function getWinSizing(key, default)
         local winCfg = DMY and DMY._GetWindowConfig and DMY._GetWindowConfig(selectedWindow)
-        return winCfg and winCfg[key] or default
+        local v = winCfg and winCfg[key]
+        if v == nil then return default end
+        return v
     end
     local function setWinSizing(key, value)
         -- Shared write path with the Edit Mode mirror (validates + clamps +

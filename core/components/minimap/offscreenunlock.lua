@@ -121,17 +121,7 @@ local function _ResetNudgeTracking()
 end
 
 local function _IsEditModeActive()
-    local mgr = _G.EditModeManagerFrame
-    if not mgr then return false end
-    if mgr.IsEditModeActive then
-        local ok, v = pcall(mgr.IsEditModeActive, mgr)
-        if ok then return v == true end
-    end
-    -- Fallback (best-effort; varies by build)
-    if rawget(mgr, "editModeActive") ~= nil then
-        return mgr.editModeActive == true
-    end
-    return false
+    return addon.EditMode.IsEditModeActiveOrOpening()
 end
 
 local function _InstallOffscreenEnforcementHooks(frame)

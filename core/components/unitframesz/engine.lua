@@ -76,38 +76,19 @@ local function BuildHealthBreakpoints()
     }
 end
 
-local abbrevOpts, abbrevError, abbrevTier = nil, nil, nil
+local abbrevOpts = nil
 local abbrevBuildTried = false
-
-local ABBREV_BITMASK_LEGEND =
-    "InvalidBreakpoint=1 InvalidSignificandDivisor=2 InvalidFractionDivisor=4 NotMultipleOfTen=8"
 
 -- Idempotent, so one instance's Probe re-running it while the other instance's
 -- update() reads it is harmless: abbrevBuildTried is set synchronously and the
--- rebuilt config is equivalent.
+-- rebuilt config is equivalent. The retry ladder lives in core/abbrev.lua; on
+-- the bp=10 degraded shape, health is an integer, so values 0-9 pass through
+-- raw and render fine. The error string is discarded here (the old abbrevError
+-- and abbrevTier locals were write-only, vestiges of the retired debug
+-- harness).
 local function rebuildAbbrevConfig()
     abbrevBuildTried = true
-    abbrevOpts, abbrevError, abbrevTier = nil, nil, nil
-    if not _G.CreateAbbreviateConfig then
-        abbrevError = "CreateAbbreviateConfig API missing"
-        return nil
-    end
-    local ok, result = pcall(CreateAbbreviateConfig, BuildHealthBreakpoints())
-    if ok and result then
-        abbrevOpts, abbrevTier = { config = result }, "bp=1"
-        return abbrevOpts
-    end
-    abbrevError = "bp=1: " .. tostring(result)
-    -- breakpoint=1 may trip restricted validation (NotMultipleOfTen); retry bp=10.
-    -- Health is an integer, so values 0-9 then pass through raw and render fine.
-    local retry = BuildHealthBreakpoints()
-    retry[#retry].breakpoint = 10
-    ok, result = pcall(CreateAbbreviateConfig, retry)
-    if ok and result then
-        abbrevOpts, abbrevTier = { config = result }, "bp=10"
-    else
-        abbrevError = abbrevError .. " | bp=10: " .. tostring(result)
-    end
+    abbrevOpts = addon.CreateAbbrevConfig(BuildHealthBreakpoints)
     return abbrevOpts
 end
 

@@ -502,6 +502,10 @@ end
 -- Edit Mode guard
 --------------------------------------------------------------------------------
 
+-- Kept as a deliberate widening of the canonical check (refactor #31,
+-- 2026-09-02): the IsShown fallback below works around EventRegistry
+-- callbacks that lag or fail to fire. Do not collapse this to the canonical
+-- alone while that behavior exists.
 local function IsEditModeOpen()
     -- Primary: Scoot's EventRegistry-driven flag.
     if addon.EditMode and addon.EditMode.IsEditModeActiveOrOpening
