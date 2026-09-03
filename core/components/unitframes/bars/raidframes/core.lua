@@ -8,6 +8,9 @@
 
 local addonName, addon = ...
 
+-- Scratch opts for ResolveColorRGBA: per-call fields overwritten before each call
+local gfColorOpts = {}
+
 -- Get modules
 local Utils = addon.BarsUtils
 local Combat = addon.BarsCombat
@@ -225,8 +228,6 @@ local function styleHealthOverlay(bar, cfg)
         else
             r, g, b, a = 0, 1, 0, 1  -- Green
         end
-    elseif colorMode == "custom" and type(tint) == "table" then
-        r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
     elseif colorMode == "class" then
         local unit
         local parentFrame = bar.GetParent and bar:GetParent()
@@ -234,21 +235,21 @@ local function styleHealthOverlay(bar, cfg)
             local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
             if okU and u then unit = u end
         end
-        if addon.GetClassColorRGB and unit then
-            local cr, cg, cb = addon.GetClassColorRGB(unit)
-            r, g, b, a = cr or 1, cg or 1, cb or 1, 1
+        -- No unit yet: stay white until the roster pass re-styles; a class
+        -- miss stays white too (no green fallback on member frames)
+        if unit then
+            gfColorOpts.barKind = nil
+            gfColorOpts.unitForClass = unit
+            r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, gfColorOpts)
         end
-    elseif colorMode == "texture" then
-        r, g, b, a = 1, 1, 1, 1
     else
-        -- "default" mode: Use known health default color instead of reading from
-        -- Blizzard's bar (GetStatusBarColor can return uninitialized/secret values)
-        if addon.GetDefaultHealthColorRGB then
-            local hr, hg, hb = addon.GetDefaultHealthColorRGB()
-            r, g, b = hr or 0, hg or 1, hb or 0
-        else
-            r, g, b = 0, 1, 0  -- Fallback green
-        end
+        -- custom, texture, "default", and unknown modes; custom with no
+        -- stored tint keeps falling to the default green, as before
+        local mode = colorMode
+        if mode == "custom" and type(tint) ~= "table" then mode = "default" end
+        gfColorOpts.barKind = "health"
+        gfColorOpts.unitForClass = nil
+        r, g, b, a = addon.ResolveColorRGBA(mode, tint, gfColorOpts)
     end
     overlay:SetVertexColor(r, g, b, a)
 end
@@ -409,25 +410,15 @@ function RaidFrames.ensureHealthOverlay(bar, cfg)
                             local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
                             if okU and u then unit = u end
                         end
-                        if addon.GetClassColorRGB and unit then
-                            local ccr, ccg, ccb = addon.GetClassColorRGB(unit)
-                            cr, cg, cb = ccr or 1, ccg or 1, ccb or 1
+                        if unit then
+                            gfColorOpts.barKind = nil
+                            gfColorOpts.unitForClass = unit
+                            cr, cg, cb, ca = addon.ResolveColorRGBA(colorMode, nil, gfColorOpts)
                         end
-                    elseif colorMode == "custom" then
-                        local tint = cfg and cfg.healthBarTint
-                        if type(tint) == "table" then
-                            cr, cg, cb, ca = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-                        end
-                    elseif colorMode == "texture" then
-                        cr, cg, cb, ca = 1, 1, 1, 1
                     else
-                        -- "default" mode
-                        if addon.GetDefaultHealthColorRGB then
-                            local hr, hg, hb = addon.GetDefaultHealthColorRGB()
-                            cr, cg, cb = hr or 0, hg or 1, hb or 0
-                        else
-                            cr, cg, cb = 0, 1, 0
-                        end
+                        gfColorOpts.barKind = "health"
+                        gfColorOpts.unitForClass = nil
+                        cr, cg, cb, ca = addon.ResolveColorRGBA(colorMode, cfg and cfg.healthBarTint, gfColorOpts)
                     end
                     pcall(overlay.SetVertexColor, overlay, cr, cg, cb, ca)
                 end

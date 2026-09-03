@@ -9,6 +9,9 @@
 
 local addonName, addon = ...
 
+-- Scratch opts for ResolveColorRGBA (name overlay text; no barKind)
+local gfTextColorOpts = {}
+
 -- Get modules
 local Utils = addon.BarsUtils
 local Combat = addon.BarsCombat
@@ -204,19 +207,11 @@ local function stylePartyNameOverlay(frame, cfg)
     -- Determine color based on colorMode
     local colorMode = cfg.colorMode or "default"
     local r, g, b, a = 1, 1, 1, 1
-    if colorMode == "class" then
-        -- Use the party member's class color
-        local unit = frame.unit
-        if addon.GetClassColorRGB and unit then
-            local cr, cg, cb = addon.GetClassColorRGB(unit)
-            r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-        end
-    elseif colorMode == "custom" then
-        local color = cfg.color or { 1, 1, 1, 1 }
-        r, g, b, a = color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1
-    else
-        -- "default" - use white
-        r, g, b, a = 1, 1, 1, 1
+    -- No barKind: text default is white, and a class miss stays white; class
+    -- with no unit skips the resolve until roster data arrives
+    if colorMode ~= "class" or frame.unit then
+        gfTextColorOpts.unitForClass = frame.unit
+        r, g, b, a = addon.ResolveColorRGBA(colorMode, cfg.color, gfTextColorOpts)
     end
 
     -- Apply color
@@ -402,17 +397,8 @@ local function ensurePartyNameOverlay(frame, cfg)
     local fpColorMode = cfg.colorMode or "default"
     local classKey = ""
     if fpColorMode == "class" and frame.unit then
-        -- 12.1: UnitClassBase/UnitClass can return secrets for group members;
-        -- issecretvalue before any truthiness test (boolean-testing a secret throws)
-        local token = UnitClassBase and UnitClassBase(frame.unit)
-        if issecretvalue(token) then token = nil end
-        if not token then
-            local ok, _, rawToken = pcall(function() return UnitClass(frame.unit) end)
-            if ok and not issecretvalue(rawToken) and rawToken then
-                token = rawToken
-            end
-        end
-        if type(token) == "string" then
+        local token = addon.GetClassTokenForUnit(frame.unit)
+        if token then
             classKey = token
         end
     end

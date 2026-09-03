@@ -165,14 +165,16 @@ function addon.GetClassTokenForUnit(unitOrClassToken)
 			-- UnitClassBase (12.0): returns nothing from tainted context (not secrets)
 			if UnitClassBase then
 				local token = UnitClassBase(unitOrClassToken)
-				if token and type(token) == "string" and not issecretvalue(token) then
+				-- issecretvalue before any truthiness test: boolean-testing a
+				-- secret throws (12.1, seen on group members)
+				if not issecretvalue(token) and token and type(token) == "string" then
 					classToken = token
 				end
 			end
 			-- Fallback: UnitClass with secret guard
 			if not classToken and UnitClass then
 				local ok, _, token = pcall(function() return UnitClass(unitOrClassToken) end)
-				if ok and token and type(token) == "string" and not issecretvalue(token) then
+				if ok and not issecretvalue(token) and token and type(token) == "string" then
 					classToken = token
 				end
 			end
