@@ -258,7 +258,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
         local yTop = -(PREVIEW_HEADER_HEIGHT + 1 + PREVIEW_PADDING + (rowIdx - 1) * (PREVIEW_BAR_HEIGHT + PREVIEW_BAR_SPACING))
 
         -- Class color
-        local classColor = addon.ClassColors and addon.ClassColors[player.classFilename]
+        local classColor = addon.GetClassColorObj(player.classFilename)
         local cr, cg, cb = 0.6, 0.6, 0.6
         if db.barForegroundColorMode == "custom" then
             local cc = db.barCustomColor or { 0.8, 0.7, 0.2, 1 }
@@ -289,7 +289,7 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
         -- Name color: respect colorMode setting
         local nameColorMode = fontNames.colorMode or "default"
         if nameColorMode == "class" then
-            local classColor = addon.ClassColors and addon.ClassColors[player.classFilename]
+            local classColor = addon.GetClassColorObj(player.classFilename)
             if classColor then
                 nameText:SetTextColor(classColor.r or 1, classColor.g or 1, classColor.b or 1, 1)
             else

@@ -116,7 +116,7 @@ function DMY._GetAttackerColor(details)
 
     -- Real player (rare in DamageTaken but possible for PvP/duels)
     if not details.isMob and details.unitClassFilename and details.unitClassFilename ~= "" then
-        local cc = addon.ClassColors and addon.ClassColors[details.unitClassFilename]
+        local cc = addon.GetClassColorObj(details.unitClassFilename)
         if cc then return cc.r or 1, cc.g or 1, cc.b or 1 end
     end
 
@@ -192,7 +192,7 @@ local function DeathViewWidth(dd)
 end
 
 local function GetClassColorTable(classFilename)
-    local cc = classFilename and addon.ClassColors and addon.ClassColors[classFilename]
+    local cc = classFilename and addon.GetClassColorObj(classFilename)
     if cc then return { cc.r or 1, cc.g or 1, cc.b or 1 } end
     return nil
 end
@@ -666,7 +666,7 @@ function DMY._PopulateDrilldownPopup(menu, spellData)
     local title = (dd.sourceName or "Unknown") .. "  —  " .. GetMetricLabel(dd.meterType)
     local classColor = nil
     if dd.classFilename then
-        local cc = addon.ClassColors and addon.ClassColors[dd.classFilename]
+        local cc = addon.GetClassColorObj(dd.classFilename)
         if cc then classColor = { cc.r or 1, cc.g or 1, cc.b or 1 } end
     end
     menu:AddHeaderBar(title, classColor, function() DMY._CloseDrilldown() end)
@@ -687,7 +687,7 @@ function DMY._PopulateDrilldownPopup(menu, spellData)
     -- Player's class color for bar fills
     local barR, barG, barB = 0.6, 0.6, 0.6
     if dd.classFilename then
-        local cc = addon.ClassColors and addon.ClassColors[dd.classFilename]
+        local cc = addon.GetClassColorObj(dd.classFilename)
         if cc then barR, barG, barB = cc.r or 0.6, cc.g or 0.6, cc.b or 0.6 end
     end
 
@@ -765,7 +765,7 @@ function DMY._PopulateDrilldownPopupCombat(menu, spellData)
     local title = (dd.sourceName or "Unknown") .. "  —  " .. GetMetricLabel(dd.meterType)
     local classColor = nil
     if dd.classFilename then
-        local cc = addon.ClassColors and addon.ClassColors[dd.classFilename]
+        local cc = addon.GetClassColorObj(dd.classFilename)
         if cc then classColor = { cc.r or 1, cc.g or 1, cc.b or 1 } end
     end
     menu:AddHeaderBar(title, classColor, function() DMY._CloseDrilldown() end)
@@ -773,7 +773,7 @@ function DMY._PopulateDrilldownPopupCombat(menu, spellData)
 
     local barR, barG, barB = 0.6, 0.6, 0.6
     if dd.classFilename then
-        local cc = addon.ClassColors and addon.ClassColors[dd.classFilename]
+        local cc = addon.GetClassColorObj(dd.classFilename)
         if cc then barR, barG, barB = cc.r or 0.6, cc.g or 0.6, cc.b or 0.6 end
     end
 
@@ -836,7 +836,7 @@ function DMY._ShowPendingState(menu)
     local title = (dd.sourceName or "Loading…") .. "  —  " .. GetMetricLabel(dd.meterType or 1)
     local classColor = nil
     if dd.classFilename then
-        local cc = addon.ClassColors and addon.ClassColors[dd.classFilename]
+        local cc = addon.GetClassColorObj(dd.classFilename)
         if cc then classColor = { cc.r or 1, cc.g or 1, cc.b or 1 } end
     end
     menu:AddHeaderBar(title, classColor, function() DMY._CloseDrilldown() end)

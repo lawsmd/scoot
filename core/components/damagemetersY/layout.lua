@@ -498,7 +498,7 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
     local nameSettings = addon:ResolveComponentSubTable(DMY._comp, "textNames") or {}
     local nameColorMode = nameSettings.colorMode or "default"
     if nameColorMode == "class" and player.classFilename then
-        local classColor = addon.ClassColors and addon.ClassColors[player.classFilename]
+        local classColor = addon.GetClassColorObj(player.classFilename)
         if classColor then
             row.nameText:SetTextColor(classColor.r or 1, classColor.g or 1, classColor.b or 1, 1)
         end

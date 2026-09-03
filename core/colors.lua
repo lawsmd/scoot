@@ -192,17 +192,24 @@ function addon.GetClassTokenForUnit(unitOrClassToken)
 	return classToken
 end
 
+-- Class color table for a bare class token, or nil. For consumers that keep
+-- the {r,g,b} object (keyed data rows); unit tokens are not resolved here.
+-- CUSTOM_CLASS_COLORS must come before the static table: the static table
+-- covers all 13 classes, so any later position would mask it. Without a
+-- class-color addon the global is nil and the chain behaves as before.
+function addon.GetClassColorObj(classToken)
+	if type(classToken) ~= "string" or issecretvalue(classToken) then return nil end
+	return (_G.CUSTOM_CLASS_COLORS and _G.CUSTOM_CLASS_COLORS[classToken])
+		or addon.ClassColors[classToken]
+		or (_G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classToken])
+end
+
 function addon.GetClassColorRGB(unitOrClassToken)
 	local classToken = addon.GetClassTokenForUnit(unitOrClassToken)
 	if not classToken then
 		return nil, nil, nil -- no class resolved; callers decide fallback
 	end
-	-- CUSTOM_CLASS_COLORS must come before the static table: the static table
-	-- covers all 13 classes, so any later position would mask it. Without a
-	-- class-color addon the global is nil and the chain behaves as before.
-	local c = _G.CUSTOM_CLASS_COLORS and _G.CUSTOM_CLASS_COLORS[classToken]
-	if not c then c = addon.ClassColors[classToken] end
-	if not c and _G.RAID_CLASS_COLORS then c = _G.RAID_CLASS_COLORS[classToken] end
+	local c = addon.GetClassColorObj(classToken)
 	if c and c.r and c.g and c.b then return c.r, c.g, c.b end
 	return nil, nil, nil
 end

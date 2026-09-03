@@ -505,7 +505,7 @@ function DMY._CreateFlyoutMenu(menuWidth)
         end
 
         btn._nameFS:SetText(spec.name or "Unknown")
-        local cc = spec.classFilename and addon.ClassColors and addon.ClassColors[spec.classFilename]
+        local cc = spec.classFilename and addon.GetClassColorObj(spec.classFilename)
         if cc then
             btn._nameFS:SetTextColor(cc.r or 1, cc.g or 1, cc.b or 1, 1)
         else

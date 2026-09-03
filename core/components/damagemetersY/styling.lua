@@ -170,7 +170,7 @@ local BarBorders = addon.BarBorders
 local function ResolveBorderColor(player, db)
     local mode = db.barBorderColorMode or "default"
     if mode == "class" and player and player.classFilename then
-        local classColor = addon.ClassColors and addon.ClassColors[player.classFilename]
+        local classColor = addon.GetClassColorObj(player.classFilename)
         if classColor then
             return { classColor.r or 0, classColor.g or 0, classColor.b or 0, 1 }
         end
@@ -324,7 +324,7 @@ function DMY._GetBarColor(player, db)
         return c[1] or 0.8, c[2] or 0.7, c[3] or 0.2
     end
     -- Class color (default)
-    local classColor = addon.ClassColors and addon.ClassColors[player.classFilename]
+    local classColor = addon.GetClassColorObj(player.classFilename)
     if classColor then
         return classColor.r or 0.6, classColor.g or 0.6, classColor.b or 0.6
     end

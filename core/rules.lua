@@ -113,18 +113,6 @@ local function normalizeValue(value, valueType)
     end
 end
 
-local function getClassColorHex(fileID)
-    local colors = (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS) or {}
-    local color = colors[fileID]
-    if not color then
-        return "ffffffff"
-    end
-    local r = math.floor((color.r or 1) * 255 + 0.5)
-    local g = math.floor((color.g or 1) * 255 + 0.5)
-    local b = math.floor((color.b or 1) * 255 + 0.5)
-    return string.format("ff%02x%02x%02x", r, g, b)
-end
-
 local function buildSpecCache()
     if SPEC_CACHE then
         return SPEC_CACHE, SPEC_BY_ID
@@ -144,7 +132,6 @@ local function buildSpecCache()
                 classID = classID,
                 name = className or ("Class " .. tostring(classIndex)),
                 file = classFile,
-                colorHex = getClassColorHex(classFile),
                 specs = {},
             }
 
@@ -155,7 +142,6 @@ local function buildSpecCache()
                     local specEntry = {
                         classID = classID,
                         className = classEntry.name,
-                        classColorHex = classEntry.colorHex,
                         file = classFile,
                         specID = specID,
                         name = specName or ("Spec " .. tostring(specIndex)),
