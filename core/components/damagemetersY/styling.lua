@@ -79,16 +79,15 @@ end
 
 -- Text settings arrive already resolved against their registered defaults (see
 -- ResolveTextSettings below), so there is deliberately no local font fallback
--- here. A second fallback constant in this file is how the original bug hid:
--- the settings panel fell back to ROBOTO_SEMICOND_BOLD for display while this
--- function fell back to FRIZQT__ for rendering, and on a fresh profile -- where
--- Zero-Touch stores nothing -- the panel and the HUD disagreed.
+-- here; the size/style defaults live in the shared opts. A second fallback
+-- constant in this file is how the original bug hid: the settings panel fell
+-- back to ROBOTO_SEMICOND_BOLD for display while this function fell back to
+-- FRIZQT__ for rendering, and on a fresh profile -- where Zero-Touch stores
+-- nothing -- the panel and the HUD disagreed.
+local dmyTextFontOpts = { longKeys = true, size = 12 }
 local function ApplyTextStyle(fs, textSettings)
     if not fs or not textSettings then return end
-    local face = addon.ResolveFontFace(textSettings.fontFace)
-    local size = textSettings.fontSize or 12
-    local style = textSettings.fontStyle or "OUTLINE"
-    addon.ApplyFontStyle(fs, face, size, style)
+    addon.ApplyTextFont(fs, textSettings, dmyTextFontOpts)
 
     if textSettings.colorMode == "custom" and textSettings.color then
         local c = textSettings.color
