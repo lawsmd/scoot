@@ -3201,6 +3201,10 @@ function addon.RestoreAllPartyFrameOverlays()
     if addon.RestorePartyFrameNameOverlays then
         addon.RestorePartyFrameNameOverlays()
     end
+    -- Restore status text overlays
+    if addon.RestorePartyFrameStatusTextOverlays then
+        addon.RestorePartyFrameStatusTextOverlays()
+    end
 end
 
 -- Restore all raid frames to stock Blizzard appearance (profile switch / category reset).
