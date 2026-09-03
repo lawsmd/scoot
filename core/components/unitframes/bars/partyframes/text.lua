@@ -273,55 +273,7 @@ local function hideBlizzardPartyTitleText(titleButton)
     if not titleButton or not titleButton.GetFontString then return end
     local fs = titleButton:GetFontString()
     if not fs then return end
-
-    local fsState = ensureState(fs)
-    if fsState then fsState.hidden = true end
-    if fs.SetAlpha then
-        pcall(fs.SetAlpha, fs, 0)
-    end
-    if fs.Hide then
-        pcall(fs.Hide, fs)
-    end
-
-    -- Install alpha-enforcement hook (only once)
-    if fsState and not fsState.alphaHooked and _G.hooksecurefunc then
-        fsState.alphaHooked = true
-        _G.hooksecurefunc(fs, "SetAlpha", function(self, alpha)
-            local st = getState(self)
-            if alpha > 0 and st and st.hidden then
-                if _G.C_Timer and _G.C_Timer.After then
-                    _G.C_Timer.After(0, function()
-                        local st2 = getState(self)
-                        if self and st2 and st2.hidden then
-                            self:SetAlpha(0)
-                        end
-                    end)
-                end
-            end
-        end)
-    end
-
-    if fsState and not fsState.showHooked and _G.hooksecurefunc then
-        fsState.showHooked = true
-        _G.hooksecurefunc(fs, "Show", function(self)
-            local st = getState(self)
-            if not st or not st.hidden then return end
-            -- Kill visibility immediately (avoid flicker), then defer Hide to break chains.
-            if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
-            if _G.C_Timer and _G.C_Timer.After then
-                _G.C_Timer.After(0, function()
-                    local st2 = getState(self)
-                    if self and st2 and st2.hidden then
-                        if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
-                        if self.Hide then pcall(self.Hide, self) end
-                    end
-                end)
-            else
-                if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
-                if self.Hide then pcall(self.Hide, self) end
-            end
-        end)
-    end
+    addon.BarsTextOverlay.enforceHidden(fs, getState, ensureState)
 end
 
 -- Show Blizzard's party title FontString (for restore/cleanup)
@@ -329,14 +281,7 @@ local function showBlizzardPartyTitleText(titleButton)
     if not titleButton or not titleButton.GetFontString then return end
     local fs = titleButton:GetFontString()
     if not fs then return end
-    local fsState = getState(fs)
-    if fsState then fsState.hidden = nil end
-    if fs.SetAlpha then
-        pcall(fs.SetAlpha, fs, 1)
-    end
-    if fs.Show then
-        pcall(fs.Show, fs)
-    end
+    addon.BarsTextOverlay.releaseHidden(fs, getState)
 end
 
 function addon.ApplyPartyFrameTitleStyle()
