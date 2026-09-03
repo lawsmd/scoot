@@ -325,22 +325,28 @@ end
 -- Introspection for verification: /run ScootAddon.Events.Dump()
 --------------------------------------------------------------------------------
 function Events.Dump()
-    print("|cffa0ff00ScootEvents|r registry:")
+    local lines = {}
     local shown = false
     for event, bucket in pairs(registry) do
-        print(("  %s: %d live"):format(event, bucket.live))
+        lines[#lines + 1] = ("%s: %d live"):format(event, bucket.live)
         shown = true
     end
     if not shown then
-        print("  (no live registrations)")
+        lines[#lines + 1] = "(no live registrations)"
     end
-    print(("  combat queue: %d"):format(#combatQueue))
+    table.sort(lines)
+    lines[#lines + 1] = ("combat queue: %d"):format(#combatQueue)
     if pendingAddons then
         for name, list in pairs(pendingAddons) do
-            print(("  pending addon: %s (%d)"):format(name, #list))
+            lines[#lines + 1] = ("pending addon: %s (%d)"):format(name, #list)
         end
     end
     for event in pairs(unsupported) do
-        print("  unsupported: " .. event)
+        lines[#lines + 1] = "unsupported: " .. event
+    end
+    if addon.DebugShowWindow then
+        addon.DebugShowWindow(("Events (%d)"):format(#lines), lines)
+    else
+        for _, line in ipairs(lines) do print(line) end
     end
 end
