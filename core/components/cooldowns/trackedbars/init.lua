@@ -129,15 +129,11 @@ function TB.getItemCooldownID(item)
 end
 
 function TB.getTrackedBarMode()
-    local comp = addon.Components and addon.Components.trackedBars
-    if not comp or not comp.db then return "default" end
-    return comp.db.barMode or "default"
+    return addon.GetComponentSetting("trackedBars", "barMode") or "default"
 end
 
 function TB.getTrackedBarSetting(key)
-    local comp = addon.Components and addon.Components.trackedBars
-    if not comp or not comp.db then return nil end
-    return comp.db[key]
+    return addon.GetComponentSetting("trackedBars", key)
 end
 
 --------------------------------------------------------------------------------
@@ -430,7 +426,7 @@ local function TrackedBarsApplyStyling(component)
     if not frame then return end
 
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
 
     hookTrackedBars(component)
 

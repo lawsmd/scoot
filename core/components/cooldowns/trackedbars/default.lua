@@ -74,7 +74,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
     if not component or not child then return end
     if component.id ~= "trackedBars" then return end
     -- Zero-Touch: skip styling for unconfigured components
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
     local barFrame = (child.GetBarFrame and child:GetBarFrame()) or child.Bar
     local iconFrame = (child.GetIconFrame and child:GetIconFrame()) or child.Icon
     if not barFrame or not iconFrame then return end

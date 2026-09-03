@@ -1890,7 +1890,7 @@ applyViewerOpacity = function(viewerName, componentId)
 
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
     local component = addon.Components and addon.Components[componentId]
-    if component and component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
 
     local alpha = getViewerOpacityForState(componentId)
 
@@ -2231,7 +2231,7 @@ end
 
 addon.CDMIconApplyStyling = function(component)
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
 
     if addon.RefreshCDMOverlays then
         addon.RefreshCDMOverlays(component.id)

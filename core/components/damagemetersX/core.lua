@@ -628,7 +628,7 @@ addon:RegisterComponentInitializer(function(self)
     local function onDamageMeterEvent(_, event)
         local comp = addon.Components and addon.Components["damageMeter"]
         if not comp or not comp.db then return end
-        if comp._ScootDBProxy and comp.db == comp._ScootDBProxy then return end
+        if addon.IsComponentUnconfigured(comp) then return end
         if event == "DAMAGE_METER_RESET" then
             InvalidateSessionWindowCache()
             dmResetPending = true
@@ -693,7 +693,7 @@ addon:RegisterComponentInitializer(function(self)
             -- Frame just became visible — trigger full restyle
             local comp = addon.Components and addon.Components["damageMeter"]
             if comp and comp.ApplyStyling and not PlayerInCombat() then
-                if not (comp._ScootDBProxy and comp.db == comp._ScootDBProxy) then
+                if not addon.IsComponentUnconfigured(comp) then
                     comp:ApplyStyling()
                 end
             end
@@ -707,7 +707,7 @@ addon:RegisterComponentInitializer(function(self)
             InvalidateSessionWindowCache()
             local comp = addon.Components and addon.Components["damageMeter"]
             if comp and comp.ApplyStyling and not PlayerInCombat() then
-                if not (comp._ScootDBProxy and comp.db == comp._ScootDBProxy) then
+                if not addon.IsComponentUnconfigured(comp) then
                     comp:ApplyStyling()
                 end
             end
@@ -715,7 +715,7 @@ addon:RegisterComponentInitializer(function(self)
         end
         local comp = addon.Components and addon.Components["damageMeter"]
         if not comp or not comp.db then return end
-        if comp._ScootDBProxy and comp.db == comp._ScootDBProxy then return end
+        if addon.IsComponentUnconfigured(comp) then return end
         if PlayerInCombat() then
             DMX._UpdateAllOverlayData(comp)
         else
@@ -729,7 +729,7 @@ addon:RegisterComponentInitializer(function(self)
 
         local comp = addon.Components and addon.Components["damageMeter"]
         if not comp or not comp.db then return end
-        if comp._ScootDBProxy and comp.db == comp._ScootDBProxy then return end
+        if addon.IsComponentUnconfigured(comp) then return end
         local mode = comp.db.autoResetData
         if mode ~= "instance" then return end
 

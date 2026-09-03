@@ -118,7 +118,7 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
     if not frame or not frame.AuraContainer then return end
 
     -- Zero-Touch: if still on proxy DB, do nothing
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
 
     local db = component.db
     if not db then return end
@@ -738,7 +738,7 @@ local function RefreshAuraOpacity(self)
     local frame = _G[self.frameName]
     if not frame then return end
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(self) then return end
     local container = frame.AuraContainer or frame
     if not container or not container.SetAlpha then return end
 
@@ -755,7 +755,7 @@ local function ApplyAuraFrameStyling(self)
     local frame = _G[self.frameName]
     if not frame or not frame.AuraContainer then return end
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(self) then return end
 
     local frameState = getState(frame)
     if hooksecurefunc and frameState and not frameState.auraHooked then

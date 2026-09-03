@@ -742,7 +742,7 @@ function addon:RefreshOpacityState()
     -- Update all components that have opacity settings (CDM, Action Bars, Auras, etc.)
     for id, component in pairs(self.Components) do
         -- Zero-Touch: skip unconfigured components (still on proxy DB)
-        if component._ScootDBProxy and component.db == component._ScootDBProxy then
+        if addon.IsComponentUnconfigured(component) then
             -- no-op: component not configured
         elseif (component.RefreshOpacity or component.ApplyStyling) and component.settings then
             -- Check for opacity settings with various naming conventions:

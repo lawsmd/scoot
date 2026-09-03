@@ -52,7 +52,7 @@ local function applyPRDHealthOpacity()
     local component = addon.Components and addon.Components.prdHealth
     if not component or not component.db then return end
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
 
     -- Skip if bar is hidden
     if component.db.hideBar then return end
@@ -71,7 +71,7 @@ local function applyPRDPowerOpacity()
     local component = addon.Components and addon.Components.prdPower
     if not component or not component.db then return end
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
 
     -- Skip if bar is hidden
     if component.db.hideBar then return end
@@ -89,7 +89,7 @@ local function applyPRDAltPowerOpacity()
     local component = addon.Components and addon.Components.prdAltPower
     if not component or not component.db then return end
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
 
     -- Skip if bar is hidden
     if component.db.hideBar then return end
@@ -107,7 +107,7 @@ local function applyPRDClassResourceOpacity()
     local component = addon.Components and addon.Components.prdClassResource
     if not component or not component.db then return end
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(component) then return end
 
     -- Skip if bar is hidden
     if component.db.hideBar then return end

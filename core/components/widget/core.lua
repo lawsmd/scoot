@@ -59,14 +59,10 @@ local function getComponent()
     return addon.Components and addon.Components["widget"]
 end
 
-local function isOnProxy(comp)
-    return comp and comp._ScootDBProxy and comp.db == comp._ScootDBProxy
-end
+local isOnProxy = addon.IsComponentUnconfigured
 
 local function getSetting(key, fallback)
-    local comp = getComponent()
-    if not comp or not comp.db then return fallback end
-    local v = comp.db[key]
+    local v = addon.GetComponentSetting("widget", key)
     if v == nil then return fallback end
     return v
 end

@@ -76,7 +76,7 @@ local function getMinimapDB()
     local comp = addon.Components and addon.Components["minimapStyle"]
     if comp and comp.db then
         -- Check for proxy DB (Zero-Touch)
-        if comp._ScootDBProxy and comp.db == comp._ScootDBProxy then
+        if addon.IsComponentUnconfigured(comp) then
             return nil
         end
         return comp.db
@@ -461,7 +461,7 @@ local function ApplyMinimapStyling(self)
     local db = self.db
 
     -- Zero-Touch: Check for proxy DB (means no config)
-    if self._ScootDBProxy and db == self._ScootDBProxy then
+    if addon.IsComponentUnconfigured(self) then
         return
     end
 

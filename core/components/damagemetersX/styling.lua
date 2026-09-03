@@ -719,7 +719,7 @@ end
 local function UpdateAllOverlayData(comp)
     if not comp or not comp.db then return end
     -- Zero-Touch: if still on proxy DB, do nothing (no config = no overlays)
-    if comp._ScootDBProxy and comp.db == comp._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(comp) then return end
     local dmFrame = _G.DamageMeter
     if not dmFrame or not dmFrame:IsShown() then
         DMX._hideAllDMOverlays()
@@ -764,7 +764,7 @@ end
 -- Does NOT bump dmStyleGeneration (full restyle via ApplyStyling handles that on events).
 local function RefreshVisibleOverlays(comp)
     if not comp or not comp.db then return end
-    if comp._ScootDBProxy and comp.db == comp._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(comp) then return end
     local dmFrame = _G.DamageMeter
     if not dmFrame or not dmFrame:IsShown() then return end
 
@@ -822,7 +822,7 @@ local function ApplyDamageMeterStyling(self)
     end
 
     -- Zero-Touch: if still on proxy DB, do nothing
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then
+    if addon.IsComponentUnconfigured(self) then
         DMX._hideAllDMOverlays()
         return
     end

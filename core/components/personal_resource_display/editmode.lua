@@ -177,9 +177,7 @@ local function resolveSettingId(prd, logical)
     return resolver(prd, logical)
 end
 
-local function componentIsUnconfigured(component)
-    return component._ScootDBProxy and component.db == component._ScootDBProxy
-end
+local componentIsUnconfigured = addon.IsComponentUnconfigured
 
 local function markBackSyncSkip(component, key)
     component._skipNextBackSync = component._skipNextBackSync or {}

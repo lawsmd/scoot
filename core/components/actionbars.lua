@@ -131,7 +131,7 @@ local function ApplyActionBarStyling(self)
     if not bar then return end
 
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(self) then return end
 
     local baseOp = tonumber(self.db.barOpacity) or 100
     if baseOp < 0 then baseOp = 0 elseif baseOp > 100 then baseOp = 100 end
@@ -591,7 +591,7 @@ local function ApplyMicroBarStyling(self)
     if not bar then return end
 
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(self) then return end
 
     -- Keep the QueueStatusButton ("LFG eye") fully visible even when the Micro Bar opacity is reduced.
     -- This button is effectively "part of" the Micro Bar area and can inherit parent alpha.

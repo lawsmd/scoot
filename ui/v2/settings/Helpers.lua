@@ -18,16 +18,10 @@ function Helpers.getComponent(componentId)
     return addon.Components and addon.Components[componentId]
 end
 
--- Get a setting from a component's database
+-- Get a setting from a component's database (canonical resolution lives in
+-- addon.GetComponentSetting, base/core.lua)
 function Helpers.getSetting(componentId, key)
-    local comp = Helpers.getComponent(componentId)
-    if comp and comp.db then
-        return comp.db[key]
-    end
-    -- Fallback to profile.components if component not loaded
-    local profile = addon.db and addon.db.profile
-    local components = profile and profile.components
-    return components and components[componentId] and components[componentId][key]
+    return addon.GetComponentSetting(componentId, key)
 end
 
 -- Set a setting in a component's database

@@ -370,7 +370,7 @@ local function ApplyObjectiveTrackerTextStyling(self)
     if not tracker then return end
 
     -- Zero‑Touch: if still on proxy DB, do nothing.
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then
+    if addon.IsComponentUnconfigured(self) then
         return
     end
 
@@ -551,7 +551,7 @@ local function ApplyObjectiveTrackerHeaderBackgroundStyling(self)
     if not tracker then return end
 
     -- Zero‑Touch: if still on proxy DB, do nothing.
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then
+    if addon.IsComponentUnconfigured(self) then
         return
     end
 
@@ -649,7 +649,7 @@ local function ApplyObjectiveTrackerCombatOpacity(self)
     if not tracker then return end
 
     -- Zero‑Touch: if still on proxy DB, do nothing.
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then
+    if addon.IsComponentUnconfigured(self) then
         return
     end
 
@@ -747,7 +747,7 @@ end
 local function ApplyObjectiveTrackerScale(self)
     local tracker = _G.ObjectiveTrackerFrame
     if not tracker or not tracker.SetScale then return end
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(self) then return end
     local db = self.db
     if type(db) ~= "table" then return end
     local scale = tonumber(rawget(db, "scale"))
@@ -763,7 +763,7 @@ end
 -- Returns the dungeonTracker sub-table from the component DB, or nil if
 -- the user hasn't configured anything (Zero-Touch).
 local function GetDungeonTrackerDB(componentSelf)
-    if componentSelf._ScootDBProxy and componentSelf.db == componentSelf._ScootDBProxy then
+    if addon.IsComponentUnconfigured(componentSelf) then
         return nil
     end
     local db = componentSelf.db

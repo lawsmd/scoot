@@ -156,7 +156,7 @@ function Component:SyncEditModeSettings()
     -- Zero-Touch: don't back-sync settings for unconfigured components.
     -- Writing to a proxy DB materializes the real table, which would cause
     -- ApplyStyling to run for a component the user never configured.
-    if self._ScootDBProxy and self.db == self._ScootDBProxy then return end
+    if addon.IsComponentUnconfigured(self) then return end
 
     local changed = false
     for settingId, setting in pairs(self.settings) do
@@ -352,6 +352,29 @@ function addon:LinkComponent(component, profileComponents)
     end
 end
 
+-- Zero-Touch predicate: true while nothing is persisted for the component and
+-- its db is still the defaults proxy above. Guards must not write through the
+-- proxy, which would materialize the real table and activate styling.
+function addon.IsComponentUnconfigured(component)
+    return component ~= nil
+        and component._ScootDBProxy ~= nil
+        and component.db == component._ScootDBProxy
+end
+
+-- Read one setting from a component's database. The live component's db
+-- resolves registered defaults through the proxy __index; the
+-- profile.components fallback (component not registered yet) is a raw read
+-- and returns nil for unset keys instead of the registered default.
+function addon.GetComponentSetting(componentId, key)
+    local comp = addon.Components and addon.Components[componentId]
+    if comp and comp.db then
+        return comp.db[key]
+    end
+    local profile = addon.db and addon.db.profile
+    local components = profile and profile.components
+    return components and components[componentId] and components[componentId][key]
+end
+
 function addon:EnsureComponentDB(componentOrId)
     local component = componentOrId
     if type(componentOrId) == "string" then
@@ -513,7 +536,7 @@ function addon:ApplyStyles()
         -- state LinkComponentsToDB leaves behind when nothing is persisted, and
         -- unlike a profile.components lookup it holds for components that own
         -- their storage.
-        local hasConfig = component.db and component.db ~= component._ScootDBProxy
+        local hasConfig = component.db ~= nil and not addon.IsComponentUnconfigured(component)
         if hasConfig and component.ApplyStyling then
             component:ApplyStyling()
         end
@@ -622,7 +645,7 @@ end
 
 function addon:ApplyEarlyComponentStyles()
     for _, component in pairs(self.Components) do
-        local hasConfig = component.db and component.db ~= component._ScootDBProxy
+        local hasConfig = component.db ~= nil and not addon.IsComponentUnconfigured(component)
         if hasConfig and component.ApplyStyling and component.applyDuringInit then
             component:ApplyStyling()
         end

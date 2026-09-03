@@ -1106,7 +1106,7 @@ function addon.EditMode.SyncComponentPositionFromEditMode(component)
     end
     -- Zero-Touch: don't sync positions for unconfigured components.
     -- Writing to a proxy DB materializes the real table, defeating zero-touch.
-    if component._ScootDBProxy and component.db == component._ScootDBProxy then return false end
+    if addon.IsComponentUnconfigured(component) then return false end
     local hasPositionSettings = component.settings
         and component.settings.positionX
         and component.settings.positionY

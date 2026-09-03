@@ -134,7 +134,7 @@ local function onPRDEvent(event)
         for component, _ in pairs(prdRegisteredComponents) do
             if component and component.ApplyStyling then
                 -- Zero-Touch: skip unconfigured components (still on proxy DB)
-                if not (component._ScootDBProxy and component.db == component._ScootDBProxy) then
+                if not addon.IsComponentUnconfigured(component) then
                     component:ApplyStyling()
                 end
             end
@@ -435,7 +435,7 @@ addon:RegisterComponentInitializer(function(self)
         local comps = addon.Components
         local function apply(target)
             if not target or not target.ApplyStyling then return end
-            if target._ScootDBProxy and target.db == target._ScootDBProxy then return end
+            if addon.IsComponentUnconfigured(target) then return end
             target:ApplyStyling()
         end
         apply(comps.prdHealth)

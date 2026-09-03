@@ -415,9 +415,7 @@ local SETTING_FALLBACKS = {
 table.freeze(SETTING_FALLBACKS)
 
 function CBZ._GetSetting(key)
-    local comp = CBZ._comp
-    local db = comp and comp.db
-    local value = db and db[key]
+    local value = addon.GetComponentSetting("castBarZ", key)
     if value == nil then return SETTING_FALLBACKS[key] end
     return value
 end
