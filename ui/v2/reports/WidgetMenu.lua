@@ -30,8 +30,8 @@ local savedStrata, savedLevel = nil, nil
 
 -- Scoot's proportional UI face in Medium: the settings panel's face, a touch
 -- heavier because this text is read against the game world. Theme validates
--- the path and owns the fallback chain; addon.GetDefaultFontFace resolves to
--- GameFontNormal (Friz Quadrata) and would not match.
+-- the path and owns the fallback chain; addon.GetGameFontNormalFace resolves
+-- to GameFontNormal (Friz Quadrata) and would not match.
 local function getFont()
     local theme = addon.UI and addon.UI.Theme
     if theme and theme.GetFont then return theme:GetFont("PROPORTIONAL_MED") end

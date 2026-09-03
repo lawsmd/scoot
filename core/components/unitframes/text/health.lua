@@ -296,7 +296,7 @@ do
             return
         end
 
-        local face = addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
+        local face = addon.ResolveFontFace(styleCfg.fontFace)
         local size = tonumber(styleCfg.size) or 14
         local outline = tostring(styleCfg.style or "OUTLINE")
 

@@ -132,8 +132,7 @@ local function fitTextFillScale(frame, styleCfg, text)
 	if avail and avail <= 0 then avail = nil end
 
 	if avail and measureTextWidth then
-		local face = (addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__"))
-			or (select(1, _G.GameFontNormal:GetFont()))
+		local face = addon.ResolveFontFace(styleCfg.fontFace)
 		local outline = tostring(styleCfg.style or "OUTLINE")
 		-- Measure the EXACT bytes that were set, gradient codes included: |cff hex
 		-- values participate in kerning resolution (pitfall #28), so the gradient
@@ -1153,8 +1152,7 @@ local function syncTextFillText(frame, cfg)
 	-- and the shrink-to-fit below, which measures with the CONFIGURED font, would
 	-- compute a scale for a font that is not the one being rendered.
 	local styleCfg = cfg.spellNameText or {}
-	local face = (addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__"))
-		or (select(1, _G.GameFontNormal:GetFont()))
+	local face = addon.ResolveFontFace(styleCfg.fontFace)
 	local size = tonumber(styleCfg.size) or 10
 	local flags = tostring(styleCfg.style or "OUTLINE")
 	if addon.ApplyFontStyle then

@@ -120,8 +120,18 @@ function addon.BuildFontOptionsContainer()
     return create and container:GetData() or container
 end
 
+-- Face of GameFontNormal: a locale-dependent game font (Friz Quadrata on
+-- Latin locales), not a Scoot font. Cached on first probe.
+local cachedGameFontNormalFace
+function addon.GetGameFontNormalFace()
+    if not cachedGameFontNormalFace then
+        cachedGameFontNormalFace = select(1, _G.GameFontNormal:GetFont())
+    end
+    return cachedGameFontNormalFace
+end
+
 -- Resolve a font face name to a file path for SetFont.
--- Falls back to the face of GameFontNormal if unknown.
+-- Falls back to the face of GameFontNormal if unknown. Never returns nil.
 function addon.ResolveFontFace(key)
     key = key or "FRIZQT__"
     -- LSM-sourced font

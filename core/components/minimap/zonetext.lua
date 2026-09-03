@@ -93,8 +93,7 @@ local function ApplyFontToBlizzardZoneText(db)
     if not fontString then return end
 
     -- Apply font settings
-    local fontFace = addon.ResolveFontFace and addon.ResolveFontFace(db.zoneTextFont or "FRIZQT__")
-        or (select(1, _G.GameFontNormal:GetFont()))
+    local fontFace = addon.ResolveFontFace(db.zoneTextFont)
     local fontSize = tonumber(db.zoneTextFontSize) or 12
     local fontStyle = db.zoneTextFontStyle or "OUTLINE"
 
@@ -149,8 +148,7 @@ local function ApplyZoneTextStyle(db)
     if not fontString then return end
 
     -- Apply font settings
-    local fontFace = addon.ResolveFontFace and addon.ResolveFontFace(db.zoneTextFont or "FRIZQT__")
-        or (select(1, _G.GameFontNormal:GetFont()))
+    local fontFace = addon.ResolveFontFace(db.zoneTextFont)
     local fontSize = tonumber(db.zoneTextFontSize) or 12
     local fontStyle = db.zoneTextFontStyle or "OUTLINE"
 
@@ -259,8 +257,7 @@ local function ApplyZoneCoordinatesStyle(db)
     end
 
     -- Resolve font settings (match zone text styling)
-    local fontFace = addon.ResolveFontFace and addon.ResolveFontFace(db.zoneTextFont or "FRIZQT__")
-        or (select(1, _G.GameFontNormal:GetFont()))
+    local fontFace = addon.ResolveFontFace(db.zoneTextFont)
     local fontSize = tonumber(db.zoneTextFontSize) or 12
     local fontStyle = db.zoneTextFontStyle or "OUTLINE"
 

@@ -22,17 +22,10 @@ local function GetTooltipDB()
     return comp and comp.db
 end
 
-local function ResolveFontFace(faceKey)
-    if addon.ResolveFontFace then
-        return addon.ResolveFontFace(faceKey)
-    end
-    return select(1, _G.GameFontNormal:GetFont())
-end
-
 local function ApplyHeaderFont(fontString, noteDb)
     local tooltipDb = GetTooltipDB()
     local cfg = tooltipDb and type(tooltipDb.textTitle) == "table" and tooltipDb.textTitle or {}
-    local face = ResolveFontFace(cfg.fontFace or "FRIZQT__")
+    local face = addon.ResolveFontFace(cfg.fontFace or "FRIZQT__")
     local size = tonumber(cfg.size) or 14
     local style = cfg.style or "OUTLINE"
     pcall(fontString.SetFont, fontString, face, size, style)
@@ -44,7 +37,7 @@ end
 local function ApplyBodyFont(fontString, noteDb)
     local tooltipDb = GetTooltipDB()
     local cfg = tooltipDb and type(tooltipDb.textEverythingElse) == "table" and tooltipDb.textEverythingElse or {}
-    local face = ResolveFontFace(cfg.fontFace or "FRIZQT__")
+    local face = addon.ResolveFontFace(cfg.fontFace or "FRIZQT__")
     local size = tonumber(cfg.size) or 12
     local style = cfg.style or "OUTLINE"
     pcall(fontString.SetFont, fontString, face, size, style)
@@ -127,7 +120,7 @@ local function CreateNoteFrame(index)
 
     -- Header FontString (anchored to right of indicator)
     local header = frame:CreateFontString(nil, "OVERLAY")
-    header:SetFont(select(1, GameFontNormal:GetFont()), 14, "OUTLINE")
+    header:SetFont(addon.GetGameFontNormalFace(), 14, "OUTLINE")
     header:SetPoint("LEFT", indicator, "RIGHT", INDICATOR_GAP, 0)
     header:SetJustifyH("LEFT")
     header:SetWordWrap(false)
@@ -135,7 +128,7 @@ local function CreateNoteFrame(index)
 
     -- Body FontString
     local body = frame:CreateFontString(nil, "OVERLAY")
-    body:SetFont(select(1, GameFontNormal:GetFont()), 12, "OUTLINE")
+    body:SetFont(addon.GetGameFontNormalFace(), 12, "OUTLINE")
     body:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -HEADER_BODY_GAP)
     body:SetJustifyH("LEFT")
     body:SetJustifyV("TOP")

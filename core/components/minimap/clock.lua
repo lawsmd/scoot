@@ -101,8 +101,7 @@ local function ApplyFontToBlizzardClock(db)
     if not fontString then return end
 
     -- Apply font settings
-    local fontFace = addon.ResolveFontFace and addon.ResolveFontFace(db.clockFont or "FRIZQT__")
-        or (select(1, _G.GameFontNormal:GetFont()))
+    local fontFace = addon.ResolveFontFace(db.clockFont)
     local fontSize = tonumber(db.clockFontSize) or 12
     local fontStyle = db.clockFontStyle or "OUTLINE"
 
@@ -175,8 +174,7 @@ local function ApplyClockStyle(db)
     if not fontString then return end
 
     -- Apply font settings
-    local fontFace = addon.ResolveFontFace and addon.ResolveFontFace(db.clockFont or "FRIZQT__")
-        or (select(1, _G.GameFontNormal:GetFont()))
+    local fontFace = addon.ResolveFontFace(db.clockFont)
     local fontSize = tonumber(db.clockFontSize) or 12
     local fontStyle = db.clockFontStyle or "OUTLINE"
 
@@ -307,8 +305,7 @@ local function ApplySystemDataStyle(db)
     if not fontString then return end
 
     -- Apply font settings
-    local fontFace = addon.ResolveFontFace and addon.ResolveFontFace(db.systemDataFont or "FRIZQT__")
-        or (select(1, _G.GameFontNormal:GetFont()))
+    local fontFace = addon.ResolveFontFace(db.systemDataFont)
     local fontSize = tonumber(db.systemDataFontSize) or 11
     local fontStyle = db.systemDataFontStyle or "OUTLINE"
 

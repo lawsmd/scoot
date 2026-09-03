@@ -51,20 +51,9 @@ local FONT_DEFAULTS_SMALL = {
 }
 table.freeze(FONT_DEFAULTS_SMALL)
 
--- Cached fallback font face (resolved lazily on first use)
-local fallbackFontFace
-
-local function GetFallbackFontFace()
-    if not fallbackFontFace then
-        fallbackFontFace = select(1, _G.GameFontNormal:GetFont())
-    end
-    return fallbackFontFace
-end
-
 -- Resolve font config once: returns face path, size, style string
 local function ResolveFontConfig(cfg, defaults)
-    local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace or defaults.fontFace)
-        or GetFallbackFontFace()
+    local face = addon.ResolveFontFace(cfg.fontFace or defaults.fontFace)
     local size = tonumber(cfg.size) or defaults.size
     local style = cfg.style or defaults.style
     return face, size, style

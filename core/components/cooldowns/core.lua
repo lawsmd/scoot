@@ -32,15 +32,6 @@ local CDM_VIEWERS = addon.CDM_VIEWERS
 -- Shared Utility Functions
 --------------------------------------------------------------------------------
 
-local cachedDefaultFontFace
-local function getDefaultFontFace()
-    if not cachedDefaultFontFace then
-        cachedDefaultFontFace = select(1, GameFontNormal:GetFont())
-    end
-    return cachedDefaultFontFace
-end
-addon.GetDefaultFontFace = getDefaultFontFace
-
 -- Internal: returns r, g, b, a directly (no table allocation)
 local function resolveCDMColorRGBA(cfg)
     local colorMode = cfg and cfg.colorMode
@@ -638,11 +629,8 @@ local function applyFontStyleDirect(fontString, cfg, isChargeText, parentFrame, 
     local size = tonumber(cfg.size) or 14
     local style = cfg.style or "OUTLINE"
     local r, g, b, a = resolveCDMColorRGBA(cfg)
-    local fontFace = getDefaultFontFace()
-
-    if cfg.fontFace and addon.ResolveFontFace then
-        fontFace = addon.ResolveFontFace(cfg.fontFace) or fontFace
-    end
+    local fontFace = cfg.fontFace and addon.ResolveFontFace(cfg.fontFace)
+                     or addon.GetGameFontNormalFace()
 
     addon.ApplyFontStyle(fontString, fontFace, size, style)
     if not skipColor then

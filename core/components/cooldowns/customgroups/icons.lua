@@ -279,12 +279,8 @@ local function ApplyTextStyle(fontString, cfg, defaultSize)
 
     local size = tonumber(cfg.size) or defaultSize or 12
     local style = cfg.style or "OUTLINE"
-    local fontFace = addon.GetDefaultFontFace and addon.GetDefaultFontFace() or
-                     select(1, GameFontNormal:GetFont())
-
-    if cfg.fontFace and addon.ResolveFontFace then
-        fontFace = addon.ResolveFontFace(cfg.fontFace) or fontFace
-    end
+    local fontFace = cfg.fontFace and addon.ResolveFontFace(cfg.fontFace)
+                     or addon.GetGameFontNormalFace()
 
     if addon.ApplyFontStyle then
         addon.ApplyFontStyle(fontString, fontFace, size, style)

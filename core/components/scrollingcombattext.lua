@@ -59,13 +59,7 @@ local function applyWorldTextStyling(self)
     local db = self.db
 
     local fontKey = db.fontFace or "FRIZQT__"
-    local resolve = addon.ResolveFontFace or function(_)
-        return (select(1, _G.GameFontNormal:GetFont()))
-    end
-    local face = resolve(fontKey)
-    if not face or face == "" then
-        face = (select(1, _G.GameFontNormal:GetFont()))
-    end
+    local face = addon.ResolveFontFace(fontKey)
 
     -- Check if font changed from user interaction (not during init or profile switches)
     if sctDamageState.initialLoadComplete and not addon._profileSwitchInProgress then

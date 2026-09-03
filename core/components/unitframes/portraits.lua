@@ -919,7 +919,7 @@ do
 					local damageTextCfg = cfg.damageText or {}
 					local customSize = tonumber(damageTextCfg.size)
 					if customSize then
-						local customFace = addon.ResolveFontFace and addon.ResolveFontFace(damageTextCfg.fontFace or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
+						local customFace = addon.ResolveFontFace(damageTextCfg.fontFace)
 						local customStyle = tostring(damageTextCfg.style or "OUTLINE")
 						if st then st.applyingTextHeight = true end
 						if addon.ApplyFontStyle then
@@ -934,7 +934,7 @@ do
 		end
 
 		-- Apply text styling
-		local face = addon.ResolveFontFace and addon.ResolveFontFace(damageTextCfg.fontFace or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
+		local face = addon.ResolveFontFace(damageTextCfg.fontFace)
 		local size = tonumber(damageTextCfg.size) or 14
 		local outline = tostring(damageTextCfg.style or "OUTLINE")
 		if addon.ApplyFontStyle then
@@ -1282,7 +1282,7 @@ do
 						-- SetFont will properly scale the text, while SetTextHeight just scales the region (causing pixelation)
 						local damageTextCfg = cfg.damageText or {}
 						local customSize = tonumber(damageTextCfg.size) or 14
-						local customFace = addon.ResolveFontFace and addon.ResolveFontFace(damageTextCfg.fontFace or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
+						local customFace = addon.ResolveFontFace(damageTextCfg.fontFace)
 						local customStyle = tostring(damageTextCfg.style or "OUTLINE")
 
 						-- Use SetFont to set the font size (SetTextHeight only scales the region)

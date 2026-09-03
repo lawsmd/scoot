@@ -96,8 +96,8 @@ local dotsMissing = 0      -- last count render took, so the ticker can re-decid
 local dotsSettled = false  -- a sweep drained with cells still blank: they are not coming
 
 -- Every report panel shares one user-selectable face (Reports > Config).
--- Do not reach for addon.GetDefaultFontFace here: despite the name it
--- resolves to GameFontNormal (Friz Quadrata), not a Scoot font.
+-- Do not reach for addon.GetGameFontNormalFace here: it resolves to
+-- GameFontNormal (Friz Quadrata), not a Scoot font.
 local function getFont()
     local Reports = addon.Reports
     if Reports and Reports.GetFontFace then

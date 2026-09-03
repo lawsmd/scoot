@@ -713,8 +713,7 @@ do
 
 					local styleCfg = cfg.spellNameText or {}
 					-- Font / size / outline
-					local face = addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__")
-						or (select(1, _G.GameFontNormal:GetFont()))
+					local face = addon.ResolveFontFace(styleCfg.fontFace)
 					local size = tonumber(styleCfg.size) or 10
 					local outline = tostring(styleCfg.style or "OUTLINE")
 					if addon.ApplyFontStyle then

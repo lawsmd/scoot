@@ -277,7 +277,7 @@ do
 				end
 				if not hasTextCustomization(styleCfg) then return end
 
-				local face = addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
+				local face = addon.ResolveFontFace(styleCfg.fontFace)
 				local size = tonumber(styleCfg.size) or 14
 				local outline = tostring(styleCfg.style or "OUTLINE")
 				local fst = FS
@@ -850,7 +850,7 @@ do
 		if not hasTextCustomization(styleCfg) then
 			return
 		end
-		local face = addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
+		local face = addon.ResolveFontFace(styleCfg.fontFace)
 		local size = tonumber(styleCfg.size) or 14
 		local outline = tostring(styleCfg.style or "OUTLINE")
 		-- Set flag to prevent the SetFont hook from triggering a reapply loop
@@ -1496,7 +1496,7 @@ do
 		end
 
 		-- Apply font styling
-		local face = addon.ResolveFontFace and addon.ResolveFontFace((styleCfg and styleCfg.fontFace) or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
+		local face = addon.ResolveFontFace(styleCfg and styleCfg.fontFace)
 		local size = tonumber(styleCfg and styleCfg.size) or 10
 		local outline = tostring((styleCfg and styleCfg.style) or "OUTLINE")
 		if addon.ApplyFontStyle then
@@ -1678,7 +1678,7 @@ do
 		end
 
 		-- Apply font styling
-		local face = addon.ResolveFontFace and addon.ResolveFontFace((styleCfg and styleCfg.fontFace) or "FRIZQT__") or (select(1, _G.GameFontNormal:GetFont()))
+		local face = addon.ResolveFontFace(styleCfg and styleCfg.fontFace)
 		local size = tonumber(styleCfg and styleCfg.size) or 10
 		local outline = tostring((styleCfg and styleCfg.style) or "OUTLINE")
 		if addon.ApplyFontStyle then
