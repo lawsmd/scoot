@@ -10,7 +10,7 @@ local itemKeys = {}   -- itemID -> formatted keybind string
 local iconSpellCache = setmetatable({}, { __mode = "k" })  -- cdmIcon -> spellID
 
 -- Throttle state
-local rebuildPending = false
+local ScheduleRebuild  -- defined below; forward-declared for the combat deferral
 local REBUILD_THROTTLE = 0.2
 
 -- Reference to overlay system
@@ -147,7 +147,8 @@ end
 
 local function RebuildSpellKeyMap()
     if InCombatLockdown and InCombatLockdown() then
-        rebuildPending = true
+        -- Rebuild after combat; repeat queues coalesce onto one entry.
+        addon.Events.RunOutOfCombat(ScheduleRebuild, "Cooldowns:Keybinds:rebuild")
         return
     end
 
@@ -194,8 +195,6 @@ local function RebuildSpellKeyMap()
             end
         end
     end
-
-    rebuildPending = false
 end
 
 --------------------------------------------------------------------------------
@@ -460,7 +459,7 @@ end
 
 local rebuildScheduled = false
 
-local function ScheduleRebuild()
+function ScheduleRebuild()
     if rebuildScheduled then return end
     rebuildScheduled = true
     C_Timer.After(REBUILD_THROTTLE, function()
@@ -477,20 +476,10 @@ end
 -- Events
 --------------------------------------------------------------------------------
 
-local function OnEvent(event)
-    if event == "PLAYER_REGEN_ENABLED" then
-        -- Deferred rebuild after leaving combat
-        if rebuildPending then
-            ScheduleRebuild()
-        end
-    elseif event == "UPDATE_BINDINGS"
-        or event == "ACTIONBAR_SLOT_CHANGED"
-        or event == "ACTIONBAR_PAGE_CHANGED"
-        or event == "UPDATE_BONUS_ACTIONBAR"
-        or event == "PLAYER_TALENT_UPDATE"
-        or event == "SPELLS_CHANGED" then
-        ScheduleRebuild()
-    end
+-- Every registered event schedules a rebuild; a rebuild landing in combat
+-- queues itself on the shared regen drain.
+local function OnEvent()
+    ScheduleRebuild()
 end
 
 local eventsArmed = false
@@ -511,7 +500,6 @@ function SpellBindings.Initialize()
             "UPDATE_BONUS_ACTIONBAR",
             "PLAYER_TALENT_UPDATE",
             "SPELLS_CHANGED",
-            "PLAYER_REGEN_ENABLED",
         }) do
             addon.Events.On("Cooldowns:Keybinds", event, OnEvent)
         end

@@ -702,11 +702,10 @@ end
 -- surface as ADDON_ACTION_BLOCKED blaming Scoot.
 --
 -- Policy: If in combat, queue the write and apply it immediately after combat ends.
-local function _EnsureEditModeCombatWriteWatcher()
-    if not addon or not addon.EditMode then return end
-    if addon.EditMode._combatWriteWatcher then return end
-
-    addon.EditMode._combatWriteWatcher = addon.Events.On("EditMode", "PLAYER_REGEN_ENABLED", function()
+-- One keyed entry on the shared regen drain; the listener is armed only while a
+-- write is pending.
+local function _QueueCombatWriteFlush()
+    addon.Events.RunOutOfCombat(function()
         -- Defer a tick to let Blizzard finish post-combat churn.
         if _G.C_Timer and _G.C_Timer.After then
             _G.C_Timer.After(0, function()
@@ -714,12 +713,10 @@ local function _EnsureEditModeCombatWriteWatcher()
                     addon.EditMode.FlushPendingWrites("PLAYER_REGEN_ENABLED")
                 end
             end)
-        else
-            if addon and addon.EditMode and addon.EditMode.FlushPendingWrites then
-                addon.EditMode.FlushPendingWrites("PLAYER_REGEN_ENABLED")
-            end
+        elseif addon and addon.EditMode and addon.EditMode.FlushPendingWrites then
+            addon.EditMode.FlushPendingWrites("PLAYER_REGEN_ENABLED")
         end
-    end)
+    end, "EditMode:flushWrites")
 end
 
 function addon.EditMode.FlushPendingWrites(origin)
@@ -773,7 +770,7 @@ function addon.EditMode.WriteSetting(frame, settingId, value, opts)
             opts = opts,
         }
 
-        _EnsureEditModeCombatWriteWatcher()
+        _QueueCombatWriteFlush()
         return
     end
 

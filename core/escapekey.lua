@@ -30,6 +30,16 @@ local function arm(frame)
     return true
 end
 
+-- One keyed queue entry serves the whole set: the closure sweeps `pending` at
+-- drain time, so it needs arming only while something waits.
+local function drainPending()
+    for frame in pairs(pending) do
+        if arm(frame) then
+            pending[frame] = nil
+        end
+    end
+end
+
 -- Wires ESC on a popup: ESC runs onEscape and stops there, every other key
 -- passes through to the game. Safe to call in combat; the keyboard trap arms
 -- itself at the next opportunity (combat ending, or the frame being shown).
@@ -72,13 +82,6 @@ function EscapeKey.Attach(frame, onEscape)
         pending[frame] = nil
     else
         pending[frame] = true
+        addon.Events.RunOutOfCombat(drainPending, "EscapeKey:arm")
     end
 end
-
-addon.Events.On("EscapeKey", "PLAYER_REGEN_ENABLED", function()
-    for frame in pairs(pending) do
-        if arm(frame) then
-            pending[frame] = nil
-        end
-    end
-end)

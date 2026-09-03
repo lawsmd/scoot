@@ -97,6 +97,15 @@ local function CaptureBaseline(self, name, frame)
     self._baselines[name] = baseline
 end
 
+-- Both deferral sites queue the same full reapply under one key, matching the
+-- single pending boolean they replaced.
+local function QueueMouseSettle()
+    addon.Events.RunOutOfCombat(function()
+        local vis = addon and addon.RaidVisibility
+        if vis then vis:ApplyFromProfile("CombatEnd") end
+    end, "RaidVisibility:mouse")
+end
+
 local function ApplyHidden(self, name, frame, isContainer)
     CaptureBaseline(self, name, frame)
 
@@ -106,9 +115,9 @@ local function ApplyHidden(self, name, frame, isContainer)
     self._enforcing = nil
 
     -- Stop invisible frames from capturing clicks / the controller cursor.
-    -- Protected in combat; defer and let PLAYER_REGEN_ENABLED finish the job.
+    -- Protected in combat; defer the full reapply to the shared regen drain.
     if InCombatLockdown() then
-        self._pendingMouse = true
+        QueueMouseSettle()
     else
         SafeCall(frame, "EnableMouse", false)
         if isContainer then
@@ -133,7 +142,7 @@ local function RestoreBaseline(self, name, frame)
     -- while deferred -- it holds the mouse state still owed to this frame, and
     -- dropping it here would restore alpha but leave the frame click-dead.
     if InCombatLockdown() then
-        self._pendingMouse = true
+        QueueMouseSettle()
         return
     end
 
@@ -228,22 +237,13 @@ function RaidVisibility:Initialize()
     -- RaidRosterOverlay's. The bus dispatches in registration order, and
     -- init.lua initializes RaidVisibility first, so the overlay reads
     -- member-frame geometry only after this handler has mutated visibility.
-    local function onEvent(event)
+    local function onEvent()
         local self = addon and addon.RaidVisibility
         if not self then return end
-        if event == "PLAYER_REGEN_ENABLED" then
-            if not self._pendingMouse then return end
-            self._pendingMouse = nil
-            self:ApplyFromProfile("CombatEnd")
-            return
-        end
         self:ApplyFromProfile("RaidEvent")
     end
     addon.Events.On("UnitFrames:RaidVisibility", "PLAYER_ENTERING_WORLD", onEvent)
     addon.Events.On("UnitFrames:RaidVisibility", "GROUP_ROSTER_UPDATE", onEvent)
-    -- Settles any mouse changes that ApplyHidden / RestoreBaseline had to defer
-    -- because they would have been blocked during combat.
-    addon.Events.On("UnitFrames:RaidVisibility", "PLAYER_REGEN_ENABLED", onEvent)
 
     self:ApplyFromProfile("Initialize")
 end
