@@ -1,5 +1,7 @@
 -- core.lua - Edit Mode integration helpers and setting resolution
 
+local addonName, addon = ...
+
 -- Central suppression check (used only during short post-copy window)
 local function _ShouldSuppressWrites()
     local prof = addon and addon.Profiles
@@ -28,8 +30,6 @@ local function getEditModeState(frame)
     end
     return editModeState[frame]
 end
-
-local addonName, addon = ...
 
 addon.EditMode = {}
 

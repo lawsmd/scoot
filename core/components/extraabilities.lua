@@ -245,7 +245,7 @@ local function ApplyExtraAbilitiesStyling(self)
     local state = getContainerState()
     state.component = self
     state.baseOpacity = appliedOp / 100
-    state.hideBlizzardArt = hideBlizzardArt
+    state.hideBlizzardArt = self.db and self.db.hideBlizzardArt
 
     -- Start hover detection ticker (replaces HookScript on Blizzard buttons)
     startHoverDetection(container)

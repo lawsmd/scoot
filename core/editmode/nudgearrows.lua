@@ -30,6 +30,7 @@ local arrowButtons   -- { UP, DOWN, LEFT, RIGHT } button references
 local currentFrame   -- The Blizzard/custom frame currently selected
 local currentIsNative -- true = native Blizzard system frame, false = custom
 local tryHookDialog  -- forward declaration; defined in Hook Installation section
+local dialogHooked = false  -- set once the LibEditMode dialog hook is installed
 
 --------------------------------------------------------------------------------
 -- DB Helper
@@ -239,7 +240,6 @@ end
 --------------------------------------------------------------------------------
 
 local hooksInstalled = false
-local dialogHooked = false
 
 tryHookDialog = function()
     if dialogHooked then return end

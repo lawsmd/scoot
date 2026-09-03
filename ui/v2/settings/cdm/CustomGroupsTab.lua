@@ -17,6 +17,7 @@ local DROP_TARGET_ICON = "Interface\\PaperDollInfoFrame\\Character-Plus"
 local injected = false
 local isScootTabActive = false
 local scootTab = nil
+local BeginDrag, EndDrag  -- forward declarations; defined in the drag-and-drop section
 
 --------------------------------------------------------------------------------
 -- Utility: Resolve icon texture for a spell or item
