@@ -1191,7 +1191,25 @@ local REGEN_ORDER = {
     "position", "scale", "envelope", "stack",
     "click", "clickShown", "watch", "visibility", "preview",
 }
-local regenWatcher
+
+local function drainInst(inst)
+    local flags = pendingRegen[inst]
+    if not flags then return end
+    if InCombatLockdown() then
+        -- Lockdown at drain time: re-queue for the next edge rather than run
+        -- protected work now.
+        addon.Events.RunOutOfCombat(function() drainInst(inst) end, inst)
+        return
+    end
+    -- Cleared before the workers run so a worker's own re-queue starts a
+    -- fresh flag set for the next cycle.
+    pendingRegen[inst] = nil
+    for _, name in ipairs(REGEN_ORDER) do
+        if flags[name] and regenActions[name] then
+            regenActions[name](inst)
+        end
+    end
+end
 
 local function queueRegen(inst, what)
     -- Callers that resolve an instance from a config key can legitimately come
@@ -1204,24 +1222,11 @@ local function queueRegen(inst, what)
         pendingRegen[inst] = flags
     end
     flags[what] = true
-    if not regenWatcher then
-        regenWatcher = CreateFrame("Frame")
-        regenWatcher:SetScript("OnEvent", function(self)
-            if InCombatLockdown() then return end
-            for queued, queuedFlags in pairs(pendingRegen) do
-                pendingRegen[queued] = nil
-                for _, name in ipairs(REGEN_ORDER) do
-                    if queuedFlags[name] and regenActions[name] then
-                        regenActions[name](queued)
-                    end
-                end
-            end
-            if next(pendingRegen) == nil then
-                self:UnregisterEvent("PLAYER_REGEN_ENABLED")
-            end
-        end)
-    end
-    regenWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+    -- Keyed on the instance table: repeat queues coalesce onto one drain,
+    -- which pays this instance's flags out in REGEN_ORDER. Cross-instance
+    -- order is first-queued; the old single watcher's pairs() walk gave no
+    -- order at all.
+    addon.Events.RunOutOfCombat(function() drainInst(inst) end, inst)
 end
 UFZ._QueueRegen = queueRegen
 
