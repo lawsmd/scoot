@@ -169,17 +169,10 @@ function Controls:CreateButton(options)
         end
 
         if _G.InCombatLockdown and _G.InCombatLockdown() then
-            btn._pendingSecureAction = applySecureAction
-            btn:RegisterEvent("PLAYER_REGEN_ENABLED")
-            btn:HookScript("OnEvent", function(self, event)
-                if event == "PLAYER_REGEN_ENABLED" then
-                    if self._pendingSecureAction then
-                        self._pendingSecureAction()
-                        self._pendingSecureAction = nil
-                    end
-                    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
-                end
-            end)
+            -- Queue on the shared regen drain instead of registering events on
+            -- the secure button itself. Keyed per button: a reconfigure before
+            -- regen replaces the queued attribute batch.
+            addon.Events.RunOutOfCombat(applySecureAction, btn)
         else
             applySecureAction()
         end

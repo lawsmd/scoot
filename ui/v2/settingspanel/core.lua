@@ -340,13 +340,9 @@ function UIPanel:CreateHeaderButtons()
     end
 
     if InCombatLockdown() then
-        editModeBtn:RegisterEvent("PLAYER_REGEN_ENABLED")
-        editModeBtn:HookScript("OnEvent", function(self, event)
-             if event == "PLAYER_REGEN_ENABLED" then
-                  setupSecureEditMode()
-                  self:UnregisterEvent("PLAYER_REGEN_ENABLED")
-             end
-        end)
+        -- Queue on the shared regen drain instead of registering events on the
+        -- secure button itself; setupSecureEditMode is idempotent.
+        addon.Events.RunOutOfCombat(setupSecureEditMode, "SettingsPanel:secureEditMode")
     else
         setupSecureEditMode()
     end
