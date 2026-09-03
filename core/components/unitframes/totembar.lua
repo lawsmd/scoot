@@ -2,6 +2,9 @@
 -- Styles icon borders and timer text on totem buttons for supported classes
 local addonName, addon = ...
 
+-- Font-half opts for the totem duration text
+local totemFontOpts = { size = 12 }
+
 --------------------------------------------------------------------------------
 -- Supported Classes
 --------------------------------------------------------------------------------
@@ -176,11 +179,7 @@ local function applyTimerTextStyling(duration, cfg)
 
     -- Apply font settings (ApplyFontStyle decodes the pseudo-style, shadow
     -- half included, and normalizes NONE itself)
-    local fontFace = cfg.fontFace or "FRIZQT__"
-    local face = addon.ResolveFontFace and addon.ResolveFontFace(fontFace) or "Fonts\\FRIZQT__.TTF"
-    local size = tonumber(cfg.size) or 12
-    local style = cfg.style or "OUTLINE"
-
+    local face, size, style = addon.ResolveTextFont(cfg, totemFontOpts)
     addon.ApplyFontStyle(duration, face, size, style)
     debugPrint("Set font:", face, size, style)
 
@@ -219,11 +218,7 @@ local function applyTimerTextStyling(duration, cfg)
             else
                 -- Reapply font and color (text updates might reset them)
                 C_Timer.After(0, function()
-                    local ff = tcfg.fontFace or "FRIZQT__"
-                    local f = addon.ResolveFontFace and addon.ResolveFontFace(ff) or "Fonts\\FRIZQT__.TTF"
-                    local s = tonumber(tcfg.size) or 12
-                    local st = tcfg.style or "OUTLINE"
-                    addon.ApplyFontStyle(self, f, s, st)
+                    addon.ApplyTextFont(self, tcfg, totemFontOpts)
                     local col = tcfg.color or { 1, 1, 1, 1 }
                     pcall(self.SetTextColor, self, col[1] or 1, col[2] or 1, col[3] or 1, col[4] or 1)
                 end)

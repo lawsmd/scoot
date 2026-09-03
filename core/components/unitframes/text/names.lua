@@ -12,6 +12,10 @@ local nameTextColorOpts = {}
 -- Font-half opts for the name/level texts
 local nameTextFontOpts = { size = 14 }
 
+-- ToT/FoT name texts: size 10; alignment counts toward the Zero-Touch gate
+local totFotNameFontOpts = { size = 10 }
+local totFotNameCustomizationOpts = { alignment = true }
+
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
@@ -1364,19 +1368,8 @@ do
 		if not nameFS then return end
 
 		-- Zero‑Touch: if neither visibility nor style is configured, do nothing.
-		local function hasAnyOffset(tbl)
-			local off = tbl and tbl.offset
-			return off and (off.x ~= nil or off.y ~= nil) or false
-		end
-		local function hasTextCustomization(tbl)
-			if not tbl then return false end
-			if tbl.fontFace ~= nil and tbl.fontFace ~= "" and tbl.fontFace ~= "FRIZQT__" then return true end
-			if tbl.size ~= nil or tbl.style ~= nil or tbl.colorMode ~= nil or tbl.color ~= nil or tbl.alignment ~= nil then return true end
-			if hasAnyOffset(tbl) then return true end
-			return false
-		end
 		local hasVisibilitySetting = (cfg.nameTextHidden ~= nil)
-		local hasStyleSetting = hasTextCustomization(styleCfg)
+		local hasStyleSetting = addon.HasTextCustomization(styleCfg, totFotNameCustomizationOpts)
 		if not hasVisibilitySetting and not hasStyleSetting then
 			return
 		end
@@ -1442,14 +1435,7 @@ do
 		end
 
 		-- Apply font styling
-		local face = addon.ResolveFontFace(styleCfg and styleCfg.fontFace)
-		local size = tonumber(styleCfg and styleCfg.size) or 10
-		local outline = tostring((styleCfg and styleCfg.style) or "OUTLINE")
-		if addon.ApplyFontStyle then
-			addon.ApplyFontStyle(nameFS, face, size, outline)
-		elseif nameFS.SetFont then
-			pcall(nameFS.SetFont, nameFS, face, size, outline)
-		end
+		addon.ApplyTextFont(nameFS, styleCfg, totFotNameFontOpts)
 
 		-- Apply color based on colorMode (no barKind: ToT name default is white)
 		local colorMode = (styleCfg and styleCfg.colorMode) or "default"
@@ -1534,19 +1520,8 @@ do
 		if not nameFS then return end
 
 		-- Zero‑Touch: if neither visibility nor style is configured, do nothing.
-		local function hasAnyOffset(tbl)
-			local off = tbl and tbl.offset
-			return off and (off.x ~= nil or off.y ~= nil) or false
-		end
-		local function hasTextCustomization(tbl)
-			if not tbl then return false end
-			if tbl.fontFace ~= nil and tbl.fontFace ~= "" and tbl.fontFace ~= "FRIZQT__" then return true end
-			if tbl.size ~= nil or tbl.style ~= nil or tbl.colorMode ~= nil or tbl.color ~= nil or tbl.alignment ~= nil then return true end
-			if hasAnyOffset(tbl) then return true end
-			return false
-		end
 		local hasVisibilitySetting = (cfg.nameTextHidden ~= nil)
-		local hasStyleSetting = hasTextCustomization(styleCfg)
+		local hasStyleSetting = addon.HasTextCustomization(styleCfg, totFotNameCustomizationOpts)
 		if not hasVisibilitySetting and not hasStyleSetting then
 			return
 		end
@@ -1612,14 +1587,7 @@ do
 		end
 
 		-- Apply font styling
-		local face = addon.ResolveFontFace(styleCfg and styleCfg.fontFace)
-		local size = tonumber(styleCfg and styleCfg.size) or 10
-		local outline = tostring((styleCfg and styleCfg.style) or "OUTLINE")
-		if addon.ApplyFontStyle then
-			addon.ApplyFontStyle(nameFS, face, size, outline)
-		elseif nameFS.SetFont then
-			pcall(nameFS.SetFont, nameFS, face, size, outline)
-		end
+		addon.ApplyTextFont(nameFS, styleCfg, totFotNameFontOpts)
 
 		-- Apply color based on colorMode (no barKind: FoT name default is white)
 		local colorMode = (styleCfg and styleCfg.colorMode) or "default"
