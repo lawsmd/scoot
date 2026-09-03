@@ -191,6 +191,9 @@ local combatKeyed = {}
 local combatHandle = nil
 
 local function drainCombatQueue()
+    -- Regen can fire with lockdown already re-engaged; run nothing and leave the
+    -- queue and armed listener intact for the next edge.
+    if InCombatLockdown and InCombatLockdown() then return end
     -- Swap before draining so a re-queue from inside a drained fn lands in the
     -- next combat cycle instead of extending this loop.
     local q = combatQueue

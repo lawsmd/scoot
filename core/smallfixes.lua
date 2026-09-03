@@ -54,8 +54,6 @@ local SETTING_KEY = {
 local targetProxies = setmetatable({}, { __mode = "k" })
 local attachedFrames = setmetatable({}, { __mode = "k" })
 
-local pendingApply = false
-local regenWatcher
 local hooksInstalled = false
 
 local UNIT_FRAME_NAME_PATTERNS = {
@@ -270,26 +268,16 @@ end
 --------------------------------------------------------------------------------
 -- Combat deferral
 --
--- Flags only, never queued values: the drain re-runs the sweep so it recomputes
--- against whatever the settings and roster look like once combat ends.
+-- The queued closure re-runs the whole sweep so it recomputes against whatever
+-- the settings and roster look like once combat ends. The one-frame delay is
+-- load-bearing: attaching on the regen edge itself disturbs frames mid-setup
+-- (same rationale as the deferred attach in EnsureHooks).
 --------------------------------------------------------------------------------
 
 local function QueueApply()
-    pendingApply = true
-
-    if not regenWatcher then
-        regenWatcher = CreateFrame("Frame")
-        regenWatcher:SetScript("OnEvent", function(self)
-            if InCombatLockdown() then return end
-            self:UnregisterEvent("PLAYER_REGEN_ENABLED")
-            if pendingApply then
-                pendingApply = false
-                C_Timer.After(0, function() SmallFixes.ApplyAll() end)
-            end
-        end)
-    end
-
-    regenWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+    addon.Events.RunOutOfCombat(function()
+        C_Timer.After(0, function() SmallFixes.ApplyAll() end)
+    end, "SmallFixes:applyAll")
 end
 
 --------------------------------------------------------------------------------
