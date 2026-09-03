@@ -675,7 +675,6 @@ end
 local function styleVerticalStack(stack, component)
     if not stack or not component or not component.db then return end
     local db = component.db
-    local defaultFace = select(1, GameFontNormal:GetFont())
 
     -- Bar textures
     local useCustom = db.styleEnableCustom ~= false
@@ -848,13 +847,13 @@ local function styleVerticalStack(stack, component)
 
     -- Text styling — only when user has explicitly configured text settings
     if rawget(db, "textName") then
-        TB.applyTextStyling(stack.spellNameFS, db.textName, defaultFace)
+        TB.applyTextStyling(stack.spellNameFS, db.textName)
     end
     if rawget(db, "textDuration") then
-        TB.applyTextStyling(stack.timerFS, db.textDuration, defaultFace)
+        TB.applyTextStyling(stack.timerFS, db.textDuration)
     end
     if rawget(db, "textStacks") then
-        TB.applyTextStyling(stack.applicationsFS, db.textStacks, defaultFace)
+        TB.applyTextStyling(stack.applicationsFS, db.textStacks)
     end
 end
 

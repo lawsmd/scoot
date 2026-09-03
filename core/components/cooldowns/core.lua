@@ -608,14 +608,12 @@ end
 -- decode into their shadow calls instead of being dropped by SetFont.
 -- isChargeText: if true, uses BOTTOMRIGHT anchor; otherwise uses CENTER
 -- parentFrame: the frame to anchor to (defaults to fontString's parent)
+local cdmTextFontOpts = { size = 14, gameFontDefault = true }
 local function applyFontStyleDirect(fontString, cfg, isChargeText, parentFrame, skipColor)
     if not fontString or not cfg then return end
 
-    local size = tonumber(cfg.size) or 14
-    local style = cfg.style or "OUTLINE"
+    local fontFace, size, style = addon.ResolveTextFont(cfg, cdmTextFontOpts)
     local r, g, b, a = resolveCDMColorRGBA(cfg)
-    local fontFace = cfg.fontFace and addon.ResolveFontFace(cfg.fontFace)
-                     or addon.GetGameFontNormalFace()
 
     addon.ApplyFontStyle(fontString, fontFace, size, style)
     if not skipColor then

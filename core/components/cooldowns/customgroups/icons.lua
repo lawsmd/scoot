@@ -274,19 +274,12 @@ local ApplyBorderToIcon = CG.ApplyBorderToIcon
 -- Text Styling Helper
 --------------------------------------------------------------------------------
 
+local cgTextFontOpts = { gameFontDefault = true }
 local function ApplyTextStyle(fontString, cfg, defaultSize)
     if not fontString or not cfg then return end
 
-    local size = tonumber(cfg.size) or defaultSize or 12
-    local style = cfg.style or "OUTLINE"
-    local fontFace = cfg.fontFace and addon.ResolveFontFace(cfg.fontFace)
-                     or addon.GetGameFontNormalFace()
-
-    if addon.ApplyFontStyle then
-        addon.ApplyFontStyle(fontString, fontFace, size, style)
-    else
-        fontString:SetFont(fontFace, size, style)
-    end
+    cgTextFontOpts.size = defaultSize or 12
+    addon.ApplyTextFont(fontString, cfg, cgTextFontOpts)
 
     local color = addon.ResolveCDMColor and addon.ResolveCDMColor(cfg) or {1, 1, 1, 1}
     fontString:SetTextColor(color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)

@@ -418,7 +418,6 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
     -- tracked bar fonts with hardcoded fallback values, violating zero-touch.
     local hasAnyTextConfig = rawget(db, "textName") or rawget(db, "textDuration") or rawget(db, "textStacks")
     if hasAnyTextConfig then
-        local defaultFace = (select(1, GameFontNormal:GetFont()))
 
         local function promoteFontLayer(font)
             if font and font.SetDrawLayer then
@@ -503,7 +502,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
         if rawget(db, "textName") and nameFS and nameFS.SetFont then
             local cfg = rawget(db, "textName")
             pcall(nameFS.SetDrawLayer, nameFS, "OVERLAY", 7)
-            TB.applyTextStyling(nameFS, cfg, defaultFace)
+            TB.applyTextStyling(nameFS, cfg)
             if nameFS.SetJustifyH then pcall(nameFS.SetJustifyH, nameFS, "LEFT") end
             local ox = (cfg.offset and cfg.offset.x) or 0
             local oy = (cfg.offset and cfg.offset.y) or 0
@@ -517,7 +516,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
         if rawget(db, "textDuration") and durFS and durFS.SetFont then
             local cfg = rawget(db, "textDuration")
             pcall(durFS.SetDrawLayer, durFS, "OVERLAY", 7)
-            TB.applyTextStyling(durFS, cfg, defaultFace)
+            TB.applyTextStyling(durFS, cfg)
             if durFS.SetJustifyH then pcall(durFS.SetJustifyH, durFS, "RIGHT") end
             local ox = (cfg.offset and cfg.offset.x) or 0
             local oy = (cfg.offset and cfg.offset.y) or 0
@@ -546,7 +545,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
         if rawget(db, "textStacks") and stacksFS and stacksFS.SetFont then
             local cfg = rawget(db, "textStacks")
             pcall(stacksFS.SetDrawLayer, stacksFS, "OVERLAY", 7)
-            TB.applyTextStyling(stacksFS, cfg, defaultFace)
+            TB.applyTextStyling(stacksFS, cfg)
             if stacksFS.SetJustifyH then pcall(stacksFS.SetJustifyH, stacksFS, "CENTER") end
             local ox = (cfg.offset and cfg.offset.x) or 0
             local oy = (cfg.offset and cfg.offset.y) or 0

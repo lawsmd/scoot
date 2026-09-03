@@ -146,15 +146,11 @@ function TB.resolveBarColor(colorMode, tint, defaultR, defaultG, defaultB, defau
     return addon.ResolveColorRGBA(colorMode, tint, tbColorOpts)
 end
 
-function TB.applyTextStyling(fontString, cfg, defaultFace)
+local tbTextFontOpts = { size = 14 }
+function TB.applyTextStyling(fontString, cfg)
     if not fontString or not fontString.SetFont then return end
     cfg = cfg or { size = 14, style = "OUTLINE", color = {1,1,1,1} }
-    local face = addon.ResolveFontFace and addon.ResolveFontFace(cfg.fontFace or "FRIZQT__") or defaultFace
-    if addon.ApplyFontStyle then
-        addon.ApplyFontStyle(fontString, face, tonumber(cfg.size) or 14, cfg.style or "OUTLINE")
-    else
-        fontString:SetFont(face, tonumber(cfg.size) or 14, cfg.style or "OUTLINE")
-    end
+    addon.ApplyTextFont(fontString, cfg, tbTextFontOpts)
     local c = addon.ResolveCDMColor(cfg)
     fontString:SetTextColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
 end
