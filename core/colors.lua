@@ -120,7 +120,7 @@ end
 function addon.GetPowerColorRGB(unitOrPower)
 	local tokenOrIndex = nil
 	if type(unitOrPower) == "string" then
-		if UnitPowerType and (unitOrPower == "player" or unitOrPower == "target" or unitOrPower == "focus" or unitOrPower == "pet") then
+		if UnitPowerType and (unitOrPower == "player" or unitOrPower == "target" or unitOrPower == "focus" or unitOrPower == "pet" or unitOrPower:match("^boss%d+$")) then
 			local idx, tok = UnitPowerType(unitOrPower)
 			tokenOrIndex = tok or idx
 		else

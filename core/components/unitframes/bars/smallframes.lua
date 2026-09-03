@@ -7,6 +7,9 @@
 
 local addonName, addon = ...
 
+-- Small-frame health opts for ResolveColorRGBA (unit set per call)
+local sfColorOpts = { barKind = "health" }
+
 -- Create module namespace
 addon.BarsSmallFrames = addon.BarsSmallFrames or {}
 local SF = addon.BarsSmallFrames
@@ -128,30 +131,17 @@ function SF.applyForSmallUnit(unit, frame, cfg)
         local tint = cfg.healthBarTint
         local overlay = st.rectFill
 
-        if colorMode == "value" or colorMode == "valueDark" then
+        if addon.IsValueColorMode(colorMode) then
             local useDark = (colorMode == "valueDark")
             if addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
                 addon.BarsTextures.applyValueBasedColor(hb, unitCfg.unitToken, overlay, useDark)
             end
             st.valueColorOverlay = overlay
             st.valueColorUseDark = useDark
-        elseif colorMode == "custom" and type(tint) == "table" then
-            overlay:SetVertexColor(tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1)
-        elseif colorMode == "class" and addon.GetClassColorRGB then
-            local cr, cg, cb = addon.GetClassColorRGB(unitCfg.unitToken)
-            if cr == nil and addon.GetDefaultHealthColorRGB then
-                cr, cg, cb = addon.GetDefaultHealthColorRGB()
-            end
-            overlay:SetVertexColor(cr or 1, cg or 1, cb or 1, 1)
-        elseif colorMode == "texture" then
-            overlay:SetVertexColor(1, 1, 1, 1)
-        elseif colorMode == "default" then
-            if addon.GetDefaultHealthColorRGB then
-                local hr, hg, hb_color = addon.GetDefaultHealthColorRGB()
-                overlay:SetVertexColor(hr or 0, hg or 1, hb_color or 0, 1)
-            else
-                overlay:SetVertexColor(0, 1, 0, 1)
-            end
+        else
+            sfColorOpts.unitForClass = unitCfg.unitToken
+            local cr, cg, cb, ca = addon.ResolveColorRGBA(colorMode, tint, sfColorOpts)
+            overlay:SetVertexColor(cr, cg, cb, ca)
         end
     end
 

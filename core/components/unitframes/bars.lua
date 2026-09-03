@@ -4,6 +4,8 @@ local addonName, addon = ...
 
 -- APB text opts for ResolveColorRGBA (classPower with the mana lighten; no dkSpec)
 local apbTextColorOpts = { classPowerMode = true, lightenMana = true }
+-- Boss bar opts for ResolveColorRGBA (hook-path scratch, fields set per call)
+local bossBarColorOpts = {}
 local Util = addon.ComponentsUtil
 local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
 local ClampOpacity = Util.ClampOpacity
@@ -755,21 +757,9 @@ do
                                                         -- Reapply color
                                                         local tex = hbReapply:GetStatusBarTexture()
                                                         if tex and tex.SetVertexColor then
-                                                            local r, g, b, a = 1, 1, 1, 1
-                                                            if colorMode == "custom" and type(tint) == "table" then
-                                                                r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-                                                            elseif colorMode == "class" and addon.GetClassColorRGB then
-                                                                local cr, cg, cb = addon.GetClassColorRGB(unitId)
-                                                                if cr == nil and addon.GetDefaultHealthColorRGB then
-                                                                    cr, cg, cb = addon.GetDefaultHealthColorRGB()
-                                                                end
-                                                                r, g, b = cr or 0, cg or 1, cb or 0
-                                                            elseif colorMode == "texture" then
-                                                                r, g, b, a = 1, 1, 1, 1
-                                                            elseif colorMode == "default" and addon.GetDefaultHealthColorRGB then
-                                                                local hr, hg, hb = addon.GetDefaultHealthColorRGB()
-                                                                r, g, b = hr or 0, hg or 1, hb or 0
-                                                            end
+                                                            bossBarColorOpts.barKind = "health"
+                                                            bossBarColorOpts.unitForClass = unitId
+                                                            local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, bossBarColorOpts)
                                                             pcall(tex.SetVertexColor, tex, r, g, b, a)
                                                         end
                                                     end
@@ -1054,15 +1044,9 @@ do
                                                     end
                                                     local tex = pbReapply:GetStatusBarTexture()
                                                     if tex and tex.SetVertexColor then
-                                                        local r, g, b, a = 1, 1, 1, 1
-                                                        if colorMode == "custom" and type(tint) == "table" then
-                                                            r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-                                                        elseif colorMode == "class" and addon.GetClassColorRGB then
-                                                            local cr, cg, cb = addon.GetClassColorRGB(unitId)
-                                                            r, g, b = cr or 1, cg or 1, cb or 1
-                                                        elseif colorMode == "texture" then
-                                                            r, g, b, a = 1, 1, 1, 1
-                                                        end
+                                                        bossBarColorOpts.barKind = "power"
+                                                        bossBarColorOpts.unitForClass = unitId
+                                                        local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, bossBarColorOpts)
                                                         pcall(tex.SetVertexColor, tex, r, g, b, a)
                                                     end
                                                 end

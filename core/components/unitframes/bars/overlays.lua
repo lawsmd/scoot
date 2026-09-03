@@ -6,6 +6,9 @@
 
 local addonName, addon = ...
 
+-- Scratch opts for ResolveColorRGBA: per-call fields overwritten before each call
+local ufOverlayColorOpts = {}
+
 -- Create module namespace
 addon.BarsOverlays = addon.BarsOverlays or {}
 local BO = addon.BarsOverlays
@@ -534,21 +537,9 @@ local function ensureBossRectOverlay(bossFrame, bar, cfg, barType, unitId)
         tint = cfg.powerBarTint
     end
 
-    local r, g, b, a = 1, 1, 1, 1
-    if colorMode == "custom" and type(tint) == "table" then
-        r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-    elseif colorMode == "class" and addon.GetClassColorRGB then
-        local cr, cg, cb = addon.GetClassColorRGB(unitId or "player")
-        if cr == nil and barType == "health" and addon.GetDefaultHealthColorRGB then
-            cr, cg, cb = addon.GetDefaultHealthColorRGB()
-        end
-        r, g, b = cr or 1, cg or 1, cb or 1
-    elseif colorMode == "texture" then
-        r, g, b, a = 1, 1, 1, 1
-    elseif barType == "health" and colorMode == "default" and addon.GetDefaultHealthColorRGB then
-        local hr, hg, hb = addon.GetDefaultHealthColorRGB()
-        r, g, b = hr or 0, hg or 1, hb or 0
-    end
+    ufOverlayColorOpts.barKind = barType
+    ufOverlayColorOpts.unitForClass = unitId or "player"
+    local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, ufOverlayColorOpts)
     overlay:SetVertexColor(r, g, b, a)
 
     -- Safety: verify overlay has a valid texture. If every atlas/texture try
@@ -961,7 +952,7 @@ local function ensureRectHealthOverlay(unit, bar, cfg)
     elseif unit == "FocusTarget" then unitToken = "focustarget"
     end
 
-    if colorMode == "value" or colorMode == "valueDark" then
+    if addon.IsValueColorMode(colorMode) then
         -- "Color by Value" mode: use UnitHealthPercent with color curve
         -- Apply initial color now; dynamic updates handled by hooks below
         local useDark = (colorMode == "valueDark")
@@ -972,46 +963,11 @@ local function ensureRectHealthOverlay(unit, bar, cfg)
         -- Store reference so dynamic updates can find the overlay
         st.valueColorOverlay = overlay
         st.valueColorUseDark = useDark  -- Store for dynamic updates
-    elseif colorMode == "custom" and type(tint) == "table" then
-        r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-        if overlay and overlay.SetVertexColor then
-            overlay:SetVertexColor(r, g, b, a)
-        end
-    elseif colorMode == "class" and addon.GetClassColorRGB then
-        local cr, cg, cb = addon.GetClassColorRGB(unitToken)
-        if cr == nil and addon.GetDefaultHealthColorRGB then
-            cr, cg, cb = addon.GetDefaultHealthColorRGB()
-        end
-        r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-        if overlay and overlay.SetVertexColor then
-            overlay:SetVertexColor(r, g, b, a)
-        end
-    elseif colorMode == "texture" then
-        -- Preserve texture's original colors
-        r, g, b, a = 1, 1, 1, 1
-        if overlay and overlay.SetVertexColor then
-            overlay:SetVertexColor(r, g, b, a)
-        end
-    elseif colorMode == "default" then
-        -- Use the addon's static health color API as the authoritative source.
-        -- GetVertexColor on atlas-backed StatusBarTextures (e.g., Pet) returns white
-        -- because the color is baked into the atlas, not applied via vertex color.
-        if addon.GetDefaultHealthColorRGB then
-            local hr, hg, hb = addon.GetDefaultHealthColorRGB()
-            r, g, b = hr or 0, hg or 1, hb or 0
-        else
-            -- Fallback: try to get the bar's current vertex color
-            local tex = bar:GetStatusBarTexture()
-            if tex and tex.GetVertexColor then
-                local ok, vr, vg, vb, va = pcall(tex.GetVertexColor, tex)
-                if ok then
-                    r, g, b, a = vr or 1, vg or 1, vb or 1, va or 1
-                end
-            end
-        end
-        if overlay and overlay.SetVertexColor then
-            overlay:SetVertexColor(r, g, b, a)
-        end
+    elseif overlay and overlay.SetVertexColor then
+        ufOverlayColorOpts.barKind = "health"
+        ufOverlayColorOpts.unitForClass = unitToken
+        r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, ufOverlayColorOpts)
+        overlay:SetVertexColor(r, g, b, a)
     end
 
     updateRectHealthOverlay(unit, bar)
@@ -1372,23 +1328,12 @@ local function ensureRectPowerOverlay(unit, bar, cfg)
     -- Apply vertex color to overlay based on color mode
     local unitId = (unit == "Player" and "player") or (unit == "Target" and "target") or (unit == "Focus" and "focus") or (unit == "Pet" and "pet") or (unit == "TargetOfTarget" and "targettarget") or (unit == "FocusTarget" and "focustarget") or "player"
     local tint = cfg.powerBarTint
-    local r, g, b, a = 1, 1, 1, 1
-    if colorMode == "custom" and type(tint) == "table" then
-        r, g, b, a = tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-    elseif colorMode == "class" and addon.GetClassColorRGB then
-        local cr, cg, cb = addon.GetClassColorRGB(unitId)
-        r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-    elseif colorMode == "texture" then
-        r, g, b, a = 1, 1, 1, 1
-    elseif colorMode == "default" or colorMode == "power" then
-        -- Use the addon's power color API as the authoritative source.
-        -- Avoids issues where the fill texture's vertex color may be stale/white
-        -- after Blizzard resets the StatusBarTexture on combat entry.
-        if addon.GetPowerColorRGB then
-            local pr, pg, pb = addon.GetPowerColorRGB(unitId)
-            if pr then r, g, b = pr, pg, pb end
-        end
-    end
+    -- Default resolves through the power color API rather than the fill's
+    -- vertex color, which may be stale/white after Blizzard resets the
+    -- StatusBarTexture on combat entry
+    ufOverlayColorOpts.barKind = "power"
+    ufOverlayColorOpts.unitForClass = unitId
+    local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, ufOverlayColorOpts)
     if overlay and overlay.SetVertexColor then
         overlay:SetVertexColor(r, g, b, a)
     end
