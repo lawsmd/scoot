@@ -29,22 +29,6 @@ function PowerBar.Render(panel, scrollContent)
     -- Edit Mode mirror push (personal_resource_display/editmode.lua): hideBar, barHeight
     local syncEditModeSetting = h.sync
 
-    -- Maps the composite's field vocabulary onto this file's flat per-prefix
-    -- keys (valueTextFont, percentTextFontSize, ...). Writes do not apply;
-    -- the composite calls apply after each write.
-    local function flatTextAccessors(map)
-        local function get(field)
-            local key = map[field]
-            if not key then return nil end
-            return getSetting(key)
-        end
-        local function set(field, value)
-            local key = map[field]
-            if key then h.set(key, value) end
-        end
-        return get, set
-    end
-
     -- The apply half of h.setAndApplyComponent: defer the component's own
     -- ApplyStyling rather than the global styling pass.
     local function applyComponent()
@@ -257,7 +241,7 @@ function PowerBar.Render(panel, scrollContent)
                         -- styles are offered (outline-first order). dkPair
                         -- routes the mode through the colorMode/colorModeDK
                         -- pair for Death Knight spec coloring.
-                        local get, set = flatTextAccessors({
+                        local get, set = Helpers.CreateFlatAccessors(getSetting, h.set, {
                             fontFace = "valueTextFont",
                             style = "valueTextFontFlags",
                             size = "valueTextFontSize",
@@ -287,7 +271,7 @@ function PowerBar.Render(panel, scrollContent)
                             set = function(v) setSetting("percentTextShow", v) end,
                         })
 
-                        local get, set = flatTextAccessors({
+                        local get, set = Helpers.CreateFlatAccessors(getSetting, h.set, {
                             fontFace = "percentTextFont",
                             style = "percentTextFontFlags",
                             size = "percentTextFontSize",

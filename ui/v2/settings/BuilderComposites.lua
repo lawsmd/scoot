@@ -28,48 +28,83 @@ local function norm(opt)
     return opt
 end
 
+-- Stands in for opts.apply when the caller's set applies on its own.
+local function NOOP() end
+
 --------------------------------------------------------------------------------
--- AddOffsetPair: X/Y offset dual slider
+-- Axis pairs: AddOffsetPair (X/Y) and AddInsetPair (H/V)
 --------------------------------------------------------------------------------
--- Options:
---   get(axis)   : returns the stored value for axis "x" or "y" (side-effect-free)
+-- Shared options:
+--   get(axis)   : returns the stored value for the axis key (side-effect-free)
 --   set(axis,v) : stores the value; must not call apply
---   apply       : called after every write
---   label       : default "Offset"
---   range       : symmetric bound, default 100 (min = -range, max = range)
---   min, max    : explicit bounds for asymmetric ranges (override range)
+--   apply       : optional; called after every write. Omit it when set
+--                 applies on its own (a self-applying API, or a setSetting
+--                 that applies).
+--   label, description, key, disabled : forwarded
+--   min, max    : explicit bounds (override the method's default range)
 --   step        : default 1
---   minLabel, maxLabel, description, key, disabled : forwarded
--- Values are coerced with tonumber(...) or 0 on both read and write.
+--   precision   : forwarded to both sliders
+--   minLabel, maxLabel : end labels; false omits one the method defaults
+-- Values are coerced with tonumber(...) or 0 on both read and write, so a
+-- non-zero default or a legacy-key fallback lives in the caller's get.
+--
+-- AddOffsetPair: axis keys "x"/"y", labels X/Y, label "Offset"; range
+--   (default 100) sets min = -range, max = range; no end labels.
+-- AddInsetPair:  axis keys "h"/"v", labels H/V, label "Border Inset";
+--   min -4, max 4; end labels "-4" and "+4".
 --------------------------------------------------------------------------------
 
-function Builder:AddOffsetPair(opts)
-    local apply = opts.apply
-    local range = opts.range or 100
-    local minV = opts.min or -range
-    local maxV = opts.max or range
+local function endLabel(value, default)
+    if value == false then return nil end
+    if value == nil then return default end
+    return value
+end
+
+local function addAxisPair(self, opts, spec)
+    local apply = opts.apply or NOOP
+    local minV = opts.min or spec.min
+    local maxV = opts.max or spec.max
     local step = opts.step or 1
+    local minLabel = endLabel(opts.minLabel, spec.minLabel)
+    local maxLabel = endLabel(opts.maxLabel, spec.maxLabel)
 
     local function slider(axis, axisLabel)
         return {
             axisLabel = axisLabel,
             min = minV, max = maxV, step = step,
-            minLabel = opts.minLabel, maxLabel = opts.maxLabel,
+            precision = opts.precision,
+            minLabel = minLabel, maxLabel = maxLabel,
             get = function() return tonumber(opts.get(axis)) or 0 end,
             set = function(v)
                 opts.set(axis, tonumber(v) or 0)
-                if apply then apply() end
+                apply()
             end,
         }
     end
 
     return self:AddDualSlider({
-        label = opts.label or "Offset",
+        label = opts.label or spec.label,
         description = opts.description,
         key = opts.key,
         disabled = opts.disabled,
-        sliderA = slider("x", "X"),
-        sliderB = slider("y", "Y"),
+        sliderA = slider(spec.axes[1], spec.axisLabels[1]),
+        sliderB = slider(spec.axes[2], spec.axisLabels[2]),
+    })
+end
+
+function Builder:AddOffsetPair(opts)
+    local range = opts.range or 100
+    return addAxisPair(self, opts, {
+        axes = { "x", "y" }, axisLabels = { "X", "Y" },
+        label = "Offset", min = -range, max = range,
+    })
+end
+
+function Builder:AddInsetPair(opts)
+    return addAxisPair(self, opts, {
+        axes = { "h", "v" }, axisLabels = { "H", "V" },
+        label = "Border Inset", min = -4, max = 4,
+        minLabel = "-4", maxLabel = "+4",
     })
 end
 
@@ -94,7 +129,10 @@ end
 -- color, alignment, alignmentMode, nameAnchor, anchor, offsetX, offsetY.
 --
 -- Options:
---   get, set, apply : required, as above
+--   get, set        : required, as above
+--   apply           : optional; called after every write. Omit it when set
+--                     applies on its own (a self-applying API, or a
+--                     setSetting that applies).
 --   applyHidden     : apply used by the hide toggle only (default opts.apply)
 --   defaults        : overlay over { fontFace = "FRIZQT__", style = "OUTLINE",
 --                     size = 14, colorMode = "default", color = {1,1,1,1} }
@@ -128,7 +166,7 @@ end
 --------------------------------------------------------------------------------
 
 function Builder:AddTextStyleBlock(opts)
-    local get, set, apply = opts.get, opts.set, opts.apply
+    local get, set, apply = opts.get, opts.set, opts.apply or NOOP
     local disabled = opts.disabled
     local overlay = opts.defaults or {}
     local function default(field)

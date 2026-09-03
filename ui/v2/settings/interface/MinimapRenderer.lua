@@ -19,22 +19,6 @@ local setSetting = h.setAndApply
 
 local applyStyles = Helpers.applyStyles
 
--- Maps the composite's field vocabulary onto this file's flat per-prefix
--- keys (zoneTextFont, clockFontSize, ...). Writes do not apply; the
--- composite calls apply after each write.
-local function flatTextAccessors(map)
-    local function get(field)
-        local key = map[field]
-        if not key then return nil end
-        return getSetting(key)
-    end
-    local function set(field, value)
-        local key = map[field]
-        if key then h.set(key, value) end
-    end
-    return get, set
-end
-
 -- Time source options
 local timeSourceValues = {
     ["local"] = "Local Time",
@@ -285,7 +269,7 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        local zoneGet, zoneSet = flatTextAccessors({
+                        local zoneGet, zoneSet = Helpers.CreateFlatAccessors(getSetting, h.set, {
                             fontFace = "zoneTextFont",
                             style = "zoneTextFontStyle",
                             size = "zoneTextFontSize",
@@ -373,7 +357,7 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        local clockGet, clockSet = flatTextAccessors({
+                        local clockGet, clockSet = Helpers.CreateFlatAccessors(getSetting, h.set, {
                             fontFace = "clockFont",
                             style = "clockFontStyle",
                             size = "clockFontSize",
@@ -442,7 +426,7 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        local sdGet, sdSet = flatTextAccessors({
+                        local sdGet, sdSet = Helpers.CreateFlatAccessors(getSetting, h.set, {
                             fontFace = "systemDataFont",
                             style = "systemDataFontStyle",
                             size = "systemDataFontSize",

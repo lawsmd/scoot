@@ -213,6 +213,90 @@ function Helpers.CreateSubTableHelpers(componentId, subKey, opts)
 end
 
 --------------------------------------------------------------------------------
+-- Flat Accessor Factory
+--------------------------------------------------------------------------------
+-- Translates a composite's field vocabulary (AddTextStyleBlock,
+-- AddBarStyleBlock, AddBarBorderBlock) onto flat keys through a map. A field
+-- absent from the map reads nil and writes nothing. getFn(key) must not
+-- materialize; setFn(key, value) may apply on its own, in which case the
+-- caller passes no apply to the composite.
+-- Usage:
+--   local get, set = Helpers.CreateFlatAccessors(h.get, h.set, {
+--       fontFace = "valueTextFont", size = "valueTextFontSize",
+--   })
+--------------------------------------------------------------------------------
+
+function Helpers.CreateFlatAccessors(getFn, setFn, map)
+    local function get(field)
+        local key = map[field]
+        if not key then return nil end
+        return getFn(key)
+    end
+    local function set(field, value)
+        local key = map[field]
+        if key then setFn(key, value) end
+    end
+    return get, set
+end
+
+--------------------------------------------------------------------------------
+-- Bar Accessor Factory
+--------------------------------------------------------------------------------
+-- The prefixed key family the unit-frame and group-frame bars store under
+-- (healthBarTexture, healthBarBorderInsetH, ...), as the fields
+-- AddBarStyleBlock and AddBarBorderBlock consume. getTable() returns the
+-- table holding the keys without materializing it (nil when absent);
+-- ensureTable() materializes it for writes. insetH/insetV fall back to the
+-- legacy single-value <prefix>BorderInset when the axis key is unset.
+-- opts.suffixes overrides single entries (the name backdrop stores its enable
+-- flag as BorderEnabled).
+--------------------------------------------------------------------------------
+
+Helpers.BAR_FIELD_SUFFIXES = {
+    texture = "Texture",
+    colorMode = "ColorMode",
+    color = "Tint",
+    bgTexture = "BackgroundTexture",
+    bgColorMode = "BackgroundColorMode",
+    bgColor = "BackgroundTint",
+    bgOpacity = "BackgroundOpacity",
+    enabled = "BorderEnable",
+    style = "BorderStyle",
+    hiddenEdges = "BorderHiddenEdges",
+    tintEnabled = "BorderTintEnable",
+    tintColor = "BorderTintColor",
+    thickness = "BorderThickness",
+    insetH = "BorderInsetH",
+    insetV = "BorderInsetV",
+}
+
+function Helpers.CreateBarAccessors(getTable, ensureTable, barPrefix, opts)
+    local overrides = opts and opts.suffixes
+    local function keyFor(field)
+        local suffix = (overrides and overrides[field]) or Helpers.BAR_FIELD_SUFFIXES[field]
+        return suffix and (barPrefix .. suffix) or nil
+    end
+    local function get(field)
+        local key = keyFor(field)
+        if not key then return nil end
+        local t = getTable()
+        if not t then return nil end
+        local v = t[key]
+        if v == nil and (field == "insetH" or field == "insetV") then
+            v = t[barPrefix .. "BorderInset"]
+        end
+        return v
+    end
+    local function set(field, value)
+        local key = keyFor(field)
+        if not key then return end
+        local t = ensureTable()
+        if t then t[key] = value end
+    end
+    return get, set
+end
+
+--------------------------------------------------------------------------------
 -- Common Dropdown/Selector Options
 --------------------------------------------------------------------------------
 

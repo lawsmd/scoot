@@ -32,22 +32,6 @@ function AltPowerBar.Render(panel, scrollContent)
     -- Edit Mode mirror push (personal_resource_display/editmode.lua): hideBar
     local syncEditModeSetting = h.sync
 
-    -- Maps the composite's field vocabulary onto this file's flat per-prefix
-    -- keys (valueTextFont, valueTextFontSize, ...). Writes do not apply; the
-    -- composite calls apply after each write.
-    local function flatTextAccessors(map)
-        local function get(field)
-            local key = map[field]
-            if not key then return nil end
-            return getSetting(key)
-        end
-        local function set(field, value)
-            local key = map[field]
-            if key then h.set(key, value) end
-        end
-        return get, set
-    end
-
     -- The apply half of h.setAndApplyComponent: defer the component's own
     -- ApplyStyling rather than the global styling pass.
     local function applyComponent()
@@ -222,7 +206,7 @@ function AltPowerBar.Render(panel, scrollContent)
 
                         -- PRD text is Scoot-drawn, so the paired Deep Shadow
                         -- styles are offered (outline-first order).
-                        local get, set = flatTextAccessors({
+                        local get, set = Helpers.CreateFlatAccessors(getSetting, h.set, {
                             fontFace = "valueTextFont",
                             style = "valueTextFontFlags",
                             size = "valueTextFontSize",

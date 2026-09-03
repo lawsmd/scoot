@@ -28,22 +28,6 @@ function HealthBar.Render(panel, scrollContent)
     local syncEditModeSetting = h.sync
     local textColorValues, textColorOrder = Helpers.textColorHealthValues, Helpers.textColorHealthOrder
 
-    -- Maps the composite's field vocabulary onto this file's flat per-prefix
-    -- keys (valueTextFont, percentTextFontSize, ...). Writes do not apply;
-    -- the composite calls apply after each write.
-    local function flatTextAccessors(map)
-        local function get(field)
-            local key = map[field]
-            if not key then return nil end
-            return getSetting(key)
-        end
-        local function set(field, value)
-            local key = map[field]
-            if key then h.set(key, value) end
-        end
-        return get, set
-    end
-
     -- The apply half of h.setAndApplyComponent: defer the component's own
     -- ApplyStyling rather than the global styling pass.
     local function applyComponent()
@@ -249,7 +233,7 @@ function HealthBar.Render(panel, scrollContent)
 
                         -- PRD text is Scoot-drawn, so the paired Deep Shadow
                         -- styles are offered (outline-first order).
-                        local get, set = flatTextAccessors({
+                        local get, set = Helpers.CreateFlatAccessors(getSetting, h.set, {
                             fontFace = "valueTextFont",
                             style = "valueTextFontFlags",
                             size = "valueTextFontSize",
@@ -277,7 +261,7 @@ function HealthBar.Render(panel, scrollContent)
                             set = function(v) setSetting("percentTextShow", v) end,
                         })
 
-                        local get, set = flatTextAccessors({
+                        local get, set = Helpers.CreateFlatAccessors(getSetting, h.set, {
                             fontFace = "percentTextFont",
                             style = "percentTextFontFlags",
                             size = "percentTextFontSize",

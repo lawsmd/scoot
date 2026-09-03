@@ -52,22 +52,6 @@ local function ColorSet(ctx, key)
     end
 end
 
--- Adapts ctx to AddTextStyleBlock's field vocabulary for one text prefix.
--- ctx.setAndApply writes and applies the aura config; the composite's apply
--- then refreshes the preview.
-local function TextAccessors(ctx, map)
-    local function get(field)
-        local key = map[field]
-        if not key then return nil end
-        return ctx.get(key)
-    end
-    local function set(field, value)
-        local key = map[field]
-        if key then ctx.setAndApply(key, value) end
-    end
-    return get, set
-end
-
 -- Standalone X/Y offset pair over two flat ctx keys
 local function AddCtxOffsetPair(tabBuilder, ctx, keyX, keyY)
     tabBuilder:AddOffsetPair({
@@ -387,7 +371,7 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
     -- Scoot Aura text is Scoot-drawn, so the paired Deep Shadow styles are
     -- offered on every text tab. The font default mirrors the registered
     -- component default, not a panel-local fallback.
-    local get, set = TextAccessors(ctx, {
+    local get, set = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, {
         hidden = "hideNameText",
         fontFace = "nameTextFont",
         style = "nameTextStyle",
@@ -498,7 +482,7 @@ function Tabs.BuildDurationTab(tabBuilder, ctx)
 
     -- Scoot Aura text is Scoot-drawn, so the paired Deep Shadow styles are
     -- offered here.
-    local get, set = TextAccessors(ctx, {
+    local get, set = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, {
         hidden = "hideText",
         fontFace = "textFont",
         style = "textStyle",
@@ -582,7 +566,7 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
 
     -- Scoot Aura text is Scoot-drawn, so the paired Deep Shadow styles are
     -- offered here.
-    local get, set = TextAccessors(ctx, {
+    local get, set = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, {
         hidden = "hideStackText",
         fontFace = "stackTextFont",
         style = "stackTextStyle",
