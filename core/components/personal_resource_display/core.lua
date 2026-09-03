@@ -36,47 +36,26 @@ end
 -- Combat Restriction System
 --------------------------------------------------------------------------------
 
-local pendingCombatComponents = {}
-local combatWatcherFrame
-
-local function ensureCombatWatcher()
-    if combatWatcherFrame or not CreateFrame then
-        return
-    end
-    combatWatcherFrame = CreateFrame("Frame")
-    combatWatcherFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    combatWatcherFrame:SetScript("OnEvent", function()
-        for component in pairs(pendingCombatComponents) do
-            pendingCombatComponents[component] = nil
-            component._awaitingCombatEnd = nil
-            if component.ApplyStyling then
-                component:ApplyStyling()
-            end
-        end
-    end)
-end
-
-local function isRestricted()
-    if InCombatLockdown and InCombatLockdown() then
-        return true
-    end
-    if UnitAffectingCombat and UnitAffectingCombat("player") then
-        return true
-    end
-    return false
-end
+-- Components whose queued ApplyStyling is currently running. The guard keeps
+-- the pcall-failure producer in bars.lua from re-entering endlessly when the
+-- primitive's run-now branch fires out of combat: one nested retry, then stop.
+local applyInProgress = setmetatable({}, { __mode = "k" })
 
 local function queueAfterCombat(component)
-    if not component then
+    if not component or applyInProgress[component] then
         return
     end
-    if component._awaitingCombatEnd then
-        pendingCombatComponents[component] = true
-        return
-    end
-    component._awaitingCombatEnd = true
-    ensureCombatWatcher()
-    pendingCombatComponents[component] = true
+    component:RunOutOfCombat(function()
+        if not component.ApplyStyling then
+            return
+        end
+        applyInProgress[component] = true
+        local ok, err = pcall(component.ApplyStyling, component)
+        applyInProgress[component] = nil
+        if not ok then
+            geterrorhandler()(err)
+        end
+    end, "applyStyling")
 end
 
 --------------------------------------------------------------------------------
