@@ -82,9 +82,6 @@ local function _ReadAllowOffscreen(unit)
 	return false
 end
 
-local pendingUnits = {}
-local combatWatcher
-
 -- The original working slider used SetClampRectInsets(0,0,0,0) to disable clamping.
 local CLAMP_ZERO = 0
 
@@ -194,18 +191,13 @@ local function _InstallOffscreenEnforcementHooks(frame)
 	end
 end
 
-local function _EnsureCombatWatcher()
-	if combatWatcher then return end
-	combatWatcher = CreateFrame("Frame")
-	combatWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
-	combatWatcher:SetScript("OnEvent", function()
-		for unit in pairs(pendingUnits) do
-			pendingUnits[unit] = nil
-			if addon and addon.ApplyUnitFrameOffscreenUnlockFor then
-				addon.ApplyUnitFrameOffscreenUnlockFor(unit)
-			end
+-- Queue a post-combat reapply for one unit on the shared regen drain.
+local function _QueueDeferredApply(unit)
+	addon.Events.RunOutOfCombat(function()
+		if addon and addon.ApplyUnitFrameOffscreenUnlockFor then
+			addon.ApplyUnitFrameOffscreenUnlockFor(unit)
 		end
-	end)
+	end, "UnitFrames:OffscreenUnlock:" .. unit)
 end
 
 -- Apply unclamp/clamp state for a single unit.
@@ -221,8 +213,7 @@ local function applyFor(unit)
 
 	-- Combat safety: defer until combat ends
 	if InCombatLockdown and InCombatLockdown() then
-		pendingUnits[unit] = true
-		_EnsureCombatWatcher()
+		_QueueDeferredApply(unit)
 		return true
 	end
 
@@ -392,11 +383,10 @@ local function onLayoutsUpdated()
 	end
 	C_Timer.After(0.1, function()
 		if InCombatLockdown and InCombatLockdown() then
-			-- Let the combat watcher handle reapply after combat.
+			-- Reapply after combat via the shared regen drain.
 			for _, unit in ipairs(UNITS) do
-				pendingUnits[unit] = true
+				_QueueDeferredApply(unit)
 			end
-			_EnsureCombatWatcher()
 			return
 		end
 		applyAll()

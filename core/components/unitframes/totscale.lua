@@ -29,31 +29,6 @@ local function debugPrint(...)
 end
 
 --------------------------------------------------------------------------------
--- Combat Deferral
---------------------------------------------------------------------------------
-
--- Track pending applies to run when combat ends
-local pendingApplies = {}
-
--- Event frame for combat deferral
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-eventFrame:SetScript("OnEvent", function(self, event)
-    if event == "PLAYER_REGEN_ENABLED" then
-        -- Apply any pending scale/position changes
-        for key, fn in pairs(pendingApplies) do
-            if type(fn) == "function" then
-                local ok, err = pcall(fn)
-                if not ok then
-                    debugPrint("Deferred apply failed for", key, ":", err)
-                end
-            end
-        end
-        wipe(pendingApplies)
-    end
-end)
-
---------------------------------------------------------------------------------
 -- Zero-Touch DB Access
 --------------------------------------------------------------------------------
 
@@ -145,7 +120,7 @@ local function applyToTScale()
     -- Combat guard - defer to when combat ends
     if InCombatLockdown and InCombatLockdown() then
         debugPrint("Combat lockdown, deferring ToT scale")
-        pendingApplies["ToTScale"] = applyToTScale
+        addon.Events.RunOutOfCombat(applyToTScale, "UnitFrames:ToTScale")
         return
     end
 
@@ -187,7 +162,7 @@ local function applyToTPosition()
     -- Combat guard - defer to when combat ends
     if InCombatLockdown and InCombatLockdown() then
         debugPrint("Combat lockdown, deferring ToT position")
-        pendingApplies["ToTPosition"] = applyToTPosition
+        addon.Events.RunOutOfCombat(applyToTPosition, "UnitFrames:ToTPosition")
         return
     end
 
@@ -259,7 +234,7 @@ local function applyFocusTargetScale()
     -- Combat guard - defer to when combat ends
     if InCombatLockdown and InCombatLockdown() then
         debugPrint("Combat lockdown, deferring FocusTarget scale")
-        pendingApplies["FocusTargetScale"] = applyFocusTargetScale
+        addon.Events.RunOutOfCombat(applyFocusTargetScale, "UnitFrames:FocusTargetScale")
         return
     end
 
@@ -301,7 +276,7 @@ local function applyFocusTargetPosition()
     -- Combat guard - defer to when combat ends
     if InCombatLockdown and InCombatLockdown() then
         debugPrint("Combat lockdown, deferring FocusTarget position")
-        pendingApplies["FocusTargetPosition"] = applyFocusTargetPosition
+        addon.Events.RunOutOfCombat(applyFocusTargetPosition, "UnitFrames:FocusTargetPosition")
         return
     end
 
