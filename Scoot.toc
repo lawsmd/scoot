@@ -103,6 +103,7 @@ core/components/unitframes/text/power.lua
 core/components/unitframes/text/names.lua
 core/components/unitframes/bars/utils.lua
 core/components/unitframes/bars/combat.lua
+core/components/unitframes/bars/textoverlay.lua
 core/components/unitframes/bars/resolvers.lua
 core/components/unitframes/bars/textures.lua
 core/components/unitframes/bars/alpha.lua
