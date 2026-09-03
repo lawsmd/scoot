@@ -58,9 +58,6 @@ local function _ReadAllowOffscreen()
     return rawget(minimapStyle, "allowOffScreenDragging") == true
 end
 
-local pending = false
-local combatWatcher
-
 -- The clamp rect insets value to use when unlocked
 local CLAMP_ZERO = 0
 
@@ -160,18 +157,14 @@ local function _InstallOffscreenEnforcementHooks(frame)
     end
 end
 
-local function _EnsureCombatWatcher()
-    if combatWatcher then return end
-    combatWatcher = CreateFrame("Frame")
-    combatWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
-    combatWatcher:SetScript("OnEvent", function()
-        if pending then
-            pending = false
-            if addon and addon.ApplyMinimapOffscreenUnlock then
-                addon.ApplyMinimapOffscreenUnlock()
-            end
+-- Queue a post-combat reapply on the shared regen drain. One key: repeat
+-- queues coalesce, as the old pending boolean did.
+local function _QueueDeferredApply()
+    addon.Events.RunOutOfCombat(function()
+        if addon and addon.ApplyMinimapOffscreenUnlock then
+            addon.ApplyMinimapOffscreenUnlock()
         end
-    end)
+    end, "Minimap:OffscreenUnlock")
 end
 
 -- Apply unclamp/clamp state for the minimap.
@@ -187,8 +180,7 @@ local function applyMinimapOffscreenUnlock()
 
     -- Combat safety: defer until combat ends
     if InCombatLockdown and InCombatLockdown() then
-        pending = true
-        _EnsureCombatWatcher()
+        _QueueDeferredApply()
         return true
     end
 
@@ -337,8 +329,7 @@ local function onLayoutsUpdated()
     end
     C_Timer.After(0.1, function()
         if InCombatLockdown and InCombatLockdown() then
-            pending = true
-            _EnsureCombatWatcher()
+            _QueueDeferredApply()
             return
         end
         applyMinimapOffscreenUnlock()

@@ -190,30 +190,18 @@ for _, event in ipairs({
     addon.Events.On("AuraIds", event, onCatalogEvent)
 end
 
--- Combat watcher: defers FullPowerFrame reapplies to avoid taint during combat.
-local fullPowerFrameCombatWatcher = nil
-local pendingFullPowerFrames = {}
-
-local function ensureFullPowerFrameCombatWatcher()
-    if fullPowerFrameCombatWatcher then return end
-    fullPowerFrameCombatWatcher = CreateFrame("Frame")
-    fullPowerFrameCombatWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
-    fullPowerFrameCombatWatcher:SetScript("OnEvent", function()
-        for frame in pairs(pendingFullPowerFrames) do
-            local applyState = frame and getProp(frame, "fullPowerApplyState") or nil
-            if frame and getProp(frame, "fullPowerPendingReapply") and applyState then
-                setProp(frame, "fullPowerPendingReapply", nil)
-                applyState()
-            end
-            pendingFullPowerFrames[frame] = nil
-        end
-    end)
-end
-
+-- Defers FullPowerFrame reapplies to avoid taint during combat. The frame is
+-- the queue key; the payload re-reads the FrameState props at drain time so the
+-- newest applyState closure runs, as the old pending-set watcher did.
 local function queueFullPowerFrameReapply(fullPowerFrame)
     if not fullPowerFrame then return end
-    ensureFullPowerFrameCombatWatcher()
-    pendingFullPowerFrames[fullPowerFrame] = true
+    addon.Events.RunOutOfCombat(function()
+        local applyState = getProp(fullPowerFrame, "fullPowerApplyState")
+        if getProp(fullPowerFrame, "fullPowerPendingReapply") and applyState then
+            setProp(fullPowerFrame, "fullPowerPendingReapply", nil)
+            applyState()
+        end
+    end, fullPowerFrame)
 end
 
 local function HideDefaultBarTextures(barFrame, restore)

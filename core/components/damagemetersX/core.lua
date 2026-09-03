@@ -228,15 +228,15 @@ function DMX._SlashToggleShow()
     end
 
     if InCombatLockdown() then
-        local f = CreateFrame("Frame")
-        f:RegisterEvent("PLAYER_REGEN_ENABLED")
-        f:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
+        -- Keyed: toggling again in the same fight replaces the queued closure,
+        -- so the last toggle's CVar value is the one that lands on regen. The
+        -- captured value is safe for the same reason.
+        addon.Events.RunOutOfCombat(function()
             applyCVar()
             if newState and addon.ApplyStyles then
                 C_Timer.After(0, function() addon:ApplyStyles() end)
             end
-        end)
+        end, "DMX:cvarToggle")
         addon:Print(newState and "Damage Meter will show after combat." or "Damage Meter will hide after combat.")
     else
         applyCVar()
