@@ -7,10 +7,6 @@ local addonName, addon = ...
 
 local SAU = addon.ScootAuras
 
-local UnitClass = _G.UnitClass
-local _, playerClassToken = UnitClass("player")
-SAU._playerClassToken = playerClassToken
-
 --------------------------------------------------------------------------------
 -- Element styling (gated: called from Engine.ApplyAll only)
 --------------------------------------------------------------------------------

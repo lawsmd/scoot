@@ -227,9 +227,9 @@ local function Rebuild()
         header:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y)
         header._label:SetText(classEntry.name or "Unknown")
 
-        local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classEntry.file]
-        if color then
-            header._label:SetTextColor(color.r, color.g, color.b, 1)
+        local cr, cg, cb = addon.GetClassColorRGB(classEntry.file)
+        if cr then
+            header._label:SetTextColor(cr, cg, cb, 1)
         else
             local ar, ag, ab = GetTheme():GetAccentColor()
             header._label:SetTextColor(ar, ag, ab, 1)

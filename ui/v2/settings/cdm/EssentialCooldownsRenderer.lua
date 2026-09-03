@@ -342,16 +342,7 @@ function EssentialCooldowns.Render(panel, scrollContent)
                         local customColor = getSetting("procStartCustomColor") or {1, 1, 1, 1}
                         local textures = startCtrl:GetTextures()
                         if textures then
-                            local cr, cg, cb, ca = 1, 1, 1, 1
-                            if colorMode == "class" then
-                                local _, classToken = UnitClass("player")
-                                if classToken and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken] then
-                                    local cc = RAID_CLASS_COLORS[classToken]
-                                    cr, cg, cb = cc.r, cc.g, cc.b
-                                end
-                            elseif colorMode == "custom" and customColor then
-                                cr, cg, cb, ca = customColor[1] or 1, customColor[2] or 1, customColor[3] or 1, customColor[4] or 1
-                            end
+                            local cr, cg, cb, ca = addon.ResolveColorRGBA(colorMode, customColor)
                             for _, tex in ipairs(textures) do
                                 tex:SetVertexColor(cr, cg, cb, ca)
                             end

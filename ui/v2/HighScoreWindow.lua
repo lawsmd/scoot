@@ -26,12 +26,8 @@ local highScoreFrame = nil
 
 local function GetClassColor(classToken)
     if not classToken then return 1, 1, 1, 1 end
-    local colors = _G.RAID_CLASS_COLORS
-    if colors and colors[classToken] then
-        local c = colors[classToken]
-        return c.r or 1, c.g or 1, c.b or 1, 1
-    end
-    return 1, 1, 1, 1
+    local r, g, b = addon.GetClassColorRGB(classToken)
+    return r or 1, g or 1, b or 1, 1
 end
 
 local function GetArcadeFont()

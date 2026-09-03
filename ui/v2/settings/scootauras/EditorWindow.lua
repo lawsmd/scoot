@@ -995,8 +995,8 @@ local function RenderPreview()
         shapeAtlas = SAU()._AtlasFromShapeKey(ctx.get("shapeStyle") or "border:SquareMask") or "SquareMask"
         shapeDrain = ctx.get("shapeShowDrain") ~= false
         if (ctx.get("shapeColorMode") or "class") == "class" then
-            local cc = RAID_CLASS_COLORS[SAU()._playerClassToken]
-            shapeColor = cc and { cc.r, cc.g, cc.b, 1 } or { 1, 1, 1, 1 }
+            local r, g, b = addon.GetClassColorRGB("player")
+            shapeColor = r and { r, g, b, 1 } or { 1, 1, 1, 1 }
         else
             shapeColor = ctx.get("shapeTint") or { 1, 1, 1, 1 }
         end

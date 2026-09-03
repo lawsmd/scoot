@@ -249,9 +249,9 @@ local function ShowSpecPicker(anchor, rule, callback)
         classHeader:SetText(classEntry.name or "Unknown")
 
         -- Class color
-        local classColor = RAID_CLASS_COLORS[classEntry.file]
-        if classColor then
-            classHeader:SetTextColor(classColor.r, classColor.g, classColor.b, 1)
+        local cr, cg, cb = addon.GetClassColorRGB(classEntry.file)
+        if cr then
+            classHeader:SetTextColor(cr, cg, cb, 1)
         else
             classHeader:SetTextColor(ar, ag, ab, 1)
         end
@@ -388,9 +388,9 @@ local function CreateRulesSpecBadge(parent, specID)
     -- Apply class color to text
     local classFile = specEntry.file or specEntry.classFile
     if classFile then
-        local classColor = RAID_CLASS_COLORS[classFile]
-        if classColor then
-            name:SetTextColor(classColor.r, classColor.g, classColor.b, 1)
+        local cr, cg, cb = addon.GetClassColorRGB(classFile)
+        if cr then
+            name:SetTextColor(cr, cg, cb, 1)
         else
             name:SetTextColor(1, 1, 1, 1)
         end
