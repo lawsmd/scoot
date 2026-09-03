@@ -35,8 +35,8 @@ function TrackedBuffs.Render(panel, scrollContent)
             inner:AddSelector({
                 key = "orientation",
                 label = "Orientation",
-                values = { H = "Horizontal", V = "Vertical" },
-                order = { "H", "V" },
+                values = addon.Catalogs.Orientation.values,
+                order = addon.Catalogs.Orientation.order,
                 get = function() return getSetting("orientation") or "H" end,
                 set = function(v)
                     setSetting("orientation", v)
@@ -352,12 +352,9 @@ function TrackedBuffs.Render(panel, scrollContent)
                 minLabel = "Hidden", maxLabel = "100%",
             })
 
-            local visibilityValues = { always = "Always", combat = "Only in Combat", never = "Hidden" }
-            local visibilityOrder = { "always", "combat", "never" }
-
             inner:AddSelector({
                 label = "Visibility",
-                values = visibilityValues, order = visibilityOrder,
+                values = addon.Catalogs.Visibility.values, order = addon.Catalogs.Visibility.order,
                 get = function() return getSetting("visibilityMode") or "always" end,
                 set = function(v)
                     setSetting("visibilityMode", v)

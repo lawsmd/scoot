@@ -55,28 +55,6 @@ function HealthBar.Render(panel, scrollContent)
         end
     end
 
-    -- Build border options
-    local function getBorderOptions()
-        local values = { none = "None", square = "Default (Square)" }
-        local order = { "none", "square" }
-        if addon.BuildBarBorderOptionsContainer then
-            local data = addon.BuildBarBorderOptionsContainer()
-            if data and #data > 0 then
-                values = { none = "None" }
-                order = { "none" }
-                for _, entry in ipairs(data) do
-                    local key = entry.value or entry.key
-                    local label = entry.text or entry.label or key
-                    if key then
-                        values[key] = label
-                        table.insert(order, key)
-                    end
-                end
-            end
-        end
-        return values, order
-    end
-
     ---------------------------------------------------------------------------
     -- Master Toggle: Hide Health Bar (mirrors Blizzard's Edit Mode setting)
     ---------------------------------------------------------------------------
@@ -176,12 +154,8 @@ function HealthBar.Render(panel, scrollContent)
                 label = "Foreground",
                 getTexture = function() return getSetting("styleForegroundTexture") or "default" end,
                 setTexture = function(v) setSetting("styleForegroundTexture", v) end,
-                colorValues = {
-                    default = "Default",
-                    class = "Class Color",
-                    custom = "Custom",
-                },
-                colorOrder = { "default", "class", "custom" },
+                colorValues = addon.Catalogs.ColorMode.Text.values,
+                colorOrder = addon.Catalogs.ColorMode.Text.order,
                 getColorMode = function() return getSetting("styleForegroundColorMode") or "default" end,
                 -- "Class Color" is also pushed as Blizzard's Edit Mode "Show Class Color" for
                 -- this bar (two-way), so Edit Mode shows the same state.
@@ -206,11 +180,8 @@ function HealthBar.Render(panel, scrollContent)
                 label = "Background",
                 getTexture = function() return getSetting("styleBackgroundTexture") or "default" end,
                 setTexture = function(v) setSetting("styleBackgroundTexture", v) end,
-                colorValues = {
-                    default = "Default",
-                    custom = "Custom",
-                },
-                colorOrder = { "default", "custom" },
+                colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
+                colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
                 getColorMode = function() return getSetting("styleBackgroundColorMode") or "default" end,
                 setColorMode = function(v) setSetting("styleBackgroundColorMode", v) end,
                 getColor = function()

@@ -733,8 +733,8 @@ function Tabs.BuildShapeTab(tabBuilder, ctx)
 
     tabBuilder:AddSelectorColorPicker({
         label = "Color",
-        values = { class = "Class Color", custom = "Custom" },
-        order = { "class", "custom" },
+        values = addon.Catalogs.ColorMode.ClassCustom.values,
+        order = addon.Catalogs.ColorMode.ClassCustom.order,
         get = function() return ctx.get("shapeColorMode") or "class" end,
         set = function(v) ctx.setAndApply("shapeColorMode", v) ctx.refreshPreview() end,
         getColor = ColorGet(ctx, "shapeTint"),

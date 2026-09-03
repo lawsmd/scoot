@@ -45,15 +45,12 @@ function Debuffs.Render(panel, scrollContent)
         sectionKey = "positioning",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            local orientationValues = { H = "Horizontal", V = "Vertical" }
-            local orientationOrder = { "H", "V" }
-
             inner:AddSelector({
                 key = "orientation",
                 label = "Orientation",
                 description = "Horizontal arranges icons left-to-right, Vertical arranges top-to-bottom.",
-                values = orientationValues,
-                order = orientationOrder,
+                values = addon.Catalogs.Orientation.values,
+                order = addon.Catalogs.Orientation.order,
                 get = function() return getSetting("orientation") or "H" end,
                 set = function(v)
                     setSetting("orientation", v)

@@ -128,8 +128,8 @@ function ActionBar.Render(panel, scrollContent, componentId, opts)
             inner:AddSelector({
                 key = "orientationSelector",
                 label = "Orientation",
-                values = { H = "Horizontal", V = "Vertical" },
-                order = { "H", "V" },
+                values = addon.Catalogs.Orientation.values,
+                order = addon.Catalogs.Orientation.order,
                 get = function() return getSetting("orientation") or "H" end,
                 set = function(v)
                     setSetting("orientation", v)

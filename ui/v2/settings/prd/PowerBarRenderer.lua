@@ -55,29 +55,6 @@ function PowerBar.Render(panel, scrollContent)
             end)
         end
     end
-
-    -- Build border options
-    local function getBorderOptions()
-        local values = { none = "None", square = "Default (Square)" }
-        local order = { "none", "square" }
-        if addon.BuildBarBorderOptionsContainer then
-            local data = addon.BuildBarBorderOptionsContainer()
-            if data and #data > 0 then
-                values = { none = "None" }
-                order = { "none" }
-                for _, entry in ipairs(data) do
-                    local key = entry.value or entry.key
-                    local label = entry.text or entry.label or key
-                    if key then
-                        values[key] = label
-                        table.insert(order, key)
-                    end
-                end
-            end
-        end
-        return values, order
-    end
-
     ---------------------------------------------------------------------------
     -- Sizing Section
     ---------------------------------------------------------------------------
@@ -156,11 +133,8 @@ function PowerBar.Render(panel, scrollContent)
                 label = "Background",
                 getTexture = function() return getSetting("styleBackgroundTexture") or "default" end,
                 setTexture = function(v) setSetting("styleBackgroundTexture", v) end,
-                colorValues = {
-                    default = "Default",
-                    custom = "Custom",
-                },
-                colorOrder = { "default", "custom" },
+                colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
+                colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
                 getColorMode = function() return getSetting("styleBackgroundColorMode") or "default" end,
                 setColorMode = function(v) setSetting("styleBackgroundColorMode", v) end,
                 getColor = function()

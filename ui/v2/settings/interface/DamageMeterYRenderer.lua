@@ -704,8 +704,8 @@ function DMYSettings.Render(panel, scrollContent)
                             label = "Foreground",
                             getTexture = function() return getSetting("barTexture") or "default" end,
                             setTexture = function(v) setAndRefresh("barTexture", v) end,
-                            colorValues = { class = "Class Color", custom = "Custom" },
-                            colorOrder = { "class", "custom" },
+                            colorValues = addon.Catalogs.ColorMode.ClassCustom.values,
+                            colorOrder = addon.Catalogs.ColorMode.ClassCustom.order,
                             getColorMode = function() return getSetting("barForegroundColorMode") or "class" end,
                             setColorMode = function(v) setAndRefresh("barForegroundColorMode", v) end,
                             getColor = function()
@@ -719,8 +719,8 @@ function DMYSettings.Render(panel, scrollContent)
                             label = "Background",
                             getTexture = function() return getSetting("barBgTexture") or "default" end,
                             setTexture = function(v) setAndRefresh("barBgTexture", v) end,
-                            colorValues = { default = "Default", custom = "Custom" },
-                            colorOrder = { "default", "custom" },
+                            colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
+                            colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
                             getColorMode = function() return getSetting("barBgColorMode") or "default" end,
                             setColorMode = function(v) setAndRefresh("barBgColorMode", v) end,
                             getColor = function()

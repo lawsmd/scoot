@@ -90,8 +90,8 @@ local function CreateCustomGroupRenderer(groupIndex)
                     key = "orientation",
                     label = "Orientation",
                     description = "Horizontal arranges icons left-to-right, Vertical arranges top-to-bottom.",
-                    values = { H = "Horizontal", V = "Vertical" },
-                    order = { "H", "V" },
+                    values = addon.Catalogs.Orientation.values,
+                    order = addon.Catalogs.Orientation.order,
                     get = function() return getSetting("orientation") or "H" end,
                     set = function(v)
                         h.setAndApply("orientation", v)

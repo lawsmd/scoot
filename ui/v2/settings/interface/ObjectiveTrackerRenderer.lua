@@ -33,13 +33,6 @@ function ObjectiveTracker.Render(panel, scrollContent)
         end
     end
 
-    -- Font color mode options (for UISelectorColorPicker)
-    local fontColorValues = {
-        default = "Default",
-        custom = "Custom",
-    }
-    local fontColorOrder = { "default", "custom" }
-
     -- Collapsible section: Sizing
     builder:AddCollapsibleSection({
         title = "Sizing",
@@ -157,7 +150,7 @@ function ObjectiveTracker.Render(panel, scrollContent)
             style = { description = "The outline style for this text." },
             size = false,
             color = {
-                values = fontColorValues, order = fontColorOrder,
+                values = addon.Catalogs.ColorMode.DefaultCustom.values, order = addon.Catalogs.ColorMode.DefaultCustom.order,
                 description = "Color mode for this text. Select 'Custom' to choose a specific color.",
             },
             offset = false,
@@ -302,7 +295,7 @@ function ObjectiveTracker.Render(panel, scrollContent)
                     size = { min = 6, max = 32, minLabel = "6", maxLabel = "32",
                         description = "Size of this text element." },
                     color = {
-                        values = fontColorValues, order = fontColorOrder,
+                        values = addon.Catalogs.ColorMode.DefaultCustom.values, order = addon.Catalogs.ColorMode.DefaultCustom.order,
                         description = "Color mode for this text. Select 'Custom' to choose a specific color.",
                     },
                     offset = false,

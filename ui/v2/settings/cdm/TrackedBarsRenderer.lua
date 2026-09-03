@@ -136,12 +136,8 @@ function TrackedBars.Render(panel, scrollContent)
                 label = "Foreground",
                 getTexture = function() return getSetting("styleForegroundTexture") or "bevelled" end,
                 setTexture = function(v) setSetting("styleForegroundTexture", v) end,
-                colorValues = {
-                    default = "Default",
-                    class = "Class Color",
-                    custom = "Custom",
-                },
-                colorOrder = { "default", "class", "custom" },
+                colorValues = addon.Catalogs.ColorMode.Text.values,
+                colorOrder = addon.Catalogs.ColorMode.Text.order,
                 getColorMode = function() return getSetting("styleForegroundColorMode") or "default" end,
                 setColorMode = function(v) setSetting("styleForegroundColorMode", v) end,
                 getColor = function()
@@ -159,12 +155,8 @@ function TrackedBars.Render(panel, scrollContent)
                 label = "Background",
                 getTexture = function() return getSetting("styleBackgroundTexture") or "bevelled" end,
                 setTexture = function(v) setSetting("styleBackgroundTexture", v) end,
-                colorValues = {
-                    default = "Default",
-                    class = "Class Color",
-                    custom = "Custom",
-                },
-                colorOrder = { "default", "class", "custom" },
+                colorValues = addon.Catalogs.ColorMode.Text.values,
+                colorOrder = addon.Catalogs.ColorMode.Text.order,
                 getColorMode = function() return getSetting("styleBackgroundColorMode") or "default" end,
                 setColorMode = function(v) setSetting("styleBackgroundColorMode", v) end,
                 getColor = function()

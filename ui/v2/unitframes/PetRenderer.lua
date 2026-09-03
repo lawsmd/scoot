@@ -593,8 +593,8 @@ function UF.RenderPet(panel, scrollContent)
                             hideToggle = { label = "Disable Name Text" },
                             -- Pet name text has no class-color mode
                             color = {
-                                values = { default = "Default", custom = "Custom" },
-                                order = { "default", "custom" },
+                                values = addon.Catalogs.ColorMode.DefaultCustom.values,
+                                order = addon.Catalogs.ColorMode.DefaultCustom.order,
                             },
                         })
                         tabInner:Finalize()
@@ -715,17 +715,10 @@ function UF.RenderPet(panel, scrollContent)
             end,
         })
 
-        local colorModeValues = {
-            texture = "Texture Original",
-            class = "Class Color",
-            custom = "Custom",
-        }
-        local colorModeOrder = { "texture", "class", "custom" }
-
         inner:AddSelectorColorPicker({
             label = "Border Color",
-            values = colorModeValues,
-            order = colorModeOrder,
+            values = UF.portraitBorderColorValues,
+            order = UF.portraitBorderColorOrder,
             get = function()
                 local t = B.getPortraitDB() or {}
                 return t.portraitBorderColorMode or "texture"

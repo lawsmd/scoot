@@ -311,11 +311,8 @@ function DamageMetersX.Render(panel, scrollContent)
                             label = "Foreground Color",
                             description = "Bar fill color when 'Show Class Color' is disabled. Disabled when class colors are enabled above.",
                             key = "barForegroundColor",
-                            values = {
-                                ["default"] = "Default",
-                                ["custom"] = "Custom",
-                            },
-                            order = { "default", "custom" },
+                            values = addon.Catalogs.ColorMode.DefaultCustom.values,
+                            order = addon.Catalogs.ColorMode.DefaultCustom.order,
                             get = function()
                                 return getSetting("barForegroundColorMode") or "default"
                             end,
@@ -339,11 +336,8 @@ function DamageMetersX.Render(panel, scrollContent)
                         tabInner:AddSelectorColorPicker({
                             label = "Background Color",
                             description = "Bar background color mode.",
-                            values = {
-                                ["default"] = "Default",
-                                ["custom"] = "Custom",
-                            },
-                            order = { "default", "custom" },
+                            values = addon.Catalogs.ColorMode.DefaultCustom.values,
+                            order = addon.Catalogs.ColorMode.DefaultCustom.order,
                             get = function()
                                 return getSetting("barBackgroundColorMode") or "default"
                             end,

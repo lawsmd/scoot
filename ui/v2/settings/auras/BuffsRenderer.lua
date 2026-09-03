@@ -47,15 +47,13 @@ function Buffs.Render(panel, scrollContent)
         buildContent = function(contentFrame, inner)
             local OrientationPatterns = addon.UI and addon.UI.SettingPatterns and addon.UI.SettingPatterns.Orientation
 
-            local orientationValues = { H = "Horizontal", V = "Vertical" }
-            local orientationOrder = { "H", "V" }
 
             inner:AddSelector({
                 key = "orientation",
                 label = "Orientation",
                 description = "Horizontal arranges icons left-to-right, Vertical arranges top-to-bottom.",
-                values = orientationValues,
-                order = orientationOrder,
+                values = addon.Catalogs.Orientation.values,
+                order = addon.Catalogs.Orientation.order,
                 get = function() return getSetting("orientation") or "H" end,
                 set = function(v)
                     setSetting("orientation", v)

@@ -73,8 +73,8 @@ function EssentialCooldowns.Render(panel, scrollContent)
                 key = "orientation",
                 label = "Orientation",
                 description = "Horizontal arranges icons left-to-right, Vertical arranges top-to-bottom.",
-                values = { H = "Horizontal", V = "Vertical" },
-                order = { "H", "V" },
+                values = addon.Catalogs.Orientation.values,
+                order = addon.Catalogs.Orientation.order,
                 get = function() return getSetting("orientation") or "H" end,
                 set = function(v)
                     setSetting("orientation", v)
@@ -924,18 +924,11 @@ function EssentialCooldowns.Render(panel, scrollContent)
             })
 
             -- Visibility Mode selector (Edit Mode setting)
-            local visibilityValues = {
-                always = "Always",
-                combat = "Only in Combat",
-                never = "Hidden",
-            }
-            local visibilityOrder = { "always", "combat", "never" }
-
             inner:AddSelector({
                 label = "Visibility",
                 description = "When the cooldown tracker is visible.",
-                values = visibilityValues,
-                order = visibilityOrder,
+                values = addon.Catalogs.Visibility.values,
+                order = addon.Catalogs.Visibility.order,
                 get = function() return getSetting("visibilityMode") or "always" end,
                 set = function(v)
                     setSetting("visibilityMode", v)

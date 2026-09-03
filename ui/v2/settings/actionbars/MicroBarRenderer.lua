@@ -39,8 +39,8 @@ function MicroBar.Render(panel, scrollContent)
         buildContent = function(contentFrame, inner)
             inner:AddSelector({
                 label = "Orientation",
-                values = { H = "Horizontal", V = "Vertical" },
-                order = { "H", "V" },
+                values = addon.Catalogs.Orientation.values,
+                order = addon.Catalogs.Orientation.order,
                 get = function() return getSetting("orientation") or "H" end,
                 set = function(v)
                     setSetting("orientation", v)

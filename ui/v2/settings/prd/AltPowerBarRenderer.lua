@@ -89,11 +89,8 @@ function AltPowerBar.Render(panel, scrollContent)
                 setTexture = function(v) setSetting("styleForegroundTexture", v) end,
                 -- "Default" follows Blizzard's own colour for the resource (mana, Ebon
                 -- Might, stagger thresholds, void metamorphosis).
-                colorValues = {
-                    default = "Default",
-                    custom = "Custom",
-                },
-                colorOrder = { "default", "custom" },
+                colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
+                colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
                 getColorMode = function() return getSetting("styleForegroundColorMode") or "default" end,
                 setColorMode = function(v) setSetting("styleForegroundColorMode", v) end,
                 getColor = function()
@@ -113,11 +110,8 @@ function AltPowerBar.Render(panel, scrollContent)
                 label = "Background",
                 getTexture = function() return getSetting("styleBackgroundTexture") or "default" end,
                 setTexture = function(v) setSetting("styleBackgroundTexture", v) end,
-                colorValues = {
-                    default = "Default",
-                    custom = "Custom",
-                },
-                colorOrder = { "default", "custom" },
+                colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
+                colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
                 getColorMode = function() return getSetting("styleBackgroundColorMode") or "default" end,
                 setColorMode = function(v) setSetting("styleBackgroundColorMode", v) end,
                 getColor = function()
