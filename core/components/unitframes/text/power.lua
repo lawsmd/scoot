@@ -10,6 +10,11 @@ local addonName, addon = ...
 -- and dkSpec resolve here; default stays white (no barKind, no fallback)
 local ufPowerTextColorOpts = { classPowerMode = true, dkSpecMode = true, lightenMana = true }
 
+-- Font half and Zero-Touch gate opts for the power texts (colorModeDK: the DK
+-- companion slot triggers styling even when the base mode is "default")
+local ufTextFontOpts = { size = 14 }
+local ufTextCustomizationOpts = { alignment = true, alignmentMode = true, colorModeDK = true }
+
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
@@ -208,47 +213,12 @@ do
 		end
 	end
 
-	-- Default/clean profiles should not modify Blizzard text.
-	-- Only treat settings as "customized" if they differ from structural defaults.
-	local function hasTextCustomization(styleCfg)
-		if not styleCfg then return false end
-		if styleCfg.fontFace ~= nil and styleCfg.fontFace ~= "" and styleCfg.fontFace ~= "FRIZQT__" then
-			return true
-		end
-		if styleCfg.size ~= nil or styleCfg.style ~= nil or styleCfg.color ~= nil or styleCfg.alignment ~= nil or styleCfg.alignmentMode ~= nil then
-			return true
-		end
-		-- colorMode is used for Power Bar text to support "classPower" color
-		if styleCfg.colorMode ~= nil and styleCfg.colorMode ~= "default" then
-			return true
-		end
-		-- DK companion slot: ensure DK characters with dkSpec trigger styling even if base is "default"
-		if styleCfg.colorModeDK ~= nil and styleCfg.colorModeDK ~= "default" then
-			return true
-		end
-		if styleCfg.offset and (styleCfg.offset.x ~= nil or styleCfg.offset.y ~= nil) then
-			local ox = tonumber(styleCfg.offset.x) or 0
-			local oy = tonumber(styleCfg.offset.y) or 0
-			if ox ~= 0 or oy ~= 0 then
-				return true
-			end
-		end
-		return false
-	end
-
 	local function applyTextStyle(fs, styleCfg, baselineKey, fallbackFrame)
 		if not fs or not styleCfg then return end
-		if not hasTextCustomization(styleCfg) then
+		if not addon.HasTextCustomization(styleCfg, ufTextCustomizationOpts) then
 			return
 		end
-		local face = addon.ResolveFontFace(styleCfg.fontFace)
-		local size = tonumber(styleCfg.size) or 14
-		local outline = tostring(styleCfg.style or "OUTLINE")
-		-- Set flag to prevent the SetFont hook from triggering a reapply loop
-		local fst = FS
-		if fst then fst.SetProp(fs, "applyingFont", true) end
-		if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, outline) elseif fs.SetFont then pcall(fs.SetFont, fs, face, size, outline) end
-		if fst then fst.SetProp(fs, "applyingFont", nil) end
+		addon.ApplyTextFont(fs, styleCfg, ufTextFontOpts)
 		-- Determine effective color based on colorMode (for Power Bar text)
 		local colorMode = addon.ReadColorMode(
 			function() return styleCfg.colorMode end,

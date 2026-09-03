@@ -4,6 +4,10 @@ local addonName, addon = ...
 
 -- APB text opts for ResolveColorRGBA (classPower with the mana lighten; no dkSpec)
 local apbTextColorOpts = { classPowerMode = true, lightenMana = true }
+
+-- Font half and Zero-Touch gate opts for the APB text
+local apbTextFontOpts = { size = 14 }
+local apbTextCustomizationOpts = { alignment = true }
 -- Boss bar opts for ResolveColorRGBA (hook-path scratch, fields set per call)
 local bossBarColorOpts = {}
 local Util = addon.ComponentsUtil
@@ -2195,42 +2199,10 @@ do
 
                         local function applyAltTextStyle(fs, styleCfg, baselineKey)
                             if not fs or not styleCfg then return end
-                            -- Default/clean profiles should not modify Blizzard text.
-                            -- Only apply styling if the user has configured any text settings.
-                            local function hasTextCustomization(cfgT)
-                                if not cfgT then return false end
-                                -- Font face may be present as a structural default; treat the stock face as non-customization
-                                -- unless other settings are set.
-                                if cfgT.fontFace ~= nil and cfgT.fontFace ~= "" and cfgT.fontFace ~= "FRIZQT__" then
-                                    return true
-                                end
-                                if cfgT.size ~= nil or cfgT.style ~= nil or cfgT.color ~= nil or cfgT.alignment ~= nil then
-                                    return true
-                                end
-                                -- colorMode is used for APB text to support "classPower" color
-                                if cfgT.colorMode ~= nil and cfgT.colorMode ~= "default" then
-                                    return true
-                                end
-                                if cfgT.offset and (cfgT.offset.x ~= nil or cfgT.offset.y ~= nil) then
-                                    local ox = tonumber(cfgT.offset.x) or 0
-                                    local oy = tonumber(cfgT.offset.y) or 0
-                                    if ox ~= 0 or oy ~= 0 then
-                                        return true
-                                    end
-                                end
-                                return false
-                            end
-                            if not hasTextCustomization(styleCfg) then
+                            if not addon.HasTextCustomization(styleCfg, apbTextCustomizationOpts) then
                                 return
                             end
-                            local face = addon.ResolveFontFace(styleCfg.fontFace)
-                            local size = tonumber(styleCfg.size) or 14
-                            local outline = tostring(styleCfg.style or "OUTLINE")
-                            -- Set flag to prevent the SetFont hook from triggering a reapply loop
-                            local fsState = getState(fs)
-                            if fsState then fsState.applyingFont = true end
-                            if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, outline) elseif fs.SetFont then pcall(fs.SetFont, fs, face, size, outline) end
-                            if fsState then fsState.applyingFont = nil end
+                            addon.ApplyTextFont(fs, styleCfg, apbTextFontOpts)
                             -- Determine effective color based on colorMode. dkSpecMode stays off:
                             -- this dialect never resolved dkSpec (APB text offers classPower only)
                             local colorMode = styleCfg.colorMode or "default"

@@ -11,6 +11,10 @@ local addonName, addon = ...
 -- applies that color; no barKind, so a class miss stays white, not green
 local ufHealthTextColorOpts = { legacySniff = true, legacySniffDefault = true }
 
+-- Font half and Zero-Touch gate opts for this file's value texts
+local ufTextFontOpts = { size = 14 }
+local ufTextCustomizationOpts = { alignment = true, alignmentMode = true }
+
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
@@ -212,31 +216,9 @@ do
         end
     end
 
-    -- Default/clean profiles should not modify Blizzard text.
-    -- Only treat settings as "customized" if they differ from structural defaults.
-    local function hasTextCustomization(styleCfg)
-        if not styleCfg then return false end
-        if styleCfg.fontFace ~= nil and styleCfg.fontFace ~= "" and styleCfg.fontFace ~= "FRIZQT__" then
-            return true
-        end
-        if styleCfg.size ~= nil or styleCfg.style ~= nil or styleCfg.color ~= nil or styleCfg.alignment ~= nil or styleCfg.alignmentMode ~= nil then
-            return true
-        end
-        if styleCfg.colorMode ~= nil and styleCfg.colorMode ~= "default" then
-            return true
-        end
-        if styleCfg.offset and (styleCfg.offset.x ~= nil or styleCfg.offset.y ~= nil) then
-            local ox = tonumber(styleCfg.offset.x) or 0
-            local oy = tonumber(styleCfg.offset.y) or 0
-            if ox ~= 0 or oy ~= 0 then
-                return true
-            end
-        end
-        return false
-    end
-
     -- Targeted zero-touch check for DeadText/UnconsciousText: only fontFace and style matter
-    -- (color, alignment, offset are irrelevant: Blizzard's original values are kept)
+    -- (color, alignment, offset are irrelevant: Blizzard's original values are kept).
+    -- Deliberately narrower than addon.HasTextCustomization.
     local function hasFontFaceOrStyle(styleCfg)
         if not styleCfg then return false end
         if styleCfg.fontFace ~= nil and styleCfg.fontFace ~= "" and styleCfg.fontFace ~= "FRIZQT__" then
@@ -259,18 +241,10 @@ do
         local ok, currentFont, currentSize, currentFlags = pcall(fs.GetFont, fs)
         if not ok or type(currentSize) ~= "number" then return end
 
-        local face = addon.ResolveFontFace and addon.ResolveFontFace(styleCfg.fontFace or "FRIZQT__")
-            or currentFont
+        local face = addon.ResolveFontFace(styleCfg.fontFace)
         local outline = styleCfg.style ~= nil and tostring(styleCfg.style) or (currentFlags or "")
 
-        local fstate = FS
-        if fstate then fstate.SetProp(fs, "applyingFont", true) end
-        if addon.ApplyFontStyle then
-            addon.ApplyFontStyle(fs, face, currentSize, outline)
-        elseif fs.SetFont then
-            pcall(fs.SetFont, fs, face, currentSize, outline)
-        end
-        if fstate then fstate.SetProp(fs, "applyingFont", nil) end
+        addon.ApplyFontStyle(fs, face, currentSize, outline)
     end
 
     -- Hook Show() on DeadText/UnconsciousText so font inheritance reapplies
@@ -297,23 +271,11 @@ do
 
     local function applyTextStyle(fs, styleCfg, baselineKey, fallbackFrame)
         if not fs or not styleCfg then return end
-        if not hasTextCustomization(styleCfg) then
+        if not addon.HasTextCustomization(styleCfg, ufTextCustomizationOpts) then
             return
         end
 
-        local face = addon.ResolveFontFace(styleCfg.fontFace)
-        local size = tonumber(styleCfg.size) or 14
-        local outline = tostring(styleCfg.style or "OUTLINE")
-
-        -- Guard against reapply loop from SetFont hooks
-        local fstate = FS
-        if fstate then fstate.SetProp(fs, "applyingFont", true) end
-        if addon.ApplyFontStyle then
-            addon.ApplyFontStyle(fs, face, size, outline)
-        elseif fs.SetFont then
-            pcall(fs.SetFont, fs, face, size, outline)
-        end
-        if fstate then fstate.SetProp(fs, "applyingFont", nil) end
+        addon.ApplyTextFont(fs, styleCfg, ufTextFontOpts)
 
         -- Resolve color based on colorMode
         local colorMode = styleCfg.colorMode or "default"

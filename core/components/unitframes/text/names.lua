@@ -9,6 +9,9 @@ local addonName, addon = ...
 -- Scratch opts for ResolveColorRGBA (ToT/FoT name text; no barKind)
 local nameTextColorOpts = {}
 
+-- Font-half opts for the name/level texts
+local nameTextFontOpts = { size = 14 }
+
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
@@ -265,28 +268,9 @@ do
 			local function applyBossTextStyle(fs, styleCfg, baselineKey, fallbackFrame)
 				if not fs or not styleCfg then return end
 
-				local function hasTextCustomization(cfgT)
-					if not cfgT then return false end
-					if cfgT.fontFace ~= nil and cfgT.fontFace ~= "" and cfgT.fontFace ~= "FRIZQT__" then return true end
-					if cfgT.size ~= nil or cfgT.style ~= nil then return true end
-					if cfgT.colorMode ~= nil and cfgT.colorMode ~= "" and cfgT.colorMode ~= "default" then return true end
-					if cfgT.color ~= nil then return true end
-					if cfgT.offset and (cfgT.offset.x ~= nil or cfgT.offset.y ~= nil) then
-						local ox = tonumber(cfgT.offset.x) or 0
-						local oy = tonumber(cfgT.offset.y) or 0
-						if ox ~= 0 or oy ~= 0 then return true end
-					end
-					return false
-				end
-				if not hasTextCustomization(styleCfg) then return end
+				if not addon.HasTextCustomization(styleCfg) then return end
 
-				local face = addon.ResolveFontFace(styleCfg.fontFace)
-				local size = tonumber(styleCfg.size) or 14
-				local outline = tostring(styleCfg.style or "OUTLINE")
-				local fst = FS
-				if fst then fst.SetProp(fs, "applyingFont", true) end
-				if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, outline) elseif fs.SetFont then pcall(fs.SetFont, fs, face, size, outline) end
-				if fst then fst.SetProp(fs, "applyingFont", nil) end
+				addon.ApplyTextFont(fs, styleCfg, nameTextFontOpts)
 
 				-- Boss frames: no class color option, and every mode renders the
 				-- stored color, else the Name/Level Text default yellow
@@ -816,43 +800,10 @@ do
 
 	local function applyTextStyle(fs, styleCfg, baselineKey)
 		if not fs or not styleCfg then return end
-		-- Default/clean profiles should not modify Blizzard text.
-		-- Only treat settings as "customized" if they differ from structural defaults.
-		local function hasTextCustomization(cfgT)
-			if not cfgT then return false end
-			if cfgT.fontFace ~= nil and cfgT.fontFace ~= "" and cfgT.fontFace ~= "FRIZQT__" then
-				return true
-			end
-			if cfgT.size ~= nil or cfgT.style ~= nil then
-				return true
-			end
-			-- Name/Level uses colorMode; only treat as customized if not default.
-			if cfgT.colorMode ~= nil and cfgT.colorMode ~= "" and cfgT.colorMode ~= "default" then
-				return true
-			end
-			if cfgT.color ~= nil then
-				return true
-			end
-			if cfgT.offset and (cfgT.offset.x ~= nil or cfgT.offset.y ~= nil) then
-				local ox = tonumber(cfgT.offset.x) or 0
-				local oy = tonumber(cfgT.offset.y) or 0
-				if ox ~= 0 or oy ~= 0 then
-					return true
-				end
-			end
-			return false
-		end
-		if not hasTextCustomization(styleCfg) then
+		if not addon.HasTextCustomization(styleCfg) then
 			return
 		end
-		local face = addon.ResolveFontFace(styleCfg.fontFace)
-		local size = tonumber(styleCfg.size) or 14
-		local outline = tostring(styleCfg.style or "OUTLINE")
-		-- Set flag to prevent the SetFont hook from triggering a reapply loop
-		local fst = FS
-		if fst then fst.SetProp(fs, "applyingFont", true) end
-		if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, outline) elseif fs.SetFont then pcall(fs.SetFont, fs, face, size, outline) end
-		if fst then fst.SetProp(fs, "applyingFont", nil) end
+		addon.ApplyTextFont(fs, styleCfg, nameTextFontOpts)
 		-- Determine color based on colorMode
 		local c = nil
 		local colorMode = styleCfg.colorMode or "default"
