@@ -55,13 +55,9 @@ local FIT_BAR_WIDTH_BY_UNIT = { Player = 208, Target = 150, Focus = 150, Boss = 
 local function resolveBarFillColor(cfg, unit, frame)
 	local colorMode = cfg.castBarColorMode or "default"
 	local tint = cfg.castBarTint
-	if colorMode == "custom" and type(tint) == "table" then
-		return tint[1] or 1, tint[2] or 1, tint[3] or 1, tint[4] or 1
-	elseif colorMode == "class" then
-		if addon.GetClassColorRGB then
-			local r, g, b = addon.GetClassColorRGB("player")
-			return r or 1, g or 1, b or 1, 1
-		end
+	if (colorMode == "custom" and type(tint) == "table") or colorMode == "class" then
+		local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint)
+		return r, g, b, a
 	end
 	-- "default": white for non-kickable casts, yellow/gold for kickable
 	-- (castNotInterruptible is set by the SetStatusBarTexture hook when Blizzard
@@ -69,7 +65,8 @@ local function resolveBarFillColor(cfg, unit, frame)
 	if frame and getProp(frame, "castNotInterruptible") then
 		return 1, 1, 1, 1
 	end
-	return 1, 0.7, 0, 1
+	local r, g, b = addon.GetCastDefaultColorRGB()
+	return r, g, b, 1
 end
 
 -- Resolve the cast bar's width in pixels.
@@ -919,14 +916,8 @@ local function applyTextFillMode(frame, cfg, unit, empowered)
 				sparkFrame:Hide()
 			else
 				-- Spark color
-				local sparkColorMode = cfg.castBarSparkColorMode or "default"
-				local sparkTint = type(cfg.castBarSparkTint) == "table" and cfg.castBarSparkTint
-				if sparkColorMode == "custom" and sparkTint then
-					sparkTex:SetVertexColor(sparkTint[1] or 1, sparkTint[2] or 1,
-						sparkTint[3] or 1, sparkTint[4] or 1)
-				else
-					sparkTex:SetVertexColor(1, 1, 1, 1)
-				end
+				local sr, sg, sb, sa = addon.ResolveColorRGBA(cfg.castBarSparkColorMode, cfg.castBarSparkTint)
+				sparkTex:SetVertexColor(sr, sg, sb, sa)
 
 				-- Initial position anchored to fill texture edge (secret-safe)
 				local ok_sw, raw_sw = pcall(spark.GetWidth, spark)

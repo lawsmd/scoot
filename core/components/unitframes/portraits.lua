@@ -1,5 +1,8 @@
 -- portraits.lua - Portrait offset, scale, zoom, mask, border, and hide controls
 local addonName, addon = ...
+
+-- Scratch opts for ResolveColorRGBA (portrait border; unit set per call)
+local portraitColorOpts = {}
 local Util = addon.ComponentsUtil
 local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
 
@@ -716,21 +719,8 @@ do
 		borderTexture:SetPoint("BOTTOMRIGHT", portraitFrame, "BOTTOMRIGHT", -expandX, expandY)
 
 		local colorMode = cfg.portraitBorderColorMode or "texture"
-		local r, g, b, a = 1, 1, 1, 1
-
-		if colorMode == "custom" then
-			local tintColor = cfg.portraitBorderTintColor or {1, 1, 1, 1}
-			r, g, b, a = tintColor[1] or 1, tintColor[2] or 1, tintColor[3] or 1, tintColor[4] or 1
-		elseif colorMode == "class" then
-			if addon.GetClassColorRGB then
-				local cr, cg, cb = addon.GetClassColorRGB(unit == "Player" and "player" or (unit == "Target" and "target" or (unit == "Focus" and "focus" or "pet")))
-				r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-			else
-				r, g, b, a = 1, 1, 1, 1
-			end
-		elseif colorMode == "texture" then
-			r, g, b, a = 1, 1, 1, 1
-		end
+		portraitColorOpts.unitForClass = unit == "Player" and "player" or (unit == "Target" and "target" or (unit == "Focus" and "focus" or "pet"))
+		local r, g, b, a = addon.ResolveColorRGBA(colorMode, cfg.portraitBorderTintColor, portraitColorOpts)
 
 		borderTexture:SetVertexColor(r, g, b, a)
 		borderTexture:SetDrawLayer("OVERLAY", 7)

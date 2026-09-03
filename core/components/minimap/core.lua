@@ -83,11 +83,6 @@ local function getMinimapDB()
     end
 end
 
-local function getClassColor()
-    local r, g, b = addon.GetClassColorRGB("player")
-    return r or 1, g or 1, b or 1, 1
-end
-
 local function ensureOverlayTable()
     local minimap = _G.Minimap
     if not minimap then return nil end
@@ -99,7 +94,6 @@ end
 
 -- Promote shared helpers to namespace for sub-files
 MM._getMinimapDB = getMinimapDB
-MM._getClassColor = getClassColor
 MM._ensureOverlayTable = ensureOverlayTable
 MM._minimapOverlays = minimapOverlays
 MM._PVP_COLORS = PVP_COLORS

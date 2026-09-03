@@ -6,6 +6,9 @@
 
 local addonName, addon = ...
 
+-- Scratch opts for ResolveColorRGBA (ToT/FoT name text; no barKind)
+local nameTextColorOpts = {}
+
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
@@ -285,17 +288,9 @@ do
 				if addon.ApplyFontStyle then addon.ApplyFontStyle(fs, face, size, outline) elseif fs.SetFont then pcall(fs.SetFont, fs, face, size, outline) end
 				if fst then fst.SetProp(fs, "applyingFont", nil) end
 
-				-- Boss frames: no class color option. Treat "class" as "default".
-				local colorMode = styleCfg.colorMode or "default"
-				if colorMode == "class" then colorMode = "default" end
-
-				local c
-				if colorMode == "custom" then
-					c = styleCfg.color or { 1.0, 0.82, 0.0, 1 }
-				else
-					-- Default: match the Name/Level Text default behavior (yellow).
-					c = styleCfg.color or { 1.0, 0.82, 0.0, 1 }
-				end
+				-- Boss frames: no class color option, and every mode renders the
+				-- stored color, else the Name/Level Text default yellow
+				local c = styleCfg.color or { 1.0, 0.82, 0.0, 1 }
 				if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1) end
 
 				local ox = (styleCfg.offset and tonumber(styleCfg.offset.x)) or 0
@@ -1505,22 +1500,10 @@ do
 			pcall(nameFS.SetFont, nameFS, face, size, outline)
 		end
 
-		-- Apply color based on colorMode
+		-- Apply color based on colorMode (no barKind: ToT name default is white)
 		local colorMode = (styleCfg and styleCfg.colorMode) or "default"
-		local r, g, b, a = 1, 1, 1, 1
-		if colorMode == "class" then
-			-- Class color: use target-of-target's class color
-			if addon.GetClassColorRGB then
-				local cr, cg, cb = addon.GetClassColorRGB("targettarget")
-				r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-			end
-		elseif colorMode == "custom" then
-			local c = (styleCfg and styleCfg.color) or {1, 1, 1, 1}
-			r, g, b, a = c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-		else
-			-- Default: use Blizzard default (white for ToT name)
-			r, g, b, a = 1, 1, 1, 1
-		end
+		nameTextColorOpts.unitForClass = "targettarget"
+		local r, g, b, a = addon.ResolveColorRGBA(colorMode, styleCfg and styleCfg.color, nameTextColorOpts)
 		if nameFS.SetTextColor then pcall(nameFS.SetTextColor, nameFS, r, g, b, a) end
 
 		-- Apply alignment
@@ -1687,22 +1670,10 @@ do
 			pcall(nameFS.SetFont, nameFS, face, size, outline)
 		end
 
-		-- Apply color based on colorMode
+		-- Apply color based on colorMode (no barKind: FoT name default is white)
 		local colorMode = (styleCfg and styleCfg.colorMode) or "default"
-		local r, g, b, a = 1, 1, 1, 1
-		if colorMode == "class" then
-			-- Class color: use focus-target's class color
-			if addon.GetClassColorRGB then
-				local cr, cg, cb = addon.GetClassColorRGB("focustarget")
-				r, g, b, a = cr or 1, cg or 1, cb or 1, 1
-			end
-		elseif colorMode == "custom" then
-			local c = (styleCfg and styleCfg.color) or {1, 1, 1, 1}
-			r, g, b, a = c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-		else
-			-- Default: use Blizzard default (white for FoT name)
-			r, g, b, a = 1, 1, 1, 1
-		end
+		nameTextColorOpts.unitForClass = "focustarget"
+		local r, g, b, a = addon.ResolveColorRGBA(colorMode, styleCfg and styleCfg.color, nameTextColorOpts)
 		if nameFS.SetTextColor then pcall(nameFS.SetTextColor, nameFS, r, g, b, a) end
 
 		-- Apply alignment

@@ -504,7 +504,7 @@ function Controls:CreatePreview(options)
             barFill:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
         end
 
-        local fgColorMode = readSetting("barForegroundColorMode", "custom")
+        local fgColorMode = readSetting("barForegroundColorMode", "class")
         if fgColorMode == "custom" then
             local fgColor = readSetting("barForegroundTint", auraDefaultBarColor or {0.68, 0.85, 1.0, 1.0})
             barFill:SetStatusBarColor(fgColor[1] or 1, fgColor[2] or 1, fgColor[3] or 1, fgColor[4] or 1)

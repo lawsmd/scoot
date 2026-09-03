@@ -10,7 +10,6 @@ local MM = addon.Minimap
 
 -- Import shared helpers as locals
 local getMinimapDB = MM._getMinimapDB
-local getClassColor = MM._getClassColor
 local ensureOverlayTable = MM._ensureOverlayTable
 local HideBlizzardClock = MM._HideBlizzardClock
 local ShowBlizzardClock = MM._ShowBlizzardClock
@@ -108,15 +107,7 @@ local function ApplyFontToBlizzardClock(db)
     addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 
     -- Apply color
-    local r, g, b, a = 1, 1, 1, 1
-    if db.clockColorMode == "class" then
-        r, g, b, a = getClassColor()
-    elseif db.clockColorMode == "custom" and db.clockCustomColor then
-        r = db.clockCustomColor[1] or 1
-        g = db.clockCustomColor[2] or 1
-        b = db.clockCustomColor[3] or 1
-        a = db.clockCustomColor[4] or 1
-    end
+    local r, g, b, a = addon.ResolveColorRGBA(db.clockColorMode, db.clockCustomColor)
 
     pcall(function()
         fontString:SetTextColor(r, g, b, a)
@@ -181,15 +172,7 @@ local function ApplyClockStyle(db)
     addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 
     -- Apply color
-    local r, g, b, a = 1, 1, 1, 1
-    if db.clockColorMode == "class" then
-        r, g, b, a = getClassColor()
-    elseif db.clockColorMode == "custom" and db.clockCustomColor then
-        r = db.clockCustomColor[1] or 1
-        g = db.clockCustomColor[2] or 1
-        b = db.clockCustomColor[3] or 1
-        a = db.clockCustomColor[4] or 1
-    end
+    local r, g, b, a = addon.ResolveColorRGBA(db.clockColorMode, db.clockCustomColor)
     fontString:SetTextColor(r, g, b, a)
 
     -- Position using the custom anchor
@@ -312,15 +295,7 @@ local function ApplySystemDataStyle(db)
     addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 
     -- Apply color
-    local r, g, b, a = 1, 1, 1, 1
-    if db.systemDataColorMode == "class" then
-        r, g, b, a = getClassColor()
-    elseif db.systemDataColorMode == "custom" and db.systemDataCustomColor then
-        r = db.systemDataCustomColor[1] or 1
-        g = db.systemDataCustomColor[2] or 1
-        b = db.systemDataCustomColor[3] or 1
-        a = db.systemDataCustomColor[4] or 1
-    end
+    local r, g, b, a = addon.ResolveColorRGBA(db.systemDataColorMode, db.systemDataCustomColor)
     fontString:SetTextColor(r, g, b, a)
 
     -- Position
