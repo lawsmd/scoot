@@ -12,6 +12,9 @@ local addonName, addon = ...
 -- Scratch opts for ResolveColorRGBA (name overlay text; no barKind)
 local gfTextColorOpts = {}
 
+-- Font-half opts for the group title text
+local gfTitleFontOpts = { size = 12 }
+
 -- Get modules
 local Utils = addon.BarsUtils
 local Combat = addon.BarsCombat
@@ -31,113 +34,6 @@ local isEditModeActive = addon.BarsRaidFrames._isEditModeActive
 -- Applies font settings to raid frame name text elements.
 -- Target: CompactRaidGroup*Member*Name (the name FontString on each raid unit frame)
 --------------------------------------------------------------------------------
-
--- Apply text settings to a raid frame's name FontString
-local function applyTextToRaidFrame(frame, cfg)
-    if not frame or not cfg then return end
-
-    -- Get the name FontString (frame.name is the standard CompactUnitFrame name element)
-    local nameFS = frame.name
-    if not nameFS then return end
-
-    -- Resolve font face
-    local fontFace = cfg.fontFace or "FRIZQT__"
-    local resolvedFace
-    if addon and addon.ResolveFontFace then
-        resolvedFace = addon.ResolveFontFace(fontFace)
-    else
-        -- Fallback to GameFontNormal's font
-        local defaultFont = _G.GameFontNormal and _G.GameFontNormal:GetFont()
-        resolvedFace = defaultFont or "Fonts\\FRIZQT__.TTF"
-    end
-
-    -- Get settings with defaults
-    local fontSize = tonumber(cfg.size) or 12
-    local fontStyle = cfg.style or "OUTLINE"
-    local color = cfg.color or { 1, 1, 1, 1 }
-    local anchor = cfg.anchor or "TOPLEFT"
-    local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
-    local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
-
-    -- Apply font (must happen before SetText). ApplyFontStyle decodes the
-    -- pseudo-style and falls back on its own when the face will not load.
-    addon.ApplyFontStyle(nameFS, resolvedFace, fontSize, fontStyle)
-
-    -- Apply color
-    if nameFS.SetTextColor then
-        pcall(nameFS.SetTextColor, nameFS, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
-    end
-
-    -- Apply text alignment based on anchor's horizontal component
-    if nameFS.SetJustifyH then
-        pcall(nameFS.SetJustifyH, nameFS, Utils.getJustifyHFromAnchor(anchor))
-    end
-
-    -- Capture baseline position on first application for later restoration
-    local nameState = ensureState(nameFS)
-    if nameState and not nameState.originalPoint then
-        local point, relativeTo, relativePoint, x, y = nameFS:GetPoint(1)
-        if point then
-            nameState.originalPoint = { point, relativeTo, relativePoint, x or 0, y or 0 }
-        end
-    end
-
-    -- Apply anchor-based positioning with offsets relative to selected anchor
-    local isDefaultAnchor = (anchor == "TOPLEFT")
-    local isZeroOffset = (offsetX == 0 and offsetY == 0)
-
-    if isDefaultAnchor and isZeroOffset and nameState and nameState.originalPoint then
-        -- Restore baseline (stock position) when user has reset to default
-        local orig = nameState.originalPoint
-        nameFS:ClearAllPoints()
-        nameFS:SetPoint(orig[1], orig[2], orig[3], orig[4], orig[5])
-        -- Also restore default text alignment
-        if nameFS.SetJustifyH then
-            pcall(nameFS.SetJustifyH, nameFS, "LEFT")
-        end
-    else
-        -- Position the name FontString using the user-selected anchor, relative to the frame
-        nameFS:ClearAllPoints()
-        nameFS:SetPoint(anchor, frame, anchor, offsetX, offsetY)
-    end
-end
-
--- Collect all raid frame name FontStrings
-local raidNameTexts = {}
-
-local function collectRaidNameTexts()
-    if wipe then
-        wipe(raidNameTexts)
-    else
-        raidNameTexts = {}
-    end
-
-    -- Scan CompactRaidFrame1 through CompactRaidFrame40 (combined layout)
-    for i = 1, 40 do
-        local frame = _G["CompactRaidFrame" .. i]
-        if frame and frame.name then
-            local nameState = ensureState(frame.name)
-            if nameState and not nameState.raidTextCounted then
-                nameState.raidTextCounted = true
-                table.insert(raidNameTexts, frame)
-            end
-        end
-    end
-
-    -- Scan CompactRaidGroup1Member1 through CompactRaidGroup8Member5 (group layout)
-    for group = 1, 8 do
-        for member = 1, 5 do
-            local frame = _G["CompactRaidGroup" .. group .. "Member" .. member]
-            if frame and frame.name then
-                local nameState = ensureState(frame.name)
-                if nameState and not nameState.raidTextCounted then
-                    nameState.raidTextCounted = true
-                    table.insert(raidNameTexts, frame)
-                end
-            end
-        end
-    end
-end
 
 -- Main entry point: Apply raid frame text styling from DB settings
 function addon.ApplyRaidFrameTextStyle()
@@ -1195,23 +1091,12 @@ end
 local function applyTextToFontString_GroupTitle(fs, ownerFrame, cfg)
     if not fs or not ownerFrame or not cfg then return end
 
-    local fontFace = cfg.fontFace or "FRIZQT__"
-    local resolvedFace
-    if addon and addon.ResolveFontFace then
-        resolvedFace = addon.ResolveFontFace(fontFace)
-    else
-        local defaultFont = _G.GameFontNormal and _G.GameFontNormal:GetFont()
-        resolvedFace = defaultFont or "Fonts\\FRIZQT__.TTF"
-    end
-
-    local fontSize = tonumber(cfg.size) or 12
-    local fontStyle = cfg.style or "OUTLINE"
     local color = cfg.color or { 1, 1, 1, 1 }
     local anchor = cfg.anchor or "TOPLEFT"
     local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
     local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
 
-    addon.ApplyFontStyle(fs, resolvedFace, fontSize, fontStyle)
+    addon.ApplyTextFont(fs, cfg, gfTitleFontOpts)
 
     if fs.SetTextColor then
         pcall(fs.SetTextColor, fs, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)

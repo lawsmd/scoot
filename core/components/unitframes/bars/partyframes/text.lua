@@ -12,6 +12,9 @@ local addonName, addon = ...
 -- Scratch opts for ResolveColorRGBA (name overlay text; no barKind)
 local gfTextColorOpts = {}
 
+-- Font-half opts for the party title text
+local gfTitleFontOpts = { size = 12 }
+
 -- Get modules
 local Utils = addon.BarsUtils
 local Combat = addon.BarsCombat
@@ -32,111 +35,6 @@ local isEditModeActive = addon.BarsPartyFrames._isEditModeActive
 -- Applies font settings to party frame name text elements.
 -- Target: CompactPartyFrameMember[1-5].name (FontString with parentKey="name")
 --------------------------------------------------------------------------------
-
-local function applyTextToPartyFrame(frame, cfg)
-    if not frame or not cfg then return end
-
-    local nameFS = frame.name
-    if not nameFS then return end
-
-    local fontFace = cfg.fontFace or "FRIZQT__"
-    local resolvedFace
-    if addon and addon.ResolveFontFace then
-        resolvedFace = addon.ResolveFontFace(fontFace)
-    else
-        local defaultFont = _G.GameFontNormal and _G.GameFontNormal:GetFont()
-        resolvedFace = defaultFont or "Fonts\\FRIZQT__.TTF"
-    end
-
-    local fontSize = tonumber(cfg.size) or 12
-    local fontStyle = cfg.style or "OUTLINE"
-    local color = cfg.color or { 1, 1, 1, 1 }
-    local anchor = cfg.anchor or "TOPLEFT"
-    local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
-    local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
-
-    -- ApplyFontStyle decodes the pseudo-style (shadow half included) and does
-    -- its own fallback walk when the face will not load.
-    addon.ApplyFontStyle(nameFS, resolvedFace, fontSize, fontStyle)
-
-    if nameFS.SetTextColor then
-        pcall(nameFS.SetTextColor, nameFS, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
-    end
-
-    -- Apply text alignment based on anchor's horizontal component
-    if nameFS.SetJustifyH then
-        pcall(nameFS.SetJustifyH, nameFS, Utils.getJustifyHFromAnchor(anchor))
-    end
-
-    -- Capture baseline position on first application for later restoration
-    local nameState = ensureState(nameFS)
-    if nameState and not nameState.originalPoint then
-        local point, relativeTo, relativePoint, x, y = nameFS:GetPoint(1)
-        if point then
-            nameState.originalPoint = { point, relativeTo, relativePoint, x or 0, y or 0 }
-        end
-    end
-
-    -- Apply anchor-based positioning with offsets relative to selected anchor
-    local isDefaultAnchor = (anchor == "TOPLEFT")
-    local isZeroOffset = (offsetX == 0 and offsetY == 0)
-
-    if isDefaultAnchor and isZeroOffset and nameState and nameState.originalPoint then
-        -- Restore baseline (stock position) when user has reset to default
-        local orig = nameState.originalPoint
-        nameFS:ClearAllPoints()
-        nameFS:SetPoint(orig[1], orig[2], orig[3], orig[4], orig[5])
-        -- Also restore default text alignment
-        if nameFS.SetJustifyH then
-            pcall(nameFS.SetJustifyH, nameFS, "LEFT")
-        end
-    else
-        -- Position the name FontString using the user-selected anchor, relative to the frame
-        nameFS:ClearAllPoints()
-        nameFS:SetPoint(anchor, frame, anchor, offsetX, offsetY)
-    end
-
-    -- Preserve Blizzard's truncation/clipping behavior: explicitly constrain the name FontString width.
-    -- Blizzard normally constrains this via a dual-anchor layout (TOPLEFT + TOPRIGHT). The single-point
-    -- anchor (for 9-way alignment) removes that implicit width, so SetWidth restores it.
-    if nameFS.SetMaxLines then
-        pcall(nameFS.SetMaxLines, nameFS, 1)
-    end
-    if frame.GetWidth and nameFS.SetWidth then
-        local frameWidth = frame:GetWidth()
-        local roleIconWidth = 0
-        if frame.roleIcon and frame.roleIcon.GetWidth then
-            roleIconWidth = frame.roleIcon:GetWidth() or 0
-        end
-        -- 3px right padding + (role icon area) + 3px left padding ~= 6px padding total, matching CUF defaults.
-        local availableWidth = (frameWidth or 0) - (roleIconWidth or 0) - 6
-        if availableWidth and availableWidth > 1 then
-            pcall(nameFS.SetWidth, nameFS, availableWidth)
-        else
-            pcall(nameFS.SetWidth, nameFS, 1)
-        end
-    end
-end
-
-local partyFramesForText = {}
-local function collectPartyFramesForText()
-    if wipe then
-        wipe(partyFramesForText)
-    else
-        partyFramesForText = {}
-    end
-    for i = 1, 5 do
-        local frame = _G["CompactPartyFrameMember" .. i]
-        if frame and frame.name then
-            local nameState = getState(frame.name)
-            if not nameState or not nameState.partyTextCounted then
-                local st = ensureState(frame.name)
-                if st then st.partyTextCounted = true end
-                table.insert(partyFramesForText, frame)
-            end
-        end
-    end
-end
 
 function addon.ApplyPartyFrameTextStyle()
     local db = addon and addon.db and addon.db.profile
@@ -686,23 +584,12 @@ end
 local function applyTextToFontString_PartyTitle(fs, ownerFrame, cfg)
     if not fs or not ownerFrame or not cfg then return end
 
-    local fontFace = cfg.fontFace or "FRIZQT__"
-    local resolvedFace
-    if addon and addon.ResolveFontFace then
-        resolvedFace = addon.ResolveFontFace(fontFace)
-    else
-        local defaultFont = _G.GameFontNormal and _G.GameFontNormal:GetFont()
-        resolvedFace = defaultFont or "Fonts\\FRIZQT__.TTF"
-    end
-
-    local fontSize = tonumber(cfg.size) or 12
-    local fontStyle = cfg.style or "OUTLINE"
     local color = cfg.color or { 1, 1, 1, 1 }
     local anchor = cfg.anchor or "TOPLEFT"
     local offsetX = cfg.offset and tonumber(cfg.offset.x) or 0
     local offsetY = cfg.offset and tonumber(cfg.offset.y) or 0
 
-    addon.ApplyFontStyle(fs, resolvedFace, fontSize, fontStyle)
+    addon.ApplyTextFont(fs, cfg, gfTitleFontOpts)
 
     if fs.SetTextColor then
         pcall(fs.SetTextColor, fs, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)

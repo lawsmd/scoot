@@ -780,38 +780,6 @@ function addon.ApplyRaidFrameHealthBarBorders()
 end
 
 --------------------------------------------------------------------------------
--- Text Overlay (Name Text)
---------------------------------------------------------------------------------
-
--- Styling and visibility for raid name overlays
-function RaidFrames.styleNameOverlay(nameOverlay, cfg)
-    if not nameOverlay or not cfg then return end
-
-    -- Get text settings
-    local textCfg = cfg.nameText or cfg
-    local fontFace = textCfg.fontFace or "FRIZQT__"
-    local size = textCfg.size or 12
-    local style = textCfg.style or "OUTLINE"
-    local color = textCfg.color or {1, 1, 1, 1}
-    local anchor = textCfg.anchor or "TOPLEFT"
-    local offset = textCfg.offset or {x = 0, y = 0}
-
-    -- Resolve font path
-    local fontPath = addon.Media and addon.Media.ResolveFontPath and addon.Media.ResolveFontPath(fontFace)
-    if fontPath then
-        addon.ApplyFontStyle(nameOverlay, fontPath, size, style)
-    end
-
-    if nameOverlay.SetTextColor then
-        pcall(nameOverlay.SetTextColor, nameOverlay, color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
-    end
-
-    if nameOverlay.SetJustifyH then
-        pcall(nameOverlay.SetJustifyH, nameOverlay, Utils.getJustifyHFromAnchor(anchor))
-    end
-end
-
---------------------------------------------------------------------------------
 -- Public API Functions
 --------------------------------------------------------------------------------
 
