@@ -442,15 +442,13 @@ local function installPartyStatusTextHooks()
         return partyCfg and rawget(partyCfg, "textStatusText") or nil
     end
 
-    -- SetUnit stays unscreened here on purpose: preserving the shipped
-    -- behavior exactly; the screening flip is the gated hardening session
     if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateAll then
         _G.hooksecurefunc("CompactUnitFrame_UpdateAll",
             Party.makeCUFHandler("status", getCfg, { screen = true }))
     end
     if _G.hooksecurefunc and _G.CompactUnitFrame_SetUnit then
         _G.hooksecurefunc("CompactUnitFrame_SetUnit",
-            Party.makeCUFHandler("status", getCfg, { requireUnit = true }))
+            Party.makeCUFHandler("status", getCfg, { requireUnit = true, screen = true }))
     end
 end
 

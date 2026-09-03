@@ -33,9 +33,9 @@ local isEditModeActive = addon.BarsRaidFrames._isEditModeActive
 --------------------------------------------------------------------------------
 -- The shared factory (bars/textoverlay.lua) owns the ensure/style/disable
 -- machinery for the name and status overlays; this file keeps the public
--- entry points, DB gating, and hook installation. The raid hook paths run
--- unscreened (no screenFrame use) to preserve the shipped behavior; the
--- screening flip is the gated hardening session.
+-- entry points, DB gating, and hook installation. Every hook handler screens
+-- its frame through SecretSafe.plainFrame before indexing the text element
+-- (indexing a secret handle throws), matching the party paths since e331367.
 local Raid = addon.BarsTextOverlay.NewFamily({
     getState = getState,
     ensureState = ensureState,
@@ -185,15 +185,15 @@ local function installRaidNameOverlayHooks()
 
     if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateAll then
         _G.hooksecurefunc("CompactUnitFrame_UpdateAll",
-            Raid.makeCUFHandler("name", getCfg))
+            Raid.makeCUFHandler("name", getCfg, { screen = true }))
     end
     if _G.hooksecurefunc and _G.CompactUnitFrame_SetUnit then
         _G.hooksecurefunc("CompactUnitFrame_SetUnit",
-            Raid.makeCUFHandler("name", getCfg, { requireUnit = true }))
+            Raid.makeCUFHandler("name", getCfg, { requireUnit = true, screen = true }))
     end
     if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateName then
         _G.hooksecurefunc("CompactUnitFrame_UpdateName",
-            Raid.makeCUFHandler("name", getCfg))
+            Raid.makeCUFHandler("name", getCfg, { screen = true }))
     end
 
     -- Event-driven re-application for raid composition changes.
@@ -332,11 +332,11 @@ local function installRaidFrameStatusTextHooks()
 
     if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateAll then
         _G.hooksecurefunc("CompactUnitFrame_UpdateAll",
-            Raid.makeCUFHandler("status", getCfg))
+            Raid.makeCUFHandler("status", getCfg, { screen = true }))
     end
     if _G.hooksecurefunc and _G.CompactUnitFrame_SetUnit then
         _G.hooksecurefunc("CompactUnitFrame_SetUnit",
-            Raid.makeCUFHandler("status", getCfg, { requireUnit = true }))
+            Raid.makeCUFHandler("status", getCfg, { requireUnit = true, screen = true }))
     end
 end
 
