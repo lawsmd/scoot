@@ -259,8 +259,8 @@ end
 -- source also means the row inherits Player Name's Hide Realm processing.
 --
 -- nameOverlayText is only ever read from and hooked, never SetText on. It is
--- created with no font template (text.lua:385-389) and Scoot's own styling pass
--- is what gives it a font.
+-- created with no font template (ensureNameOverlay in bars/textoverlay.lua)
+-- and Scoot's own styling pass is what gives it a font.
 local function resolveNameSource(frame)
     if not frame then return nil end
     local BRF = addon.BarsRaidFrames
@@ -346,7 +346,8 @@ end
 -- Re-run BindRow over the pairs the last layout pass established, without
 -- redoing layout. This exists because nameOverlayText is created lazily off
 -- CompactUnitFrame_UpdateName and is never created during combat lockdown
--- (text.lua:557-577) -- so at first Relayout a frame may only have frame.name,
+-- (the makeCUFHandler combat bail in bars/textoverlay.lua) -- so at first
+-- Relayout a frame may only have frame.name,
 -- and without a retrigger the row would stay on Blizzard's FontString for the
 -- rest of the session. Re-binding is idempotent: an already-hooked FontString
 -- is only retargeted.
@@ -360,7 +361,7 @@ function RosterOverlay:RefreshBindings()
 end
 
 -- Scoot re-applies name overlays on its own schedule (per-frame update hooks,
--- plus a delayed pass on GROUP_ROSTER_UPDATE at text.lua:702-733). Piggyback on
+-- plus text.lua's delayed pass on GROUP_ROSTER_UPDATE). Piggyback on
 -- that rather than polling. Installed lazily because .toc load order relative to
 -- text.lua is not something to depend on.
 function RosterOverlay:EnsureOverlayHook()
