@@ -470,6 +470,87 @@ function addon.ApplyFontStyle(fs, font, size, style)
 end
 
 --------------------------------------------------------------------------------
+-- Config-Table Font Resolution / Application
+--------------------------------------------------------------------------------
+-- The font half of a text-style config sub-table: cfg -> (face, size, style)
+-- under the shared dialect rules. Color, alignment, and positioning stay
+-- caller-side.
+--
+-- cfg keys read: fontFace, size, style -- or fontFace, fontSize, fontStyle
+-- with opts.longKeys (the damage-meter spelling). Deliberately no or-chain
+-- across the two spellings: each surface declares its schema, so a stray key
+-- from the other dialect can never silently apply.
+--
+-- opts:
+--   size            default point size when cfg carries none (default 12)
+--   style           default pseudo-style key (default "OUTLINE")
+--   longKeys        read fontSize/fontStyle instead of size/style
+--   gameFontDefault when cfg.fontFace is nil, keep GameFontNormal's
+--                   locale-correct face instead of resolving to the bundled
+--                   Friz path (the Cooldown Manager dialect; a Blizzard-fed
+--                   face on a non-Latin locale must not be forced onto
+--                   FRIZQT__)
+local EMPTY_OPTS = {}
+function addon.ResolveTextFont(cfg, opts)
+    cfg = cfg or EMPTY_OPTS
+    opts = opts or EMPTY_OPTS
+    local size, style
+    if opts.longKeys then
+        size, style = tonumber(cfg.fontSize), cfg.fontStyle
+    else
+        size, style = tonumber(cfg.size), cfg.style
+    end
+    size = size or opts.size or 12
+    style = tostring(style or opts.style or "OUTLINE")
+    local face
+    if cfg.fontFace == nil and opts.gameFontDefault then
+        face = addon.GetGameFontNormalFace()
+    else
+        face = addon.ResolveFontFace(cfg.fontFace)
+    end
+    return face, size, style
+end
+
+-- Apply the font half of a text-style config to a FontString. Returns
+-- ApplyFontStyle's verdict (true only when the requested face applied).
+-- No-ops on a nil fs or nil cfg: Zero-Touch callers gate on customization
+-- above this, and a nil cfg must never stomp a Blizzard font with
+-- Friz-at-default.
+function addon.ApplyTextFont(fs, cfg, opts)
+    if not fs or not cfg then return end
+    return addon.ApplyFontStyle(fs, addon.ResolveTextFont(cfg, opts))
+end
+
+-- Does this text-style cfg sub-table carry any user customization?
+-- NIL-COMPARE semantics: any stored value counts. This is the Zero-Touch
+-- styling gate for Blizzard-owned strings. The VALUE-COMPARE predicate
+-- (differs-from-structural-defaults) is addon.BarsUtils.hasCustomTextSettings
+-- in unitframes/bars/utils.lua and gates overlay existence; the two are not
+-- interchangeable.
+--
+-- Always counted: fontFace (stored, not "" and not "FRIZQT__"); size, style,
+-- color stored at all; colorMode stored and not "" / "default"; offset stored
+-- with a nonzero x or y.
+-- opts: alignment, alignmentMode, colorModeDK -- opt-in extra keys
+--       (colorModeDK counts when stored and not "default").
+function addon.HasTextCustomization(cfg, opts)
+    if not cfg then return false end
+    if cfg.fontFace ~= nil and cfg.fontFace ~= "" and cfg.fontFace ~= "FRIZQT__" then return true end
+    if cfg.size ~= nil or cfg.style ~= nil or cfg.color ~= nil then return true end
+    if cfg.colorMode ~= nil and cfg.colorMode ~= "" and cfg.colorMode ~= "default" then return true end
+    if opts then
+        if opts.alignment and cfg.alignment ~= nil then return true end
+        if opts.alignmentMode and cfg.alignmentMode ~= nil then return true end
+        if opts.colorModeDK and cfg.colorModeDK ~= nil and cfg.colorModeDK ~= "default" then return true end
+    end
+    local off = cfg.offset
+    if off and (off.x ~= nil or off.y ~= nil) then
+        if (tonumber(off.x) or 0) ~= 0 or (tonumber(off.y) or 0) ~= 0 then return true end
+    end
+    return false
+end
+
+--------------------------------------------------------------------------------
 -- Shrink-to-Fit Text Helper
 --------------------------------------------------------------------------------
 -- Fit a string into a fixed box: wrap at spaces first, and only shrink the text

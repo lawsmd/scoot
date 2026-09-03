@@ -105,7 +105,12 @@ function Utils.hasAnyKey(tbl, keys)
     return false
 end
 
--- Check if text settings have any customization (used for Zero-Touch)
+-- Check if text settings have any customization (used for Zero-Touch).
+-- VALUE-COMPARE semantics: a stored value counts only when it differs from
+-- the structural defaults below; gates overlay existence. The NIL-COMPARE
+-- predicate (any stored value counts) is addon.HasTextCustomization in
+-- core/fonts.lua and gates Zero-Touch styling of Blizzard-owned strings;
+-- the two are not interchangeable.
 function Utils.hasCustomTextSettings(cfg)
     if not cfg then return false end
     if cfg.fontFace and cfg.fontFace ~= "FRIZQT__" then return true end
