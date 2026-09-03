@@ -137,6 +137,9 @@ read_globals = {
     "UnitIsUnit",
     "UnitTokenFromGUID",
 
+    -- Player class probe (core/catalogs.lua)
+    "UnitClass",
+
     -- Standard Lua globals WoW provides
     "string", "table", "math", "pairs", "ipairs", "type", "tostring", "tonumber",
     "select", "unpack", "wipe", "tinsert", "tremove", "sort",

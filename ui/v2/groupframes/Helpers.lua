@@ -40,11 +40,7 @@ local OUTSIDE_TO_INSIDE_ANCHOR = {
     LEFT        = "LEFT",
 }
 
-local ALL_ANCHORS = {
-    "TOPLEFT", "TOP", "TOPRIGHT",
-    "LEFT", "CENTER", "RIGHT",
-    "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT",
-}
+local ALL_ANCHORS = addon.Catalogs.Anchor9.order
 
 function GF.ensureAuraTrackingDB()
     local db = addon and addon.db and addon.db.profile
@@ -319,52 +315,22 @@ GF.fontStyleValues = addon.FontStyles.values
 GF.fontStyleOrder = addon.FontStyles.order
 GF.fontStyleOrderPaired = addon.FontStyles.orderPaired
 
+-- Dropdown option catalogs. core/catalogs.lua is the source of truth; these
+-- names are aliases by reference so existing renderer reads stay put.
+local Catalogs = addon.Catalogs
+
 -- 9-way alignment anchor options
-GF.anchorValues = {
-    TOPLEFT = "Top-Left",
-    TOP = "Top-Center",
-    TOPRIGHT = "Top-Right",
-    LEFT = "Left",
-    CENTER = "Center",
-    RIGHT = "Right",
-    BOTTOMLEFT = "Bottom-Left",
-    BOTTOM = "Bottom-Center",
-    BOTTOMRIGHT = "Bottom-Right",
-}
-GF.anchorOrder = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
+GF.anchorValues = Catalogs.Anchor9.values
+GF.anchorOrder = Catalogs.Anchor9.order
 
 -- Health bar color mode options
-GF.healthColorValues = {
-    default = "Default",
-    texture = "Texture Original",
-    class = "Class Color",
-    value = "Color by Value",
-    valueDark = "Color by Value (Dark)",
-    custom = "Custom",
-}
-GF.healthColorOrder = { "default", "texture", "class", "value", "valueDark", "custom" }
-
-GF.healthColorInfoIcons = {
-    valueDark = {
-        tooltipText = "Dark bar at full health. Below 100%, uses the standard Color by Value color curve.",
-    },
-}
+GF.healthColorValues = Catalogs.ColorMode.Health.values
+GF.healthColorOrder = Catalogs.ColorMode.Health.order
+GF.healthColorInfoIcons = Catalogs.ColorMode.Health.infoIcons
 
 -- Background color mode options
-GF.bgColorValues = {
-    default = "Default",
-    texture = "Texture Original",
-    custom = "Custom",
-}
-GF.bgColorOrder = { "default", "texture", "custom" }
-
--- Font/text color mode options
-GF.fontColorValues = {
-    default = "Default",
-    class = "Class Color",
-    custom = "Custom",
-}
-GF.fontColorOrder = { "default", "class", "custom" }
+GF.bgColorValues = Catalogs.ColorMode.Background.values
+GF.bgColorOrder = Catalogs.ColorMode.Background.order
 
 -- Party Frame: Sort By options
 GF.partySortByValues = {

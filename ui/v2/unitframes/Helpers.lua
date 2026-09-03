@@ -376,78 +376,26 @@ UF.fontStyleValues = addon.FontStyles.values
 UF.fontStyleOrder = addon.FontStyles.order
 UF.fontStyleOrderPaired = addon.FontStyles.orderPaired
 
--- Text alignment options
-UF.alignmentValues = {
-    LEFT = "Left",
-    CENTER = "Center",
-    RIGHT = "Right",
-}
-UF.alignmentOrder = { "LEFT", "CENTER", "RIGHT" }
+-- Dropdown option catalogs. core/catalogs.lua is the source of truth; these
+-- names are aliases by reference so existing renderer reads stay put.
+local Catalogs = addon.Catalogs
 
--- Alignment mode options (bar-relative vs name-relative)
-UF.alignmentModeValues = { bar = "Within Bar", name = "Around Name" }
-UF.alignmentModeOrder = { "bar", "name" }
+-- Alignment mode (bar-relative vs name-relative) and name-anchor positions
+UF.alignmentModeValues = Catalogs.AlignmentMode.values
+UF.alignmentModeOrder = Catalogs.AlignmentMode.order
+UF.nameAnchorValues = Catalogs.NameAnchor.values
+UF.nameAnchorOrder = Catalogs.NameAnchor.order
 
--- Name-anchor position options (relative to boss name text)
-UF.nameAnchorValues = {
-    LEFT_OF_NAME = "Left of Name", RIGHT_OF_NAME = "Right of Name",
-    TOP_LEFT = "Top-Left", TOP = "Top", TOP_RIGHT = "Top-Right",
-    BOTTOM_LEFT = "Bottom-Left", BOTTOM = "Bottom", BOTTOM_RIGHT = "Bottom-Right",
-}
-UF.nameAnchorOrder = {
-    "LEFT_OF_NAME", "RIGHT_OF_NAME",
-    "TOP_LEFT", "TOP", "TOP_RIGHT",
-    "BOTTOM_LEFT", "BOTTOM", "BOTTOM_RIGHT",
-}
-
--- Bar color mode options (health)
-UF.healthColorValues = {
-    default = "Default",
-    texture = "Texture Original",
-    class = "Class Color",
-    value = "Color by Value",
-    valueDark = "Color by Value (Dark)",
-    custom = "Custom",
-}
-UF.healthColorOrder = { "default", "texture", "class", "value", "valueDark", "custom" }
-
-UF.healthColorInfoIcons = {
-    valueDark = {
-        tooltipText = "Dark bar at full health. Below 100%, uses the standard Color by Value color curve.",
-    },
-}
-
-UF.fontColorCastBarInfoIcons = {
-    specGradient = {
-        tooltipTitle = "Spec Color (Gradient)",
-        tooltipText = "Hand-picked gradient colors for each of WoW's 39 specializations. Designed to match each spec's identity while contrasting against its class color. These colors are curated and may be adjusted over time.",
-    },
-}
-
--- Bar color mode options (power)
-UF.powerColorValues = {
-    default = "Default",
-    texture = "Texture Original",
-    custom = "Custom",
-}
-UF.powerColorOrder = { "default", "texture", "custom" }
-
--- Bar color mode options (cast bar)
-UF.castBarColorValues = {
-    default = "Default",
-    texture = "Texture Original",
-    class = "Class Color",
-    custom = "Custom",
-}
-UF.castBarColorOrder = { "default", "texture", "class", "custom" }
-
--- Background color mode options
-UF.bgColorValues = {
-    default = "Default",
-    texture = "Texture Original",
-    custom = "Custom",
-}
-UF.bgColorOrder = { "default", "texture", "custom" }
+-- Bar color modes
+UF.healthColorValues = Catalogs.ColorMode.Health.values
+UF.healthColorOrder = Catalogs.ColorMode.Health.order
+UF.healthColorInfoIcons = Catalogs.ColorMode.Health.infoIcons
+UF.powerColorValues = Catalogs.ColorMode.Power.values
+UF.powerColorOrder = Catalogs.ColorMode.Power.order
+UF.castBarColorValues = Catalogs.ColorMode.CastBar.values
+UF.castBarColorOrder = Catalogs.ColorMode.CastBar.order
+UF.bgColorValues = Catalogs.ColorMode.Background.values
+UF.bgColorOrder = Catalogs.ColorMode.Background.order
 
 -- Portrait border style options
 UF.portraitBorderValues = {
@@ -458,120 +406,35 @@ UF.portraitBorderValues = {
 }
 UF.portraitBorderOrder = { "texture_c", "texture_s", "rare_c", "rare_s" }
 
--- Portrait border color mode options
-UF.portraitBorderColorValues = {
-    texture = "Texture Original",
-    class = "Class Color",
-    custom = "Custom",
-}
-UF.portraitBorderColorOrder = { "texture", "class", "custom" }
+UF.portraitBorderColorValues = Catalogs.ColorMode.PortraitBorder.values
+UF.portraitBorderColorOrder = Catalogs.ColorMode.PortraitBorder.order
 
--- Font color mode options (cast bar spell name — includes gradient modes)
-UF.fontColorCastBarValues = {
-    default = "Default",
-    class = "Class Color",
-    custom = "Custom",
-    classGradient = "Class Color (Gradient)",
-    specGradient = "Spec Color (Gradient)",
-    customGradient = "Custom (Gradient)",
-}
-UF.fontColorCastBarOrder = { "default", "class", "custom", "classGradient", "specGradient", "customGradient" }
-
--- Font color mode options (cast bar spell name — non-player frames, no class/spec gradient)
-UF.fontColorCastBarNonPlayerValues = {
-    default = "Default",
-    class = "Class Color",
-    custom = "Custom",
-    customGradient = "Custom (Gradient)",
-}
-UF.fontColorCastBarNonPlayerOrder = { "default", "class", "custom", "customGradient" }
-
--- Font color mode options
-UF.fontColorValues = {
-    default = "Default",
-    class = "Class Color",
-    custom = "Custom",
-}
-UF.fontColorOrder = { "default", "class", "custom" }
-
--- Font color mode options for health text (adds "Color by Value")
-UF.fontColorHealthValues = {
-    default = "Default",
-    class = "Class Color",
-    value = "Color by Value",
-    custom = "Custom",
-}
-UF.fontColorHealthOrder = { "default", "class", "value", "custom" }
-
--- Font color mode options (power bar texts - adds Class Power Color)
-UF.fontColorPowerValues = {
-    default = "Default",
-    class = "Class Color",
-    classPower = "Class Power Color",
-    custom = "Custom",
-}
-UF.fontColorPowerOrder = { "default", "class", "classPower", "custom" }
-
-do
-    local _, playerClass = UnitClass("player")
-    if playerClass == "DEATHKNIGHT" then
-        UF.fontColorPowerValues.dkSpec = "Death Knight Spec"
-        table.insert(UF.fontColorPowerOrder, #UF.fontColorPowerOrder, "dkSpec")
-    end
-end
+-- Text color modes
+UF.fontColorCastBarValues = Catalogs.ColorMode.CastBarText.values
+UF.fontColorCastBarOrder = Catalogs.ColorMode.CastBarText.order
+UF.fontColorCastBarInfoIcons = Catalogs.ColorMode.CastBarText.infoIcons
+UF.fontColorCastBarNonPlayerValues = Catalogs.ColorMode.CastBarTextNonPlayer.values
+UF.fontColorCastBarNonPlayerOrder = Catalogs.ColorMode.CastBarTextNonPlayer.order
+UF.fontColorHealthValues = Catalogs.ColorMode.TextHealth.values
+UF.fontColorHealthOrder = Catalogs.ColorMode.TextHealth.order
+UF.fontColorPowerValues = Catalogs.ColorMode.TextPower.values
+UF.fontColorPowerOrder = Catalogs.ColorMode.TextPower.order
 
 --------------------------------------------------------------------------------
 -- Build Bar Border Options from addon
 --------------------------------------------------------------------------------
 
-function UF.buildBarBorderOptions()
-    local values = { none = "None" }
-    local order = { "none" }
-
-    if addon and addon.BuildBarBorderOptionsContainer then
-        local base = addon.BuildBarBorderOptionsContainer()
-        if type(base) == "table" then
-            for _, entry in ipairs(base) do
-                if entry and entry.value and entry.text then
-                    values[entry.value] = entry.text
-                    table.insert(order, entry.value)
-                end
-            end
-        end
-    else
-        -- Fallback
-        values.square = "Default (Square)"
-        table.insert(order, "square")
-    end
-
-    return values, order
-end
+-- Character-identical to the settings Helpers builder, which loads first.
+UF.buildBarBorderOptions = addon.UI.Settings.Helpers.getBarBorderOptions
 
 --------------------------------------------------------------------------------
 -- Build Icon Border Options from addon (for buff/debuff icons, etc.)
 --------------------------------------------------------------------------------
 
+-- Zero-argument twin of the settings Helpers builder; a wrapper rather than
+-- an alias so a future argument here cannot become its prefixEntries.
 function UF.buildIconBorderOptions()
-    local values = { square = "Default (Square)" }
-    local order = { "square" }
-
-    if addon.IconBorders and addon.IconBorders.GetDropdownEntries then
-        local data = addon.IconBorders.GetDropdownEntries()
-        if data and #data > 0 then
-            values = {}
-            order = {}
-            for _, entry in ipairs(data) do
-                local key = entry.value or entry.key
-                local label = entry.text or entry.label or key
-                if key then
-                    values[key] = label
-                    table.insert(order, key)
-                end
-            end
-        end
-    end
-
-    return values, order
+    return addon.UI.Settings.Helpers.getIconBorderOptions()
 end
 
 --------------------------------------------------------------------------------

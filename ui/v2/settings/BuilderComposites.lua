@@ -285,13 +285,13 @@ function Builder:AddTextStyleBlock(opts)
     if alignment and alignment.kind == "bossDual" then
         -- Port of the boss health/power text alignment control: selector A
         -- picks the mode, selector B's options and target field follow it.
-        local UFCat = addon.UI.UnitFrames
-        local modeValues = alignment.modeValues or UFCat.alignmentModeValues
-        local modeOrder = alignment.modeOrder or UFCat.alignmentModeOrder
+        local Catalogs = addon.Catalogs
+        local modeValues = alignment.modeValues or Catalogs.AlignmentMode.values
+        local modeOrder = alignment.modeOrder or Catalogs.AlignmentMode.order
         local barValues = alignment.values or Helpers.alignmentValues
         local barOrder = alignment.order or Helpers.alignmentOrder
-        local nameValues = alignment.nameValues or UFCat.nameAnchorValues
-        local nameOrder = alignment.nameOrder or UFCat.nameAnchorOrder
+        local nameValues = alignment.nameValues or Catalogs.NameAnchor.values
+        local nameOrder = alignment.nameOrder or Catalogs.NameAnchor.order
         local fallback = alignment.default or "LEFT"
         local key = alignment.key
         local initialName = (get("alignmentMode") or "bar") == "name"

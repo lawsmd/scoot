@@ -225,69 +225,29 @@ Helpers.fontStyleOrderPaired = addon.FontStyles.orderPaired
 Helpers.fontStyleOrderOutlineFirst = addon.FontStyles.orderOutlineFirst
 Helpers.fontStyleOrderOutlineFirstPaired = addon.FontStyles.orderOutlineFirstPaired
 
+-- Dropdown option catalogs. core/catalogs.lua is the source of truth; these
+-- names are aliases by reference so existing renderer reads stay put.
+local Catalogs = addon.Catalogs
 
--- Text color mode options
-Helpers.textColorValues = {
-    default = "Default",
-    class = "Class Color",
-    custom = "Custom",
-}
-Helpers.textColorOrder = { "default", "class", "custom" }
+-- Text color modes
+Helpers.textColorValues = Catalogs.ColorMode.Text.values
+Helpers.textColorOrder = Catalogs.ColorMode.Text.order
 
--- Text color mode options for health value/percentage text (adds "Color by Value")
-Helpers.textColorHealthValues = {
-    default = "Default",
-    class = "Class Color",
-    value = "Color by Value",
-    custom = "Custom",
-}
-Helpers.textColorHealthOrder = { "default", "class", "value", "custom" }
+-- Health value/percentage text (adds "Color by Value")
+Helpers.textColorHealthValues = Catalogs.ColorMode.TextHealth.values
+Helpers.textColorHealthOrder = Catalogs.ColorMode.TextHealth.order
 
--- Text color mode options with class power color
-Helpers.textColorPowerValues = {
-    default = "Default",
-    class = "Class Color",
-    classPower = "Class Power Color",
-    custom = "Custom",
-}
-Helpers.textColorPowerOrder = { "default", "class", "classPower", "custom" }
+-- Power texts (adds Class Power Color, plus Death Knight Spec on a DK)
+Helpers.textColorPowerValues = Catalogs.ColorMode.TextPower.values
+Helpers.textColorPowerOrder = Catalogs.ColorMode.TextPower.order
 
-do
-    local _, playerClass = UnitClass("player")
-    if playerClass == "DEATHKNIGHT" then
-        Helpers.textColorPowerValues.dkSpec = "Death Knight Spec"
-        table.insert(Helpers.textColorPowerOrder, #Helpers.textColorPowerOrder, "dkSpec")
-    end
-end
+-- Text alignment
+Helpers.alignmentValues = Catalogs.Alignment.values
+Helpers.alignmentOrder = Catalogs.Alignment.order
 
--- Visibility mode options
-Helpers.visibilityValues = {
-    show = "Always Show",
-    hide = "Always Hide",
-    combat = "Show In Combat",
-    nocombat = "Hide In Combat",
-}
-Helpers.visibilityOrder = { "show", "hide", "combat", "nocombat" }
-
--- Text alignment options
-Helpers.alignmentValues = {
-    LEFT = "Left",
-    CENTER = "Center",
-    RIGHT = "Right",
-}
-Helpers.alignmentOrder = { "LEFT", "CENTER", "RIGHT" }
-
--- Nine-point anchor options
-Helpers.anchorValues = {
-    TOPLEFT = "Top-Left", TOP = "Top-Center", TOPRIGHT = "Top-Right",
-    LEFT = "Left", CENTER = "Center", RIGHT = "Right",
-    BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom-Center", BOTTOMRIGHT = "Bottom-Right",
-}
-Helpers.anchorOrder = {
-    "TOPLEFT", "TOP", "TOPRIGHT",
-    "LEFT", "CENTER", "RIGHT",
-    "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT",
-}
+-- Nine-point anchors
+Helpers.anchorValues = Catalogs.Anchor9.values
+Helpers.anchorOrder = Catalogs.Anchor9.order
 
 --------------------------------------------------------------------------------
 -- Icon Border & Backdrop Options Builders
@@ -377,22 +337,6 @@ function Helpers.getBarBorderOptions()
 
     return values, order
 end
-
---------------------------------------------------------------------------------
--- Info Icon Tooltip Definitions
---------------------------------------------------------------------------------
-
-Helpers.TOOLTIPS = {
-    -- Common tooltips that may be shared across multiple renderers
-    editModeScale = {
-        title = "Edit Mode Scale",
-        text = "This is Blizzard's Edit Mode scale setting (max 200%). If you need larger frames, use the Scale Multiplier below.",
-    },
-    scaleMult = {
-        title = "Addon Scale Multiplier",
-        text = "This addon-only multiplier layers on top of Edit Mode's scale. Use this for larger UI needs.",
-    },
-}
 
 --------------------------------------------------------------------------------
 -- Druid per-form text visibility fly-out (Personal Resource Display text tabs)
