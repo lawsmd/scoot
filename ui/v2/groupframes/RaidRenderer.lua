@@ -714,18 +714,10 @@ function GF.RenderRaid(panel, scrollContent)
                         })
 
                         -- Position selector (9-point + Default)
-                        local roleAnchorValues = {
-                            default = "Default",
-                            TOPLEFT = "Top-Left", TOP = "Top-Center", TOPRIGHT = "Top-Right",
-                            LEFT = "Left", CENTER = "Center", RIGHT = "Right",
-                            BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom-Center", BOTTOMRIGHT = "Bottom-Right",
-                        }
-                        local roleAnchorOrder = { "default", "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
-
                         tabInner:AddSelector({
                             label = "Position",
-                            values = roleAnchorValues,
-                            order = roleAnchorOrder,
+                            values = GF.roleAnchorValues,
+                            order = GF.roleAnchorOrder,
                             get = function()
                                 local db = B.ensureDB()
                                 return db and db.roleIconAnchor or "default"
@@ -836,17 +828,10 @@ function GF.RenderRaid(panel, scrollContent)
                         })
 
                         -- Position selector (9-point)
-                        local leadAnchorValues = {
-                            TOPLEFT = "Top-Left", TOP = "Top-Center", TOPRIGHT = "Top-Right",
-                            LEFT = "Left", CENTER = "Center", RIGHT = "Right",
-                            BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom-Center", BOTTOMRIGHT = "Bottom-Right",
-                        }
-                        local leadAnchorOrder = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
-
                         tabInner:AddSelector({
                             label = "Position",
-                            values = leadAnchorValues,
-                            order = leadAnchorOrder,
+                            values = GF.anchorValues,
+                            order = GF.anchorOrder,
                             get = function()
                                 local db = B.ensureDB()
                                 return db and db.groupLeadIconAnchor or "TOPLEFT"

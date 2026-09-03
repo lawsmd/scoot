@@ -63,20 +63,10 @@ local zoneColorModeValues = {
 }
 local zoneColorModeOrder = { "pvp", "custom" }
 
--- Position options (includes "dock" for Blizzard default)
-local positionValues = {
-    dock = "Default (Dock)",
-    TOP = "Top",
-    TOPRIGHT = "Top Right",
-    RIGHT = "Right",
-    BOTTOMRIGHT = "Bottom Right",
-    BOTTOM = "Bottom",
-    BOTTOMLEFT = "Bottom Left",
-    LEFT = "Left",
-    TOPLEFT = "Top Left",
-    CENTER = "Center",
-}
-local positionOrder = { "dock", "TOP", "TOPRIGHT", "RIGHT", "BOTTOMRIGHT", "BOTTOM", "BOTTOMLEFT", "LEFT", "TOPLEFT", "CENTER" }
+-- Position options: the shared nine points behind "dock" (Blizzard's default bar)
+local POSITION = addon.Catalogs.WithLeading(addon.Catalogs.Anchor9, "dock", "Default (Dock)")
+local positionValues = POSITION.values
+local positionOrder = POSITION.order
 
 --------------------------------------------------------------------------------
 -- Render Function
@@ -95,19 +85,9 @@ function Minimap.Render(panel, scrollContent)
         Minimap.Render(panel, scrollContent)
     end)
 
-    -- Get anchor options from component
-    local anchorOptions = addon.MinimapAnchorOptions or {
-        TOP = "Top",
-        TOPRIGHT = "Top Right",
-        RIGHT = "Right",
-        BOTTOMRIGHT = "Bottom Right",
-        BOTTOM = "Bottom",
-        BOTTOMLEFT = "Bottom Left",
-        LEFT = "Left",
-        TOPLEFT = "Top Left",
-        CENTER = "Center",
-    }
-    local anchorOrder = addon.MinimapAnchorOrder or { "TOP", "TOPRIGHT", "RIGHT", "BOTTOMRIGHT", "BOTTOM", "BOTTOMLEFT", "LEFT", "TOPLEFT", "CENTER" }
+    -- Anchor options: the shared nine-point catalog
+    local anchorOptions = addon.Catalogs.Anchor9.values
+    local anchorOrder = addon.Catalogs.Anchor9.order
 
     ----------------------------------------------------------------------------
     -- Section 1: Map Style
@@ -833,20 +813,6 @@ function Minimap.Render(panel, scrollContent)
     -- Section 5: Minimap Overlay System
     ----------------------------------------------------------------------------
 
-    local overlayButtonPositionValues = {
-        TOPLEFT = "Top Left",
-        TOP = "Top",
-        TOPRIGHT = "Top Right",
-        LEFT = "Left",
-        RIGHT = "Right",
-        BOTTOMLEFT = "Bottom Left",
-        BOTTOM = "Bottom",
-        BOTTOMRIGHT = "Bottom Right",
-    }
-    local overlayButtonPositionOrder = {
-        "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT",
-    }
-
     builder:AddCollapsibleSection({
         title = "Minimap Overlay System",
         componentId = "minimapStyle",
@@ -967,8 +933,8 @@ function Minimap.Render(panel, scrollContent)
                         tabBuilder:AddSelector({
                             label = "Button Position",
                             description = "Where to place the overlay toggle button relative to the minimap.",
-                            values = overlayButtonPositionValues,
-                            order = overlayButtonPositionOrder,
+                            values = addon.Catalogs.Anchor8.values,
+                            order = addon.Catalogs.Anchor8.order,
                             get = function()
                                 return getSetting("overlayButtonPosition") or "TOPRIGHT"
                             end,

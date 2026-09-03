@@ -20,13 +20,6 @@ AuraTrackingUI._selectedSpellId = nil
 -- Anchor Option Tables
 --------------------------------------------------------------------------------
 
-local ANCHOR_VALUES = {
-    TOPLEFT = "Top-Left", TOP = "Top", TOPRIGHT = "Top-Right",
-    LEFT = "Left", CENTER = "Center", RIGHT = "Right",
-    BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom", BOTTOMRIGHT = "Bottom-Right",
-}
-local ANCHOR_ORDER = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
-
 --------------------------------------------------------------------------------
 -- DB Helpers
 --------------------------------------------------------------------------------
@@ -796,8 +789,8 @@ function AuraTrackingUI.Render(panel, scrollContent)
                     local anchorSel
                     if Controls and Controls._CreateMiniSelector then
                         anchorSel = Controls._CreateMiniSelector({
-                            values = ANCHOR_VALUES,
-                            order  = ANCHOR_ORDER,
+                            values = GF.anchorValues,
+                            order  = GF.anchorOrder,
                             get = function() return getSetting(selectedId, "anchor") or "BOTTOMRIGHT" end,
                             set = function(v)
                                 local cfg = ensureSpellConfig(selectedId)
@@ -869,7 +862,7 @@ function AuraTrackingUI.Render(panel, scrollContent)
                     -- Position Group Spacing (per-anchor)
                     local cfg = ensureSpellConfig(selectedId)
                     local curAnchor = (cfg and cfg.anchor) or "BOTTOMRIGHT"
-                    local anchorLabelStr = ANCHOR_VALUES[curAnchor] or curAnchor
+                    local anchorLabelStr = GF.anchorValues[curAnchor] or curAnchor
                     tabBuilder:AddSlider({
                         key = "positionGroupSpacing_" .. selectedId,
                         label = "Position Group Spacing (" .. anchorLabelStr .. ")",
@@ -970,8 +963,6 @@ function AuraTrackingUI.Render(panel, scrollContent)
                             kind = "anchor9",
                             label = "Position",
                             description = "Where the stacks text sits within the icon's bounding box.",
-                            values = ANCHOR_VALUES,
-                            order = ANCHOR_ORDER,
                         },
                         offset = { range = 50 },
                     })

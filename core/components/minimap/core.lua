@@ -38,36 +38,6 @@ local PVP_COLORS = {
     normal = {1, 0.82, 0, 1},          -- Gold (default)
 }
 
-local ANCHOR_OPTIONS = {
-    TOP = "Top",
-    TOPRIGHT = "Top Right",
-    RIGHT = "Right",
-    BOTTOMRIGHT = "Bottom Right",
-    BOTTOM = "Bottom",
-    BOTTOMLEFT = "Bottom Left",
-    LEFT = "Left",
-    TOPLEFT = "Top Left",
-    CENTER = "Center",
-}
-
-local ANCHOR_ORDER = { "TOP", "TOPRIGHT", "RIGHT", "BOTTOMRIGHT", "BOTTOM", "BOTTOMLEFT", "LEFT", "TOPLEFT", "CENTER" }
-
--- Position options include "dock" for Blizzard's default positioning
-local POSITION_OPTIONS = {
-    dock = "Default (Dock)",
-    TOP = "Top",
-    TOPRIGHT = "Top Right",
-    RIGHT = "Right",
-    BOTTOMRIGHT = "Bottom Right",
-    BOTTOM = "Bottom",
-    BOTTOMLEFT = "Bottom Left",
-    LEFT = "Left",
-    TOPLEFT = "Top Left",
-    CENTER = "Center",
-}
-
-local POSITION_ORDER = { "dock", "TOP", "TOPRIGHT", "RIGHT", "BOTTOMRIGHT", "BOTTOM", "BOTTOMLEFT", "LEFT", "TOPLEFT", "CENTER" }
-
 --------------------------------------------------------------------------------
 -- Helper Functions
 --------------------------------------------------------------------------------
@@ -606,12 +576,6 @@ addon:RegisterComponentInitializer(function(self)
 
     self:RegisterComponent(minimapComponent)
 end, "minimap")
-
--- Export anchor/position options for UI
-addon.MinimapAnchorOptions = ANCHOR_OPTIONS
-addon.MinimapAnchorOrder = ANCHOR_ORDER
-addon.MinimapPositionOptions = POSITION_OPTIONS
-addon.MinimapPositionOrder = POSITION_ORDER
 
 -- Export border visibility control for overlay system
 function addon.SetMinimapBorderHidden(hidden)

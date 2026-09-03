@@ -48,16 +48,7 @@ local MAX_ICON_SIZE = 64
 -- Outside-frame anchoring was removed in the 12.0.5 rework. Visual conflict with
 -- Blizzard's native icons is handled by the Hide Blizzard Buff Icons toggle (the
 -- raidFramesDisplayBuffs game setting, 12.1), not by moving Scoot icons out.
-HA.INSIDE_ANCHOR_VALUES = {
-    TOPLEFT = "Top-Left", TOP = "Top", TOPRIGHT = "Top-Right",
-    LEFT = "Left", CENTER = "Center", RIGHT = "Right",
-    BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom", BOTTOMRIGHT = "Bottom-Right",
-}
-table.freeze(HA.INSIDE_ANCHOR_VALUES)
-HA.INSIDE_ANCHOR_ORDER = {
-    "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT",
-}
-table.freeze(HA.INSIDE_ANCHOR_ORDER)
+-- The valid inside-anchor set is addon.Catalogs.Anchor9 (checked at grouping time).
 
 -- Horizontal flow direction per anchor. Right-edge anchors grow leftward (rank 2
 -- sits to the left of rank 1). All other anchors grow rightward.
@@ -217,7 +208,7 @@ function HA.LayoutFrame(entry)
     for _, item in ipairs(HA.EnabledSpellList()) do
         local cfg = item.config
         local anchor = cfg.anchor or "BOTTOMRIGHT"
-        if not HA.INSIDE_ANCHOR_VALUES[anchor] then anchor = "BOTTOMRIGHT" end
+        if not addon.Catalogs.Anchor9.values[anchor] then anchor = "BOTTOMRIGHT" end
         groups[anchor] = groups[anchor] or {}
         table.insert(groups[anchor], {
             spellId = item.spellId,

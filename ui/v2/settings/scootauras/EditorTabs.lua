@@ -29,20 +29,10 @@ local Tabs = addon.UI.Settings.ScootAuraEditorTabs
 local OUTSIDE_ANCHOR_VALUES = { LEFT = "Left", RIGHT = "Right", ABOVE = "Above", BELOW = "Below" }
 local OUTSIDE_ANCHOR_ORDER = { "LEFT", "RIGHT", "ABOVE", "BELOW" }
 
--- All 8 edges + corners for outside placement (stack text).
-local OUTSIDE_8_ANCHOR_VALUES = {
-    TOPLEFT = "Top-Left", TOP = "Top", TOPRIGHT = "Top-Right",
-    LEFT = "Left", RIGHT = "Right",
-    BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom", BOTTOMRIGHT = "Bottom-Right",
-}
-local OUTSIDE_8_ANCHOR_ORDER = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
-
-local INSIDE_ANCHOR_VALUES = {
-    TOPLEFT = "Top-Left", TOP = "Top", TOPRIGHT = "Top-Right",
-    LEFT = "Left", CENTER = "Center", RIGHT = "Right",
-    BOTTOMLEFT = "Bottom-Left", BOTTOM = "Bottom", BOTTOMRIGHT = "Bottom-Right",
-}
-local INSIDE_ANCHOR_ORDER = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
+-- Text placement inside the host: the nine points; stack text outside: the
+-- eight edges and corners. Both are the shared catalogs.
+local INSIDE = addon.Catalogs.Anchor9
+local OUTSIDE_8 = addon.Catalogs.Anchor8
 
 local function ColorGet(ctx, key, fallback)
     return function()
@@ -450,8 +440,8 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
     end
 
     local currentPos = ctx.get("nameTextPosition") or "inside"
-    local bValues = currentPos == "outside" and OUTSIDE_ANCHOR_VALUES or INSIDE_ANCHOR_VALUES
-    local bOrder = currentPos == "outside" and OUTSIDE_ANCHOR_ORDER or INSIDE_ANCHOR_ORDER
+    local bValues = currentPos == "outside" and OUTSIDE_ANCHOR_VALUES or INSIDE.values
+    local bOrder = currentPos == "outside" and OUTSIDE_ANCHOR_ORDER or INSIDE.order
 
     tabBuilder:AddDualSelector({
         label = "Position",
@@ -468,7 +458,7 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
                     if v == "outside" then
                         dual:SetOptionsB(OUTSIDE_ANCHOR_VALUES, OUTSIDE_ANCHOR_ORDER)
                     else
-                        dual:SetOptionsB(INSIDE_ANCHOR_VALUES, INSIDE_ANCHOR_ORDER)
+                        dual:SetOptionsB(INSIDE.values, INSIDE.order)
                     end
                 end
                 ctx.refreshPreview()
@@ -534,8 +524,8 @@ function Tabs.BuildDurationTab(tabBuilder, ctx)
     local shape = ctx.shape()
     local host = (shape == "bar") and "Bar" or (shape == "shape") and "Shape" or "Icon"
     local currentPos = ctx.get("textPosition") or "inside"
-    local bValues = currentPos == "outside" and OUTSIDE_ANCHOR_VALUES or INSIDE_ANCHOR_VALUES
-    local bOrder = currentPos == "outside" and OUTSIDE_ANCHOR_ORDER or INSIDE_ANCHOR_ORDER
+    local bValues = currentPos == "outside" and OUTSIDE_ANCHOR_VALUES or INSIDE.values
+    local bOrder = currentPos == "outside" and OUTSIDE_ANCHOR_ORDER or INSIDE.order
 
     tabBuilder:AddDualSelector({
         label = "Position",
@@ -552,7 +542,7 @@ function Tabs.BuildDurationTab(tabBuilder, ctx)
                     if v == "outside" then
                         dual:SetOptionsB(OUTSIDE_ANCHOR_VALUES, OUTSIDE_ANCHOR_ORDER)
                     else
-                        dual:SetOptionsB(INSIDE_ANCHOR_VALUES, INSIDE_ANCHOR_ORDER)
+                        dual:SetOptionsB(INSIDE.values, INSIDE.order)
                     end
                 end
                 ctx.refreshPreview()
@@ -618,8 +608,8 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
     local shape = ctx.shape()
     local host = (shape == "bar") and "Bar" or (shape == "shape") and "Shape" or "Icon"
     local currentPos = ctx.get("stackTextPosition") or "inside"
-    local bValues = currentPos == "outside" and OUTSIDE_8_ANCHOR_VALUES or INSIDE_ANCHOR_VALUES
-    local bOrder = currentPos == "outside" and OUTSIDE_8_ANCHOR_ORDER or INSIDE_ANCHOR_ORDER
+    local bValues = currentPos == "outside" and OUTSIDE_8.values or INSIDE.values
+    local bOrder = currentPos == "outside" and OUTSIDE_8.order or INSIDE.order
 
     tabBuilder:AddDualSelector({
         label = "Position",
@@ -634,9 +624,9 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
                 local dual = tabBuilder:GetControl("saStackPositionDual")
                 if dual then
                     if v == "outside" then
-                        dual:SetOptionsB(OUTSIDE_8_ANCHOR_VALUES, OUTSIDE_8_ANCHOR_ORDER)
+                        dual:SetOptionsB(OUTSIDE_8.values, OUTSIDE_8.order)
                     else
-                        dual:SetOptionsB(INSIDE_ANCHOR_VALUES, INSIDE_ANCHOR_ORDER)
+                        dual:SetOptionsB(INSIDE.values, INSIDE.order)
                     end
                 end
                 ctx.refreshPreview()

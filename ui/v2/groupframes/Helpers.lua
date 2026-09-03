@@ -323,6 +323,11 @@ local Catalogs = addon.Catalogs
 GF.anchorValues = Catalogs.Anchor9.values
 GF.anchorOrder = Catalogs.Anchor9.order
 
+-- Role icon position selectors: the nine points behind a "Default" entry
+local roleAnchor = Catalogs.WithLeading(Catalogs.Anchor9, "default", "Default")
+GF.roleAnchorValues = roleAnchor.values
+GF.roleAnchorOrder = roleAnchor.order
+
 -- Health bar color mode options
 GF.healthColorValues = Catalogs.ColorMode.Health.values
 GF.healthColorOrder = Catalogs.ColorMode.Health.order
