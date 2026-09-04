@@ -5,6 +5,8 @@
 -- ("accessing undefined variable") on any other name is a broken reference:
 -- a local declared after its first use, a deleted helper, or a typo. Keep the
 -- list current when a new API is adopted; do not silence W113 inline.
+-- A global with one owning file is declared in that file's block at the end,
+-- so a second reader anywhere else is a W113 too.
 
 std = "lua51"
 max_line_length = false
@@ -16,18 +18,11 @@ exclude_files = { "libs/" }
 unused_args = false
 unused_secondaries = false
 
--- Globals the addon defines or mutates on purpose
+-- Globals the addon defines or mutates on purpose. Globals with one owning
+-- file (the slash commands, the popup registry) are in the per-file blocks.
 globals = {
     -- Scoot addon
     "Scoot",
-    -- Slash commands (Scoot.lua)
-    "SLASH_SCOOT1",
-    "SLASH_SCOOTCDM1",
-    "SLASH_SCOOTDMSHOW1",
-    "SLASH_SCOOTDMRESET1",
-    "SlashCmdList",
-    -- Popup registry written by core/dialogs.lua
-    "StaticPopupDialogs",
 }
 
 read_globals = {
@@ -134,8 +129,6 @@ read_globals = {
     "C_Texture",
     "CreateColor",
     "GetClassAtlas",
-    "RAID_CLASS_COLORS",
-    "CUSTOM_CLASS_COLORS",
     "GetSpecialization",
     "GetSpecializationInfo",
 
@@ -252,8 +245,6 @@ read_globals = {
     "CopyTable",
     "CreateFont",
     "CreateMinimalSliderFormatter",
-    "CreateObjectPool",
-    "CreateUnsecuredObjectPool",
     "GenerateClosure",
     "Menu",
     "MenuUtil",
@@ -385,4 +376,22 @@ read_globals = {
 ignore = {
     "212",  -- unused argument (common in WoW callbacks)
     "213",  -- unused loop variable
+}
+
+-- Globals with one legitimate site. Declared per file so a read or write
+-- anywhere else is a W113 or W111, the same signal as a broken reference.
+-- The color tables are read through _G today; the block keeps a bare read
+-- legal here and nowhere else. The conventions gate (tools/gate.mjs) catches
+-- the _G form.
+files["Scoot.lua"] = {
+    globals = { "SLASH_SCOOT1", "SLASH_SCOOTCDM1", "SLASH_SCOOTDMSHOW1", "SLASH_SCOOTDMRESET1", "SlashCmdList" },
+}
+files["core/dialogs.lua"] = {
+    globals = { "StaticPopupDialogs" },
+}
+files["core/colors.lua"] = {
+    read_globals = { "RAID_CLASS_COLORS", "CUSTOM_CLASS_COLORS", "PowerBarColor" },
+}
+files["core/editmode/subgrid.lua"] = {
+    read_globals = { "CreateObjectPool" },
 }
