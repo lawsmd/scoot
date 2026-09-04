@@ -574,6 +574,43 @@ addon.ApplyGroupBuffIconsHidden = ApplyGroupBuffIconsHiddenForActiveProfile
 -- core/init.lua so they reuse the one combat- and readiness-guarded implementation.
 addon.ReconcileActionBarsEnabled = ReconcileActionBarsEnabled
 
+-- Per-profile enforcement that ApplyStyles does not cover: the CVar-backed
+-- toggles, the action bar enable state, and chat. Every profile-apply site
+-- runs it.
+local function reconcileProfileToggles(reason)
+    ApplyCooldownViewerEnabledForActiveProfile(reason)
+    ApplyPRDEnabledForActiveProfile(reason)
+    ApplyDamageMeterEnabledForActiveProfile(reason)
+    ReconcileActionBarsEnabled(reason)
+    ApplyRaidLargerRoleDebuffsForActiveProfile(reason)
+    ApplyGroupBuffIconsHiddenForActiveProfile(reason)
+    if addon and addon.Chat and addon.Chat.ApplyFromProfile then
+        addon.Chat:ApplyFromProfile("Profiles:" .. reason)
+    end
+end
+
+-- Re-link components, restyle, and reconcile the toggles for the active profile.
+local function applyActiveProfile(reason)
+    addon:LinkComponentsToDB()
+    addon:ApplyStyles()
+    reconcileProfileToggles(reason)
+end
+
+-- Body of the three AceDB callbacks. _setActiveProfile switches with the
+-- callback suppressed and runs applyActiveProfile alone, so a Scoot-driven
+-- switch never reaches the aura reconcile below.
+local function onProfileContentsChanged(reason)
+    applyActiveProfile(reason)
+    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
+        addon.ScootAuras.ReconcileForActiveProfile(reason)
+    end
+    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
+        -- Group-frame aura slots are per-profile: a switch has to retire the
+        -- old profile's spells and point slots at the new ones.
+        addon.AuraTracking.OnConfigChanged()
+    end
+end
+
 local function getLayouts()
     if not C_EditMode or not C_EditMode.GetLayouts then return nil end
     return C_EditMode.GetLayouts()
@@ -1075,21 +1112,12 @@ function Profiles:Initialize()
         end
     end
 
-    -- Ensure CDM enable/disable is applied for the active profile on load.
-    ApplyCooldownViewerEnabledForActiveProfile("Initialize")
-    ApplyPRDEnabledForActiveProfile("Initialize")
-    ApplyDamageMeterEnabledForActiveProfile("Initialize")
     -- Bar enable settings do not exist yet at Initialize (ADDON_LOADED); Blizzard
     -- registers them only after VARIABLES_LOADED + PLAYER_ENTERING_WORLD. Arm the
     -- SETTINGS_LOADED hook unconditionally -- it is what applies the profile
-    -- on login. The call below is a harmless no-op until then.
+    -- on login. The action bar reconcile below is a harmless no-op until then.
     ensureBarSettingsArrivalHook()
-    ReconcileActionBarsEnabled("Initialize")
-    ApplyRaidLargerRoleDebuffsForActiveProfile("Initialize")
-    ApplyGroupBuffIconsHiddenForActiveProfile("Initialize")
-    if addon and addon.Chat and addon.Chat.ApplyFromProfile then
-        addon.Chat:ApplyFromProfile("Profiles:Initialize")
-    end
+    reconcileProfileToggles("Initialize")
 
     self:RequestSync("Initialize")
 end
@@ -1105,72 +1133,18 @@ function Profiles:OnProfileChanged(_, _, newProfileKey)
     if self._suppressProfileCallback then
         return
     end
-    addon:LinkComponentsToDB()
-    addon:ApplyStyles()
-    ApplyCooldownViewerEnabledForActiveProfile("OnProfileChanged")
-    ApplyPRDEnabledForActiveProfile("OnProfileChanged")
-    ApplyDamageMeterEnabledForActiveProfile("OnProfileChanged")
-    ReconcileActionBarsEnabled("OnProfileChanged")
-    ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileChanged")
-    ApplyGroupBuffIconsHiddenForActiveProfile("OnProfileChanged")
-    if addon and addon.Chat and addon.Chat.ApplyFromProfile then
-        addon.Chat:ApplyFromProfile("Profiles:OnProfileChanged")
-    end
-    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
-        addon.ScootAuras.ReconcileForActiveProfile("OnProfileChanged")
-    end
-    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
-        -- Group-frame aura slots are per-profile: a switch has to retire the
-        -- old profile's spells and point slots at the new ones.
-        addon.AuraTracking.OnConfigChanged()
-    end
+    onProfileContentsChanged("OnProfileChanged")
     self._lastActiveLayout = newProfileKey
     self:RequestSync("ProfileChanged")
 end
 
 function Profiles:OnProfileCopied(_, _, sourceKey)
-    addon:LinkComponentsToDB()
-    addon:ApplyStyles()
-    ApplyCooldownViewerEnabledForActiveProfile("OnProfileCopied")
-    ApplyPRDEnabledForActiveProfile("OnProfileCopied")
-    ApplyDamageMeterEnabledForActiveProfile("OnProfileCopied")
-    ReconcileActionBarsEnabled("OnProfileCopied")
-    ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileCopied")
-    ApplyGroupBuffIconsHiddenForActiveProfile("OnProfileCopied")
-    if addon and addon.Chat and addon.Chat.ApplyFromProfile then
-        addon.Chat:ApplyFromProfile("Profiles:OnProfileCopied")
-    end
-    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
-        addon.ScootAuras.ReconcileForActiveProfile("OnProfileCopied")
-    end
-    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
-        -- Group-frame aura slots are per-profile: a switch has to retire the
-        -- old profile's spells and point slots at the new ones.
-        addon.AuraTracking.OnConfigChanged()
-    end
+    onProfileContentsChanged("OnProfileCopied")
     self:RequestSync("ProfileCopied")
 end
 
 function Profiles:OnProfileReset()
-    addon:LinkComponentsToDB()
-    addon:ApplyStyles()
-    ApplyCooldownViewerEnabledForActiveProfile("OnProfileReset")
-    ApplyPRDEnabledForActiveProfile("OnProfileReset")
-    ApplyDamageMeterEnabledForActiveProfile("OnProfileReset")
-    ReconcileActionBarsEnabled("OnProfileReset")
-    ApplyRaidLargerRoleDebuffsForActiveProfile("OnProfileReset")
-    ApplyGroupBuffIconsHiddenForActiveProfile("OnProfileReset")
-    if addon and addon.Chat and addon.Chat.ApplyFromProfile then
-        addon.Chat:ApplyFromProfile("Profiles:OnProfileReset")
-    end
-    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
-        addon.ScootAuras.ReconcileForActiveProfile("OnProfileReset")
-    end
-    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
-        -- Group-frame aura slots are per-profile: a switch has to retire the
-        -- old profile's spells and point slots at the new ones.
-        addon.AuraTracking.OnConfigChanged()
-    end
+    onProfileContentsChanged("OnProfileReset")
     self:RequestSync("ProfileReset")
 end
 
@@ -1302,17 +1276,7 @@ function Profiles:_setActiveProfile(profileKey, opts)
         end
     end
 
-    addon:LinkComponentsToDB()
-    addon:ApplyStyles()
-    ApplyCooldownViewerEnabledForActiveProfile("_setActiveProfile")
-    ApplyPRDEnabledForActiveProfile("_setActiveProfile")
-    ApplyDamageMeterEnabledForActiveProfile("_setActiveProfile")
-    ReconcileActionBarsEnabled("_setActiveProfile")
-    ApplyRaidLargerRoleDebuffsForActiveProfile("_setActiveProfile")
-    ApplyGroupBuffIconsHiddenForActiveProfile("_setActiveProfile")
-    if addon and addon.Chat and addon.Chat.ApplyFromProfile then
-        addon.Chat:ApplyFromProfile("Profiles:_setActiveProfile")
-    end
+    applyActiveProfile("_setActiveProfile")
 
     -- Clear the suppression flag after profile switch completes
     addon._profileSwitchInProgress = false
