@@ -3123,8 +3123,10 @@ local function ensureFrame(inst)
     if not InCombatLockdown() then frame:Hide() end
 
     -- Into Edit Mode at the moment of creation, so a unit enabled mid-session is
-    -- draggable without a /reload; the restore no-ops until the first LEM layout
-    -- callback lands (which fires immediately when a layout is already loaded).
+    -- draggable without a /reload. Registration restores the stored position
+    -- when a layout is already loaded; the restore below covers a frame that
+    -- was registered earlier (a stacked unit's box) and no-ops before the
+    -- first layout callback.
     UFZ._RegisterFrameEditMode(inst)
     UFZ._RestorePosition(inst)
 

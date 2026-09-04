@@ -217,7 +217,7 @@ function UFZ._ApplyStack(unitKey)
     -- itself out of where Boss1's name sits. After the cache write, deliberately:
     -- the conversion reads the box's dimensions back out of it. No-ops before the
     -- first LibEditMode layout callback, exactly like every other restore.
-    UFZ._RestorePositionForLayout(unitKey, UFZ._currentLayout)
+    addon.EditMode.RestorePositionable(anchor)
 end
 
 --- Build the box on demand. editmode.lua calls this from the registration path

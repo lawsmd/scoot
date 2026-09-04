@@ -197,48 +197,49 @@ function UFZ._PositionFrame(unitKey)
     return inst and inst.frame or nil
 end
 
-function UFZ._RestorePositionForLayout(unitKey, layoutName)
-    local frame = UFZ._PositionFrame(unitKey)
-    if not frame or not layoutName then return end
-
-    -- The secure click child makes the frame anchor-protected: SetPoint on it
-    -- is combat-blocked. The stack box inherits that protection transitively,
-    -- because the head frame anchors to it. Queue and pay on regen (the drain
-    -- re-runs against the then-current layout, so a mid-combat layout change
-    -- still lands right).
-    if InCombatLockdown() then
-        UFZ._QueueRegen(UFZ._HeadInstance(unitKey), "position")
-        return
-    end
-
+--- The store adapter's read: the stored record, upgraded in place if it
+--- predates content anchoring, and converted back to FRAME-RECT offsets when
+--- it anchors content. A fresh table goes out; the stored record is never
+--- handed to the helper. nil when nothing is stored, which the helper answers
+--- with the shipped default (restoreDefault): those are frame-rect anchors and
+--- stay that way, arbitrary places to land before the first drag, and the
+--- save that follows it writes a content position.
+local function GetUnitPosition(unitKey, layoutName)
     local positions = EnsurePositionsDB()
     local pos = positions and positions[layoutName] and positions[layoutName][unitKey]
-    if pos then
-        UpgradeStored(unitKey, pos)
-    else
-        -- The shipped starting spots are frame-rect anchors and stay that way:
-        -- they are arbitrary places to land before the first drag, and the save
-        -- that follows it writes a content position.
-        pos = DefaultPositionFor(unitKey)
-    end
-
+    if not pos then return nil end
+    UpgradeStored(unitKey, pos)
     local point = pos.point or "CENTER"
     local x, y = pos.x or 0, pos.y or 0
     if pos.anchorsContent then
         x, y = ToFrameOffsets(unitKey, point, x, y)
     end
+    return { point = point, x = x, y = y }
+end
+
+--- The secure click child makes the frame anchor-protected: SetPoint on it
+--- is combat-blocked. The stack box inherits that protection transitively,
+--- because the head frame anchors to it. Queue and pay on regen (the drain
+--- re-runs against the then-current layout, so a mid-combat layout change
+--- still lands right). LibEditMode never drops in combat, so this is the
+--- restore path in practice.
+local function ApplyUnitPosition(frame, point, x, y)
+    if InCombatLockdown() then
+        UFZ._QueueRegen(UFZ._HeadInstance(frame.unitKey), "position")
+        return
+    end
     frame:ClearAllPoints()
     frame:SetPoint(point, UIParent, point, SnapToPixels(x, frame), SnapToPixels(y, frame))
 end
 
---- Re-apply the stored position for the layout that is currently active.
---- No-ops before the first "layout" callback; LibEditMode fires that immediately
---- on registration when a layout is already loaded (LibEditMode.lua:694-695), so
---- there is no window where a frame sits unpositioned -- except before the LEM
---- callbacks are wired at all, which the default SetPoint in ensureFrame covers.
+--- Re-apply the stored position, or the default, for the active layout
+--- (core/editmode/positionables.lua). No-ops before the first "layout"
+--- callback, which the helper fires at registration when a layout is already
+--- loaded, so there is no window where a frame sits unpositioned -- except
+--- before the frame is registered at all, which the default SetPoint in
+--- ensureFrame covers.
 function UFZ._RestorePosition(inst)
-    if not UFZ._currentLayout then return end
-    UFZ._RestorePositionForLayout(inst.unitKey, UFZ._currentLayout)
+    addon.EditMode.RestorePositionable(UFZ._PositionFrame(inst.unitKey))
 end
 
 --------------------------------------------------------------------------------
@@ -312,48 +313,33 @@ end
 -- LibEditMode registration
 --------------------------------------------------------------------------------
 
---- Register one positionable frame with LibEditMode. That frame is the unit
---- frame for Player and Target and the stack BOX for Boss -- LibEditMode
---- neither knows nor cares which, because everything it needs (a rect, a name,
---- a position callback) is the same either way.
+--- Register one positionable frame (core/editmode/positionables.lua). That
+--- frame is the unit frame for Player and Target and the stack BOX for Boss --
+--- the helper neither knows nor cares which, because everything it needs (a
+--- rect, a name, a store, an apply) is the same either way. Storage stays
+--- unitFramesZPositions[layoutName][unitKey]; the content-origin conversion
+--- lives in the store adapter (_SavePosition and GetUnitPosition) and the
+--- combat queue in the apply, so nothing outside this file sees either.
+---
+--- The persist reads GetPoint on the frame, which is safe: it is anchored to
+--- UIParent only, so its anchor chain carries no secrets.
 local function AddToEditMode(frame, unitKey)
-    if not frame or frame._editModeRegistered then return end
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
-    frame._editModeRegistered = true
+    if not frame then return end
 
     frame.unitKey = unitKey
     frame.editModeName = EditModeNameFor(unitKey)
 
-    lib:AddFrame(frame, function(f, layoutName, point, x, y)
-        if point and x and y then
-            f:ClearAllPoints()
-            f:SetPoint(point, UIParent, point,
-                SnapToPixels(x, f), SnapToPixels(y, f))
-        end
-        if layoutName then
-            -- Persist the RESOLVED anchor, not the requested one:
-            -- LibEditMode's normalizePosition() picks the anchor point per
-            -- screen quadrant and does not preserve what you set, so storing
-            -- the requested point drifts the frame on every reload.
-            -- Reading GetPoint here is safe: the frame is
-            -- anchored to UIParent only, so its anchor chain carries no secrets.
-            local savedPoint, _, _, savedX, savedY = f:GetPoint(1)
-            if savedPoint then
-                UFZ._SavePosition(unitKey, layoutName, savedPoint, savedX, savedY)
-            else
-                UFZ._SavePosition(unitKey, layoutName, point, x, y)
-            end
-        end
-    end, DefaultPositionFor(unitKey), nil)
-
-    local Brand = addon.EditMode and addon.EditMode.Brand
-    if Brand then
-        Brand:Register(frame, {
+    addon.EditMode.RegisterPositionable(frame, {
+        key = unitKey,
+        default = DefaultPositionFor(unitKey),
+        store = { get = GetUnitPosition, set = UFZ._SavePosition },
+        apply = ApplyUnitPosition,
+        restoreDefault = true,
+        brand = {
             navKey = NAV_KEYS[unitKey],
             mirror = UFZ._EditModeMirror,
-        })
-    end
+        },
+    })
 end
 
 --- Register a stacked unit's box. Idempotent: called from stack.lua the moment
@@ -366,7 +352,7 @@ end
 ---
 --- Called from ensureFrame rather than up front, so a unit that never enters Z
 --- mode correctly does not appear in Edit Mode at all. Registering late is
---- safe: LibEditMode invokes the position callback immediately when a layout is
+--- safe: the helper restores the frame at registration when a layout is
 --- already loaded, so a frame enabled mid-session is positioned on the spot.
 ---
 --- A stacked unit registers its BOX instead of its frames: the frames chain off
@@ -381,72 +367,61 @@ function UFZ._RegisterFrameEditMode(inst)
 end
 
 function UFZ._InitializeEditMode()
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
+    addon.EditMode.OnEditMode("unitFramesZ", {
+        enter = function()
+            UFZ._editModeActive = true
 
-    -- Per CONFIG key, not per instance: a stacked unit has one stored position
-    -- and one box to apply it to, so five boss frames must not each try.
-    lib:RegisterCallback("layout", function(layoutName)
-        UFZ._currentLayout = layoutName
-        for _, unitKey in ipairs(UFZ.UNITS) do
-            UFZ._RestorePositionForLayout(unitKey, layoutName)
-        end
-    end)
+            -- Re-asserts the parked frames' green selection outlines, which are
+            -- ignoreParentAlpha and have to be suppressed on their own terms
+            -- (NativeFrame handles the how; this is the when).
+            UFZ._ReassertAllSuppression()
 
-    lib:RegisterCallback("enter", function()
-        UFZ._editModeActive = true
-
-        -- Re-asserts the parked frames' green selection outlines, which are
-        -- ignoreParentAlpha and have to be suppressed on their own terms
-        -- (NativeFrame handles the how; this is the when).
-        UFZ._ReassertAllSuppression()
-
-        -- A targetless Target frame draws nothing, and Edit Mode has nothing to
-        -- grab without a stand-in. Boss frames are targetless outside an
-        -- encounter, which is nearly always -- so all five take a stand-in and
-        -- the stack is visible for the whole time the user is placing it.
-        for _, row in ipairs(UFZ.FRAMES) do
-            local inst = UFZ._instances[row.frameKey]
-            if inst and UFZ._IsUnitEnabled(row.unitKey) then
-                UFZ._ShowEditModePreview(inst)
+            -- A targetless Target frame draws nothing, and Edit Mode has nothing to
+            -- grab without a stand-in. Boss frames are targetless outside an
+            -- encounter, which is nearly always -- so all five take a stand-in and
+            -- the stack is visible for the whole time the user is placing it.
+            for _, row in ipairs(UFZ.FRAMES) do
+                local inst = UFZ._instances[row.frameKey]
+                if inst and UFZ._IsUnitEnabled(row.unitKey) then
+                    UFZ._ShowEditModePreview(inst)
+                end
             end
-        end
 
-        -- Stand-ins can change what a frame renders but never its envelope, so
-        -- this is a skip-compare no-op in the normal case. It is here for the
-        -- one that isn't: a stack whose box has never been sized. The loop above
-        -- cannot build a frame -- it reads _instances -- so a unit enabled while
-        -- Edit Mode is open takes its stand-in from _ApplyAll's tail instead.
-        -- Already guarded: _ApplyStack queues the "stack" slot in lockdown.
-        UFZ._ApplyStack("Boss")
+            -- Stand-ins can change what a frame renders but never its envelope, so
+            -- this is a skip-compare no-op in the normal case. It is here for the
+            -- one that isn't: a stack whose box has never been sized. The loop above
+            -- cannot build a frame -- it reads _instances -- so a unit enabled while
+            -- Edit Mode is open takes its stand-in from _ApplyAll's tail instead.
+            -- Already guarded: _ApplyStack queues the "stack" slot in lockdown.
+            UFZ._ApplyStack("Boss")
 
-        -- The secure click overlay yields the mouse to the LEM selection for
-        -- the whole session -- dragging must win over targeting. Hide/Show on
-        -- the protected button is combat-blocked, and Edit Mode CAN be open in
-        -- combat: CanEnterEditMode (EditModeManager.lua:1636-1655) tests the
-        -- EditModeDisabled game rule, NPE restriction and account settings and
-        -- nothing else, so the Game Menu button stays live in a fight and this
-        -- very callback runs from LibEditMode's OnShow hook. The engine worker
-        -- queues a refused write onto PLAYER_REGEN_ENABLED rather than losing it.
-        for _, inst in pairs(UFZ._instances) do
-            UFZ._ApplyClickOverlayShown(inst)
-        end
-    end)
+            -- The secure click overlay yields the mouse to the LEM selection for
+            -- the whole session -- dragging must win over targeting. Hide/Show on
+            -- the protected button is combat-blocked, and Edit Mode CAN be open in
+            -- combat: CanEnterEditMode (EditModeManager.lua:1636-1655) tests the
+            -- EditModeDisabled game rule, NPE restriction and account settings and
+            -- nothing else, so the Game Menu button stays live in a fight and this
+            -- very callback runs from LibEditMode's OnShow hook. The engine worker
+            -- queues a refused write onto PLAYER_REGEN_ENABLED rather than losing it.
+            for _, inst in pairs(UFZ._instances) do
+                UFZ._ApplyClickOverlayShown(inst)
+            end
+        end,
+        exit = function()
+            UFZ._editModeActive = false
 
-    lib:RegisterCallback("exit", function()
-        UFZ._editModeActive = false
+            -- Where the deferred claim gets paid: re-parenting is skipped while the
+            -- Edit Mode manager is on screen, so every suppression that entered
+            -- Edit Mode unapplied lands here on the way out.
+            UFZ._ReassertAllSuppression()
 
-        -- Where the deferred claim gets paid: re-parenting is skipped while the
-        -- Edit Mode manager is on screen, so every suppression that entered
-        -- Edit Mode unapplied lands here on the way out.
-        UFZ._ReassertAllSuppression()
-
-        -- Same worker as the enter side, and it matters more here: an exit that
-        -- landed in combat used to drop the Show outright, leaving the overlay
-        -- hidden and click-to-target dead for the rest of the session.
-        for _, inst in pairs(UFZ._instances) do
-            UFZ._EndEditModePreview(inst)
-            UFZ._ApplyClickOverlayShown(inst)
-        end
-    end)
+            -- Same worker as the enter side, and it matters more here: an exit that
+            -- landed in combat used to drop the Show outright, leaving the overlay
+            -- hidden and click-to-target dead for the rest of the session.
+            for _, inst in pairs(UFZ._instances) do
+                UFZ._EndEditModePreview(inst)
+                UFZ._ApplyClickOverlayShown(inst)
+            end
+        end,
+    })
 end
