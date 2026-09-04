@@ -243,51 +243,19 @@ local function styleHealthOverlay(bar, cfg)
     overlay:SetVertexColor(r, g, b, a)
 end
 
--- Hide Blizzard's fill texture
+-- Hide Blizzard's fill texture: alpha 0 now, re-asserted at once and again
+-- after a stack break whenever Blizzard sets the alpha (core/enforce.lua).
+local FILL_HIDE_OPTS = { methods = { "SetAlpha" }, timing = "both" }
+
 local function hideBlizzardFill(bar)
     if not bar then return end
-    local blizzFill = bar:GetStatusBarTexture()
-    if not blizzFill then return end
-
-    local state = ensureState(blizzFill)
-    if state then state.hidden = true end
-    blizzFill:SetAlpha(0)
-
-    local barState = getState(blizzFill)
-    if barState and not barState.alphaHooked and _G.hooksecurefunc then
-        barState.alphaHooked = true
-        _G.hooksecurefunc(blizzFill, "SetAlpha", function(self, alpha)
-            local st = getState(self)
-            if alpha > 0 and st and st.hidden and not st.enforcing then
-                -- Synchronous: re-hide immediately to prevent 1-frame flash
-                st.enforcing = true
-                pcall(self.SetAlpha, self, 0)
-                st.enforcing = nil
-                -- Deferred safety net
-                if _G.C_Timer and _G.C_Timer.After then
-                    _G.C_Timer.After(0, function()
-                        local st2 = getState(self)
-                        if st2 and st2.hidden then
-                            st2.enforcing = true
-                            pcall(self.SetAlpha, self, 0)
-                            st2.enforcing = nil
-                        end
-                    end)
-                end
-            end
-        end)
-    end
+    addon.Enforce.Set(bar:GetStatusBarTexture(), "gfFill", true, FILL_HIDE_OPTS)
 end
 
 -- Show Blizzard's fill texture
 local function showBlizzardFill(bar)
     if not bar then return end
-    local blizzFill = bar:GetStatusBarTexture()
-    if blizzFill then
-        local state = getState(blizzFill)
-        if state then state.hidden = nil end
-        blizzFill:SetAlpha(1)
-    end
+    addon.Enforce.Set(bar:GetStatusBarTexture(), "gfFill", false, FILL_HIDE_OPTS)
 end
 
 -- Create or update the health overlay

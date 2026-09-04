@@ -19,9 +19,14 @@ local RaidFrames = addon.BarsRaidFrames
 
 -- Import shared state from core.lua
 local RaidFrameState = addon.BarsRaidFrames._RaidFrameState
-local getState = addon.BarsRaidFrames._getState
 local ensureState = addon.BarsRaidFrames._ensureState
 local isEditModeActive = addon.BarsRaidFrames._isEditModeActive
+
+-- Hide-enforcement (core/enforce.lua): alpha 0 with Show and SetAlpha hooks,
+-- Show re-asserting at once and SetAlpha after a stack break; alpha 1 on
+-- restore, after which Blizzard controls the alpha again.
+local Enforce = addon.Enforce
+local TEXTURE_HIDE_OPTS = { methods = { "Show", "SetAlpha" }, timing = { SetAlpha = "defer" } }
 
 --------------------------------------------------------------------------------
 -- Over Absorb Glow Visibility
@@ -37,43 +42,8 @@ local isEditModeActive = addon.BarsRaidFrames._isEditModeActive
 
 local function applyOverAbsorbGlowVisibility(frame, shouldHide)
     if not frame then return end
-    local glow = frame.overAbsorbGlow
-    if not glow then return end
-
-    local state = ensureState(glow)
-    if not state then return end
-
-    if shouldHide then
-        state.glowHidden = true
-        if glow.SetAlpha then pcall(glow.SetAlpha, glow, 0) end
-
-        -- Install persistence hooks (only once)
-        if not state.glowHooked and _G.hooksecurefunc then
-            state.glowHooked = true
-            _G.hooksecurefunc(glow, "SetAlpha", function(self, alpha)
-                local st = getState(self)
-                if alpha and alpha > 0 and st and st.glowHidden then
-                    if _G.C_Timer and _G.C_Timer.After then
-                        _G.C_Timer.After(0, function()
-                            local st2 = getState(self)
-                            if st2 and st2.glowHidden and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
-            end)
-            _G.hooksecurefunc(glow, "Show", function(self)
-                local st = getState(self)
-                if st and st.glowHidden and self.SetAlpha then
-                    pcall(self.SetAlpha, self, 0)
-                end
-            end)
-        end
-    else
-        state.glowHidden = false
-        if glow.SetAlpha then pcall(glow.SetAlpha, glow, 1) end
-    end
+    -- overAbsorbGlow is a direct child of the CompactUnitFrame, not healthBar
+    Enforce.Set(frame.overAbsorbGlow, "gfOverAbsorbGlow", shouldHide, TEXTURE_HIDE_OPTS)
 end
 
 function RaidFrames.ApplyOverAbsorbGlowVisibility()
@@ -116,46 +86,7 @@ addon.ApplyRaidOverAbsorbGlowVisibility = RaidFrames.ApplyOverAbsorbGlowVisibili
 --------------------------------------------------------------------------------
 
 local function applyTextureVisibility(texture, shouldHide, stateKey)
-    if not texture then return end
-
-    local state = ensureState(texture)
-    if not state then return end
-
-    local hiddenKey = stateKey .. "Hidden"
-    local hookedKey = stateKey .. "Hooked"
-
-    if shouldHide then
-        state[hiddenKey] = true
-        if texture.SetAlpha then pcall(texture.SetAlpha, texture, 0) end
-
-        -- Install persistence hooks (only once)
-        if not state[hookedKey] and _G.hooksecurefunc then
-            state[hookedKey] = true
-            _G.hooksecurefunc(texture, "SetAlpha", function(self, alpha)
-                local st = getState(self)
-                if alpha and alpha > 0 and st and st[hiddenKey] then
-                    if _G.C_Timer and _G.C_Timer.After then
-                        _G.C_Timer.After(0, function()
-                            local st2 = getState(self)
-                            if st2 and st2[hiddenKey] and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
-            end)
-            _G.hooksecurefunc(texture, "Show", function(self)
-                local st = getState(self)
-                if st and st[hiddenKey] and self.SetAlpha then
-                    pcall(self.SetAlpha, self, 0)
-                end
-            end)
-        end
-    else
-        state[hiddenKey] = false
-        -- Restore visibility (let Blizzard control alpha)
-        if texture.SetAlpha then pcall(texture.SetAlpha, texture, 1) end
-    end
+    Enforce.Set(texture, stateKey, shouldHide, TEXTURE_HIDE_OPTS)
 end
 
 --------------------------------------------------------------------------------

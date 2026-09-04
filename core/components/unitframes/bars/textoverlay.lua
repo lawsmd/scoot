@@ -25,9 +25,29 @@ addon.BarsTextOverlay = TO
 -- Font-half opts shared by the overlay stylers
 local overlayFontOpts = { size = 12 }
 
--- Status-text enforcement never calls Hide() on Blizzard's element; alpha 0
--- is enough and Hide would fight Blizzard's own visibility logic.
-local ALPHA_ONLY = { alphaOnly = true }
+-- Hide-enforcement (core/enforce.lua). A name is held at alpha 0, plus Hide()
+-- on the direct path and the deferred re-assert; status text stays alpha-only,
+-- since Hide would fight Blizzard's own visibility logic. Show kills alpha at
+-- once and then defers, SetAlpha defers.
+local Enforce = addon.Enforce
+local HIDE_METHODS = { "Show", "SetAlpha" }
+local HIDE_TIMING = { Show = "both", SetAlpha = "defer" }
+
+local function applyNameHidden(region, method)
+    region:SetAlpha(0)
+    if method == nil then
+        local hide = region.HideBase or region.Hide
+        if hide then hide(region) end
+    end
+end
+
+local function restoreName(region)
+    if region.SetAlpha then pcall(region.SetAlpha, region, 1) end
+    if region.Show then pcall(region.Show, region) end
+end
+
+local NAME_HIDE_OPTS = { methods = HIDE_METHODS, timing = HIDE_TIMING, apply = applyNameHidden, restore = restoreName }
+local ALPHA_ONLY = { methods = HIDE_METHODS, timing = HIDE_TIMING }
 
 --------------------------------------------------------------------------------
 -- Primitives
@@ -72,76 +92,17 @@ function TO.stripRealm(text)
     return text:match("^(%S+)") or text
 end
 
--- Hide a Blizzard text element and keep it hidden: alpha 0 now (plus Hide()
--- unless opts.alphaOnly), then one-shot SetAlpha/Show enforcement hooks that
--- re-assert while the element's state carries hidden = true. Re-asserts are
--- deferred through C_Timer.After(0) to break Blizzard call chains. Takes only
--- a region and state accessors, so #24's shared enforcement can lift it.
-function TO.enforceHidden(region, getState, ensureState, opts)
-    if not region then return end
-    local alphaOnly = opts and opts.alphaOnly
-
-    local st = ensureState(region)
-    if st then st.hidden = true end
-    if region.SetAlpha then
-        pcall(region.SetAlpha, region, 0)
-    end
-    if not alphaOnly and region.Hide then
-        pcall(region.Hide, region)
-    end
-
-    if _G.hooksecurefunc and st and not st.alphaHooked then
-        st.alphaHooked = true
-        _G.hooksecurefunc(region, "SetAlpha", function(self, alpha)
-            local s = getState(self)
-            if alpha > 0 and s and s.hidden then
-                if _G.C_Timer and _G.C_Timer.After then
-                    _G.C_Timer.After(0, function()
-                        local s2 = getState(self)
-                        if s2 and s2.hidden then
-                            self:SetAlpha(0)
-                        end
-                    end)
-                end
-            end
-        end)
-    end
-
-    if _G.hooksecurefunc and st and not st.showHooked then
-        st.showHooked = true
-        _G.hooksecurefunc(region, "Show", function(self)
-            local s = getState(self)
-            if not (s and s.hidden) then return end
-            -- Kill visibility immediately (avoid flicker), then defer to break chains.
-            if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
-            if _G.C_Timer and _G.C_Timer.After then
-                _G.C_Timer.After(0, function()
-                    local s2 = getState(self)
-                    if self and s2 and s2.hidden then
-                        if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
-                        if not alphaOnly and self.Hide then pcall(self.Hide, self) end
-                    end
-                end)
-            else
-                if self.SetAlpha then pcall(self.SetAlpha, self, 0) end
-                if not alphaOnly and self.Hide then pcall(self.Hide, self) end
-            end
-        end)
-    end
+-- Hide a Blizzard text element and keep it hidden (core/enforce.lua): opts is
+-- NAME_HIDE_OPTS by default and ALPHA_ONLY for status text. The Show and
+-- SetAlpha hooks install once per region.
+function TO.enforceHidden(region, opts)
+    Enforce.Set(region, "textOverlay", true, opts or NAME_HIDE_OPTS)
 end
 
 -- Clear the hidden flag and restore visibility. The enforcement hooks stay
 -- installed permanently and no-op once the flag is clear.
-function TO.releaseHidden(region, getState, opts)
-    if not region then return end
-    local st = getState(region)
-    if st then st.hidden = nil end
-    if region.SetAlpha then
-        pcall(region.SetAlpha, region, 1)
-    end
-    if not (opts and opts.alphaOnly) and region.Show then
-        pcall(region.Show, region)
-    end
+function TO.releaseHidden(region, opts)
+    Enforce.Set(region, "textOverlay", false, opts or NAME_HIDE_OPTS)
 end
 
 -- Name-overlay fingerprint: config fields plus, in class color mode, the
@@ -221,22 +182,22 @@ function TO.NewFamily(desc)
 
     local function hideBlizzardName(frame)
         if not frame or not frame.name then return end
-        TO.enforceHidden(frame.name, getState, ensureState)
+        TO.enforceHidden(frame.name)
     end
 
     local function showBlizzardName(frame)
         if not frame or not frame.name then return end
-        TO.releaseHidden(frame.name, getState)
+        TO.releaseHidden(frame.name)
     end
 
     local function hideBlizzardStatus(frame)
         if not frame or not frame.statusText then return end
-        TO.enforceHidden(frame.statusText, getState, ensureState, ALPHA_ONLY)
+        TO.enforceHidden(frame.statusText, ALPHA_ONLY)
     end
 
     local function showBlizzardStatus(frame)
         if not frame or not frame.statusText then return end
-        TO.releaseHidden(frame.statusText, getState, ALPHA_ONLY)
+        TO.releaseHidden(frame.statusText, ALPHA_ONLY)
     end
 
     ----------------------------------------------------------------------------

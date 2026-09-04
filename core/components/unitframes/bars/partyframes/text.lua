@@ -273,7 +273,7 @@ local function hideBlizzardPartyTitleText(titleButton)
     if not titleButton or not titleButton.GetFontString then return end
     local fs = titleButton:GetFontString()
     if not fs then return end
-    addon.BarsTextOverlay.enforceHidden(fs, getState, ensureState)
+    addon.BarsTextOverlay.enforceHidden(fs)
 end
 
 -- Show Blizzard's party title FontString (for restore/cleanup)
@@ -281,7 +281,7 @@ local function showBlizzardPartyTitleText(titleButton)
     if not titleButton or not titleButton.GetFontString then return end
     local fs = titleButton:GetFontString()
     if not fs then return end
-    addon.BarsTextOverlay.releaseHidden(fs, getState)
+    addon.BarsTextOverlay.releaseHidden(fs)
 end
 
 function addon.ApplyPartyFrameTitleStyle()
