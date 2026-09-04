@@ -13,9 +13,9 @@ local addonName, addon = ...
 
 local PRD = addon.PRD
 local Util = addon.ComponentsUtil or {}
+local Enforce = addon.Enforce
 
 -- Import from core
-local getState = PRD._getState
 local getProp = PRD._getProp
 local setProp = PRD._setProp
 local isPRDEnabledByCVar = PRD._isPRDEnabledByCVar
@@ -185,8 +185,13 @@ local function ensurePRDBackgroundOverlay(bar, barType)
     return storage
 end
 
--- Hide the original StatusBarTexture fill and hook SetAlpha to keep it hidden.
--- Tracks which texture instance was hooked; re-hooks if the bar gets a new instance.
+-- Alpha 0 with Show and SetAlpha hooks, alpha 1 on restore (core/enforce.lua).
+local PRD_ALPHA_OPTS = { methods = { "Show", "SetAlpha" } }
+
+-- Hide the original StatusBarTexture fill and keep it hidden while
+-- storage.origFillHidden holds. The key reads live against the texture
+-- instance the bar owns now, so a bar that gets a new instance is covered
+-- afresh and the old one goes inert.
 local function hidePRDOriginalFill(bar, barType)
     local storage = prdBarOverlays[barType]
     if not storage then return end
@@ -194,24 +199,16 @@ local function hidePRDOriginalFill(bar, barType)
     local statusBarTex = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
     if not statusBarTex then return end
 
-    pcall(statusBarTex.SetAlpha, statusBarTex, 0)
     storage.origFillHidden = true
-
-    -- Only hook if this is a new/different StatusBarTexture instance
-    if hooksecurefunc and storage.hookedTexture ~= statusBarTex then
-        storage.hookedTexture = statusBarTex
-        hooksecurefunc(statusBarTex, "SetAlpha", function(self, alpha)
-            if storage.origFillHidden and storage.hookedTexture == self and alpha > 0 then
-                if C_Timer and C_Timer.After then
-                    C_Timer.After(0, function()
-                        if storage.origFillHidden and storage.hookedTexture == self then
-                            pcall(self.SetAlpha, self, 0)
-                        end
-                    end)
-                end
-            end
-        end)
-    end
+    storage.hookedTexture = statusBarTex
+    Enforce.Install(statusBarTex, "prdOrigFill", {
+        methods = { "SetAlpha" },
+        timing = "defer",
+        when = function()
+            return storage.origFillHidden == true and storage.hookedTexture == statusBarTex
+        end,
+    })
+    Enforce.Apply(statusBarTex)
 end
 
 -- Restore the original StatusBarTexture fill visibility.
@@ -486,126 +483,22 @@ end
 --------------------------------------------------------------------------------
 
 -- Hide/restore ManaCostPredictionBar on the PRD power bar.
--- Uses the same recursion-guard hook pattern as hidePRDBarTextures.
 local function hidePRDManaCostPrediction(powerBar, hidden)
     if not powerBar then return end
-    local manaCostBar = powerBar.ManaCostPredictionBar
-    if not manaCostBar then return end
-
-    local flagName = "_ScootPRDManaCostHidden"
-
-    local function installAlphaHook(tex, flag)
-        if not tex then return end
-        local st = getState(tex)
-        if not st then return end
-        local hookKey = flag .. "Hooked"
-        if st[hookKey] then return end
-        st[hookKey] = true
-
-        if _G.hooksecurefunc and tex.SetAlpha then
-            _G.hooksecurefunc(tex, "SetAlpha", function(self, alpha)
-                if getProp(self, flag) and alpha and alpha > 0 then
-                    if not getProp(self, "_ScootPRDSettingAlpha") then
-                        setProp(self, "_ScootPRDSettingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "_ScootPRDSettingAlpha", nil)
-                    end
-                end
-            end)
-        end
-
-        if _G.hooksecurefunc and tex.Show then
-            _G.hooksecurefunc(tex, "Show", function(self)
-                if getProp(self, flag) and self.SetAlpha then
-                    if not getProp(self, "_ScootPRDSettingAlpha") then
-                        setProp(self, "_ScootPRDSettingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "_ScootPRDSettingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    end
-
-    if hidden then
-        setProp(manaCostBar, flagName, true)
-        if manaCostBar.SetAlpha then pcall(manaCostBar.SetAlpha, manaCostBar, 0) end
-        installAlphaHook(manaCostBar, flagName)
-    else
-        setProp(manaCostBar, flagName, false)
-        if manaCostBar.SetAlpha then pcall(manaCostBar.SetAlpha, manaCostBar, 1) end
-    end
+    Enforce.Set(powerBar.ManaCostPredictionBar, "prdManaCost", hidden, PRD_ALPHA_OPTS)
 end
 
 --------------------------------------------------------------------------------
 -- Texture Hiding
 --------------------------------------------------------------------------------
 
--- Hide/restore PRD bar fill texture and background, using the same immediate
--- recursion-guard hook pattern as the Player UF SetPowerBarTextureOnlyHidden.
+-- Hide/restore PRD bar fill texture and background. The same immediate
+-- re-assert as the Player UF SetPowerBarTextureOnlyHidden; the hook body is
+-- Enforce's.
 local function hidePRDBarTextures(bar, barType, hidden)
     if not bar or type(bar) ~= "table" then return end
-
-    local fillTex = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
-    local bgTex = bar.Background or bar.background
-
-    local fillFlag = "_ScootPRDFillHidden_" .. barType
-    local bgFlag = "_ScootPRDBGHidden_" .. barType
-
-    local function installAlphaHook(tex, flagName)
-        if not tex then return end
-        local st = getState(tex)
-        if not st then return end
-        local hookKey = flagName .. "Hooked"
-        if st[hookKey] then return end
-        st[hookKey] = true
-
-        if _G.hooksecurefunc and tex.SetAlpha then
-            _G.hooksecurefunc(tex, "SetAlpha", function(self, alpha)
-                if getProp(self, flagName) and alpha and alpha > 0 then
-                    if not getProp(self, "_ScootPRDSettingAlpha") then
-                        setProp(self, "_ScootPRDSettingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "_ScootPRDSettingAlpha", nil)
-                    end
-                end
-            end)
-        end
-
-        if _G.hooksecurefunc and tex.Show then
-            _G.hooksecurefunc(tex, "Show", function(self)
-                if getProp(self, flagName) and self.SetAlpha then
-                    if not getProp(self, "_ScootPRDSettingAlpha") then
-                        setProp(self, "_ScootPRDSettingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "_ScootPRDSettingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    end
-
-    if hidden then
-        if fillTex then
-            setProp(fillTex, fillFlag, true)
-            if fillTex.SetAlpha then pcall(fillTex.SetAlpha, fillTex, 0) end
-            installAlphaHook(fillTex, fillFlag)
-        end
-        if bgTex then
-            setProp(bgTex, bgFlag, true)
-            if bgTex.SetAlpha then pcall(bgTex.SetAlpha, bgTex, 0) end
-            installAlphaHook(bgTex, bgFlag)
-        end
-    else
-        if fillTex then
-            setProp(fillTex, fillFlag, false)
-            if fillTex.SetAlpha then pcall(fillTex.SetAlpha, fillTex, 1) end
-        end
-        if bgTex then
-            setProp(bgTex, bgFlag, false)
-            if bgTex.SetAlpha then pcall(bgTex.SetAlpha, bgTex, 1) end
-        end
-    end
+    Enforce.Set(bar.GetStatusBarTexture and bar:GetStatusBarTexture(), "prdFill", hidden, PRD_ALPHA_OPTS)
+    Enforce.Set(bar.Background or bar.background, "prdBG", hidden, PRD_ALPHA_OPTS)
 end
 
 --------------------------------------------------------------------------------
@@ -642,46 +535,13 @@ end
 
 -- Hide/restore the native bar backdrop art. Used by both the dedicated
 -- "Hide Bar Background" toggle and the "Hide the Bar but not its Text" mode.
+-- Hooked on the first call either way, as before.
 local function setNativeBarBackgroundHidden(bar, barType, hidden)
     if not bar then return end
     local bgTex = findNativeBarBackground(bar)
     if not bgTex then return end
-
-    local flagName = "_ScootPRDBGArtHidden_" .. barType
-    local st = getState(bgTex)
-    if st and not st[flagName .. "Hooked"] then
-        st[flagName .. "Hooked"] = true
-        if _G.hooksecurefunc and bgTex.SetAlpha then
-            _G.hooksecurefunc(bgTex, "SetAlpha", function(self, alpha)
-                if getProp(self, flagName) and alpha and alpha > 0 then
-                    if not getProp(self, "_ScootPRDSettingAlpha") then
-                        setProp(self, "_ScootPRDSettingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "_ScootPRDSettingAlpha", nil)
-                    end
-                end
-            end)
-        end
-        if _G.hooksecurefunc and bgTex.Show then
-            _G.hooksecurefunc(bgTex, "Show", function(self)
-                if getProp(self, flagName) and self.SetAlpha then
-                    if not getProp(self, "_ScootPRDSettingAlpha") then
-                        setProp(self, "_ScootPRDSettingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "_ScootPRDSettingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    end
-
-    if hidden then
-        setProp(bgTex, flagName, true)
-        pcall(bgTex.SetAlpha, bgTex, 0)
-    else
-        setProp(bgTex, flagName, false)
-        pcall(bgTex.SetAlpha, bgTex, 1)
-    end
+    Enforce.Install(bgTex, "prdBGArt", PRD_ALPHA_OPTS)
+    Enforce.Set(bgTex, "prdBGArt", hidden, PRD_ALPHA_OPTS)
 end
 
 --------------------------------------------------------------------------------
@@ -697,31 +557,20 @@ local function getPRDAnimatedLossBar()
         and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.PlayerFrameHealthBarAnimatedLoss
 end
 
+-- The loss animation is hidden with Hide, not alpha, and Blizzard controls
+-- its visibility again once the toggle clears: no forced Show on restore.
+local function hidePRDLossAnim(bar)
+    local hide = bar.HideBase or bar.Hide
+    hide(bar)
+end
+local PRD_LOSS_ANIM_OPTS = { methods = { "Show" }, apply = hidePRDLossAnim, restore = false }
+
 -- Hide/show the health loss animation (the dark red bar that appears when taking damage)
 local function applyPRDHealthLossAnimationVisibility(component)
     local hideAnim = ensureSettingValue(component, "hideHealthLossAnimation") and true or false
     local animatedLossBar = getPRDAnimatedLossBar()
-
     if not animatedLossBar then return end
-
-    if hideAnim then
-        pcall(animatedLossBar.Hide, animatedLossBar)
-        -- Install hook to keep it hidden (same pattern as hidePRDBarTextures)
-        if not getProp(animatedLossBar, "_ScootHideLossAnimHooked") then
-            setProp(animatedLossBar, "_ScootHideLossAnimHooked", true)
-            pcall(function()
-                hooksecurefunc(animatedLossBar, "Show", function(self)
-                    if getProp(self, "_ScootHideLossAnim") then
-                        pcall(self.Hide, self)
-                    end
-                end)
-            end)
-        end
-        setProp(animatedLossBar, "_ScootHideLossAnim", true)
-    else
-        setProp(animatedLossBar, "_ScootHideLossAnim", false)
-        -- Don't force Show - let Blizzard control visibility naturally
-    end
+    Enforce.Set(animatedLossBar, "prdLossAnim", hideAnim, PRD_LOSS_ANIM_OPTS)
 end
 
 --------------------------------------------------------------------------------
