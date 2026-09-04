@@ -233,14 +233,20 @@ end
 -- live as long as it does, because a frame created inside initializeFrame can
 -- never be re-parented afterwards.
 
-local controllerPool = {}
-local activeControllers = {}  -- owner -> ctrl (explicit release required)
-
-local function PreallocatePool()
-    for i = 1, POOL_PREALLOC do
-        table.insert(controllerPool, CreateController(UIParent))
-    end
+local function CreatePooledController()
+    -- No frame creation in combat: the caller sees nil and skips the preview.
+    if InCombatLockdown() then return nil end
+    return CreateController(UIParent)
 end
+
+local function ResetController(ctrl)
+    ctrl:Stop()
+    ctrl:Recycle()
+    ctrl.frame:SetParent(UIParent)
+end
+
+local controllerPool = addon.Pool.New(CreatePooledController, ResetController)
+local activeControllers = {}  -- owner -> ctrl (explicit release required)
 
 --------------------------------------------------------------------------------
 -- Public API
@@ -251,11 +257,8 @@ end
 function AE.Acquire(owner, parentFrame)
     if not owner or not parentFrame then return nil end
 
-    local ctrl = table.remove(controllerPool)
-    if not ctrl then
-        if InCombatLockdown() then return nil end
-        ctrl = CreateController(UIParent)
-    end
+    local ctrl = controllerPool:Acquire()
+    if not ctrl then return nil end
 
     ctrl.frame:SetParent(parentFrame)
     ctrl.frame:SetFrameLevel(parentFrame:GetFrameLevel() + 1)
@@ -270,11 +273,8 @@ function AE.Release(owner)
     local ctrl = activeControllers[owner]
     if not ctrl then return end
 
-    ctrl:Stop()
-    ctrl:Recycle()
-    ctrl.frame:SetParent(UIParent)
     activeControllers[owner] = nil
-    table.insert(controllerPool, ctrl)
+    controllerPool:Release(ctrl)
 end
 
 function AE.GetActive(owner)
@@ -298,4 +298,4 @@ end
 -- Init
 --------------------------------------------------------------------------------
 
-PreallocatePool()
+controllerPool:Preallocate(POOL_PREALLOC)

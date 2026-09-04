@@ -14,7 +14,6 @@ local BORDER_THICKNESS = 1.5
 -- Scoot accent green (matches HighScoreWindow title + widget diamond).
 local SCOOT_GREEN_R, SCOOT_GREEN_G, SCOOT_GREEN_B = 0.20, 0.90, 0.30
 
-local overlayPool = {}
 local activeOverlays = setmetatable({}, { __mode = "k" })  -- [button] = overlay
 
 --------------------------------------------------------------------------------
@@ -90,28 +89,14 @@ local function CreateOverlayFrame()
     return f
 end
 
-local function PreallocatePool()
-    for _ = 1, OVERLAY_PREALLOC do
-        table.insert(overlayPool, CreateOverlayFrame())
-    end
-end
-
-local function AcquireOverlay()
-    local f = table.remove(overlayPool)
-    if not f then
-        f = CreateOverlayFrame()
-    end
-    return f
-end
-
-local function ReleaseOverlay(f)
-    if not f then return end
+local function ResetOverlay(f)
     f:Hide()
     f:ClearAllPoints()
     f._anchorButton = nil
     if f._check then f._check:Hide() end
-    table.insert(overlayPool, f)
 end
+
+local overlayPool = addon.Pool.New(CreateOverlayFrame, ResetOverlay)
 
 --------------------------------------------------------------------------------
 -- Visual state
@@ -162,7 +147,7 @@ end
 local function attachOverlay(button)
     local overlay = activeOverlays[button]
     if not overlay then
-        overlay = AcquireOverlay()
+        overlay = overlayPool:Acquire()
         activeOverlays[button] = overlay
     end
     overlay._anchorButton = button
@@ -182,7 +167,7 @@ local function detachOverlay(button)
     local overlay = activeOverlays[button]
     if not overlay then return end
     activeOverlays[button] = nil
-    ReleaseOverlay(overlay)
+    overlayPool:Release(overlay)
 end
 
 local function refreshButton(button)
@@ -254,7 +239,7 @@ local function installHooks()
     end
 
     _hooked = true
-    PreallocatePool()
+    overlayPool:Preallocate(OVERLAY_PREALLOC)
     DJ.RefreshAllVisible()
 end
 
