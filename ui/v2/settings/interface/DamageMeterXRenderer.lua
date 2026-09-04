@@ -665,64 +665,28 @@ function DamageMetersX.Render(panel, scrollContent)
                 end,
             })
 
-            -- Use Custom Border toggle
-            inner:AddToggle({
-                key = "iconBorderEnable",
-                label = "Use Custom Border",
-                description = "Enable custom border styling for spec icons.",
-                get = function() return getSetting("iconBorderEnable") or false end,
-                set = function(val)
-                    setSetting("iconBorderEnable", val)
-                end,
+            -- Custom border block; no style selector, the spec icons take the square border
+            local ibGet, ibSet = Helpers.CreateIconBorderAccessors(getSetting, setSetting, "iconBorder")
+            local function get(field)
+                if field == "insetV" then return ibGet("insetV") or 2 end
+                return ibGet(field)
+            end
+            local function set(field, v)
+                if field == "tintColor" then
+                    -- Stored as a hash; the presets and the registered default hold that shape.
+                    setSetting("iconBorderTintColor", { r = v[1], g = v[2], b = v[3], a = v[4] })
+                    return
+                end
+                ibSet(field, v)
+            end
+            inner:AddIconBorderBlock({
+                get = get, set = set,
                 disabled = iconsDisabled,
-            })
-
-            -- Border Tint toggle+color
-            inner:AddToggleColorPicker({
-                label = "Border Tint",
-                description = "Apply a custom tint color to the icon border.",
-                get = function()
-                    return getSetting("iconBorderTintEnable") or false
-                end,
-                set = function(val)
-                    setSetting("iconBorderTintEnable", val)
-                end,
-                getColor = function()
-                    local c = getSetting("iconBorderTintColor")
-                    if c then
-                        return c.r or c[1] or 1, c.g or c[2] or 1, c.b or c[3] or 1, c.a or c[4] or 1
-                    end
-                    return 1, 1, 1, 1
-                end,
-                setColor = function(r, g, b, a)
-                    setSetting("iconBorderTintColor", { r = r, g = g, b = b, a = a })
-                end,
-                hasAlpha = true,
-                disabled = iconsDisabled,
-            })
-
-            -- Border Thickness slider
-            inner:AddSlider({
-                label = "Border Thickness",
-                description = "Thickness of the border in pixels.",
-                min = 1,
-                max = 8,
-                step = 0.5,
-                precision = 1,
-                get = function() return getSetting("iconBorderThickness") or 1 end,
-                set = function(v)
-                    setSetting("iconBorderThickness", v)
-                end,
-                minLabel = "1",
-                maxLabel = "8",
-                disabled = iconsDisabled,
-            })
-
-            -- Border Inset (H/V)
-            inner:AddInsetPair({
-                disabled = iconsDisabled,
-                get = function(axis) if axis == "h" then return getSetting("iconBorderInsetH") end return getSetting("iconBorderInsetV") or 2 end,
-                set = function(axis, v) setSetting(axis == "h" and "iconBorderInsetH" or "iconBorderInsetV", v) end,
+                enableToggle = { description = "Enable custom border styling for spec icons." },
+                style = false,
+                tint = { description = "Apply a custom tint color to the icon border." },
+                thickness = { description = "Thickness of the border in pixels." },
+                inset = { step = 1, precision = 0 },
             })
 
             -- JiberishIcons Integration

@@ -165,47 +165,14 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
         disabled = iconControlsDisabled,
     })
 
-    local borderStyleValues, borderStyleOrder = Helpers.getIconBorderOptions({ { "none", "None" } })
-
-    tabBuilder:AddSelector({
-        label = "Border Style",
-        description = "Choose the visual style for icon borders.",
-        values = borderStyleValues,
-        order = borderStyleOrder,
-        get = function() return ctx.get("borderStyle") or "none" end,
-        set = function(v) ctx.setAndApply("borderStyle", v) ctx.refresh() end,   -- thickness row appears per style
+    local get, set = Helpers.CreateIconBorderAccessors(ctx.get, ctx.setAndApply, "border")
+    tabBuilder:AddIconBorderBlock({
+        get = get, set = set, apply = ctx.refreshPreview,
+        refresh = ctx.refresh,   -- the thickness row appears per style
         disabled = iconControlsDisabled,
-    })
-
-    tabBuilder:AddToggleColorPicker({
-        label = "Border Tint",
-        description = "Apply a custom tint color to the icon border.",
-        get = function() return ctx.get("borderTintEnable") or false end,
-        set = function(v) ctx.setAndApply("borderTintEnable", v) ctx.refresh() end,   -- enables its swatch
-        getColor = ColorGet(ctx, "borderTintColor"),
-        setColor = ColorSet(ctx, "borderTintColor"),
-        hasAlpha = true,
-        disabled = iconControlsDisabled,
-    })
-
-    if addon.IconBorders.SupportsThickness(ctx.get("borderStyle") or "none") then
-        tabBuilder:AddSlider({
-            label = "Border Thickness",
-            description = "Thickness of the border in pixels.",
-            min = 1, max = 8, step = 0.5, precision = 1,
-            get = function() return ctx.get("borderThickness") or 1 end,
-            set = function(v) ctx.setAndApply("borderThickness", v) ctx.refreshPreview() end,
-            minLabel = "1", maxLabel = "8",
-            disabled = iconControlsDisabled,
-        })
-    end
-
-    tabBuilder:AddInsetPair({
-        step = 0.5, precision = 1,
-        disabled = iconControlsDisabled,
-        get = function(axis) return ctx.get(axis == "h" and "borderInsetH" or "borderInsetV") end,
-        set = function(axis, v) ctx.setAndApply(axis == "h" and "borderInsetH" or "borderInsetV", v) end,
-        apply = ctx.refreshPreview,
+        style = { prefixEntries = { { "none", "None" } }, default = "none", description = "Choose the visual style for icon borders." },
+        tint = { description = "Apply a custom tint color to the icon border." },
+        thickness = { description = "Thickness of the border in pixels." },
     })
 
     tabBuilder:Finalize()

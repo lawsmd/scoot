@@ -377,61 +377,20 @@ function ObjectiveTracker.Render(panel, scrollContent)
                             displaySuffix = "%",
                         })
 
-                        -- Border Style selector
-                        local affixBorderValues, affixBorderOrder = Helpers.getIconBorderOptions({
-                            { "default", "Default" },
-                            { "none", "No Border" },
-                        })
-
-                        tabBuilder:AddSelector({
-                            label = "Border Style",
-                            description = "Choose the border style for affix icons.",
-                            values = affixBorderValues,
-                            order = affixBorderOrder,
-                            get = function()
-                                local dt = getDTConfig()
-                                return (dt and dt.affixBorderStyle) or "default"
-                            end,
-                            set = function(v)
-                                local dt = ensureDTConfig()
-                                if dt then
-                                    dt.affixBorderStyle = v
-                                    applyDT()
-                                end
-                            end,
-                        })
-
-                        -- Border Tint toggle + color picker
-                        tabBuilder:AddToggleColorPicker({
-                            label = "Border Tint",
-                            description = "Apply a custom tint color to the affix icon border.",
-                            get = function()
-                                local dt = getDTConfig()
-                                return dt and dt.affixBorderTintEnable or false
-                            end,
-                            set = function(val)
-                                local dt = ensureDTConfig()
-                                if dt then
-                                    dt.affixBorderTintEnable = val and true or false
-                                    applyDT()
-                                end
-                            end,
-                            getColor = function()
-                                local dt = getDTConfig()
-                                local c = dt and type(dt.affixBorderTintColor) == "table" and dt.affixBorderTintColor
-                                if c then
-                                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                                end
-                                return 1, 1, 1, 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                local dt = ensureDTConfig()
-                                if dt then
-                                    dt.affixBorderTintColor = { r or 1, g or 1, b or 1, a or 1 }
-                                    applyDT()
-                                end
-                            end,
-                            hasAlpha = true,
+                        local get, set = Helpers.CreateIconBorderAccessors(
+                            function(key) local dt = getDTConfig(); return dt and dt[key] end,
+                            function(key, v) local dt = ensureDTConfig(); if dt then dt[key] = v end end,
+                            "affixBorder")
+                        tabBuilder:AddIconBorderBlock({
+                            get = get, set = set, apply = applyDT,
+                            style = {
+                                prefixEntries = { { "default", "Default" }, { "none", "No Border" } },
+                                default = "default",
+                                description = "Choose the border style for affix icons.",
+                            },
+                            tint = { description = "Apply a custom tint color to the affix icon border." },
+                            thickness = false,
+                            inset = false,
                         })
 
                         tabBuilder:Finalize()

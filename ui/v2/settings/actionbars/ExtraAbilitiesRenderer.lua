@@ -27,10 +27,6 @@ function ExtraAbilities.Render(panel, scrollContent)
     local getSetting = h.get
     local setSetting = h.setAndApply
 
-    local function getIconBorderOptions()
-        return Helpers.getIconBorderOptions({{"off","Off"},{"hidden","Hidden"}})
-    end
-
     ---------------------------------------------------------------------------
     -- Sizing Section
     ---------------------------------------------------------------------------
@@ -156,45 +152,18 @@ function ExtraAbilities.Render(panel, scrollContent)
         sectionKey = "border",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            local borderValues, borderOrder = getIconBorderOptions()
-            inner:AddSelector({
-                label = "Border Style",
-                values = borderValues,
-                order = borderOrder,
-                get = function() return getSetting("borderStyle") or "off" end,
-                set = function(v) setSetting("borderStyle", v) builder:DeferredRefreshAll() end,
-                infoIcon = {
-                    tooltipTitle = "Border Style",
-                    tooltipText = "\"Off\" shows the default Blizzard border, which Scoot does not customize. \"Hidden\" removes all borders entirely.",
+            local get, set = Helpers.CreateIconBorderAccessors(getSetting, setSetting, "border")
+            inner:AddIconBorderBlock({
+                get = get, set = set,
+                style = {
+                    prefixEntries = { { "off", "Off" }, { "hidden", "Hidden" } },
+                    default = "off",
+                    infoIcon = {
+                        tooltipTitle = "Border Style",
+                        tooltipText = '"Off" shows the default Blizzard border, which Scoot does not customize. "Hidden" removes all borders entirely.',
+                    },
                 },
-            })
-
-            inner:AddToggleColorPicker({
-                label = "Border Tint",
-                get = function() return getSetting("borderTintEnable") or false end,
-                set = function(v) setSetting("borderTintEnable", v) end,
-                getColor = function()
-                    local c = getSetting("borderTintColor")
-                    return c and c[1] or 1, c and c[2] or 1, c and c[3] or 1, c and c[4] or 1
-                end,
-                setColor = function(r, g, b, a) setSetting("borderTintColor", {r, g, b, a}) end,
-            })
-
-            -- Thickness is square-style only; atlas art has no independent edge width
-            if addon.IconBorders.SupportsThickness(getSetting("borderStyle") or "off") then
-                inner:AddSlider({
-                    label = "Border Thickness", min = 1, max = 8, step = 0.5,
-                    precision = 1,
-                    get = function() return getSetting("borderThickness") or 1 end,
-                    set = function(v) setSetting("borderThickness", v) end,
-                    minLabel = "1", maxLabel = "8",
-                })
-            end
-
-            inner:AddInsetPair({
-                step = 0.5, precision = 1, maxLabel = "4",
-                get = function(axis) return getSetting(axis == "h" and "borderInsetH" or "borderInsetV") or getSetting("borderInset") end,
-                set = function(axis, v) setSetting(axis == "h" and "borderInsetH" or "borderInsetV", v) end,
+                inset = { maxLabel = "4" },
             })
 
             inner:Finalize()

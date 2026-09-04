@@ -184,73 +184,15 @@ function Buffs.Render(panel, scrollContent)
         sectionKey = "border",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddToggle({
-                key = "borderEnable",
-                label = "Use Custom Border",
-                description = "Enable custom border styling for buff icons.",
-                get = function() return getSetting("borderEnable") or false end,
-                set = function(val)
-                    setSetting("borderEnable", val)
-                    applyStyles()
-                end,
+            local get, set = Helpers.CreateIconBorderAccessors(getSetting, setSetting, "border")
+            inner:AddIconBorderBlock({
+                get = get, set = set, apply = applyStyles,
+                enableToggle = { description = "Enable custom border styling for buff icons." },
+                style = { description = "Choose the visual style for icon borders." },
+                tint = { description = "Apply a custom tint color to the icon border." },
+                thickness = { description = "Thickness of the border in pixels." },
+                inset = false,
             })
-
-            inner:AddToggleColorPicker({
-                label = "Border Tint",
-                description = "Apply a custom tint color to the icon border.",
-                get = function() return getSetting("borderTintEnable") or false end,
-                set = function(val)
-                    setSetting("borderTintEnable", val)
-                    applyStyles()
-                end,
-                getColor = function()
-                    local c = getSetting("borderTintColor")
-                    if c then
-                        return c.r or c[1] or 1, c.g or c[2] or 1, c.b or c[3] or 1, c.a or c[4] or 1
-                    end
-                    return 1, 1, 1, 1
-                end,
-                setColor = function(r, g, b, a)
-                    setSetting("borderTintColor", {r, g, b, a})
-                    applyStyles()
-                end,
-                hasAlpha = true,
-            })
-
-            local borderStyleValues, borderStyleOrder = Helpers.getIconBorderOptions()
-
-            inner:AddSelector({
-                key = "borderStyle",
-                label = "Border Style",
-                description = "Choose the visual style for icon borders.",
-                values = borderStyleValues,
-                order = borderStyleOrder,
-                get = function() return getSetting("borderStyle") or "square" end,
-                set = function(v)
-                    setSetting("borderStyle", v)
-                    applyStyles()
-                    builder:DeferredRefreshAll()
-                end,
-            })
-
-            -- Thickness is square-style only; atlas art has no independent edge width
-            if addon.IconBorders.SupportsThickness(getSetting("borderStyle") or "square") then
-                inner:AddSlider({
-                    label = "Border Thickness",
-                    description = "Thickness of the border in pixels.",
-                    min = 1,
-                    max = 8,
-                    step = 0.5,
-                    precision = 1,
-                    get = function() return getSetting("borderThickness") or 1 end,
-                    set = function(v)
-                        setSetting("borderThickness", v)
-                        applyStyles()
-                    end,
-                    minLabel = "1",
-                    maxLabel = "8",
-                })
-            end
 
             inner:Finalize()
         end,
