@@ -225,72 +225,28 @@ local function CreateCustomGroupRenderer(groupIndex)
             sectionKey = "border",
             defaultExpanded = false,
             buildContent = function(contentFrame, inner)
-                local borderStyleValues, borderStyleOrder = Helpers.getIconBorderOptions({ { "none", "None" } })
-
-                inner:AddSelector({
-                    key = "borderStyle",
-                    label = "Border Style",
-                    description = "Choose the visual style for icon borders.",
-                    values = borderStyleValues,
-                    order = borderStyleOrder,
-                    get = function()
+                local ibGet, ibSet = Helpers.CreateIconBorderAccessors(getSetting, h.setAndApply, "border")
+                -- The enable flag folds into the selector: "none" reads and writes it.
+                local function get(field)
+                    if field == "style" then
                         if not getSetting("borderEnable") then return "none" end
                         return getSetting("borderStyle") or "square"
-                    end,
-                    set = function(v)
-                        if v == "none" then
-                            h.set("borderEnable", false)
-                            h.setAndApply("borderStyle", "none")
-                        else
-                            h.set("borderEnable", true)
-                            h.setAndApply("borderStyle", v)
-                        end
-                        builder:DeferredRefreshAll()
-                    end,
-                })
-
-                inner:AddToggleColorPicker({
-                    label = "Border Tint",
-                    description = "Apply a custom tint color to the icon border.",
-                    get = function() return getSetting("borderTintEnable") or false end,
-                    set = function(val) h.setAndApply("borderTintEnable", val) builder:DeferredRefreshAll() end,
-                    getColor = function()
-                        local c = getSetting("borderTintColor")
-                        if c then
-                            return c.r or c[1] or 1, c.g or c[2] or 1, c.b or c[3] or 1, c.a or c[4] or 1
-                        end
-                        return 1, 1, 1, 1
-                    end,
-                    setColor = function(r, g, b, a)
-                        h.setAndApply("borderTintColor", {r, g, b, a})
-                        builder:DeferredRefreshAll()
-                    end,
-                    hasAlpha = true,
-                })
-
-                -- Thickness only applies to the square style; atlas art has no edge width
-                local currentBorderStyle = (not getSetting("borderEnable")) and "none"
-                    or (getSetting("borderStyle") or "square")
-                if addon.IconBorders.SupportsThickness(currentBorderStyle) then
-                    inner:AddSlider({
-                        label = "Border Thickness",
-                        description = "Thickness of the border in pixels.",
-                        min = 1,
-                        max = 8,
-                        step = 0.5,
-                        precision = 1,
-                        get = function() return getSetting("borderThickness") or 1 end,
-                        set = function(v) h.setAndApply("borderThickness", v) builder:DeferredRefreshAll() end,
-                        minLabel = "1",
-                        maxLabel = "8",
-                    })
+                    end
+                    return ibGet(field)
                 end
-
-                inner:AddInsetPair({
-                    step = 0.5, precision = 1,
-                    get = function(axis) return getSetting(axis == "h" and "borderInsetH" or "borderInsetV") or getSetting("borderInset") end,
-                    set = function(axis, v) h.setAndApply(axis == "h" and "borderInsetH" or "borderInsetV", v) end,
-                    apply = function() builder:DeferredRefreshAll() end,
+                local function set(field, v)
+                    if field == "style" then
+                        h.set("borderEnable", v ~= "none")
+                    end
+                    ibSet(field, v)
+                end
+                inner:AddIconBorderBlock({
+                    get = get, set = set,
+                    apply = function() builder:DeferredRefreshAll() end,   -- the preview is static
+                    refresh = false,
+                    style = { prefixEntries = { { "none", "None" } }, description = "Choose the visual style for icon borders." },
+                    tint = { description = "Apply a custom tint color to the icon border." },
+                    thickness = { description = "Thickness of the border in pixels." },
                 })
 
                 inner:Finalize()

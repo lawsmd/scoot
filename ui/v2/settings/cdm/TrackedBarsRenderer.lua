@@ -25,10 +25,6 @@ function TrackedBars.Render(panel, scrollContent)
     local setSetting = h.setAndApply
     local syncEditModeSetting = h.sync
 
-    local function getIconBorderOptions()
-        return Helpers.getIconBorderOptions({{"none","None"}})
-    end
-
     ---------------------------------------------------------------------------
     -- Mode Selector (parent level, emphasized)
     ---------------------------------------------------------------------------
@@ -284,55 +280,24 @@ function TrackedBars.Render(panel, scrollContent)
                 minLabel = "Wide", maxLabel = "Tall",
             })
 
-            inner:AddToggleColorPicker({
-                label = "Border Tint",
-                get = function() return getSetting("iconBorderTintEnable") or false end,
-                set = function(v) setSetting("iconBorderTintEnable", v) end,
-                getColor = function()
-                    local c = getSetting("iconBorderTintColor")
-                    return c and c[1] or 1, c and c[2] or 1, c and c[3] or 1, c and c[4] or 1
-                end,
-                setColor = function(r, g, b, a) setSetting("iconBorderTintColor", {r, g, b, a}) end,
-            })
-
-            local iconBorderValues, iconBorderOrder = getIconBorderOptions()
-            inner:AddSelector({
-                label = "Border Style",
-                values = iconBorderValues,
-                order = iconBorderOrder,
-                get = function()
+            local ibGet, ibSet = Helpers.CreateIconBorderAccessors(getSetting, setSetting, "iconBorder")
+            -- The enable flag folds into the selector: "none" reads and writes it.
+            local function get(field)
+                if field == "style" then
                     if not getSetting("iconBorderEnable") then return "none" end
                     return getSetting("iconBorderStyle") or "square"
-                end,
-                set = function(v)
-                    if v == "none" then
-                        setSetting("iconBorderEnable", false)
-                        setSetting("iconBorderStyle", "none")
-                    else
-                        setSetting("iconBorderEnable", true)
-                        setSetting("iconBorderStyle", v)
-                    end
-                    builder:DeferredRefreshAll()
-                end,
-            })
-
-            -- Thickness is square-style only; atlas art has no independent edge width
-            local currentIconBorderStyle = (not getSetting("iconBorderEnable")) and "none"
-                or (getSetting("iconBorderStyle") or "square")
-            if addon.IconBorders.SupportsThickness(currentIconBorderStyle) then
-                inner:AddSlider({
-                    label = "Border Thickness", min = 1, max = 8, step = 0.5,
-                    precision = 1,
-                    get = function() local v = getSetting("iconBorderThickness") or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                    set = function(v) setSetting("iconBorderThickness", math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2))) end,
-                    minLabel = "1", maxLabel = "8",
-                })
+                end
+                return ibGet(field)
             end
-
-            inner:AddInsetPair({
-                step = 0.5, precision = 1,
-                get = function(axis) return getSetting(axis == "h" and "iconBorderInsetH" or "iconBorderInsetV") or getSetting("iconBorderInset") end,
-                set = function(axis, v) setSetting(axis == "h" and "iconBorderInsetH" or "iconBorderInsetV", v) end,
+            local function set(field, v)
+                if field == "style" then
+                    setSetting("iconBorderEnable", v ~= "none")
+                end
+                ibSet(field, v)
+            end
+            inner:AddIconBorderBlock({
+                get = get, set = set,
+                style = { prefixEntries = { { "none", "None" } } },
             })
 
             inner:Finalize()

@@ -179,65 +179,10 @@ function TrackedBuffs.Render(panel, scrollContent)
         sectionKey = "border",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddToggle({
-                label = "Use Custom Border",
-                get = function() return getSetting("borderEnable") or false end,
-                set = function(v)
-                    setSetting("borderEnable", v)
-                    if addon and addon.ApplyStyles then C_Timer.After(0, function() addon:ApplyStyles() end) end
-                end,
-            })
-
-            inner:AddToggleColorPicker({
-                label = "Border Tint",
-                get = function() return getSetting("borderTintEnable") or false end,
-                set = function(v)
-                    setSetting("borderTintEnable", v)
-                    if addon and addon.ApplyStyles then C_Timer.After(0, function() addon:ApplyStyles() end) end
-                end,
-                getColor = function()
-                    local c = getSetting("borderTintColor")
-                    if c then return c.r or c[1] or 1, c.g or c[2] or 1, c.b or c[3] or 1, c.a or c[4] or 1 end
-                    return 1, 1, 1, 1
-                end,
-                setColor = function(r, g, b, a)
-                    setSetting("borderTintColor", {r, g, b, a})
-                    if addon and addon.ApplyStyles then C_Timer.After(0, function() addon:ApplyStyles() end) end
-                end,
-                hasAlpha = true,
-            })
-
-            local borderStyleValues, borderStyleOrder = Helpers.getIconBorderOptions()
-
-            inner:AddSelector({
-                label = "Border Style",
-                values = borderStyleValues, order = borderStyleOrder,
-                get = function() return getSetting("borderStyle") or "square" end,
-                set = function(v)
-                    setSetting("borderStyle", v)
-                    if addon and addon.ApplyStyles then C_Timer.After(0, function() addon:ApplyStyles() end) end
-                    builder:DeferredRefreshAll()
-                end,
-            })
-
-            -- Thickness is square-style only; atlas art has no independent edge width
-            if addon.IconBorders.SupportsThickness(getSetting("borderStyle") or "square") then
-                inner:AddSlider({
-                    label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
-                    get = function() return getSetting("borderThickness") or 1 end,
-                    set = function(v)
-                        setSetting("borderThickness", v)
-                        if addon and addon.ApplyStyles then C_Timer.After(0, function() addon:ApplyStyles() end) end
-                    end,
-                    minLabel = "1", maxLabel = "8",
-                })
-            end
-
-            inner:AddInsetPair({
-                step = 0.5, precision = 1,
-                get = function(axis) return getSetting(axis == "h" and "borderInsetH" or "borderInsetV") or getSetting("borderInset") or -1 end,
-                set = function(axis, v) setSetting(axis == "h" and "borderInsetH" or "borderInsetV", v) end,
-                apply = Helpers.applyStyles,
+            local get, set = Helpers.CreateIconBorderAccessors(getSetting, setSetting, "border", { insetDefault = -1 })
+            inner:AddIconBorderBlock({
+                get = get, set = set, apply = Helpers.applyStyles,
+                enableToggle = true,
             })
 
             inner:Finalize()
