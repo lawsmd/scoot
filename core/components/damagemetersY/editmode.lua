@@ -28,18 +28,14 @@ function DMY._SavePosition(windowIndex, layoutName, point, x, y)
     }
 end
 
-function DMY._RestorePosition(windowIndex, layoutName)
+local function GetWindowPosition(windowIndex, layoutName)
     local positions = EnsurePositionsDB()
-    if not positions or not positions[layoutName] then return end
-    local pos = positions[layoutName][windowIndex]
-    if not pos then return end
+    return positions and positions[layoutName] and positions[layoutName][windowIndex] or nil
+end
 
-    local win = DMY._windows[windowIndex]
-    if not win or not win.frame then return end
-
-    win.frame:ClearAllPoints()
-    win.frame:SetPoint(pos.point or "BOTTOMLEFT", UIParent, pos.point or "BOTTOMLEFT",
-        DMY._SnapToPixels(pos.x or 0, win.frame), DMY._SnapToPixels(pos.y or 0, win.frame))
+local function ApplyWindowPosition(frame, point, x, y)
+    frame:ClearAllPoints()
+    frame:SetPoint(point, UIParent, point, DMY._SnapToPixels(x, frame), DMY._SnapToPixels(y, frame))
 end
 
 --------------------------------------------------------------------------------
@@ -115,50 +111,34 @@ end
 -- LibEditMode Registration
 --------------------------------------------------------------------------------
 
+-- One positionable per window (core/editmode/positionables.lua). Storage stays
+-- damageMeterV2Positions[layoutName][i]; a window with nothing stored keeps the
+-- _CreateWindow parking spot rather than jumping to the Edit Mode default.
 function DMY._InitializeEditMode()
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
-
     for i = 1, DMY.MAX_WINDOWS do
         local win = DMY._windows[i]
         if win and win.frame then
             win.frame.editModeName = "Damage Meter " .. i
 
-            lib:AddFrame(win.frame, function(frame, layoutName, point, x, y)
-                if point and x and y then
-                    frame:ClearAllPoints()
-                    frame:SetPoint(point, UIParent, point, DMY._SnapToPixels(x, frame), DMY._SnapToPixels(y, frame))
-                end
-                if layoutName then
-                    local savedPoint, _, _, savedX, savedY = frame:GetPoint(1)
-                    if savedPoint then
-                        DMY._SavePosition(i, layoutName, savedPoint, savedX, savedY)
-                    else
-                        DMY._SavePosition(i, layoutName, point, x, y)
-                    end
-                end
-            end, {
-                point = "BOTTOMLEFT",
-                x = 20,
-                y = 200 + (i - 1) * 60,
-            }, nil)
-
-            local Brand = addon.EditMode and addon.EditMode.Brand
-            if Brand then
-                -- No per-window settings section exists; the window selector's
-                -- state carries the target instead.
-                Brand:Register(win.frame, {
+            -- No per-window settings section exists; the window selector's
+            -- state carries the target instead.
+            local selection = addon.EditMode.RegisterPositionable(win.frame, {
+                key = i,
+                default = { point = "BOTTOMLEFT", x = 20, y = 200 + (i - 1) * 60 },
+                store = { get = GetWindowPosition, set = DMY._SavePosition },
+                apply = ApplyWindowPosition,
+                restoreDefault = false,
+                brand = {
                     navKey    = "damageMeterV2",
                     pageState = { key = "_damageMeterYSelectedWindow", value = i },
                     mirror    = DMY._EditModeMirror,
-                })
-            end
+                },
+            })
 
             -- Column divider lifecycle rides the LEM selection states: LEM
             -- has no select/deselect callbacks, so hook the selection overlay
             -- (SelectionSkin pattern). ShowHighlighted is the deselected/
             -- hover state — it fires when the selection moves elsewhere.
-            local selection = lib.frameSelections and lib.frameSelections[win.frame]
             if selection and DMY.Dividers then
                 local winIdx = i
                 hooksecurefunc(selection, "ShowSelected", function()
@@ -173,32 +153,27 @@ function DMY._InitializeEditMode()
         end
     end
 
-    lib:RegisterCallback("layout", function(layoutName, layoutIndex)
-        for i = 1, DMY.MAX_WINDOWS do
-            DMY._RestorePosition(i, layoutName)
-        end
-    end)
-
-    lib:RegisterCallback("enter", function()
-        DMY._editModeActive = true
-        -- Show all enabled windows for positioning (even "hidden" visibility)
-        for i = 1, DMY.MAX_WINDOWS do
-            local win = DMY._windows[i]
-            local cfg = DMY._GetWindowConfig(i)
-            if win and cfg and cfg.enabled then
-                win.frame:Show()
-            end
-        end
-    end)
-
-    lib:RegisterCallback("exit", function()
-        DMY._editModeActive = false
-        if DMY.Dividers then DMY.Dividers.Detach() end
-        -- Restore normal visibility rules
-        if DMY._comp then
+    addon.EditMode.OnEditMode("damageMetersY", {
+        enter = function()
+            DMY._editModeActive = true
+            -- Show all enabled windows for positioning (even "hidden" visibility)
             for i = 1, DMY.MAX_WINDOWS do
-                DMY._UpdateVisibility(i, DMY._comp)
+                local win = DMY._windows[i]
+                local cfg = DMY._GetWindowConfig(i)
+                if win and cfg and cfg.enabled then
+                    win.frame:Show()
+                end
             end
-        end
-    end)
+        end,
+        exit = function()
+            DMY._editModeActive = false
+            if DMY.Dividers then DMY.Dividers.Detach() end
+            -- Restore normal visibility rules
+            if DMY._comp then
+                for i = 1, DMY.MAX_WINDOWS do
+                    DMY._UpdateVisibility(i, DMY._comp)
+                end
+            end
+        end,
+    })
 end
