@@ -283,6 +283,7 @@ do
 
 				addon.ApplyTextFont(fs, styleCfg, nameTextFontOpts)
 
+				-- Kept off addon.ResolveColorRGBA: every mode renders the stored color, else the yellow; one line needs no resolver.
 				-- Boss frames: no class color option, and every mode renders the
 				-- stored color, else the Name/Level Text default yellow
 				local c = styleCfg.color or { 1.0, 0.82, 0.0, 1 }
@@ -400,6 +401,7 @@ do
 					if tex.SetVertTile then tex:SetVertTile(false) end
 					if tex.SetTexCoord then tex:SetTexCoord(0, 1, 0, 1) end
 
+					-- Kept off addon.ResolveColorRGBA: three-mode switch with a black default; a wrapper would outgrow these six lines.
 					local r, g, b = 1, 1, 1
 					if colorMode == "texture" then
 						r, g, b = 1, 1, 1
@@ -809,6 +811,7 @@ do
 			forceTextRedraw(nameFSLocal)
 		end
 
+	-- Kept off addon.ResolveColorRGBA: custom and default both fall back to the stored color, else Name/Level Text yellow.
 	local function applyTextStyle(fs, styleCfg, baselineKey)
 		if not fs or not styleCfg then return end
 		if not addon.HasTextCustomization(styleCfg) then
@@ -1047,6 +1050,7 @@ do
 					if tex.SetHorizTile then tex:SetHorizTile(false) end
 					if tex.SetVertTile then tex:SetVertTile(false) end
 					if tex.SetTexCoord then tex:SetTexCoord(0,1,0,1) end
+					-- Kept off addon.ResolveColorRGBA: three-mode switch with a black default; a wrapper would outgrow these six lines.
 					-- Color behavior mirrors bar backgrounds:
 					--  - texture  => preserve original colors (white vertex)
 					--  - default  => use default background color (black)

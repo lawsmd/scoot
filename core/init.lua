@@ -690,6 +690,7 @@ function addon:GetDefaults()
     return defaults
 end
 
+-- Kept off addon.Events: fixed-order regen orchestration and unit-swap handlers that run addon.Refresh chains.
 function addon:RegisterEvents()
     -- AceEvent hard-errors when registering unknown events; guard any version-variant events.
     local function safeRegisterEvent(eventName)
@@ -727,6 +728,7 @@ function addon:RegisterEvents()
     end
 end
 
+-- Kept off addon.Refresh: registry-driven; walks addon.Components and refreshes each one that declares opacity.
 -- Refresh opacity state for all elements affected by combat/target priority
 -- Safe to call during combat as SetAlpha is not a protected function
 function addon:RefreshOpacityState()
@@ -947,6 +949,7 @@ function addon:PLAYER_ENTERING_WORLD(event, isInitialLogin, isReloadingUi)
     
     self:ApplyStyles()
 
+    -- Kept off addon.Refresh: login order is the one condition no static gate checks; timed re-asserts stay here.
     -- Post-load belt-and-braces: profile/layout sync (TryPendingSync, spec
     -- profiles above) can finish after the styling pass just ran, and the
     -- pre-emptive hides bail silently while config is unreadable. Re-assert on

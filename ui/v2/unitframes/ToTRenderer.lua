@@ -125,6 +125,7 @@ local function CreateRenderer(unit)
         inner:Finalize()
     end
 
+    -- Kept off Builder:AddBarBorderBlock: a portrait border is a single texture with its own style list and color modes.
     local function buildPortraitBorderTab(inner)
         inner:AddToggle({
             label = "Use Custom Border",

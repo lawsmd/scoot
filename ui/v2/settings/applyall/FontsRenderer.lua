@@ -11,6 +11,7 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 
 -- Note: Controls are now stored on panel._applyAllFontsControls for ClearContent() compatibility
 
+-- Kept off Builder:AddTextStyleBlock: the page writes one face to every component and has no builder-backed storage.
 function Fonts.Render(panel, scrollContent)
     panel:ClearContent()
 

@@ -1181,6 +1181,7 @@ function UF.RenderPlayer(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
+                        -- Kept off Builder:AddBarBorderBlock: a portrait border is a single texture with its own style list and color modes.
                         tabInner:AddToggle({
                             label = "Use Custom Border",
                             get = function()

@@ -752,6 +752,7 @@ do
 					local colorMode = cfg.castBarSparkColorMode or "default"
 					local tintTbl = type(cfg.castBarSparkTint) == "table" and cfg.castBarSparkTint or {1,1,1,1}
 
+					-- Kept off addon.ResolveColorRGBA: custom tint overlays the captured stock vertex color per channel, stock as base.
 					-- Determine effective color from mode:
 					-- - "default": use the stock vertex color captured above.
 					-- - "custom": apply the user tint (RGBA) on top of the spark.

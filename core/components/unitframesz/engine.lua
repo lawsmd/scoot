@@ -3041,6 +3041,7 @@ local function ensureFrame(inst)
     applyLayout(inst)
     refreshName(inst)
 
+    -- Kept off addon.Events: RegisterUnitEvent filters to inst.unit C-side; plain events share the same frame.
     registerUnitEvents(inst)
     frame:RegisterEvent("PLAYER_TARGET_CHANGED")
     frame:RegisterEvent("PLAYER_FOCUS_CHANGED")

@@ -206,6 +206,7 @@ end
 -- Combat-Aware Opacity
 --------------------------------------------------------------------------------
 
+-- Kept off addon.Opacity.Resolve: hover, then combat, then out of combat over its own keys, absent from the catalog.
 function W:_ApplyOpacity()
     if not widgetFrame then return end
     local pct

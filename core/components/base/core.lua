@@ -534,6 +534,7 @@ function addon:ApplyStyles()
         end
         if not self._pendingApplyStyles then
             self._pendingApplyStyles = true
+            -- Kept off addon.Events.RunOutOfCombat: sets the pending flag the regen orchestration in core/init.lua drains.
             self:RegisterEvent("PLAYER_REGEN_ENABLED")
         end
         return

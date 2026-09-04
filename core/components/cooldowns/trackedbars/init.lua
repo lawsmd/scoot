@@ -386,6 +386,7 @@ local function hookTrackedBars(component)
     -- CMC compatibility: mirror viewer alpha changes to decoupled overlays and bar items
     if not TB._viewerAlphaHooked and frame.SetAlpha then
         TB._viewerAlphaHooked = true
+        -- Kept off addon.Enforce: not a hide; mirrors viewer alpha onto decoupled overlays and bar items.
         hooksecurefunc(frame, "SetAlpha", function(self, alpha)
             if type(alpha) ~= "number" or issecretvalue(alpha) then return end
             TB._viewerAlpha = alpha

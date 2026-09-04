@@ -472,6 +472,7 @@ local function onEvent(event)
         AC.KickContainer("Focus", event)
     elseif event == "PLAYER_REGEN_ENABLED" then
         for unitKey, entry in pairs(AC.containers) do
+            -- Kept off addon.Events.RunOutOfCombat: run-now would recurse into ApplyConfig; secrecy alone has no regen edge.
             if entry.pendingApply then
                 AC.ApplyConfig(unitKey)
             end
@@ -594,6 +595,7 @@ end
 
 local function ensureSuppressionWatcher()
     if suppressionWatcher then return end
+    -- Kept off addon.Events: RegisterUnitEvent filters UNIT_AURA C-side; the bus registers by name only.
     suppressionWatcher = CreateFrame("Frame")
     suppressionWatcher:SetScript("OnEvent", onSuppressionEvent)
     suppressionWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")

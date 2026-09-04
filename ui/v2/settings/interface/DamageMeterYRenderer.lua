@@ -722,6 +722,7 @@ function DMYSettings.Render(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(_, tabInner)
+                        -- Kept off Builder:AddBarBorderBlock: the border color has a class mode; the block tint is a toggle and one color.
                         tabInner:AddBarBorderSelector({
                             label = "Border Style",
                             get = function() return getSetting("barBorderStyle") or "none" end,

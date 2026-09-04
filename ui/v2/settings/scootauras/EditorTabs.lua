@@ -183,6 +183,7 @@ end
 --------------------------------------------------------------------------------
 
 function Tabs.BuildBarTab(tabBuilder, ctx)
+    -- Kept off Builder:AddOffsetPair: the pair is bar width and bar height, each with its own range.
     tabBuilder:AddDualSlider({
         label = "Bar Size",
         sliderA = {

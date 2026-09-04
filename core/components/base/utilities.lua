@@ -442,6 +442,7 @@ local function ApplyFullPowerSpikeScale(ownerFrame, heightScale)
         applyState()
     end
 
+    -- Kept off addon.Enforce: lifecycle and animation hooks replay applyState, which restores per-target saved geometry.
     if not getProp(fullPowerFrame, "fullPowerHooks") then
         setProp(fullPowerFrame, "fullPowerHooks", true)
         -- CRITICAL: Frame modifications during combat taint the execution context. Defer to PLAYER_REGEN_ENABLED.
@@ -514,6 +515,7 @@ local function SetFullPowerSpikeHidden(ownerFrame, hidden)
 end
 Util.SetFullPowerSpikeHidden = SetFullPowerSpikeHidden
 
+-- Kept off addon.Enforce: a one-time alpha write with no hook installed.
 -- Hide/show the Power Bar FeedbackFrame (Builder/Spender animation that flashes when power is spent/gained)
 -- This frame shows a quick flash representing the amount of energy/mana/etc. spent or gained.
 -- ownerFrame: the ManaBar or ClassNameplateManaBarFrame that contains the FeedbackFrame child

@@ -421,6 +421,7 @@ do
                     local tint = cfgT.healthBarTint
 
                     local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                    -- Kept off addon.IsNonDefaultColorMode: hook-install gate; widening it adds hooks that fight the value color path.
                     local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
                     if not hasCustomTexture and not hasCustomColor then
                         return

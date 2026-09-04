@@ -370,6 +370,7 @@ end
 -- Hook Installation
 --------------------------------------------------------------------------------
 
+-- Kept off addon.Enforce: each hook hides and mirrors in one body; callers gate installation.
 -- Install hooks on a native PRD bar's own text FontStrings (per NATIVE_TEXT_SOURCES:
 -- LeftText = percent, RightText = value; TextString = value on the alternate power
 -- bar). Blizzard populates these via SetText in its own clean context; Scoot mirrors

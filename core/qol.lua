@@ -189,6 +189,7 @@ local function initQuestCount()
 
     questCountInitialized = true
 
+    -- Kept off addon.Enforce: not a hide; refreshes the quest count label when the log shows.
     hooksecurefunc(QuestScrollFrame, "Show", function() updateQuestCount() end)
     QuestScrollFrame:HookScript("OnShow", function() updateQuestCount() end)
     QuestScrollFrame:HookScript("OnHide", function()

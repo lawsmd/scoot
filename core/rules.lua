@@ -217,6 +217,7 @@ local function applyActionValue(actionId, value, reason)
     end
 end
 
+-- Kept off addon.Refresh: each action re-applies the one target its write touched, not a chain.
 local function registerDefaultActions()
     -- Personal Resource Display: per-part hide actions. Each mirrors a Blizzard Edit
     -- Mode setting (HideHealth / HidePower / HideAltPower / HideClassInfo), so the write

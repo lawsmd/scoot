@@ -349,6 +349,7 @@ function UF.RenderTarget(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     style = function(cf, tabInner)
+                        -- Kept off Builder:AddBarStyleBlock: texture and color sit on separate rows, not the dual row the block emits.
                         tabInner:AddBarTextureSelector({
                             label = "Foreground Texture",
                             get = function() local t = B.getCastBarDB() or {}; return t.castBarTexture or "default" end,
@@ -716,6 +717,7 @@ function UF.RenderTarget(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
+                        -- Kept off Builder:AddBarBorderBlock: a portrait border is a single texture with its own style list and color modes.
                         tabInner:AddToggle({
                             label = "Use Custom Border",
                             get = function() local t = B.getPortraitDB() or {}; return t.portraitBorderEnable == true end,

@@ -300,6 +300,7 @@ end
 -- Hook Installation (per-runeFrame)
 --------------------------------------------------------------------------------
 
+-- Kept off addon.Enforce: hooks UpdateState and UpdateSpec; restore replays an animation to land per-texture alphas.
 local function installRuneHooks(runeFrame)
 	if not runeFrame or not runeFrame.Runes then return end
 	if getProp(runeFrame, "dkRuneHooksInstalled") then return end

@@ -299,6 +299,7 @@ function UF.RenderBoss(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     style = function(cf, tabInner)
+                        -- Kept off Builder:AddBarStyleBlock: texture and color sit on separate rows, not the dual row the block emits.
                         tabInner:AddBarTextureSelector({
                             label = "Foreground Texture",
                             get = function() local t = B.getCastBarDB() or {}; return t.castBarTexture or "default" end,

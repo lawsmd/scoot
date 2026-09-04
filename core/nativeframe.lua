@@ -142,6 +142,7 @@ local function ApplySelection(frame, suppress)
 
         if not d.showHooked then
             d.showHooked = true
+            -- Kept off addon.Enforce: NativeFrame parks or dims whole system frames; Enforce is for regions below that level.
             -- Hooking a system frame's child is Rule 11 territory, and the rule's
             -- real content is "write nothing inside Blizzard's execution" -- this
             -- Show fires inside Edit Mode's own ShowSystemSelections pass. Hence

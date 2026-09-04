@@ -210,6 +210,7 @@ local function installHooks(fs)
     -- this the copy keeps the old text: a black ghost name after the target
     -- goes away (unitframesz/engine.lua's "no unit" / "no name" paths).
     if fs.ClearText then hooksecurefunc(fs, "ClearText", onClearText) end
+    -- Kept off addon.Enforce: not a hide; mirrors Show, Hide and SetAlpha onto the companion string.
     hooksecurefunc(fs, "Show", onShow)
     hooksecurefunc(fs, "Hide", onHide)
     hooksecurefunc(fs, "SetAlpha", onSetAlpha)

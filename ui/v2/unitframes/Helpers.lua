@@ -109,6 +109,7 @@ end
 -- Apply Functions
 --------------------------------------------------------------------------------
 
+-- Kept off addon.Refresh: one function each, no ordering to keep.
 function UF.applyBarTextures(unitKey)
     if addon.ApplyUnitFrameBarTexturesFor then
         addon.ApplyUnitFrameBarTexturesFor(unitKey)

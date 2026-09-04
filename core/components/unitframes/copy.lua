@@ -381,6 +381,7 @@ function addon.CopyUnitFrameSettings(sourceUnit, destUnit, opts)
         -- Preserve ToT-specific offsets (separate from source)
         -- dstPortrait.offsetX and dstPortrait.offsetY are NOT copied
 
+        -- Kept off addon.Refresh: the list has a unit-specific name applier in the middle that no chain expresses.
         -- Apply styling (works for both ToT and FoT destinations)
         if addon.ApplyUnitFrameBarTexturesFor then
             addon.ApplyUnitFrameBarTexturesFor(dst)

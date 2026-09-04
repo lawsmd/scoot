@@ -284,6 +284,7 @@ function Preemptive.installEarlyAlphaHooks()
     Preemptive.hideTargetElements()
     Preemptive.hideFocusElements()
 
+    -- Kept off addon.Events: unit-filtered registration.
     -- Re-assert after faction updates via addon-owned unit events.
     -- (Replaces pre-12.0 hooks on the TargetFrame_Update/FocusFrame_Update
     -- globals, which no longer exist in 12.0 — those blocks were dead code.)

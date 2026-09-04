@@ -80,6 +80,7 @@ local function installTraceHooks(unit)
     hookedTextures[tex] = true
     local tag = "write:" .. unit
 
+    -- Kept off addon.Enforce: not a hide; a debug probe that records writes to the ring buffer.
     _G.hooksecurefunc(tex, "SetAlpha", function(_, alpha)
         addon.RepColorTrace(tag, "SetAlpha(" .. safeToString(alpha) .. ") " .. shortStack())
     end)

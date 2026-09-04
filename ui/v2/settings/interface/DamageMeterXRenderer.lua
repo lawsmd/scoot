@@ -286,6 +286,7 @@ function DamageMetersX.Render(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     style = function(tabContent, tabInner)
+                        -- Kept off Builder:AddBarStyleBlock: class color is an Edit Mode toggle and the background is a color with no texture.
                         tabInner:AddBarTextureSelector({
                             label = "Bar Texture",
                             get = function() return getSetting("barTexture") or "pointed" end,
@@ -360,6 +361,7 @@ function DamageMetersX.Render(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(tabContent, tabInner)
+                        -- Kept off Builder:AddBarBorderBlock: the window border color is a plain hash color with no tint toggle or inset.
                         tabInner:AddBarBorderSelector({
                             label = "Border Style",
                             description = "Select 'No Border' to use Blizzard's default, or choose a custom border style.",
@@ -747,6 +749,7 @@ function DamageMetersX.Render(panel, scrollContent)
                                 setSetting("windowShowBorder", value)
                             end,
                         })
+                        -- Kept off Builder:AddBarBorderBlock: the row tint is stored as a hash color, matching the window border; no inset.
                         tabInner:AddBarBorderSelector({
                             label = "Border Style",
                             get = function() return getSetting("windowBorderStyle") or "pointed" end,

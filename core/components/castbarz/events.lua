@@ -695,6 +695,7 @@ end
 function CBZ._RegisterBarEvents(bar, row)
     if bar.eventFrame then return end
 
+    -- Kept off addon.Events: RegisterUnitEvent filters units C-side; the bus registers by name only.
     local f = CreateFrame("Frame")
     for _, ev in ipairs(CAST_EVENTS) do
         f:RegisterUnitEvent(ev, row.token)

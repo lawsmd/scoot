@@ -455,6 +455,7 @@ do
 					local colorMode = cfg.castBarSparkColorMode or "default"
 					local tintTbl = type(cfg.castBarSparkTint) == "table" and cfg.castBarSparkTint or {1,1,1,1}
 
+					-- Kept off addon.ResolveColorRGBA: custom tint overlays the captured stock vertex color per channel, stock as base.
 					local base = bossOriginalSparkVertexColor[spark] or {1,1,1,1}
 					local r, g, b, a = base[1] or 1, base[2] or 1, base[3] or 1, base[4] or 1
 					if colorMode == "custom" then

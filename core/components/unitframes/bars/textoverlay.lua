@@ -499,6 +499,7 @@ function TO.NewFamily(desc)
                     end
                 end)
 
+                -- Kept off addon.Enforce: not a hide; mirrors statusText visibility onto the overlay string.
                 _G.hooksecurefunc(frame.statusText, "Show", function()
                     if ownerState and ownerState.statusTextOverlay and ownerState.statusTextOverlayActive then
                         ownerState.statusTextOverlay:Show()

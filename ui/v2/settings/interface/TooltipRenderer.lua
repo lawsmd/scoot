@@ -90,6 +90,7 @@ function Tooltip.Render(panel, scrollContent)
         end,
     })
 
+    -- Kept off Builder:AddBarBorderBlock: tint only; no style, thickness, or inset.
     -- Collapsible section: Border
     builder:AddCollapsibleSection({
         title = "Border",

@@ -115,6 +115,7 @@ end
 -- NOTE: Simplified to use single deferred callbacks to avoid performance issues.
 --------------------------------------------------------------------------------
 do
+	-- Kept off addon.Refresh: driven by hooks on the Character Frame, not by a refresh pass.
 	-- Helper function to reapply all Player text styling
 	local function reapplyPlayerTextStyling()
 		if addon.ApplyAllUnitFrameHealthTextVisibility then

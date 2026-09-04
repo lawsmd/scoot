@@ -303,6 +303,7 @@ end
 -- safe, just cosmetically wasteful.
 --------------------------------------------------------------------------------
 
+-- Kept off addon.Events.RunOutOfCombat: four lift edges and no pending state; aura secrecy lifts without a regen edge.
 local regenFrame = CreateFrame("Frame")
 regenFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 regenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")

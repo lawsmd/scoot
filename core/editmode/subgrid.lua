@@ -56,6 +56,7 @@ local function ensureSubGrid()
         line:ClearAllPoints()
     end
 
+    -- Kept off addon.Pool: the factory takes no arguments, and ReleaseAll needs the active list the Blizzard pool keeps.
     linePool = CreateObjectPool(lineFactory, lineReset)
 end
 

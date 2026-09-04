@@ -494,6 +494,7 @@ local function ApplyButtonContainerStyle(db)
                 -- Install hook to re-hide when LibDBIcon tries to show it
                 if not buttonShowHooks[name] then
                     buttonShowHooks[name] = true
+                    -- Kept off addon.Enforce: hides third-party buttons keyed by name, with the decision in the hook body.
                     hooksecurefunc(info.button, "Show", function(self)
                         local db = getMinimapDB()
                         if db and db.addonButtonContainerEnabled then

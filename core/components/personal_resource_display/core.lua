@@ -137,6 +137,7 @@ local function ensureEventFrame()
         return prdEventFrame
     end
 
+    -- Kept off addon.Events: unit-filtered registration.
     -- The frame exists only for RegisterUnitEvent: C-side unit filtering is a
     -- 12.x secrecy requirement, and the bus carries no unit-event API.
     prdEventFrame = CreateFrame("Frame")

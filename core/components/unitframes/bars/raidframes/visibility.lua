@@ -159,6 +159,7 @@ end
 -- changes. Hook rather than poll; re-apply only while the toggle is on.
 --------------------------------------------------------------------------------
 
+-- Kept off addon.Enforce: reapply restores a baseline record with mouse state, deferred in combat.
 local function HookContainer(self, frame)
     if self._hookedContainer then
         return

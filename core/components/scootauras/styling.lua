@@ -38,6 +38,7 @@ local function ApplyIconMode(trackerId, tracker, state)
     end
 end
 
+-- Kept off addon.ResolveColorRGBA: two-mode dialect, class default; delegating adds a mode coercion and saves nothing.
 local function ResolveShapeColor(db)
     local mode = db.shapeColorMode or "class"
     if mode == "class" then
@@ -256,6 +257,7 @@ local function ApplyBarStyling(trackerId, tracker, state)
                 elem.barFill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
             end
 
+            -- Kept off addon.ResolveColorRGBA: two-mode dialect, class default; the class lookup is already GetClassColorRGB.
             local fgColorMode = db.barForegroundColorMode or "class"
             local fgR, fgG, fgB, fgA = 1, 1, 1, 1
             if fgColorMode == "class" then
@@ -288,6 +290,7 @@ local function ApplyBarStyling(trackerId, tracker, state)
             else
                 elem.barBg:SetColorTexture(0.1, 0.1, 0.1, 1)
             end
+            -- Kept off addon.ResolveColorRGBA: two-mode dialect, custom default with an original option the resolver lacks.
             if (db.barBackgroundColorMode or "custom") == "original" then
                 elem.barBg:SetVertexColor(1, 1, 1, 1)
             else

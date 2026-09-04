@@ -274,6 +274,7 @@ do
         fstate.MarkHooked(fs, "deadTextFontShow")
 
         if _G.hooksecurefunc then
+            -- Kept off addon.Enforce: not a hide; reapplies font inheritance when DeadText shows.
             _G.hooksecurefunc(fs, "Show", function(self)
                 if isEditModeActive() then return end
                 local db = addon and addon.db and addon.db.profile

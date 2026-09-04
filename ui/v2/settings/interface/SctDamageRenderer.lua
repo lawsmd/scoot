@@ -27,6 +27,7 @@ function SctDamage.Render(panel, scrollContent)
         "The scale slider applies immediately."
     )
 
+    -- Kept off Builder:AddTextStyleBlock: the damage font pairs with a scale percentage; the block has no scale slider.
     builder:AddFontSelector({
         label = "Font",
         description = "The font used for floating combat text damage numbers.",

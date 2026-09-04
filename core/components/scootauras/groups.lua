@@ -167,6 +167,7 @@ local function CreateEntry()
     return entry
 end
 
+-- Kept off addon.Pool: slot allocator; acquire scans occupantId over named frames registered once with Edit Mode.
 local function AcquireEntry()
     for _, entry in ipairs(pool) do
         if not entry.occupantId then return entry end

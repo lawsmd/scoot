@@ -1010,6 +1010,7 @@ function addon.EditMode.Initialize()
                 C_Timer.After(0.5, function() if addon.EditMode then addon.EditMode.RefreshSyncAndNotify("EditModeExit:pass2") end end)
                 C_Timer.After(1.0, function() if addon.EditMode then addon.EditMode.RefreshSyncAndNotify("EditModeExit:pass3") end end)
 
+                -- Kept off addon.Refresh: targeted re-applies tied to one Edit Mode exit, not an ordered chain.
                 -- Late revalidation for group frame health overlay colors.
                 -- Runs after _exitingEditMode clears (1.0s) so all hooks are active.
                 -- Clears stale color caches that could cause applyValueBasedColor
@@ -1098,6 +1099,7 @@ function addon.EditMode.Initialize()
                     editModeActiveState = false
                     addon.EditMode._openingEditMode = nil
                     addon.EditMode._exitingEditMode = nil
+                    -- Kept off addon.Refresh: targeted re-applies tied to one Edit Mode exit, not an ordered chain.
                     -- Trigger overlay reapply since hooks may have been suppressed
                     C_Timer.After(0.1, function()
                         if InCombatLockdown and InCombatLockdown() then return end

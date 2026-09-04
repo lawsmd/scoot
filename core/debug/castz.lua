@@ -567,6 +567,7 @@ local function DebugCastZPet()
     end
 
     petLog = {}
+    -- Kept off addon.Events: RegisterUnitEvent filters the pet token C-side; the bus registers by name only.
     petWatcher = CreateFrame("Frame")
     for _, ev in ipairs(PET_EVENTS) do
         -- RegisterUnitEvent is the pattern Cast Bar Z will use in production.
@@ -751,6 +752,7 @@ local function DebugCastZEndOrder(unitArg)
     end
 
     endLog, endT0, endUnit = {}, nil, unit
+    -- Kept off addon.Events: RegisterUnitEvent filters the chosen unit C-side; the bus registers by name only.
     endWatcher = CreateFrame("Frame")
     for _, ev in ipairs(END_EVENTS) do
         pcall(endWatcher.RegisterUnitEvent, endWatcher, ev, unit)

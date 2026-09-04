@@ -630,6 +630,7 @@ function CBZSettings.Render(panel, scrollContent)
                                 order = { "remaining", "elapsed", "both" },
                                 get = function() return getSetting("castTimeReadout") or "remaining" end,
                                 set = function(v) setSetting("castTimeReadout", v) end })
+                            -- Kept off Builder:AddTextStyleBlock: inherited font, per-unit side, resolver-backed color, gap and vertical offset.
                             -- Follows the Spell Name font until you pick one here,
                             -- which is what an untouched profile does. The getter
                             -- shows the face in use either way, so the

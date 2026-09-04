@@ -776,6 +776,7 @@ do
 			pcall(damageTextFrame.SetFont, damageTextFrame, face, size, outline)
 		end
 
+		-- Kept off addon.ResolveColorRGBA: custom and default both fall back to the stored color, else Name/Level Text yellow.
 		-- Determine color based on colorMode
 		local c = nil
 		local colorMode = damageTextCfg.colorMode or "default"

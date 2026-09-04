@@ -626,6 +626,7 @@ local function PlayerInDungeonOrRaidInstance()
     return (inInstance == true) and (instanceType == "party" or instanceType == "raid")
 end
 
+-- Kept off addon.Opacity.Resolve: one override with a compound gate (combat in a dungeon or raid), else the baseline.
 local function ApplyObjectiveTrackerCombatOpacity(self)
     local tracker = _G.ObjectiveTrackerFrame
     if not tracker then return end

@@ -121,6 +121,7 @@ function Minimap.Render(panel, scrollContent)
                 maxLabel = "200%",
             })
 
+            -- Kept off Builder:AddBarBorderBlock: a partial with enable, tint, and thickness and no style selector.
             -- Border options (only for square)
             inner:AddToggle({
                 label = "Enable Custom Border",
@@ -801,6 +802,7 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
+                        -- Kept off Builder:AddOffsetPair: the pair is backdrop opacity and node opacity, one of them stored inverted.
                         tabBuilder:AddDualSlider({
                             label = "Opacity",
                             sliderA = {

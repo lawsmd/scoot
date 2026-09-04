@@ -79,6 +79,7 @@ local function setBarDesiredAlpha(bar, alpha)
     settingAlpha[bar] = nil
 end
 
+-- Kept off addon.Enforce: enforces a non-zero desired alpha, guarded against the addon's own writes.
 local function hookBarAlpha(bar)
     if not bar or alphaHooked[bar] then return end
     alphaHooked[bar] = true

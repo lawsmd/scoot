@@ -650,6 +650,7 @@ local SQUEEZE_A, SQUEEZE_B = 20, 10
 -- nothing stops someone typing 'range 1 500'. Coarsen rather than allocate 500 regions.
 local MAX_CANDIDATES = 64
 
+-- Kept off addon.Pool: fixed slots capped at MAX_CANDIDATES and never hidden, since a hidden region skips layout.
 local rulerHolder, rulerPool = nil, {}
 
 -- One holder, N FontStrings stacked on the same point. They overlap, which does not

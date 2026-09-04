@@ -275,6 +275,7 @@ local function ContentMatches(entry, tracker)
         and not entry.filtersStale
 end
 
+-- Kept off addon.Pool: slot allocator; acquire scans occupantId by content affinity, release is an ordered teardown.
 -- Prefer a free entry whose parked container already matches the tracker's
 -- content: reviving it is SetEnabled(true), which stays legal in combat.
 local function AcquireEntry(tracker)

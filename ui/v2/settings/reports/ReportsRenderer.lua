@@ -74,6 +74,7 @@ function ReportsListUI.Render(panel, scrollContent)
         -- Settings that apply to every report, not to any one of them. Above
         -- the collapsibles so it stays visible once the list of reports grows.
         builder:AddSection("Global")
+        -- Kept off Builder:AddTextStyleBlock: one font picker sets the face for every report string.
         builder:AddFontSelector({
             label = "Report Font",
             description = "Font used by every report panel.",

@@ -154,6 +154,7 @@ local function AddUnitSection(builder, opts)
                         -- Offsets from the tuned baseline (0/0 = shipped
                         -- position); negative X pulls the name toward the
                         -- numbers, positive Y lifts it.
+                        -- Kept off Builder:AddOffsetPair: X and Y have different ranges (-100 to 150 and -40 to 40).
                         tabInner:AddDualSlider({
                             label = "Position",
                             sliderA = {
@@ -206,6 +207,7 @@ local function AddUnitSection(builder, opts)
                 sectionKey = "health_tabs",
                 buildContent = {
                     fontSize = function(cf, tabInner)
+                        -- Kept off Builder:AddTextStyleBlock: one font and one style over the percent and value rows, each with its own size.
                         tabInner:AddFontSelector({
                             label = "Font",
                             description = "Shared by the percent and value rows.",
@@ -294,6 +296,7 @@ local function AddUnitSection(builder, opts)
                 sectionKey = "power_tabs",
                 buildContent = {
                     fontSize = function(cf, tabInner)
+                        -- Kept off Builder:AddTextStyleBlock: one style over both power texts, each with its own size and color.
                         tabInner:AddSelector({
                             label = "Font Style",
                             description = "Shared by the primary and alternate power texts.",
@@ -419,6 +422,7 @@ local function AddUnitSection(builder, opts)
                 sectionKey = "level_tabs",
                 buildContent = {
                     fontSize = function(cf, tabInner)
+                        -- Kept off Builder:AddTextStyleBlock: size comes before style, and the only toggle hides the text at max level.
                         tabInner:AddToggle({
                             label = "Hide at Max Level",
                             description = "Hides the level text while at the effective max level, including targets too high to read (lvl ??). The text has no other toggle.",

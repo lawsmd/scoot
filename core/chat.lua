@@ -99,6 +99,7 @@ local function RestoreBaseline(self, name, frame)
     end
 end
 
+-- Kept off addon.Enforce: the hide and restore replay a full baseline (alpha, scale, mouse, shown).
 local function HookFrame(self, name, frame)
     self._hooked = self._hooked or {}
     if self._hooked[name] then

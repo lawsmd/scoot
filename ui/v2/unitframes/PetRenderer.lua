@@ -212,6 +212,7 @@ function UF.RenderPet(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     style = function(cf, tabInner)
+                        -- Kept off Builder:AddBarStyleBlock: texture and color sit on separate rows, not the dual row the block emits.
                         tabInner:AddBarTextureSelector({ label = "Foreground Texture",
                             get = function() local t = B.getUFDB() or {}; return t.powerBarTexture or "default" end,
                             set = function(v) local t = B.ensureUFDB(); if t then t.powerBarTexture = v or "default"; B.applyBarTextures() end end })
@@ -413,6 +414,7 @@ function UF.RenderPet(panel, scrollContent)
         inner:Finalize()
     end
 
+    -- Kept off Builder:AddBarBorderBlock: a portrait border is a single texture with its own style list and color modes.
     local function buildPortraitBorderTab(inner)
         inner:AddToggle({
             label = "Use Custom Border",

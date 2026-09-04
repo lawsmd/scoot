@@ -285,6 +285,7 @@ end
 
 local function EnsureEvents()
     if eventFrame then return end
+    -- Kept off addon.Events.RunOutOfCombat: failures are not combat-only; run-now would re-enter Activate inside Fail().
     eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     eventFrame:SetScript("OnEvent", OnRegenEnabled)

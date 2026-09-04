@@ -711,6 +711,7 @@ function UtilityCooldowns.Render(panel, scrollContent)
                     minLabel = "Hidden", maxLabel = "100%",
                 })
             else
+                -- Kept off Builder:AddOffsetPair: the two sliders are icon opacity and text opacity on one cooldown state.
                 inner:AddDualSlider({
                     label = "Opacity While on Cooldown",
                     description = "Dim icons when on cooldown. Text slider keeps the countdown timer readable.",
