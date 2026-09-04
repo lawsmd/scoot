@@ -264,6 +264,17 @@ function UF.opacityAccessors(unitKey)
         addon.Opacity.Keys.InCombat)
 end
 
+-- The buffs/debuffs icon border family (borderEnable, borderStyle,
+-- borderTintColor, ...) as AddIconBorderBlock consumes it; the sub-table is
+-- read without materializing and materialized on write.
+function UF.auraBorderAccessors(unitKey)
+    local Helpers = addon.UI.Settings.Helpers
+    return Helpers.CreateIconBorderAccessors(
+        function(key) local t = UF.getBuffsDebuffsDB(unitKey); return t and t[key] end,
+        function(key, v) local t = UF.ensureBuffsDebuffsDB(unitKey); if t then t[key] = v end end,
+        "border")
+end
+
 --------------------------------------------------------------------------------
 -- Bound Helpers
 --------------------------------------------------------------------------------
@@ -278,6 +289,7 @@ local BIND_NAMES = {
     "applyCastBar", "applyVisibility", "applyScaleMult", "applyNameLevelText",
     "applyBuffsDebuffs",
     "textAccessors", "castBarTextAccessors", "barAccessors", "opacityAccessors",
+    "auraBorderAccessors",
 }
 
 -- Returns a table with the helpers above bound to unitKey, plus applyStyles.
@@ -451,16 +463,6 @@ UF.fontColorPowerOrder = Catalogs.ColorMode.TextPower.order
 
 -- Character-identical to the settings Helpers builder, which loads first.
 UF.buildBarBorderOptions = addon.UI.Settings.Helpers.getBarBorderOptions
-
---------------------------------------------------------------------------------
--- Build Icon Border Options from addon (for buff/debuff icons, etc.)
---------------------------------------------------------------------------------
-
--- Zero-argument twin of the settings Helpers builder; a wrapper rather than
--- an alias so a future argument here cannot become its prefixEntries.
-function UF.buildIconBorderOptions()
-    return addon.UI.Settings.Helpers.getIconBorderOptions()
-end
 
 --------------------------------------------------------------------------------
 -- Common Tab Definitions

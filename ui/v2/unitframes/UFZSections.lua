@@ -553,44 +553,32 @@ local function AddUnitSection(builder, opts)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Enable Custom Borders",
-                            description = "Borders on the buff icons. Debuff icons always keep a border of their own so a debuff reads as one at a glance; the thickness below applies to both rows.",
-                            get = function() return htCfg().auraBorderEnable and true or false end,
-                            set = function(v) call("SetAuraBorderEnable", v and "on" or "off") end,
-                        })
-                        local UF = addon.UI.UnitFrames
-                        local borderValues, borderOrder
-                        if UF and UF.buildIconBorderOptions then
-                            borderValues, borderOrder = UF.buildIconBorderOptions()
-                        else
-                            borderValues, borderOrder = { square = "Default (Square)" }, { "square" }
+                        local function get(field)
+                            local c = htCfg()
+                            if field == "enabled" then return c.auraBorderEnable end
+                            if field == "style" then return c.auraBorderStyle end
+                            if field == "tintEnabled" then return c.auraBorderTintEnable end
+                            if field == "thickness" then return c.auraBorderThickness end
+                            if field == "tintColor" then
+                                return { c.auraBorderTintR, c.auraBorderTintG, c.auraBorderTintB, c.auraBorderTintA }
+                            end
                         end
-                        tabInner:AddSelector({
-                            label = "Border Style",
-                            values = borderValues,
-                            order = borderOrder,
-                            get = function() return htCfg().auraBorderStyle or "square" end,
-                            set = function(v) call("SetAuraBorderStyle", v) end,
-                        })
-                        tabInner:AddSlider({
-                            label = "Border Thickness",
-                            min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() return htCfg().auraBorderThickness or 1 end,
-                            set = function(v) call("SetAuraBorderThickness", v) end,
-                        })
-                        tabInner:AddToggleColorPicker({
-                            label = "Border Tint",
-                            description = "Buff borders only. Debuff borders take their color from the aura's dispel school, red when it cannot be dispelled.",
-                            get = function() return htCfg().auraBorderTintEnable and true or false end,
-                            set = function(v) call("SetAuraBorderTint", v and "on" or "off") end,
-                            getColor = function()
-                                local c = htCfg()
-                                return c.auraBorderTintR or 1, c.auraBorderTintG or 1,
-                                    c.auraBorderTintB or 1, c.auraBorderTintA or 1
-                            end,
-                            setColor = function(r, g, b, a) call("SetAuraBorderTintColor", r, g, b, a) end,
-                            hasAlpha = true,
+                        local function set(field, v)
+                            if field == "enabled" then call("SetAuraBorderEnable", v and "on" or "off")
+                            elseif field == "style" then call("SetAuraBorderStyle", v)
+                            elseif field == "tintEnabled" then call("SetAuraBorderTint", v and "on" or "off")
+                            elseif field == "thickness" then call("SetAuraBorderThickness", v)
+                            elseif field == "tintColor" then call("SetAuraBorderTintColor", v[1], v[2], v[3], v[4])
+                            end
+                        end
+                        tabInner:AddIconBorderBlock({
+                            get = get, set = set,
+                            enableToggle = {
+                                label = "Enable Custom Borders",
+                                description = "Borders on the buff icons. Debuff icons always keep a border of their own so a debuff reads as one at a glance; the thickness below applies to both rows.",
+                            },
+                            tint = { description = "Buff borders only. Debuff borders take their color from the aura's dispel school, red when it cannot be dispelled." },
+                            inset = false,
                         })
                         tabInner:Finalize()
                     end,

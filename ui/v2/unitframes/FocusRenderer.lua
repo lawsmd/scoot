@@ -479,31 +479,11 @@ function UF.RenderFocus(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Enable Custom Borders",
-                            get = function() local t = B.getBuffsDebuffsDB() or {}; return not not t.borderEnable end,
-                            set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.borderEnable = v and true or false; B.applyBuffsDebuffs() end end,
-                        })
-                        local borderValues, borderOrder = UF.buildIconBorderOptions()
-                        tabInner:AddSelector({
-                            label = "Border Style",
-                            values = borderValues, order = borderOrder,
-                            get = function() local t = B.getBuffsDebuffsDB() or {}; return t.borderStyle or "square" end,
-                            set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.borderStyle = v or "square"; B.applyBuffsDebuffs() end end,
-                        })
-                        tabInner:AddSlider({
-                            label = "Border Thickness",
-                            min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() local t = B.getBuffsDebuffsDB() or {}; local v = tonumber(t.borderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                            set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.borderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyBuffsDebuffs() end end,
-                        })
-                        tabInner:AddToggleColorPicker({
-                            label = "Border Tint",
-                            get = function() local t = B.getBuffsDebuffsDB() or {}; return not not t.borderTintEnable end,
-                            set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.borderTintEnable = not not v; B.applyBuffsDebuffs() end end,
-                            getColor = function() local t = B.getBuffsDebuffsDB() or {}; local c = t.borderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = B.ensureBuffsDebuffsDB(); if t then t.borderTintColor = {r or 1, g or 1, b or 1, a or 1}; B.applyBuffsDebuffs() end end,
-                            hasAlpha = true,
+                        local get, set = B.auraBorderAccessors()
+                        tabInner:AddIconBorderBlock({
+                            get = get, set = set, apply = B.applyBuffsDebuffs,
+                            enableToggle = { label = "Enable Custom Borders" },
+                            inset = false,
                         })
                         tabInner:Finalize()
                     end,
