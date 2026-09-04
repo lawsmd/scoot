@@ -1283,8 +1283,7 @@ RaidFrames.installHooks()
 -- Captures the exact state of all raid frames to identify why they're invisible.
 --------------------------------------------------------------------------------
 function addon.DebugDumpRaidFrames()
-    local lines = {}
-    local function add(s) lines[#lines + 1] = s end
+    local lines, add = addon.DebugLines()
 
     add("=== Raid Frames Diagnostic ===")
     add(string.format("Time: %s", date("%Y-%m-%d %H:%M:%S")))

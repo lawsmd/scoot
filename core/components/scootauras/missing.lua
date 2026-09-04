@@ -999,8 +999,7 @@ end
 
 --- Lines for /scoot debug sa missing <id>.
 function Missing.DebugInfo(trackerId)
-    local lines = {}
-    local function add(fmt, ...) table.insert(lines, string.format(fmt, ...)) end
+    local lines, add = addon.DebugLines()
 
     local tracker = SAU.GetTracker(trackerId)
     if not tracker then

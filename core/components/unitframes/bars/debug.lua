@@ -98,8 +98,7 @@ function addon.DebugPowerBarPosition(simulateReset)
         and _G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea
         and _G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
 
-    local lines = {}
-    local function push(s) table.insert(lines, tostring(s)) end
+    local lines, push = addon.DebugLines()
 
     push("InCombatLockdown=" .. tostring((InCombatLockdown and InCombatLockdown()) and true or false))
     push("PlayerInCombat=" .. tostring((PlayerInCombat and PlayerInCombat()) and true or false))

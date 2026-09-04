@@ -738,8 +738,7 @@ addon:RegisterComponentInitializer(function(self)
 
     -- Debug: /scoot debug dm frames — overlay diagnostic info in copyable window
     addon.DebugDMFrames = function()
-        local lines = {}
-        local function push(s) lines[#lines + 1] = s end
+        local lines, push = addon.DebugLines()
 
         local windows = GetAllSessionWindows()
         push("Session windows found: " .. #windows)
@@ -801,8 +800,7 @@ addon:RegisterComponentInitializer(function(self)
 
     -- Debug: /scoot debug dm state — zero-touch diagnostic dump (copyable window)
     addon.DebugDMState = function()
-        local lines = {}
-        local function push(s) lines[#lines + 1] = s end
+        local lines, push = addon.DebugLines()
 
         local profile = addon.db and addon.db.profile
         if not profile then

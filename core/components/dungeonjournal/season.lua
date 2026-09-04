@@ -95,8 +95,7 @@ addon.Events.On("DungeonJournal:Season", "CHALLENGE_MODE_MAPS_UPDATE", onSeasonE
 addon:RegisterDebugCommand({
     name = "dj", help = "Dungeon Journal season snapshot and marks",
     handler = function()
-        local lines = {}
-        local function push(s) lines[#lines + 1] = s end
+        local lines, push = addon.DebugLines()
         push(string.format("DJ enabled: %s", tostring(DJ.IsEnabled and DJ.IsEnabled())))
         local ej = _G.EncounterJournal
         local instanceID = ej and rawget(ej, "instanceID") or nil

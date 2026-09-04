@@ -574,8 +574,7 @@ addon:RegisterComponentInitializer(function(self)
 
     -- Debug: /scoot debug tb state — zero-touch diagnostic dump (copyable window)
     addon.DebugTBState = function()
-        local lines = {}
-        local function push(s) lines[#lines + 1] = s end
+        local lines, push = addon.DebugLines()
 
         local profile = addon.db and addon.db.profile
         if not profile then
@@ -674,8 +673,7 @@ addon:RegisterComponentInitializer(function(self)
         if not comp then addon:Print("No trackedBars component") return end
         local f = _G[comp.frameName]
         if not f then addon:Print("No viewer frame: " .. tostring(comp.frameName)) return end
-        local lines = {}
-        local function push(s) lines[#lines + 1] = s end
+        local lines, push = addon.DebugLines()
         push("Tracked Bars State Dump")
         push(string.rep("-", 50))
         local ok1, vHWI = pcall(function() return f.hideWhenInactive end)
