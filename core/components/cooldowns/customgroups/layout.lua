@@ -211,20 +211,11 @@ local function SaveGroupPosition(groupIndex, layoutName, point, x, y)
     }
 end
 
-local function RestoreGroupPosition(groupIndex, layoutName)
-    local container = containers[groupIndex]
-    if not container then return end
-
+local function GetGroupPosition(groupIndex, layoutName)
     local groups = CG._EnsureGroupsDB()
-    if not groups or not groups[groupIndex] then return end
-
-    local positions = groups[groupIndex].positions
-    local pos = positions and positions[layoutName]
-
-    if pos and pos.point then
-        container:ClearAllPoints()
-        container:SetPoint(pos.point, pos.x or 0, pos.y or 0)
-    end
+    local group = groups and groups[groupIndex]
+    local positions = group and group.positions
+    return positions and positions[layoutName] or nil
 end
 
 local function UpdateEditModeNames()
@@ -236,52 +227,40 @@ local function UpdateEditModeNames()
     end
 end
 
-function CG._InitializeEditMode()
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
+-- Re-anchoring runs on a drop only, between the SetPoint and the save, so the
+-- stored anchor is the re-anchored one. A restore is a bare SetPoint.
+local function ApplyGroupPosition(groupIndex, frame, point, x, y, reason)
+    frame:ClearAllPoints()
+    frame:SetPoint(point, x, y)
+    if reason == "drop" then
+        local component = addon.Components and addon.Components["customGroup" .. groupIndex]
+        if component and component.db then
+            ReanchorContainer(frame, component.db.anchorPosition or "center")
+        end
+    end
+end
 
+-- One positionable per group (core/editmode/positionables.lua). Storage stays
+-- customCDMGroups[i].positions[layoutName]; a group with nothing stored keeps
+-- its creation stagger rather than jumping to the Edit Mode default.
+function CG._InitializeEditMode()
     for i = 1, CG.NUM_GROUPS do
         local container = containers[i]
         if container then
             container.editModeName = CG.GetGroupDisplayName(i)
-            lib:AddFrame(container, function(frame, layoutName, point, x, y)
-                if point and x and y then
-                    frame:ClearAllPoints()
-                    frame:SetPoint(point, x, y)
-                end
-                -- Re-anchor to match anchorPosition
-                local component = addon.Components and addon.Components["customGroup" .. i]
-                if component and component.db then
-                    ReanchorContainer(frame, component.db.anchorPosition or "center")
-                end
-                -- Save the re-anchored position
-                if layoutName then
-                    local savedPoint, _, _, savedX, savedY = frame:GetPoint(1)
-                    if savedPoint then
-                        SaveGroupPosition(i, layoutName, savedPoint, savedX, savedY)
-                    else
-                        SaveGroupPosition(i, layoutName, point, x, y)
-                    end
-                end
-            end, {
-                point = "CENTER",
-                x = 0,
-                y = -100 + (i - 1) * -60,
-            }, nil)
-
-            local Brand = addon.EditMode and addon.EditMode.Brand
-            if Brand then
+            addon.EditMode.RegisterPositionable(container, {
+                key = i,
+                default = { point = "CENTER", x = 0, y = -100 + (i - 1) * -60 },
+                store = { get = GetGroupPosition, set = SaveGroupPosition },
+                apply = function(frame, point, x, y, reason)
+                    ApplyGroupPosition(i, frame, point, x, y, reason)
+                end,
+                restoreDefault = false,
                 -- Each group is its own nav page, so the page is the item.
-                Brand:Register(container, { navKey = "customGroup" .. i })
-            end
+                brand = { navKey = "customGroup" .. i },
+            })
         end
     end
-
-    lib:RegisterCallback("layout", function(layoutName, layoutIndex)
-        for i = 1, CG.NUM_GROUPS do
-            RestoreGroupPosition(i, layoutName)
-        end
-    end)
 
     CG.RegisterCallback(UpdateEditModeNames)
 end
