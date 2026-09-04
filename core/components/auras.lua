@@ -9,7 +9,7 @@ local ToggleDefaultIconOverlay = Util.ToggleDefaultIconOverlay
 
 -- State opacity (core/opacity.lua): the combat slider floors at 50 and the
 -- other two at 1; an unset value reads as the combat value.
-local AURA_OPACITY_OPTS = { targetFirst = true, combatMin = 50, min = 1, fallback = "combat" }
+local AURA_OPACITY_OPTS = { combatMin = 50, min = 1, fallback = "combat" }
 
 -- Weak-key lookup tables to avoid writing properties to Blizzard frames
 -- (which would taint them and cause secret value errors during Edit Mode operations)

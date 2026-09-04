@@ -2,7 +2,7 @@
 local addonName, addon = ...
 -- State opacity (core/opacity.lua): the combat slider floors at 50 and the
 -- other two at 1; an unset value reads as the combat value.
-local UF_OPACITY_OPTS = { targetFirst = true, combatMin = 50, min = 1, fallback = "combat" }
+local UF_OPACITY_OPTS = { combatMin = 50, min = 1, fallback = "combat" }
 
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState

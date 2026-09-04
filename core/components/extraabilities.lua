@@ -9,7 +9,7 @@ local Util = addon.ComponentsUtil
 
 -- State opacity (core/opacity.lua): both sliders floor at 1; an unset value
 -- reads as the base value.
-local EA_OPACITY_OPTS = { targetFirst = true, combatMin = 1, min = 1, fallback = "combat" }
+local EA_OPACITY_OPTS = { combatMin = 1, min = 1, fallback = "combat" }
 
 -- State for alpha management
 local extraAbilityState = {}

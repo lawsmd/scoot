@@ -717,7 +717,7 @@ function addon:RegisterEvents()
     safeRegisterEvent("UPDATE_BOSS_FRAMES")
     -- Re-evaluate Rules when player levels up (for playerLevel trigger type)
     self:RegisterEvent("PLAYER_LEVEL_UP")
-    -- Combat state changes for opacity updates (priority: With Target > In Combat > Out of Combat)
+    -- Combat state changes for opacity updates (priority: In Combat > With Target > Out of Combat)
     self:RegisterEvent("PLAYER_REGEN_DISABLED")
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
     

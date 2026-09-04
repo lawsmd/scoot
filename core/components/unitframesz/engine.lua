@@ -2709,12 +2709,13 @@ regenActions.scale = applyScale
 
 -- Whole-frame conditional opacity, the UFX Visibility offering ported (strict
 -- parity: Player-only -- a Target cfg carries no opacity keys and
--- resolves to full alpha). Priority: With Target > In Combat > Out of Combat,
--- the contract the X tooltip advertises. SetAlpha is unprotected, so unlike
--- the geometry workers this applies live in combat, no queue. 0 is honored --
--- deliberately not replicating X's silent 50-percent floor on In Combat.
+-- resolves to full alpha). Priority: In Combat > With Target > Out of Combat,
+-- the order every state-opacity site resolves (core/opacity.lua). SetAlpha is
+-- unprotected, so unlike the geometry workers this applies live in combat, no
+-- queue. 0 is honored -- deliberately not replicating X's silent 50-percent
+-- floor on In Combat.
 -- Only units that offer the With Target slider pay for the target probe.
-local UFZ_OPACITY_OPTS = { targetFirst = true, probeTarget = "whenSet" }
+local UFZ_OPACITY_OPTS = { probeTarget = "whenSet" }
 
 local function applyOpacity(inst)
     local frame = inst.frame

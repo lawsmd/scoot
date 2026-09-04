@@ -7,7 +7,7 @@ local abTextFontOpts = { size = 14 }
 local Component = addon.ComponentPrototype
 
 -- State opacity (core/opacity.lua): an unset value reads as the combat value.
-local BAR_OPACITY_OPTS = { targetFirst = true, fallback = "combat" }
+local BAR_OPACITY_OPTS = { fallback = "combat" }
 
 -- Alpha driver: hooks SetAlpha to enforce addon opacity settings over Blizzard's visibility transitions
 local actionBarState = {}  -- per-frame state (component, baseOpacity, isMousedOver, desiredAlpha)

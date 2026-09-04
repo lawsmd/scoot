@@ -112,7 +112,6 @@ local EMPTY = {}
 --   alphaFloor   final floor in alpha space (default 0)
 --   probeTarget  "whenSet": probe the target only when db[keys.target] ~= nil
 --                (default: always)
---   targetFirst  true: target > combat > ooc (default: combat > target > ooc)
 --   inCombat, hasTarget  booleans that replace the probes when not nil (Dump)
 -- Returns alpha in 0..1 and the state that won: "combat", "target", or "ooc".
 function Opacity.Resolve(db, keys, opts)
@@ -137,23 +136,14 @@ function Opacity.Resolve(db, keys, opts)
         if hasTarget == nil then hasTarget = Opacity.HasTarget() end
     end
 
+    -- Combat, then target, then out of combat: the one order every site uses.
     local pct, state
-    if opts.targetFirst then
-        if hasTarget then
-            pct, state = targetV, "target"
-        elseif inCombat then
-            pct, state = combatV, "combat"
-        else
-            pct, state = oocV, "ooc"
-        end
+    if inCombat then
+        pct, state = combatV, "combat"
+    elseif hasTarget then
+        pct, state = targetV, "target"
     else
-        if inCombat then
-            pct, state = combatV, "combat"
-        elseif hasTarget then
-            pct, state = targetV, "target"
-        else
-            pct, state = oocV, "ooc"
-        end
+        pct, state = oocV, "ooc"
     end
 
     local alpha = pct / 100
