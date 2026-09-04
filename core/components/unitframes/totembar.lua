@@ -26,8 +26,7 @@ local TOTEM_BAR_CLASSES = {
 -- State Tracking
 --------------------------------------------------------------------------------
 
-local hookedBorders = setmetatable({}, { __mode = "k" })
-local hookedDurations = setmetatable({}, { __mode = "k" })
+local styledDurations = setmetatable({}, { __mode = "k" })
 local eventFrame = nil
 
 --------------------------------------------------------------------------------
@@ -100,36 +99,34 @@ end
 -- Apply Icon Border Styling
 --------------------------------------------------------------------------------
 
+-- Hide-enforcement (core/enforce.lua): the keys read the configuration live
+-- and every re-assert runs after a stack break, as before.
+local Enforce = addon.Enforce
+local HIDE_METHODS = { "Show", "SetAlpha" }
+local BORDER_HIDE_OPTS = {
+    methods = HIDE_METHODS,
+    timing = "defer",
+    when = function()
+        local cfg = getIconBordersConfig()
+        return cfg ~= nil and not not cfg.hidden
+    end,
+}
+local TIMER_HIDE_OPTS = {
+    methods = HIDE_METHODS,
+    timing = "defer",
+    when = function()
+        local cfg = getTimerTextConfig()
+        return cfg ~= nil and not not cfg.hidden
+    end,
+}
+
 local function applyBorderStyling(border, hidden)
     if not border then return end
 
     if hidden then
         pcall(border.SetAlpha, border, 0)
+        Enforce.Install(border, "totemBorder", BORDER_HIDE_OPTS)
         debugPrint("Border hidden via SetAlpha(0)")
-
-        -- Hook to maintain hidden state when Blizzard shows the border
-        if not hookedBorders[border] then
-            hookedBorders[border] = true
-            hooksecurefunc(border, "Show", function(self)
-                local cfg = getIconBordersConfig()
-                if not cfg then return end
-                if cfg.hidden then
-                    C_Timer.After(0, function()
-                        pcall(self.SetAlpha, self, 0)
-                    end)
-                end
-            end)
-            hooksecurefunc(border, "SetAlpha", function(self, alpha)
-                local cfg = getIconBordersConfig()
-                if not cfg then return end
-                if cfg.hidden and alpha ~= 0 then
-                    C_Timer.After(0, function()
-                        pcall(self.SetAlpha, self, 0)
-                    end)
-                end
-            end)
-            debugPrint("Installed border hooks")
-        end
     else
         pcall(border.SetAlpha, border, 1)
         debugPrint("Border shown via SetAlpha(1)")
@@ -146,31 +143,8 @@ local function applyTimerTextStyling(duration, cfg)
     -- Handle hidden state
     if cfg.hidden then
         pcall(duration.SetAlpha, duration, 0)
+        Enforce.Install(duration, "totemTimer", TIMER_HIDE_OPTS)
         debugPrint("Timer text hidden via SetAlpha(0)")
-
-        -- Hook to maintain hidden state
-        if not hookedDurations[duration] then
-            hookedDurations[duration] = true
-            hooksecurefunc(duration, "Show", function(self)
-                local tcfg = getTimerTextConfig()
-                if not tcfg then return end
-                if tcfg.hidden then
-                    C_Timer.After(0, function()
-                        pcall(self.SetAlpha, self, 0)
-                    end)
-                end
-            end)
-            hooksecurefunc(duration, "SetAlpha", function(self, alpha)
-                local tcfg = getTimerTextConfig()
-                if not tcfg then return end
-                if tcfg.hidden and alpha ~= 0 then
-                    C_Timer.After(0, function()
-                        pcall(self.SetAlpha, self, 0)
-                    end)
-                end
-            end)
-            debugPrint("Installed duration hooks for hidden state")
-        end
         return
     end
 
@@ -204,25 +178,19 @@ local function applyTimerTextStyling(duration, cfg)
         end
     end
 
-    -- Hook to reapply styling when Blizzard updates the duration
-    if not hookedDurations[duration] then
-        hookedDurations[duration] = true
-        -- Hook SetText to reapply styling after Blizzard updates
-        hooksecurefunc(duration, "SetText", function(self, text)
+    -- Reapply font and color after Blizzard updates the text. The hidden case
+    -- belongs to the Show and SetAlpha keys above; this hook closes over the
+    -- duration and never reads its arguments.
+    if not styledDurations[duration] then
+        styledDurations[duration] = true
+        hooksecurefunc(duration, "SetText", function()
             local tcfg = getTimerTextConfig()
-            if not tcfg then return end
-            if tcfg.hidden then
-                C_Timer.After(0, function()
-                    pcall(self.SetAlpha, self, 0)
-                end)
-            else
-                -- Reapply font and color (text updates might reset them)
-                C_Timer.After(0, function()
-                    addon.ApplyTextFont(self, tcfg, totemFontOpts)
-                    local col = tcfg.color or { 1, 1, 1, 1 }
-                    pcall(self.SetTextColor, self, col[1] or 1, col[2] or 1, col[3] or 1, col[4] or 1)
-                end)
-            end
+            if not tcfg or tcfg.hidden then return end
+            C_Timer.After(0, function()
+                addon.ApplyTextFont(duration, tcfg, totemFontOpts)
+                local col = tcfg.color or { 1, 1, 1, 1 }
+                pcall(duration.SetTextColor, duration, col[1] or 1, col[2] or 1, col[3] or 1, col[4] or 1)
+            end)
         end)
         debugPrint("Installed duration SetText hook")
     end

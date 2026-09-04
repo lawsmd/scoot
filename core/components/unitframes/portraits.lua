@@ -9,6 +9,7 @@ local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 local SS = addon.SecretSafe
+local Enforce = addon.Enforce
 
 local function getState(frame)
     return FS.Get(frame)
@@ -183,126 +184,48 @@ do
 	end
 
 	-- Pet portrait overlays are driven by Blizzard and may re-show/recreate in combat.
-	-- Keep them hidden safely via SetAlpha(0) + hooksecurefunc re-enforcement (no Hide/Show).
+	-- Keep them hidden via SetAlpha(0) plus vertex alpha 0 with re-enforcement hooks
+	-- (core/enforce.lua; no Hide/Show). Enforcement is synchronous: PetAttackModeTexture
+	-- pulses via SetVertexColor in PetFrame:OnUpdate every frame, so a deferred re-assert
+	-- loses the race and flashes. The rgb comes from the texture, never from a hook argument.
+	local function applyPetOverlayHidden(tex)
+		if tex.SetAlpha then pcall(tex.SetAlpha, tex, 0) end
+		if tex.SetVertexColor then
+			local r, g, b = 1, 1, 1
+			if tex.GetVertexColor then
+				local ok, rr, gg, bb = pcall(tex.GetVertexColor, tex)
+				if ok then
+					r, g, b = SS.safeNumber(rr) or r, SS.safeNumber(gg) or g, SS.safeNumber(bb) or b
+				end
+			end
+			pcall(tex.SetVertexColor, tex, r, g, b, 0)
+		end
+	end
+	local PET_OVERLAY_OPTS = { methods = { "Show", "SetShown", "SetAlpha", "SetVertexColor" }, apply = applyPetOverlayHidden }
+	local PET_OVERLAY_RELEASE = { restore = false }
+
 	local function applyStickyOverlayAlpha(texture, hidden, visibleAlpha)
 		if not texture then return end
 		if visibleAlpha == nil then visibleAlpha = 1.0 end
-
-		-- Enforce Pet overlay alpha to 0 IMMEDIATELY (synchronously).
-		-- PetAttackModeTexture pulses via SetVertexColor in PetFrame:OnUpdate every frame.
-		-- Deferred enforcement (C_Timer.After(0)) would lose the race and cause visible flashing.
-		-- Only writes alpha/vertex alpha (no Hide/Show/SetShown calls) to avoid taint.
-		-- The pet overlay enforcing flag guards against infinite recursion.
-		local function enforceHiddenNow(tex)
-			local st = getState(tex)
-			if not tex or not st or not st.petOverlayHidden then return end
-			if st.petOverlayEnforcing then return end
-			st.petOverlayEnforcing = true
-
-			if tex.SetAlpha then
-				pcall(tex.SetAlpha, tex, 0)
-			end
-
-			-- Enforce both frame alpha and vertex alpha, since Blizzard may drive visibility via SetVertexColor.
-			if tex.SetVertexColor then
-				local r, g, b = 1, 1, 1
-				if tex.GetVertexColor then
-					local ok, rr, gg, bb = pcall(tex.GetVertexColor, tex)
-					if ok then
-						r, g, b = rr or r, gg or g, bb or b
-					end
-				end
-				pcall(tex.SetVertexColor, tex, r, g, b, 0)
-			end
-
-			if st then st.petOverlayEnforcing = nil end
-		end
-
-		-- Install hooks once per texture instance.
-		local texState = getState(texture)
-		if texState and not texState.petOverlayHooked and _G.hooksecurefunc then
-			texState.petOverlayHooked = true
-
-			-- If Blizzard shows the texture, force alpha back to 0 when it should be hidden.
-			-- Enforced immediately (not deferred) to prevent any visible flash.
-			-- Enforcement only calls SetAlpha/SetVertexColor (not Hide/Show), which are
-			-- not protected functions and won't cause taint.
-			_G.hooksecurefunc(texture, "Show", function(self)
-				local st = getState(self)
-				if not st or not st.petOverlayHidden then return end
-				enforceHiddenNow(self)
-			end)
-
-			-- If Blizzard uses SetShown(true), treat it like Show().
-			if texture.SetShown then
-				_G.hooksecurefunc(texture, "SetShown", function(self, shown)
-					local st = getState(self)
-					if not shown or not st or not st.petOverlayHidden then return end
-					enforceHiddenNow(self)
-				end)
-			end
-
-			-- If Blizzard sets alpha > 0, enforce hidden state immediately.
-			-- SetAlpha is not a protected function, so immediate enforcement is safe.
-			-- The _ScootPetOverlayEnforcing flag guards against recursion.
-			_G.hooksecurefunc(texture, "SetAlpha", function(self, alpha)
-				local st = getState(self)
-				if st and st.petOverlayHidden and alpha and alpha > 0 then
-					enforceHiddenNow(self)
-				end
-			end)
-
-			-- Blizzard often drives glow visibility via vertex alpha (SetVertexColor's 4th param),
-			-- not frame alpha (SetAlpha). Example: PetAttackModeTexture pulses in PetFrame:OnUpdate.
-			-- CRITICAL: PetFrame:OnUpdate calls SetVertexColor EVERY FRAME to create the pulse.
-			-- Must enforce alpha=0 IMMEDIATELY (not deferred) or the texture will flash visible
-			-- for one frame before the deferred correction runs, then flash again next frame, etc.
-			-- The _ScootPetOverlayEnforcing flag guards against infinite recursion.
-			if texture.SetVertexColor then
-				_G.hooksecurefunc(texture, "SetVertexColor", function(self, r, g, b, a)
-					local st = getState(self)
-					if not st or not st.petOverlayHidden then
-						return
-					end
-
-					-- Treat nil alpha as "visible" (Blizzard sometimes omits alpha, defaulting to 1).
-					if a == 0 then
-						return
-					end
-
-					-- IMMEDIATE enforcement - no deferral. PetFrame:OnUpdate runs every frame,
-					-- so deferred enforcement via C_Timer.After(0) loses the race and causes
-					-- visible flashing. Synchronous enforcement wins because it runs right after
-					-- Blizzard's SetVertexColor, before the frame renders.
-					enforceHiddenNow(self)
-				end)
-			end
-		end
-
-		-- Apply current desired state immediately (and set the sticky flag).
-		-- Always enforced immediately (even during combat) because SetAlpha/SetVertexColor
-		-- are not protected functions and won't cause taint -- hides the texture
-		-- before the frame renders.
 		if hidden then
-			if texState then texState.petOverlayHidden = true end
-			enforceHiddenNow(texture)
-		else
-			if texState then texState.petOverlayHidden = false end
-			-- Restore visible alpha (safe during combat - not a protected operation)
-			if texture.SetAlpha then
-				pcall(texture.SetAlpha, texture, visibleAlpha)
-			end
-			-- Also restore vertex alpha to allow Blizzard's pulse animation to work
-			if texture.SetVertexColor then
-				local r, g, b = 1, 1, 1
-				if texture.GetVertexColor then
-					local ok, rr, gg, bb = pcall(texture.GetVertexColor, texture)
-					if ok then
-						r, g, b = rr or r, gg or g, bb or b
-					end
+			Enforce.Set(texture, "petOverlay", true, PET_OVERLAY_OPTS)
+			return
+		end
+		-- Clear the flag, then restore the visible alpha and the vertex alpha so
+		-- Blizzard's pulse animation works again (safe in combat: not protected).
+		Enforce.Set(texture, "petOverlay", false, PET_OVERLAY_RELEASE)
+		if texture.SetAlpha then
+			pcall(texture.SetAlpha, texture, visibleAlpha)
+		end
+		if texture.SetVertexColor then
+			local r, g, b = 1, 1, 1
+			if texture.GetVertexColor then
+				local ok, rr, gg, bb = pcall(texture.GetVertexColor, texture)
+				if ok then
+					r, g, b = SS.safeNumber(rr) or r, SS.safeNumber(gg) or g, SS.safeNumber(bb) or b
 				end
-				pcall(texture.SetVertexColor, texture, r, g, b, visibleAlpha)
 			end
+			pcall(texture.SetVertexColor, texture, r, g, b, visibleAlpha)
 		end
 	end
 
@@ -393,103 +316,26 @@ do
 		EnforcePetOverlays()
 	end
 
-	-- Install enforcement hooks on portrait/mask frames to keep them hidden when Blizzard code re-shows them.
-	-- Similar to the Pet overlay pattern but for Player/Target/Focus portraits.
-	-- Uses hooksecurefunc to re-enforce hidden state after Show/SetShown/SetAlpha calls.
+	-- Keep a hidden portrait or mask frame hidden when Blizzard re-shows it
+	-- (core/enforce.lua). The flag, portraitHiddenByScoot, is written by the
+	-- apply pass below and read live. Show and SetShown re-hide with alpha 0 plus
+	-- Hide; SetAlpha re-hides with alpha 0 alone. Synchronous, behind the guard.
+	local function applyPortraitHidden(frame, method)
+		if frame.SetAlpha then pcall(frame.SetAlpha, frame, 0) end
+		if method ~= "SetAlpha" then
+			local hide = frame.HideBase or frame.Hide
+			if hide then pcall(hide, frame) end
+		end
+	end
+	local PORTRAIT_HIDE_OPTS = {
+		methods = { "Show", "SetShown", "SetAlpha" },
+		apply = applyPortraitHidden,
+		when = function(frame) return getState(frame).portraitHiddenByScoot == true end,
+	}
+
 	local function installPortraitHideEnforcement(portraitFrame, maskFrame, unit)
-		if not portraitFrame then return end
-		local st = getState(portraitFrame)
-		if not st then return end
-		if st.hideEnforcementHooked then return end
-
-		-- Helper to enforce hidden state immediately
-		local function enforceHiddenNow(frame)
-			if not frame then return end
-			local fs = getState(frame)
-			if not fs or not fs.portraitHiddenByScoot then return end
-			if fs.portraitEnforcing then return end
-			fs.portraitEnforcing = true
-
-			if frame.SetAlpha then
-				pcall(frame.SetAlpha, frame, 0)
-			end
-			if frame.Hide then
-				pcall(frame.Hide, frame)
-			end
-
-			fs.portraitEnforcing = nil
-		end
-
-		-- Hook Show to re-hide
-		if portraitFrame.Show then
-			_G.hooksecurefunc(portraitFrame, "Show", function(self)
-				local fs = getState(self)
-				if fs and fs.portraitHiddenByScoot then
-					enforceHiddenNow(self)
-				end
-			end)
-		end
-
-		-- Hook SetShown to re-hide
-		if portraitFrame.SetShown then
-			_G.hooksecurefunc(portraitFrame, "SetShown", function(self, shown)
-				if not shown then return end
-				local fs = getState(self)
-				if fs and fs.portraitHiddenByScoot then
-					enforceHiddenNow(self)
-				end
-			end)
-		end
-
-		-- Hook SetAlpha to force 0
-		if portraitFrame.SetAlpha then
-			_G.hooksecurefunc(portraitFrame, "SetAlpha", function(self, alpha)
-				if alpha == 0 then return end
-				local fs = getState(self)
-				if fs and fs.portraitHiddenByScoot then
-					pcall(self.SetAlpha, self, 0)
-				end
-			end)
-		end
-
-		st.hideEnforcementHooked = true
-
-		-- Also hook the mask frame if it exists
-		if maskFrame then
-			local mst = getState(maskFrame)
-			if mst and not mst.hideEnforcementHooked then
-				if maskFrame.Show then
-					_G.hooksecurefunc(maskFrame, "Show", function(self)
-						local fs = getState(self)
-						if fs and fs.portraitHiddenByScoot then
-							enforceHiddenNow(self)
-						end
-					end)
-				end
-
-				if maskFrame.SetShown then
-					_G.hooksecurefunc(maskFrame, "SetShown", function(self, shown)
-						if not shown then return end
-						local fs = getState(self)
-						if fs and fs.portraitHiddenByScoot then
-							enforceHiddenNow(self)
-						end
-					end)
-				end
-
-				if maskFrame.SetAlpha then
-					_G.hooksecurefunc(maskFrame, "SetAlpha", function(self, alpha)
-						if alpha == 0 then return end
-						local fs = getState(self)
-						if fs and fs.portraitHiddenByScoot then
-							pcall(self.SetAlpha, self, 0)
-						end
-					end)
-				end
-
-				mst.hideEnforcementHooked = true
-			end
-		end
+		Enforce.Install(portraitFrame, "portraitHidden", PORTRAIT_HIDE_OPTS)
+		Enforce.Install(maskFrame, "portraitHidden", PORTRAIT_HIDE_OPTS)
 	end
 
 	-- [OPT-12] Extracted from applyForUnit to eliminate per-call closure allocation.
