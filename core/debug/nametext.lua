@@ -28,6 +28,9 @@
 
 local addonName, addon = ...
 
+-- Defined below, referenced above their definitions.
+local DebugNameTextRefresh
+
 local cfg = {
     width    = 150,
     -- Tall enough for one line at maxSize. The line budget is derived from
@@ -1154,7 +1157,7 @@ local function ensureFrame()
         -- A name update is the SAME unit arriving late, so hold whatever is on screen
         -- and swap when the new fit lands. Blanking on it would mean two flickers for
         -- every uncached target instead of none.
-        addon.DebugNameTextRefresh(event == "UNIT_NAME_UPDATE")
+        DebugNameTextRefresh(event == "UNIT_NAME_UPDATE")
     end
     addon.Events.On("Debug:NameText", "PLAYER_TARGET_CHANGED", onEvent)
     addon.Events.On("Debug:NameText", "UNIT_NAME_UPDATE", onEvent)
@@ -1196,13 +1199,13 @@ end
 -- Fits directly rather than through scheduleFit: nothing here changes the box geometry,
 -- so the deferred frame scheduleFit exists to wait for would be one more frame of empty
 -- box for no reason.
-function addon.DebugNameTextRefresh(hold)
+function DebugNameTextRefresh(hold)
     if not frame or not frame:IsShown() then return end
     pullTargetName(hold)
     runFit()
 end
 
-function addon.DebugNameTextToggle()
+local function DebugNameTextToggle()
     ensureFrame()
     if frame:IsShown() then
         frame:Hide()
@@ -1213,10 +1216,10 @@ function addon.DebugNameTextToggle()
     frame:Show()
     addon:Print("Name box shown (no backdrop by design - '/scoot debug nametext chrome' to drag it).")
     addon:Print("Target something, or try: /scoot debug nametext sample 4")
-    addon.DebugNameTextRefresh()
+    DebugNameTextRefresh()
 end
 
-function addon.DebugNameTextSetSize(w, h)
+local function DebugNameTextSetSize(w, h)
     ensureShown()
     cfg.width  = tonumber(w) or cfg.width
     cfg.height = tonumber(h) or cfg.height
@@ -1225,14 +1228,14 @@ function addon.DebugNameTextSetSize(w, h)
     addon:Print(string.format("Container: %dx%d", cfg.width, cfg.height))
 end
 
-function addon.DebugNameTextSetLines(n)
+local function DebugNameTextSetLines(n)
     ensureShown()
     cfg.maxLines = math.max(1, math.floor(tonumber(n) or cfg.maxLines))
     scheduleFit()
     addon:Print("Max lines: " .. cfg.maxLines)
 end
 
-function addon.DebugNameTextSetRange(minSize, maxSize)
+local function DebugNameTextSetRange(minSize, maxSize)
     ensureShown()
     cfg.minSize = tonumber(minSize) or cfg.minSize
     cfg.maxSize = tonumber(maxSize) or cfg.maxSize
@@ -1242,14 +1245,14 @@ end
 
 -- The size used when nothing can be measured, which is every restricted name. On the
 -- secret path this is not an error size, it IS the render size.
-function addon.DebugNameTextSetFallback(n)
+local function DebugNameTextSetFallback(n)
     ensureShown()
     cfg.fallbackSize = math.max(1, math.floor(tonumber(n) or cfg.fallbackSize))
     scheduleFit()
     addon:Print("Fallback size (unmeasurable text): " .. cfg.fallbackSize)
 end
 
-function addon.DebugNameTextSetMode(mode)
+local function DebugNameTextSetMode(mode)
     ensureShown()
     mode = tostring(mode or ""):lower()
     if mode ~= "font" and mode ~= "scale" and mode ~= "blizzard" then
@@ -1263,7 +1266,7 @@ function addon.DebugNameTextSetMode(mode)
     addon:Print("Fit mode: " .. cfg.mode)
 end
 
-function addon.DebugNameTextSetFont(face)
+local function DebugNameTextSetFont(face)
     ensureShown()
     if face and face ~= "" then cfg.face = face end
     scheduleFit()
@@ -1319,7 +1322,7 @@ end
 -- Arms every ruler, then reads them all one frame later. The wait is not politeness --
 -- read in the same frame, the font has not reached the rasteriser and the widths are
 -- whichever face happened to be resident.
-function addon.DebugNameTextCaseProbe()
+local function DebugNameTextCaseProbe()
     local keys = {}
     for k in pairs(addon.Fonts or {}) do keys[#keys + 1] = k end
     table.sort(keys)
@@ -1528,7 +1531,7 @@ local CASE_NOTE = {
     smallcaps = "  (no string touched: a font whose lowercase glyphs are small capitals)",
 }
 
-function addon.DebugNameTextSetCase(which, face)
+local function DebugNameTextSetCase(which, face)
     ensureShown()
     which = tostring(which or ""):lower()
     if which ~= "normal" and which ~= "upper" and which ~= "smallcaps" then
@@ -1561,7 +1564,7 @@ function addon.DebugNameTextSetCase(which, face)
     end
 end
 
-function addon.DebugNameTextSample(n)
+local function DebugNameTextSample(n)
     ensureShown()
     n = math.floor(tonumber(n) or 1)
     local index = ((n - 1) % #SAMPLES) + 1
@@ -1579,7 +1582,7 @@ local GRADIENT_NOTE = {
     slice = "  (force the clipped-column stack; works on secret text, bands the box)",
 }
 
-function addon.DebugNameTextSetGradient(mode)
+local function DebugNameTextSetGradient(mode)
     ensureShown()
     mode = tostring(mode or ""):lower()
     if not GRADIENT_NOTE[mode] then
@@ -1594,7 +1597,7 @@ end
 -- The size the fit gives up to stay clear of the blind spot. Exposed because it is a
 -- genuine trade -- 'off' renders every name as large as the box allows and occasionally
 -- clips three characters off one; 'auto' never clips and runs slightly smaller.
-function addon.DebugNameTextSetMargin(value)
+local function DebugNameTextSetMargin(value)
     ensureShown()
     value = tostring(value or ""):lower()
 
@@ -1619,7 +1622,7 @@ end
 
 -- The box has no backdrop and no border by design. This exists only so it can be
 -- found and dragged.
-function addon.DebugNameTextToggleChrome()
+local function DebugNameTextToggleChrome()
     ensureShown()
     cfg.chrome = not cfg.chrome
     if chromeBG then chromeBG:SetShown(cfg.chrome) end
@@ -1628,14 +1631,14 @@ function addon.DebugNameTextToggleChrome()
         or  "Chrome OFF - text only, as it would ship.")
 end
 
-function addon.DebugNameTextSetSlices(n)
+local function DebugNameTextSetSlices(n)
     ensureShown()
     cfg.slices = math.max(1, math.min(64, math.floor(tonumber(n) or cfg.slices)))
     scheduleFit()
     addon:Print("Slice columns: " .. cfg.slices)
 end
 
-function addon.DebugNameTextSetClass(token)
+local function DebugNameTextSetClass(token)
     ensureShown()
     token = token and token ~= "" and token or "auto"
     if token:lower() == "auto" then
@@ -1648,7 +1651,7 @@ function addon.DebugNameTextSetClass(token)
     scheduleFit()
 end
 
-function addon.DebugNameTextSetTreatment(which)
+local function DebugNameTextSetTreatment(which)
     ensureShown()
     which = tostring(which or ""):lower()
     if which ~= "cast" and which ~= "raw" then
@@ -1975,7 +1978,7 @@ local function buildReport()
     addon.DebugShowWindow("Name Auto-Fit + Gradient Feasibility", lines)
 end
 
-function addon.DebugNameTextSetIdentity(which)
+local function DebugNameTextSetIdentity(which)
     ensureShown()
     which = tostring(which or ""):lower()
     if which ~= "player" and which ~= "class" then
@@ -2001,7 +2004,7 @@ local SCAN_UNITS = {
     "nameplate6", "nameplate7", "nameplate8", "nameplate9", "nameplate10",
 }
 
-function addon.DebugNameTextScan()
+local function DebugNameTextScan()
     local lines = {}
     local function push(s) lines[#lines + 1] = s end
 
@@ -2296,7 +2299,7 @@ local function buildProbeReport()
     addon.DebugShowWindow("Length Oracle Probe", out)
 end
 
-function addon.DebugNameTextLengthProbe()
+local function DebugNameTextLengthProbe()
     ensureShown()
     if not lastSource then pullTargetName() end
 
@@ -2608,7 +2611,7 @@ local function buildFitProbeReport(rows, freeCount, freeTag, calls, frames)
     addon.DebugShowWindow("Oracle Fit Probe", out)
 end
 
-function addon.DebugNameTextFitProbe(steps)
+local function DebugNameTextFitProbe(steps)
     ensureShown()
     if not lastSource then pullTargetName() end
 
@@ -2838,7 +2841,7 @@ end
 
 -- Renders exactly as normal, then prints the derivation. No separate measurement pass:
 -- a report that measured things its own way would be describing a different fit.
-function addon.DebugNameTextAutoFit()
+local function DebugNameTextAutoFit()
     ensureShown()
     if not lastSource then pullTargetName() end
 
@@ -2859,7 +2862,7 @@ function addon.DebugNameTextAutoFit()
     end)
 end
 
-function addon.DebugNameTextReport()
+local function DebugNameTextReport()
     ensureShown()
     if not lastSource then pullTargetName() end
 
@@ -2881,27 +2884,27 @@ end
 addon:RegisterDebugCommand({
     name = "nametext", help = "Unit Frames Z name box", default = "toggle",
     verbs = {
-        { word = "toggle", help = "show or hide the box", fn = addon.DebugNameTextToggle },
-        { word = "size", usage = "size <w> <h>", fn = addon.DebugNameTextSetSize },
-        { word = "lines", usage = "lines <n>", fn = addon.DebugNameTextSetLines },
-        { word = "range", usage = "range <min> <max>", fn = addon.DebugNameTextSetRange },
-        { word = "fallback", usage = "fallback <n>", help = "size when unmeasurable", fn = addon.DebugNameTextSetFallback },
-        { word = "mode", usage = "mode <font|scale|blizzard>", fn = addon.DebugNameTextSetMode },
-        { word = "font", usage = "font <FACE>", help = "font keys are case-sensitive", fn = addon.DebugNameTextSetFont },
-        { word = "case", usage = "case <normal|upper|smallcaps> [FACE]", fn = addon.DebugNameTextSetCase },
-        { word = "caseprobe", help = "can string.upper touch a secret?", fn = addon.DebugNameTextCaseProbe },
-        { word = "sample", usage = "sample <n>", fn = addon.DebugNameTextSample },
-        { word = "gradient", usage = "gradient <auto|off|white|line|block|slice>", fn = addon.DebugNameTextSetGradient },
-        { word = "chrome", help = "backdrop on/off, to drag the box", fn = addon.DebugNameTextToggleChrome },
-        { word = "margin", usage = "margin <auto|off|px>", help = "blind-spot safety margin", fn = addon.DebugNameTextSetMargin },
-        { word = "slices", usage = "slices <n>", fn = addon.DebugNameTextSetSlices },
-        { word = "class", usage = "class <TOKEN|auto>", help = "class tokens are uppercase", fn = addon.DebugNameTextSetClass },
-        { word = "treatment", usage = "treatment <cast|raw>", fn = addon.DebugNameTextSetTreatment },
-        { word = "identity", usage = "identity <player|class>", fn = addon.DebugNameTextSetIdentity },
-        { word = "scan", fn = addon.DebugNameTextScan },
-        { word = "lengthprobe", fn = addon.DebugNameTextLengthProbe },
-        { word = "fitprobe", usage = "fitprobe [steps]", help = "does D(size) settle?", fn = addon.DebugNameTextFitProbe },
-        { word = "autofit", help = "render, then show the size derivation", fn = addon.DebugNameTextAutoFit },
-        { word = "report", fn = addon.DebugNameTextReport },
+        { word = "toggle", help = "show or hide the box", fn = DebugNameTextToggle },
+        { word = "size", usage = "size <w> <h>", fn = DebugNameTextSetSize },
+        { word = "lines", usage = "lines <n>", fn = DebugNameTextSetLines },
+        { word = "range", usage = "range <min> <max>", fn = DebugNameTextSetRange },
+        { word = "fallback", usage = "fallback <n>", help = "size when unmeasurable", fn = DebugNameTextSetFallback },
+        { word = "mode", usage = "mode <font|scale|blizzard>", fn = DebugNameTextSetMode },
+        { word = "font", usage = "font <FACE>", help = "font keys are case-sensitive", fn = DebugNameTextSetFont },
+        { word = "case", usage = "case <normal|upper|smallcaps> [FACE]", fn = DebugNameTextSetCase },
+        { word = "caseprobe", help = "can string.upper touch a secret?", fn = DebugNameTextCaseProbe },
+        { word = "sample", usage = "sample <n>", fn = DebugNameTextSample },
+        { word = "gradient", usage = "gradient <auto|off|white|line|block|slice>", fn = DebugNameTextSetGradient },
+        { word = "chrome", help = "backdrop on/off, to drag the box", fn = DebugNameTextToggleChrome },
+        { word = "margin", usage = "margin <auto|off|px>", help = "blind-spot safety margin", fn = DebugNameTextSetMargin },
+        { word = "slices", usage = "slices <n>", fn = DebugNameTextSetSlices },
+        { word = "class", usage = "class <TOKEN|auto>", help = "class tokens are uppercase", fn = DebugNameTextSetClass },
+        { word = "treatment", usage = "treatment <cast|raw>", fn = DebugNameTextSetTreatment },
+        { word = "identity", usage = "identity <player|class>", fn = DebugNameTextSetIdentity },
+        { word = "scan", fn = DebugNameTextScan },
+        { word = "lengthprobe", fn = DebugNameTextLengthProbe },
+        { word = "fitprobe", usage = "fitprobe [steps]", help = "does D(size) settle?", fn = DebugNameTextFitProbe },
+        { word = "autofit", help = "render, then show the size derivation", fn = DebugNameTextAutoFit },
+        { word = "report", fn = DebugNameTextReport },
     },
 })
