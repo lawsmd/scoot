@@ -172,7 +172,7 @@ local function DebugCDMState()
     end
 
     if addon.DebugShowWindow then
-        addon.DebugShowWindow("CDM Pipeline Diagnostic", table.concat(lines, "\n"))
+        addon.DebugShowWindow("CDM Pipeline Diagnostic", lines)
     end
 end
 

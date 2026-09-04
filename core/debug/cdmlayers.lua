@@ -114,7 +114,7 @@ local function DebugCDMLayers()
     end
 
     if addon.DebugShowWindow then
-        addon.DebugShowWindow("CDM Icon Layer Diagnostic", table.concat(lines, "\n"))
+        addon.DebugShowWindow("CDM Icon Layer Diagnostic", lines)
     end
 end
 

@@ -105,7 +105,7 @@ function addon.DebugPowerBarPosition(simulateReset)
     push("PowerBarFound=" .. tostring(pb ~= nil))
 
     if not pb then
-        addon.DebugShowWindow("Player Power Bar Position", table.concat(lines, "\n"))
+        addon.DebugShowWindow("Player Power Bar Position", lines)
         return
     end
 
@@ -175,7 +175,7 @@ function addon.DebugPowerBarPosition(simulateReset)
         dumpPoints("Points (after simulate)")
     end
 
-    addon.DebugShowWindow("Player Power Bar Position", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Player Power Bar Position", lines)
 end
 
 addon:RegisterDebugCommand({

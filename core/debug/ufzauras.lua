@@ -124,7 +124,7 @@ local function dumpState()
     push("/scoot debug ufzauras apply    (force a full pass on every instance)")
     push("/scoot debug ufzauras kick     (force UpdateAllAuras on every container)")
 
-    addon.DebugShowWindow("Unit Frames Z Auras", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Unit Frames Z Auras", lines)
 end
 
 local function dumpLog()
@@ -141,7 +141,7 @@ local function dumpLog()
     if #lines == 0 then
         table.insert(lines, "(empty)")
     end
-    addon.DebugShowWindow("Unit Frames Z Aura Log", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Unit Frames Z Aura Log", lines)
 end
 
 --------------------------------------------------------------------------------

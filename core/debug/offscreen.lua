@@ -135,7 +135,7 @@ local function DebugOffscreenUnlockDump()
         push("")
     end
 
-    addon.DebugShowWindow("Off-screen Unlock Debug", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Off-screen Unlock Debug", lines)
 end
 
 addon:RegisterDebugCommand({

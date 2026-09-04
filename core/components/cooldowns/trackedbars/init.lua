@@ -705,9 +705,7 @@ addon:RegisterComponentInitializer(function(self)
         end
         push("")
         push("Total items: " .. idx)
-        if addon.DebugShowWindow then
-            addon.DebugShowWindow("Tracked Bars State", table.concat(lines, "\n"))
-        end
+        addon.DebugShowWindow("Tracked Bars State", lines)
     end
 end, "cooldownManager")
 

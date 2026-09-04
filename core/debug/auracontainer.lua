@@ -221,7 +221,7 @@ local function dumpState()
     push("/scoot debug auracontainer suppress off|maxzero|alpha")
     push("/scoot debug auracontainer log")
 
-    addon.DebugShowWindow("Aura Container Pilot", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Aura Container Pilot", lines)
 end
 
 local function dumpLog()
@@ -236,7 +236,7 @@ local function dumpLog()
     if #lines == 0 then
         table.insert(lines, "(empty)")
     end
-    addon.DebugShowWindow("Aura Container Log", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Aura Container Log", lines)
 end
 
 --------------------------------------------------------------------------------
@@ -277,7 +277,7 @@ local function DebugAuraContainer(sub, arg)
         probeInstance(push)
         push("")
         push("Results are also recorded in the state dump.")
-        addon.DebugShowWindow("Aura Container Probes", table.concat(lines, "\n"))
+        addon.DebugShowWindow("Aura Container Probes", lines)
         return
     end
 
@@ -286,7 +286,7 @@ local function DebugAuraContainer(sub, arg)
         push("=== Candidate Filter Probe ===")
         push("")
         probeFilters(push, arg == "on")
-        addon.DebugShowWindow("Aura Container Probes", table.concat(lines, "\n"))
+        addon.DebugShowWindow("Aura Container Probes", lines)
         return
     end
 

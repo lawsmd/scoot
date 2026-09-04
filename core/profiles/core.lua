@@ -1570,9 +1570,7 @@ function addon.DumpReloadDebugLog()
         table.sort(parts)
         lines[#lines + 1] = "[" .. i .. "] " .. table.concat(parts, " | ")
     end
-    if addon.DebugShowWindow then
-        addon.DebugShowWindow("Profile Switch Log (" .. #log .. " entries)", table.concat(lines, "\n"))
-    end
+    addon.DebugShowWindow("Profile Switch Log (" .. #log .. " entries)", lines)
 end
 
 -- Expose internals for sibling profiles files

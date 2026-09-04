@@ -385,7 +385,7 @@ local function DumpState()
     push("/scoot debug scootauras clear || log || state")
     push("Lifecycle commands: /scoot debug sa list")
 
-    addon.DebugShowWindow("ScootAuras Probes", table.concat(lines, "\n"))
+    addon.DebugShowWindow("ScootAuras Probes", lines)
 end
 
 local function DumpLog()
@@ -394,7 +394,7 @@ local function DumpLog()
         table.insert(lines, ("%.2f #%d [%s] %s"):format(e.t or 0, e.seq, e.tag, e.detail))
     end
     if #lines == 0 then lines[1] = "(empty)" end
-    addon.DebugShowWindow("ScootAuras Probe Log", table.concat(lines, "\n"))
+    addon.DebugShowWindow("ScootAuras Probe Log", lines)
 end
 
 --------------------------------------------------------------------------------
@@ -501,7 +501,7 @@ local function LifecycleDump()
     push("/scoot debug sa catalog  (every picker cell: shown name, stored base)")
     push("/scoot debug sa cadence <id||spellId> [on || off || set <0..1> || alpha <0..1> || mirror <y||off>]  (cadence lock record / probes)")
 
-    addon.DebugShowWindow("ScootAuras Lifecycle", table.concat(lines, "\n"))
+    addon.DebugShowWindow("ScootAuras Lifecycle", lines)
 end
 
 -- Why a tracker does or does not load in the current spec. This mirrors
@@ -561,7 +561,7 @@ local function SpecsDump()
             #(g.memberOrder or {})))
     end
 
-    addon.DebugShowWindow("ScootAuras Spec Gate", table.concat(lines, "\n"))
+    addon.DebugShowWindow("ScootAuras Spec Gate", lines)
 end
 
 -- Binding-method inventory on a live tracker's engine button; gates the Shape
@@ -583,7 +583,7 @@ local function DumpButtonMethods(trackerId)
     for _, n in ipairs(names) do
         table.insert(lines, n .. " = " .. type(entry.button[n]))
     end
-    addon.DebugShowWindow("ScootAuras Button Methods", table.concat(lines, "\n"))
+    addon.DebugShowWindow("ScootAuras Button Methods", lines)
 end
 
 --------------------------------------------------------------------------------
@@ -818,7 +818,7 @@ local function SpellDump(arg)
         end
     end
 
-    addon.DebugShowWindow("ScootAuras Spell Resolution", table.concat(lines, "\n"))
+    addon.DebugShowWindow("ScootAuras Spell Resolution", lines)
 end
 
 local function CatalogDump()
@@ -842,7 +842,7 @@ local function CatalogDump()
     end
     table.insert(lines, "")
     table.insert(lines, #cells .. " cells")
-    addon.DebugShowWindow("ScootAuras Catalog", table.concat(lines, "\n"))
+    addon.DebugShowWindow("ScootAuras Catalog", lines)
 end
 
 --------------------------------------------------------------------------------
@@ -1010,7 +1010,7 @@ local function DebugScootAuras(sub, a1, a2, a3, a4)
             return
         end
         local lines = SAU.Missing.DebugInfo(trackerId)
-        addon.DebugShowWindow("ScootAuras Missing Buff t" .. trackerId, table.concat(lines, "\n"))
+        addon.DebugShowWindow("ScootAuras Missing Buff t" .. trackerId, lines)
         return
     end
 
@@ -1081,7 +1081,7 @@ local function DebugScootAuras(sub, a1, a2, a3, a4)
             end
             table.insert(out, "")
         end
-        addon.DebugShowWindow("ScootAuras Cadence", table.concat(out, "\n"))
+        addon.DebugShowWindow("ScootAuras Cadence", out)
         return
     end
 

@@ -90,7 +90,7 @@ local function DebugFontPair()
 
     if not registry then
         table.insert(lines, "No registry -- core/fontpair.lua did not load.")
-        addon.DebugShowWindow("Deep Shadow pairs", table.concat(lines, "\n"))
+        addon.DebugShowWindow("Deep Shadow pairs", lines)
         return
     end
 
@@ -136,7 +136,7 @@ local function DebugFontPair()
         table.insert(lines, string.format("%d pair(s), %d misordered.", count, wrong))
     end
 
-    addon.DebugShowWindow("Deep Shadow pairs", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Deep Shadow pairs", lines)
 end
 
 addon:RegisterDebugCommand({

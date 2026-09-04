@@ -1516,7 +1516,7 @@ local function DebugNameTextCaseProbe()
         push("  on readable text, and the clipped-copy trick needs every copy")
         push("  glyph-identical, which two sizes are not.")
 
-        addon.DebugShowWindow("Name Text - Case Probe", table.concat(lines, "\n"))
+        addon.DebugShowWindow("Name Text - Case Probe", lines)
     end)
 end
 

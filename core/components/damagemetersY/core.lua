@@ -39,7 +39,7 @@ function addon.DebugDMYTrace()
         addon.DebugShowWindow("DMY Trace", "No trace entries. Fight something first.")
         return
     end
-    addon.DebugShowWindow("DMY Trace", table.concat(DMY._traceLog, "\n"))
+    addon.DebugShowWindow("DMY Trace", DMY._traceLog)
 end
 
 --------------------------------------------------------------------------------

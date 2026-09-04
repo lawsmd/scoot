@@ -82,7 +82,7 @@ local function DebugDumpQuests()
     table.insert(lines, string.format("Total non-header: %d | Current filter count: %d | Cap: %s",
         countAll, countFiltered, tostring(maxQuests)))
 
-    addon.DebugShowWindow("Quest Log Debug", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Quest Log Debug", lines)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ function addon.DebugExportDamageMeters(sessionOverride)
     table.insert(lines, string.format("Instance: %s | Players: %d | %s",
         data.instanceLabel, data.playerCount, data.timestamp))
 
-    addon.DebugShowWindow("Damage Meter Export", table.concat(lines, "\n"))
+    addon.DebugShowWindow("Damage Meter Export", lines)
 end
 
 addon:RegisterDebugCommand({

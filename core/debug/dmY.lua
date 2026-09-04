@@ -73,7 +73,7 @@ local function DebugDMYCVar()
         table.insert(lines, "  off-screen positioning or scale trick.")
     end
 
-    addon.DebugShowWindow("DMY CVar Test", table.concat(lines, "\n"))
+    addon.DebugShowWindow("DMY CVar Test", lines)
 end
 
 --------------------------------------------------------------------------------
@@ -1625,7 +1625,7 @@ end
 
 local function DebugDMYDrilldata()
     local lines = RunDrilldataTest()
-    addon.DebugShowWindow("DMY Drill-Down Data Shape Test", table.concat(lines, "\n"))
+    addon.DebugShowWindow("DMY Drill-Down Data Shape Test", lines)
 end
 
 --------------------------------------------------------------------------------
@@ -1738,12 +1738,12 @@ local function DebugDMYColprobe()
 
     if not DMY or not DMY._initialized then
         add("DMY not initialized (component disabled?).")
-        addon.DebugShowWindow("DMY Column Probe", table.concat(lines, "\n"))
+        addon.DebugShowWindow("DMY Column Probe", lines)
         return
     end
     if not (C_DamageMeter and C_DamageMeter.GetCombatSessionFromType) then
         add("C_DamageMeter API not available.")
-        addon.DebugShowWindow("DMY Column Probe", table.concat(lines, "\n"))
+        addon.DebugShowWindow("DMY Column Probe", lines)
         return
     end
 
@@ -1928,7 +1928,7 @@ local function DebugDMYNames()
     end
     add("[3] identityToGUID: %d collisions marked", collisions)
 
-    addon.DebugShowWindow("DMY Names", table.concat(lines, "\n"))
+    addon.DebugShowWindow("DMY Names", lines)
 end
 
 --------------------------------------------------------------------------------
@@ -1983,7 +1983,7 @@ local function DebugDMYDrillState()
         add("[3] Active drilldown: none")
     end
 
-    addon.DebugShowWindow("DMY Drilldown State", table.concat(lines, "\n"))
+    addon.DebugShowWindow("DMY Drilldown State", lines)
 end
 
 --------------------------------------------------------------------------------
