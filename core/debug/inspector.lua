@@ -17,68 +17,6 @@ local function SafeCall(fn, ...)
     if ok then return a, b, c, d end
 end
 
--- Secret value handling: some getters return "secret" values that cannot be
--- used in string operations, comparisons, or arithmetic. Detection is done by
--- trying the operation in a pcall. IMPORTANT: Even comparing a secret to nil
--- can fail, so ALL operations must be wrapped in pcall.
-
--- Returns a guaranteed-safe string, or fallback if the value is a secret
--- IMPORTANT: Even tostring(secret) can return a "tainted" value that
--- passes basic checks but fails in table.concat. The result must be verified
--- is a real Lua string type AND can be used in string operations.
-local function safeString(value, fallback)
-    fallback = fallback or "<secret>"
-    local result
-    local ok = pcall(function()
-        -- Check if value is nil (comparison can fail on secrets)
-        if value == nil then return end
-        -- Try to convert to string
-        local str = tostring(value)
-        -- Verify it is a string type (not a secret wearing one)
-        if type(str) ~= "string" then return end
-        -- Verify it can be used in string operations
-        local test = str .. ""
-        -- Verify it has reasonable content (not a weird secret representation)
-        if #test < 0 then return end -- length check
-        -- Final test: can it be formatted?
-        local formatted = string.format("%s", str)
-        if type(formatted) ~= "string" then return end
-        result = str
-    end)
-    -- Double-check the result is usable
-    if ok and result and type(result) == "string" then
-        -- One more pcall to verify the result is truly usable
-        local finalOk = pcall(function()
-            local _ = result .. ""
-            local _ = string.format("%s", result)
-        end)
-        if finalOk then
-            return result
-        end
-    end
-    return fallback
-end
-
--- Alias for compatibility
-local function safeToString(value)
-    return safeString(value, "<secret>")
-end
-
--- Returns true only if the value can be safely used as a string
-local function isUsableValue(value)
-    local ok = pcall(function()
-        if value == nil then return end
-        local str = tostring(value)
-        local _ = str .. ""
-    end)
-    return ok
-end
-
--- Alias for compatibility
-local function isUsableString(value)
-    return isUsableValue(value)
-end
-
 local function GetDebugNameSafe(obj)
     if not obj then return nil end
     local ok, result = pcall(function()
@@ -97,13 +35,7 @@ end
 local function TableInspectorBuildDump(focusedTable)
     if not focusedTable then return "[No Table Selected]" end
 
-    local out = {}
-    local function push(line)
-        local safeLine = safeString(line, "[unreadable]")
-        if type(safeLine) == "string" then
-            table.insert(out, safeLine)
-        end
-    end
+    local out, push = addon.DebugLines()
 
     -- Instead of pairs() iteration (which returns secrets),
     -- call specific known frame methods directly. These are more likely to work.
@@ -268,61 +200,7 @@ local function TableInspectorBuildDump(focusedTable)
         end
     end)
 
-    -- Final assembly
-    local ok, result = pcall(table.concat, out, "\n")
-    if ok and type(result) == "string" then
-        return result
-    end
-    return "[Error building dump - secret values detected]"
-end
-
--- Separate copy window for Table Inspector (reuse pattern from ShowDebugCopyWindow)
-local function ShowTableInspectorCopyWindow(title, text)
-    if not addon.TableInspectorCopyWindow then
-        local f = CreateFrame("Frame", "ScootTableInspectorCopyWindow", UIParent, "BasicFrameTemplateWithInset")
-        f:SetSize(740, 520)
-        f:SetPoint("CENTER")
-        f:SetFrameStrata("DIALOG")
-        f:SetMovable(true); f:EnableMouse(true); f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", function() f:StartMoving() end)
-        f:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
-        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        f.title:SetPoint("LEFT", f.TitleBg, "LEFT", 6, 0)
-        local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -36)
-        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -30, 42)
-        local eb = CreateFrame("EditBox", nil, scroll)
-        eb:SetMultiLine(true); eb:SetFontObject(ChatFontNormal); eb:SetAutoFocus(false)
-        eb:SetWidth(680)
-        eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-        scroll:SetScrollChild(eb)
-        f.EditBox = eb
-        local copyBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        copyBtn:SetSize(100, 22)
-        copyBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 12)
-        copyBtn:SetText("Copy All")
-        copyBtn:SetScript("OnClick", function()
-            f.EditBox:HighlightText()
-            f.EditBox:SetFocus()
-        end)
-        local closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        closeBtn:SetSize(80, 22)
-        closeBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 12)
-        closeBtn:SetText(CLOSE or "Close")
-        closeBtn:SetScript("OnClick", function() f:Hide() end)
-        addon.TableInspectorCopyWindow = f
-    end
-    local f = addon.TableInspectorCopyWindow
-    if f.title then f.title:SetText(title or "Copied Output") end
-    if f.EditBox then f.EditBox:SetText(text or "") end
-    f:Show()
-    -- Defer focus/highlight to avoid scroll system taint
-    C_Timer.After(0, function()
-        if f.EditBox and f:IsShown() then
-            f.EditBox:HighlightText()
-            f.EditBox:SetFocus()
-        end
-    end)
+    return out
 end
 
 -- Extract text directly from FrameStackTooltip's displayed lines
@@ -414,7 +292,7 @@ local function AttachTableInspectorCopyButton()
         if not focused then return end
 
         local dump = TableInspectorBuildDump(focused)
-        ShowTableInspectorCopyWindow("Table Attributes", dump)
+        addon.DebugShowWindow("Table Attributes", dump)
     end)
 end
 
@@ -428,7 +306,7 @@ local function DumpTableAttributes()
     if parent and parent:IsShown() and parent.focusedTable then
         local dump = TableInspectorBuildDump(parent.focusedTable)
         -- Title is now hardcoded in dump; use simple title for window
-        ShowTableInspectorCopyWindow("Table Attributes", dump)
+        addon.DebugShowWindow("Table Attributes", dump)
         return true
     end
     -- Fallback: if framestack is active, try to inspect highlight and dump
@@ -438,7 +316,7 @@ local function DumpTableAttributes()
         local name = GetDebugNameSafe(fs.highlightFrame) or "Frame"
         -- Wrap title construction in pcall for safety
         local ok, title = pcall(function() return "Frame Attributes - " .. name end)
-        ShowTableInspectorCopyWindow(ok and title or "Frame Attributes", dump)
+        addon.DebugShowWindow(ok and title or "Frame Attributes", dump)
         return true
     end
     return false

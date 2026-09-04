@@ -1,5 +1,37 @@
--- core.lua - Copy window for debug dumps, separate from the Table Inspector copy
+-- core.lua - Debug output: DebugLines and the copy window every dump opens
 local addonName, addon = ...
+
+local SECRET = "<secret>"
+
+-- One value screened for the copy window: nil drops, anything else becomes a
+-- string, a secret reads as "<secret>". tostring returns a secret string on a
+-- secret scalar without throwing (secrets.md); a secret frame is unmeasured, so
+-- tostring is pcall-wrapped. A secret string passes type() and would crash
+-- table.concat, so plainString screens it.
+local function plain(v)
+    local t = type(v)
+    if t == "nil" then return nil end
+    if t ~= "string" then
+        local ok, s = pcall(tostring, v)
+        if not ok then return SECRET end
+        v = s
+    end
+    return addon.SecretSafe.plainString(v) or SECRET
+end
+
+-- Line builder for a dump. Leading arguments seed the table. Returns the
+-- plain table (index it, take #lines, hand it to DebugShowWindow) and one
+-- closure: push(s) appends a screened line; push(fmt, ...) formats first, so
+-- a literal % in a line with no arguments passes through.
+function addon.DebugLines(...)
+    local lines = { ... }
+    local function push(s, ...)
+        if select("#", ...) > 0 then s = string.format(s, ...) end
+        s = plain(s)
+        if s ~= nil then lines[#lines + 1] = s end
+    end
+    return lines, push
+end
 
 local function ShowDebugCopyWindow(title, text)
     if not addon.DebugCopyWindow then
@@ -53,7 +85,8 @@ end
 
 function addon.DebugShowWindow(title, payload)
     if type(payload) == "table" then
-        payload = table.concat(payload, "\n")
+        local ok, text = pcall(table.concat, payload, "\n")
+        payload = ok and text or ("[Error building dump: " .. tostring(text) .. "]")
     end
     ShowDebugCopyWindow(title, payload or "")
 end

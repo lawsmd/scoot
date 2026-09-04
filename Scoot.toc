@@ -26,6 +26,7 @@ core/framestate.lua
 core/escapekey.lua
 core/strata.lua
 core/secretsafe.lua
+core/debug/core.lua
 core/frames.lua
 core/nativeframe.lua
 core/media.lua
@@ -205,7 +206,6 @@ core/components/damagemetersY/export.lua
 core/components/damagemetersY/drilldown.lua
 core/components/damagemetersY/events.lua
 core/components/bosswarnings/core.lua
-core/debug/core.lua
 core/debug/editmode.lua
 core/debug/offscreen.lua
 core/debug/export.lua
