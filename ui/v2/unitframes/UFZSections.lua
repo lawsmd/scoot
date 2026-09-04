@@ -119,44 +119,34 @@ local function AddUnitSection(builder, opts)
                 sectionKey = "name_tabs",
                 buildContent = {
                     fontSize = function(cf, tabInner)
-                        tabInner:AddFontSelector({
-                            label = "Font",
-                            get = function()
+                        -- The name font follows the health font until set
+                        -- ("follow"); the color is four scalars on the config.
+                        -- Each setter applies on its own, so there is no apply.
+                        tabInner:AddTextStyleBlock({
+                            get = function(field)
                                 local c = htCfg()
-                                return (c.nameFace ~= "follow" and c.nameFace) or c.face
+                                if field == "fontFace" then return (c.nameFace ~= "follow" and c.nameFace) or c.face end
+                                if field == "style" then return c.nameStyle end
+                                if field == "size" then return c.nameSize end
+                                if field == "colorMode" then return c.nameColorMode end
+                                if field == "color" then return { c.nameColorR, c.nameColorG, c.nameColorB, c.nameColorA } end
                             end,
-                            set = function(key) call("SetNameFont", key) end,
-                        })
-                        tabInner:AddSelector({
-                            label = "Font Style",
-                            values = styleValues,
-                            order = styleOrder,
-                            get = function() return htCfg().nameStyle or "DEEPSHADOWTHICKOUTLINE" end,
-                            set = function(v) call("SetNameStyle", v) end,
-                        })
-                        tabInner:AddSlider({
-                            label = "Size",
-                            description = "The ceiling: the name auto-shrinks from here to fit its max width, never grows past it.",
-                            min = 6, max = 48, step = 1,
-                            get = function() return htCfg().nameSize or 26 end,
-                            set = function(v) call("SetNameSize", v) end,
-                        })
-                        tabInner:AddSelectorColorPicker({
-                            label = "Color",
-                            values = {
-                                gradient = "Class Gradient",
-                                custom = "Custom",
+                            set = function(field, value)
+                                if field == "fontFace" then call("SetNameFont", value)
+                                elseif field == "style" then call("SetNameStyle", value)
+                                elseif field == "size" then call("SetNameSize", value)
+                                elseif field == "colorMode" then call("SetNameColorMode", value)
+                                elseif field == "color" then call("SetNameColor", value[1], value[2], value[3], value[4])
+                                end
+                            end,
+                            defaults = { style = "DEEPSHADOWTHICKOUTLINE", size = 26, colorMode = "gradient" },
+                            style = { label = "Font Style", values = styleValues, order = styleOrder },
+                            size = { description = "The ceiling: the name auto-shrinks from here to fit its max width, never grows past it." },
+                            color = {
+                                values = { gradient = "Class Gradient", custom = "Custom" },
+                                order = { "gradient", "custom" },
                             },
-                            order = { "gradient", "custom" },
-                            get = function() return htCfg().nameColorMode or "gradient" end,
-                            set = function(v) call("SetNameColorMode", v) end,
-                            getColor = function()
-                                local c = htCfg()
-                                return c.nameColorR or 1, c.nameColorG or 1, c.nameColorB or 1, c.nameColorA or 1
-                            end,
-                            setColor = function(r, g, b, a) call("SetNameColor", r, g, b, a) end,
-                            customValue = "custom",
-                            hasAlpha = true,
+                            offset = false,
                         })
                         tabInner:Finalize()
                     end,

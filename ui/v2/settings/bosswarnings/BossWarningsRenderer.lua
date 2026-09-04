@@ -9,9 +9,6 @@ local BossWarnings = addon.UI.Settings.BossWarnings
 local SettingsBuilder = addon.UI.SettingsBuilder
 local Helpers = addon.UI.Settings.Helpers
 
-local fontStyleValues = Helpers.fontStyleValues
-local fontStyleOrder = Helpers.fontStyleOrder
-
 --------------------------------------------------------------------------------
 -- Edit Mode Setting IDs
 --------------------------------------------------------------------------------
@@ -104,36 +101,22 @@ function BossWarnings.Render(panel, scrollContent)
         sectionKey = "text",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddFontSelector({
-                label = "Font",
-                description = "The font used for boss warning text. Applies to all severity levels.",
-                get = function()
-                    local db = getDB()
-                    return db and db.textFontFace or "FRIZQT__"
-                end,
-                set = function(v)
-                    setDB("textFontFace", v)
+            local get, set = Helpers.CreateFlatAccessors(
+                function(key) local db = getDB(); return db and db[key] end,
+                setDB,
+                { fontFace = "textFontFace", style = "textFontStyle" })
+            inner:AddTextStyleBlock({
+                get = get, set = set,
+                apply = function()
                     if addon.refreshBossWarningsText then
                         addon.refreshBossWarningsText()
                     end
                 end,
-            })
-
-            inner:AddSelector({
-                label = "Font Style",
-                description = "Outline style for boss warning text.",
-                values = fontStyleValues,
-                order = fontStyleOrder,
-                get = function()
-                    local db = getDB()
-                    return db and db.textFontStyle or "OUTLINE"
-                end,
-                set = function(v)
-                    setDB("textFontStyle", v)
-                    if addon.refreshBossWarningsText then
-                        addon.refreshBossWarningsText()
-                    end
-                end,
+                font = { description = "The font used for boss warning text. Applies to all severity levels." },
+                style = { label = "Font Style", description = "Outline style for boss warning text." },
+                size = false,
+                color = false,
+                offset = false,
             })
 
             inner:Finalize()

@@ -329,10 +329,14 @@ function CBZSettings.Render(panel, scrollContent)
 
     -- Every visual setter refreshes the panel, which rebuilds the preview with
     -- the new value: setters call DeferredRefreshAll after the write.
-    local function setSetting(key, value)
-        h.setAndApply(key, value)
+    local function applyAll()
+        Helpers.applyStyles()
         if CBZ._comp then CBZ._ApplyStyling(CBZ._comp) end
         builder:DeferredRefreshAll()
+    end
+    local function setSetting(key, value)
+        h.set(key, value)
+        applyAll()
     end
 
     local function getUnit(key, default)
@@ -586,17 +590,22 @@ function CBZSettings.Render(panel, scrollContent)
                 sectionKey = "textTabs",
                 buildContent = {
                     spellName = function(_, tab)
-                        tab:AddFontSelector({ label = "Font",
-                            get = function() return getSetting("fontFace") or "ROBOTO_SEMICOND_BLACK" end,
-                            set = function(v) setSetting("fontFace", v) end })
-                        tab:AddSelector({ label = "Font Style",
-                            description = "Shared with the cast time readout, so the two cannot disagree about weight.",
-                            values = TextHelpers.fontStyleValues, order = TextHelpers.fontStyleOrderPaired,
-                            get = function() return getSetting("fontStyle") or "SHADOWTHICKOUTLINE" end,
-                            set = function(v) setSetting("fontStyle", v) end })
-                        tab:AddSlider({ label = "Font Size", min = 8, max = 32, step = 1,
-                            get = function() return tonumber(getSetting("fontSize")) or 14 end,
-                            set = function(v) setSetting("fontSize", v) end })
+                        -- CBZ._GetSetting resolves the registered fallbacks, so the
+                        -- block needs no panel-local defaults.
+                        local get, set = TextHelpers.CreateFlatAccessors(CBZ._GetSetting, h.set, {
+                            fontFace = "fontFace", style = "fontStyle", size = "fontSize",
+                        })
+                        tab:AddTextStyleBlock({
+                            get = get, set = set, apply = applyAll,
+                            style = {
+                                label = "Font Style",
+                                description = "Shared with the cast time readout, so the two cannot disagree about weight.",
+                                order = TextHelpers.fontStyleOrderPaired,
+                            },
+                            size = { label = "Font Size", min = 8, max = 32 },
+                            color = false,
+                            offset = false,
+                        })
                         tab:AddToggle({ label = "Gradient",
                             description = "Ramp the spell name across your specialization's colors. Off uses a single solid color.",
                             get = function() return getSetting("gradient") ~= false end,
