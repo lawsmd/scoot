@@ -297,6 +297,53 @@ function Helpers.CreateBarAccessors(getTable, ensureTable, barPrefix, opts)
 end
 
 --------------------------------------------------------------------------------
+-- Icon Border Accessor Factory
+--------------------------------------------------------------------------------
+-- The prefixed key family the icon pages store under (borderStyle,
+-- iconBorderTintColor, affixBorderTintEnable, ...), as the fields
+-- AddIconBorderBlock consumes. getFn(key) must not materialize; setFn(key,
+-- value) may apply on its own, in which case the caller passes no apply to
+-- the composite. insetH/insetV fall back to the legacy single-value
+-- <prefix>Inset, then to opts.insetDefault.
+-- Usage:
+--   local get, set = Helpers.CreateIconBorderAccessors(h.get, h.set, "border",
+--       { insetDefault = -1 })
+--------------------------------------------------------------------------------
+
+Helpers.ICON_BORDER_FIELD_SUFFIXES = {
+    enabled = "Enable",
+    style = "Style",
+    tintEnabled = "TintEnable",
+    tintColor = "TintColor",
+    thickness = "Thickness",
+    insetH = "InsetH",
+    insetV = "InsetV",
+}
+
+function Helpers.CreateIconBorderAccessors(getFn, setFn, prefix, opts)
+    local insetDefault = opts and opts.insetDefault
+    local function keyFor(field)
+        local suffix = Helpers.ICON_BORDER_FIELD_SUFFIXES[field]
+        return suffix and (prefix .. suffix) or nil
+    end
+    local function get(field)
+        local key = keyFor(field)
+        if not key then return nil end
+        local v = getFn(key)
+        if v == nil and (field == "insetH" or field == "insetV") then
+            v = getFn(prefix .. "Inset")
+            if v == nil then v = insetDefault end
+        end
+        return v
+    end
+    local function set(field, value)
+        local key = keyFor(field)
+        if key then setFn(key, value) end
+    end
+    return get, set
+end
+
+--------------------------------------------------------------------------------
 -- Common Dropdown/Selector Options
 --------------------------------------------------------------------------------
 

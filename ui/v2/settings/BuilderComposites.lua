@@ -418,17 +418,29 @@ end
 --------------------------------------------------------------------------------
 -- Color helpers shared by the bar composites
 --------------------------------------------------------------------------------
--- Stored colors are {r, g, b, a} tables; a missing table or channel falls
+-- Stored colors are {r, g, b, a} arrays; a missing table or channel falls
 -- back to the row's default, channel by channel, the way the unit-frame bars
--- always read them.
+-- always read them. Reads also accept an {r=, g=, b=, a=} hash (the Native
+-- damage meter's icon border stores one); writes are always arrays.
 
 local function unpackColor(c, default)
     if type(c) ~= "table" then c = default end
-    return c[1] or default[1], c[2] or default[2], c[3] or default[3], c[4] or default[4]
+    return c.r or c[1] or default[1], c.g or c[2] or default[2],
+        c.b or c[3] or default[3], c.a or c[4] or default[4]
 end
 
 local function packColor(r, g, b, a, default)
     return { r or default[1], g or default[2], b or default[3], a or default[4] }
+end
+
+-- Thickness sliders round to their step and bounds on read and write while
+-- clamp is set; otherwise the stored value passes through.
+local function thicknessSnap(minV, maxV, step, default, clamp)
+    return function(v)
+        v = tonumber(v) or default
+        if not clamp then return v end
+        return math.max(minV, math.min(maxV, math.floor(v / step + 0.5) * step))
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -646,12 +658,7 @@ function Builder:AddBarBorderBlock(opts)
         local minV, maxV = thickness.min or 1, thickness.max or 8
         local step = thickness.step or 0.5
         local default = thickness.default or 1
-        local clamp = thickness.clamp ~= false
-        local function snap(v)
-            v = tonumber(v) or default
-            if not clamp then return v end
-            return math.max(minV, math.min(maxV, math.floor(v / step + 0.5) * step))
-        end
+        local snap = thicknessSnap(minV, maxV, step, default, thickness.clamp ~= false)
         self:AddSlider({
             label = thickness.label or "Border Thickness",
             description = thickness.description,
@@ -681,6 +688,164 @@ function Builder:AddBarBorderBlock(opts)
             max = inset.max,
             step = inset.step,
             precision = inset.precision,
+            minLabel = inset.minLabel,
+            maxLabel = inset.maxLabel,
+            disabled = disabled,
+            apply = opts.apply,
+            get = function(axis) return get(axis == "h" and "insetH" or "insetV") end,
+            set = function(axis, v) set(axis == "h" and "insetH" or "insetV", v) end,
+        })
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- AddIconBorderBlock: icon border style, tint, thickness, inset
+--------------------------------------------------------------------------------
+-- Optional enable toggle, Border Style (AddSelector over
+-- Helpers.getIconBorderOptions), Border Tint (AddToggleColorPicker), Border
+-- Thickness (AddSlider), Border Inset (AddInsetPair). Same get/set/apply
+-- contract as AddTextStyleBlock. The thickness row exists only while
+-- IconBorders.SupportsThickness holds for the stored style (atlas art has no
+-- edge width). That is decided when the block builds, so a style write ends
+-- in refresh, which re-renders the page.
+--
+-- Fields: enabled, style, tintEnabled, tintColor, thickness, insetH, insetV.
+--
+-- Options:
+--   get, set, apply, disabled : as AddTextStyleBlock. disabled reaches every
+--                  control. get("style") runs at build time for the gate, so
+--                  it must stay side-effect-free under the search scan too.
+--   refresh   : function (default self:DeferredRefreshAll) | false. Called
+--               after apply on a style write while a gated thickness row
+--               exists. false for a caller whose apply already rebuilds.
+--   enableToggle : nil (omit) | true | { label = "Use Custom Border",
+--                  description, key }
+--   style     : true (default) | false | { label = "Border Style",
+--               description, key, prefixEntries, default = "square",
+--               infoIcon }. prefixEntries are {key, label} pairs listed
+--               before the catalog styles ("none", "off", "hidden"). A page
+--               that folds its enable flag into the selector does so in its
+--               own get/set for "style".
+--   tint      : true (default) | false | { label = "Border Tint",
+--               description, key, hasAlpha = true, default = {1,1,1,1} }
+--   thickness : true (default) | false | { label = "Border Thickness",
+--               description, key, min = 1, max = 8, step = 0.5,
+--               precision = 1, default = 1, clamp = true, minLabel,
+--               maxLabel, gate = true }. End labels default to the bounds.
+--               gate = false emits the slider for every style.
+--   inset     : true (default) | false | the AddInsetPair option table;
+--               step 0.5 and precision 1 by default. A non-zero default or a
+--               legacy-key fallback lives in the caller's get.
+--
+-- Returns self. Does not call Finalize(); callers do.
+--------------------------------------------------------------------------------
+
+function Builder:AddIconBorderBlock(opts)
+    local get, set, apply = opts.get, opts.set, opts.apply or NOOP
+    local disabled = opts.disabled
+
+    local style = norm(opts.style)
+    local styleDefault = (style and style.default) or "square"
+    local thickness = norm(opts.thickness)
+    local gated = thickness ~= nil and thickness.gate ~= false
+    local refresh = opts.refresh
+    if refresh == nil then
+        refresh = function() self:DeferredRefreshAll() end
+    end
+
+    local toggle = opts.enableToggle
+    if toggle then
+        if toggle == true then toggle = {} end
+        self:AddToggle({
+            label = toggle.label or "Use Custom Border",
+            description = toggle.description,
+            key = toggle.key,
+            disabled = disabled,
+            get = function() return not not get("enabled") end,
+            set = function(v)
+                set("enabled", v and true or false)
+                apply()
+            end,
+        })
+    end
+
+    if style then
+        local values, order = Helpers.getIconBorderOptions(style.prefixEntries)
+        self:AddSelector({
+            label = style.label or "Border Style",
+            description = style.description,
+            key = style.key,
+            values = values,
+            order = order,
+            infoIcon = style.infoIcon,
+            disabled = disabled,
+            get = function() return get("style") or styleDefault end,
+            set = function(v)
+                set("style", v or styleDefault)
+                apply()
+                if gated and refresh then refresh() end
+            end,
+        })
+    end
+
+    local tint = norm(opts.tint)
+    if tint then
+        local colorDefault = tint.default or { 1, 1, 1, 1 }
+        self:AddToggleColorPicker({
+            label = tint.label or "Border Tint",
+            description = tint.description,
+            key = tint.key,
+            disabled = disabled,
+            hasAlpha = tint.hasAlpha ~= false,
+            get = function() return not not get("tintEnabled") end,
+            set = function(v)
+                set("tintEnabled", not not v)
+                apply()
+            end,
+            getColor = function() return unpackColor(get("tintColor"), colorDefault) end,
+            setColor = function(r, g, b, a)
+                set("tintColor", packColor(r, g, b, a, colorDefault))
+                apply()
+            end,
+        })
+    end
+
+    if thickness and (not gated or addon.IconBorders.SupportsThickness(get("style") or styleDefault)) then
+        local minV, maxV = thickness.min or 1, thickness.max or 8
+        local step = thickness.step or 0.5
+        local default = thickness.default or 1
+        local snap = thicknessSnap(minV, maxV, step, default, thickness.clamp ~= false)
+        self:AddSlider({
+            label = thickness.label or "Border Thickness",
+            description = thickness.description,
+            key = thickness.key,
+            min = minV,
+            max = maxV,
+            step = step,
+            precision = thickness.precision or 1,
+            minLabel = endLabel(thickness.minLabel, tostring(minV)),
+            maxLabel = endLabel(thickness.maxLabel, tostring(maxV)),
+            disabled = disabled,
+            get = function() return snap(get("thickness")) end,
+            set = function(v)
+                set("thickness", snap(v))
+                apply()
+            end,
+        })
+    end
+
+    if opts.inset ~= false then
+        local inset = norm(opts.inset) or {}
+        self:AddInsetPair({
+            label = inset.label,
+            description = inset.description,
+            key = inset.key,
+            min = inset.min,
+            max = inset.max,
+            step = inset.step or 0.5,
+            precision = inset.precision or 1,
             minLabel = inset.minLabel,
             maxLabel = inset.maxLabel,
             disabled = disabled,

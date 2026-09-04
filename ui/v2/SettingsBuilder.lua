@@ -501,6 +501,7 @@ function Builder:AddCollapsibleSection(options)
         innerBuilder._useLightDim = true  -- Use lighter description text on gray background
         innerBuilder._parentSectionTitle = options.title  -- For search navigate-to-result
         innerBuilder._parentCollapsible = section  -- Reference for dynamic height updates
+        innerBuilder._onRefresh = onRefresh  -- Nested builders can DeferredRefreshAll()
 
         -- Call the build function
         options.buildContent(contentFrame, innerBuilder)
@@ -529,7 +530,9 @@ end
 --------------------------------------------------------------------------------
 -- SetOnRefresh: Set a callback to be called when sections expand/collapse
 --------------------------------------------------------------------------------
--- Allows the renderer to re-render the page when layout changes.
+-- Allows the renderer to re-render the page when layout changes. The inner
+-- builders of collapsible and tabbed sections inherit the callback, so
+-- DeferredRefreshAll() rebuilds the page from any depth.
 --
 -- Usage:
 --   builder:SetOnRefresh(function()
@@ -1042,6 +1045,7 @@ function Builder:AddTabbedSection(options)
                     local innerBuilder = Builder:CreateFor(contentFrame)
                     innerBuilder._useLightDim = self._useLightDim  -- Inherit parent's light dim setting
                     innerBuilder._parentSectionTitle = tabData.label  -- For search navigate-to-result
+                    innerBuilder._onRefresh = onRefresh  -- Nested builders can DeferredRefreshAll()
 
                     -- Call the build function
                     buildFunc(contentFrame, innerBuilder)
