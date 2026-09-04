@@ -7,6 +7,10 @@ local eaTextFontOpts = { size = 14 }
 local Component = addon.ComponentPrototype
 local Util = addon.ComponentsUtil
 
+-- State opacity (core/opacity.lua): both sliders floor at 1; an unset value
+-- reads as the base value.
+local EA_OPACITY_OPTS = { targetFirst = true, combatMin = 1, min = 1, fallback = "combat" }
+
 -- State for alpha management
 local extraAbilityState = {}
 local settingAlpha = {}
@@ -232,19 +236,12 @@ local function ApplyExtraAbilitiesStyling(self)
     end
 
     -- Apply opacity
-    local baseOp = tonumber(self.db.barOpacity) or 100
-    if baseOp < 1 then baseOp = 1 elseif baseOp > 100 then baseOp = 100 end
-
-    local tgtOp = tonumber(self.db.barOpacityWithTarget) or baseOp
-    if tgtOp < 1 then tgtOp = 1 elseif tgtOp > 100 then tgtOp = 100 end
-
-    local hasTarget = (UnitExists and UnitExists("target")) and true or false
-    local appliedOp = hasTarget and tgtOp or baseOp
+    local appliedAlpha = addon.Opacity.Resolve(self.db, addon.Opacity.Keys.Bar, EA_OPACITY_OPTS)
 
     startAlphaEnforcement(container)
     local state = getContainerState()
     state.component = self
-    state.baseOpacity = appliedOp / 100
+    state.baseOpacity = appliedAlpha
     state.hideBlizzardArt = self.db and self.db.hideBlizzardArt
 
     -- Start hover detection ticker (replaces HookScript on Blizzard buttons)
@@ -260,7 +257,7 @@ local function ApplyExtraAbilitiesStyling(self)
         setContainerDesiredAlpha(container, 1)
     else
         state.isMousedOver = false
-        setContainerDesiredAlpha(container, appliedOp / 100)
+        setContainerDesiredAlpha(container, appliedAlpha)
     end
 
     -- Get settings
@@ -507,18 +504,13 @@ local function RefreshExtraAbilitiesOpacity(self)
     local container = _G.ExtraAbilityContainer
     if not container then return end
 
-    local baseOp = tonumber(self.db.barOpacity) or 100
-    if baseOp < 1 then baseOp = 1 elseif baseOp > 100 then baseOp = 100 end
-    local tgtOp = tonumber(self.db.barOpacityWithTarget) or baseOp
-    if tgtOp < 1 then tgtOp = 1 elseif tgtOp > 100 then tgtOp = 100 end
-    local hasTarget = (UnitExists and UnitExists("target")) and true or false
-    local appliedOp = hasTarget and tgtOp or baseOp
+    local appliedAlpha = addon.Opacity.Resolve(self.db, addon.Opacity.Keys.Bar, EA_OPACITY_OPTS)
 
     local state = getContainerState()
-    state.baseOpacity = appliedOp / 100
+    state.baseOpacity = appliedAlpha
 
     if not state.isMousedOver then
-        setContainerDesiredAlpha(container, appliedOp / 100)
+        setContainerDesiredAlpha(container, appliedAlpha)
     end
 end
 
@@ -570,6 +562,12 @@ addon:RegisterComponentInitializer(function(self)
             }},
             barOpacityWithTarget = { type = "addon", default = 100, ui = {
                 label = "Opacity With Target", widget = "slider", min = 1, max = 100, step = 1, section = "Misc", order = 4
+            }},
+            -- No default: unset, the resolver falls back to barOpacity, so a
+            -- profile that dimmed the button before this key existed keeps its
+            -- out-of-combat opacity.
+            barOpacityOutOfCombat = { type = "addon", ui = {
+                label = "Opacity Out of Combat", widget = "slider", min = 1, max = 100, step = 1, section = "Misc", order = 5
             }},
         },
         ApplyStyling = ApplyExtraAbilitiesStyling,

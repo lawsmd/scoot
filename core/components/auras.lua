@@ -5,9 +5,11 @@
 local addonName, addon = ...
 local Util = addon.ComponentsUtil
 local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
-local ClampOpacity = Util.ClampOpacity
 local ToggleDefaultIconOverlay = Util.ToggleDefaultIconOverlay
-local PlayerInCombat = Util.PlayerInCombat
+
+-- State opacity (core/opacity.lua): the combat slider floors at 50 and the
+-- other two at 1; an unset value reads as the combat value.
+local AURA_OPACITY_OPTS = { targetFirst = true, combatMin = 50, min = 1, fallback = "combat" }
 
 -- Weak-key lookup tables to avoid writing properties to Blizzard frames
 -- (which would taint them and cause secret value errors during Edit Mode operations)
@@ -737,12 +739,8 @@ local function RefreshAuraOpacity(self)
     local container = frame.AuraContainer or frame
     if not container or not container.SetAlpha then return end
 
-    local baseOpacity = ClampOpacity(self.db.opacity, 50)
-    local oocOpacity = ClampOpacity(self.db.opacityOutOfCombat or baseOpacity, 1)
-    local tgtOpacity = ClampOpacity(self.db.opacityWithTarget or baseOpacity, 1)
-    local hasTarget = (UnitExists and UnitExists("target")) and true or false
-    local appliedOpacity = hasTarget and tgtOpacity or (PlayerInCombat() and baseOpacity or oocOpacity)
-    pcall(container.SetAlpha, container, appliedOpacity / 100)
+    local alpha = addon.Opacity.Resolve(self.db, addon.Opacity.Keys.Plain, AURA_OPACITY_OPTS)
+    pcall(container.SetAlpha, container, alpha)
 end
 
 
@@ -835,16 +833,9 @@ local function ApplyAuraFrameStyling(self)
 
     local container = frame.AuraContainer or frame
     if container then
-        local baseOpacity = ClampOpacity(self.db.opacity, 50)
-
-        local oocOpacity = ClampOpacity(self.db.opacityOutOfCombat or baseOpacity, 1)
-
-        local tgtOpacity = ClampOpacity(self.db.opacityWithTarget or baseOpacity, 1)
-
-        local hasTarget = (UnitExists and UnitExists("target")) and true or false
-        local appliedOpacity = hasTarget and tgtOpacity or (PlayerInCombat() and baseOpacity or oocOpacity)
+        local alpha = addon.Opacity.Resolve(self.db, addon.Opacity.Keys.Plain, AURA_OPACITY_OPTS)
         if container.SetAlpha then
-            pcall(container.SetAlpha, container, appliedOpacity / 100)
+            pcall(container.SetAlpha, container, alpha)
         end
     end
 end

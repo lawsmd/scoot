@@ -5,7 +5,9 @@ local addonName, addon = ...
 local abTextFontOpts = { size = 14 }
 
 local Component = addon.ComponentPrototype
-local Util = addon.ComponentsUtil
+
+-- State opacity (core/opacity.lua): an unset value reads as the combat value.
+local BAR_OPACITY_OPTS = { targetFirst = true, fallback = "combat" }
 
 -- Alpha driver: hooks SetAlpha to enforce addon opacity settings over Blizzard's visibility transitions
 local actionBarState = {}  -- per-frame state (component, baseOpacity, isMousedOver, desiredAlpha)
@@ -136,14 +138,7 @@ local function ApplyActionBarStyling(self)
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
     if addon.IsComponentUnconfigured(self) then return end
 
-    local baseOp = tonumber(self.db.barOpacity) or 100
-    if baseOp < 0 then baseOp = 0 elseif baseOp > 100 then baseOp = 100 end
-    local oocOp = tonumber(self.db.barOpacityOutOfCombat) or baseOp
-    if oocOp < 0 then oocOp = 0 elseif oocOp > 100 then oocOp = 100 end
-    local tgtOp = tonumber(self.db.barOpacityWithTarget) or baseOp
-    if tgtOp < 0 then tgtOp = 0 elseif tgtOp > 100 then tgtOp = 100 end
-    local hasTarget = (UnitExists and UnitExists("target")) and true or false
-    local appliedOp = hasTarget and tgtOp or (Util.PlayerInCombat() and baseOp or oocOp)
+    local appliedAlpha = addon.Opacity.Resolve(self.db, addon.Opacity.Keys.Bar, BAR_OPACITY_OPTS)
 
     hookBarAlpha(bar)
     
@@ -179,7 +174,7 @@ local function ApplyActionBarStyling(self)
     end
     
     state.component = self
-    state.baseOpacity = appliedOp / 100
+    state.baseOpacity = appliedAlpha
     
     if mouseoverEnabled then
         local function onMouseEnter()
@@ -227,11 +222,11 @@ local function ApplyActionBarStyling(self)
             setBarDesiredAlpha(bar, 1)
         else
             state.isMousedOver = false
-            setBarDesiredAlpha(bar, appliedOp / 100)
+            setBarDesiredAlpha(bar, appliedAlpha)
         end
     else
         state.isMousedOver = false
-        setBarDesiredAlpha(bar, appliedOp / 100)
+        setBarDesiredAlpha(bar, appliedAlpha)
     end
 
     -- OPT-21: Skip per-button visual styling when no visual DB keys have changed.
@@ -613,17 +608,7 @@ local function ApplyMicroBarStyling(self)
     -- Hook SetAlpha on this bar to intercept and correct external changes
     hookBarAlpha(bar)
 
-    local baseOp = tonumber(self.db.barOpacity) or 100
-    if baseOp < 0 then baseOp = 0 elseif baseOp > 100 then baseOp = 100 end
-
-    local oocOp = tonumber(self.db.barOpacityOutOfCombat) or baseOp
-    if oocOp < 0 then oocOp = 0 elseif oocOp > 100 then oocOp = 100 end
-
-    local tgtOp = tonumber(self.db.barOpacityWithTarget) or baseOp
-    if tgtOp < 0 then tgtOp = 0 elseif tgtOp > 100 then tgtOp = 100 end
-
-    local hasTarget = (UnitExists and UnitExists("target")) and true or false
-    local appliedOp = hasTarget and tgtOp or (Util.PlayerInCombat() and baseOp or oocOp)
+    local appliedAlpha = addon.Opacity.Resolve(self.db, addon.Opacity.Keys.Bar, BAR_OPACITY_OPTS)
 
     local function enumerateMicroButtons()
         local buttons = {}
@@ -658,7 +643,7 @@ local function ApplyMicroBarStyling(self)
 
     local state = getBarState(bar)
     state.component = self
-    state.baseOpacity = appliedOp / 100
+    state.baseOpacity = appliedAlpha
     
     local mouseoverEnabled = self.db and self.db.mouseoverMode
     
@@ -708,11 +693,11 @@ local function ApplyMicroBarStyling(self)
             setBarDesiredAlpha(bar, 1)
         else
             state.isMousedOver = false
-            setBarDesiredAlpha(bar, appliedOp / 100)
+            setBarDesiredAlpha(bar, appliedAlpha)
         end
     else
         state.isMousedOver = false
-        setBarDesiredAlpha(bar, appliedOp / 100)
+        setBarDesiredAlpha(bar, appliedAlpha)
     end
 end
 
