@@ -38,6 +38,7 @@ core/fonts.lua
 core/fontpair.lua
 core/abbrev.lua
 core/catalogs.lua
+core/pool.lua
 core/colorramp.lua
 core/blindfit.lua
 core/barborders.lua
