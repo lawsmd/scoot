@@ -414,3 +414,281 @@ function Builder:AddTextStyleBlock(opts)
 
     return self
 end
+
+--------------------------------------------------------------------------------
+-- Color helpers shared by the bar composites
+--------------------------------------------------------------------------------
+-- Stored colors are {r, g, b, a} tables; a missing table or channel falls
+-- back to the row's default, channel by channel, the way the unit-frame bars
+-- always read them.
+
+local function unpackColor(c, default)
+    if type(c) ~= "table" then c = default end
+    return c[1] or default[1], c[2] or default[2], c[3] or default[3], c[4] or default[4]
+end
+
+local function packColor(r, g, b, a, default)
+    return { r or default[1], g or default[2], b or default[3], a or default[4] }
+end
+
+--------------------------------------------------------------------------------
+-- AddBarStyleBlock: foreground and background bar style
+--------------------------------------------------------------------------------
+-- Foreground (texture, color mode, tint) and Background rows on
+-- AddDualBarStyleRow, a spacer between them, and the Background Opacity
+-- slider. Same contract as AddTextStyleBlock: get(field) is side-effect-free,
+-- set(field, value) stores, apply (optional) runs after every write.
+--
+-- Fields: texture, colorMode, color, bgTexture, bgColorMode, bgColor,
+-- bgOpacity.
+--
+-- Options:
+--   get, set, apply, disabled : as AddTextStyleBlock
+--   foreground : { label = "Foreground", description, key, values, order,
+--                  infoIcons (false for none), customValue = "custom",
+--                  hasAlpha = true, textureDefault = "default",
+--                  colorModeDefault = "default", colorDefault = {1,1,1,1} };
+--                  values, order, and infoIcons default to
+--                  Catalogs.ColorMode.Health
+--   spacer     : true (default) | false; the AddSpacer(8) before Background
+--   background : true (default) | false | the same table; values and order
+--                default to Catalogs.ColorMode.Background, no info icons,
+--                colorDefault = {0,0,0,1}
+--   opacity    : true (default) | false | { label = "Background Opacity",
+--                description, key, min = 0, max = 100, step = 1,
+--                default = 50, minLabel, maxLabel }
+--
+-- Returns self. Does not call Finalize(); callers do.
+--------------------------------------------------------------------------------
+
+local function addBarStyleRow(self, opts, row, defaultLabel, fields, catalog, colorDefault)
+    local get, set, apply = opts.get, opts.set, opts.apply
+    local textureDefault = row.textureDefault or "default"
+    local modeDefault = row.colorModeDefault or "default"
+    local color = row.colorDefault or colorDefault
+    local infoIcons = row.infoIcons
+    if infoIcons == nil then infoIcons = catalog.infoIcons end
+    if infoIcons == false then infoIcons = nil end
+
+    self:AddDualBarStyleRow({
+        label = row.label or defaultLabel,
+        description = row.description,
+        key = row.key,
+        disabled = opts.disabled,
+        getTexture = function() return get(fields.texture) or textureDefault end,
+        setTexture = function(v)
+            set(fields.texture, v or textureDefault)
+            apply()
+        end,
+        colorValues = row.values or catalog.values,
+        colorOrder = row.order or catalog.order,
+        colorInfoIcons = infoIcons,
+        getColorMode = function() return get(fields.colorMode) or modeDefault end,
+        setColorMode = function(v)
+            set(fields.colorMode, v or modeDefault)
+            apply()
+        end,
+        getColor = function() return unpackColor(get(fields.color), color) end,
+        setColor = function(r, g, b, a)
+            set(fields.color, packColor(r, g, b, a, color))
+            apply()
+        end,
+        customColorValue = row.customValue or "custom",
+        hasAlpha = row.hasAlpha ~= false,
+    })
+end
+
+function Builder:AddBarStyleBlock(opts)
+    local o = { get = opts.get, set = opts.set, apply = opts.apply or NOOP, disabled = opts.disabled }
+    local Catalogs = addon.Catalogs
+
+    addBarStyleRow(self, o, norm(opts.foreground) or {}, "Foreground",
+        { texture = "texture", colorMode = "colorMode", color = "color" },
+        Catalogs.ColorMode.Health, { 1, 1, 1, 1 })
+
+    local background = norm(opts.background)
+    if background then
+        if opts.spacer ~= false then self:AddSpacer(8) end
+        addBarStyleRow(self, o, background, "Background",
+            { texture = "bgTexture", colorMode = "bgColorMode", color = "bgColor" },
+            { values = Catalogs.ColorMode.Background.values, order = Catalogs.ColorMode.Background.order },
+            { 0, 0, 0, 1 })
+    end
+
+    local opacity = norm(opts.opacity)
+    if opacity then
+        local default = opacity.default or 50
+        self:AddSlider({
+            label = opacity.label or "Background Opacity",
+            description = opacity.description,
+            key = opacity.key,
+            min = opacity.min or 0,
+            max = opacity.max or 100,
+            step = opacity.step or 1,
+            minLabel = opacity.minLabel,
+            maxLabel = opacity.maxLabel,
+            disabled = opts.disabled,
+            get = function() return tonumber(o.get("bgOpacity")) or default end,
+            set = function(v)
+                o.set("bgOpacity", tonumber(v) or default)
+                o.apply()
+            end,
+        })
+    end
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- AddBarBorderBlock: bar border style, tint, thickness, inset
+--------------------------------------------------------------------------------
+-- Optional enable toggle, Border Style (AddBarBorderSelector with the
+-- hidden-edges pair), Border Tint (AddToggleColorPicker), Border Thickness
+-- (AddSlider), Border Inset (AddInsetPair). Same get/set/apply contract as
+-- AddTextStyleBlock.
+--
+-- Fields: enabled, style, hiddenEdges, tintEnabled, tintColor, thickness,
+-- insetH, insetV.
+--
+-- Options:
+--   get, set, apply, disabled : as AddTextStyleBlock. disabled reaches the
+--                  toggle, tint, thickness, and inset; AddBarBorderSelector
+--                  takes none.
+--   enableToggle : nil (omit) | true | { label = "Enable Border",
+--                  description, key }
+--   style     : true (default) | false | { label = "Border Style",
+--               description, key, includeNone = true, includeBlizzardDefault,
+--               default = "square", hiddenEdges = true }
+--   tint      : true (default) | false | { label = "Border Tint",
+--               description, key, hasAlpha = true, default = {1,1,1,1} }
+--   thickness : true (default) | false | { label = "Border Thickness",
+--               description, key, min = 1, max = 8, step = 0.5,
+--               precision = 1, default = 1, clamp = true, minLabel,
+--               maxLabel }. clamp rounds to the step and the bounds on read
+--               and write, the way the unit-frame bars store it.
+--   inset     : true (default) | false | the AddInsetPair option table
+--               (label, description, key, min, max, step, precision,
+--               minLabel, maxLabel). A non-zero default or a legacy-key
+--               fallback lives in the caller's get.
+--
+-- Returns self. Does not call Finalize(); callers do.
+--------------------------------------------------------------------------------
+
+function Builder:AddBarBorderBlock(opts)
+    local get, set, apply = opts.get, opts.set, opts.apply or NOOP
+    local disabled = opts.disabled
+
+    local toggle = opts.enableToggle
+    if toggle then
+        if toggle == true then toggle = {} end
+        self:AddToggle({
+            label = toggle.label or "Enable Border",
+            description = toggle.description,
+            key = toggle.key,
+            disabled = disabled,
+            get = function() return not not get("enabled") end,
+            set = function(v)
+                set("enabled", v and true or false)
+                apply()
+            end,
+        })
+    end
+
+    local style = norm(opts.style)
+    if style then
+        local styleDefault = style.default or "square"
+        local selector = {
+            label = style.label or "Border Style",
+            description = style.description,
+            key = style.key,
+            includeNone = style.includeNone ~= false,
+            includeBlizzardDefault = style.includeBlizzardDefault,
+            get = function() return get("style") or styleDefault end,
+            set = function(v)
+                set("style", v or styleDefault)
+                apply()
+            end,
+        }
+        if style.hiddenEdges ~= false then
+            selector.getHiddenEdges = function() return get("hiddenEdges") end
+            selector.setHiddenEdges = function(v)
+                set("hiddenEdges", v)
+                apply()
+            end
+        end
+        self:AddBarBorderSelector(selector)
+    end
+
+    local tint = norm(opts.tint)
+    if tint then
+        local colorDefault = tint.default or { 1, 1, 1, 1 }
+        self:AddToggleColorPicker({
+            label = tint.label or "Border Tint",
+            description = tint.description,
+            key = tint.key,
+            disabled = disabled,
+            hasAlpha = tint.hasAlpha ~= false,
+            get = function() return not not get("tintEnabled") end,
+            set = function(v)
+                set("tintEnabled", not not v)
+                apply()
+            end,
+            getColor = function() return unpackColor(get("tintColor"), colorDefault) end,
+            setColor = function(r, g, b, a)
+                set("tintColor", packColor(r, g, b, a, colorDefault))
+                apply()
+            end,
+        })
+    end
+
+    local thickness = norm(opts.thickness)
+    if thickness then
+        local minV, maxV = thickness.min or 1, thickness.max or 8
+        local step = thickness.step or 0.5
+        local default = thickness.default or 1
+        local clamp = thickness.clamp ~= false
+        local function snap(v)
+            v = tonumber(v) or default
+            if not clamp then return v end
+            return math.max(minV, math.min(maxV, math.floor(v / step + 0.5) * step))
+        end
+        self:AddSlider({
+            label = thickness.label or "Border Thickness",
+            description = thickness.description,
+            key = thickness.key,
+            min = minV,
+            max = maxV,
+            step = step,
+            precision = thickness.precision or 1,
+            minLabel = thickness.minLabel,
+            maxLabel = thickness.maxLabel,
+            disabled = disabled,
+            get = function() return snap(get("thickness")) end,
+            set = function(v)
+                set("thickness", snap(v))
+                apply()
+            end,
+        })
+    end
+
+    if opts.inset ~= false then
+        local inset = norm(opts.inset) or {}
+        self:AddInsetPair({
+            label = inset.label,
+            description = inset.description,
+            key = inset.key,
+            min = inset.min,
+            max = inset.max,
+            step = inset.step,
+            precision = inset.precision,
+            minLabel = inset.minLabel,
+            maxLabel = inset.maxLabel,
+            disabled = disabled,
+            apply = opts.apply,
+            get = function(axis) return get(axis == "h" and "insetH" or "insetV") end,
+            set = function(axis, v) set(axis == "h" and "insetH" or "insetV", v) end,
+        })
+    end
+
+    return self
+end
