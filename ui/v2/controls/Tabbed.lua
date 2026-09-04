@@ -136,7 +136,8 @@ function Controls:CreateTabbedSection(options)
         tabBtn:RegisterForClicks("AnyUp")
 
         -- Check if this tab has an info icon
-        local hasInfoIcon = tabData.infoIcon and (tabData.infoIcon.tooltipText or tabData.infoIcon.tooltipTitle)
+        local infoSpec = Controls.InfoIconOptions and Controls.InfoIconOptions(tabData.infoIcon) or nil
+        local hasInfoIcon = infoSpec ~= nil
         local infoIconWidth = hasInfoIcon and (INFO_ICON_SIZE + INFO_ICON_SPACING) or 0
 
         -- Calculate text width for button sizing
@@ -198,8 +199,8 @@ function Controls:CreateTabbedSection(options)
         if hasInfoIcon and Controls.CreateInfoIcon then
             local infoBtn = Controls:CreateInfoIcon({
                 parent = tabBtn,
-                tooltipTitle = tabData.infoIcon.tooltipTitle,
-                tooltipText = tabData.infoIcon.tooltipText,
+                tooltipTitle = infoSpec.tooltipTitle,
+                tooltipText = infoSpec.tooltipText,
                 size = INFO_ICON_SIZE,
                 iconType = "info",
             })

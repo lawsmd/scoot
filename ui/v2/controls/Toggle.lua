@@ -302,13 +302,13 @@ function Controls:CreateToggle(options)
     end)
 
     -- Add info icon if specified (positioned after label)
-    if infoIconOpts and infoIconOpts.tooltipText then
-        local iconSize = infoIconOpts.size or (emphasized and 14 or 12)
+    local infoSpec = Controls.InfoIconOptions(infoIconOpts)
+    if infoSpec then
         local infoIcon = Controls:CreateInfoIcon({
             parent = row,
-            tooltipText = infoIconOpts.tooltipText,
-            tooltipTitle = infoIconOpts.tooltipTitle,
-            size = iconSize,
+            tooltipText = infoSpec.tooltipText,
+            tooltipTitle = infoSpec.tooltipTitle,
+            size = infoSpec.size or (emphasized and 14 or 12),
         })
         if infoIcon then
             -- Position icon after the label text

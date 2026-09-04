@@ -636,13 +636,13 @@ function Builder:AddSelector(options)
         end
 
         -- Add info icon if specified
-        if options.infoIcon and options.infoIcon.tooltipText and selector._label then
-            local iconSize = options.infoIcon.size or 12
+        local infoSpec = Controls.InfoIconOptions(options.infoIcon)
+        if infoSpec and selector._label then
             local infoIcon = Controls:CreateInfoIcon({
                 parent = selector,
-                tooltipText = options.infoIcon.tooltipText,
-                tooltipTitle = options.infoIcon.tooltipTitle,
-                size = iconSize,
+                tooltipText = infoSpec.tooltipText,
+                tooltipTitle = infoSpec.tooltipTitle,
+                size = infoSpec.size or 12,
             })
             if infoIcon then
                 infoIcon:SetPoint("LEFT", selector._label, "RIGHT", 4, 4)
@@ -748,13 +748,13 @@ function Builder:AddSlider(options)
         end
 
         -- Add info icon if specified (positioned at top-right corner of label)
-        if options.infoIcon and options.infoIcon.tooltipText and slider._label then
-            local iconSize = options.infoIcon.size or 12  -- Slightly smaller for corner position
+        local infoSpec = Controls.InfoIconOptions(options.infoIcon)
+        if infoSpec and slider._label then
             local infoIcon = Controls:CreateInfoIcon({
                 parent = slider,
-                tooltipText = options.infoIcon.tooltipText,
-                tooltipTitle = options.infoIcon.tooltipTitle,
-                size = iconSize,
+                tooltipText = infoSpec.tooltipText,
+                tooltipTitle = infoSpec.tooltipTitle,
+                size = infoSpec.size or 12,  -- Slightly smaller for corner position
             })
             if infoIcon then
                 -- Position icon at top-right corner of the label text

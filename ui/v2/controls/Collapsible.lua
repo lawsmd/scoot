@@ -174,11 +174,12 @@ function Controls:CreateCollapsibleSection(options)
     header._title = titleFS
 
     -- Optional info icon (positioned after title text)
-    if options.infoIcon and options.infoIcon.tooltipText then
+    local infoSpec = Controls.InfoIconOptions(options.infoIcon)
+    if infoSpec then
         local infoIcon = Controls:CreateInfoIcon({
             parent = header,
-            tooltipTitle = options.infoIcon.tooltipTitle,
-            tooltipText = options.infoIcon.tooltipText,
+            tooltipTitle = infoSpec.tooltipTitle,
+            tooltipText = infoSpec.tooltipText,
             size = 14,
         })
         if infoIcon then

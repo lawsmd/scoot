@@ -112,6 +112,21 @@ local function GetOrCreateTooltip()
     return tooltip
 end
 
+-- Normalizes an info icon spec to the shape CreateInfoIcon reads. Accepts
+-- tooltipText / tooltipTitle or the shorter text / title (UF.TOOLTIPS and
+-- GF.TOOLTIPS use the latter). Returns nil when there is no text to show, so
+-- a gate is "if spec then".
+function Controls.InfoIconOptions(spec)
+    if type(spec) ~= "table" then return nil end
+    local text = spec.tooltipText or spec.text
+    if type(text) ~= "string" or text == "" then return nil end
+    return {
+        tooltipText = text,
+        tooltipTitle = spec.tooltipTitle or spec.title,
+        size = spec.size,
+    }
+end
+
 -- InfoIcon: Small "i" or "?" icon that shows a tooltip on hover.
 -- Default position: left side of labels (use CreateInfoIconForLabel).
 
