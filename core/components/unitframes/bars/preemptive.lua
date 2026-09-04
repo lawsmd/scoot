@@ -32,6 +32,29 @@ local Preemptive = addon.BarsPreemptive
 -- Direct upvalue to the event-driven guard (editmode/core.lua loads first in TOC)
 local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 
+-- SetVertexColor on ReputationColor as a change signal (core/enforce.lua):
+-- CheckFaction recolors the strip, so the texture is being updated and the
+-- alpha hide is re-asserted. The key reads the setting live and bails in
+-- Edit Mode, as before.
+local Enforce = addon.Enforce
+local function repColorOpts(unitKey)
+    return {
+        methods = { "SetVertexColor" },
+        skipInEditMode = true,
+        when = function()
+            local db = addon and addon.db and addon.db.profile
+            local unitFrames = db and rawget(db, "unitFrames")
+            local cfg = unitFrames and rawget(unitFrames, unitKey)
+            return cfg ~= nil and not not cfg.useCustomBorders
+        end,
+    }
+end
+local REP_COLOR_HIDE_OPTS = {
+    Target = repColorOpts("Target"),
+    Focus = repColorOpts("Focus"),
+    Boss = repColorOpts("Boss"),
+}
+
 -- Pre-emptive hide for Target frame elements (ReputationColor, FrameTexture, Flash)
 -- Runs SYNCHRONOUSLY from PLAYER_TARGET_CHANGED, BEFORE Blizzard's TargetFrame_Update.
 -- The texture might not exist yet at this moment, so a micro-delay follow-up is also scheduled.
@@ -437,36 +460,12 @@ function Preemptive.installEarlyAlphaHooks()
     local targetRepColor = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
         and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
         and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
-    local targetState = getState(targetRepColor)
-    if targetRepColor and targetRepColor.SetVertexColor and not (targetState and targetState.repColorSetVertexColorHooked) then
-        if targetState then targetState.repColorSetVertexColorHooked = true end
-        _G.hooksecurefunc(targetRepColor, "SetVertexColor", function(self)
-            if isEditModeActive() then return end
-            local db = addon and addon.db and addon.db.profile
-            local unitFrames = db and rawget(db, "unitFrames")
-            local cfg = unitFrames and rawget(unitFrames, "Target")
-            if cfg and cfg.useCustomBorders and self and self.SetAlpha then
-                pcall(self.SetAlpha, self, 0)
-            end
-        end)
-    end
+    Enforce.Install(targetRepColor, "repColorHide", REP_COLOR_HIDE_OPTS.Target)
 
     local focusRepColor = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
         and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
         and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
-    local focusState = getState(focusRepColor)
-    if focusRepColor and focusRepColor.SetVertexColor and not (focusState and focusState.repColorSetVertexColorHooked) then
-        if focusState then focusState.repColorSetVertexColorHooked = true end
-        _G.hooksecurefunc(focusRepColor, "SetVertexColor", function(self)
-            if isEditModeActive() then return end
-            local db = addon and addon.db and addon.db.profile
-            local unitFrames = db and rawget(db, "unitFrames")
-            local cfg = unitFrames and rawget(unitFrames, "Focus")
-            if cfg and cfg.useCustomBorders and self and self.SetAlpha then
-                pcall(self.SetAlpha, self, 0)
-            end
-        end)
-    end
+    Enforce.Install(focusRepColor, "repColorHide", REP_COLOR_HIDE_OPTS.Focus)
 end
 
 --------------------------------------------------------------------------------
@@ -737,19 +736,7 @@ function Preemptive.installBossFrameHooks()
             local repColor = bossFrame.TargetFrameContent
                 and bossFrame.TargetFrameContent.TargetFrameContentMain
                 and bossFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
-            local repState = getState(repColor)
-            if repColor and repColor.SetVertexColor and not (repState and repState.repColorSetVertexColorHooked) then
-                if repState then repState.repColorSetVertexColorHooked = true end
-                _G.hooksecurefunc(repColor, "SetVertexColor", function(self)
-                    if isEditModeActive() then return end
-                    local db = addon and addon.db and addon.db.profile
-                    local unitFrames = db and rawget(db, "unitFrames")
-                    local cfg = unitFrames and rawget(unitFrames, "Boss")
-                    if cfg and cfg.useCustomBorders and self and self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end)
-            end
+            Enforce.Install(repColor, "repColorHide", REP_COLOR_HIDE_OPTS.Boss)
 
             -- Install early alpha enforcer on ReputationColor
             if repColor then

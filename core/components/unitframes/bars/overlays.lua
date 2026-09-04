@@ -41,6 +41,28 @@ end
 -- Direct upvalue to the event-driven guard (editmode/core.lua loads first in TOC)
 local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 
+-- Keep the power fill texture at alpha 0 while the rect overlay is active
+-- (core/enforce.lua). The key reads the bar's state live, so deactivating the
+-- overlay releases it; the hook installs once per texture, and a swapped
+-- texture (Druid form change) is covered by the SetStatusBarTexture sync hook
+-- calling this again with the new one. One option table per bar.
+local Enforce = addon.Enforce
+local powerFillOptsByBar = setmetatable({}, { __mode = "k" })
+local function installPowerFillEnforcement(bar, tex)
+    local opts = powerFillOptsByBar[bar]
+    if not opts then
+        opts = {
+            methods = { "SetAlpha" },
+            when = function()
+                local s = getState(bar)
+                return s ~= nil and not not s.powerOverlayActive
+            end,
+        }
+        powerFillOptsByBar[bar] = opts
+    end
+    Enforce.Install(tex, "rectPowerOverlay", opts)
+end
+
 -- Resolver functions
 local resolveHealthBar = Resolvers.resolveHealthBar
 local resolveHealthContainer = Resolvers.resolveHealthContainer
@@ -1215,22 +1237,7 @@ local function ensureRectPowerOverlay(unit, bar, cfg)
                     local newTex = self:GetStatusBarTexture()
                     if newTex then
                         pcall(newTex.SetAlpha, newTex, 0)
-                        -- Install enforcement on new texture if not already hooked
-                        if not getProp(newTex, "powerOverlayAlphaHooked") then
-                            setProp(newTex, "powerOverlayAlphaHooked", true)
-                            pcall(function()
-                                _G.hooksecurefunc(newTex, "SetAlpha", function(tex, alpha)
-                                    local barState = getState(self)
-                                    if barState and barState.powerOverlayActive and alpha > 0 then
-                                        if not getProp(tex, "powerOverlaySettingAlpha") then
-                                            setProp(tex, "powerOverlaySettingAlpha", true)
-                                            tex:SetAlpha(0)
-                                            setProp(tex, "powerOverlaySettingAlpha", nil)
-                                        end
-                                    end
-                                end)
-                            end)
-                        end
+                        installPowerFillEnforcement(bar, newTex)
                     end
                     updateRectPowerOverlay(unit, self)
                 end)
@@ -1344,22 +1351,7 @@ local function ensureRectPowerOverlay(unit, bar, cfg)
     local okTex, statusBarTex = pcall(bar.GetStatusBarTexture, bar)
     if okTex and statusBarTex then
         pcall(statusBarTex.SetAlpha, statusBarTex, 0)
-        -- Install enforcement hook (once per texture) using recursion guard pattern
-        if not getProp(statusBarTex, "powerOverlayAlphaHooked") then
-            setProp(statusBarTex, "powerOverlayAlphaHooked", true)
-            pcall(function()
-                _G.hooksecurefunc(statusBarTex, "SetAlpha", function(self, alpha)
-                    local barState = getState(bar)
-                    if barState and barState.powerOverlayActive and alpha > 0 then
-                        if not getProp(self, "powerOverlaySettingAlpha") then
-                            setProp(self, "powerOverlaySettingAlpha", true)
-                            self:SetAlpha(0)
-                            setProp(self, "powerOverlaySettingAlpha", nil)
-                        end
-                    end
-                end)
-            end)
-        end
+        installPowerFillEnforcement(bar, statusBarTex)
     end
 
     updateRectPowerOverlay(unit, bar)

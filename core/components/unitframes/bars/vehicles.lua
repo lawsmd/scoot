@@ -7,20 +7,21 @@
 
 local addonName, addon = ...
 
--- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
-local FS = addon.FrameState
-
-local function getProp(frame, key)
-    local st = FS.Get(frame)
-    return st and st[key] or nil
+local function hideVehicleArt(tex)
+    local hide = tex.HideBase or tex.Hide
+    if hide then hide(tex) end
 end
 
-local function setProp(frame, key, value)
-    local st = FS.Get(frame)
-    if st then
-        st[key] = value
-    end
-end
+local VEHICLE_ART_OPTS = {
+    methods = { "Show" },
+    apply = hideVehicleArt,
+    when = function()
+        local db = addon and addon.db and addon.db.profile
+        local unitFrames = db and rawget(db, "unitFrames") or nil
+        local cfgP = unitFrames and rawget(unitFrames, "Player") or nil
+        return cfgP ~= nil and cfgP.useCustomBorders == true
+    end,
+}
 
 -- Direct upvalue to the event-driven guard (editmode/core.lua loads first in TOC)
 local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
@@ -86,35 +87,10 @@ if not addon._VehicleArtHooksInstalled then
         end)
     end
 
-    -- Install Show() hooks directly on the textures for extra coverage.
-    -- Catches ANY Show() call, not just those from known Blizzard functions.
+    -- Show() hooks on the textures themselves, for any Show() call and not
+    -- just the known Blizzard functions (core/enforce.lua; the key reads the
+    -- setting live and hides with Hide).
     local container = _G.PlayerFrame and _G.PlayerFrame.PlayerFrameContainer
-
-    -- VehicleFrameTexture Show() hook
-    local vehicleTex = container and container.VehicleFrameTexture
-    if vehicleTex and not getProp(vehicleTex, "showHooked") then
-        setProp(vehicleTex, "showHooked", true)
-        hooksecurefunc(vehicleTex, "Show", function(self)
-            local db = addon and addon.db and addon.db.profile
-            local unitFrames = db and rawget(db, "unitFrames") or nil
-            local cfgP = unitFrames and rawget(unitFrames, "Player") or nil
-            if cfgP and cfgP.useCustomBorders == true then
-                if self.Hide then pcall(self.Hide, self) end
-            end
-        end)
-    end
-
-    -- AlternatePowerFrameTexture Show() hook
-    local altTex = container and container.AlternatePowerFrameTexture
-    if altTex and not getProp(altTex, "showHooked") then
-        setProp(altTex, "showHooked", true)
-        hooksecurefunc(altTex, "Show", function(self)
-            local db = addon and addon.db and addon.db.profile
-            local unitFrames = db and rawget(db, "unitFrames") or nil
-            local cfgP = unitFrames and rawget(unitFrames, "Player") or nil
-            if cfgP and cfgP.useCustomBorders == true then
-                if self.Hide then pcall(self.Hide, self) end
-            end
-        end)
-    end
+    addon.Enforce.Install(container and container.VehicleFrameTexture, "vehicleArt", VEHICLE_ART_OPTS)
+    addon.Enforce.Install(container and container.AlternatePowerFrameTexture, "vehicleArt", VEHICLE_ART_OPTS)
 end

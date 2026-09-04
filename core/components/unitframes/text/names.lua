@@ -25,6 +25,13 @@ end
 
 -- Secret-value safe helpers (shared module)
 local SS = addon.SecretSafe
+
+-- Hide-enforcement hooks (core/enforce.lua) for the ToT and FoT names: the
+-- flags stay in FrameState and the keys read them live; SetText and Show
+-- re-assert at once.
+local Enforce = addon.Enforce
+local TOT_NAME_OPTS = { methods = { "SetText", "Show" }, when = function(fs) return FS.IsHidden(fs, "totName") end }
+local FOT_NAME_OPTS = { methods = { "SetText", "Show" }, when = function(fs) return FS.IsHidden(fs, "fotName") end }
 local safeOffset = SS.safeOffset
 local safePointToken = SS.safePointToken
 local safeGetWidth = SS.safeGetWidth
@@ -1382,24 +1389,7 @@ do
 			if hidden then
 				if nameFS.SetAlpha then pcall(nameFS.SetAlpha, nameFS, 0) end
 				fstate.SetHidden(nameFS, "totName", true)
-				-- Install hook to re-enforce hidden state
-				if not fstate.IsHooked(nameFS, "totNameVisibility") then
-					fstate.MarkHooked(nameFS, "totNameVisibility")
-					if _G.hooksecurefunc then
-						_G.hooksecurefunc(nameFS, "SetText", function(self)
-							local st = FS
-							if st and st.IsHidden(self, "totName") and self.SetAlpha then
-								pcall(self.SetAlpha, self, 0)
-							end
-						end)
-						_G.hooksecurefunc(nameFS, "Show", function(self)
-							local st = FS
-							if st and st.IsHidden(self, "totName") and self.SetAlpha then
-								pcall(self.SetAlpha, self, 0)
-							end
-						end)
-					end
-				end
+				Enforce.Install(nameFS, "totName", TOT_NAME_OPTS)
 			else
 				fstate.SetHidden(nameFS, "totName", false)
 				if nameFS.SetAlpha then pcall(nameFS.SetAlpha, nameFS, 1) end
@@ -1534,24 +1524,7 @@ do
 			if hidden then
 				if nameFS.SetAlpha then pcall(nameFS.SetAlpha, nameFS, 0) end
 				fstate.SetHidden(nameFS, "fotName", true)
-				-- Install hook to re-enforce hidden state
-				if not fstate.IsHooked(nameFS, "fotNameVisibility") then
-					fstate.MarkHooked(nameFS, "fotNameVisibility")
-					if _G.hooksecurefunc then
-						_G.hooksecurefunc(nameFS, "SetText", function(self)
-							local st = FS
-							if st and st.IsHidden(self, "fotName") and self.SetAlpha then
-								pcall(self.SetAlpha, self, 0)
-							end
-						end)
-						_G.hooksecurefunc(nameFS, "Show", function(self)
-							local st = FS
-							if st and st.IsHidden(self, "fotName") and self.SetAlpha then
-								pcall(self.SetAlpha, self, 0)
-							end
-						end)
-					end
-				end
+				Enforce.Install(nameFS, "fotName", FOT_NAME_OPTS)
 			else
 				fstate.SetHidden(nameFS, "fotName", false)
 				if nameFS.SetAlpha then pcall(nameFS.SetAlpha, nameFS, 1) end

@@ -10,6 +10,28 @@ local getProp = CB._getProp
 local setProp = CB._setProp
 local getState = CB._getState
 
+-- Show() guards (core/enforce.lua): while text-fill is active on a bar, a
+-- decorative texture Blizzard re-shows is hidden again at once. One option
+-- table per bar, since the key reads that bar's state.
+local Enforce = addon.Enforce
+local function hideTexture(tex)
+	local hide = tex.HideBase or tex.Hide
+	if hide then hide(tex) end
+end
+local guardOptsByFrame = setmetatable({}, { __mode = "k" })
+local function textFillGuardOpts(frame)
+	local opts = guardOptsByFrame[frame]
+	if not opts then
+		opts = {
+			methods = { "Show" },
+			apply = hideTexture,
+			when = function() return getProp(frame, "textFillActive") and true or false end,
+		}
+		guardOptsByFrame[frame] = opts
+	end
+	return opts
+end
+
 -- =========================================================================
 -- Text-Fill Cast Bar mode helpers
 -- =========================================================================
@@ -280,34 +302,27 @@ local function ensureEmpoweredTextFillElements(frame, elements)
 	return emp
 end
 
--- One-time install of Show() hooks on decorative textures that Blizzard actively
--- re-shows during casts (ShowSpark, FinishSpell, StandardFinish OnPlay, etc.).
--- Instead of fighting the animation state machine with Stop(), let animations
--- play through (so OnFinished callbacks fire) but keep their target textures hidden.
+-- Show() guards on decorative textures that Blizzard actively re-shows during
+-- casts (ShowSpark, FinishSpell, StandardFinish OnPlay, etc.). Instead of
+-- fighting the animation state machine with Stop(), let animations play
+-- through (so OnFinished callbacks fire) but keep their target textures hidden.
+-- Each texture is hooked once; one absent at the first call is picked up later.
+local GUARD_TEXTURE_KEYS = {
+	"Spark",          -- ShowSpark() → self.Spark:Show()
+	"StandardGlow",   -- ShowSpark() → sparkFx:SetShown(true)
+	"CraftGlow",      -- ShowSpark() → sparkFx:SetShown(true)
+	"ChannelShadow",  -- ShowSpark() → sparkFx:SetShown(true)
+	"Flash",          -- FinishSpell() → self.Flash:Show()
+	"EnergyGlow",     -- StandardFinish:OnPlay → SetTargetsShown(true)
+	"Flakes01",       -- StandardFinish:OnPlay → SetTargetsShown(true)
+	"Flakes02",       -- StandardFinish:OnPlay → SetTargetsShown(true)
+	"Flakes03",       -- StandardFinish:OnPlay → SetTargetsShown(true)
+	-- InterruptGlow intentionally excluded — controlled by hideInterruptGlow toggle independently
+}
 local function installTextFillShowGuards(frame)
-	if getProp(frame, "textFillShowGuarded") then return end
-	setProp(frame, "textFillShowGuarded", true)
-
-	local guardTextures = {
-		frame.Spark,          -- ShowSpark() → self.Spark:Show()
-		frame.StandardGlow,   -- ShowSpark() → sparkFx:SetShown(true)
-		frame.CraftGlow,      -- ShowSpark() → sparkFx:SetShown(true)
-		frame.ChannelShadow,  -- ShowSpark() → sparkFx:SetShown(true)
-		frame.Flash,          -- FinishSpell() → self.Flash:Show()
-		frame.EnergyGlow,     -- StandardFinish:OnPlay → SetTargetsShown(true)
-		frame.Flakes01,       -- StandardFinish:OnPlay → SetTargetsShown(true)
-		frame.Flakes02,       -- StandardFinish:OnPlay → SetTargetsShown(true)
-		frame.Flakes03,       -- StandardFinish:OnPlay → SetTargetsShown(true)
-		-- InterruptGlow intentionally excluded — controlled by hideInterruptGlow toggle independently
-	}
-	for _, texture in ipairs(guardTextures) do
-		if texture and texture.Show then
-			hooksecurefunc(texture, "Show", function(self)
-				if getProp(frame, "textFillActive") then
-					pcall(self.Hide, self)
-				end
-			end)
-		end
+	local guardOpts = textFillGuardOpts(frame)
+	for _, key in ipairs(GUARD_TEXTURE_KEYS) do
+		Enforce.Install(frame[key], "textFillGuard", guardOpts)
 	end
 end
 
@@ -481,24 +496,15 @@ local function activateEmpoweredTextFill(frame, elements, cfg, unit)
 				end
 			end
 
-			-- One-time Show() guards on StageTier textures (Normal, Disabled, Glow).
-			-- UpdateStage() calls Normal:SetShown(true) on completed tiers — guard
-			-- re-hides them immediately when text-fill mode is active.
-			if not getProp(frame, "textFillStageTierShowGuarded") then
-				setProp(frame, "textFillStageTierShowGuarded", true)
-				for _, tier in ipairs(tiers) do
-					if tier and not (tier.IsForbidden and tier:IsForbidden()) then
-						local tierTextures = { tier.Normal, tier.Disabled, tier.Glow }
-						for _, tex in ipairs(tierTextures) do
-							if tex and tex.Show then
-								hooksecurefunc(tex, "Show", function(self)
-									if getProp(frame, "textFillActive") then
-										pcall(self.Hide, self)
-									end
-								end)
-							end
-						end
-					end
+			-- Show() guards on StageTier textures (Normal, Disabled, Glow), once per
+			-- texture. UpdateStage() calls Normal:SetShown(true) on completed tiers;
+			-- the guard re-hides them at once while text-fill mode is active.
+			local guardOpts = textFillGuardOpts(frame)
+			for _, tier in ipairs(tiers) do
+				if tier and not (tier.IsForbidden and tier:IsForbidden()) then
+					Enforce.Install(tier.Normal, "textFillGuard", guardOpts)
+					Enforce.Install(tier.Disabled, "textFillGuard", guardOpts)
+					Enforce.Install(tier.Glow, "textFillGuard", guardOpts)
 				end
 			end
 		end

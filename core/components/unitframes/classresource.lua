@@ -1,25 +1,6 @@
 -- classresource.lua - Class resource bar offset, scale, and visibility
 local addonName, addon = ...
 
--- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
-local FS = addon.FrameState
-
-local function getState(frame)
-	return FS.Get(frame)
-end
-
-local function getProp(frame, key)
-	local st = FS.Get(frame)
-	return st and st[key] or nil
-end
-
-local function setProp(frame, key, value)
-	local st = FS.Get(frame)
-	if st then
-		st[key] = value
-	end
-end
-
 local classResourceZoneWatcher = nil
 
 local function ensureClassResourceZoneWatcher()
@@ -40,7 +21,6 @@ end
 -- NOTE: Frame scales are not captured because frames may retain a previously-applied
 -- scale across reloads. Class resource frames have no Edit Mode scale, so baseline is always 1.0.
 local originalPaddings = setmetatable({}, { __mode = "k" })
-local hookedFrames = setmetatable({}, { __mode = "k" })
 local layoutHooked = false
 
 -- Debug helper (disabled by default)
@@ -202,55 +182,23 @@ local function clampScale(value)
 	return v
 end
 
--- Hook visibility-restoring functions on a frame to maintain hidden state
--- CRITICAL: hooksecurefunc is used to avoid taint. Method overrides on Blizzard frames
--- cause taint that spreads through the execution context, blocking protected functions
+-- Keep a hidden class resource frame hidden when Blizzard re-shows it
+-- (core/enforce.lua). hooksecurefunc, never a method override: an override on
+-- a Blizzard frame taints the execution context and blocks protected functions
 -- like SetTargetClampingInsets() during nameplate setup.
+-- CRITICAL: the combat gate stays. The hooks skip in combat to avoid tainting
+-- nameplate operations during form changes; nil from the reader means skip.
+local CLASS_RESOURCE_HIDE_OPTS = {
+	methods = { "Show", "SetAlpha" },
+	when = function()
+		if InCombatLockdown() then return nil end
+		local frameCfg = getClassResourceConfig()
+		return frameCfg ~= nil and not not frameCfg.hide
+	end,
+}
+
 local function ensureVisibilityHooks(frame, cfg)
-	if not frame or hookedFrames[frame] then return end
-	hookedFrames[frame] = true
-	
-	-- Store reference to config getter for hooks
-	setProp(frame, "classResourceCfg", getClassResourceConfig)
-	
-	-- Hook Show to enforce hidden state (runs AFTER Blizzard's Show)
-	-- CRITICAL: Combat guard required to avoid tainting nameplate operations during form changes
-	if frame.Show then
-		hooksecurefunc(frame, "Show", function(self)
-			-- Skip during combat to avoid tainting nameplate operations
-			if InCombatLockdown and InCombatLockdown() then return end
-			local cfgGetter = getProp(self, "classResourceCfg")
-			local frameCfg = cfgGetter and cfgGetter()
-			if frameCfg and frameCfg.hide then
-				self:SetAlpha(0)
-				debugPrint("Enforcing hidden via Show hook on", self:GetName() or "unnamed")
-			end
-		end)
-	end
-	
-	-- Hook SetAlpha to re-enforce hidden state (runs AFTER Blizzard's SetAlpha)
-	-- Uses a guard flag to prevent infinite recursion since SetAlpha is called inside the hook
-	-- CRITICAL: Combat guard required to avoid tainting nameplate operations during form changes
-	if frame.SetAlpha then
-		hooksecurefunc(frame, "SetAlpha", function(self, alpha)
-			-- Skip during combat to avoid tainting nameplate operations
-			if InCombatLockdown and InCombatLockdown() then return end
-			-- Guard against recursion
-			if getProp(self, "classResourceApplyingAlpha") then return end
-			
-			local cfgGetter = getProp(self, "classResourceCfg")
-			local frameCfg = cfgGetter and cfgGetter()
-			if frameCfg and frameCfg.hide and alpha ~= 0 then
-				-- Frame should be hidden but Blizzard set non-zero alpha; correct it
-				setProp(self, "classResourceApplyingAlpha", true)
-				self:SetAlpha(0)
-				setProp(self, "classResourceApplyingAlpha", nil)
-				debugPrint("Re-enforcing hidden via SetAlpha hook on", self:GetName() or "unnamed")
-			end
-		end)
-	end
-	
-	debugPrint("Installed visibility hooks on", frame:GetName() or "unnamed")
+	addon.Enforce.Install(frame, "classResourceHidden", CLASS_RESOURCE_HIDE_OPTS)
 end
 
 -- Trigger layout update on the managed container
