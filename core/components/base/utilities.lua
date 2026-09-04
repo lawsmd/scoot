@@ -535,65 +535,86 @@ local function SetPowerFeedbackHidden(ownerFrame, hidden)
 end
 Util.SetPowerFeedbackHidden = SetPowerFeedbackHidden
 
+-- Hide-enforcement primitive and the option tables the Set*Hidden functions
+-- below share. Every hook body lives in core/enforce.lua.
+local Enforce = addon.Enforce
+local SS = addon.SecretSafe
+
+local SHOW_ALPHA = { "Show", "SetAlpha" }
+
+-- Alpha 0, hooks on Show and SetAlpha, alpha 1 on restore.
+local ALPHA_OPTS = { methods = SHOW_ALPHA }
+
+-- Same hide; the restore belongs to whoever owns the region's alpha.
+local FLAG_ONLY_OPTS = { methods = SHOW_ALPHA, restore = false }
+
+-- A bar fill or background: alpha 0 plus Hide on the direct path and from
+-- Show; the SetAlpha hook only zeroes. Restore is alpha 1 plus Show.
+local function applyFillHidden(tex, method)
+    tex:SetAlpha(0)
+    if method ~= "SetAlpha" then
+        local hide = tex.HideBase or tex.Hide
+        if hide then hide(tex) end
+    end
+end
+
+local function restoreFill(tex)
+    if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
+    if tex.Show then pcall(tex.Show, tex) end
+end
+
+local function restoreShow(tex)
+    if tex.Show then pcall(tex.Show, tex) end
+end
+
+local FILL_OPTS = { methods = SHOW_ALPHA, apply = applyFillHidden, restore = restoreFill }
+-- The health ScootBG: same hide, Show alone on restore (its alpha belongs to
+-- the background styling code).
+local SCOOT_BG_FILL_OPTS = { methods = SHOW_ALPHA, apply = applyFillHidden, restore = restoreShow }
+
+-- A StatusBar's fill color: keep rgb, drive the alpha channel. The rgb comes
+-- from the bar itself, never from a hook argument, and a channel that reads
+-- secret skips the write.
+local function setBarColorAlpha(bar, alpha)
+    local ok, r, g, b = pcall(bar.GetStatusBarColor, bar)
+    if not ok then return end
+    r, g, b = SS.safeNumber(r), SS.safeNumber(g), SS.safeNumber(b)
+    if not (r and g and b) then return end
+    pcall(bar.SetStatusBarColor, bar, r, g, b, alpha)
+end
+
+local function applyBarColorHidden(bar)
+    setBarColorAlpha(bar, 0)
+end
+
+local function restoreBarColor(bar)
+    setBarColorAlpha(bar, 1)
+end
+
+local BAR_COLOR_OPTS = { methods = { "SetStatusBarColor" }, apply = applyBarColorHidden, restore = restoreBarColor }
+-- Prediction and absorb bars: Blizzard's own update recolors them, so the
+-- restore is the flag flip alone.
+local PREDICTION_COLOR_OPTS = { methods = { "SetStatusBarColor" }, apply = applyBarColorHidden, restore = false }
+
 -- Hide/show the Power Bar Spark (e.g., Elemental Shaman Maelstrom indicator)
 -- Frame: ManaBar.Spark
 -- ownerFrame: the ManaBar frame that contains the Spark child
 -- hidden: boolean - true to hide the spark, false to restore it
 --
 -- IMPORTANT: SetAlpha(0) instead of Hide() to avoid taint during combat.
+-- The re-assert is immediate, not C_Timer.After(0): deferring shows the spark
+-- for one frame before it hides.
+local function restoreSpark(spark)
+    if spark.SetAlpha then pcall(spark.SetAlpha, spark, 1) end
+    if spark.UpdateShown then pcall(spark.UpdateShown, spark) end
+end
+local SPARK_OPTS = { methods = { "Show", "UpdateShown", "SetAlpha" }, restore = restoreSpark }
+
 local function SetPowerBarSparkHidden(ownerFrame, hidden)
     if not ownerFrame or type(ownerFrame) ~= "table" then
         return
     end
-    local sparkFrame = ownerFrame.Spark
-    if not sparkFrame or (sparkFrame.IsForbidden and sparkFrame:IsForbidden()) then
-        return
-    end
-
-    if hidden then
-        setProp(sparkFrame, "powerBarSparkHidden", true)
-        if sparkFrame.SetAlpha then
-            pcall(sparkFrame.SetAlpha, sparkFrame, 0)
-        end
-
-        if _G.hooksecurefunc and not getProp(sparkFrame, "sparkVisibilityHooked") then
-            setProp(sparkFrame, "sparkVisibilityHooked", true)
-
-            _G.hooksecurefunc(sparkFrame, "Show", function(self)
-                if getProp(self, "powerBarSparkHidden") and self.SetAlpha then
-                    pcall(self.SetAlpha, self, 0)
-                end
-            end)
-
-            if sparkFrame.UpdateShown then
-                _G.hooksecurefunc(sparkFrame, "UpdateShown", function(self)
-                    if getProp(self, "powerBarSparkHidden") and self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end)
-            end
-
-            -- CRITICAL: Use immediate re-enforcement with recursion guard, NOT C_Timer.After(0)
-            -- Deferring causes visible flickering (texture visible for one frame before hiding)
-            _G.hooksecurefunc(sparkFrame, "SetAlpha", function(self, alpha)
-                if getProp(self, "powerBarSparkHidden") and alpha and alpha > 0 then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    else
-        setProp(sparkFrame, "powerBarSparkHidden", false)
-        if sparkFrame.SetAlpha then
-            pcall(sparkFrame.SetAlpha, sparkFrame, 1)
-        end
-        if sparkFrame.UpdateShown then
-            pcall(sparkFrame.UpdateShown, sparkFrame)
-        end
-    end
+    Enforce.Set(ownerFrame.Spark, "powerBarSpark", hidden, SPARK_OPTS)
 end
 Util.SetPowerBarSparkHidden = SetPowerBarSparkHidden
 
@@ -606,42 +627,7 @@ local function SetManaCostPredictionHidden(ownerFrame, hidden)
     if not ownerFrame or type(ownerFrame) ~= "table" then
         return
     end
-    local predictionBar = ownerFrame.ManaCostPredictionBar
-    if not predictionBar or (predictionBar.IsForbidden and predictionBar:IsForbidden()) then
-        return
-    end
-
-    if hidden then
-        setProp(predictionBar, "manaCostPredictionHidden", true)
-        if predictionBar.SetAlpha then
-            pcall(predictionBar.SetAlpha, predictionBar, 0)
-        end
-
-        if _G.hooksecurefunc and not getProp(predictionBar, "manaCostPredictionHooked") then
-            setProp(predictionBar, "manaCostPredictionHooked", true)
-
-            _G.hooksecurefunc(predictionBar, "Show", function(self)
-                if getProp(self, "manaCostPredictionHidden") and self.SetAlpha then
-                    pcall(self.SetAlpha, self, 0)
-                end
-            end)
-
-            _G.hooksecurefunc(predictionBar, "SetAlpha", function(self, alpha)
-                if getProp(self, "manaCostPredictionHidden") and alpha and alpha > 0 then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    else
-        setProp(predictionBar, "manaCostPredictionHidden", false)
-        if predictionBar.SetAlpha then
-            pcall(predictionBar.SetAlpha, predictionBar, 1)
-        end
-    end
+    Enforce.Set(ownerFrame.ManaCostPredictionBar, "manaCostPrediction", hidden, ALPHA_OPTS)
 end
 Util.SetManaCostPredictionHidden = SetManaCostPredictionHidden
 
@@ -661,105 +647,19 @@ local function SetPowerBarTextureOnlyHidden(ownerFrame, hidden)
     -- Frame path (player): PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar.ManaCostPredictionBar
     local manaCostPredictionBar = ownerFrame.ManaCostPredictionBar
 
-    local function installAlphaHook(tex, flagName)
-        if not tex then return end
-        local st = getState(tex)
-        if not st then return end
-        local hookKey = flagName .. "Hooked"
-        if st[hookKey] then return end
-        st[hookKey] = true
+    Enforce.Set(fillTex, "powerBarFill", hidden, ALPHA_OPTS)
+    Enforce.Set(bgTex, "powerBarBG", hidden, ALPHA_OPTS)
+    Enforce.Set(manaCostPredictionBar, "powerBarManaCostPred", hidden, ALPHA_OPTS)
+    -- The ScootBG alpha is restored by the background styling code, not here.
+    Enforce.Set(getProp(ownerFrame, "ScootBG"), "powerBarScootBG", hidden, FLAG_ONLY_OPTS)
 
-        if _G.hooksecurefunc and tex.SetAlpha then
-            _G.hooksecurefunc(tex, "SetAlpha", function(self, alpha)
-                if getProp(self, flagName) and alpha and alpha > 0 then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-        end
-
-        if _G.hooksecurefunc and tex.Show then
-            _G.hooksecurefunc(tex, "Show", function(self)
-                if getProp(self, flagName) and self.SetAlpha then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    end
-
+    -- The power foreground overlay follows the fill.
+    local st = getState(ownerFrame)
+    if not (st and st.powerFill) then return end
     if hidden then
-        if fillTex then
-            setProp(fillTex, "powerBarFillHidden", true)
-            if fillTex.SetAlpha then pcall(fillTex.SetAlpha, fillTex, 0) end
-            installAlphaHook(fillTex, "powerBarFillHidden")
-        end
-
-        if bgTex then
-            setProp(bgTex, "powerBarBGHidden", true)
-            if bgTex.SetAlpha then pcall(bgTex.SetAlpha, bgTex, 0) end
-            installAlphaHook(bgTex, "powerBarBGHidden")
-        end
-
-        if manaCostPredictionBar then
-            setProp(manaCostPredictionBar, "powerBarManaCostPredHidden", true)
-            if manaCostPredictionBar.SetAlpha then
-                pcall(manaCostPredictionBar.SetAlpha, manaCostPredictionBar, 0)
-            end
-            installAlphaHook(manaCostPredictionBar, "powerBarManaCostPredHidden")
-        end
-
-        do
-            local scBG = getProp(ownerFrame, "ScootBG")
-            if scBG then
-                setProp(scBG, "powerBarScootBGHidden", true)
-                if scBG.SetAlpha then pcall(scBG.SetAlpha, scBG, 0) end
-                installAlphaHook(scBG, "powerBarScootBGHidden")
-            end
-        end
-
-        -- Also hide the power foreground overlay if present
-        local st = getState(ownerFrame)
-        if st and st.powerFill then
-            st.powerFill:Hide()
-        end
-    else
-        if fillTex then
-            setProp(fillTex, "powerBarFillHidden", false)
-            if fillTex.SetAlpha then pcall(fillTex.SetAlpha, fillTex, 1) end
-        end
-
-        if bgTex then
-            setProp(bgTex, "powerBarBGHidden", false)
-            if bgTex.SetAlpha then pcall(bgTex.SetAlpha, bgTex, 1) end
-        end
-
-        if manaCostPredictionBar then
-            setProp(manaCostPredictionBar, "powerBarManaCostPredHidden", false)
-            if manaCostPredictionBar.SetAlpha then
-                pcall(manaCostPredictionBar.SetAlpha, manaCostPredictionBar, 1)
-            end
-        end
-
-        do
-            local scBG = getProp(ownerFrame, "ScootBG")
-            if scBG then
-                setProp(scBG, "powerBarScootBGHidden", false)
-                -- Don't restore alpha here - let the background styling code handle it
-            end
-        end
-
-        -- Restore power foreground overlay if it's active
-        local st = getState(ownerFrame)
-        if st and st.powerFill and st.powerOverlayActive then
-            st.powerFill:Show()
-        end
+        st.powerFill:Hide()
+    elseif st.powerOverlayActive then
+        st.powerFill:Show()
     end
 end
 Util.SetPowerBarTextureOnlyHidden = SetPowerBarTextureOnlyHidden
@@ -775,6 +675,16 @@ local function resolveTempMaxHealthLoss(healthBar)
     return nil
 end
 
+-- Prediction/absorb StatusBar children that render on top of HealthBar.
+-- Leaving these visible while the main bar is hidden produces residual
+-- visuals (e.g. TotalAbsorbBar shield overlay on boss frames).
+local PREDICTION_BAR_KEYS = {
+    "TotalAbsorbBar",
+    "HealAbsorbBar",
+    "MyHealPredictionBar",
+    "OtherHealPredictionBar",
+}
+
 -- Hide/restore the Health Bar fill texture and background while keeping text overlays visible.
 local function SetHealthBarTextureOnlyHidden(ownerFrame, hidden)
     if not ownerFrame or type(ownerFrame) ~= "table" then
@@ -782,23 +692,20 @@ local function SetHealthBarTextureOnlyHidden(ownerFrame, hidden)
     end
 
     -- OPT-33: Skip redundant work when the bar is already in the requested
-    -- hidden state. The enforcement hooks (SetAlpha/Show/SetStatusBarColor)
-    -- already maintain visibility, so repeated pcall operations are wasted.
+    -- hidden state. The enforcement hooks already maintain visibility, so
+    -- resolving ten targets to re-read ten flags is wasted.
     -- Exception 1: if a ScootBG was created since the last call (styling
     -- re-apply path), fall through so it gets hidden too.
     -- Exception 2: if the fill texture object was replaced (e.g. by
-    -- SetStatusBarTexture in applyToBar), the new texture has no hooks.
-    -- Verify the current fill texture still carries the hidden flag.
-    if hidden then
-        if getProp(ownerFrame, "healthBarColorHidden") then
-            local currentFill = ownerFrame.texture or (ownerFrame.GetStatusBarTexture and ownerFrame:GetStatusBarTexture())
-            if currentFill and not getProp(currentFill, "healthBarFillHidden") then
-                -- Texture was replaced — fall through to re-hook the new one
-            else
-                local scBG = getProp(ownerFrame, "ScootBG")
-                if not scBG or getProp(scBG, "healthBarScootBGHidden") then
-                    return
-                end
+    -- SetStatusBarTexture in applyToBar), the new texture carries no key.
+    if hidden and Enforce.IsHidden(ownerFrame, "healthBarColor") then
+        local currentFill = ownerFrame.texture or (ownerFrame.GetStatusBarTexture and ownerFrame:GetStatusBarTexture())
+        if currentFill and not Enforce.IsHidden(currentFill, "healthBarFill") then
+            -- Texture was replaced: fall through to hide and hook the new one
+        else
+            local scBG = getProp(ownerFrame, "ScootBG")
+            if not scBG or Enforce.IsHidden(scBG, "healthBarScootBG") then
+                return
             end
         end
     end
@@ -806,208 +713,62 @@ local function SetHealthBarTextureOnlyHidden(ownerFrame, hidden)
     local fillTex = ownerFrame.texture or (ownerFrame.GetStatusBarTexture and ownerFrame:GetStatusBarTexture())
     local bgTex = ownerFrame.Background or ownerFrame.background
 
-    -- Prediction/absorb StatusBar children that render on top of HealthBar.
-    -- Leaving these visible while the main bar is hidden produces residual
-    -- visuals (e.g. TotalAbsorbBar shield overlay on boss frames).
-    local PREDICTION_BAR_KEYS = {
-        "TotalAbsorbBar",
-        "HealAbsorbBar",
-        "MyHealPredictionBar",
-        "OtherHealPredictionBar",
-    }
+    Enforce.Set(fillTex, "healthBarFill", hidden, FILL_OPTS)
+    Enforce.Set(bgTex, "healthBarBG", hidden, FILL_OPTS)
+    Enforce.Set(getProp(ownerFrame, "ScootBG"), "healthBarScootBG", hidden, SCOOT_BG_FILL_OPTS)
 
-    local function installAlphaHook(tex, flagName)
-        if not tex then return end
-        local st = getState(tex)
-        if not st then return end
-        local hookKey = flagName .. "Hooked"
-        if st[hookKey] then return end
-        st[hookKey] = true
+    -- The StatusBar fill color at the engine level
+    Enforce.Set(ownerFrame, "healthBarColor", hidden, BAR_COLOR_OPTS)
 
-        if _G.hooksecurefunc and tex.SetAlpha then
-            _G.hooksecurefunc(tex, "SetAlpha", function(self, alpha)
-                if getProp(self, flagName) and alpha and alpha > 0 then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-        end
-
-        if _G.hooksecurefunc and tex.Show then
-            _G.hooksecurefunc(tex, "Show", function(self)
-                if getProp(self, flagName) and self.SetAlpha then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        pcall(self.Hide, self)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-        end
+    -- The TempMaxHealthLoss sibling (purple max health reduction bar)
+    local tmhl = resolveTempMaxHealthLoss(ownerFrame)
+    if tmhl then
+        Enforce.Set(tmhl.GetStatusBarTexture and tmhl:GetStatusBarTexture(), "healthBarFill", hidden, FILL_OPTS)
+        Enforce.Set(tmhl, "healthBarColor", hidden, BAR_COLOR_OPTS)
     end
 
-    local function installBarColorHook(bar)
-        if not bar then return end
-        local st = getState(bar)
-        if not st then return end
-        if st.healthBarColorHooked then return end
-        st.healthBarColorHooked = true
-
-        if _G.hooksecurefunc and bar.SetStatusBarColor then
-            _G.hooksecurefunc(bar, "SetStatusBarColor", function(self, r, g, b, a)
-                if getProp(self, "healthBarColorHidden") and (not a or a > 0) then
-                    if not getProp(self, "settingBarColor") then
-                        setProp(self, "settingBarColor", true)
-                        pcall(self.SetStatusBarColor, self, r or 0, g or 0, b or 0, 0)
-                        setProp(self, "settingBarColor", nil)
-                    end
-                end
-            end)
-        end
-    end
-
-    if hidden then
-        if fillTex then
-            setProp(fillTex, "healthBarFillHidden", true)
-            if fillTex.SetAlpha then pcall(fillTex.SetAlpha, fillTex, 0) end
-            pcall(fillTex.Hide, fillTex)
-            installAlphaHook(fillTex, "healthBarFillHidden")
-        end
-
-        if bgTex then
-            setProp(bgTex, "healthBarBGHidden", true)
-            if bgTex.SetAlpha then pcall(bgTex.SetAlpha, bgTex, 0) end
-            pcall(bgTex.Hide, bgTex)
-            installAlphaHook(bgTex, "healthBarBGHidden")
-        end
-
-        do
-            local scBG = getProp(ownerFrame, "ScootBG")
-            if scBG then
-                setProp(scBG, "healthBarScootBGHidden", true)
-                if scBG.SetAlpha then pcall(scBG.SetAlpha, scBG, 0) end
-                pcall(scBG.Hide, scBG)
-                installAlphaHook(scBG, "healthBarScootBGHidden")
-            end
-        end
-
-        -- Hide the StatusBar fill color at the engine level
-        setProp(ownerFrame, "healthBarColorHidden", true)
-        if ownerFrame.SetStatusBarColor and ownerFrame.GetStatusBarColor then
-            local r, g, b = ownerFrame:GetStatusBarColor()
-            pcall(ownerFrame.SetStatusBarColor, ownerFrame, r, g, b, 0)
-        end
-        installBarColorHook(ownerFrame)
-
-        -- Hide the TempMaxHealthLoss sibling (purple max health reduction bar)
-        do
-            local tmhl = resolveTempMaxHealthLoss(ownerFrame)
-            if tmhl then
-                setProp(tmhl, "tempMaxHealthLossHidden", true)
-                local tmhlFill = tmhl.GetStatusBarTexture and tmhl:GetStatusBarTexture()
-                if tmhlFill then
-                    setProp(tmhlFill, "healthBarFillHidden", true)
-                    if tmhlFill.SetAlpha then pcall(tmhlFill.SetAlpha, tmhlFill, 0) end
-                    pcall(tmhlFill.Hide, tmhlFill)
-                    installAlphaHook(tmhlFill, "healthBarFillHidden")
-                end
-                setProp(tmhl, "healthBarColorHidden", true)
-                if tmhl.SetStatusBarColor and tmhl.GetStatusBarColor then
-                    local r, g, b = tmhl:GetStatusBarColor()
-                    pcall(tmhl.SetStatusBarColor, tmhl, r, g, b, 0)
-                end
-                installBarColorHook(tmhl)
-            end
-        end
-
-        -- Hide prediction/absorb StatusBar children of the HealthBar
-        for _, key in ipairs(PREDICTION_BAR_KEYS) do
-            local bar = ownerFrame[key]
-            if bar and not (bar.IsForbidden and bar:IsForbidden()) then
-                setProp(bar, "predictionBarHidden", true)
-                setProp(bar, "healthBarColorHidden", true)
-                if bar.SetAlpha then pcall(bar.SetAlpha, bar, 0) end
-                local barFill = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
-                if barFill then
-                    setProp(barFill, "healthBarFillHidden", true)
-                    if barFill.SetAlpha then pcall(barFill.SetAlpha, barFill, 0) end
-                    pcall(barFill.Hide, barFill)
-                    installAlphaHook(barFill, "healthBarFillHidden")
-                end
-                installAlphaHook(bar, "predictionBarHidden")
-                installBarColorHook(bar)
-            end
-        end
-    else
-        -- Restore the StatusBar fill color
-        setProp(ownerFrame, "healthBarColorHidden", false)
-        if ownerFrame.SetStatusBarColor and ownerFrame.GetStatusBarColor then
-            local r, g, b = ownerFrame:GetStatusBarColor()
-            pcall(ownerFrame.SetStatusBarColor, ownerFrame, r, g, b, 1)
-        end
-
-        if fillTex then
-            setProp(fillTex, "healthBarFillHidden", false)
-            if fillTex.SetAlpha then pcall(fillTex.SetAlpha, fillTex, 1) end
-            pcall(fillTex.Show, fillTex)
-        end
-
-        if bgTex then
-            setProp(bgTex, "healthBarBGHidden", false)
-            if bgTex.SetAlpha then pcall(bgTex.SetAlpha, bgTex, 1) end
-            pcall(bgTex.Show, bgTex)
-        end
-
-        do
-            local scBG = getProp(ownerFrame, "ScootBG")
-            if scBG then
-                setProp(scBG, "healthBarScootBGHidden", false)
-                pcall(scBG.Show, scBG)
-            end
-        end
-
-        -- Restore the TempMaxHealthLoss sibling
-        do
-            local tmhl = resolveTempMaxHealthLoss(ownerFrame)
-            if tmhl then
-                setProp(tmhl, "tempMaxHealthLossHidden", false)
-                local tmhlFill = tmhl.GetStatusBarTexture and tmhl:GetStatusBarTexture()
-                if tmhlFill then
-                    setProp(tmhlFill, "healthBarFillHidden", false)
-                    if tmhlFill.SetAlpha then pcall(tmhlFill.SetAlpha, tmhlFill, 1) end
-                    pcall(tmhlFill.Show, tmhlFill)
-                end
-                setProp(tmhl, "healthBarColorHidden", false)
-                if tmhl.SetStatusBarColor and tmhl.GetStatusBarColor then
-                    local r, g, b = tmhl:GetStatusBarColor()
-                    pcall(tmhl.SetStatusBarColor, tmhl, r, g, b, 1)
-                end
-            end
-        end
-
-        -- Restore prediction/absorb StatusBar children. Only restore alpha —
-        -- Blizzard's own update functions drive Show/Hide based on real state.
-        for _, key in ipairs(PREDICTION_BAR_KEYS) do
-            local bar = ownerFrame[key]
-            if bar and not (bar.IsForbidden and bar:IsForbidden()) then
-                setProp(bar, "predictionBarHidden", false)
-                setProp(bar, "healthBarColorHidden", false)
-                if bar.SetAlpha then pcall(bar.SetAlpha, bar, 1) end
-                local barFill = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
-                if barFill then
-                    setProp(barFill, "healthBarFillHidden", false)
-                    if barFill.SetAlpha then pcall(barFill.SetAlpha, barFill, 1) end
-                    pcall(barFill.Show, barFill)
-                end
-            end
+    -- Prediction/absorb StatusBar children of the HealthBar. Their restore is
+    -- alpha only: Blizzard's own update functions drive Show/Hide from real
+    -- state, and recolor them.
+    for _, key in ipairs(PREDICTION_BAR_KEYS) do
+        local bar = ownerFrame[key]
+        if bar then
+            Enforce.Set(bar, "predictionBar", hidden, ALPHA_OPTS)
+            Enforce.Set(bar.GetStatusBarTexture and bar:GetStatusBarTexture(), "healthBarFill", hidden, FILL_OPTS)
+            Enforce.Set(bar, "healthBarColor", hidden, PREDICTION_COLOR_OPTS)
         end
     end
 end
 Util.SetHealthBarTextureOnlyHidden = SetHealthBarTextureOnlyHidden
+
+-- The three alpha-only hides below restore to the alpha Blizzard had on the
+-- region. Capture it once, and only while no key has the region at 0: the
+-- health-bar texture-only hide zeroes MyHealPredictionBar before the
+-- heal-prediction toggle runs, and a capture then would record the 0.
+local function captureOrigAlpha(region)
+    if getProp(region, "origAlpha") ~= nil then return end
+    if Enforce.IsHidden(region) then return end
+    local ok, a = pcall(region.GetAlpha, region)
+    setProp(region, "origAlpha", (ok and SS.safeNumber(a)) or 1)
+end
+
+local function restoreOrigAlpha(region)
+    if region.SetAlpha then
+        pcall(region.SetAlpha, region, getProp(region, "origAlpha") or 1)
+    end
+end
+
+-- IMPORTANT: Do NOT call Hide()/Show() on these frames. Hide/Show on protected
+-- unitframe children is taint-prone and can later surface as blocked calls in
+-- unrelated Blizzard code paths (e.g., AlternatePowerBar:Hide()). Alpha only,
+-- with persistent hooks.
+local ORIG_ALPHA_OPTS = { methods = SHOW_ALPHA, restore = restoreOrigAlpha }
+
+local function setOrigAlphaHidden(region, key, hidden)
+    if not region then return end
+    captureOrigAlpha(region)
+    Enforce.Set(region, key, hidden, ORIG_ALPHA_OPTS)
+end
 
 -- Hide/show the Over Absorb Glow on the Player Health Bar
 -- Frame: PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar.OverAbsorbGlow
@@ -1017,57 +778,7 @@ local function SetOverAbsorbGlowHidden(ownerFrame, hidden)
     if not ownerFrame or type(ownerFrame) ~= "table" then
         return
     end
-    local glowFrame = ownerFrame.OverAbsorbGlow
-    if not glowFrame or (glowFrame.IsForbidden and glowFrame:IsForbidden()) then
-        return
-    end
-    setProp(glowFrame, "overAbsorbGlowHidden", not not hidden)
-
-    if glowFrame.GetAlpha and getProp(glowFrame, "overAbsorbGlowOrigAlpha") == nil then
-        local ok, a = pcall(glowFrame.GetAlpha, glowFrame)
-        setProp(glowFrame, "overAbsorbGlowOrigAlpha", ok and (a or 1) or 1)
-    end
-
-    -- IMPORTANT: Do NOT call Hide()/Show() on this frame.
-    -- Hide/Show on protected unitframe children is taint-prone and can later surface as blocked
-    -- calls in unrelated Blizzard code paths (e.g., AlternatePowerBar:Hide()).
-    --
-    -- Uses SetAlpha(0) with persistent hooks.
-    if getProp(glowFrame, "overAbsorbGlowHidden") then
-        if glowFrame.SetAlpha then
-            pcall(glowFrame.SetAlpha, glowFrame, 0)
-        end
-
-        if _G.hooksecurefunc and not getProp(glowFrame, "overAbsorbGlowVisibilityHooked") then
-            setProp(glowFrame, "overAbsorbGlowVisibilityHooked", true)
-
-            _G.hooksecurefunc(glowFrame, "Show", function(self)
-                if getProp(self, "overAbsorbGlowHidden") and self.SetAlpha then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-
-            _G.hooksecurefunc(glowFrame, "SetAlpha", function(self, alpha)
-                if getProp(self, "overAbsorbGlowHidden") and alpha and alpha > 0 and self.SetAlpha then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    else
-        if glowFrame.SetAlpha then
-            local restoreAlpha = getProp(glowFrame, "overAbsorbGlowOrigAlpha")
-            if restoreAlpha == nil then restoreAlpha = 1 end
-            pcall(glowFrame.SetAlpha, glowFrame, restoreAlpha)
-        end
-    end
+    setOrigAlphaHidden(ownerFrame.OverAbsorbGlow, "overAbsorbGlow", hidden)
 end
 Util.SetOverAbsorbGlowHidden = SetOverAbsorbGlowHidden
 
@@ -1079,57 +790,7 @@ local function SetHealPredictionHidden(ownerFrame, hidden)
     if not ownerFrame or type(ownerFrame) ~= "table" then
         return
     end
-    local predictionFrame = ownerFrame.MyHealPredictionBar
-    if not predictionFrame or (predictionFrame.IsForbidden and predictionFrame:IsForbidden()) then
-        return
-    end
-    setProp(predictionFrame, "healPredictionHidden", not not hidden)
-
-    if predictionFrame.GetAlpha and getProp(predictionFrame, "healPredictionOrigAlpha") == nil then
-        local ok, a = pcall(predictionFrame.GetAlpha, predictionFrame)
-        setProp(predictionFrame, "healPredictionOrigAlpha", ok and (a or 1) or 1)
-    end
-
-    -- IMPORTANT: Do NOT call Hide()/Show() on this frame.
-    -- Hide/Show on protected unitframe children is taint-prone and can later surface as blocked
-    -- calls in unrelated Blizzard code paths.
-    --
-    -- Uses SetAlpha(0) with persistent hooks.
-    if getProp(predictionFrame, "healPredictionHidden") then
-        if predictionFrame.SetAlpha then
-            pcall(predictionFrame.SetAlpha, predictionFrame, 0)
-        end
-
-        if _G.hooksecurefunc and not getProp(predictionFrame, "healPredictionVisibilityHooked") then
-            setProp(predictionFrame, "healPredictionVisibilityHooked", true)
-
-            _G.hooksecurefunc(predictionFrame, "Show", function(self)
-                if getProp(self, "healPredictionHidden") and self.SetAlpha then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-
-            _G.hooksecurefunc(predictionFrame, "SetAlpha", function(self, alpha)
-                if getProp(self, "healPredictionHidden") and alpha and alpha > 0 and self.SetAlpha then
-                    if not getProp(self, "settingAlpha") then
-                        setProp(self, "settingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "settingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    else
-        if predictionFrame.SetAlpha then
-            local restoreAlpha = getProp(predictionFrame, "healPredictionOrigAlpha")
-            if restoreAlpha == nil then restoreAlpha = 1 end
-            pcall(predictionFrame.SetAlpha, predictionFrame, restoreAlpha)
-        end
-    end
+    setOrigAlphaHidden(ownerFrame.MyHealPredictionBar, "healPrediction", hidden)
 end
 Util.SetHealPredictionHidden = SetHealPredictionHidden
 
@@ -1142,53 +803,7 @@ local function SetHealthLossAnimationHidden(ownerFrame, hidden)
         return
     end
     local parent = ownerFrame.GetParent and ownerFrame:GetParent()
-    local animatedLossBar = parent and parent.PlayerFrameHealthBarAnimatedLoss
-    if not animatedLossBar or (animatedLossBar.IsForbidden and animatedLossBar:IsForbidden()) then
-        return
-    end
-    setProp(animatedLossBar, "healthLossAnimHidden", not not hidden)
-
-    if animatedLossBar.GetAlpha and getProp(animatedLossBar, "healthLossAnimOrigAlpha") == nil then
-        local ok, a = pcall(animatedLossBar.GetAlpha, animatedLossBar)
-        setProp(animatedLossBar, "healthLossAnimOrigAlpha", ok and (a or 1) or 1)
-    end
-
-    -- IMPORTANT: Do NOT call Hide()/Show() on this frame.
-    -- Hide/Show on protected unitframe children is taint-prone and can later surface as blocked
-    -- calls in unrelated Blizzard code paths.
-    --
-    -- Uses SetAlpha(0) with persistent hooks.
-    if getProp(animatedLossBar, "healthLossAnimHidden") then
-        if animatedLossBar.SetAlpha then
-            pcall(animatedLossBar.SetAlpha, animatedLossBar, 0)
-        end
-
-        if _G.hooksecurefunc and not getProp(animatedLossBar, "healthLossAnimVisibilityHooked") then
-            setProp(animatedLossBar, "healthLossAnimVisibilityHooked", true)
-
-            _G.hooksecurefunc(animatedLossBar, "Show", function(self)
-                if getProp(self, "healthLossAnimHidden") and self.SetAlpha then
-                    pcall(self.SetAlpha, self, 0)
-                end
-            end)
-
-            _G.hooksecurefunc(animatedLossBar, "SetAlpha", function(self, alpha)
-                if getProp(self, "healthLossAnimHidden") and alpha and alpha > 0 then
-                    if not getProp(self, "healthLossAnimSettingAlpha") then
-                        setProp(self, "healthLossAnimSettingAlpha", true)
-                        pcall(self.SetAlpha, self, 0)
-                        setProp(self, "healthLossAnimSettingAlpha", nil)
-                    end
-                end
-            end)
-        end
-    else
-        if animatedLossBar.SetAlpha then
-            local restoreAlpha = getProp(animatedLossBar, "healthLossAnimOrigAlpha")
-            if restoreAlpha == nil then restoreAlpha = 1 end
-            pcall(animatedLossBar.SetAlpha, animatedLossBar, restoreAlpha)
-        end
-    end
+    setOrigAlphaHidden(parent and parent.PlayerFrameHealthBarAnimatedLoss, "healthLossAnim", hidden)
 end
 Util.SetHealthLossAnimationHidden = SetHealthLossAnimationHidden
 

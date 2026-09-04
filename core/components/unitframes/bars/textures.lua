@@ -169,7 +169,7 @@ function Textures.applyValueBasedColor(bar, unit, overlay, useDark)
     -- Skip all work on bars hidden by "hide texture only" mode.
     -- The SetStatusBarColor hook already enforces alpha=0; calling SetVertexColor
     -- and SetStatusBarColor here is wasted work and introduces timing edge cases.
-    if getProp(bar, "healthBarColorHidden") then return end
+    if addon.Enforce.IsHidden(bar, "healthBarColor") then return end
 
     -- Get the appropriate health value color curve
     local curve = useDark and getHealthValueDarkCurve() or getHealthValueCurve()
