@@ -818,60 +818,17 @@ function addon:UNIT_THREAT_SITUATION_UPDATE(event, unit)
 end
 
 function addon:PLAYER_REGEN_ENABLED()
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0.1, function()
-            -- Handle deferred styling if ApplyStyles was called during combat
-            if self._pendingApplyStyles then
-                self._pendingApplyStyles = nil
-                self:ApplyStyles()
-            else
-                -- Just refresh opacity state
-                self:RefreshOpacityState()
-            end
-
-            -- Apply any deferred Pet overlay enforcement now that combat lockdown is lifted.
-            if addon._pendingPetOverlaysEnforce then
-                addon._pendingPetOverlaysEnforce = nil
-                if addon.UnitFrames_EnforcePetOverlays then
-                    addon.UnitFrames_EnforcePetOverlays()
-                end
-            end
-
-            -- Flush any cast bars that were reanchored (position-only) during combat
-            if addon.FlushPendingCastBarRefresh then
-                addon.FlushPendingCastBarRefresh()
-            end
-            if addon.FlushPendingBossCastBarRefresh then
-                addon.FlushPendingBossCastBarRefresh()
-            end
-
-            -- If a spec change required a profile switch while combat-locked, prompt now (out of combat).
-            if self.Profiles and self.Profiles._pendingSpecReload then
-                local pending = self.Profiles._pendingSpecReload
-                self.Profiles._pendingSpecReload = nil
-                local specName = (pending and pending.specID and GetSpecializationNameByID and GetSpecializationNameByID(pending.specID)) or "unknown"
-                if pending and pending.profile and self.Profiles.PromptReloadToProfile then
-                    self.Profiles:PromptReloadToProfile(pending.profile, { reason = "SpecChanged", specID = pending.specID, specName = specName })
-                end
-            end
-
-            -- Generic queued reload-to-profile requests (never execute ReloadUI() directly here).
-            if self.Profiles and self.Profiles._pendingReloadToProfile and self.Profiles.PromptReloadToProfile then
-                local p = self.Profiles._pendingReloadToProfile
-                self.Profiles._pendingReloadToProfile = nil
-                if p and p.layoutName then
-                    self.Profiles:PromptReloadToProfile(p.layoutName, p.meta)
-                end
-            end
-        end)
-    else
+    C_Timer.After(0.1, function()
+        -- Handle deferred styling if ApplyStyles was called during combat
         if self._pendingApplyStyles then
             self._pendingApplyStyles = nil
             self:ApplyStyles()
         else
+            -- Just refresh opacity state
             self:RefreshOpacityState()
         end
 
+        -- Apply any deferred Pet overlay enforcement now that combat lockdown is lifted.
         if addon._pendingPetOverlaysEnforce then
             addon._pendingPetOverlaysEnforce = nil
             if addon.UnitFrames_EnforcePetOverlays then
@@ -905,7 +862,7 @@ function addon:PLAYER_REGEN_ENABLED()
                 self.Profiles:PromptReloadToProfile(p.layoutName, p.meta)
             end
         end
-    end
+    end)
 end
 
 function addon:PLAYER_ENTERING_WORLD(event, isInitialLogin, isReloadingUi)
@@ -1106,22 +1063,20 @@ function addon:PLAYER_TARGET_CHANGED()
     if addon.EditMode.IsEditModeActiveOrOpening() then
         if addon.RepColorTrace then addon.RepColorTrace("PTC", "bail: edit mode guard") end
         -- Defer all work to avoid taint propagation during Edit Mode
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                self:RefreshOpacityState()
-            end)
-            -- Self-heal: the guard has a load-time seeding false positive
-            -- (editmode/core.lua). If it was transient, re-run the preemptive
-            -- hide once it clears so a missed acquisition-time hide doesn't
-            -- leave the post-reload default (visible) art until the next
-            -- target change.
-            C_Timer.After(0.5, function()
-                if addon.EditMode.IsEditModeActiveOrOpening() then return end
-                if addon.PreemptiveHideTargetElements then
-                    addon.PreemptiveHideTargetElements()
-                end
-            end)
-        end
+        C_Timer.After(0, function()
+            self:RefreshOpacityState()
+        end)
+        -- Self-heal: the guard has a load-time seeding false positive
+        -- (editmode/core.lua). If it was transient, re-run the preemptive
+        -- hide once it clears so a missed acquisition-time hide doesn't
+        -- leave the post-reload default (visible) art until the next
+        -- target change.
+        C_Timer.After(0.5, function()
+            if addon.EditMode.IsEditModeActiveOrOpening() then return end
+            if addon.PreemptiveHideTargetElements then
+                addon.PreemptiveHideTargetElements()
+            end
+        end)
         return
     end
     if addon.RepColorTrace then addon.RepColorTrace("PTC", "fired") end
@@ -1146,45 +1101,15 @@ function addon:PLAYER_TARGET_CHANGED()
     -- =========================================================================
     -- DEFERRED FULL STYLING PASS (runs AFTER Blizzard's TargetFrame_Update)
     -- =========================================================================
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            if addon.ApplyUnitFrameBarTexturesFor then
-                addon.ApplyUnitFrameBarTexturesFor("Player")
-                addon.ApplyUnitFrameBarTexturesFor("Target")
-            end
-            if addon.ApplyUnitFrameNameLevelTextFor then
-                addon.ApplyUnitFrameNameLevelTextFor("Target")
-            end
-            if addon.ApplyUnitFrameHealthTextVisibilityFor then
-                addon.ApplyUnitFrameHealthTextVisibilityFor("Target")
-            end
-            if addon.ApplyUnitFramePowerTextVisibilityFor then
-                addon.ApplyUnitFramePowerTextVisibilityFor("Target")
-            end
-            self:RefreshOpacityState()
-            
-            C_Timer.After(0.1, function()
-                if addon.ApplyUnitFrameBarTexturesFor then
-                    addon.ApplyUnitFrameBarTexturesFor("Player")
-                end
-            end)
-        end)
-    else
-        if addon.ApplyUnitFrameBarTexturesFor then
-            addon.ApplyUnitFrameBarTexturesFor("Player")
-            addon.ApplyUnitFrameBarTexturesFor("Target")
-        end
-        if addon.ApplyUnitFrameNameLevelTextFor then
-            addon.ApplyUnitFrameNameLevelTextFor("Target")
-        end
-        if addon.ApplyUnitFrameHealthTextVisibilityFor then
-            addon.ApplyUnitFrameHealthTextVisibilityFor("Target")
-        end
-        if addon.ApplyUnitFramePowerTextVisibilityFor then
-            addon.ApplyUnitFramePowerTextVisibilityFor("Target")
-        end
+    C_Timer.After(0, function()
+        addon.ApplyUnitFrameBarTexturesFor("Player")
+        addon.Refresh.Run("unitSwap", "Target")
         self:RefreshOpacityState()
-    end
+
+        C_Timer.After(0.1, function()
+            addon.ApplyUnitFrameBarTexturesFor("Player")
+        end)
+    end)
 end
 
 function addon:PLAYER_FOCUS_CHANGED()
@@ -1195,20 +1120,16 @@ function addon:PLAYER_FOCUS_CHANGED()
     -- which fires PLAYER_FOCUS_CHANGED. Skip preemptive hiding to avoid taint.
     if addon.EditMode.IsEditModeActiveOrOpening() then
         if addon.RepColorTrace then addon.RepColorTrace("PFC", "bail: edit mode guard") end
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if addon.ApplyUnitFrameBarTexturesFor then
-                    addon.ApplyUnitFrameBarTexturesFor("Focus")
-                end
-            end)
-            -- Self-heal for a transient guard false positive (see PLAYER_TARGET_CHANGED)
-            C_Timer.After(0.5, function()
-                if addon.EditMode.IsEditModeActiveOrOpening() then return end
-                if addon.PreemptiveHideFocusElements then
-                    addon.PreemptiveHideFocusElements()
-                end
-            end)
-        end
+        C_Timer.After(0, function()
+            addon.ApplyUnitFrameBarTexturesFor("Focus")
+        end)
+        -- Self-heal for a transient guard false positive (see PLAYER_TARGET_CHANGED)
+        C_Timer.After(0.5, function()
+            if addon.EditMode.IsEditModeActiveOrOpening() then return end
+            if addon.PreemptiveHideFocusElements then
+                addon.PreemptiveHideFocusElements()
+            end
+        end)
         return
     end
     if addon.RepColorTrace then addon.RepColorTrace("PFC", "fired") end
@@ -1233,42 +1154,16 @@ function addon:PLAYER_FOCUS_CHANGED()
     -- =========================================================================
     -- DEFERRED FULL STYLING PASS (runs AFTER Blizzard's FocusFrame_Update)
     -- =========================================================================
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            if addon.ApplyUnitFrameBarTexturesFor then
-                addon.ApplyUnitFrameBarTexturesFor("Focus")
-            end
-            -- Also apply Name & Level Text visibility to ensure hidden settings persist
-            if addon.ApplyUnitFrameNameLevelTextFor then
-                addon.ApplyUnitFrameNameLevelTextFor("Focus")
-            end
-            -- Also apply Health/Power bar text visibility to ensure hidden settings persist
-            if addon.ApplyUnitFrameHealthTextVisibilityFor then
-                addon.ApplyUnitFrameHealthTextVisibilityFor("Focus")
-            end
-            if addon.ApplyUnitFramePowerTextVisibilityFor then
-                addon.ApplyUnitFramePowerTextVisibilityFor("Focus")
-            end
-        end)
-    else
-        if addon.ApplyUnitFrameBarTexturesFor then
-            addon.ApplyUnitFrameBarTexturesFor("Focus")
-        end
-        if addon.ApplyUnitFrameNameLevelTextFor then
-            addon.ApplyUnitFrameNameLevelTextFor("Focus")
-        end
-        if addon.ApplyUnitFrameHealthTextVisibilityFor then
-            addon.ApplyUnitFrameHealthTextVisibilityFor("Focus")
-        end
-        if addon.ApplyUnitFramePowerTextVisibilityFor then
-            addon.ApplyUnitFramePowerTextVisibilityFor("Focus")
-        end
-    end
+    C_Timer.After(0, function()
+        addon.Refresh.Run("unitSwap", "Focus")
+    end)
 end
 
 -- Boss unit frames can appear/update without target/focus change events.
--- Re-apply styling after Blizzard updates boss units.
-function addon:INSTANCE_ENCOUNTER_ENGAGE_UNIT()
+-- Re-apply styling after Blizzard updates boss units. Both events share one
+-- handler; INSTANCE_ENCOUNTER_ENGAGE_UNIT adds a 0.1s follow-up pass to catch
+-- late Boss frame construction.
+local function onBossFramesChanged(self, event)
     -- IMPORTANT: Call preemptive hide BEFORE combat check to ensure ReputationColor
     -- (and other visual elements) are hidden immediately, even during combat.
     -- SetAlpha via pcall is safe during combat and won't cause taint.
@@ -1277,8 +1172,8 @@ function addon:INSTANCE_ENCOUNTER_ENGAGE_UNIT()
     end
 
     -- Text visibility uses pcall(SetAlpha) which is combat-safe (same as PreemptiveHide).
-    if addon.ApplyUnitFrameHealthTextVisibilityFor then addon.ApplyUnitFrameHealthTextVisibilityFor("Boss") end
-    if addon.ApplyUnitFramePowerTextVisibilityFor then addon.ApplyUnitFramePowerTextVisibilityFor("Boss") end
+    addon.ApplyUnitFrameHealthTextVisibilityFor("Boss")
+    addon.ApplyUnitFramePowerTextVisibilityFor("Boss")
 
     -- Boss unit frames can update during combat. Do not touch protected Boss frames during combat
     -- (even "cosmetic" changes) to avoid taint that can later block BossTargetFrameContainer:SetSize().
@@ -1286,61 +1181,18 @@ function addon:INSTANCE_ENCOUNTER_ENGAGE_UNIT()
         self._pendingApplyStyles = true
         return
     end
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            if addon.ApplyUnitFrameBarTexturesFor then addon.ApplyUnitFrameBarTexturesFor("Boss") end
-            if addon.ApplyUnitFrameHealthTextVisibilityFor then addon.ApplyUnitFrameHealthTextVisibilityFor("Boss") end
-            if addon.ApplyUnitFramePowerTextVisibilityFor then addon.ApplyUnitFramePowerTextVisibilityFor("Boss") end
-            if addon.ApplyBossCastBarFor then addon.ApplyBossCastBarFor() end
-            if addon.ApplyBossHighLevelIconVisibility then addon.ApplyBossHighLevelIconVisibility() end
-        end)
-        -- Small follow-up pass to catch late Boss frame construction.
+    C_Timer.After(0, function()
+        addon.Refresh.Run("unitBoss", "Boss")
+    end)
+    if event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
         C_Timer.After(0.1, function()
-            if addon.ApplyUnitFrameBarTexturesFor then addon.ApplyUnitFrameBarTexturesFor("Boss") end
-            if addon.ApplyBossCastBarFor then addon.ApplyBossCastBarFor() end
+            addon.ApplyUnitFrameBarTexturesFor("Boss")
+            addon.ApplyBossCastBarFor()
         end)
-    else
-        if addon.ApplyUnitFrameBarTexturesFor then addon.ApplyUnitFrameBarTexturesFor("Boss") end
-        if addon.ApplyUnitFrameHealthTextVisibilityFor then addon.ApplyUnitFrameHealthTextVisibilityFor("Boss") end
-        if addon.ApplyUnitFramePowerTextVisibilityFor then addon.ApplyUnitFramePowerTextVisibilityFor("Boss") end
-        if addon.ApplyBossCastBarFor then addon.ApplyBossCastBarFor() end
-        if addon.ApplyBossHighLevelIconVisibility then addon.ApplyBossHighLevelIconVisibility() end
     end
 end
-
-function addon:UPDATE_BOSS_FRAMES()
-    -- IMPORTANT: Call preemptive hide BEFORE combat check to ensure ReputationColor
-    -- (and other visual elements) are hidden immediately, even during combat.
-    -- SetAlpha via pcall is safe during combat and won't cause taint.
-    if addon.PreemptiveHideBossElements then
-        addon.PreemptiveHideBossElements()
-    end
-
-    -- Text visibility uses pcall(SetAlpha) which is combat-safe (same as PreemptiveHide).
-    if addon.ApplyUnitFrameHealthTextVisibilityFor then addon.ApplyUnitFrameHealthTextVisibilityFor("Boss") end
-    if addon.ApplyUnitFramePowerTextVisibilityFor then addon.ApplyUnitFramePowerTextVisibilityFor("Boss") end
-
-    -- Keep this lightweight: boss frames can update frequently during encounters.
-    if InCombatLockdown and InCombatLockdown() then
-        self._pendingApplyStyles = true
-        return
-    end
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            if addon.ApplyUnitFrameBarTexturesFor then addon.ApplyUnitFrameBarTexturesFor("Boss") end
-            if addon.ApplyUnitFrameHealthTextVisibilityFor then addon.ApplyUnitFrameHealthTextVisibilityFor("Boss") end
-            if addon.ApplyUnitFramePowerTextVisibilityFor then addon.ApplyUnitFramePowerTextVisibilityFor("Boss") end
-            if addon.ApplyBossCastBarFor then addon.ApplyBossCastBarFor() end
-            if addon.ApplyBossHighLevelIconVisibility then addon.ApplyBossHighLevelIconVisibility() end
-        end)
-    else
-        if addon.ApplyUnitFrameBarTexturesFor then addon.ApplyUnitFrameBarTexturesFor("Boss") end
-        if addon.ApplyUnitFrameHealthTextVisibilityFor then addon.ApplyUnitFrameHealthTextVisibilityFor("Boss") end
-        if addon.ApplyUnitFramePowerTextVisibilityFor then addon.ApplyUnitFramePowerTextVisibilityFor("Boss") end
-        if addon.ApplyBossCastBarFor then addon.ApplyBossCastBarFor() end
-        if addon.ApplyBossHighLevelIconVisibility then addon.ApplyBossHighLevelIconVisibility() end
-    end
-end
+addon.INSTANCE_ENCOUNTER_ENGAGE_UNIT = onBossFramesChanged
+addon.UPDATE_BOSS_FRAMES = onBossFramesChanged
 
 function addon:PLAYER_LEVEL_UP()
     -- Re-evaluate Rules when player levels up (for playerLevel trigger type)
