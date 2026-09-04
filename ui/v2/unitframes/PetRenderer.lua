@@ -5,7 +5,6 @@ addon.UI = addon.UI or {}
 addon.UI.UnitFrames = addon.UI.UnitFrames or {}
 local UF = addon.UI.UnitFrames
 local SettingsBuilder = addon.UI.SettingsBuilder
-local Controls = addon.UI.Controls
 
 local COMPONENT_ID = "ufPet"
 local UNIT_KEY = "Pet"
@@ -21,215 +20,14 @@ local B = UF.BindUnit(UNIT_KEY)
 --------------------------------------------------------------------------------
 
 local function buildHealthStyleTab(inner)
-    inner:AddDualBarStyleRow({
-        label = "Foreground",
-        getTexture = function()
-            local t = B.getUFDB() or {}
-            return t.healthBarTexture or "default"
-        end,
-        setTexture = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarTexture = v or "default"
-            B.applyBarTextures()
-        end,
-        colorValues = UF.healthColorValues,
-        colorOrder = UF.healthColorOrder,
-        colorInfoIcons = UF.healthColorInfoIcons,
-        getColorMode = function()
-            local t = B.getUFDB() or {}
-            return t.healthBarColorMode or "default"
-        end,
-        setColorMode = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarColorMode = v or "default"
-            B.applyBarTextures()
-        end,
-        getColor = function()
-            local t = B.getUFDB() or {}
-            local c = t.healthBarTint or {1, 1, 1, 1}
-            return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-        end,
-        setColor = function(r, g, b, a)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarTint = {r or 1, g or 1, b or 1, a or 1}
-            B.applyBarTextures()
-        end,
-        customColorValue = "custom",
-        hasAlpha = true,
-    })
-
-    inner:AddSpacer(8)
-
-    inner:AddDualBarStyleRow({
-        label = "Background",
-        getTexture = function()
-            local t = B.getUFDB() or {}
-            return t.healthBarBackgroundTexture or "default"
-        end,
-        setTexture = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBackgroundTexture = v or "default"
-            B.applyBarTextures()
-        end,
-        colorValues = UF.bgColorValues,
-        colorOrder = UF.bgColorOrder,
-        getColorMode = function()
-            local t = B.getUFDB() or {}
-            return t.healthBarBackgroundColorMode or "default"
-        end,
-        setColorMode = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBackgroundColorMode = v or "default"
-            B.applyBarTextures()
-        end,
-        getColor = function()
-            local t = B.getUFDB() or {}
-            local c = t.healthBarBackgroundTint or {0, 0, 0, 1}
-            return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
-        end,
-        setColor = function(r, g, b, a)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBackgroundTint = {r or 0, g or 0, b or 0, a or 1}
-            B.applyBarTextures()
-        end,
-        customColorValue = "custom",
-        hasAlpha = true,
-    })
-
-    inner:AddSlider({
-        label = "Background Opacity",
-        min = 0,
-        max = 100,
-        step = 1,
-        get = function()
-            local t = B.getUFDB() or {}
-            return tonumber(t.healthBarBackgroundOpacity) or 50
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBackgroundOpacity = tonumber(v) or 50
-            B.applyBarTextures()
-        end,
-    })
-
+    local get, set = B.barAccessors("healthBar")
+    inner:AddBarStyleBlock({ get = get, set = set, apply = B.applyBarTextures })
     inner:Finalize()
 end
 
 local function buildHealthBorderTab(inner)
-    local function isEnabled()
-        local t = B.getUFDB() or {}
-        return not not t.useCustomBorders
-    end
-
-    inner:AddBarBorderSelector({
-        label = "Border Style",
-        includeNone = true,
-        get = function()
-            local t = B.getUFDB() or {}
-            return t.healthBarBorderStyle or "square"
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBorderStyle = v or "square"
-            B.applyBarTextures()
-        end,
-        getHiddenEdges = function()
-            local t = B.getUFDB() or {}
-            return t.healthBarBorderHiddenEdges
-        end,
-        setHiddenEdges = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBorderHiddenEdges = v
-            B.applyBarTextures()
-        end,
-    })
-
-    inner:AddToggleColorPicker({
-        label = "Border Tint",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarBorderTintEnable
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBorderTintEnable = not not v
-            B.applyBarTextures()
-        end,
-        getColor = function()
-            local t = B.getUFDB() or {}
-            local c = t.healthBarBorderTintColor or {1, 1, 1, 1}
-            return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-        end,
-        setColor = function(r, g, b, a)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBorderTintColor = {r or 1, g or 1, b or 1, a or 1}
-            B.applyBarTextures()
-        end,
-        hasAlpha = true,
-    })
-
-    inner:AddSlider({
-        label = "Border Thickness",
-        min = 1,
-        max = 8,
-        step = 0.5,
-        precision = 1,
-        get = function()
-            local t = B.getUFDB() or {}
-            local v = tonumber(t.healthBarBorderThickness) or 1
-            return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2))
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2))
-            B.applyBarTextures()
-        end,
-    })
-
-    inner:AddDualSlider({
-        label = "Border Inset",
-        sliderA = {
-            axisLabel = "H", min = -4, max = 4, step = 1,
-            get = function()
-                local t = B.getUFDB() or {}
-                return tonumber(t.healthBarBorderInsetH) or tonumber(t.healthBarBorderInset) or 0
-            end,
-            set = function(v)
-                local t = B.ensureUFDB()
-                if not t then return end
-                t.healthBarBorderInsetH = tonumber(v) or 0
-                B.applyBarTextures()
-            end,
-            minLabel = "-4", maxLabel = "+4",
-        },
-        sliderB = {
-            axisLabel = "V", min = -4, max = 4, step = 1,
-            get = function()
-                local t = B.getUFDB() or {}
-                return tonumber(t.healthBarBorderInsetV) or tonumber(t.healthBarBorderInset) or 0
-            end,
-            set = function(v)
-                local t = B.ensureUFDB()
-                if not t then return end
-                t.healthBarBorderInsetV = tonumber(v) or 0
-                B.applyBarTextures()
-            end,
-            minLabel = "-4", maxLabel = "+4",
-        },
-    })
-
+    local get, set = B.barAccessors("healthBar")
+    inner:AddBarBorderBlock({ get = get, set = set, apply = B.applyBarTextures })
     inner:Finalize()
 end
 
@@ -449,34 +247,8 @@ function UF.RenderPet(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        tabInner:AddBarBorderSelector({ label = "Border Style", includeNone = true,
-                            get = function() local t = B.getUFDB() or {}; return t.powerBarBorderStyle or "square" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderStyle = v or "square"; B.applyBarTextures() end end,
-                            getHiddenEdges = function() local t = B.getUFDB() or {}; return t.powerBarBorderHiddenEdges end,
-                            setHiddenEdges = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderHiddenEdges = v; B.applyBarTextures() end end })
-                        tabInner:AddToggleColorPicker({ label = "Border Tint",
-                            get = function() local t = B.getUFDB() or {}; return not not t.powerBarBorderTintEnable end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderTintEnable = not not v; B.applyBarTextures() end end,
-                            getColor = function() local t = B.getUFDB() or {}; local c = t.powerBarBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.powerBarBorderTintColor = {r,g,b,a}; B.applyBarTextures() end end,
-                            hasAlpha = true })
-                        tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() local t = B.getUFDB() or {}; local v = tonumber(t.powerBarBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyBarTextures() end end })
-                        tabInner:AddDualSlider({ label = "Border Inset",
-                            sliderA = {
-                                axisLabel = "H", min = -4, max = 4, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarBorderInsetH) or tonumber(t.powerBarBorderInset) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderInsetH = tonumber(v) or 0; B.applyBarTextures() end end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                            sliderB = {
-                                axisLabel = "V", min = -4, max = 4, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarBorderInsetV) or tonumber(t.powerBarBorderInset) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBorderInsetV = tonumber(v) or 0; B.applyBarTextures() end end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                        })
+                        local get, set = B.barAccessors("powerBar")
+                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyBarTextures })
                         tabInner:Finalize()
                     end,
                     visibility = function(cf, tabInner)
@@ -569,19 +341,11 @@ function UF.RenderPet(panel, scrollContent)
                         tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
                             get = function() local t = B.getUFDB() or {}; local v = tonumber(t.nameBackdropBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
                             set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyNameLevelText() end end })
-                        tabInner:AddDualSlider({ label = "Border Inset",
-                            sliderA = {
-                                axisLabel = "H", min = -4, max = 4, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropBorderInsetH) or tonumber(t.nameBackdropBorderInset) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderInsetH = tonumber(v) or 0; B.applyNameLevelText() end end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                            sliderB = {
-                                axisLabel = "V", min = -4, max = 4, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropBorderInsetV) or tonumber(t.nameBackdropBorderInset) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderInsetV = tonumber(v) or 0; B.applyNameLevelText() end end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
+                        local insetGet, insetSet = B.barAccessors("nameBackdrop")
+                        tabInner:AddInsetPair({
+                            apply = B.applyNameLevelText,
+                            get = function(axis) return insetGet(axis == "h" and "insetH" or "insetV") end,
+                            set = function(axis, v) insetSet(axis == "h" and "insetH" or "insetV", v) end,
                         })
                         tabInner:Finalize()
                     end,

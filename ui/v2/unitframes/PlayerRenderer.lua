@@ -15,7 +15,8 @@ local UNIT_KEY = "Player"
 
 local B = UF.BindUnit(UNIT_KEY)
 
--- Shared tab builders are in Builders.lua (UF.Builders.buildBarStyleContent, etc.)
+-- Bar tabs build through Builder:AddBarStyleBlock and AddBarBorderBlock
+-- (BuilderComposites.lua) with accessors from UF.barAccessors (Helpers.lua).
 -- Player-only sections are in PlayerSections.lua (UF.PlayerSections.*)
 
 --------------------------------------------------------------------------------
@@ -214,11 +215,13 @@ function UF.RenderPlayer(panel, scrollContent)
                 sectionKey = "healthBar_tabs",
                 buildContent = {
                     style = function(cf, tabInner)
-                        UF.Builders.buildBarStyleContent(tabInner, "healthBar", B.ensureUFDB, B.applyBarTextures, nil, nil, nil, B.getUFDB)
+                        local get, set = B.barAccessors("healthBar")
+                        tabInner:AddBarStyleBlock({ get = get, set = set, apply = B.applyBarTextures })
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        UF.Builders.buildBarBorderContent(tabInner, "healthBar", B.ensureUFDB, B.applyBarTextures, B.getUFDB)
+                        local get, set = B.barAccessors("healthBar")
+                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyBarTextures })
                         tabInner:Finalize()
                     end,
                     visibility = function(cf, tabInner)
@@ -323,11 +326,16 @@ function UF.RenderPlayer(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     style = function(cf, tabInner)
-                        UF.Builders.buildBarStyleContent(tabInner, "powerBar", B.ensureUFDB, B.applyBarTextures, UF.powerColorValues, UF.powerColorOrder, nil, B.getUFDB)
+                        local get, set = B.barAccessors("powerBar")
+                        tabInner:AddBarStyleBlock({
+                            get = get, set = set, apply = B.applyBarTextures,
+                            foreground = { values = UF.powerColorValues, order = UF.powerColorOrder },
+                        })
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        UF.Builders.buildBarBorderContent(tabInner, "powerBar", B.ensureUFDB, B.applyBarTextures, B.getUFDB)
+                        local get, set = B.barAccessors("powerBar")
+                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyBarTextures })
                         tabInner:Finalize()
                     end,
                     visibility = function(cf, tabInner)
@@ -582,7 +590,11 @@ function UF.RenderPlayer(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     style = function(cf, tabInner)
-                        UF.Builders.buildBarStyleContent(tabInner, "castBar", B.ensureCastBarDB, B.applyCastBar, UF.castBarColorValues, UF.castBarColorOrder, nil, B.getCastBarDB)
+                        local get, set = B.barAccessors("castBar", { store = "castBar" })
+                        tabInner:AddBarStyleBlock({
+                            get = get, set = set, apply = B.applyCastBar,
+                            foreground = { values = UF.castBarColorValues, order = UF.castBarColorOrder },
+                        })
                         tabInner:Finalize()
                     end,
                     fillLine = function(cf, tabInner)
@@ -680,20 +692,8 @@ function UF.RenderPlayer(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Enable Border",
-                            get = function()
-                                local t = B.getCastBarDB() or {}
-                                return not not t.castBarBorderEnable
-                            end,
-                            set = function(v)
-                                local t = B.ensureCastBarDB()
-                                if not t then return end
-                                t.castBarBorderEnable = not not v
-                                B.applyCastBar()
-                            end,
-                        })
-                        UF.Builders.buildBarBorderContent(tabInner, "castBar", B.ensureCastBarDB, B.applyCastBar, B.getCastBarDB)
+                        local get, set = B.barAccessors("castBar", { store = "castBar" })
+                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyCastBar, enableToggle = true })
                         tabInner:Finalize()
                     end,
                     icon = function(cf, tabInner)
@@ -1156,20 +1156,8 @@ function UF.RenderPlayer(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Enable Border",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.nameBackdropBorderEnabled
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.nameBackdropBorderEnabled = not not v
-                                B.applyNameLevelText()
-                            end,
-                        })
-                        UF.Builders.buildBarBorderContent(tabInner, "nameBackdrop", B.ensureUFDB, B.applyNameLevelText, B.getUFDB)
+                        local get, set = B.barAccessors("nameBackdrop", { suffixes = { enabled = "BorderEnabled" } })
+                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyNameLevelText, enableToggle = true })
                         tabInner:Finalize()
                     end,
                     nameText = function(cf, tabInner)

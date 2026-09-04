@@ -42,6 +42,33 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
         return apb and rawget(apb, textKey) or nil
     end
 
+    -- Bar fields for AddBarStyleBlock and AddBarBorderBlock on the lowercase
+    -- keys this sub-table stores (texture, borderStyle, ...); insetH/insetV
+    -- fall back to the legacy single-value borderInset.
+    local ALT_POWER_BAR_KEYS = {
+        texture = "texture", colorMode = "colorMode", color = "tint",
+        bgTexture = "backgroundTexture", bgColorMode = "backgroundColorMode",
+        bgColor = "backgroundTint", bgOpacity = "backgroundOpacity",
+        style = "borderStyle", hiddenEdges = "borderHiddenEdges",
+        tintEnabled = "borderTintEnable", tintColor = "borderTintColor",
+        thickness = "borderThickness", insetH = "borderInsetH", insetV = "borderInsetV",
+    }
+    local altBarGet, altBarSet = addon.UI.Settings.Helpers.CreateFlatAccessors(
+        function(key)
+            local apb = getAltPowerBarDB()
+            if not apb then return nil end
+            local v = apb[key]
+            if v == nil and (key == "borderInsetH" or key == "borderInsetV") then
+                v = apb.borderInset
+            end
+            return v
+        end,
+        function(key, value)
+            local apb = ensureAltPowerBarDB()
+            if apb then apb[key] = value end
+        end,
+        ALT_POWER_BAR_KEYS)
+
     -- Alt power text tables sit two levels down (unit db > altPowerBar >
     -- textPercent/textValue), below UF.textAccessors' reach, so the field
     -- mapping is local. Hide toggles live in the Visibility tab.
@@ -146,203 +173,14 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
                         tabInner:Finalize()
                     end,
                     style = function(cf, tabInner)
-                        tabInner:AddDualBarStyleRow({
-                            label = "Foreground",
-                            getTexture = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.texture or "default"
-                            end,
-                            setTexture = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.texture = v or "default"
-                                applyBarTexturesFn()
-                            end,
-                            colorValues = UF.healthColorValues,
-                            colorOrder = UF.healthColorOrder,
-                            getColorMode = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.colorMode or "default"
-                            end,
-                            setColorMode = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.colorMode = v or "default"
-                                applyBarTexturesFn()
-                            end,
-                            getColor = function()
-                                local apb = getAltPowerBarDB() or {}
-                                local c = apb.tint or {1, 1, 1, 1}
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.tint = {r or 1, g or 1, b or 1, a or 1}
-                                applyBarTexturesFn()
-                            end,
-                            customColorValue = "custom",
-                            hasAlpha = true,
+                        tabInner:AddBarStyleBlock({
+                            get = altBarGet, set = altBarSet, apply = applyBarTexturesFn,
+                            foreground = { infoIcons = false },
                         })
-
-                        tabInner:AddSpacer(8)
-
-                        tabInner:AddDualBarStyleRow({
-                            label = "Background",
-                            getTexture = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.backgroundTexture or "default"
-                            end,
-                            setTexture = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.backgroundTexture = v or "default"
-                                applyBarTexturesFn()
-                            end,
-                            colorValues = UF.bgColorValues,
-                            colorOrder = UF.bgColorOrder,
-                            getColorMode = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.backgroundColorMode or "default"
-                            end,
-                            setColorMode = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.backgroundColorMode = v or "default"
-                                applyBarTexturesFn()
-                            end,
-                            getColor = function()
-                                local apb = getAltPowerBarDB() or {}
-                                local c = apb.backgroundTint or {0, 0, 0, 1}
-                                return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.backgroundTint = {r or 0, g or 0, b or 0, a or 1}
-                                applyBarTexturesFn()
-                            end,
-                            customColorValue = "custom",
-                            hasAlpha = true,
-                        })
-
-                        tabInner:AddSlider({
-                            label = "Background Opacity",
-                            min = 0, max = 100, step = 1,
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return tonumber(apb.backgroundOpacity) or 50
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.backgroundOpacity = tonumber(v) or 50
-                                applyBarTexturesFn()
-                            end,
-                        })
-
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        tabInner:AddBarBorderSelector({
-                            label = "Border Style",
-                            includeNone = true,
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.borderStyle or "square"
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.borderStyle = v or "square"
-                                applyBarTexturesFn()
-                            end,
-                            getHiddenEdges = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.borderHiddenEdges
-                            end,
-                            setHiddenEdges = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.borderHiddenEdges = v
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddToggleColorPicker({
-                            label = "Border Tint",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return not not apb.borderTintEnable
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.borderTintEnable = not not v
-                                applyBarTexturesFn()
-                            end,
-                            getColor = function()
-                                local apb = getAltPowerBarDB() or {}
-                                local c = apb.borderTintColor or {1, 1, 1, 1}
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.borderTintColor = {r or 1, g or 1, b or 1, a or 1}
-                                applyBarTexturesFn()
-                            end,
-                            hasAlpha = true,
-                        })
-
-                        tabInner:AddSlider({
-                            label = "Border Thickness",
-                            min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                local v = tonumber(apb.borderThickness) or 1
-                                return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2))
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.borderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2))
-                                applyBarTexturesFn()
-                            end,
-                        })
-
-                        tabInner:AddDualSlider({
-                            label = "Border Inset",
-                            sliderA = {
-                                axisLabel = "H", min = -4, max = 4, step = 1,
-                                get = function()
-                                    local apb = getAltPowerBarDB() or {}
-                                    return tonumber(apb.borderInsetH) or tonumber(apb.borderInset) or 0
-                                end,
-                                set = function(v)
-                                    local apb = ensureAltPowerBarDB()
-                                    if not apb then return end
-                                    apb.borderInsetH = tonumber(v) or 0
-                                    applyBarTexturesFn()
-                                end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                            sliderB = {
-                                axisLabel = "V", min = -4, max = 4, step = 1,
-                                get = function()
-                                    local apb = getAltPowerBarDB() or {}
-                                    return tonumber(apb.borderInsetV) or tonumber(apb.borderInset) or 0
-                                end,
-                                set = function(v)
-                                    local apb = ensureAltPowerBarDB()
-                                    if not apb then return end
-                                    apb.borderInsetV = tonumber(v) or 0
-                                    applyBarTexturesFn()
-                                end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                        })
-
+                        tabInner:AddBarBorderBlock({ get = altBarGet, set = altBarSet, apply = applyBarTexturesFn })
                         tabInner:Finalize()
                     end,
                     visibility = function(cf, tabInner)

@@ -21,88 +21,17 @@ local B = UF.BindUnit(UNIT_KEY)
 --------------------------------------------------------------------------------
 
 local function buildStyleTab(inner, barPrefix, applyFn, colorValues, colorOrder, colorInfoIcons)
-    colorValues = colorValues or UF.healthColorValues
-    colorOrder = colorOrder or UF.healthColorOrder
-    colorInfoIcons = colorInfoIcons or UF.healthColorInfoIcons
-
-    inner:AddDualBarStyleRow({
-        label = "Foreground",
-        getTexture = function() local t = B.getUFDB() or {}; return t[barPrefix .. "Texture"] or "default" end,
-        setTexture = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "Texture"] = v or "default"; applyFn() end end,
-        colorValues = colorValues, colorOrder = colorOrder, colorInfoIcons = colorInfoIcons,
-        getColorMode = function() local t = B.getUFDB() or {}; return t[barPrefix .. "ColorMode"] or "default" end,
-        setColorMode = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "ColorMode"] = v or "default"; applyFn() end end,
-        getColor = function() local t = B.getUFDB() or {}; local c = t[barPrefix .. "Tint"] or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-        setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t[barPrefix .. "Tint"] = {r or 1, g or 1, b or 1, a or 1}; applyFn() end end,
-        customColorValue = "custom", hasAlpha = true,
+    local get, set = B.barAccessors(barPrefix)
+    inner:AddBarStyleBlock({
+        get = get, set = set, apply = applyFn,
+        foreground = { values = colorValues, order = colorOrder, infoIcons = colorInfoIcons },
     })
-
-    inner:AddSpacer(8)
-
-    inner:AddDualBarStyleRow({
-        label = "Background",
-        getTexture = function() local t = B.getUFDB() or {}; return t[barPrefix .. "BackgroundTexture"] or "default" end,
-        setTexture = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BackgroundTexture"] = v or "default"; applyFn() end end,
-        colorValues = UF.bgColorValues, colorOrder = UF.bgColorOrder,
-        getColorMode = function() local t = B.getUFDB() or {}; return t[barPrefix .. "BackgroundColorMode"] or "default" end,
-        setColorMode = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BackgroundColorMode"] = v or "default"; applyFn() end end,
-        getColor = function() local t = B.getUFDB() or {}; local c = t[barPrefix .. "BackgroundTint"] or {0,0,0,1}; return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1 end,
-        setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t[barPrefix .. "BackgroundTint"] = {r or 0, g or 0, b or 0, a or 1}; applyFn() end end,
-        customColorValue = "custom", hasAlpha = true,
-    })
-
-    inner:AddSlider({
-        label = "Background Opacity",
-        min = 0, max = 100, step = 1,
-        get = function() local t = B.getUFDB() or {}; return tonumber(t[barPrefix .. "BackgroundOpacity"]) or 50 end,
-        set = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BackgroundOpacity"] = tonumber(v) or 50; applyFn() end end,
-    })
-
     inner:Finalize()
 end
 
 local function buildBorderTab(inner, barPrefix, applyFn)
-    inner:AddBarBorderSelector({
-        label = "Border Style",
-        includeNone = true,
-        get = function() local t = B.getUFDB() or {}; return t[barPrefix .. "BorderStyle"] or "square" end,
-        set = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BorderStyle"] = v or "square"; applyFn() end end,
-        getHiddenEdges = function() local t = B.getUFDB() or {}; return t[barPrefix .. "BorderHiddenEdges"] end,
-        setHiddenEdges = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BorderHiddenEdges"] = v; applyFn() end end,
-    })
-
-    inner:AddToggleColorPicker({
-        label = "Border Tint",
-        get = function() local t = B.getUFDB() or {}; return not not t[barPrefix .. "BorderTintEnable"] end,
-        set = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BorderTintEnable"] = not not v; applyFn() end end,
-        getColor = function() local t = B.getUFDB() or {}; local c = t[barPrefix .. "BorderTintColor"] or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-        setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t[barPrefix .. "BorderTintColor"] = {r or 1, g or 1, b or 1, a or 1}; applyFn() end end,
-        hasAlpha = true,
-    })
-
-    inner:AddSlider({
-        label = "Border Thickness",
-        min = 1, max = 8, step = 0.5, precision = 1,
-        get = function() local t = B.getUFDB() or {}; local v = tonumber(t[barPrefix .. "BorderThickness"]) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-        set = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BorderThickness"] = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); applyFn() end end,
-    })
-
-    inner:AddDualSlider({
-        label = "Border Inset",
-        sliderA = {
-            axisLabel = "H", min = -4, max = 4, step = 1,
-            get = function() local t = B.getUFDB() or {}; return tonumber(t[barPrefix .. "BorderInsetH"]) or tonumber(t[barPrefix .. "BorderInset"]) or 0 end,
-            set = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BorderInsetH"] = tonumber(v) or 0; applyFn() end end,
-            minLabel = "-4", maxLabel = "+4",
-        },
-        sliderB = {
-            axisLabel = "V", min = -4, max = 4, step = 1,
-            get = function() local t = B.getUFDB() or {}; return tonumber(t[barPrefix .. "BorderInsetV"]) or tonumber(t[barPrefix .. "BorderInset"]) or 0 end,
-            set = function(v) local t = B.ensureUFDB(); if t then t[barPrefix .. "BorderInsetV"] = tonumber(v) or 0; applyFn() end end,
-            minLabel = "-4", maxLabel = "+4",
-        },
-    })
-
+    local get, set = B.barAccessors(barPrefix)
+    inner:AddBarBorderBlock({ get = get, set = set, apply = applyFn })
     inner:Finalize()
 end
 
@@ -467,40 +396,8 @@ function UF.RenderFocus(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        tabInner:AddToggle({ label = "Enable Border",
-                            get = function() local t = B.getCastBarDB() or {}; return not not t.castBarBorderEnable end,
-                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBorderEnable = not not v; B.applyCastBar() end end })
-                        tabInner:AddBarBorderSelector({
-                            label = "Border Style",
-                            includeNone = true,
-                            get = function() local t = B.getCastBarDB() or {}; return t.castBarBorderStyle or "square" end,
-                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBorderStyle = v or "square"; B.applyCastBar() end end,
-                            getHiddenEdges = function() local t = B.getCastBarDB() or {}; return t.castBarBorderHiddenEdges end,
-                            setHiddenEdges = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBorderHiddenEdges = v; B.applyCastBar() end end,
-                        })
-                        tabInner:AddToggleColorPicker({ label = "Border Tint",
-                            get = function() local t = B.getCastBarDB() or {}; return not not t.castBarBorderTintEnable end,
-                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBorderTintEnable = not not v; B.applyCastBar() end end,
-                            getColor = function() local t = B.getCastBarDB() or {}; local c = t.castBarBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = B.ensureCastBarDB(); if t then t.castBarBorderTintColor = {r,g,b,a}; B.applyCastBar() end end,
-                            hasAlpha = true })
-                        tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() local t = B.getCastBarDB() or {}; local v = tonumber(t.castBarBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyCastBar() end end })
-                        tabInner:AddDualSlider({ label = "Border Inset",
-                            sliderA = {
-                                axisLabel = "H", min = -4, max = 4, step = 1,
-                                get = function() local t = B.getCastBarDB() or {}; return tonumber(t.castBarBorderInsetH) or tonumber(t.castBarBorderInset) or 0 end,
-                                set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBorderInsetH = tonumber(v) or 0; B.applyCastBar() end end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                            sliderB = {
-                                axisLabel = "V", min = -4, max = 4, step = 1,
-                                get = function() local t = B.getCastBarDB() or {}; return tonumber(t.castBarBorderInsetV) or tonumber(t.castBarBorderInset) or 0 end,
-                                set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBorderInsetV = tonumber(v) or 0; B.applyCastBar() end end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                        })
+                        local get, set = B.barAccessors("castBar", { store = "castBar" })
+                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyCastBar, enableToggle = true })
                         tabInner:Finalize()
                     end,
                     icon = function(cf, tabInner)
@@ -708,44 +605,8 @@ function UF.RenderFocus(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     border = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Enable Border",
-                            get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropBorderEnabled end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderEnabled = not not v; B.applyNameLevelText() end end,
-                        })
-                        tabInner:AddBarBorderSelector({
-                            label = "Border Style",
-                            includeNone = true,
-                            get = function() local t = B.getUFDB() or {}; return t.nameBackdropBorderStyle or "square" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderStyle = v or "square"; B.applyNameLevelText() end end,
-                            getHiddenEdges = function() local t = B.getUFDB() or {}; return t.nameBackdropBorderHiddenEdges end,
-                            setHiddenEdges = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderHiddenEdges = v; B.applyNameLevelText() end end,
-                        })
-                        tabInner:AddToggleColorPicker({
-                            label = "Border Tint",
-                            get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropBorderTintEnable end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderTintEnable = not not v; B.applyNameLevelText() end end,
-                            getColor = function() local t = B.getUFDB() or {}; local c = t.nameBackdropBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.nameBackdropBorderTintColor = {r,g,b,a}; B.applyNameLevelText() end end,
-                            hasAlpha = true,
-                        })
-                        tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() local t = B.getUFDB() or {}; local v = tonumber(t.nameBackdropBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyNameLevelText() end end })
-                        tabInner:AddDualSlider({ label = "Border Inset",
-                            sliderA = {
-                                axisLabel = "H", min = -4, max = 4, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropBorderInsetH) or tonumber(t.nameBackdropBorderInset) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderInsetH = tonumber(v) or 0; B.applyNameLevelText() end end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                            sliderB = {
-                                axisLabel = "V", min = -4, max = 4, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropBorderInsetV) or tonumber(t.nameBackdropBorderInset) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderInsetV = tonumber(v) or 0; B.applyNameLevelText() end end,
-                                minLabel = "-4", maxLabel = "+4",
-                            },
-                        })
+                        local get, set = B.barAccessors("nameBackdrop", { suffixes = { enabled = "BorderEnabled" } })
+                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyNameLevelText, enableToggle = true })
                         tabInner:Finalize()
                     end,
                     nameText = function(cf, tabInner)

@@ -235,6 +235,24 @@ function UF.castBarTextAccessors(unitKey, tableKey)
     return get, set
 end
 
+-- Accessors for a bar's prefixed key family (healthBarTexture,
+-- healthBarBorderInsetH, ...) as AddBarStyleBlock and AddBarBorderBlock
+-- consume them. The unit table by default; opts.store = "castBar" reads and
+-- writes the cast bar sub-table. opts.suffixes overrides single suffixes (the
+-- name backdrop stores its enable flag as BorderEnabled).
+function UF.barAccessors(unitKey, barPrefix, opts)
+    local Helpers = addon.UI.Settings.Helpers
+    local getTable, ensureTable
+    if opts and opts.store == "castBar" then
+        getTable = function() return UF.getCastBarDB(unitKey) end
+        ensureTable = function() return UF.ensureCastBarDB(unitKey) end
+    else
+        getTable = function() return UF.getUFDB(unitKey) end
+        ensureTable = function() return UF.ensureUFDB(unitKey) end
+    end
+    return Helpers.CreateBarAccessors(getTable, ensureTable, barPrefix, opts)
+end
+
 --------------------------------------------------------------------------------
 -- Bound Helpers
 --------------------------------------------------------------------------------
@@ -248,7 +266,7 @@ local BIND_NAMES = {
     "applyBarTextures", "applyHealthText", "applyPowerText", "applyPortrait",
     "applyCastBar", "applyVisibility", "applyScaleMult", "applyNameLevelText",
     "applyBuffsDebuffs",
-    "textAccessors", "castBarTextAccessors",
+    "textAccessors", "castBarTextAccessors", "barAccessors",
 }
 
 -- Returns a table with the helpers above bound to unitKey, plus applyStyles.
