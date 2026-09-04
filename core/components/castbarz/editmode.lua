@@ -55,30 +55,25 @@ function CBZ._SavePosition(barKey, layoutName, point, x, y)
     positions[layoutName][barKey] = { point = point, x = x, y = y }
 end
 
-function CBZ._RestorePositionForLayout(barKey, layoutName)
-    local bar = CBZ._bars[barKey]
-    if not bar or not layoutName then return end
-
-    -- A snapped bar has no stored position and never consults one: its placement is
-    -- an anchor, so it follows its unit frame across layout switches for free.
-    if CBZ._ApplySnap(bar) then return end
-
+local function GetBarPosition(barKey, layoutName)
     local positions = EnsurePositionsDB()
-    local pos = positions and positions[layoutName] and positions[layoutName][barKey]
-    if not pos then
-        pos = DefaultPositionFor(barKey)
-    end
-
-    local point = pos.point or "CENTER"
-    bar:ClearAllPoints()
-    bar:SetPoint(point, UIParent, point,
-        CBZ._SnapToPixels(pos.x or 0), CBZ._SnapToPixels(pos.y or 0))
+    return positions and positions[layoutName] and positions[layoutName][barKey] or nil
 end
 
---- Re-apply the stored position for the layout that is currently active.
---- No-ops before the first "layout" callback; LibEditMode fires that immediately
---- on registration when a layout is already loaded (LibEditMode.lua:694-695), so
---- there is no window where a bar sits unpositioned.
+-- A snapped bar discards a drop and springs back. Returning true also skips
+-- the persist, which is required rather than tidy: the persist reads
+-- frame:GetPoint(1), and a bar anchored to a Blizzard unit frame answers that
+-- with a secret. On a restore the same check keeps a snapped bar on its
+-- anchor: it has no stored position and never consults one, so it follows its
+-- unit frame across layout switches for free.
+local function ApplyBarPosition(bar, point, x, y)
+    if CBZ._ApplySnap(bar) then return true end
+    bar:ClearAllPoints()
+    bar:SetPoint(point, UIParent, point, CBZ._SnapToPixels(x), CBZ._SnapToPixels(y))
+end
+
+--- Re-apply the stored position, or the default, for the active layout.
+--- A no-op before the first "layout" callback, except for a snapped bar.
 function CBZ._RestorePosition(bar)
     CBZ._RefreshEditModeName(bar)
 
@@ -87,124 +82,76 @@ function CBZ._RestorePosition(bar)
     -- callback the way a free-positioned one has no choice but to.
     if CBZ._ApplySnap(bar) then return end
 
-    if not CBZ._currentLayout then return end
-    CBZ._RestorePositionForLayout(bar.barKey, CBZ._currentLayout)
+    addon.EditMode.RestorePositionable(bar)
 end
 
 --------------------------------------------------------------------------------
 -- LibEditMode registration
 --------------------------------------------------------------------------------
 
---- Register one bar with LibEditMode, at the moment it is created.
+--- Register one bar as a positionable (core/editmode/positionables.lua), at the
+--- moment it is created. Storage stays castBarZPositions[layoutName][barKey].
 ---
 --- Called from _EnsureBar rather than up front, so a disabled unit correctly does
---- not appear in Edit Mode at all. Registering late is safe: LibEditMode invokes
---- the position callback immediately when a layout is already loaded
---- (LibEditMode.lua:694-695), so a bar enabled mid-session is positioned on the
---- spot rather than waiting for the next layout change.
+--- not appear in Edit Mode at all. Registering late is safe: the helper restores
+--- the bar at registration when a layout is already loaded, so a bar enabled
+--- mid-session is positioned on the spot rather than waiting for the next layout
+--- change.
 function CBZ._RegisterBarEditMode(bar, row)
-    local lib = LibStub("LibEditMode", true)
-    if not lib or bar._editModeRegistered then return end
-    bar._editModeRegistered = true
-
     CBZ._RefreshEditModeName(bar)
 
-    lib:AddFrame(bar, function(frame, layoutName, point, x, y)
-        -- Snapped bars discard the drop and spring back. This returns BEFORE the
-        -- persist branch below, which is required rather than tidy: that branch
-        -- reads frame:GetPoint(1), and a bar anchored to a Blizzard unit frame
-        -- answers that with a secret.
-        if CBZ._ApplySnap(frame) then return end
-
-        if point and x and y then
-            frame:ClearAllPoints()
-            frame:SetPoint(point, UIParent, point,
-                CBZ._SnapToPixels(x), CBZ._SnapToPixels(y))
-        end
-        if layoutName then
-            -- Persist the RESOLVED anchor, not the requested one.
-            -- LibEditMode's normalizePosition() picks the anchor point per
-            -- screen quadrant and does not preserve what you set, so
-            -- storing the requested point drifts the frame on every reload.
-            --
-            -- Reading GetPoint here is safe despite the never-read-Scoot-
-            -- geometry rule: a free-positioned bar is anchored to UIParent,
-            -- so its own anchor chain carries no secrets. Only its children
-            -- anchor to the fill texture. Step 6's snapped bars must never
-            -- reach this branch -- they spring back instead of persisting a
-            -- drop, precisely because their GetPoint would answer secret.
-            local savedPoint, _, _, savedX, savedY = frame:GetPoint(1)
-            if savedPoint then
-                CBZ._SavePosition(row.barKey, layoutName, savedPoint, savedX, savedY)
-            else
-                CBZ._SavePosition(row.barKey, layoutName, point, x, y)
-            end
-        end
-    end, DefaultPositionFor(row.barKey), nil)
-
-    local Brand = addon.EditMode and addon.EditMode.Brand
-    if Brand then
-        -- All units share one settings page with a selector strip, so the selected
-        -- unit rides in pageState rather than a per-unit section. It carries the
-        -- unitKey, not the barKey: every boss bar deep-links to the one Boss page.
-        Brand:Register(bar, {
+    addon.EditMode.RegisterPositionable(bar, {
+        key = row.barKey,
+        default = DefaultPositionFor(row.barKey),
+        store = { get = GetBarPosition, set = CBZ._SavePosition },
+        apply = ApplyBarPosition,
+        restoreDefault = true,
+        brand = {
             navKey    = "castBarZ",
             pageState = { key = "_castBarZSelectedUnit", value = row.unitKey },
-            -- Snap mode and offsets are editable in the Edit Mode box itself. They
-            -- are the settings you judge by looking at the bar, and for a snapped
-            -- bar there is no dragging to fall back on.
             mirror    = CBZ._EditModeMirror,
-        })
-    end
+        },
+    })
 end
 
 function CBZ._InitializeEditMode()
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
+    addon.EditMode.OnEditMode("castBarZ", {
+        enter = function()
+            CBZ._editModeActive = true
 
-    lib:RegisterCallback("layout", function(layoutName)
-        CBZ._currentLayout = layoutName
-        for barKey in pairs(CBZ._bars) do
-            CBZ._RestorePositionForLayout(barKey, layoutName)
-        end
-    end)
+            -- Blizzard force-shows its own cast bar for the whole of Edit Mode --
+            -- UpdateShownState bails out early with StopFinishAnims / ApplyAlpha(1.0)
+            -- / Show() the moment isInEditMode is set (CastingBarFrame.lua:84-90),
+            -- which Edit Mode sets on entry via EditModeFrameSetup -> RefreshCastBar
+            -- (EditModeManager.lua:2188). A parked frame is immune to all three, but
+            -- this re-asserts the green selection outline, which is ignoreParentAlpha
+            -- and so has to be suppressed on its own terms.
+            CBZ._ReassertAllSuppression()
 
-    lib:RegisterCallback("enter", function()
-        CBZ._editModeActive = true
-
-        -- Blizzard force-shows its own cast bar for the whole of Edit Mode --
-        -- UpdateShownState bails out early with StopFinishAnims / ApplyAlpha(1.0)
-        -- / Show() the moment isInEditMode is set (CastingBarFrame.lua:84-90),
-        -- which Edit Mode sets on entry via EditModeFrameSetup -> RefreshCastBar
-        -- (EditModeManager.lua:2188). A parked frame is immune to all three, but
-        -- this re-asserts the green selection outline, which is ignoreParentAlpha
-        -- and so has to be suppressed on its own terms.
-        CBZ._ReassertAllSuppression()
-
-        -- Cast bars are invisible unless something is casting, so Edit Mode has
-        -- nothing to grab without a stand-in.
-        for _, bar in pairs(CBZ._bars) do
-            if CBZ._IsUnitEnabled(bar.unitKey) then
-                CBZ._ShowEditModePreview(bar)
+            -- Cast bars are invisible unless something is casting, so Edit Mode has
+            -- nothing to grab without a stand-in.
+            for _, bar in pairs(CBZ._bars) do
+                if CBZ._IsUnitEnabled(bar.unitKey) then
+                    CBZ._ShowEditModePreview(bar)
+                end
             end
-        end
-    end)
+        end,
+        exit = function()
+            CBZ._editModeActive = false
 
-    lib:RegisterCallback("exit", function()
-        CBZ._editModeActive = false
+            -- Where the deferred claim gets paid. Re-parenting is skipped while the
+            -- Edit Mode manager is on screen (writing there taints the manager itself,
+            -- not just the frame), so every suppression that entered Edit Mode unapplied
+            -- lands here on the way out.
+            CBZ._ReassertAllSuppression()
 
-        -- Where the deferred claim gets paid. Re-parenting is skipped while the
-        -- Edit Mode manager is on screen (writing there taints the manager itself,
-        -- not just the frame), so every suppression that entered Edit Mode unapplied
-        -- lands here on the way out.
-        CBZ._ReassertAllSuppression()
-
-        for _, bar in pairs(CBZ._bars) do
-            if not bar.casting then
-                bar:Hide()
-                CBZ._ClearText(bar)
-                CBZ._SetStaticProgress(bar, 0)
+            for _, bar in pairs(CBZ._bars) do
+                if not bar.casting then
+                    bar:Hide()
+                    CBZ._ClearText(bar)
+                    CBZ._SetStaticProgress(bar, 0)
+                end
             end
-        end
-    end)
+        end,
+    })
 end
