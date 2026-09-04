@@ -244,7 +244,7 @@ function TD.Enable()
     
     addon:Print("Taint debugging ENABLED. WoW taintLog CVar set to 2 (verbose).")
     addon:Print("Use '/scoot taint log' to view captured data.")
-    addon:Print("Use '/scoot taint off' to disable.")
+    addon:Print("Use '/scoot taint trace off' to disable.")
 end
 
 function TD.Disable()
@@ -376,19 +376,7 @@ function TD.GetFormattedLog()
 end
 
 function TD.ShowLog()
-    local logText = TD.GetFormattedLog()
-    if addon.DebugShowWindow then
-        addon.DebugShowWindow("Scoot Taint Debug Log", logText)
-    elseif addon.DebugCopyWindow then
-        -- Fallback to existing debug window
-        local f = addon.DebugCopyWindow
-        if f.title then f.title:SetText("Scoot Taint Debug Log") end
-        if f.EditBox then f.EditBox:SetText(logText) end
-        f:Show()
-        if f.EditBox then f.EditBox:HighlightText(); f.EditBox:SetFocus() end
-    else
-        addon:Print("Debug window not available.")
-    end
+    addon.DebugShowWindow("Scoot Taint Debug Log", TD.GetFormattedLog())
 end
 
 function TD.ClearLog()
@@ -418,32 +406,14 @@ end
 -- Slash Command Handler
 --------------------------------------------------------------------------------
 
--- rest: the tokens after "taint", as the command registry passes them.
-function TD.HandleSlashCommand(rest)
-    local subcmd = string.lower(rest[1] or "")
-    
-    if subcmd == "on" or subcmd == "enable" then
-        TD.Enable()
-    elseif subcmd == "off" or subcmd == "disable" then
-        TD.Disable()
-    elseif subcmd == "log" or subcmd == "show" then
-        TD.ShowLog()
-    elseif subcmd == "clear" then
-        TD.ClearLog()
-    elseif subcmd == "status" then
-        TD.Status()
-    else
-        addon:Print("Taint Debug Commands:")
-        addon:Print("  /scoot taint on     - Enable taint debugging")
-        addon:Print("  /scoot taint off    - Disable taint debugging")
-        addon:Print("  /scoot taint log    - Show captured taint data (copyable)")
-        addon:Print("  /scoot taint clear  - Clear all logs")
-        addon:Print("  /scoot taint status - Show current status")
-    end
-end
+local Commands = addon.Commands
 
-addon:RegisterSlashCommand({
-    name = "taint", help = "taint debugging",
-    usage = { "taint <on|off|log|clear|status>" },
-    handler = function(_, rest) TD.HandleSlashCommand(rest) end,
+local verbs = Commands.TraceVerbs({
+    label = "Edit Mode and LibEditModeOverride",
+    set = function(on) if on then TD.Enable() else TD.Disable() end end,
+    show = TD.ShowLog,
+    clear = TD.ClearLog,
 })
+verbs[#verbs + 1] = { word = "status", help = "enabled flag, log sizes, last error, taintLog CVar", fn = TD.Status }
+
+addon:RegisterSlashCommand({ name = "taint", help = "Edit Mode taint tracking", verbs = verbs })
