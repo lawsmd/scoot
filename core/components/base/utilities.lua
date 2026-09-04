@@ -250,16 +250,8 @@ local function ToggleDefaultIconOverlay(iconFrame, restore)
 end
 Util.ToggleDefaultIconOverlay = ToggleDefaultIconOverlay
 
-local function PlayerInCombat()
-    if InCombatLockdown() then
-        return true
-    end
-    if UnitAffectingCombat("player") then
-        return true
-    end
-    return false
-end
-Util.PlayerInCombat = PlayerInCombat
+-- The probe lives in core/opacity.lua beside the state opacity resolver.
+Util.PlayerInCombat = addon.Opacity.InCombat
 
 local function ClampOpacity(value, minValue)
     local v = tonumber(value) or 100
