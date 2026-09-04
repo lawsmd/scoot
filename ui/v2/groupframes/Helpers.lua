@@ -165,45 +165,16 @@ end
 -- Apply Functions
 --------------------------------------------------------------------------------
 
--- Fallback applier lists for builds without ApplyGroupFrameStylesFor: apply
--- only this frame's functions instead of global ApplyStyles, so the frames
--- don't refresh when unrelated settings change.
-local STYLE_APPLIER_NAMES = {
-    party = {
-        "ApplyPartyFrameHealthBarStyle", "ApplyPartyFrameHealthOverlays",
-        "ApplyPartyFrameNameOverlays", "ApplyPartyFrameHealthBarBorders",
-        "ApplyPartyFrameTitleStyle", "ApplyPartyFrameStatusTextStyle",
-        "ApplyPartyOverAbsorbGlowVisibility", "ApplyPartyHealPredictionVisibility",
-        "ApplyPartyAbsorbBarsVisibility", "ApplyPartyHealPredictionClipping",
-        "ApplyPartyGroupLeadIcons",
-    },
-    raid = {
-        "ApplyRaidFrameHealthBarStyle", "ApplyRaidFrameHealthOverlays",
-        "ApplyRaidFrameNameOverlays", "ApplyRaidFrameHealthBarBorders",
-        "ApplyRaidFrameStatusTextStyle", "ApplyRaidFrameGroupTitlesStyle",
-        "ApplyRaidOverAbsorbGlowVisibility", "ApplyRaidHealPredictionVisibility",
-        "ApplyRaidAbsorbBarsVisibility", "ApplyRaidHealPredictionClipping",
-        "ApplyRaidGroupLeadIcons", "ApplyRaidContainerVisibility",
-        "ApplyRaidRosterOverlay",
-    },
-}
-
+-- Restyle one frame family instead of running addon:ApplyStyles, so the
+-- frames don't refresh when unrelated settings change. The chain keys in
+-- core/refresh.lua are the frame keys.
 function GF.applyStyles(frameKey)
-    if addon and addon.ApplyGroupFrameStylesFor then
-        addon.ApplyGroupFrameStylesFor(frameKey)
-        return
-    end
-    for _, name in ipairs(STYLE_APPLIER_NAMES[frameKey] or {}) do
-        if addon[name] then addon[name]() end
-    end
+    addon.Refresh.Run(frameKey)
 end
 
+-- A text change restyles the whole family; there is no text-only chain.
 function GF.applyText(frameKey)
-    if addon and addon.ApplyGroupFrameTextFor then
-        addon.ApplyGroupFrameTextFor(frameKey)
-    else
-        GF.applyStyles(frameKey)
-    end
+    GF.applyStyles(frameKey)
 end
 
 function GF.applyRoleIcons(frameKey)

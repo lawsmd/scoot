@@ -44,73 +44,14 @@ end
 -- CompactUnitFrame (raid/party) cosmetic changes must NEVER be applied during combat,
 -- and synchronous work inside Blizzard's CompactUnitFrame update chains must be avoided.
 
+-- The drains run the same chains ApplyStyles runs (core/refresh.lua), so the
+-- post-combat state matches the out-of-combat state.
 local function applyRaidFrameStyles()
-    if addon.ApplyRaidFrameHealthBarStyle then
-        addon.ApplyRaidFrameHealthBarStyle()
-    end
-    if addon.ApplyRaidFrameStatusTextStyle then
-        addon.ApplyRaidFrameStatusTextStyle()
-    end
-    if addon.ApplyRaidFrameGroupTitlesStyle then
-        addon.ApplyRaidFrameGroupTitlesStyle()
-    end
-    -- Also apply combat-safe overlays (create/update overlays out of combat)
-    if addon.ApplyRaidFrameHealthOverlays then
-        addon.ApplyRaidFrameHealthOverlays()
-    end
-    if addon.ApplyRaidFrameNameOverlays then
-        addon.ApplyRaidFrameNameOverlays()
-    end
-    -- Apply health bar borders
-    if addon.ApplyRaidFrameHealthBarBorders then
-        addon.ApplyRaidFrameHealthBarBorders()
-    end
-    -- Apply visibility settings
-    if addon.ApplyRaidOverAbsorbGlowVisibility then
-        addon.ApplyRaidOverAbsorbGlowVisibility()
-    end
-    if addon.ApplyRaidHealPredictionVisibility then
-        addon.ApplyRaidHealPredictionVisibility()
-    end
-    if addon.ApplyRaidAbsorbBarsVisibility then
-        addon.ApplyRaidAbsorbBarsVisibility()
-    end
-    if addon.ApplyRaidHealPredictionClipping then
-        addon.ApplyRaidHealPredictionClipping()
-    end
+    addon.Refresh.Run("raid")
 end
 
 local function applyPartyFrameStyles()
-    if addon.ApplyPartyFrameHealthBarStyle then
-        addon.ApplyPartyFrameHealthBarStyle()
-    end
-    if addon.ApplyPartyFrameTitleStyle then
-        addon.ApplyPartyFrameTitleStyle()
-    end
-    -- Also apply combat-safe overlays (create/update overlays out of combat)
-    if addon.ApplyPartyFrameHealthOverlays then
-        addon.ApplyPartyFrameHealthOverlays()
-    end
-    if addon.ApplyPartyFrameNameOverlays then
-        addon.ApplyPartyFrameNameOverlays()
-    end
-    -- Apply visibility settings (over absorb glow, heal prediction, absorb bars)
-    if addon.ApplyPartyOverAbsorbGlowVisibility then
-        addon.ApplyPartyOverAbsorbGlowVisibility()
-    end
-    if addon.ApplyPartyHealPredictionVisibility then
-        addon.ApplyPartyHealPredictionVisibility()
-    end
-    if addon.ApplyPartyAbsorbBarsVisibility then
-        addon.ApplyPartyAbsorbBarsVisibility()
-    end
-    if addon.ApplyPartyHealPredictionClipping then
-        addon.ApplyPartyHealPredictionClipping()
-    end
-    -- Apply health bar borders
-    if addon.ApplyPartyFrameHealthBarBorders then
-        addon.ApplyPartyFrameHealthBarBorders()
-    end
+    addon.Refresh.Run("party")
 end
 
 function Combat.queueRaidFrameReapply()
