@@ -176,20 +176,10 @@ function UF.RenderBoss(panel, scrollContent)
                 sectionKey = "powerBar_tabs",
                 buildContent = {
                     positioning = function(cf, tabInner)
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarOffsetX) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarOffsetX = tonumber(v) or 0; B.applyBarTextures() end end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarOffsetY) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarOffsetY = tonumber(v) or 0; B.applyBarTextures() end end,
-                            },
+                        tabInner:AddOffsetPair({
+                            get = function(axis) local t = B.getUFDB(); return t and t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] end,
+                            set = function(axis, v) local t = B.ensureUFDB(); if t then t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] = v end end,
+                            apply = B.applyBarTextures,
                         })
                         tabInner:Finalize()
                     end,
@@ -292,20 +282,11 @@ function UF.RenderBoss(panel, scrollContent)
                             get = function() local t = B.getCastBarDB() or {}; return t.anchorMode or "default" end,
                             set = function(v) local t = B.ensureCastBarDB(); if t then t.anchorMode = v; if addon.MarkBossCastBarOnSideDirty then addon.MarkBossCastBarOnSideDirty() end; B.applyCastBar() end end,
                         })
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -200, max = 200, step = 1,
-                                get = function() local t = B.getCastBarDB() or {}; return tonumber(t.offsetX) or 0 end,
-                                set = function(v) local t = B.ensureCastBarDB(); if t then t.offsetX = tonumber(v) or 0; B.applyCastBar() end end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -200, max = 200, step = 1,
-                                get = function() local t = B.getCastBarDB() or {}; return tonumber(t.offsetY) or 0 end,
-                                set = function(v) local t = B.ensureCastBarDB(); if t then t.offsetY = tonumber(v) or 0; B.applyCastBar() end end,
-                            },
+                        tabInner:AddOffsetPair({
+                            range = 200,
+                            get = function(axis) local t = B.getCastBarDB(); return t and t[axis == "x" and "offsetX" or "offsetY"] end,
+                            set = function(axis, v) local t = B.ensureCastBarDB(); if t then t[axis == "x" and "offsetX" or "offsetY"] = v end end,
+                            apply = B.applyCastBar,
                         })
                         tabInner:Finalize()
                     end,
@@ -424,20 +405,11 @@ function UF.RenderBoss(panel, scrollContent)
                             get = function() local t = B.getCastBarDB() or {}; return tonumber(t.iconWidth) or tonumber(t.iconHeight) or 24 end,
                             set = function(v) local t = B.ensureCastBarDB(); if t then t.iconWidth = tonumber(v) or 24; t.iconHeight = tonumber(v) or 24; B.applyCastBar() end end,
                         })
-                        tabInner:AddDualSlider({
+                        tabInner:AddOffsetPair({
                             label = "Icon Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function() local t = B.getCastBarDB() or {}; return tonumber(t.castBarIconOffsetX) or 0 end,
-                                set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarIconOffsetX = tonumber(v) or 0; B.applyCastBar() end end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function() local t = B.getCastBarDB() or {}; return tonumber(t.castBarIconOffsetY) or 0 end,
-                                set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarIconOffsetY = tonumber(v) or 0; B.applyCastBar() end end,
-                            },
+                            get = function(axis) local t = B.getCastBarDB(); return t and t[axis == "x" and "castBarIconOffsetX" or "castBarIconOffsetY"] end,
+                            set = function(axis, v) local t = B.ensureCastBarDB(); if t then t[axis == "x" and "castBarIconOffsetX" or "castBarIconOffsetY"] = v end end,
+                            apply = B.applyCastBar,
                         })
                         tabInner:Finalize()
                     end,

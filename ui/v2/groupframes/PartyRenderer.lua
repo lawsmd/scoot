@@ -447,38 +447,11 @@ function GF.RenderParty(panel, scrollContent)
                         })
 
                         -- Offset dual slider (X and Y)
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -50, max = 50, step = 1,
-                                get = function()
-                                    local db = B.ensureDB()
-                                    return db and db.roleIconOffsetX or 0
-                                end,
-                                set = function(v)
-                                    local db = B.ensureDB()
-                                    if db then
-                                        db.roleIconOffsetX = v
-                                        B.applyRoleIcons()
-                                    end
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -50, max = 50, step = 1,
-                                get = function()
-                                    local db = B.ensureDB()
-                                    return db and db.roleIconOffsetY or 0
-                                end,
-                                set = function(v)
-                                    local db = B.ensureDB()
-                                    if db then
-                                        db.roleIconOffsetY = v
-                                        B.applyRoleIcons()
-                                    end
-                                end,
-                            },
+                        tabInner:AddOffsetPair({
+                            range = 50,
+                            get = function(axis) local db = B.getDB(); return db and db[axis == "x" and "roleIconOffsetX" or "roleIconOffsetY"] end,
+                            set = function(axis, v) local db = B.ensureDB(); if db then db[axis == "x" and "roleIconOffsetX" or "roleIconOffsetY"] = v end end,
+                            apply = B.applyRoleIcons,
                         })
 
                         tabInner:Finalize()
@@ -561,38 +534,11 @@ function GF.RenderParty(panel, scrollContent)
                         })
 
                         -- Offset dual slider (X and Y)
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -50, max = 50, step = 1,
-                                get = function()
-                                    local db = B.ensureDB()
-                                    return db and db.groupLeadIconOffsetX or 0
-                                end,
-                                set = function(v)
-                                    local db = B.ensureDB()
-                                    if db then
-                                        db.groupLeadIconOffsetX = v
-                                        B.applyGroupLeadIcons()
-                                    end
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -50, max = 50, step = 1,
-                                get = function()
-                                    local db = B.ensureDB()
-                                    return db and db.groupLeadIconOffsetY or 0
-                                end,
-                                set = function(v)
-                                    local db = B.ensureDB()
-                                    if db then
-                                        db.groupLeadIconOffsetY = v
-                                        B.applyGroupLeadIcons()
-                                    end
-                                end,
-                            },
+                        tabInner:AddOffsetPair({
+                            range = 50,
+                            get = function(axis) local db = B.getDB(); return db and db[axis == "x" and "groupLeadIconOffsetX" or "groupLeadIconOffsetY"] end,
+                            set = function(axis, v) local db = B.ensureDB(); if db then db[axis == "x" and "groupLeadIconOffsetX" or "groupLeadIconOffsetY"] = v end end,
+                            apply = B.applyGroupLeadIcons,
                         })
 
                         tabInner:Finalize()

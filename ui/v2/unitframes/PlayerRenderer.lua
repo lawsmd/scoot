@@ -257,36 +257,10 @@ function UF.RenderPlayer(panel, scrollContent)
                 sectionKey = "powerBar_tabs",
                 buildContent = {
                     positioning = function(cf, tabInner)
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local t = B.getUFDB() or {}
-                                    return tonumber(t.powerBarOffsetX) or 0
-                                end,
-                                set = function(v)
-                                    local t = B.ensureUFDB()
-                                    if not t then return end
-                                    t.powerBarOffsetX = tonumber(v) or 0
-                                    B.applyBarTextures()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local t = B.getUFDB() or {}
-                                    return tonumber(t.powerBarOffsetY) or 0
-                                end,
-                                set = function(v)
-                                    local t = B.ensureUFDB()
-                                    if not t then return end
-                                    t.powerBarOffsetY = tonumber(v) or 0
-                                    B.applyBarTextures()
-                                end,
-                            },
+                        tabInner:AddOffsetPair({
+                            get = function(axis) local t = B.getUFDB(); return t and t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] end,
+                            set = function(axis, v) local t = B.ensureUFDB(); if t then t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] = v end end,
+                            apply = B.applyBarTextures,
                         })
                         tabInner:Finalize()
                     end,
@@ -525,36 +499,11 @@ function UF.RenderPlayer(panel, scrollContent)
                 sectionKey = "castBar_tabs",
                 buildContent = {
                     positioning = function(cf, tabInner)
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -200, max = 200, step = 1,
-                                get = function()
-                                    local t = B.getCastBarDB() or {}
-                                    return tonumber(t.offsetX) or 0
-                                end,
-                                set = function(v)
-                                    local t = B.ensureCastBarDB()
-                                    if not t then return end
-                                    t.offsetX = tonumber(v) or 0
-                                    B.applyCastBar()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -200, max = 200, step = 1,
-                                get = function()
-                                    local t = B.getCastBarDB() or {}
-                                    return tonumber(t.offsetY) or 0
-                                end,
-                                set = function(v)
-                                    local t = B.ensureCastBarDB()
-                                    if not t then return end
-                                    t.offsetY = tonumber(v) or 0
-                                    B.applyCastBar()
-                                end,
-                            },
+                        tabInner:AddOffsetPair({
+                            range = 200,
+                            get = function(axis) local t = B.getCastBarDB(); return t and t[axis == "x" and "offsetX" or "offsetY"] end,
+                            set = function(axis, v) local t = B.ensureCastBarDB(); if t then t[axis == "x" and "offsetX" or "offsetY"] = v end end,
+                            apply = B.applyCastBar,
                         })
                         tabInner:Finalize()
                     end,
@@ -738,36 +687,11 @@ function UF.RenderPlayer(panel, scrollContent)
                                 B.applyCastBar()
                             end,
                         })
-                        tabInner:AddDualSlider({
+                        tabInner:AddOffsetPair({
                             label = "Icon Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local t = B.getCastBarDB() or {}
-                                    return tonumber(t.castBarIconOffsetX) or 0
-                                end,
-                                set = function(v)
-                                    local t = B.ensureCastBarDB()
-                                    if not t then return end
-                                    t.castBarIconOffsetX = tonumber(v) or 0
-                                    B.applyCastBar()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local t = B.getCastBarDB() or {}
-                                    return tonumber(t.castBarIconOffsetY) or 0
-                                end,
-                                set = function(v)
-                                    local t = B.ensureCastBarDB()
-                                    if not t then return end
-                                    t.castBarIconOffsetY = tonumber(v) or 0
-                                    B.applyCastBar()
-                                end,
-                            },
+                            get = function(axis) local t = B.getCastBarDB(); return t and t[axis == "x" and "castBarIconOffsetX" or "castBarIconOffsetY"] end,
+                            set = function(axis, v) local t = B.ensureCastBarDB(); if t then t[axis == "x" and "castBarIconOffsetX" or "castBarIconOffsetY"] = v end end,
+                            apply = B.applyCastBar,
                         })
                         tabInner:Finalize()
                     end,
@@ -1202,36 +1126,10 @@ function UF.RenderPlayer(panel, scrollContent)
                 sectionKey = "portrait_tabs",
                 buildContent = {
                     positioning = function(cf, tabInner)
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local t = B.getPortraitDB() or {}
-                                    return tonumber(t.offsetX) or 0
-                                end,
-                                set = function(v)
-                                    local t = B.ensurePortraitDB()
-                                    if not t then return end
-                                    t.offsetX = tonumber(v) or 0
-                                    B.applyPortrait()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function()
-                                    local t = B.getPortraitDB() or {}
-                                    return tonumber(t.offsetY) or 0
-                                end,
-                                set = function(v)
-                                    local t = B.ensurePortraitDB()
-                                    if not t then return end
-                                    t.offsetY = tonumber(v) or 0
-                                    B.applyPortrait()
-                                end,
-                            },
+                        tabInner:AddOffsetPair({
+                            get = function(axis) local t = B.getPortraitDB(); return t and t[axis == "x" and "offsetX" or "offsetY"] end,
+                            set = function(axis, v) local t = B.ensurePortraitDB(); if t then t[axis == "x" and "offsetX" or "offsetY"] = v end end,
+                            apply = B.applyPortrait,
                         })
                         tabInner:Finalize()
                     end,

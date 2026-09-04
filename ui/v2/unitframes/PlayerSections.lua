@@ -122,36 +122,11 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
                 sectionKey = "altPowerBar_tabs",
                 buildContent = {
                     positioning = function(cf, tabInner)
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -150, max = 150, step = 1,
-                                get = function()
-                                    local apb = getAltPowerBarDB() or {}
-                                    return tonumber(apb.offsetX) or 0
-                                end,
-                                set = function(v)
-                                    local apb = ensureAltPowerBarDB()
-                                    if not apb then return end
-                                    apb.offsetX = tonumber(v) or 0
-                                    applyBarTexturesFn()
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -150, max = 150, step = 1,
-                                get = function()
-                                    local apb = getAltPowerBarDB() or {}
-                                    return tonumber(apb.offsetY) or 0
-                                end,
-                                set = function(v)
-                                    local apb = ensureAltPowerBarDB()
-                                    if not apb then return end
-                                    apb.offsetY = tonumber(v) or 0
-                                    applyBarTexturesFn()
-                                end,
-                            },
+                        tabInner:AddOffsetPair({
+                            range = 150,
+                            get = function(axis) local apb = getAltPowerBarDB(); return apb and apb[axis == "x" and "offsetX" or "offsetY"] end,
+                            set = function(axis, v) local apb = ensureAltPowerBarDB(); if apb then apb[axis == "x" and "offsetX" or "offsetY"] = v end end,
+                            apply = applyBarTexturesFn,
                         })
                         tabInner:Finalize()
                     end,
@@ -418,36 +393,11 @@ function UF.PlayerSections.buildClassResource(builder, COMPONENT_ID, ensureUFDBF
             end
 
             crBuildContent.positioning = function(cf, tabInner)
-                tabInner:AddDualSlider({
-                    label = "Offset",
-                    sliderA = {
-                        axisLabel = "X",
-                        min = -150, max = 150, step = 1,
-                        get = function()
-                            local cfg = getClassResourceDB() or {}
-                            return tonumber(cfg.offsetX) or 0
-                        end,
-                        set = function(v)
-                            local cfg = ensureClassResourceDB()
-                            if not cfg then return end
-                            cfg.offsetX = tonumber(v) or 0
-                            applyClassResource()
-                        end,
-                    },
-                    sliderB = {
-                        axisLabel = "Y",
-                        min = -150, max = 150, step = 1,
-                        get = function()
-                            local cfg = getClassResourceDB() or {}
-                            return tonumber(cfg.offsetY) or 0
-                        end,
-                        set = function(v)
-                            local cfg = ensureClassResourceDB()
-                            if not cfg then return end
-                            cfg.offsetY = tonumber(v) or 0
-                            applyClassResource()
-                        end,
-                    },
+                tabInner:AddOffsetPair({
+                    range = 150,
+                    get = function(axis) local cfg = getClassResourceDB(); return cfg and cfg[axis == "x" and "offsetX" or "offsetY"] end,
+                    set = function(axis, v) local cfg = ensureClassResourceDB(); if cfg then cfg[axis == "x" and "offsetX" or "offsetY"] = v end end,
+                    apply = applyClassResource,
                 })
                 tabInner:Finalize()
             end

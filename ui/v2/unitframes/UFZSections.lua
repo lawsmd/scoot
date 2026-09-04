@@ -275,20 +275,11 @@ local function AddUnitSection(builder, opts)
                             get = function() return htCfg().symbolGap or -2 end,
                             set = function(v) call("SetSymbolGap", v) end,
                         })
-                        tabInner:AddDualSlider({
+                        tabInner:AddOffsetPair({
                             label = "Absorb Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -40, max = 40, step = 1,
-                                get = function() return htCfg().absorbX or 0 end,
-                                set = function(v) call("SetAbsorbOffset", v) end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -40, max = 40, step = 1,
-                                get = function() return htCfg().absorbY or 0 end,
-                                set = function(v) call("SetAbsorbOffset", nil, v) end,
-                            },
+                            range = 40,
+                            get = function(axis) return htCfg()[axis == "x" and "absorbX" or "absorbY"] end,
+                            set = function(axis, v) if axis == "x" then call("SetAbsorbOffset", v) else call("SetAbsorbOffset", nil, v) end end,
                         })
                         tabInner:Finalize()
                     end,
@@ -396,20 +387,11 @@ local function AddUnitSection(builder, opts)
                             get = function() return htCfg().powerLoc or "bottomright" end,
                             set = function(v) call("SetPowerLoc", v) end,
                         })
-                        tabInner:AddDualSlider({
+                        tabInner:AddOffsetPair({
                             label = "Primary Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -40, max = 40, step = 1,
-                                get = function() return htCfg().powerX or 0 end,
-                                set = function(v) call("SetPowerOffset", v) end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -40, max = 40, step = 1,
-                                get = function() return htCfg().powerY or 0 end,
-                                set = function(v) call("SetPowerOffset", nil, v) end,
-                            },
+                            range = 40,
+                            get = function(axis) return htCfg()[axis == "x" and "powerX" or "powerY"] end,
+                            set = function(axis, v) if axis == "x" then call("SetPowerOffset", v) else call("SetPowerOffset", nil, v) end end,
                         })
                         tabInner:AddSelector({
                             label = "Alternate Location",
@@ -418,20 +400,11 @@ local function AddUnitSection(builder, opts)
                             get = function() return htCfg().altPowerLoc or "bottomleft" end,
                             set = function(v) call("SetAltPowerLoc", v) end,
                         })
-                        tabInner:AddDualSlider({
+                        tabInner:AddOffsetPair({
                             label = "Alternate Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -40, max = 40, step = 1,
-                                get = function() return htCfg().altPowerX or 0 end,
-                                set = function(v) call("SetAltPowerOffset", v) end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -40, max = 40, step = 1,
-                                get = function() return htCfg().altPowerY or 0 end,
-                                set = function(v) call("SetAltPowerOffset", nil, v) end,
-                            },
+                            range = 40,
+                            get = function(axis) return htCfg()[axis == "x" and "altPowerX" or "altPowerY"] end,
+                            set = function(axis, v) if axis == "x" then call("SetAltPowerOffset", v) else call("SetAltPowerOffset", nil, v) end end,
                         })
                         tabInner:Finalize()
                     end,
@@ -486,20 +459,10 @@ local function AddUnitSection(builder, opts)
                             get = function() return htCfg().levelLoc or "topleft" end,
                             set = function(v) call("SetLevelLoc", v) end,
                         })
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -40, max = 40, step = 1,
-                                get = function() return htCfg().levelX or 0 end,
-                                set = function(v) call("SetLevelOffset", v) end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -40, max = 40, step = 1,
-                                get = function() return htCfg().levelY or 0 end,
-                                set = function(v) call("SetLevelOffset", nil, v) end,
-                            },
+                        tabInner:AddOffsetPair({
+                            range = 40,
+                            get = function(axis) return htCfg()[axis == "x" and "levelX" or "levelY"] end,
+                            set = function(axis, v) if axis == "x" then call("SetLevelOffset", v) else call("SetLevelOffset", nil, v) end end,
                         })
                         tabInner:Finalize()
                     end,

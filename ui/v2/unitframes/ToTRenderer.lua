@@ -81,20 +81,10 @@ end
 --------------------------------------------------------------------------------
 
 local function buildPortraitPositioningTab(inner)
-    inner:AddDualSlider({
-        label = "Offset",
-        sliderA = {
-            axisLabel = "X",
-            min = -100, max = 100, step = 1,
-            get = function() local t = B.getPortraitDB() or {}; return tonumber(t.offsetX) or 0 end,
-            set = function(v) local t = B.ensurePortraitDB(); if t then t.offsetX = tonumber(v) or 0; applyPortrait() end end,
-        },
-        sliderB = {
-            axisLabel = "Y",
-            min = -100, max = 100, step = 1,
-            get = function() local t = B.getPortraitDB() or {}; return tonumber(t.offsetY) or 0 end,
-            set = function(v) local t = B.ensurePortraitDB(); if t then t.offsetY = tonumber(v) or 0; applyPortrait() end end,
-        },
+    inner:AddOffsetPair({
+        get = function(axis) local t = B.getPortraitDB(); return t and t[axis == "x" and "offsetX" or "offsetY"] end,
+        set = function(axis, v) local t = B.ensurePortraitDB(); if t then t[axis == "x" and "offsetX" or "offsetY"] = v end end,
+        apply = applyPortrait,
     })
 
     inner:Finalize()
@@ -250,30 +240,11 @@ function UF.RenderToT(panel, scrollContent)
         minLabel = "0.5x", maxLabel = "2.0x",
     })
 
-    builder:AddDualSlider({
+    builder:AddOffsetPair({
         label = "Position Offset",
-        sliderA = {
-            axisLabel = "X",
-            min = -300, max = 300, step = 1,
-            get = function()
-                local t = B.getUFDB() or {}
-                return tonumber(t.offsetX) or 0
-            end,
-            set = function(v)
-                writeOffsets(v, nil)
-            end,
-        },
-        sliderB = {
-            axisLabel = "Y",
-            min = -300, max = 300, step = 1,
-            get = function()
-                local t = B.getUFDB() or {}
-                return tonumber(t.offsetY) or 0
-            end,
-            set = function(v)
-                writeOffsets(nil, v)
-            end,
-        },
+        range = 300,
+        get = function(axis) local t = B.getUFDB(); return t and t[axis == "x" and "offsetX" or "offsetY"] end,
+        set = function(axis, v) if axis == "x" then writeOffsets(v, nil) else writeOffsets(nil, v) end end,
     })
 
     --------------------------------------------------------------------------------

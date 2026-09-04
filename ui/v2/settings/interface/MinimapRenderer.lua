@@ -546,35 +546,11 @@ function Minimap.Render(panel, scrollContent)
                         })
 
                         -- Container Offset (Dual Slider for X/Y)
-                        tabBuilder:AddDualSlider({
+                        tabBuilder:AddOffsetPair({
                             label = "Container Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    return getSetting("addonButtonContainerOffsetX") or 0
-                                end,
-                                set = function(v)
-                                    setSetting("addonButtonContainerOffsetX", v)
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    return getSetting("addonButtonContainerOffsetY") or 0
-                                end,
-                                set = function(v)
-                                    setSetting("addonButtonContainerOffsetY", v)
-                                end,
-                            },
-                            isDisabled = function()
-                                return not getSetting("addonButtonContainerEnabled")
-                            end,
+                            get = function(axis) return getSetting(axis == "x" and "addonButtonContainerOffsetX" or "addonButtonContainerOffsetY") end,
+                            set = function(axis, v) setSetting(axis == "x" and "addonButtonContainerOffsetX" or "addonButtonContainerOffsetY", v) end,
+                            disabled = function() return not getSetting("addonButtonContainerEnabled") end,
                         })
 
                         -- Hide Addon Button Borders toggle
@@ -658,35 +634,11 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        tabBuilder:AddDualSlider({
+                        tabBuilder:AddOffsetPair({
                             label = "Button Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    return getSetting("mailButtonOffsetX") or 0
-                                end,
-                                set = function(v)
-                                    setSetting("mailButtonOffsetX", v)
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    return getSetting("mailButtonOffsetY") or 0
-                                end,
-                                set = function(v)
-                                    setSetting("mailButtonOffsetY", v)
-                                end,
-                            },
-                            isDisabled = function()
-                                return not getSetting("mailButtonEnabled")
-                            end,
+                            get = function(axis) return getSetting(axis == "x" and "mailButtonOffsetX" or "mailButtonOffsetY") end,
+                            set = function(axis, v) setSetting(axis == "x" and "mailButtonOffsetX" or "mailButtonOffsetY", v) end,
+                            disabled = function() return not getSetting("mailButtonEnabled") end,
                         })
 
                         tabBuilder:Finalize()
@@ -729,35 +681,11 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        tabBuilder:AddDualSlider({
+                        tabBuilder:AddOffsetPair({
                             label = "Button Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    return getSetting("trackingButtonOffsetX") or 0
-                                end,
-                                set = function(v)
-                                    setSetting("trackingButtonOffsetX", v)
-                                end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100,
-                                max = 100,
-                                step = 1,
-                                get = function()
-                                    return getSetting("trackingButtonOffsetY") or 0
-                                end,
-                                set = function(v)
-                                    setSetting("trackingButtonOffsetY", v)
-                                end,
-                            },
-                            isDisabled = function()
-                                return not getSetting("trackingButtonEnabled")
-                            end,
+                            get = function(axis) return getSetting(axis == "x" and "trackingButtonOffsetX" or "trackingButtonOffsetY") end,
+                            set = function(axis, v) setSetting(axis == "x" and "trackingButtonOffsetX" or "trackingButtonOffsetY", v) end,
+                            disabled = function() return not getSetting("trackingButtonEnabled") end,
                         })
 
                         tabBuilder:Finalize()

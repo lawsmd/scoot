@@ -198,20 +198,10 @@ function UF.RenderPet(panel, scrollContent)
                 sectionKey = "powerBar_tabs",
                 buildContent = {
                     positioning = function(cf, tabInner)
-                        tabInner:AddDualSlider({
-                            label = "Offset",
-                            sliderA = {
-                                axisLabel = "X",
-                                min = -100, max = 100, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarOffsetX) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarOffsetX = tonumber(v) or 0; B.applyBarTextures() end end,
-                            },
-                            sliderB = {
-                                axisLabel = "Y",
-                                min = -100, max = 100, step = 1,
-                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarOffsetY) or 0 end,
-                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarOffsetY = tonumber(v) or 0; B.applyBarTextures() end end,
-                            },
+                        tabInner:AddOffsetPair({
+                            get = function(axis) local t = B.getUFDB(); return t and t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] end,
+                            set = function(axis, v) local t = B.ensureUFDB(); if t then t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] = v end end,
+                            apply = B.applyBarTextures,
                         })
                         tabInner:Finalize()
                     end,
