@@ -857,7 +857,7 @@ local VALID_UNITS = { player = true, group = true, target = true, focus = true }
 local VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true }
 local VALID_KINDS = { buff = true, debuff = true, missingbuff = true }
 
-function addon.DebugScootAuras(sub, a1, a2, a3, a4)
+local function DebugScootAuras(sub, a1, a2, a3, a4)
     sub = sub or ""
 
     -- Phase 1 lifecycle commands (real trackers, persisted in the profile).
@@ -1188,7 +1188,7 @@ addon:RegisterDebugCommand({
     name = "scootauras", aliases = { "sa" }, help = "ScootAuras lifecycle commands and probes",
     usage = { "scootauras [add|del|edit|enable|disable|list|reconcile|flush|methods|create|park|revive|fresh|repoint|parkfilter|setunit|budget|clear|log]" },
     handler = function(sub, rest)
-        addon.DebugScootAuras(sub, string.lower(rest[2] or ""), string.lower(rest[3] or ""),
+        DebugScootAuras(sub, string.lower(rest[2] or ""), string.lower(rest[3] or ""),
             string.lower(rest[4] or ""), string.lower(rest[5] or ""))
     end,
 })

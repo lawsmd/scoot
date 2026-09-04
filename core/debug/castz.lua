@@ -499,7 +499,7 @@ end
 -- Entry points
 --------------------------------------------------------------------------------
 
-function addon.DebugCastZProbe(unit)
+local function DebugCastZProbe(unit)
     unit = (unit and unit ~= "" and unit:lower()) or "target"
     if not VALID_UNITS[unit] then
         addon.DebugShowWindow("Cast Bar Z Probe",
@@ -548,7 +548,7 @@ local PET_EVENTS = {
     "UNIT_SPELLCAST_INTERRUPTIBLE", "UNIT_SPELLCAST_NOT_INTERRUPTIBLE",
 }
 
-function addon.DebugCastZPet()
+local function DebugCastZPet()
     if petWatcher then
         petWatcher:UnregisterAllEvents()
         petWatcher = nil
@@ -644,7 +644,7 @@ local VALID_END_UNITS = {
 -- the shrink floor clamped. This reports which, per bar, from the last fit each
 -- one performed -- plus an independent measurement of a known string, so a broken
 -- ruler is distinguishable from a bar that simply never had a long name.
-function addon.DebugCastZFit()
+local function DebugCastZFit()
     local CBZ = addon.CastBarZ
     if not CBZ then
         addon.DebugShowWindow("Cast Bar Z - Fit", "Cast Bar Z is not loaded.")
@@ -719,7 +719,7 @@ function addon.DebugCastZFit()
     addon.DebugShowWindow("Cast Bar Z - Fit", lines)
 end
 
-function addon.DebugCastZEndOrder(unitArg)
+local function DebugCastZEndOrder(unitArg)
     if endWatcher then
         endWatcher:UnregisterAllEvents()
         endWatcher = nil
@@ -888,7 +888,7 @@ local function DumpPercentages(lines, unit, includeHold, barW)
 end
 
 --- @param unitArg string|nil  defaults to player.
-function addon.DebugCastZEmpower(unitArg)
+local function DebugCastZEmpower(unitArg)
     local unit = unitArg
     if not unit or not VALID_UNITS[unit] then unit = "player" end
 
@@ -1077,7 +1077,7 @@ local function EnsureTimeRig()
 end
 
 --- @param unitArg string|nil  defaults to player.
-function addon.DebugCastZTime(unitArg)
+local function DebugCastZTime(unitArg)
     local unit = string.lower(tostring(unitArg or "player"))
     if not VALID_UNITS[unit] then
         addon.DebugShowWindow("Cast Bar Z - Cast Time",
@@ -1234,11 +1234,11 @@ addon:RegisterDebugCommand({
     },
     handler = function(sub, rest)
         -- "petevents", not "pet": "pet" is a valid unit to probe.
-        if sub == "petevents" then addon.DebugCastZPet()
-        elseif sub == "endorder" then addon.DebugCastZEndOrder(rest[2])
-        elseif sub == "fit" then addon.DebugCastZFit()
-        elseif sub == "empower" then addon.DebugCastZEmpower(rest[2])
-        elseif sub == "time" then addon.DebugCastZTime(rest[2])
-        else addon.DebugCastZProbe(sub) end
+        if sub == "petevents" then DebugCastZPet()
+        elseif sub == "endorder" then DebugCastZEndOrder(rest[2])
+        elseif sub == "fit" then DebugCastZFit()
+        elseif sub == "empower" then DebugCastZEmpower(rest[2])
+        elseif sub == "time" then DebugCastZTime(rest[2])
+        else DebugCastZProbe(sub) end
     end,
 })

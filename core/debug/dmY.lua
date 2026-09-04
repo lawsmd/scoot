@@ -5,7 +5,7 @@ local addonName, addon = ...
 -- /scoot debug dmY cvar — Test 1: CVar data collection
 --------------------------------------------------------------------------------
 
-function addon.DebugDMYCVar()
+local function DebugDMYCVar()
     if InCombatLockdown() then
         addon:Print("Cannot toggle CVar during combat.")
         return
@@ -326,7 +326,7 @@ local function RunAPITests()
     return lines
 end
 
-function addon.DebugDMYAPI()
+local function DebugDMYAPI()
     local lines = RunAPITests()
     local output = table.concat(lines, "\n")
 
@@ -718,7 +718,7 @@ local function RunFieldsDump()
     return lines
 end
 
-function addon.DebugDMYFields()
+local function DebugDMYFields()
     local lines = RunFieldsDump()
     local output = table.concat(lines, "\n")
 
@@ -1142,7 +1142,7 @@ local function RunDrilldownTest()
     return lines
 end
 
-function addon.DebugDMYDrilldown()
+local function DebugDMYDrilldown()
     local lines = RunDrilldownTest()
     local output = table.concat(lines, "\n")
 
@@ -1402,7 +1402,7 @@ local function RunMulticolTest()
     return lines
 end
 
-function addon.DebugDMYMulticol()
+local function DebugDMYMulticol()
     local lines = RunMulticolTest()
     local output = table.concat(lines, "\n")
 
@@ -1623,7 +1623,7 @@ local function RunDrilldataTest()
     return lines
 end
 
-function addon.DebugDMYDrilldata()
+local function DebugDMYDrilldata()
     local lines = RunDrilldataTest()
     addon.DebugShowWindow("DMY Drill-Down Data Shape Test", table.concat(lines, "\n"))
 end
@@ -1634,7 +1634,7 @@ end
 -- fully characterizes the C-side formatters without needing combat values.
 --------------------------------------------------------------------------------
 
-function addon.DebugDMYAbbrev()
+local function DebugDMYAbbrev()
     local DMY = addon.DamageMetersY
     if not (DMY and DMY._BuildBreakpointTable) then
         addon:Print("DMY abbreviation module not available.")
@@ -1733,7 +1733,7 @@ end
 -- and the (drilldown-only) GUID cache state. Run OOC and again mid-combat.
 --------------------------------------------------------------------------------
 
-function addon.DebugDMYColprobe()
+local function DebugDMYColprobe()
     local DMY = addon.DamageMetersY
     local lines = { "== DMY Column Probe (identity correlation) ==" }
     local function add(fmt, ...)
@@ -1895,7 +1895,7 @@ end
 -- correlation caches. Not required for the feature; post-hoc diagnosis only.
 --------------------------------------------------------------------------------
 
-function addon.DebugDMYNames()
+local function DebugDMYNames()
     local DMY = addon.DamageMetersY
     if not DMY then
         addon.DebugShowWindow("DMY Names", "DMY not available.")
@@ -1946,7 +1946,7 @@ end
 -- secrecy probe; this one reads production counters.)
 --------------------------------------------------------------------------------
 
-function addon.DebugDMYDrillState()
+local function DebugDMYDrillState()
     local DMY = addon.DamageMetersY
     if not DMY then
         addon.DebugShowWindow("DMY Drilldown State", "DMY not available.")
@@ -2003,7 +2003,7 @@ end
 -- Display defers to combat end when run in combat (colprobe pattern).
 --------------------------------------------------------------------------------
 
-function addon.DebugDMYDeathProbe()
+local function DebugDMYDeathProbe()
     local DMY = addon.DamageMetersY
     if not DMY then
         addon.DebugShowWindow("DMY Death Probe", "DMY not available.")
@@ -2142,7 +2142,7 @@ end
 
 local headerIconGallery
 
-function addon.DebugDMYHeaderIcons()
+local function DebugDMYHeaderIcons()
     local DMY = addon.DamageMetersY
     if not (DMY and DMY.HEADER_ICONS and DMY._ConfigureHeaderIcon) then
         addon:Print("DMY header icons not available.")
@@ -2289,18 +2289,18 @@ end
 addon:RegisterDebugCommand({
     name = "dmY", help = "Modern damage meter probes",
     verbs = {
-        { word = "cvar", help = "CVar data collection", fn = addon.DebugDMYCVar },
-        { word = "api", help = "source API probe", fn = addon.DebugDMYAPI },
+        { word = "cvar", help = "CVar data collection", fn = DebugDMYCVar },
+        { word = "api", help = "source API probe", fn = DebugDMYAPI },
         { word = "trace", help = "the trace log", fn = addon.DebugDMYTrace },
-        { word = "fields", help = "field secrecy per source", fn = addon.DebugDMYFields },
-        { word = "drilldown", help = "spell breakdown probe", fn = addon.DebugDMYDrilldown },
-        { word = "drilldata", help = "drilldown data snapshot", fn = addon.DebugDMYDrilldata },
-        { word = "multicol", help = "multi-column data", fn = addon.DebugDMYMulticol },
-        { word = "abbrev", help = "number abbreviation", fn = addon.DebugDMYAbbrev },
-        { word = "colprobe", help = "column probe", fn = addon.DebugDMYColprobe },
-        { word = "names", help = "name resolution", fn = addon.DebugDMYNames },
-        { word = "drillstate", help = "drilldown state", fn = addon.DebugDMYDrillState },
-        { word = "deathprobe", help = "death recap probe", fn = addon.DebugDMYDeathProbe },
-        { word = "headericons", help = "header icon state", fn = addon.DebugDMYHeaderIcons },
+        { word = "fields", help = "field secrecy per source", fn = DebugDMYFields },
+        { word = "drilldown", help = "spell breakdown probe", fn = DebugDMYDrilldown },
+        { word = "drilldata", help = "drilldown data snapshot", fn = DebugDMYDrilldata },
+        { word = "multicol", help = "multi-column data", fn = DebugDMYMulticol },
+        { word = "abbrev", help = "number abbreviation", fn = DebugDMYAbbrev },
+        { word = "colprobe", help = "column probe", fn = DebugDMYColprobe },
+        { word = "names", help = "name resolution", fn = DebugDMYNames },
+        { word = "drillstate", help = "drilldown state", fn = DebugDMYDrillState },
+        { word = "deathprobe", help = "death recap probe", fn = DebugDMYDeathProbe },
+        { word = "headericons", help = "header icon state", fn = DebugDMYHeaderIcons },
     },
 })
