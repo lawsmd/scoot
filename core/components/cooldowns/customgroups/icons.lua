@@ -7,11 +7,9 @@ local CG = addon.CustomGroups
 -- Shared State
 --------------------------------------------------------------------------------
 
-CG._iconPools = { {}, {}, {}, {}, {} }       -- released icons per group
 CG._activeIcons = { {}, {}, {}, {}, {} }     -- visible icons per group
 CG._MIN_CD_DURATION = 1.5            -- GCD threshold
 
-local iconPools = CG._iconPools
 local activeIcons = CG._activeIcons
 
 local ICON_TEXCOORD_INSET = 0.07  -- crop outer ~7% to hide baked-in border art
@@ -133,22 +131,7 @@ end
 -- Icon Pool Management
 --------------------------------------------------------------------------------
 
-function CG._AcquireIcon(groupIndex, parent)
-    local pool = iconPools[groupIndex]
-    local icon = table.remove(pool)
-    if not icon then
-        icon = CreateIconFrame(parent)
-    else
-        icon:SetParent(parent)
-    end
-    icon:EnableMouse(true)
-    -- Back in play as a ping target. Plain frame, so the write is legal in combat.
-    icon:SetAttribute("ping-receiver", true)
-    icon:Show()
-    return icon
-end
-
-local function ReleaseIcon(groupIndex, icon)
+local function ResetIcon(icon)
     icon:Hide()
     icon:EnableMouse(false)
     icon:ClearAllPoints()
@@ -179,13 +162,33 @@ local function ReleaseIcon(groupIndex, icon)
     icon.entry = nil
     icon.entryIndex = nil
     icon._groupIndex = nil
-    table.insert(iconPools[groupIndex], icon)
+end
+
+-- One free list per group: an icon released by group 2 only ever serves
+-- group 2 again.
+CG._iconPools = {}
+for groupIndex = 1, 5 do
+    CG._iconPools[groupIndex] = addon.Pool.New(CreateIconFrame, ResetIcon)
+end
+local iconPools = CG._iconPools
+
+function CG._AcquireIcon(groupIndex, parent)
+    local icon, isNew = iconPools[groupIndex]:Acquire(parent)
+    if not isNew then
+        icon:SetParent(parent)
+    end
+    icon:EnableMouse(true)
+    -- Back in play as a ping target. Plain frame, so the write is legal in combat.
+    icon:SetAttribute("ping-receiver", true)
+    icon:Show()
+    return icon
 end
 
 function CG._ReleaseAllIcons(groupIndex)
     local icons = activeIcons[groupIndex]
+    local pool = iconPools[groupIndex]
     for i = #icons, 1, -1 do
-        ReleaseIcon(groupIndex, icons[i])
+        pool:Release(icons[i])
         icons[i] = nil
     end
 end

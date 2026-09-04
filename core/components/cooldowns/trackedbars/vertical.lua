@@ -387,7 +387,6 @@ end
 -- Vertical Mode: Stack Frame Creation
 --------------------------------------------------------------------------------
 
-local vertStackPool = {}
 local activeVertStacks = {}
 local vertContainer = nil
 
@@ -479,16 +478,7 @@ local function createVerticalStack()
     return stack
 end
 
-local function acquireVertStack()
-    local stack = table.remove(vertStackPool)
-    if not stack then
-        stack = createVerticalStack()
-    end
-    return stack
-end
-
-local function releaseVertStack(stack)
-    if not stack then return end
+local function resetVertStack(stack)
     stack:Hide()
     -- A stack darkened by the SetIsActive alpha mirror must not be reused
     -- invisible after combat.
@@ -503,8 +493,9 @@ local function releaseVertStack(stack)
     stack.barFill:SetValue(0)
     stack.barLock:SetMinMaxValues(0, 1)
     stack.barLock:SetValue(1)
-    table.insert(vertStackPool, stack)
 end
+
+local vertStackPool = addon.Pool.New(createVerticalStack, resetVertStack)
 
 local function releaseAllVertStacks()
     for i = #activeVertStacks, 1, -1 do
@@ -517,7 +508,7 @@ local function releaseAllVertStacks()
             m.vertLockBar = nil
         end
         TB.blizzItemToStack[entry.blizzItem] = nil
-        releaseVertStack(entry.frame)
+        vertStackPool:Release(entry.frame)
         activeVertStacks[i] = nil
     end
 end
@@ -956,7 +947,7 @@ local function buildOneVerticalItem(child, component, displayMode)
         return
     end
 
-    local stack = acquireVertStack()
+    local stack = vertStackPool:Acquire()
     stack:SetParent(vertContainer)
 
     local mirror = TB.barItemMirror[child] or {}
