@@ -22,7 +22,6 @@ globals = {
     "Scoot",
     -- Slash commands (Scoot.lua)
     "SLASH_SCOOT1",
-    "SLASH_SCOOT2",
     "SLASH_SCOOTCDM1",
     "SLASH_SCOOTDMSHOW1",
     "SLASH_SCOOTDMRESET1",

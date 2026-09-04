@@ -67,42 +67,16 @@ function addon:OpenCooldownManagerSettings()
 end
 
 SLASH_SCOOT1 = "/scoot"
-function SlashCmdList.SCOOT(msg, editBox)
-    local function trim(s)
-        if type(s) ~= "string" then return "" end
-        return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-    end
-    local function parseQuotedArgs(s)
-        local args = {}
-        s = s or ""
-        local i = 1
-        while i <= #s do
-            local c = s:sub(i, i)
-            if c == '"' then
-                local j = i + 1
-                while j <= #s and s:sub(j, j) ~= '"' do j = j + 1 end
-                table.insert(args, s:sub(i + 1, j - 1))
-                i = (j < #s) and (j + 2) or (j + 1)
-            else
-                local j = i
-                while j <= #s and not s:sub(j, j):match("%s") do j = j + 1 end
-                table.insert(args, s:sub(i, j - 1))
-                i = j + 1
-            end
-        end
-        return args
-    end
-
-    msg = trim(msg)
-    if msg == "" then
+function SlashCmdList.SCOOT(msg)
+    local args = addon.Commands.Parse(msg)
+    if #args == 0 then
         if addon.UI and addon.UI.SettingsPanel and addon.UI.SettingsPanel.Toggle then
             addon.UI.SettingsPanel:Toggle()
         end
         return
     end
-
-    local args = parseQuotedArgs(msg)
-    local cmd = string.lower(args[1] or "")
+    if addon.Commands.Dispatch("slash", args) then return end
+    local cmd = string.lower(args[1])
 
     -- /scoot debugmenu
     if cmd == "debugmenu" then
@@ -133,779 +107,6 @@ function SlashCmdList.SCOOT(msg, editBox)
             addon:Print("Delete did not persist (still exists): "..target)
         else
             addon:Print("Deleted layout: "..target)
-        end
-        return
-    end
-
-    -- /scoot debug <target>
-    -- /scoot debug profiles export ["Profile Name"]
-    if cmd == "debug" then
-        local sub1 = string.lower(args[2] or "")
-        local sub2 = string.lower(args[3] or "")
-
-        if sub1 == "" then
-            addon:Print("Usage:")
-            addon:Print("  /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|quests|<FrameName>>")
-            addon:Print("  /scoot debug profiles export [\"Profile Name\"]  |  reload")
-            addon:Print("  /scoot debug layoutdump \"Layout Name\"   -- persisted Edit Mode anchors")
-            addon:Print("  /scoot debug consoleport export")
-            addon:Print("  /scoot debug cdmlayers")
-            addon:Print("  /scoot debug fontpair")
-            addon:Print("  /scoot debug cdm   -- CDM styling pipeline state")
-            addon:Print("  /scoot debug sct   -- world text font/scale log and CVar state")
-            addon:Print("  /scoot debug slug  -- SLUG font-flag acceptance probe")
-            addon:Print("  /scoot debug hover [seconds]  -- what is eating the mouse at the cursor")
-            addon:Print("  /scoot debug dm export [overall|current|expired]")
-            addon:Print("  /scoot debug dm frames")
-            addon:Print("  /scoot debug dm trace <on|off>")
-            addon:Print("  /scoot debug dmY cvar")
-            addon:Print("  /scoot debug dmY api")
-            addon:Print("  /scoot debug dmY fields")
-            addon:Print("  /scoot debug dmY drilldown")
-            addon:Print("  /scoot debug dmY drilldata")
-            addon:Print("  /scoot debug dmY multicol")
-            addon:Print("  /scoot debug dmY abbrev")
-            addon:Print("  /scoot debug dmY colprobe")
-            addon:Print("  /scoot debug dmY drillstate")
-            addon:Print("  /scoot debug dmY deathprobe")
-            addon:Print("  /scoot debug dmY headericons")
-            addon:Print("  /scoot debug widget <spawnchild|releaseall|state>")
-            addon:Print("  /scoot debug inspect <state|cache>")
-            addon:Print("  /scoot debug nametext [size|lines|range|fallback|mode|font|case|caseprobe|sample|gradient|chrome|margin|slices|class|treatment|scan|lengthprobe|fitprobe|autofit|report]")
-            addon:Print("  /scoot debug castz [player|pet|target|focus|boss1..5]")
-            addon:Print("  /scoot debug castz petevents   (toggle pet cast-event watch)")
-            addon:Print("  /scoot debug castz endorder [unit]  (toggle cast-end event order watch)")
-            addon:Print("  /scoot debug castz fit         (shrink-to-fit state of each live bar)")
-            addon:Print("  /scoot debug repcolor [watch]   (ReputationColor banner trace)")
-            addon:Print("  /scoot debug auracontainer [start|stop|probes|filters|suppress|log]")
-            addon:Print("  /scoot debug scootauras [add|del|edit|enable|disable|list|reconcile|flush|methods|create|park|revive|fresh|repoint|parkfilter|setunit|budget|clear|log]")
-            addon:Print("  /scoot debug ufzauras [log|apply|kick]   (Unit Frames Z aura rows)")
-            addon:Print("  /scoot debug gfauras [log|filters|refresh]  (group frame aura tracking)")
-            addon:Print("  /scoot debug ping [seconds]              (12.1 ping receiver readiness)")
-            return
-        end
-
-        if sub1 == "slug" then
-            if addon.FontStyles and addon.FontStyles.DebugSlugProbe then
-                addon.FontStyles.DebugSlugProbe()
-            else
-                addon:Print("Slug probe not loaded.")
-            end
-            return
-        end
-
-        if sub1 == "widget" then
-            if sub2 == "spawnchild" then
-                if addon.DebugWidgetSpawnChild then
-                    addon.DebugWidgetSpawnChild()
-                else
-                    addon:Print("Widget debug not loaded.")
-                end
-                return
-            end
-            if sub2 == "releaseall" then
-                if addon.DebugWidgetReleaseAll then
-                    addon.DebugWidgetReleaseAll()
-                else
-                    addon:Print("Widget debug not loaded.")
-                end
-                return
-            end
-            if sub2 == "state" or sub2 == "" then
-                if addon.DebugWidgetState then
-                    addon.DebugWidgetState()
-                else
-                    addon:Print("Widget debug not loaded.")
-                end
-                return
-            end
-            addon:Print("Usage: /scoot debug widget <spawnchild|releaseall|state>")
-            return
-        end
-
-        if sub1 == "inspect" then
-            if sub2 == "cache" then
-                if addon.DebugInspectCache then
-                    addon.DebugInspectCache()
-                else
-                    addon:Print("Inspect debug not loaded.")
-                end
-                return
-            end
-            if sub2 == "state" or sub2 == "" then
-                if addon.DebugInspectState then
-                    addon.DebugInspectState()
-                else
-                    addon:Print("Inspect debug not loaded.")
-                end
-                return
-            end
-            addon:Print("Usage: /scoot debug inspect <state|cache>")
-            return
-        end
-
-        if sub1 == "profiles" then
-            if sub2 == "export" then
-                local name = args[4]
-                if addon.DebugExportProfile then
-                    addon.DebugExportProfile(name)
-                else
-                    addon:Print("Profile export not available (debug module missing).")
-                end
-                return
-            end
-            if sub2 == "reload" then
-                if addon.DumpReloadDebugLog then
-                    addon.DumpReloadDebugLog()
-                else
-                    addon:Print("Reload debug log not available.")
-                end
-                return
-            end
-            addon:Print("Usage: /scoot debug profiles export [\"Profile Name\"]")
-            addon:Print("       /scoot debug profiles reload")
-            return
-        end
-
-        -- Read-only dump of one layout's persisted anchor data, straight from
-        -- C_EditMode.GetLayouts(). For before/after comparison when verifying that
-        -- cross-machine sessions leave a layout's stored geometry untouched.
-        if sub1 == "layoutdump" then
-            local name = args[3]
-            if not name or name == "" then
-                addon:Print("Usage: /scoot debug layoutdump \"Layout Name\"")
-                return
-            end
-            local li = _G.C_EditMode and _G.C_EditMode.GetLayouts and _G.C_EditMode.GetLayouts()
-            if not (li and li.layouts) then
-                addon:Print("C_EditMode.GetLayouts() returned no data.")
-                return
-            end
-            local found
-            for _, layout in ipairs(li.layouts) do
-                if layout.layoutName == name then found = layout break end
-            end
-            if not found then
-                local names = {}
-                for _, layout in ipairs(li.layouts) do table.insert(names, tostring(layout.layoutName)) end
-                addon:Print("Layout not found: " .. tostring(name))
-                addon:Print("Available: " .. table.concat(names, ", "))
-                return
-            end
-            local lines = {}
-            table.insert(lines, string.format("Layout '%s' (layoutType=%s), %d systems",
-                tostring(found.layoutName), tostring(found.layoutType), #(found.systems or {})))
-            for _, sys in ipairs(found.systems or {}) do
-                local a = sys.anchorInfo or {}
-                table.insert(lines, string.format("system=%s index=%s default=%s | %s -> %s/%s (%.2f, %.2f)",
-                    tostring(sys.system), tostring(sys.systemIndex), tostring(sys.isInDefaultPosition),
-                    tostring(a.point), tostring(a.relativeTo), tostring(a.relativePoint),
-                    tonumber(a.offsetX) or 0, tonumber(a.offsetY) or 0))
-            end
-            local text = table.concat(lines, "\n")
-            if addon.DebugShowWindow then
-                addon.DebugShowWindow("Layout dump: " .. name, text)
-            else
-                for _, l in ipairs(lines) do addon:Print(l) end
-            end
-            return
-        end
-
-        if sub1 == "quests" then
-            if addon.DebugDumpQuests then
-                addon.DebugDumpQuests()
-            else
-                addon:Print("Quest debug not available.")
-            end
-            return
-        end
-
-        if sub1 == "consoleport" then
-            if sub2 == "export" then
-                if addon.DebugExportConsolePortProfile then
-                    addon.DebugExportConsolePortProfile()
-                else
-                    addon:Print("ConsolePort export helper not available (debug module missing).")
-                end
-                return
-            end
-            addon:Print("Usage: /scoot debug consoleport export")
-            return
-        end
-
-        -- /scoot debug editmode export ["Layout Name"]  (raw table)
-        -- /scoot debug editmode exportstring ["Layout Name"] (Blizzard Share string)
-        if sub1 == "editmode" then
-            if sub2 == "export" then
-                local name = args[4]
-                if addon.DebugExportEditModeLayoutTable then
-                    addon.DebugExportEditModeLayoutTable(name)
-                else
-                    addon:Print("Edit Mode export helper not available (debug module missing).")
-                end
-                return
-            end
-            if sub2 == "exportstring" then
-                local name = args[4]
-                if addon.DebugExportEditModeLayout then
-                    addon.DebugExportEditModeLayout(name)
-                else
-                    addon:Print("Edit Mode export helper not available (debug module missing).")
-                end
-                return
-            end
-            addon:Print("Usage: /scoot debug editmode export [\"Layout Name\"]")
-            addon:Print("       /scoot debug editmode exportstring [\"Layout Name\"]")
-            return
-        end
-
-        -- /scoot debug offscreen
-        if sub1 == "offscreen" then
-            if addon.DebugOffscreenUnlockDump then
-                addon.DebugOffscreenUnlockDump()
-            else
-                addon:Print("Off-screen debug not available (debug module missing).")
-            end
-            return
-        end
-
-        -- /scoot debug powerbarpos [simulate]
-        if sub1 == "powerbarpos" then
-            local simulate = (sub2 == "simulate" or sub2 == "reset")
-            if addon.DebugPowerBarPosition then
-                addon.DebugPowerBarPosition(simulate)
-            else
-                addon:Print("Power Bar position debug not available (bars module missing).")
-            end
-            return
-        end
-
-        -- /scoot debug powerbar <trace|log|clear>
-        -- Debug tracing for Power Bar positioning issues
-        if sub1 == "powerbar" then
-            if sub2 == "trace" then
-                local toggle = args[4]
-                if toggle == "on" then
-                    if addon.SetPowerBarDebugTrace then
-                        addon.SetPowerBarDebugTrace(true)
-                    else
-                        addon:Print("Power Bar debug trace not available (bars module missing).")
-                    end
-                elseif toggle == "off" then
-                    if addon.SetPowerBarDebugTrace then
-                        addon.SetPowerBarDebugTrace(false)
-                    else
-                        addon:Print("Power Bar debug trace not available (bars module missing).")
-                    end
-                else
-                    addon:Print("Usage: /scoot debug powerbar trace <on|off>")
-                end
-            elseif sub2 == "log" then
-                if addon.ShowPowerBarTraceLog then
-                    addon.ShowPowerBarTraceLog()
-                else
-                    addon:Print("Power Bar trace log not available (bars module missing).")
-                end
-            elseif sub2 == "clear" then
-                if addon.ClearPowerBarTraceLog then
-                    addon.ClearPowerBarTraceLog()
-                else
-                    addon:Print("Power Bar trace clear not available (bars module missing).")
-                end
-            else
-                addon:Print("Usage: /scoot debug powerbar <trace|log|clear>")
-                addon:Print("  trace on  - Start tracing Power Bar position changes")
-                addon:Print("  trace off - Stop tracing")
-                addon:Print("  log       - Show trace buffer in copyable window")
-                addon:Print("  clear     - Clear the trace buffer")
-            end
-            return
-        end
-
-
-        -- /scoot debug trackedbars <trace|log|clear|dump>
-        if sub1 == "trackedbars" or sub1 == "tb" then
-            if sub2 == "state" then
-                if addon.DebugTBState then
-                    addon.DebugTBState()
-                else
-                    addon:Print("TB state debug not available (trackedbars module missing).")
-                end
-                return
-            end
-            if sub2 == "trace" then
-                local toggle = args[4]
-                if toggle == "on" then
-                    if addon.SetTBTrace then addon.SetTBTrace(true)
-                    else addon:Print("TB trace not available (trackedbars module missing).") end
-                elseif toggle == "off" then
-                    if addon.SetTBTrace then addon.SetTBTrace(false)
-                    else addon:Print("TB trace not available (trackedbars module missing).") end
-                else
-                    addon:Print("Usage: /scoot debug trackedbars trace <on|off>")
-                end
-            elseif sub2 == "log" then
-                if addon.ShowTBTraceLog then addon.ShowTBTraceLog()
-                else addon:Print("TB trace log not available.") end
-            elseif sub2 == "clear" then
-                if addon.ClearTBTrace then addon.ClearTBTrace()
-                else addon:Print("TB trace clear not available.") end
-            elseif sub2 == "dump" then
-                if addon.DumpTBState then addon.DumpTBState()
-                else addon:Print("TB dump not available.") end
-            else
-                addon:Print("Usage: /scoot debug trackedbars <state|trace|log|clear|dump>")
-                addon:Print("  state     - Zero-touch diagnostic (DB, proxy, viewer, children)")
-                addon:Print("  trace on  - Start tracing bar lifecycle events")
-                addon:Print("  trace off - Stop tracing")
-                addon:Print("  log       - Show trace buffer in copyable window")
-                addon:Print("  clear     - Clear the trace buffer")
-                addon:Print("  dump      - Snapshot current state of all bar items")
-            end
-            return
-        end
-
-        -- /scoot debug raidframes
-        if sub1 == "raidframes" or sub1 == "rf" then
-            if addon.DebugDumpRaidFrames then
-                addon.DebugDumpRaidFrames()
-            else
-                addon:Print("Raid Frames debug not available (raidframes module missing).")
-            end
-            return
-        end
-
-        -- /scoot debug fontpair   -- Deep Shadow copy draw order
-        if sub1 == "fontpair" then
-            if addon.DebugFontPair then
-                addon.DebugFontPair()
-            else
-                addon:Print("Deep Shadow pair debug not available.")
-            end
-            return
-        end
-
-        -- /scoot debug cdmlayers
-        if sub1 == "cdmlayers" then
-            if addon.DebugCDMLayers then
-                addon.DebugCDMLayers()
-            else
-                addon:Print("CDM layers debug not available.")
-            end
-            return
-        end
-
-        -- /scoot debug sct   -- world text font/scale log + live CVar state
-        if sub1 == "sct" then
-            if addon.LogWorldTextFont then
-                local state = {}
-                for _, name in ipairs({ "WorldTextScale_v2", "WorldTextScale", "WorldTextMinSize" }) do
-                    local ok, value = pcall(_G.C_CVar.GetCVar, name)
-                    state[name] = (ok and value ~= nil) and tostring(value) or "<absent>"
-                end
-                state.resolved = addon.ResolveWorldTextScaleCVar and addon.ResolveWorldTextScaleCVar() or "?"
-                addon.LogWorldTextFont("debug sct:cvars", state)
-            end
-            if addon.ShowWorldTextFontLog then
-                addon.ShowWorldTextFontLog()
-            else
-                addon:Print("World text log not available.")
-            end
-            return
-        end
-
-        -- /scoot debug cdm
-        if sub1 == "cdm" then
-            if addon.DebugCDMState then
-                addon.DebugCDMState()
-            else
-                addon:Print("CDM pipeline debug not available.")
-            end
-            return
-        end
-
-        -- /scoot debug hover [seconds]
-        if sub1 == "hover" then
-            if addon.DebugHover then
-                addon.DebugHover(sub2)
-            else
-                addon:Print("Hover probe not available.")
-            end
-            return
-        end
-
-        -- /scoot debug dm export [overall|current|expired]
-        -- /scoot debug dm frames
-        -- /scoot debug dm trace <on|off>
-        if sub1 == "dm" then
-            if sub2 == "export" then
-                local sessionArg = args[4]
-                if addon.DebugExportDamageMeters then
-                    addon.DebugExportDamageMeters(sessionArg)
-                else
-                    addon:Print("Damage Meter export not available (debug module missing).")
-                end
-                return
-            end
-            if sub2 == "state" then
-                if addon.DebugDMState then
-                    addon.DebugDMState()
-                else
-                    addon:Print("DM state debug not available (damage meter module missing).")
-                end
-                return
-            end
-            if sub2 == "frames" then
-                if addon.DebugDMFrames then
-                    addon.DebugDMFrames()
-                else
-                    addon:Print("DM frame debug not available (damage meter module missing).")
-                end
-                return
-            end
-            if sub2 == "trace" then
-                local toggle = args[4]
-                if toggle == "on" then
-                    if addon.SetDMDebug then addon.SetDMDebug(true)
-                    else addon:Print("DM debug not available.") end
-                elseif toggle == "off" then
-                    if addon.SetDMDebug then addon.SetDMDebug(false)
-                    else addon:Print("DM debug not available.") end
-                else
-                    addon:Print("Usage: /scoot debug dm trace <on|off>")
-                end
-                return
-            end
-            addon:Print("Usage: /scoot debug dm state")
-            addon:Print("       /scoot debug dm export [overall|current|expired]")
-            addon:Print("       /scoot debug dm frames")
-            addon:Print("       /scoot debug dm trace <on|off>")
-            return
-        end
-
-        -- /scoot debug rosteroverlay
-        if sub1 == "rosteroverlay" or sub1 == "roster" then
-            if sub2 == "rows" then
-                if addon.DebugRosterOverlayRows then addon.DebugRosterOverlayRows()
-                else addon:Print("Roster overlay debug not available.") end
-                return
-            end
-            if addon.DebugRosterOverlay then addon.DebugRosterOverlay()
-            else addon:Print("Roster overlay debug not available.") end
-            return
-        end
-
-        -- /scoot debug castz [unit] - Cast Bar Z phase 0 API probe
-        -- /scoot debug castz petevents
-        if sub1 == "castz" then
-            -- "petevents", not "pet" — "pet" is a valid unit to probe.
-            if sub2 == "petevents" then
-                if addon.DebugCastZPet then addon.DebugCastZPet()
-                else addon:Print("Cast Bar Z debug not available.") end
-                return
-            end
-            if sub2 == "endorder" then
-                if addon.DebugCastZEndOrder then addon.DebugCastZEndOrder(args[4])
-                else addon:Print("Cast Bar Z debug not available.") end
-                return
-            end
-            if sub2 == "fit" then
-                if addon.DebugCastZFit then addon.DebugCastZFit()
-                else addon:Print("Cast Bar Z debug not available.") end
-                return
-            end
-            if sub2 == "empower" then
-                if addon.DebugCastZEmpower then addon.DebugCastZEmpower(args[4])
-                else addon:Print("Cast Bar Z debug not available.") end
-                return
-            end
-            if sub2 == "time" then
-                if addon.DebugCastZTime then addon.DebugCastZTime(args[4])
-                else addon:Print("Cast Bar Z debug not available.") end
-                return
-            end
-            if addon.DebugCastZProbe then addon.DebugCastZProbe(sub2)
-            else addon:Print("Cast Bar Z debug not available.") end
-            return
-        end
-
-        -- /scoot debug repcolor [watch] - ReputationColor banner lifecycle trace
-        if sub1 == "repcolor" then
-            if addon.DebugRepColor then addon.DebugRepColor(sub2)
-            else addon:Print("RepColor debug not available.") end
-            return
-        end
-
-        -- /scoot debug auracontainer [start|stop|probes|filters|suppress|log]
-        -- Target/Focus replacement aura container pilot (12.1 probe battery)
-        if sub1 == "auracontainer" or sub1 == "aurac" then
-            if addon.DebugAuraContainer then
-                addon.DebugAuraContainer(sub2, string.lower(args[4] or ""))
-            else
-                addon:Print("Aura container debug not available.")
-            end
-            return
-        end
-
-        -- /scoot debug scootauras [add|del|enable|disable|list|reconcile|flush|methods|...]
-        -- ScootAuras lifecycle commands (phase 1) plus the phase-0 probe battery
-        if sub1 == "scootauras" or sub1 == "sa" then
-            if addon.DebugScootAuras then
-                addon.DebugScootAuras(sub2, string.lower(args[4] or ""), string.lower(args[5] or ""), string.lower(args[6] or ""), string.lower(args[7] or ""))
-            else
-                addon:Print("ScootAuras debug not available.")
-            end
-            return
-        end
-
-        -- /scoot debug ufzauras [log|apply|kick]
-        -- Unit Frames Z aura rows (12.1 AuraContainer port telemetry)
-        if sub1 == "ufzauras" or sub1 == "ufza" then
-            if addon.DebugUFZAuras then
-                addon.DebugUFZAuras(sub2)
-            else
-                addon:Print("Unit Frames Z aura debug not available.")
-            end
-            return
-        end
-
-        -- /scoot debug gfauras [log|filters|refresh]
-        -- Group frame aura tracking (12.1 AuraContainer port telemetry)
-        if sub1 == "gfauras" or sub1 == "gfa" then
-            if addon.DebugGroupAuras then
-                addon.DebugGroupAuras(sub2)
-            else
-                addon:Print("Group frame aura debug not available.")
-            end
-            return
-        end
-
-        -- /scoot debug ping [seconds]
-        -- 12.1 ping-receiver readiness on Scoot-owned frames
-        if sub1 == "ping" then
-            if addon.DebugPing then
-                addon.DebugPing(sub2)
-            else
-                addon:Print("Ping probe not available.")
-            end
-            return
-        end
-
-        -- /scoot debug dmY cvar
-        -- /scoot debug dmY api
-        if sub1 == "dmy" then
-            if sub2 == "cvar" then
-                if addon.DebugDMYCVar then addon.DebugDMYCVar()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "api" then
-                if addon.DebugDMYAPI then addon.DebugDMYAPI()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "trace" then
-                if addon.DebugDMYTrace then addon.DebugDMYTrace()
-                else addon:Print("DMY trace not available.") end
-                return
-            end
-            if sub2 == "fields" then
-                if addon.DebugDMYFields then addon.DebugDMYFields()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "drilldown" then
-                if addon.DebugDMYDrilldown then addon.DebugDMYDrilldown()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "drilldata" then
-                if addon.DebugDMYDrilldata then addon.DebugDMYDrilldata()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "multicol" then
-                if addon.DebugDMYMulticol then addon.DebugDMYMulticol()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "abbrev" then
-                if addon.DebugDMYAbbrev then addon.DebugDMYAbbrev()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "colprobe" then
-                if addon.DebugDMYColprobe then addon.DebugDMYColprobe()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "names" then
-                if addon.DebugDMYNames then addon.DebugDMYNames()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "drillstate" then
-                if addon.DebugDMYDrillState then addon.DebugDMYDrillState()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "deathprobe" then
-                if addon.DebugDMYDeathProbe then addon.DebugDMYDeathProbe()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            if sub2 == "headericons" then
-                if addon.DebugDMYHeaderIcons then addon.DebugDMYHeaderIcons()
-                else addon:Print("DMY debug not available.") end
-                return
-            end
-            addon:Print("Usage: /scoot debug dmY cvar")
-            addon:Print("       /scoot debug dmY api")
-            addon:Print("       /scoot debug dmY trace")
-            addon:Print("       /scoot debug dmY fields")
-            addon:Print("       /scoot debug dmY drilldown")
-            addon:Print("       /scoot debug dmY drilldata")
-            addon:Print("       /scoot debug dmY multicol")
-            addon:Print("       /scoot debug dmY abbrev")
-            addon:Print("       /scoot debug dmY colprobe")
-            addon:Print("       /scoot debug dmY names")
-            addon:Print("       /scoot debug dmY drillstate")
-            addon:Print("       /scoot debug dmY deathprobe")
-            addon:Print("       /scoot debug dmY headericons")
-            return
-        end
-
-        -- /scoot debug nametext - the Unit Frames Z name box, built as it would ship
-        if sub1 == "nametext" then
-            if not addon.DebugNameTextToggle then
-                addon:Print("Name text debug not loaded.")
-                return
-            end
-            if sub2 == "" then
-                addon.DebugNameTextToggle()
-                return
-            end
-            if sub2 == "size" then
-                addon.DebugNameTextSetSize(args[4], args[5])
-                return
-            end
-            if sub2 == "lines" then
-                addon.DebugNameTextSetLines(args[4])
-                return
-            end
-            if sub2 == "range" then
-                addon.DebugNameTextSetRange(args[4], args[5])
-                return
-            end
-            if sub2 == "fallback" then
-                addon.DebugNameTextSetFallback(args[4])
-                return
-            end
-            if sub2 == "mode" then
-                addon.DebugNameTextSetMode(args[4])
-                return
-            end
-            if sub2 == "font" then
-                -- args[4] raw: font keys are case-sensitive (e.g. ROBOTO_REG)
-                addon.DebugNameTextSetFont(args[4])
-                return
-            end
-            if sub2 == "case" then
-                -- args[5] raw: it is a font key, same reason as 'font' above
-                addon.DebugNameTextSetCase(args[4], args[5])
-                return
-            end
-            if sub2 == "caseprobe" then
-                addon.DebugNameTextCaseProbe()
-                return
-            end
-            if sub2 == "sample" then
-                addon.DebugNameTextSample(args[4])
-                return
-            end
-            if sub2 == "gradient" then
-                addon.DebugNameTextSetGradient(args[4])
-                return
-            end
-            if sub2 == "chrome" then
-                addon.DebugNameTextToggleChrome()
-                return
-            end
-            if sub2 == "margin" then
-                addon.DebugNameTextSetMargin(args[4])
-                return
-            end
-            if sub2 == "slices" then
-                addon.DebugNameTextSetSlices(args[4])
-                return
-            end
-            if sub2 == "class" then
-                -- args[4] raw: class tokens are uppercase (DEATHKNIGHT, DEMONHUNTER)
-                addon.DebugNameTextSetClass(args[4])
-                return
-            end
-            if sub2 == "treatment" then
-                addon.DebugNameTextSetTreatment(args[4])
-                return
-            end
-            if sub2 == "identity" then
-                addon.DebugNameTextSetIdentity(args[4])
-                return
-            end
-            if sub2 == "scan" then
-                addon.DebugNameTextScan()
-                return
-            end
-            if sub2 == "lengthprobe" then
-                addon.DebugNameTextLengthProbe()
-                return
-            end
-            if sub2 == "fitprobe" then
-                addon.DebugNameTextFitProbe(args[4])
-                return
-            end
-            if sub2 == "autofit" then
-                addon.DebugNameTextAutoFit()
-                return
-            end
-            if sub2 == "report" then
-                addon.DebugNameTextReport()
-                return
-            end
-            addon:Print("Usage: /scoot debug nametext            (show/hide)")
-            addon:Print("       /scoot debug nametext size <w> <h>")
-            addon:Print("       /scoot debug nametext lines <n>")
-            addon:Print("       /scoot debug nametext range <min> <max>")
-            addon:Print("       /scoot debug nametext fallback <n>   (size when unmeasurable)")
-            addon:Print("       /scoot debug nametext mode <font|scale|blizzard>")
-            addon:Print("       /scoot debug nametext font <FACE>")
-            addon:Print("       /scoot debug nametext case <normal|upper|smallcaps> [FACE]")
-            addon:Print("       /scoot debug nametext caseprobe         (can string.upper touch a secret?)")
-            addon:Print("       /scoot debug nametext sample <n>")
-            addon:Print("       /scoot debug nametext gradient <auto|off|white|line|block|slice>")
-            addon:Print("       /scoot debug nametext chrome            (backdrop on/off, to drag the box)")
-            addon:Print("       /scoot debug nametext margin <auto|off|px>  (blind-spot safety margin)")
-            addon:Print("       /scoot debug nametext slices <n>")
-            addon:Print("       /scoot debug nametext class <TOKEN|auto>")
-            addon:Print("       /scoot debug nametext treatment <cast|raw>")
-            addon:Print("       /scoot debug nametext identity <player|class>")
-            addon:Print("       /scoot debug nametext scan")
-            addon:Print("       /scoot debug nametext lengthprobe")
-            addon:Print("       /scoot debug nametext fitprobe [steps]  (does D(size) settle?)")
-            addon:Print("       /scoot debug nametext autofit           (render, then show the size derivation)")
-            addon:Print("       /scoot debug nametext report")
-            return
-        end
-
-        local target = args[2]
-        if not target or target == "" then
-            addon:Print("Usage: /scoot debug <player|target|focus|pet|ab1..ab8|essential|utility|micro|stance|buffs|debuffs|offscreen|powerbarpos|dim|trackedbars|<FrameName>>")
-            return
-        end
-        if addon.DebugDump then
-            addon.DebugDump(target)
-        else
-            addon:Print("Debug module not loaded.")
         end
         return
     end
@@ -1019,6 +220,310 @@ function SlashCmdList.SCOOT(msg, editBox)
         addon.UI.SettingsPanel:Toggle()
     end
 end
+
+--------------------------------------------------------------------------------
+-- /scoot debug registrations. Each moves to the file that owns its handler in
+-- refactor #32 phase 2; until then they live here, after every owner has loaded.
+--------------------------------------------------------------------------------
+
+local Commands = addon.Commands
+
+addon:RegisterDebugCommand({
+    name = "slug", help = "SLUG font-flag acceptance probe",
+    handler = function() addon.FontStyles.DebugSlugProbe() end,
+})
+
+addon:RegisterDebugCommand({
+    name = "widget", help = "widget component pool", default = "state",
+    verbs = {
+        { word = "state", help = "pool and handle state", fn = addon.DebugWidgetState },
+        { word = "spawnchild", help = "spawn one child handle", fn = addon.DebugWidgetSpawnChild },
+        { word = "releaseall", help = "release every handle", fn = addon.DebugWidgetReleaseAll },
+    },
+})
+
+addon:RegisterDebugCommand({
+    name = "inspect", help = "inspect service", default = "state",
+    verbs = {
+        { word = "state", help = "service state", fn = addon.DebugInspectState },
+        { word = "cache", help = "cache contents", fn = addon.DebugInspectCache },
+    },
+})
+
+addon:RegisterDebugCommand({
+    name = "profiles", help = "profile export and the reload log",
+    verbs = {
+        { word = "export", usage = 'export ["Profile Name"]', help = "profile as a Lua table; current profile when no name", fn = addon.DebugExportProfile },
+        { word = "reload", help = "the reload debug log", fn = addon.DumpReloadDebugLog },
+    },
+})
+
+-- Read-only dump of one layout's persisted anchor data, straight from
+-- C_EditMode.GetLayouts(). For before/after comparison when verifying that
+-- cross-machine sessions leave a layout's stored geometry untouched.
+addon:RegisterDebugCommand({
+    name = "layoutdump", help = "persisted Edit Mode anchors of one layout",
+    usage = { 'layoutdump "Layout Name"' },
+    handler = function(_, rest)
+        local name = rest[1]
+        if not name or name == "" then return Commands.USAGE end
+        local li = _G.C_EditMode and _G.C_EditMode.GetLayouts and _G.C_EditMode.GetLayouts()
+        if not (li and li.layouts) then
+            addon:Print("C_EditMode.GetLayouts() returned no data.")
+            return
+        end
+        local found
+        for _, layout in ipairs(li.layouts) do
+            if layout.layoutName == name then found = layout break end
+        end
+        if not found then
+            local names = {}
+            for _, layout in ipairs(li.layouts) do table.insert(names, tostring(layout.layoutName)) end
+            addon:Print("Layout not found: " .. tostring(name))
+            addon:Print("Available: " .. table.concat(names, ", "))
+            return
+        end
+        local lines = {}
+        table.insert(lines, string.format("Layout '%s' (layoutType=%s), %d systems",
+            tostring(found.layoutName), tostring(found.layoutType), #(found.systems or {})))
+        for _, sys in ipairs(found.systems or {}) do
+            local a = sys.anchorInfo or {}
+            table.insert(lines, string.format("system=%s index=%s default=%s | %s -> %s/%s (%.2f, %.2f)",
+                tostring(sys.system), tostring(sys.systemIndex), tostring(sys.isInDefaultPosition),
+                tostring(a.point), tostring(a.relativeTo), tostring(a.relativePoint),
+                tonumber(a.offsetX) or 0, tonumber(a.offsetY) or 0))
+        end
+        addon.DebugShowWindow("Layout dump: " .. name, lines)
+    end,
+})
+
+addon:RegisterDebugCommand({
+    name = "quests", help = "quest log dump",
+    handler = function() addon.DebugDumpQuests() end,
+})
+
+addon:RegisterDebugCommand({
+    name = "consoleport", help = "ConsolePort profile export",
+    verbs = {
+        { word = "export", help = "copyable ConsolePort profile", fn = addon.DebugExportConsolePortProfile },
+    },
+})
+
+addon:RegisterDebugCommand({
+    name = "editmode", help = "Edit Mode layout export",
+    verbs = {
+        { word = "export", usage = 'export ["Layout Name"]', help = "raw layout table", fn = addon.DebugExportEditModeLayoutTable },
+        { word = "exportstring", usage = 'exportstring ["Layout Name"]', help = "Blizzard share string", fn = addon.DebugExportEditModeLayout },
+    },
+})
+
+addon:RegisterDebugCommand({
+    name = "offscreen", help = "why a dragged frame landed off screen",
+    handler = function() addon.DebugOffscreenUnlockDump() end,
+})
+
+addon:RegisterDebugCommand({
+    name = "powerbarpos", help = "Player power bar anchor points and custom-position state",
+    usage = { "powerbarpos [simulate|reset] - also simulate a reset" },
+    handler = function(sub) addon.DebugPowerBarPosition(sub == "simulate" or sub == "reset") end,
+})
+
+addon:RegisterDebugCommand({
+    name = "powerbar", help = "Power bar position trace",
+    verbs = Commands.TraceVerbs({
+        label = "Power Bar",
+        set = addon.SetPowerBarDebugTrace, show = addon.ShowPowerBarTraceLog, clear = addon.ClearPowerBarTraceLog,
+    }),
+})
+
+addon:RegisterDebugCommand({
+    name = "trackedbars", aliases = { "tb" }, help = "CDM tracked bars",
+    verbs = Commands.TraceVerbs({
+        label = "Tracked Bars",
+        set = addon.SetTBTrace, show = addon.ShowTBTraceLog, clear = addon.ClearTBTrace,
+    }, {
+        { word = "state", help = "zero-touch diagnostic (DB, proxy, viewer, children)", fn = function()
+            if addon.DebugTBState then addon.DebugTBState() else Commands.NotAvailable("Tracked Bars") end
+        end },
+        { word = "dump", help = "snapshot of every bar item", fn = function()
+            if addon.DumpTBState then addon.DumpTBState() else Commands.NotAvailable("Tracked Bars") end
+        end },
+    }),
+})
+
+addon:RegisterDebugCommand({
+    name = "raidframes", aliases = { "rf" }, help = "raid frame state dump",
+    handler = function() addon.DebugDumpRaidFrames() end,
+})
+
+addon:RegisterDebugCommand({
+    name = "fontpair", help = "Deep Shadow copy draw order",
+    handler = function() addon.DebugFontPair() end,
+})
+
+addon:RegisterDebugCommand({
+    name = "cdmlayers", help = "CDM icon frame levels and overlay layers",
+    handler = function() addon.DebugCDMLayers() end,
+})
+
+addon:RegisterDebugCommand({
+    name = "sct", help = "world text font and scale log with live CVar state",
+    handler = function()
+        local state = {}
+        for _, name in ipairs({ "WorldTextScale_v2", "WorldTextScale", "WorldTextMinSize" }) do
+            local ok, value = pcall(_G.C_CVar.GetCVar, name)
+            state[name] = (ok and value ~= nil) and tostring(value) or "<absent>"
+        end
+        state.resolved = addon.ResolveWorldTextScaleCVar and addon.ResolveWorldTextScaleCVar() or "?"
+        addon.LogWorldTextFont("debug sct:cvars", state)
+        addon.ShowWorldTextFontLog()
+    end,
+})
+
+addon:RegisterDebugCommand({
+    name = "cdm", help = "CDM styling pipeline state",
+    handler = function() addon.DebugCDMState() end,
+})
+
+addon:RegisterDebugCommand({
+    name = "hover", help = "what is eating the mouse at the cursor",
+    usage = { "hover [seconds]" },
+    handler = function(sub) addon.DebugHover(sub) end,
+})
+
+addon:RegisterDebugCommand({
+    name = "dm", help = "Native damage meter",
+    verbs = {
+        { word = "state", help = "zero-touch diagnostic", fn = function()
+            if addon.DebugDMState then addon.DebugDMState() else Commands.NotAvailable("Damage Meter") end
+        end },
+        { word = "export", usage = "export [overall|current|expired]", help = "session export", fn = addon.DebugExportDamageMeters },
+        { word = "frames", help = "window and overlay frames", fn = function()
+            if addon.DebugDMFrames then addon.DebugDMFrames() else Commands.NotAvailable("Damage Meter") end
+        end },
+        { word = "trace", usage = "trace <on|off>", help = "buffer the error log into the frames dump", fn = function(token)
+            token = string.lower(token or "")
+            if token ~= "on" and token ~= "off" then return Commands.USAGE end
+            if addon.SetDMDebug then addon.SetDMDebug(token == "on") else Commands.NotAvailable("Damage Meter") end
+        end },
+    },
+})
+
+addon:RegisterDebugCommand({
+    name = "rosteroverlay", aliases = { "roster" }, help = "why raid overlay rows read blank",
+    usage = { "rosteroverlay rows - per-row detail" },
+    handler = function(sub)
+        if sub == "rows" then addon.DebugRosterOverlayRows() else addon.DebugRosterOverlay() end
+    end,
+})
+
+addon:RegisterDebugCommand({
+    name = "castz", help = "Cast Bar Z live-cast probes",
+    usage = {
+        "castz [player|pet|target|focus|boss1..5] - API probe for that unit",
+        "castz petevents - toggle the pet cast-event watch",
+        "castz endorder [unit] - toggle the cast-end event order watch",
+        "castz fit - shrink-to-fit state of each live bar",
+        "castz empower [unit] - empowered cast stages",
+        "castz time [unit] - cast timing",
+    },
+    handler = function(sub, rest)
+        -- "petevents", not "pet": "pet" is a valid unit to probe.
+        if sub == "petevents" then addon.DebugCastZPet()
+        elseif sub == "endorder" then addon.DebugCastZEndOrder(rest[2])
+        elseif sub == "fit" then addon.DebugCastZFit()
+        elseif sub == "empower" then addon.DebugCastZEmpower(rest[2])
+        elseif sub == "time" then addon.DebugCastZTime(rest[2])
+        else addon.DebugCastZProbe(sub) end
+    end,
+})
+
+addon:RegisterDebugCommand({
+    name = "repcolor", help = "ReputationColor banner lifecycle trace",
+    usage = { "repcolor [watch]" },
+    handler = function(sub) addon.DebugRepColor(sub) end,
+})
+
+addon:RegisterDebugCommand({
+    name = "auracontainer", aliases = { "aurac" }, help = "12.1 aura container pilot",
+    usage = { "auracontainer [start|stop|probes|filters|suppress|log]" },
+    handler = function(sub, rest) addon.DebugAuraContainer(sub, string.lower(rest[2] or "")) end,
+})
+
+addon:RegisterDebugCommand({
+    name = "scootauras", aliases = { "sa" }, help = "ScootAuras lifecycle commands and probes",
+    usage = { "scootauras [add|del|edit|enable|disable|list|reconcile|flush|methods|create|park|revive|fresh|repoint|parkfilter|setunit|budget|clear|log]" },
+    handler = function(sub, rest)
+        addon.DebugScootAuras(sub, string.lower(rest[2] or ""), string.lower(rest[3] or ""),
+            string.lower(rest[4] or ""), string.lower(rest[5] or ""))
+    end,
+})
+
+addon:RegisterDebugCommand({
+    name = "ufzauras", aliases = { "ufza" }, help = "Unit Frames Z aura rows",
+    usage = { "ufzauras [log|apply|kick]" },
+    handler = function(sub) addon.DebugUFZAuras(sub) end,
+})
+
+addon:RegisterDebugCommand({
+    name = "gfauras", aliases = { "gfa" }, help = "group frame aura tracking",
+    usage = { "gfauras [log|filters|refresh]" },
+    handler = function(sub) addon.DebugGroupAuras(sub) end,
+})
+
+addon:RegisterDebugCommand({
+    name = "ping", help = "12.1 ping receiver readiness on Scoot frames",
+    usage = { "ping [seconds]" },
+    handler = function(sub) addon.DebugPing(sub) end,
+})
+
+addon:RegisterDebugCommand({
+    name = "dmY", help = "Modern damage meter probes",
+    verbs = {
+        { word = "cvar", help = "CVar data collection", fn = addon.DebugDMYCVar },
+        { word = "api", help = "source API probe", fn = addon.DebugDMYAPI },
+        { word = "trace", help = "the trace log", fn = addon.DebugDMYTrace },
+        { word = "fields", help = "field secrecy per source", fn = addon.DebugDMYFields },
+        { word = "drilldown", help = "spell breakdown probe", fn = addon.DebugDMYDrilldown },
+        { word = "drilldata", help = "drilldown data snapshot", fn = addon.DebugDMYDrilldata },
+        { word = "multicol", help = "multi-column data", fn = addon.DebugDMYMulticol },
+        { word = "abbrev", help = "number abbreviation", fn = addon.DebugDMYAbbrev },
+        { word = "colprobe", help = "column probe", fn = addon.DebugDMYColprobe },
+        { word = "names", help = "name resolution", fn = addon.DebugDMYNames },
+        { word = "drillstate", help = "drilldown state", fn = addon.DebugDMYDrillState },
+        { word = "deathprobe", help = "death recap probe", fn = addon.DebugDMYDeathProbe },
+        { word = "headericons", help = "header icon state", fn = addon.DebugDMYHeaderIcons },
+    },
+})
+
+-- The Unit Frames Z name box, built as it would ship.
+addon:RegisterDebugCommand({
+    name = "nametext", help = "Unit Frames Z name box", default = "toggle",
+    verbs = {
+        { word = "toggle", help = "show or hide the box", fn = addon.DebugNameTextToggle },
+        { word = "size", usage = "size <w> <h>", fn = addon.DebugNameTextSetSize },
+        { word = "lines", usage = "lines <n>", fn = addon.DebugNameTextSetLines },
+        { word = "range", usage = "range <min> <max>", fn = addon.DebugNameTextSetRange },
+        { word = "fallback", usage = "fallback <n>", help = "size when unmeasurable", fn = addon.DebugNameTextSetFallback },
+        { word = "mode", usage = "mode <font|scale|blizzard>", fn = addon.DebugNameTextSetMode },
+        { word = "font", usage = "font <FACE>", help = "font keys are case-sensitive", fn = addon.DebugNameTextSetFont },
+        { word = "case", usage = "case <normal|upper|smallcaps> [FACE]", fn = addon.DebugNameTextSetCase },
+        { word = "caseprobe", help = "can string.upper touch a secret?", fn = addon.DebugNameTextCaseProbe },
+        { word = "sample", usage = "sample <n>", fn = addon.DebugNameTextSample },
+        { word = "gradient", usage = "gradient <auto|off|white|line|block|slice>", fn = addon.DebugNameTextSetGradient },
+        { word = "chrome", help = "backdrop on/off, to drag the box", fn = addon.DebugNameTextToggleChrome },
+        { word = "margin", usage = "margin <auto|off|px>", help = "blind-spot safety margin", fn = addon.DebugNameTextSetMargin },
+        { word = "slices", usage = "slices <n>", fn = addon.DebugNameTextSetSlices },
+        { word = "class", usage = "class <TOKEN|auto>", help = "class tokens are uppercase", fn = addon.DebugNameTextSetClass },
+        { word = "treatment", usage = "treatment <cast|raw>", fn = addon.DebugNameTextSetTreatment },
+        { word = "identity", usage = "identity <player|class>", fn = addon.DebugNameTextSetIdentity },
+        { word = "scan", fn = addon.DebugNameTextScan },
+        { word = "lengthprobe", fn = addon.DebugNameTextLengthProbe },
+        { word = "fitprobe", usage = "fitprobe [steps]", help = "does D(size) settle?", fn = addon.DebugNameTextFitProbe },
+        { word = "autofit", help = "render, then show the size derivation", fn = addon.DebugNameTextAutoFit },
+        { word = "report", fn = addon.DebugNameTextReport },
+    },
+})
 
 -- /cdm (optional, gated by profile setting)
 SLASH_SCOOTCDM1 = "/cdm"
