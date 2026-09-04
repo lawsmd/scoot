@@ -255,6 +255,17 @@ function GF.textAccessors(frameKey, textKey)
     return get, set
 end
 
+-- Accessors for a bar's prefixed key family (healthBarTexture,
+-- healthBarBorderInsetH, ...) on the frame table, as AddBarStyleBlock and
+-- AddBarBorderBlock consume them. Reads never materialize.
+function GF.barAccessors(frameKey, barPrefix, opts)
+    local Helpers = addon.UI.Settings.Helpers
+    return Helpers.CreateBarAccessors(
+        function() return GF.getDB(frameKey) end,
+        function() return GF.ensureDB(frameKey) end,
+        barPrefix, opts)
+end
+
 --------------------------------------------------------------------------------
 -- Bound Helpers
 --------------------------------------------------------------------------------
@@ -263,7 +274,7 @@ end
 local BIND_NAMES = {
     "ensureDB", "ensureTextDB", "getDB", "getTextDB", "getFrame",
     "applyStyles", "applyText", "applyRoleIcons", "applyGroupLeadIcons",
-    "applyHealthBarBorders", "textAccessors",
+    "applyHealthBarBorders", "textAccessors", "barAccessors",
 }
 
 -- Returns a table with the helpers above bound to frameKey, plus Edit Mode

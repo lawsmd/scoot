@@ -19,104 +19,8 @@ local B = GF.BindFrame("party")
 --------------------------------------------------------------------------------
 
 local function buildStyleTab(inner, barPrefix, applyFn)
-    inner:AddDualBarStyleRow({
-        label = "Foreground",
-        getTexture = function()
-            local t = B.ensureDB() or {}
-            return t[barPrefix .. "Texture"] or "default"
-        end,
-        setTexture = function(v)
-            local t = B.ensureDB()
-            if not t then return end
-            t[barPrefix .. "Texture"] = v or "default"
-            applyFn()
-        end,
-        colorValues = GF.healthColorValues,
-        colorOrder = GF.healthColorOrder,
-        colorInfoIcons = GF.healthColorInfoIcons,
-        getColorMode = function()
-            local t = B.ensureDB() or {}
-            return t[barPrefix .. "ColorMode"] or "default"
-        end,
-        setColorMode = function(v)
-            local t = B.ensureDB()
-            if not t then return end
-            t[barPrefix .. "ColorMode"] = v or "default"
-            applyFn()
-        end,
-        getColor = function()
-            local t = B.ensureDB() or {}
-            local c = t[barPrefix .. "Tint"] or {1, 1, 1, 1}
-            return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-        end,
-        setColor = function(r, g, b, a)
-            local t = B.ensureDB()
-            if not t then return end
-            t[barPrefix .. "Tint"] = {r or 1, g or 1, b or 1, a or 1}
-            applyFn()
-        end,
-        customColorValue = "custom",
-        hasAlpha = true,
-    })
-
-    inner:AddSpacer(8)
-
-    inner:AddDualBarStyleRow({
-        label = "Background",
-        getTexture = function()
-            local t = B.ensureDB() or {}
-            return t[barPrefix .. "BackgroundTexture"] or "default"
-        end,
-        setTexture = function(v)
-            local t = B.ensureDB()
-            if not t then return end
-            t[barPrefix .. "BackgroundTexture"] = v or "default"
-            applyFn()
-        end,
-        colorValues = GF.bgColorValues,
-        colorOrder = GF.bgColorOrder,
-        getColorMode = function()
-            local t = B.ensureDB() or {}
-            return t[barPrefix .. "BackgroundColorMode"] or "default"
-        end,
-        setColorMode = function(v)
-            local t = B.ensureDB()
-            if not t then return end
-            t[barPrefix .. "BackgroundColorMode"] = v or "default"
-            applyFn()
-        end,
-        getColor = function()
-            local t = B.ensureDB() or {}
-            local c = t[barPrefix .. "BackgroundTint"] or {0, 0, 0, 1}
-            return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
-        end,
-        setColor = function(r, g, b, a)
-            local t = B.ensureDB()
-            if not t then return end
-            t[barPrefix .. "BackgroundTint"] = {r or 0, g or 0, b or 0, a or 1}
-            applyFn()
-        end,
-        customColorValue = "custom",
-        hasAlpha = true,
-    })
-
-    inner:AddSlider({
-        label = "Background Opacity",
-        min = 0,
-        max = 100,
-        step = 1,
-        get = function()
-            local t = B.ensureDB() or {}
-            return tonumber(t[barPrefix .. "BackgroundOpacity"]) or 50
-        end,
-        set = function(v)
-            local t = B.ensureDB()
-            if not t then return end
-            t[barPrefix .. "BackgroundOpacity"] = tonumber(v) or 50
-            applyFn()
-        end,
-    })
-
+    local get, set = B.barAccessors(barPrefix)
+    inner:AddBarStyleBlock({ get = get, set = set, apply = applyFn })
     inner:Finalize()
 end
 
@@ -383,106 +287,14 @@ function GF.RenderParty(panel, scrollContent)
                 inner:AddSpacer(12)
                 inner:AddLabel("Health Bar Borders")
 
-                inner:AddBarBorderSelector({
-                    label = "Border Style",
-                    includeNone = true,
-                    get = function()
-                        local cfg = B.ensureDB() or {}
-                        return cfg.healthBarBorderStyle or "none"
-                    end,
-                    set = function(v)
-                        local cfg = B.ensureDB()
-                        if not cfg then return end
-                        cfg.healthBarBorderStyle = v or "none"
-                        B.applyHealthBarBorders()
-                    end,
-                    getHiddenEdges = function()
-                        local cfg = B.ensureDB() or {}
-                        return cfg.healthBarBorderHiddenEdges
-                    end,
-                    setHiddenEdges = function(v)
-                        local cfg = B.ensureDB()
-                        if not cfg then return end
-                        cfg.healthBarBorderHiddenEdges = v
-                        B.applyHealthBarBorders()
-                    end,
-                })
-
-                inner:AddToggleColorPicker({
-                    label = "Border Tint",
-                    get = function()
-                        local cfg = B.ensureDB() or {}
-                        return not not cfg.healthBarBorderTintEnable
-                    end,
-                    set = function(v)
-                        local cfg = B.ensureDB()
-                        if not cfg then return end
-                        cfg.healthBarBorderTintEnable = not not v
-                        B.applyHealthBarBorders()
-                    end,
-                    getColor = function()
-                        local cfg = B.ensureDB() or {}
-                        local c = cfg.healthBarBorderTintColor or {1, 1, 1, 1}
-                        return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                    end,
-                    setColor = function(r, g, b, a)
-                        local cfg = B.ensureDB()
-                        if not cfg then return end
-                        cfg.healthBarBorderTintColor = {r or 1, g or 1, b or 1, a or 1}
-                        B.applyHealthBarBorders()
-                    end,
-                    hasAlpha = true,
-                })
-
-                inner:AddSlider({
-                    label = "Border Thickness",
-                    min = 1,
-                    max = 8,
-                    step = 0.5,
-                    precision = 1,
-                    get = function()
-                        local cfg = B.ensureDB() or {}
-                        return tonumber(cfg.healthBarBorderThickness) or 1
-                    end,
-                    set = function(v)
-                        local cfg = B.ensureDB()
-                        if not cfg then return end
-                        cfg.healthBarBorderThickness = tonumber(v) or 1
-                        B.applyHealthBarBorders()
-                    end,
-                })
-
-                inner:AddDualSlider({
-                    label = "Border Inset",
-                    sliderA = {
-                        axisLabel = "H", min = -4, max = 4, step = 1,
-                        get = function()
-                            local cfg = B.ensureDB() or {}
-                            return tonumber(cfg.healthBarBorderInsetH) or tonumber(cfg.healthBarBorderInset) or 0
-                        end,
-                        set = function(v)
-                            local cfg = B.ensureDB()
-                            if not cfg then return end
-                            cfg.healthBarBorderInsetH = tonumber(v) or 0
-                            B.applyHealthBarBorders()
-                        end,
-                        minLabel = "-4", maxLabel = "+4",
-                    },
-                    sliderB = {
-                        axisLabel = "V", min = -4, max = 4, step = 1,
-                        get = function()
-                            local cfg = B.ensureDB() or {}
-                            return tonumber(cfg.healthBarBorderInsetV) or tonumber(cfg.healthBarBorderInset) or 0
-                        end,
-                        set = function(v)
-                            local cfg = B.ensureDB()
-                            if not cfg then return end
-                            cfg.healthBarBorderInsetV = tonumber(v) or 0
-                            B.applyHealthBarBorders()
-                        end,
-                        minLabel = "-4", maxLabel = "+4",
-                    },
-                })
+                do
+                    local get, set = B.barAccessors("healthBar")
+                    inner:AddBarBorderBlock({
+                        get = get, set = set, apply = B.applyHealthBarBorders,
+                        style = { default = "none" },
+                        thickness = { clamp = false },
+                    })
+                end
 
                 inner:Finalize()
             end,
