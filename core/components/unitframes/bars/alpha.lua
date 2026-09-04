@@ -41,27 +41,38 @@ end
 -- Install hooks to enforce a computed alpha value on a frame/texture
 -- @param frameOrTexture: The frame or texture to enforce alpha on
 -- @param computeAlpha: Function that returns the desired alpha value (0 or 1)
+--
+-- An adapter over core/enforce.lua. The key is live whenever computeAlpha()
+-- is readable (nil means the config is unreadable: skip, fail closed), and
+-- its apply writes the desired value, 1 included, so a desired 1 still forces
+-- visible. Show and SetShown re-assert at once and again after a stack break,
+-- SetAlpha at once; every hook bails while Edit Mode is open or opening.
+--
+-- IMPORTANT (taint/combat): These enforcers only call SetAlpha, which is safe for visual-only
+-- regions/textures even in combat. Do NOT gate on InCombatLockdown(), otherwise Blizzard can
+-- Show()/SetAlpha() during combat and the element may remain visible after combat.
 function Alpha.hookAlphaEnforcer(frameOrTexture, computeAlpha)
-    if not frameOrTexture or not _G.hooksecurefunc or type(computeAlpha) ~= "function" then return end
+    if not frameOrTexture or type(computeAlpha) ~= "function" then return end
     local fs = FS
     if fs and fs.IsHooked(frameOrTexture, "alphaEnforcer") then return end
     if fs then fs.MarkHooked(frameOrTexture, "alphaEnforcer") end
 
-    -- IMPORTANT (taint/combat): These enforcers only call SetAlpha, which is safe for visual-only
-    -- regions/textures even in combat. Do NOT gate on InCombatLockdown(), otherwise Blizzard can
-    -- Show()/SetAlpha() during combat and the element may remain visible after combat.
-    local function enforce(obj)
+    local function active(obj)
         if isEditModeActive() then
             if addon.RepColorTraceIfTracked then addon.RepColorTraceIfTracked(obj, "enforce", "bail: edit mode") end
-            return
+            return false
         end
-        local desired = computeAlpha()
-        if desired == nil then
-            -- Config unreadable: skip rather than enforce a guess (fail closed).
+        if computeAlpha() == nil then
             if addon.RepColorTraceIfTracked then addon.RepColorTraceIfTracked(obj, "enforce", "skip: cfg unreadable") end
-            return
+            return false
         end
-        if obj and obj.GetAlpha and type(obj.GetAlpha) == "function" then
+        return true
+    end
+
+    local function apply(obj)
+        local desired = computeAlpha()
+        if desired == nil then return end
+        if obj.GetAlpha and type(obj.GetAlpha) == "function" then
             local ok, current = pcall(obj.GetAlpha, obj)
             -- Guard order: type -> issecretvalue -> compare. A secret survives the
             -- pcall'd getter, and comparing it raw would error inside this hook.
@@ -74,33 +85,12 @@ function Alpha.hookAlphaEnforcer(frameOrTexture, computeAlpha)
         Alpha.applyAlpha(obj, desired)
     end
 
-    local function enforceNowAndDefer(obj)
-        -- Immediate enforcement prevents visible pop-in.
-        enforce(obj)
-        -- One-tick backup in case a later same-frame update adjusts alpha again.
-        if _G.C_Timer and _G.C_Timer.After then
-            _G.C_Timer.After(0, function() enforce(obj) end)
-        end
-    end
-
-    -- Re-assert when Blizzard shows the object.
-    _G.hooksecurefunc(frameOrTexture, "Show", function(self)
-        enforceNowAndDefer(self)
-    end)
-
-    -- Re-assert when Blizzard toggles visibility via SetShown (some UI paths never call Show directly).
-    if frameOrTexture.SetShown then
-        _G.hooksecurefunc(frameOrTexture, "SetShown", function(self)
-            enforceNowAndDefer(self)
-        end)
-    end
-
-    -- Re-assert when Blizzard adjusts alpha (e.g., fades, state transitions).
-    if frameOrTexture.SetAlpha then
-        _G.hooksecurefunc(frameOrTexture, "SetAlpha", function(self)
-            enforce(self)
-        end)
-    end
+    addon.Enforce.Install(frameOrTexture, "alphaEnforcer", {
+        methods = { "Show", "SetShown", "SetAlpha" },
+        timing = { Show = "both", SetShown = "both", SetAlpha = "sync" },
+        when = active,
+        apply = apply,
+    })
 end
 
 --------------------------------------------------------------------------------

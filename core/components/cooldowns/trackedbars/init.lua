@@ -33,7 +33,7 @@ TB.vertLockCadence = false
 -- Viewer alpha tracking for CMC compatibility (SetAlpha(0) on viewer)
 TB._viewerAlpha = 1
 
--- Alpha enforcement hooks tracking (weak keys)
+-- Per-item previous active and shown state (weak keys)
 TB.prevIsActive = setmetatable({}, { __mode = "k" })
 TB.prevShown = setmetatable({}, { __mode = "k" })
 
