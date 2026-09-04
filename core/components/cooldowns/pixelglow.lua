@@ -20,7 +20,6 @@ local DASH_LENGTH_RATIO = 0.06  -- fraction of perimeter per dash
 -- State (weak-keyed)
 --------------------------------------------------------------------------------
 
-local glowPool = {}
 local activeGlows = setmetatable({}, { __mode = "k" })
 local pendingGlows = setmetatable({}, { __mode = "k" })
 
@@ -235,23 +234,21 @@ local function createController()
     return ctrl
 end
 
-local function acquireController()
-    local ctrl = table.remove(glowPool)
-    if ctrl then
-        ctrl.progress = 0
-        ctrl.hueOffset = 0
-        ctrl.playing = false
-        return ctrl
-    end
-    return createController()
-end
-
-local function releaseController(ctrl)
+local function resetController(ctrl)
     ctrl:Stop()
     ctrl.frame:ClearAllPoints()
     ctrl.frame:Hide()
     ctrl.targetIcon = nil
-    table.insert(glowPool, ctrl)
+end
+
+local glowPool = addon.Pool.New(createController, resetController)
+
+local function acquireController()
+    local ctrl = glowPool:Acquire()
+    ctrl.progress = 0
+    ctrl.hueOffset = 0
+    ctrl.playing = false
+    return ctrl
 end
 
 --------------------------------------------------------------------------------
@@ -386,7 +383,7 @@ function PG.AcquireForIcon(cdmIcon, style, colorMode, customColor, speed)
     -- Release existing glow for this icon
     local existing = activeGlows[cdmIcon]
     if existing then
-        releaseController(existing)
+        glowPool:Release(existing)
     end
 
     local ctrl = acquireController()
@@ -398,14 +395,14 @@ function PG.ReleaseForIcon(cdmIcon)
     if not cdmIcon then return end
     local ctrl = activeGlows[cdmIcon]
     if ctrl then
-        releaseController(ctrl)
+        glowPool:Release(ctrl)
         activeGlows[cdmIcon] = nil
     end
 end
 
 function PG.ReleaseAll()
     for cdmIcon, ctrl in pairs(activeGlows) do
-        releaseController(ctrl)
+        glowPool:Release(ctrl)
     end
     wipe(activeGlows)
     wipe(pendingGlows)
@@ -427,7 +424,7 @@ function PG.StartForIcon(cdmIcon, config)
         return
     end
     if existing then
-        releaseController(existing)
+        glowPool:Release(existing)
     end
     pendingGlows[cdmIcon] = nil
 

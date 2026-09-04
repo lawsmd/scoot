@@ -270,7 +270,6 @@ end
 addon.CDMOverlays = addon.CDMOverlays or {}
 local Overlays = addon.CDMOverlays
 
-local overlayPool = {}
 local activeOverlays = {}  -- Map from CDM icon frame to overlay frame
 
 -- Track which icons have been sized (weak keys for GC)
@@ -361,22 +360,7 @@ local function createOverlayFrame(parent)
     return overlay
 end
 
-local function getOverlay(parent)
-    local overlay = table.remove(overlayPool)
-    if not overlay then
-        overlay = createOverlayFrame(parent)
-    elseif parent then
-        -- Re-parent pooled overlay and its sibling borderFrame to new parent
-        overlay:SetParent(parent)
-        if overlay.borderFrame then
-            overlay.borderFrame:SetParent(parent)
-        end
-    end
-    return overlay
-end
-
-local function releaseOverlay(overlay)
-    if not overlay then return end
+local function resetOverlay(overlay)
     overlay:Hide()  -- OnHide hook propagates to borderFrame
     overlay:ClearAllPoints()
     overlay:SetParent(UIParent)  -- Prevents holding CDM icon reference
@@ -389,7 +373,20 @@ local function releaseOverlay(overlay)
         overlay.keybindText:SetText("")
         overlay.keybindText:Hide()
     end
-    table.insert(overlayPool, overlay)
+end
+
+local overlayPool = addon.Pool.New(createOverlayFrame, resetOverlay)
+
+local function getOverlay(parent)
+    local overlay, isNew = overlayPool:Acquire(parent)
+    if not isNew and parent then
+        -- Re-parent pooled overlay and its sibling borderFrame to new parent
+        overlay:SetParent(parent)
+        if overlay.borderFrame then
+            overlay.borderFrame:SetParent(parent)
+        end
+    end
+    return overlay
 end
 
 --------------------------------------------------------------------------------
@@ -1084,7 +1081,7 @@ function Overlays.ReleaseForIcon(cdmIcon)
     local overlay = activeOverlays[cdmIcon]
     if overlay then
         activeOverlays[cdmIcon] = nil
-        releaseOverlay(overlay)
+        overlayPool:Release(overlay)
     end
 end
 
@@ -1141,7 +1138,7 @@ end
 
 function Overlays.HideAll()
     for cdmIcon, overlay in pairs(activeOverlays) do
-        releaseOverlay(overlay)
+        overlayPool:Release(overlay)
     end
     wipe(activeOverlays)
 end
@@ -1629,13 +1626,13 @@ function Overlays.HookViewer(viewerFrameName, componentId)
             -- Defer heavy cleanup (reparent, pool return) to break Blizzard's call stack
             if C_Timer and C_Timer.After then
                 C_Timer.After(0, function()
-                    if overlay then releaseOverlay(overlay) end
+                    if overlay then overlayPool:Release(overlay) end
                     Overlays.ResetIconSize(itemFrame)
                     Overlays.ResetSwipe(itemFrame)
                     Overlays.RestoreIconRing(itemFrame)
                 end)
             else
-                if overlay then releaseOverlay(overlay) end
+                if overlay then overlayPool:Release(overlay) end
                 Overlays.ResetIconSize(itemFrame)
                 Overlays.ResetSwipe(itemFrame)
                 Overlays.RestoreIconRing(itemFrame)

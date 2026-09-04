@@ -460,7 +460,7 @@ local PS = addon.ProcStart
 PS.ANIM_META = ANIM_META
 
 local activeOverlays = setmetatable({}, { __mode = "k" })  -- cdmIcon -> controller
-local overlayPool = {}  -- [animId] -> { ctrl, ctrl, ... }
+local overlayPools = {}  -- [animId] -> addon.Pool, one free list per animation
 
 --------------------------------------------------------------------------------
 -- Color helpers
@@ -494,24 +494,29 @@ end
 -- Pool management
 --------------------------------------------------------------------------------
 
-local function acquireFromPool(animId)
-    local pool = overlayPool[animId]
-    if pool and #pool > 0 then
-        return table.remove(pool)
-    end
-    return nil
-end
-
-local function returnToPool(animId, ctrl)
-    if not overlayPool[animId] then
-        overlayPool[animId] = {}
-    end
+local function resetController(ctrl)
     ctrl:Stop()
     ctrl:Hide()
     if ctrl._frame then
         ctrl._frame:ClearAllPoints()
     end
-    table.insert(overlayPool[animId], ctrl)
+end
+
+-- A controller is built for one animation and only ever serves that one;
+-- _procStartAnimId names the free list it returns to.
+local function poolFor(animId)
+    local pool = overlayPools[animId]
+    if not pool then
+        pool = addon.Pool.New(function()
+            local ctrl = Anim.Create(animId, UIParent)
+            if ctrl then
+                ctrl._procStartAnimId = animId
+            end
+            return ctrl
+        end, resetController)
+        overlayPools[animId] = pool
+    end
+    return pool
 end
 
 --------------------------------------------------------------------------------
@@ -528,15 +533,8 @@ function PS.PlayForIcon(cdmIcon, config)
 
     local animId = config.style
 
-    -- Acquire from pool or create new
-    local ctrl = acquireFromPool(animId)
-    if not ctrl then
-        ctrl = Anim.Create(animId, UIParent)
-        if not ctrl then return end
-    end
-
-    -- Store the animId for pool return
-    ctrl._procStartAnimId = animId
+    local ctrl = poolFor(animId):Acquire()
+    if not ctrl then return end
 
     -- Apply color
     applyColor(ctrl, config.colorMode, config.customColor)
@@ -599,7 +597,7 @@ function PS.StopForIcon(cdmIcon)
         local animId = ctrl._procStartAnimId
         activeOverlays[cdmIcon] = nil
         if animId then
-            returnToPool(animId, ctrl)
+            poolFor(animId):Release(ctrl)
         else
             ctrl:Stop()
         end
@@ -610,7 +608,7 @@ function PS.StopAll()
     for cdmIcon, ctrl in pairs(activeOverlays) do
         local animId = ctrl._procStartAnimId
         if animId then
-            returnToPool(animId, ctrl)
+            poolFor(animId):Release(ctrl)
         else
             ctrl:Stop()
         end
