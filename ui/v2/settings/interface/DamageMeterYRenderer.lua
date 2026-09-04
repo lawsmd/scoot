@@ -700,40 +700,25 @@ function DMYSettings.Render(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     style = function(_, tabInner)
-                        tabInner:AddDualBarStyleRow({
-                            label = "Foreground",
-                            getTexture = function() return getSetting("barTexture") or "default" end,
-                            setTexture = function(v) setAndRefresh("barTexture", v) end,
-                            colorValues = addon.Catalogs.ColorMode.ClassCustom.values,
-                            colorOrder = addon.Catalogs.ColorMode.ClassCustom.order,
-                            getColorMode = function() return getSetting("barForegroundColorMode") or "class" end,
-                            setColorMode = function(v) setAndRefresh("barForegroundColorMode", v) end,
-                            getColor = function()
-                                local c = getSetting("barCustomColor") or {0.8,0.7,0.2,1}
-                                return c[1] or 0.8, c[2] or 0.7, c[3] or 0.2, c[4] or 1
-                            end,
-                            setColor = function(r,g,b,a) setAndRefresh("barCustomColor", {r,g,b,a}) end,
-                            customColorValue = "custom",
+                        local styleGet, styleSet = Helpers.CreateFlatAccessors(getSetting, h.set, {
+                            texture = "barTexture", colorMode = "barForegroundColorMode", color = "barCustomColor",
+                            bgTexture = "barBgTexture", bgColorMode = "barBgColorMode", bgColor = "barBgCustomColor",
+                            bgOpacity = "barBackgroundOpacity",
                         })
-                        tabInner:AddDualBarStyleRow({
-                            label = "Background",
-                            getTexture = function() return getSetting("barBgTexture") or "default" end,
-                            setTexture = function(v) setAndRefresh("barBgTexture", v) end,
-                            colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
-                            colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
-                            getColorMode = function() return getSetting("barBgColorMode") or "default" end,
-                            setColorMode = function(v) setAndRefresh("barBgColorMode", v) end,
-                            getColor = function()
-                                local c = getSetting("barBgCustomColor") or {0.1,0.1,0.1,0.8}
-                                return c[1] or 0.1, c[2] or 0.1, c[3] or 0.1, c[4] or 0.8
-                            end,
-                            setColor = function(r,g,b,a) setAndRefresh("barBgCustomColor", {r,g,b,a}) end,
-                            customColorValue = "custom",
-                            hasAlpha = true,
+                        tabInner:AddBarStyleBlock({
+                            get = styleGet, set = styleSet,
+                            apply = function() Helpers.applyStyles(); builder:DeferredRefreshAll() end,
+                            spacer = false,
+                            foreground = {
+                                values = addon.Catalogs.ColorMode.ClassCustom.values, order = addon.Catalogs.ColorMode.ClassCustom.order,
+                                infoIcons = false, colorModeDefault = "class", colorDefault = { 0.8, 0.7, 0.2, 1 }, hasAlpha = false,
+                            },
+                            background = {
+                                values = addon.Catalogs.ColorMode.DefaultCustom.values, order = addon.Catalogs.ColorMode.DefaultCustom.order,
+                                colorDefault = { 0.1, 0.1, 0.1, 0.8 },
+                            },
+                            opacity = { step = 5, default = 80 },
                         })
-                        tabInner:AddSlider({ label = "Background Opacity", min = 0, max = 100, step = 5,
-                            get = function() return getSetting("barBackgroundOpacity") or 80 end,
-                            set = function(v) setAndRefresh("barBackgroundOpacity", v) end })
                         tabInner:Finalize()
                     end,
                     border = function(_, tabInner)
@@ -760,14 +745,10 @@ function DMYSettings.Render(panel, scrollContent)
                         tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
                             get = function() return getSetting("barBorderThickness") or 1 end,
                             set = function(v) setAndRefresh("barBorderThickness", v) end })
-                        tabInner:AddDualSlider({
-                            label = "Border Inset",
-                            sliderA = { label = "H", min = -4, max = 4, step = 1,
-                                get = function() return getSetting("barBorderInsetH") or 0 end,
-                                set = function(v) setAndRefresh("barBorderInsetH", v) end },
-                            sliderB = { label = "V", min = -4, max = 4, step = 1,
-                                get = function() return getSetting("barBorderInsetV") or 0 end,
-                                set = function(v) setAndRefresh("barBorderInsetV", v) end },
+                        tabInner:AddInsetPair({
+                            minLabel = false, maxLabel = false,
+                            get = function(axis) return getSetting(axis == "h" and "barBorderInsetH" or "barBorderInsetV") end,
+                            set = function(axis, v) setAndRefresh(axis == "h" and "barBorderInsetH" or "barBorderInsetV", v) end,
                         })
                         tabInner:Finalize()
                     end,

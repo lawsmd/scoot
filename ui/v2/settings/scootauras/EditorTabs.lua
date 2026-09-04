@@ -258,91 +258,43 @@ function Tabs.BuildBarTab(tabBuilder, ctx)
         set = function(v) ctx.setAndApply("barLockCadence", v) end,
     })
 
-    tabBuilder:AddDualBarStyleRow({
-        label = "Foreground",
-        getTexture = function() return ctx.get("barForegroundTexture") or "bevelled" end,
-        setTexture = function(v) ctx.setAndApply("barForegroundTexture", v) ctx.refreshPreview() end,
-        colorValues = {
-            custom = "Custom",
-            class = "Class Color",
-            original = "Texture Original",
+    local Helpers = addon.UI.Settings.Helpers
+    local barGet, barWrite = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, {
+        texture = "barForegroundTexture", colorMode = "barForegroundColorMode", color = "barForegroundTint",
+        bgTexture = "barBackgroundTexture", bgColorMode = "barBackgroundColorMode", bgColor = "barBackgroundTint",
+        bgOpacity = "barBackgroundOpacity",
+        style = "barBorderStyle", hiddenEdges = "barBorderHiddenEdges",
+        tintEnabled = "barBorderTintEnable", tintColor = "barBorderTintColor",
+        thickness = "barBorderThickness", insetH = "barBorderInsetH", insetV = "barBorderInsetV",
+    })
+    -- ctx.setAndApply writes and applies. A color mode, border style, or tint
+    -- toggle change re-renders the tab (the swatch and edge controls follow
+    -- it); anything else refreshes the preview.
+    local REFRESHES_TAB = { colorMode = true, bgColorMode = true, style = true, tintEnabled = true }
+    local function barSet(field, value)
+        barWrite(field, value)
+        if REFRESHES_TAB[field] then ctx.refresh() else ctx.refreshPreview() end
+    end
+
+    tabBuilder:AddBarStyleBlock({
+        get = barGet, set = barSet,
+        foreground = {
+            values = { custom = "Custom", class = "Class Color", original = "Texture Original" },
+            order = { "custom", "class", "original" },
+            infoIcons = false, textureDefault = "bevelled", colorModeDefault = "class",
         },
-        colorOrder = { "custom", "class", "original" },
-        getColorMode = function() return ctx.get("barForegroundColorMode") or "class" end,
-        setColorMode = function(v) ctx.setAndApply("barForegroundColorMode", v) ctx.refresh() end,   -- swatch follows the mode
-        getColor = ColorGet(ctx, "barForegroundTint"),
-        setColor = ColorSet(ctx, "barForegroundTint"),
-        customColorValue = "custom",
-        hasAlpha = true,
-    })
-
-    tabBuilder:AddSpacer(8)
-
-    tabBuilder:AddDualBarStyleRow({
-        label = "Background",
-        getTexture = function() return ctx.get("barBackgroundTexture") or "bevelled" end,
-        setTexture = function(v) ctx.setAndApply("barBackgroundTexture", v) ctx.refreshPreview() end,
-        colorValues = {
-            custom = "Custom",
-            original = "Texture Original",
+        background = {
+            values = { custom = "Custom", original = "Texture Original" },
+            order = { "custom", "original" },
+            textureDefault = "bevelled", colorModeDefault = "custom",
         },
-        colorOrder = { "custom", "original" },
-        getColorMode = function() return ctx.get("barBackgroundColorMode") or "custom" end,
-        setColorMode = function(v) ctx.setAndApply("barBackgroundColorMode", v) ctx.refresh() end,   -- swatch follows the mode
-        getColor = ColorGet(ctx, "barBackgroundTint", { 0, 0, 0, 1 }),
-        setColor = ColorSet(ctx, "barBackgroundTint"),
-        customColorValue = "custom",
-        hasAlpha = true,
+        opacity = { minLabel = "0%", maxLabel = "100%" },
     })
 
-    tabBuilder:AddSlider({
-        label = "Background Opacity",
-        min = 0, max = 100, step = 1,
-        get = function() return ctx.get("barBackgroundOpacity") or 50 end,
-        set = function(v) ctx.setAndApply("barBackgroundOpacity", v) ctx.refreshPreview() end,
-        minLabel = "0%", maxLabel = "100%",
-    })
-
-    tabBuilder:AddBarBorderSelector({
-        label = "Border Style",
-        includeNone = true,
-        get = function() return ctx.get("barBorderStyle") or "none" end,
-        set = function(v) ctx.setAndApply("barBorderStyle", v) ctx.refresh() end,   -- edge controls follow the style
-        getHiddenEdges = function() return ctx.get("barBorderHiddenEdges") end,
-        setHiddenEdges = function(v) ctx.setAndApply("barBorderHiddenEdges", v) ctx.refreshPreview() end,
-    })
-
-    tabBuilder:AddToggleColorPicker({
-        label = "Border Tint",
-        get = function() return ctx.get("barBorderTintEnable") or false end,
-        set = function(v) ctx.setAndApply("barBorderTintEnable", v) ctx.refresh() end,   -- enables its swatch
-        getColor = ColorGet(ctx, "barBorderTintColor"),
-        setColor = ColorSet(ctx, "barBorderTintColor"),
-        hasAlpha = true,
-    })
-
-    tabBuilder:AddSlider({
-        label = "Border Thickness",
-        min = 1, max = 8, step = 0.5, precision = 1,
-        get = function() return ctx.get("barBorderThickness") or 1 end,
-        set = function(v) ctx.setAndApply("barBorderThickness", v) ctx.refreshPreview() end,
-        minLabel = "1", maxLabel = "8",
-    })
-
-    tabBuilder:AddDualSlider({
-        label = "Border Inset",
-        sliderA = {
-            axisLabel = "H", min = -4, max = 4, step = 1,
-            get = function() return ctx.get("barBorderInsetH") or 0 end,
-            set = function(v) ctx.setAndApply("barBorderInsetH", v) ctx.refreshPreview() end,
-            minLabel = "-4", maxLabel = "+4",
-        },
-        sliderB = {
-            axisLabel = "V", min = -4, max = 4, step = 1,
-            get = function() return ctx.get("barBorderInsetV") or 0 end,
-            set = function(v) ctx.setAndApply("barBorderInsetV", v) ctx.refreshPreview() end,
-            minLabel = "-4", maxLabel = "+4",
-        },
+    tabBuilder:AddBarBorderBlock({
+        get = barGet, set = barSet,
+        style = { default = "none" },
+        thickness = { clamp = false, minLabel = "1", maxLabel = "8" },
     })
 
     tabBuilder:Finalize()

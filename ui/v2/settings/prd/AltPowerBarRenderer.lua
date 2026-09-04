@@ -67,54 +67,18 @@ function AltPowerBar.Render(panel, scrollContent)
         sectionKey = "style",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddDualBarStyleRow({
-                label = "Foreground",
-                getTexture = function() return getSetting("styleForegroundTexture") or "default" end,
-                setTexture = function(v) setSetting("styleForegroundTexture", v) end,
-                -- "Default" follows Blizzard's own colour for the resource (mana, Ebon
-                -- Might, stagger thresholds, void metamorphosis).
-                colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
-                colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
-                getColorMode = function() return getSetting("styleForegroundColorMode") or "default" end,
-                setColorMode = function(v) setSetting("styleForegroundColorMode", v) end,
-                getColor = function()
-                    local c = getSetting("styleForegroundTint") or {1, 1, 1, 1}
-                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                end,
-                setColor = function(r, g, b, a)
-                    setSetting("styleForegroundTint", {r, g, b, a})
-                end,
-                customColorValue = "custom",
-                hasAlpha = true,
+            local styleGet, styleSet = Helpers.CreateFlatAccessors(getSetting, h.set, {
+                texture = "styleForegroundTexture", colorMode = "styleForegroundColorMode", color = "styleForegroundTint",
+                bgTexture = "styleBackgroundTexture", bgColorMode = "styleBackgroundColorMode", bgColor = "styleBackgroundTint",
+                bgOpacity = "styleBackgroundOpacity",
             })
-
-            inner:AddSpacer(8)
-
-            inner:AddDualBarStyleRow({
-                label = "Background",
-                getTexture = function() return getSetting("styleBackgroundTexture") or "default" end,
-                setTexture = function(v) setSetting("styleBackgroundTexture", v) end,
-                colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
-                colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
-                getColorMode = function() return getSetting("styleBackgroundColorMode") or "default" end,
-                setColorMode = function(v) setSetting("styleBackgroundColorMode", v) end,
-                getColor = function()
-                    local c = getSetting("styleBackgroundTint") or {0, 0, 0, 1}
-                    return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
-                end,
-                setColor = function(r, g, b, a)
-                    setSetting("styleBackgroundTint", {r, g, b, a})
-                end,
-                customColorValue = "custom",
-                hasAlpha = true,
-            })
-
-            inner:AddSlider({
-                label = "Background Opacity",
-                min = 0, max = 100, step = 1,
-                get = function() return getSetting("styleBackgroundOpacity") or 50 end,
-                set = function(v) setSetting("styleBackgroundOpacity", v) end,
-                minLabel = "0%", maxLabel = "100%",
+            -- "Default" follows Blizzard's own colour for the resource (mana, Ebon
+            -- Might, stagger thresholds, void metamorphosis).
+            inner:AddBarStyleBlock({
+                get = styleGet, set = styleSet, apply = applyComponent,
+                foreground = { values = addon.Catalogs.ColorMode.DefaultCustom.values, order = addon.Catalogs.ColorMode.DefaultCustom.order, infoIcons = false },
+                background = { values = addon.Catalogs.ColorMode.DefaultCustom.values, order = addon.Catalogs.ColorMode.DefaultCustom.order },
+                opacity = { minLabel = "0%", maxLabel = "100%" },
             })
 
             inner:Finalize()
@@ -130,35 +94,15 @@ function AltPowerBar.Render(panel, scrollContent)
         sectionKey = "border",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddBarBorderSelector({
-                label = "Border Style",
-                includeNone = true,
-                get = function() return getSetting("borderStyle") or "square" end,
-                set = function(v) setSetting("borderStyle", v) end,
-                getHiddenEdges = function() return getSetting("borderHiddenEdges") end,
-                setHiddenEdges = function(v) setSetting("borderHiddenEdges", v) end,
+            local borderGet, borderSet = Helpers.CreateFlatAccessors(getSetting, h.set, {
+                style = "borderStyle", hiddenEdges = "borderHiddenEdges",
+                tintEnabled = "borderTintEnable", tintColor = "borderTintColor",
+                thickness = "borderThickness",
             })
-
-            inner:AddToggleColorPicker({
-                label = "Border Tint",
-                getToggle = function() return getSetting("borderTintEnable") or false end,
-                setToggle = function(v) setSetting("borderTintEnable", v) end,
-                getColor = function()
-                    local c = getSetting("borderTintColor") or {1, 1, 1, 1}
-                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                end,
-                setColor = function(r, g, b, a)
-                    setSetting("borderTintColor", {r, g, b, a})
-                end,
-                hasAlpha = true,
-            })
-
-            inner:AddSlider({
-                label = "Border Thickness",
-                min = 1, max = 8, step = 0.5, precision = 1,
-                get = function() return getSetting("borderThickness") or 1 end,
-                set = function(v) setSetting("borderThickness", v) end,
-                minLabel = "1", maxLabel = "8",
+            inner:AddBarBorderBlock({
+                get = borderGet, set = borderSet, apply = applyComponent,
+                thickness = { clamp = false, minLabel = "1", maxLabel = "8" },
+                inset = false,
             })
 
             inner:Finalize()

@@ -132,49 +132,18 @@ function TrackedBars.Render(panel, scrollContent)
                 set = function(v) setSetting("styleEnableCustom", v) end,
             })
 
-            inner:AddDualBarStyleRow({
-                label = "Foreground",
-                getTexture = function() return getSetting("styleForegroundTexture") or "bevelled" end,
-                setTexture = function(v) setSetting("styleForegroundTexture", v) end,
-                colorValues = addon.Catalogs.ColorMode.Text.values,
-                colorOrder = addon.Catalogs.ColorMode.Text.order,
-                getColorMode = function() return getSetting("styleForegroundColorMode") or "default" end,
-                setColorMode = function(v) setSetting("styleForegroundColorMode", v) end,
-                getColor = function()
-                    local c = getSetting("styleForegroundTint") or {1, 1, 1, 1}
-                    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                end,
-                setColor = function(r, g, b, a)
-                    setSetting("styleForegroundTint", {r, g, b, a})
-                end,
-                customColorValue = "custom",
-                hasAlpha = true,
+            local styleGet, styleSet = Helpers.CreateFlatAccessors(getSetting, h.set, {
+                texture = "styleForegroundTexture", colorMode = "styleForegroundColorMode", color = "styleForegroundTint",
+                bgTexture = "styleBackgroundTexture", bgColorMode = "styleBackgroundColorMode", bgColor = "styleBackgroundTint",
+                bgOpacity = "styleBackgroundOpacity",
             })
-
-            inner:AddDualBarStyleRow({
-                label = "Background",
-                getTexture = function() return getSetting("styleBackgroundTexture") or "bevelled" end,
-                setTexture = function(v) setSetting("styleBackgroundTexture", v) end,
-                colorValues = addon.Catalogs.ColorMode.Text.values,
-                colorOrder = addon.Catalogs.ColorMode.Text.order,
-                getColorMode = function() return getSetting("styleBackgroundColorMode") or "default" end,
-                setColorMode = function(v) setSetting("styleBackgroundColorMode", v) end,
-                getColor = function()
-                    local c = getSetting("styleBackgroundTint") or {0, 0, 0, 1}
-                    return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
-                end,
-                setColor = function(r, g, b, a)
-                    setSetting("styleBackgroundTint", {r, g, b, a})
-                end,
-                customColorValue = "custom",
-                hasAlpha = true,
-            })
-
-            inner:AddSlider({
-                label = "Background Opacity", min = 0, max = 100, step = 1,
-                get = function() return getSetting("styleBackgroundOpacity") or 50 end,
-                set = function(v) setSetting("styleBackgroundOpacity", v) end,
-                minLabel = "0%", maxLabel = "100%",
+            local textModes = addon.Catalogs.ColorMode.Text
+            inner:AddBarStyleBlock({
+                get = styleGet, set = styleSet, apply = Helpers.applyStyles,
+                spacer = false,
+                foreground = { values = textModes.values, order = textModes.order, infoIcons = false, textureDefault = "bevelled" },
+                background = { values = textModes.values, order = textModes.order, textureDefault = "bevelled" },
+                opacity = { minLabel = "0%", maxLabel = "100%" },
             })
 
             inner:Finalize()
@@ -190,66 +159,38 @@ function TrackedBars.Render(panel, scrollContent)
         sectionKey = "border",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddBarBorderSelector({
-                label = "Border Style",
-                includeNone = false,
-                includeBlizzardDefault = true,
-                get = function()
-                    local style = getSetting("borderStyle") or "blizzardDefault"
-                    -- Backward compat: translate legacy borderEnable state
+            local borderGet, borderWrite = Helpers.CreateFlatAccessors(getSetting, h.set, {
+                style = "borderStyle", hiddenEdges = "borderHiddenEdges",
+                tintEnabled = "borderTintEnable", tintColor = "borderTintColor",
+                thickness = "borderThickness", insetH = "borderInsetH", insetV = "borderInsetV",
+            })
+            -- Backward compat: a legacy borderEnable = true with no borderStyle reads
+            -- as "square", and writing a style clears the legacy toggle. The inset
+            -- axes fall back to the single-value borderInset.
+            local function borderGetCompat(field)
+                if field == "style" then
                     local comp = getComponent()
-                    if comp and comp.db then
-                        if rawget(comp.db, "borderEnable") == true and not rawget(comp.db, "borderStyle") then
-                            return "square"
-                        end
+                    if comp and comp.db and rawget(comp.db, "borderEnable") == true and not rawget(comp.db, "borderStyle") then
+                        return "square"
                     end
-                    return style
-                end,
-                set = function(v)
-                    setSetting("borderStyle", v)
-                    -- Clear legacy toggle to prevent confusion
+                elseif field == "insetH" or field == "insetV" then
+                    return borderGet(field) or getSetting("borderInset")
+                end
+                return borderGet(field)
+            end
+            local function borderSetCompat(field, value)
+                borderWrite(field, value)
+                if field == "style" then
                     local comp = getComponent()
                     if comp and comp.db and rawget(comp.db, "borderEnable") ~= nil then
                         comp.db.borderEnable = nil
                     end
-                end,
-                getHiddenEdges = function() return getSetting("borderHiddenEdges") end,
-                setHiddenEdges = function(v) setSetting("borderHiddenEdges", v) end,
-            })
-
-            inner:AddToggleColorPicker({
-                label = "Border Tint",
-                get = function() return getSetting("borderTintEnable") or false end,
-                set = function(v) setSetting("borderTintEnable", v) end,
-                getColor = function()
-                    local c = getSetting("borderTintColor")
-                    return c and c[1] or 1, c and c[2] or 1, c and c[3] or 1, c and c[4] or 1
-                end,
-                setColor = function(r, g, b, a) setSetting("borderTintColor", {r, g, b, a}) end,
-            })
-
-            inner:AddSlider({
-                label = "Border Thickness", min = 1, max = 8, step = 0.5,
-                precision = 1,
-                get = function() local v = getSetting("borderThickness") or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                set = function(v) setSetting("borderThickness", math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2))) end,
-                minLabel = "1", maxLabel = "8",
-            })
-
-            inner:AddDualSlider({
-                label = "Border Inset",
-                sliderA = {
-                    axisLabel = "H", min = -4, max = 4, step = 1,
-                    get = function() return getSetting("borderInsetH") or getSetting("borderInset") or 0 end,
-                    set = function(v) setSetting("borderInsetH", v) end,
-                    minLabel = "-4", maxLabel = "+4",
-                },
-                sliderB = {
-                    axisLabel = "V", min = -4, max = 4, step = 1,
-                    get = function() return getSetting("borderInsetV") or getSetting("borderInset") or 0 end,
-                    set = function(v) setSetting("borderInsetV", v) end,
-                    minLabel = "-4", maxLabel = "+4",
-                },
+                end
+            end
+            inner:AddBarBorderBlock({
+                get = borderGetCompat, set = borderSetCompat, apply = Helpers.applyStyles,
+                style = { includeNone = false, includeBlizzardDefault = true, default = "blizzardDefault" },
+                thickness = { minLabel = "1", maxLabel = "8" },
             })
 
             inner:Finalize()

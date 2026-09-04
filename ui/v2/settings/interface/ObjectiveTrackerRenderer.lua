@@ -454,50 +454,19 @@ function ObjectiveTracker.Render(panel, scrollContent)
                         })
 
                         -- Foreground (bar fill)
-                        tabBuilder:AddDualBarStyleRow({
-                            label = "Foreground",
-                            getTexture = function()
-                                local dt = getDTConfig()
-                                return (dt and dt.timerBarForegroundTexture) or "default"
-                            end,
-                            setTexture = function(v)
-                                local dt = ensureDTConfig()
-                                if dt then
-                                    dt.timerBarForegroundTexture = v
-                                    applyDT()
-                                end
-                            end,
-                            colorValues = {
-                                default = "Default",
-                                original = "Texture Original",
-                                custom = "Custom",
+                        local barGet, barSet = Helpers.CreateFlatAccessors(
+                            function(key) local dt = getDTConfig(); return dt and dt[key] end,
+                            function(key, value) local dt = ensureDTConfig(); if dt then dt[key] = value end end,
+                            { texture = "timerBarForegroundTexture", colorMode = "timerBarForegroundColorMode", color = "timerBarForegroundColor" })
+                        tabBuilder:AddBarStyleBlock({
+                            get = barGet, set = barSet, apply = applyDT,
+                            foreground = {
+                                values = { default = "Default", original = "Texture Original", custom = "Custom" },
+                                order = { "default", "original", "custom" },
+                                infoIcons = false,
                             },
-                            colorOrder = { "default", "original", "custom" },
-                            getColorMode = function()
-                                local dt = getDTConfig()
-                                return (dt and dt.timerBarForegroundColorMode) or "default"
-                            end,
-                            setColorMode = function(v)
-                                local dt = ensureDTConfig()
-                                if dt then
-                                    dt.timerBarForegroundColorMode = v
-                                    applyDT()
-                                end
-                            end,
-                            getColor = function()
-                                local dt = getDTConfig()
-                                local c = (dt and type(dt.timerBarForegroundColor) == "table" and dt.timerBarForegroundColor) or { 1, 1, 1, 1 }
-                                return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
-                            end,
-                            setColor = function(r, g, b, a)
-                                local dt = ensureDTConfig()
-                                if dt then
-                                    dt.timerBarForegroundColor = { r or 1, g or 1, b or 1, a or 1 }
-                                    applyDT()
-                                end
-                            end,
-                            customColorValue = "custom",
-                            hasAlpha = true,
+                            background = false,
+                            opacity = false,
                         })
 
                         tabBuilder:Finalize()
