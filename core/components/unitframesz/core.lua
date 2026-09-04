@@ -89,7 +89,6 @@ end
 UFZ._instances = {}   -- [frameKey] = inst
 UFZ._comp = nil
 UFZ._initialized = false
-UFZ._editModeActive = false
 
 --------------------------------------------------------------------------------
 -- Per-Unit DB

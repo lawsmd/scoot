@@ -117,8 +117,6 @@ end
 function CBZ._InitializeEditMode()
     addon.EditMode.OnEditMode("castBarZ", {
         enter = function()
-            CBZ._editModeActive = true
-
             -- Blizzard force-shows its own cast bar for the whole of Edit Mode --
             -- UpdateShownState bails out early with StopFinishAnims / ApplyAlpha(1.0)
             -- / Show() the moment isInEditMode is set (CastingBarFrame.lua:84-90),
@@ -137,8 +135,6 @@ function CBZ._InitializeEditMode()
             end
         end,
         exit = function()
-            CBZ._editModeActive = false
-
             -- Where the deferred claim gets paid. Re-parenting is skipped while the
             -- Edit Mode manager is on screen (writing there taints the manager itself,
             -- not just the frame), so every suppression that entered Edit Mode unapplied

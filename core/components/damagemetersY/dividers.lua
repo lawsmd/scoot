@@ -72,7 +72,7 @@ end
 -- caught up) rather than at attach.
 local function ConditionsHold(checkDialog)
     if not attached then return false end
-    if not DMY._editModeActive then return false end
+    if not addon.EditMode.IsEditing() then return false end
     if InCombatLockdown() then return false end
 
     local win = GetAttachedWindow()

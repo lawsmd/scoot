@@ -155,7 +155,6 @@ function DMY._InitializeEditMode()
 
     addon.EditMode.OnEditMode("damageMetersY", {
         enter = function()
-            DMY._editModeActive = true
             -- Show all enabled windows for positioning (even "hidden" visibility)
             for i = 1, DMY.MAX_WINDOWS do
                 local win = DMY._windows[i]
@@ -166,7 +165,6 @@ function DMY._InitializeEditMode()
             end
         end,
         exit = function()
-            DMY._editModeActive = false
             if DMY.Dividers then DMY.Dividers.Detach() end
             -- Restore normal visibility rules
             if DMY._comp then

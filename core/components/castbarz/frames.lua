@@ -616,7 +616,7 @@ function CBZ._ApplyBar(barKey, comp)
 
     -- Edit Mode needs the frame visible to drag; otherwise the bar is shown only
     -- while a cast is in flight, which events.lua owns.
-    if CBZ._editModeActive then
+    if addon.EditMode.IsEditing() then
         CBZ._ShowEditModePreview(bar)
     elseif not bar.casting then
         bar:Hide()

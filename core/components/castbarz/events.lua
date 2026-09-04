@@ -392,7 +392,7 @@ function CBZ._FinishCast(bar, reason)
     bar.channelled = false
     bar.empowered = false
 
-    if CBZ._editModeActive then
+    if addon.EditMode.IsEditing() then
         -- Edit Mode keeps the bar parked and visible for positioning.
         CBZ._ShowEditModePreview(bar)
         return
@@ -676,7 +676,7 @@ function CBZ._ResetBar(bar)
 
     -- Edit Mode is positioning this frame; taking it away mid-drag would be a bug,
     -- not a reset. Put the stand-in back instead.
-    if CBZ._editModeActive and CBZ._IsUnitEnabled(bar.unitKey) then
+    if addon.EditMode.IsEditing() and CBZ._IsUnitEnabled(bar.unitKey) then
         CBZ._ShowEditModePreview(bar)
     else
         bar:Hide()

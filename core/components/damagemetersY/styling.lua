@@ -616,7 +616,7 @@ function DMY._UpdateVisibility(windowIndex, comp)
     -- even under "incombat"/"hidden" rules, or any styling pass triggered from
     -- inside Edit Mode (mirror sliders, header mode changes) re-hides the
     -- window the user is editing.
-    if DMY._editModeActive then
+    if addon.EditMode.IsEditing() then
         win.frame:Show()
         return
     end

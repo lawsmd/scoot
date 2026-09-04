@@ -5,8 +5,6 @@ local SAU = addon.ScootAuras
 local Engine = SAU.Engine
 
 local containersInitialized = false
-local editModeActive = false
-
 --------------------------------------------------------------------------------
 -- LibEditMode callbacks (once per session; AddFrame happens per claim)
 --------------------------------------------------------------------------------
@@ -14,7 +12,6 @@ local editModeActive = false
 local function RegisterLEMCallbacks()
     addon.EditMode.OnEditMode("scootAuras", {
         enter = function()
-            editModeActive = true
             for trackerId, tracker in pairs(SAU.AllTrackers()) do
                 local state = SAU._activeStates[trackerId]
                 if state and state.shell and SAU.IsTrackerActive(trackerId, tracker)
@@ -38,7 +35,6 @@ local function RegisterLEMCallbacks()
             if SAU.Groups then SAU.Groups.ReflowAll() end
         end,
         exit = function()
-            editModeActive = false
             if SAU.Rearrange then SAU.Rearrange.ForceEnd() end
             for trackerId, state in pairs(SAU._activeStates) do
                 Engine.HideEditModePreview(state)
@@ -53,7 +49,7 @@ local function RegisterLEMCallbacks()
     })
 end
 
-SAU._isEditModeActive = function() return editModeActive end
+SAU._isEditModeActive = function() return addon.EditMode.IsEditing() end
 
 --------------------------------------------------------------------------------
 -- Init

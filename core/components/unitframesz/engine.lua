@@ -2781,7 +2781,7 @@ regenActions.click = applyClickAttributes
 local function applyClickShown(inst)
     local click = inst.clickButton
     if not click then return end
-    local want = not UFZ._editModeActive
+    local want = not addon.EditMode.IsEditing()
     -- The receiver is plain, so it never has to wait: Edit Mode must not be able
     -- to fire a ping mid-drag even when the protected Hide below queues.
     if inst.pingReceiver then inst.pingReceiver:SetShown(want) end
@@ -4260,7 +4260,7 @@ function UFZ._ApplyAll(inst)
     -- The Cast Bar Z precedent (castbarz/frames.lua:615-623). It has to be the
     -- tail -- the stand-in paints sample strings that update() and refreshName()
     -- above would overwrite if it ran any earlier.
-    if UFZ._editModeActive and UFZ._IsUnitEnabled(inst.unitKey) then
+    if addon.EditMode.IsEditing() and UFZ._IsUnitEnabled(inst.unitKey) then
         UFZ._ShowEditModePreview(inst)
     end
 end

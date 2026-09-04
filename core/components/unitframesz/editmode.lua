@@ -369,8 +369,6 @@ end
 function UFZ._InitializeEditMode()
     addon.EditMode.OnEditMode("unitFramesZ", {
         enter = function()
-            UFZ._editModeActive = true
-
             -- Re-asserts the parked frames' green selection outlines, which are
             -- ignoreParentAlpha and have to be suppressed on their own terms
             -- (NativeFrame handles the how; this is the when).
@@ -408,8 +406,6 @@ function UFZ._InitializeEditMode()
             end
         end,
         exit = function()
-            UFZ._editModeActive = false
-
             -- Where the deferred claim gets paid: re-parenting is skipped while the
             -- Edit Mode manager is on screen, so every suppression that entered
             -- Edit Mode unapplied lands here on the way out.
