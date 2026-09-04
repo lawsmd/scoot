@@ -1836,29 +1836,13 @@ local CDM_OPACITY_VIEWERS = {
 }
 
 -- Get the appropriate opacity value based on current game state
+-- Container alpha for the viewer's current state (core/opacity.lua). The
+-- combat value is the Edit Mode setting, stored as 50-100.
 local function getViewerOpacityForState(componentId)
     local component = addon.Components and addon.Components[componentId]
     if not component or not component.db then return 1.0 end
-
-    local db = component.db
-    local inCombat = InCombatLockdown and InCombatLockdown()
-    local hasTarget = UnitExists("target")
-
-    -- Priority: combat > target > out-of-combat
-    local opacityValue
-    if inCombat then
-        -- In combat: use combat opacity (Edit Mode setting, stored as 50-100)
-        opacityValue = tonumber(db.opacity) or 100
-    elseif hasTarget then
-        -- Has target: use target opacity
-        opacityValue = tonumber(db.opacityWithTarget) or 100
-    else
-        -- Out of combat, no target: use out-of-combat opacity
-        opacityValue = tonumber(db.opacityOutOfCombat) or 100
-    end
-
-    -- Convert from percentage (0-100) to alpha (0.0-1.0)
-    return math.max(0, math.min(1.0, opacityValue / 100))
+    local alpha = addon.Opacity.Resolve(component.db, addon.Opacity.Keys.Plain)
+    return alpha
 end
 
 -- Apply opacity to a single viewer frame and its overlays

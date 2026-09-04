@@ -174,24 +174,12 @@ local cgInitialized = false
 -- Container Opacity State Helper
 --------------------------------------------------------------------------------
 
+-- Container alpha for the group's current state (core/opacity.lua).
 local function getGroupOpacityForState(groupIndex)
     local component = addon.Components and addon.Components["customGroup" .. groupIndex]
     if not component or not component.db then return 1.0 end
-
-    local db = component.db
-    local inCombat = InCombatLockdown and InCombatLockdown()
-    local hasTarget = UnitExists("target")
-
-    local opacityValue
-    if inCombat then
-        opacityValue = tonumber(db.opacity) or 100
-    elseif hasTarget then
-        opacityValue = tonumber(db.opacityWithTarget) or 100
-    else
-        opacityValue = tonumber(db.opacityOutOfCombat) or 100
-    end
-
-    return math.max(0, math.min(1.0, opacityValue / 100))
+    local alpha = addon.Opacity.Resolve(component.db, addon.Opacity.Keys.Plain)
+    return alpha
 end
 CG._getGroupOpacityForState = getGroupOpacityForState
 
