@@ -311,3 +311,9 @@ function addon.DebugAuraContainer(sub, arg)
 
     dumpState()
 end
+
+addon:RegisterDebugCommand({
+    name = "auracontainer", aliases = { "aurac" }, help = "12.1 aura container pilot",
+    usage = { "auracontainer [start|stop|probes|filters|suppress|log]" },
+    handler = function(sub, rest) addon.DebugAuraContainer(sub, string.lower(rest[2] or "")) end,
+})

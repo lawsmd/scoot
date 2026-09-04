@@ -176,3 +176,8 @@ function addon.DebugCDMState()
         addon.DebugShowWindow("CDM Pipeline Diagnostic", table.concat(lines, "\n"))
     end
 end
+
+addon:RegisterDebugCommand({
+    name = "cdm", help = "CDM styling pipeline state",
+    handler = function() addon.DebugCDMState() end,
+})

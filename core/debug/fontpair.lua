@@ -138,3 +138,8 @@ function addon.DebugFontPair()
 
     addon.DebugShowWindow("Deep Shadow pairs", table.concat(lines, "\n"))
 end
+
+addon:RegisterDebugCommand({
+    name = "fontpair", help = "Deep Shadow copy draw order",
+    handler = function() addon.DebugFontPair() end,
+})

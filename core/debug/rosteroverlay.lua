@@ -303,3 +303,11 @@ function addon.DebugRosterOverlayRows()
 
     addon.DebugShowWindow("Roster Overlay Rows", lines)
 end
+
+addon:RegisterDebugCommand({
+    name = "rosteroverlay", aliases = { "roster" }, help = "why raid overlay rows read blank",
+    usage = { "rosteroverlay rows - per-row detail" },
+    handler = function(sub)
+        if sub == "rows" then addon.DebugRosterOverlayRows() else addon.DebugRosterOverlay() end
+    end,
+})

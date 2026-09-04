@@ -1183,3 +1183,12 @@ function addon.DebugScootAuras(sub, a1, a2, a3, a4)
 
     DumpState()
 end
+
+addon:RegisterDebugCommand({
+    name = "scootauras", aliases = { "sa" }, help = "ScootAuras lifecycle commands and probes",
+    usage = { "scootauras [add|del|edit|enable|disable|list|reconcile|flush|methods|create|park|revive|fresh|repoint|parkfilter|setunit|budget|clear|log]" },
+    handler = function(sub, rest)
+        addon.DebugScootAuras(sub, string.lower(rest[2] or ""), string.lower(rest[3] or ""),
+            string.lower(rest[4] or ""), string.lower(rest[5] or ""))
+    end,
+})

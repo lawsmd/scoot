@@ -89,23 +89,6 @@ addon:RegisterDebugCommand({
 })
 
 addon:RegisterDebugCommand({
-    name = "widget", help = "widget component pool", default = "state",
-    verbs = {
-        { word = "state", help = "pool and handle state", fn = addon.DebugWidgetState },
-        { word = "spawnchild", help = "spawn one child handle", fn = addon.DebugWidgetSpawnChild },
-        { word = "releaseall", help = "release every handle", fn = addon.DebugWidgetReleaseAll },
-    },
-})
-
-addon:RegisterDebugCommand({
-    name = "inspect", help = "inspect service", default = "state",
-    verbs = {
-        { word = "state", help = "service state", fn = addon.DebugInspectState },
-        { word = "cache", help = "cache contents", fn = addon.DebugInspectCache },
-    },
-})
-
-addon:RegisterDebugCommand({
     name = "profiles", help = "profile export and the reload log",
     verbs = {
         { word = "export", usage = 'export ["Profile Name"]', help = "profile as a Lua table; current profile when no name", fn = addon.DebugExportProfile },
@@ -173,11 +156,6 @@ addon:RegisterDebugCommand({
 })
 
 addon:RegisterDebugCommand({
-    name = "offscreen", help = "why a dragged frame landed off screen",
-    handler = function() addon.DebugOffscreenUnlockDump() end,
-})
-
-addon:RegisterDebugCommand({
     name = "powerbarpos", help = "Player power bar anchor points and custom-position state",
     usage = { "powerbarpos [simulate|reset] - also simulate a reset" },
     handler = function(sub) addon.DebugPowerBarPosition(sub == "simulate" or sub == "reset") end,
@@ -212,16 +190,6 @@ addon:RegisterDebugCommand({
 })
 
 addon:RegisterDebugCommand({
-    name = "fontpair", help = "Deep Shadow copy draw order",
-    handler = function() addon.DebugFontPair() end,
-})
-
-addon:RegisterDebugCommand({
-    name = "cdmlayers", help = "CDM icon frame levels and overlay layers",
-    handler = function() addon.DebugCDMLayers() end,
-})
-
-addon:RegisterDebugCommand({
     name = "sct", help = "world text font and scale log with live CVar state",
     handler = function()
         local state = {}
@@ -233,17 +201,6 @@ addon:RegisterDebugCommand({
         addon.LogWorldTextFont("debug sct:cvars", state)
         addon.ShowWorldTextFontLog()
     end,
-})
-
-addon:RegisterDebugCommand({
-    name = "cdm", help = "CDM styling pipeline state",
-    handler = function() addon.DebugCDMState() end,
-})
-
-addon:RegisterDebugCommand({
-    name = "hover", help = "what is eating the mouse at the cursor",
-    usage = { "hover [seconds]" },
-    handler = function(sub) addon.DebugHover(sub) end,
 })
 
 addon:RegisterDebugCommand({
@@ -261,122 +218,6 @@ addon:RegisterDebugCommand({
             if token ~= "on" and token ~= "off" then return Commands.USAGE end
             if addon.SetDMDebug then addon.SetDMDebug(token == "on") else Commands.NotAvailable("Damage Meter") end
         end },
-    },
-})
-
-addon:RegisterDebugCommand({
-    name = "rosteroverlay", aliases = { "roster" }, help = "why raid overlay rows read blank",
-    usage = { "rosteroverlay rows - per-row detail" },
-    handler = function(sub)
-        if sub == "rows" then addon.DebugRosterOverlayRows() else addon.DebugRosterOverlay() end
-    end,
-})
-
-addon:RegisterDebugCommand({
-    name = "castz", help = "Cast Bar Z live-cast probes",
-    usage = {
-        "castz [player|pet|target|focus|boss1..5] - API probe for that unit",
-        "castz petevents - toggle the pet cast-event watch",
-        "castz endorder [unit] - toggle the cast-end event order watch",
-        "castz fit - shrink-to-fit state of each live bar",
-        "castz empower [unit] - empowered cast stages",
-        "castz time [unit] - cast timing",
-    },
-    handler = function(sub, rest)
-        -- "petevents", not "pet": "pet" is a valid unit to probe.
-        if sub == "petevents" then addon.DebugCastZPet()
-        elseif sub == "endorder" then addon.DebugCastZEndOrder(rest[2])
-        elseif sub == "fit" then addon.DebugCastZFit()
-        elseif sub == "empower" then addon.DebugCastZEmpower(rest[2])
-        elseif sub == "time" then addon.DebugCastZTime(rest[2])
-        else addon.DebugCastZProbe(sub) end
-    end,
-})
-
-addon:RegisterDebugCommand({
-    name = "repcolor", help = "ReputationColor banner lifecycle trace",
-    usage = { "repcolor [watch]" },
-    handler = function(sub) addon.DebugRepColor(sub) end,
-})
-
-addon:RegisterDebugCommand({
-    name = "auracontainer", aliases = { "aurac" }, help = "12.1 aura container pilot",
-    usage = { "auracontainer [start|stop|probes|filters|suppress|log]" },
-    handler = function(sub, rest) addon.DebugAuraContainer(sub, string.lower(rest[2] or "")) end,
-})
-
-addon:RegisterDebugCommand({
-    name = "scootauras", aliases = { "sa" }, help = "ScootAuras lifecycle commands and probes",
-    usage = { "scootauras [add|del|edit|enable|disable|list|reconcile|flush|methods|create|park|revive|fresh|repoint|parkfilter|setunit|budget|clear|log]" },
-    handler = function(sub, rest)
-        addon.DebugScootAuras(sub, string.lower(rest[2] or ""), string.lower(rest[3] or ""),
-            string.lower(rest[4] or ""), string.lower(rest[5] or ""))
-    end,
-})
-
-addon:RegisterDebugCommand({
-    name = "ufzauras", aliases = { "ufza" }, help = "Unit Frames Z aura rows",
-    usage = { "ufzauras [log|apply|kick]" },
-    handler = function(sub) addon.DebugUFZAuras(sub) end,
-})
-
-addon:RegisterDebugCommand({
-    name = "gfauras", aliases = { "gfa" }, help = "group frame aura tracking",
-    usage = { "gfauras [log|filters|refresh]" },
-    handler = function(sub) addon.DebugGroupAuras(sub) end,
-})
-
-addon:RegisterDebugCommand({
-    name = "ping", help = "12.1 ping receiver readiness on Scoot frames",
-    usage = { "ping [seconds]" },
-    handler = function(sub) addon.DebugPing(sub) end,
-})
-
-addon:RegisterDebugCommand({
-    name = "dmY", help = "Modern damage meter probes",
-    verbs = {
-        { word = "cvar", help = "CVar data collection", fn = addon.DebugDMYCVar },
-        { word = "api", help = "source API probe", fn = addon.DebugDMYAPI },
-        { word = "trace", help = "the trace log", fn = addon.DebugDMYTrace },
-        { word = "fields", help = "field secrecy per source", fn = addon.DebugDMYFields },
-        { word = "drilldown", help = "spell breakdown probe", fn = addon.DebugDMYDrilldown },
-        { word = "drilldata", help = "drilldown data snapshot", fn = addon.DebugDMYDrilldata },
-        { word = "multicol", help = "multi-column data", fn = addon.DebugDMYMulticol },
-        { word = "abbrev", help = "number abbreviation", fn = addon.DebugDMYAbbrev },
-        { word = "colprobe", help = "column probe", fn = addon.DebugDMYColprobe },
-        { word = "names", help = "name resolution", fn = addon.DebugDMYNames },
-        { word = "drillstate", help = "drilldown state", fn = addon.DebugDMYDrillState },
-        { word = "deathprobe", help = "death recap probe", fn = addon.DebugDMYDeathProbe },
-        { word = "headericons", help = "header icon state", fn = addon.DebugDMYHeaderIcons },
-    },
-})
-
--- The Unit Frames Z name box, built as it would ship.
-addon:RegisterDebugCommand({
-    name = "nametext", help = "Unit Frames Z name box", default = "toggle",
-    verbs = {
-        { word = "toggle", help = "show or hide the box", fn = addon.DebugNameTextToggle },
-        { word = "size", usage = "size <w> <h>", fn = addon.DebugNameTextSetSize },
-        { word = "lines", usage = "lines <n>", fn = addon.DebugNameTextSetLines },
-        { word = "range", usage = "range <min> <max>", fn = addon.DebugNameTextSetRange },
-        { word = "fallback", usage = "fallback <n>", help = "size when unmeasurable", fn = addon.DebugNameTextSetFallback },
-        { word = "mode", usage = "mode <font|scale|blizzard>", fn = addon.DebugNameTextSetMode },
-        { word = "font", usage = "font <FACE>", help = "font keys are case-sensitive", fn = addon.DebugNameTextSetFont },
-        { word = "case", usage = "case <normal|upper|smallcaps> [FACE]", fn = addon.DebugNameTextSetCase },
-        { word = "caseprobe", help = "can string.upper touch a secret?", fn = addon.DebugNameTextCaseProbe },
-        { word = "sample", usage = "sample <n>", fn = addon.DebugNameTextSample },
-        { word = "gradient", usage = "gradient <auto|off|white|line|block|slice>", fn = addon.DebugNameTextSetGradient },
-        { word = "chrome", help = "backdrop on/off, to drag the box", fn = addon.DebugNameTextToggleChrome },
-        { word = "margin", usage = "margin <auto|off|px>", help = "blind-spot safety margin", fn = addon.DebugNameTextSetMargin },
-        { word = "slices", usage = "slices <n>", fn = addon.DebugNameTextSetSlices },
-        { word = "class", usage = "class <TOKEN|auto>", help = "class tokens are uppercase", fn = addon.DebugNameTextSetClass },
-        { word = "treatment", usage = "treatment <cast|raw>", fn = addon.DebugNameTextSetTreatment },
-        { word = "identity", usage = "identity <player|class>", fn = addon.DebugNameTextSetIdentity },
-        { word = "scan", fn = addon.DebugNameTextScan },
-        { word = "lengthprobe", fn = addon.DebugNameTextLengthProbe },
-        { word = "fitprobe", usage = "fitprobe [steps]", help = "does D(size) settle?", fn = addon.DebugNameTextFitProbe },
-        { word = "autofit", help = "render, then show the size derivation", fn = addon.DebugNameTextAutoFit },
-        { word = "report", fn = addon.DebugNameTextReport },
     },
 })
 

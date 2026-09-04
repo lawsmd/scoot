@@ -240,3 +240,9 @@ function addon.DebugGroupAuras(sub)
 
     dumpState()
 end
+
+addon:RegisterDebugCommand({
+    name = "gfauras", aliases = { "gfa" }, help = "group frame aura tracking",
+    usage = { "gfauras [log|filters|refresh]" },
+    handler = function(sub) addon.DebugGroupAuras(sub) end,
+})

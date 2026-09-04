@@ -250,3 +250,9 @@ function addon.DebugPing(arg)
         end
     end)
 end
+
+addon:RegisterDebugCommand({
+    name = "ping", help = "12.1 ping receiver readiness on Scoot frames",
+    usage = { "ping [seconds]" },
+    handler = function(sub) addon.DebugPing(sub) end,
+})

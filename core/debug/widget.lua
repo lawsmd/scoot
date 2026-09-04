@@ -94,3 +94,12 @@ function addon.DebugWidgetState()
         end
     end
 end
+
+addon:RegisterDebugCommand({
+    name = "widget", help = "widget component pool", default = "state",
+    verbs = {
+        { word = "state", help = "pool and handle state", fn = addon.DebugWidgetState },
+        { word = "spawnchild", help = "spawn one child handle", fn = addon.DebugWidgetSpawnChild },
+        { word = "releaseall", help = "release every handle", fn = addon.DebugWidgetReleaseAll },
+    },
+})

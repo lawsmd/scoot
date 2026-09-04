@@ -1221,3 +1221,24 @@ function addon.DebugCastZTime(unitArg)
         addon.DebugShowWindow("Cast Bar Z - Cast Time", lines)
     end)
 end
+
+addon:RegisterDebugCommand({
+    name = "castz", help = "Cast Bar Z live-cast probes",
+    usage = {
+        "castz [player|pet|target|focus|boss1..5] - API probe for that unit",
+        "castz petevents - toggle the pet cast-event watch",
+        "castz endorder [unit] - toggle the cast-end event order watch",
+        "castz fit - shrink-to-fit state of each live bar",
+        "castz empower [unit] - empowered cast stages",
+        "castz time [unit] - cast timing",
+    },
+    handler = function(sub, rest)
+        -- "petevents", not "pet": "pet" is a valid unit to probe.
+        if sub == "petevents" then addon.DebugCastZPet()
+        elseif sub == "endorder" then addon.DebugCastZEndOrder(rest[2])
+        elseif sub == "fit" then addon.DebugCastZFit()
+        elseif sub == "empower" then addon.DebugCastZEmpower(rest[2])
+        elseif sub == "time" then addon.DebugCastZTime(rest[2])
+        else addon.DebugCastZProbe(sub) end
+    end,
+})

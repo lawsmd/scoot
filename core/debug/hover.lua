@@ -299,3 +299,9 @@ function addon.DebugHover(arg)
         end
     end)
 end
+
+addon:RegisterDebugCommand({
+    name = "hover", help = "what is eating the mouse at the cursor",
+    usage = { "hover [seconds]" },
+    handler = function(sub) addon.DebugHover(sub) end,
+})

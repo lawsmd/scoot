@@ -210,3 +210,9 @@ function addon.DebugRepColor(sub)
 
     addon.DebugShowWindow("Scoot Debug: RepColor", lines)
 end
+
+addon:RegisterDebugCommand({
+    name = "repcolor", help = "ReputationColor banner lifecycle trace",
+    usage = { "repcolor [watch]" },
+    handler = function(sub) addon.DebugRepColor(sub) end,
+})

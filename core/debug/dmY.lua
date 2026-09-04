@@ -2285,3 +2285,22 @@ function addon.DebugDMYHeaderIcons()
 
     f:Show()
 end
+
+addon:RegisterDebugCommand({
+    name = "dmY", help = "Modern damage meter probes",
+    verbs = {
+        { word = "cvar", help = "CVar data collection", fn = addon.DebugDMYCVar },
+        { word = "api", help = "source API probe", fn = addon.DebugDMYAPI },
+        { word = "trace", help = "the trace log", fn = addon.DebugDMYTrace },
+        { word = "fields", help = "field secrecy per source", fn = addon.DebugDMYFields },
+        { word = "drilldown", help = "spell breakdown probe", fn = addon.DebugDMYDrilldown },
+        { word = "drilldata", help = "drilldown data snapshot", fn = addon.DebugDMYDrilldata },
+        { word = "multicol", help = "multi-column data", fn = addon.DebugDMYMulticol },
+        { word = "abbrev", help = "number abbreviation", fn = addon.DebugDMYAbbrev },
+        { word = "colprobe", help = "column probe", fn = addon.DebugDMYColprobe },
+        { word = "names", help = "name resolution", fn = addon.DebugDMYNames },
+        { word = "drillstate", help = "drilldown state", fn = addon.DebugDMYDrillState },
+        { word = "deathprobe", help = "death recap probe", fn = addon.DebugDMYDeathProbe },
+        { word = "headericons", help = "header icon state", fn = addon.DebugDMYHeaderIcons },
+    },
+})

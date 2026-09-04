@@ -138,3 +138,8 @@ function addon.DebugOffscreenUnlockDump()
 
     addon.DebugShowWindow("Off-screen Unlock Debug", table.concat(lines, "\n"))
 end
+
+addon:RegisterDebugCommand({
+    name = "offscreen", help = "why a dragged frame landed off screen",
+    handler = function() addon.DebugOffscreenUnlockDump() end,
+})

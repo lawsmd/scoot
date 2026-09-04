@@ -117,3 +117,8 @@ function addon.DebugCDMLayers()
         addon.DebugShowWindow("CDM Icon Layer Diagnostic", table.concat(lines, "\n"))
     end
 end
+
+addon:RegisterDebugCommand({
+    name = "cdmlayers", help = "CDM icon frame levels and overlay layers",
+    handler = function() addon.DebugCDMLayers() end,
+})

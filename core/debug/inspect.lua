@@ -43,3 +43,11 @@ function addon.DebugInspectCache()
         addon:Print("  (empty)")
     end
 end
+
+addon:RegisterDebugCommand({
+    name = "inspect", help = "inspect service", default = "state",
+    verbs = {
+        { word = "state", help = "service state", fn = addon.DebugInspectState },
+        { word = "cache", help = "cache contents", fn = addon.DebugInspectCache },
+    },
+})

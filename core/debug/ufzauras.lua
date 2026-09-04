@@ -187,3 +187,9 @@ function addon.DebugUFZAuras(sub)
 
     dumpState()
 end
+
+addon:RegisterDebugCommand({
+    name = "ufzauras", aliases = { "ufza" }, help = "Unit Frames Z aura rows",
+    usage = { "ufzauras [log|apply|kick]" },
+    handler = function(sub) addon.DebugUFZAuras(sub) end,
+})

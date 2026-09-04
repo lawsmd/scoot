@@ -2876,3 +2876,32 @@ function addon.DebugNameTextReport()
         end)
     end)
 end
+
+-- The Unit Frames Z name box, built as it would ship.
+addon:RegisterDebugCommand({
+    name = "nametext", help = "Unit Frames Z name box", default = "toggle",
+    verbs = {
+        { word = "toggle", help = "show or hide the box", fn = addon.DebugNameTextToggle },
+        { word = "size", usage = "size <w> <h>", fn = addon.DebugNameTextSetSize },
+        { word = "lines", usage = "lines <n>", fn = addon.DebugNameTextSetLines },
+        { word = "range", usage = "range <min> <max>", fn = addon.DebugNameTextSetRange },
+        { word = "fallback", usage = "fallback <n>", help = "size when unmeasurable", fn = addon.DebugNameTextSetFallback },
+        { word = "mode", usage = "mode <font|scale|blizzard>", fn = addon.DebugNameTextSetMode },
+        { word = "font", usage = "font <FACE>", help = "font keys are case-sensitive", fn = addon.DebugNameTextSetFont },
+        { word = "case", usage = "case <normal|upper|smallcaps> [FACE]", fn = addon.DebugNameTextSetCase },
+        { word = "caseprobe", help = "can string.upper touch a secret?", fn = addon.DebugNameTextCaseProbe },
+        { word = "sample", usage = "sample <n>", fn = addon.DebugNameTextSample },
+        { word = "gradient", usage = "gradient <auto|off|white|line|block|slice>", fn = addon.DebugNameTextSetGradient },
+        { word = "chrome", help = "backdrop on/off, to drag the box", fn = addon.DebugNameTextToggleChrome },
+        { word = "margin", usage = "margin <auto|off|px>", help = "blind-spot safety margin", fn = addon.DebugNameTextSetMargin },
+        { word = "slices", usage = "slices <n>", fn = addon.DebugNameTextSetSlices },
+        { word = "class", usage = "class <TOKEN|auto>", help = "class tokens are uppercase", fn = addon.DebugNameTextSetClass },
+        { word = "treatment", usage = "treatment <cast|raw>", fn = addon.DebugNameTextSetTreatment },
+        { word = "identity", usage = "identity <player|class>", fn = addon.DebugNameTextSetIdentity },
+        { word = "scan", fn = addon.DebugNameTextScan },
+        { word = "lengthprobe", fn = addon.DebugNameTextLengthProbe },
+        { word = "fitprobe", usage = "fitprobe [steps]", help = "does D(size) settle?", fn = addon.DebugNameTextFitProbe },
+        { word = "autofit", help = "render, then show the size derivation", fn = addon.DebugNameTextAutoFit },
+        { word = "report", fn = addon.DebugNameTextReport },
+    },
+})
