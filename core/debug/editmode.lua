@@ -1,34 +1,41 @@
 -- editmode.lua - Edit Mode frame diagnostic dump
 local addonName, addon = ...
 
+-- Short keys accepted by /scoot debug <target>; any other word is a global frame name.
+local FRAME_KEYS = {
+    ab1 = "MainActionBar",
+    ab2 = "MultiBarBottomLeft",
+    ab3 = "MultiBarBottomRight",
+    ab4 = "MultiBarRight",
+    ab5 = "MultiBarLeft",
+    ab6 = "MultiBar5",
+    ab7 = "MultiBar6",
+    ab8 = "MultiBar7",
+    essential = "EssentialCooldownViewer",
+    utility = "UtilityCooldownViewer",
+    micro = "MicroMenuContainer",
+    stance = "StanceBar",
+    buffs  = "BuffFrame",
+    debuffs = "DebuffFrame",
+    tracker = "ObjectiveTrackerFrame",
+    objectivetracker = "ObjectiveTrackerFrame",
+    player = "PlayerFrame",
+    target = "TargetFrame",
+    focus  = "FocusFrame",
+    pet    = "PetFrame",
+}
+
+-- Sorted list of the short keys, for the generated /scoot debug help.
+function addon.DebugDumpTargets()
+    local keys = {}
+    for key in pairs(FRAME_KEYS) do keys[#keys + 1] = key end
+    table.sort(keys)
+    return keys
+end
+
 local function ResolveFrameByKey(key)
     key = tostring(key or ""):lower()
-    local map = {
-        ab1 = "MainActionBar",
-        ab2 = "MultiBarBottomLeft",
-        ab3 = "MultiBarBottomRight",
-        ab4 = "MultiBarRight",
-        ab5 = "MultiBarLeft",
-        ab6 = "MultiBar5",
-        ab7 = "MultiBar6",
-        ab8 = "MultiBar7",
-        essential = "EssentialCooldownViewer",
-        utility = "UtilityCooldownViewer",
-        -- New debug targets
-        micro = "MicroMenuContainer",
-        stance = "StanceBar",
-        -- Aura Frame
-        buffs  = "BuffFrame",
-        debuffs = "DebuffFrame",
-        -- Objective Tracker
-        tracker = "ObjectiveTrackerFrame",
-        objectivetracker = "ObjectiveTrackerFrame",
-        -- Unit Frames
-        player = "PlayerFrame",
-        target = "TargetFrame",
-        focus  = "FocusFrame",
-        pet    = "PetFrame",
-    }
+    local map = FRAME_KEYS
     -- Special-case resolution for Unit Frames using Edit Mode's registry for reliability
     local UNIT_KEYS = { player = "Player", target = "Target", focus = "Focus", pet = "Pet" }
     if UNIT_KEYS[key] then
