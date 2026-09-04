@@ -1229,17 +1229,20 @@ local function ensureRectPowerOverlay(unit, bar, cfg)
         -- re-hide the new fill, and install alpha enforcement on it.
         if _G.hooksecurefunc and not st.powerOverlayTexSyncHooked then
             local hookOk = pcall(function()
-                _G.hooksecurefunc(bar, "SetStatusBarTexture", function(self, ...)
+                -- Closes over the bar and never reads its hook argument: a
+                -- hook's self can arrive as a secret handle from a sealed
+                -- caller, and keying FrameState on one marks the table secret.
+                _G.hooksecurefunc(bar, "SetStatusBarTexture", function()
                     if isEditModeActive() then return end
-                    local s = getState(self)
+                    local s = getState(bar)
                     if not (s and s.powerOverlayActive) then return end
-                    if getProp(self, "ufInternalTextureWrite") then return end
-                    local newTex = self:GetStatusBarTexture()
+                    if getProp(bar, "ufInternalTextureWrite") then return end
+                    local newTex = bar:GetStatusBarTexture()
                     if newTex then
                         pcall(newTex.SetAlpha, newTex, 0)
                         installPowerFillEnforcement(bar, newTex)
                     end
-                    updateRectPowerOverlay(unit, self)
+                    updateRectPowerOverlay(unit, bar)
                 end)
             end)
             if hookOk then st.powerOverlayTexSyncHooked = true end

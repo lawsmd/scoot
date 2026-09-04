@@ -398,17 +398,20 @@ function PartyFrames.ensureHealthOverlay(bar, cfg)
     local barState = ensureState(bar)
     if barState and not barState.textureSwapHooked and _G.hooksecurefunc then
         barState.textureSwapHooked = true
-        _G.hooksecurefunc(bar, "SetStatusBarTexture", function(self)
-            local st = getState(self)
+        -- Closes over the bar and never reads its hook argument: a hook's self
+        -- can arrive as a secret handle from a sealed caller, and keying
+        -- FrameState on one marks the table secret.
+        _G.hooksecurefunc(bar, "SetStatusBarTexture", function()
+            local st = getState(bar)
             if st and st.overlayActive then
                 -- Synchronous: hide new fill and re-anchor overlay immediately
-                hideBlizzardFill(self)
-                updateHealthOverlay(self)
+                hideBlizzardFill(bar)
+                updateHealthOverlay(bar)
                 -- Deferred safety net: catch edge cases where texture isn't ready
                 if _G.C_Timer and _G.C_Timer.After then
                     _G.C_Timer.After(0, function()
-                        hideBlizzardFill(self)
-                        updateHealthOverlay(self)
+                        hideBlizzardFill(bar)
+                        updateHealthOverlay(bar)
                     end)
                 end
             end

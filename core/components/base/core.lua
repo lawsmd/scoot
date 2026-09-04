@@ -475,6 +475,7 @@ function addon:ClearFrameLevelState()
             fstate.SetHidden(fs, "healthTextCenter", false)
             fstate.SetHidden(fs, "powerTextCenter", false)
             fstate.SetHidden(fs, "totName", false)
+            fstate.SetHidden(fs, "fotName", false)
             fstate.SetHidden(fs, "altPowerText", false)
         end
         safeAlpha(fs)
@@ -504,6 +505,11 @@ function addon:ClearFrameLevelState()
     clearTextFlags(_G.PetFrameManaBarTextLeft)
     clearTextFlags(_G.PetFrameManaBarTextRight)
 
+    -- The two small-frame name strings carry the totName and fotName flags;
+    -- nothing above reaches them, so those two clears were no-ops without this.
+    clearTextFlags(_G.TargetFrameToT and _G.TargetFrameToT.Name)
+    clearTextFlags(_G.FocusFrameToT and _G.FocusFrameToT.Name)
+
     -- Empty these rather than nil them out. Several consumers guard their container
     -- once at load time (inside a `do` block) and index it directly thereafter, so
     -- removing the table entirely makes every later apply error on a nil index.
@@ -513,6 +519,7 @@ function addon:ClearFrameLevelState()
     self._ufNameContainerBaselines = {}
     self._ufNameBackdropBaseWidth = {}
     self._ufToTNameTextBaseline = {}
+    self._ufFoTNameTextBaseline = {}
 
     self._ufHealthTextFonts = {}
     self._ufPowerTextFonts = {}
