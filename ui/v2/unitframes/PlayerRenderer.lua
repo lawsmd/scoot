@@ -1434,9 +1434,7 @@ function UF.RenderPlayer(panel, scrollContent)
                     local t = B.ensureMiscDB()
                     if not t then return end
                     t.allowOffscreenDrag = v and true or false
-                    if addon.ApplyOffScreenUnlock then
-                        addon.ApplyOffScreenUnlock(UNIT_KEY, v)
-                    end
+                    addon.ApplyUnitFrameOffscreenUnlockFor(UNIT_KEY)
                 end,
                 infoIcon = UF.TOOLTIPS.offScreenDragging,
             })

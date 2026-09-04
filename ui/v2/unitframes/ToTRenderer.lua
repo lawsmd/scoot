@@ -32,17 +32,14 @@ local function applyScale()
     end
 end
 
+-- Borders and the power bar visibility are both applied by the bar-textures
+-- pass, which reads the border keys and powerBarHidden for this unit.
 local function applyCustomBorders()
-    if addon.ApplyToTCustomBorders then
-        addon.ApplyToTCustomBorders()
-    end
     B.applyBarTextures()
 end
 
 local function applyPowerVisibility()
-    if addon.ApplyToTPowerBarVisibility then
-        addon.ApplyToTPowerBarVisibility()
-    end
+    B.applyBarTextures()
 end
 
 local function applyPortrait()
