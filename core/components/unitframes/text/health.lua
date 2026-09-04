@@ -30,6 +30,23 @@ local NAME_ANCHOR_MAP = addon.UnitFrameText._NAME_ANCHOR_MAP
 --Direct upvalue to the event-driven guard (editmode/core.lua loads first in TOC)
 local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 
+-- Hide-enforcement hooks (core/enforce.lua). The hidden flag stays in
+-- FrameState, where the profile-switch reset in base/core.lua also clears it;
+-- the keys read it live. Show and SetText re-assert at once, SetAlpha after a
+-- stack break; every hook bails while Edit Mode is open.
+local Enforce = addon.Enforce
+local HEALTH_TEXT_OPTS = {
+    methods = { "Show", "SetAlpha", "SetText" },
+    timing = { SetAlpha = "defer" },
+    skipInEditMode = true,
+    when = function(fs) return FS.IsHidden(fs, "healthText") end,
+}
+local HEALTH_TEXT_CENTER_OPTS = {
+    methods = { "SetText" },
+    skipInEditMode = true,
+    when = function(fs) return FS.IsHidden(fs, "healthTextCenter") end,
+}
+
 -- Unit Frames: Toggle Health % (LeftText) and Value (RightText) visibility per unit
 do
     -- Cache for resolved health text fontstrings per unit so combat-time hooks stay cheap.
@@ -512,46 +529,7 @@ do
             local hidden = (hiddenSetting == true)
             if hidden then
                 if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                -- Install hooks once to re-enforce alpha when Blizzard calls Show(), SetAlpha(), or SetText()
-                if not fstate.IsHooked(fs, "healthTextVisibility") then
-                    fstate.MarkHooked(fs, "healthTextVisibility")
-                    if _G.hooksecurefunc then
-                        -- Hook Show() to re-enforce alpha=0
-                        _G.hooksecurefunc(fs, "Show", function(self)
-                            if isEditModeActive() then return end
-                            local st = FS
-                            if st and st.IsHidden(self, "healthText") and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                        -- Hook SetAlpha() to re-enforce alpha=0 when Blizzard tries to make it visible
-                        _G.hooksecurefunc(fs, "SetAlpha", function(self, alpha)
-                            if isEditModeActive() then return end
-                            local st = FS
-                            if st and st.IsHidden(self, "healthText") and alpha and alpha > 0 then
-                                -- Use C_Timer to avoid infinite recursion (hook calls SetAlpha which triggers hook)
-                                if not st.GetProp(self, "healthTextAlphaDeferred") then
-                                    st.SetProp(self, "healthTextAlphaDeferred", true)
-                                    C_Timer.After(0, function()
-                                        local st2 = FS
-                                        if st2 then st2.SetProp(self, "healthTextAlphaDeferred", nil) end
-                                        if st2 and st2.IsHidden(self, "healthText") and self.SetAlpha then
-                                            pcall(self.SetAlpha, self, 0)
-                                        end
-                                    end)
-                                end
-                            end
-                        end)
-                        -- Hook SetText() to re-enforce alpha=0 when Blizzard updates text content
-                        _G.hooksecurefunc(fs, "SetText", function(self)
-                            if isEditModeActive() then return end
-                            local st = FS
-                            if st and st.IsHidden(self, "healthText") and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
+                Enforce.Install(fs, "healthText", HEALTH_TEXT_OPTS)
                 fstate.SetHidden(fs, "healthText", true)
             else
                 fstate.SetHidden(fs, "healthText", false)
@@ -563,21 +541,9 @@ do
         applyHealthTextVisibility(leftFS, cfg.healthPercentHidden, unit)
         applyHealthTextVisibility(rightFS, cfg.healthValueHidden, unit)
 
-        -- Install SetText hook for center TextString to enforce hidden state only
+        -- The center TextString: SetText re-asserts the hidden state only
         local fstate = FS
-        if textStringFS and fstate and not fstate.IsHooked(textStringFS, "healthTextCenterSetText") then
-            fstate.MarkHooked(textStringFS, "healthTextCenterSetText")
-            if _G.hooksecurefunc then
-                _G.hooksecurefunc(textStringFS, "SetText", function(self)
-                    if isEditModeActive() then return end
-                    -- Enforce hidden state immediately if configured
-                    local st = FS
-                    if st and st.IsHidden(self, "healthTextCenter") and self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end)
-            end
-        end
+        Enforce.Install(textStringFS, "healthTextCenter", HEALTH_TEXT_CENTER_OPTS)
 
         if leftFS then applyTextStyle(leftFS, cfg.textHealthPercent or {}, unit .. ":left", frame) end
         if rightFS then applyTextStyle(rightFS, cfg.textHealthValue or {}, unit .. ":right", frame) end
@@ -715,46 +681,7 @@ do
             local hidden = (hiddenSetting == true)
             if hidden then
                 if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                -- Install hooks once to re-enforce alpha when Blizzard calls Show(), SetAlpha(), or SetText()
-                if not fstate.IsHooked(fs, "healthTextVisibility") then
-                    fstate.MarkHooked(fs, "healthTextVisibility")
-                    if _G.hooksecurefunc then
-                        -- Hook Show() to re-enforce alpha=0
-                        _G.hooksecurefunc(fs, "Show", function(self)
-                            if isEditModeActive() then return end
-                            local st = FS
-                            if st and st.IsHidden(self, "healthText") and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                        -- Hook SetAlpha() to re-enforce alpha=0 when Blizzard tries to make it visible
-                        _G.hooksecurefunc(fs, "SetAlpha", function(self, alpha)
-                            if isEditModeActive() then return end
-                            local st = FS
-                            if st and st.IsHidden(self, "healthText") and alpha and alpha > 0 then
-                                -- Use C_Timer to avoid infinite recursion (hook calls SetAlpha which triggers hook)
-                                if not st.GetProp(self, "healthTextAlphaDeferred") then
-                                    st.SetProp(self, "healthTextAlphaDeferred", true)
-                                    C_Timer.After(0, function()
-                                        local st2 = FS
-                                        if st2 then st2.SetProp(self, "healthTextAlphaDeferred", nil) end
-                                        if st2 and st2.IsHidden(self, "healthText") and self.SetAlpha then
-                                            pcall(self.SetAlpha, self, 0)
-                                        end
-                                    end)
-                                end
-                            end
-                        end)
-                        -- Hook SetText() to re-enforce alpha=0 when Blizzard updates text content
-                        _G.hooksecurefunc(fs, "SetText", function(self)
-                            if isEditModeActive() then return end
-                            local st = FS
-                            if st and st.IsHidden(self, "healthText") and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
+                Enforce.Install(fs, "healthText", HEALTH_TEXT_OPTS)
                 fstate.SetHidden(fs, "healthText", true)
                 fstate.SetProp(fs, "healthTextAppliedHidden", true)
             else

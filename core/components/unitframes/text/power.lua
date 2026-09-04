@@ -18,6 +18,21 @@ local ufTextCustomizationOpts = { alignment = true, alignmentMode = true, colorM
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
+-- Hide-enforcement hooks (core/enforce.lua). The hidden flag stays in
+-- FrameState, where the profile-switch reset in base/core.lua also clears it;
+-- the keys read it live. Show and SetText re-assert at once, SetAlpha after a
+-- stack break. The power hooks never bailed in Edit Mode, and still do not.
+local Enforce = addon.Enforce
+local POWER_TEXT_OPTS = {
+    methods = { "Show", "SetAlpha", "SetText" },
+    timing = { SetAlpha = "defer" },
+    when = function(fs) return FS.IsHidden(fs, "powerText") end,
+}
+local POWER_TEXT_CENTER_OPTS = {
+    methods = { "SetText" },
+    when = function(fs) return FS.IsHidden(fs, "powerTextCenter") end,
+}
+
 -- Secret-value safe helpers (shared module)
 local SS = addon.SecretSafe
 local safeOffset = SS.safeOffset
@@ -442,43 +457,7 @@ do
             local hidden = (hiddenSetting == true)
             if hidden then
                 if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                -- Install hooks once to re-enforce alpha when Blizzard calls Show(), SetAlpha(), or SetText()
-                if not fstate.IsHooked(fs, "powerTextVisibility") then
-                    fstate.MarkHooked(fs, "powerTextVisibility")
-                    if _G.hooksecurefunc then
-                        -- Hook Show() to re-enforce alpha=0
-                        _G.hooksecurefunc(fs, "Show", function(self)
-                            local st = FS
-                            if st and st.IsHidden(self, "powerText") and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                        -- Hook SetAlpha() to re-enforce alpha=0 when Blizzard tries to make it visible
-                        _G.hooksecurefunc(fs, "SetAlpha", function(self, alpha)
-                            local st = FS
-                            if st and st.IsHidden(self, "powerText") and alpha and alpha > 0 then
-                                -- Use C_Timer to avoid infinite recursion (hook calls SetAlpha which triggers hook)
-                                if not st.GetProp(self, "powerTextAlphaDeferred") then
-                                    st.SetProp(self, "powerTextAlphaDeferred", true)
-                                    C_Timer.After(0, function()
-                                        local st2 = FS
-                                        if st2 then st2.SetProp(self, "powerTextAlphaDeferred", nil) end
-                                        if st2 and st2.IsHidden(self, "powerText") and self.SetAlpha then
-                                            pcall(self.SetAlpha, self, 0)
-                                        end
-                                    end)
-                                end
-                            end
-                        end)
-                        -- Hook SetText() to re-enforce alpha=0 when Blizzard updates text content
-                        _G.hooksecurefunc(fs, "SetText", function(self)
-                            local st = FS
-                            if st and st.IsHidden(self, "powerText") and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
+                Enforce.Install(fs, "powerText", POWER_TEXT_OPTS)
                 fstate.SetHidden(fs, "powerText", true)
             else
                 fstate.SetHidden(fs, "powerText", false)
@@ -501,19 +480,9 @@ do
 		applyPowerTextVisibility(leftFS, leftHiddenSetting, unit)
 		applyPowerTextVisibility(rightFS, rightHiddenSetting, unit)
 
-        -- Install SetText hook for center TextString to enforce hidden state only
+        -- The center TextString: SetText re-asserts the hidden state only
         local fstate = FS
-        if textStringFS and fstate and not fstate.IsHooked(textStringFS, "powerTextCenterSetText") then
-            fstate.MarkHooked(textStringFS, "powerTextCenterSetText")
-            if _G.hooksecurefunc then
-                _G.hooksecurefunc(textStringFS, "SetText", function(self)
-                    local st = FS
-                    if st and st.IsHidden(self, "powerTextCenter") and self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end)
-            end
-        end
+        Enforce.Install(textStringFS, "powerTextCenter", POWER_TEXT_CENTER_OPTS)
 
 		-- Migrate dkSpec from base slot to DK companion slot (idempotent)
 		local tpv = cfg.textPowerValue
@@ -638,43 +607,7 @@ do
             local hidden = (hiddenSetting == true)
             if hidden then
                 if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                -- Install hooks once to re-enforce alpha when Blizzard calls Show(), SetAlpha(), or SetText()
-                if not fstate.IsHooked(fs, "powerTextVisibility") then
-                    fstate.MarkHooked(fs, "powerTextVisibility")
-                    if _G.hooksecurefunc then
-                        -- Hook Show() to re-enforce alpha=0
-                        _G.hooksecurefunc(fs, "Show", function(self)
-                            local st = FS
-                            if st and st.IsHidden(self, "powerText") and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                        -- Hook SetAlpha() to re-enforce alpha=0 when Blizzard tries to make it visible
-                        _G.hooksecurefunc(fs, "SetAlpha", function(self, alpha)
-                            local st = FS
-                            if st and st.IsHidden(self, "powerText") and alpha and alpha > 0 then
-                                -- Use C_Timer to avoid infinite recursion (hook calls SetAlpha which triggers hook)
-                                if not st.GetProp(self, "powerTextAlphaDeferred") then
-                                    st.SetProp(self, "powerTextAlphaDeferred", true)
-                                    C_Timer.After(0, function()
-                                        local st2 = FS
-                                        if st2 then st2.SetProp(self, "powerTextAlphaDeferred", nil) end
-                                        if st2 and st2.IsHidden(self, "powerText") and self.SetAlpha then
-                                            pcall(self.SetAlpha, self, 0)
-                                        end
-                                    end)
-                                end
-                            end
-                        end)
-                        -- Hook SetText() to re-enforce alpha=0 when Blizzard updates text content
-                        _G.hooksecurefunc(fs, "SetText", function(self)
-                            local st = FS
-                            if st and st.IsHidden(self, "powerText") and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
+                Enforce.Install(fs, "powerText", POWER_TEXT_OPTS)
                 fstate.SetHidden(fs, "powerText", true)
                 fstate.SetProp(fs, "powerTextAppliedHidden", true)
             else

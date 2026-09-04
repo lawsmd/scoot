@@ -51,10 +51,10 @@ local function defaultApply(region)
     region:SetAlpha(0)
 end
 
-local function keyActive(entry)
+local function keyActive(entry, region)
     if entry.skipInEditMode and editModeOpen() then return false end
     if entry.when then
-        return entry.when() == true
+        return entry.when(region) == true
     end
     return entry.hidden == true
 end
@@ -67,7 +67,7 @@ local function runApplies(region, st, method, phase)
     if st.enforceApplying then return end
     st.enforceApplying = true
     for _, entry in pairs(st.enforce) do
-        if (method == nil or entry.methods[method]) and keyActive(entry) then
+        if (method == nil or entry.methods[method]) and keyActive(entry, region) then
             pcall(entry.apply, region, method, phase)
         end
     end
@@ -105,8 +105,8 @@ end
 --                   must be a function on the region.
 --   apply           function(region, method, phase); the whole hide action, in
 --                   pcall (default: region:SetAlpha(0)).
---   when            function() -> true, false, or nil; a live source of truth
---                   instead of the stored flag. nil skips (fail closed).
+--   when            function(region) -> true, false, or nil; a live source of
+--                   truth instead of the stored flag. nil skips (fail closed).
 --   timing          "sync", "defer", "both", or { method = timing }. Two keys
 --                   asking different timings for one method get "both".
 --   skipInEditMode  hook bodies bail while Edit Mode is open or opening; a

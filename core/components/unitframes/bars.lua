@@ -36,6 +36,22 @@ local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
+-- Hide-enforcement hooks (core/enforce.lua) for the alternate power texts.
+-- The flags stay in FrameState and the keys read them live; Show and SetText
+-- re-assert at once, SetAlpha after a stack break, all bailing in Edit Mode.
+local Enforce = addon.Enforce
+local ALT_POWER_TEXT_OPTS = {
+    methods = { "Show", "SetAlpha", "SetText" },
+    timing = { SetAlpha = "defer" },
+    skipInEditMode = true,
+    when = function(fs) return FS.Get(fs).altPowerTextHidden == true end,
+}
+local ALT_POWER_TEXT_CENTER_OPTS = {
+    methods = { "SetText" },
+    skipInEditMode = true,
+    when = function(fs) return FS.Get(fs).altPowerTextCenterHidden == true end,
+}
+
 local function getState(frame)
     return FS.Get(frame)
 end
@@ -2100,46 +2116,7 @@ do
                             if not st then return end
                             if hidden then
                                 if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                                -- Install hooks once to re-enforce alpha when Blizzard calls Show(), SetAlpha(), or SetText()
-                                if not st.altPowerTextVisibilityHooked then
-                                    st.altPowerTextVisibilityHooked = true
-                                    if _G.hooksecurefunc then
-                                        -- Hook Show() to re-enforce alpha=0
-                                        _G.hooksecurefunc(fs, "Show", function(self)
-                                            if isEditModeActive() then return end
-                                            local s = getState(self)
-                                            if s and s.altPowerTextHidden and self.SetAlpha then
-                                                pcall(self.SetAlpha, self, 0)
-                                            end
-                                        end)
-                                        -- Hook SetAlpha() to re-enforce alpha=0 when Blizzard tries to make it visible
-                                        _G.hooksecurefunc(fs, "SetAlpha", function(self, alpha)
-                                            if isEditModeActive() then return end
-                                            local s = getState(self)
-                                            if s and s.altPowerTextHidden and alpha and alpha > 0 then
-                                                -- Use C_Timer to avoid infinite recursion (hook calls SetAlpha which triggers hook)
-                                                if not s.altPowerTextAlphaDeferred then
-                                                    s.altPowerTextAlphaDeferred = true
-                                                    C_Timer.After(0, function()
-                                                        local s2 = getState(self)
-                                                        if s2 then s2.altPowerTextAlphaDeferred = nil end
-                                                        if s2 and s2.altPowerTextHidden and self.SetAlpha then
-                                                            pcall(self.SetAlpha, self, 0)
-                                                        end
-                                                    end)
-                                                end
-                                            end
-                                        end)
-                                        -- Hook SetText() to re-enforce alpha=0 when Blizzard updates text content
-                                        _G.hooksecurefunc(fs, "SetText", function(self)
-                                            if isEditModeActive() then return end
-                                            local s = getState(self)
-                                            if s and s.altPowerTextHidden and self.SetAlpha then
-                                                pcall(self.SetAlpha, self, 0)
-                                            end
-                                        end)
-                                    end
-                                end
+                                Enforce.Install(fs, "altPowerText", ALT_POWER_TEXT_OPTS)
                                 st.altPowerTextHidden = true
                             else
                                 st.altPowerTextHidden = false
@@ -2157,21 +2134,8 @@ do
                         applyAltPowerTextVisibility(leftFS, altHidden or percentHidden)
                         applyAltPowerTextVisibility(rightFS, altHidden or valueHidden)
 
-                        -- Install SetText hook for center TextString to enforce hidden state only
-                        local tsState = getState(textStringFS)
-                        if textStringFS and tsState and not tsState.altPowerTextCenterSetTextHooked then
-                            tsState.altPowerTextCenterSetTextHooked = true
-                            if _G.hooksecurefunc then
-                                _G.hooksecurefunc(textStringFS, "SetText", function(self)
-                                    if isEditModeActive() then return end
-                                    -- Enforce hidden state immediately if configured
-                                    local s = getState(self)
-                                    if s and s.altPowerTextCenterHidden and self.SetAlpha then
-                                        pcall(self.SetAlpha, self, 0)
-                                    end
-                                end)
-                            end
-                        end
+                        -- The center TextString: SetText re-asserts the hidden state only
+                        Enforce.Install(textStringFS, "altPowerTextCenter", ALT_POWER_TEXT_CENTER_OPTS)
 
                         -- Styling (font/size/style/color/offset) using stable baseline anchors
                         addon._ufAltPowerTextBaselines = addon._ufAltPowerTextBaselines or {}
