@@ -43,13 +43,9 @@ local function GetSAU() return addon.ScootAuras end
 
 -- Row recipe from the Rules picker: a recolored solid square for the check, the
 -- spec's own icon, and a name that goes dim when off.
-local function AcquireSpecRow(content, index)
-    panel._rows = panel._rows or {}
-    local row = panel._rows[index]
-    if row then return row end
-
+local function CreateSpecRow(_, content)
     local theme = GetTheme()
-    row = CreateFrame("Button", nil, content)
+    local row = CreateFrame("Button", nil, content)
     row:SetHeight(ROW_H)
 
     local check = row:CreateTexture(nil, "ARTWORK")
@@ -89,8 +85,12 @@ local function AcquireSpecRow(content, index)
         Flyout.ApplyEdit()
     end)
 
-    panel._rows[index] = row
     return row
+end
+
+local function AcquireSpecRow(content, index)
+    panel._rows = panel._rows or addon.Pool.NewIndexed(CreateSpecRow)
+    return panel._rows:Get(index, content)
 end
 
 local function PaintRow(row, isOn)
@@ -112,13 +112,9 @@ end
 
 -- Class header, clickable: checks every spec of the class, or clears them all
 -- when the class is already fully checked.
-local function AcquireClassRow(content, index)
-    panel._headers = panel._headers or {}
-    local row = panel._headers[index]
-    if row then return row end
-
+local function CreateClassRow(_, content)
     local theme = GetTheme()
-    row = CreateFrame("Button", nil, content)
+    local row = CreateFrame("Button", nil, content)
     row:SetHeight(HEADER_H)
 
     local label = row:CreateFontString(nil, "OVERLAY")
@@ -143,8 +139,12 @@ local function AcquireClassRow(content, index)
         Flyout.ApplyEdit()
     end)
 
-    panel._headers[index] = row
     return row
+end
+
+local function AcquireClassRow(content, index)
+    panel._headers = panel._headers or addon.Pool.NewIndexed(CreateClassRow)
+    return panel._headers:Get(index, content)
 end
 
 --------------------------------------------------------------------------------
@@ -195,8 +195,8 @@ local function Rebuild()
     if not (SAU and opts) then return end
 
     local content = panel._list
-    for _, row in ipairs(panel._rows or {}) do row:Hide() end
-    for _, row in ipairs(panel._headers or {}) do row:Hide() end
+    if panel._rows then panel._rows:HideFrom(1) end
+    if panel._headers then panel._headers:HideFrom(1) end
 
     panel._title:SetText(opts.title or "Load in...")
 

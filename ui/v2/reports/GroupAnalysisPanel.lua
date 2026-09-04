@@ -83,9 +83,6 @@ local DOTS_PERIOD = 0.35                  -- seconds per frame; a full cycle rea
 local FALLBACK_BG_ALPHA = 0.98  -- only if the Reports opacity setting is unreachable
 
 local frame = nil
-local rows = {}
-local colHeaders = nil
-local groupHeaders = {}
 local flyoutHandle = nil
 local renderQueued = false
 local render  -- forward: the footer's click handler re-renders immediately
@@ -340,27 +337,36 @@ end
 --------------------------------------------------------------------------------
 -- One pair per layout column, so a two-column raid panel labels both halves.
 
+local function createColumnHeader()
+    -- Text is set in render, never here: at creation time no font has
+    -- been applied yet and SetText would error.
+    local header = {}
+    header.player = frame:CreateFontString(nil, "OVERLAY")
+    header.player:SetJustifyH("LEFT")
+    header.player:SetWordWrap(false)
+    -- Deliberately no SetWidth: both header strings auto-size to their
+    -- text so the underlines can anchor to their own bounds instead of
+    -- measuring with GetStringWidth, which under-reports before a string
+    -- has been rendered once.
+    header.ilvl = frame:CreateFontString(nil, "OVERLAY")
+    header.ilvl:SetJustifyH("RIGHT")
+    header.ilvl:SetWordWrap(false)
+    header.playerRule = frame:CreateTexture(nil, "ARTWORK")
+    header.ilvlRule = frame:CreateTexture(nil, "ARTWORK")
+    return header
+end
+
+local function hideColumnHeader(header)
+    header.player:Hide()
+    header.ilvl:Hide()
+    header.playerRule:Hide()
+    header.ilvlRule:Hide()
+end
+
+local colHeaders = addon.Pool.NewIndexed(createColumnHeader, hideColumnHeader)
+
 local function acquireColumnHeader(index)
-    colHeaders = colHeaders or {}
-    local header = colHeaders[index]
-    if not header then
-        -- Text is set in render, never here: at creation time no font has
-        -- been applied yet and SetText would error.
-        header = {}
-        header.player = frame:CreateFontString(nil, "OVERLAY")
-        header.player:SetJustifyH("LEFT")
-        header.player:SetWordWrap(false)
-        -- Deliberately no SetWidth: both header strings auto-size to their
-        -- text so the underlines can anchor to their own bounds instead of
-        -- measuring with GetStringWidth, which under-reports before a string
-        -- has been rendered once.
-        header.ilvl = frame:CreateFontString(nil, "OVERLAY")
-        header.ilvl:SetJustifyH("RIGHT")
-        header.ilvl:SetWordWrap(false)
-        header.playerRule = frame:CreateTexture(nil, "ARTWORK")
-        header.ilvlRule = frame:CreateTexture(nil, "ARTWORK")
-        colHeaders[index] = header
-    end
+    local header = colHeaders:Get(index)
     header.player:Show()
     header.ilvl:Show()
     header.playerRule:Show()
@@ -377,44 +383,45 @@ local function underline(rule, fs)
     rule:SetColorTexture(unpack(COLHEADER_GRAY))
 end
 
-local function hideColumnHeadersFrom(index)
-    if not colHeaders then return end
-    for i = index, #colHeaders do
-        colHeaders[i].player:Hide()
-        colHeaders[i].ilvl:Hide()
-        colHeaders[i].playerRule:Hide()
-        colHeaders[i].ilvlRule:Hide()
-    end
-end
-
 --------------------------------------------------------------------------------
 -- Rows
 --------------------------------------------------------------------------------
 
+local function createRow()
+    local row = {}
+    -- ARTWORK, matching the header underlines: above the panel background,
+    -- below the OVERLAY text.
+    row.roleIcon = frame:CreateTexture(nil, "ARTWORK")
+    -- No fixed width: the name auto-sizes so the realm can sit right
+    -- against it whatever the name's length.
+    row.name = frame:CreateFontString(nil, "OVERLAY")
+    row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
+    row.realm = frame:CreateFontString(nil, "OVERLAY")
+    row.realm:SetJustifyH("LEFT")
+    row.realm:SetWordWrap(false)
+    row.spec = frame:CreateFontString(nil, "OVERLAY")
+    row.spec:SetJustifyH("LEFT")
+    row.spec:SetWordWrap(false)
+    row.ilvl = frame:CreateFontString(nil, "OVERLAY")
+    row.ilvl:SetJustifyH("RIGHT")
+    row.ilvl:SetJustifyV("MIDDLE")
+    row.ilvl:SetWordWrap(false)
+    return row
+end
+
+local function hideRow(row)
+    row.roleIcon:Hide()
+    row.name:Hide()
+    row.realm:Hide()
+    row.spec:Hide()
+    row.ilvl:Hide()
+end
+
+local rows = addon.Pool.NewIndexed(createRow, hideRow)
+
 local function acquireRow(index)
-    local row = rows[index]
-    if not row then
-        row = {}
-        -- ARTWORK, matching the header underlines: above the panel background,
-        -- below the OVERLAY text.
-        row.roleIcon = frame:CreateTexture(nil, "ARTWORK")
-        -- No fixed width: the name auto-sizes so the realm can sit right
-        -- against it whatever the name's length.
-        row.name = frame:CreateFontString(nil, "OVERLAY")
-        row.name:SetJustifyH("LEFT")
-        row.name:SetWordWrap(false)
-        row.realm = frame:CreateFontString(nil, "OVERLAY")
-        row.realm:SetJustifyH("LEFT")
-        row.realm:SetWordWrap(false)
-        row.spec = frame:CreateFontString(nil, "OVERLAY")
-        row.spec:SetJustifyH("LEFT")
-        row.spec:SetWordWrap(false)
-        row.ilvl = frame:CreateFontString(nil, "OVERLAY")
-        row.ilvl:SetJustifyH("RIGHT")
-        row.ilvl:SetJustifyV("MIDDLE")
-        row.ilvl:SetWordWrap(false)
-        rows[index] = row
-    end
+    local row = rows:Get(index)
     -- roleIcon is deliberately absent here: whether it shows depends on the
     -- entry's role and the visibility setting, so render decides per row.
     row.name:Show()
@@ -424,40 +431,27 @@ local function acquireRow(index)
     return row
 end
 
-local function hideRowsFrom(index)
-    for i = index, #rows do
-        rows[i].roleIcon:Hide()
-        rows[i].name:Hide()
-        rows[i].realm:Hide()
-        rows[i].spec:Hide()
-        rows[i].ilvl:Hide()
-    end
-end
-
 --------------------------------------------------------------------------------
 -- Group headers
 --------------------------------------------------------------------------------
 -- "Group N" / "Other" lines, by-group sort only. Pooled flat like the rows;
 -- render assigns labels in placement order.
 
-local function acquireGroupHeader(index)
-    local gh = groupHeaders[index]
-    if not gh then
-        -- Text is set in render, never here: at creation time no font has
-        -- been applied yet and SetText would error.
-        gh = frame:CreateFontString(nil, "OVERLAY")
-        gh:SetJustifyH("LEFT")
-        gh:SetWordWrap(false)
-        groupHeaders[index] = gh
-    end
-    gh:Show()
+local function createGroupHeader()
+    -- Text is set in render, never here: at creation time no font has
+    -- been applied yet and SetText would error.
+    local gh = frame:CreateFontString(nil, "OVERLAY")
+    gh:SetJustifyH("LEFT")
+    gh:SetWordWrap(false)
     return gh
 end
 
-local function hideGroupHeadersFrom(index)
-    for i = index, #groupHeaders do
-        groupHeaders[i]:Hide()
-    end
+local groupHeaders = addon.Pool.NewIndexed(createGroupHeader)
+
+local function acquireGroupHeader(index)
+    local gh = groupHeaders:Get(index)
+    gh:Show()
+    return gh
 end
 
 --------------------------------------------------------------------------------
@@ -758,7 +752,7 @@ function render()
         header.ilvl:SetTextColor(unpack(COLHEADER_GRAY))
         underline(header.ilvlRule, header.ilvl)
     end
-    hideColumnHeadersFrom(M.columns + 1)
+    colHeaders:HideFrom(M.columns + 1)
 
     local rowsTop = colHeaderY - COLHEADER_HEIGHT
 
@@ -848,8 +842,8 @@ function render()
         local used = rowsTop - y
         if used > maxColHeight then maxColHeight = used end
     end
-    hideRowsFrom(rowIndex + 1)
-    hideGroupHeadersFrom(headerIndex + 1)
+    rows:HideFrom(rowIndex + 1)
+    groupHeaders:HideFrom(headerIndex + 1)
 
     -- Every column carries its own gutter, so the panel grows by one per
     -- column — plus one more on the right edge, mirroring the leftmost gutter,

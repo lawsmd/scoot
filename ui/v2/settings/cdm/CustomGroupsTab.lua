@@ -66,7 +66,7 @@ local DragState = {
 
 local contentFrame
 local categoryFrames = {}  -- [1..3] = category display frames
-local itemPools = {}       -- [1..3] = arrays of item frames (reused)
+local itemPools = {}       -- [groupIndex] = indexed pool of item frames (reused)
 local dropTargets = {}     -- [1..3] = drop target frames
 
 -- Forward declarations
@@ -295,7 +295,7 @@ local function FindNearestTarget(cursorX, cursorY)
     for gi = 1, 5 do
         local pool = itemPools[gi]
         if pool then
-            for _, itemFrame in ipairs(pool) do
+            for _, itemFrame in ipairs(pool.items) do
                 if itemFrame:IsShown() and itemFrame._entryIndex then
                     local left = itemFrame:GetLeft()
                     local right = itemFrame:GetRight()
@@ -622,7 +622,9 @@ local function CreateCategoryFrame(parent, groupIndex)
     cat._container = container
 
     -- Item frame pool
-    itemPools[groupIndex] = {}
+    itemPools[groupIndex] = addon.Pool.NewIndexed(function()
+        return CreateItemFrame(container, groupIndex)
+    end)
 
     -- Drop target
     dropTargets[groupIndex] = CreateDropTarget(container, groupIndex)
@@ -659,12 +661,6 @@ local function LayoutGrid(groupIndex)
         end
     end
 
-    -- Ensure enough item frames exist
-    while #pool < #visibleEntries do
-        local item = CreateItemFrame(container, groupIndex)
-        table.insert(pool, item)
-    end
-
     -- Position items in grid
     local col = 0
     local row = 0
@@ -678,7 +674,7 @@ local function LayoutGrid(groupIndex)
     totalItems = 1
 
     for i, vis in ipairs(visibleEntries) do
-        local item = pool[i]
+        local item = pool:Get(i)
         item._entry = vis.entry
         item._entryIndex = vis.dataIndex
         item._groupIndex = groupIndex
@@ -710,9 +706,7 @@ local function LayoutGrid(groupIndex)
     end
 
     -- Hide excess pool items
-    for i = #visibleEntries + 1, #pool do
-        pool[i]:Hide()
-    end
+    pool:HideFrom(#visibleEntries + 1)
 
     -- Calculate container height
     local totalRows = math.ceil(totalItems / GRID_STRIDE)

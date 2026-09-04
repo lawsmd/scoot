@@ -18,10 +18,6 @@ local DATA_COL = 120
 local COL_GAP = 8
 local NUM_DATA_COLS = 4
 
--- Row pool
-local rowPool = {}
-local activeRows = {}
-
 local highScoreFrame = nil
 
 local function GetClassColor(classToken)
@@ -100,21 +96,9 @@ local function SetRowFont(row, font, size)
     end
 end
 
-local function HideAllRows()
-    for _, row in ipairs(activeRows) do
-        row:Hide()
-    end
-    activeRows = {}
-end
-
-local function GetOrCreateRow(parent, index)
-    if rowPool[index] then
-        return rowPool[index]
-    end
-    local row = CreateRow(parent, index)
-    rowPool[index] = row
-    return row
-end
+local rowPool = addon.Pool.NewIndexed(function(index, parent)
+    return CreateRow(parent, index)
+end)
 
 local function CreateHighScoreFrame()
     if highScoreFrame then return highScoreFrame end
@@ -332,14 +316,14 @@ local function CreateHighScoreFrame()
         end
 
         -- Hide old rows
-        HideAllRows()
+        rowPool:HideFrom(1)
 
         local contentHeight = 0
         for rank, guid in ipairs(data.playerOrder) do
             local p = data.players[guid]
             if not p then break end
 
-            local row = GetOrCreateRow(frame._scrollContent, rank)
+            local row = rowPool:Get(rank, frame._scrollContent)
             row:SetParent(frame._scrollContent)
             row:SetSize(FRAME_WIDTH - 20, ROW_HEIGHT)
             row:ClearAllPoints()
@@ -387,7 +371,6 @@ local function CreateHighScoreFrame()
             end
 
             row:Show()
-            table.insert(activeRows, row)
             contentHeight = contentHeight + ROW_HEIGHT + ROW_GAP
         end
 

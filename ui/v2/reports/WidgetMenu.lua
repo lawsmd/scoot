@@ -24,7 +24,6 @@ local FLYOUT_INSET = 9
 local DIR_MAP = { down = "DOWN", up = "UP", left = "LEFT", right = "RIGHT" }
 
 local flyout = nil
-local rowPool = {}
 local explanationText = nil
 local savedStrata, savedLevel = nil, nil
 
@@ -65,35 +64,37 @@ end
 -- Content
 --------------------------------------------------------------------------------
 
+local function createRow(_, content)
+    local btn = CreateFrame("Button", nil, content)
+    btn:SetHeight(ROW_HEIGHT)
+
+    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -6)
+    bg:SetAllPoints()
+    bg:SetColorTexture(1, 1, 1, 0)
+    btn._bg = bg
+
+    local txt = btn:CreateFontString(nil, "OVERLAY")
+    txt:SetFont(getFont(), ROW_FONT_SIZE, "OUTLINE")
+    txt:SetPoint("LEFT", 8, 0)
+    txt:SetJustifyH("LEFT")
+    btn._text = txt
+
+    btn:SetScript("OnEnter", function(self)
+        local theme = addon.UI.Theme
+        local r, g, b = 1, 1, 1
+        if theme and theme.GetAccentColor then r, g, b = theme:GetAccentColor() end
+        self._bg:SetColorTexture(r, g, b, 0.12)
+    end)
+    btn:SetScript("OnLeave", function(self)
+        self._bg:SetColorTexture(1, 1, 1, 0)
+    end)
+    return btn
+end
+
+local rowPool = addon.Pool.NewIndexed(createRow)
+
 local function acquireRow(content, index, padTop, padLeft)
-    local btn = rowPool[index]
-    if not btn then
-        btn = CreateFrame("Button", nil, content)
-        btn:SetHeight(ROW_HEIGHT)
-
-        local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -6)
-        bg:SetAllPoints()
-        bg:SetColorTexture(1, 1, 1, 0)
-        btn._bg = bg
-
-        local txt = btn:CreateFontString(nil, "OVERLAY")
-        txt:SetFont(getFont(), ROW_FONT_SIZE, "OUTLINE")
-        txt:SetPoint("LEFT", 8, 0)
-        txt:SetJustifyH("LEFT")
-        btn._text = txt
-
-        btn:SetScript("OnEnter", function(self)
-            local theme = addon.UI.Theme
-            local r, g, b = 1, 1, 1
-            if theme and theme.GetAccentColor then r, g, b = theme:GetAccentColor() end
-            self._bg:SetColorTexture(r, g, b, 0.12)
-        end)
-        btn:SetScript("OnLeave", function(self)
-            self._bg:SetColorTexture(1, 1, 1, 0)
-        end)
-
-        rowPool[index] = btn
-    end
+    local btn = rowPool:Get(index, content)
     local y = -(padTop + (index - 1) * ROW_HEIGHT)
     btn:SetParent(content)
     btn:ClearAllPoints()
@@ -104,9 +105,7 @@ local function acquireRow(content, index, padTop, padLeft)
 end
 
 local function hideAllRows()
-    for _, btn in ipairs(rowPool) do
-        btn:Hide()
-    end
+    rowPool:HideFrom(1)
     if explanationText then
         explanationText:Hide()
     end

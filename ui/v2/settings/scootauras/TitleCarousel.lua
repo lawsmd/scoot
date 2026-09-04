@@ -115,9 +115,7 @@ local function ApplyHoverAlpha(it)
     it.btn:SetAlpha(a)
 end
 
-local function AcquireItem(c)
-    local it = table.remove(c.pool)
-    if it then return it end
+local function CreateItem(c)
     local btn = CreateFrame("Button", nil, c.viewport)
     btn:SetHeight(c.viewport:GetHeight())   -- full-height hit area
     btn:EnableMouse(true)
@@ -127,7 +125,7 @@ local function AcquireItem(c)
     fs:SetJustifyH("CENTER")
     fs:SetWordWrap(false)
     fs:SetTextColor(c.dim[1], c.dim[2], c.dim[3], 1)   -- ApplyItem tints from here
-    it = { btn = btn, fs = fs, curSize = BASE_SIZE }
+    local it = { btn = btn, fs = fs, curSize = BASE_SIZE }
     btn:SetScript("OnMouseDown", function(_, button)
         if button == "LeftButton" then BeginPress(c, it.index) end
     end)
@@ -136,14 +134,17 @@ local function AcquireItem(c)
     return it
 end
 
+local function ResetItem(it)
+    it.btn:Hide()
+    it.btn:EnableMouse(true)
+    it.btn:SetHitRectInsets(0, 0, 0, 0)
+    it.hover, it.curSize, it.curTint = false, nil, nil
+    it.id, it.index, it.alpha, it.ad = nil, nil, nil, nil
+end
+
 local function ReleaseAll(c)
     for _, it in ipairs(c.items) do
-        it.btn:Hide()
-        it.btn:EnableMouse(true)
-        it.btn:SetHitRectInsets(0, 0, 0, 0)
-        it.hover, it.curSize, it.curTint = false, nil, nil
-        it.id, it.index, it.alpha, it.ad = nil, nil, nil, nil
-        c.pool[#c.pool + 1] = it
+        c.pool:Release(it)
     end
     wipe(c.items)
 end
@@ -313,7 +314,7 @@ Rebuild = function(c, gid, members, selIdx, sig)
     c.gid, c.sig, c.count = gid, sig, #members
     c.needsRemeasure = false
     for i, m in ipairs(members) do
-        local it = AcquireItem(c)
+        local it = c.pool:Acquire(c)
         it.index, it.id, it.name, it.enabled = i, m.id, m.name, m.enabled
         it.fs:SetText(m.name)
         it.baseW = MeasureBase(c, m.name)
@@ -512,7 +513,7 @@ end
 --- rest (defaults to DIM_COLOR), selectedRoom (px kept clear right of the
 --- selected name's glyphs), onSelect(trackerId), onMotion(isMoving)
 function Carousel.Create(titleBar, opts)
-    local c = setmetatable({ titleBar = titleBar, opts = opts, items = {}, pool = {}, count = 0 }, Proto)
+    local c = setmetatable({ titleBar = titleBar, opts = opts, items = {}, pool = addon.Pool.New(CreateItem, ResetItem), count = 0 }, Proto)
     c.dim = opts.dimColor or DIM_COLOR
     c.selRoom = math.max(0, (opts.selectedRoom or SELECTED_ROOM) - PAD_X)
     c.viewW = math.max(MIN_WIDTH, math.floor(opts.width))
