@@ -157,7 +157,7 @@ local function describeTexture(unit)
         tostring(enforced))
 end
 
-function addon.DebugRepColor(sub)
+local function DebugRepColor(sub)
     if sub == "watch" then
         if watchTicker then
             watchTicker:Cancel()
@@ -214,5 +214,5 @@ end
 addon:RegisterDebugCommand({
     name = "repcolor", help = "ReputationColor banner lifecycle trace",
     usage = { "repcolor [watch]" },
-    handler = function(sub) addon.DebugRepColor(sub) end,
+    handler = function(sub) DebugRepColor(sub) end,
 })

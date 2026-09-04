@@ -34,7 +34,7 @@ local function safeSize(f)
     return "?"
 end
 
-function addon.DebugCDMState()
+local function DebugCDMState()
     local Overlays = addon.CDMOverlays
     local activeOverlays = Overlays and Overlays._activeOverlays
     local lastApply = Overlays and Overlays._lastApply
@@ -179,5 +179,5 @@ end
 
 addon:RegisterDebugCommand({
     name = "cdm", help = "CDM styling pipeline state",
-    handler = function() addon.DebugCDMState() end,
+    handler = function() DebugCDMState() end,
 })

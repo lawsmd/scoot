@@ -129,7 +129,7 @@ local function probeFrame(lines, label, frame)
     return true
 end
 
-function addon.DebugRosterOverlay()
+local function DebugRosterOverlay()
     local lines = { "== Roster Overlay probe ==" }
 
     local RO = addon.RaidRosterOverlay
@@ -246,7 +246,7 @@ local function dumpRow(lines, label, fs)
     table.insert(lines, "    text  = " .. textDesc)
 end
 
-function addon.DebugRosterOverlayRows()
+local function DebugRosterOverlayRows()
     local lines = { "== Roster Overlay row state ==" }
 
     local RO = addon.RaidRosterOverlay
@@ -308,6 +308,6 @@ addon:RegisterDebugCommand({
     name = "rosteroverlay", aliases = { "roster" }, help = "why raid overlay rows read blank",
     usage = { "rosteroverlay rows - per-row detail" },
     handler = function(sub)
-        if sub == "rows" then addon.DebugRosterOverlayRows() else addon.DebugRosterOverlay() end
+        if sub == "rows" then DebugRosterOverlayRows() else DebugRosterOverlay() end
     end,
 })

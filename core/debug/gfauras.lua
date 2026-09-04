@@ -199,7 +199,7 @@ end
 -- Entry point
 --------------------------------------------------------------------------------
 
-function addon.DebugGroupAuras(sub)
+local function DebugGroupAuras(sub)
     local ha, E = HA(), Engine()
     if not ha or not E then
         addon.DebugShowWindow("Group Frame Aura Tracking", "Group aura tracking module not loaded.")
@@ -244,5 +244,5 @@ end
 addon:RegisterDebugCommand({
     name = "gfauras", aliases = { "gfa" }, help = "group frame aura tracking",
     usage = { "gfauras [log|filters|refresh]" },
-    handler = function(sub) addon.DebugGroupAuras(sub) end,
+    handler = function(sub) DebugGroupAuras(sub) end,
 })

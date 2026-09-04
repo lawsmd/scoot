@@ -242,7 +242,7 @@ end
 
 local armed = false
 
-function addon.DebugHover(arg)
+local function DebugHover(arg)
     if armed then
         addon:Print("Hover probe already armed.")
         return
@@ -303,5 +303,5 @@ end
 addon:RegisterDebugCommand({
     name = "hover", help = "what is eating the mouse at the cursor",
     usage = { "hover [seconds]" },
-    handler = function(sub) addon.DebugHover(sub) end,
+    handler = function(sub) DebugHover(sub) end,
 })

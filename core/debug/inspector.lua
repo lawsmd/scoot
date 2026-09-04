@@ -423,7 +423,7 @@ function addon.AttachTableInspectorCopyButton()
 end
 
 -- Expose the attribute dump logic for the slash command (/scoot attr)
-function addon.DumpTableAttributes()
+local function DumpTableAttributes()
     local parent = _G.TableAttributeDisplay
     if parent and parent:IsShown() and parent.focusedTable then
         local dump = TableInspectorBuildDump(parent.focusedTable)
@@ -447,7 +447,7 @@ end
 addon:RegisterSlashCommand({
     name = "attr", help = "dump the inspected Table Inspector table or Frame Stack frame",
     handler = function()
-        if not addon.DumpTableAttributes() then
+        if not DumpTableAttributes() then
             addon:Print("No Table Inspector window or highlight frame found to dump.")
         end
     end,

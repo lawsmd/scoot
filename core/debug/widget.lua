@@ -31,7 +31,7 @@ local function makeDummyFrame(index)
     return frame
 end
 
-function addon.DebugWidgetSpawnChild()
+local function DebugWidgetSpawnChild()
     if not addon.Widget or not addon.Widget.RegisterFlyoutChild then
         addon:Print("Widget module not loaded.")
         return
@@ -62,7 +62,7 @@ function addon.DebugWidgetSpawnChild()
     addon:Print("Spawned flyout child #" .. dummyCount .. " (direction: " .. (W:GetFlyoutDirection() or "?") .. ")")
 end
 
-function addon.DebugWidgetReleaseAll()
+local function DebugWidgetReleaseAll()
     if not addon.Widget or not addon.Widget.ReleaseAllFlyoutChildren then
         addon:Print("Widget module not loaded.")
         return
@@ -73,7 +73,7 @@ function addon.DebugWidgetReleaseAll()
     addon:Print("Released all flyout children.")
 end
 
-function addon.DebugWidgetState()
+local function DebugWidgetState()
     if not addon.Widget then
         addon:Print("Widget module not loaded.")
         return
@@ -98,8 +98,8 @@ end
 addon:RegisterDebugCommand({
     name = "widget", help = "widget component pool", default = "state",
     verbs = {
-        { word = "state", help = "pool and handle state", fn = addon.DebugWidgetState },
-        { word = "spawnchild", help = "spawn one child handle", fn = addon.DebugWidgetSpawnChild },
-        { word = "releaseall", help = "release every handle", fn = addon.DebugWidgetReleaseAll },
+        { word = "state", help = "pool and handle state", fn = DebugWidgetState },
+        { word = "spawnchild", help = "spawn one child handle", fn = DebugWidgetSpawnChild },
+        { word = "releaseall", help = "release every handle", fn = DebugWidgetReleaseAll },
     },
 })

@@ -19,7 +19,7 @@ local function frameName(frame)
     return ok and name or nil
 end
 
-function addon.DebugCDMLayers()
+local function DebugCDMLayers()
     local Overlays = addon.CDMOverlays
     local PG = addon.PixelGlow
     local activeOverlays = Overlays and Overlays._activeOverlays
@@ -120,5 +120,5 @@ end
 
 addon:RegisterDebugCommand({
     name = "cdmlayers", help = "CDM icon frame levels and overlay layers",
-    handler = function() addon.DebugCDMLayers() end,
+    handler = function() DebugCDMLayers() end,
 })

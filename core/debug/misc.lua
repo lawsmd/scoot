@@ -5,7 +5,7 @@ local addonName, addon = ...
 -- Quest Log Debug Dump
 --------------------------------------------------------------------------------
 
-function addon.DebugDumpQuests()
+local function DebugDumpQuests()
     local ok, numEntries, numQuests = pcall(C_QuestLog.GetNumQuestLogEntries)
     if not ok or type(numEntries) ~= "number" then
         addon.DebugShowWindow("Quest Debug", "Failed to get quest log entries")
@@ -172,5 +172,5 @@ end
 
 addon:RegisterDebugCommand({
     name = "quests", help = "quest log dump",
-    handler = function() addon.DebugDumpQuests() end,
+    handler = function() DebugDumpQuests() end,
 })

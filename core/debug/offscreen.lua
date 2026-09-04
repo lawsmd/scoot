@@ -98,7 +98,7 @@ local function _CollectOffscreenCandidates(unitKey)
     return out, reg
 end
 
-function addon.DebugOffscreenUnlockDump()
+local function DebugOffscreenUnlockDump()
     local lines = {}
     local function push(s) table.insert(lines, s) end
 
@@ -141,5 +141,5 @@ end
 
 addon:RegisterDebugCommand({
     name = "offscreen", help = "why a dragged frame landed off screen",
-    handler = function() addon.DebugOffscreenUnlockDump() end,
+    handler = function() DebugOffscreenUnlockDump() end,
 })

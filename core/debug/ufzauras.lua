@@ -149,7 +149,7 @@ end
 -- Dispatch
 --------------------------------------------------------------------------------
 
-function addon.DebugUFZAuras(sub)
+local function DebugUFZAuras(sub)
     local z, A = UFZ(), Auras()
     if not z or not A then
         addon.DebugShowWindow("Unit Frames Z Auras", "Unit Frames Z aura module not loaded.")
@@ -191,5 +191,5 @@ end
 addon:RegisterDebugCommand({
     name = "ufzauras", aliases = { "ufza" }, help = "Unit Frames Z aura rows",
     usage = { "ufzauras [log|apply|kick]" },
-    handler = function(sub) addon.DebugUFZAuras(sub) end,
+    handler = function(sub) DebugUFZAuras(sub) end,
 })

@@ -219,7 +219,7 @@ end
 
 local armed = false
 
-function addon.DebugPing(arg)
+local function DebugPing(arg)
     if armed then
         addon:Print("Ping probe already armed.")
         return
@@ -254,5 +254,5 @@ end
 addon:RegisterDebugCommand({
     name = "ping", help = "12.1 ping receiver readiness on Scoot frames",
     usage = { "ping [seconds]" },
-    handler = function(sub) addon.DebugPing(sub) end,
+    handler = function(sub) DebugPing(sub) end,
 })

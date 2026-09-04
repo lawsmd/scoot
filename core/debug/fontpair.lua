@@ -76,7 +76,7 @@ local function textStateOf(region)
     return string.format("plain (%d chars)", #tostring(text))
 end
 
-function addon.DebugFontPair()
+local function DebugFontPair()
     local registry = addon.FontPair and addon.FontPair.registry
     local lines = {}
 
@@ -141,5 +141,5 @@ end
 
 addon:RegisterDebugCommand({
     name = "fontpair", help = "Deep Shadow copy draw order",
-    handler = function() addon.DebugFontPair() end,
+    handler = function() DebugFontPair() end,
 })

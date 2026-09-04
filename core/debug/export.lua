@@ -133,7 +133,7 @@ local function _SerializeLuaValue(value, indent, visited, depth)
     return table.concat(out, "")
 end
 
-function addon.DebugExportProfile(profileName)
+local function DebugExportProfile(profileName)
     if not addon or not addon.db then
         addon.DebugShowWindow("Scoot Profile Export", "AceDB not initialized.")
         return
@@ -217,7 +217,7 @@ local function _FindLayoutInfoByName(layoutName)
     return active
 end
 
-function addon.DebugExportEditModeLayout(layoutName)
+local function DebugExportEditModeLayout(layoutName)
     if not addon or not addon.db then
         addon.DebugShowWindow("Edit Mode Layout Export", "AceDB not initialized.")
         return
@@ -266,7 +266,7 @@ function addon.DebugExportEditModeLayout(layoutName)
     end
 end
 
-function addon.DebugExportEditModeLayoutTable(layoutName)
+local function DebugExportEditModeLayoutTable(layoutName)
     if not addon or not addon.db then
         addon.DebugShowWindow("Edit Mode Layout Export (Table)", "AceDB not initialized.")
         return
@@ -347,7 +347,7 @@ local function _SafeCopyGlobal(name)
     end
 end
 
-function addon.DebugExportConsolePortProfile()
+local function DebugExportConsolePortProfile()
     if not addon or not addon.db then
         addon.DebugShowWindow("ConsolePort Export", "AceDB not initialized.")
         return
@@ -412,7 +412,7 @@ end
 addon:RegisterDebugCommand({
     name = "profiles", help = "profile export and the reload log",
     verbs = {
-        { word = "export", usage = 'export ["Profile Name"]', help = "profile as a Lua table; current profile when no name", fn = addon.DebugExportProfile },
+        { word = "export", usage = 'export ["Profile Name"]', help = "profile as a Lua table; current profile when no name", fn = DebugExportProfile },
         { word = "reload", help = "the reload debug log", fn = addon.DumpReloadDebugLog },
     },
 })
@@ -461,14 +461,14 @@ addon:RegisterDebugCommand({
 addon:RegisterDebugCommand({
     name = "consoleport", help = "ConsolePort profile export",
     verbs = {
-        { word = "export", help = "copyable ConsolePort profile", fn = addon.DebugExportConsolePortProfile },
+        { word = "export", help = "copyable ConsolePort profile", fn = DebugExportConsolePortProfile },
     },
 })
 
 addon:RegisterDebugCommand({
     name = "editmode", help = "Edit Mode layout export",
     verbs = {
-        { word = "export", usage = 'export ["Layout Name"]', help = "raw layout table", fn = addon.DebugExportEditModeLayoutTable },
-        { word = "exportstring", usage = 'exportstring ["Layout Name"]', help = "Blizzard share string", fn = addon.DebugExportEditModeLayout },
+        { word = "export", usage = 'export ["Layout Name"]', help = "raw layout table", fn = DebugExportEditModeLayoutTable },
+        { word = "exportstring", usage = 'exportstring ["Layout Name"]', help = "Blizzard share string", fn = DebugExportEditModeLayout },
     },
 })

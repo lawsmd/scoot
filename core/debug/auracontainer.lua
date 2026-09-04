@@ -244,7 +244,7 @@ end
 -- Dispatch
 --------------------------------------------------------------------------------
 
-function addon.DebugAuraContainer(sub, arg)
+local function DebugAuraContainer(sub, arg)
     local ac = AC()
     if not ac then
         addon.DebugShowWindow("Aura Container Pilot", "Aura container module not loaded.")
@@ -315,5 +315,5 @@ end
 addon:RegisterDebugCommand({
     name = "auracontainer", aliases = { "aurac" }, help = "12.1 aura container pilot",
     usage = { "auracontainer [start|stop|probes|filters|suppress|log]" },
-    handler = function(sub, rest) addon.DebugAuraContainer(sub, string.lower(rest[2] or "")) end,
+    handler = function(sub, rest) DebugAuraContainer(sub, string.lower(rest[2] or "")) end,
 })

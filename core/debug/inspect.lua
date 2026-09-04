@@ -1,7 +1,7 @@
 -- debug/inspect.lua - /scoot debug inspect
 local addonName, addon = ...
 
-function addon.DebugInspectState()
+local function DebugInspectState()
     if not addon.Inspect or not addon.Inspect._DebugState then
         addon:Print("Inspect service not loaded.")
         return
@@ -23,7 +23,7 @@ function addon.DebugInspectState()
     end
 end
 
-function addon.DebugInspectCache()
+local function DebugInspectCache()
     if not addon.Inspect then
         addon:Print("Inspect service not loaded.")
         return
@@ -47,7 +47,7 @@ end
 addon:RegisterDebugCommand({
     name = "inspect", help = "inspect service", default = "state",
     verbs = {
-        { word = "state", help = "service state", fn = addon.DebugInspectState },
-        { word = "cache", help = "cache contents", fn = addon.DebugInspectCache },
+        { word = "state", help = "service state", fn = DebugInspectState },
+        { word = "cache", help = "cache contents", fn = DebugInspectCache },
     },
 })
