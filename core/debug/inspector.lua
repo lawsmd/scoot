@@ -443,3 +443,12 @@ function addon.DumpTableAttributes()
     end
     return false
 end
+
+addon:RegisterSlashCommand({
+    name = "attr", help = "dump the inspected Table Inspector table or Frame Stack frame",
+    handler = function()
+        if not addon.DumpTableAttributes() then
+            addon:Print("No Table Inspector window or highlight frame found to dump.")
+        end
+    end,
+})

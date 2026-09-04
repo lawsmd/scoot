@@ -746,3 +746,53 @@ function Profiles:PerformDeleteLayout(layoutName)
     end
     return true
 end
+
+local Commands = addon.Commands
+
+addon:RegisterSlashCommand({
+    name = "del", aliases = { "delete" }, help = "delete an Edit Mode layout by name",
+    usage = { 'del "Layout Name"' },
+    handler = function(_, rest)
+        local target = rest[1]
+        if not target or target == "" then return Commands.USAGE end
+        if InCombatLockdown and InCombatLockdown() then addon:Print("Cannot delete during combat.") return end
+        if not (LEO and LEO.IsReady and LEO:IsReady()) then addon:Print("Edit Mode not ready.") return end
+        if LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
+        if not (LEO.DoesLayoutExist and LEO:DoesLayoutExist(target)) then addon:Print("Layout not found: "..target) return end
+        local ok, err = pcall(LEO.DeleteLayout, LEO, target)
+        if not ok then addon:Print("Delete failed: "..tostring(err)) return end
+        if LEO.SaveOnly then pcall(LEO.SaveOnly, LEO) end
+        if LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
+        if LEO.DoesLayoutExist and LEO:DoesLayoutExist(target) then
+            addon:Print("Delete did not persist (still exists): "..target)
+        else
+            addon:Print("Deleted layout: "..target)
+        end
+    end,
+})
+
+addon:RegisterSlashCommand({
+    name = "copy", help = "copy an Edit Mode layout under a new name",
+    usage = { 'copy "Source Name" "New Name"' },
+    handler = function(_, rest)
+        local src, dest = rest[1], rest[2]
+        if not src or not dest then return Commands.USAGE end
+        if InCombatLockdown and InCombatLockdown() then addon:Print("Cannot copy during combat.") return end
+        C_AddOns.LoadAddOn("Blizzard_EditMode")
+        local layouts = C_EditMode and C_EditMode.GetLayouts and C_EditMode.GetLayouts()
+        if not (EditModeManagerFrame and layouts and layouts.layouts) then addon:Print("Edit Mode not ready.") return end
+        local source
+        for _, layout in ipairs(layouts.layouts) do
+            if layout.layoutName == src then source = CopyTable(layout) break end
+        end
+        if not source then addon:Print("Source layout not found: "..src) return end
+        if C_EditMode.IsValidLayoutName and not C_EditMode.IsValidLayoutName(dest) then addon:Print("Invalid new name.") return end
+        if EditModeManagerFrame.MakeNewLayout then
+            EditModeManagerFrame:MakeNewLayout(source, source.layoutType or Enum.EditModeLayoutType.Account, dest, false)
+            if addon.EditMode and addon.EditMode.SaveOnly then addon.EditMode.SaveOnly() end
+            addon:Print("Copied layout '"..src.."' -> '"..dest.."'")
+        else
+            addon:Print("Copy failed: manager unavailable.")
+        end
+    end,
+})

@@ -442,3 +442,8 @@ function TD.HandleSlashCommand(rest)
     end
 end
 
+addon:RegisterSlashCommand({
+    name = "taint", help = "taint debugging",
+    usage = { "taint <on|off|log|clear|status>" },
+    handler = function(_, rest) TD.HandleSlashCommand(rest) end,
+})

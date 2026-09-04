@@ -75,18 +75,7 @@ function SlashCmdList.SCOOT(msg)
     end
 end
 
---------------------------------------------------------------------------------
--- /scoot and /scoot debug registrations. Each moves to the file that owns its
--- handler in refactor #32 phase 2; until then they live here, after every owner
--- has loaded.
---------------------------------------------------------------------------------
-
-local Commands = addon.Commands
-
---------------------------------------------------------------------------------
--- /scoot registrations (the slash scope)
---------------------------------------------------------------------------------
-
+-- debugmenu stays with the bootstrap: it toggles a profile flag the settings panel reads.
 addon:RegisterSlashCommand({
     name = "debugmenu", help = "toggle the Debug Menu page in the settings panel",
     handler = function()
@@ -97,70 +86,6 @@ addon:RegisterSlashCommand({
         addon.db.profile.debugMenuEnabled = not addon.db.profile.debugMenuEnabled
         local status = addon.db.profile.debugMenuEnabled and "ENABLED" or "DISABLED"
         addon:Print("Debug menu " .. status .. ". Reopen settings to see changes.")
-    end,
-})
-
-addon:RegisterSlashCommand({
-    name = "del", aliases = { "delete" }, help = "delete an Edit Mode layout by name",
-    usage = { 'del "Layout Name"' },
-    handler = function(_, rest)
-        local target = rest[1]
-        if not target or target == "" then return Commands.USAGE end
-        if InCombatLockdown and InCombatLockdown() then addon:Print("Cannot delete during combat.") return end
-        local LEO = LibStub and LibStub("LibEditModeOverride-1.0")
-        if not (LEO and LEO.IsReady and LEO:IsReady()) then addon:Print("Edit Mode not ready.") return end
-        if LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
-        if not (LEO.DoesLayoutExist and LEO:DoesLayoutExist(target)) then addon:Print("Layout not found: "..target) return end
-        local ok, err = pcall(LEO.DeleteLayout, LEO, target)
-        if not ok then addon:Print("Delete failed: "..tostring(err)) return end
-        if LEO.SaveOnly then pcall(LEO.SaveOnly, LEO) end
-        if LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
-        if LEO.DoesLayoutExist and LEO:DoesLayoutExist(target) then
-            addon:Print("Delete did not persist (still exists): "..target)
-        else
-            addon:Print("Deleted layout: "..target)
-        end
-    end,
-})
-
-addon:RegisterSlashCommand({
-    name = "attr", help = "dump the inspected Table Inspector table or Frame Stack frame",
-    handler = function()
-        if not addon.DumpTableAttributes() then
-            addon:Print("No Table Inspector window or highlight frame found to dump.")
-        end
-    end,
-})
-
-addon:RegisterSlashCommand({
-    name = "taint", help = "taint debugging",
-    usage = { "taint <on|off|log|clear|status>" },
-    handler = function(_, rest) addon.TaintDebug.HandleSlashCommand(rest) end,
-})
-
-addon:RegisterSlashCommand({
-    name = "copy", help = "copy an Edit Mode layout under a new name",
-    usage = { 'copy "Source Name" "New Name"' },
-    handler = function(_, rest)
-        local src, dest = rest[1], rest[2]
-        if not src or not dest then return Commands.USAGE end
-        if InCombatLockdown and InCombatLockdown() then addon:Print("Cannot copy during combat.") return end
-        C_AddOns.LoadAddOn("Blizzard_EditMode")
-        local layouts = C_EditMode and C_EditMode.GetLayouts and C_EditMode.GetLayouts()
-        if not (EditModeManagerFrame and layouts and layouts.layouts) then addon:Print("Edit Mode not ready.") return end
-        local source
-        for _, layout in ipairs(layouts.layouts) do
-            if layout.layoutName == src then source = CopyTable(layout) break end
-        end
-        if not source then addon:Print("Source layout not found: "..src) return end
-        if C_EditMode.IsValidLayoutName and not C_EditMode.IsValidLayoutName(dest) then addon:Print("Invalid new name.") return end
-        if EditModeManagerFrame.MakeNewLayout then
-            EditModeManagerFrame:MakeNewLayout(source, source.layoutType or Enum.EditModeLayoutType.Account, dest, false)
-            if addon.EditMode and addon.EditMode.SaveOnly then addon.EditMode.SaveOnly() end
-            addon:Print("Copied layout '"..src.."' -> '"..dest.."'")
-        else
-            addon:Print("Copy failed: manager unavailable.")
-        end
     end,
 })
 
