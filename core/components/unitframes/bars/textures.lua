@@ -11,6 +11,11 @@ local Utils = addon.BarsUtils
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
+-- Curve and color traces. Enable with /run Scoot._dbgBarTextures = true.
+local function trace(...)
+    if addon._dbgBarTextures then addon.DebugPrint("[BarTextures]", ...) end
+end
+
 local function getState(frame)
     return FS.Get(frame)
 end
@@ -52,24 +57,24 @@ local healthValueCurve = nil
 local function getHealthValueCurve()
     if not healthValueCurve then
         if not _G.C_CurveUtil then
-            if addon.DebugPrint then addon.DebugPrint("getHealthValueCurve: C_CurveUtil not available") end
+            trace("getHealthValueCurve: C_CurveUtil not available")
             return nil
         end
         if not _G.C_CurveUtil.CreateColorCurve then
-            if addon.DebugPrint then addon.DebugPrint("getHealthValueCurve: CreateColorCurve not available") end
+            trace("getHealthValueCurve: CreateColorCurve not available")
             return nil
         end
 
         healthValueCurve = C_CurveUtil.CreateColorCurve()
         if not healthValueCurve then
-            if addon.DebugPrint then addon.DebugPrint("getHealthValueCurve: CreateColorCurve returned nil") end
+            trace("getHealthValueCurve: CreateColorCurve returned nil")
             return nil
         end
 
         -- Linear interpolation between color points
         if healthValueCurve.SetType and _G.Enum and _G.Enum.LuaCurveType then
             local ok, err = pcall(healthValueCurve.SetType, healthValueCurve, Enum.LuaCurveType.Linear)
-            if not ok and addon.DebugPrint then addon.DebugPrint("getHealthValueCurve: SetType failed - " .. tostring(err)) end
+            if not ok then trace("getHealthValueCurve: SetType failed - " .. tostring(err)) end
         end
 
         -- Add color points: Red at 0%, Yellow at 50%, Green at 100%
@@ -78,14 +83,12 @@ local function getHealthValueCurve()
             local ok1, err1 = pcall(healthValueCurve.AddPoint, healthValueCurve, 0.0, CreateColor(1, 0, 0, 1))    -- Red at 0%
             local ok2, err2 = pcall(healthValueCurve.AddPoint, healthValueCurve, 0.5, CreateColor(1, 1, 0, 1))    -- Yellow at 50%
             local ok3, err3 = pcall(healthValueCurve.AddPoint, healthValueCurve, 1.0, CreateColor(0, 1, 0, 1))    -- Green at 100%
-            if addon.debug then
-                if not ok1 then addon.DebugPrint("getHealthValueCurve: AddPoint(0) failed - " .. tostring(err1)) end
-                if not ok2 then addon.DebugPrint("getHealthValueCurve: AddPoint(50) failed - " .. tostring(err2)) end
-                if not ok3 then addon.DebugPrint("getHealthValueCurve: AddPoint(100) failed - " .. tostring(err3)) end
-            end
+            if not ok1 then trace("getHealthValueCurve: AddPoint(0) failed - " .. tostring(err1)) end
+            if not ok2 then trace("getHealthValueCurve: AddPoint(50) failed - " .. tostring(err2)) end
+            if not ok3 then trace("getHealthValueCurve: AddPoint(100) failed - " .. tostring(err3)) end
         end
 
-        if addon.DebugPrint then addon.DebugPrint("getHealthValueCurve: created curve with " .. (healthValueCurve.GetPointCount and healthValueCurve:GetPointCount() or "?") .. " points") end
+        trace("getHealthValueCurve: created curve with " .. (healthValueCurve.GetPointCount and healthValueCurve:GetPointCount() or "?") .. " points")
     end
     return healthValueCurve
 end
@@ -111,24 +114,24 @@ local healthValueDarkCurve = nil
 local function getHealthValueDarkCurve()
     if not healthValueDarkCurve then
         if not _G.C_CurveUtil then
-            if addon.DebugPrint then addon.DebugPrint("getHealthValueDarkCurve: C_CurveUtil not available") end
+            trace("getHealthValueDarkCurve: C_CurveUtil not available")
             return nil
         end
         if not _G.C_CurveUtil.CreateColorCurve then
-            if addon.DebugPrint then addon.DebugPrint("getHealthValueDarkCurve: CreateColorCurve not available") end
+            trace("getHealthValueDarkCurve: CreateColorCurve not available")
             return nil
         end
 
         healthValueDarkCurve = C_CurveUtil.CreateColorCurve()
         if not healthValueDarkCurve then
-            if addon.DebugPrint then addon.DebugPrint("getHealthValueDarkCurve: CreateColorCurve returned nil") end
+            trace("getHealthValueDarkCurve: CreateColorCurve returned nil")
             return nil
         end
 
         -- Linear interpolation between color points
         if healthValueDarkCurve.SetType and _G.Enum and _G.Enum.LuaCurveType then
             local ok, err = pcall(healthValueDarkCurve.SetType, healthValueDarkCurve, Enum.LuaCurveType.Linear)
-            if not ok and addon.DebugPrint then addon.DebugPrint("getHealthValueDarkCurve: SetType failed - " .. tostring(err)) end
+            if not ok then trace("getHealthValueDarkCurve: SetType failed - " .. tostring(err)) end
         end
 
         -- Add color points: Red at 0%, Yellow at 50%, Green at 99.99%, Dark Gray at 100%
@@ -140,15 +143,13 @@ local function getHealthValueDarkCurve()
             local ok2, err2 = pcall(healthValueDarkCurve.AddPoint, healthValueDarkCurve, 0.5, CreateColor(1, 1, 0, 1))       -- Yellow at 50%
             local ok3, err3 = pcall(healthValueDarkCurve.AddPoint, healthValueDarkCurve, 0.9999, CreateColor(0, 1, 0, 1))    -- Green at 99.99% (matches regular curve)
             local ok4, err4 = pcall(healthValueDarkCurve.AddPoint, healthValueDarkCurve, 1.0, CreateColor(0.23, 0.23, 0.23, 1)) -- Dark gray at 100%
-            if addon.debug then
-                if not ok1 then addon.DebugPrint("getHealthValueDarkCurve: AddPoint(0) failed - " .. tostring(err1)) end
-                if not ok2 then addon.DebugPrint("getHealthValueDarkCurve: AddPoint(50) failed - " .. tostring(err2)) end
-                if not ok3 then addon.DebugPrint("getHealthValueDarkCurve: AddPoint(99.99) failed - " .. tostring(err3)) end
-                if not ok4 then addon.DebugPrint("getHealthValueDarkCurve: AddPoint(100) failed - " .. tostring(err4)) end
-            end
+            if not ok1 then trace("getHealthValueDarkCurve: AddPoint(0) failed - " .. tostring(err1)) end
+            if not ok2 then trace("getHealthValueDarkCurve: AddPoint(50) failed - " .. tostring(err2)) end
+            if not ok3 then trace("getHealthValueDarkCurve: AddPoint(99.99) failed - " .. tostring(err3)) end
+            if not ok4 then trace("getHealthValueDarkCurve: AddPoint(100) failed - " .. tostring(err4)) end
         end
 
-        if addon.DebugPrint then addon.DebugPrint("getHealthValueDarkCurve: created curve with " .. (healthValueDarkCurve.GetPointCount and healthValueDarkCurve:GetPointCount() or "?") .. " points") end
+        trace("getHealthValueDarkCurve: created curve with " .. (healthValueDarkCurve.GetPointCount and healthValueDarkCurve:GetPointCount() or "?") .. " points")
     end
     return healthValueDarkCurve
 end
@@ -174,36 +175,36 @@ function Textures.applyValueBasedColor(bar, unit, overlay, useDark)
     -- Get the appropriate health value color curve
     local curve = useDark and getHealthValueDarkCurve() or getHealthValueCurve()
     if not curve then
-        if addon.DebugPrint then addon.DebugPrint("applyValueBasedColor: curve is nil") end
+        trace("applyValueBasedColor: curve is nil")
         return
     end
 
     -- Use UnitHealthPercent with the curve to get a color
     -- Secret-safe because Blizzard evaluates the secret percentage internally
     if not _G.UnitHealthPercent then
-        if addon.DebugPrint then addon.DebugPrint("applyValueBasedColor: UnitHealthPercent not found") end
+        trace("applyValueBasedColor: UnitHealthPercent not found")
         return
     end
 
     local ok, color = pcall(UnitHealthPercent, unit, true, curve)
     if not ok then
-        if addon.DebugPrint then addon.DebugPrint("applyValueBasedColor: pcall failed - " .. tostring(color)) end
+        trace("applyValueBasedColor: pcall failed - " .. tostring(color))
         return
     end
 
     if not color then
-        if addon.DebugPrint then addon.DebugPrint("applyValueBasedColor: UnitHealthPercent returned nil") end
+        trace("applyValueBasedColor: UnitHealthPercent returned nil")
         return
     end
 
     -- Check if the result is a color object or a number
     if type(color) == "number" then
-        if addon.DebugPrint then addon.DebugPrint("applyValueBasedColor: got number " .. color .. " instead of color") end
+        trace("applyValueBasedColor: got number " .. color .. " instead of color")
         return
     end
 
     if not color.GetRGB then
-        if addon.DebugPrint then addon.DebugPrint("applyValueBasedColor: color has no GetRGB method, type=" .. type(color)) end
+        trace("applyValueBasedColor: color has no GetRGB method, type=" .. type(color))
         return
     end
 
@@ -294,11 +295,11 @@ function Textures.applyValueBasedColor(bar, unit, overlay, useDark)
         end
     end
 
-    if addon.debug and texturesColored > 0 then
+    if addon._dbgBarTextures and texturesColored > 0 then
         if isSecret then
-            addon.DebugPrint(string.format("applyValueBasedColor: colored %d textures for %s (secret color)", texturesColored, unit))
+            trace(string.format("applyValueBasedColor: colored %d textures for %s (secret color)", texturesColored, unit))
         else
-            addon.DebugPrint(string.format("applyValueBasedColor: colored %d textures for %s (r=%.2f g=%.2f b=%.2f)", texturesColored, unit, r, g, b))
+            trace(string.format("applyValueBasedColor: colored %d textures for %s (r=%.2f g=%.2f b=%.2f)", texturesColored, unit, r, g, b))
         end
     end
 end

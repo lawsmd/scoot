@@ -11,6 +11,11 @@ local FS = addon.FrameState
 local SS = addon.SecretSafe
 local Enforce = addon.Enforce
 
+-- Portrait zoom traces. Enable with /run Scoot._dbgPortraits = true.
+local function trace(...)
+	if addon._dbgPortraits then addon.DebugPrint("[Portraits]", ...) end
+end
+
 local function getState(frame)
     return FS.Get(frame)
 end
@@ -421,9 +426,7 @@ do
 
 	local function applyZoom(unit, portraitFrame, portraitTexture, zoomPct)
 		if not portraitTexture then
-			if addon.debug then
-				addon.DebugPrint("Scoot: Portrait zoom - texture not found for", unit)
-			end
+			trace("Portrait zoom - texture not found for", unit)
 			return
 		end
 
@@ -464,9 +467,7 @@ do
 
 			if portraitTexture.SetTexCoord then
 				portraitTexture:SetTexCoord(newLeft, newRight, newTop, newBottom)
-				if addon.debug then
-					addon.DebugPrint(string.format("Scoot: Portrait zoom %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
-				end
+				trace(string.format("Portrait zoom %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
 			end
 		else
 			-- Zoom out: show more (limited by texture bounds)
@@ -480,9 +481,7 @@ do
 				if portraitTexture.SetTexCoord then
 					portraitTexture:SetTexCoord(origCoords.left, origCoords.right, origCoords.top, origCoords.bottom)
 				end
-				if addon.debug then
-					addon.DebugPrint(string.format("Scoot: Portrait zoom out %d%% for %s - limited by full texture bounds (0,1,0,1)", zoomPct, unit))
-				end
+				trace(string.format("Portrait zoom out %d%% for %s - limited by full texture bounds (0,1,0,1)", zoomPct, unit))
 			else
 				local origCenterX = origCoords.left + (origWidth / 2.0)
 				local origCenterY = origCoords.top + (origHeight / 2.0)
@@ -495,9 +494,7 @@ do
 
 				if portraitTexture.SetTexCoord then
 					portraitTexture:SetTexCoord(newLeft, newRight, newTop, newBottom)
-					if addon.debug then
-						addon.DebugPrint(string.format("Scoot: Portrait zoom out %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
-					end
+					trace(string.format("Portrait zoom out %d%% for %s - coords: %.3f,%.3f,%.3f,%.3f", zoomPct, unit, newLeft, newRight, newTop, newBottom))
 				end
 			end
 		end
