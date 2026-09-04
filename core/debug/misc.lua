@@ -169,3 +169,8 @@ function addon.DebugExportDamageMeters(sessionOverride)
 
     addon.DebugShowWindow("Damage Meter Export", table.concat(lines, "\n"))
 end
+
+addon:RegisterDebugCommand({
+    name = "quests", help = "quest log dump",
+    handler = function() addon.DebugDumpQuests() end,
+})

@@ -1980,5 +1980,21 @@ function addon.PreloadFonts()
     end
 end
 
+addon:RegisterDebugCommand({
+    name = "slug", help = "SLUG font-flag acceptance probe",
+    handler = function() addon.FontStyles.DebugSlugProbe() end,
+})
 
-
+addon:RegisterDebugCommand({
+    name = "sct", help = "world text font and scale log with live CVar state",
+    handler = function()
+        local state = {}
+        for _, name in ipairs({ "WorldTextScale_v2", "WorldTextScale", "WorldTextMinSize" }) do
+            local ok, value = pcall(_G.C_CVar.GetCVar, name)
+            state[name] = (ok and value ~= nil) and tostring(value) or "<absent>"
+        end
+        state.resolved = addon.ResolveWorldTextScaleCVar and addon.ResolveWorldTextScaleCVar() or "?"
+        addon.LogWorldTextFont("debug sct:cvars", state)
+        addon.ShowWorldTextFontLog()
+    end,
+})

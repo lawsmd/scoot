@@ -408,3 +408,67 @@ function addon.DebugExportConsolePortProfile()
         end
     end
 end
+
+addon:RegisterDebugCommand({
+    name = "profiles", help = "profile export and the reload log",
+    verbs = {
+        { word = "export", usage = 'export ["Profile Name"]', help = "profile as a Lua table; current profile when no name", fn = addon.DebugExportProfile },
+        { word = "reload", help = "the reload debug log", fn = addon.DumpReloadDebugLog },
+    },
+})
+
+local Commands = addon.Commands
+
+-- Read-only dump of one layout's persisted anchor data, straight from
+-- C_EditMode.GetLayouts(). For before/after comparison when verifying that
+-- cross-machine sessions leave a layout's stored geometry untouched.
+addon:RegisterDebugCommand({
+    name = "layoutdump", help = "persisted Edit Mode anchors of one layout",
+    usage = { 'layoutdump "Layout Name"' },
+    handler = function(_, rest)
+        local name = rest[1]
+        if not name or name == "" then return Commands.USAGE end
+        local li = _G.C_EditMode and _G.C_EditMode.GetLayouts and _G.C_EditMode.GetLayouts()
+        if not (li and li.layouts) then
+            addon:Print("C_EditMode.GetLayouts() returned no data.")
+            return
+        end
+        local found
+        for _, layout in ipairs(li.layouts) do
+            if layout.layoutName == name then found = layout break end
+        end
+        if not found then
+            local names = {}
+            for _, layout in ipairs(li.layouts) do table.insert(names, tostring(layout.layoutName)) end
+            addon:Print("Layout not found: " .. tostring(name))
+            addon:Print("Available: " .. table.concat(names, ", "))
+            return
+        end
+        local lines = {}
+        table.insert(lines, string.format("Layout '%s' (layoutType=%s), %d systems",
+            tostring(found.layoutName), tostring(found.layoutType), #(found.systems or {})))
+        for _, sys in ipairs(found.systems or {}) do
+            local a = sys.anchorInfo or {}
+            table.insert(lines, string.format("system=%s index=%s default=%s | %s -> %s/%s (%.2f, %.2f)",
+                tostring(sys.system), tostring(sys.systemIndex), tostring(sys.isInDefaultPosition),
+                tostring(a.point), tostring(a.relativeTo), tostring(a.relativePoint),
+                tonumber(a.offsetX) or 0, tonumber(a.offsetY) or 0))
+        end
+        addon.DebugShowWindow("Layout dump: " .. name, lines)
+    end,
+})
+
+addon:RegisterDebugCommand({
+    name = "consoleport", help = "ConsolePort profile export",
+    verbs = {
+        { word = "export", help = "copyable ConsolePort profile", fn = addon.DebugExportConsolePortProfile },
+    },
+})
+
+addon:RegisterDebugCommand({
+    name = "editmode", help = "Edit Mode layout export",
+    verbs = {
+        { word = "export", usage = 'export ["Layout Name"]', help = "raw layout table", fn = addon.DebugExportEditModeLayoutTable },
+        { word = "exportstring", usage = 'exportstring ["Layout Name"]', help = "Blizzard share string", fn = addon.DebugExportEditModeLayout },
+    },
+})
