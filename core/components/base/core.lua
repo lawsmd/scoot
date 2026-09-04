@@ -541,105 +541,16 @@ function addon:ApplyStyles()
             component:ApplyStyling()
         end
     end
+    -- The rest of the pass is the catalog in core/refresh.lua; the module
+    -- gates stay here.
     if self:IsModuleEnabled("unitFrames") then
-        if addon.ApplyAllUnitFrameHealthTextVisibility then
-            addon.ApplyAllUnitFrameHealthTextVisibility()
-        end
-        if addon.ApplyAllUnitFramePowerTextVisibility then
-            addon.ApplyAllUnitFramePowerTextVisibility()
-        end
-        if addon.ApplyAllUnitFrameNameLevelText then
-            addon.ApplyAllUnitFrameNameLevelText()
-        end
-        if addon.ApplyAllUnitFrameBarTextures then
-            addon.ApplyAllUnitFrameBarTextures()
-        end
-        if addon.ApplyAllUnitFramePortraits then
-            addon.ApplyAllUnitFramePortraits()
-        end
-        if addon.ApplyAllUnitFrameClassResources then
-            addon.ApplyAllUnitFrameClassResources()
-        end
-        if addon.ApplyAllUnitFrameCastBars then
-            addon.ApplyAllUnitFrameCastBars()
-        end
-        if addon.ApplyAllUnitFrameBuffsDebuffs then
-            addon.ApplyAllUnitFrameBuffsDebuffs()
-        end
-        if addon.ApplyAllUnitFrameVisibility then
-            addon.ApplyAllUnitFrameVisibility()
-        end
-        if addon.ApplyAllThreatMeterVisibility then
-            addon.ApplyAllThreatMeterVisibility()
-        end
-        if addon.ApplyTargetBossIconVisibility then
-            addon.ApplyTargetBossIconVisibility()
-        end
-        if addon.ApplyBossHighLevelIconVisibility then
-            addon.ApplyBossHighLevelIconVisibility()
-        end
-        if addon.ApplyAllPlayerMiscVisibility then
-            addon.ApplyAllPlayerMiscVisibility()
-        end
-        if addon.ApplyPetFrameVisibility then
-            addon.ApplyPetFrameVisibility()
-        end
-        -- Unit Frames: Off-screen drag unlock (Player + Target)
-        if addon.ApplyAllUnitFrameOffscreenUnlocks then
-            addon.ApplyAllUnitFrameOffscreenUnlocks()
-        end
-        if addon.ApplyAllUnitFrameScaleMults then
-            addon.ApplyAllUnitFrameScaleMults()
-        end
-        -- ToT/FocusTarget: Apply scale and position (not Edit Mode managed)
-        if addon.ApplyAllToTSettings then
-            addon.ApplyAllToTSettings()
-        end
-        if addon.ApplyAllFocusTargetSettings then
-            addon.ApplyAllFocusTargetSettings()
-        end
+        addon.Refresh.Run("unitFrames")
     end
-    -- Group Frames: Raid
     if addon:IsModuleEnabled("groupFrames", "raid") then
-        if addon.ApplyRaidFrameHealthBarStyle then
-            addon.ApplyRaidFrameHealthBarStyle()
-        end
-        if addon.ApplyRaidFrameStatusTextStyle then
-            addon.ApplyRaidFrameStatusTextStyle()
-        end
-        if addon.ApplyRaidFrameGroupTitlesStyle then
-            addon.ApplyRaidFrameGroupTitlesStyle()
-        end
-        if addon.ApplyRaidFrameHealthOverlays then
-            addon.ApplyRaidFrameHealthOverlays()
-        end
-        if addon.ApplyRaidFrameNameOverlays then
-            addon.ApplyRaidFrameNameOverlays()
-        end
-        if addon.ApplyRaidFrameHealthBarBorders then
-            addon.ApplyRaidFrameHealthBarBorders()
-        end
+        addon.Refresh.Run("raid")
     end
-    -- Group Frames: Party
     if addon:IsModuleEnabled("groupFrames", "party") then
-        if addon.ApplyPartyFrameHealthBarStyle then
-            addon.ApplyPartyFrameHealthBarStyle()
-        end
-        if addon.ApplyPartyFrameTitleStyle then
-            addon.ApplyPartyFrameTitleStyle()
-        end
-        if addon.ApplyPartyFrameHealthOverlays then
-            addon.ApplyPartyFrameHealthOverlays()
-        end
-        if addon.ApplyPartyFrameNameOverlays then
-            addon.ApplyPartyFrameNameOverlays()
-        end
-        if addon.ApplyPartyOverAbsorbGlowVisibility then
-            addon.ApplyPartyOverAbsorbGlowVisibility()
-        end
-        if addon.ApplyPartyFrameHealthBarBorders then
-            addon.ApplyPartyFrameHealthBarBorders()
-        end
+        addon.Refresh.Run("party")
     end
 end
 
@@ -740,30 +651,7 @@ function addon:ResetUnitFrameCategoryToDefaults(categoryKey)
         self.EditMode.ResetUnitFramePosition(unit)
     end
 
-    if self.ApplyUnitFrameBarTexturesFor then
-        self.ApplyUnitFrameBarTexturesFor(unit)
-    end
-    if self.ApplyUnitFrameHealthTextVisibilityFor then
-        self.ApplyUnitFrameHealthTextVisibilityFor(unit)
-    end
-    if self.ApplyUnitFramePowerTextVisibilityFor then
-        self.ApplyUnitFramePowerTextVisibilityFor(unit)
-    end
-    if self.ApplyUnitFrameNameLevelTextFor then
-        self.ApplyUnitFrameNameLevelTextFor(unit)
-    end
-    if self.ApplyUnitFramePortraitFor then
-        self.ApplyUnitFramePortraitFor(unit)
-    end
-    if self.ApplyUnitFrameCastBarFor then
-        self.ApplyUnitFrameCastBarFor(unit)
-    end
-    if self.ApplyUnitFrameBuffsDebuffsFor then
-        self.ApplyUnitFrameBuffsDebuffsFor(unit)
-    end
-    if self.ApplyUnitFrameVisibilityFor then
-        self.ApplyUnitFrameVisibilityFor(unit)
-    end
+    addon.Refresh.Run("unit", unit)
 
     return true
 end

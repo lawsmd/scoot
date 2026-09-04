@@ -503,27 +503,7 @@ function addon.CopyUnitFrameSettings(sourceUnit, destUnit, opts)
         dstCfg.castBar = nil
     end
 
-    if addon.ApplyUnitFrameScaleMultFor then
-        addon.ApplyUnitFrameScaleMultFor(dst)
-    end
-    if addon.ApplyUnitFrameBarTexturesFor then
-        addon.ApplyUnitFrameBarTexturesFor(dst)
-    end
-    if addon.ApplyUnitFrameHealthTextVisibilityFor then
-        addon.ApplyUnitFrameHealthTextVisibilityFor(dst)
-    end
-    if addon.ApplyUnitFramePowerTextVisibilityFor then
-        addon.ApplyUnitFramePowerTextVisibilityFor(dst)
-    end
-    if addon.ApplyUnitFrameNameLevelTextFor then
-        addon.ApplyUnitFrameNameLevelTextFor(dst)
-    end
-    if addon.ApplyUnitFramePortraitFor then
-        addon.ApplyUnitFramePortraitFor(dst)
-    end
-    if dstCap.hasCastBar and addon.ApplyUnitFrameCastBarFor then
-        addon.ApplyUnitFrameCastBarFor(dst)
-    end
+    addon.Refresh.Run("unit", dst)
     if addon.ApplyStyles then
         addon:ApplyStyles()
     end
