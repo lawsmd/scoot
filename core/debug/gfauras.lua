@@ -198,50 +198,51 @@ end
 -- Entry point
 --------------------------------------------------------------------------------
 
-local function DebugGroupAuras(sub)
-    local ha, E = HA(), Engine()
-    if not ha or not E then
-        addon.DebugShowWindow("Group Frame Aura Tracking", "Group aura tracking module not loaded.")
-        return
-    end
+local Commands = addon.Commands
 
-    if sub == "log" then
-        dumpLog()
-        return
-    end
-
-    if sub == "refresh" then
-        ha.RefreshAllAuraDisplays()
-        addon.DebugShowWindow("Group Frame Aura Tracking",
-            ("Re-ran discovery and a full pass.\n\nStructural work allowed: %s\n\nRun the plain command for the resulting state.")
-            :format(tostring(E.CanDoStructuralWork())))
-        return
-    end
-
-    if sub == "filters" then
-        local lines = { "=== Slot include sets (after CDM expansion) ===", "" }
-        for _, item in ipairs(ha.EnabledSpellList()) do
-            local include = addon.AuraIds.BuildIncludeSet(item.spellId,
-                ha.SPELL_REGISTRY_BY_ID[item.spellId] and ha.SPELL_REGISTRY_BY_ID[item.spellId].linkedIds)
-            local ids = {}
-            for id in pairs(include) do table.insert(ids, id) end
-            table.sort(ids)
-            table.insert(lines, ("%s (%d)"):format(
-                tostring(ha.SPELL_NAMES[item.spellId] or item.spellId), item.spellId))
-            table.insert(lines, "   filter: " .. ha.SlotFilterString(item.spellId))
-            table.insert(lines, "   ids:    " .. table.concat(ids, ", "))
-            table.insert(lines, "")
+-- Every verb needs the tracking module and its engine; one guard for all.
+local function withHA(fn)
+    return function(...)
+        local ha, E = HA(), Engine()
+        if not ha or not E then
+            Commands.NotAvailable("Group aura tracking")
+            return
         end
-        if #lines == 2 then table.insert(lines, "(no auras enabled)") end
-        addon.DebugShowWindow("Group Frame Aura Tracking", lines)
-        return
+        return fn(ha, E, ...)
     end
+end
 
-    dumpState()
+local function refresh(ha, E)
+    ha.RefreshAllAuraDisplays()
+    addon.DebugShowWindow("Group Frame Aura Tracking",
+        ("Re-ran discovery and a full pass.\n\nStructural work allowed: %s\n\nRun the plain command for the resulting state.")
+        :format(tostring(E.CanDoStructuralWork())))
+end
+
+local function filtersDump(ha)
+    local lines, push = addon.DebugLines("=== Slot include sets (after CDM expansion) ===", "")
+    for _, item in ipairs(ha.EnabledSpellList()) do
+        local include = addon.AuraIds.BuildIncludeSet(item.spellId,
+            ha.SPELL_REGISTRY_BY_ID[item.spellId] and ha.SPELL_REGISTRY_BY_ID[item.spellId].linkedIds)
+        local ids = {}
+        for id in pairs(include) do table.insert(ids, id) end
+        table.sort(ids)
+        push("%s (%d)", tostring(ha.SPELL_NAMES[item.spellId] or item.spellId), item.spellId)
+        push("   filter: " .. ha.SlotFilterString(item.spellId))
+        push("   ids:    " .. table.concat(ids, ", "))
+        push("")
+    end
+    if #lines == 2 then push("(no auras enabled)") end
+    addon.DebugShowWindow("Group Frame Aura Tracking", lines)
 end
 
 addon:RegisterDebugCommand({
     name = "gfauras", aliases = { "gfa" }, help = "group frame aura tracking",
-    usage = { "gfauras [log|filters|refresh]" },
-    handler = function(sub) DebugGroupAuras(sub) end,
+    default = "state",
+    verbs = {
+        { word = "state", help = "containers, slots, include sets, structural gate", fn = withHA(dumpState) },
+        { word = "log", help = "engine call log", fn = withHA(dumpLog) },
+        { word = "refresh", help = "re-run discovery and a full pass", fn = withHA(refresh) },
+        { word = "filters", help = "slot include sets after CDM expansion", fn = withHA(filtersDump) },
+    },
 })

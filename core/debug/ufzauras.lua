@@ -148,47 +148,49 @@ end
 -- Dispatch
 --------------------------------------------------------------------------------
 
-local function DebugUFZAuras(sub)
-    local z, A = UFZ(), Auras()
-    if not z or not A then
-        addon.DebugShowWindow("Unit Frames Z Auras", "Unit Frames Z aura module not loaded.")
-        return
-    end
+local Commands = addon.Commands
 
-    if sub == "log" then
-        dumpLog()
-        return
-    end
-
-    if sub == "apply" then
-        local n = 0
-        for _, inst in pairs(z._instances or {}) do
-            A.ApplyAll(inst)
-            n = n + 1
+-- Every verb needs Unit Frames Z and its aura module; one guard for all.
+local function withZ(fn)
+    return function(...)
+        local z, A = UFZ(), Auras()
+        if not z or not A then
+            Commands.NotAvailable("Unit Frames Z auras")
+            return
         end
-        addon.DebugShowWindow("Unit Frames Z Auras",
-            ("Forced a full pass on %d instance(s).\n\nStructural work allowed: %s\n\nRun the plain command for the resulting state.")
-            :format(n, tostring(A.CanDoStructuralWork())))
-        return
+        return fn(z, A, ...)
     end
+end
 
-    if sub == "kick" then
-        local n = 0
-        for _, inst in pairs(z._instances or {}) do
-            A.ForceRefresh(inst)
-            n = n + 1
-        end
-        addon.DebugShowWindow("Unit Frames Z Auras",
-            ("Kicked UpdateAllAuras on %d instance(s).\n\nThis is the retarget path: SetUnit early-outs when the token is unchanged, so a target swap only repopulates because of this call.")
-            :format(n))
-        return
+local function apply(z, A)
+    local n = 0
+    for _, inst in pairs(z._instances or {}) do
+        A.ApplyAll(inst)
+        n = n + 1
     end
+    addon.DebugShowWindow("Unit Frames Z Auras",
+        ("Forced a full pass on %d instance(s).\n\nStructural work allowed: %s\n\nRun the plain command for the resulting state.")
+        :format(n, tostring(A.CanDoStructuralWork())))
+end
 
-    dumpState()
+local function kick(z, A)
+    local n = 0
+    for _, inst in pairs(z._instances or {}) do
+        A.ForceRefresh(inst)
+        n = n + 1
+    end
+    addon.DebugShowWindow("Unit Frames Z Auras",
+        ("Kicked UpdateAllAuras on %d instance(s).\n\nThis is the retarget path: SetUnit early-outs when the token is unchanged, so a target swap only repopulates because of this call.")
+        :format(n))
 end
 
 addon:RegisterDebugCommand({
     name = "ufzauras", aliases = { "ufza" }, help = "Unit Frames Z aura rows",
-    usage = { "ufzauras [log|apply|kick]" },
-    handler = function(sub) DebugUFZAuras(sub) end,
+    default = "state",
+    verbs = {
+        { word = "state", help = "instances, rows, engine call results", fn = withZ(dumpState) },
+        { word = "log", help = "engine call log", fn = withZ(dumpLog) },
+        { word = "apply", help = "force a full pass on every instance", fn = withZ(apply) },
+        { word = "kick", help = "force UpdateAllAuras on every instance (the retarget path)", fn = withZ(kick) },
+    },
 })

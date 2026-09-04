@@ -212,15 +212,6 @@ local function dumpState()
             push(k .. " = " .. tostring(ac.results[k]))
         end
     end
-    push("")
-
-    push("--- Commands ---")
-    push("/scoot debug auracontainer start|stop")
-    push("/scoot debug auracontainer probes      (bounds trio + children + instance IDs)")
-    push("/scoot debug auracontainer filters on|off")
-    push("/scoot debug auracontainer suppress off|maxzero|alpha")
-    push("/scoot debug auracontainer log")
-
     addon.DebugShowWindow("Aura Container Pilot", lines)
 end
 
@@ -243,74 +234,67 @@ end
 -- Dispatch
 --------------------------------------------------------------------------------
 
-local function DebugAuraContainer(sub, arg)
-    local ac = AC()
-    if not ac then
-        addon.DebugShowWindow("Aura Container Pilot", "Aura container module not loaded.")
-        return
-    end
+local Commands = addon.Commands
 
-    sub = sub or ""
-
-    if sub == "start" then
-        local ok, msg = ac.Start()
-        addon:Print("Aura containers: " .. msg .. (ok and "" or " (not started)"))
-        return
-    end
-
-    if sub == "stop" then
-        local _, msg = ac.Stop()
-        addon:Print("Aura containers: " .. msg)
-        return
-    end
-
-    if sub == "probes" then
-        local lines, push = addon.DebugLines()
-        push("=== Probe Battery ===")
-        push("")
-        probeBoundsRect(push)
-        push("")
-        push("GetChildren on Scoot-owned containers:")
-        probeChildren(push)
-        push("")
-        push("Aura instance IDs on public buttons:")
-        probeInstance(push)
-        push("")
-        push("Results are also recorded in the state dump.")
-        addon.DebugShowWindow("Aura Container Probes", lines)
-        return
-    end
-
-    if sub == "filters" then
-        local lines, push = addon.DebugLines()
-        push("=== Candidate Filter Probe ===")
-        push("")
-        probeFilters(push, arg == "on")
-        addon.DebugShowWindow("Aura Container Probes", lines)
-        return
-    end
-
-    if sub == "suppress" then
-        local mode = arg
-        if mode ~= "off" and mode ~= "maxzero" and mode ~= "alpha" then
-            addon:Print("Usage: /scoot debug auracontainer suppress <off|maxzero|alpha>")
+-- Every verb needs the pilot module; one guard instead of one per body.
+local function withAC(fn)
+    return function(...)
+        local ac = AC()
+        if not ac then
+            Commands.NotAvailable("Aura containers")
             return
         end
-        ac.SetSuppressionAll(mode)
-        addon:Print("Aura containers: suppression mode set to " .. mode .. " (see state dump for results)")
-        return
+        return fn(ac, ...)
     end
+end
 
-    if sub == "log" then
-        dumpLog()
-        return
-    end
+local function probesDump()
+    local lines, push = addon.DebugLines()
+    push("=== Probe Battery ===")
+    push("")
+    probeBoundsRect(push)
+    push("")
+    push("GetChildren on Scoot-owned containers:")
+    probeChildren(push)
+    push("")
+    push("Aura instance IDs on public buttons:")
+    probeInstance(push)
+    push("")
+    push("Results are also recorded in the state dump.")
+    addon.DebugShowWindow("Aura Container Probes", lines)
+end
 
-    dumpState()
+local function filtersDump(on)
+    local lines, push = addon.DebugLines()
+    push("=== Candidate Filter Probe ===")
+    push("")
+    probeFilters(push, on)
+    addon.DebugShowWindow("Aura Container Probes", lines)
 end
 
 addon:RegisterDebugCommand({
     name = "auracontainer", aliases = { "aurac" }, help = "12.1 aura container pilot",
-    usage = { "auracontainer [start|stop|probes|filters|suppress|log]" },
-    handler = function(sub, rest) DebugAuraContainer(sub, string.lower(rest[2] or "")) end,
+    default = "state",
+    verbs = {
+        { word = "state", help = "engine state, containers, recorded probe results", fn = withAC(dumpState) },
+        { word = "start", help = "build and start the containers", fn = withAC(function(ac)
+            local ok, msg = ac.Start()
+            addon:Print("Aura containers: " .. msg .. (ok and "" or " (not started)"))
+        end) },
+        { word = "stop", help = "stop and release the containers", fn = withAC(function(ac)
+            local _, msg = ac.Stop()
+            addon:Print("Aura containers: " .. msg)
+        end) },
+        { word = "probes", help = "bounds trio, GetChildren, aura instance IDs", fn = withAC(probesDump) },
+        { word = "filters", usage = "filters [on|off]", help = "candidate filter probe",
+          fn = withAC(function(_, arg) filtersDump(string.lower(arg or "") == "on") end) },
+        { word = "suppress", usage = "suppress <off|maxzero|alpha>", help = "suppression mode on every container",
+          fn = withAC(function(ac, mode)
+            mode = string.lower(mode or "")
+            if mode ~= "off" and mode ~= "maxzero" and mode ~= "alpha" then return Commands.USAGE end
+            ac.SetSuppressionAll(mode)
+            addon:Print("Aura containers: suppression mode set to " .. mode .. " (see state dump for results)")
+        end) },
+        { word = "log", help = "the pilot's event log", fn = withAC(dumpLog) },
+    },
 })
