@@ -116,9 +116,11 @@ Engine._BuildCandidateFilters = BuildCandidateFilters
 -- Positions
 --------------------------------------------------------------------------------
 
+-- LibEditMode's name, or the AceDB profile name before the first layout
+-- callback: SnapShellToVisual saves under this name, so the store can hold
+-- profile-name records and the claim-time restore must read them.
 local function GetActiveLayoutName()
-    local lib = LibStub("LibEditMode", true)
-    local name = lib and lib:GetActiveLayoutName()
+    local name = addon.EditMode.GetActiveLayoutName()
     if name then return name end
     return addon.db and addon.db.GetCurrentProfile and addon.db:GetCurrentProfile() or nil
 end
@@ -139,23 +141,22 @@ local function SavePosition(key, layoutName, point, x, y)
     store[key][layoutName] = { point = point, x = x, y = y }
 end
 
+local function GetStoredPosition(key, layoutName)
+    local store = SAU.GetPositionStore(false)
+    local perKey = store and store[key]
+    return perKey and perKey[layoutName] or nil
+end
+
 -- Shared with groups.lua ("g<gid>" keys live in the same store).
 Engine.SavePosition = SavePosition
+Engine._GetStoredPosition = GetStoredPosition
 Engine.GetActiveLayoutName = GetActiveLayoutName
 
--- LibEditMode applies nothing at AddFrame time, so every claim explicitly
--- restores the occupant's saved position (or the entry default).
+-- The helper restores at registration, but a re-claimed entry carries a new
+-- occupant, so every claim restores explicitly against the name above.
 local function ApplySavedPosition(entry)
     if not entry.occupantId then return end
-    local store = SAU.GetPositionStore(false)
-    local perKey = store and store["t" .. entry.occupantId]
-    local layoutName = GetActiveLayoutName()
-    local pos = layoutName and perKey and perKey[layoutName]
-    if not (pos and pos.point) then
-        pos = DefaultPositionFor(entry)
-    end
-    entry.shell:ClearAllPoints()
-    entry.shell:SetPoint(pos.point, pos.x or 0, pos.y or 0)
+    addon.EditMode.RestorePositionable(entry.shell, GetActiveLayoutName())
 end
 
 function Engine.ApplyPositionsForActiveLayout()
@@ -202,39 +203,20 @@ end
 
 Engine._EditModeMirror = TrackerEditModeMirror
 
+-- One positionable per shell (core/editmode/positionables.lua). Storage stays
+-- positions["t" .. id][layoutName]; the key follows the occupant, so a shell
+-- with no occupant neither saves nor restores.
 local function EnsureLEMFrame(entry)
     if entry.lemRegistered then return end
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
-    entry.lemRegistered = true
-
-    local dp = DefaultPositionFor(entry)
-    lib:AddFrame(entry.shell, function(frame, layoutName, point, x, y)
-        if point and x and y then
-            frame:ClearAllPoints()
-            frame:SetPoint(point, x, y)
-        end
-        if layoutName and entry.occupantId then
-            local savedPoint, _, _, savedX, savedY = frame:GetPoint(1)
-            if savedPoint then
-                SavePosition("t" .. entry.occupantId, layoutName, savedPoint, savedX, savedY)
-            else
-                SavePosition("t" .. entry.occupantId, layoutName, point, x, y)
-            end
-        end
-    end, { point = dp.point, x = dp.x, y = dp.y }, nil)
-
-    local Brand = addon.EditMode and addon.EditMode.Brand
-    if Brand then
-        Brand:Register(entry.shell, { navKey = SAU.NAV_KEY, mirror = TrackerEditModeMirror })
-    end
-
-    -- Frames added while Edit Mode is open miss the enter pass; without this
-    -- the new frame is undraggable until Edit Mode bounces.
-    if lib.isEditing then
-        local sel = lib.frameSelections and lib.frameSelections[entry.shell]
-        if sel then pcall(sel.ShowHighlighted, sel) end
-    end
+    local selection = addon.EditMode.RegisterPositionable(entry.shell, {
+        key = function() return entry.occupantId and ("t" .. entry.occupantId) or nil end,
+        default = DefaultPositionFor(entry),
+        store = { get = GetStoredPosition, set = SavePosition },
+        restoreDefault = true,
+        brand = { navKey = SAU.NAV_KEY, mirror = TrackerEditModeMirror },
+    })
+    -- Read by /scoot debug sa.
+    entry.lemRegistered = selection ~= nil
 end
 
 function Engine.UpdateEditModeName(trackerId)

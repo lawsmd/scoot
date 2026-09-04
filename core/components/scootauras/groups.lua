@@ -53,15 +53,7 @@ end
 
 local function ApplySavedPosition(entry)
     if not entry.occupantId then return end
-    local store = SAU.GetPositionStore(false)
-    local perKey = store and store["g" .. entry.occupantId]
-    local layoutName = Engine.GetActiveLayoutName()
-    local pos = layoutName and perKey and perKey[layoutName]
-    if not (pos and pos.point) then
-        pos = DefaultPositionFor(entry)
-    end
-    entry.frame:ClearAllPoints()
-    entry.frame:SetPoint(pos.point, pos.x or 0, pos.y or 0)
+    addon.EditMode.RestorePositionable(entry.frame, Engine.GetActiveLayoutName())
 end
 
 function Groups.ApplyPositionsForActiveLayout()
@@ -142,39 +134,18 @@ function Groups._EditModeMirror(frame)
     return specs
 end
 
+-- One positionable per group frame (core/editmode/positionables.lua). Storage
+-- stays positions["g" .. gid][layoutName], beside the tracker shells' keys.
 local function EnsureLEMFrame(entry)
     if entry.lemRegistered then return end
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
-    entry.lemRegistered = true
-
-    local dp = DefaultPositionFor(entry)
-    lib:AddFrame(entry.frame, function(frame, layoutName, point, x, y)
-        if point and x and y then
-            frame:ClearAllPoints()
-            frame:SetPoint(point, x, y)
-        end
-        if layoutName and entry.occupantId then
-            local savedPoint, _, _, savedX, savedY = frame:GetPoint(1)
-            if savedPoint then
-                Engine.SavePosition("g" .. entry.occupantId, layoutName, savedPoint, savedX, savedY)
-            else
-                Engine.SavePosition("g" .. entry.occupantId, layoutName, point, x, y)
-            end
-        end
-    end, { point = dp.point, x = dp.x, y = dp.y }, nil)
-
-    local Brand = addon.EditMode and addon.EditMode.Brand
-    if Brand then
-        Brand:Register(entry.frame, { navKey = SAU.NAV_KEY, mirror = Groups._EditModeMirror })
-    end
-
-    -- Frames added while Edit Mode is open miss the enter pass; without this
-    -- the new frame is undraggable until Edit Mode bounces.
-    if lib.isEditing then
-        local sel = lib.frameSelections and lib.frameSelections[entry.frame]
-        if sel then pcall(sel.ShowHighlighted, sel) end
-    end
+    local selection = addon.EditMode.RegisterPositionable(entry.frame, {
+        key = function() return entry.occupantId and ("g" .. entry.occupantId) or nil end,
+        default = DefaultPositionFor(entry),
+        store = { get = Engine._GetStoredPosition, set = Engine.SavePosition },
+        restoreDefault = true,
+        brand = { navKey = SAU.NAV_KEY, mirror = Groups._EditModeMirror },
+    })
+    entry.lemRegistered = selection ~= nil
 end
 
 --------------------------------------------------------------------------------

@@ -6,63 +6,51 @@ local Engine = SAU.Engine
 
 local containersInitialized = false
 local editModeActive = false
-local lemCallbacksRegistered = false
 
 --------------------------------------------------------------------------------
 -- LibEditMode callbacks (once per session; AddFrame happens per claim)
 --------------------------------------------------------------------------------
 
 local function RegisterLEMCallbacks()
-    if lemCallbacksRegistered then return end
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
-    lemCallbacksRegistered = true
-
-    lib:RegisterCallback("layout", function()
-        -- Positions only. A layout switch that swaps profiles reaches the
-        -- Edit Mode preview through reconcile -> ClaimForTracker ->
-        -- ApplyStyling, so no preview work is needed here.
-        Engine.ApplyPositionsForActiveLayout()
-    end)
-
-    lib:RegisterCallback("enter", function()
-        editModeActive = true
-        for trackerId, tracker in pairs(SAU.AllTrackers()) do
-            local state = SAU._activeStates[trackerId]
-            if state and state.shell and SAU.IsTrackerActive(trackerId, tracker)
-                and SAU.IsModuleActive() then
-                -- Engine content cannot fake an aura; show Scoot-side preview
-                -- art on the frame instead. Grouped shells stay hidden: the
-                -- group frame is the drag unit, and the preview art rides the
-                -- visual inside it.
-                if not (state.entry and state.entry.grouped) then
-                    state.shell:Show()
+    addon.EditMode.OnEditMode("scootAuras", {
+        enter = function()
+            editModeActive = true
+            for trackerId, tracker in pairs(SAU.AllTrackers()) do
+                local state = SAU._activeStates[trackerId]
+                if state and state.shell and SAU.IsTrackerActive(trackerId, tracker)
+                    and SAU.IsModuleActive() then
+                    -- Engine content cannot fake an aura; show Scoot-side preview
+                    -- art on the frame instead. Grouped shells stay hidden: the
+                    -- group frame is the drag unit, and the preview art rides the
+                    -- visual inside it.
+                    if not (state.entry and state.entry.grouped) then
+                        state.shell:Show()
+                    end
+                    Engine.ApplyAll(trackerId)
+                    Engine.ShowEditModePreview(trackerId, tracker, state)
                 end
-                Engine.ApplyAll(trackerId)
-                Engine.ShowEditModePreview(trackerId, tracker, state)
             end
-        end
-        -- The loop force-shows standalone shells but never a grouped member's
-        -- visual, so a member the combat gate hid would stay invisible with
-        -- Edit Mode open. The gate reads open while editing, so this shows it.
-        SAU.RefreshCombatGates()
-        -- Empty groups become visible (and draggable) while editing.
-        if SAU.Groups then SAU.Groups.ReflowAll() end
-    end)
-
-    lib:RegisterCallback("exit", function()
-        editModeActive = false
-        if SAU.Rearrange then SAU.Rearrange.ForceEnd() end
-        for trackerId, state in pairs(SAU._activeStates) do
-            Engine.HideEditModePreview(state)
-            local tracker = SAU.GetTracker(trackerId)
-            if tracker and SAU._ApplyStyling then
-                SAU._ApplyStyling(trackerId, tracker)
+            -- The loop force-shows standalone shells but never a grouped member's
+            -- visual, so a member the combat gate hid would stay invisible with
+            -- Edit Mode open. The gate reads open while editing, so this shows it.
+            SAU.RefreshCombatGates()
+            -- Empty groups become visible (and draggable) while editing.
+            if SAU.Groups then SAU.Groups.ReflowAll() end
+        end,
+        exit = function()
+            editModeActive = false
+            if SAU.Rearrange then SAU.Rearrange.ForceEnd() end
+            for trackerId, state in pairs(SAU._activeStates) do
+                Engine.HideEditModePreview(state)
+                local tracker = SAU.GetTracker(trackerId)
+                if tracker and SAU._ApplyStyling then
+                    SAU._ApplyStyling(trackerId, tracker)
+                end
             end
-        end
-        -- Re-hide empty groups.
-        if SAU.Groups then SAU.Groups.ReflowAll() end
-    end)
+            -- Re-hide empty groups.
+            if SAU.Groups then SAU.Groups.ReflowAll() end
+        end,
+    })
 end
 
 SAU._isEditModeActive = function() return editModeActive end
