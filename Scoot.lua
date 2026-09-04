@@ -69,161 +69,16 @@ end
 SLASH_SCOOT1 = "/scoot"
 function SlashCmdList.SCOOT(msg)
     local args = addon.Commands.Parse(msg)
-    if #args == 0 then
-        if addon.UI and addon.UI.SettingsPanel and addon.UI.SettingsPanel.Toggle then
-            addon.UI.SettingsPanel:Toggle()
-        end
-        return
-    end
-    if addon.Commands.Dispatch("slash", args) then return end
-    local cmd = string.lower(args[1])
-
-    -- /scoot debugmenu
-    if cmd == "debugmenu" then
-        if not (addon.db and addon.db.profile) then
-            addon:Print("Profile not loaded yet. Try again after login completes.")
-            return
-        end
-        addon.db.profile.debugMenuEnabled = not addon.db.profile.debugMenuEnabled
-        local status = addon.db.profile.debugMenuEnabled and "ENABLED" or "DISABLED"
-        addon:Print("Debug menu " .. status .. ". Reopen settings to see changes.")
-        return
-    end
-
-    -- /scoot del "Layout Name"
-    if cmd == "del" or cmd == "delete" then
-        local target = args[2]
-        if not target or target == "" then addon:Print("Usage: /scoot del \"Layout Name\"") return end
-        if InCombatLockdown and InCombatLockdown() then addon:Print("Cannot delete during combat.") return end
-        local LEO = LibStub and LibStub("LibEditModeOverride-1.0")
-        if not (LEO and LEO.IsReady and LEO:IsReady()) then addon:Print("Edit Mode not ready.") return end
-        if LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
-        if not (LEO.DoesLayoutExist and LEO:DoesLayoutExist(target)) then addon:Print("Layout not found: "..target) return end
-        local ok, err = pcall(LEO.DeleteLayout, LEO, target)
-        if not ok then addon:Print("Delete failed: "..tostring(err)) return end
-        if LEO.SaveOnly then pcall(LEO.SaveOnly, LEO) end
-        if LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
-        if LEO.DoesLayoutExist and LEO:DoesLayoutExist(target) then
-            addon:Print("Delete did not persist (still exists): "..target)
-        else
-            addon:Print("Deleted layout: "..target)
-        end
-        return
-    end
-
-    -- /scoot attr
-    if cmd == "attr" then
-        if not addon.DumpTableAttributes() then
-            addon:Print("No Table Inspector window or highlight frame found to dump.")
-        end
-        return
-    end
-
-    -- /scoot taint <on|off|log|clear|status>
-    if cmd == "taint" then
-        if addon.TaintDebug and addon.TaintDebug.HandleSlashCommand then
-            addon.TaintDebug.HandleSlashCommand(args)
-        else
-            addon:Print("Taint debug module not loaded.")
-        end
-        return
-    end
-
-    -- /scoot dj debug — Dungeon Journal diagnostics
-    if cmd == "dj" then
-        local sub = string.lower(args[2] or "")
-        local DJ = addon.DungeonJournal
-        if sub == "debug" then
-            if not DJ then addon:Print("Dungeon Journal module not loaded.") return end
-            addon:Print(string.format("DJ enabled: %s", tostring(DJ.IsEnabled and DJ.IsEnabled())))
-            local ej = _G.EncounterJournal
-            local instanceID = ej and rawget(ej, "instanceID") or nil
-            addon:Print(string.format("EJ.instanceID: %s", tostring(instanceID)))
-            if type(instanceID) == "number" and EJ_GetInstanceInfo then
-                local ok, name, _, _, _, _, _, dungeonAreaMapID = pcall(EJ_GetInstanceInfo, instanceID)
-                if ok then
-                    addon:Print(string.format("  name=%s  dungeonAreaMapID=%s",
-                        tostring(name), tostring(dungeonAreaMapID)))
-                end
-                addon:Print(string.format("  IsCurrentSeasonInstance: %s",
-                    tostring(DJ.IsCurrentSeasonInstance and DJ.IsCurrentSeasonInstance(instanceID))))
-            end
-            local s = DJ._SeasonDebug and DJ._SeasonDebug() or {}
-            addon:Print(string.format("Snapshot: have=%s  requested=%s",
-                tostring(s.haveSnapshot), tostring(s.requestedOnce)))
-            local nameCount = 0
-            for n in pairs(s.seasonNames or {}) do
-                nameCount = nameCount + 1
-                addon:Print(string.format("  season name: %s", n))
-            end
-            addon:Print(string.format("  total season names: %d", nameCount))
-            addon:Print(string.format("Marks on this character: %d",
-                (DJ.CountMarks and DJ.CountMarks()) or 0))
-            return
-        end
-        addon:Print("Usage: /scoot dj debug")
-        return
-    end
-
-    -- /scoot widget <reset|state>
-    if cmd == "widget" then
-        local sub = string.lower(args[2] or "")
-        if sub == "reset" then
-            if addon.Widget and addon.Widget.ResetPosition then
-                addon.Widget:ResetPosition()
-                addon:Print("Widget position reset.")
-            else
-                addon:Print("Widget module not loaded.")
-            end
-            return
-        end
-        if sub == "state" then
-            if addon.DebugWidgetState then
-                addon.DebugWidgetState()
-            else
-                addon:Print("Widget debug not loaded.")
-            end
-            return
-        end
-        addon:Print("Usage: /scoot widget reset")
-        addon:Print("       /scoot widget state")
-        return
-    end
-
-    -- /scoot copy "Source Name" "New Name"
-    if cmd == "copy" then
-        local src = args[2]
-        local dest = args[3]
-        if not src or not dest then addon:Print("Usage: /scoot copy \"Source Name\" \"New Name\"") return end
-        if InCombatLockdown and InCombatLockdown() then addon:Print("Cannot copy during combat.") return end
-        C_AddOns.LoadAddOn("Blizzard_EditMode")
-        local layouts = C_EditMode and C_EditMode.GetLayouts and C_EditMode.GetLayouts()
-        if not (EditModeManagerFrame and layouts and layouts.layouts) then addon:Print("Edit Mode not ready.") return end
-        local source
-        for _, layout in ipairs(layouts.layouts) do
-            if layout.layoutName == src then source = CopyTable(layout) break end
-        end
-        if not source then addon:Print("Source layout not found: "..src) return end
-        if C_EditMode.IsValidLayoutName and not C_EditMode.IsValidLayoutName(dest) then addon:Print("Invalid new name.") return end
-            if EditModeManagerFrame.MakeNewLayout then
-            EditModeManagerFrame:MakeNewLayout(source, source.layoutType or Enum.EditModeLayoutType.Account, dest, false)
-            if addon.EditMode and addon.EditMode.SaveOnly then addon.EditMode.SaveOnly() end
-            addon:Print("Copied layout '"..src.."' -> '"..dest.."'")
-        else
-            addon:Print("Copy failed: manager unavailable.")
-        end
-        return
-    end
-
-    -- Fallback: open settings
+    if #args > 0 and addon.Commands.Dispatch("slash", args) then return end
     if addon.UI and addon.UI.SettingsPanel and addon.UI.SettingsPanel.Toggle then
         addon.UI.SettingsPanel:Toggle()
     end
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug registrations. Each moves to the file that owns its handler in
--- refactor #32 phase 2; until then they live here, after every owner has loaded.
+-- /scoot and /scoot debug registrations. Each moves to the file that owns its
+-- handler in refactor #32 phase 2; until then they live here, after every owner
+-- has loaded.
 --------------------------------------------------------------------------------
 
 local Commands = addon.Commands
@@ -523,6 +378,128 @@ addon:RegisterDebugCommand({
         { word = "autofit", help = "render, then show the size derivation", fn = addon.DebugNameTextAutoFit },
         { word = "report", fn = addon.DebugNameTextReport },
     },
+})
+
+addon:RegisterDebugCommand({
+    name = "dj", help = "Dungeon Journal season snapshot and marks",
+    handler = function()
+        local DJ = addon.DungeonJournal
+        local lines = {}
+        local function push(s) lines[#lines + 1] = s end
+        push(string.format("DJ enabled: %s", tostring(DJ.IsEnabled and DJ.IsEnabled())))
+        local ej = _G.EncounterJournal
+        local instanceID = ej and rawget(ej, "instanceID") or nil
+        push(string.format("EJ.instanceID: %s", tostring(instanceID)))
+        if type(instanceID) == "number" and EJ_GetInstanceInfo then
+            local ok, name, _, _, _, _, _, dungeonAreaMapID = pcall(EJ_GetInstanceInfo, instanceID)
+            if ok then
+                push(string.format("  name=%s  dungeonAreaMapID=%s", tostring(name), tostring(dungeonAreaMapID)))
+            end
+            push(string.format("  IsCurrentSeasonInstance: %s",
+                tostring(DJ.IsCurrentSeasonInstance and DJ.IsCurrentSeasonInstance(instanceID))))
+        end
+        local s = DJ._SeasonDebug and DJ._SeasonDebug() or {}
+        push(string.format("Snapshot: have=%s  requested=%s", tostring(s.haveSnapshot), tostring(s.requestedOnce)))
+        local nameCount = 0
+        for n in pairs(s.seasonNames or {}) do
+            nameCount = nameCount + 1
+            push(string.format("  season name: %s", n))
+        end
+        push(string.format("  total season names: %d", nameCount))
+        push(string.format("Marks on this character: %d", (DJ.CountMarks and DJ.CountMarks()) or 0))
+        addon.DebugShowWindow("Dungeon Journal", lines)
+    end,
+})
+
+--------------------------------------------------------------------------------
+-- /scoot registrations (the slash scope)
+--------------------------------------------------------------------------------
+
+addon:RegisterSlashCommand({
+    name = "debugmenu", help = "toggle the Debug Menu page in the settings panel",
+    handler = function()
+        if not (addon.db and addon.db.profile) then
+            addon:Print("Profile not loaded yet. Try again after login completes.")
+            return
+        end
+        addon.db.profile.debugMenuEnabled = not addon.db.profile.debugMenuEnabled
+        local status = addon.db.profile.debugMenuEnabled and "ENABLED" or "DISABLED"
+        addon:Print("Debug menu " .. status .. ". Reopen settings to see changes.")
+    end,
+})
+
+addon:RegisterSlashCommand({
+    name = "del", aliases = { "delete" }, help = "delete an Edit Mode layout by name",
+    usage = { 'del "Layout Name"' },
+    handler = function(_, rest)
+        local target = rest[1]
+        if not target or target == "" then return Commands.USAGE end
+        if InCombatLockdown and InCombatLockdown() then addon:Print("Cannot delete during combat.") return end
+        local LEO = LibStub and LibStub("LibEditModeOverride-1.0")
+        if not (LEO and LEO.IsReady and LEO:IsReady()) then addon:Print("Edit Mode not ready.") return end
+        if LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
+        if not (LEO.DoesLayoutExist and LEO:DoesLayoutExist(target)) then addon:Print("Layout not found: "..target) return end
+        local ok, err = pcall(LEO.DeleteLayout, LEO, target)
+        if not ok then addon:Print("Delete failed: "..tostring(err)) return end
+        if LEO.SaveOnly then pcall(LEO.SaveOnly, LEO) end
+        if LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
+        if LEO.DoesLayoutExist and LEO:DoesLayoutExist(target) then
+            addon:Print("Delete did not persist (still exists): "..target)
+        else
+            addon:Print("Deleted layout: "..target)
+        end
+    end,
+})
+
+addon:RegisterSlashCommand({
+    name = "attr", help = "dump the inspected Table Inspector table or Frame Stack frame",
+    handler = function()
+        if not addon.DumpTableAttributes() then
+            addon:Print("No Table Inspector window or highlight frame found to dump.")
+        end
+    end,
+})
+
+addon:RegisterSlashCommand({
+    name = "taint", help = "taint debugging",
+    usage = { "taint <on|off|log|clear|status>" },
+    handler = function(_, rest) addon.TaintDebug.HandleSlashCommand(rest) end,
+})
+
+addon:RegisterSlashCommand({
+    name = "widget", help = "widget component",
+    verbs = {
+        { word = "reset", help = "reset the widget position", fn = function()
+            addon.Widget:ResetPosition()
+            addon:Print("Widget position reset.")
+        end },
+    },
+})
+
+addon:RegisterSlashCommand({
+    name = "copy", help = "copy an Edit Mode layout under a new name",
+    usage = { 'copy "Source Name" "New Name"' },
+    handler = function(_, rest)
+        local src, dest = rest[1], rest[2]
+        if not src or not dest then return Commands.USAGE end
+        if InCombatLockdown and InCombatLockdown() then addon:Print("Cannot copy during combat.") return end
+        C_AddOns.LoadAddOn("Blizzard_EditMode")
+        local layouts = C_EditMode and C_EditMode.GetLayouts and C_EditMode.GetLayouts()
+        if not (EditModeManagerFrame and layouts and layouts.layouts) then addon:Print("Edit Mode not ready.") return end
+        local source
+        for _, layout in ipairs(layouts.layouts) do
+            if layout.layoutName == src then source = CopyTable(layout) break end
+        end
+        if not source then addon:Print("Source layout not found: "..src) return end
+        if C_EditMode.IsValidLayoutName and not C_EditMode.IsValidLayoutName(dest) then addon:Print("Invalid new name.") return end
+        if EditModeManagerFrame.MakeNewLayout then
+            EditModeManagerFrame:MakeNewLayout(source, source.layoutType or Enum.EditModeLayoutType.Account, dest, false)
+            if addon.EditMode and addon.EditMode.SaveOnly then addon.EditMode.SaveOnly() end
+            addon:Print("Copied layout '"..src.."' -> '"..dest.."'")
+        else
+            addon:Print("Copy failed: manager unavailable.")
+        end
+    end,
 })
 
 -- /cdm (optional, gated by profile setting)

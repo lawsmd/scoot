@@ -418,8 +418,9 @@ end
 -- Slash Command Handler
 --------------------------------------------------------------------------------
 
-function TD.HandleSlashCommand(args)
-    local subcmd = args[2] and string.lower(args[2]) or ""
+-- rest: the tokens after "taint", as the command registry passes them.
+function TD.HandleSlashCommand(rest)
+    local subcmd = string.lower(rest[1] or "")
     
     if subcmd == "on" or subcmd == "enable" then
         TD.Enable()
