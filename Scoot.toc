@@ -45,6 +45,7 @@ core/enforce.lua
 core/colorramp.lua
 core/blindfit.lua
 core/barborders.lua
+core/casttrack.lua
 core/iconborders.lua
 core/iconbackdrops.lua
 core/presets.lua
