@@ -4,22 +4,31 @@ local addonName, addon = ...
 -- other two at 1; an unset value reads as the combat value.
 local UF_OPACITY_OPTS = { combatMin = 50, min = 1, fallback = "combat" }
 
--- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
-local FS = addon.FrameState
+-- Hide-enforcement hooks (core/enforce.lua). Every hide in this file reads its
+-- flag live from the profile, so each key carries a reader instead of a stored
+-- flag; the direct apply and the saved-alpha restore stay with each apply
+-- function. Show re-asserts at once, SetAlpha after a stack break.
+local Enforce = addon.Enforce
+local HIDE_METHODS = { "Show", "SetAlpha" }
+local HIDE_TIMING = { Show = "sync", SetAlpha = "defer" }
 
-local function getState(frame)
-    return FS.Get(frame)
+-- Reads unitFrames[unitKey][sub][flag] (sub nil: unitFrames[unitKey][flag])
+-- without touching AceDB defaults; nil while the profile is not there yet.
+local function hideOpts(unitKey, sub, flag)
+    local function reader()
+        local db = addon and addon.db and addon.db.profile
+        if not db then return nil end
+        local unitFrames = rawget(db, "unitFrames")
+        local cfg = unitFrames and rawget(unitFrames, unitKey) or nil
+        if sub then cfg = cfg and rawget(cfg, sub) or nil end
+        return cfg ~= nil and cfg[flag] == true
+    end
+    return { methods = HIDE_METHODS, timing = HIDE_TIMING, when = reader }
 end
 
-local function getProp(frame, key)
-    local st = FS.Get(frame)
-    return st and st[key] or nil
-end
-
-local function setProp(frame, key, value)
-    local st = FS.Get(frame)
-    if st then
-        st[key] = value
+local function installHide(region, key, opts)
+    if region then
+        Enforce.Install(region, key, opts)
     end
 end
 
@@ -71,7 +80,7 @@ end
 --   Target: TargetFrame.TargetFrameContent.TargetFrameContentContextual.NumericalThreat
 --   Focus:  FocusFrame.TargetFrameContent.TargetFrameContentContextual.NumericalThreat
 do
-    local _threatMeterHooked = { Target = false, Focus = false }
+    local threatOpts = {}
     local _originalThreatMeterAlpha = { Target = nil, Focus = nil }
 
     local function getThreatMeterFrame(unit)
@@ -126,52 +135,8 @@ do
 
     -- Install hooks to maintain visibility state when Blizzard updates the threat meter
     local function installThreatMeterHooks(unit)
-        if _threatMeterHooked[unit] then return end
-        _threatMeterHooked[unit] = true
-
-        local threatFrame = getThreatMeterFrame(unit)
-        if not threatFrame then return end
-
-        -- Hook Show() to re-apply visibility when Blizzard shows the frame
-        if threatFrame.Show then
-            hooksecurefunc(threatFrame, "Show", function(self)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-
-                local unitFrames = rawget(db, "unitFrames")
-                local unitCfg = unitFrames and rawget(unitFrames, unit) or nil
-                local miscCfg = unitCfg and rawget(unitCfg, "misc") or nil
-                if miscCfg and miscCfg.hideThreatMeter == true then
-                    if self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end
-            end)
-        end
-
-        -- Hook SetAlpha() to re-enforce alpha=0 when Blizzard tries to change it
-        if threatFrame.SetAlpha then
-            hooksecurefunc(threatFrame, "SetAlpha", function(self, alpha)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-
-                local unitFrames = rawget(db, "unitFrames")
-                local unitCfg = unitFrames and rawget(unitFrames, unit) or nil
-                local miscCfg = unitCfg and rawget(unitCfg, "misc") or nil
-                if miscCfg and miscCfg.hideThreatMeter == true and alpha and alpha > 0 then
-                    -- Defer to avoid recursion
-                    if not getProp(self, "threatAlphaDeferred") then
-                        setProp(self, "threatAlphaDeferred", true)
-                        C_Timer.After(0, function()
-                            setProp(self, "threatAlphaDeferred", nil)
-                            if miscCfg and miscCfg.hideThreatMeter == true and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
-            end)
-        end
+        threatOpts[unit] = threatOpts[unit] or hideOpts(unit, "misc", "hideThreatMeter")
+        installHide(getThreatMeterFrame(unit), "threatMeter", threatOpts[unit])
     end
 
     function addon.ApplyTargetThreatMeterVisibility()
@@ -199,7 +164,7 @@ end
 --   ...
 --   Boss5TargetFrame.TargetFrameContent.TargetFrameContentContextual.NumericalThreat
 do
-    local _bossThreatHooked = {}
+    local BOSS_THREAT_OPTS = hideOpts("Boss", "misc", "hideBossThreatCounter")
     local _originalBossThreatAlpha = {}
 
     local function getBossThreatCounterFrame(index)
@@ -251,49 +216,7 @@ do
     end
 
     local function installBossThreatCounterHooksFor(index)
-        if _bossThreatHooked[index] then return end
-        _bossThreatHooked[index] = true
-
-        local threatFrame = getBossThreatCounterFrame(index)
-        if not threatFrame then return end
-
-        if threatFrame.Show then
-            hooksecurefunc(threatFrame, "Show", function(self)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-
-                local unitFrames = rawget(db, "unitFrames")
-                local bossCfg = unitFrames and rawget(unitFrames, "Boss") or nil
-                local miscCfg = bossCfg and rawget(bossCfg, "misc") or nil
-                if miscCfg and miscCfg.hideBossThreatCounter == true then
-                    if self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end
-            end)
-        end
-
-        if threatFrame.SetAlpha then
-            hooksecurefunc(threatFrame, "SetAlpha", function(self, alpha)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-
-                local unitFrames = rawget(db, "unitFrames")
-                local bossCfg = unitFrames and rawget(unitFrames, "Boss") or nil
-                local miscCfg = bossCfg and rawget(bossCfg, "misc") or nil
-                if miscCfg and miscCfg.hideBossThreatCounter == true and alpha and alpha > 0 then
-                    if not getProp(self, "bossThreatAlphaDeferred") then
-                        setProp(self, "bossThreatAlphaDeferred", true)
-                        C_Timer.After(0, function()
-                            setProp(self, "bossThreatAlphaDeferred", nil)
-                            if miscCfg and miscCfg.hideBossThreatCounter == true and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
-            end)
-        end
+        installHide(getBossThreatCounterFrame(index), "bossThreatCounter", BOSS_THREAT_OPTS)
     end
 
     function addon.ApplyBossThreatCounterVisibility()
@@ -310,7 +233,7 @@ end
 --   ...
 --   Boss5TargetFrame.TargetFrameContent.TargetFrameContentContextual.HighLevelTexture
 do
-    local _bossHighLevelHooked = {}
+    local BOSS_HIGH_LEVEL_OPTS = hideOpts("Boss", "misc", "hideHighLevelIcon")
     local _originalBossHighLevelAlpha = {}
 
     local function getBossHighLevelIconFrame(index)
@@ -354,47 +277,7 @@ do
     end
 
     local function installBossHighLevelIconHooksFor(index)
-        if _bossHighLevelHooked[index] then return end
-        _bossHighLevelHooked[index] = true
-
-        local iconFrame = getBossHighLevelIconFrame(index)
-        if not iconFrame then return end
-
-        if iconFrame.Show then
-            hooksecurefunc(iconFrame, "Show", function(self)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-                local unitFrames = rawget(db, "unitFrames")
-                local bossCfg = unitFrames and rawget(unitFrames, "Boss") or nil
-                local miscCfg = bossCfg and rawget(bossCfg, "misc") or nil
-                if miscCfg and miscCfg.hideHighLevelIcon == true then
-                    if self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end
-            end)
-        end
-
-        if iconFrame.SetAlpha then
-            hooksecurefunc(iconFrame, "SetAlpha", function(self, alpha)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-                local unitFrames = rawget(db, "unitFrames")
-                local bossCfg = unitFrames and rawget(unitFrames, "Boss") or nil
-                local miscCfg = bossCfg and rawget(bossCfg, "misc") or nil
-                if miscCfg and miscCfg.hideHighLevelIcon == true and alpha and alpha > 0 then
-                    if not getProp(self, "bossHighLevelAlphaDeferred") then
-                        setProp(self, "bossHighLevelAlphaDeferred", true)
-                        C_Timer.After(0, function()
-                            setProp(self, "bossHighLevelAlphaDeferred", nil)
-                            if miscCfg and miscCfg.hideHighLevelIcon == true and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
-            end)
-        end
+        installHide(getBossHighLevelIconFrame(index), "bossHighLevelIcon", BOSS_HIGH_LEVEL_OPTS)
     end
 
     function addon.ApplyBossHighLevelIconVisibility()
@@ -409,7 +292,7 @@ end
 -- Frame path:
 --   Target: TargetFrame.TargetFrameContent.TargetFrameContentContextual.BossIcon
 do
-    local _bossIconHooked = false
+    local BOSS_ICON_OPTS = hideOpts("Target", "misc", "hideBossIcon")
     local _originalBossIconAlpha = nil
 
     local function getBossIconFrame()
@@ -460,47 +343,7 @@ do
     end
 
     local function installBossIconHooks()
-        if _bossIconHooked then return end
-        _bossIconHooked = true
-
-        local bossIconFrame = getBossIconFrame()
-        if not bossIconFrame then return end
-
-        if bossIconFrame.Show then
-            hooksecurefunc(bossIconFrame, "Show", function(self)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-                local unitFrames = rawget(db, "unitFrames")
-                local targetCfg = unitFrames and rawget(unitFrames, "Target") or nil
-                local miscCfg = targetCfg and rawget(targetCfg, "misc") or nil
-                if miscCfg and miscCfg.hideBossIcon == true then
-                    if self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end
-            end)
-        end
-
-        if bossIconFrame.SetAlpha then
-            hooksecurefunc(bossIconFrame, "SetAlpha", function(self, alpha)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-                local unitFrames = rawget(db, "unitFrames")
-                local targetCfg = unitFrames and rawget(unitFrames, "Target") or nil
-                local miscCfg = targetCfg and rawget(targetCfg, "misc") or nil
-                if miscCfg and miscCfg.hideBossIcon == true and alpha and alpha > 0 then
-                    if not getProp(self, "bossIconAlphaDeferred") then
-                        setProp(self, "bossIconAlphaDeferred", true)
-                        C_Timer.After(0, function()
-                            setProp(self, "bossIconAlphaDeferred", nil)
-                            if miscCfg and miscCfg.hideBossIcon == true and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
-            end)
-        end
+        installHide(getBossIconFrame(), "targetBossIcon", BOSS_ICON_OPTS)
     end
 
     function addon.ApplyTargetBossIconVisibility()
@@ -512,7 +355,7 @@ end
 -- Player Misc.: Role Icon visibility
 -- Frame path: PlayerFrame.PlayerFrameContent.PlayerFrameContentContextual.RoleIcon
 do
-    local _roleIconHooked = false
+    local ROLE_ICON_OPTS = hideOpts("Player", "misc", "hideRoleIcon")
     local _originalRoleIconAlpha = nil
 
     local function getRoleIconFrame()
@@ -564,50 +407,7 @@ do
 
     -- Install hooks to maintain visibility state when Blizzard updates the role icon
     local function installRoleIconHooks()
-        if _roleIconHooked then return end
-        _roleIconHooked = true
-
-        local roleIconFrame = getRoleIconFrame()
-        if not roleIconFrame then return end
-
-        -- Hook Show() to re-apply visibility when Blizzard shows the frame
-        if roleIconFrame.Show then
-            hooksecurefunc(roleIconFrame, "Show", function(self)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-                local unitFrames = rawget(db, "unitFrames")
-                local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                if miscCfg and miscCfg.hideRoleIcon == true then
-                    if self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end
-            end)
-        end
-
-        -- Hook SetAlpha() to re-enforce alpha=0 when Blizzard tries to change it
-        if roleIconFrame.SetAlpha then
-            hooksecurefunc(roleIconFrame, "SetAlpha", function(self, alpha)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-                local unitFrames = rawget(db, "unitFrames")
-                local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                if miscCfg and miscCfg.hideRoleIcon == true and alpha and alpha > 0 then
-                    -- Defer to avoid recursion
-                    if not getProp(self, "roleIconAlphaDeferred") then
-                        setProp(self, "roleIconAlphaDeferred", true)
-                        C_Timer.After(0, function()
-                            setProp(self, "roleIconAlphaDeferred", nil)
-                            if miscCfg and miscCfg.hideRoleIcon == true and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
-            end)
-        end
+        installHide(getRoleIconFrame(), "playerRoleIcon", ROLE_ICON_OPTS)
     end
 
     function addon.ApplyPlayerRoleIconVisibility()
@@ -621,7 +421,7 @@ end
 --   PlayerFrame.PlayerFrameContent.PlayerFrameContentContextual.GroupIndicator (container with texture child)
 --   PlayerFrameGroupIndicatorText (global FontString)
 do
-    local _groupNumberHooked = false
+    local GROUP_NUMBER_OPTS = hideOpts("Player", "misc", "hideGroupNumber")
     local _originalGroupIndicatorAlpha = nil
     local _originalGroupIndicatorTextAlpha = nil
 
@@ -697,89 +497,8 @@ do
 
     -- Install hooks to maintain visibility state when Blizzard updates the group indicator
     local function installGroupNumberHooks()
-        if _groupNumberHooked then return end
-        _groupNumberHooked = true
-
-        local groupIndicatorFrame = getGroupIndicatorFrame()
-        local groupIndicatorText = getGroupIndicatorTextFrame()
-
-        -- Hook GroupIndicator container
-        if groupIndicatorFrame then
-            if groupIndicatorFrame.Show then
-                hooksecurefunc(groupIndicatorFrame, "Show", function(self)
-                    local db = addon and addon.db and addon.db.profile
-                    if not db then return end
-                    local unitFrames = rawget(db, "unitFrames")
-                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                    if miscCfg and miscCfg.hideGroupNumber == true then
-                        if self.SetAlpha then
-                            pcall(self.SetAlpha, self, 0)
-                        end
-                    end
-                end)
-            end
-
-            if groupIndicatorFrame.SetAlpha then
-                hooksecurefunc(groupIndicatorFrame, "SetAlpha", function(self, alpha)
-                    local db = addon and addon.db and addon.db.profile
-                    if not db then return end
-                    local unitFrames = rawget(db, "unitFrames")
-                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                    if miscCfg and miscCfg.hideGroupNumber == true and alpha and alpha > 0 then
-                        if not getProp(self, "groupIndicatorAlphaDeferred") then
-                            setProp(self, "groupIndicatorAlphaDeferred", true)
-                            C_Timer.After(0, function()
-                                setProp(self, "groupIndicatorAlphaDeferred", nil)
-                                if miscCfg and miscCfg.hideGroupNumber == true and self.SetAlpha then
-                                    pcall(self.SetAlpha, self, 0)
-                                end
-                            end)
-                        end
-                    end
-                end)
-            end
-        end
-
-        -- Hook GroupIndicator text
-        if groupIndicatorText then
-            if groupIndicatorText.Show then
-                hooksecurefunc(groupIndicatorText, "Show", function(self)
-                    local db = addon and addon.db and addon.db.profile
-                    if not db then return end
-                    local unitFrames = rawget(db, "unitFrames")
-                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                    if miscCfg and miscCfg.hideGroupNumber == true then
-                        if self.SetAlpha then
-                            pcall(self.SetAlpha, self, 0)
-                        end
-                    end
-                end)
-            end
-
-            if groupIndicatorText.SetAlpha then
-                hooksecurefunc(groupIndicatorText, "SetAlpha", function(self, alpha)
-                    local db = addon and addon.db and addon.db.profile
-                    if not db then return end
-                    local unitFrames = rawget(db, "unitFrames")
-                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                    if miscCfg and miscCfg.hideGroupNumber == true and alpha and alpha > 0 then
-                        if not getProp(self, "groupIndicatorTextAlphaDeferred") then
-                            setProp(self, "groupIndicatorTextAlphaDeferred", true)
-                            C_Timer.After(0, function()
-                                setProp(self, "groupIndicatorTextAlphaDeferred", nil)
-                                if miscCfg and miscCfg.hideGroupNumber == true and self.SetAlpha then
-                                    pcall(self.SetAlpha, self, 0)
-                                end
-                            end)
-                        end
-                    end
-                end)
-            end
-        end
+        installHide(getGroupIndicatorFrame(), "playerGroupNumber", GROUP_NUMBER_OPTS)
+        installHide(getGroupIndicatorTextFrame(), "playerGroupNumber", GROUP_NUMBER_OPTS)
     end
 
     function addon.ApplyPlayerGroupNumberVisibility()
@@ -793,7 +512,7 @@ end
 --   PlayerFrame.PlayerFrameContent.PlayerFrameContentContextual.PrestigeBadge
 --   PlayerFrame.PlayerFrameContent.PlayerFrameContentContextual.PrestigePortrait
 do
-    local _pvpIconsHooked = false
+    local PVP_ICON_OPTS = hideOpts("Player", "misc", "hidePvPIcons")
     local _originalPrestigeBadgeAlpha = nil
     local _originalPrestigePortraitAlpha = nil
 
@@ -872,89 +591,8 @@ do
     end
 
     local function installPvPIconHooks()
-        if _pvpIconsHooked then return end
-        _pvpIconsHooked = true
-
-        local prestigeBadge = getPrestigeBadge()
-        local prestigePortrait = getPrestigePortrait()
-
-        -- Hook PrestigeBadge
-        if prestigeBadge then
-            if prestigeBadge.Show then
-                hooksecurefunc(prestigeBadge, "Show", function(self)
-                    local db = addon and addon.db and addon.db.profile
-                    if not db then return end
-                    local unitFrames = rawget(db, "unitFrames")
-                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                    if miscCfg and miscCfg.hidePvPIcons == true then
-                        if self.SetAlpha then
-                            pcall(self.SetAlpha, self, 0)
-                        end
-                    end
-                end)
-            end
-
-            if prestigeBadge.SetAlpha then
-                hooksecurefunc(prestigeBadge, "SetAlpha", function(self, alpha)
-                    local db = addon and addon.db and addon.db.profile
-                    if not db then return end
-                    local unitFrames = rawget(db, "unitFrames")
-                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                    if miscCfg and miscCfg.hidePvPIcons == true and alpha and alpha > 0 then
-                        if not getProp(self, "prestigeBadgeAlphaDeferred") then
-                            setProp(self, "prestigeBadgeAlphaDeferred", true)
-                            C_Timer.After(0, function()
-                                setProp(self, "prestigeBadgeAlphaDeferred", nil)
-                                if miscCfg and miscCfg.hidePvPIcons == true and self.SetAlpha then
-                                    pcall(self.SetAlpha, self, 0)
-                                end
-                            end)
-                        end
-                    end
-                end)
-            end
-        end
-
-        -- Hook PrestigePortrait
-        if prestigePortrait then
-            if prestigePortrait.Show then
-                hooksecurefunc(prestigePortrait, "Show", function(self)
-                    local db = addon and addon.db and addon.db.profile
-                    if not db then return end
-                    local unitFrames = rawget(db, "unitFrames")
-                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                    if miscCfg and miscCfg.hidePvPIcons == true then
-                        if self.SetAlpha then
-                            pcall(self.SetAlpha, self, 0)
-                        end
-                    end
-                end)
-            end
-
-            if prestigePortrait.SetAlpha then
-                hooksecurefunc(prestigePortrait, "SetAlpha", function(self, alpha)
-                    local db = addon and addon.db and addon.db.profile
-                    if not db then return end
-                    local unitFrames = rawget(db, "unitFrames")
-                    local playerCfg = unitFrames and rawget(unitFrames, "Player") or nil
-                    local miscCfg = playerCfg and rawget(playerCfg, "misc") or nil
-                    if miscCfg and miscCfg.hidePvPIcons == true and alpha and alpha > 0 then
-                        if not getProp(self, "prestigePortraitAlphaDeferred") then
-                            setProp(self, "prestigePortraitAlphaDeferred", true)
-                            C_Timer.After(0, function()
-                                setProp(self, "prestigePortraitAlphaDeferred", nil)
-                                if miscCfg and miscCfg.hidePvPIcons == true and self.SetAlpha then
-                                    pcall(self.SetAlpha, self, 0)
-                                end
-                            end)
-                        end
-                    end
-                end)
-            end
-        end
+        installHide(getPrestigeBadge(), "playerPvPIcons", PVP_ICON_OPTS)
+        installHide(getPrestigePortrait(), "playerPvPIcons", PVP_ICON_OPTS)
     end
 
     function addon.ApplyPlayerPvPIconVisibility()
@@ -980,7 +618,7 @@ end
 -- Useful for ConsolePort users who use the Pet Ring instead of the Pet frame
 -- Frame path: PetFrame (global)
 do
-    local _petFrameHooked = false
+    local PET_FRAME_OPTS = hideOpts("Pet", nil, "hideEntireFrame")
     local _originalPetFrameAlpha = nil
 
     local function getPetFrame()
@@ -1030,48 +668,7 @@ do
 
     -- Install hooks to maintain hidden state when Blizzard updates the Pet frame
     local function installPetFrameHooks()
-        if _petFrameHooked then return end
-        _petFrameHooked = true
-
-        local petFrame = getPetFrame()
-        if not petFrame then return end
-
-        -- Hook Show() to re-apply hidden state when Blizzard shows the frame
-        if petFrame.Show then
-            hooksecurefunc(petFrame, "Show", function(self)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-                local unitFrames = rawget(db, "unitFrames")
-                local petCfg = unitFrames and rawget(unitFrames, "Pet") or nil
-                if petCfg and petCfg.hideEntireFrame == true then
-                    if self.SetAlpha then
-                        pcall(self.SetAlpha, self, 0)
-                    end
-                end
-            end)
-        end
-
-        -- Hook SetAlpha() to re-enforce alpha=0 when Blizzard tries to change it
-        if petFrame.SetAlpha then
-            hooksecurefunc(petFrame, "SetAlpha", function(self, alpha)
-                local db = addon and addon.db and addon.db.profile
-                if not db then return end
-                local unitFrames = rawget(db, "unitFrames")
-                local petCfg = unitFrames and rawget(unitFrames, "Pet") or nil
-                if petCfg and petCfg.hideEntireFrame == true and alpha and alpha > 0 then
-                    -- Defer to avoid recursion
-                    if not getProp(self, "petFrameAlphaDeferred") then
-                        setProp(self, "petFrameAlphaDeferred", true)
-                        C_Timer.After(0, function()
-                            setProp(self, "petFrameAlphaDeferred", nil)
-                            if petCfg and petCfg.hideEntireFrame == true and self.SetAlpha then
-                                pcall(self.SetAlpha, self, 0)
-                            end
-                        end)
-                    end
-                end
-            end)
-        end
+        installHide(getPetFrame(), "petEntireFrame", PET_FRAME_OPTS)
     end
 
     function addon.ApplyPetFrameVisibility()
