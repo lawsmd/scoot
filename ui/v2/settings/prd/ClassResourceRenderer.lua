@@ -117,41 +117,12 @@ function ClassResource.Render(panel, scrollContent)
 
             inner:AddSpacer(12)
 
-            inner:AddSlider({
-                label = "Opacity in Combat",
-                min = 1, max = 100, step = 1,
-                get = function() return getSetting("opacityInCombat") or 100 end,
-                set = function(v)
-                    setSetting("opacityInCombat", v)
+            local get, set = Helpers.CreateFlatAccessors(getSetting, setSetting, addon.Opacity.Keys.InCombat)
+            inner:AddStateOpacityBlock({
+                get = get, set = set,
+                apply = function()
                     if addon.RefreshPRDOpacity then addon.RefreshPRDOpacity("prdClassResource") end
                 end,
-                minLabel = "1%", maxLabel = "100%",
-                infoIcon = {
-                    tooltipTitle = "Opacity Priority",
-                    tooltipText = "With Target takes precedence, then In Combat, then Out of Combat. The highest priority condition that applies determines the opacity.",
-                },
-            })
-
-            inner:AddSlider({
-                label = "Opacity with Target",
-                min = 1, max = 100, step = 1,
-                get = function() return getSetting("opacityWithTarget") or 100 end,
-                set = function(v)
-                    setSetting("opacityWithTarget", v)
-                    if addon.RefreshPRDOpacity then addon.RefreshPRDOpacity("prdClassResource") end
-                end,
-                minLabel = "1%", maxLabel = "100%",
-            })
-
-            inner:AddSlider({
-                label = "Opacity Out of Combat",
-                min = 1, max = 100, step = 1,
-                get = function() return getSetting("opacityOutOfCombat") or 100 end,
-                set = function(v)
-                    setSetting("opacityOutOfCombat", v)
-                    if addon.RefreshPRDOpacity then addon.RefreshPRDOpacity("prdClassResource") end
-                end,
-                minLabel = "1%", maxLabel = "100%",
             })
 
             inner:Finalize()

@@ -397,7 +397,7 @@ local function CreateCustomGroupRenderer(groupIndex)
                 local modeWord = isOffCD and "Off Cooldown" or "On Cooldown"
 
                 inner:AddDescription("Priority System", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
-                inner:AddDescription("With Target > In Combat > Out of Combat. Only the highest active condition applies. "
+                inner:AddDescription("In Combat > With Target > Out of Combat. Only the highest active condition applies. "
                     .. modeWord .. " competes with the result \226\128\148 whichever is the stronger dim takes effect.", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
 
                 -- Mode selector: On Cooldown vs Off Cooldown
@@ -443,32 +443,8 @@ local function CreateCustomGroupRenderer(groupIndex)
                     })
                 end
 
-                inner:AddSlider({
-                    label = "Opacity With Target",
-                    description = "Opacity when you have a target.",
-                    min = 0, max = 100, step = 1,
-                    get = function() return getSetting("opacityWithTarget") or 100 end,
-                    set = function(v) h.setAndApply("opacityWithTarget", v) end,
-                    minLabel = "Hidden", maxLabel = "100%",
-                })
-
-                inner:AddSlider({
-                    label = "Opacity in Combat",
-                    description = "Opacity when in combat.",
-                    min = 0, max = 100, step = 1,
-                    get = function() return getSetting("opacity") or 100 end,
-                    set = function(v) h.setAndApply("opacity", v) end,
-                    minLabel = "Hidden", maxLabel = "100%",
-                })
-
-                inner:AddSlider({
-                    label = "Opacity Out of Combat",
-                    description = "Opacity when not in combat.",
-                    min = 0, max = 100, step = 1,
-                    get = function() return getSetting("opacityOutOfCombat") or 100 end,
-                    set = function(v) h.setAndApply("opacityOutOfCombat", v) end,
-                    minLabel = "Hidden", maxLabel = "100%",
-                })
+                local get, set = Helpers.CreateFlatAccessors(getSetting, h.setAndApply, addon.Opacity.Keys.Plain)
+                inner:AddStateOpacityBlock({ get = get, set = set, min = 0 })
 
                 inner:Finalize()
             end,

@@ -692,3 +692,119 @@ function Builder:AddBarBorderBlock(opts)
 
     return self
 end
+
+--------------------------------------------------------------------------------
+-- AddStateOpacityBlock: the in-combat / with-target / out-of-combat triple
+--------------------------------------------------------------------------------
+-- Three AddSlider rows in one fixed order: Opacity in Combat, Opacity With
+-- Target, Opacity Out of Combat, the order addon.Opacity.Resolve
+-- (core/opacity.lua) resolves them in. The first rendered slider carries the
+-- one Opacity Priority info icon. Same contract as AddTextStyleBlock:
+-- get(field) is side-effect-free, set(field, value) stores, apply (optional)
+-- runs after every write. Values are 0-100 integers; both directions coerce
+-- with tonumber(...) or the default.
+--
+-- Fields: combat, target, ooc. addon.Opacity.Keys.Plain / .InCombat / .Bar
+-- map these fields to a component's stored keys, so a flat-key site hands one
+-- of them to Helpers.CreateFlatAccessors as the map and passes the pair here.
+--
+-- Options:
+--   get, set, apply, disabled : as AddTextStyleBlock
+--   combatMin : floor of the In Combat slider (default: min). Auras and the
+--               Edit Mode-backed CDM viewers use 50.
+--   min       : floor of the With Target and Out of Combat sliders (default 1)
+--   max, step : shared bounds (default 100, 1)
+--   default   : value read when a key is unset (default 100)
+--   endLabels : true (default) | false. Derived end labels on every slider:
+--               a floor of 0 reads "Hidden", any other bound reads "N%".
+--   infoIcon  : true (default: Builder.STATE_OPACITY_TOOLTIP on the first
+--               slider) | false | { tooltipTitle, tooltipText }
+--   combat, target, ooc : true (default) | false | { label, description,
+--               key, min, max, step, minLabel, maxLabel, default, apply,
+--               debounceKey, debounceDelay, onEditModeSync }. apply replaces
+--               opts.apply for that slider; apply = false skips it (an Edit
+--               Mode-synced key whose sync applies). The debounce trio is
+--               forwarded to AddSlider unchanged.
+--
+-- Returns self. Does not call Finalize(); callers do.
+--------------------------------------------------------------------------------
+
+Builder.STATE_OPACITY_TOOLTIP = {
+    tooltipTitle = "Opacity Priority",
+    tooltipText = "In Combat takes precedence, then With Target, then Out of Combat. "
+        .. "The highest priority condition that applies determines the opacity.",
+}
+
+local STATE_OPACITY_CONTROLS = {
+    { field = "combat", label = "Opacity in Combat" },
+    { field = "target", label = "Opacity With Target" },
+    { field = "ooc",    label = "Opacity Out of Combat" },
+}
+
+local function pctLabel(v)
+    if v == 0 then return "Hidden" end
+    return tostring(v) .. "%"
+end
+
+function Builder:AddStateOpacityBlock(opts)
+    local get, set, apply = opts.get, opts.set, opts.apply or NOOP
+    local disabled = opts.disabled
+    local blockMin = opts.min or 1
+    local blockMax = opts.max or 100
+    local blockStep = opts.step or 1
+    local blockDefault = opts.default or 100
+    local endLabels = opts.endLabels ~= false
+
+    local infoIcon = opts.infoIcon
+    if infoIcon == nil or infoIcon == true then infoIcon = Builder.STATE_OPACITY_TOOLTIP end
+    if infoIcon == false then infoIcon = nil end
+
+    for _, spec in ipairs(STATE_OPACITY_CONTROLS) do
+        local field = spec.field
+        local ctl = norm(opts[field])
+        if ctl then
+            local minV = ctl.min
+            if minV == nil and field == "combat" then minV = opts.combatMin end
+            if minV == nil then minV = blockMin end
+            local maxV = ctl.max or blockMax
+            local default = ctl.default or blockDefault
+
+            local applyFor = apply
+            if ctl.apply == false then
+                applyFor = NOOP
+            elseif ctl.apply then
+                applyFor = ctl.apply
+            end
+
+            local minLabel, maxLabel
+            if endLabels then
+                minLabel = endLabel(ctl.minLabel, pctLabel(minV))
+                maxLabel = endLabel(ctl.maxLabel, pctLabel(maxV))
+            end
+
+            self:AddSlider({
+                label = ctl.label or spec.label,
+                description = ctl.description,
+                key = ctl.key,
+                min = minV,
+                max = maxV,
+                step = ctl.step or blockStep,
+                minLabel = minLabel,
+                maxLabel = maxLabel,
+                disabled = disabled,
+                infoIcon = infoIcon,
+                debounceKey = ctl.debounceKey,
+                debounceDelay = ctl.debounceDelay,
+                onEditModeSync = ctl.onEditModeSync,
+                get = function() return tonumber(get(field)) or default end,
+                set = function(v)
+                    set(field, tonumber(v) or default)
+                    applyFor()
+                end,
+            })
+            infoIcon = nil -- one icon, on the first rendered slider
+        end
+    end
+
+    return self
+end

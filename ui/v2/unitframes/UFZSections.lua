@@ -618,24 +618,12 @@ local function AddUnitSection(builder, opts)
             sectionKey = "visibility",
             defaultExpanded = false,
             buildContent = function(contentFrame, inner)
-                inner:AddSlider({
-                    label = "Opacity - Out of Combat",
-                    description = "Opacity priority: With Target takes precedence, then In Combat, then Out of Combat. The highest priority condition that applies determines the opacity.",
-                    min = 0, max = 100, step = 1,
-                    get = function() return htCfg().opacityOutOfCombat or 100 end,
-                    set = function(v) call("SetOpacityOutOfCombat", v) end,
-                })
-                inner:AddSlider({
-                    label = "Opacity - In Combat",
-                    min = 0, max = 100, step = 1,
-                    get = function() return htCfg().opacityInCombat or 100 end,
-                    set = function(v) call("SetOpacityInCombat", v) end,
-                })
-                inner:AddSlider({
-                    label = "Opacity - With Target",
-                    min = 0, max = 100, step = 1,
-                    get = function() return htCfg().opacityWithTarget or 100 end,
-                    set = function(v) call("SetOpacityWithTarget", v) end,
+                local K = addon.Opacity.Keys.InCombat
+                local SETTER = { combat = "SetOpacityInCombat", target = "SetOpacityWithTarget", ooc = "SetOpacityOutOfCombat" }
+                inner:AddStateOpacityBlock({
+                    get = function(field) return htCfg()[K[field]] end,
+                    set = function(field, v) call(SETTER[field], v) end,
+                    min = 0, endLabels = false,
                 })
                 inner:Finalize()
             end,

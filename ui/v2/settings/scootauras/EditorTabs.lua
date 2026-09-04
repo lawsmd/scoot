@@ -697,34 +697,9 @@ function Tabs.BuildSizingTab(tabBuilder, ctx)
 end
 
 function Tabs.BuildVisibilityTab(tabBuilder, ctx)
-    tabBuilder:AddDescription(
-        "Priority: In Combat > With Target > Out of Combat",
-        { color = { 1, 0.82, 0 }, fontSize = 13, topPadding = 4, bottomPadding = 2 }
-    )
-
-    tabBuilder:AddSlider({
-        label = "Opacity in Combat",
-        min = 0, max = 100, step = 1,
-        get = function() return ctx.get("opacityInCombat") or 100 end,
-        set = function(v) ctx.setAndApply("opacityInCombat", v) end,
-        minLabel = "Hidden", maxLabel = "100%",
-    })
-
-    tabBuilder:AddSlider({
-        label = "Opacity With Target",
-        min = 0, max = 100, step = 1,
-        get = function() return ctx.get("opacityWithTarget") or 100 end,
-        set = function(v) ctx.setAndApply("opacityWithTarget", v) end,
-        minLabel = "Hidden", maxLabel = "100%",
-    })
-
-    tabBuilder:AddSlider({
-        label = "Opacity Out of Combat",
-        min = 0, max = 100, step = 1,
-        get = function() return ctx.get("opacityOutOfCombat") or 100 end,
-        set = function(v) ctx.setAndApply("opacityOutOfCombat", v) end,
-        minLabel = "Hidden", maxLabel = "100%",
-    })
+    local Helpers = addon.UI.Settings.Helpers
+    local get, set = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, addon.Opacity.Keys.InCombat)
+    tabBuilder:AddStateOpacityBlock({ get = get, set = set, min = 0 })
 
     tabBuilder:Finalize()
 end

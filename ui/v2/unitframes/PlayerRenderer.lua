@@ -1315,56 +1315,10 @@ function UF.RenderPlayer(panel, scrollContent)
         sectionKey = "visibility",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddSlider({
-                label = "Opacity - Out of Combat",
-                min = 0,
-                max = 100,
-                step = 1,
-                get = function()
-                    local t = B.getUFDB() or {}
-                    return tonumber(t.opacityOutOfCombat) or 100
-                end,
-                set = function(v)
-                    local t = B.ensureUFDB()
-                    if not t then return end
-                    t.opacityOutOfCombat = tonumber(v) or 100
-                    B.applyVisibility()
-                end,
-                infoIcon = UF.TOOLTIPS.visibilityPriority,
-            })
-
-            inner:AddSlider({
-                label = "Opacity - In Combat",
-                min = 0,
-                max = 100,
-                step = 1,
-                get = function()
-                    local t = B.getUFDB() or {}
-                    return tonumber(t.opacityInCombat) or 100
-                end,
-                set = function(v)
-                    local t = B.ensureUFDB()
-                    if not t then return end
-                    t.opacityInCombat = tonumber(v) or 100
-                    B.applyVisibility()
-                end,
-            })
-
-            inner:AddSlider({
-                label = "Opacity - With Target",
-                min = 0,
-                max = 100,
-                step = 1,
-                get = function()
-                    local t = B.getUFDB() or {}
-                    return tonumber(t.opacityWithTarget) or 100
-                end,
-                set = function(v)
-                    local t = B.ensureUFDB()
-                    if not t then return end
-                    t.opacityWithTarget = tonumber(v) or 100
-                    B.applyVisibility()
-                end,
+            local get, set = B.opacityAccessors()
+            inner:AddStateOpacityBlock({
+                get = get, set = set, apply = B.applyVisibility,
+                min = 0, endLabels = false,
             })
 
             inner:Finalize()

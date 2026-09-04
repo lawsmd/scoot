@@ -348,41 +348,17 @@ function TrackedBars.Render(panel, scrollContent)
         sectionKey = "misc",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            -- Priority system header + explainer
-            inner:AddDescription("Priority System", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
-            inner:AddDescription("With Target > In Combat > Out of Combat. Only the highest active condition applies.", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
-
-            inner:AddSlider({
-                label = "Opacity With Target", min = 0, max = 100, step = 1,
-                get = function() return getSetting("opacityWithTarget") or 100 end,
-                set = function(v)
-                    setSetting("opacityWithTarget", v)
+            local get, set = Helpers.CreateFlatAccessors(getSetting, setSetting, addon.Opacity.Keys.Plain)
+            inner:AddStateOpacityBlock({
+                get = get, set = set, combatMin = 50, min = 0,
+                apply = function()
                     if addon and addon.RefreshCDMViewerOpacity then addon.RefreshCDMViewerOpacity("trackedBars") end
                 end,
-                minLabel = "Hidden", maxLabel = "100%",
-            })
-
-            inner:AddSlider({
-                label = "Opacity in Combat", min = 50, max = 100, step = 1,
-                get = function() return getSetting("opacity") or 100 end,
-                set = function(v)
-                    setSetting("opacity", v)
-                    if addon and addon.RefreshCDMViewerOpacity then addon.RefreshCDMViewerOpacity("trackedBars") end
-                end,
-                debounceKey = "trackedBars_opacity",
-                debounceDelay = 0.3,
-                onEditModeSync = function() syncEditModeSetting("opacity") end,
-                minLabel = "50%", maxLabel = "100%",
-            })
-
-            inner:AddSlider({
-                label = "Opacity Out of Combat", min = 0, max = 100, step = 1,
-                get = function() return getSetting("opacityOutOfCombat") or 100 end,
-                set = function(v)
-                    setSetting("opacityOutOfCombat", v)
-                    if addon and addon.RefreshCDMViewerOpacity then addon.RefreshCDMViewerOpacity("trackedBars") end
-                end,
-                minLabel = "Hidden", maxLabel = "100%",
+                combat = {
+                    debounceKey = "trackedBars_opacity",
+                    debounceDelay = 0.3,
+                    onEditModeSync = function() syncEditModeSetting("opacity") end,
+                },
             })
 
             inner:AddSelector({

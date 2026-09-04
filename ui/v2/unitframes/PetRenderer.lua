@@ -613,60 +613,10 @@ function UF.RenderPet(panel, scrollContent)
                 end,
             })
 
-            -- Out of Combat Opacity
-            inner:AddSlider({
-                label = "Opacity - Out of Combat",
-                description = "Opacity when out of combat.",
-                min = 0,
-                max = 100,
-                step = 1,
-                get = function()
-                    local t = B.getUFDB() or {}
-                    return tonumber(t.opacityOutOfCombat) or 100
-                end,
-                set = function(v)
-                    local t = B.ensureUFDB()
-                    if not t then return end
-                    t.opacityOutOfCombat = tonumber(v) or 100
-                    B.applyVisibility()
-                end,
-                infoIcon = UF.TOOLTIPS.visibilityPriority,
-            })
-
-            inner:AddSlider({
-                label = "Opacity - In Combat",
-                description = "Opacity when in combat.",
-                min = 0,
-                max = 100,
-                step = 1,
-                get = function()
-                    local t = B.getUFDB() or {}
-                    return tonumber(t.opacityInCombat) or 100
-                end,
-                set = function(v)
-                    local t = B.ensureUFDB()
-                    if not t then return end
-                    t.opacityInCombat = tonumber(v) or 100
-                    B.applyVisibility()
-                end,
-            })
-
-            inner:AddSlider({
-                label = "Opacity - With Target",
-                description = "Opacity when you have a target.",
-                min = 0,
-                max = 100,
-                step = 1,
-                get = function()
-                    local t = B.getUFDB() or {}
-                    return tonumber(t.opacityWithTarget) or 100
-                end,
-                set = function(v)
-                    local t = B.ensureUFDB()
-                    if not t then return end
-                    t.opacityWithTarget = tonumber(v) or 100
-                    B.applyVisibility()
-                end,
+            local get, set = B.opacityAccessors()
+            inner:AddStateOpacityBlock({
+                get = get, set = set, apply = B.applyVisibility,
+                min = 0, endLabels = false,
             })
 
             inner:Finalize()

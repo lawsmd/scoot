@@ -311,54 +311,8 @@ function Buffs.Render(panel, scrollContent)
         sectionKey = "misc",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddSlider({
-                label = "Opacity in Combat",
-                description = "Opacity when in combat (50-100%).",
-                min = 50,
-                max = 100,
-                step = 1,
-                get = function() return getSetting("opacity") or 100 end,
-                set = function(v)
-                    setSetting("opacity", v)
-                    applyStyles()
-                end,
-                minLabel = "50%",
-                maxLabel = "100%",
-                infoIcon = {
-                    tooltipTitle = "Opacity Priority",
-                    tooltipText = "With Target takes precedence, then In Combat, then Out of Combat.",
-                },
-            })
-
-            inner:AddSlider({
-                label = "Opacity Out of Combat",
-                description = "Opacity when not in combat.",
-                min = 1,
-                max = 100,
-                step = 1,
-                get = function() return getSetting("opacityOutOfCombat") or 100 end,
-                set = function(v)
-                    setSetting("opacityOutOfCombat", v)
-                    applyStyles()
-                end,
-                minLabel = "1%",
-                maxLabel = "100%",
-            })
-
-            inner:AddSlider({
-                label = "Opacity With Target",
-                description = "Opacity when you have a target.",
-                min = 1,
-                max = 100,
-                step = 1,
-                get = function() return getSetting("opacityWithTarget") or 100 end,
-                set = function(v)
-                    setSetting("opacityWithTarget", v)
-                    applyStyles()
-                end,
-                minLabel = "1%",
-                maxLabel = "100%",
-            })
+            local get, set = Helpers.CreateFlatAccessors(getSetting, setSetting, addon.Opacity.Keys.Plain)
+            inner:AddStateOpacityBlock({ get = get, set = set, apply = applyStyles, combatMin = 50 })
 
             inner:AddToggle({
                 label = "Hide Expand/Collapse Button",

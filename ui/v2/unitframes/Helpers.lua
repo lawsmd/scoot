@@ -253,6 +253,17 @@ function UF.barAccessors(unitKey, barPrefix, opts)
     return Helpers.CreateBarAccessors(getTable, ensureTable, barPrefix, opts)
 end
 
+-- The unit's state opacity triple (opacityInCombat, opacityWithTarget,
+-- opacityOutOfCombat) as AddStateOpacityBlock consumes it; the field-to-key
+-- map is addon.Opacity.Keys.InCombat.
+function UF.opacityAccessors(unitKey)
+    local Helpers = addon.UI.Settings.Helpers
+    return Helpers.CreateFlatAccessors(
+        function(key) local t = UF.getUFDB(unitKey); return t and t[key] end,
+        function(key, v) local t = UF.ensureUFDB(unitKey); if t then t[key] = v end end,
+        addon.Opacity.Keys.InCombat)
+end
+
 --------------------------------------------------------------------------------
 -- Bound Helpers
 --------------------------------------------------------------------------------
@@ -266,7 +277,7 @@ local BIND_NAMES = {
     "applyBarTextures", "applyHealthText", "applyPowerText", "applyPortrait",
     "applyCastBar", "applyVisibility", "applyScaleMult", "applyNameLevelText",
     "applyBuffsDebuffs",
-    "textAccessors", "castBarTextAccessors", "barAccessors",
+    "textAccessors", "castBarTextAccessors", "barAccessors", "opacityAccessors",
 }
 
 -- Returns a table with the helpers above bound to unitKey, plus applyStyles.
@@ -374,10 +385,6 @@ UF.TOOLTIPS = {
     offScreenDragging = {
         title = "Steam Deck / Large UI",
         text = "Allows moving the Unit Frame closer to the edge of the screen than is normally allowed in Edit Mode, intended for Steam Deck or similar handheld UIs. On a normally-sized screen, this setting is likely unnecessary.",
-    },
-    visibilityPriority = {
-        title = "Opacity Priority",
-        text = "Opacity priority: With Target takes precedence, then In Combat, then Out of Combat. The highest priority condition that applies determines the opacity.",
     },
     hideOverAbsorbGlow = {
         title = "Absorb Shield Glow",

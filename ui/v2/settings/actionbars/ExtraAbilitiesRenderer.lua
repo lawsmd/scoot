@@ -216,22 +216,15 @@ function ExtraAbilities.Render(panel, scrollContent)
                 set = function(v) setSetting("hideBlizzardArt", v) end,
             })
 
-            inner:AddSlider({
-                label = "Opacity", min = 1, max = 100, step = 1,
-                get = function() return getSetting("barOpacity") or 100 end,
-                set = function(v) setSetting("barOpacity", v) end,
-                minLabel = "1%", maxLabel = "100%",
-                infoIcon = {
-                    tooltipTitle = "Opacity Priority",
-                    tooltipText = "With Target takes precedence over base Opacity.",
-                },
-            })
-
-            inner:AddSlider({
-                label = "Opacity With Target", min = 1, max = 100, step = 1,
-                get = function() return getSetting("barOpacityWithTarget") or 100 end,
-                set = function(v) setSetting("barOpacityWithTarget", v) end,
-                minLabel = "1%", maxLabel = "100%",
+            local get, set = Helpers.CreateFlatAccessors(getSetting, setSetting, addon.Opacity.Keys.Bar)
+            inner:AddStateOpacityBlock({
+                -- Unset, the out-of-combat key resolves to the base value; show that.
+                get = function(field)
+                    local v = get(field)
+                    if v == nil and field == "ooc" then v = get("combat") end
+                    return v
+                end,
+                set = set,
             })
 
             inner:Finalize()

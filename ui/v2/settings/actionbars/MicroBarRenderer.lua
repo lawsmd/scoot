@@ -112,30 +112,8 @@ function MicroBar.Render(panel, scrollContent)
         sectionKey = "visibility",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
-            inner:AddSlider({
-                label = "Opacity in Combat", min = 1, max = 100, step = 1,
-                get = function() return getSetting("barOpacity") or 100 end,
-                set = function(v) setSetting("barOpacity", v) end,
-                minLabel = "1%", maxLabel = "100%",
-                infoIcon = {
-                    tooltipTitle = "Opacity Priority",
-                    tooltipText = "With Target takes precedence, then In Combat, then Out of Combat. The highest priority condition that applies determines the opacity.",
-                },
-            })
-
-            inner:AddSlider({
-                label = "Opacity With Target", min = 1, max = 100, step = 1,
-                get = function() return getSetting("barOpacityWithTarget") or 100 end,
-                set = function(v) setSetting("barOpacityWithTarget", v) end,
-                minLabel = "1%", maxLabel = "100%",
-            })
-
-            inner:AddSlider({
-                label = "Opacity Out of Combat", min = 1, max = 100, step = 1,
-                get = function() return getSetting("barOpacityOutOfCombat") or 100 end,
-                set = function(v) setSetting("barOpacityOutOfCombat", v) end,
-                minLabel = "1%", maxLabel = "100%",
-            })
+            local get, set = Helpers.CreateFlatAccessors(getSetting, setSetting, addon.Opacity.Keys.Bar)
+            inner:AddStateOpacityBlock({ get = get, set = set })
 
             inner:AddToggle({
                 label = "Mouseover Mode",
