@@ -548,21 +548,11 @@ function UtilityCooldowns.Render(panel, scrollContent)
                             maxLabel = "Fast",
                             disabled = function() return (getSetting("procLoopStyle") or "default") == "default" end,
                         })
-                        tabBuilder:AddDualSlider({
-                            label = "Glow Inset",
-                            sliderA = {
-                                axisLabel = "H",
-                                min = -5, max = 10, step = 1,
-                                get = function() return getSetting("procLoopInsetH") or 0 end,
-                                set = function(v) setSetting("procLoopInsetH", v) end,
-                            },
-                            sliderB = {
-                                axisLabel = "V",
-                                min = -5, max = 10, step = 1,
-                                get = function() return getSetting("procLoopInsetV") or 0 end,
-                                set = function(v) setSetting("procLoopInsetV", v) end,
-                            },
+                        tabBuilder:AddInsetPair({
+                            label = "Glow Inset", min = -5, max = 10, minLabel = false, maxLabel = false,
                             disabled = function() return (getSetting("procLoopStyle") or "default") == "default" end,
+                            get = function(axis) return getSetting(axis == "h" and "procLoopInsetH" or "procLoopInsetV") end,
+                            set = function(axis, v) setSetting(axis == "h" and "procLoopInsetH" or "procLoopInsetV", v) end,
                         })
                         tabBuilder:Finalize()
                     end,
@@ -655,30 +645,11 @@ function UtilityCooldowns.Render(panel, scrollContent)
                 })
             end
 
-            inner:AddDualSlider({
-                label = "Border Inset",
-                sliderA = {
-                    axisLabel = "H", min = -4, max = 4, step = 0.5, precision = 1,
-                    get = function() return getSetting("borderInsetH") or getSetting("borderInset") or -1 end,
-                    set = function(v)
-                        setSetting("borderInsetH", v)
-                        if addon and addon.ApplyStyles then
-                            C_Timer.After(0, function() addon:ApplyStyles() end)
-                        end
-                    end,
-                    minLabel = "-4", maxLabel = "+4",
-                },
-                sliderB = {
-                    axisLabel = "V", min = -4, max = 4, step = 0.5, precision = 1,
-                    get = function() return getSetting("borderInsetV") or getSetting("borderInset") or -1 end,
-                    set = function(v)
-                        setSetting("borderInsetV", v)
-                        if addon and addon.ApplyStyles then
-                            C_Timer.After(0, function() addon:ApplyStyles() end)
-                        end
-                    end,
-                    minLabel = "-4", maxLabel = "+4",
-                },
+            inner:AddInsetPair({
+                step = 0.5, precision = 1,
+                get = function(axis) return getSetting(axis == "h" and "borderInsetH" or "borderInsetV") or getSetting("borderInset") or -1 end,
+                set = function(axis, v) setSetting(axis == "h" and "borderInsetH" or "borderInsetV", v) end,
+                apply = Helpers.applyStyles,
             })
 
             inner:Finalize()

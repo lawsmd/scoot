@@ -191,22 +191,10 @@ function ExtraAbilities.Render(panel, scrollContent)
                 })
             end
 
-            inner:AddDualSlider({
-                label = "Border Inset",
-                sliderA = {
-                    axisLabel = "H",
-                    min = -4, max = 4, step = 0.5, precision = 1,
-                    get = function() return getSetting("borderInsetH") or getSetting("borderInset") or 0 end,
-                    set = function(v) setSetting("borderInsetH", v) end,
-                    minLabel = "-4", maxLabel = "4",
-                },
-                sliderB = {
-                    axisLabel = "V",
-                    min = -4, max = 4, step = 0.5, precision = 1,
-                    get = function() return getSetting("borderInsetV") or getSetting("borderInset") or 0 end,
-                    set = function(v) setSetting("borderInsetV", v) end,
-                    minLabel = "-4", maxLabel = "4",
-                },
+            inner:AddInsetPair({
+                step = 0.5, precision = 1, maxLabel = "4",
+                get = function(axis) return getSetting(axis == "h" and "borderInsetH" or "borderInsetV") or getSetting("borderInset") end,
+                set = function(axis, v) setSetting(axis == "h" and "borderInsetH" or "borderInsetV", v) end,
             })
 
             inner:Finalize()

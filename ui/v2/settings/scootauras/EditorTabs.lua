@@ -200,21 +200,12 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
         })
     end
 
-    tabBuilder:AddDualSlider({
-        label = "Border Inset",
+    tabBuilder:AddInsetPair({
+        step = 0.5, precision = 1,
         disabled = iconControlsDisabled,
-        sliderA = {
-            axisLabel = "H", min = -4, max = 4, step = 0.5, precision = 1,
-            get = function() return ctx.get("borderInsetH") or 0 end,
-            set = function(v) ctx.setAndApply("borderInsetH", v) ctx.refreshPreview() end,
-            minLabel = "-4", maxLabel = "+4",
-        },
-        sliderB = {
-            axisLabel = "V", min = -4, max = 4, step = 0.5, precision = 1,
-            get = function() return ctx.get("borderInsetV") or 0 end,
-            set = function(v) ctx.setAndApply("borderInsetV", v) ctx.refreshPreview() end,
-            minLabel = "-4", maxLabel = "+4",
-        },
+        get = function(axis) return ctx.get(axis == "h" and "borderInsetH" or "borderInsetV") end,
+        set = function(axis, v) ctx.setAndApply(axis == "h" and "borderInsetH" or "borderInsetV", v) end,
+        apply = ctx.refreshPreview,
     })
 
     tabBuilder:Finalize()

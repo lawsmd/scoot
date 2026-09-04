@@ -719,21 +719,10 @@ function DamageMetersX.Render(panel, scrollContent)
             })
 
             -- Border Inset (H/V)
-            inner:AddDualSlider({
-                label = "Border Inset",
+            inner:AddInsetPair({
                 disabled = iconsDisabled,
-                sliderA = {
-                    axisLabel = "H", min = -4, max = 4, step = 1,
-                    get = function() return getSetting("iconBorderInsetH") or 0 end,
-                    set = function(v) setSetting("iconBorderInsetH", v) end,
-                    minLabel = "-4", maxLabel = "+4",
-                },
-                sliderB = {
-                    axisLabel = "V", min = -4, max = 4, step = 1,
-                    get = function() return getSetting("iconBorderInsetV") or 2 end,
-                    set = function(v) setSetting("iconBorderInsetV", v) end,
-                    minLabel = "-4", maxLabel = "+4",
-                },
+                get = function(axis) if axis == "h" then return getSetting("iconBorderInsetH") end return getSetting("iconBorderInsetV") or 2 end,
+                set = function(axis, v) setSetting(axis == "h" and "iconBorderInsetH" or "iconBorderInsetV", v) end,
             })
 
             -- JiberishIcons Integration

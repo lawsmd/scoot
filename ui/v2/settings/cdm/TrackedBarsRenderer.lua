@@ -329,20 +329,10 @@ function TrackedBars.Render(panel, scrollContent)
                 })
             end
 
-            inner:AddDualSlider({
-                label = "Border Inset",
-                sliderA = {
-                    axisLabel = "H", min = -4, max = 4, step = 0.5, precision = 1,
-                    get = function() return getSetting("iconBorderInsetH") or getSetting("iconBorderInset") or 0 end,
-                    set = function(v) setSetting("iconBorderInsetH", v) end,
-                    minLabel = "-4", maxLabel = "+4",
-                },
-                sliderB = {
-                    axisLabel = "V", min = -4, max = 4, step = 0.5, precision = 1,
-                    get = function() return getSetting("iconBorderInsetV") or getSetting("iconBorderInset") or 0 end,
-                    set = function(v) setSetting("iconBorderInsetV", v) end,
-                    minLabel = "-4", maxLabel = "+4",
-                },
+            inner:AddInsetPair({
+                step = 0.5, precision = 1,
+                get = function(axis) return getSetting(axis == "h" and "iconBorderInsetH" or "iconBorderInsetV") or getSetting("iconBorderInset") end,
+                set = function(axis, v) setSetting(axis == "h" and "iconBorderInsetH" or "iconBorderInsetV", v) end,
             })
 
             inner:Finalize()
