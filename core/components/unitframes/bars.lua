@@ -12,8 +12,6 @@ local apbTextCustomizationOpts = { alignment = true }
 local bossBarColorOpts = {}
 local Util = addon.ComponentsUtil
 local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
-local ClampOpacity = Util.ClampOpacity
-local PlayerInCombat = Util.PlayerInCombat
 local HideDefaultBarTextures = Util.HideDefaultBarTextures
 local ToggleDefaultIconOverlay = Util.ToggleDefaultIconOverlay
 

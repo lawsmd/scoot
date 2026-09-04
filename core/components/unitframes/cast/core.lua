@@ -5,8 +5,6 @@
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
-local Util = addon.ComponentsUtil
-local ClampOpacity = Util.ClampOpacity
 
 -- Namespace for cast bar decomposition (pattern: addon.DamageMetersX, addon.PRD)
 local CB = {}

@@ -745,17 +745,11 @@ function addon:RefreshOpacityState()
         if addon.IsComponentUnconfigured(component) then
             -- no-op: component not configured
         elseif (component.RefreshOpacity or component.ApplyStyling) and component.settings then
-            -- Check for opacity settings with various naming conventions:
-            -- - CDM uses: opacity, opacityOutOfCombat, opacityWithTarget
-            -- - Action Bars use: barOpacity, barOpacityOutOfCombat, barOpacityWithTarget
-            -- - Auras use: opacity, opacityOutOfCombat, opacityWithTarget
-            local hasOpacity = component.settings.opacity or
-                component.settings.opacityInInstanceCombat or
-                component.settings.opacityOutOfCombat or
-                component.settings.opacityWithTarget or
-                component.settings.barOpacity or
-                component.settings.barOpacityOutOfCombat or
-                component.settings.barOpacityWithTarget
+            -- Any catalog key (core/opacity.lua) or the objective tracker's
+            -- compound key qualifies; a component with only a combat value
+            -- still refreshes on a combat edge.
+            local hasOpacity = addon.Opacity.DeclaresAny(component.settings) or
+                component.settings.opacityInInstanceCombat
             if hasOpacity then
                 if component.RefreshOpacity then
                     pcall(component.RefreshOpacity, component)

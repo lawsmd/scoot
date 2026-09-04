@@ -2,7 +2,6 @@
 local addonName, addon = ...
 local Util = addon.ComponentsUtil
 local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
-local ClampOpacity = Util.ClampOpacity
 
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState

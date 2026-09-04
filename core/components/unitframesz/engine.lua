@@ -2713,6 +2713,9 @@ regenActions.scale = applyScale
 -- the contract the X tooltip advertises. SetAlpha is unprotected, so unlike
 -- the geometry workers this applies live in combat, no queue. 0 is honored --
 -- deliberately not replicating X's silent 50-percent floor on In Combat.
+-- Only units that offer the With Target slider pay for the target probe.
+local UFZ_OPACITY_OPTS = { targetFirst = true, probeTarget = "whenSet" }
+
 local function applyOpacity(inst)
     local frame = inst.frame
     if not frame then return end
@@ -2722,23 +2725,8 @@ local function applyOpacity(inst)
         if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
         return
     end
-    local cfg = inst.cfg
-    local pct = cfg.opacityOutOfCombat or 100
-    local Util = addon.ComponentsUtil
-    if Util and Util.PlayerInCombat and Util.PlayerInCombat() then
-        pct = cfg.opacityInCombat or 100
-    end
-    -- Only units that offer the slider pay for the target probe; the update()
-    -- doctrine: nothing but a readable plain true counts as "has target".
-    if cfg.opacityWithTarget ~= nil then
-        local okEx, ex = pcall(UnitExists, "target")
-        local exSecret = okEx and issecretvalue and issecretvalue(ex)
-        if okEx and not exSecret and ex == true then
-            pct = cfg.opacityWithTarget
-        end
-    end
-    if pct < 0 then pct = 0 elseif pct > 100 then pct = 100 end
-    frame:SetAlpha(pct / 100)
+    local alpha = addon.Opacity.Resolve(inst.cfg, addon.Opacity.Keys.InCombat, UFZ_OPACITY_OPTS)
+    frame:SetAlpha(alpha)
     -- A Deep Shadow name copy tapers itself against the alpha it inherits, and
     -- the alpha above just moved. core/fontpair.lua coalesces the pass, so a
     -- whole party fading at once costs one walk.

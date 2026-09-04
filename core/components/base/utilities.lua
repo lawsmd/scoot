@@ -253,18 +253,6 @@ Util.ToggleDefaultIconOverlay = ToggleDefaultIconOverlay
 -- The probe lives in core/opacity.lua beside the state opacity resolver.
 Util.PlayerInCombat = addon.Opacity.InCombat
 
-local function ClampOpacity(value, minValue)
-    local v = tonumber(value) or 100
-    local minClamp = tonumber(minValue) or 50
-    if v < minClamp then
-        v = minClamp
-    elseif v > 100 then
-        v = 100
-    end
-    return v
-end
-Util.ClampOpacity = ClampOpacity
-
 local function ApplyFullPowerSpikeScale(ownerFrame, heightScale)
     if not ownerFrame or type(ownerFrame) ~= "table" then
         return

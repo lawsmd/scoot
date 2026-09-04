@@ -1,8 +1,8 @@
 -- visibility.lua - Per-unit opacity for combat, target, and out-of-combat states
 local addonName, addon = ...
-local Util = addon.ComponentsUtil
-local ClampOpacity = Util.ClampOpacity
-local PlayerInCombat = Util.PlayerInCombat
+-- State opacity (core/opacity.lua): the combat slider floors at 50 and the
+-- other two at 1; an unset value reads as the combat value.
+local UF_OPACITY_OPTS = { targetFirst = true, combatMin = 50, min = 1, fallback = "combat" }
 
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
@@ -48,23 +48,8 @@ do
             return
         end
 
-        -- Base opacity (combat) uses the same 50–100 semantics as Cooldown Manager groups
-        local baseRaw = cfg.opacityInCombat
-        if baseRaw == nil then baseRaw = 100 end
-        local baseOpacity = ClampOpacity(baseRaw, 50)
-
-        -- Out-of-combat opacity; falls back to base when unset
-        local oocRaw = cfg.opacityOutOfCombat
-        local oocOpacity = ClampOpacity(oocRaw == nil and baseOpacity or oocRaw, 1)
-
-        -- With-target opacity; falls back to base when unset
-        local tgtRaw = cfg.opacityWithTarget
-        local tgtOpacity = ClampOpacity(tgtRaw == nil and baseOpacity or tgtRaw, 1)
-
-        local hasTarget = (UnitExists and UnitExists("target")) and true or false
-        local applied = hasTarget and tgtOpacity or (PlayerInCombat() and baseOpacity or oocOpacity)
-
-        pcall(frame.SetAlpha, frame, applied / 100)
+        local alpha = addon.Opacity.Resolve(cfg, addon.Opacity.Keys.InCombat, UF_OPACITY_OPTS)
+        pcall(frame.SetAlpha, frame, alpha)
     end
 
     function addon.ApplyUnitFrameVisibilityFor(unit)
