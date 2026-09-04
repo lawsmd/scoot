@@ -912,10 +912,8 @@ function SlashCmdList.SCOOT(msg, editBox)
 
     -- /scoot attr
     if cmd == "attr" then
-        if addon.DumpTableAttributes then
-            addon:DumpTableAttributes()
-        else
-            addon:Print("Attribute dumper not available.")
+        if not addon.DumpTableAttributes() then
+            addon:Print("No Table Inspector window or highlight frame found to dump.")
         end
         return
     end

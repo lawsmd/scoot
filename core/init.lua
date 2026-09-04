@@ -1396,15 +1396,3 @@ function addon:ADDON_LOADED(event, name)
         end)
     end
 end
-
--- Expose the attribute dump logic for the slash command (implementation in debug.lua)
-function addon:DumpTableAttributes()
-    if addon.DumpTableAttributes then
-        local success = addon.DumpTableAttributes()
-        if not success then
-            addon:Print("No Table Inspector window or highlight frame found to dump.")
-        end
-    else
-        addon:Print("Debug module not loaded.")
-    end
-end
