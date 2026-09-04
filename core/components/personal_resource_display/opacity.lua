@@ -25,26 +25,15 @@ local getAltPowerBar = PRD._getAltPowerBar
 --------------------------------------------------------------------------------
 
 -- Get opacity value based on current combat/target state
+-- Alpha for the component's current state (core/opacity.lua). The 0.01 floor
+-- mirrors the sliders' 1 percent minimum.
+local PRD_OPACITY_OPTS = { alphaFloor = 0.01 }
+
 local function getPRDOpacityForState(componentId)
     local component = addon.Components and addon.Components[componentId]
     if not component or not component.db then return 1.0 end
-
-    local db = component.db
-    local inCombat = InCombatLockdown and InCombatLockdown()
-    local hasTarget = UnitExists("target")
-
-    -- Priority: combat > target > out-of-combat
-    local opacityValue
-    if inCombat then
-        opacityValue = tonumber(db.opacityInCombat) or 100
-    elseif hasTarget then
-        opacityValue = tonumber(db.opacityWithTarget) or 100
-    else
-        opacityValue = tonumber(db.opacityOutOfCombat) or 100
-    end
-
-    -- Convert from percentage (1-100) to alpha (0.01-1.0)
-    return math.max(0.01, math.min(1.0, opacityValue / 100))
+    local alpha = addon.Opacity.Resolve(component.db, addon.Opacity.Keys.InCombat, PRD_OPACITY_OPTS)
+    return alpha
 end
 
 -- Apply opacity to prdHealth component

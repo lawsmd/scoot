@@ -37,15 +37,7 @@ local function SafeSetShown(region, shown)
     end
 end
 
-local function PlayerInCombat()
-    if addon and addon.ComponentsUtil and type(addon.ComponentsUtil.PlayerInCombat) == "function" then
-        return addon.ComponentsUtil.PlayerInCombat()
-    end
-    if InCombatLockdown() then
-        return true
-    end
-    return UnitAffectingCombat("player") and true or false
-end
+local PlayerInCombat = addon.Opacity.InCombat
 
 local function GetClassColor(classToken)
     if not classToken then return 1, 1, 1, 1 end
@@ -407,17 +399,13 @@ DMX._GetScrollSignature = GetScrollSignature
 -- State-Based Opacity (Out-of-Combat Fade)
 --------------------------------------------------------------------------------
 
+-- Window alpha for the current state (core/opacity.lua): the Edit Mode value
+-- (50-100) in combat, the addon slider (0-100) out of it.
+local DM_OPACITY_OPTS = { combatMin = 50 }
+
 local function GetDamageMeterOpacityAlpha(db)
-    local inCombat = InCombatLockdown and InCombatLockdown()
-    if inCombat then
-        -- In combat: use Edit Mode opacity (50-100 range)
-        local emOpacity = tonumber(db.opacity) or 100
-        return math.max(0.50, math.min(1.0, emOpacity / 100))
-    else
-        -- Out of combat: use addon slider (0-100 range)
-        local oocOpacity = tonumber(db.opacityOutOfCombat) or 100
-        return math.max(0, math.min(1.0, oocOpacity / 100))
-    end
+    local alpha = addon.Opacity.Resolve(db, addon.Opacity.Keys.CombatOnly, DM_OPACITY_OPTS)
+    return alpha
 end
 
 local function RefreshDamageMeterOpacity(comp)

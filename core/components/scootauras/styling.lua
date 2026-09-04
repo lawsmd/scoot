@@ -410,15 +410,8 @@ local function ApplyStyling(trackerId, tracker)
     local scale = ((db and db.scale) or 100) / 100
     target:SetScale(math.max(scale, 0.25))
 
-    local opacityValue
-    if InCombatLockdown() then
-        opacityValue = tonumber(db and db.opacityInCombat) or 100
-    elseif UnitExists("target") then
-        opacityValue = tonumber(db and db.opacityWithTarget) or 100
-    else
-        opacityValue = tonumber(db and db.opacityOutOfCombat) or 100
-    end
-    target:SetAlpha(opacityValue / 100)
+    local alpha = addon.Opacity.Resolve(db, addon.Opacity.Keys.InCombat)
+    target:SetAlpha(alpha)
 
     -- A tracker set to "Only in Combat" is hidden outright out of combat. Edit
     -- Mode forces it back: the preview and the draggable frame live under this

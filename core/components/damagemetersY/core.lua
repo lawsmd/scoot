@@ -290,16 +290,13 @@ function DMY._ApplyStyling(comp)
     DMY._RefreshOpacity(comp)
 end
 
+-- Window alpha for the current state (core/opacity.lua): the Edit Mode value
+-- (50-100) in combat, the addon slider (0-100) out of it.
+local OPACITY_OPTS = { combatMin = 50 }
+
 function DMY._RefreshOpacity(comp)
     if not DMY._initialized then return end
-    local db = comp.db
-    local inCombat = InCombatLockdown()
-    local alpha
-    if inCombat then
-        alpha = math.max(0.50, math.min(1.0, (tonumber(db.opacity) or 100) / 100))
-    else
-        alpha = math.max(0, math.min(1.0, (tonumber(db.opacityOutOfCombat) or 100) / 100))
-    end
+    local alpha = addon.Opacity.Resolve(comp.db, addon.Opacity.Keys.CombatOnly, OPACITY_OPTS)
     for i = 1, DMY.MAX_WINDOWS do
         local win = DMY._windows[i]
         if win and win.frame:IsShown() then

@@ -611,15 +611,7 @@ local function ClampPercent0To100(value)
     return v
 end
 
-local function PlayerInCombat()
-    if addon and addon.ComponentsUtil and type(addon.ComponentsUtil.PlayerInCombat) == "function" then
-        return addon.ComponentsUtil.PlayerInCombat()
-    end
-    if InCombatLockdown() then
-        return true
-    end
-    return UnitAffectingCombat("player") and true or false
-end
+local PlayerInCombat = addon.Opacity.InCombat
 
 local function PlayerInDungeonOrRaidInstance()
     if type(IsInInstance) ~= "function" then
