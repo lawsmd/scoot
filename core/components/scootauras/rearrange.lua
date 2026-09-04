@@ -19,7 +19,6 @@ local drag = nil   -- { trackerId, sourceIndex, targetIndex, visual } while drag
 
 local container    -- UIParent child, DIALOG strata; blocker + overlays under it
 local blocker
-local overlays = {}
 local shownOverlays = 0
 local ghost
 local marker
@@ -114,23 +113,29 @@ local function EnsureFrames()
     end)
 end
 
-local function AcquireOverlay(n)
-    local ov = overlays[n]
-    if not ov then
-        ov = CreateFrame("Frame", nil, container)
-        ov:SetFrameLevel(110)
-        local wash = ov:CreateTexture(nil, "ARTWORK")
-        wash:SetAllPoints(ov)
-        wash:Hide()
-        ov._wash = wash
-        ov:RegisterForDrag("LeftButton")
-        ov:SetScript("OnEnter", function(self) self._wash:Show() end)
-        ov:SetScript("OnLeave", function(self) self._wash:Hide() end)
-        ov:SetScript("OnDragStart", function(self) BeginMemberDrag(self) end)
-        overlays[n] = ov
-    end
+local function CreateOverlay()
+    local ov = CreateFrame("Frame", nil, container)
+    ov:SetFrameLevel(110)
+    local wash = ov:CreateTexture(nil, "ARTWORK")
+    wash:SetAllPoints(ov)
+    wash:Hide()
+    ov._wash = wash
+    ov:RegisterForDrag("LeftButton")
+    ov:SetScript("OnEnter", function(self) self._wash:Show() end)
+    ov:SetScript("OnLeave", function(self) self._wash:Hide() end)
+    ov:SetScript("OnDragStart", function(self) BeginMemberDrag(self) end)
     return ov
 end
+
+-- A hidden overlay must not keep its member: a stale trackerId on a
+-- mouse-enabled overlay would drag the wrong member.
+local function HideOverlay(ov)
+    ov:Hide()
+    ov:EnableMouse(false)
+    ov.trackerId, ov.dataIndex = nil, nil
+end
+
+local overlays = addon.Pool.NewIndexed(CreateOverlay, HideOverlay)
 
 --- One overlay per rendered member, anchored to its visual so reflows, nudges,
 -- and scale changes track for free. Only dataIndex can go stale mid-mode, and
@@ -149,7 +154,7 @@ local function BuildOverlays()
             if tentry and tentry.grouped and tracker and tracker.groupId == mode.gid
                 and SAU.IsTrackerActive(trackerId, tracker) then
                 n = n + 1
-                local ov = AcquireOverlay(n)
+                local ov = overlays:Get(n)
                 ov:ClearAllPoints()
                 ov:SetAllPoints(tentry.visual)
                 ov.trackerId = trackerId
@@ -161,11 +166,7 @@ local function BuildOverlays()
             end
         end
     end
-    for i = n + 1, #overlays do
-        overlays[i]:Hide()
-        overlays[i]:EnableMouse(false)
-        overlays[i].trackerId, overlays[i].dataIndex = nil, nil
-    end
+    overlays:HideFrom(n + 1)
     shownOverlays = n
 end
 
@@ -240,7 +241,7 @@ local function FindDropTarget(cx, cy)
 
     local bestOv, bestDist, bestCenter
     for i = 1, shownOverlays do
-        local ov = overlays[i]
+        local ov = overlays.items[i]
         if ov:IsShown() then
             local l, r, t, b = PhysRect(ov)
             if l then

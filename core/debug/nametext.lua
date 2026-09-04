@@ -126,7 +126,6 @@ local function effectiveFaceKey()
 end
 
 local frame, nameFS, chromeBG
-local slicePool = {}
 
 local lastResult, lastSource, lastFit
 -- currentRaw is what UnitName returned; currentValue is what goes to the
@@ -352,10 +351,7 @@ end
 -- line's own horizontal extent, and that comes only from
 -- CalculateScreenAreaFromCharacterSpan, which is dead once the text is secret.
 
-local function ensureSlice(index)
-    local s = slicePool[index]
-    if s then return s end
-
+local function createSlice()
     local clip = CreateFrame("Frame", nil, frame)
     clip:SetClipsChildren(true)
     -- Frame level left to auto-inherit from the parent, as cast/textfill.lua does.
@@ -370,13 +366,13 @@ local function ensureSlice(index)
     fs:SetJustifyV("MIDDLE")
     fs:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
 
-    s = { clip = clip, fs = fs }
-    slicePool[index] = s
-    return s
+    return { clip = clip, fs = fs }
 end
 
+local slicePool = addon.Pool.NewIndexed(createSlice, function(s) s.clip:Hide() end)
+
 local function hideSlices()
-    for _, s in ipairs(slicePool) do s.clip:Hide() end
+    slicePool:HideFrom(1)
 end
 
 local function applySlices(result, colors)
@@ -402,7 +398,7 @@ local function applySlices(result, colors)
     end
 
     for i = 1, n do
-        local s = ensureSlice(i)
+        local s = slicePool:Get(i)
 
         -- Snap column edges to whole pixels. Fractional edges under a fractional UI
         -- scale leave visible seams between columns.
@@ -442,7 +438,7 @@ local function applySlices(result, colors)
         s.clip:Show()
     end
 
-    for i = n + 1, #slicePool do slicePool[i].clip:Hide() end
+    slicePool:HideFrom(n + 1)
     return true
 end
 
@@ -1884,7 +1880,7 @@ local function buildReport()
     -- and the screen can still be wrong. These are the copies you are looking
     -- at; any disagreement with the master localises the bug to the replay.
     push("-- Slice stack (what is on screen in slice mode) --")
-    local s1 = slicePool[1]
+    local s1 = slicePool.items[1]
     if lastGradientMode ~= "slice" then
         push("  idle - the master FontString above is what is drawing")
     elseif not s1 then
@@ -1907,7 +1903,7 @@ local function buildReport()
         push("  slice[1] IsAnchoringSecret(): " .. measureOn(s1.fs, "IsAnchoringSecret"))
         push("  clip[1] W/H:                  " .. measureOn(s1.clip, "GetWidth")
             .. " x " .. measureOn(s1.clip, "GetHeight"))
-        push("  slices built:                 " .. #slicePool)
+        push("  slices built:                 " .. slicePool:Count())
     end
     push("")
 

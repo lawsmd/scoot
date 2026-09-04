@@ -32,7 +32,6 @@ local HOVER_COLOR = { 1.0, 1.0, 1.0, 0.9 }
 --------------------------------------------------------------------------------
 
 local container   -- overlay, reparented onto the attached window
-local strips = {} -- pooled divider strips
 local mouseUpHandle -- GLOBAL_MOUSE_UP subscription, live only during a drag
 local attached    -- window index while active, nil otherwise
 local drag        -- live drag state, nil otherwise
@@ -207,35 +206,39 @@ end
 -- Frames
 --------------------------------------------------------------------------------
 
+local function CreateStrip()
+    local strip = CreateFrame("Frame", nil, container)
+    strip:SetWidth(STRIP_WIDTH)
+    strip:SetFrameLevel(110)
+    strip:EnableMouse(true)
+    strip:RegisterForDrag("LeftButton")
+
+    local line = strip:CreateTexture(nil, "OVERLAY")
+    line:SetPoint("TOP", strip, "TOP", 0, 0)
+    line:SetPoint("BOTTOM", strip, "BOTTOM", 0, 0)
+    line:SetWidth(1)
+    line:SetColorTexture(IDLE_COLOR[1], IDLE_COLOR[2], IDLE_COLOR[3], IDLE_COLOR[4])
+    strip._line = line
+
+    strip:SetScript("OnEnter", function(self)
+        self._line:SetColorTexture(HOVER_COLOR[1], HOVER_COLOR[2], HOVER_COLOR[3], HOVER_COLOR[4])
+    end)
+    strip:SetScript("OnLeave", function(self)
+        if not drag or drag.boundary ~= self._boundary then
+            self._line:SetColorTexture(IDLE_COLOR[1], IDLE_COLOR[2], IDLE_COLOR[3], IDLE_COLOR[4])
+        end
+    end)
+    strip:SetScript("OnDragStart", function(self)
+        BeginDrag(self._boundary)
+    end)
+    return strip
+end
+
+-- Indexed from 0: boundary 0 is the name column's right edge.
+local strips = addon.Pool.NewIndexed(CreateStrip)
+
 local function AcquireStrip(b)
-    local strip = strips[b]
-    if not strip then
-        strip = CreateFrame("Frame", nil, container)
-        strip:SetWidth(STRIP_WIDTH)
-        strip:SetFrameLevel(110)
-        strip:EnableMouse(true)
-        strip:RegisterForDrag("LeftButton")
-
-        local line = strip:CreateTexture(nil, "OVERLAY")
-        line:SetPoint("TOP", strip, "TOP", 0, 0)
-        line:SetPoint("BOTTOM", strip, "BOTTOM", 0, 0)
-        line:SetWidth(1)
-        line:SetColorTexture(IDLE_COLOR[1], IDLE_COLOR[2], IDLE_COLOR[3], IDLE_COLOR[4])
-        strip._line = line
-
-        strip:SetScript("OnEnter", function(self)
-            self._line:SetColorTexture(HOVER_COLOR[1], HOVER_COLOR[2], HOVER_COLOR[3], HOVER_COLOR[4])
-        end)
-        strip:SetScript("OnLeave", function(self)
-            if not drag or drag.boundary ~= self._boundary then
-                self._line:SetColorTexture(IDLE_COLOR[1], IDLE_COLOR[2], IDLE_COLOR[3], IDLE_COLOR[4])
-            end
-        end)
-        strip:SetScript("OnDragStart", function(self)
-            BeginDrag(self._boundary)
-        end)
-        strips[b] = strip
-    end
+    local strip = strips:Get(b)
     strip._boundary = b
     return strip
 end
@@ -306,9 +309,7 @@ function Dividers.Refresh()
             strip:Hide()
         end
     end
-    for b = n, #strips do
-        if strips[b] then strips[b]:Hide() end
-    end
+    strips:HideFrom(n)
 end
 
 --- Attaches the divider overlay to a window. No-ops unless the window is
@@ -345,7 +346,7 @@ function Dividers.Detach()
     if not attached then return end
     attached = nil
     if container then
-        for _, strip in pairs(strips) do strip:Hide() end
+        strips:HideFrom(0)
         container:Hide()
         container:SetParent(UIParent)
         container:ClearAllPoints()
