@@ -15,6 +15,19 @@ local AURA_OPACITY_OPTS = { combatMin = 50, min = 1, fallback = "combat" }
 -- (which would taint them and cause secret value errors during Edit Mode operations)
 local auraState = setmetatable({}, { __mode = "k" })  -- frame/fs/tex/border -> state table
 
+-- Hide-enforcement (core/enforce.lua) for the Blizzard aura borders: the key
+-- reads the owning button's _wantNonSquareOverlay flag live. The border is the
+-- plain region captured at install, so walking to its parent here is safe.
+local Enforce = addon.Enforce
+local AURA_BORDER_HIDE_OPTS = {
+    methods = { "Show" },
+    when = function(border)
+        local ok, parent = pcall(border.GetParent, border)
+        local st = ok and parent and auraState[parent]
+        return st ~= nil and st._wantNonSquareOverlay == true
+    end,
+}
+
 -- Config version tracking: skip re-styling auras when config hasn't changed (OPT-01)
 local configVersions = {}  -- componentId -> integer
 
@@ -614,35 +627,11 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
                             if aura.DebuffBorder then pcall(aura.DebuffBorder.SetAlpha, aura.DebuffBorder, 0) end
                             if aura.TempEnchantBorder then pcall(aura.TempEnchantBorder.SetAlpha, aura.TempEnchantBorder, 0) end
 
-                            -- Install Show hooks (once per button). When Blizzard calls Show()
-                            -- (e.g. UpdateAuraType), re-enforce alpha(0). No Hide() (undone by
-                            -- next Show), no IsShown() check (timing-sensitive).
-                            if not auraSt._dbShowHooked and aura.DebuffBorder then
-                                pcall(function()
-                                    hooksecurefunc(aura.DebuffBorder, "Show", function(self)
-                                        local parent = self:GetParent()
-                                        if not parent then return end
-                                        local st = auraState[parent]
-                                        if st and st._wantNonSquareOverlay then
-                                            pcall(self.SetAlpha, self, 0)
-                                        end
-                                    end)
-                                end)
-                                auraSt._dbShowHooked = true
-                            end
-                            if not auraSt._tebShowHooked and aura.TempEnchantBorder then
-                                pcall(function()
-                                    hooksecurefunc(aura.TempEnchantBorder, "Show", function(self)
-                                        local parent = self:GetParent()
-                                        if not parent then return end
-                                        local st = auraState[parent]
-                                        if st and st._wantNonSquareOverlay then
-                                            pcall(self.SetAlpha, self, 0)
-                                        end
-                                    end)
-                                end)
-                                auraSt._tebShowHooked = true
-                            end
+                            -- Show hooks (once per border, core/enforce.lua). When Blizzard calls
+                            -- Show() (e.g. UpdateAuraType), re-enforce alpha(0). No Hide() (undone
+                            -- by next Show), no IsShown() check (timing-sensitive).
+                            Enforce.Install(aura.DebuffBorder, "auraBorderHide", AURA_BORDER_HIDE_OPTS)
+                            Enforce.Install(aura.TempEnchantBorder, "auraBorderHide", AURA_BORDER_HIDE_OPTS)
 
                             -- Detect which border type via aura.auraType (set by Blizzard's UpdateAuraType)
                             local isTempEnchant = false

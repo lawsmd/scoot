@@ -34,7 +34,6 @@ TB.vertLockCadence = false
 TB._viewerAlpha = 1
 
 -- Alpha enforcement hooks tracking (weak keys)
-TB.alphaEnforcedItems = setmetatable({}, { __mode = "k" })
 TB.prevIsActive = setmetatable({}, { __mode = "k" })
 TB.prevShown = setmetatable({}, { __mode = "k" })
 

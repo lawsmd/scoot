@@ -23,9 +23,6 @@ setmetatable(minimapOverlays, { __mode = "k" })
 local blizzardZoneTextHidden = false
 local blizzardClockHidden = false
 local blizzardDockHidden = false
-local zoneTextHookInstalled = false
-local clockHookInstalled = false
-local trackingBackgroundHookInstalled = false
 
 -- Constants
 local PVP_COLORS = {
@@ -159,21 +156,46 @@ end
 -- Blizzard Element Hiding (Zone Text, Clock)
 --------------------------------------------------------------------------------
 
+-- Hide-enforcement (core/enforce.lua): each key reads the minimap settings
+-- live and hides with Hide, as the buttons' Show hooks did before.
+local Enforce = addon.Enforce
+local function hideElement(frame)
+    local hide = frame.HideBase or frame.Hide
+    if hide then hide(frame) end
+end
+local ZONE_TEXT_HIDE_OPTS = {
+    methods = { "Show" },
+    apply = hideElement,
+    when = function()
+        local db = getMinimapDB()
+        if not db then return false end
+        return not not (db.zoneTextHide or (db.zoneTextPosition and db.zoneTextPosition ~= "dock"))
+    end,
+}
+local CLOCK_HIDE_OPTS = {
+    methods = { "Show" },
+    apply = hideElement,
+    when = function()
+        local db = getMinimapDB()
+        if not db then return false end
+        return not not (db.clockHide or (db.clockPosition and db.clockPosition ~= "dock"))
+    end,
+}
+local DOCK_HIDE_OPTS = {
+    methods = { "Show" },
+    apply = hideElement,
+    when = function()
+        local db = getMinimapDB()
+        return db ~= nil and not not db.dockHide
+    end,
+}
+
 local function HideBlizzardZoneText()
     -- Hide Blizzard's zone text button (the clickable text above minimap)
     if MinimapZoneTextButton then
         MinimapZoneTextButton:Hide()
         blizzardZoneTextHidden = true
-        -- Hook to keep it hidden (only install once)
-        if not zoneTextHookInstalled then
-            zoneTextHookInstalled = true
-            hooksecurefunc(MinimapZoneTextButton, "Show", function(self)
-                local db = getMinimapDB()
-                if db and (db.zoneTextHide or (db.zoneTextPosition and db.zoneTextPosition ~= "dock")) then
-                    self:Hide()
-                end
-            end)
-        end
+        Enforce.Install(MinimapZoneTextButton, "minimapZoneText", ZONE_TEXT_HIDE_OPTS)
     end
 
     -- Also hide the zone text in the MinimapCluster if accessible
@@ -203,16 +225,7 @@ local function HideBlizzardClock()
     if TimeManagerClockButton then
         TimeManagerClockButton:Hide()
         blizzardClockHidden = true
-        -- Hook to keep it hidden (only install once)
-        if not clockHookInstalled then
-            clockHookInstalled = true
-            hooksecurefunc(TimeManagerClockButton, "Show", function(self)
-                local db = getMinimapDB()
-                if db and (db.clockHide or (db.clockPosition and db.clockPosition ~= "dock")) then
-                    self:Hide()
-                end
-            end)
-        end
+        Enforce.Install(TimeManagerClockButton, "minimapClock", CLOCK_HIDE_OPTS)
     end
     -- Note: If TimeManagerClockButton doesn't exist yet, the TimeManager ADDON_LOADED
     -- handler will call this again when Blizzard_TimeManager loads
@@ -238,7 +251,7 @@ MM._ShowBlizzardClock = ShowBlizzardClock
 -- Dock Visibility (BorderTop, Calendar, Tracking, Addon Compartment)
 --------------------------------------------------------------------------------
 
--- Helper to hide tracking elements and install hook
+-- Helper to hide tracking elements and keep the background hidden
 local function HideTrackingElements()
     if not MinimapCluster or not MinimapCluster.Tracking then return end
 
@@ -247,16 +260,7 @@ local function HideTrackingElements()
     end
     if MinimapCluster.Tracking.Background then
         MinimapCluster.Tracking.Background:Hide()
-        -- Hook to keep it hidden (only install once)
-        if not trackingBackgroundHookInstalled then
-            trackingBackgroundHookInstalled = true
-            hooksecurefunc(MinimapCluster.Tracking.Background, "Show", function(self)
-                local db = getMinimapDB()
-                if db and db.dockHide then
-                    self:Hide()
-                end
-            end)
-        end
+        Enforce.Install(MinimapCluster.Tracking.Background, "minimapTrackingBackground", DOCK_HIDE_OPTS)
     end
 end
 

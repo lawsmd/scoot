@@ -873,24 +873,18 @@ end
 -- Vertical Mode: Blizzard Item Alpha Enforcement
 --------------------------------------------------------------------------------
 
+-- Blizzard's own bar item is held at alpha 0 while vertical mode is active
+-- (core/enforce.lua). The key reads TB.verticalModeActive live, so leaving
+-- vertical mode releases every item, and the hook body never sees the alpha
+-- argument: a secret alpha in combat (12.1) cannot reach a compare.
+local BLIZZ_ITEM_ALPHA_OPTS = {
+    methods = { "SetAlpha" },
+    when = function() return TB.verticalModeActive == true end,
+}
+
 local function enforceBlizzItemAlpha(child)
     pcall(child.SetAlpha, child, 0)
-    if TB.alphaEnforcedItems[child] then return end
-    TB.alphaEnforcedItems[child] = true
-    if child.SetAlpha then
-        hooksecurefunc(child, "SetAlpha", function(self, alpha)
-            -- issecretvalue: comparing a secret alpha throws. Skipping the
-            -- re-assert on a secret is safe: Scoot's own writes are always plain 0.
-            -- The reentrancy flag stands in for the "0 stops recursion" property,
-            -- which is unreadable when the incoming alpha is secret.
-            if TB._alphaReasserting then return end
-            if TB.verticalModeActive and not issecretvalue(alpha) and alpha > 0 then
-                TB._alphaReasserting = true
-                pcall(self.SetAlpha, self, 0)
-                TB._alphaReasserting = false
-            end
-        end)
-    end
+    addon.Enforce.Install(child, "verticalBlizzItem", BLIZZ_ITEM_ALPHA_OPTS)
 end
 
 local function restoreBlizzItemAlpha(child)
