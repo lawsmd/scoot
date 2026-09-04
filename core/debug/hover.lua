@@ -171,10 +171,7 @@ end
 --------------------------------------------------------------------------------
 
 local function buildReport(cx, cy, foci, hits)
-    local lines = {}
-    local function add(fmt, ...)
-        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
-    end
+    local lines, add = addon.DebugLines()
 
     add("Hover probe — what owns the mouse at this pixel")
     add(string.rep("=", 68))

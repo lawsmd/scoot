@@ -176,8 +176,7 @@ end
 
 local function dumpState()
     local ac = AC()
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
 
     push("=== Aura Container Pilot ===")
     push("")
@@ -266,8 +265,7 @@ local function DebugAuraContainer(sub, arg)
     end
 
     if sub == "probes" then
-        local lines = {}
-        local function push(s) table.insert(lines, s) end
+        local lines, push = addon.DebugLines()
         push("=== Probe Battery ===")
         push("")
         probeBoundsRect(push)
@@ -284,8 +282,7 @@ local function DebugAuraContainer(sub, arg)
     end
 
     if sub == "filters" then
-        local lines = {}
-        local function push(s) table.insert(lines, s) end
+        local lines, push = addon.DebugLines()
         push("=== Candidate Filter Probe ===")
         push("")
         probeFilters(push, arg == "on")

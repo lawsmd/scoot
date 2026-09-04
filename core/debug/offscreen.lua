@@ -99,8 +99,7 @@ local function _CollectOffscreenCandidates(unitKey)
 end
 
 local function DebugOffscreenUnlockDump()
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
 
     local profile = addon and addon.db and addon.db.profile
     local uf = profile and rawget(profile, "unitFrames")

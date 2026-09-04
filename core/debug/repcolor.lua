@@ -173,10 +173,7 @@ local function DebugRepColor(sub)
         return
     end
 
-    local lines = {}
-    local function add(fmt, ...)
-        lines[#lines + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt
-    end
+    local lines, add = addon.DebugLines()
 
     add("ReputationColor Debug — GetTime %.3f", GetTime())
     add("")

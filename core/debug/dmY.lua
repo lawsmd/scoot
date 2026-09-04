@@ -1641,8 +1641,7 @@ local function DebugDMYAbbrev()
         return
     end
 
-    local lines = { "== DMY Abbreviation Battery ==", "" }
-    local function add(s) table.insert(lines, s) end
+    local lines, add = addon.DebugLines("== DMY Abbreviation Battery ==", "")
 
     -- [1] Engine default breakpoints
     add("[1] C_StringUtil.GetDefaultAbbreviationBreakpoints():")
@@ -1735,10 +1734,7 @@ end
 
 local function DebugDMYColprobe()
     local DMY = addon.DamageMetersY
-    local lines = { "== DMY Column Probe (identity correlation) ==" }
-    local function add(fmt, ...)
-        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
-    end
+    local lines, add = addon.DebugLines("== DMY Column Probe (identity correlation) ==")
 
     if not DMY or not DMY._initialized then
         add("DMY not initialized (component disabled?).")
@@ -1902,10 +1898,7 @@ local function DebugDMYNames()
         return
     end
 
-    local lines = { "== DMY Display Name Resolver ==", "" }
-    local function add(fmt, ...)
-        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
-    end
+    local lines, add = addon.DebugLines("== DMY Display Name Resolver ==", "")
 
     local db = DMY._comp and DMY._comp.db
     add("hideRealmNames setting: %s", tostring(db and db.hideRealmNames))
@@ -1953,10 +1946,7 @@ local function DebugDMYDrillState()
         return
     end
 
-    local lines = { "== DMY In-Combat Drilldown State ==", "" }
-    local function add(fmt, ...)
-        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
-    end
+    local lines, add = addon.DebugLines("== DMY In-Combat Drilldown State ==", "")
 
     add("InCombatLockdown(): %s", tostring(InCombatLockdown()))
     add("")
@@ -2010,10 +2000,7 @@ local function DebugDMYDeathProbe()
         return
     end
 
-    local lines = { "== DMY Death Probe ==", "" }
-    local function add(fmt, ...)
-        table.insert(lines, select("#", ...) > 0 and string.format(fmt, ...) or fmt)
-    end
+    local lines, add = addon.DebugLines("== DMY Death Probe ==", "")
 
     local function FieldInfo(v)
         if v == nil then return "nil" end

@@ -39,8 +39,7 @@ local function DebugCDMState()
     local activeOverlays = Overlays and Overlays._activeOverlays
     local lastApply = Overlays and Overlays._lastApply
     local hookState = Overlays and Overlays._hookState
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
 
     push("=== CDM Styling Pipeline State ===")
     push("")

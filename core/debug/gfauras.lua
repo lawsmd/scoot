@@ -76,8 +76,7 @@ end
 
 local function dumpState()
     local ha, E = HA(), Engine()
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
 
     push("=== Group Frames: aura tracking (12.1 AuraContainer) ===")
     push("")

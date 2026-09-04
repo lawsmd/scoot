@@ -58,8 +58,7 @@ end
 
 local function dumpState()
     local z, A = UFZ(), Auras()
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
 
     push("=== Unit Frames Z: aura rows (12.1 AuraContainer) ===")
     push("")

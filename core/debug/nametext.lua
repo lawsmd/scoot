@@ -1335,8 +1335,7 @@ local function DebugNameTextCaseProbe()
     end
 
     C_Timer.After(0, function()
-        local lines = {}
-        local function push(s) lines[#lines + 1] = s end
+        local lines, push = addon.DebugLines()
 
         push("NAME TEXT -- CASE PROBE")
         push("")
@@ -1662,8 +1661,7 @@ local function DebugNameTextSetTreatment(which)
 end
 
 local function buildReport()
-    local lines = {}
-    local function push(s) lines[#lines + 1] = s end
+    local lines, push = addon.DebugLines()
 
     local r = lastResult or {}
     local c = lastColors or {}
@@ -2001,8 +1999,7 @@ local SCAN_UNITS = {
 }
 
 local function DebugNameTextScan()
-    local lines = {}
-    local function push(s) lines[#lines + 1] = s end
+    local lines, push = addon.DebugLines()
 
     push("== Unit identity secrecy sweep ==")
     push("")
@@ -2114,8 +2111,7 @@ local function utf8Count(s)
 end
 
 local function buildProbeReport()
-    local out = {}
-    local function push(s) out[#out + 1] = s end
+    local out, push = addon.DebugLines()
 
     push("== SetAlphaGradient length-oracle probe ==")
     push("")
@@ -2394,8 +2390,7 @@ local function pickFromColumn(rows, key, ceiling)
 end
 
 local function buildFitProbeReport(rows, freeCount, freeTag, calls, frames)
-    local out = {}
-    local function push(s) out[#out + 1] = s end
+    local out, push = addon.DebugLines()
 
     ----------------------------------------------------------------------------
     -- Analysis
@@ -2691,8 +2686,7 @@ end
 -- why.
 
 local function buildAutoFitReport(st)
-    local out = {}
-    local function push(s) out[#out + 1] = s end
+    local out, push = addon.DebugLines()
 
     push("== Auto-fit: every candidate size, and what rejected it ==")
     push("")

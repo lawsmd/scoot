@@ -334,8 +334,7 @@ end
 --------------------------------------------------------------------------------
 
 local function DumpState()
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
 
     push("=== ScootAuras Probe Battery ===")
     push("")
@@ -404,8 +403,7 @@ end
 
 local function LifecycleDump()
     local SAU = addon.ScootAuras
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
 
     push("=== ScootAuras Lifecycle ===")
     push("")
@@ -510,8 +508,7 @@ end
 -- SpecAllows branch by branch, so the two must move together.
 local function SpecsDump()
     local SAU = addon.ScootAuras
-    local lines = {}
-    local function push(str) table.insert(lines, str) end
+    local lines, push = addon.DebugLines()
 
     local current = SAU.CurrentSpecID()
     push("=== ScootAuras Spec Gate ===")
@@ -670,8 +667,7 @@ end
 local function SpellDump(arg)
     local SAU = addon.ScootAuras
     local Engine = SAU.Engine
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
 
     local n = tonumber(arg)
     if not n then

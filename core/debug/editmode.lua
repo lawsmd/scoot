@@ -55,8 +55,7 @@ local function DumpEditModeSettingsForFrame(frame, frameName)
     if not frame or not frame.system then
         return string.format("Frame not found or not Edit Mode managed: %s", tostring(frameName))
     end
-    local lines = {}
-    local function push(s) table.insert(lines, s) end
+    local lines, push = addon.DebugLines()
     push(string.format("Frame: %s  system=%s index=%s", tostring(frameName), tostring(frame.system), tostring(frame.systemIndex)))
 
     -- Special Aura Frame dump for Buffs/Debuffs to troubleshoot Orientation/Wrap/Direction.
