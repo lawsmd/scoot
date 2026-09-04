@@ -30,7 +30,7 @@ CBZ.NUM_BANDS = 12
 -- textfill.lua:745. Exported because empowered.lua has to put it back when a
 -- cast's tier palette is torn down.
 CBZ.TRACK_GRAY = { 0.5, 0.5, 0.5 }
-local GRAY_R, GRAY_G, GRAY_B = CBZ.TRACK_GRAY[1], CBZ.TRACK_GRAY[2], CBZ.TRACK_GRAY[3]
+
 
 -- The dim copy of the text sits behind the sweep at this alpha.
 local DIM_TEXT_ALPHA = 0.4
@@ -187,22 +187,6 @@ local function BuildBarFrame(name, parent, row)
     bar.fillTex = fillTex
 
     ----------------------------------------------------------------------------
-    -- Unfilled track (bar level, below everything)
-    ----------------------------------------------------------------------------
-    bar.unfilledLineOL     = bar:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bar.unfilledLeftCapOL  = bar:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bar.unfilledRightCapOL = bar:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bar.unfilledLine       = bar:CreateTexture(nil, "BACKGROUND", nil, 1)
-    bar.unfilledLeftCap    = bar:CreateTexture(nil, "ARTWORK", nil, 1)
-    bar.unfilledRightCap   = bar:CreateTexture(nil, "ARTWORK", nil, 1)
-
-    ----------------------------------------------------------------------------
-    -- Filled line (bar level; its RIGHT edge tracks the fill texture)
-    ----------------------------------------------------------------------------
-    bar.filledLineOL = bar:CreateTexture(nil, "BACKGROUND", nil, 2)
-    bar.filledLine   = bar:CreateTexture(nil, "BACKGROUND", nil, 3)
-
-    ----------------------------------------------------------------------------
     -- Dim text layer
     ----------------------------------------------------------------------------
     local dimText = CreateFrame("Frame", nil, bar)
@@ -220,10 +204,10 @@ local function BuildBarFrame(name, parent, row)
     revealFrame:SetFrameLevel(level + 2)
     bar.revealFrame = revealFrame
 
-    bar.filledLeftCapOL  = revealFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    bar.filledRightCapOL = revealFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    bar.filledLeftCap    = revealFrame:CreateTexture(nil, "ARTWORK", nil, 2)
-    bar.filledRightCap   = revealFrame:CreateTexture(nil, "ARTWORK", nil, 2)
+    -- The twelve line and cap textures (core/casttrack.lua): the unfilled
+    -- track and the filled line on the bar, below everything; the filled caps
+    -- inside the reveal frame, so they light up with the sweep.
+    addon.CastTrack.Create(bar, revealFrame, bar)
 
     bar.brightBands = CreateBandSet(revealFrame, CBZ.NUM_BANDS)
 
@@ -365,7 +349,7 @@ function CBZ._LayoutBar(bar, comp)
     -- which reads as a gap between the tick and the line.
     local lineH = SnapToPixels(CBZ._GetLineHeight())
 
-    -- Tick-style end caps: narrow and tall, per textfill.lua:739-740.
+    -- Tick-style end caps: narrow and tall, as in Cast Bar X's text-fill mode.
     local capW = math.max(2, SnapToPixels(capSize * 0.3))
     local capH = SnapToPixels(capSize)
 
@@ -375,50 +359,15 @@ function CBZ._LayoutBar(bar, comp)
     local fillTex = bar.fillTex
 
     ----------------------------------------------------------------------------
-    -- Unfilled track
+    -- Track: the twelve line and cap textures (core/casttrack.lua)
     ----------------------------------------------------------------------------
-    local el = bar.unfilledLine
-    el:ClearAllPoints()
-    el:SetPoint("LEFT", bar, "LEFT", 0, 0)
-    el:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
-    el:SetHeight(lineH)
-    el:SetColorTexture(GRAY_R, GRAY_G, GRAY_B, 1)
-    el:Show()
-
-    el = bar.unfilledLineOL
-    el:ClearAllPoints()
-    el:SetPoint("TOPLEFT", bar.unfilledLine, "TOPLEFT", -1, 1)
-    el:SetPoint("BOTTOMRIGHT", bar.unfilledLine, "BOTTOMRIGHT", 1, -1)
-    el:SetColorTexture(0, 0, 0, 1)
-    el:Show()
-
-    el = bar.unfilledLeftCap
-    el:ClearAllPoints()
-    el:SetPoint("LEFT", bar, "LEFT", 0, 0)
-    el:SetSize(capW, capH)
-    el:SetColorTexture(GRAY_R, GRAY_G, GRAY_B, 1)
-    el:Show()
-
-    el = bar.unfilledLeftCapOL
-    el:ClearAllPoints()
-    el:SetPoint("TOPLEFT", bar.unfilledLeftCap, "TOPLEFT", -1, 1)
-    el:SetPoint("BOTTOMRIGHT", bar.unfilledLeftCap, "BOTTOMRIGHT", 0, -1)
-    el:SetColorTexture(0, 0, 0, 1)
-    el:Show()
-
-    el = bar.unfilledRightCap
-    el:ClearAllPoints()
-    el:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
-    el:SetSize(capW, capH)
-    el:SetColorTexture(GRAY_R, GRAY_G, GRAY_B, 1)
-    el:Show()
-
-    el = bar.unfilledRightCapOL
-    el:ClearAllPoints()
-    el:SetPoint("TOPLEFT", bar.unfilledRightCap, "TOPLEFT", 0, 1)
-    el:SetPoint("BOTTOMRIGHT", bar.unfilledRightCap, "BOTTOMRIGHT", 1, -1)
-    el:SetColorTexture(0, 0, 0, 1)
-    el:Show()
+    -- Unfilled cap outlines open on the side the line joins, like the filled
+    -- ones; X boxes its unfilled caps all the way round. The filled line and
+    -- caps take their color from the caller.
+    addon.CastTrack.Layout(bar, bar, fillTex, {
+        lineHeight = lineH, capW = capW, capH = capH,
+        gray = CBZ.TRACK_GRAY, unfilledCapOutline = "open",
+    })
 
     ----------------------------------------------------------------------------
     -- Reveal frame: right edge tracks the fill texture, so progress needs no
@@ -429,52 +378,6 @@ function CBZ._LayoutBar(bar, comp)
     revealFrame:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, TEXT_OVERFLOW)
     revealFrame:SetPoint("BOTTOMRIGHT", fillTex, "BOTTOMRIGHT", 0, -TEXT_OVERFLOW)
     revealFrame:Show()
-
-    ----------------------------------------------------------------------------
-    -- Filled line: on the bar (not clipped), right edge on the fill texture
-    ----------------------------------------------------------------------------
-    el = bar.filledLine
-    el:ClearAllPoints()
-    el:SetPoint("LEFT", bar, "LEFT", 0, 0)
-    el:SetPoint("RIGHT", fillTex, "RIGHT", 0, 0)
-    el:SetHeight(lineH)
-    el:Show()
-
-    el = bar.filledLineOL
-    el:ClearAllPoints()
-    el:SetPoint("TOPLEFT", bar.filledLine, "TOPLEFT", -1, 1)
-    el:SetPoint("BOTTOMRIGHT", bar.filledLine, "BOTTOMRIGHT", 1, -1)
-    el:SetColorTexture(0, 0, 0, 1)
-    el:Show()
-
-    ----------------------------------------------------------------------------
-    -- Filled caps, inside the reveal frame so they light up with the sweep
-    ----------------------------------------------------------------------------
-    el = bar.filledLeftCap
-    el:ClearAllPoints()
-    el:SetPoint("LEFT", bar, "LEFT", 0, 0)
-    el:SetSize(capW, capH)
-    el:Show()
-
-    el = bar.filledLeftCapOL
-    el:ClearAllPoints()
-    el:SetPoint("TOPLEFT", bar.filledLeftCap, "TOPLEFT", -1, 1)
-    el:SetPoint("BOTTOMRIGHT", bar.filledLeftCap, "BOTTOMRIGHT", 0, -1)
-    el:SetColorTexture(0, 0, 0, 1)
-    el:Show()
-
-    el = bar.filledRightCap
-    el:ClearAllPoints()
-    el:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
-    el:SetSize(capW, capH)
-    el:Show()
-
-    el = bar.filledRightCapOL
-    el:ClearAllPoints()
-    el:SetPoint("TOPLEFT", bar.filledRightCap, "TOPLEFT", 0, 1)
-    el:SetPoint("BOTTOMRIGHT", bar.filledRightCap, "BOTTOMRIGHT", 1, -1)
-    el:SetColorTexture(0, 0, 0, 1)
-    el:Show()
 
     ----------------------------------------------------------------------------
     -- Bands

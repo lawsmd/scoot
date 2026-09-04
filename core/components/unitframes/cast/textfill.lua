@@ -54,11 +54,12 @@ local TIER_COLORS_NORMAL = CB._TIER_COLORS_NORMAL
 local TIER_COLORS_DISABLED = CB._TIER_COLORS_DISABLED
 local MAX_EMPOWERED_TIERS = 5
 
--- Shrink-to-fit tuning (core/fonts.lua is TOC 31, this file 123 — safe to cache)
+-- Shrink-to-fit tuning (core/fonts.lua loads before this file in the TOC, safe to cache)
 local measureTextWidth = addon.MeasureTextWidth
 local FIT_MIN_POINT_SIZE = 7     -- never render the spell name smaller than this
 local FIT_MIN_SCALE = 0.55       -- absolute floor regardless of configured size
 local FIT_H_OVERFLOW = 200       -- clipFrame left-edge overflow, px
+local FILLED_TRACK_KEYS = { "filledLine", "filledLeftCap", "filledRightCap" }
 
 -- Stock template widths, used only when frame:GetWidth() is unreadable (secret on
 -- tainted target/boss cast bars — see pitfall #13).
@@ -192,36 +193,22 @@ local function ensureTextFillElements(frame)
 	local existing = getProp(frame, "textFillElements")
 	if existing then return existing end
 
-	-- Unfilled outline elements (behind unfilled content)
-	local unfilledLineOL = frame:CreateTexture(nil, "BACKGROUND", nil, 0)
-	local unfilledLeftCapOL = frame:CreateTexture(nil, "BACKGROUND", nil, 0)
-	local unfilledRightCapOL = frame:CreateTexture(nil, "BACKGROUND", nil, 0)
-
-	-- Unfilled elements (dimmed, on cast bar directly)
-	local unfilledLine = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
-	local unfilledLeftCap = frame:CreateTexture(nil, "ARTWORK", nil, 1)
-	local unfilledRightCap = frame:CreateTexture(nil, "ARTWORK", nil, 1)
-
 	-- Clip frame: children are clipped to its bounds for the progressive fill effect
 	local clipFrame = CreateFrame("Frame", nil, frame)
 	clipFrame:SetClipsChildren(true)
 	-- Frame level auto-inherited from parent (frame) at C++ level,
 	-- bypasses Lua secret value restrictions on tainted boss frames
 
-	-- Filled line + outline on the PARENT frame (not clipFrame) so that the line
-	-- renders below frame.Text (OVERLAY) within the same frame's layer stack.
-	-- Progress tracking uses anchor-based sizing (RIGHT → fill texture) instead of clipping.
-	local filledLineOL = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
-	local filledLine = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
+	-- The twelve line and cap textures (core/casttrack.lua): the unfilled set and
+	-- the filled line on the PARENT frame, so the line renders below frame.Text
+	-- (OVERLAY) within the same frame's layer stack, and the filled caps in
+	-- clipFrame for the progressive reveal.
+	local elements = addon.CastTrack.Create(frame, clipFrame, { clipFrame = clipFrame })
 
-	-- Filled cap outlines + caps remain in clipFrame for progressive reveal via clipping
-	local filledLeftCapOL = clipFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-	local filledRightCapOL = clipFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-	local filledLeftCap = clipFrame:CreateTexture(nil, "ARTWORK", nil, 2)
-	local filledRightCap = clipFrame:CreateTexture(nil, "ARTWORK", nil, 2)
 	local filledText = clipFrame:CreateFontString(nil, "OVERLAY")
 	-- Default font so filledText can render even if GetFont returns secrets
 	filledText:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
+	elements.filledText = filledText
 
 	-- Spark overlay frame (above clipFrame so spark renders in front of text)
 	local sparkFrame = CreateFrame("Frame", nil, frame)
@@ -230,36 +217,19 @@ local function ensureTextFillElements(frame)
 	local sparkTex = sparkFrame:CreateTexture(nil, "OVERLAY", nil, 3)
 	sparkTex:Hide()
 	sparkFrame:Hide()
+	elements.sparkFrame = sparkFrame
+	elements.sparkTex = sparkTex
 
 	-- Hide initially
-	unfilledLineOL:Hide()
-	unfilledLeftCapOL:Hide()
-	unfilledRightCapOL:Hide()
-	unfilledLine:Hide()
-	unfilledLeftCap:Hide()
-	unfilledRightCap:Hide()
-	filledLine:Hide()
-	filledLineOL:Hide()
+	elements.unfilledLineOL:Hide()
+	elements.unfilledLeftCapOL:Hide()
+	elements.unfilledRightCapOL:Hide()
+	elements.unfilledLine:Hide()
+	elements.unfilledLeftCap:Hide()
+	elements.unfilledRightCap:Hide()
+	elements.filledLine:Hide()
+	elements.filledLineOL:Hide()
 	clipFrame:Hide()
-
-	local elements = {
-		unfilledLineOL = unfilledLineOL,
-		unfilledLeftCapOL = unfilledLeftCapOL,
-		unfilledRightCapOL = unfilledRightCapOL,
-		unfilledLine = unfilledLine,
-		unfilledLeftCap = unfilledLeftCap,
-		unfilledRightCap = unfilledRightCap,
-		filledLineOL = filledLineOL,
-		filledLeftCapOL = filledLeftCapOL,
-		filledRightCapOL = filledRightCapOL,
-		clipFrame = clipFrame,
-		filledLine = filledLine,
-		filledLeftCap = filledLeftCap,
-		filledRightCap = filledRightCap,
-		filledText = filledText,
-		sparkFrame = sparkFrame,
-		sparkTex = sparkTex,
-	}
 
 	setProp(frame, "textFillElements", elements)
 	return elements
@@ -746,55 +716,6 @@ local function applyTextFillMode(frame, cfg, unit, empowered)
 	-- Gray color for unfilled elements (solid, no opacity reduction)
 	local grayR, grayG, grayB = 0.5, 0.5, 0.5
 
-	-- Unfilled line: full width, centered vertically
-	local el = elements.unfilledLine
-	el:ClearAllPoints()
-	el:SetPoint("LEFT", frame, "LEFT", 0, 0)
-	el:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-	el:SetHeight(lineHeight)
-	el:SetColorTexture(grayR, grayG, grayB, 1)
-	el:Show()
-
-	-- Unfilled line outline (1px expansion around content)
-	el = elements.unfilledLineOL
-	el:ClearAllPoints()
-	el:SetPoint("TOPLEFT", elements.unfilledLine, "TOPLEFT", -1, 1)
-	el:SetPoint("BOTTOMRIGHT", elements.unfilledLine, "BOTTOMRIGHT", 1, -1)
-	el:SetColorTexture(0, 0, 0, 1)
-	el:Show()
-
-	-- Unfilled left cap
-	el = elements.unfilledLeftCap
-	el:ClearAllPoints()
-	el:SetPoint("LEFT", frame, "LEFT", 0, 0)
-	el:SetSize(capW, capH)
-	el:SetColorTexture(grayR, grayG, grayB, 1)
-	el:Show()
-
-	-- Unfilled left cap outline
-	el = elements.unfilledLeftCapOL
-	el:ClearAllPoints()
-	el:SetPoint("TOPLEFT", elements.unfilledLeftCap, "TOPLEFT", -1, 1)
-	el:SetPoint("BOTTOMRIGHT", elements.unfilledLeftCap, "BOTTOMRIGHT", 1, -1)
-	el:SetColorTexture(0, 0, 0, 1)
-	el:Show()
-
-	-- Unfilled right cap
-	el = elements.unfilledRightCap
-	el:ClearAllPoints()
-	el:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-	el:SetSize(capW, capH)
-	el:SetColorTexture(grayR, grayG, grayB, 1)
-	el:Show()
-
-	-- Unfilled right cap outline
-	el = elements.unfilledRightCapOL
-	el:ClearAllPoints()
-	el:SetPoint("TOPLEFT", elements.unfilledRightCap, "TOPLEFT", -1, 1)
-	el:SetPoint("BOTTOMRIGHT", elements.unfilledRightCap, "BOTTOMRIGHT", 1, -1)
-	el:SetColorTexture(0, 0, 0, 1)
-	el:Show()
-
 	-- Clip frame: LEFT-anchored, RIGHT edge tracks fill texture (secret-safe in 12.0)
 	local clipFrame = elements.clipFrame
 
@@ -826,73 +747,22 @@ local function applyTextFillMode(frame, cfg, unit, empowered)
 	end
 	clipFrame:Show()
 
-	-- Filled line (on parent frame, RIGHT anchored to fill texture for progress tracking)
-	el = elements.filledLine
-	el:ClearAllPoints()
-	el:SetPoint("LEFT", frame, "LEFT", 0, 0)
-	if fillTex then
-		el:SetPoint("RIGHT", fillTex, "RIGHT", 0, 0)
-	else
-		el:SetPoint("RIGHT", frame, "LEFT", 0, 0)  -- zero width fallback
+	-- The twelve line and cap textures (core/casttrack.lua). X boxes its unfilled
+	-- cap outlines all the way round; the filled line and caps take their texture
+	-- and tint here, since the track leaves color to its caller.
+	addon.CastTrack.Layout(elements, frame, fillTex, {
+		lineHeight = lineHeight, capW = capW, capH = capH,
+		gray = { grayR, grayG, grayB }, unfilledCapOutline = "box",
+	})
+	for _, key in ipairs(FILLED_TRACK_KEYS) do
+		local el = elements[key]
+		if texturePath then
+			el:SetTexture(texturePath)
+			el:SetVertexColor(r, g, b, a)
+		else
+			el:SetColorTexture(r, g, b, a)
+		end
 	end
-	el:SetHeight(lineHeight)
-	if texturePath then
-		el:SetTexture(texturePath)
-		el:SetVertexColor(r, g, b, a)
-	else
-		el:SetColorTexture(r, g, b, a)
-	end
-	el:Show()
-
-	-- Filled line outline (auto-follows filledLine via anchors)
-	el = elements.filledLineOL
-	el:ClearAllPoints()
-	el:SetPoint("TOPLEFT", elements.filledLine, "TOPLEFT", -1, 1)
-	el:SetPoint("BOTTOMRIGHT", elements.filledLine, "BOTTOMRIGHT", 1, -1)
-	el:SetColorTexture(0, 0, 0, 1)
-	el:Show()
-
-	-- Filled left cap
-	el = elements.filledLeftCap
-	el:ClearAllPoints()
-	el:SetPoint("LEFT", frame, "LEFT", 0, 0)
-	el:SetSize(capW, capH)
-	if texturePath then
-		el:SetTexture(texturePath)
-		el:SetVertexColor(r, g, b, a)
-	else
-		el:SetColorTexture(r, g, b, a)
-	end
-	el:Show()
-
-	-- Filled left cap outline
-	el = elements.filledLeftCapOL
-	el:ClearAllPoints()
-	el:SetPoint("TOPLEFT", elements.filledLeftCap, "TOPLEFT", -1, 1)
-	el:SetPoint("BOTTOMRIGHT", elements.filledLeftCap, "BOTTOMRIGHT", 0, -1)
-	el:SetColorTexture(0, 0, 0, 1)
-	el:Show()
-
-	-- Filled right cap
-	el = elements.filledRightCap
-	el:ClearAllPoints()
-	el:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-	el:SetSize(capW, capH)
-	if texturePath then
-		el:SetTexture(texturePath)
-		el:SetVertexColor(r, g, b, a)
-	else
-		el:SetColorTexture(r, g, b, a)
-	end
-	el:Show()
-
-	-- Filled right cap outline
-	el = elements.filledRightCapOL
-	el:ClearAllPoints()
-	el:SetPoint("TOPLEFT", elements.filledRightCap, "TOPLEFT", 0, 1)
-	el:SetPoint("BOTTOMRIGHT", elements.filledRightCap, "BOTTOMRIGHT", 1, -1)
-	el:SetColorTexture(0, 0, 0, 1)
-	el:Show()
 
 	-- Filled text color: use spell name font color (not bar fill color).
 	-- Bar fill color (r, g, b, a) continues to drive line and cap textures only.
@@ -1302,7 +1172,7 @@ local function syncTextFillText(frame, cfg)
 end
 
 -- Export text-fill helpers to namespace for styling.lua and boss.lua.
--- cast/core.lua loads BEFORE this file (TOC 122 vs 123), so it must index
+-- cast/core.lua loads BEFORE this file in the TOC, so it must index
 -- CB._fitTextFillScale at call time rather than caching it in a local.
 CB._applyTextFillMode = applyTextFillMode
 CB._hideTextFillElements = hideTextFillElements
