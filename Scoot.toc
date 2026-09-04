@@ -41,6 +41,7 @@ core/catalogs.lua
 core/pool.lua
 core/refresh.lua
 core/opacity.lua
+core/enforce.lua
 core/colorramp.lua
 core/blindfit.lua
 core/barborders.lua

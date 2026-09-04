@@ -1192,17 +1192,6 @@ local function SetHealthLossAnimationHidden(ownerFrame, hidden)
 end
 Util.SetHealthLossAnimationHidden = SetHealthLossAnimationHidden
 
--- Hook frame[method] exactly once, tracked via FrameState.IsHooked/MarkHooked.
--- hookKey defaults to "hooked_<method>". Returns true if installed, false if already hooked.
-local function HookOnce(frame, method, hookFn, hookKey)
-    if not frame or not method or not hookFn then return false end
-    local FS = addon.FrameState
-    if not FS then return false end
-    hookKey = hookKey or ("hooked_" .. method)
-    if FS.IsHooked(frame, hookKey) then return false end
-    if not frame[method] then return false end
-    hooksecurefunc(frame, method, hookFn)
-    FS.MarkHooked(frame, hookKey)
-    return true
-end
-Util.HookOnce = HookOnce
+-- Hide-enforcement hooks live in core/enforce.lua (addon.Enforce). The audit's
+-- name for the entry point resolves here.
+Util.EnforceHidden = addon.Enforce.Set
