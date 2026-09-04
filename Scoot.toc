@@ -52,6 +52,7 @@ core/preset_scooterui.lua
 core/preset_scooterdeck.lua
 core/borders.lua
 core/editmode/core.lua
+core/editmode/positionables.lua
 core/editmode/sync.lua
 core/editmode/nudgearrows.lua
 core/editmode/subgrid.lua
