@@ -83,89 +83,6 @@ end
 
 local Commands = addon.Commands
 
-addon:RegisterDebugCommand({
-    name = "powerbarpos", help = "Player power bar anchor points and custom-position state",
-    usage = { "powerbarpos [simulate|reset] - also simulate a reset" },
-    handler = function(sub) addon.DebugPowerBarPosition(sub == "simulate" or sub == "reset") end,
-})
-
-addon:RegisterDebugCommand({
-    name = "powerbar", help = "Power bar position trace",
-    verbs = Commands.TraceVerbs({
-        label = "Power Bar",
-        set = addon.SetPowerBarDebugTrace, show = addon.ShowPowerBarTraceLog, clear = addon.ClearPowerBarTraceLog,
-    }),
-})
-
-addon:RegisterDebugCommand({
-    name = "trackedbars", aliases = { "tb" }, help = "CDM tracked bars",
-    verbs = Commands.TraceVerbs({
-        label = "Tracked Bars",
-        set = addon.SetTBTrace, show = addon.ShowTBTraceLog, clear = addon.ClearTBTrace,
-    }, {
-        { word = "state", help = "zero-touch diagnostic (DB, proxy, viewer, children)", fn = function()
-            if addon.DebugTBState then addon.DebugTBState() else Commands.NotAvailable("Tracked Bars") end
-        end },
-        { word = "dump", help = "snapshot of every bar item", fn = function()
-            if addon.DumpTBState then addon.DumpTBState() else Commands.NotAvailable("Tracked Bars") end
-        end },
-    }),
-})
-
-addon:RegisterDebugCommand({
-    name = "raidframes", aliases = { "rf" }, help = "raid frame state dump",
-    handler = function() addon.DebugDumpRaidFrames() end,
-})
-
-addon:RegisterDebugCommand({
-    name = "dm", help = "Native damage meter",
-    verbs = {
-        { word = "state", help = "zero-touch diagnostic", fn = function()
-            if addon.DebugDMState then addon.DebugDMState() else Commands.NotAvailable("Damage Meter") end
-        end },
-        { word = "export", usage = "export [overall|current|expired]", help = "session export", fn = addon.DebugExportDamageMeters },
-        { word = "frames", help = "window and overlay frames", fn = function()
-            if addon.DebugDMFrames then addon.DebugDMFrames() else Commands.NotAvailable("Damage Meter") end
-        end },
-        { word = "trace", usage = "trace <on|off>", help = "buffer the error log into the frames dump", fn = function(token)
-            token = string.lower(token or "")
-            if token ~= "on" and token ~= "off" then return Commands.USAGE end
-            if addon.SetDMDebug then addon.SetDMDebug(token == "on") else Commands.NotAvailable("Damage Meter") end
-        end },
-    },
-})
-
-addon:RegisterDebugCommand({
-    name = "dj", help = "Dungeon Journal season snapshot and marks",
-    handler = function()
-        local DJ = addon.DungeonJournal
-        local lines = {}
-        local function push(s) lines[#lines + 1] = s end
-        push(string.format("DJ enabled: %s", tostring(DJ.IsEnabled and DJ.IsEnabled())))
-        local ej = _G.EncounterJournal
-        local instanceID = ej and rawget(ej, "instanceID") or nil
-        push(string.format("EJ.instanceID: %s", tostring(instanceID)))
-        if type(instanceID) == "number" and EJ_GetInstanceInfo then
-            local ok, name, _, _, _, _, _, dungeonAreaMapID = pcall(EJ_GetInstanceInfo, instanceID)
-            if ok then
-                push(string.format("  name=%s  dungeonAreaMapID=%s", tostring(name), tostring(dungeonAreaMapID)))
-            end
-            push(string.format("  IsCurrentSeasonInstance: %s",
-                tostring(DJ.IsCurrentSeasonInstance and DJ.IsCurrentSeasonInstance(instanceID))))
-        end
-        local s = DJ._SeasonDebug and DJ._SeasonDebug() or {}
-        push(string.format("Snapshot: have=%s  requested=%s", tostring(s.haveSnapshot), tostring(s.requestedOnce)))
-        local nameCount = 0
-        for n in pairs(s.seasonNames or {}) do
-            nameCount = nameCount + 1
-            push(string.format("  season name: %s", n))
-        end
-        push(string.format("  total season names: %d", nameCount))
-        push(string.format("Marks on this character: %d", (DJ.CountMarks and DJ.CountMarks()) or 0))
-        addon.DebugShowWindow("Dungeon Journal", lines)
-    end,
-})
-
 --------------------------------------------------------------------------------
 -- /scoot registrations (the slash scope)
 --------------------------------------------------------------------------------
@@ -219,16 +136,6 @@ addon:RegisterSlashCommand({
     name = "taint", help = "taint debugging",
     usage = { "taint <on|off|log|clear|status>" },
     handler = function(_, rest) addon.TaintDebug.HandleSlashCommand(rest) end,
-})
-
-addon:RegisterSlashCommand({
-    name = "widget", help = "widget component",
-    verbs = {
-        { word = "reset", help = "reset the widget position", fn = function()
-            addon.Widget:ResetPosition()
-            addon:Print("Widget position reset.")
-        end },
-    },
 })
 
 addon:RegisterSlashCommand({

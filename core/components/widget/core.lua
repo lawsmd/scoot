@@ -515,3 +515,13 @@ addon:RegisterComponentInitializer(function(self)
         end)
     end
 end, "widget")
+
+addon:RegisterSlashCommand({
+    name = "widget", help = "widget component",
+    verbs = {
+        { word = "reset", help = "reset the widget position", fn = function()
+            addon.Widget:ResetPosition()
+            addon:Print("Widget position reset.")
+        end },
+    },
+})

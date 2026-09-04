@@ -907,3 +907,23 @@ addon:RegisterComponentInitializer(function(self)
         end
     end
 end, "damageMeter")
+
+local Commands = addon.Commands
+
+addon:RegisterDebugCommand({
+    name = "dm", help = "Native damage meter",
+    verbs = {
+        { word = "state", help = "zero-touch diagnostic", fn = function()
+            if addon.DebugDMState then addon.DebugDMState() else Commands.NotAvailable("Damage Meter") end
+        end },
+        { word = "export", usage = "export [overall|current|expired]", help = "session export", fn = function(session) addon.DebugExportDamageMeters(session) end },
+        { word = "frames", help = "window and overlay frames", fn = function()
+            if addon.DebugDMFrames then addon.DebugDMFrames() else Commands.NotAvailable("Damage Meter") end
+        end },
+        { word = "trace", usage = "trace <on|off>", help = "buffer the error log into the frames dump", fn = function(token)
+            token = string.lower(token or "")
+            if token ~= "on" and token ~= "off" then return Commands.USAGE end
+            if addon.SetDMDebug then addon.SetDMDebug(token == "on") else Commands.NotAvailable("Damage Meter") end
+        end },
+    },
+})

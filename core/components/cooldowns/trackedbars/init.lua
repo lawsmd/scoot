@@ -713,3 +713,20 @@ addon:RegisterComponentInitializer(function(self)
         end
     end
 end, "cooldownManager")
+
+local Commands = addon.Commands
+
+addon:RegisterDebugCommand({
+    name = "trackedbars", aliases = { "tb" }, help = "CDM tracked bars",
+    verbs = Commands.TraceVerbs({
+        label = "Tracked Bars",
+        set = addon.SetTBTrace, show = addon.ShowTBTraceLog, clear = addon.ClearTBTrace,
+    }, {
+        { word = "state", help = "zero-touch diagnostic (DB, proxy, viewer, children)", fn = function()
+            if addon.DebugTBState then addon.DebugTBState() else Commands.NotAvailable("Tracked Bars") end
+        end },
+        { word = "dump", help = "snapshot of every bar item", fn = function()
+            if addon.DumpTBState then addon.DumpTBState() else Commands.NotAvailable("Tracked Bars") end
+        end },
+    }),
+})

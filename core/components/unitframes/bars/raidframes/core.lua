@@ -1562,3 +1562,7 @@ function addon.DebugDumpRaidFrames()
     end
 end
 
+addon:RegisterDebugCommand({
+    name = "raidframes", aliases = { "rf" }, help = "raid frame state dump",
+    handler = function() addon.DebugDumpRaidFrames() end,
+})

@@ -91,3 +91,33 @@ local function onSeasonEvent(event)
 end
 addon.Events.On("DungeonJournal:Season", "PLAYER_ENTERING_WORLD", onSeasonEvent)
 addon.Events.On("DungeonJournal:Season", "CHALLENGE_MODE_MAPS_UPDATE", onSeasonEvent)
+
+addon:RegisterDebugCommand({
+    name = "dj", help = "Dungeon Journal season snapshot and marks",
+    handler = function()
+        local lines = {}
+        local function push(s) lines[#lines + 1] = s end
+        push(string.format("DJ enabled: %s", tostring(DJ.IsEnabled and DJ.IsEnabled())))
+        local ej = _G.EncounterJournal
+        local instanceID = ej and rawget(ej, "instanceID") or nil
+        push(string.format("EJ.instanceID: %s", tostring(instanceID)))
+        if type(instanceID) == "number" and EJ_GetInstanceInfo then
+            local ok, name, _, _, _, _, _, dungeonAreaMapID = pcall(EJ_GetInstanceInfo, instanceID)
+            if ok then
+                push(string.format("  name=%s  dungeonAreaMapID=%s", tostring(name), tostring(dungeonAreaMapID)))
+            end
+            push(string.format("  IsCurrentSeasonInstance: %s",
+                tostring(DJ.IsCurrentSeasonInstance and DJ.IsCurrentSeasonInstance(instanceID))))
+        end
+        local s = DJ._SeasonDebug and DJ._SeasonDebug() or {}
+        push(string.format("Snapshot: have=%s  requested=%s", tostring(s.haveSnapshot), tostring(s.requestedOnce)))
+        local nameCount = 0
+        for n in pairs(s.seasonNames or {}) do
+            nameCount = nameCount + 1
+            push(string.format("  season name: %s", n))
+        end
+        push(string.format("  total season names: %d", nameCount))
+        push(string.format("Marks on this character: %d", (DJ.CountMarks and DJ.CountMarks()) or 0))
+        addon.DebugShowWindow("Dungeon Journal", lines)
+    end,
+})

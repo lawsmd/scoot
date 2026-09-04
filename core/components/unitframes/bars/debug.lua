@@ -179,4 +179,20 @@ function addon.DebugPowerBarPosition(simulateReset)
     addon.DebugShowWindow("Player Power Bar Position", table.concat(lines, "\n"))
 end
 
+addon:RegisterDebugCommand({
+    name = "powerbarpos", help = "Player power bar anchor points and custom-position state",
+    usage = { "powerbarpos [simulate|reset] - also simulate a reset" },
+    handler = function(sub) addon.DebugPowerBarPosition(sub == "simulate" or sub == "reset") end,
+})
+
+local Commands = addon.Commands
+
+addon:RegisterDebugCommand({
+    name = "powerbar", help = "Power bar position trace",
+    verbs = Commands.TraceVerbs({
+        label = "Power Bar",
+        set = addon.SetPowerBarDebugTrace, show = addon.ShowPowerBarTraceLog, clear = addon.ClearPowerBarTraceLog,
+    }),
+})
+
 return Debug
