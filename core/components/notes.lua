@@ -272,69 +272,41 @@ local function SaveNotePosition(index, layoutName, point, x, y)
     }
 end
 
-local function RestoreNotePosition(index, layoutName)
-    local frame = noteFrames[index]
-    if not frame then return end
-
+local function GetNotePosition(index, layoutName)
     local positions = addon.db and addon.db.profile and addon.db.profile.notePositions
     local notePositions = positions and positions[index]
-    local pos = notePositions and notePositions[layoutName]
-
-    if pos and pos.point then
-        frame:ClearAllPoints()
-        frame:SetPoint(pos.point, pos.x or 0, pos.y or 0)
-    end
+    return notePositions and notePositions[layoutName] or nil
 end
 
 local editModeInitialized = false
 local editModeRegistered = {}
 
+-- One positionable per note (core/editmode/positionables.lua). Storage stays
+-- notePositions[index][layoutName]; a note with nothing stored keeps the
+-- CreateNoteFrame stagger rather than jumping to the Edit Mode default.
 local function RegisterNoteWithEditMode(frame, index)
     if editModeRegistered[index] then return end
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
 
     frame.editModeName = "Note " .. index
 
-    local noteIndex = index
-    local yStagger = -100 + (index - 1) * 60
-    local dp = { point = "CENTER", x = 0, y = yStagger }
-
-    lib:AddFrame(frame, function(f, layoutName, point, x, y)
-        if point and x and y then
-            f:ClearAllPoints()
-            f:SetPoint(point, x, y)
-        end
-        if layoutName then
-            local savedPoint, _, _, savedX, savedY = f:GetPoint(1)
-            if savedPoint then
-                SaveNotePosition(noteIndex, layoutName, savedPoint, savedX, savedY)
-            else
-                SaveNotePosition(noteIndex, layoutName, point, x, y)
-            end
-        end
-    end, {
-        point = dp.point,
-        x = dp.x,
-        y = dp.y,
-    }, nil)
-
-    local Brand = addon.EditMode and addon.EditMode.Brand
-    if Brand then
-        Brand:Register(frame, {
+    local selection = addon.EditMode.RegisterPositionable(frame, {
+        key = index,
+        default = { point = "CENTER", x = 0, y = -100 + (index - 1) * 60 },
+        store = { get = GetNotePosition, set = SaveNotePosition },
+        restoreDefault = false,
+        brand = {
             navKey      = "notes",
             componentId = "notes",
             sectionKey  = "note" .. index,
-        })
-    end
+        },
+    })
+    if not selection then return end
 
     editModeRegistered[index] = true
 end
 
 local function InitializeEditMode()
     if editModeInitialized then return end
-    local lib = LibStub("LibEditMode", true)
-    if not lib then return end
 
     local db = addon.Components["notes"] and addon.Components["notes"].db
     if not db then return end
@@ -345,37 +317,32 @@ local function InitializeEditMode()
         local frame = noteFrames[i]
         if frame then
             RegisterNoteWithEditMode(frame, i)
-            registeredAny = true
+            registeredAny = registeredAny or editModeRegistered[i] or false
         end
     end
 
     if registeredAny then
-        lib:RegisterCallback("layout", function(layoutName, layoutIndex)
-            for i = 1, MAX_NOTES do
-                RestoreNotePosition(i, layoutName)
-            end
-        end)
-
-        lib:RegisterCallback("enter", function()
-            -- Show all enabled notes during edit mode
-            local noteDb = addon.Components["notes"] and addon.Components["notes"].db
-            if not noteDb then return end
-            for i = 1, MAX_NOTES do
-                local enabled = GetNoteSetting(noteDb, i, "Enabled")
-                local frame = noteFrames[i]
-                if frame and enabled then
-                    frame:Show()
+        addon.EditMode.OnEditMode("notes", {
+            enter = function()
+                -- Show all enabled notes during edit mode
+                local noteDb = addon.Components["notes"] and addon.Components["notes"].db
+                if not noteDb then return end
+                for i = 1, MAX_NOTES do
+                    local enabled = GetNoteSetting(noteDb, i, "Enabled")
+                    local frame = noteFrames[i]
+                    if frame and enabled then
+                        frame:Show()
+                    end
                 end
-            end
-        end)
-
-        lib:RegisterCallback("exit", function()
-            -- Re-apply to reflect current state
-            local comp = addon.Components["notes"]
-            if comp and comp.ApplyStyling then
-                comp:ApplyStyling()
-            end
-        end)
+            end,
+            exit = function()
+                -- Re-apply to reflect current state
+                local comp = addon.Components["notes"]
+                if comp and comp.ApplyStyling then
+                    comp:ApplyStyling()
+                end
+            end,
+        })
     end
 
     editModeInitialized = true
