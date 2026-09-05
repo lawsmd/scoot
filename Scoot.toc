@@ -140,6 +140,7 @@ core/components/unitframes/bars/smallframes.lua
 core/components/unitframes/bars/snapshot.lua
 core/components/unitframes/bars/bossframes.lua
 core/components/unitframes/bars/altpower.lua
+core/components/unitframes/bars/powergeometry.lua
 core/components/unitframes/bars.lua
 core/components/unitframes/portraits.lua
 core/components/unitframes/classresource.lua
