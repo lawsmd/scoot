@@ -93,17 +93,11 @@ end
 
 local resolveUnitFrame = addon.GetUnitFrame
 
-local function resolveBlizzardAuraContainer(unitKey)
-    local frame = resolveUnitFrame(unitKey)
-    local content = frame and frame.TargetFrameContent
-    local contextual = content and content.TargetFrameContentContextual
-    return contextual and contextual.Auras or nil
-end
+local resolveBlizzardAuraContainer = addon.Frames.resolveAuraContainer
 
+-- Two values: the stock frame art texture and the unit frame it belongs to.
 local function resolveAnchorTexture(unitKey)
-    local frame = resolveUnitFrame(unitKey)
-    local holder = frame and frame.TargetFrameContainer
-    return holder and holder.FrameTexture or nil, frame
+    return addon.Frames.resolveUnitFrameFrameTexture(unitKey), resolveUnitFrame(unitKey)
 end
 
 --------------------------------------------------------------------------------

@@ -550,11 +550,8 @@ end
 
 -- Helper to get the animated loss bar frame from PlayerFrame
 local function getPRDAnimatedLossBar()
-    return PlayerFrame
-        and PlayerFrame.PlayerFrameContent
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-        and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.PlayerFrameHealthBarAnimatedLoss
+    local container = addon.Frames.resolveHealthContainer(nil, "Player")
+    return container and container.PlayerFrameHealthBarAnimatedLoss
 end
 
 -- The loss animation is hidden with Hide, not alpha, and Blizzard controls

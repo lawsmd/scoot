@@ -212,17 +212,6 @@ end
 -- Table/Object Utilities
 --------------------------------------------------------------------------------
 
--- Safe nested table access
-function Utils.getNested(root, ...)
-    local cur = root
-    for i = 1, select('#', ...) do
-        local key = select(i, ...)
-        if not cur or type(cur) ~= "table" then return nil end
-        cur = cur[key]
-    end
-    return cur
-end
-
 -- Deep copy a value (table or primitive)
 function Utils.deepcopy(v)
     if type(v) ~= "table" then return v end

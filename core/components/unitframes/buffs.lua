@@ -246,7 +246,7 @@ do
 				end
 			else
 				-- Out of combat: apply positioning
-				local contextual = frame.TargetFrameContent and frame.TargetFrameContent.TargetFrameContentContextual
+				local contextual = addon.Frames.resolveContextual(unit)
 				if contextual then
 					local containers = { contextual.buffs, contextual.debuffs }
 					for _, holder in ipairs(containers) do
