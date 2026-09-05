@@ -22,6 +22,7 @@ local Textures = addon.BarsTextures
 local Alpha = addon.BarsAlpha
 local BarsOverlays = addon.BarsOverlays
 local BarsSmallFrames = addon.BarsSmallFrames
+local BarsSnapshot = addon.BarsSnapshot
 
 -- Direct upvalue to the event-driven guard (editmode/core.lua loads first in TOC)
 local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
@@ -2552,131 +2553,16 @@ do
         applyForUnit(unit)
     end
 
-    ---------------------------------------------------------------------------
-    -- Snapshot-based skip guard for ApplyAllUnitFrameBarTextures.
-    -- When bar-related DB values haven't changed since the last full restyle,
-    -- skip the entire 7-unit dispatch. Targeted per-unit calls via
-    -- ApplyUnitFrameBarTexturesFor() and deferred combat reapply bypass this.
-    --
-    -- MAINTENANCE: New bar DB keys MUST be added to BAR_CFG_KEYS / ALT_CFG_KEYS
-    -- or their changes will be silently ignored until profile switch / /reload.
-    ---------------------------------------------------------------------------
-    local lastBarSnapshot
-
-    -- All cfg keys read by applyForUnit for visual output.
-    local BAR_CFG_KEYS = {
-        -- health bar
-        "useCustomBorders",
-        "healthBarTexture", "healthBarColorMode", "healthBarTint",
-        "healthBarBackgroundTexture", "healthBarBackgroundColorMode", "healthBarBackgroundTint", "healthBarBackgroundOpacity",
-        "healthBarHideBorder", "healthBarHideTextureOnly",
-        "healthBarHideOverAbsorbGlow", "healthBarHideHealPrediction", "healthBarHideHealthLossAnimation",
-        "healthBarBorderStyle", "healthBarBorderTintEnable", "healthBarBorderTintColor",
-        "healthBarBorderThickness", "healthBarBorderInset", "healthBarBorderInsetH", "healthBarBorderInsetV",
-        -- power bar
-        "powerBarTexture", "powerBarColorMode", "powerBarTint",
-        "powerBarBackgroundTexture", "powerBarBackgroundColorMode", "powerBarBackgroundTint", "powerBarBackgroundOpacity",
-        "powerBarHidden", "powerBarHideTextureOnly",
-        "powerBarHideFullSpikes", "powerBarHideFeedback", "powerBarHideSpark", "powerBarHideManaCostPrediction",
-        "powerBarBorderStyle", "powerBarBorderTintEnable", "powerBarBorderTintColor",
-        "powerBarBorderThickness", "powerBarBorderInset", "powerBarBorderInsetH", "powerBarBorderInsetV",
-        "powerBarWidthPct", "powerBarHeightPct", "powerBarOffsetX", "powerBarOffsetY",
-        -- generic border (legacy)
-        "borderStyle", "borderThickness", "borderInset", "borderInsetH", "borderInsetV", "borderTintEnable", "borderTintColor",
-    }
-
-    -- altPowerBar sub-table keys read by applyForUnit.
-    local ALT_CFG_KEYS = {
-        "enabled", "hidden", "hideTextureOnly",
-        "texture", "colorMode", "tint",
-        "backgroundTexture", "backgroundColorMode", "backgroundTint", "backgroundOpacity",
-        "hideFullSpikes", "hideFeedback", "hideSpark", "hideManaCostPrediction",
-        "borderStyle", "borderTintEnable", "borderTintColor", "borderThickness",
-        "borderInset", "borderInsetH", "borderInsetV",
-        "percentHidden", "valueHidden",
-        "textPercent", "textValue",
-        "widthPct", "heightPct", "offsetX", "offsetY",
-        "width", "height", "x", "y", "fontFace", "size", "style", "color", "alignment",
-    }
-
-    -- Frames.UNITS is frozen in this order; snapshot strings serialize by it.
-    local SNAPSHOT_UNITS = addon.Frames.UNITS
-    local SEP = "\1"
-    local NIL_SENTINEL = "\0"
-
-    local function appendValue(parts, v)
-        local t = type(v)
-        if t == "table" then
-            -- Serialize table contents (color tables {r,g,b,a}, text config sub-tables)
-            parts[#parts + 1] = "{"
-            for k2, v2 in pairs(v) do
-                parts[#parts + 1] = tostring(k2)
-                parts[#parts + 1] = "="
-                local t2 = type(v2)
-                if t2 == "table" then
-                    -- One more level for nested sub-tables (e.g. textPercent.color)
-                    for k3, v3 in pairs(v2) do
-                        parts[#parts + 1] = tostring(k3)
-                        parts[#parts + 1] = ":"
-                        parts[#parts + 1] = tostring(v3)
-                    end
-                else
-                    parts[#parts + 1] = tostring(v2)
-                end
-            end
-            parts[#parts + 1] = "}"
-        elseif v == nil then
-            parts[#parts + 1] = NIL_SENTINEL
-        else
-            parts[#parts + 1] = tostring(v)
-        end
-    end
-
-    local function buildBarSettingsSnapshot()
-        local db = addon and addon.db and addon.db.profile
-        local unitFrames = db and rawget(db, "unitFrames") or nil
-        local parts = {}
-        for u = 1, #SNAPSHOT_UNITS do
-            local unit = SNAPSHOT_UNITS[u]
-            local cfg = unitFrames and rawget(unitFrames, unit) or nil
-            parts[#parts + 1] = unit
-            if not cfg then
-                parts[#parts + 1] = NIL_SENTINEL
-            else
-                for i = 1, #BAR_CFG_KEYS do
-                    appendValue(parts, cfg[BAR_CFG_KEYS[i]])
-                end
-                local altCfg = rawget(cfg, "altPowerBar")
-                if altCfg then
-                    for i = 1, #ALT_CFG_KEYS do
-                        appendValue(parts, altCfg[ALT_CFG_KEYS[i]])
-                    end
-                else
-                    parts[#parts + 1] = NIL_SENTINEL
-                end
-            end
-        end
-        return table.concat(parts, SEP)
-    end
-
     function addon.ApplyAllUnitFrameBarTextures()
         -- Skip full restyle when bar settings are unchanged.
-        local snapshot = buildBarSettingsSnapshot()
-        if snapshot == lastBarSnapshot then return end
-        lastBarSnapshot = snapshot
+        if BarsSnapshot.Unchanged() then return end
 
         -- Styling passes must be resilient to Blizzard "secret value" errors that can
         -- surface from innocuous getters on managed UnitFrames (e.g., PetFrame heal prediction).
         -- Never allow those to hard-fail profile switching/preset apply.
-        local function safeApply(unit)
-            pcall(applyForUnit, unit)
+        local units = addon.Frames.UNITS
+        for i = 1, #units do
+            pcall(applyForUnit, units[i])
         end
-        safeApply("Player")
-        safeApply("Target")
-        safeApply("Focus")
-        safeApply("Boss")
-        safeApply("Pet")
-        safeApply("TargetOfTarget")
-        safeApply("FocusTarget")
     end
 end
