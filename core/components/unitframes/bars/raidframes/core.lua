@@ -156,9 +156,6 @@ local family = addon.BarsGroupCore.NewFamily({
     integrityFlag = "_RaidFrameIntegrityCheckInstalled",
     eventOwner = "UnitFrames:RaidFrames",
 
-    -- Transitional fork flag, raid's current semantics (see bars/groupcore.lua)
-    valueFallback = "delegateFirst",
-
     -- Kept forks: raid frames recycle through Blizzard's reservation pool, so
     -- roster events need the debounced full reapply; the textured border keeps
     -- the BackdropTemplate anchor with its issecretvalue guards.

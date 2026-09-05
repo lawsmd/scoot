@@ -24,7 +24,7 @@
 --   integrityFlag        addon-level install latch name for the integrity check
 --   eventOwner           addon.Events owner for the integrity handlers
 --
--- Fork flags, one per divergence between the two families. The permanent two:
+-- Fork flags, one per kept divergence between the two families:
 --   rosterRefresh        raid: debounced full reapply plus per-frame border
 --                        blocks in the UpdateAll and SetUnit hooks. Raid frames
 --                        recycle through Blizzard's reservation pool, so a
@@ -33,14 +33,13 @@
 --                        this.
 --   texturedBorder       "edges" (party: edge textures on the CompactUnitFrame)
 --                        or "backdrop" (raid: a BackdropTemplate child frame).
--- The transitional one, deleted by the commit that converges it:
---   valueFallback        "prePaint" (party) / "delegateFirst" (raid)
 --
 -- Resilience measures that started on one family now run on both: the
 -- fingerprint skip gate only when the overlay is shown, the OnSizeChanged
 -- hook, the fingerprint clear in the SetUnit hook, the integrity check's
 -- unconditional re-anchor and overlay recreation, and the role icon reapply
--- in the UpdateAll hook.
+-- in the UpdateAll hook. Color by Value paints its fallback color before
+-- delegating to applyValueBasedColor, so the overlay is never colorless.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -76,7 +75,6 @@ function GC.NewFamily(desc)
     local queueReapply = desc.queueReapply
     local inGroupGate = desc.inGroupGate
 
-    local prePaintValueFallback = (desc.valueFallback == "prePaint")
     local rosterRefresh = desc.rosterRefresh
     local texturedBorderMode = desc.texturedBorder
 
@@ -202,28 +200,15 @@ function GC.NewFamily(desc)
 
         local r, g, b, a = 1, 1, 1, 1
         if colorMode == "value" or colorMode == "valueDark" then
-            -- "Color by Value" mode: use UnitHealthPercent with color curve
+            -- "Color by Value" mode: use UnitHealthPercent with color curve.
+            -- FIRST: Apply fallback color so overlay is never colorless (in case
+            -- applyValueBasedColor encounters secret values and returns early
+            -- without applying color). Dark gray for valueDark, green for value.
             local useDark = (colorMode == "valueDark")
-            if prePaintValueFallback then
-                -- FIRST: Apply fallback color so overlay is never colorless (in case
-                -- applyValueBasedColor encounters secret values and returns early
-                -- without applying color). Dark gray for valueDark, green for value.
-                if useDark then
-                    overlay:SetVertexColor(0.23, 0.23, 0.23, 1)
-                else
-                    overlay:SetVertexColor(0, 1, 0, 1)
-                end
-                local unit
-                local parentFrame = bar.GetParent and bar:GetParent()
-                if parentFrame then
-                    local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
-                    if okU and u then unit = u end
-                end
-                if unit and addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
-                    -- This overrides the fallback color when it can determine the live color
-                    addon.BarsTextures.applyValueBasedColor(bar, unit, overlay, useDark)
-                end
-                return -- Color already handled (either fallback or value-based)
+            if useDark then
+                overlay:SetVertexColor(0.23, 0.23, 0.23, 1)
+            else
+                overlay:SetVertexColor(0, 1, 0, 1)
             end
             local unit
             local parentFrame = bar.GetParent and bar:GetParent()
@@ -232,15 +217,10 @@ function GC.NewFamily(desc)
                 if okU and u then unit = u end
             end
             if unit and addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
+                -- This overrides the fallback color when it can determine the live color
                 addon.BarsTextures.applyValueBasedColor(bar, unit, overlay, useDark)
-                return -- Color applied by applyValueBasedColor, skip SetVertexColor below
             end
-            -- Fallback: if unit not available yet, use appropriate color (will update on first health change)
-            if useDark then
-                r, g, b, a = 0.23, 0.23, 0.23, 1  -- Dark gray
-            else
-                r, g, b, a = 0, 1, 0, 1  -- Green
-            end
+            return -- Color already handled (either fallback or value-based)
         -- Kept off addon.ResolveColorRGBA: the mode compare picks the unit-aware opts; the resolver does the color.
         elseif colorMode == "class" then
             local unit
