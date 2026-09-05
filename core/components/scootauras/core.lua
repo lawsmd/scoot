@@ -888,6 +888,12 @@ function SAU.RegisterTrackerComponent(trackerId)
                 SAU._ApplyStyling(trackerId, tracker)
             end
         end,
+        RefreshOpacity = function()
+            local tracker = SAU.GetTracker(trackerId)
+            if tracker and SAU._RefreshOpacity then
+                SAU._RefreshOpacity(trackerId, tracker)
+            end
+        end,
     })
     addon:RegisterComponent(comp)
     return addon.Components and addon.Components[componentId] or nil

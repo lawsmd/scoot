@@ -452,6 +452,17 @@ local function ApplyStyling(trackerId, tracker)
     end
 end
 
+-- Combat and target edges from RefreshOpacityState: alpha on the styling
+-- target only. A full restyle here would run the element chain per tracker
+-- per edge; an inactive tracker is hidden and needs no alpha.
+local function RefreshOpacity(trackerId, tracker)
+    local state = SAU._activeStates[trackerId]
+    if not state or not state.shell then return end
+    if not (SAU.IsTrackerActive(trackerId, tracker) and SAU.IsModuleActive()) then return end
+    local target = StyleTarget(state)
+    target:SetAlpha(addon.Opacity.Resolve(SAU.GetDB(trackerId), addon.Opacity.Keys.InCombat))
+end
+
 --- Both regen edges, Edit Mode enter, and the events.lua poll: re-apply the
 -- combat gate for every live tracker carrying it. Deliberately narrower than a
 -- restyle. Nothing else moved at a combat edge, and a restyle would run the
@@ -489,6 +500,7 @@ end
 --------------------------------------------------------------------------------
 
 SAU._ApplyStyling = ApplyStyling
+SAU._RefreshOpacity = RefreshOpacity
 SAU._ApplyIconMode = ApplyIconMode
 SAU._ApplyShapeStyling = ApplyShapeStyling
 SAU._ApplyTextStyling = ApplyTextStyling
