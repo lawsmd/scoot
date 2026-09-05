@@ -425,7 +425,7 @@ addon.ApplyFontStyleDirect = applyFontStyleDirect
 -- Apply cooldown text styling when a cooldown is set
 local function applyCooldownTextStyle(cooldownFrame)
     -- Reachable from the CooldownFrame_Set hook and from
-    -- addon.RefreshCDMTextStyling, which passes child.Cooldown straight off a
+    -- refreshCDMTextStyling, which passes child.Cooldown straight off a
     -- viewer, so the screen lives here rather than at either caller.
     cooldownFrame = SS.plainFrame(cooldownFrame)
     if not cooldownFrame then return end
@@ -555,7 +555,7 @@ local function hookCooldownTextStyling()
 end
 
 -- Exposed function to refresh text styling (called when settings change)
-function addon.RefreshCDMTextStyling()
+local function refreshCDMTextStyling()
     -- Apply to all existing cooldowns in CDM viewers
     for viewerName, componentId in pairs(CDM_VIEWER_NAMES) do
         local viewer = _G[viewerName]
@@ -1152,7 +1152,7 @@ function Overlays.OnSettingsChanged(componentId)
     end
 end
 
-addon.RefreshCDMOverlays = function(componentId)
+local refreshCDMOverlays = function(componentId)
     if componentId then
         Overlays.OnSettingsChanged(componentId)
     else
@@ -1162,11 +1162,9 @@ addon.RefreshCDMOverlays = function(componentId)
     end
 
     -- Refresh direct text styling (12.0)
-    if addon.RefreshCDMTextStyling then
-        C_Timer.After(0.1, function()
-            addon.RefreshCDMTextStyling()
-        end)
-    end
+    C_Timer.After(0.1, function()
+        refreshCDMTextStyling()
+    end)
 
     -- Sync proc glows with current profile settings
     C_Timer.After(0.15, Overlays._ScanAndReplaceActiveBlizzardGlows)
@@ -1190,9 +1188,7 @@ addon.CDMIconApplyStyling = function(component)
     -- Zero-Touch: skip unconfigured components (still on proxy DB)
     if addon.IsComponentUnconfigured(component) then return end
 
-    if addon.RefreshCDMOverlays then
-        addon.RefreshCDMOverlays(component.id)
-    end
+    refreshCDMOverlays(component.id)
 end
 
 -- Lightweight opacity-only refresh for icon-based CDM groups.
