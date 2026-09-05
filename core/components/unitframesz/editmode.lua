@@ -12,6 +12,18 @@
 local addonName, addon = ...
 local UFZ = addon.UnitFramesZ
 
+-- Engine workers the Edit Mode stand-in (end of this file) re-runs; engine.lua
+-- loads first, so these are plain captures.
+local ensureApplied = UFZ._EnsureApplied
+local applyUnitWatch = UFZ._ApplyUnitWatch
+local setShownSafe = UFZ._SetShownSafe
+local queueRegen = UFZ._QueueRegen
+local applyOpacity = UFZ._ApplyOpacity
+local refreshName = UFZ._RefreshName
+local updateLevel = UFZ._UpdateLevel
+local update = UFZ._Update
+local paintAdornmentsStandIn = UFZ._PaintAdornmentsStandIn
+
 -- Starting positions, in UIParent space, flanking screen center so the frames
 -- never land on top of each other before a layout is saved. Boss goes to the
 -- right edge, where Blizzard's own boss frames live (its Edit Mode preset
@@ -420,4 +432,113 @@ function UFZ._InitializeEditMode()
             end
         end,
     })
+end
+
+--------------------------------------------------------------------------------
+-- Edit Mode stand-in
+--------------------------------------------------------------------------------
+-- A targetless Target frame draws nothing (update()'s no-unit blank), and Edit
+-- Mode has nothing to grab without a stand-in. The health, power and alt power
+-- samples are plain static strings -- no unit APIs, no secret hazards --
+-- painted straight onto the FontStrings the frame already laid out. The player
+-- frame has live data and takes the normal paint.
+--
+-- Two flags, deliberately not one. previewActive means "Edit Mode is holding
+-- this frame": it gates the event handler, the OnShow paint and
+-- _UpdateVisibility, so live churn cannot overwrite the stand-in mid-drag.
+-- previewStandIn is the narrower claim -- "this frame has no subject at all" --
+-- and it is what routes refreshName and updateLevel to their stand-in paints
+-- (paintStandInName, previewLevel). A previewed frame that DOES have a unit
+-- sets only the first and keeps every live paint, which is the more accurate
+-- preview of the two.
+--
+-- The bar the stand-in has to clear: outside an encounter this IS the boss
+-- frame, so a setting that changes nothing here reads as a setting that does
+-- nothing. Hence the level's hide-at-max and the name's ink measurement both
+-- reach the preview, and every setter's repaint stays on the stand-in.
+
+function UFZ._ShowEditModePreview(inst)
+    ensureApplied(inst)
+    inst.previewActive = true
+    -- Drop the unit watch first (previewActive makes it unwanted): a watched
+    -- targetless frame would be re-hidden by the manager's next scan, right
+    -- out from under the stand-in. applyUnitWatch queues its own transition in
+    -- lockdown, so it is safe to call either way.
+    applyUnitWatch(inst)
+    -- Edit Mode CAN be entered in combat. CanEnterEditMode
+    -- (EditModeManager.lua:1636-1655) tests the EditModeDisabled game rule, NPE
+    -- restriction and account settings, and nothing else, so the Game Menu
+    -- button stays live in a fight and LibEditMode's OnShow hook fires straight
+    -- into here. The click child makes this frame's visibility protected, so the
+    -- show has to queue like every other protected write.
+    setShownSafe(inst, true)
+    -- Nothing below can land on a frame that is still hidden: update() and
+    -- refreshName() no-op there, and every other paint would be invisible. Re-run
+    -- the whole stand-in on regen rather than half-painting one now.
+    if not inst.frame:IsShown() then
+        queueRegen(inst, "preview")
+        return
+    end
+    applyOpacity(inst)  -- previewActive branch: a dimmed frame snaps to full
+
+    local okEx, ex = pcall(UnitExists, inst.unit)
+    local exSecret = okEx and issecretvalue and issecretvalue(ex)
+    local noUnit = not okEx or (not exSecret and ex == false)
+    -- Distinct from previewActive: the stand-in only owns the chains that have
+    -- no subject to read. A previewed frame that DOES have a unit keeps every
+    -- live paint, which is the more accurate preview of the two.
+    inst.previewStandIn = noUnit or nil
+    -- Aura rows follow the same split. Engine-managed buttons cannot be made to
+    -- fake auras, so a subject-less stand-in hides its containers; a previewed
+    -- frame that DOES have a unit keeps its live rows.
+    if UFZ.Auras then UFZ.Auras.SetPreviewStandIn(inst, noUnit) end
+    if noUnit then
+        local SAMPLE = { 0.55, 0.90, 0.35 }  -- a healthy green, the curve's home stretch
+        inst.pctFS:SetText("72")
+        inst.pctFS:SetTextColor(SAMPLE[1], SAMPLE[2], SAMPLE[3], 1)
+        inst.valFS:SetText("324.5k")
+        inst.valFS:SetTextColor(SAMPLE[1], SAMPLE[2], SAMPLE[3], 1)
+        inst.symbolFS:SetAlpha(1)
+        inst.symbolFS:SetTextColor(SAMPLE[1], SAMPLE[2], SAMPLE[3], 1)
+        inst.powerFS:SetText("25.3k")
+        inst.powerFS:SetTextColor(0.35, 0.55, 1.0, 1)
+        inst.altPowerFS:SetText("100")
+        inst.altPowerFS:SetTextColor(0.55, 0.65, 1.0, 1)
+        -- Both samples are flat numbers, so a '%' left over from the last live
+        -- mana paint would contradict them.
+        if inst.powerSymbolFS and inst.powerSymbolFS.ClearText then inst.powerSymbolFS:ClearText() end
+        if inst.altPowerSymbolFS and inst.altPowerSymbolFS.ClearText then inst.altPowerSymbolFS:ClearText() end
+
+        -- The name and the level both go through the normal chains, which
+        -- previewStandIn has just routed to their stand-in paints: the name
+        -- lands ink-measured (so the far-side satellites sit against its last
+        -- letter, not the box edge) and the level honours hide-at-max. Routed
+        -- rather than painted inline so an entry paint and a live setter's
+        -- repaint can never disagree.
+        refreshName(inst)
+        updateLevel(inst)
+    else
+        update(inst)
+        refreshName(inst)
+    end
+
+    -- The two adornments, settled the same way in both branches.
+    paintAdornmentsStandIn(inst)
+end
+
+function UFZ._EndEditModePreview(inst)
+    if not inst or not inst.previewActive then return end
+    inst.previewActive = nil
+    inst.previewStandIn = nil
+    if UFZ.Auras then UFZ.Auras.SetPreviewStandIn(inst, false) end
+    -- Drop the stand-in's memo so updateClassification's skip-compare re-fires
+    -- against the live unit instead of trusting the preview atlas.
+    inst.classifyAtlas = nil
+    -- Repaint from live data while still shown -- with no unit this runs the
+    -- no-unit blank, clearing the sample strings -- then let visibility settle.
+    if inst.frame and inst.frame:IsShown() then
+        update(inst)
+        refreshName(inst)
+    end
+    UFZ._UpdateVisibility(inst)
 end
