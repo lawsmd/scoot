@@ -114,7 +114,18 @@ local function raiseUnitTextLayers(unit, targetLevel)
         return
     end
     local function safeSetDrawLayer(fs, layer, sub)
-        if fs and fs.SetDrawLayer then pcall(fs.SetDrawLayer, fs, layer, sub) end
+        if not (fs and fs.SetDrawLayer) then return end
+        -- Never lower a sublevel within the same layer: Boss name-anchor text
+        -- styling parks its texts at sublevel 7, above this pass's 6.
+        if fs.GetDrawLayer then
+            local ok, curLayer, curSub = pcall(fs.GetDrawLayer, fs)
+            if ok and type(curLayer) == "string" and type(curSub) == "number"
+                and not (issecretvalue(curLayer) or issecretvalue(curSub))
+                and curLayer == layer and curSub > (tonumber(sub) or 0) then
+                return
+            end
+        end
+        pcall(fs.SetDrawLayer, fs, layer, sub)
     end
     local function safeRaiseFrameLevel(frame, baseLevel, bump)
         if not frame then return end
