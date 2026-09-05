@@ -508,6 +508,31 @@ function addon:OnInitialize()
         end
     end
 
+    -- Migration V10: the widget's opacity pair joins the addon.Opacity catalog
+    -- (opacityCombat -> opacity, opacityOOC -> opacityOutOfCombat).
+    -- Runs on raw SavedVariables, before AceDB wraps them.
+    do
+        local sv = _G["ScootDB"]
+        if sv and not (sv.global and sv.global._widgetOpacityKeysV10) then
+            for _, profileData in pairs(sv.profiles or {}) do
+                if type(profileData) == "table" then
+                    local components = profileData.components
+                    local cfg = type(components) == "table" and components.widget or nil
+                    if type(cfg) == "table" then
+                        local RENAMED = { opacityCombat = "opacity", opacityOOC = "opacityOutOfCombat" }
+                        for old, new in pairs(RENAMED) do
+                            if cfg[new] == nil then cfg[new] = cfg[old] end
+                            cfg[old] = nil
+                        end
+                    end
+                end
+            end
+
+            if not sv.global then sv.global = {} end
+            sv.global._widgetOpacityKeysV10 = true
+        end
+    end
+
     -- 1. Create the database first so moduleEnabled is available for component gating.
     --    GetDefaults() does not reference self.Components — safe to call before init.
     self.db = LibStub("AceDB-3.0"):New("ScootDB", self:GetDefaults(), true)
@@ -740,6 +765,14 @@ function addon:RefreshOpacityState()
     -- settings, so the loop below never sees it -- explicit seam instead.
     if addon.UnitFramesZ and addon.UnitFramesZ.RefreshOpacity then
         addon.UnitFramesZ.RefreshOpacity()
+    end
+    -- The widget styles itself while unconfigured (module-enabled means
+    -- visible), so the zero-touch skip below would strand its combat dimming.
+    do
+        local widget = self.Components and self.Components.widget
+        if widget and addon.IsComponentUnconfigured(widget) and widget.RefreshOpacity then
+            pcall(widget.RefreshOpacity, widget)
+        end
     end
     -- Update all components that have opacity settings (CDM, Action Bars, Auras, etc.)
     for id, component in pairs(self.Components) do

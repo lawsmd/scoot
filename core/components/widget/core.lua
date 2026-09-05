@@ -206,19 +206,18 @@ end
 -- Combat-Aware Opacity
 --------------------------------------------------------------------------------
 
--- Kept off addon.Opacity.Resolve: hover, then combat, then out of combat over its own keys, absent from the catalog.
+-- Hover pre-empts the pair; the combat and out-of-combat values resolve
+-- through addon.Opacity (no target state, so the CombatOnly key set).
 function W:_ApplyOpacity()
     if not widgetFrame then return end
-    local pct
+    local alpha
     if hoverActive then
-        pct = tonumber(getSetting("opacityHover", 100))
-    elseif InCombatLockdown and InCombatLockdown() then
-        pct = tonumber(getSetting("opacityCombat", 40))
+        local pct = tonumber(getSetting("opacityHover", 100)) or 100
+        alpha = math.max(0, math.min(100, pct)) / 100
     else
-        pct = tonumber(getSetting("opacityOOC", 100))
+        local comp = getComponent()
+        alpha = addon.Opacity.Resolve(comp and comp.db, addon.Opacity.Keys.CombatOnly)
     end
-    pct = math.max(0, math.min(100, pct or 100))
-    local alpha = pct / 100
     widgetFrame:SetAlpha(alpha)
 end
 
@@ -458,21 +457,17 @@ local function ApplyWidgetStyling(self)
 end
 
 --------------------------------------------------------------------------------
--- Combat Event Handling
+-- Event Handling
 --------------------------------------------------------------------------------
 
-local function onWidgetEvent(event)
+-- Combat and target edges reach _ApplyOpacity through RefreshOpacityState via
+-- the component's RefreshOpacity; only the world-entry restyle stays local.
+addon.Events.On("Widget", "PLAYER_ENTERING_WORLD", function()
     local comp = getComponent()
-    if not comp then return end
-    if event == "PLAYER_ENTERING_WORLD" then
+    if comp then
         comp:ApplyStyling()
-    else
-        W:_ApplyOpacity()
     end
-end
-addon.Events.On("Widget", "PLAYER_REGEN_DISABLED", onWidgetEvent)
-addon.Events.On("Widget", "PLAYER_REGEN_ENABLED", onWidgetEvent)
-addon.Events.On("Widget", "PLAYER_ENTERING_WORLD", onWidgetEvent)
+end)
 
 --------------------------------------------------------------------------------
 -- Component Registration
@@ -485,15 +480,16 @@ addon:RegisterComponentInitializer(function(self)
         id = "widget",
         name = "Widget",
         settings = {
-            iconSize        = { type = "addon", default = 20 },
-            position        = { type = "addon", default = nil },
-            flyoutDirection = { type = "addon", default = "down" },
-            opacityCombat   = { type = "addon", default = 40 },
-            opacityOOC      = { type = "addon", default = 100 },
-            opacityHover    = { type = "addon", default = 100 },
-            frameStrata     = { type = "addon", default = "MEDIUM" },
+            iconSize           = { type = "addon", default = 20 },
+            position           = { type = "addon", default = nil },
+            flyoutDirection    = { type = "addon", default = "down" },
+            opacity            = { type = "addon", default = 40 },
+            opacityOutOfCombat = { type = "addon", default = 100 },
+            opacityHover       = { type = "addon", default = 100 },
+            frameStrata        = { type = "addon", default = "MEDIUM" },
         },
         ApplyStyling = ApplyWidgetStyling,
+        RefreshOpacity = function() W:_ApplyOpacity() end,
     })
 
     self:RegisterComponent(widgetComponent)

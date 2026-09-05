@@ -102,15 +102,15 @@ function WidgetUI.Render(panel, scrollContent)
                 label = "Opacity in Combat",
                 description = "Percent opacity while in combat. Set to 0 to hide entirely during fights.",
                 min = 0, max = 100, step = 5,
-                get = function() return tonumber(get("opacityCombat")) or 40 end,
-                set = function(v) setApply("opacityCombat", tonumber(v) or 40) end,
+                get = function() return tonumber(get("opacity")) or 40 end,
+                set = function(v) setApply("opacity", tonumber(v) or 40) end,
             })
             inner:AddSlider({
                 label = "Opacity Out of Combat",
                 description = "Percent opacity outside of combat.",
                 min = 0, max = 100, step = 5,
-                get = function() return tonumber(get("opacityOOC")) or 100 end,
-                set = function(v) setApply("opacityOOC", tonumber(v) or 100) end,
+                get = function() return tonumber(get("opacityOutOfCombat")) or 100 end,
+                set = function(v) setApply("opacityOutOfCombat", tonumber(v) or 100) end,
             })
             inner:AddSlider({
                 label = "Opacity on Mouseover",
