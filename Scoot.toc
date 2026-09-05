@@ -319,8 +319,7 @@ ui/v2/settings/profiles/RulesRenderer.lua
 ui/v2/settings/profiles/ImportExportRenderer.lua
 ui/v2/settings/applyall/FontsRenderer.lua
 ui/v2/settings/applyall/TexturesRenderer.lua
-ui/v2/settings/auras/BuffsRenderer.lua
-ui/v2/settings/auras/DebuffsRenderer.lua
+ui/v2/settings/auras/AurasRenderer.lua
 ui/v2/unitframes/Helpers.lua
 ui/v2/unitframes/PlayerSections.lua
 ui/v2/unitframes/ToTRenderer.lua
