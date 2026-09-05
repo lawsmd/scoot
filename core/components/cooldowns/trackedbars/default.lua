@@ -427,6 +427,7 @@ function addon.ApplyTrackedBarVisualsForChild(component, child)
         promoteFontLayer((child.GetNameLabel and child:GetNameLabel()) or child.Name or child.Text or child.Label)
         promoteFontLayer((child.GetDurationLabel and child:GetDurationLabel()) or child.Duration or child.DurationText or child.Timer or child.TimerText)
 
+        -- Kept off addon.UnitFrameText._FindFontStringByNameHint: matches GetName only against named children and keeps a file-scope cache; no region walk or debug-name fallback wanted here.
         local function findFontStringByNameHint(root, hint)
             if not root then return nil end
             -- OPT-25: check file-scope cache

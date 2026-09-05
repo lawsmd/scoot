@@ -82,6 +82,7 @@ local function applyAltPowerTextVisibility(fs, hidden)
 end
 
 -- Styling (font/size/style/color/offset) using stable baseline anchors
+-- Kept off addon.UnitFrameText: stores raw point and offsets; sanitization happens at use time.
 local function ensureBaseline(fs, key, apb)
     altPowerTextBaselines[key] = altPowerTextBaselines[key] or {}
     local b = altPowerTextBaselines[key]

@@ -632,6 +632,7 @@ do
 
 		-- Apply styling
 		addon._ufNameLevelTextBaselines = addon._ufNameLevelTextBaselines or {}
+		-- Kept off addon.UnitFrameText: closes over the per-call frame and is read as an upvalue by applyTextStyle.
 		local function ensureBaseline(fs, key)
 			addon._ufNameLevelTextBaselines[key] = addon._ufNameLevelTextBaselines[key] or {}
 			local b = addon._ufNameLevelTextBaselines[key]
@@ -1358,6 +1359,7 @@ do
 		end
 
 		-- Capture baseline position once
+		-- Kept off addon.UnitFrameText: zero-arg capture into a flat single baseline, not the keyed store.
 		local function ensureBaseline()
 			if not addon._ufToTNameTextBaseline.point then
 				if nameFS and nameFS.GetPoint then
@@ -1493,6 +1495,7 @@ do
 		end
 
 		-- Capture baseline position once
+		-- Kept off addon.UnitFrameText: zero-arg capture into a flat single baseline, not the keyed store.
 		local function ensureBaseline()
 			if not addon._ufFoTNameTextBaseline.point then
 				if nameFS and nameFS.GetPoint then
