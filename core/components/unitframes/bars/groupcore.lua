@@ -83,6 +83,39 @@ function GC.NewFamily(desc)
 
     local family = {}
 
+    -- The family's groupFrames sub-table, or nil when the profile has none.
+    -- Zero-Touch: rawget, so the read materializes no default.
+    local function readCfg()
+        local db = addon.db and addon.db.profile
+        local groupFrames = db and rawget(db, "groupFrames") or nil
+        return groupFrames and rawget(groupFrames, dbKey) or nil
+    end
+
+    -- The unit a CompactUnitFrame displays, read under pcall: the field can be
+    -- secret in a tainted context, and a boolean test on a secret throws.
+    local function frameUnit(frame)
+        if not frame then return end
+        local okU, u = pcall(function() return frame.displayedUnit or frame.unit end)
+        if okU and u then return u end
+    end
+
+    local function barUnit(bar)
+        return frameUnit(bar.GetParent and bar:GetParent())
+    end
+
+    -- Custom foreground settings: texture or color mode off "default". The
+    -- overlay exists only for these; the bar predicate adds the background.
+    local function hasOverlayCustom(cfg)
+        return (cfg.healthBarTexture and cfg.healthBarTexture ~= "default")
+            or (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
+    end
+
+    local function hasBarCustom(cfg)
+        return hasOverlayCustom(cfg)
+            or (cfg.healthBarBackgroundTexture and cfg.healthBarBackgroundTexture ~= "default")
+            or (cfg.healthBarBackgroundColorMode and cfg.healthBarBackgroundColorMode ~= "default")
+    end
+
     ----------------------------------------------------------------------------
     -- Health Bar Styling
     ----------------------------------------------------------------------------
@@ -210,12 +243,7 @@ function GC.NewFamily(desc)
             else
                 overlay:SetVertexColor(0, 1, 0, 1)
             end
-            local unit
-            local parentFrame = bar.GetParent and bar:GetParent()
-            if parentFrame then
-                local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
-                if okU and u then unit = u end
-            end
+            local unit = barUnit(bar)
             if unit and addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
                 -- This overrides the fallback color when it can determine the live color
                 addon.BarsTextures.applyValueBasedColor(bar, unit, overlay, useDark)
@@ -223,12 +251,7 @@ function GC.NewFamily(desc)
             return -- Color already handled (either fallback or value-based)
         -- Kept off addon.ResolveColorRGBA: the mode compare picks the unit-aware opts; the resolver does the color.
         elseif colorMode == "class" then
-            local unit
-            local parentFrame = bar.GetParent and bar:GetParent()
-            if parentFrame then
-                local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
-                if okU and u then unit = u end
-            end
+            local unit = barUnit(bar)
             -- No unit yet: stay white until the roster pass re-styles; a class
             -- miss stays white too (no green fallback on member frames)
             if unit then
@@ -254,10 +277,7 @@ function GC.NewFamily(desc)
     function family.ensureHealthOverlay(bar, cfg)
         if not bar then return end
 
-        local hasCustom = cfg and (
-            (cfg.healthBarTexture and cfg.healthBarTexture ~= "default") or
-            (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
-        )
+        local hasCustom = cfg and hasOverlayCustom(cfg)
 
         local state = ensureState(bar)
         if state then state.overlayActive = hasCustom end
@@ -301,19 +321,12 @@ function GC.NewFamily(desc)
                     -- atomically in the same frame (no timing gap = no flicker).
                     local st = getState(self)
                     if not st or not st.overlayActive then return end
-                    local db = addon and addon.db and addon.db.profile
-                    local groupFrames = db and rawget(db, "groupFrames") or nil
-                    local cfg = groupFrames and rawget(groupFrames, dbKey) or nil
+                    local cfg = readCfg()
                     local colorMode = cfg and cfg.healthBarColorMode
                     if colorMode == "value" or colorMode == "valueDark" then
                         local useDark = (colorMode == "valueDark")
                         local overlay = st.healthOverlay
-                        local parentFrame = self.GetParent and self:GetParent()
-                        local unit
-                        if parentFrame then
-                            local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
-                            if okU and u then unit = u end
-                        end
+                        local unit = barUnit(self)
                         if unit and overlay and addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
                             addon.BarsTextures.applyValueBasedColor(self, unit, overlay, useDark)
                         end
@@ -341,19 +354,12 @@ function GC.NewFamily(desc)
                     -- Skip during Edit Mode to prevent incorrect colors from frame rebuilds
                     if addon.EditMode and addon.EditMode.IsEditModeActiveOrOpening
                        and addon.EditMode.IsEditModeActiveOrOpening() then return end
-                    local db = addon and addon.db and addon.db.profile
-                    local groupFrames = db and rawget(db, "groupFrames") or nil
-                    local cfg = groupFrames and rawget(groupFrames, dbKey) or nil
+                    local cfg = readCfg()
                     local colorMode = cfg and cfg.healthBarColorMode
                     local overlay = st.healthOverlay
                     if colorMode == "value" or colorMode == "valueDark" then
                         local useDark = (colorMode == "valueDark")
-                        local parentFrame = self.GetParent and self:GetParent()
-                        local unit
-                        if parentFrame then
-                            local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
-                            if okU and u then unit = u end
-                        end
+                        local unit = barUnit(self)
                         if unit and overlay and addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
                             addon.BarsTextures.applyValueBasedColor(self, unit, overlay, useDark)
                         end
@@ -364,12 +370,7 @@ function GC.NewFamily(desc)
                         local cr, cg, cb, ca = 1, 1, 1, 1
                         -- Kept off addon.ResolveColorRGBA: the mode compare picks the unit-aware opts; the resolver does the color.
                         if colorMode == "class" then
-                            local parentFrame = self.GetParent and self:GetParent()
-                            local unit
-                            if parentFrame then
-                                local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
-                                if okU and u then unit = u end
-                            end
+                            local unit = barUnit(self)
                             if unit then
                                 gfColorOpts.barKind = nil
                                 gfColorOpts.unitForClass = unit
@@ -398,12 +399,10 @@ function GC.NewFamily(desc)
                     hideBlizzardFill(bar)
                     updateHealthOverlay(bar)
                     -- Deferred safety net: catch edge cases where texture isn't ready
-                    if _G.C_Timer and _G.C_Timer.After then
-                        _G.C_Timer.After(0, function()
-                            hideBlizzardFill(bar)
-                            updateHealthOverlay(bar)
-                        end)
-                    end
+                    C_Timer.After(0, function()
+                        hideBlizzardFill(bar)
+                        updateHealthOverlay(bar)
+                    end)
                 end
             end)
         end
@@ -467,11 +466,9 @@ function GC.NewFamily(desc)
         -- isn't ready immediately (e.g., on UI reload). With anchor-based sizing,
         -- a retry loop is unnecessary - the overlay will automatically match the
         -- fill texture dimensions once anchored.
-        if _G.C_Timer and _G.C_Timer.After then
-            C_Timer.After(0.1, function()
-                updateHealthOverlay(bar)
-            end)
-        end
+        C_Timer.After(0.1, function()
+            updateHealthOverlay(bar)
+        end)
     end
 
     function family.disableHealthOverlay(bar)
@@ -839,13 +836,8 @@ function GC.NewFamily(desc)
             return
         end
 
-        local db = addon and addon.db and addon.db.profile
-        if not db then return end
-
-        local groupFrames = rawget(db, "groupFrames")
-        local cfg = groupFrames and rawget(groupFrames, dbKey) or nil
-
         -- Zero-Touch: if no family config exists, don't touch the frames at all
+        local cfg = readCfg()
         if not cfg then return end
 
         -- If no border style set or set to "none", skip - let explicit restore handle cleanup
@@ -865,18 +857,9 @@ function GC.NewFamily(desc)
 
     -- Main entry point: Apply health bar styling from DB settings
     function family.applyHealthBarStyle()
-        local db = addon and addon.db and addon.db.profile
-        if not db then return end
-
-        local groupFrames = rawget(db, "groupFrames")
-        local cfg = groupFrames and rawget(groupFrames, dbKey) or nil
+        local cfg = readCfg()
         if not cfg then return end
-
-        local hasCustom = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default") or
-                          (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default") or
-                          (cfg.healthBarBackgroundTexture and cfg.healthBarBackgroundTexture ~= "default") or
-                          (cfg.healthBarBackgroundColorMode and cfg.healthBarBackgroundColorMode ~= "default")
-        if not hasCustom then return end
+        if not hasBarCustom(cfg) then return end
 
         if InCombatLockdown and InCombatLockdown() then
             queueReapply()
@@ -894,20 +877,12 @@ function GC.NewFamily(desc)
 
     -- Apply overlays to all family health bars
     function family.applyHealthOverlays()
-        local db = addon and addon.db and addon.db.profile
-        if not db then return end
-
-        local groupFrames = rawget(db, "groupFrames")
-        local cfg = groupFrames and rawget(groupFrames, dbKey) or nil
-
         -- Zero-Touch: if no family config exists, don't touch the frames at all
+        local cfg = readCfg()
         if not cfg then return end
 
-        local hasCustom = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default") or
-                          (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
-
         -- If no custom settings, also skip - let the explicit restore handle cleanup
-        if not hasCustom then return end
+        if not hasOverlayCustom(cfg) then return end
 
         desc.forEachHealthBar(function(bar)
             if not (InCombatLockdown and InCombatLockdown()) then
@@ -937,69 +912,57 @@ function GC.NewFamily(desc)
         if addon[desc.hooksInstalledFlag] then return end
         addon[desc.hooksInstalledFlag] = true
 
+        -- Shared body of the UpdateAll and SetUnit hooks: restyle the bar and
+        -- make sure its overlay exists after Blizzard's update, deferred one
+        -- frame and queued past combat; with rosterRefresh, the border too.
+        -- SetUnit clears the fingerprint so a recycled frame styles fresh.
+        local function restyleAfterUpdate(frame, cfg, clearFingerprint)
+            local bar = frame.healthBar
+            if hasBarCustom(cfg) then
+                if clearFingerprint then
+                    local fpState = getState(bar)
+                    if fpState then fpState.lastAppliedFingerprint = nil end
+                end
+                C_Timer.After(0, function()
+                    if InCombatLockdown and InCombatLockdown() then
+                        queueReapply()
+                        return
+                    end
+                    module.applyToHealthBar(bar, cfg)
+                    -- Also ensure overlay exists (handles a group formed mid-session)
+                    module.ensureHealthOverlay(bar, cfg)
+                end)
+            end
+
+            if rosterRefresh then
+                -- Apply borders if configured (independent of the texture/color check)
+                local borderStyle = cfg.healthBarBorderStyle
+                if borderStyle and borderStyle ~= "none" then
+                    C_Timer.After(0, function()
+                        if InCombatLockdown and InCombatLockdown() then
+                            queueReapply()
+                            return
+                        end
+                        applyHealthBarBorder(bar, cfg)
+                    end)
+                end
+            end
+        end
+
         -- Hook CompactUnitFrame_UpdateAll
         if _G.hooksecurefunc and _G.CompactUnitFrame_UpdateAll then
             _G.hooksecurefunc("CompactUnitFrame_UpdateAll", function(frame)
                 -- CRITICAL: Skip ALL processing when Edit Mode is active to avoid taint
                 if isEditModeActive() then return end
-                if frame and frame.healthBar and isTarget(frame) then
-                    local db = addon and addon.db and addon.db.profile
-                    local cfg = db and db.groupFrames and db.groupFrames[dbKey] or nil
-                    if cfg then
-                        local hasCustom = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default") or
-                                          (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default") or
-                                          (cfg.healthBarBackgroundTexture and cfg.healthBarBackgroundTexture ~= "default") or
-                                          (cfg.healthBarBackgroundColorMode and cfg.healthBarBackgroundColorMode ~= "default")
-                        if hasCustom then
-                            local bar = frame.healthBar
-                            local cfgRef = cfg
-                            if _G.C_Timer and _G.C_Timer.After then
-                                _G.C_Timer.After(0, function()
-                                    if InCombatLockdown and InCombatLockdown() then
-                                        queueReapply()
-                                        return
-                                    end
-                                    module.applyToHealthBar(bar, cfgRef)
-                                    -- Also ensure overlay exists (handles a group formed mid-session)
-                                    module.ensureHealthOverlay(bar, cfgRef)
-                                end)
-                            else
-                                if InCombatLockdown and InCombatLockdown() then
-                                    queueReapply()
-                                    return
-                                end
-                                module.applyToHealthBar(bar, cfgRef)
-                                module.ensureHealthOverlay(bar, cfgRef)
-                            end
-                        end
-
-                        if rosterRefresh then
-                            -- Apply borders if configured (independent of hasCustom texture/color check)
-                            local borderStyle = cfg.healthBarBorderStyle
-                            if borderStyle and borderStyle ~= "none" then
-                                local barRef = frame.healthBar
-                                local cfgRef2 = cfg
-                                C_Timer.After(0, function()
-                                    if InCombatLockdown and InCombatLockdown() then
-                                        queueReapply()
-                                        return
-                                    end
-                                    if barRef then
-                                        applyHealthBarBorder(barRef, cfgRef2)
-                                    end
-                                end)
-                            end
-                        end
-
-                        -- Re-apply role icons after UpdateAll (handles follower dungeon idle resets)
-                        if frame.roleIcon and addon._applyCustomRoleIcon then
-                            if _G.C_Timer and _G.C_Timer.After then
-                                C_Timer.After(0, function()
-                                    pcall(addon._applyCustomRoleIcon, frame)
-                                end)
-                            end
-                        end
-                    end
+                if not (frame and frame.healthBar and isTarget(frame)) then return end
+                local cfg = readCfg()
+                if not cfg then return end
+                restyleAfterUpdate(frame, cfg, false)
+                -- Re-apply role icons after UpdateAll (handles follower dungeon idle resets)
+                if frame.roleIcon and addon._applyCustomRoleIcon then
+                    C_Timer.After(0, function()
+                        pcall(addon._applyCustomRoleIcon, frame)
+                    end)
                 end
             end)
         end
@@ -1009,59 +972,10 @@ function GC.NewFamily(desc)
             _G.hooksecurefunc("CompactUnitFrame_SetUnit", function(frame, unit)
                 -- CRITICAL: Skip ALL processing when Edit Mode is active to avoid taint
                 if isEditModeActive() then return end
-                if frame and frame.healthBar and unit and isTarget(frame) then
-                    local db = addon and addon.db and addon.db.profile
-                    local cfg = db and db.groupFrames and db.groupFrames[dbKey] or nil
-                    if cfg then
-                        local hasCustom = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default") or
-                                          (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default") or
-                                          (cfg.healthBarBackgroundTexture and cfg.healthBarBackgroundTexture ~= "default") or
-                                          (cfg.healthBarBackgroundColorMode and cfg.healthBarBackgroundColorMode ~= "default")
-                        if hasCustom then
-                            local bar = frame.healthBar
-                            local cfgRef = cfg
-                            -- Clear fingerprint to force fresh overlay setup on frame reuse
-                            local fpState = getState(bar)
-                            if fpState then fpState.lastAppliedFingerprint = nil end
-                            if _G.C_Timer and _G.C_Timer.After then
-                                _G.C_Timer.After(0, function()
-                                    if InCombatLockdown and InCombatLockdown() then
-                                        queueReapply()
-                                        return
-                                    end
-                                    module.applyToHealthBar(bar, cfgRef)
-                                    -- Also ensure overlay exists (handles a group formed mid-session)
-                                    module.ensureHealthOverlay(bar, cfgRef)
-                                end)
-                            else
-                                if InCombatLockdown and InCombatLockdown() then
-                                    queueReapply()
-                                    return
-                                end
-                                module.applyToHealthBar(bar, cfgRef)
-                                module.ensureHealthOverlay(bar, cfgRef)
-                            end
-                        end
-
-                        if rosterRefresh then
-                            -- Apply borders if configured (independent of hasCustom texture/color check)
-                            local borderStyle = cfg.healthBarBorderStyle
-                            if borderStyle and borderStyle ~= "none" then
-                                local barRef = frame.healthBar
-                                local cfgRef2 = cfg
-                                C_Timer.After(0, function()
-                                    if InCombatLockdown and InCombatLockdown() then
-                                        queueReapply()
-                                        return
-                                    end
-                                    if barRef then
-                                        applyHealthBarBorder(barRef, cfgRef2)
-                                    end
-                                end)
-                            end
-                        end
-                    end
-                end
+                if not (frame and frame.healthBar and unit and isTarget(frame)) then return end
+                local cfg = readCfg()
+                if not cfg then return end
+                restyleAfterUpdate(frame, cfg, true)
             end)
         end
 
@@ -1077,15 +991,12 @@ function GC.NewFamily(desc)
                 -- Only process this family's frames (not other compact frames or nameplates)
                 if not isTarget(frame) then return end
 
-                local db = addon and addon.db and addon.db.profile
-                local cfg = db and db.groupFrames and db.groupFrames[dbKey] or nil
+                local cfg = readCfg()
                 local colorMode = cfg and cfg.healthBarColorMode
                 if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark" and colorMode ~= "class") then return end
 
                 -- Get unit token from the frame
-                local unit
-                local okU, u = pcall(function() return frame.displayedUnit or frame.unit end)
-                if okU and u then unit = u end
+                local unit = frameUnit(frame)
                 if not unit then return end
 
                 -- Class color mode: apply class color to overlay
@@ -1156,25 +1067,22 @@ function GC.NewFamily(desc)
                 if isEditModeActive() then return end
                 if not frame or not isTarget(frame) then return end
 
-                local db = addon.db and addon.db.profile
-                local cfg = db and db.groupFrames and db.groupFrames[dbKey] or nil
+                local cfg = readCfg()
                 if not cfg then return end
 
-                if _G.C_Timer and _G.C_Timer.After then
-                    _G.C_Timer.After(0, function()
-                        -- Reapply clipping masks (defined in extras.lua, loaded after the family core)
-                        if module.ensureHealPredictionClipping then
-                            module.ensureHealPredictionClipping(frame)
-                        end
-                        -- Reapply visibility if toggled
-                        if cfg.hideHealPrediction and module.applyHealPredictionVisibility then
-                            module.applyHealPredictionVisibility(frame, true)
-                        end
-                        if cfg.hideAbsorbBars and module.applyAbsorbBarsVisibility then
-                            module.applyAbsorbBarsVisibility(frame, true)
-                        end
-                    end)
-                end
+                C_Timer.After(0, function()
+                    -- Reapply clipping masks (defined in extras.lua, loaded after the family core)
+                    if module.ensureHealPredictionClipping then
+                        module.ensureHealPredictionClipping(frame)
+                    end
+                    -- Reapply visibility if toggled
+                    if cfg.hideHealPrediction and module.applyHealPredictionVisibility then
+                        module.applyHealPredictionVisibility(frame, true)
+                    end
+                    if cfg.hideAbsorbBars and module.applyAbsorbBarsVisibility then
+                        module.applyAbsorbBarsVisibility(frame, true)
+                    end
+                end)
             end)
         end
 
@@ -1232,13 +1140,10 @@ function GC.NewFamily(desc)
                 end
                 if InCombatLockdown and InCombatLockdown() then return end
 
-                local db = addon and addon.db and addon.db.profile
-                local groupFrames = db and rawget(db, "groupFrames") or nil
-                local cfg = groupFrames and rawget(groupFrames, dbKey) or nil
+                local cfg = readCfg()
                 if not cfg then return end
 
-                local hasCustom = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default")
-                               or (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
+                local hasCustom = hasOverlayCustom(cfg)
 
                 local colorMode = cfg.healthBarColorMode
                 local isValueMode = (colorMode == "value" or colorMode == "valueDark")
@@ -1273,12 +1178,7 @@ function GC.NewFamily(desc)
                                 updateHealthOverlay(bar)
                                 -- Check 3: Revalidate overlay color for value-based modes
                                 if isValueMode and overlay and overlay:IsShown() then
-                                    local parentFrame = bar.GetParent and bar:GetParent()
-                                    local unit
-                                    if parentFrame then
-                                        local okU, u = pcall(function() return parentFrame.displayedUnit or parentFrame.unit end)
-                                        if okU and u then unit = u end
-                                    end
+                                    local unit = barUnit(bar)
                                     if unit and addon.BarsTextures and addon.BarsTextures.applyValueBasedColor then
                                         addon.BarsTextures.applyValueBasedColor(bar, unit, overlay, useDark)
                                     end
