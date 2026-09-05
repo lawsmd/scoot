@@ -709,14 +709,3 @@ function Frames.resolvePetFrameFlash(unit)
         return _G.PetFrameFlash
     end
 end
-
---------------------------------------------------------------------------------
--- Transition aliases
---------------------------------------------------------------------------------
-
--- The bars/ files destructure these names at load time, and text/core.lua owns
--- the boss name resolver until its callers convert; the aliases retire once
--- every consumer reads addon.Frames directly.
-Frames.getUnitFrameFor = addon.GetUnitFrame
-addon.BarsResolvers = Frames
-addon.ResolveBossNameFS = Frames.resolveBossNameFS
