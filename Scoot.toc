@@ -59,6 +59,7 @@ core/editmode/sync.lua
 core/editmode/nudgearrows.lua
 core/editmode/subgrid.lua
 core/editmode/presets.lua
+core/editmode/offscreenunlock.lua
 core/profiles/core.lua
 core/profiles/layouts.lua
 core/profiles/spec.lua
