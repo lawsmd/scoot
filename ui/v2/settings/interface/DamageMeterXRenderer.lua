@@ -52,15 +52,6 @@ function DamageMetersX.Render(panel, scrollContent)
         return (v == "1") or false
     end
 
-    local function setDamageMeterEnabledCVar(enabled)
-        local value = (enabled and "1") or "0"
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "damageMeterEnabled", value)
-        elseif SetCVar then
-            pcall(SetCVar, "damageMeterEnabled", value)
-        end
-    end
-
     local function getProfileDamageMeterSettings()
         local profile = addon and addon.db and addon.db.profile
         return profile and profile.damageMeterSettings
@@ -86,7 +77,9 @@ function DamageMetersX.Render(panel, scrollContent)
             local s = ensureProfileDamageMeterSettings()
             if not s then return end
             s.enableDamageMeter = value
-            setDamageMeterEnabledCVar(value)
+            if addon.ApplyDamageMeterEnabled then
+                addon.ApplyDamageMeterEnabled("toggle")
+            end
             -- Re-apply styling if enabling
             if value and addon and addon.ApplyStyles then
                 if C_Timer and C_Timer.After then

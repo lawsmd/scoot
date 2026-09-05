@@ -27,15 +27,6 @@ function QoL.Render(panel, scrollContent)
         return (v == "1") or false
     end
 
-    local function setCooldownViewerEnabledCVar(enabled)
-        local value = (enabled and "1") or "0"
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "cooldownViewerEnabled", value)
-        elseif SetCVar then
-            pcall(SetCVar, "cooldownViewerEnabled", value)
-        end
-    end
-
     -- Profile data helpers
     local function getProfileQoL()
         local profile = addon and addon.db and addon.db.profile
@@ -66,7 +57,9 @@ function QoL.Render(panel, scrollContent)
             local q = ensureProfileQoL()
             if not q then return end
             q.enableCDM = value
-            setCooldownViewerEnabledCVar(value)
+            if addon.ApplyCooldownViewerEnabled then
+                addon.ApplyCooldownViewerEnabled("toggle")
+            end
             -- If enabling, apply stored CDM styling
             if value and addon and addon.ApplyStyles then
                 if C_Timer and C_Timer.After then

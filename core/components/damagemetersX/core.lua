@@ -211,27 +211,22 @@ function DMX._SlashToggleShow()
     if not profile.damageMeterSettings then profile.damageMeterSettings = {} end
     profile.damageMeterSettings.enableDamageMeter = newState
 
-    -- Set CVar (defer if in combat)
-    local value = newState and "1" or "0"
-    local function applyCVar()
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "damageMeterEnabled", value)
-        end
+    -- CVar write and Blizzard-frame hide go through the shared applier, which
+    -- defers to regen on the Profiles:dmCVar key in combat.
+    if addon.ApplyDamageMeterEnabled then
+        addon.ApplyDamageMeterEnabled("slashToggle")
     end
 
     if InCombatLockdown() then
         -- Keyed: toggling again in the same fight replaces the queued closure,
-        -- so the last toggle's CVar value is the one that lands on regen. The
-        -- captured value is safe for the same reason.
+        -- so the last toggle's restyle is the one that runs on regen.
         addon.Events.RunOutOfCombat(function()
-            applyCVar()
             if newState and addon.ApplyStyles then
                 C_Timer.After(0, function() addon:ApplyStyles() end)
             end
         end, "DMX:cvarToggle")
         addon:Print(newState and "Damage Meter will show after combat." or "Damage Meter will hide after combat.")
     else
-        applyCVar()
         if newState then
             C_Timer.After(0, function()
                 if addon.ApplyStyles then addon:ApplyStyles() end

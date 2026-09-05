@@ -217,6 +217,12 @@ addon.ApplyRaidLargerRoleDebuffs = makeApplier(raidLargerRoleDebuffs)
 -- Expose for the Aura Tracking renderer toggle so it reuses the one combat-guarded implementation.
 addon.ApplyGroupBuffIconsHidden = makeApplier(groupBuffIconsHidden)
 
+-- Expose for the Cooldown Manager, PRD, and Damage Meter renderer toggles and the
+-- damage meter slash toggle, so every enable path shares one guarded implementation.
+addon.ApplyCooldownViewerEnabled = makeApplier(cooldownViewerEnabled)
+addon.ApplyPRDEnabled = makeApplier(nameplateShowSelf)
+addon.ApplyDamageMeterEnabled = makeApplier(damageMeterEnabled)
+
 -- Per-profile enforcement that ApplyStyles does not cover: the CVar-backed
 -- toggles, the action bar enable state, and chat. Every profile-apply site
 -- runs it.

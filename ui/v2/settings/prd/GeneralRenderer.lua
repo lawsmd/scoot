@@ -35,15 +35,6 @@ function General.Render(panel, scrollContent)
         return false
     end
 
-    local function setPRDEnabledCVar(enabled)
-        local value = (enabled and "1") or "0"
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "nameplateShowSelf", value)
-        elseif SetCVar then
-            pcall(SetCVar, "nameplateShowSelf", value)
-        end
-    end
-
     -- Profile data helpers
     local function getProfilePRDSettings()
         local profile = addon and addon.db and addon.db.profile
@@ -71,9 +62,11 @@ function General.Render(panel, scrollContent)
             local s = ensureProfilePRDSettings()
             if not s then return end
             s.enablePRD = value
-            setPRDEnabledCVar(value)
-            -- Re-apply styling so borders/overlays respond to the change
-            if addon and addon.ApplyStyles then
+            if addon.ApplyPRDEnabled then
+                addon.ApplyPRDEnabled("toggle")
+            end
+            -- Re-apply styling on enable; the applier queues the disable re-apply itself
+            if value and addon and addon.ApplyStyles then
                 if C_Timer and C_Timer.After then
                     C_Timer.After(0, function()
                         if addon and addon.ApplyStyles then
