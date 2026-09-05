@@ -18,11 +18,8 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local PICKER_WIDTH = 620
 local PICKER_HEIGHT = 420
 local TAB_WIDTH = 90
-local TAB_HEIGHT = 32
-local TITLE_HEIGHT = 30
 local PADDING = 12
 
 -- 3-column grid layout (matches BarTexturePicker)
@@ -35,7 +32,6 @@ local PREVIEW_HEIGHT = 20
 local PREVIEW_EDGE_SIZE = 8
 
 -- Fallback brand colors
-local BRAND_R, BRAND_G, BRAND_B = 0.20, 0.90, 0.30
 
 --------------------------------------------------------------------------------
 -- Border Categories
@@ -147,239 +143,22 @@ local function CreateBarBorderPicker()
     if pickerFrame then return pickerFrame end
 
     local theme = GetTheme()
-    local accentR, accentG, accentB = BRAND_R, BRAND_G, BRAND_B
-    if theme and theme.GetAccentColor then
-        accentR, accentG, accentB = theme:GetAccentColor()
-    end
 
     -- Calculate content area width
     local contentWidth = (BORDER_BUTTON_WIDTH * BORDERS_PER_ROW) + (BORDER_BUTTON_SPACING * (BORDERS_PER_ROW - 1)) + (PADDING * 2)
     local totalWidth = TAB_WIDTH + contentWidth + 24 -- Extra for scrollbar
 
-    local frame = CreateFrame("Frame", "ScootBarBorderPickerFrame", UIParent)
-    frame:SetSize(totalWidth, PICKER_HEIGHT)
-    frame:SetFrameStrata("FULLSCREEN_DIALOG")
-    frame:SetFrameLevel(100)
-    frame:EnableMouse(true)
-    frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-
-    -- Background (TUI dark)
-    local bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.04, 0.04, 0.06, 0.96)
-    frame._bg = bg
-
-    -- Border (accent color)
-    local borderWidth = 1
-    local borders = {}
-
-    local topBorder = frame:CreateTexture(nil, "BORDER", nil, -1)
-    topBorder:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    topBorder:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-    topBorder:SetHeight(borderWidth)
-    topBorder:SetColorTexture(accentR, accentG, accentB, 0.8)
-    borders.TOP = topBorder
-
-    local bottomBorder = frame:CreateTexture(nil, "BORDER", nil, -1)
-    bottomBorder:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-    bottomBorder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    bottomBorder:SetHeight(borderWidth)
-    bottomBorder:SetColorTexture(accentR, accentG, accentB, 0.8)
-    borders.BOTTOM = bottomBorder
-
-    local leftBorder = frame:CreateTexture(nil, "BORDER", nil, -1)
-    leftBorder:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -borderWidth)
-    leftBorder:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, borderWidth)
-    leftBorder:SetWidth(borderWidth)
-    leftBorder:SetColorTexture(accentR, accentG, accentB, 0.8)
-    borders.LEFT = leftBorder
-
-    local rightBorder = frame:CreateTexture(nil, "BORDER", nil, -1)
-    rightBorder:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -borderWidth)
-    rightBorder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, borderWidth)
-    rightBorder:SetWidth(borderWidth)
-    rightBorder:SetColorTexture(accentR, accentG, accentB, 0.8)
-    borders.RIGHT = rightBorder
-
-    frame._borders = borders
-
-    -- Title
-    local titleFont = (theme and theme.GetFont and theme:GetFont("HEADER")) or "Fonts\\FRIZQT__.TTF"
-    local title = frame:CreateFontString(nil, "OVERLAY")
-    title:SetFont(titleFont, 14, "")
-    title:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -10)
-    title:SetText("Select Border Style")
-    title:SetTextColor(1, 1, 1, 1)
-    frame.Title = title
-
-    -- Close button (X)
-    local closeBtn = CreateFrame("Button", nil, frame)
-    closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
-    closeBtn:EnableMouse(true)
-    closeBtn:RegisterForClicks("AnyUp")
-
-    local closeBtnBg = closeBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
-    closeBtnBg:SetAllPoints()
-    closeBtnBg:SetColorTexture(accentR, accentG, accentB, 1)
-    closeBtnBg:Hide()
-    closeBtn._bg = closeBtnBg
-
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY")
-    closeBtnText:SetFont(titleFont, 14, "")
-    closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText("X")
-    closeBtnText:SetTextColor(accentR, accentG, accentB, 1)
-    closeBtn._text = closeBtnText
-
-    closeBtn:SetScript("OnEnter", function(self)
-        self._bg:Show()
-        self._text:SetTextColor(0, 0, 0, 1)
-    end)
-    closeBtn:SetScript("OnLeave", function(self)
-        self._bg:Hide()
-        self._text:SetTextColor(accentR, accentG, accentB, 1)
-    end)
-    closeBtn:SetScript("OnClick", CloseBarBorderPicker)
-    frame.CloseButton = closeBtn
-
-    -- Tab container (left side)
-    local tabContainer = CreateFrame("Frame", nil, frame)
-    tabContainer:SetSize(TAB_WIDTH, PICKER_HEIGHT - TITLE_HEIGHT - PADDING * 2)
-    tabContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -(TITLE_HEIGHT + 4))
-    frame.TabContainer = tabContainer
-
-    -- Vertical separator between tabs and content
-    local tabSep = frame:CreateTexture(nil, "BORDER", nil, 0)
-    tabSep:SetWidth(1)
-    tabSep:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 4, 0)
-    tabSep:SetPoint("BOTTOMLEFT", tabContainer, "BOTTOMRIGHT", 4, 0)
-    tabSep:SetColorTexture(accentR, accentG, accentB, 0.4)
-    frame._tabSep = tabSep
-
-    -- Tab buttons (managed pool, rebuilt on each Show via UpdateTabs)
-    frame.TabButtons = {}
-    frame._tabLabelFont = (theme and theme.GetFont and theme:GetFont("LABEL")) or "Fonts\\FRIZQT__.TTF"
-
-    function frame:UpdateTabs()
-        local tabs = self._workingTabs or TABS
-        local tc = self.TabContainer
-        local lf = self._tabLabelFont
-        local ar, ag, ab = self._accentR, self._accentG, self._accentB
-
-        for i, tabData in ipairs(tabs) do
-            local tabBtn = self.TabButtons[i]
-            if not tabBtn then
-                tabBtn = CreateFrame("Button", nil, tc)
-                tabBtn:SetSize(TAB_WIDTH, TAB_HEIGHT)
-                tabBtn:EnableMouse(true)
-                tabBtn:RegisterForClicks("AnyUp")
-
-                local tabBg = tabBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
-                tabBg:SetAllPoints()
-                tabBg:SetColorTexture(0.06, 0.06, 0.08, 1)
-                tabBtn._bg = tabBg
-
-                local indicator = tabBtn:CreateTexture(nil, "OVERLAY", nil, 1)
-                indicator:SetSize(2, TAB_HEIGHT)
-                indicator:SetPoint("LEFT", tabBtn, "LEFT", 0, 0)
-                indicator:SetColorTexture(ar, ag, ab, 1)
-                indicator:Hide()
-                tabBtn._indicator = indicator
-
-                local tabLabel = tabBtn:CreateFontString(nil, "OVERLAY")
-                tabLabel:SetFont(lf, 11, "")
-                tabLabel:SetPoint("CENTER", tabBtn, "CENTER", 2, 0)
-                tabLabel:SetTextColor(0.6, 0.6, 0.6, 1)
-                tabBtn._label = tabLabel
-
-                tabBtn:SetScript("OnEnter", function(self)
-                    if selectedTab ~= self._key then
-                        self._bg:SetColorTexture(ar, ag, ab, 0.15)
-                    end
-                end)
-                tabBtn:SetScript("OnLeave", function(self)
-                    if selectedTab ~= self._key then
-                        self._bg:SetColorTexture(0.06, 0.06, 0.08, 1)
-                    end
-                end)
-                tabBtn:SetScript("OnClick", function(self)
-                    if selectedTab ~= self._key then
-                        selectedTab = self._key
-                        frame:UpdateTabVisuals()
-                        frame:PopulateContent()
-                        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-                    end
-                end)
-
-                self.TabButtons[i] = tabBtn
-            end
-
-            tabBtn._key = tabData.key
-            tabBtn._label:SetText(tabData.label)
-            tabBtn:ClearAllPoints()
-            tabBtn:SetPoint("TOPLEFT", tc, "TOPLEFT", 0, -((i - 1) * TAB_HEIGHT))
-            tabBtn:Show()
-        end
-
-        -- Hide extra buttons from previous Show
-        for i = #tabs + 1, #self.TabButtons do
-            self.TabButtons[i]:Hide()
-        end
-    end
-
-    -- Content area (scroll frame, right of tabs)
-    local scrollFrame = CreateFrame("ScrollFrame", "ScootBarBorderPickerScrollFrame", frame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 12, 0)
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(PADDING + 20), PADDING)
-    frame.ScrollFrame = scrollFrame
-
-    -- Style the scrollbar
-    local scrollBar = scrollFrame.ScrollBar or _G[scrollFrame:GetName() .. "ScrollBar"]
-    if scrollBar then
-        scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 6, -16)
-        scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 6, 16)
-
-        -- Hide default textures
-        if scrollBar.Background then scrollBar.Background:Hide() end
-        if scrollBar.Track then
-            if scrollBar.Track.Begin then scrollBar.Track.Begin:Hide() end
-            if scrollBar.Track.End then scrollBar.Track.End:Hide() end
-            if scrollBar.Track.Middle then scrollBar.Track.Middle:Hide() end
-        end
-
-        -- Custom track background
-        local trackBg = scrollBar:CreateTexture(nil, "BACKGROUND", nil, -8)
-        trackBg:SetPoint("TOPLEFT", 4, 0)
-        trackBg:SetPoint("BOTTOMRIGHT", -4, 0)
-        trackBg:SetColorTexture(accentR, accentG, accentB, 0.15)
-        scrollBar._trackBg = trackBg
-
-        -- Style the thumb
-        local thumb = scrollBar.ThumbTexture or scrollBar:GetThumbTexture()
-        if thumb then
-            thumb:SetColorTexture(accentR, accentG, accentB, 0.6)
-            thumb:SetSize(8, 40)
-        end
-
-        -- Hide up/down buttons
-        local upBtn = scrollBar.ScrollUpButton or scrollBar.Back or _G[scrollBar:GetName() .. "ScrollUpButton"]
-        local downBtn = scrollBar.ScrollDownButton or scrollBar.Forward or _G[scrollBar:GetName() .. "ScrollDownButton"]
-        if upBtn then upBtn:SetAlpha(0) upBtn:EnableMouse(false) end
-        if downBtn then downBtn:SetAlpha(0) downBtn:EnableMouse(false) end
-
-        frame._scrollBar = scrollBar
-    end
-
-    -- Content frame (scroll child)
-    local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(contentWidth - PADDING, 100)
-    scrollFrame:SetScrollChild(content)
-    frame.Content = content
+    local frame = Controls.CreatePickerShell({
+        name = "ScootBarBorderPickerFrame",
+        width = totalWidth,
+        height = PICKER_HEIGHT,
+        contentWidth = contentWidth,
+        title = "Select Border Style",
+        onClose = CloseBarBorderPicker,
+        tabs = TABS,
+        getSelectedTab = function() return selectedTab end,
+        onTabSelected = function(key) selectedTab = key end,
+    })
 
     -- Hidden edges toggle row (below scroll area)
     local edgeRow = CreateFrame("Frame", nil, frame)
@@ -486,27 +265,6 @@ local function CreateBarBorderPicker()
 
     -- Button pool for border options
     frame.BorderButtons = {}
-
-    -- Store accent colors
-    frame._accentR = accentR
-    frame._accentG = accentG
-    frame._accentB = accentB
-
-    -- Update tab visuals function
-    function frame:UpdateTabVisuals()
-        for _, tabBtn in ipairs(self.TabButtons) do
-            local isSelected = (selectedTab == tabBtn._key)
-            if isSelected then
-                tabBtn._indicator:Show()
-                tabBtn._label:SetTextColor(1, 1, 1, 1)
-                tabBtn._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.2)
-            else
-                tabBtn._indicator:Hide()
-                tabBtn._label:SetTextColor(0.6, 0.6, 0.6, 1)
-                tabBtn._bg:SetColorTexture(0.06, 0.06, 0.08, 1)
-            end
-        end
-    end
 
     -- Populate content function
     function frame:PopulateContent()
@@ -702,29 +460,6 @@ local function CreateBarBorderPicker()
             btn:Show()
         end
     end
-
-    -- Escape key to close
-    frame:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            CloseBarBorderPicker()
-        end
-    end)
-
-    -- Click outside to close
-    frame:SetScript("OnShow", function(self)
-        self:SetScript("OnUpdate", function(self, elapsed)
-            if not self:IsMouseOver() and IsMouseButtonDown("LeftButton") then
-                C_Timer.After(0.05, function()
-                    if pickerFrame and pickerFrame:IsShown() and not pickerFrame:IsMouseOver() then
-                        CloseBarBorderPicker()
-                    end
-                end)
-            end
-        end)
-    end)
-    frame:SetScript("OnHide", function(self)
-        self:SetScript("OnUpdate", nil)
-    end)
 
     pickerFrame = frame
     return frame
