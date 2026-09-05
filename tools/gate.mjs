@@ -34,7 +34,7 @@ const LUACHECK_CODES = /\((E\d+|W11[123])\)/
 
 // Each pattern guards one shared module. `except` lists the files that own the
 // module; a hit there is the module itself.
-const COMPOSITES = ['ui/v2/SettingsBuilder.lua', 'ui/v2/SettingsBuilderRows.lua', 'ui/v2/settings/BuilderComposites.lua']
+const COMPOSITES = ['ui/v2/SettingsBuilder.lua', 'ui/v2/SettingsBuilderRows.lua', 'ui/v2/SettingsBuilderCompactRows.lua', 'ui/v2/settings/BuilderComposites.lua']
 const PATTERNS = [
   { name: 'event-frame', re: /:RegisterEvent\(|SetScript\("OnEvent"/, except: ['core/events.lua'],
     hint: 'Game events go through component:On or addon.Events.On; a private frame is for RegisterUnitEvent or a lift edge with no pending state.' },
@@ -62,12 +62,16 @@ const PATTERNS = [
     hint: 'An X/Y or H/V pair is Builder:AddOffsetPair or Builder:AddInsetPair; two unrelated quantities stay a dual slider, mark it.' },
   { name: 'bar-selector', re: /:AddBar(Texture|Border)Selector\(/, except: COMPOSITES,
     hint: 'Bar style and border rows are Builder:AddBarStyleBlock and Builder:AddBarBorderBlock.' },
+  { name: 'scan-record', re: /table\.insert\(Builder\._scanEntries/, except: ['ui/v2/SettingsBuilder.lua', 'ui/v2/settingspanel/search.lua'],
+    hint: 'A row records itself in the search index through Builder:_ScanRecord.' },
   { name: 'clamp-hook', re: /hooksecurefunc\([^,]+,\s*"(SetClampedToScreen|SetClampRectInsets)"/, except: ['core/editmode/offscreenunlock.lua'],
     hint: 'Clamp enforcement is a family from addon.OffscreenUnlock.NewFamily; the hooks live in core/editmode/offscreenunlock.lua only.' },
   { name: 'art-alpha', re: /return .*useCustomBorders.*and 0 or 1/, except: ['core/components/unitframes/bars/alpha.lua'],
     hint: 'A Use Custom Borders alpha closure is Alpha.customBordersAlpha(unit, withHideBorder) in bars/alpha.lua.' },
   { name: 'popup-list', re: /closeListener/, except: ['ui/v2/controls/Utils.lua'],
     hint: 'Click-outside dismissal is Controls.AttachDismissOnClickOutside; a selector option list is Controls.CreatePopupList.' },
+  { name: 'cvar-write', re: /SetCVar\b/, except: ['core/profiles/cvars.lua'],
+    hint: 'A profile-driven enable toggle goes through its applier in core/profiles/cvars.lua (addon.ApplyCooldownViewerEnabled, ApplyPRDEnabled, ApplyDamageMeterEnabled, ApplyRaidLargerRoleDebuffs, ApplyGroupBuffIconsHidden); a generic passthrough, a save/restore pair, or debug tooling stays, mark it.' },
   // Comment hygiene: the greps the vibes pass runs.
   { name: 'doc-ref', re: /ADDONCONTEXT|[a-z0-9_&-]+\.md\b|wow-ui-source/i, except: [],
     hint: 'Shipped code names no internal doc, doc path, or reference tree.' },
