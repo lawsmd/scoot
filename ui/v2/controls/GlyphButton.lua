@@ -81,28 +81,10 @@ function Controls:CreateOnOffIndicator(opts)
     local bw = opts.border or 2
     btn:SetSize(w, h)
 
-    local borders = {}
-    local function edge()
-        local tex = btn:CreateTexture(nil, "BORDER")
-        table.insert(borders, tex)
-        return tex
-    end
-    local top = edge()
-    top:SetPoint("TOPLEFT", 0, 0)
-    top:SetPoint("TOPRIGHT", 0, 0)
-    top:SetHeight(bw)
-    local bottom = edge()
-    bottom:SetPoint("BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(bw)
-    local left = edge()
-    left:SetPoint("TOPLEFT", 0, -bw)
-    left:SetPoint("BOTTOMLEFT", 0, bw)
-    left:SetWidth(bw)
-    local right = edge()
-    right:SetPoint("TOPRIGHT", 0, -bw)
-    right:SetPoint("BOTTOMRIGHT", 0, bw)
-    right:SetWidth(bw)
+    local border = Controls.CreateBorder(btn, {
+        thickness = bw,
+        color = { ar, ag, ab },
+    })
 
     local fill = btn:CreateTexture(nil, "ARTWORK")
     fill:SetPoint("TOPLEFT", bw, -bw)
@@ -114,9 +96,7 @@ function Controls:CreateOnOffIndicator(opts)
     text:SetPoint("CENTER", 0, 0)
 
     btn.SetOn = function(_, isOn)
-        for _, tex in ipairs(borders) do
-            tex:SetColorTexture(ar, ag, ab, isOn and 1 or 0.4)
-        end
+        border:SetAlpha(isOn and 1 or 0.4)
         fill:SetShown(isOn)
         if isOn then
             text:SetText("ON")

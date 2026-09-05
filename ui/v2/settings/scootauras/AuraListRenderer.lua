@@ -453,27 +453,11 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
 
     local zone = CreateDropZone(box)
 
-    local function edge()
-        local tex = box:CreateTexture(nil, "BORDER")
-        tex:SetColorTexture(ar, ag, ab, 0.3)
-        return tex
-    end
-    local eTop = edge()
-    eTop:SetPoint("TOPLEFT", 0, 0)
-    eTop:SetPoint("TOPRIGHT", 0, 0)
-    eTop:SetHeight(1)
-    local eBottom = edge()
-    eBottom:SetPoint("BOTTOMLEFT", 0, 0)
-    eBottom:SetPoint("BOTTOMRIGHT", 0, 0)
-    eBottom:SetHeight(1)
-    local eLeft = edge()
-    eLeft:SetPoint("TOPLEFT", 0, -1)
-    eLeft:SetPoint("BOTTOMLEFT", 0, 1)
-    eLeft:SetWidth(1)
-    local eRight = edge()
-    eRight:SetPoint("TOPRIGHT", 0, -1)
-    eRight:SetPoint("BOTTOMRIGHT", 0, 1)
-    eRight:SetWidth(1)
+    -- Static accent snapshot, matching the bg wash above; neither repaints on
+    -- an accent change until the next re-render.
+    box._border = addon.UI.Controls.CreateBorder(box, {
+        color = { ar, ag, ab, 0.3 },
+    })
 
     -- Group name plus rename pencil; the name feeds the Edit Mode container.
     local nameBtn = CreateFrame("Button", nil, box)

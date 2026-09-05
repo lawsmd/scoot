@@ -52,36 +52,17 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
         fill:SetColorTexture(DROP_R, DROP_G, DROP_B, 0.10)
         fill:Hide()
 
-        local edges = {}
-        local top = frame:CreateTexture(nil, "OVERLAY", nil, 3)
-        top:SetPoint("TOPLEFT", 0, 0)
-        top:SetPoint("TOPRIGHT", 0, 0)
-        top:SetHeight(1)
-        local bottom = frame:CreateTexture(nil, "OVERLAY", nil, 3)
-        bottom:SetPoint("BOTTOMLEFT", 0, 0)
-        bottom:SetPoint("BOTTOMRIGHT", 0, 0)
-        bottom:SetHeight(1)
-        local left = frame:CreateTexture(nil, "OVERLAY", nil, 3)
-        left:SetPoint("TOPLEFT", 0, -1)
-        left:SetPoint("BOTTOMLEFT", 0, 1)
-        left:SetWidth(1)
-        local right = frame:CreateTexture(nil, "OVERLAY", nil, 3)
-        right:SetPoint("TOPRIGHT", 0, -1)
-        right:SetPoint("BOTTOMRIGHT", 0, 1)
-        right:SetWidth(1)
-        for _, tex in ipairs({ top, bottom, left, right }) do
-            tex:SetColorTexture(DROP_R, DROP_G, DROP_B, 1)
-            tex:Hide()
-            table.insert(edges, tex)
-        end
+        local border = addon.UI.Controls.CreateBorder(frame, {
+            layer = "OVERLAY",
+            sublevel = 3,
+            color = { DROP_R, DROP_G, DROP_B },
+        })
 
         -- nil: no drag, or nothing can land here. "armed": a live drag could land
         -- here. "hot": the cursor is inside it and a drop lands now.
         function zone:SetState(dropState)
-            for _, tex in ipairs(edges) do
-                tex:SetShown(dropState ~= nil)
-                tex:SetAlpha(dropState == "hot" and 0.95 or 0.3)
-            end
+            border:SetShown(dropState ~= nil)
+            border:SetAlpha(dropState == "hot" and 0.95 or 0.3)
             fill:SetShown(dropState == "hot")
         end
 
