@@ -50,7 +50,6 @@ dump-guard	core/catalogs.lua	1
 dump-guard	core/components/cooldowns/trackedbars/init.lua	4
 dump-guard	core/components/damagemetersX/core.lua	4
 dump-guard	core/components/unitframes/bars/debug.lua	1
-dump-guard	core/components/unitframes/bars/raidframes/core.lua	1
 dump-guard	core/debug/cdm.lua	1
 dump-guard	core/debug/cdmlayers.lua	1
 dump-guard	core/debug/hover.lua	1
