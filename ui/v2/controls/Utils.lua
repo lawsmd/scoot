@@ -498,3 +498,63 @@ function Controls.AddRowChrome(row, opts)
     end
     return labelFS, descFS
 end
+
+-- Arrow-button chrome for cyclers: the Button, its transparent accent fill,
+-- and the centred glyph, plus the shared hover tint. The caller anchors the
+-- button and owns the click handler; key-list wrap and numeric clamp are
+-- different algorithms and stay with their files.
+--
+-- opts:
+--   width, height  button size
+--   glyph          the arrow character
+--   fontSize       default 14
+--   noHover        skip the hover handlers (the sliders install their own,
+--                  gated on their sync lock)
+--   separator      "LEFT" or "RIGHT": a 1px accent rule on that side of the
+--                  button, drawn on parent and returned second
+function Controls.CreateArrowButton(parent, opts)
+    local theme = GetTheme()
+    local ar, ag, ab = theme:GetAccentColor()
+
+    local arrow = CreateFrame("Button", nil, parent)
+    arrow:SetSize(opts.width, opts.height)
+    arrow:EnableMouse(true)
+    arrow:RegisterForClicks("AnyUp")
+
+    local bg = arrow:CreateTexture(nil, "BACKGROUND", nil, -6)
+    bg:SetAllPoints()
+    bg:SetColorTexture(ar, ag, ab, 0)
+    arrow._bg = bg
+
+    local text = arrow:CreateFontString(nil, "OVERLAY")
+    text:SetFont(theme:GetFont("BUTTON"), opts.fontSize or 14, "")
+    text:SetPoint("CENTER", 0, 0)
+    text:SetText(opts.glyph)
+    text:SetTextColor(ar, ag, ab, 1)
+    arrow._text = text
+
+    if not opts.noHover then
+        arrow:SetScript("OnEnter", function(btn)
+            local r, g, b = theme:GetAccentColor()
+            btn._bg:SetColorTexture(r, g, b, 0.2)
+        end)
+        arrow:SetScript("OnLeave", function(btn)
+            btn._bg:SetColorTexture(0, 0, 0, 0)
+        end)
+    end
+
+    local sep
+    if opts.separator then
+        sep = parent:CreateTexture(nil, "BORDER", nil, 0)
+        if opts.separator == "RIGHT" then
+            sep:SetPoint("TOPLEFT", arrow, "TOPRIGHT", 0, 0)
+            sep:SetPoint("BOTTOMLEFT", arrow, "BOTTOMRIGHT", 0, 0)
+        else
+            sep:SetPoint("TOPRIGHT", arrow, "TOPLEFT", 0, 0)
+            sep:SetPoint("BOTTOMRIGHT", arrow, "BOTTOMLEFT", 0, 0)
+        end
+        sep:SetWidth(1)
+        sep:SetColorTexture(ar, ag, ab, 0.4)
+    end
+    return arrow, sep
+end

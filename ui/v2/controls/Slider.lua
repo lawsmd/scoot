@@ -194,24 +194,14 @@ function Controls:CreateSlider(options)
     sliderContainer:SetPoint("RIGHT", row, "RIGHT", -SLIDER_PADDING, hasEndLabels and -4 or 0)
 
     -- Left arrow button (decrement)
-    local leftArrow = CreateFrame("Button", nil, sliderContainer)
-    leftArrow:SetSize(SLIDER_ARROW_WIDTH, SLIDER_HEIGHT)
+    local leftArrow = Controls.CreateArrowButton(sliderContainer, {
+        width = SLIDER_ARROW_WIDTH,
+        height = SLIDER_HEIGHT,
+        glyph = "◀",
+        fontSize = 12,
+        noHover = true,
+    })
     leftArrow:SetPoint("LEFT", sliderContainer, "LEFT", 0, hasEndLabels and 7 or 0)
-    leftArrow:EnableMouse(true)
-    leftArrow:RegisterForClicks("AnyUp")
-
-    local leftArrowBg = leftArrow:CreateTexture(nil, "BACKGROUND", nil, -6)
-    leftArrowBg:SetAllPoints()
-    leftArrowBg:SetColorTexture(ar, ag, ab, 0)
-    leftArrow._bg = leftArrowBg
-
-    local leftArrowText = leftArrow:CreateFontString(nil, "OVERLAY")
-    local arrowFont = theme:GetFont("BUTTON")
-    leftArrowText:SetFont(arrowFont, 12, "")
-    leftArrowText:SetPoint("CENTER", 0, 0)
-    leftArrowText:SetText("◀")
-    leftArrowText:SetTextColor(ar, ag, ab, 1)
-    leftArrow._text = leftArrowText
 
     -- Slider track container
     local trackFrame = CreateFrame("Frame", nil, sliderContainer)
@@ -255,23 +245,14 @@ function Controls:CreateSlider(options)
     trackFrame._thumb = thumb
 
     -- Right arrow button (increment)
-    local rightArrow = CreateFrame("Button", nil, sliderContainer)
-    rightArrow:SetSize(SLIDER_ARROW_WIDTH, SLIDER_HEIGHT)
+    local rightArrow = Controls.CreateArrowButton(sliderContainer, {
+        width = SLIDER_ARROW_WIDTH,
+        height = SLIDER_HEIGHT,
+        glyph = "▶",
+        fontSize = 12,
+        noHover = true,
+    })
     rightArrow:SetPoint("LEFT", trackFrame, "RIGHT", 0, 0)
-    rightArrow:EnableMouse(true)
-    rightArrow:RegisterForClicks("AnyUp")
-
-    local rightArrowBg = rightArrow:CreateTexture(nil, "BACKGROUND", nil, -6)
-    rightArrowBg:SetAllPoints()
-    rightArrowBg:SetColorTexture(ar, ag, ab, 0)
-    rightArrow._bg = rightArrowBg
-
-    local rightArrowText = rightArrow:CreateFontString(nil, "OVERLAY")
-    rightArrowText:SetFont(arrowFont, 12, "")
-    rightArrowText:SetPoint("CENTER", 0, 0)
-    rightArrowText:SetText("▶")
-    rightArrowText:SetTextColor(ar, ag, ab, 1)
-    rightArrow._text = rightArrowText
 
     -- Text input field (right of arrows)
     local inputFrame = CreateFrame("EditBox", nil, sliderContainer, "InputBoxTemplate")

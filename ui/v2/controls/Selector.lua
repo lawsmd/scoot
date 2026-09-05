@@ -172,59 +172,25 @@ function Controls:CreateSelector(options)
     -- Selector background
     selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
-    -- Left arrow button
-    local leftArrow = CreateFrame("Button", nil, selector)
-    leftArrow:SetSize(sc(SELECTOR_ARROW_WIDTH), sc(SELECTOR_HEIGHT) - 2)
+    -- Arrow buttons and separators
+    local leftArrow, leftSep = Controls.CreateArrowButton(selector, {
+        width = sc(SELECTOR_ARROW_WIDTH),
+        height = sc(SELECTOR_HEIGHT) - 2,
+        glyph = "◀",
+        fontSize = sc(14),
+        separator = "RIGHT",
+    })
     leftArrow:SetPoint("LEFT", selector, "LEFT", 1, 0)
-    leftArrow:EnableMouse(true)
-    leftArrow:RegisterForClicks("AnyUp")
-
-    local leftArrowBg = leftArrow:CreateTexture(nil, "BACKGROUND", nil, -6)
-    leftArrowBg:SetAllPoints()
-    leftArrowBg:SetColorTexture(ar, ag, ab, 0)
-    leftArrow._bg = leftArrowBg
-
-    local leftArrowText = leftArrow:CreateFontString(nil, "OVERLAY")
-    local arrowFont = theme:GetFont("BUTTON")
-    leftArrowText:SetFont(arrowFont, sc(14), "")
-    leftArrowText:SetPoint("CENTER", 0, 0)
-    leftArrowText:SetText("◀")
-    leftArrowText:SetTextColor(ar, ag, ab, 1)
-    leftArrow._text = leftArrowText
-
-    -- Separator line after left arrow
-    local leftSep = selector:CreateTexture(nil, "BORDER", nil, 0)
-    leftSep:SetPoint("TOPLEFT", leftArrow, "TOPRIGHT", 0, 0)
-    leftSep:SetPoint("BOTTOMLEFT", leftArrow, "BOTTOMRIGHT", 0, 0)
-    leftSep:SetWidth(1)
-    leftSep:SetColorTexture(ar, ag, ab, 0.4)
     selector._leftSep = leftSep
 
-    -- Right arrow button
-    local rightArrow = CreateFrame("Button", nil, selector)
-    rightArrow:SetSize(sc(SELECTOR_ARROW_WIDTH), sc(SELECTOR_HEIGHT) - 2)
+    local rightArrow, rightSep = Controls.CreateArrowButton(selector, {
+        width = sc(SELECTOR_ARROW_WIDTH),
+        height = sc(SELECTOR_HEIGHT) - 2,
+        glyph = "▶",
+        fontSize = sc(14),
+        separator = "LEFT",
+    })
     rightArrow:SetPoint("RIGHT", selector, "RIGHT", -1, 0)
-    rightArrow:EnableMouse(true)
-    rightArrow:RegisterForClicks("AnyUp")
-
-    local rightArrowBg = rightArrow:CreateTexture(nil, "BACKGROUND", nil, -6)
-    rightArrowBg:SetAllPoints()
-    rightArrowBg:SetColorTexture(ar, ag, ab, 0)
-    rightArrow._bg = rightArrowBg
-
-    local rightArrowText = rightArrow:CreateFontString(nil, "OVERLAY")
-    rightArrowText:SetFont(arrowFont, sc(14), "")
-    rightArrowText:SetPoint("CENTER", 0, 0)
-    rightArrowText:SetText("▶")
-    rightArrowText:SetTextColor(ar, ag, ab, 1)
-    rightArrow._text = rightArrowText
-
-    -- Separator line before right arrow
-    local rightSep = selector:CreateTexture(nil, "BORDER", nil, 0)
-    rightSep:SetPoint("TOPRIGHT", rightArrow, "TOPLEFT", 0, 0)
-    rightSep:SetPoint("BOTTOMRIGHT", rightArrow, "BOTTOMLEFT", 0, 0)
-    rightSep:SetWidth(1)
-    rightSep:SetColorTexture(ar, ag, ab, 0.4)
     selector._rightSep = rightSep
 
     -- Value display (center, clickable for dropdown)
@@ -352,23 +318,6 @@ function Controls:CreateSelector(options)
     end
     row._lockSync = LockSync
     row._unlockSync = UnlockSync
-
-    -- Arrow hover effects
-    leftArrow:SetScript("OnEnter", function(btn)
-        local r, g, b = theme:GetAccentColor()
-        btn._bg:SetColorTexture(r, g, b, 0.2)
-    end)
-    leftArrow:SetScript("OnLeave", function(btn)
-        btn._bg:SetColorTexture(0, 0, 0, 0)
-    end)
-
-    rightArrow:SetScript("OnEnter", function(btn)
-        local r, g, b = theme:GetAccentColor()
-        btn._bg:SetColorTexture(r, g, b, 0.2)
-    end)
-    rightArrow:SetScript("OnLeave", function(btn)
-        btn._bg:SetColorTexture(0, 0, 0, 0)
-    end)
 
     -- Value button hover
     valueBtn:SetScript("OnEnter", function(btn)

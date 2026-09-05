@@ -238,59 +238,23 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     -- Background
     mini._bg = Controls.AddBackground(mini, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
 
-    -- Left arrow button
-    local leftArrow = CreateFrame("Button", nil, mini)
-    leftArrow:SetSize(ARROW_WIDTH, CONTROL_HEIGHT - 2)
+    -- Arrow buttons and separators
+    local leftArrow, leftSep = Controls.CreateArrowButton(mini, {
+        width = ARROW_WIDTH,
+        height = CONTROL_HEIGHT - 2,
+        glyph = "\226\151\128", -- ◀
+        separator = "RIGHT",
+    })
     leftArrow:SetPoint("LEFT", mini, "LEFT", 1, 0)
-    leftArrow:EnableMouse(true)
-    leftArrow:RegisterForClicks("AnyUp")
-
-    local leftArrowBg = leftArrow:CreateTexture(nil, "BACKGROUND", nil, -6)
-    leftArrowBg:SetAllPoints()
-    leftArrowBg:SetColorTexture(ar, ag, ab, 0)
-    leftArrow._bg = leftArrowBg
-
-    local arrowFont = theme:GetFont("BUTTON")
-    local leftArrowText = leftArrow:CreateFontString(nil, "OVERLAY")
-    leftArrowText:SetFont(arrowFont, 14, "")
-    leftArrowText:SetPoint("CENTER", 0, 0)
-    leftArrowText:SetText("\226\151\128")  -- ◀
-    leftArrowText:SetTextColor(ar, ag, ab, 1)
-    leftArrow._text = leftArrowText
-
-    -- Separator after left arrow
-    local leftSep = mini:CreateTexture(nil, "BORDER", nil, 0)
-    leftSep:SetPoint("TOPLEFT", leftArrow, "TOPRIGHT", 0, 0)
-    leftSep:SetPoint("BOTTOMLEFT", leftArrow, "BOTTOMRIGHT", 0, 0)
-    leftSep:SetWidth(1)
-    leftSep:SetColorTexture(ar, ag, ab, 0.4)
     mini._leftSep = leftSep
 
-    -- Right arrow button
-    local rightArrow = CreateFrame("Button", nil, mini)
-    rightArrow:SetSize(ARROW_WIDTH, CONTROL_HEIGHT - 2)
+    local rightArrow, rightSep = Controls.CreateArrowButton(mini, {
+        width = ARROW_WIDTH,
+        height = CONTROL_HEIGHT - 2,
+        glyph = "\226\150\182", -- ▶
+        separator = "LEFT",
+    })
     rightArrow:SetPoint("RIGHT", mini, "RIGHT", -1, 0)
-    rightArrow:EnableMouse(true)
-    rightArrow:RegisterForClicks("AnyUp")
-
-    local rightArrowBg = rightArrow:CreateTexture(nil, "BACKGROUND", nil, -6)
-    rightArrowBg:SetAllPoints()
-    rightArrowBg:SetColorTexture(ar, ag, ab, 0)
-    rightArrow._bg = rightArrowBg
-
-    local rightArrowText = rightArrow:CreateFontString(nil, "OVERLAY")
-    rightArrowText:SetFont(arrowFont, 14, "")
-    rightArrowText:SetPoint("CENTER", 0, 0)
-    rightArrowText:SetText("\226\150\182")  -- ▶
-    rightArrowText:SetTextColor(ar, ag, ab, 1)
-    rightArrow._text = rightArrowText
-
-    -- Separator before right arrow
-    local rightSep = mini:CreateTexture(nil, "BORDER", nil, 0)
-    rightSep:SetPoint("TOPRIGHT", rightArrow, "TOPLEFT", 0, 0)
-    rightSep:SetPoint("BOTTOMRIGHT", rightArrow, "BOTTOMLEFT", 0, 0)
-    rightSep:SetWidth(1)
-    rightSep:SetColorTexture(ar, ag, ab, 0.4)
     mini._rightSep = rightSep
 
     -- Value display (center, clickable for dropdown)
@@ -427,23 +391,6 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     -- Initialize from getter
     mini._currentKey = getValue()
     UpdateDisplay()
-
-    -- Arrow hover effects
-    leftArrow:SetScript("OnEnter", function(btn)
-        local r, g, b = theme:GetAccentColor()
-        btn._bg:SetColorTexture(r, g, b, 0.2)
-    end)
-    leftArrow:SetScript("OnLeave", function(btn)
-        btn._bg:SetColorTexture(0, 0, 0, 0)
-    end)
-
-    rightArrow:SetScript("OnEnter", function(btn)
-        local r, g, b = theme:GetAccentColor()
-        btn._bg:SetColorTexture(r, g, b, 0.2)
-    end)
-    rightArrow:SetScript("OnLeave", function(btn)
-        btn._bg:SetColorTexture(0, 0, 0, 0)
-    end)
 
     -- Value button hover
     valueBtn:SetScript("OnEnter", function(btn)

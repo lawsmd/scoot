@@ -211,24 +211,14 @@ function Controls:CreateDualSlider(options)
         controlsFrame:SetPoint("BOTTOMLEFT", miniSlider, "BOTTOMLEFT", 0, hasLabels and 14 or 0)
 
         -- Left arrow button (decrement)
-        local leftArrow = CreateFrame("Button", nil, controlsFrame)
-        leftArrow:SetSize(DUAL_SLIDER_ARROW_WIDTH, DUAL_SLIDER_SLIDER_HEIGHT)
+        local leftArrow = Controls.CreateArrowButton(controlsFrame, {
+            width = DUAL_SLIDER_ARROW_WIDTH,
+            height = DUAL_SLIDER_SLIDER_HEIGHT,
+            glyph = "<",
+            fontSize = 10,
+            noHover = true,
+        })
         leftArrow:SetPoint("LEFT", controlsFrame, "LEFT", 0, 0)
-        leftArrow:EnableMouse(true)
-        leftArrow:RegisterForClicks("AnyUp")
-
-        local leftArrowBg = leftArrow:CreateTexture(nil, "BACKGROUND", nil, -6)
-        leftArrowBg:SetAllPoints()
-        leftArrowBg:SetColorTexture(ar, ag, ab, 0)
-        leftArrow._bg = leftArrowBg
-
-        local leftArrowText = leftArrow:CreateFontString(nil, "OVERLAY")
-        local arrowFont = theme:GetFont("BUTTON")
-        leftArrowText:SetFont(arrowFont, 10, "")
-        leftArrowText:SetPoint("CENTER", 0, 0)
-        leftArrowText:SetText("<")
-        leftArrowText:SetTextColor(ar, ag, ab, 1)
-        leftArrow._text = leftArrowText
 
         miniSlider._leftArrow = leftArrow
 
@@ -283,23 +273,14 @@ function Controls:CreateDualSlider(options)
         trackFrame._thumb = thumb
 
         -- Right arrow button (increment)
-        local rightArrow = CreateFrame("Button", nil, controlsFrame)
-        rightArrow:SetSize(DUAL_SLIDER_ARROW_WIDTH, DUAL_SLIDER_SLIDER_HEIGHT)
+        local rightArrow = Controls.CreateArrowButton(controlsFrame, {
+            width = DUAL_SLIDER_ARROW_WIDTH,
+            height = DUAL_SLIDER_SLIDER_HEIGHT,
+            glyph = ">",
+            fontSize = 10,
+            noHover = true,
+        })
         rightArrow:SetPoint("LEFT", trackFrame, "RIGHT", DUAL_SLIDER_ARROW_GAP, 0)
-        rightArrow:EnableMouse(true)
-        rightArrow:RegisterForClicks("AnyUp")
-
-        local rightArrowBg = rightArrow:CreateTexture(nil, "BACKGROUND", nil, -6)
-        rightArrowBg:SetAllPoints()
-        rightArrowBg:SetColorTexture(ar, ag, ab, 0)
-        rightArrow._bg = rightArrowBg
-
-        local rightArrowText = rightArrow:CreateFontString(nil, "OVERLAY")
-        rightArrowText:SetFont(arrowFont, 10, "")
-        rightArrowText:SetPoint("CENTER", 0, 0)
-        rightArrowText:SetText(">")
-        rightArrowText:SetTextColor(ar, ag, ab, 1)
-        rightArrow._text = rightArrowText
 
         miniSlider._rightArrow = rightArrow
 
