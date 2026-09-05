@@ -16,7 +16,7 @@ local Boss = addon.BarsBossFrames
 local bossBarColorOpts = {}
 
 local Util = addon.ComponentsUtil
-local Resolvers = addon.BarsResolvers
+local Frames = addon.Frames
 local Textures = addon.BarsTextures
 local Alpha = addon.BarsAlpha
 local BarsOverlays = addon.BarsOverlays
@@ -26,12 +26,14 @@ local FS = addon.FrameState
 -- Direct upvalue to the event-driven guard (editmode/core.lua loads first in TOC)
 local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 
-local resolveHealthBar = Resolvers.resolveHealthBar
-local resolvePowerBar = Resolvers.resolvePowerBar
-local resolveBossHealthMask = Resolvers.resolveBossHealthMask
-local resolveBossPowerMask = Resolvers.resolveBossPowerMask
-local resolveBossHealthBarsContainer = Resolvers.resolveBossHealthBarsContainer
-local resolveBossManaBar = Resolvers.resolveBossManaBar
+local resolveHealthBar = Frames.resolveHealthBar
+local resolvePowerBar = Frames.resolvePowerBar
+local resolveBossHealthMask = Frames.resolveBossHealthMask
+local resolveBossPowerMask = Frames.resolveBossPowerMask
+local resolveBossHealthBarsContainer = Frames.resolveBossHealthBarsContainer
+local resolveBossManaBar = Frames.resolveBossManaBar
+local resolveBossReputationColor = Frames.resolveBossReputationColor
+local resolveBossContentMain = Frames.resolveBossContentMain
 local applyToBar = Textures.applyToBar
 local applyBackgroundToBar = Textures.applyBackgroundToBar
 local hasBackgroundCustomization = Textures.hasBackgroundCustomization
@@ -93,9 +95,7 @@ function Boss.applyForBoss(cfg)
                 end
 
                 -- ReputationColor strip (hide for useCustomBorders)
-                local bossReputationColor = bossFrame.TargetFrameContent
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+                local bossReputationColor = resolveBossReputationColor(bossFrame)
                 if bossReputationColor then
                     local computeBossRepAlpha = customBordersAlpha("Boss", false)
                     applyAlpha(bossReputationColor, computeBossRepAlpha())
@@ -113,9 +113,7 @@ function Boss.applyForBoss(cfg)
     for i = 1, addon.NUM_BOSS_FRAMES do
         local bossFrame = addon.GetBossFrame(i)
         if bossFrame then
-            local bossRepColor = bossFrame.TargetFrameContent
-                and bossFrame.TargetFrameContent.TargetFrameContentMain
-                and bossFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+            local bossRepColor = resolveBossReputationColor(bossFrame)
 
             if bossRepColor then
                 -- Always apply current alpha, regardless of hook state
@@ -129,9 +127,7 @@ function Boss.applyForBoss(cfg)
                 _G.C_Timer.After(0, function()
                     -- Re-resolve in case the texture object changed
                     local bossFrame2 = addon.GetBossFrame(bossIndex)
-                    local repColor2 = bossFrame2 and bossFrame2.TargetFrameContent
-                        and bossFrame2.TargetFrameContent.TargetFrameContentMain
-                        and bossFrame2.TargetFrameContent.TargetFrameContentMain.ReputationColor
+                    local repColor2 = resolveBossReputationColor(bossFrame2)
                     if repColor2 and repColor2.SetAlpha then
                         local alpha2 = computeBossUseCustomBordersAlpha()
                         -- nil = config unreadable at this tick: skip the write
@@ -256,7 +252,7 @@ function Boss.applyForBoss(cfg)
                                 bossFrame.healthbar,
                                 hb,
                                 hb and hb:GetParent(), -- HealthBarsContainer
-                                bossFrame.TargetFrameContent and bossFrame.TargetFrameContent.TargetFrameContentMain,
+                                resolveBossContentMain(bossFrame),
                                 bossFrame.TargetFrameContent,
                             }
                             for _, target in ipairs(clearTargets) do
@@ -482,8 +478,7 @@ function Boss.applyForBoss(cfg)
 
                     -- Power Bar custom border (mirrors Health Bar border settings; supports power-specific overrides)
                     -- BOSS FRAME FIX: Use the same anchor frame pattern as Health Bar for consistency.
-                    -- Unlike HealthBar, ManaBar is NOT inside a container - it's directly under TargetFrameContentMain.
-                    -- The ManaBar StatusBar should have correct bounds (it's a sibling of HealthBarsContainer).
+                    -- The ManaBar sits outside the health container; the layout note lives with Frames.resolveBossManaBar.
                     do
                         local styleKey = cfg.powerBarBorderStyle or cfg.healthBarBorderStyle
                         local hiddenEdges = cfg.powerBarBorderHiddenEdges

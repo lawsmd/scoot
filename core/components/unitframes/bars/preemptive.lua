@@ -9,7 +9,7 @@
 local addonName, addon = ...
 
 -- Get modules
-local Resolvers = addon.BarsResolvers
+local Frames = addon.Frames
 local Alpha = addon.BarsAlpha
 
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
@@ -78,9 +78,7 @@ function Preemptive.hideTargetElements()
 
     -- Helper to hide ReputationColor and install enforcer
     local function hideRepColor()
-        local repColor = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-            and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-            and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+        local repColor = Frames.resolveReputationColor("Target")
         if repColor and repColor.SetAlpha then
             pcall(repColor.SetAlpha, repColor, 0)
             if Alpha and Alpha.hookAlphaEnforcer then
@@ -96,7 +94,7 @@ function Preemptive.hideTargetElements()
         if addon.RepColorTrace then addon.RepColorTrace("hideTarget", "hide pass applied") end
 
         -- Hide frame texture immediately
-        local ft = Resolvers.resolveUnitFrameFrameTexture("Target")
+        local ft = Frames.resolveUnitFrameFrameTexture("Target")
         if ft and ft.SetAlpha then
             pcall(ft.SetAlpha, ft, 0)
         end
@@ -118,7 +116,7 @@ function Preemptive.hideTargetElements()
 
     -- Hide frame texture if healthBarHideBorder is enabled (separate from useCustomBorders)
     if cfg.healthBarHideBorder then
-        local ft = Resolvers.resolveUnitFrameFrameTexture("Target")
+        local ft = Frames.resolveUnitFrameFrameTexture("Target")
         if ft and ft.SetAlpha then
             pcall(ft.SetAlpha, ft, 0)
         end
@@ -143,9 +141,7 @@ function Preemptive.hideFocusElements()
 
     -- Helper to hide ReputationColor and install enforcer
     local function hideRepColor()
-        local repColor = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-            and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-            and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+        local repColor = Frames.resolveReputationColor("Focus")
         if repColor and repColor.SetAlpha then
             pcall(repColor.SetAlpha, repColor, 0)
             if Alpha and Alpha.hookAlphaEnforcer then
@@ -161,7 +157,7 @@ function Preemptive.hideFocusElements()
         if addon.RepColorTrace then addon.RepColorTrace("hideFocus", "hide pass applied") end
 
         -- Hide frame texture immediately
-        local ft = Resolvers.resolveUnitFrameFrameTexture("Focus")
+        local ft = Frames.resolveUnitFrameFrameTexture("Focus")
         if ft and ft.SetAlpha then
             pcall(ft.SetAlpha, ft, 0)
         end
@@ -183,7 +179,7 @@ function Preemptive.hideFocusElements()
 
     -- Hide frame texture if healthBarHideBorder is enabled (separate from useCustomBorders)
     if cfg.healthBarHideBorder then
-        local ft = Resolvers.resolveUnitFrameFrameTexture("Focus")
+        local ft = Frames.resolveUnitFrameFrameTexture("Focus")
         if ft and ft.SetAlpha then
             pcall(ft.SetAlpha, ft, 0)
         end
@@ -203,15 +199,13 @@ function Preemptive.installEarlyAlphaHooks()
     -- Target frame elements
     do
         -- ReputationColor
-        local targetRepColor = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-            and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-            and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+        local targetRepColor = Frames.resolveReputationColor("Target")
         if targetRepColor then
             Alpha.hookAlphaEnforcer(targetRepColor, Alpha.customBordersAlpha("Target", false))
         end
 
         -- FrameTexture
-        local targetFT = Resolvers.resolveUnitFrameFrameTexture("Target")
+        local targetFT = Frames.resolveUnitFrameFrameTexture("Target")
         if targetFT then
             Alpha.hookAlphaEnforcer(targetFT, Alpha.customBordersAlpha("Target", true))
         end
@@ -227,15 +221,13 @@ function Preemptive.installEarlyAlphaHooks()
     -- Focus frame elements
     do
         -- ReputationColor
-        local focusRepColor = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-            and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-            and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+        local focusRepColor = Frames.resolveReputationColor("Focus")
         if focusRepColor then
             Alpha.hookAlphaEnforcer(focusRepColor, Alpha.customBordersAlpha("Focus", false))
         end
 
         -- FrameTexture
-        local focusFT = Resolvers.resolveUnitFrameFrameTexture("Focus")
+        local focusFT = Frames.resolveUnitFrameFrameTexture("Focus")
         if focusFT then
             Alpha.hookAlphaEnforcer(focusFT, Alpha.customBordersAlpha("Focus", true))
         end
@@ -300,9 +292,7 @@ function Preemptive.installEarlyAlphaHooks()
 
         -- Re-hide ReputationColor (if useCustomBorders is enabled)
         if cfg.useCustomBorders then
-            local repColor = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+            local repColor = Frames.resolveReputationColor("Target")
             if repColor and repColor.SetAlpha then
                 pcall(repColor.SetAlpha, repColor, 0)
                 if Alpha and Alpha.hookAlphaEnforcer then
@@ -324,9 +314,7 @@ function Preemptive.installEarlyAlphaHooks()
         -- Re-hide LevelText (if levelTextHidden is enabled)
         -- CheckLevel() calls levelText:Show() which overrides the hidden state
         if cfg.levelTextHidden == true then
-            local levelFS = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.LevelText
+            local levelFS = Frames.resolveLevelFS("Target")
             if levelFS and levelFS.SetShown then
                 pcall(levelFS.SetShown, levelFS, false)
             end
@@ -334,9 +322,7 @@ function Preemptive.installEarlyAlphaHooks()
 
         -- Re-hide NameText (if nameTextHidden is enabled)
         if cfg.nameTextHidden == true then
-            local nameFS = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.Name
+            local nameFS = Frames.resolveNameFS("Target")
             if nameFS and nameFS.SetShown then
                 pcall(nameFS.SetShown, nameFS, false)
             end
@@ -352,9 +338,7 @@ function Preemptive.installEarlyAlphaHooks()
 
         -- Re-hide ReputationColor (if useCustomBorders is enabled)
         if cfg.useCustomBorders then
-            local repColor = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+            local repColor = Frames.resolveReputationColor("Focus")
             if repColor and repColor.SetAlpha then
                 pcall(repColor.SetAlpha, repColor, 0)
                 if Alpha and Alpha.hookAlphaEnforcer then
@@ -376,9 +360,7 @@ function Preemptive.installEarlyAlphaHooks()
         -- Re-hide LevelText (if levelTextHidden is enabled)
         -- CheckLevel() calls levelText:Show() which overrides the hidden state
         if cfg.levelTextHidden == true then
-            local levelFS = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.LevelText
+            local levelFS = Frames.resolveLevelFS("Focus")
             if levelFS and levelFS.SetShown then
                 pcall(levelFS.SetShown, levelFS, false)
             end
@@ -386,9 +368,7 @@ function Preemptive.installEarlyAlphaHooks()
 
         -- Re-hide NameText (if nameTextHidden is enabled)
         if cfg.nameTextHidden == true then
-            local nameFS = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.Name
+            local nameFS = Frames.resolveNameFS("Focus")
             if nameFS and nameFS.SetShown then
                 pcall(nameFS.SetShown, nameFS, false)
             end
@@ -426,14 +406,10 @@ function Preemptive.installEarlyAlphaHooks()
     -- If Blizzard changes the color, it means the texture is being updated,
     -- so alpha hiding should be re-enforced.
 
-    local targetRepColor = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-        and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-        and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+    local targetRepColor = Frames.resolveReputationColor("Target")
     Enforce.Install(targetRepColor, "repColorHide", REP_COLOR_HIDE_OPTS.Target)
 
-    local focusRepColor = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-        and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-        and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+    local focusRepColor = Frames.resolveReputationColor("Focus")
     Enforce.Install(focusRepColor, "repColorHide", REP_COLOR_HIDE_OPTS.Focus)
 end
 
@@ -461,9 +437,7 @@ function Preemptive.hideBossElements()
     -- Helper to hide ReputationColor on a specific Boss frame and install enforcer
     local function hideRepColorOnBoss(bossFrame)
         if not bossFrame then return end
-        local repColor = bossFrame.TargetFrameContent
-            and bossFrame.TargetFrameContent.TargetFrameContentMain
-            and bossFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+        local repColor = Frames.resolveBossReputationColor(bossFrame)
         if repColor and repColor.SetAlpha then
             pcall(repColor.SetAlpha, repColor, 0)
             if Alpha and Alpha.hookAlphaEnforcer then
@@ -577,9 +551,7 @@ function Preemptive.installBossFrameHooks()
             if bossFrame then
                 if cfg.useCustomBorders then
                     -- Re-hide ReputationColor
-                    local repColor = bossFrame.TargetFrameContent
-                        and bossFrame.TargetFrameContent.TargetFrameContentMain
-                        and bossFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+                    local repColor = Frames.resolveBossReputationColor(bossFrame)
                     if repColor and repColor.SetAlpha then
                         pcall(repColor.SetAlpha, repColor, 0)
                         if Alpha and Alpha.hookAlphaEnforcer then
@@ -610,9 +582,7 @@ function Preemptive.installBossFrameHooks()
                 if cfg.powerBarHideTextureOnly then
                     local Util = addon.ComponentsUtil
                     if Util and Util.SetPowerBarTextureOnlyHidden then
-                        local pb = bossFrame.TargetFrameContent
-                            and bossFrame.TargetFrameContent.TargetFrameContentMain
-                            and bossFrame.TargetFrameContent.TargetFrameContentMain.ManaBar
+                        local pb = Frames.resolveBossManaBar(bossFrame)
                         if pb then
                             Util.SetPowerBarTextureOnlyHidden(pb, true)
                         end
@@ -621,9 +591,7 @@ function Preemptive.installBossFrameHooks()
 
                 -- Re-hide LevelText (CheckLevel() calls levelText:Show() and undoes the hide)
                 if cfg.levelTextHidden == true then
-                    local levelFS = bossFrame.TargetFrameContent
-                        and bossFrame.TargetFrameContent.TargetFrameContentMain
-                        and bossFrame.TargetFrameContent.TargetFrameContentMain.LevelText
+                    local levelFS = Frames.resolveBossLevelFS(bossFrame)
                     if levelFS and levelFS.SetShown then
                         pcall(levelFS.SetShown, levelFS, false)
                     end
@@ -631,9 +599,7 @@ function Preemptive.installBossFrameHooks()
 
                 -- Re-hide NameText (for symmetry with Target/Focus)
                 if cfg.nameTextHidden == true then
-                    local nameFS = bossFrame.TargetFrameContent
-                        and bossFrame.TargetFrameContent.TargetFrameContentMain
-                        and bossFrame.TargetFrameContent.TargetFrameContentMain.Name
+                    local nameFS = Frames.resolveBossNameFS(bossFrame)
                     if nameFS and nameFS.SetShown then
                         pcall(nameFS.SetShown, nameFS, false)
                     end
@@ -681,9 +647,7 @@ function Preemptive.installBossFrameHooks()
             end
 
             -- Hook SetVertexColor on ReputationColor for extra coverage
-            local repColor = bossFrame.TargetFrameContent
-                and bossFrame.TargetFrameContent.TargetFrameContentMain
-                and bossFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+            local repColor = Frames.resolveBossReputationColor(bossFrame)
             Enforce.Install(repColor, "repColorHide", REP_COLOR_HIDE_OPTS.Boss)
 
             -- Install early alpha enforcer on ReputationColor

@@ -41,12 +41,9 @@ function addon.RepColorTrace(tag, detail)
     buffer[slot] = { t = GetTime(), seq = writeIndex, tag = tag, detail = detail }
 end
 
-local function resolveRepColor(unit)
-    local root = (unit == "Target") and _G.TargetFrame or _G.FocusFrame
-    return root and root.TargetFrameContent
-        and root.TargetFrameContent.TargetFrameContentMain
-        and root.TargetFrameContent.TargetFrameContentMain.ReputationColor
-end
+-- The shared resolver keeps the identity comparisons below aligned with the
+-- styling path: both sides resolve the same object by construction.
+local resolveRepColor = addon.Frames.resolveReputationColor
 
 -- Variant for generic code paths (the alpha enforcer serves many textures);
 -- records only when obj is one of the two tracked ReputationColor textures.

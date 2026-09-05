@@ -12,10 +12,10 @@ local addonName, addon = ...
 addon.BarsFrameArt = addon.BarsFrameArt or {}
 local FrameArt = addon.BarsFrameArt
 
-local Resolvers = addon.BarsResolvers
+local Frames = addon.Frames
 local Alpha = addon.BarsAlpha
 
-local resolveUnitFrameFrameTexture = Resolvers.resolveUnitFrameFrameTexture
+local resolveUnitFrameFrameTexture = Frames.resolveUnitFrameFrameTexture
 local applyAlpha = Alpha.applyAlpha
 local hookAlphaEnforcer = Alpha.hookAlphaEnforcer
 local customBordersAlpha = Alpha.customBordersAlpha
@@ -27,14 +27,9 @@ local function enforce(region, alpha)
     hookAlphaEnforcer(region, alpha)
 end
 
--- The ReputationColor strip of the Target or Focus frame, resolved live because
--- Blizzard can recreate it during rapid target changes.
-local function resolveReputationColor(unit)
-    local root = (unit == "Target" and _G.TargetFrame) or (unit == "Focus" and _G.FocusFrame) or nil
-    return root and root.TargetFrameContent
-        and root.TargetFrameContent.TargetFrameContentMain
-        and root.TargetFrameContent.TargetFrameContentMain.ReputationColor
-end
+-- The ReputationColor strip is resolved live at every use because Blizzard can
+-- recreate it during rapid target changes.
+local resolveReputationColor = Frames.resolveReputationColor
 
 -- Threat glow per unit: PlayerFrame's FrameFlash, the Target and Focus Flash.
 local FLASH = {
@@ -94,9 +89,7 @@ function FrameArt.apply(unit, cfg)
 
     -- Target-specific prestige elements (PvP badge/portrait)
     if unit == "Target" then
-        local contextual = _G.TargetFrame
-            and _G.TargetFrame.TargetFrameContent
-            and _G.TargetFrame.TargetFrameContent.TargetFrameContentContextual
+        local contextual = Frames.resolveContextual("Target")
         if contextual then
             local alpha = customBordersAlpha("Target", false)
             enforce(contextual.PrestigePortrait, alpha)
