@@ -75,7 +75,7 @@ function UF.RenderBoss(panel, scrollContent)
     })
 
     --------------------------------------------------------------------------------
-    -- Health Bar (4 tabs: Style, Border, % Text, Value Text)
+    -- Health Bar
     --------------------------------------------------------------------------------
 
     builder:AddCollapsibleSection({
@@ -85,13 +85,7 @@ function UF.RenderBoss(panel, scrollContent)
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
             inner:AddTabbedSection({
-                tabs = {
-                    { key = "style", label = "Style" },
-                    { key = "border", label = "Border" },
-                    { key = "percentText", label = "% Text" },
-                    { key = "valueText", label = "Value Text" },
-                    { key = "visibility", label = "Visibility" },
-                },
+                tabs = UF.getHealthBarTabs(COMPONENT_ID),
                 componentId = COMPONENT_ID,
                 sectionKey = "healthBar_tabs",
                 buildContent = {

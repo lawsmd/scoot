@@ -198,7 +198,7 @@ function UF.RenderPlayer(panel, scrollContent)
     })
 
     --------------------------------------------------------------------------------
-    -- Collapsible Section: Health Bar (5 tabs for Player)
+    -- Collapsible Section: Health Bar
     --------------------------------------------------------------------------------
 
     local healthTabs = UF.getHealthBarTabs(COMPONENT_ID)
@@ -240,7 +240,7 @@ function UF.RenderPlayer(panel, scrollContent)
     })
 
     --------------------------------------------------------------------------------
-    -- Collapsible Section: Power Bar (7 tabs)
+    -- Collapsible Section: Power Bar
     --------------------------------------------------------------------------------
 
     local powerTabs = UF.getPowerBarTabs()
@@ -434,7 +434,7 @@ function UF.RenderPlayer(panel, scrollContent)
     end
 
     --------------------------------------------------------------------------------
-    -- Collapsible Section: Cast Bar (8 tabs for Player)
+    -- Collapsible Section: Cast Bar
     --------------------------------------------------------------------------------
 
     local castBarTabs = UF.getCastBarTabs(COMPONENT_ID, {

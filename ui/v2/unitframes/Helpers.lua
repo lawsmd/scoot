@@ -472,7 +472,7 @@ UF.buildBarBorderOptions = addon.UI.Settings.Helpers.getBarBorderOptions
 
 -- Health Bar tabs by unit type
 function UF.getHealthBarTabs(componentId)
-    if componentId == "ufTarget" or componentId == "ufFocus" then
+    if componentId == "ufTarget" or componentId == "ufFocus" or componentId == "ufPlayer" then
         return {
             { key = "style", label = "Style" },
             { key = "border", label = "Border" },
@@ -480,15 +480,7 @@ function UF.getHealthBarTabs(componentId)
             { key = "percentText", label = "% Text" },
             { key = "valueText", label = "Value Text" },
         }
-    elseif componentId == "ufPlayer" then
-        return {
-            { key = "style", label = "Style" },
-            { key = "border", label = "Border" },
-            { key = "visibility", label = "Visibility" },
-            { key = "percentText", label = "% Text" },
-            { key = "valueText", label = "Value Text" },
-        }
-    else -- Pet
+    else -- Pet, Boss: visibility last
         return {
             { key = "style", label = "Style" },
             { key = "border", label = "Border" },
@@ -535,7 +527,7 @@ function UF.getPortraitTabs(componentId)
     end
 end
 
--- Cast Bar tabs by unit type
+-- Cast Bar tabs (one list for every unit; fillLine shows in text-fill mode)
 function UF.getCastBarTabs(componentId, options)
     local sparkTab = { key = "spark", label = "Spark", infoIcon = {
         tooltipTitle = "Cast Bar Spark",
@@ -546,41 +538,16 @@ function UF.getCastBarTabs(componentId, options)
         label = "Text-Fill Mode",
         visible = options and options.fillLineVisible or nil,
     }
-    if componentId == "ufPlayer" then
-        -- Player has Cast Time tab
-        return {
-            { key = "positioning", label = "Positioning" },
-            { key = "style", label = "Style" },
-            sparkTab,
-            { key = "border", label = "Border" },
-            { key = "icon", label = "Icon" },
-            { key = "spellName", label = "Spell Name" },
-            { key = "castTime", label = "Cast Time" },
-            fillLineTab,
-            { key = "visibility", label = "Visibility" },
-        }
-    else
-        -- Target/Focus/Boss
-        return {
-            { key = "positioning", label = "Positioning" },
-            { key = "style", label = "Style" },
-            sparkTab,
-            { key = "border", label = "Border" },
-            { key = "icon", label = "Icon" },
-            { key = "spellName", label = "Spell Name" },
-            { key = "castTime", label = "Cast Time" },
-            fillLineTab,
-            { key = "visibility", label = "Visibility" },
-        }
-    end
-end
-
--- Class Resource tabs (Player only)
-function UF.getClassResourceTabs()
     return {
-        { key = "styling", label = "Styling" },
-        { key = "text", label = "Text" },
         { key = "positioning", label = "Positioning" },
+        { key = "style", label = "Style" },
+        sparkTab,
+        { key = "border", label = "Border" },
+        { key = "icon", label = "Icon" },
+        { key = "spellName", label = "Spell Name" },
+        { key = "castTime", label = "Cast Time" },
+        fillLineTab,
+        { key = "visibility", label = "Visibility" },
     }
 end
 
