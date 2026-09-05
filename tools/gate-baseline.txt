@@ -32,11 +32,12 @@ dated	core/components/scootauras/events.lua	1
 dated	core/components/scootauras/styling.lua	1
 dated	core/components/unitframes/bars/groupauras/core.lua	1
 dated	core/components/unitframesz/core.lua	1
-dated	core/components/unitframesz/engine.lua	3
+dated	core/components/unitframesz/engine.lua	1
+dated	core/components/unitframesz/ping.lua	2
 dated	core/fontpair.lua	2
 dated	core/preset_scooterdeck.lua	1
 dated	core/preset_scooterui.lua	1
-doc-ref	core/components/unitframesz/engine.lua	1
+doc-ref	core/components/unitframesz/ping.lua	1
 doc-ref	core/debug/core.lua	1
 doc-ref	core/editmode/positionables.lua	1
 doc-ref	core/enforce.lua	1
