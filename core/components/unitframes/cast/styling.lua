@@ -8,14 +8,12 @@ local addonName, addon = ...
 local CB = addon.CastBars
 local getProp = CB._getProp
 local setProp = CB._setProp
-local getState = CB._getState
 local getIconBorderContainer = CB._getIconBorderContainer
 local installGradientHook = CB._installGradientHook
 local applySpellNameColor = CB._applySpellNameColor
 local applyTextFillMode = CB._applyTextFillMode
 local hideTextFillElements = CB._hideTextFillElements
 local syncTextFillText = CB._syncTextFillText
-local resolveGradientColors = CB._resolveGradientColors
 
 -- Unit Frames: Cast Bar positioning (Player/Target/Focus)
 do
@@ -60,7 +58,9 @@ do
 
 	-- Empowered cast state per unit token ("player"/"target"/"focus")
 	-- Set via events only — never reads Blizzard frame properties (no taint risk)
+	-- Shared with cast/empowered.lua, which mutates the same table.
 	local empoweredCastActive = {}
+	CB._empoweredCastActive = empoweredCastActive
 
 	local function isEmpoweredCast(unit)
 		local token = (unit == "Player" and "player")
