@@ -596,9 +596,9 @@ local function applyActiveProfile(reason)
     reconcileProfileToggles(reason)
 end
 
--- Body of the three AceDB callbacks. _setActiveProfile switches with the
--- callback suppressed and runs applyActiveProfile alone, so a Scoot-driven
--- switch never reaches the aura reconcile below.
+-- Body of the three AceDB callbacks and of _setActiveProfile, which switches
+-- with the callback suppressed and runs this directly, so every switch path
+-- reaches the aura reconcile exactly once.
 local function onProfileContentsChanged(reason)
     applyActiveProfile(reason)
     if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
@@ -1276,7 +1276,7 @@ function Profiles:_setActiveProfile(profileKey, opts)
         end
     end
 
-    applyActiveProfile("_setActiveProfile")
+    onProfileContentsChanged("_setActiveProfile")
 
     -- Clear the suppression flag after profile switch completes
     addon._profileSwitchInProgress = false
@@ -1368,9 +1368,10 @@ function Profiles:SwitchToProfile(profileKey, opts)
 
     if not ensureLayoutsLoaded() then
         self:EnsureProfileExists(profileKey)
+        self._suppressProfileCallback = true
         self.db:SetProfile(profileKey)
-        addon:LinkComponentsToDB()
-        addon:ApplyStyles()
+        self._suppressProfileCallback = false
+        onProfileContentsChanged("DeferredSwitch")
         self._pendingActiveLayout = profileKey
         self._pendingRefreshReason = "DeferredSwitch"
         Debug("SwitchToProfile deferred pending sync", profileKey)
