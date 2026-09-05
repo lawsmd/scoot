@@ -28,6 +28,9 @@
 
 local addonName, addon = ...
 
+addon.DebugNameText = addon.DebugNameText or {}
+local NT = addon.DebugNameText
+
 -- Defined below, referenced above their definitions.
 local DebugNameTextRefresh
 
@@ -69,6 +72,7 @@ local cfg = {
     case   = "normal",      -- normal | upper | smallcaps
     scFace = "PIXELOP_SC",  -- the face 'smallcaps' swaps to; the mode IS this font
 }
+NT._cfg = cfg
 
 -- NPC placeholder ramp: near-white into a light gray.
 local NPC_START = { 1.00, 1.00, 1.00 }
@@ -124,6 +128,7 @@ local function effectiveFaceKey()
     if cfg.case == "smallcaps" then return cfg.scFace end
     return cfg.face
 end
+NT._EffectiveFaceKey = effectiveFaceKey
 
 local frame, nameFS, chromeBG
 
@@ -166,10 +171,12 @@ local function measureOn(obj, method)
     if type(v) == "number" then return string.format("%.2f", v) end
     return safeStr(v)
 end
+NT._MeasureOn = measureOn
 
 local function measure(method)
     return measureOn(nameFS, method)
 end
+NT._Measure = measure
 
 local function hex(r, g, b)
     return string.format("%02x%02x%02x",
@@ -177,6 +184,7 @@ local function hex(r, g, b)
         math.floor((g or 0) * 255 + 0.5),
         math.floor((b or 0) * 255 + 0.5))
 end
+NT._Hex = hex
 
 --------------------------------------------------------------------------------
 -- The oracle
@@ -195,6 +203,7 @@ end
 -- rather than a strlen.
 
 local PROBE_LIMIT = 128
+NT._PROBE_LIMIT = PROBE_LIMIT
 local probeFS
 
 local function ensureProbeFS()
@@ -216,6 +225,7 @@ local function ensureProbeFS()
 
     return probeFS
 end
+NT._EnsureProbeFS = ensureProbeFS
 
 -- true / false, or nil plus a tag describing why it was not a plain boolean.
 local function alphaProbe(fs, start, length)
@@ -226,6 +236,7 @@ local function alphaProbe(fs, start, length)
     if within == true or within == false then return within end
     return nil, "nonbool(" .. safeStr(within) .. ")"
 end
+NT._AlphaProbe = alphaProbe
 
 -- Largest n in [0, limit] with isWithinText true. The index is 0-based and inclusive,
 -- so the character count is best + 1, and best == -1 means the string is empty.
@@ -245,6 +256,7 @@ local function alphaBisect(fs, limit)
     end
     return best, calls
 end
+NT._AlphaBisect = alphaBisect
 
 -- count, calls, tag. The leading probe(0) is not redundant: alphaBisect treats any
 -- non-true return as false, so a SECRET or errored return would silently shorten the
@@ -275,6 +287,7 @@ local function plainNumber(fs, method)
     if type(v) ~= "number" then return nil end
     return v
 end
+NT._PlainNumber = plainNumber
 
 --------------------------------------------------------------------------------
 -- Colors
@@ -293,6 +306,7 @@ local function targetIsPlayer()
     local ok, v = pcall(UnitIsPlayer, "target")
     return ok and v == true
 end
+NT._TargetIsPlayer = targetIsPlayer
 
 local function resolveColors()
     local token = cfg.forcedClass
@@ -370,6 +384,7 @@ local function createSlice()
 end
 
 local slicePool = addon.Pool.NewIndexed(createSlice, function(s) s.clip:Hide() end)
+NT._slicePool = slicePool
 
 local function hideSlices()
     slicePool:HideFrom(1)
@@ -448,6 +463,23 @@ end
 
 -- True while nameFS holds the raw value rather than a |cff-coded gradient string.
 local plainApplied = false
+
+-- One snapshot per cross-file call: the moved builders and the case probe read these
+-- at entry, on the same tick as the upvalue reads they replace. nameFS and frame are
+-- created lazily, after load, so a load-time capture would hold nil.
+function NT._State()
+    return {
+        lastResult = lastResult, lastColors = lastColors, lastFit = lastFit,
+        lastSource = lastSource, lastLines = lastLines, lastDiscovery = lastDiscovery,
+        lastGradientMode = lastGradientMode, lastGradientNote = lastGradientNote,
+        lastRamped = lastRamped, lastSliceSize = lastSliceSize,
+        lastSliceScale = lastSliceScale, lastSliceMaxLines = lastSliceMaxLines,
+        lastSliceFallback = lastSliceFallback, currentIsSecret = currentIsSecret,
+        currentValue = currentValue, currentRaw = currentRaw,
+        caseMethod = caseMethod, caseError = caseError, caseOutSecret = caseOutSecret,
+        plainApplied = plainApplied, nameFS = nameFS, frame = frame,
+    }
+end
 
 local function applyValue()
     if nameFS.ClearText then pcall(nameFS.ClearText, nameFS) end
@@ -645,6 +677,7 @@ local UNCAPPED_LINES = 64
 -- is only correct if the ruler is narrow enough that no two words share a line, and the
 -- way that assumption fails is silently -- it returns a smaller number, not an error.
 local SQUEEZE_A, SQUEEZE_B = 20, 10
+NT._SQUEEZE_A, NT._SQUEEZE_B = SQUEEZE_A, SQUEEZE_B
 
 -- Rulers are created once and never destroyed, but the size range is user-editable and
 -- nothing stops someone typing 'range 1 500'. Coarsen rather than allocate 500 regions.
@@ -2087,6 +2120,7 @@ local function alphaScan(fs, limit)
     end
     return out
 end
+NT._AlphaScan = alphaScan
 
 -- Run-length encoded so a 129-entry sweep reads as one line.
 local function formatSeq(seq, limit)
