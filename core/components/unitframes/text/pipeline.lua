@@ -460,15 +460,37 @@ function UFT._BuildTextPipeline(kind)
             return
         end
 
-        local cache = addon[kind.fontCache] and addon[kind.fontCache][unit]
-        if not cache then
-            -- If fonts haven't been resolved yet this session, skip work here.
-            -- They will be resolved during the next ApplyStyles() pass.
-            return
+        local cache = addon[kind.fontCache][unit]
+        local leftFS = cache and cache.leftFS or nil
+        local rightFS = cache and cache.rightFS or nil
+        if not (leftFS or rightFS) then
+            -- Font cache miss: the first call after a profile switch wiped the
+            -- cache, or before the first full pass. Resolve through the direct
+            -- paths only; scanning, hooks, and styling stay in ApplyStyles.
+            local frame = getUnitFrameFor(unit)
+            if not frame then return end
+            leftFS, rightFS = kind.directTexts(frame, unit)
+            -- The profile-switch reset clears the hidden flags but not the
+            -- applied props; clear them so the first apply is not skipped.
+            local fstate = FS
+            if fstate then
+                if leftFS then fstate.ClearProp(leftFS, kind.appliedProp) end
+                if rightFS then fstate.ClearProp(rightFS, kind.appliedProp) end
+            end
+            -- Cache only a complete set, matching what the styling pass builds;
+            -- the center resolver is direct paths too. A partial result stays
+            -- uncached so the next styling pass re-resolves in full.
+            if leftFS and rightFS then
+                addon[kind.fontCache][unit] = {
+                    leftFS = leftFS,
+                    rightFS = rightFS,
+                    textStringFS = kind.centerResolver(unit),
+                }
+            end
         end
 
-        applyVisibility(cache.leftFS, leftHidden)
-        applyVisibility(cache.rightFS, rightHidden)
+        applyVisibility(leftFS, leftHidden)
+        applyVisibility(rightFS, rightHidden)
     end
 
     local function applyAll()

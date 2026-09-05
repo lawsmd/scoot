@@ -104,9 +104,9 @@ local Chains = {
         "ApplyUnitFrameBuffsDebuffsFor",
         "ApplyUnitFrameVisibilityFor",
     },
-    -- After TargetFrame_Update or FocusFrame_Update: the light chain. The
-    -- text appliers no-op until a full ApplyStyles pass has filled their font
-    -- cache, which ClearFrameLevelState wipes on a profile switch.
+    -- After TargetFrame_Update or FocusFrame_Update: the light chain. On a
+    -- font-cache miss (profile switch, or before the first full pass) the
+    -- text appliers resolve the texts by direct paths and refill the cache.
     unitSwap = {
         "ApplyUnitFrameBarTexturesFor",
         "ApplyUnitFrameNameLevelTextFor",
