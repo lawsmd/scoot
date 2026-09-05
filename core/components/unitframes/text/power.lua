@@ -101,52 +101,6 @@ do
 		return target
 	end
 
-	-- Resolve the content main frame for anchoring name backdrop
-	local function resolveUFContentMain_NLT(unit)
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain or nil
-		elseif unit == "Target" then
-			local root = _G.TargetFrame
-			return root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain or nil
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain or nil
-		elseif unit == "Pet" then
-			return _G.PetFrame
-		end
-	end
-
-	-- Resolve the Health Bar status bar for anchoring name backdrop
-	local function resolveHealthBar_NLT(unit)
-		if unit == "Pet" then return _G.PetFrameHealthBar end
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root
-				and root.PlayerFrameContent
-				and root.PlayerFrameContent.PlayerFrameContentMain
-				and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-				and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
-				or nil
-		elseif unit == "Target" then
-			local root = _G.TargetFrame
-			return root
-				and root.TargetFrameContent
-				and root.TargetFrameContent.TargetFrameContentMain
-				and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-				and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-				or nil
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return root
-				and root.TargetFrameContent
-				and root.TargetFrameContent.TargetFrameContentMain
-				and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-				and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-				or nil
-		end
-	end
-
 	-- Resolve power bar for this unit
 	local function resolvePowerBarForVisibility(frame, unit)
 		if unit == "Pet" then return _G.PetFrameManaBar end
@@ -679,31 +633,4 @@ do
         end
 	end
 
-	-- Optional helper mirroring health text settings copy (no-op if missing)
-	function addon.CopyUnitFramePowerTextSettings(sourceUnit, destUnit)
-		local db = addon and addon.db and addon.db.profile
-		if not db then return false end
-		db.unitFrames = db.unitFrames or {}
-		local src = db.unitFrames[sourceUnit]
-		if not src then return false end
-		db.unitFrames[destUnit] = db.unitFrames[destUnit] or {}
-		local dst = db.unitFrames[destUnit]
-		local function deepcopy(v)
-			if type(v) ~= "table" then return v end
-			local out = {}
-			for k, vv in pairs(v) do out[k] = deepcopy(vv) end
-			return out
-		end
-		local keys = {
-			"powerPercentHidden",
-			"powerValueHidden",
-			"textPowerPercent",
-			"textPowerValue",
-		}
-		for _, k in ipairs(keys) do
-			if src[k] ~= nil then dst[k] = deepcopy(src[k]) else dst[k] = nil end
-		end
-		if addon.ApplyUnitFramePowerTextVisibilityFor then addon.ApplyUnitFramePowerTextVisibilityFor(destUnit) end
-		return true
-	end
 end

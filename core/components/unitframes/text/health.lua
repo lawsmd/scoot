@@ -735,31 +735,4 @@ do
         end
 	end
 
-    -- Copy addon-only Unit Frame text settings from source unit to destination unit
-    function addon.CopyUnitFrameTextSettings(sourceUnit, destUnit)
-        local db = addon and addon.db and addon.db.profile
-        if not db then return false end
-        db.unitFrames = db.unitFrames or {}
-        local src = db.unitFrames[sourceUnit]
-        if not src then return false end
-        db.unitFrames[destUnit] = db.unitFrames[destUnit] or {}
-        local dst = db.unitFrames[destUnit]
-        local function deepcopy(v)
-            if type(v) ~= "table" then return v end
-            local out = {}
-            for k, vv in pairs(v) do out[k] = deepcopy(vv) end
-            return out
-        end
-        local keys = {
-            "healthPercentHidden",
-            "healthValueHidden",
-            "textHealthPercent",
-            "textHealthValue",
-        }
-        for _, k in ipairs(keys) do
-            if src[k] ~= nil then dst[k] = deepcopy(src[k]) else dst[k] = nil end
-        end
-        if addon.ApplyUnitFrameHealthTextVisibilityFor then addon.ApplyUnitFrameHealthTextVisibilityFor(destUnit) end
-        return true
-    end
 end
