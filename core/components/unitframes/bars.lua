@@ -11,22 +11,15 @@ local apbTextCustomizationOpts = { alignment = true }
 -- Boss bar opts for ResolveColorRGBA (hook-path scratch, fields set per call)
 local bossBarColorOpts = {}
 local Util = addon.ComponentsUtil
-local CleanupIconBorderAttachments = Util.CleanupIconBorderAttachments
-local HideDefaultBarTextures = Util.HideDefaultBarTextures
-local ToggleDefaultIconOverlay = Util.ToggleDefaultIconOverlay
 
 -- Secret-value safe helpers (shared module)
 local safeOffset = addon.SecretSafe.safeOffset
 
 -- Reference extracted modules (loaded via TOC before this file)
-local Utils = addon.BarsUtils
 local Combat = addon.BarsCombat
 local Resolvers = addon.BarsResolvers
 local Textures = addon.BarsTextures
 local Alpha = addon.BarsAlpha
-local Preemptive = addon.BarsPreemptive
-local RaidFrames = addon.BarsRaidFrames
-local PartyFrames = addon.BarsPartyFrames
 local BarsOverlays = addon.BarsOverlays
 local BarsSmallFrames = addon.BarsSmallFrames
 
@@ -73,64 +66,8 @@ end
 -- These provide backward compatibility with code in this file
 --------------------------------------------------------------------------------
 
-local getUiScale = Utils.getUiScale
-local pixelsToUiUnits = Utils.pixelsToUiUnits
-local uiUnitsToPixels = Utils.uiUnitsToPixels
-local clampScreenCoordinate = Utils.clampScreenCoordinate
-local getFrameScreenOffsets = Utils.getFrameScreenOffsets
-
 local queuePowerBarReapply = Combat.queuePowerBarReapply
 local queueUnitFrameTextureReapply = Combat.queueUnitFrameTextureReapply
-local queueRaidFrameReapply = Combat.queueRaidFrameReapply
-local queuePartyFrameReapply = Combat.queuePartyFrameReapply
-
--- Unit Frames: Copy Health/Power Bar Style settings (texture, color mode, tint)
-do
-    function addon.CopyUnitFrameBarStyleSettings(sourceUnit, destUnit)
-        local db = addon and addon.db and addon.db.profile
-        if not db then return false end
-        db.unitFrames = db.unitFrames or {}
-        local src = db.unitFrames[sourceUnit]
-        if not src then return false end
-        db.unitFrames[destUnit] = db.unitFrames[destUnit] or {}
-        local dst = db.unitFrames[destUnit]
-
-        local function deepcopy(v)
-            if type(v) ~= "table" then return v end
-            local out = {}
-            for k, vv in pairs(v) do out[k] = deepcopy(vv) end
-            return out
-        end
-
-        local keys = {
-            "healthBarTexture",
-            "healthBarColorMode",
-            "healthBarTint",
-            "healthBarBackgroundTexture",
-            "healthBarBackgroundColorMode",
-            "healthBarBackgroundTint",
-            "healthBarBackgroundOpacity",
-            "powerBarTexture",
-            "powerBarColorMode",
-            "powerBarTint",
-            "powerBarBackgroundTexture",
-            "powerBarBackgroundColorMode",
-            "powerBarBackgroundTint",
-            "powerBarBackgroundOpacity",
-            "powerBarHideFullSpikes",
-            "powerBarHideFeedback",
-            "powerBarHideSpark",
-            "powerBarHideManaCostPrediction",
-            "powerBarHidden",
-        }
-        for _, k in ipairs(keys) do
-            if src[k] ~= nil then dst[k] = deepcopy(src[k]) else dst[k] = nil end
-        end
-
-        if addon.ApplyUnitFrameBarTexturesFor then addon.ApplyUnitFrameBarTexturesFor(destUnit) end
-        return true
-    end
-end
 
 -- Unit Frames: Apply custom bar textures (Health/Power) with optional tint per unit
 do
@@ -142,7 +79,6 @@ do
     local resolveAlternatePowerBar = Resolvers.resolveAlternatePowerBar
     local resolveHealthMask = Resolvers.resolveHealthMask
     local resolvePowerMask = Resolvers.resolvePowerMask
-    local resolveUFContentMain = Resolvers.resolveUFContentMain
     local resolveUnitFrameFrameTexture = Resolvers.resolveUnitFrameFrameTexture
     local resolveBossHealthMask = Resolvers.resolveBossHealthMask
     local resolveBossPowerMask = Resolvers.resolveBossPowerMask
@@ -164,10 +100,6 @@ do
     local ensureRectHealthOverlay = BarsOverlays._ensureRectHealthOverlay
     local ensureRectPowerOverlay = BarsOverlays._ensureRectPowerOverlay
     local updateRectPowerOverlay = BarsOverlays._updateRectPowerOverlay
-
-    -- Expose helpers for other modules (Cast Bar styling, etc.)
-    addon._ApplyToStatusBar = applyToBar
-    addon._ApplyBackgroundToStatusBar = applyBackgroundToBar
 
     local function applyForUnit(unit)
         if not addon:IsModuleEnabled("unitFrames", unit) then return end
@@ -307,31 +239,29 @@ do
                 
                 -- Belt-and-suspenders: schedule a follow-up re-hide after Blizzard's updates complete
                 -- Catches cases where Blizzard resets alpha after the initial hide
-                if _G.C_Timer and _G.C_Timer.After then
-                    _G.C_Timer.After(0, function()
-                        -- Re-resolve in case the texture object changed
-                        local repColor2
-                        if unit == "Target" and _G.TargetFrame then
-                            repColor2 = _G.TargetFrame.TargetFrameContent
-                                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-                                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
-                        elseif unit == "Focus" and _G.FocusFrame then
-                            repColor2 = _G.FocusFrame.TargetFrameContent
-                                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-                                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+                _G.C_Timer.After(0, function()
+                    -- Re-resolve in case the texture object changed
+                    local repColor2
+                    if unit == "Target" and _G.TargetFrame then
+                        repColor2 = _G.TargetFrame.TargetFrameContent
+                            and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
+                            and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+                    elseif unit == "Focus" and _G.FocusFrame then
+                        repColor2 = _G.FocusFrame.TargetFrameContent
+                            and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
+                            and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
+                    end
+                    if repColor2 and repColor2.SetAlpha then
+                        local alpha2 = computeUseCustomBordersAlpha()
+                        -- nil = config unreadable at this tick: skip the write
+                        -- (never restore visible from a transient window)
+                        if alpha2 ~= nil then
+                            pcall(repColor2.SetAlpha, repColor2, alpha2)
                         end
-                        if repColor2 and repColor2.SetAlpha then
-                            local alpha2 = computeUseCustomBordersAlpha()
-                            -- nil = config unreadable at this tick: skip the write
-                            -- (never restore visible from a transient window)
-                            if alpha2 ~= nil then
-                                pcall(repColor2.SetAlpha, repColor2, alpha2)
-                            end
-                            -- Install enforcer on the (possibly new) object
-                            hookAlphaEnforcer(repColor2, computeUseCustomBordersAlpha)
-                        end
-                    end)
-                end
+                        -- Install enforcer on the (possibly new) object
+                        hookAlphaEnforcer(repColor2, computeUseCustomBordersAlpha)
+                    end
+                end)
             end
         end
 
@@ -362,25 +292,23 @@ do
 
                         -- Belt-and-suspenders: schedule a follow-up re-hide after Blizzard's updates complete
                         -- Catches cases where Blizzard resets alpha after the initial hide
-                        if _G.C_Timer and _G.C_Timer.After then
-                            local bossIndex = i  -- Capture loop variable for closure
-                            _G.C_Timer.After(0, function()
-                                -- Re-resolve in case the texture object changed
-                                local bossFrame2 = addon.GetBossFrame(bossIndex)
-                                local repColor2 = bossFrame2 and bossFrame2.TargetFrameContent
-                                    and bossFrame2.TargetFrameContent.TargetFrameContentMain
-                                    and bossFrame2.TargetFrameContent.TargetFrameContentMain.ReputationColor
-                                if repColor2 and repColor2.SetAlpha then
-                                    local alpha2 = computeBossUseCustomBordersAlpha()
-                                    -- nil = config unreadable at this tick: skip the write
-                                    if alpha2 ~= nil then
-                                        pcall(repColor2.SetAlpha, repColor2, alpha2)
-                                    end
-                                    -- Install enforcer on the (possibly new) object
-                                    hookAlphaEnforcer(repColor2, computeBossUseCustomBordersAlpha)
+                        local bossIndex = i  -- Capture loop variable for closure
+                        _G.C_Timer.After(0, function()
+                            -- Re-resolve in case the texture object changed
+                            local bossFrame2 = addon.GetBossFrame(bossIndex)
+                            local repColor2 = bossFrame2 and bossFrame2.TargetFrameContent
+                                and bossFrame2.TargetFrameContent.TargetFrameContentMain
+                                and bossFrame2.TargetFrameContent.TargetFrameContentMain.ReputationColor
+                            if repColor2 and repColor2.SetAlpha then
+                                local alpha2 = computeBossUseCustomBordersAlpha()
+                                -- nil = config unreadable at this tick: skip the write
+                                if alpha2 ~= nil then
+                                    pcall(repColor2.SetAlpha, repColor2, alpha2)
                                 end
-                            end)
-                        end
+                                -- Install enforcer on the (possibly new) object
+                                hookAlphaEnforcer(repColor2, computeBossUseCustomBordersAlpha)
+                            end
+                        end)
                     end
                 end
             end
@@ -655,28 +583,26 @@ do
                                             if st then st.bossReapplyPending = true end
 
                                             -- Defer to next frame to let Blizzard finish its updates
-                                            if _G.C_Timer and _G.C_Timer.After then
-                                                _G.C_Timer.After(0, function()
-                                                    local st2 = getState(bossFrame)
-                                                    if st2 then st2.bossReapplyPending = nil end
-                                                    -- Use direct property (most reliable)
-                                                    local hbReapply = bossFrame.healthbar
-                                                    if hbReapply then
-                                                        local resolvedPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(texKey)
-                                                        if resolvedPath and hbReapply.SetStatusBarTexture then
-                                                            pcall(hbReapply.SetStatusBarTexture, hbReapply, resolvedPath)
-                                                        end
-                                                        -- Reapply color
-                                                        local tex = hbReapply:GetStatusBarTexture()
-                                                        if tex and tex.SetVertexColor then
-                                                            bossBarColorOpts.barKind = "health"
-                                                            bossBarColorOpts.unitForClass = unitId
-                                                            local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, bossBarColorOpts)
-                                                            pcall(tex.SetVertexColor, tex, r, g, b, a)
-                                                        end
+                                            _G.C_Timer.After(0, function()
+                                                local st2 = getState(bossFrame)
+                                                if st2 then st2.bossReapplyPending = nil end
+                                                -- Use direct property (most reliable)
+                                                local hbReapply = bossFrame.healthbar
+                                                if hbReapply then
+                                                    local resolvedPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(texKey)
+                                                    if resolvedPath and hbReapply.SetStatusBarTexture then
+                                                        pcall(hbReapply.SetStatusBarTexture, hbReapply, resolvedPath)
                                                     end
-                                                end)
-                                            end
+                                                    -- Reapply color
+                                                    local tex = hbReapply:GetStatusBarTexture()
+                                                    if tex and tex.SetVertexColor then
+                                                        bossBarColorOpts.barKind = "health"
+                                                        bossBarColorOpts.unitForClass = unitId
+                                                        local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, bossBarColorOpts)
+                                                        pcall(tex.SetVertexColor, tex, r, g, b, a)
+                                                    end
+                                                end
+                                            end)
                                         end)
                                         return true
                                     end
@@ -944,26 +870,24 @@ do
                                         if st and st.bossPowerReapplyPending then return end
                                         if st then st.bossPowerReapplyPending = true end
 
-                                        if _G.C_Timer and _G.C_Timer.After then
-                                            _G.C_Timer.After(0, function()
-                                                local st2 = getState(bossFrame)
-                                                if st2 then st2.bossPowerReapplyPending = nil end
-                                                local pbReapply = bossFrame.manabar
-                                                if pbReapply then
-                                                    local resolvedPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(texKey)
-                                                    if resolvedPath and pbReapply.SetStatusBarTexture then
-                                                        pcall(pbReapply.SetStatusBarTexture, pbReapply, resolvedPath)
-                                                    end
-                                                    local tex = pbReapply:GetStatusBarTexture()
-                                                    if tex and tex.SetVertexColor then
-                                                        bossBarColorOpts.barKind = "power"
-                                                        bossBarColorOpts.unitForClass = unitId
-                                                        local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, bossBarColorOpts)
-                                                        pcall(tex.SetVertexColor, tex, r, g, b, a)
-                                                    end
+                                        _G.C_Timer.After(0, function()
+                                            local st2 = getState(bossFrame)
+                                            if st2 then st2.bossPowerReapplyPending = nil end
+                                            local pbReapply = bossFrame.manabar
+                                            if pbReapply then
+                                                local resolvedPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(texKey)
+                                                if resolvedPath and pbReapply.SetStatusBarTexture then
+                                                    pcall(pbReapply.SetStatusBarTexture, pbReapply, resolvedPath)
                                                 end
-                                            end)
-                                        end
+                                                local tex = pbReapply:GetStatusBarTexture()
+                                                if tex and tex.SetVertexColor then
+                                                    bossBarColorOpts.barKind = "power"
+                                                    bossBarColorOpts.unitForClass = unitId
+                                                    local r, g, b, a = addon.ResolveColorRGBA(colorMode, tint, bossBarColorOpts)
+                                                    pcall(tex.SetVertexColor, tex, r, g, b, a)
+                                                end
+                                            end
+                                        end)
                                     end)
                                 end
                             end
@@ -1503,37 +1427,33 @@ do
                         setProp(self, "powerReapplyPending", true)
 
                         local bar = self
-                        if _G.C_Timer and _G.C_Timer.After then
-                            _G.C_Timer.After(0, function()
-                                if not bar then return end
-                                setProp(bar, "powerReapplyPending", nil)
-                                if InCombatLockdown and InCombatLockdown() then
-                                    queuePowerBarReapply("Player")
-                                    return
-                                end
-                                local db = addon and addon.db and addon.db.profile
-                                if not db then return end
-                                local unitFrames = rawget(db, "unitFrames")
-                                local cfgP = unitFrames and rawget(unitFrames, "Player") or nil
-                                if not cfgP then return end
-                                local texKey = cfgP.powerBarTexture or "default"
-                                local colorMode = cfgP.powerBarColorMode or "default"
-                                local tint = cfgP.powerBarTint
-                                -- Only re-apply if the user has configured a non-default texture.
-                                if not (type(texKey) == "string" and texKey ~= "" and texKey ~= "default") then
-                                    return
-                                end
-                                applyToBar(bar, texKey, colorMode, tint, "player", "power", "player")
-                                -- Re-assert texture-only hide after any texture swap. The hide feature
-                                -- attaches to the current fill/background textures, so a SetStatusBarTexture
-                                -- can create a fresh texture that needs to be re-hidden.
-                                if Util and Util.SetPowerBarTextureOnlyHidden and cfgP.powerBarHideTextureOnly == true and not (cfgP.powerBarHidden == true) then
-                                    Util.SetPowerBarTextureOnlyHidden(bar, true)
-                                end
-                            end)
-                        else
-                            setProp(self, "powerReapplyPending", nil)
-                        end
+                        _G.C_Timer.After(0, function()
+                            if not bar then return end
+                            setProp(bar, "powerReapplyPending", nil)
+                            if InCombatLockdown and InCombatLockdown() then
+                                queuePowerBarReapply("Player")
+                                return
+                            end
+                            local db = addon and addon.db and addon.db.profile
+                            if not db then return end
+                            local unitFrames = rawget(db, "unitFrames")
+                            local cfgP = unitFrames and rawget(unitFrames, "Player") or nil
+                            if not cfgP then return end
+                            local texKey = cfgP.powerBarTexture or "default"
+                            local colorMode = cfgP.powerBarColorMode or "default"
+                            local tint = cfgP.powerBarTint
+                            -- Only re-apply if the user has configured a non-default texture.
+                            if not (type(texKey) == "string" and texKey ~= "" and texKey ~= "default") then
+                                return
+                            end
+                            applyToBar(bar, texKey, colorMode, tint, "player", "power", "player")
+                            -- Re-assert texture-only hide after any texture swap. The hide feature
+                            -- attaches to the current fill/background textures, so a SetStatusBarTexture
+                            -- can create a fresh texture that needs to be re-hidden.
+                            if Util and Util.SetPowerBarTextureOnlyHidden and cfgP.powerBarHideTextureOnly == true and not (cfgP.powerBarHidden == true) then
+                                Util.SetPowerBarTextureOnlyHidden(bar, true)
+                            end
+                        end)
                     end)
                 end
                 if not getProp(pb, "powerColorHooked") then
@@ -1557,46 +1477,42 @@ do
                         setProp(self, "powerReapplyPending", true)
 
                         local bar = self
-                        if _G.C_Timer and _G.C_Timer.After then
-                            _G.C_Timer.After(0, function()
-                                if not bar then return end
-                                setProp(bar, "powerReapplyPending", nil)
-                                if InCombatLockdown and InCombatLockdown() then
-                                    queuePowerBarReapply("Player")
-                                    return
-                                end
-                                local db = addon and addon.db and addon.db.profile
-                                if not db then return end
-                                local unitFrames = rawget(db, "unitFrames")
-                                local cfgP = unitFrames and rawget(unitFrames, "Player") or nil
-                                if not cfgP then return end
-                                local texKey = cfgP.powerBarTexture or "default"
-                                local colorMode = cfgP.powerBarColorMode or "default"
-                                local tint = cfgP.powerBarTint
+                        _G.C_Timer.After(0, function()
+                            if not bar then return end
+                            setProp(bar, "powerReapplyPending", nil)
+                            if InCombatLockdown and InCombatLockdown() then
+                                queuePowerBarReapply("Player")
+                                return
+                            end
+                            local db = addon and addon.db and addon.db.profile
+                            if not db then return end
+                            local unitFrames = rawget(db, "unitFrames")
+                            local cfgP = unitFrames and rawget(unitFrames, "Player") or nil
+                            if not cfgP then return end
+                            local texKey = cfgP.powerBarTexture or "default"
+                            local colorMode = cfgP.powerBarColorMode or "default"
+                            local tint = cfgP.powerBarTint
 
-                                -- If color mode is "texture", the user wants the texture's original colors;
-                                -- in that case Blizzard's SetStatusBarColor stands.
-                                if colorMode == "texture" then
-                                    return
-                                end
+                            -- If color mode is "texture", the user wants the texture's original colors;
+                            -- in that case Blizzard's SetStatusBarColor stands.
+                            if colorMode == "texture" then
+                                return
+                            end
 
-                                -- Only do work when the user has customized either texture or color;
-                                -- default settings can safely follow Blizzard's behavior.
-                                local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
-                                local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class")
-                                if not hasCustomTexture and not hasCustomColor then
-                                    return
-                                end
+                            -- Only do work when the user has customized either texture or color;
+                            -- default settings can safely follow Blizzard's behavior.
+                            local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                            local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class")
+                            if not hasCustomTexture and not hasCustomColor then
+                                return
+                            end
 
-                                applyToBar(bar, texKey, colorMode, tint, "player", "power", "player")
-                                -- Re-assert texture-only hide after any styling pass that may refresh textures.
-                                if Util and Util.SetPowerBarTextureOnlyHidden and cfgP.powerBarHideTextureOnly == true and not (cfgP.powerBarHidden == true) then
-                                    Util.SetPowerBarTextureOnlyHidden(bar, true)
-                                end
-                            end)
-                        else
-                            setProp(self, "powerReapplyPending", nil)
-                        end
+                            applyToBar(bar, texKey, colorMode, tint, "player", "power", "player")
+                            -- Re-assert texture-only hide after any styling pass that may refresh textures.
+                            if Util and Util.SetPowerBarTextureOnlyHidden and cfgP.powerBarHideTextureOnly == true and not (cfgP.powerBarHidden == true) then
+                                Util.SetPowerBarTextureOnlyHidden(bar, true)
+                            end
+                        end)
                     end)
                 end
             end
@@ -2575,19 +2491,6 @@ do
                     hookAlphaEnforcer(reputationColor, computeAlpha)
                 end
             end
-
-    function addon.UnitFrames_GetPowerBarScreenPosition()
-        local frame = getUnitFrameFor("Player")
-        if not frame then
-            return 0, 0
-        end
-        local pb = resolvePowerBar(frame, "Player")
-        if not pb then
-            return 0, 0
-        end
-        local x, y = getFrameScreenOffsets(pb)
-        return clampScreenCoordinate(x), clampScreenCoordinate(y)
-    end
         end
         
         -- Hide FrameFlash (aggro/threat glow) for Player when Use Custom Borders is enabled
@@ -2776,47 +2679,4 @@ do
         safeApply("TargetOfTarget")
         safeApply("FocusTarget")
     end
-
-    -- Pre-emptive hiding and alpha hooks are now provided by the Preemptive module
-    addon.PreemptiveHideTargetElements = Preemptive.hideTargetElements
-    addon.PreemptiveHideFocusElements = Preemptive.hideFocusElements
-    addon.PreemptiveHideBossElements = Preemptive.hideBossElements
-    addon.InstallEarlyUnitFrameAlphaHooks = Preemptive.installEarlyAlphaHooks
-    addon.InstallBossFrameHooks = Preemptive.installBossFrameHooks
 end
-
--- Restore all party frames to stock Blizzard appearance (profile switch / category reset).
-
-function addon.RestoreAllPartyFrameOverlays()
-    -- Restore health bar overlays
-    if addon.RestorePartyFrameHealthOverlays then
-        addon.RestorePartyFrameHealthOverlays()
-    end
-    -- Restore name text overlays
-    if addon.RestorePartyFrameNameOverlays then
-        addon.RestorePartyFrameNameOverlays()
-    end
-    -- Restore status text overlays
-    if addon.RestorePartyFrameStatusTextOverlays then
-        addon.RestorePartyFrameStatusTextOverlays()
-    end
-end
-
--- Restore all raid frames to stock Blizzard appearance (profile switch / category reset).
-
-function addon.RestoreAllRaidFrameOverlays()
-    -- Restore health bar overlays
-    if addon.RestoreRaidFrameHealthOverlays then
-        addon.RestoreRaidFrameHealthOverlays()
-    end
-    -- Restore name text overlays
-    if addon.RestoreRaidFrameNameOverlays then
-        addon.RestoreRaidFrameNameOverlays()
-    end
-    -- Restore status text overlays
-    if addon.RestoreRaidFrameStatusTextOverlays then
-        addon.RestoreRaidFrameStatusTextOverlays()
-    end
-end
-
-
