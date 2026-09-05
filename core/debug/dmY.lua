@@ -124,6 +124,18 @@ local function FormatSafeValue(value, isSecret)
     return tostring(value)
 end
 
+-- Deferred in combat to avoid taint from UI creation during combat.
+-- DebugShowWindow accepts the lines table directly. A non-nil note prints
+-- the in-combat notice naming the payload.
+local function DeferredDump(title, lines, note)
+    if note and InCombatLockdown() then
+        addon:Print("DMY " .. note .. " collected. Results will show after combat ends.")
+    end
+    addon.Events.RunOutOfCombat(function()
+        addon.DebugShowWindow(title, lines)
+    end)
+end
+
 local function RunAPITests()
     local lines = { "== DMY API Secrecy Test ==" }
     local inCombat = InCombatLockdown()
@@ -329,16 +341,7 @@ local function RunAPITests()
 end
 
 local function DebugDMYAPI()
-    local lines = RunAPITests()
-    local output = table.concat(lines, "\n")
-
-    if InCombatLockdown() then
-        addon:Print("DMY API test collected. Results will show after combat ends.")
-    end
-    -- Deferred in combat to avoid taint from UI creation during combat
-    addon.Events.RunOutOfCombat(function()
-        addon.DebugShowWindow("DMY API Secrecy Test", output)
-    end)
+    DeferredDump("DMY API Secrecy Test", RunAPITests(), "API test")
 end
 
 --------------------------------------------------------------------------------
@@ -707,15 +710,7 @@ local function RunFieldsDump()
 end
 
 local function DebugDMYFields()
-    local lines = RunFieldsDump()
-    local output = table.concat(lines, "\n")
-
-    if InCombatLockdown() then
-        addon:Print("DMY field dump collected. Results will show after combat ends.")
-    end
-    addon.Events.RunOutOfCombat(function()
-        addon.DebugShowWindow("DMY Field Dump", output)
-    end)
+    DeferredDump("DMY Field Dump", RunFieldsDump(), "field dump")
 end
 
 --------------------------------------------------------------------------------
@@ -969,10 +964,7 @@ local function DebugDMYColprobe()
     end
     add("[4] Drilldown GUID cache: %d entries, %d identity collisions", cacheCount, collisionCount)
 
-    local output = table.concat(lines, "\n")
-    addon.Events.RunOutOfCombat(function()
-        addon.DebugShowWindow("DMY Column Probe", output)
-    end)
+    DeferredDump("DMY Column Probe", lines)
 end
 
 --------------------------------------------------------------------------------
@@ -1201,10 +1193,7 @@ local function DebugDMYDeathProbe()
     add("    recapOk=%d recapEmpty=%d recapFail=%d segHit=%d segMiss=%d",
         c.recapOk or 0, c.recapEmpty or 0, c.recapFail or 0, c.segHit or 0, c.segMiss or 0)
 
-    local output = table.concat(lines, "\n")
-    addon.Events.RunOutOfCombat(function()
-        addon.DebugShowWindow("DMY Death Probe", output)
-    end)
+    DeferredDump("DMY Death Probe", lines)
 end
 
 --------------------------------------------------------------------------------

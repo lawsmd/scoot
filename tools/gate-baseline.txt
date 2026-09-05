@@ -118,7 +118,6 @@ hide-hook	core/qol.lua	1
 newline-join	core/colorramp.lua	2
 newline-join	core/components/cooldowns/trackedbars/init.lua	1
 newline-join	core/components/unitframes/bars/debug.lua	1
-newline-join	core/debug/dmY.lua	4
 newline-join	core/debug/editmode.lua	2
 newline-join	core/debug/export.lua	1
 newline-join	core/debug/gfauras.lua	1
