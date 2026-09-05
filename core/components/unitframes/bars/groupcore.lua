@@ -33,15 +33,14 @@
 --                        this.
 --   texturedBorder       "edges" (party: edge textures on the CompactUnitFrame)
 --                        or "backdrop" (raid: a BackdropTemplate child frame).
--- The transitional set, each deleted by the commit that converges it:
+-- The transitional one, deleted by the commit that converges it:
 --   valueFallback        "prePaint" (party) / "delegateFirst" (raid)
---   useStylingApplied    party's stylingApplied flag and its clears
---   retryOnHidden        party's deferred retry on a hidden overlay
---   hookOnSizeChanged    party's OnSizeChanged HookScript on the bar
---   clearFingerprintOnSetUnit  raid's fingerprint clear on frame reuse
---   unconditionalReanchor      raid's integrity re-anchor of a shown overlay
---   forceRecreateInIntegrity   raid's integrity recreation of missing overlays
---   reapplyRoleIconOnUpdateAll party's role icon reapply in the UpdateAll hook
+--
+-- Resilience measures that started on one family now run on both: the
+-- fingerprint skip gate only when the overlay is shown, the OnSizeChanged
+-- hook, the fingerprint clear in the SetUnit hook, the integrity check's
+-- unconditional re-anchor and overlay recreation, and the role icon reapply
+-- in the UpdateAll hook.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -78,13 +77,6 @@ function GC.NewFamily(desc)
     local inGroupGate = desc.inGroupGate
 
     local prePaintValueFallback = (desc.valueFallback == "prePaint")
-    local useStylingApplied = desc.useStylingApplied
-    local retryOnHidden = desc.retryOnHidden
-    local hookOnSizeChanged = desc.hookOnSizeChanged
-    local clearFingerprintOnSetUnit = desc.clearFingerprintOnSetUnit
-    local unconditionalReanchor = desc.unconditionalReanchor
-    local forceRecreateInIntegrity = desc.forceRecreateInIntegrity
-    local reapplyRoleIconOnUpdateAll = desc.reapplyRoleIconOnUpdateAll
     local rosterRefresh = desc.rosterRefresh
     local texturedBorderMode = desc.texturedBorder
 
@@ -291,9 +283,8 @@ function GC.NewFamily(desc)
         if state then state.overlayActive = hasCustom end
 
         if not hasCustom then
-            if useStylingApplied and state then
-                -- Clear styling state so re-enabling will apply fresh
-                state.stylingApplied = nil
+            if state then
+                -- Clear the fingerprint so re-enabling styles fresh
                 state.lastAppliedFingerprint = nil
             end
             if state and state.healthOverlay then
@@ -351,7 +342,7 @@ function GC.NewFamily(desc)
                 _G.hooksecurefunc(bar, "SetMinMaxValues", function(self)
                     updateHealthOverlay(self)
                 end)
-                if hookOnSizeChanged and bar.HookScript then
+                if bar.HookScript then
                     bar:HookScript("OnSizeChanged", function(self, width, height)
                         updateHealthOverlay(self)
                     end)
@@ -471,37 +462,17 @@ function GC.NewFamily(desc)
                 cfg.healthBarCustomColor[4] or 1) or ""
         )
 
-        if useStylingApplied then
-            -- If config hasn't changed and styling was already applied, skip re-styling.
-            -- Prevents visual blinking when ApplyStyles() is called for unrelated
-            -- settings (e.g., CDM, Action Bars). stylingApplied is tracked separately
-            -- from overlay dimensions because GetWidth() can return <= 1 due to secret
-            -- values.
-            if state.lastAppliedFingerprint == fingerprint and state.stylingApplied then
-                -- With sticky visibility in place, the overlay won't be hidden due to
-                -- secret values, so an aggressive recovery loop is unnecessary. The
-                -- SetValue hook will update dimensions when values become available.
-                -- Only try a single deferred update if overlay isn't visible yet.
-                local overlay = state.healthOverlay
-                if retryOnHidden and overlay and not overlay:IsShown() then
-                    if _G.C_Timer and _G.C_Timer.After then
-                        C_Timer.After(0.1, function()
-                            updateHealthOverlay(bar)
-                            -- Don't re-style here - styling is already applied
-                        end)
-                    end
-                end
+        -- If config hasn't changed and the overlay is already visible, skip
+        -- re-styling. Prevents visual blinking when ApplyStyles() is called for
+        -- unrelated settings (e.g., CDM, Action Bars). Don't check GetWidth(),
+        -- which can return a secret; with anchor-based sizing a shown overlay is
+        -- sized correctly. A hidden overlay with a matching fingerprint falls
+        -- through to a full re-style, whose deferred update shows it once the
+        -- fill is ready.
+        if state.lastAppliedFingerprint == fingerprint then
+            local overlay = state.healthOverlay
+            if overlay and overlay:IsShown() then
                 return -- Already styled with same config, skip
-            end
-        else
-            -- If config hasn't changed and overlay is already visible, skip re-styling.
-            -- Note: Don't check GetWidth() as it can return secret values.
-            -- With anchor-based sizing, if the overlay is shown, it's sized correctly.
-            if state.lastAppliedFingerprint == fingerprint then
-                local overlay = state.healthOverlay
-                if overlay and overlay:IsShown() then
-                    return -- Already styled with same config, skip
-                end
             end
         end
 
@@ -511,11 +482,6 @@ function GC.NewFamily(desc)
         styleHealthOverlay(bar, cfg)
         hideBlizzardFill(bar)
         updateHealthOverlay(bar)
-
-        if useStylingApplied then
-            -- Mark styling as applied (separate from overlay dimensions being ready)
-            state.stylingApplied = true
-        end
 
         -- Queue a single deferred update to handle cases where the fill texture
         -- isn't ready immediately (e.g., on UI reload). With anchor-based sizing,
@@ -533,12 +499,9 @@ function GC.NewFamily(desc)
         local state = getState(bar)
         if state then
             state.overlayActive = false
-            if useStylingApplied then
-                -- Clear styling state so re-enabling will apply fresh
-                state.stylingApplied = nil
-                state.lastAppliedFingerprint = nil
-            end
-            -- Invalidate the anchored-fill cache so re-enabling re-anchors once.
+            -- Clear the fingerprint so re-enabling styles fresh, and the
+            -- anchored-fill cache so it re-anchors once.
+            state.lastAppliedFingerprint = nil
             state.lastAnchoredFill = nil
         end
         if state and state.healthOverlay then
@@ -1048,14 +1011,12 @@ function GC.NewFamily(desc)
                             end
                         end
 
-                        if reapplyRoleIconOnUpdateAll then
-                            -- Re-apply role icons after UpdateAll (handles follower dungeon idle resets)
-                            if frame.roleIcon and addon._applyCustomRoleIcon then
-                                if _G.C_Timer and _G.C_Timer.After then
-                                    C_Timer.After(0, function()
-                                        pcall(addon._applyCustomRoleIcon, frame)
-                                    end)
-                                end
+                        -- Re-apply role icons after UpdateAll (handles follower dungeon idle resets)
+                        if frame.roleIcon and addon._applyCustomRoleIcon then
+                            if _G.C_Timer and _G.C_Timer.After then
+                                C_Timer.After(0, function()
+                                    pcall(addon._applyCustomRoleIcon, frame)
+                                end)
                             end
                         end
                     end
@@ -1079,11 +1040,9 @@ function GC.NewFamily(desc)
                         if hasCustom then
                             local bar = frame.healthBar
                             local cfgRef = cfg
-                            if clearFingerprintOnSetUnit then
-                                -- Clear fingerprint to force fresh overlay setup on frame reuse
-                                local fpState = getState(bar)
-                                if fpState then fpState.lastAppliedFingerprint = nil end
-                            end
+                            -- Clear fingerprint to force fresh overlay setup on frame reuse
+                            local fpState = getState(bar)
+                            if fpState then fpState.lastAppliedFingerprint = nil end
                             if _G.C_Timer and _G.C_Timer.After then
                                 _G.C_Timer.After(0, function()
                                     if InCombatLockdown and InCombatLockdown() then
@@ -1312,7 +1271,7 @@ function GC.NewFamily(desc)
                         local state = getState(bar)
                         if state and state.overlayActive then
                             local overlay = state.healthOverlay
-                            if not overlay and forceRecreateInIntegrity then
+                            if not overlay then
                                 -- Overlay flag set but texture missing - force recreation
                                 state.overlayActive = nil
                                 state.lastAppliedFingerprint = nil
@@ -1327,16 +1286,11 @@ function GC.NewFamily(desc)
                                         hideBlizzardFill(bar)
                                     end
                                 end
-                                -- Check 2: Overlay must be visible and anchored
-                                if unconditionalReanchor then
-                                    -- Re-anchor overlay to current fill (catches orphaned anchors)
-                                    updateHealthOverlay(bar)
-                                    if overlay and not overlay:IsShown() then
-                                        overlay:Show()
-                                    end
-                                elseif overlay and not overlay:IsShown() then
-                                    updateHealthOverlay(bar)
-                                end
+                                -- Check 2: Overlay must be visible and anchored. Re-anchor
+                                -- to the current fill (catches orphaned anchors): a no-op
+                                -- while the fill identity holds, and it shows the overlay
+                                -- when the fill exists.
+                                updateHealthOverlay(bar)
                                 -- Check 3: Revalidate overlay color for value-based modes
                                 if isValueMode and overlay and overlay:IsShown() then
                                     local parentFrame = bar.GetParent and bar:GetParent()
@@ -1350,7 +1304,7 @@ function GC.NewFamily(desc)
                                     end
                                 end
                             end
-                        elseif forceRecreateInIntegrity then
+                        else
                             -- Overlay not yet created - force creation
                             module.ensureHealthOverlay(bar, cfg)
                         end

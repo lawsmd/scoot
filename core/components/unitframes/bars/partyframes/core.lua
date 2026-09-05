@@ -115,15 +115,8 @@ local family = addon.BarsGroupCore.NewFamily({
     integrityFlag = "_PartyFrameIntegrityCheckInstalled",
     eventOwner = "UnitFrames:PartyFrames",
 
-    -- Transitional fork flags, party's current semantics (see bars/groupcore.lua)
+    -- Transitional fork flag, party's current semantics (see bars/groupcore.lua)
     valueFallback = "prePaint",
-    useStylingApplied = true,
-    retryOnHidden = true,
-    hookOnSizeChanged = true,
-    clearFingerprintOnSetUnit = false,
-    unconditionalReanchor = false,
-    forceRecreateInIntegrity = false,
-    reapplyRoleIconOnUpdateAll = true,
 
     -- Kept forks: party member frames are static, so roster events need no
     -- full reapply; the textured border draws edge textures directly on the
