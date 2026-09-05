@@ -22,118 +22,16 @@ end
 
 -- Unit Frames: Apply Portrait positioning (X/Y offsets)
 do
-	-- Resolve portrait frame for a given unit
-	local function resolvePortraitFrame(unit)
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContainer and root.PlayerFrameContainer.PlayerPortrait or nil
-		elseif unit == "Target" then
-			local root = _G.TargetFrame
-			return root and root.TargetFrameContainer and root.TargetFrameContainer.Portrait or nil
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return root and root.TargetFrameContainer and root.TargetFrameContainer.Portrait or nil
-		elseif unit == "Pet" then
-			return _G.PetPortrait
-		elseif unit == "TargetOfTarget" then
-			local tot = _G.TargetFrameToT
-			return tot and tot.Portrait or nil
-		elseif unit == "FocusTarget" then
-			local fot = _G.FocusFrameToT
-			return fot and fot.Portrait or nil
-		end
-	end
-
-	-- Resolve portrait mask frame for a given unit
-	local function resolvePortraitMaskFrame(unit)
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContainer and root.PlayerFrameContainer.PlayerPortraitMask or nil
-		elseif unit == "Target" then
-			local root = _G.TargetFrame
-			return root and root.TargetFrameContainer and root.TargetFrameContainer.PortraitMask or nil
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return root and root.TargetFrameContainer and root.TargetFrameContainer.PortraitMask or nil
-		elseif unit == "Pet" then
-			local root = _G.PetFrame
-			return root and root.PortraitMask or nil
-		elseif unit == "TargetOfTarget" then
-			local tot = _G.TargetFrameToT
-			return tot and tot.PortraitMask or nil
-		elseif unit == "FocusTarget" then
-			local fot = _G.FocusFrameToT
-			return fot and fot.PortraitMask or nil
-		end
-	end
-
-	-- Resolve portrait corner icon frame for a given unit (Player-only)
-	local function resolvePortraitCornerIconFrame(unit)
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentContextual and root.PlayerFrameContent.PlayerFrameContentContextual.PlayerPortraitCornerIcon or nil
-		end
-		-- Target/Focus/Pet don't appear to have corner icons
-	end
-
-	-- Resolve portrait rest loop frame for a given unit (Player-only)
-	local function resolvePortraitRestLoopFrame(unit)
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentContextual and root.PlayerFrameContent.PlayerFrameContentContextual.PlayerRestLoop or nil
-		end
-		-- Target/Focus/Pet don't appear to have rest loops
-	end
-
-	-- Resolve portrait status texture frame for a given unit (Player-only)
-	local function resolvePortraitStatusTextureFrame(unit)
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain and root.PlayerFrameContent.PlayerFrameContentMain.StatusTexture or nil
-		end
-		-- Target/Focus/Pet don't appear to have status textures
-	end
-
-	-- Resolve damage text (HitText) frame for a given unit (Player and Pet)
-	local function resolveDamageTextFrame(unit)
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain and root.PlayerFrameContent.PlayerFrameContentMain.HitIndicator and root.PlayerFrameContent.PlayerFrameContentMain.HitIndicator.HitText or nil
-		elseif unit == "Pet" then
-			-- PetHitIndicator is directly available as a global and as PetFrame.feedbackText
-			return _G.PetHitIndicator or (_G.PetFrame and _G.PetFrame.feedbackText)
-		end
-		-- Target/Focus don't have damage text
-	end
-
-	-- Resolve boss portrait frame texture for a given unit (Target/Focus only)
-	-- This texture appears when targeting a boss and needs to be hidden along with the portrait
-	local function resolveBossPortraitFrameTexture(unit)
-		if unit == "Target" then
-			local root = _G.TargetFrame
-			return root and root.TargetFrameContainer and root.TargetFrameContainer.BossPortraitFrameTexture or nil
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return root and root.TargetFrameContainer and root.TargetFrameContainer.BossPortraitFrameTexture or nil
-		end
-		-- Player/Pet don't have BossPortraitFrameTexture
-	end
-
-	-- Resolve pet attack mode texture (Pet only)
-	-- This texture appears when the pet is in attack mode and needs to be hidden when custom borders are enabled
-	local function resolvePetAttackModeTexture(unit)
-		if unit == "Pet" then
-			return _G.PetAttackModeTexture
-		end
-	end
-
-	-- Resolve pet frame flash (Pet only)
-	-- This texture flashes when the pet takes damage and needs to be hidden when custom borders are enabled
-	local function resolvePetFrameFlash(unit)
-		if unit == "Pet" then
-			return _G.PetFrameFlash
-		end
-	end
+	-- Shared portrait part resolvers (core/frames.lua)
+	local resolvePortraitFrame = addon.Frames.resolvePortraitFrame
+	local resolvePortraitMaskFrame = addon.Frames.resolvePortraitMaskFrame
+	local resolvePortraitCornerIconFrame = addon.Frames.resolvePortraitCornerIconFrame
+	local resolvePortraitRestLoopFrame = addon.Frames.resolvePortraitRestLoopFrame
+	local resolvePortraitStatusTextureFrame = addon.Frames.resolvePortraitStatusTextureFrame
+	local resolveDamageTextFrame = addon.Frames.resolveDamageTextFrame
+	local resolveBossPortraitFrameTexture = addon.Frames.resolveBossPortraitFrameTexture
+	local resolvePetAttackModeTexture = addon.Frames.resolvePetAttackModeTexture
+	local resolvePetFrameFlash = addon.Frames.resolvePetFrameFlash
 
 	-- Store original positions (per frame, not per unit, to handle frame recreation)
 	local originalPositions = {}
@@ -1209,9 +1107,7 @@ do
 			return
 		end
 
-		local playerFrame = _G.PlayerFrame
-		local main = playerFrame and playerFrame.PlayerFrameContent and playerFrame.PlayerFrameContent.PlayerFrameContentMain
-		local statusTexture = main and main.StatusTexture
+		local statusTexture = resolvePortraitStatusTextureFrame("Player")
 		if not statusTexture then
 			return
 		end

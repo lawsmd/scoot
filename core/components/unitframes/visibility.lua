@@ -1,5 +1,7 @@
 -- visibility.lua - Per-unit opacity for combat, target, and out-of-combat states
 local addonName, addon = ...
+-- Shared frame resolvers (core/frames.lua)
+local Frames = addon.Frames
 -- State opacity (core/opacity.lua): 0 through 100 honored as set, matching
 -- Unit Frames Z; an unset value reads as the combat value.
 local UF_OPACITY_OPTS = { fallback = "combat" }
@@ -84,13 +86,8 @@ do
     local _originalThreatMeterAlpha = { Target = nil, Focus = nil }
 
     local function getThreatMeterFrame(unit)
-        local parentFrame = (unit == "Target") and _G.TargetFrame or (unit == "Focus") and _G.FocusFrame or nil
-        if not parentFrame then return nil end
-        local content = parentFrame.TargetFrameContent
-        if not content then return nil end
-        local contextual = content.TargetFrameContentContextual
-        if not contextual then return nil end
-        return contextual.NumericalThreat
+        local contextual = Frames.resolveContextual(unit)
+        return contextual and contextual.NumericalThreat or nil
     end
 
     local function applyThreatMeterVisibility(unit)
@@ -168,13 +165,8 @@ do
     local _originalBossThreatAlpha = {}
 
     local function getBossThreatCounterFrame(index)
-        local parentFrame = addon.GetBossFrame(index)
-        if not parentFrame then return nil end
-        local content = parentFrame.TargetFrameContent
-        if not content then return nil end
-        local contextual = content.TargetFrameContentContextual
-        if not contextual then return nil end
-        return contextual.NumericalThreat
+        local contextual = Frames.resolveBossContextual(addon.GetBossFrame(index))
+        return contextual and contextual.NumericalThreat or nil
     end
 
     local function applyBossThreatCounterVisibilityFor(index)
@@ -237,13 +229,8 @@ do
     local _originalBossHighLevelAlpha = {}
 
     local function getBossHighLevelIconFrame(index)
-        local parentFrame = addon.GetBossFrame(index)
-        if not parentFrame then return nil end
-        local content = parentFrame.TargetFrameContent
-        if not content then return nil end
-        local contextual = content.TargetFrameContentContextual
-        if not contextual then return nil end
-        return contextual.HighLevelTexture
+        local contextual = Frames.resolveBossContextual(addon.GetBossFrame(index))
+        return contextual and contextual.HighLevelTexture or nil
     end
 
     local function applyBossHighLevelIconVisibilityFor(index)
@@ -296,13 +283,8 @@ do
     local _originalBossIconAlpha = nil
 
     local function getBossIconFrame()
-        local tf = _G.TargetFrame
-        if not tf then return nil end
-        local content = tf.TargetFrameContent
-        if not content then return nil end
-        local contextual = content.TargetFrameContentContextual
-        if not contextual then return nil end
-        return contextual.BossIcon
+        local contextual = Frames.resolveContextual("Target")
+        return contextual and contextual.BossIcon or nil
     end
 
     local function applyBossIconVisibility()
@@ -359,13 +341,8 @@ do
     local _originalRoleIconAlpha = nil
 
     local function getRoleIconFrame()
-        local pf = _G.PlayerFrame
-        if not pf then return nil end
-        local content = pf.PlayerFrameContent
-        if not content then return nil end
-        local contextual = content.PlayerFrameContentContextual
-        if not contextual then return nil end
-        return contextual.RoleIcon
+        local contextual = Frames.resolveContextual("Player")
+        return contextual and contextual.RoleIcon or nil
     end
 
     local function applyRoleIconVisibility()
@@ -426,13 +403,8 @@ do
     local _originalGroupIndicatorTextAlpha = nil
 
     local function getGroupIndicatorFrame()
-        local pf = _G.PlayerFrame
-        if not pf then return nil end
-        local content = pf.PlayerFrameContent
-        if not content then return nil end
-        local contextual = content.PlayerFrameContentContextual
-        if not contextual then return nil end
-        return contextual.GroupIndicator
+        local contextual = Frames.resolveContextual("Player")
+        return contextual and contextual.GroupIndicator or nil
     end
 
     local function getGroupIndicatorTextFrame()
@@ -517,23 +489,13 @@ do
     local _originalPrestigePortraitAlpha = nil
 
     local function getPrestigeBadge()
-        local pf = _G.PlayerFrame
-        if not pf then return nil end
-        local content = pf.PlayerFrameContent
-        if not content then return nil end
-        local contextual = content.PlayerFrameContentContextual
-        if not contextual then return nil end
-        return contextual.PrestigeBadge
+        local contextual = Frames.resolveContextual("Player")
+        return contextual and contextual.PrestigeBadge or nil
     end
 
     local function getPrestigePortrait()
-        local pf = _G.PlayerFrame
-        if not pf then return nil end
-        local content = pf.PlayerFrameContent
-        if not content then return nil end
-        local contextual = content.PlayerFrameContentContextual
-        if not contextual then return nil end
-        return contextual.PrestigePortrait
+        local contextual = Frames.resolveContextual("Player")
+        return contextual and contextual.PrestigePortrait or nil
     end
 
     local function applyPvPIconVisibility()
