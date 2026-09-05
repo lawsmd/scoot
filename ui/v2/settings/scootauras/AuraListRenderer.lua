@@ -69,23 +69,18 @@ local SHAPE_LABELS = {
 
 -- One descriptor for every surface: the tracker row's meta line and the group
 -- icon's hover tooltip.
-local function TrackerMetaText(tracker, includeDisabled, includeSpecs)
+local function TrackerMetaText(tracker)
     local text = (KIND_LABELS[tracker.kind] or "?") .. " on "
         .. (UNIT_LABELS[tracker.unit] or "?") .. ", shown as "
         .. (SHAPE_LABELS[tracker.shape] or "?")
-    if includeSpecs ~= false then
-        local SAU = addon.ScootAuras
-        local named = SAU and SAU.DescribeSpecs and SAU.DescribeSpecs(tracker.specs)
-        if named then text = text .. ", " .. named .. " only" end
-    end
-    if includeDisabled ~= false and tracker.enabled == false then
+    local SAU = addon.ScootAuras
+    local named = SAU and SAU.DescribeSpecs and SAU.DescribeSpecs(tracker.specs)
+    if named then text = text .. ", " .. named .. " only" end
+    if tracker.enabled == false then
         text = text .. "  (disabled)"
     end
     return text
 end
-
-addon.ScootAurasUI = addon.ScootAurasUI or {}
-addon.ScootAurasUI.TrackerMetaText = TrackerMetaText
 
 local RenderList
 
