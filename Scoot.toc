@@ -308,6 +308,7 @@ ui/v2/settings/scootauras/CDMPicker.lua
 ui/v2/settings/scootauras/SpecFlyout.lua
 ui/v2/settings/scootauras/TitleCarousel.lua
 ui/v2/settings/scootauras/EditorWindow.lua
+ui/v2/settings/scootauras/AuraListDrag.lua
 ui/v2/settings/scootauras/AuraListRenderer.lua
 ui/v2/settings/actionbars/ActionBarRenderer.lua
 ui/v2/settings/actionbars/MicroBarRenderer.lua
