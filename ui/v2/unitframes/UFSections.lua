@@ -605,4 +605,69 @@ function Sections.BuildCastBarSection(B, opts)
     })
 end
 
+-- Buffs & Debuffs section (Target, Focus): identical on both pages.
+-- opts: builder, componentId.
+function Sections.BuildBuffsDebuffsSection(B, opts)
+    local componentId = opts.componentId
+    opts.builder:AddCollapsibleSection({
+        title = "Buffs & Debuffs",
+        componentId = componentId,
+        sectionKey = "buffsDebuffs",
+        defaultExpanded = false,
+        buildContent = function(contentFrame, inner)
+            inner:AddTabbedSection({
+                tabs = UF.getBuffsDebuffsTabs(),
+                componentId = componentId,
+                sectionKey = "buffsDebuffs_tabs",
+                buildContent = {
+                    sizing = function(cf, tabInner)
+                        tabInner:AddSlider({
+                            label = "Icon Scale",
+                            min = 20, max = 200, step = 5,
+                            get = function() local t = B.getBuffsDebuffsDB() or {}; return tonumber(t.iconScale) or 100 end,
+                            set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.iconScale = tonumber(v) or 100; B.applyBuffsDebuffs() end end,
+                            minLabel = "20%", maxLabel = "200%",
+                        })
+                        tabInner:AddSlider({
+                            label = "Icon Shape",
+                            description = "Adjust icon aspect ratio. Center = square icons.",
+                            min = -67, max = 67, step = 1,
+                            get = function() local t = B.getBuffsDebuffsDB() or {}; return tonumber(t.tallWideRatio) or 0 end,
+                            set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.tallWideRatio = tonumber(v) or 0; B.applyBuffsDebuffs() end end,
+                            minLabel = "Wide", maxLabel = "Tall",
+                        })
+                        tabInner:Finalize()
+                    end,
+                    border = function(cf, tabInner)
+                        local get, set = B.auraBorderAccessors()
+                        tabInner:AddIconBorderBlock({
+                            get = get, set = set, apply = B.applyBuffsDebuffs,
+                            enableToggle = { label = "Enable Custom Borders" },
+                            inset = false,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    visibility = function(cf, tabInner)
+                        tabInner:AddToggle({
+                            label = "Hide Buffs & Debuffs",
+                            get = function() local t = B.getBuffsDebuffsDB() or {}; return not not t.hideBuffsDebuffs end,
+                            set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.hideBuffsDebuffs = v and true or false; B.applyBuffsDebuffs() end end,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    filters = function(cf, tabInner)
+                        tabInner:AddToggle({
+                            label = "Show Only Player Buffs",
+                            get = function() local t = B.getBuffsDebuffsDB() or {}; return not not t.onlyPlayerBuffs end,
+                            set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.onlyPlayerBuffs = v and true or false; B.applyBuffsDebuffs() end end,
+                        })
+                        tabInner:Finalize()
+                    end,
+                },
+            })
+            inner:Finalize()
+        end,
+    })
+end
+
 return UF.Sections
