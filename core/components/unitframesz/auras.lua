@@ -60,6 +60,7 @@ local addonName, addon = ...
 local UFZ = addon.UnitFramesZ
 UFZ.Auras = UFZ.Auras or {}
 local Auras = UFZ.Auras
+local ensureApplied = UFZ._EnsureApplied
 
 --------------------------------------------------------------------------------
 -- Constants
@@ -852,3 +853,171 @@ for _, event in ipairs({
 }) do
     addon.Events.On("UnitFramesZ:Auras", event, drainOnLift)
 end
+
+--------------------------------------------------------------------------------
+-- Setters: cfg writers over the workers above, registered into UFZ._API
+--------------------------------------------------------------------------------
+-- Unboxed by design: no aura setter ever calls applyEnvelope.
+
+local function setAuraShowImpl(inst, which, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: " .. which:lower() .. " <on|off>")
+        return
+    end
+    inst.cfg["aura" .. which .. "Show"] = (state == "on")
+    Auras.ApplyAll(inst)
+end
+
+local function setAuraLocImpl(inst, which, loc)
+    ensureApplied(inst)
+    loc = tostring(loc or ""):lower()
+    if loc ~= "top" and loc ~= "bottom" then
+        addon:Print("Placement must be one of: top | bottom")
+        return
+    end
+    inst.cfg["aura" .. which .. "Loc"] = loc
+    Auras.ApplyLayout(inst)
+end
+
+-- One shared vertical nudge for both rows (+ = up), 0 = the snug FRAME_GAP
+-- default. Arrangement, not styling: excluded from Copy From beside the Locs.
+local function setAuraOffsetY(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    v = math.floor(v + 0.5)
+    if v < -60 then v = -60 elseif v > 60 then v = 60 end
+    inst.cfg.auraOffsetY = v
+    Auras.ApplyLayout(inst)
+end
+
+local AURA_MAX_CAP = { Buffs = 32, Debuffs = 16 }
+
+local function setAuraMaxImpl(inst, which, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    v = math.floor(v + 0.5)
+    local cap = AURA_MAX_CAP[which]
+    if v < 1 then v = 1 elseif v > cap then v = cap end
+    inst.cfg["aura" .. which .. "Max"] = v
+    -- ApplyAll, not ForceRefresh: the cap is the group's maxFrameCount, and
+    -- only the group-config pass writes it. A kick would repaint the same cap.
+    Auras.ApplyAll(inst)
+end
+
+local function setAuraIconScale(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    if v < 20 then v = 20 elseif v > 200 then v = 200 end
+    inst.cfg.auraIconScale = v
+    Auras.ApplyStyle(inst)
+end
+
+local function setAuraShape(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    v = math.floor(v + 0.5)
+    if v < -67 then v = -67 elseif v > 67 then v = 67 end
+    inst.cfg.auraTallWideRatio = v
+    Auras.ApplyStyle(inst)
+end
+
+local function setAuraBorderEnable(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: auraborder <on|off>")
+        return
+    end
+    inst.cfg.auraBorderEnable = (state == "on")
+    Auras.ApplyStyle(inst)
+end
+
+local function setAuraBorderStyle(inst, key)
+    ensureApplied(inst)
+    if type(key) ~= "string" or key == "" then return end
+    inst.cfg.auraBorderStyle = key
+    Auras.ApplyStyle(inst)
+end
+
+local function setAuraBorderThickness(inst, n)
+    ensureApplied(inst)
+    local v = tonumber(n)
+    if not v then return end
+    -- Half steps, the border slider contract.
+    v = math.floor(v * 2 + 0.5) / 2
+    if v < 1 then v = 1 elseif v > 8 then v = 8 end
+    inst.cfg.auraBorderThickness = v
+    Auras.ApplyStyle(inst)
+end
+
+local function setAuraBorderTint(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: auratint <on|off>")
+        return
+    end
+    inst.cfg.auraBorderTintEnable = (state == "on")
+    Auras.ApplyStyle(inst)
+end
+
+local function setAuraBorderTintColor(inst, r, g, b, a)
+    ensureApplied(inst)
+    inst.cfg.auraBorderTintR = tonumber(r) or 1
+    inst.cfg.auraBorderTintG = tonumber(g) or 1
+    inst.cfg.auraBorderTintB = tonumber(b) or 1
+    inst.cfg.auraBorderTintA = tonumber(a) or 1
+    Auras.ApplyStyle(inst)
+end
+
+local function setAuraOnlyPlayerBuffs(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: aurafilter <on|off>")
+        return
+    end
+    inst.cfg.auraOnlyPlayerBuffs = (state == "on")
+    -- ApplyAll, not ForceRefresh: the PLAYER token lives in the group's filter
+    -- string, and only the group-config pass writes it.
+    Auras.ApplyAll(inst)
+end
+
+-- Hover tooltips: motion-only mouse on the icons (clicks always fall through
+-- to the secure click-to-target overlay). ApplyStyle re-applies the memoized
+-- per-icon mouse state; the mouse APIs are unrestricted, so combat-legal.
+local function setAuraTooltips(inst, state)
+    ensureApplied(inst)
+    state = tostring(state or ""):lower()
+    if state ~= "on" and state ~= "off" then
+        addon:Print("UFZ setter usage: auratooltips <on|off>")
+        return
+    end
+    inst.cfg.auraTooltips = (state == "on")
+    Auras.ApplyStyle(inst)
+end
+
+Mixin(UFZ._API, {
+    SetAuraBuffsShow = function(inst, s) return setAuraShowImpl(inst, "Buffs", s) end,
+    SetAuraDebuffsShow = function(inst, s) return setAuraShowImpl(inst, "Debuffs", s) end,
+    SetAuraBuffsLoc = function(inst, l) return setAuraLocImpl(inst, "Buffs", l) end,
+    SetAuraDebuffsLoc = function(inst, l) return setAuraLocImpl(inst, "Debuffs", l) end,
+    SetAuraBuffsMax = function(inst, n) return setAuraMaxImpl(inst, "Buffs", n) end,
+    SetAuraDebuffsMax = function(inst, n) return setAuraMaxImpl(inst, "Debuffs", n) end,
+    SetAuraOffsetY = setAuraOffsetY,
+    SetAuraIconScale = setAuraIconScale,
+    SetAuraShape = setAuraShape,
+    SetAuraBorderEnable = setAuraBorderEnable,
+    SetAuraBorderStyle = setAuraBorderStyle,
+    SetAuraBorderThickness = setAuraBorderThickness,
+    SetAuraBorderTint = setAuraBorderTint,
+    SetAuraBorderTintColor = setAuraBorderTintColor,
+    SetAuraOnlyPlayerBuffs = setAuraOnlyPlayerBuffs,
+    SetAuraTooltips = setAuraTooltips,
+})
