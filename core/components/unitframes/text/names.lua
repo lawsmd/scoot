@@ -88,47 +88,8 @@ do
 		end
 	end
 
-	--weak-key cache for name/level text FontString lookups
-	local _nlFSCache = setmetatable({}, { __mode = "k" })
-
-	local function findFontStringByNameHint(root, hint)
-		if not (root and hint) then return nil end
-		--check cache
-		local rootCache = _nlFSCache[root]
-		if rootCache then
-			local cached = rootCache[hint]
-			if cached then return cached end
-		end
-		local target = nil
-		local function scan(obj)
-			if not obj then return end
-			if target then return end
-			if obj.IsObjectType and obj:IsObjectType("FontString") then
-				local nm = obj.GetName and obj:GetName() or ""
-				if type(nm) == "string" and string.find(nm, hint, 1, true) then
-					target = obj
-					return
-				end
-			end
-			if obj.GetChildren then
-				local m = (obj.GetNumChildren and obj:GetNumChildren()) or 0
-				for i = 1, m do
-					local c = select(i, obj:GetChildren())
-					scan(c)
-					if target then return end
-				end
-			end
-		end
-		scan(root)
-		--cache non-nil results
-		if target then
-			if not _nlFSCache[root] then
-				_nlFSCache[root] = {}
-			end
-			_nlFSCache[root][hint] = target
-		end
-		return target
-	end
+	local findFontStringByNameHint = addon.UnitFrameText._FindFontStringByNameHint
+	local forceTextRedraw = addon.UnitFrameText._ForceTextRedraw
 
 	local function applyForUnit(unit)
 		if not addon:IsModuleEnabled("unitFrames", unit) then return end
@@ -739,17 +700,6 @@ do
 
 			-- Read configured alignment (Target/Focus only)
 			local alignment = styleCfg.alignment or "LEFT"
-
-			-- Helper to force FontString redraw after alignment change
-			local function forceTextRedraw(fs)
-				if fs and fs.GetText and fs.SetText then
-					local txt = fs:GetText()
-					if txt then
-						fs:SetText("")
-						fs:SetText(txt)
-					end
-				end
-			end
 
 			-- When at 100%, restore original width/anchor (with offset) and bail.
 			if pct == 100 then

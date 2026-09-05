@@ -49,57 +49,7 @@ do
 
 	local getUnitFrameFor = addon.GetUnitFrame
 
-	--weak-key cache for power text FontString lookups
-	local _ptFSCache = setmetatable({}, { __mode = "k" })
-
-	local function findFontStringByNameHint(root, hint)
-		if not root then return nil end
-		--check cache
-		local rootCache = _ptFSCache[root]
-		if rootCache then
-			local cached = rootCache[hint]
-			if cached then return cached end
-		end
-		local target
-		local function scan(obj)
-			if not obj or target then return end
-			if obj.GetObjectType and obj:GetObjectType() == "FontString" then
-				local nm = obj.GetName and obj:GetName() or (obj.GetDebugName and obj:GetDebugName()) or ""
-				if type(nm) == "string" and string.find(string.lower(nm), string.lower(hint), 1, true) then
-					target = obj; return
-				end
-			end
-			if obj.GetRegions then
-				local n = (obj.GetNumRegions and obj:GetNumRegions(obj)) or 0
-				for i = 1, n do
-					local r = select(i, obj:GetRegions())
-					if r and r.GetObjectType and r:GetObjectType() == "FontString" then
-						local nm = r.GetName and r:GetName() or (r.GetDebugName and r:GetDebugName()) or ""
-						if type(nm) == "string" and string.find(string.lower(nm), string.lower(hint), 1, true) then
-							target = r; return
-						end
-					end
-				end
-			end
-			if obj.GetChildren then
-				local m = (obj.GetNumChildren and obj:GetNumChildren()) or 0
-				for i = 1, m do
-					local c = select(i, obj:GetChildren())
-					scan(c)
-					if target then return end
-				end
-			end
-		end
-		scan(root)
-		--cache non-nil results
-		if target then
-			if not _ptFSCache[root] then
-				_ptFSCache[root] = {}
-			end
-			_ptFSCache[root][hint] = target
-		end
-		return target
-	end
+	local findFontStringByNameHint = addon.UnitFrameText._FindFontStringByNameHint
 
 	-- Resolve power bar for this unit
 	local function resolvePowerBarForVisibility(frame, unit)
@@ -164,23 +114,7 @@ do
 		return b
 	end
 
-	-- Helper to force FontString redraw after alignment change (secret-value safe)
-	local function forceTextRedraw(fs)
-		if fs and fs.GetText and fs.SetText then
-			local ok, txt = pcall(fs.GetText, fs)
-			if ok and txt and type(txt) == "string" then
-				fs:SetText("")
-				fs:SetText(txt)
-			else
-				-- Fallback: toggle alpha to force redraw without needing text value
-				local okAlpha, alpha = pcall(function() return fs.GetAlpha and fs:GetAlpha() end)
-				if okAlpha and alpha then
-					pcall(fs.SetAlpha, fs, 0)
-					pcall(fs.SetAlpha, fs, alpha)
-				end
-			end
-		end
-	end
+	local forceTextRedraw = addon.UnitFrameText._ForceTextRedraw
 
 	local function applyTextStyle(fs, styleCfg, baselineKey, fallbackFrame)
 		if not fs or not styleCfg then return end
