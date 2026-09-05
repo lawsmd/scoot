@@ -769,6 +769,8 @@ function Builder:AddBarTextureSelector(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
+    if self:_ScanRecord("texture", options.label, options.description) then return self end
+
     local barTextureSelector = Controls:CreateBarTextureSelector({
         parent = scrollContent,
         label = options.label,
