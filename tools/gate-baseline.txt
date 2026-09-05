@@ -45,8 +45,7 @@ doc-ref	core/debug/core.lua	1
 doc-ref	core/editmode/positionables.lua	1
 doc-ref	core/enforce.lua	1
 dual-slider	ui/v2/settings/cdm/CustomGroupsRenderer.lua	1
-dual-slider	ui/v2/settings/cdm/EssentialCooldownsRenderer.lua	1
-dual-slider	ui/v2/settings/cdm/UtilityCooldownsRenderer.lua	1
+dual-slider	ui/v2/settings/cdm/CooldownViewersRenderer.lua	1
 dual-slider	ui/v2/settings/interface/MinimapRenderer.lua	1
 dual-slider	ui/v2/settings/scootauras/EditorTabs.lua	1
 dual-slider	ui/v2/unitframes/UFZSections.lua	1

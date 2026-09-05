@@ -274,8 +274,7 @@ ui/v2/settings/BuilderComposites.lua
 ui/v2/settingspanel/renderers.lua
 ui/v2/settings/StartHereRenderer.lua
 ui/v2/settings/cdm/QoLRenderer.lua
-ui/v2/settings/cdm/EssentialCooldownsRenderer.lua
-ui/v2/settings/cdm/UtilityCooldownsRenderer.lua
+ui/v2/settings/cdm/CooldownViewersRenderer.lua
 ui/v2/settings/cdm/TrackedBuffsRenderer.lua
 ui/v2/settings/cdm/TrackedBarsRenderer.lua
 ui/v2/settings/cdm/CustomGroupsRenderer.lua
