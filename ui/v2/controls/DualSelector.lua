@@ -250,167 +250,27 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
     end)
 
-    -- Dropdown menu frame (created once, reused)
-    local dropdown = CreateFrame("Frame", nil, UIParent)
-    dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
-    dropdown:SetFrameLevel(100)
-    dropdown:SetClampedToScreen(true)
-    dropdown:Hide()
+    -- Dropdown option list (rebuilt from selector._keyList on every open)
+    local dropdown = Controls.CreatePopupList({
+        anchor = selector,
+        getKeys = function() return selector._keyList end,
+        getValues = function() return selector._values end,
+        getSelectedKey = function() return selector._currentKey end,
+        onSelect = function(key)
+            selector._currentKey = key
+            setValue(key)
+            UpdateDisplay()
+            LockSync()
+        end,
+    })
     selector._dropdown = dropdown
-
-    -- Dropdown chrome: solid fill plus a 1px accent border
-    Controls.AddBackground(dropdown, { alpha = 0.98 })
-    dropdown._border = Controls.CreateBorder(dropdown, { alpha = 0.8 })
-
-    -- Track dropdown option buttons
-    dropdown._optionButtons = {}
-
-    -- Close dropdown function
-    local function CloseDropdown()
-        dropdown:Hide()
-        if dropdown._closeListener then
-            dropdown._closeListener:Hide()
-        end
-    end
-    selector._closeDropdown = CloseDropdown
-
-    -- Invisible fullscreen listener to close dropdown on outside click
-    local closeListener = CreateFrame("Button", nil, UIParent)
-    closeListener:SetFrameStrata("FULLSCREEN")
-    closeListener:SetFrameLevel(99)
-    closeListener:SetAllPoints(UIParent)
-    closeListener:EnableMouse(true)
-    closeListener:RegisterForClicks("AnyUp", "AnyDown")
-    closeListener:SetScript("OnClick", function()
-        CloseDropdown()
-    end)
-    closeListener:Hide()
-    dropdown._closeListener = closeListener
-
-    -- ESC key handling for dropdown
-    addon.EscapeKey.Attach(dropdown, function()
-        CloseDropdown()
-        PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
-    end)
-
-    -- Build and show dropdown
-    local function ShowDropdown()
-        dropdown:ClearAllPoints()
-
-        local kList = selector._keyList
-        local vMap = selector._values
-        local optionHeight = 26
-        local optionPadding = 4
-        local totalHeight = (#kList * optionHeight) + (optionPadding * 2)
-
-        -- Read width from current selector size at show time
-        local dropdownWidth = selector:GetWidth()
-        if dropdownWidth < 60 then dropdownWidth = 150 end
-
-        dropdown:SetSize(dropdownWidth, totalHeight)
-
-        -- Check if there's room below
-        local selectorBottom = select(2, selector:GetCenter()) - (selector:GetHeight() / 2)
-        local scale = UIParent:GetEffectiveScale()
-        local spaceBelow = selectorBottom * scale
-
-        if spaceBelow > totalHeight + 10 then
-            dropdown:SetPoint("TOPLEFT", selector, "BOTTOMLEFT", 0, -2)
-        else
-            dropdown:SetPoint("BOTTOMLEFT", selector, "TOPLEFT", 0, 2)
-        end
-
-        -- Clear existing option buttons
-        for _, btn in ipairs(dropdown._optionButtons) do
-            btn:Hide()
-            btn:SetParent(nil)
-        end
-        wipe(dropdown._optionButtons)
-
-        -- Get current accent color
-        local accentR, accentG, accentB = theme:GetAccentColor()
-
-        -- Create option buttons
-        for i, key in ipairs(kList) do
-            local optBtn = CreateFrame("Button", nil, dropdown)
-            optBtn:SetSize(dropdownWidth - 2, optionHeight)
-            optBtn:SetPoint("TOPLEFT", dropdown, "TOPLEFT", 1, -optionPadding - ((i - 1) * optionHeight))
-            optBtn:EnableMouse(true)
-            optBtn:RegisterForClicks("AnyUp")
-
-            -- Option background
-            local optBg = optBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
-            optBg:SetAllPoints()
-            optBg:SetColorTexture(0, 0, 0, 0)
-            optBtn._bg = optBg
-
-            -- Option text
-            local optText = optBtn:CreateFontString(nil, "OVERLAY")
-            local optFont = theme:GetFont("VALUE")
-            optText:SetFont(optFont, 12, "")
-            optText:SetPoint("LEFT", optBtn, "LEFT", 12, 0)
-            optText:SetPoint("RIGHT", optBtn, "RIGHT", -12, 0)
-            optText:SetJustifyH("LEFT")
-            optText:SetText(vMap[key] or key)
-            optBtn._text = optText
-            optBtn._key = key
-
-            -- Highlight current selection
-            local isSelected = (key == selector._currentKey)
-            if isSelected then
-                optBg:SetColorTexture(accentR, accentG, accentB, 0.3)
-                optText:SetTextColor(accentR, accentG, accentB, 1)
-            else
-                optText:SetTextColor(1, 1, 1, 1)
-            end
-
-            -- Hover effects
-            optBtn:SetScript("OnEnter", function(btn)
-                if btn._key ~= selector._currentKey then
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.15)
-                else
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.35)
-                end
-            end)
-            optBtn:SetScript("OnLeave", function(btn)
-                if btn._key == selector._currentKey then
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.3)
-                else
-                    btn._bg:SetColorTexture(0, 0, 0, 0)
-                end
-            end)
-
-            -- Click to select
-            optBtn:SetScript("OnClick", function(btn)
-                selector._currentKey = btn._key
-                setValue(selector._currentKey)
-                UpdateDisplay()
-                CloseDropdown()
-                LockSync()
-                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-            end)
-
-            table.insert(dropdown._optionButtons, optBtn)
-        end
-
-        -- Show the close listener first (behind dropdown)
-        closeListener:Show()
-        closeListener:SetFrameLevel(dropdown:GetFrameLevel() - 1)
-
-        -- Show dropdown
-        dropdown:Show()
-        PlaySound(SOUNDKIT.IG_MAINMENU_OPEN)
-    end
-    selector._showDropdown = ShowDropdown
+    selector._closeDropdown = function() dropdown:Close() end
+    selector._showDropdown = function() dropdown:Open() end
 
     -- Value button click (show dropdown)
     valueBtn:SetScript("OnClick", function(btn, mouseButton)
         if selector._syncLocked then return end
-        if dropdown:IsShown() then
-            CloseDropdown()
-        else
-            ShowDropdown()
-        end
+        dropdown:Toggle()
     end)
 
     return selector
@@ -826,22 +686,8 @@ function Controls:CreateDualSelector(options)
                     miniSel._syncLockTimer = nil
                 end
                 -- Close dropdown
-                if miniSel._closeDropdown then
-                    miniSel._closeDropdown()
-                end
                 if miniSel._dropdown then
-                    if miniSel._dropdown._closeListener then
-                        miniSel._dropdown._closeListener:Hide()
-                        miniSel._dropdown._closeListener:SetParent(nil)
-                    end
-                    if miniSel._dropdown._optionButtons then
-                        for _, btn in ipairs(miniSel._dropdown._optionButtons) do
-                            btn:Hide()
-                            btn:SetParent(nil)
-                        end
-                    end
-                    miniSel._dropdown:Hide()
-                    miniSel._dropdown:SetParent(nil)
+                    miniSel._dropdown:Destroy()
                 end
             end
         end

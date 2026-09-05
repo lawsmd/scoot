@@ -412,22 +412,8 @@ function Controls:CreateSelectorToggleRow(options)
             if sel._syncLockTimer then
                 sel._syncLockTimer:Cancel()
             end
-            if sel._closeDropdown then
-                sel._closeDropdown()
-            end
             if sel._dropdown then
-                if sel._dropdown._closeListener then
-                    sel._dropdown._closeListener:Hide()
-                    sel._dropdown._closeListener:SetParent(nil)
-                end
-                if sel._dropdown._optionButtons then
-                    for _, btn in ipairs(sel._dropdown._optionButtons) do
-                        btn:Hide()
-                        btn:SetParent(nil)
-                    end
-                end
-                sel._dropdown:Hide()
-                sel._dropdown:SetParent(nil)
+                sel._dropdown:Destroy()
             end
         end
     end

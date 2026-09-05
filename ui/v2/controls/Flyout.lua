@@ -108,6 +108,8 @@ local function PositionNub(panel)
     end
 end
 
+-- Kept off Controls.CreatePopupList: the flyout floats caller-built content
+-- with four-direction nub anchoring and an open cooldown, not an option list.
 local function OpenFlyout(panel)
     if panel._isOpen then return end
     panel._isOpen = true
@@ -121,8 +123,8 @@ local function OpenFlyout(panel)
     PositionPanel(panel)
     PositionNub(panel)
 
-    panel._closeListener:Show()
-    panel._closeListener:SetFrameLevel(panel:GetFrameLevel() - 1)
+    panel._dismiss:Show()
+    panel._dismiss:SetFrameLevel(panel:GetFrameLevel() - 1)
 
     panel:Show()
     panel:Raise()
@@ -139,7 +141,7 @@ local function CloseFlyout(panel)
     panel._isOpen = false
 
     panel:Hide()
-    panel._closeListener:Hide()
+    panel._dismiss:Hide()
 
     PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
 
@@ -281,17 +283,9 @@ function Controls:CreateFlyout(options)
     -- Close listener (invisible fullscreen button)
     ---------------------------------------------------------------------------
 
-    local closeListener = CreateFrame("Button", nil, UIParent)
-    closeListener:SetFrameStrata("FULLSCREEN")
-    closeListener:SetFrameLevel(99)
-    closeListener:SetAllPoints(UIParent)
-    closeListener:EnableMouse(true)
-    closeListener:RegisterForClicks("AnyDown")
-    closeListener:SetScript("OnClick", function()
+    panel._dismiss = Controls.AttachDismissOnClickOutside(function()
         CloseFlyout(panel)
     end)
-    closeListener:Hide()
-    panel._closeListener = closeListener
 
     ---------------------------------------------------------------------------
     -- ESC key handling
@@ -401,9 +395,9 @@ function Controls:CreateFlyout(options)
             theme:Unsubscribe(self._subscribeKey)
         end
         CloseFlyout(self)
-        if self._closeListener then
-            self._closeListener:Hide()
-            self._closeListener:SetParent(nil)
+        if self._dismiss then
+            self._dismiss:Hide()
+            self._dismiss:SetParent(nil)
         end
     end
 
