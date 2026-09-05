@@ -12,11 +12,11 @@ addon.BarsPowerGeometry = addon.BarsPowerGeometry or {}
 local Geometry = addon.BarsPowerGeometry
 
 local Util = addon.ComponentsUtil
-local Resolvers = addon.BarsResolvers
+local Frames = addon.Frames
 local Textures = addon.BarsTextures
 local FS = addon.FrameState
 
-local resolvePowerMask = Resolvers.resolvePowerMask
+local resolvePowerMask = Frames.resolvePowerMask
 local ensureMaskOnBarTexture = Textures.ensureMaskOnBarTexture
 
 local function getState(frame)

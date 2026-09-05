@@ -14,7 +14,7 @@ addon.BarsOverlays = addon.BarsOverlays or {}
 local BO = addon.BarsOverlays
 
 -- Reference extracted modules (loaded via TOC before this file)
-local Resolvers = addon.BarsResolvers
+local Frames = addon.Frames
 local Textures = addon.BarsTextures
 local Alpha = addon.BarsAlpha
 local Utils = addon.BarsUtils
@@ -64,9 +64,11 @@ local function installPowerFillEnforcement(bar, tex)
 end
 
 -- Resolver functions
-local resolveHealthBar = Resolvers.resolveHealthBar
-local resolveHealthContainer = Resolvers.resolveHealthContainer
-local resolvePowerBar = Resolvers.resolvePowerBar
+local resolveHealthBar = Frames.resolveHealthBar
+local resolveHealthContainer = Frames.resolveHealthContainer
+local resolvePowerBar = Frames.resolvePowerBar
+local resolveBossHealthBarsContainer = Frames.resolveBossHealthBarsContainer
+local resolveBossManaBar = Frames.resolveBossManaBar
 
 -- Resolve TempMaxHealthLoss sibling StatusBar from a HealthBar
 local function resolveTempMaxHealthLoss(healthBar)
@@ -155,9 +157,7 @@ local function raiseUnitTextLayers(unit, targetLevel)
         for i = 1, addon.NUM_BOSS_FRAMES do
             local bossFrame = addon.GetBossFrame(i)
             if bossFrame then
-                local hbContainer = bossFrame.TargetFrameContent
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
+                local hbContainer = resolveBossHealthBarsContainer(bossFrame)
                 if hbContainer then
                     safeSetDrawLayer(hbContainer.HealthBarText, "OVERLAY", 6)
                     safeSetDrawLayer(hbContainer.LeftText, "OVERLAY", 6)
@@ -167,9 +167,7 @@ local function raiseUnitTextLayers(unit, targetLevel)
                     safeRaiseFrameLevel(hbContainer, base, 12)
                 end
 
-                local mana = bossFrame.TargetFrameContent
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.ManaBar
+                local mana = resolveBossManaBar(bossFrame)
                 if mana then
                     safeSetDrawLayer(mana.ManaBarText, "OVERLAY", 6)
                     safeSetDrawLayer(mana.LeftText, "OVERLAY", 6)
@@ -187,8 +185,7 @@ local function raiseUnitTextLayers(unit, targetLevel)
         or (unit == "Focus" and _G.FocusFrame) or nil
     if not root then return end
     -- Health texts
-    local hbContainer = (unit == "Player" and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer)
-        or (root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer)
+    local hbContainer = resolveHealthContainer(root, unit)
     if hbContainer then
         safeSetDrawLayer(hbContainer.HealthBarText, "OVERLAY", 6)
         safeSetDrawLayer(hbContainer.LeftText, "OVERLAY", 6)
@@ -197,12 +194,7 @@ local function raiseUnitTextLayers(unit, targetLevel)
         safeRaiseFrameLevel(hbContainer, base, 12)
     end
     -- Mana texts
-    local mana
-    if unit == "Player" then
-        mana = root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
-    else
-        mana = root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain and root.TargetFrameContent.TargetFrameContentMain.ManaBar
-    end
+    local mana = resolvePowerBar(root, unit)
     if mana then
         safeSetDrawLayer(mana.ManaBarText, "OVERLAY", 6)
         safeSetDrawLayer(mana.LeftText, "OVERLAY", 6)
@@ -234,9 +226,7 @@ local function ensureTextAndBorderOrdering(unit)
             local bossFrame = addon.GetBossFrame(i)
             if bossFrame then
                 -- Health bar text ordering
-                local hbContainer = bossFrame.TargetFrameContent
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
+                local hbContainer = resolveBossHealthBarsContainer(bossFrame)
                 local hb = hbContainer and hbContainer.HealthBar
 
                 if hb and hbContainer then
@@ -263,9 +253,7 @@ local function ensureTextAndBorderOrdering(unit)
                 end
 
                 -- Power bar text ordering
-                local pb = bossFrame.TargetFrameContent
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.ManaBar
+                local pb = resolveBossManaBar(bossFrame)
 
                 if pb then
                     -- Get border anchor frame level (if it exists)
@@ -304,12 +292,9 @@ local function ensureTextAndBorderOrdering(unit)
     local hb = resolveHealthBar(root, unit) or nil
     local hbContainer = resolveHealthContainer(root, unit) or nil
     local pb = resolvePowerBar(root, unit) or nil
-    local manaContainer
-    if unit == "Player" then
-        manaContainer = root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar or nil
-    else
-        manaContainer = root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain and root.TargetFrameContent.TargetFrameContentMain.ManaBar or nil
-    end
+    -- The resolved power bar is its own text container; Pet keeps nil (its
+    -- ManaBar is a standalone global outside this ordering pass).
+    local manaContainer = unit ~= "Pet" and pb or nil
     -- Determine bar level and desired ordering: bar < holder < text
     local barLevel = (hb and hb.GetFrameLevel and hb:GetFrameLevel()) or 0
     if pb and pb.GetFrameLevel then
@@ -448,18 +433,14 @@ local function ensureBossRectOverlay(bossFrame, bar, cfg, barType, unitId)
     local boundsFrame
     if barType == "health" then
         -- Use the same resolver as the border code
-        if Resolvers and Resolvers.resolveBossHealthBarsContainer then
-            boundsFrame = Resolvers.resolveBossHealthBarsContainer(bossFrame)
-        end
+        boundsFrame = resolveBossHealthBarsContainer(bossFrame)
         if not boundsFrame then
             -- Fallback: try to get parent (HealthBarsContainer)
             boundsFrame = bar:GetParent()
         end
     else
         -- For power bar, use the ManaBar resolver
-        if Resolvers and Resolvers.resolveBossManaBar then
-            boundsFrame = Resolvers.resolveBossManaBar(bossFrame)
-        end
+        boundsFrame = resolveBossManaBar(bossFrame)
         if not boundsFrame then
             -- Fallback: ManaBar should have correct bounds itself
             boundsFrame = bar

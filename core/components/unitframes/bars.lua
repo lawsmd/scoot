@@ -6,7 +6,7 @@ local Util = addon.ComponentsUtil
 
 -- Reference extracted modules (loaded via TOC before this file)
 local Combat = addon.BarsCombat
-local Resolvers = addon.BarsResolvers
+local Frames = addon.Frames
 local Textures = addon.BarsTextures
 local BarsOverlays = addon.BarsOverlays
 local BarsSmallFrames = addon.BarsSmallFrames
@@ -48,13 +48,13 @@ local queueUnitFrameTextureReapply = Combat.queueUnitFrameTextureReapply
 
 -- Unit Frames: Apply custom bar textures (Health/Power) with optional tint per unit
 do
-    -- Use resolver functions from extracted module
-    local getUnitFrameFor = Resolvers.getUnitFrameFor
-    local resolveHealthBar = Resolvers.resolveHealthBar
-    local resolveHealthContainer = Resolvers.resolveHealthContainer
-    local resolvePowerBar = Resolvers.resolvePowerBar
-    local resolveHealthMask = Resolvers.resolveHealthMask
-    local resolvePowerMask = Resolvers.resolvePowerMask
+    -- Use resolver functions from the shared module
+    local getUnitFrameFor = addon.GetUnitFrame
+    local resolveHealthBar = Frames.resolveHealthBar
+    local resolveHealthContainer = Frames.resolveHealthContainer
+    local resolvePowerBar = Frames.resolvePowerBar
+    local resolveHealthMask = Frames.resolveHealthMask
+    local resolvePowerMask = Frames.resolvePowerMask
     
     -- Use texture functions from extracted module
     local applyToBar = Textures.applyToBar

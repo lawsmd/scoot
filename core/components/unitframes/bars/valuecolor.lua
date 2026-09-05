@@ -11,65 +11,41 @@ local addonName, addon = ...
 -- Uses UnitHealthPercent(unit, false, colorCurve) for secret-safe color computation.
 
 do
+    -- Lowercase event unit tokens translate to the PascalCase resolver
+    -- vocabulary at this file's edge (core/frames.lua keys).
+    local UNIT_KEY_BY_TOKEN = {
+        player = "Player",
+        target = "Target",
+        focus = "Focus",
+        targettarget = "TargetOfTarget",
+        focustarget = "FocusTarget",
+    }
+
+    -- Resolve the health bar for a lowercase event unit token, config aside.
+    local function resolveHealthBarForToken(unit)
+        local key = UNIT_KEY_BY_TOKEN[unit]
+        if key then
+            return addon.Frames.resolveHealthBar(nil, key)
+        end
+        local bossIndex = tonumber(unit:match("^boss(%d)$"))
+        if bossIndex and bossIndex >= 1 and bossIndex <= addon.NUM_BOSS_FRAMES then
+            local bossFrame = addon.GetBossFrame(bossIndex)
+            return bossFrame and addon.Frames.resolveHealthBar(bossFrame, "Boss") or nil
+        end
+    end
+
     -- Map unit tokens to their health bar frames
     -- Returns: bar, useDark (both nil if not using value-based color mode)
     local function getHealthBarForUnit(unit)
         local db = addon and addon.db and addon.db.profile
         local unitFrames = db and rawget(db, "unitFrames") or nil
 
-        if unit == "player" then
-            local cfg = unitFrames and rawget(unitFrames, "Player") or nil
-            local colorMode = cfg and cfg.healthBarColorMode
-            if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark") then return nil, nil end
-            local hb = _G.PlayerFrame and _G.PlayerFrame.PlayerFrameContent
-                and _G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
-                and _G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-                and _G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
-            return hb, (colorMode == "valueDark")
-        elseif unit == "target" then
-            local cfg = unitFrames and rawget(unitFrames, "Target") or nil
-            local colorMode = cfg and cfg.healthBarColorMode
-            if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark") then return nil, nil end
-            local hb = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-            return hb, (colorMode == "valueDark")
-        elseif unit == "focus" then
-            local cfg = unitFrames and rawget(unitFrames, "Focus") or nil
-            local colorMode = cfg and cfg.healthBarColorMode
-            if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark") then return nil, nil end
-            local hb = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-            return hb, (colorMode == "valueDark")
-        elseif unit:match("^boss%d$") then
-            local cfg = unitFrames and rawget(unitFrames, "Boss") or nil
-            local colorMode = cfg and cfg.healthBarColorMode
-            if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark") then return nil, nil end
-            local bossIndex = tonumber(unit:match("^boss(%d)$"))
-            if bossIndex and bossIndex >= 1 and bossIndex <= addon.NUM_BOSS_FRAMES then
-                local bossFrame = addon.GetBossFrame(bossIndex)
-                local hb = bossFrame and bossFrame.TargetFrameContent
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-                return hb, (colorMode == "valueDark")
-            end
-        elseif unit == "targettarget" then
-            local cfg = unitFrames and rawget(unitFrames, "TargetOfTarget") or nil
-            local colorMode = cfg and cfg.healthBarColorMode
-            if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark") then return nil, nil end
-            local tot = _G.TargetFrameToT
-            return (tot and tot.HealthBar or nil), (colorMode == "valueDark")
-        elseif unit == "focustarget" then
-            local cfg = unitFrames and rawget(unitFrames, "FocusTarget") or nil
-            local colorMode = cfg and cfg.healthBarColorMode
-            if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark") then return nil, nil end
-            local fot = _G.FocusFrameToT
-            return (fot and fot.HealthBar or nil), (colorMode == "valueDark")
-        end
+        local cfgKey = UNIT_KEY_BY_TOKEN[unit] or (unit:match("^boss%d$") and "Boss") or nil
+        if not cfgKey then return end
+        local cfg = unitFrames and rawget(unitFrames, cfgKey) or nil
+        local colorMode = cfg and cfg.healthBarColorMode
+        if not colorMode or (colorMode ~= "value" and colorMode ~= "valueDark") then return nil, nil end
+        return resolveHealthBarForToken(unit), (colorMode == "valueDark")
     end
 
     -- Helper to get the value color overlay for a bar (if active)
@@ -202,57 +178,23 @@ do
         end)
     end
 
-    -- Apply SetValue hooks after a short delay to ensure frames exist
+    -- Apply SetValue hooks after a short delay to ensure frames exist.
+    -- Hooks install regardless of color mode; the hook body reads the mode
+    -- at fire time.
     C_Timer.After(1, function()
-        -- Player
-        local playerHB = PlayerFrame and PlayerFrame.PlayerFrameContent
-            and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
-            and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-            and PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
-        if playerHB then
-            hookSetValueForValueColor(playerHB, "Player", "player")
+        for token, key in pairs(UNIT_KEY_BY_TOKEN) do
+            local hb = resolveHealthBarForToken(token)
+            if hb then
+                hookSetValueForValueColor(hb, key, token)
+            end
         end
 
-        -- Target
-        local targetHB = TargetFrame and TargetFrame.TargetFrameContent
-            and TargetFrame.TargetFrameContent.TargetFrameContentMain
-            and TargetFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-            and TargetFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-        if targetHB then
-            hookSetValueForValueColor(targetHB, "Target", "target")
-        end
-
-        -- Focus
-        local focusHB = FocusFrame and FocusFrame.TargetFrameContent
-            and FocusFrame.TargetFrameContent.TargetFrameContentMain
-            and FocusFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-            and FocusFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-        if focusHB then
-            hookSetValueForValueColor(focusHB, "Focus", "focus")
-        end
-
-        -- Boss frames
-        addon.ForEachBossFrame(function(bossFrame, i)
-            local bossHB = bossFrame.TargetFrameContent
-                and bossFrame.TargetFrameContent.TargetFrameContentMain
-                and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
+        addon.ForEachBossFrame(function(_, i)
+            local bossHB = resolveHealthBarForToken("boss" .. i)
             if bossHB then
                 hookSetValueForValueColor(bossHB, "Boss", "boss" .. i)
             end
         end)
-
-        -- TargetOfTarget
-        local totHB = TargetFrameToT and TargetFrameToT.HealthBar
-        if totHB then
-            hookSetValueForValueColor(totHB, "TargetOfTarget", "targettarget")
-        end
-
-        -- FocusTarget
-        local fotHB = FocusFrameToT and FocusFrameToT.HealthBar
-        if fotHB then
-            hookSetValueForValueColor(fotHB, "FocusTarget", "focustarget")
-        end
 
         -- Hook RefreshOpacityState to re-apply value-based colors after opacity changes.
         -- Ensures color persists through opacity transitions (e.g., 20% -> 100% when target acquired).

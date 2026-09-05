@@ -91,12 +91,7 @@ function addon.DebugPowerBarPosition(simulateReset)
         return
     end
 
-    local pb =
-        _G.PlayerFrame
-        and _G.PlayerFrame.PlayerFrameContent
-        and _G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
-        and _G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea
-        and _G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
+    local pb = addon.Frames.resolvePowerBar(nil, "Player")
 
     local lines, push = addon.DebugLines()
 

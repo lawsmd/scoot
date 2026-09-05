@@ -15,7 +15,7 @@ addon.BarsSmallFrames = addon.BarsSmallFrames or {}
 local SF = addon.BarsSmallFrames
 
 -- Reference extracted modules (loaded via TOC before this file)
-local Resolvers = addon.BarsResolvers
+local Frames = addon.Frames
 local Textures = addon.BarsTextures
 local Alpha = addon.BarsAlpha
 local BarsOverlays = addon.BarsOverlays
@@ -42,9 +42,9 @@ local function setProp(frame, key, value)
 end
 
 -- Resolver functions
-local resolveHealthBar = Resolvers.resolveHealthBar
-local resolvePowerBar = Resolvers.resolvePowerBar
-local resolveUnitFrameFrameTexture = Resolvers.resolveUnitFrameFrameTexture
+local resolveHealthBar = Frames.resolveHealthBar
+local resolvePowerBar = Frames.resolvePowerBar
+local resolveUnitFrameFrameTexture = Frames.resolveUnitFrameFrameTexture
 
 -- Alpha functions
 local applyAlpha = Alpha.applyAlpha

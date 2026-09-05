@@ -19,7 +19,7 @@ local apbTextFontOpts = { size = 14 }
 local apbTextCustomizationOpts = { alignment = true }
 
 local Util = addon.ComponentsUtil
-local Resolvers = addon.BarsResolvers
+local Frames = addon.Frames
 local Textures = addon.BarsTextures
 local FS = addon.FrameState
 
@@ -42,7 +42,7 @@ local ALT_POWER_TEXT_CENTER_OPTS = {
     when = function(fs) return FS.Get(fs).altPowerTextCenterHidden == true end,
 }
 
-local resolveAlternatePowerBar = Resolvers.resolveAlternatePowerBar
+local resolveAlternatePowerBar = Frames.resolveAlternatePowerBar
 local applyToBar = Textures.applyToBar
 local applyBackgroundToBar = Textures.applyBackgroundToBar
 
