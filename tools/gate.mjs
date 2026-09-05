@@ -74,6 +74,8 @@ const PATTERNS = [
     hint: 'A profile-driven enable toggle goes through its applier in core/profiles/cvars.lua (addon.ApplyCooldownViewerEnabled, ApplyPRDEnabled, ApplyDamageMeterEnabled, ApplyRaidLargerRoleDebuffs, ApplyGroupBuffIconsHidden); a generic passthrough, a save/restore pair, or debug tooling stays, mark it.' },
   { name: 'uft-helper', re: /\blocal\s+function\s+(findFontStringByNameHint|ensureBaseline|forceTextRedraw)\s*\(/, except: ['core/components/unitframes/text/core.lua', 'core/components/unitframes/text/pipeline.lua'],
     hint: 'FontString lookup is UFT._FindFontStringByNameHint, redraw is UFT._ForceTextRedraw, and text anchor baselines belong to the UnitFrameText pipeline; a copy with different capture semantics stays hand-rolled, mark it.' },
+  { name: 'frame-path', re: /^(?!\s*--).*FrameContent(Main|Contextual)/, except: ['core/frames.lua'],
+    hint: 'A FrameContentMain or FrameContentContextual child resolves through an addon.Frames resolver in core/frames.lua; a whole-line comment documenting a path is exempt.' },
   // Comment hygiene: the greps the vibes pass runs.
   { name: 'doc-ref', re: /ADDONCONTEXT|[a-z0-9_&-]+\.md\b|wow-ui-source/i, except: [],
     hint: 'Shipped code names no internal doc, doc path, or reference tree.' },
