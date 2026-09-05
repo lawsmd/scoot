@@ -19,9 +19,6 @@ end
 
 local PICKER_WIDTH = 440
 local PICKER_HEIGHT = 340
-local TAB_WIDTH = 90
-local TAB_HEIGHT = 32
-local TITLE_HEIGHT = 30
 local PADDING = 12
 
 -- Icon grid layout (no text labels, just icons)
@@ -37,7 +34,6 @@ local ANIM_ICON_BUTTON_SPACING = 8
 local ANIM_ICON_PREVIEW_SIZE = 28
 
 -- Fallback accent colors
-local BRAND_R, BRAND_G, BRAND_B = 0.20, 0.90, 0.30
 
 --------------------------------------------------------------------------------
 -- Icon Categories
@@ -147,210 +143,24 @@ end
 local function CreateIconPicker()
     if pickerFrame then return pickerFrame end
 
-    local theme = GetTheme()
-    local accentR, accentG, accentB = BRAND_R, BRAND_G, BRAND_B
-    if theme and theme.GetAccentColor then
-        accentR, accentG, accentB = theme:GetAccentColor()
-    end
-
-    local frame = CreateFrame("Frame", "ScootIconPickerFrame", UIParent)
-    frame:SetSize(PICKER_WIDTH, PICKER_HEIGHT)
-    frame:SetFrameStrata("FULLSCREEN_DIALOG")
-    frame:SetFrameLevel(100)
-    frame:EnableMouse(true)
-    frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-
-    -- Background
-    local bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.04, 0.04, 0.06, 0.96)
-    frame._bg = bg
-
-    -- Border (1px accent)
-    frame._borders = Controls.CreateBorder(frame, { alpha = 0.8 })
-
-    -- Title
-    local titleFont = (theme and theme.GetFont and theme:GetFont("HEADER")) or "Fonts\\FRIZQT__.TTF"
-    local title = frame:CreateFontString(nil, "OVERLAY")
-    title:SetFont(titleFont, 14, "")
-    title:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -10)
-    title:SetText("Select Icon Style")
-    title:SetTextColor(1, 1, 1, 1)
-    frame.Title = title
-
-    -- Close button (X)
-    local closeBtn = CreateFrame("Button", nil, frame)
-    closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
-    closeBtn:EnableMouse(true)
-    closeBtn:RegisterForClicks("AnyUp")
-
-    local closeBg = closeBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
-    closeBg:SetAllPoints()
-    closeBg:SetColorTexture(accentR, accentG, accentB, 1)
-    closeBg:Hide()
-    closeBtn._bg = closeBg
-
-    local closeTxt = closeBtn:CreateFontString(nil, "OVERLAY")
-    closeTxt:SetFont(titleFont, 14, "")
-    closeTxt:SetPoint("CENTER", 0, 0)
-    closeTxt:SetText("X")
-    closeTxt:SetTextColor(accentR, accentG, accentB, 1)
-    closeBtn._text = closeTxt
-
-    closeBtn:SetScript("OnEnter", function(self)
-        self._bg:Show()
-        self._text:SetTextColor(0, 0, 0, 1)
-    end)
-    closeBtn:SetScript("OnLeave", function(self)
-        self._bg:Hide()
-        self._text:SetTextColor(accentR, accentG, accentB, 1)
-    end)
-    closeBtn:SetScript("OnClick", CloseIconPicker)
-    frame.CloseButton = closeBtn
-
-    -- Tab container (left side)
-    local tabContainer = CreateFrame("Frame", nil, frame)
-    tabContainer:SetSize(TAB_WIDTH, PICKER_HEIGHT - TITLE_HEIGHT - PADDING * 2)
-    tabContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -(TITLE_HEIGHT + 4))
-    frame.TabContainer = tabContainer
-
-    -- Vertical separator
-    local tabSep = frame:CreateTexture(nil, "BORDER", nil, 0)
-    tabSep:SetWidth(1)
-    tabSep:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 4, 0)
-    tabSep:SetPoint("BOTTOMLEFT", tabContainer, "BOTTOMRIGHT", 4, 0)
-    tabSep:SetColorTexture(accentR, accentG, accentB, 0.4)
-    frame._tabSep = tabSep
-
-    -- Tab buttons
-    frame.TabButtons = {}
-    local labelFont = (theme and theme.GetFont and theme:GetFont("LABEL")) or "Fonts\\FRIZQT__.TTF"
-
-    for i, tabData in ipairs(TABS) do
-        local tabBtn = CreateFrame("Button", nil, tabContainer)
-        tabBtn:SetSize(TAB_WIDTH, TAB_HEIGHT)
-        tabBtn:SetPoint("TOPLEFT", tabContainer, "TOPLEFT", 0, -((i - 1) * TAB_HEIGHT))
-        tabBtn:EnableMouse(true)
-        tabBtn:RegisterForClicks("AnyUp")
-
-        local tabBg = tabBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
-        tabBg:SetAllPoints()
-        tabBg:SetColorTexture(0.06, 0.06, 0.08, 1)
-        tabBtn._bg = tabBg
-
-        local indicator = tabBtn:CreateTexture(nil, "OVERLAY", nil, 1)
-        indicator:SetSize(2, TAB_HEIGHT)
-        indicator:SetPoint("LEFT", tabBtn, "LEFT", 0, 0)
-        indicator:SetColorTexture(accentR, accentG, accentB, 1)
-        indicator:Hide()
-        tabBtn._indicator = indicator
-
-        local tabLabel = tabBtn:CreateFontString(nil, "OVERLAY")
-        tabLabel:SetFont(labelFont, 11, "")
-        tabLabel:SetPoint("CENTER", tabBtn, "CENTER", 2, 0)
-        tabLabel:SetText(tabData.label)
-        tabLabel:SetTextColor(0.6, 0.6, 0.6, 1)
-        tabBtn._label = tabLabel
-
-        tabBtn._key = tabData.key
-        tabBtn._icons = tabData.icons
-
-        tabBtn:SetScript("OnEnter", function(self)
-            if selectedTab ~= self._key then
-                self._bg:SetColorTexture(accentR, accentG, accentB, 0.15)
-            end
-        end)
-        tabBtn:SetScript("OnLeave", function(self)
-            if selectedTab ~= self._key then
-                self._bg:SetColorTexture(0.06, 0.06, 0.08, 1)
-            end
-        end)
-        tabBtn:SetScript("OnClick", function(self)
-            if selectedTab ~= self._key then
-                selectedTab = self._key
-                frame:UpdateTabVisuals()
-                frame:PopulateContent()
-                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-            end
-        end)
-
-        frame.TabButtons[tabData.key] = tabBtn
-    end
-
-    -- Content area (scroll frame)
+    -- Content area width
     local contentWidth = (ICON_BUTTON_SIZE * ICONS_PER_ROW) + (ICON_BUTTON_SPACING * (ICONS_PER_ROW - 1)) + (PADDING * 2)
-    local scrollFrame = CreateFrame("ScrollFrame", "ScootIconPickerScrollFrame", frame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 12, 0)
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(PADDING + 20), PADDING)
-    frame.ScrollFrame = scrollFrame
 
-    -- Style scrollbar
-    local scrollBar = scrollFrame.ScrollBar or _G[scrollFrame:GetName() .. "ScrollBar"]
-    if scrollBar then
-        scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 6, -16)
-        scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 6, 16)
-
-        if scrollBar.Background then scrollBar.Background:Hide() end
-        if scrollBar.Track then
-            if scrollBar.Track.Begin then scrollBar.Track.Begin:Hide() end
-            if scrollBar.Track.End then scrollBar.Track.End:Hide() end
-            if scrollBar.Track.Middle then scrollBar.Track.Middle:Hide() end
-        end
-
-        local trackBg = scrollBar:CreateTexture(nil, "BACKGROUND", nil, -8)
-        trackBg:SetPoint("TOPLEFT", 4, 0)
-        trackBg:SetPoint("BOTTOMRIGHT", -4, 0)
-        trackBg:SetColorTexture(accentR, accentG, accentB, 0.15)
-        scrollBar._trackBg = trackBg
-
-        local thumb = scrollBar.ThumbTexture or scrollBar:GetThumbTexture()
-        if thumb then
-            thumb:SetColorTexture(accentR, accentG, accentB, 0.6)
-            thumb:SetSize(8, 40)
-        end
-
-        local upBtn = scrollBar.ScrollUpButton or scrollBar.Back or _G[scrollBar:GetName() .. "ScrollUpButton"]
-        local downBtn = scrollBar.ScrollDownButton or scrollBar.Forward or _G[scrollBar:GetName() .. "ScrollDownButton"]
-        if upBtn then upBtn:SetAlpha(0) upBtn:EnableMouse(false) end
-        if downBtn then downBtn:SetAlpha(0) downBtn:EnableMouse(false) end
-
-        frame._scrollBar = scrollBar
-    end
-
-    -- Scroll child
-    local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(contentWidth - PADDING, 100)
-    scrollFrame:SetScrollChild(content)
-    frame.Content = content
+    local frame = Controls.CreatePickerShell({
+        name = "ScootIconPickerFrame",
+        width = PICKER_WIDTH,
+        height = PICKER_HEIGHT,
+        contentWidth = contentWidth,
+        title = "Select Icon Style",
+        onClose = CloseIconPicker,
+        tabs = TABS,
+        getSelectedTab = function() return selectedTab end,
+        onTabSelected = function(key) selectedTab = key end,
+        onHide = StopAllAnimatedPreviews,
+    })
 
     -- Button pool
     frame.IconButtons = {}
-
-    -- Store accent colors
-    frame._accentR = accentR
-    frame._accentG = accentG
-    frame._accentB = accentB
-
-    -- Update tab visuals
-    function frame:UpdateTabVisuals()
-        for key, tabBtn in pairs(self.TabButtons) do
-            local isSelected = (selectedTab == key)
-            if isSelected then
-                tabBtn._indicator:Show()
-                tabBtn._label:SetTextColor(1, 1, 1, 1)
-                tabBtn._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.2)
-            else
-                tabBtn._indicator:Hide()
-                tabBtn._label:SetTextColor(0.6, 0.6, 0.6, 1)
-                tabBtn._bg:SetColorTexture(0.06, 0.06, 0.08, 1)
-            end
-        end
-    end
 
     -- Populate icon grid
     function frame:PopulateContent()
@@ -620,60 +430,6 @@ local function CreateIconPicker()
     end
 
 
-    -- ESC key support
-    addon.EscapeKey.Attach(frame, function()
-        CloseIconPicker()
-    end)
-
-    -- Click-outside-to-close
-    frame:SetScript("OnShow", function(self)
-        self:SetScript("OnUpdate", function(self)
-            if not self:IsMouseOver() and IsMouseButtonDown("LeftButton") then
-                C_Timer.After(0.05, function()
-                    if pickerFrame and pickerFrame:IsShown() and not pickerFrame:IsMouseOver() then
-                        CloseIconPicker()
-                    end
-                end)
-            end
-        end)
-    end)
-    frame:SetScript("OnHide", function(self)
-        self:SetScript("OnUpdate", nil)
-        StopAllAnimatedPreviews()
-    end)
-
-    -- Theme subscription
-    if theme and theme.Subscribe then
-        theme:Subscribe("IconPicker_Frame", function(r, g, b)
-            frame._accentR, frame._accentG, frame._accentB = r, g, b
-
-            -- Tab separator
-            frame._tabSep:SetColorTexture(r, g, b, 0.4)
-            -- Close button
-            frame.CloseButton._text:SetTextColor(r, g, b, 1)
-            frame.CloseButton._bg:SetColorTexture(r, g, b, 1)
-            -- Tab indicators
-            for _, tabBtn in pairs(frame.TabButtons) do
-                tabBtn._indicator:SetColorTexture(r, g, b, 1)
-            end
-            -- Scrollbar
-            if frame._scrollBar then
-                if frame._scrollBar._trackBg then
-                    frame._scrollBar._trackBg:SetColorTexture(r, g, b, 0.15)
-                end
-                local thumb = frame._scrollBar.ThumbTexture or frame._scrollBar:GetThumbTexture()
-                if thumb then
-                    thumb:SetColorTexture(r, g, b, 0.6)
-                end
-            end
-            -- Re-populate to update selection highlights
-            frame:UpdateTabVisuals()
-            if frame:IsShown() then
-                frame:PopulateContent()
-            end
-        end)
-    end
-
     frame:Hide()
     pickerFrame = frame
     return frame
@@ -696,10 +452,14 @@ function addon.ShowIconPicker(anchor, currentValue, callback, options)
     pickerAnchor = anchor
     pickerOptions = options
 
-    local animTab = frame.TabButtons and frame.TabButtons.animated
-    if animTab then
-        animTab:SetShown(not (options and options.hideAnimatedTab))
+    -- Build working tabs (Animated omitted on request)
+    local workingTabs = {}
+    for _, tabData in ipairs(TABS) do
+        if not (tabData.key == "animated" and options and options.hideAnimatedTab) then
+            workingTabs[#workingTabs + 1] = tabData
+        end
     end
+    frame._workingTabs = workingTabs
 
     -- Position relative to anchor or screen center
     frame:ClearAllPoints()
@@ -723,6 +483,7 @@ function addon.ShowIconPicker(anchor, currentValue, callback, options)
     end
 
     selectedTab = "simple"
+    frame:UpdateTabs()
     frame:UpdateTabVisuals()
     frame:PopulateContent()
     frame:Show()
