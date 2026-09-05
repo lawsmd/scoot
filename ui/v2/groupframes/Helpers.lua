@@ -61,7 +61,7 @@ function GF.ensureAuraTrackingDB()
     -- style wanted those icons neutralized, so they convert to the hide toggle.
     -- NOTE: the new field must stay named hideBlizzardBuffIcons; the legacy drop
     -- above nukes hideBlizzardBuffs on every call. A copy of this conversion runs
-    -- at login in core/profiles/core.lua (ApplyGroupBuffIconsHiddenForActiveProfile)
+    -- at login in core/profiles/cvars.lua (the groupBuffIconsHidden applier)
     -- because profile apply fires before any UI code calls this helper; both copies
     -- are idempotent, keep them in sync.
     if at.replacementStyle ~= nil then

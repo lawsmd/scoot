@@ -13,7 +13,7 @@
 -- where the list named the few spells Blizzard had un-secreted.
 --
 -- Hiding Blizzard's own buff icons is handled by the raidFramesDisplayBuffs
--- CVar (see ApplyGroupBuffIconsHiddenForActiveProfile in core/profiles/core.lua),
+-- CVar (see the groupBuffIconsHidden applier in core/profiles/cvars.lua),
 -- not by anything in this component.
 --------------------------------------------------------------------------------
 
