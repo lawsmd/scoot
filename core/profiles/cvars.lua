@@ -5,124 +5,139 @@ local Events = addon.Events
 -- Aliases for internals promoted by core.lua
 local Debug = addon.Profiles._Debug
 
--- Apply the profile's CDM override (if explicitly set) to the Blizzard CVar.
--- This is character-scoped in Blizzard, so it is enforced per-profile by setting it
--- when the active Scoot profile changes.
-local function ApplyCooldownViewerEnabledForActiveProfile(reason)
-    if not addon:IsModuleEnabled("cooldownManager") then return end
-    local profile = addon and addon.db and addon.db.profile
-    local q = profile and profile.cdmQoL
-    local desired = q and q.enableCDM
-    if desired == nil then
-        return
+-- The one write body every applier shares: C_CVar first, legacy fallback.
+local function setCVarValue(name, value)
+    if C_CVar and C_CVar.SetCVar then
+        pcall(C_CVar.SetCVar, name, value)
+    elseif SetCVar then
+        pcall(SetCVar, name, value)
     end
-    local value = (desired and "1") or "0"
+end
 
-    local function applyCVar()
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "cooldownViewerEnabled", value)
-        elseif SetCVar then
-            pcall(SetCVar, "cooldownViewerEnabled", value)
+-- Setting a CVar does not reliably hide already-visible frames until the user
+-- toggles Blizzard's checkbox UI, so a disable proactively hides them. Avoids
+-- touching potentially protected UI during combat; retries once shortly after.
+local function hideFramesAfterDisable(frameNames)
+    local function hideAll()
+        for _, frameName in ipairs(frameNames) do
+            local frame = _G and _G[frameName]
+            if frame then
+                if frame.SetShown then
+                    pcall(frame.SetShown, frame, false)
+                elseif frame.Hide then
+                    pcall(frame.Hide, frame)
+                end
+            end
         end
     end
 
-    Events.RunOutOfCombat(applyCVar, "Profiles:cdmCVar")
+    if InCombatLockdown and InCombatLockdown() then
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.1, function()
+                if not (InCombatLockdown and InCombatLockdown()) then
+                    hideAll()
+                end
+            end)
+        end
+    else
+        hideAll()
+    end
+end
 
-    -- Important: setting the CVar does not reliably hide already-visible CDM frames
-    -- until the user toggles Blizzard's checkbox UI. If the profile explicitly disables
-    -- CDM, the viewer frames must be proactively hidden so the UI matches the setting
-    -- immediately (including right after /reload).
-    --
+-- One applier per profile-driven CVar. Fields:
+--   tag        RunOutOfCombat owner-key suffix; the key is "Profiles:" .. tag
+--   cvar       the CVar written, also named in the Debug line
+--   module     optional addon:IsModuleEnabled gate
+--   desired    reads the profile subtable; nil means Zero-Touch skip
+--   invert     the toggle means the opposite of the CVar
+--   preempt    optional full override; returns true when it handled the apply
+--   postApply  runs after the write is scheduled
+local function applyFromProfile(d, reason)
+    if d.module and not addon:IsModuleEnabled(d.module) then return end
+    if d.preempt and d.preempt(reason) then return end
+    local profile = addon and addon.db and addon.db.profile
+    local desired = d.desired(profile)
+    if desired == nil then
+        return  -- Zero-Touch: never override until the user configures the toggle
+    end
+    local value
+    if d.invert then
+        value = (desired and "0") or "1"
+    else
+        value = (desired and "1") or "0"
+    end
+
+    Events.RunOutOfCombat(function()
+        setCVarValue(d.cvar, value)
+    end, "Profiles:" .. d.tag)
+
+    if d.postApply then d.postApply(desired) end
+
+    Debug("Applied " .. d.cvar .. " from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
+end
+
+-- Apply the profile's CDM override (if explicitly set) to the Blizzard CVar.
+-- This is character-scoped in Blizzard, so it is enforced per-profile by setting it
+-- when the active Scoot profile changes.
+local cooldownViewerEnabled = {
+    tag = "cdmCVar",
+    cvar = "cooldownViewerEnabled",
+    module = "cooldownManager",
+    desired = function(profile)
+        local q = profile and profile.cdmQoL
+        return q and q.enableCDM
+    end,
     -- Intentionally does NOT force-show when enabling; Edit Mode + viewer visibility
     -- settings (and Blizzard state) should remain the source of truth for whether a
     -- particular viewer is currently visible.
-    if desired == false then
-        local function hideViewers()
-            local viewers = {
+    postApply = function(desired)
+        if desired == false then
+            hideFramesAfterDisable({
                 "EssentialCooldownViewer",
                 "UtilityCooldownViewer",
                 "BuffIconCooldownViewer",
                 "BuffBarCooldownViewer",
-            }
-            for _, viewerName in ipairs(viewers) do
-                local frame = _G and _G[viewerName]
-                if frame then
-                    if frame.SetShown then
-                        pcall(frame.SetShown, frame, false)
-                    elseif frame.Hide then
-                        pcall(frame.Hide, frame)
-                    end
-                end
-            end
+            })
         end
+    end,
+}
 
-        if InCombatLockdown and InCombatLockdown() then
-            -- Avoid touching potentially protected UI during combat; retry after combat ends.
+local nameplateShowSelf = {
+    tag = "prdCVar",
+    cvar = "nameplateShowSelf",
+    module = "prd",
+    desired = function(profile)
+        local s = profile and profile.prdSettings
+        return s and s.enablePRD
+    end,
+    -- If disabling, trigger a re-apply so borders/overlays get cleared
+    postApply = function(desired)
+        if desired == false then
             if C_Timer and C_Timer.After then
-                C_Timer.After(0.1, function()
-                    if not (InCombatLockdown and InCombatLockdown()) then
-                        hideViewers()
+                C_Timer.After(0, function()
+                    if addon and addon.ApplyStyles then
+                        addon:ApplyStyles()
                     end
                 end)
             end
-        else
-            hideViewers()
         end
-    end
+    end,
+}
 
-    Debug("Applied cooldownViewerEnabled from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
-end
-
-local function ApplyPRDEnabledForActiveProfile(reason)
-    if not addon:IsModuleEnabled("prd") then return end
-    local profile = addon and addon.db and addon.db.profile
-    local s = profile and profile.prdSettings
-    local desired = s and s.enablePRD
-    if desired == nil then
-        return  -- Not explicitly set; don't override CVar
-    end
-    local value = (desired and "1") or "0"
-
-    local function applyCVar()
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "nameplateShowSelf", value)
-        elseif SetCVar then
-            pcall(SetCVar, "nameplateShowSelf", value)
-        end
-    end
-
-    Events.RunOutOfCombat(applyCVar, "Profiles:prdCVar")
-
-    -- If disabling, trigger a re-apply so borders/overlays get cleared
-    if desired == false then
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if addon and addon.ApplyStyles then
-                    addon:ApplyStyles()
-                end
-            end)
-        end
-    end
-
-    Debug("Applied nameplateShowSelf from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
-end
-
-local function ApplyDamageMeterEnabledForActiveProfile(reason)
-    if not addon:IsModuleEnabled("damageMeter") then return end
-
-    -- V2 active → always disable Blizzard's meter regardless of V1 settings
-    if addon:IsModuleEnabled("damageMeter", "damageMeterV2") then
-        local function applyV2CVar()
-            if C_CVar and C_CVar.SetCVar then
-                pcall(C_CVar.SetCVar, "damageMeterEnabled", "0")
-            elseif SetCVar then
-                pcall(SetCVar, "damageMeterEnabled", "0")
-            end
-        end
+local damageMeterEnabled = {
+    tag = "dmCVar",
+    cvar = "damageMeterEnabled",
+    module = "damageMeter",
+    -- V2 active → always disable Blizzard's meter regardless of V1 settings.
+    preempt = function(reason)
+        if not addon:IsModuleEnabled("damageMeter", "damageMeterV2") then return false end
         -- Same key as the V1 path below: both write damageMeterEnabled, so a
         -- V1/V2 flip mid-combat must resolve to the latest write only.
-        Events.RunOutOfCombat(applyV2CVar, "Profiles:dmCVar")
-        -- Hide Blizzard meter frame
+        Events.RunOutOfCombat(function()
+            setCVarValue("damageMeterEnabled", "0")
+        end, "Profiles:dmCVar")
+        -- Hide Blizzard meter frame. In combat the hide is skipped, with no retry;
+        -- the deferred CVar write above still lands on regen.
         if not (InCombatLockdown and InCombatLockdown()) then
             local frame = _G and _G["DamageMeter"]
             if frame then
@@ -132,55 +147,19 @@ local function ApplyDamageMeterEnabledForActiveProfile(reason)
             end
         end
         Debug("Applied damageMeterEnabled=0 for V2", reason and ("reason=" .. tostring(reason)) or "")
-        return
-    end
-
-    local profile = addon and addon.db and addon.db.profile
-    local s = profile and profile.damageMeterSettings
-    local desired = s and s.enableDamageMeter
-    if desired == nil then
-        return  -- Not explicitly set; don't override CVar
-    end
-    local value = (desired and "1") or "0"
-
-    local function applyCVar()
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "damageMeterEnabled", value)
-        elseif SetCVar then
-            pcall(SetCVar, "damageMeterEnabled", value)
-        end
-    end
-
-    Events.RunOutOfCombat(applyCVar, "Profiles:dmCVar")
-
+        return true
+    end,
+    desired = function(profile)
+        local s = profile and profile.damageMeterSettings
+        return s and s.enableDamageMeter
+    end,
     -- Hide damage meter if disabling (same pattern as CDM)
-    if desired == false then
-        local function hideDamageMeter()
-            local frame = _G and _G["DamageMeter"]
-            if frame then
-                if frame.SetShown then
-                    pcall(frame.SetShown, frame, false)
-                elseif frame.Hide then
-                    pcall(frame.Hide, frame)
-                end
-            end
+    postApply = function(desired)
+        if desired == false then
+            hideFramesAfterDisable({ "DamageMeter" })
         end
-
-        if InCombatLockdown and InCombatLockdown() then
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0.1, function()
-                    if not (InCombatLockdown and InCombatLockdown()) then
-                        hideDamageMeter()
-                    end
-                end)
-            end
-        else
-            hideDamageMeter()
-        end
-    end
-
-    Debug("Applied damageMeterEnabled from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
-end
+    end,
+}
 
 -- Raid frames: Blizzard renders raid-frame debuffs as private auras (forbidden,
 -- secure environment) and enlarges boss/role-specific ones when its
@@ -188,85 +167,66 @@ end
 -- restyled, but the CVar that drives them can be flipped. Setting the CVar fires
 -- CompactUnitFrameProfiles' CVar callback, which reapplies to all raid +
 -- raid-style party frames automatically (no manual rebuild).
-local function ApplyRaidLargerRoleDebuffsForActiveProfile(reason)
-    local profile = addon and addon.db and addon.db.profile
-    local gf = profile and profile.groupFrames
-    local s = gf and gf.raid
-    local desired = s and s.enlargeRoleDebuffs
-    if desired == nil then
-        return  -- Zero-Touch: never override until the user configures the toggle
-    end
-    local value = (desired and "1") or "0"
-
-    local function applyCVar()
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "raidFramesDisplayLargerRoleSpecificDebuffs", value)
-        elseif SetCVar then
-            pcall(SetCVar, "raidFramesDisplayLargerRoleSpecificDebuffs", value)
-        end
-    end
-
-    Events.RunOutOfCombat(applyCVar, "Profiles:raidRoleDebuffsCVar")
-
-    Debug("Applied raidFramesDisplayLargerRoleSpecificDebuffs from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
-end
-
--- Expose for the Raid Frames renderer toggle so it reuses the one combat-guarded implementation.
-addon.ApplyRaidLargerRoleDebuffs = ApplyRaidLargerRoleDebuffsForActiveProfile
+local raidLargerRoleDebuffs = {
+    tag = "raidRoleDebuffsCVar",
+    cvar = "raidFramesDisplayLargerRoleSpecificDebuffs",
+    desired = function(profile)
+        local gf = profile and profile.groupFrames
+        local s = gf and gf.raid
+        return s and s.enlargeRoleDebuffs
+    end,
+}
 
 -- Group frames: patch 12.1 added the raidFramesDisplayBuffs CVar, an engine-level switch
 -- that removes every buff icon from raid and raid-style party frames (the frames read it
 -- through CompactUnitFrameProfiles' CVar callback, which reapplies frame setup on its own).
 -- Blizzard wired the CVar but exposed no options UI for it; Scoot's Aura Tracking page does.
-local function ApplyGroupBuffIconsHiddenForActiveProfile(reason)
-    local profile = addon and addon.db and addon.db.profile
-    local gf = profile and profile.groupFrames
-    local at = gf and gf.auraTracking
-
-    -- One-shot conversion from the retired replacementStyle overlay setting. Runs here as
-    -- well as in ensureAuraTrackingDB (ui/v2/groupframes/Helpers.lua) because this function
-    -- fires at login before any settings UI code touches the profile. Both copies are
-    -- idempotent; keep them in sync.
-    if at and at.replacementStyle ~= nil then
-        if at.replacementStyle ~= "none" and at.hideBlizzardBuffIcons == nil then
-            at.hideBlizzardBuffIcons = true
-        end
-        at.replacementStyle = nil
-    end
-
-    local desired = at and at.hideBlizzardBuffIcons
-    if desired == nil then
-        return  -- Zero-Touch: never override until the user configures the toggle
-    end
+local groupBuffIconsHidden = {
+    tag = "groupBuffIconsCVar",
+    cvar = "raidFramesDisplayBuffs",
     -- Inverted polarity: the toggle means "hide", the CVar means "display".
-    local value = (desired and "0") or "1"
+    invert = true,
+    desired = function(profile)
+        local gf = profile and profile.groupFrames
+        local at = gf and gf.auraTracking
 
-    local function applyCVar()
-        if C_CVar and C_CVar.SetCVar then
-            pcall(C_CVar.SetCVar, "raidFramesDisplayBuffs", value)
-        elseif SetCVar then
-            pcall(SetCVar, "raidFramesDisplayBuffs", value)
+        -- One-shot conversion from the retired replacementStyle overlay setting. Runs here as
+        -- well as in ensureAuraTrackingDB (ui/v2/groupframes/Helpers.lua) because this function
+        -- fires at login before any settings UI code touches the profile. Both copies are
+        -- idempotent; keep them in sync. Runs before the nil check on purpose.
+        if at and at.replacementStyle ~= nil then
+            if at.replacementStyle ~= "none" and at.hideBlizzardBuffIcons == nil then
+                at.hideBlizzardBuffIcons = true
+            end
+            at.replacementStyle = nil
         end
+
+        return at and at.hideBlizzardBuffIcons
+    end,
+}
+
+local function makeApplier(d)
+    return function(reason)
+        applyFromProfile(d, reason)
     end
-
-    Events.RunOutOfCombat(applyCVar, "Profiles:groupBuffIconsCVar")
-
-    Debug("Applied raidFramesDisplayBuffs from profile", tostring(value), reason and ("reason=" .. tostring(reason)) or "")
 end
 
+-- Expose for the Raid Frames renderer toggle so it reuses the one combat-guarded implementation.
+addon.ApplyRaidLargerRoleDebuffs = makeApplier(raidLargerRoleDebuffs)
+
 -- Expose for the Aura Tracking renderer toggle so it reuses the one combat-guarded implementation.
-addon.ApplyGroupBuffIconsHidden = ApplyGroupBuffIconsHiddenForActiveProfile
+addon.ApplyGroupBuffIconsHidden = makeApplier(groupBuffIconsHidden)
 
 -- Per-profile enforcement that ApplyStyles does not cover: the CVar-backed
 -- toggles, the action bar enable state, and chat. Every profile-apply site
 -- runs it.
 local function reconcileProfileToggles(reason)
-    ApplyCooldownViewerEnabledForActiveProfile(reason)
-    ApplyPRDEnabledForActiveProfile(reason)
-    ApplyDamageMeterEnabledForActiveProfile(reason)
+    applyFromProfile(cooldownViewerEnabled, reason)
+    applyFromProfile(nameplateShowSelf, reason)
+    applyFromProfile(damageMeterEnabled, reason)
     addon.ReconcileActionBarsEnabled(reason)
-    ApplyRaidLargerRoleDebuffsForActiveProfile(reason)
-    ApplyGroupBuffIconsHiddenForActiveProfile(reason)
+    applyFromProfile(raidLargerRoleDebuffs, reason)
+    applyFromProfile(groupBuffIconsHidden, reason)
     if addon and addon.Chat and addon.Chat.ApplyFromProfile then
         addon.Chat:ApplyFromProfile("Profiles:" .. reason)
     end
