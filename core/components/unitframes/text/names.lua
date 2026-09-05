@@ -43,49 +43,11 @@ local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 do
 	local getUnitFrameFor = addon.GetUnitFrame
 
-	-- Local resolvers for this block (backdrop anchoring helpers)
-	local function resolveUFContentMain_NLT(unit)
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain or nil
-		elseif unit == "Target" then
-			local root = _G.TargetFrame
-			return root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain or nil
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain or nil
-		elseif unit == "Pet" then
-			return _G.PetFrame
-		end
-	end
-
+	-- Shared resolvers for this block (backdrop anchoring helpers); the wrapper
+	-- pins the (frame, unit) signature to this block's unit-only call sites.
+	local resolveUFContentMain_NLT = addon.Frames.resolveUFContentMain
 	local function resolveHealthBar_NLT(unit)
-		if unit == "Pet" then return _G.PetFrameHealthBar end
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			return root
-				and root.PlayerFrameContent
-				and root.PlayerFrameContent.PlayerFrameContentMain
-				and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-				and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
-				or nil
-		elseif unit == "Target" then
-			local root = _G.TargetFrame
-			return root
-				and root.TargetFrameContent
-				and root.TargetFrameContent.TargetFrameContentMain
-				and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-				and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-				or nil
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return root
-				and root.TargetFrameContent
-				and root.TargetFrameContent.TargetFrameContentMain
-				and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-				and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-				or nil
-		end
+		return addon.Frames.resolveHealthBar(nil, unit)
 	end
 
 	local findFontStringByNameHint = addon.UnitFrameText._FindFontStringByNameHint
@@ -189,31 +151,12 @@ do
 			-- at least one relevant setting was explicitly set above.
 			local resolveBossFrame = addon.GetBossFrame
 
-			local resolveBossNameFS = addon.ResolveBossNameFS
-
-			local function resolveBossLevelFS(bossFrame)
-				return (bossFrame
-					and bossFrame.TargetFrameContent
-					and bossFrame.TargetFrameContent.TargetFrameContentMain
-					and bossFrame.TargetFrameContent.TargetFrameContentMain.LevelText)
-					or nil
-			end
-
-			local function resolveBossContentMain(bossFrame)
-				return bossFrame
-					and bossFrame.TargetFrameContent
-					and bossFrame.TargetFrameContent.TargetFrameContentMain
-					or nil
-			end
+			local resolveBossNameFS = addon.Frames.resolveBossNameFS
+			local resolveBossLevelFS = addon.Frames.resolveBossLevelFS
+			local resolveBossContentMain = addon.Frames.resolveBossContentMain
 
 			local function resolveBossHealthBar(bossFrame)
-				-- Blizzard exposes bossFrame.healthbar (preferred).
-				return bossFrame and bossFrame.healthbar
-					or (bossFrame and bossFrame.TargetFrameContent
-						and bossFrame.TargetFrameContent.TargetFrameContentMain
-						and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-						and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar)
-					or nil
+				return addon.Frames.resolveHealthBar(bossFrame, "Boss")
 			end
 
 			-- Baselines for Boss name text are stored per-boss-index. Guard on every call:
@@ -589,33 +532,10 @@ do
 		local frame = getUnitFrameFor(unit)
 		if not frame then return end
 
-		-- Resolve Name and Level FontStrings
-		local nameFS, levelFS
-		
-	-- Try direct child access first (most common)
-	if unit == "Player" then
-		nameFS = _G.PlayerName
-		levelFS = _G.PlayerLevelText
-	elseif unit == "Target" then
-		-- Target uses nested content structure
-		local targetFrame = _G.TargetFrame
-		if targetFrame and targetFrame.TargetFrameContent and targetFrame.TargetFrameContent.TargetFrameContentMain then
-			nameFS = targetFrame.TargetFrameContent.TargetFrameContentMain.Name
-			levelFS = targetFrame.TargetFrameContent.TargetFrameContentMain.LevelText
-		end
-	elseif unit == "Focus" then
-		-- Focus reuses Target's content structure naming (TargetFrameContent, not FocusFrameContent!)
-		local focusFrame = _G.FocusFrame
-		if focusFrame and focusFrame.TargetFrameContent and focusFrame.TargetFrameContent.TargetFrameContentMain then
-			nameFS = focusFrame.TargetFrameContent.TargetFrameContentMain.Name
-			levelFS = focusFrame.TargetFrameContent.TargetFrameContentMain.LevelText
-		end
-	elseif unit == "Pet" then
-		-- Pet uses global FontString names (PetName is a direct global, not nested)
-		nameFS = _G.PetName
-		-- Pet frame doesn't have a LevelText FontString (no level display)
-		levelFS = nil
-	end
+		-- Resolve Name and Level FontStrings through the shared resolvers; the
+		-- hint-scan fallback below still covers a miss.
+		local nameFS = addon.Frames.resolveNameFS(unit)
+		local levelFS = addon.Frames.resolveLevelFS(unit)
 
 		-- Fallback: search by name hints
 		if not nameFS then nameFS = findFontStringByNameHint(frame, "Name") end
@@ -1309,8 +1229,7 @@ end
 do
 	-- Resolve ToT Name FontString
 	local function resolveToTNameFS()
-		local tot = _G.TargetFrameToT
-		return tot and tot.Name or nil
+		return addon.Frames.resolveNameFS("TargetOfTarget")
 	end
 
 	-- Baseline storage for ToT Name text
@@ -1448,8 +1367,7 @@ end
 
 do
 	local function resolveFoTNameFS()
-		local fot = _G.FocusFrameToT
-		return fot and fot.Name or nil
+		return addon.Frames.resolveNameFS("FocusTarget")
 	end
 
 	addon._ufFoTNameTextBaseline = addon._ufFoTNameTextBaseline or {}

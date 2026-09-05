@@ -146,15 +146,14 @@ function UFT._BuildTextPipeline(kind)
                 local bossIdx = baselineKey:match("^Boss(%d+)")
                 if bossIdx then
                     local bossFrame = addon.GetBossFrame(bossIdx)
-                    local nameFS = bossFrame and addon.ResolveBossNameFS(bossFrame) or nil
+                    local nameFS = bossFrame and addon.Frames.resolveBossNameFS(bossFrame) or nil
                     if nameFS then
                         local anchorKey = styleCfg.nameAnchor or "RIGHT_OF_NAME"
                         local anchorInfo = NAME_ANCHOR_MAP[anchorKey]
                         if anchorInfo then
                             useNameAnchor = true
                             -- Reparent to contentMain so SetPoint can target nameFS (same hierarchy)
-                            local contentMain = bossFrame.TargetFrameContent
-                                and bossFrame.TargetFrameContent.TargetFrameContentMain
+                            local contentMain = addon.Frames.resolveBossContentMain(bossFrame)
                             if contentMain and fs.SetParent then
                                 local fst = FS
                                 if fst and not fst.GetProp(fs, "nameAnchorOrigParent") then

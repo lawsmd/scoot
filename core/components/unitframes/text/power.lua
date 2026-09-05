@@ -19,6 +19,9 @@ local ufTextCustomizationOpts = { alignment = true, alignmentMode = true, colorM
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
+-- Shared frame resolvers (core/frames.lua)
+local Frames = addon.Frames
+
 -- Cross-file import: the shared text pipeline builder (text/pipeline.lua, loaded first in TOC)
 local buildTextPipeline = addon.UnitFrameText._BuildTextPipeline
 
@@ -38,33 +41,6 @@ local POWER_TEXT_CENTER_OPTS = {
 
 -- Unit Frames: Toggle Power % (LeftText when present) and Value (RightText) visibility per unit
 do
-	-- Resolve power bar for this unit
-	local function resolvePowerBarForVisibility(frame, unit)
-		if unit == "Pet" then return _G.PetFrameManaBar end
-		if frame and frame.ManaBar then return frame.ManaBar end
-		-- Try direct paths
-		if unit == "Player" then
-			local root = _G.PlayerFrame
-			if root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain
-				and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea
-				and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar then
-				return root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
-			end
-		elseif unit == "Target" then
-			local root = _G.TargetFrame
-			if root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain
-				and root.TargetFrameContent.TargetFrameContentMain.ManaBar then
-				return root.TargetFrameContent.TargetFrameContentMain.ManaBar
-			end
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			if root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain
-				and root.TargetFrameContent.TargetFrameContentMain.ManaBar then
-				return root.TargetFrameContent.TargetFrameContentMain.ManaBar
-			end
-		end
-	end
-
 	-- Color half of the text styling: the DK companion slot merges into the
 	-- effective mode before ResolveColorRGBA
 	local function applyPowerTextColor(fs, styleCfg)
@@ -87,32 +63,6 @@ do
 		leftFS = leftFS or (frame and frame.ManaBar and frame.ManaBar.LeftText)
 		rightFS = rightFS or (frame and frame.ManaBar and frame.ManaBar.RightText)
 		return leftFS, rightFS
-	end
-
-	-- Center TextString per unit (Character Pane shows ManaBarText instead of LeftText/RightText)
-	local function resolvePowerCenterText(unit)
-		if unit == "Pet" then
-			return _G.PetFrameManaBarText
-		elseif unit == "Player" then
-			local root = _G.PlayerFrame
-			return root and root.PlayerFrameContent
-				and root.PlayerFrameContent.PlayerFrameContentMain
-				and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea
-				and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
-				and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar.ManaBarText
-		elseif unit == "Target" then
-			local root = _G.TargetFrame
-			return root and root.TargetFrameContent
-				and root.TargetFrameContent.TargetFrameContentMain
-				and root.TargetFrameContent.TargetFrameContentMain.ManaBar
-				and root.TargetFrameContent.TargetFrameContentMain.ManaBar.ManaBarText
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return root and root.TargetFrameContent
-				and root.TargetFrameContent.TargetFrameContentMain
-				and root.TargetFrameContent.TargetFrameContentMain.ManaBar
-				and root.TargetFrameContent.TargetFrameContentMain.ManaBar.ManaBarText
-		end
 	end
 
 	-- Migrate dkSpec from base slot to DK companion slot (idempotent)
@@ -158,18 +108,14 @@ do
 		centerOpts = POWER_TEXT_CENTER_OPTS,
 		fontOpts = ufTextFontOpts,
 		customizationOpts = ufTextCustomizationOpts,
-		barResolver = resolvePowerBarForVisibility,
+		barResolver = Frames.resolvePowerBar,
 		directTexts = directPowerTexts,
 		hints = {
 			left  = { "ManaBar.LeftText",  ".LeftText",  "ManaBarTextLeft" },
 			right = { "ManaBar.RightText", ".RightText", "ManaBarTextRight" },
 		},
-		centerResolver = resolvePowerCenterText,
-		bossContainer = function(bossFrame)
-			return bossFrame.TargetFrameContent
-				and bossFrame.TargetFrameContent.TargetFrameContentMain
-				and bossFrame.TargetFrameContent.TargetFrameContentMain.ManaBar
-		end,
+		centerResolver = Frames.resolvePowerCenterText,
+		bossContainer = Frames.resolveBossManaBar,
 		bossBar = function(container) return container end,
 		colorApplier = applyPowerTextColor,
 		migrate = migrateDKColorSlots,

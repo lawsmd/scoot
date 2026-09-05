@@ -19,6 +19,9 @@ local ufTextCustomizationOpts = { alignment = true, alignmentMode = true }
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
+-- Shared frame resolvers (core/frames.lua)
+local Frames = addon.Frames
+
 -- Cross-file import: the shared text pipeline builder (text/pipeline.lua, loaded first in TOC)
 local buildTextPipeline = addon.UnitFrameText._BuildTextPipeline
 
@@ -43,37 +46,6 @@ local HEALTH_TEXT_CENTER_OPTS = {
 
 -- Unit Frames: Toggle Health % (LeftText) and Value (RightText) visibility per unit
 do
-    -- Resolve health bar for this unit
-    local function resolveHealthBarForVisibility(frame, unit)
-        if unit == "Pet" then return _G.PetFrameHealthBar end
-        if frame and frame.HealthBarsContainer and frame.HealthBarsContainer.HealthBar then
-            return frame.HealthBarsContainer.HealthBar
-        end
-        -- Try direct paths
-        if unit == "Player" then
-            local root = _G.PlayerFrame
-            if root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentMain
-                and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-                and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar then
-                return root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBar
-            end
-        elseif unit == "Target" then
-            local root = _G.TargetFrame
-            if root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar then
-                return root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-            end
-        elseif unit == "Focus" then
-            local root = _G.FocusFrame
-            if root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentMain
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar then
-                return root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
-            end
-        end
-    end
-
     -- Check whether the current player can have an Alternate Power Bar.
     -- DRUID is treated as class-capable (form/talent driven, not reliably spec-gated).
     local function playerHasAlternatePowerBar()
@@ -203,39 +175,11 @@ do
         return leftFS, rightFS
     end
 
-    -- Center TextString per unit (Character Pane shows HealthBarText instead of LeftText/RightText)
-    local function resolveHealthCenterText(unit)
-        if unit == "Pet" then
-            return _G.PetFrameHealthBarText
-        elseif unit == "Player" then
-            local root = _G.PlayerFrame
-            return root and root.PlayerFrameContent
-                and root.PlayerFrameContent.PlayerFrameContentMain
-                and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-                and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBarText
-        elseif unit == "Target" then
-            local root = _G.TargetFrame
-            return root and root.TargetFrameContent
-                and root.TargetFrameContent.TargetFrameContentMain
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBarText
-        elseif unit == "Focus" then
-            local root = _G.FocusFrame
-            return root and root.TargetFrameContent
-                and root.TargetFrameContent.TargetFrameContentMain
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBarText
-        end
-    end
-
     -- DeadText / UnconsciousText: inherit font face + style from Health Value text settings.
     -- Only Target and Focus have these (Player/Pet do not).
     local function applyDeadTextForUnit(unit, cfg)
         if unit == "Target" or unit == "Focus" then
-            local root = (unit == "Target") and _G.TargetFrame or _G.FocusFrame
-            local hbContainer = root and root.TargetFrameContent
-                and root.TargetFrameContent.TargetFrameContentMain
-                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
+            local hbContainer = Frames.resolveHealthContainer(nil, unit)
             if hbContainer then
                 local valueCfg = cfg.textHealthValue or {}
                 applyDeadTextFontInheritance(hbContainer.DeadText, valueCfg)
@@ -275,18 +219,14 @@ do
         centerOpts = HEALTH_TEXT_CENTER_OPTS,
         fontOpts = ufTextFontOpts,
         customizationOpts = ufTextCustomizationOpts,
-        barResolver = resolveHealthBarForVisibility,
+        barResolver = Frames.resolveHealthBar,
         directTexts = directHealthTexts,
         hints = {
             left  = { "HealthBarsContainer.LeftText",  ".LeftText",  "HealthBarTextLeft" },
             right = { "HealthBarsContainer.RightText", ".RightText", "HealthBarTextRight" },
         },
-        centerResolver = resolveHealthCenterText,
-        bossContainer = function(bossFrame)
-            return bossFrame.TargetFrameContent
-                and bossFrame.TargetFrameContent.TargetFrameContentMain
-                and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-        end,
+        centerResolver = Frames.resolveHealthCenterText,
+        bossContainer = Frames.resolveBossHealthBarsContainer,
         bossBar = function(container) return container.HealthBar end,
         bossCenter = function(container) return container.HealthBarText end,
         colorApplier = applyHealthTextColor,

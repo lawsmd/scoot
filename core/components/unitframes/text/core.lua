@@ -19,16 +19,6 @@ local safeOffset = SS.safeOffset
 local safePointToken = SS.safePointToken
 local safeGetWidth = SS.safeGetWidth
 
--- Resolve boss name FontString from a boss frame. Promoted to addon namespace so both
--- the health/power text positioning code and the boss name/level block can use it.
-function addon.ResolveBossNameFS(bossFrame)
-    return (bossFrame and (bossFrame.name
-        or (bossFrame.TargetFrameContent
-            and bossFrame.TargetFrameContent.TargetFrameContentMain
-            and bossFrame.TargetFrameContent.TargetFrameContentMain.Name)))
-        or nil
-end
-
 -- Map of name-anchor positions to { textPoint, namePoint, justifyH, gapX, gapY }
 -- Promoted to addon.UnitFrameText for cross-file access (health.lua, power.lua)
 UFT._NAME_ANCHOR_MAP = {
@@ -134,18 +124,7 @@ function addon.PreemptiveHideLevelText(unit)
 	-- Only hide if levelTextHidden is explicitly true
 	if cfg.levelTextHidden ~= true then return end
 
-	local levelFS = nil
-	if unit == "Target" then
-		levelFS = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-			and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-			and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.LevelText
-	elseif unit == "Focus" then
-		levelFS = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-			and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-			and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.LevelText
-	elseif unit == "Player" then
-		levelFS = _G.PlayerLevelText
-	end
+	local levelFS = addon.Frames.resolveLevelFS(unit)
 
 	if levelFS and levelFS.SetShown then
 		pcall(levelFS.SetShown, levelFS, false)
@@ -162,18 +141,7 @@ function addon.PreemptiveHideNameText(unit)
 	-- Only hide if nameTextHidden is explicitly true
 	if cfg.nameTextHidden ~= true then return end
 
-	local nameFS = nil
-	if unit == "Target" then
-		nameFS = _G.TargetFrame and _G.TargetFrame.TargetFrameContent
-			and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
-			and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.Name
-	elseif unit == "Focus" then
-		nameFS = _G.FocusFrame and _G.FocusFrame.TargetFrameContent
-			and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
-			and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.Name
-	elseif unit == "Player" then
-		nameFS = _G.PlayerName
-	end
+	local nameFS = addon.Frames.resolveNameFS(unit)
 
 	if nameFS and nameFS.SetShown then
 		pcall(nameFS.SetShown, nameFS, false)
