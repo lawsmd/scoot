@@ -398,113 +398,6 @@ do
 
         local combatSafe = (unit ~= "Player")
 
-        -- Target-of-Target can get refreshed frequently by Blizzard (even out of combat),
-        -- which can reset its bar textures. Install a lightweight, throttled hook on the
-        -- ToT frame's Update() to re-assert styling shortly after Blizzard updates it.
-        if unit == "TargetOfTarget" and _G.hooksecurefunc then
-            local tot = _G.TargetFrameToT
-            local totState = getState(tot)
-            if tot and totState and not totState.toTUpdateHooked and type(tot.Update) == "function" then
-                totState.toTUpdateHooked = true
-                _G.hooksecurefunc(tot, "Update", function()
-                    if isEditModeActive() then return end
-                    local db2 = addon and addon.db and addon.db.profile
-                    if not db2 then return end
-                    local unitFrames2 = rawget(db2, "unitFrames")
-                    local cfgT = unitFrames2 and rawget(unitFrames2, "TargetOfTarget") or nil
-                    if not cfgT then
-                        return
-                    end
-
-                    local texKey = cfgT.healthBarTexture or "default"
-                    local colorMode = cfgT.healthBarColorMode or "default"
-                    local tint = cfgT.healthBarTint
-
-                    local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
-                    -- Kept off addon.IsNonDefaultColorMode: hook-install gate; widening it adds hooks that fight the value color path.
-                    local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
-                    if not hasCustomTexture and not hasCustomColor then
-                        return
-                    end
-
-                    if InCombatLockdown and InCombatLockdown() then
-                        queueUnitFrameTextureReapply("TargetOfTarget")
-                        return
-                    end
-
-                    local state = getState(tot)
-                    if state and state.toTReapplyPending then
-                        return
-                    end
-                    if state then state.toTReapplyPending = true end
-
-                    if _G.C_Timer and _G.C_Timer.After and addon.ApplyUnitFrameBarTexturesFor then
-                        _G.C_Timer.After(0, function()
-                            local st2 = getState(tot)
-                            if st2 then st2.toTReapplyPending = nil end
-                            addon.ApplyUnitFrameBarTexturesFor("TargetOfTarget")
-                        end)
-                    elseif addon.ApplyUnitFrameBarTexturesFor then
-                        if state then state.toTReapplyPending = nil end
-                        addon.ApplyUnitFrameBarTexturesFor("TargetOfTarget")
-                    end
-                end)
-            end
-        end
-
-        -- FocusTarget can get refreshed frequently by Blizzard (even out of combat),
-        -- which can reset its bar textures. Install a lightweight, throttled hook on the
-        -- FoT frame's Update() to re-assert styling shortly after Blizzard updates it.
-        if unit == "FocusTarget" and _G.hooksecurefunc then
-            local fot = _G.FocusFrameToT
-            local fotState = getState(fot)
-            if fot and fotState and not fotState.foTUpdateHooked and type(fot.Update) == "function" then
-                fotState.foTUpdateHooked = true
-                _G.hooksecurefunc(fot, "Update", function()
-                    if isEditModeActive() then return end
-                    local db2 = addon and addon.db and addon.db.profile
-                    if not db2 then return end
-                    local unitFrames2 = rawget(db2, "unitFrames")
-                    local cfgF = unitFrames2 and rawget(unitFrames2, "FocusTarget") or nil
-                    if not cfgF then
-                        return
-                    end
-
-                    local texKey = cfgF.healthBarTexture or "default"
-                    local colorMode = cfgF.healthBarColorMode or "default"
-                    local tint = cfgF.healthBarTint
-
-                    local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
-                    local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
-                    if not hasCustomTexture and not hasCustomColor then
-                        return
-                    end
-
-                    if InCombatLockdown and InCombatLockdown() then
-                        queueUnitFrameTextureReapply("FocusTarget")
-                        return
-                    end
-
-                    local state = getState(fot)
-                    if state and state.foTReapplyPending then
-                        return
-                    end
-                    if state then state.foTReapplyPending = true end
-
-                    if _G.C_Timer and _G.C_Timer.After and addon.ApplyUnitFrameBarTexturesFor then
-                        _G.C_Timer.After(0, function()
-                            local st2 = getState(fot)
-                            if st2 then st2.foTReapplyPending = nil end
-                            addon.ApplyUnitFrameBarTexturesFor("FocusTarget")
-                        end)
-                    elseif addon.ApplyUnitFrameBarTexturesFor then
-                        if state then state.foTReapplyPending = nil end
-                        addon.ApplyUnitFrameBarTexturesFor("FocusTarget")
-                    end
-                end)
-            end
-        end
-
         -- Boss frames: apply to Boss1..Boss5 frames (shared config: db.unitFrames.Boss), then return.
         -- Boss frames are individual TargetFrame variants and are NOT the same as the EditMode system frame.
         if unit == "Boss" then
@@ -1118,9 +1011,9 @@ do
         if hb then
             local colorModeHB = cfg.healthBarColorMode or "default"
             local texKeyHB = cfg.healthBarTexture or "default"
-            local unitId = (unit == "Player" and "player") or (unit == "Target" and "target") or (unit == "Focus" and "focus") or (unit == "Pet" and "pet") or (unit == "TargetOfTarget" and "targettarget") or (unit == "FocusTarget" and "focustarget") or "player"
-			-- Avoid applying styling to Target/Focus/ToT/FoT before they exist; Blizzard will reset sizes on first Update
-			if (unit == "Target" or unit == "Focus" or unit == "TargetOfTarget" or unit == "FocusTarget") and _G.UnitExists and not _G.UnitExists(unitId) then
+            local unitId = (unit == "Player" and "player") or (unit == "Target" and "target") or (unit == "Focus" and "focus") or "player"
+			-- Avoid applying styling to Target/Focus before they exist; Blizzard will reset sizes on first Update
+			if (unit == "Target" or unit == "Focus") and _G.UnitExists and not _G.UnitExists(unitId) then
 				return
 			end
 			local healthBarHideTextureOnly = (cfg.healthBarHideTextureOnly == true)
@@ -1193,12 +1086,6 @@ do
 					stockAtlas = "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Health"
 				elseif unit == "Focus" then
 					stockAtlas = "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Health" -- Focus reuses Target visuals
-				elseif unit == "Pet" then
-					stockAtlas = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health" -- Pet frame shares party atlas
-				elseif unit == "TargetOfTarget" then
-					stockAtlas = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health" -- ToT shares party atlas
-				elseif unit == "FocusTarget" then
-					stockAtlas = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health" -- FoT shares party atlas
 				end
                 if stockAtlas then
                     local hbTex = hb.GetStatusBarTexture and hb:GetStatusBarTexture()
@@ -1211,12 +1098,6 @@ do
 							maskAtlas = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health-Mask"
 						elseif unit == "Target" or unit == "Focus" then
 							maskAtlas = "UI-HUD-UnitFrame-Target-PortraitOn-Bar-Health-Mask"
-						elseif unit == "Pet" then
-							maskAtlas = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Mask"
-						elseif unit == "TargetOfTarget" then
-							maskAtlas = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Mask" -- ToT shares party mask
-						elseif unit == "FocusTarget" then
-							maskAtlas = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Mask" -- FoT shares party mask
 						end
 						if maskAtlas then pcall(mask.SetAtlas, mask, maskAtlas) end
 					end
@@ -1245,10 +1126,7 @@ do
             end
 
             -- Health Bar custom border (Health Bar only)
-            -- PetFrame is a managed/protected frame. Even innocuous getters (GetWidth, GetFrameLevel)
-            -- on PetFrame's health bar can trigger Blizzard internal updates that error on "secret values".
-            -- Skip ALL border operations for Pet to guarantee preset/profile application doesn't provoke that path.
-            if unit ~= "Pet" and unit ~= "TargetOfTarget" and unit ~= "FocusTarget" and not healthBarHideTextureOnly then
+            if not healthBarHideTextureOnly then
             do
 				local styleKey = cfg.healthBarBorderStyle
 				local hiddenEdges = cfg.healthBarBorderHiddenEdges
@@ -1327,7 +1205,6 @@ do
                                     local expandX = baseX - insetH
                                     if expandX < -6 then expandX = -6 elseif expandX > 6 then expandX = 6 end
                                     if expandY < -6 then expandY = -6 elseif expandY > 6 then expandY = 6 end
-                                    -- Pet is already excluded by the outer guard
                                     -- Apply to clipping container if height reduction active, else to health bar
                                     local squareBorderTarget = borderAnchorTarget or hb
                                     addon.Borders.ApplySquare(squareBorderTarget, {
@@ -1362,7 +1239,7 @@ do
 					end
 				end
             end
-            end -- Pet guard
+            end
 
             -- Lightweight persistence hooks for Player Health Bar:
             -- Texture: keep custom texture applied if Blizzard swaps StatusBarTexture.
@@ -1434,196 +1311,6 @@ do
                             return
                         end
                         applyToBar(self, texKey, colorMode, tint, "player", "health", unitIdP)
-                    end)
-                end
-            end
-
-            -- Lightweight persistence hooks for Target-of-Target Health Bar:
-            -- Blizzard can reset the ToT StatusBar's fill texture during rapid updates (often in combat).
-            -- Re-asserts the configured texture/color by writing to the underlying Texture region
-            -- (avoids calling SetStatusBarTexture again inside a secure callstack).
-            if unit == "TargetOfTarget" and _G.hooksecurefunc then
-                if not getProp(hb, "toTHealthTextureHooked") then
-                    setProp(hb, "toTHealthTextureHooked", true)
-                    _G.hooksecurefunc(hb, "SetStatusBarTexture", function(self, ...)
-                        if isEditModeActive() then return end
-                        -- Ignore Scoot's own writes to avoid feedback loops.
-                        if getProp(self, "ufInternalTextureWrite") then
-                            return
-                        end
-
-                        local db = addon and addon.db and addon.db.profile
-                        if not db then return end
-                        local unitFrames = rawget(db, "unitFrames")
-                        local cfgT = unitFrames and rawget(unitFrames, "TargetOfTarget") or nil
-                        if not cfgT then return end
-
-                        local texKey = cfgT.healthBarTexture or "default"
-                        local colorMode = cfgT.healthBarColorMode or "default"
-                        local tint = cfgT.healthBarTint
-
-                        local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
-                        local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
-                        if not hasCustomTexture and not hasCustomColor then
-                            return
-                        end
-
-                        -- Avoid any writes during combat; defer until after combat.
-                        if InCombatLockdown and InCombatLockdown() then
-                            queueUnitFrameTextureReapply("TargetOfTarget")
-                            return
-                        end
-
-                        -- Throttle: coalesce rapid refreshes into a single 0s re-apply.
-                        if getProp(self, "toTReapplyPending") then
-                            return
-                        end
-                        setProp(self, "toTReapplyPending", true)
-                        if _G.C_Timer and _G.C_Timer.After and addon.ApplyUnitFrameBarTexturesFor then
-                            _G.C_Timer.After(0, function()
-                                setProp(self, "toTReapplyPending", nil)
-                                addon.ApplyUnitFrameBarTexturesFor("TargetOfTarget")
-                            end)
-                        elseif addon.ApplyUnitFrameBarTexturesFor then
-                            setProp(self, "toTReapplyPending", nil)
-                            addon.ApplyUnitFrameBarTexturesFor("TargetOfTarget")
-                        end
-                    end)
-                end
-
-                if not getProp(hb, "toTHealthColorHooked") then
-                    setProp(hb, "toTHealthColorHooked", true)
-                    _G.hooksecurefunc(hb, "SetStatusBarColor", function(self, ...)
-                        if isEditModeActive() then return end
-                        local db = addon and addon.db and addon.db.profile
-                        if not db then return end
-                        local unitFrames = rawget(db, "unitFrames")
-                        local cfgT = unitFrames and rawget(unitFrames, "TargetOfTarget") or nil
-                        if not cfgT then return end
-
-                        local texKey = cfgT.healthBarTexture or "default"
-                        local colorMode = cfgT.healthBarColorMode or "default"
-                        local tint = cfgT.healthBarTint
-
-                        local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
-                        local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
-                        if not hasCustomTexture and not hasCustomColor then
-                            return
-                        end
-
-                        if InCombatLockdown and InCombatLockdown() then
-                            queueUnitFrameTextureReapply("TargetOfTarget")
-                            return
-                        end
-
-                        if getProp(self, "toTReapplyPending") then
-                            return
-                        end
-                        setProp(self, "toTReapplyPending", true)
-                        if _G.C_Timer and _G.C_Timer.After and addon.ApplyUnitFrameBarTexturesFor then
-                            _G.C_Timer.After(0, function()
-                                setProp(self, "toTReapplyPending", nil)
-                                addon.ApplyUnitFrameBarTexturesFor("TargetOfTarget")
-                            end)
-                        elseif addon.ApplyUnitFrameBarTexturesFor then
-                            setProp(self, "toTReapplyPending", nil)
-                            addon.ApplyUnitFrameBarTexturesFor("TargetOfTarget")
-                        end
-                    end)
-                end
-            end
-
-            -- Lightweight persistence hooks for Focus-Target Health Bar:
-            -- Blizzard can reset the FoT StatusBar's fill texture during rapid updates (often in combat).
-            -- Re-asserts the configured texture/color by writing to the underlying Texture region
-            -- (avoids calling SetStatusBarTexture again inside a secure callstack).
-            if unit == "FocusTarget" and _G.hooksecurefunc then
-                if not getProp(hb, "foTHealthTextureHooked") then
-                    setProp(hb, "foTHealthTextureHooked", true)
-                    _G.hooksecurefunc(hb, "SetStatusBarTexture", function(self, ...)
-                        if isEditModeActive() then return end
-                        -- Ignore Scoot's own writes to avoid feedback loops.
-                        if getProp(self, "ufInternalTextureWrite") then
-                            return
-                        end
-
-                        local db = addon and addon.db and addon.db.profile
-                        if not db then return end
-                        local unitFrames = rawget(db, "unitFrames")
-                        local cfgF = unitFrames and rawget(unitFrames, "FocusTarget") or nil
-                        if not cfgF then return end
-
-                        local texKey = cfgF.healthBarTexture or "default"
-                        local colorMode = cfgF.healthBarColorMode or "default"
-                        local tint = cfgF.healthBarTint
-
-                        local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
-                        local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
-                        if not hasCustomTexture and not hasCustomColor then
-                            return
-                        end
-
-                        -- Avoid any writes during combat; defer until after combat.
-                        if InCombatLockdown and InCombatLockdown() then
-                            queueUnitFrameTextureReapply("FocusTarget")
-                            return
-                        end
-
-                        -- Throttle: coalesce rapid refreshes into a single 0s re-apply.
-                        if getProp(self, "foTReapplyPending") then
-                            return
-                        end
-                        setProp(self, "foTReapplyPending", true)
-                        if _G.C_Timer and _G.C_Timer.After and addon.ApplyUnitFrameBarTexturesFor then
-                            _G.C_Timer.After(0, function()
-                                setProp(self, "foTReapplyPending", nil)
-                                addon.ApplyUnitFrameBarTexturesFor("FocusTarget")
-                            end)
-                        elseif addon.ApplyUnitFrameBarTexturesFor then
-                            setProp(self, "foTReapplyPending", nil)
-                            addon.ApplyUnitFrameBarTexturesFor("FocusTarget")
-                        end
-                    end)
-                end
-
-                if not getProp(hb, "foTHealthColorHooked") then
-                    setProp(hb, "foTHealthColorHooked", true)
-                    _G.hooksecurefunc(hb, "SetStatusBarColor", function(self, ...)
-                        if isEditModeActive() then return end
-                        local db = addon and addon.db and addon.db.profile
-                        if not db then return end
-                        local unitFrames = rawget(db, "unitFrames")
-                        local cfgF = unitFrames and rawget(unitFrames, "FocusTarget") or nil
-                        if not cfgF then return end
-
-                        local texKey = cfgF.healthBarTexture or "default"
-                        local colorMode = cfgF.healthBarColorMode or "default"
-                        local tint = cfgF.healthBarTint
-
-                        local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
-                        local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
-                        if not hasCustomTexture and not hasCustomColor then
-                            return
-                        end
-
-                        if InCombatLockdown and InCombatLockdown() then
-                            queueUnitFrameTextureReapply("FocusTarget")
-                            return
-                        end
-
-                        if getProp(self, "foTReapplyPending") then
-                            return
-                        end
-                        setProp(self, "foTReapplyPending", true)
-                        if _G.C_Timer and _G.C_Timer.After and addon.ApplyUnitFrameBarTexturesFor then
-                            _G.C_Timer.After(0, function()
-                                setProp(self, "foTReapplyPending", nil)
-                                addon.ApplyUnitFrameBarTexturesFor("FocusTarget")
-                            end)
-                        elseif addon.ApplyUnitFrameBarTexturesFor then
-                            setProp(self, "foTReapplyPending", nil)
-                            addon.ApplyUnitFrameBarTexturesFor("FocusTarget")
-                        end
                     end)
                 end
             end
@@ -1702,7 +1389,7 @@ do
 			end
             local colorModePB = cfg.powerBarColorMode or "default"
             local texKeyPB = cfg.powerBarTexture or "default"
-            local unitId = (unit == "Player" and "player") or (unit == "Target" and "target") or (unit == "Focus" and "focus") or (unit == "Pet" and "pet") or (unit == "TargetOfTarget" and "targettarget") or (unit == "FocusTarget" and "focustarget") or "player"
+            local unitId = (unit == "Player" and "player") or (unit == "Target" and "target") or (unit == "Focus" and "focus") or "player"
 
             -- Use the combat-safe power overlay when non-default settings are configured.
             -- The overlay is addon-owned and immune to Blizzard's combat texture resets.
@@ -2672,10 +2359,9 @@ do
                 if thickness < 1 then thickness = 1 elseif thickness > 16 then thickness = 16 end
                 local insetH = (cfg.powerBarBorderInsetH ~= nil) and tonumber(cfg.powerBarBorderInsetH) or (cfg.powerBarBorderInset ~= nil) and tonumber(cfg.powerBarBorderInset) or tonumber(cfg.healthBarBorderInsetH) or tonumber(cfg.healthBarBorderInset) or 0
                 local insetV = (cfg.powerBarBorderInsetV ~= nil) and tonumber(cfg.powerBarBorderInsetV) or (cfg.powerBarBorderInset ~= nil) and tonumber(cfg.powerBarBorderInset) or tonumber(cfg.healthBarBorderInsetV) or tonumber(cfg.healthBarBorderInset) or 0
-                -- PetFrame is managed/protected: do not create or level custom border frames.
                 -- Skip border application when bar texture is hidden (number-only display).
                 -- Skip border application when power bar is fully hidden.
-                if unit ~= "Pet" and cfg.useCustomBorders and not powerBarHideTextureOnly and not powerBarHidden then
+                if cfg.useCustomBorders and not powerBarHideTextureOnly and not powerBarHidden then
                     if styleKey == "none" or styleKey == nil then
                         if addon.BarBorders and addon.BarBorders.ClearBarFrame then addon.BarBorders.ClearBarFrame(pb) end
                         if addon.Borders and addon.Borders.HideAll then addon.Borders.HideAll(pb) end
@@ -2714,7 +2400,6 @@ do
                                 local expandX = baseX - insetH
                                 if expandX < -6 then expandX = -6 elseif expandX > 6 then expandX = 6 end
                                 if expandY < -6 then expandY = -6 elseif expandY > 6 then expandY = 6 end
-                                -- Pet is already excluded by the outer guard
                                 addon.Borders.ApplySquare(pb, {
                                     size = thickness,
                                     color = sqColor,
@@ -2803,59 +2488,6 @@ do
                     end
                     applyAlpha(pvpIcon, computePvpIconAlpha())
                     hookAlphaEnforcer(pvpIcon, computePvpIconAlpha)
-                end
-            end
-        end
-
-        -- Boss-specific frame art: Handle all 5 Boss frames (Boss1TargetFrame through Boss5TargetFrame)
-        -- Unlike other unit frames where there's a single frame per unit, Boss frames have 5 individual frames
-        -- that all share the same config (db.unitFrames.Boss). Apply hiding to each one.
-        if unit == "Boss" then
-            for i = 1, addon.NUM_BOSS_FRAMES do
-                local bossFrame = addon.GetBossFrame(i)
-                if bossFrame and bossFrame.TargetFrameContainer then
-                    local bossFT = bossFrame.TargetFrameContainer.FrameTexture
-                    if bossFT then
-                        local function computeBossAlpha()
-                            local db2 = addon and addon.db and addon.db.profile
-                            local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-                            local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                            if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-                            return (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder) and 0 or 1
-                        end
-                        applyAlpha(bossFT, computeBossAlpha())
-                        hookAlphaEnforcer(bossFT, computeBossAlpha)
-                    end
-                    -- Also hide the Flash (aggro/threat glow) if present on Boss frames
-                    local bossFlash = bossFrame.TargetFrameContainer.Flash
-                    if bossFlash then
-                        local function computeBossFlashAlpha()
-                            local db2 = addon and addon.db and addon.db.profile
-                            local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-                            local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                            if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-                            return cfgBoss.useCustomBorders and 0 or 1
-                        end
-                        applyAlpha(bossFlash, computeBossFlashAlpha())
-                        hookAlphaEnforcer(bossFlash, computeBossFlashAlpha)
-                    end
-
-                    -- Hide ReputationColor strip (Boss1TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor)
-                    -- when "Hide Blizzard Frame Art & Animations" (useCustomBorders) is enabled.
-                    local bossReputationColor = bossFrame.TargetFrameContent
-                        and bossFrame.TargetFrameContent.TargetFrameContentMain
-                        and bossFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
-                    if bossReputationColor then
-                        local function computeBossReputationAlpha()
-                            local db2 = addon and addon.db and addon.db.profile
-                            local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-                            local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                            if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-                            return cfgBoss.useCustomBorders and 0 or 1
-                        end
-                        applyAlpha(bossReputationColor, computeBossReputationAlpha())
-                        hookAlphaEnforcer(bossReputationColor, computeBossReputationAlpha)
-                    end
                 end
             end
         end
