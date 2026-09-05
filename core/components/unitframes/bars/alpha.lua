@@ -94,6 +94,33 @@ function Alpha.hookAlphaEnforcer(frameOrTexture, computeAlpha)
 end
 
 --------------------------------------------------------------------------------
+-- Use Custom Borders Alpha Computers
+--------------------------------------------------------------------------------
+
+-- The alpha a Blizzard art region holds under the unit's Use Custom Borders
+-- setting: nil while the unit's config is unreadable (the enforcer skips rather
+-- than restore visibility), 0 when the setting is on (or, with withHideBorder,
+-- when Hide Border is on), else 1. One closure per unit and flag, memoized, so
+-- a styling pass allocates none; hookAlphaEnforcer installs once per region, so
+-- closure identity never changes which install holds.
+local customBordersAlphaByKey = {}
+function Alpha.customBordersAlpha(unit, withHideBorder)
+    local key = withHideBorder and (unit .. ":hideBorder") or unit
+    local compute = customBordersAlphaByKey[key]
+    if compute then return compute end
+    compute = function()
+        local db = addon and addon.db and addon.db.profile
+        local unitFrames = db and rawget(db, "unitFrames") or nil
+        local cfg = unitFrames and rawget(unitFrames, unit) or nil
+        if not cfg then return nil end
+        if cfg.useCustomBorders or (withHideBorder and cfg.healthBarHideBorder) then return 0 end
+        return 1
+    end
+    customBordersAlphaByKey[key] = compute
+    return compute
+end
+
+--------------------------------------------------------------------------------
 -- Vehicle Frame Texture Visibility Enforcement
 --------------------------------------------------------------------------------
 
@@ -106,13 +133,7 @@ function Alpha.EnforceVehicleFrameTextureVisibility()
         and _G.PlayerFrame.PlayerFrameContainer
         and _G.PlayerFrame.PlayerFrameContainer.VehicleTexture
     if vehicleTex then
-        local function computeVehicleAlpha()
-            local db = addon and addon.db and addon.db.profile
-            local unitFrames = db and rawget(db, "unitFrames") or nil
-            local cfgPlayer = unitFrames and rawget(unitFrames, "Player") or nil
-            if not cfgPlayer then return nil end -- config unreadable: skip (fail closed)
-            return cfgPlayer.useCustomBorders and 0 or 1
-        end
+        local computeVehicleAlpha = Alpha.customBordersAlpha("Player", false)
         Alpha.applyAlpha(vehicleTex, computeVehicleAlpha())
         Alpha.hookAlphaEnforcer(vehicleTex, computeVehicleAlpha)
     end
@@ -131,13 +152,7 @@ function Alpha.EnforceAlternatePowerFrameTextureVisibility()
     if altBar then
         local altTex = altBar.TextureBorder or altBar.BorderTexture
         if altTex then
-            local function computeAltAlpha()
-                local db = addon and addon.db and addon.db.profile
-                local unitFrames = db and rawget(db, "unitFrames") or nil
-                local cfgPlayer = unitFrames and rawget(unitFrames, "Player") or nil
-                if not cfgPlayer then return nil end -- config unreadable: skip (fail closed)
-                return cfgPlayer.useCustomBorders and 0 or 1
-            end
+            local computeAltAlpha = Alpha.customBordersAlpha("Player", false)
             Alpha.applyAlpha(altTex, computeAltAlpha())
             Alpha.hookAlphaEnforcer(altTex, computeAltAlpha)
         end

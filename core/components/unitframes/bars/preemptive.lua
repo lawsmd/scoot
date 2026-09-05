@@ -74,13 +74,7 @@ function Preemptive.hideTargetElements()
     -- Shared computeAlpha for enforcers - re-reads config each call.
     -- Returns nil when config is unreadable so enforcers SKIP instead of
     -- restoring alpha 1 during transient windows (profile/layout sync).
-    local function computeAlpha()
-        local db2 = addon and addon.db and addon.db.profile
-        local unitFrames2 = db2 and rawget(db2, "unitFrames")
-        local cfg2 = unitFrames2 and rawget(unitFrames2, "Target")
-        if not cfg2 then return nil end
-        return cfg2.useCustomBorders and 0 or 1
-    end
+    local computeAlpha = Alpha.customBordersAlpha("Target", false)
 
     -- Helper to hide ReputationColor and install enforcer
     local function hideRepColor()
@@ -145,13 +139,7 @@ function Preemptive.hideFocusElements()
 
     -- Shared computeAlpha for enforcers - re-reads config each call.
     -- nil = config unreadable: enforcers skip instead of restoring alpha 1.
-    local function computeAlpha()
-        local db2 = addon and addon.db and addon.db.profile
-        local unitFrames2 = db2 and rawget(db2, "unitFrames")
-        local cfg2 = unitFrames2 and rawget(unitFrames2, "Focus")
-        if not cfg2 then return nil end
-        return cfg2.useCustomBorders and 0 or 1
-    end
+    local computeAlpha = Alpha.customBordersAlpha("Focus", false)
 
     -- Helper to hide ReputationColor and install enforcer
     local function hideRepColor()
@@ -209,28 +197,8 @@ end
 -- PLAYER_ENTERING_WORLD, BEFORE the first target is acquired.
 
 function Preemptive.installEarlyAlphaHooks()
-    -- Helper to compute alpha based on useCustomBorders setting.
-    -- nil = config unreadable: enforcers skip instead of restoring alpha 1
-    -- (the explicit restore lives in the settings-driven pass in bars.lua).
-    local function makeComputeAlpha(unit)
-        return function()
-            local db2 = addon and addon.db and addon.db.profile
-            local unitFrames2 = db2 and rawget(db2, "unitFrames")
-            local cfg2 = unitFrames2 and rawget(unitFrames2, unit)
-            if not cfg2 then return nil end
-            return cfg2.useCustomBorders and 0 or 1
-        end
-    end
-
-    local function makeComputeAlphaWithBorder(unit)
-        return function()
-            local db2 = addon and addon.db and addon.db.profile
-            local unitFrames2 = db2 and rawget(db2, "unitFrames")
-            local cfg2 = unitFrames2 and rawget(unitFrames2, unit)
-            if not cfg2 then return nil end
-            return (cfg2.useCustomBorders or cfg2.healthBarHideBorder) and 0 or 1
-        end
-    end
+    -- Alpha computers come from Alpha.customBordersAlpha; the explicit restore to
+    -- visible lives in bars/frameart.lua.
 
     -- Target frame elements
     do
@@ -239,20 +207,20 @@ function Preemptive.installEarlyAlphaHooks()
             and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain
             and _G.TargetFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
         if targetRepColor then
-            Alpha.hookAlphaEnforcer(targetRepColor, makeComputeAlpha("Target"))
+            Alpha.hookAlphaEnforcer(targetRepColor, Alpha.customBordersAlpha("Target", false))
         end
 
         -- FrameTexture
         local targetFT = Resolvers.resolveUnitFrameFrameTexture("Target")
         if targetFT then
-            Alpha.hookAlphaEnforcer(targetFT, makeComputeAlphaWithBorder("Target"))
+            Alpha.hookAlphaEnforcer(targetFT, Alpha.customBordersAlpha("Target", true))
         end
 
         -- Flash (aggro/threat glow)
         local targetFlash = _G.TargetFrame and _G.TargetFrame.TargetFrameContainer
             and _G.TargetFrame.TargetFrameContainer.Flash
         if targetFlash then
-            Alpha.hookAlphaEnforcer(targetFlash, makeComputeAlpha("Target"))
+            Alpha.hookAlphaEnforcer(targetFlash, Alpha.customBordersAlpha("Target", false))
         end
     end
 
@@ -263,20 +231,20 @@ function Preemptive.installEarlyAlphaHooks()
             and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain
             and _G.FocusFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
         if focusRepColor then
-            Alpha.hookAlphaEnforcer(focusRepColor, makeComputeAlpha("Focus"))
+            Alpha.hookAlphaEnforcer(focusRepColor, Alpha.customBordersAlpha("Focus", false))
         end
 
         -- FrameTexture
         local focusFT = Resolvers.resolveUnitFrameFrameTexture("Focus")
         if focusFT then
-            Alpha.hookAlphaEnforcer(focusFT, makeComputeAlphaWithBorder("Focus"))
+            Alpha.hookAlphaEnforcer(focusFT, Alpha.customBordersAlpha("Focus", true))
         end
 
         -- Flash (aggro/threat glow)
         local focusFlash = _G.FocusFrame and _G.FocusFrame.TargetFrameContainer
             and _G.FocusFrame.TargetFrameContainer.Flash
         if focusFlash then
-            Alpha.hookAlphaEnforcer(focusFlash, makeComputeAlpha("Focus"))
+            Alpha.hookAlphaEnforcer(focusFlash, Alpha.customBordersAlpha("Focus", false))
         end
     end
 
@@ -338,7 +306,7 @@ function Preemptive.installEarlyAlphaHooks()
             if repColor and repColor.SetAlpha then
                 pcall(repColor.SetAlpha, repColor, 0)
                 if Alpha and Alpha.hookAlphaEnforcer then
-                    Alpha.hookAlphaEnforcer(repColor, makeComputeAlpha("Target"))
+                    Alpha.hookAlphaEnforcer(repColor, Alpha.customBordersAlpha("Target", false))
                 end
             end
 
@@ -348,7 +316,7 @@ function Preemptive.installEarlyAlphaHooks()
             if flash and flash.SetAlpha then
                 pcall(flash.SetAlpha, flash, 0)
                 if Alpha and Alpha.hookAlphaEnforcer then
-                    Alpha.hookAlphaEnforcer(flash, makeComputeAlpha("Target"))
+                    Alpha.hookAlphaEnforcer(flash, Alpha.customBordersAlpha("Target", false))
                 end
             end
         end
@@ -390,7 +358,7 @@ function Preemptive.installEarlyAlphaHooks()
             if repColor and repColor.SetAlpha then
                 pcall(repColor.SetAlpha, repColor, 0)
                 if Alpha and Alpha.hookAlphaEnforcer then
-                    Alpha.hookAlphaEnforcer(repColor, makeComputeAlpha("Focus"))
+                    Alpha.hookAlphaEnforcer(repColor, Alpha.customBordersAlpha("Focus", false))
                 end
             end
 
@@ -400,7 +368,7 @@ function Preemptive.installEarlyAlphaHooks()
             if flash and flash.SetAlpha then
                 pcall(flash.SetAlpha, flash, 0)
                 if Alpha and Alpha.hookAlphaEnforcer then
-                    Alpha.hookAlphaEnforcer(flash, makeComputeAlpha("Focus"))
+                    Alpha.hookAlphaEnforcer(flash, Alpha.customBordersAlpha("Focus", false))
                 end
             end
         end
@@ -487,21 +455,8 @@ function Preemptive.hideBossElements()
 
     -- Shared computeAlpha for enforcers - re-reads config each call.
     -- nil = config unreadable: enforcers skip instead of restoring alpha 1.
-    local function computeAlpha()
-        local db2 = addon and addon.db and addon.db.profile
-        local unitFrames2 = db2 and rawget(db2, "unitFrames")
-        local cfg2 = unitFrames2 and rawget(unitFrames2, "Boss")
-        if not cfg2 then return nil end
-        return cfg2.useCustomBorders and 0 or 1
-    end
-
-    local function computeAlphaWithBorder()
-        local db2 = addon and addon.db and addon.db.profile
-        local unitFrames2 = db2 and rawget(db2, "unitFrames")
-        local cfg2 = unitFrames2 and rawget(unitFrames2, "Boss")
-        if not cfg2 then return nil end
-        return (cfg2.useCustomBorders or cfg2.healthBarHideBorder) and 0 or 1
-    end
+    local computeAlpha = Alpha.customBordersAlpha("Boss", false)
+    local computeAlphaWithBorder = Alpha.customBordersAlpha("Boss", true)
 
     -- Helper to hide ReputationColor on a specific Boss frame and install enforcer
     local function hideRepColorOnBoss(bossFrame)
@@ -608,15 +563,7 @@ end
 
 function Preemptive.installBossFrameHooks()
     -- nil = config unreadable: enforcers skip instead of restoring alpha 1.
-    local function makeComputeAlpha()
-        return function()
-            local db2 = addon and addon.db and addon.db.profile
-            local unitFrames2 = db2 and rawget(db2, "unitFrames")
-            local cfg2 = unitFrames2 and rawget(unitFrames2, "Boss")
-            if not cfg2 then return nil end
-            return cfg2.useCustomBorders and 0 or 1
-        end
-    end
+    local computeAlpha = Alpha.customBordersAlpha("Boss", false)
 
     -- Helper to re-hide Boss elements after Blizzard updates
     local function rehideBossElements()
@@ -636,7 +583,7 @@ function Preemptive.installBossFrameHooks()
                     if repColor and repColor.SetAlpha then
                         pcall(repColor.SetAlpha, repColor, 0)
                         if Alpha and Alpha.hookAlphaEnforcer then
-                            Alpha.hookAlphaEnforcer(repColor, makeComputeAlpha())
+                            Alpha.hookAlphaEnforcer(repColor, computeAlpha)
                         end
                     end
 
@@ -741,7 +688,7 @@ function Preemptive.installBossFrameHooks()
 
             -- Install early alpha enforcer on ReputationColor
             if repColor then
-                Alpha.hookAlphaEnforcer(repColor, makeComputeAlpha())
+                Alpha.hookAlphaEnforcer(repColor, computeAlpha)
             end
         end
     end

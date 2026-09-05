@@ -34,9 +34,11 @@ local resolveBossHealthBarsContainer = Resolvers.resolveBossHealthBarsContainer
 local resolveBossManaBar = Resolvers.resolveBossManaBar
 local applyToBar = Textures.applyToBar
 local applyBackgroundToBar = Textures.applyBackgroundToBar
+local hasBackgroundCustomization = Textures.hasBackgroundCustomization
 local ensureMaskOnBarTexture = Textures.ensureMaskOnBarTexture
 local applyAlpha = Alpha.applyAlpha
 local hookAlphaEnforcer = Alpha.hookAlphaEnforcer
+local customBordersAlpha = Alpha.customBordersAlpha
 local ensureTextAndBorderOrdering = BarsOverlays._ensureTextAndBorderOrdering
 local ensureBossRectOverlay = BarsOverlays._ensureBossRectOverlay
 local queueUnitFrameTextureReapply = Combat.queueUnitFrameTextureReapply
@@ -77,13 +79,7 @@ function Boss.applyForBoss(cfg)
                 -- FrameTexture (hide for useCustomBorders OR healthBarHideBorder)
                 local bossFT = bossFrame.TargetFrameContainer and bossFrame.TargetFrameContainer.FrameTexture
                 if bossFT then
-                    local function computeBossFTAlpha()
-                        local db2 = addon and addon.db and addon.db.profile
-                        local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-                        local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                        if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-                        return (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder) and 0 or 1
-                    end
+                    local computeBossFTAlpha = customBordersAlpha("Boss", true)
                     applyAlpha(bossFT, computeBossFTAlpha())
                     hookAlphaEnforcer(bossFT, computeBossFTAlpha)
                 end
@@ -91,13 +87,7 @@ function Boss.applyForBoss(cfg)
                 -- Flash (aggro/threat glow) (hide for useCustomBorders)
                 local bossFlash = bossFrame.TargetFrameContainer and bossFrame.TargetFrameContainer.Flash
                 if bossFlash then
-                    local function computeBossFlashAlpha()
-                        local db2 = addon and addon.db and addon.db.profile
-                        local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-                        local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                        if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-                        return cfgBoss.useCustomBorders and 0 or 1
-                    end
+                    local computeBossFlashAlpha = customBordersAlpha("Boss", false)
                     applyAlpha(bossFlash, computeBossFlashAlpha())
                     hookAlphaEnforcer(bossFlash, computeBossFlashAlpha)
                 end
@@ -107,13 +97,7 @@ function Boss.applyForBoss(cfg)
                     and bossFrame.TargetFrameContent.TargetFrameContentMain
                     and bossFrame.TargetFrameContent.TargetFrameContentMain.ReputationColor
                 if bossReputationColor then
-                    local function computeBossRepAlpha()
-                        local db2 = addon and addon.db and addon.db.profile
-                        local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-                        local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                        if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-                        return cfgBoss.useCustomBorders and 0 or 1
-                    end
+                    local computeBossRepAlpha = customBordersAlpha("Boss", false)
                     applyAlpha(bossReputationColor, computeBossRepAlpha())
                     hookAlphaEnforcer(bossReputationColor, computeBossRepAlpha)
                 end
@@ -124,13 +108,7 @@ function Boss.applyForBoss(cfg)
     -- Boss frames can also be updated by Blizzard during combat (boss target changes, etc.).
     -- Apply the same early ReputationColor handling pattern as Target/Focus: run BEFORE the combat
     -- early-return so the element stays hidden, with C_Timer follow-up to catch late Blizzard updates.
-    local function computeBossUseCustomBordersAlpha()
-        local db2 = addon and addon.db and addon.db.profile
-        local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-        local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-        if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-        return cfgBoss.useCustomBorders and 0 or 1
-    end
+    local computeBossUseCustomBordersAlpha = customBordersAlpha("Boss", false)
 
     for i = 1, addon.NUM_BOSS_FRAMES do
         local bossFrame = addon.GetBossFrame(i)
@@ -199,26 +177,7 @@ function Boss.applyForBoss(cfg)
 
                         -- Background overlay (only when explicitly customized)
                         do
-                            local function hasBackgroundCustomization()
-                                local texKey = cfg.healthBarBackgroundTexture
-                                if type(texKey) == "string" and texKey ~= "" and texKey ~= "default" then
-                                    return true
-                                end
-                                local mode = cfg.healthBarBackgroundColorMode
-                                if type(mode) == "string" and mode ~= "" and mode ~= "default" then
-                                    return true
-                                end
-                                local op = cfg.healthBarBackgroundOpacity
-                                local opNum = tonumber(op)
-                                if op ~= nil and opNum ~= nil and opNum ~= 50 then
-                                    return true
-                                end
-                                if mode == "custom" and type(cfg.healthBarBackgroundTint) == "table" then
-                                    return true
-                                end
-                                return false
-                            end
-                            if hasBackgroundCustomization() then
+                            if hasBackgroundCustomization(cfg, "healthBar") then
                                 local bgTexKeyHB = cfg.healthBarBackgroundTexture or "default"
                                 local bgColorModeHB = cfg.healthBarBackgroundColorMode or "default"
                                 local bgOpacityHB = cfg.healthBarBackgroundOpacity or 50
@@ -504,26 +463,7 @@ function Boss.applyForBoss(cfg)
                     applyToBar(pb, texKeyPB, colorModePB, cfg.powerBarTint, "player", "power", unitId)
 
                     do
-                        local function hasBackgroundCustomization()
-                            local texKey = cfg.powerBarBackgroundTexture
-                            if type(texKey) == "string" and texKey ~= "" and texKey ~= "default" then
-                                return true
-                            end
-                            local mode = cfg.powerBarBackgroundColorMode
-                            if type(mode) == "string" and mode ~= "" and mode ~= "default" then
-                                return true
-                            end
-                            local op = cfg.powerBarBackgroundOpacity
-                            local opNum = tonumber(op)
-                            if op ~= nil and opNum ~= nil and opNum ~= 50 then
-                                return true
-                            end
-                            if mode == "custom" and type(cfg.powerBarBackgroundTint) == "table" then
-                                return true
-                            end
-                            return false
-                        end
-                        if hasBackgroundCustomization() then
+                        if hasBackgroundCustomization(cfg, "powerBar") then
                             local bgTexKeyPB = cfg.powerBarBackgroundTexture or "default"
                             local bgColorModePB = cfg.powerBarBackgroundColorMode or "default"
                             local bgOpacityPB = cfg.powerBarBackgroundOpacity or 50
@@ -731,26 +671,14 @@ function Boss.applyForBoss(cfg)
         if bossFrame and bossFrame.TargetFrameContainer then
             local bossFT = bossFrame.TargetFrameContainer.FrameTexture
             if bossFT then
-                local function computeBossAlpha()
-                    local db2 = addon and addon.db and addon.db.profile
-                    local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-                    local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                    if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-                    return (cfgBoss.useCustomBorders or cfgBoss.healthBarHideBorder) and 0 or 1
-                end
+                local computeBossAlpha = customBordersAlpha("Boss", true)
                 applyAlpha(bossFT, computeBossAlpha())
                 hookAlphaEnforcer(bossFT, computeBossAlpha)
             end
             -- Also hide the Flash (aggro/threat glow) if present on Boss frames
             local bossFlash = bossFrame.TargetFrameContainer.Flash
             if bossFlash then
-                local function computeBossFlashAlpha()
-                    local db2 = addon and addon.db and addon.db.profile
-                    local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-                    local cfgBoss = unitFrames2 and rawget(unitFrames2, "Boss") or nil
-                    if not cfgBoss then return nil end -- config unreadable: skip (fail closed)
-                    return cfgBoss.useCustomBorders and 0 or 1
-                end
+                local computeBossFlashAlpha = customBordersAlpha("Boss", false)
                 applyAlpha(bossFlash, computeBossFlashAlpha())
                 hookAlphaEnforcer(bossFlash, computeBossFlashAlpha)
             end

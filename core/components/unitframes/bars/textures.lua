@@ -577,6 +577,29 @@ end
 -- Background Texture Application
 --------------------------------------------------------------------------------
 
+-- True when the bar's background settings differ from stock: a texture, a color
+-- mode, an opacity other than 50, or a custom tint. barKey is "healthBar" or
+-- "powerBar". A default profile must not change the look of Blizzard's bars.
+function Textures.hasBackgroundCustomization(cfg, barKey)
+    local texKey = cfg[barKey .. "BackgroundTexture"]
+    if type(texKey) == "string" and texKey ~= "" and texKey ~= "default" then
+        return true
+    end
+    local mode = cfg[barKey .. "BackgroundColorMode"]
+    if type(mode) == "string" and mode ~= "" and mode ~= "default" then
+        return true
+    end
+    local op = cfg[barKey .. "BackgroundOpacity"]
+    local opNum = tonumber(op)
+    if op ~= nil and opNum ~= nil and opNum ~= 50 then
+        return true
+    end
+    if mode == "custom" and type(cfg[barKey .. "BackgroundTint"]) == "table" then
+        return true
+    end
+    return false
+end
+
 -- Apply background texture and color to a bar
 function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColorMode, backgroundTint, backgroundOpacity, unit, barKind, combatSafe)
     if not bar then return end

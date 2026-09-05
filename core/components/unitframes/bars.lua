@@ -59,6 +59,7 @@ do
     -- Use texture functions from extracted module
     local applyToBar = Textures.applyToBar
     local applyBackgroundToBar = Textures.applyBackgroundToBar
+    local hasBackgroundCustomization = Textures.hasBackgroundCustomization
     local ensureMaskOnBarTexture = Textures.ensureMaskOnBarTexture
 
     -- Overlay functions from extracted bars/overlays.lua module
@@ -164,26 +165,7 @@ do
             do
                 -- IMPORTANT: Default/clean profiles should not change the look of Blizzard's bars.
                 -- Only apply the background overlay if the user customized background settings.
-                local function hasBackgroundCustomization()
-                    local texKey = cfg.healthBarBackgroundTexture
-                    if type(texKey) == "string" and texKey ~= "" and texKey ~= "default" then
-                        return true
-                    end
-                    local mode = cfg.healthBarBackgroundColorMode
-                    if type(mode) == "string" and mode ~= "" and mode ~= "default" then
-                        return true
-                    end
-                    local op = cfg.healthBarBackgroundOpacity
-                    local opNum = tonumber(op)
-                    if op ~= nil and opNum ~= nil and opNum ~= 50 then
-                        return true
-                    end
-                    if mode == "custom" and type(cfg.healthBarBackgroundTint) == "table" then
-                        return true
-                    end
-                    return false
-                end
-                if hasBackgroundCustomization() then
+                if hasBackgroundCustomization(cfg, "healthBar") then
                     local bgTexKeyHB = cfg.healthBarBackgroundTexture or "default"
                     local bgColorModeHB = cfg.healthBarBackgroundColorMode or "default"
                     local bgOpacityHB = cfg.healthBarBackgroundOpacity or 50
@@ -431,6 +413,7 @@ do
                         -- Only do work when the user has customized either texture or color;
                         -- default settings can safely follow Blizzard's behavior.
                         local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                        -- Kept off addon.ResolveColorRGBA: hook-install gate; the compare decides whether to hook, not what to paint.
                         local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "value") or (colorMode == "valueDark")
                         if not hasCustomTexture and not hasCustomColor then
                             return
@@ -530,26 +513,7 @@ do
             do
                 -- IMPORTANT: Default/clean profiles should not change the look of Blizzard's bars.
                 -- Only apply the background overlay if the user customized background settings.
-                local function hasBackgroundCustomization()
-                    local texKey = cfg.powerBarBackgroundTexture
-                    if type(texKey) == "string" and texKey ~= "" and texKey ~= "default" then
-                        return true
-                    end
-                    local mode = cfg.powerBarBackgroundColorMode
-                    if type(mode) == "string" and mode ~= "" and mode ~= "default" then
-                        return true
-                    end
-                    local op = cfg.powerBarBackgroundOpacity
-                    local opNum = tonumber(op)
-                    if op ~= nil and opNum ~= nil and opNum ~= 50 then
-                        return true
-                    end
-                    if mode == "custom" and type(cfg.powerBarBackgroundTint) == "table" then
-                        return true
-                    end
-                    return false
-                end
-                if hasBackgroundCustomization() then
+                if hasBackgroundCustomization(cfg, "powerBar") then
                     local bgTexKeyPB = cfg.powerBarBackgroundTexture or "default"
                     local bgColorModePB = cfg.powerBarBackgroundColorMode or "default"
                     local bgOpacityPB = cfg.powerBarBackgroundOpacity or 50
@@ -696,6 +660,7 @@ do
 
                             -- If color mode is "texture", the user wants the texture's original colors;
                             -- in that case Blizzard's SetStatusBarColor stands.
+                            -- Kept off addon.ResolveColorRGBA: hook-install gate; the compare decides whether to hook, not what to paint.
                             if colorMode == "texture" then
                                 return
                             end
@@ -703,6 +668,7 @@ do
                             -- Only do work when the user has customized either texture or color;
                             -- default settings can safely follow Blizzard's behavior.
                             local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                            -- Kept off addon.ResolveColorRGBA: hook-install gate; the compare decides whether to hook, not what to paint.
                             local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class")
                             if not hasCustomTexture and not hasCustomColor then
                                 return

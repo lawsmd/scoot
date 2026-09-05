@@ -89,13 +89,7 @@ function SF.applyForSmallUnit(unit, frame, cfg)
     -- Hide FrameTexture (art hiding)
     local ft = resolveUnitFrameFrameTexture(unit)
     if ft then
-        local function compute()
-            local db2 = addon and addon.db and addon.db.profile
-            local unitFrames2 = db2 and rawget(db2, "unitFrames") or nil
-            local cfg2 = unitFrames2 and rawget(unitFrames2, unit) or nil
-            if not cfg2 then return nil end -- config unreadable: skip (fail closed)
-            return (cfg2.useCustomBorders or cfg2.healthBarHideBorder) and 0 or 1
-        end
+        local compute = Alpha.customBordersAlpha(unit, true)
         applyAlpha(ft, compute())
         hookAlphaEnforcer(ft, compute)
     end

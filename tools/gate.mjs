@@ -64,6 +64,8 @@ const PATTERNS = [
     hint: 'Bar style and border rows are Builder:AddBarStyleBlock and Builder:AddBarBorderBlock.' },
   { name: 'clamp-hook', re: /hooksecurefunc\([^,]+,\s*"(SetClampedToScreen|SetClampRectInsets)"/, except: ['core/editmode/offscreenunlock.lua'],
     hint: 'Clamp enforcement is a family from addon.OffscreenUnlock.NewFamily; the hooks live in core/editmode/offscreenunlock.lua only.' },
+  { name: 'art-alpha', re: /return .*useCustomBorders.*and 0 or 1/, except: ['core/components/unitframes/bars/alpha.lua'],
+    hint: 'A Use Custom Borders alpha closure is Alpha.customBordersAlpha(unit, withHideBorder) in bars/alpha.lua.' },
   { name: 'popup-list', re: /closeListener/, except: ['ui/v2/controls/Utils.lua'],
     hint: 'Click-outside dismissal is Controls.AttachDismissOnClickOutside; a selector option list is Controls.CreatePopupList.' },
   // Comment hygiene: the greps the vibes pass runs.
