@@ -66,9 +66,6 @@ Overlays._sizedIcons = sizedIcons
 -- Using a local table instead of writing _scooterFontString to Blizzard frames avoids taint
 local scootFontStrings = setmetatable({}, { __mode = "k" })
 
--- Track which FontStrings have been decoupled from parent alpha (weak keys for GC)
-local textAlphaDecoupled = setmetatable({}, { __mode = "k" })
-
 -- Track icon zoom (weak keys for GC)
 local zoomedIcons = setmetatable({}, { __mode = "k" })
 Overlays._zoomedIcons = zoomedIcons
@@ -89,10 +86,6 @@ local function getViewerChildren(viewer, viewerFrameName)
     return cached
 end
 Overlays._GetViewerChildren = getViewerChildren
-
--- Forward declarations
-local applyPerIconCooldownOpacity  -- defined in Per-Icon Cooldown Opacity section
-local applyViewerOpacity  -- defined in Viewer Opacity section, used by ApplyToViewer
 
 -- Check if Blizzard's DebuffBorder is present and visible on a CDM icon
 -- Used to avoid drawing Scoot borders over Blizzard's debuff-type borders
@@ -905,10 +898,10 @@ function Overlays.ApplyToViewer(viewerFrameName, componentId)
         styledCount, invisCount, invalidCount))
 
     -- Apply per-icon cooldown opacity (uses SetAlphaFromBoolean with secret booleans)
-    applyPerIconCooldownOpacity(viewerFrameName, componentId)
+    Overlays._ApplyPerIconCooldownOpacity(viewerFrameName, componentId)
 
     -- Re-apply container-level opacity (may have been reset by Blizzard's RefreshLayout/OnShow)
-    applyViewerOpacity(viewerFrameName, componentId)
+    Overlays._ApplyViewerOpacity(viewerFrameName, componentId)
 end
 
 --------------------------------------------------------------------------------
@@ -1075,7 +1068,6 @@ end
 --------------------------------------------------------------------------------
 
 local cleanupTicker = nil
-local offCDRefreshTicker = nil
 
 local function runOverlayCleanup()
     -- Part 1: release overlays for invisible icons (collect first to avoid mutation during iteration)
@@ -1129,9 +1121,6 @@ local function startCleanupTicker()
         Overlays._cleanupTickerStarted = true
     end
 end
-
--- Forward declaration; body defined after applyPerIconCooldownOpacity exists
-local startOffCDRefreshTicker
 
 --------------------------------------------------------------------------------
 -- Overlay Initialization
@@ -1212,238 +1201,6 @@ function Overlays.ScheduleRetry()
 end
 
 --------------------------------------------------------------------------------
--- Viewer-Level Opacity System (12.0)
---------------------------------------------------------------------------------
--- SetAlpha on viewer containers is safe. Drives combat, out-of-combat, and
--- with-target opacity settings (stored as 50-100, converted to 0.0-1.0).
---------------------------------------------------------------------------------
-
--- All viewers that support opacity (including trackedBars)
-local CDM_OPACITY_VIEWERS = {
-    EssentialCooldownViewer = "essentialCooldowns",
-    UtilityCooldownViewer = "utilityCooldowns",
-    BuffIconCooldownViewer = "trackedBuffs",
-    BuffBarCooldownViewer = "trackedBars",
-}
-Overlays._opacityViewers = CDM_OPACITY_VIEWERS
-
--- Get the appropriate opacity value based on current game state
--- Container alpha for the viewer's current state (core/opacity.lua). The
--- combat value is the Edit Mode setting, stored as 50-100.
-local function getViewerOpacityForState(componentId)
-    local component = addon.Components and addon.Components[componentId]
-    if not component or not component.db then return 1.0 end
-    local alpha = addon.Opacity.Resolve(component.db, addon.Opacity.Keys.Plain)
-    return alpha
-end
-
--- Apply opacity to a single viewer frame and its overlays
-applyViewerOpacity = function(viewerName, componentId)
-    local viewer = _G[viewerName]
-    if not viewer then return end
-
-    if viewer.IsForbidden and viewer:IsForbidden() then return end
-
-    -- Zero-Touch: skip unconfigured components (still on proxy DB)
-    local component = addon.Components and addon.Components[componentId]
-    if addon.IsComponentUnconfigured(component) then return end
-
-    local alpha = getViewerOpacityForState(componentId)
-
-    -- Apply to viewer frame
-    -- Overlays are parented to CDM icons (children of the viewer), so they
-    -- automatically inherit the viewer's alpha through the parent chain.
-    -- No need to explicitly set overlay alpha - doing so would double-reduce it.
-    pcall(function()
-        viewer:SetAlpha(alpha)
-    end)
-end
-Overlays._ApplyViewerOpacity = applyViewerOpacity
-
--- Update all CDM viewer opacities based on current state
-local function updateAllViewerOpacities()
-    for viewerName, componentId in pairs(CDM_OPACITY_VIEWERS) do
-        applyViewerOpacity(viewerName, componentId)
-    end
-end
-Overlays._UpdateAllViewerOpacities = updateAllViewerOpacities
-
--- Exposed function for settings changes
-function addon.RefreshCDMViewerOpacity(componentId)
-    if componentId then
-        -- Refresh specific component
-        for viewerName, cid in pairs(CDM_OPACITY_VIEWERS) do
-            if cid == componentId then
-                applyViewerOpacity(viewerName, componentId)
-                break
-            end
-        end
-    else
-        -- Refresh all
-        updateAllViewerOpacities()
-    end
-end
-
---------------------------------------------------------------------------------
--- Per-Icon Cooldown Opacity (Essential/Utility CDM)
---------------------------------------------------------------------------------
--- Uses SetAlphaFromBoolean with secret boolean from Duration Object IsZero()
--- to dim individual CDM icons when their spell is on cooldown.
--- GCD filtered via isOnGCD (NeverSecret). SetAlphaFromBoolean evaluates secret booleans in C++ without Lua-side inspection.
--- Text opacity can be controlled independently via opacityOnCooldownText.
--- When text differs from icon, SetIgnoreParentAlpha decouples the Cooldown frame
--- from the icon frame's alpha chain and SetAlphaFromBoolean drives it independently.
--- Targets the Cooldown frame (not its FontString) because Blizzard's C++ cooldown
--- renderer resets the FontString's alpha every frame, overriding the styled values.
---------------------------------------------------------------------------------
-
-local function applyTextCooldownAlpha(cooldownFrame, durObj, containerAlpha, textDimAlpha, isGCD, isOffCooldownMode)
-    -- cooldownFrame keys the textAlphaDecoupled weak table below
-    cooldownFrame = SS.plainFrame(cooldownFrame)
-    if not cooldownFrame then return end
-    pcall(cooldownFrame.SetIgnoreParentAlpha, cooldownFrame, true)
-    textAlphaDecoupled[cooldownFrame] = true
-    if isGCD then
-        pcall(cooldownFrame.SetAlpha, cooldownFrame, containerAlpha)
-    else
-        local readyAlpha = containerAlpha
-        local cdAlpha = math.min(containerAlpha, textDimAlpha)
-        if isOffCooldownMode then readyAlpha, cdAlpha = cdAlpha, readyAlpha end
-        local zeroOk, isZero = pcall(durObj.IsZero, durObj)
-        if not zeroOk then
-            pcall(cooldownFrame.SetAlpha, cooldownFrame, containerAlpha)
-            return
-        end
-        pcall(cooldownFrame.SetAlphaFromBoolean, cooldownFrame, isZero, readyAlpha, cdAlpha)
-    end
-end
-
-local function resetTextAlpha(cooldownFrame)
-    cooldownFrame = SS.plainFrame(cooldownFrame)
-    if cooldownFrame and textAlphaDecoupled[cooldownFrame] then
-        pcall(cooldownFrame.SetIgnoreParentAlpha, cooldownFrame, false)
-        pcall(cooldownFrame.SetAlpha, cooldownFrame, 1.0)
-        textAlphaDecoupled[cooldownFrame] = nil
-    end
-end
-
-local function processOneIconOpacity(child, iconSetting, readyAlpha, cdAlpha, needsTextOverride, containerAlpha, textDimAlpha, isOffCooldownMode)
-    if not isValidCDMItemFrame(child) or not isFrameVisible(child) then return end
-
-    local idOk, spellId = pcall(child.GetBaseSpellID, child)
-    if not idOk or not spellId then return end
-
-    if C_Spell.GetOverrideSpell then
-        local overrideOk, overrideId = pcall(C_Spell.GetOverrideSpell, spellId)
-        if overrideOk and type(overrideId) == "number"
-           and not (issecretvalue and issecretvalue(overrideId))
-           and overrideId ~= 0 then
-            spellId = overrideId
-        end
-    end
-
-    local cdInfo = C_Spell.GetSpellCooldown(spellId)
-    local isGCD = cdInfo and cdInfo.isOnGCD
-    local durObj = not isGCD and C_Spell.GetSpellCooldownDuration(spellId) or nil
-
-    -- Icon frame opacity
-    if iconSetting >= 100 then
-        pcall(child.SetAlpha, child, 1.0)
-    elseif isGCD then
-        pcall(child.SetAlpha, child, readyAlpha)
-    elseif durObj and durObj.IsZero then
-        local zeroOk, isZero = pcall(durObj.IsZero, durObj)
-        if zeroOk then
-            pcall(child.SetAlphaFromBoolean, child, isZero, readyAlpha, cdAlpha)
-        else
-            pcall(child.SetAlpha, child, readyAlpha)
-        end
-    else
-        pcall(child.SetAlpha, child, readyAlpha)
-    end
-
-    -- Text opacity (independent when text != icon setting)
-    if needsTextOverride and child.Cooldown then
-        if isGCD then
-            applyTextCooldownAlpha(child.Cooldown, nil, containerAlpha, textDimAlpha, true, isOffCooldownMode)
-        elseif durObj and durObj.IsZero then
-            applyTextCooldownAlpha(child.Cooldown, durObj, containerAlpha, textDimAlpha, false, isOffCooldownMode)
-        else
-            resetTextAlpha(child.Cooldown)
-        end
-    elseif not needsTextOverride and child.Cooldown then
-        resetTextAlpha(child.Cooldown)
-    end
-end
-
-applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
-    local viewer = _G[viewerFrameName]
-    if not viewer then return end
-    local component = addon.Components and addon.Components[componentId]
-    if not component or not component.db then return end
-
-    local iconSetting = tonumber(component.db.opacityOnCooldown) or 100
-    local textSetting = tonumber(component.db.opacityOnCooldownText) or 100
-
-    -- Nothing to do if both are at 100%
-    if iconSetting >= 100 and textSetting >= 100 then return end
-
-    local mode = component.db.cooldownOpacityMode
-    local isOffCooldownMode = (mode == "offCooldown")
-
-    local containerAlpha = getViewerOpacityForState(componentId)
-    local needsTextOverride = not isOffCooldownMode and (textSetting ~= iconSetting)
-
-    -- Compute icon dim alpha (compensated for container opacity)
-    local iconDimAlpha = iconSetting / 100
-    if iconSetting < 100 and containerAlpha > 0 and containerAlpha < 1.0 then
-        iconDimAlpha = math.min(1.0, iconDimAlpha / containerAlpha)
-    end
-
-    -- Pre-compute ready/cd alphas based on mode
-    local readyAlpha, cdAlpha = 1.0, iconDimAlpha
-    if isOffCooldownMode then readyAlpha, cdAlpha = cdAlpha, readyAlpha end
-
-    -- Compute text dim alpha (absolute, used with SetIgnoreParentAlpha)
-    local textDimAlpha = textSetting / 100
-
-    for _, child in ipairs(getViewerChildren(viewer, viewerFrameName)) do
-        pcall(processOneIconOpacity, child, iconSetting, readyAlpha, cdAlpha,
-              needsTextOverride, containerAlpha, textDimAlpha, isOffCooldownMode)
-    end
-
-    -- Keep ticker alive while off-cooldown mode needs refresh
-    if isOffCooldownMode and iconSetting < 100 then
-        startOffCDRefreshTicker()
-    end
-end
-Overlays._ApplyPerIconCooldownOpacity = applyPerIconCooldownOpacity
-
-addon.RefreshCDMCooldownOpacity = applyPerIconCooldownOpacity
-
--- 1s safety ticker: catches long-cooldown-end while idle (no event fires).
--- Self-terminates when no viewer needs off-cooldown refresh.
-startOffCDRefreshTicker = function()
-    if offCDRefreshTicker then return end
-    offCDRefreshTicker = C_Timer.NewTicker(1.0, function()
-        local anyActive = false
-        for viewerName, componentId in pairs(CDM_VIEWERS) do
-            local component = addon.Components and addon.Components[componentId]
-            if component and component.db
-               and component.db.cooldownOpacityMode == "offCooldown"
-               and (tonumber(component.db.opacityOnCooldown) or 100) < 100 then
-                applyPerIconCooldownOpacity(viewerName, componentId)
-                anyActive = true
-            end
-        end
-        if not anyActive then
-            offCDRefreshTicker:Cancel()
-            offCDRefreshTicker = nil
-        end
-    end)
-end
-
---------------------------------------------------------------------------------
 -- Event Handling
 --------------------------------------------------------------------------------
 
@@ -1488,23 +1245,23 @@ local function onCDMEvent(event, arg1)
             C_Timer.After(0.15, Overlays._ScanAndReplaceActiveBlizzardGlows)
 
             -- Apply initial viewer opacity based on current state
-            updateAllViewerOpacities()
+            Overlays._UpdateAllViewerOpacities()
         end)
 
     elseif event == "PLAYER_REGEN_DISABLED" then
         -- Combat started: update viewer opacities to combat values
-        updateAllViewerOpacities()
+        Overlays._UpdateAllViewerOpacities()
         -- Re-apply per-icon cooldown opacity with new container alpha
         for viewerName, componentId in pairs(CDM_VIEWERS) do
-            applyPerIconCooldownOpacity(viewerName, componentId)
+            Overlays._ApplyPerIconCooldownOpacity(viewerName, componentId)
         end
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- Combat ended: update viewer opacities to out-of-combat values
-        updateAllViewerOpacities()
+        Overlays._UpdateAllViewerOpacities()
         -- Re-apply per-icon cooldown opacity with new container alpha
         for viewerName, componentId in pairs(CDM_VIEWERS) do
-            applyPerIconCooldownOpacity(viewerName, componentId)
+            Overlays._ApplyPerIconCooldownOpacity(viewerName, componentId)
         end
 
     elseif event == "UNIT_AURA" then
@@ -1514,17 +1271,17 @@ local function onCDMEvent(event, arg1)
 
     elseif event == "PLAYER_TARGET_CHANGED" then
         -- Update opacity for target state change (no styling depends on target)
-        updateAllViewerOpacities()
+        Overlays._UpdateAllViewerOpacities()
         -- Re-apply per-icon cooldown opacity with new container alpha
         for viewerName, componentId in pairs(CDM_VIEWERS) do
-            applyPerIconCooldownOpacity(viewerName, componentId)
+            Overlays._ApplyPerIconCooldownOpacity(viewerName, componentId)
         end
 
     elseif event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_CHARGES" then
         -- Only update per-icon cooldown dimming; icon lifecycle is handled by
         -- OnAcquireItemFrame/OnReleaseItemFrame hooks, layout by RefreshLayout hook.
-        applyPerIconCooldownOpacity("EssentialCooldownViewer", "essentialCooldowns")
-        applyPerIconCooldownOpacity("UtilityCooldownViewer", "utilityCooldowns")
+        Overlays._ApplyPerIconCooldownOpacity("EssentialCooldownViewer", "essentialCooldowns")
+        Overlays._ApplyPerIconCooldownOpacity("UtilityCooldownViewer", "utilityCooldowns")
 
     end
 end
@@ -1602,15 +1359,15 @@ end
 addon.CDMIconRefreshOpacity = function(component)
     for viewerName, cid in pairs(CDM_VIEWERS) do
         if cid == component.id then
-            applyViewerOpacity(viewerName, cid)
-            applyPerIconCooldownOpacity(viewerName, cid)
+            Overlays._ApplyViewerOpacity(viewerName, cid)
+            Overlays._ApplyPerIconCooldownOpacity(viewerName, cid)
             break
         end
     end
-    -- Also cover viewers in CDM_OPACITY_VIEWERS but not CDM_VIEWERS (e.g., BuffBarCooldownViewer)
-    for viewerName, cid in pairs(CDM_OPACITY_VIEWERS) do
+    -- Also cover viewers in Overlays._opacityViewers but not CDM_VIEWERS (e.g., BuffBarCooldownViewer)
+    for viewerName, cid in pairs(Overlays._opacityViewers) do
         if cid == component.id and not CDM_VIEWERS[viewerName] then
-            applyViewerOpacity(viewerName, cid)
+            Overlays._ApplyViewerOpacity(viewerName, cid)
         end
     end
 end
