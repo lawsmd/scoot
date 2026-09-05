@@ -52,7 +52,7 @@ do
         end
 
         -- Zero‑Touch: only apply opacity if the user explicitly configured any opacity key.
-        local hasAnyOpacitySetting = (cfg.opacityInCombat ~= nil) or (cfg.opacityOutOfCombat ~= nil) or (cfg.opacityWithTarget ~= nil)
+        local hasAnyOpacitySetting = addon.Opacity.DeclaresSet(cfg, addon.Opacity.Keys.InCombat)
         if not hasAnyOpacitySetting then
             return
         end

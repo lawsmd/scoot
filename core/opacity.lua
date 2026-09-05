@@ -66,6 +66,17 @@ function Opacity.DeclaresAny(settings)
     return false
 end
 
+-- True when the table sets any key of one given set. The narrow test for a
+-- config table that also carries other dialects' keys (a per-unit table holds
+-- the bar triple beside the frame triple).
+function Opacity.DeclaresSet(settings, keys)
+    if type(settings) ~= "table" or type(keys) ~= "table" then return false end
+    for _, key in pairs(keys) do
+        if settings[key] ~= nil then return true end
+    end
+    return false
+end
+
 -- Player state probes. InCombat is lockdown OR the unit flag: the regen events
 -- that drive every refresh flip with lockdown, and the flag covers the pet
 -- edge. HasTarget follows the Unit Frames Z doctrine: only a readable plain

@@ -121,7 +121,6 @@ newline-join	core/taintdebug.lua	1
 newline-join	ui/v2/controls/Preview.lua	1
 newline-join	ui/v2/settings/profiles/PresetsRenderer.lua	1
 newline-join	ui/v2/settingspanel/ascii.lua	1
-opacity-field	core/components/unitframes/visibility.lua	1
 print	core/events.lua	1
 slash-global	core/editmode/core.lua	4
 text-block	ui/v2/settings/castbars/CastBarZRenderer.lua	1
