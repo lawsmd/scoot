@@ -266,7 +266,8 @@ function DMY._ApplyStyling(comp)
         DMY._Initialize(comp)
     end
 
-    -- Disable Blizzard meter via CVar when Y is active
+    -- Disable Blizzard meter via CVar when Y is active.
+    -- Kept off addon.ApplyDamageMeterEnabled: styling-pass re-assert while the Y meter owns the frame; not a profile toggle.
     if C_CVar and C_CVar.SetCVar and not InCombatLockdown() then
         pcall(C_CVar.SetCVar, "damageMeterEnabled", "0")
     end

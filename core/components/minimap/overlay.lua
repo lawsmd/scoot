@@ -85,7 +85,8 @@ local function ActivateOverlay(db)
         originalDrawGround = okGround and curGround or true
     end
 
-    -- Force rotation on for directional navigation
+    -- Force rotation on for directional navigation.
+    -- Kept off core/profiles/cvars.lua: temporary save/restore pair around the navigation overlay, not a profile toggle.
     pcall(SetCVar, "rotateMinimap", "1")
 
     -- Hide terrain — blips/nodes/player arrow remain visible (harmless if silently fails)
@@ -241,6 +242,7 @@ local function DeactivateOverlay(skipPersist)
 
     -- Restore rotation CVar
     if originalRotateCVar then
+        -- Kept off core/profiles/cvars.lua: restores the value saved when the overlay opened.
         pcall(SetCVar, "rotateMinimap", originalRotateCVar)
         originalRotateCVar = nil
     end

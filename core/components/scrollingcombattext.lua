@@ -125,6 +125,7 @@ local function applyWorldTextStyling(self)
     local scalar = scalePercent / 100
     local scaledValue = string.format("%.2f", scalar)
     local cvarName = resolveWorldTextScaleCVar()
+    -- Kept off core/profiles/cvars.lua: the CVar name is resolved at apply time and the scale is not a profile enable toggle.
     if _G.C_CVar and _G.C_CVar.SetCVar then
         pcall(_G.C_CVar.SetCVar, cvarName, scaledValue)
     elseif _G.SetCVar then

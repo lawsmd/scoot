@@ -71,6 +71,7 @@ local function onLootReady(autoLoot)
     if C_CVar and C_CVar.GetCVar then
         local current = C_CVar.GetCVar("autoLootDefault")
         if current ~= "1" then
+            -- Kept off core/profiles/cvars.lua: a quick-loot convenience nudge, not a profile toggle.
             pcall(C_CVar.SetCVar, "autoLootDefault", "1")
         end
     end

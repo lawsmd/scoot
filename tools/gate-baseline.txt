@@ -28,6 +28,13 @@ color-switch	core/components/unitframes/text/names.lua	11
 competitor	core/components/damagemetersX/core.lua	1
 competitor	core/components/damagemetersY/styling.lua	1
 competitor	ui/v2/settings/interface/DamageMeterXRenderer.lua	2
+cvar-write	core/components/damagemetersY/core.lua	2
+cvar-write	core/components/minimap/overlay.lua	2
+cvar-write	core/components/scrollingcombattext.lua	5
+cvar-write	core/debug/dmY.lua	2
+cvar-write	core/qol.lua	1
+cvar-write	core/taintdebug.lua	2
+cvar-write	ui/v2/settingspanel/renderers.lua	1
 dated	core/components/scootauras/core.lua	1
 dated	core/components/scootauras/events.lua	1
 dated	core/components/scootauras/styling.lua	1

@@ -168,6 +168,7 @@ function TD.Enable()
     seterrorhandler(ScootErrorHandler)
     
     -- Enable WoW's built-in taint logging (persists in Config.wtf)
+    -- Kept off core/profiles/cvars.lua: debug tooling; taint logging is per-machine, not per-profile.
     if SetCVar then
         SetCVar("taintLog", "2")  -- Level 2 = verbose
     end

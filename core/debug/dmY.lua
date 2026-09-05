@@ -20,6 +20,7 @@ local function DebugDMYCVar()
 
     -- First run: CVar is "1" → set to "0" and instruct user
     if current ~= "0" then
+        -- Kept off addon.ApplyDamageMeterEnabled: debug probe writes the raw value and restores it by hand.
         C_CVar.SetCVar("damageMeterEnabled", "0")
         addon:Print("DMY CVar Test: Set damageMeterEnabled = 0")
         addon:Print("  Blizzard meter is now hidden.")
@@ -32,6 +33,7 @@ local function DebugDMYCVar()
     local lines = { "== DMY CVar Test ==" }
     table.insert(lines, "CVar was: 0 (Blizzard meter disabled)")
 
+    -- Kept off addon.ApplyDamageMeterEnabled: debug probe restore.
     C_CVar.SetCVar("damageMeterEnabled", "1")
     table.insert(lines, "Restored CVar to: 1")
     table.insert(lines, "")

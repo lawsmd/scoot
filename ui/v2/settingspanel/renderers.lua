@@ -54,6 +54,7 @@ local function RenderDebugMenu(panel, scrollContent)
         set = function(enabled)
             local newVal = enabled and "1" or "0"
             for _, cvar in ipairs(secretCVars) do
+                -- Kept off core/profiles/cvars.lua: loops a debug CVar list with a caller-supplied value.
                 pcall(SetCVar, cvar, newVal)
             end
         end,
