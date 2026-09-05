@@ -34,18 +34,6 @@ function CB._getIconBorderContainer(frame)
 	return st and st.ScootIconBorderContainer or nil
 end
 
--- Helper to traverse nested keys safely (copied from bars.lua pattern)
-function CB._getNested(root, ...)
-	if not root then return nil end
-	local cur = root
-	for i = 1, select("#", ...) do
-		local key = select(i, ...)
-		if type(cur) ~= "table" then return nil end
-		cur = cur[key]
-	end
-	return cur
-end
-
 -- =========================================================================
 -- Gradient text helpers (spell name color ramp)
 -- =========================================================================

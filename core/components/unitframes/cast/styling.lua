@@ -10,7 +10,6 @@ local getProp = CB._getProp
 local setProp = CB._setProp
 local getState = CB._getState
 local getIconBorderContainer = CB._getIconBorderContainer
-local getNested = CB._getNested
 local installGradientHook = CB._installGradientHook
 local applySpellNameColor = CB._applySpellNameColor
 local applyTextFillMode = CB._applyTextFillMode
@@ -20,46 +19,24 @@ local resolveGradientColors = CB._resolveGradientColors
 
 -- Unit Frames: Cast Bar positioning (Player/Target/Focus)
 do
-	local function resolveCastBarFrame(unit)
-		if unit == "Player" then
-			return _G.PlayerCastingBarFrame
-		end
-		if unit == "Target" then
-			return _G.TargetFrameSpellBar
-		elseif unit == "Focus" then
-			return _G.FocusFrameSpellBar
-		end
-	end
+	-- Shared resolvers (core/frames.lua); the anchor wrappers keep this
+	-- block's Target/Focus-only surface.
+	local resolveCastBarFrame = addon.Frames.resolveCastBarFrame
 
-	-- Resolve Health Bar for Target/Focus (via deterministic paths)
 	local function resolveHealthBar(unit)
-		if unit == "Target" then
-			local root = _G.TargetFrame
-			return getNested(root, "TargetFrameContent", "TargetFrameContentMain", "HealthBarsContainer", "HealthBar")
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return getNested(root, "TargetFrameContent", "TargetFrameContentMain", "HealthBarsContainer", "HealthBar")
-		end
+		if unit ~= "Target" and unit ~= "Focus" then return nil end
+		return addon.Frames.resolveHealthBar(nil, unit)
 	end
 
-	-- Resolve Power Bar (ManaBar) for Target/Focus (via deterministic paths)
 	local function resolvePowerBar(unit)
-		if unit == "Target" then
-			local root = _G.TargetFrame
-			return getNested(root, "TargetFrameContent", "TargetFrameContentMain", "ManaBar")
-		elseif unit == "Focus" then
-			local root = _G.FocusFrame
-			return getNested(root, "TargetFrameContent", "TargetFrameContentMain", "ManaBar")
-		end
+		if unit ~= "Target" and unit ~= "Focus" then return nil end
+		return addon.Frames.resolvePowerBar(nil, unit)
 	end
 
-	-- Resolve Name FontString for Target/Focus (anchor target for "Above Name")
+	-- Anchor target for "Above Name"
 	local function resolveNameFS(unit)
-		if unit == "Target" then
-			return getNested(_G.TargetFrame, "TargetFrameContent", "TargetFrameContentMain", "Name")
-		elseif unit == "Focus" then
-			return getNested(_G.FocusFrame, "TargetFrameContent", "TargetFrameContentMain", "Name")
-		end
+		if unit ~= "Target" and unit ~= "Focus" then return nil end
+		return addon.Frames.resolveNameFS(unit)
 	end
 
 	-- Track which cast bars have custom anchor mode active, so the SetPoint hook knows when to re-apply

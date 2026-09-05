@@ -67,10 +67,7 @@ do
 
 		if anchorMode == "centeredUnderPower" then
 			local bossFrame = addon.GetBossFrame(index)
-			local manaBar
-			if addon.BarsResolvers and addon.BarsResolvers.resolveBossManaBar then
-				manaBar = addon.BarsResolvers.resolveBossManaBar(bossFrame)
-			end
+			local manaBar = addon.Frames.resolveBossManaBar(bossFrame)
 
 			if manaBar then
 				setProp(frame, "ignoreSetPoint", true)
@@ -80,10 +77,7 @@ do
 			end
 		elseif anchorMode == "underBossName" then
 			local bossFrame = addon.GetBossFrame(index)
-			local nameFS
-			if addon.ResolveBossNameFS then
-				nameFS = addon.ResolveBossNameFS(bossFrame)
-			end
+			local nameFS = addon.Frames.resolveBossNameFS(bossFrame)
 
 			if nameFS then
 				setProp(frame, "ignoreSetPoint", true)
@@ -287,10 +281,7 @@ do
 
 					if anchorMode == "centeredUnderPower" then
 						local bossFrame = addon.GetBossFrame(index)
-						local manaBar
-						if addon.BarsResolvers and addon.BarsResolvers.resolveBossManaBar then
-							manaBar = addon.BarsResolvers.resolveBossManaBar(bossFrame)
-						end
+						local manaBar = addon.Frames.resolveBossManaBar(bossFrame)
 
 						if manaBar then
 							setProp(frame, "ignoreSetPoint", true)
@@ -301,10 +292,7 @@ do
 						end
 					elseif anchorMode == "underBossName" then
 						local bossFrame = addon.GetBossFrame(index)
-						local nameFS
-						if addon.ResolveBossNameFS then
-							nameFS = addon.ResolveBossNameFS(bossFrame)
-						end
+						local nameFS = addon.Frames.resolveBossNameFS(bossFrame)
 
 						if nameFS then
 							setProp(frame, "ignoreSetPoint", true)
