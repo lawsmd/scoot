@@ -391,3 +391,110 @@ function Controls.SetFillTint(fill, alpha)
     end
     fill:SetColorTexture(r, g, b, alpha)
 end
+
+--------------------------------------------------------------------------------
+-- Shared row chrome
+--------------------------------------------------------------------------------
+
+-- Row-height math shared by every settings row that carries a description.
+local MAX_ROW_HEIGHT = 200        -- Cap to prevent excessively tall rows
+local LABEL_LINE_HEIGHT = 16      -- Approximate label height
+local DESC_PADDING_TOP = 2        -- Space between label and description
+local DESC_PADDING_BOTTOM = 36    -- Space below description to border
+
+-- Label, description, and deferred height measurement for a settings row.
+-- Writes row._label, row._description, and row._measureDesc onto the row and
+-- calls row._onHeightChanged on growth; SettingsBuilder, Navigation, and the
+-- search jump all read those fields, so they stay on the frame. Returns the
+-- label and description FontStrings.
+--
+-- opts:
+--   label          label text
+--   labelFontSize  default 13
+--   labelYOffset   label y offset (default 6 with a description, else 0)
+--   padLeft        label x inset from the row's left edge (default 12)
+--   description    description text; nil or "" builds the label alone
+--   descFontSize   default 11
+--   padAbove       label-to-description gap, also counted in the height math
+--                  (default DESC_PADDING_TOP; emphasized rows pass 4)
+--   reserve        width kept free right of the description for the control
+--                  cluster: the description's RIGHT anchor offset. nil skips
+--                  the RIGHT anchor for callers that size the text in the
+--                  measure pass alone
+--   measureReserve total width subtracted from the row width when measuring
+--                  the wrap width (default reserve + padLeft)
+--   dimColor       {r,g,b} for the description text
+function Controls.AddRowChrome(row, opts)
+    local theme = GetTheme()
+    local hasDesc = opts.description and opts.description ~= ""
+    local padLeft = opts.padLeft or 12
+
+    local labelFS = row:CreateFontString(nil, "OVERLAY")
+    labelFS:SetFont(theme:GetFont("LABEL"), opts.labelFontSize or 13, "")
+    local labelY = opts.labelYOffset
+    if labelY == nil then labelY = hasDesc and 6 or 0 end
+    labelFS:SetPoint("LEFT", row, "LEFT", padLeft, labelY)
+    labelFS:SetText(opts.label)
+    labelFS:SetTextColor(theme:GetAccentColor())
+    row._label = labelFS
+
+    if not hasDesc then
+        return labelFS, nil
+    end
+
+    local padAbove = opts.padAbove or DESC_PADDING_TOP
+    local descFS = row:CreateFontString(nil, "OVERLAY")
+    descFS:SetFont(theme:GetFont("VALUE"), opts.descFontSize or 11, "")
+    descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -padAbove)
+    if opts.reserve then
+        descFS:SetPoint("RIGHT", row, "RIGHT", -opts.reserve, 0)
+    end
+    descFS:SetText(opts.description)
+    local dim = opts.dimColor
+    if dim then
+        descFS:SetTextColor(dim[1], dim[2], dim[3], 1)
+    end
+    descFS:SetJustifyH("LEFT")
+    descFS:SetWordWrap(true)
+    row._description = descFS
+
+    local measureReserve = opts.measureReserve or ((opts.reserve or 0) + padLeft)
+
+    -- Deferred height measurement after text layout completes
+    local function MeasureAndAdjustHeight()
+        if not row or not descFS then return false end
+
+        -- Get the row's effective width (try row, then parent)
+        local rowWidth = row:GetWidth()
+        if rowWidth == 0 and row:GetParent() then
+            rowWidth = row:GetParent():GetWidth() or 0
+        end
+        if rowWidth == 0 then return false end
+
+        local descAvailableWidth = rowWidth - measureReserve
+        if descAvailableWidth <= 0 then return false end
+
+        -- Explicit width so GetStringHeight returns the wrapped height
+        descFS:SetWidth(descAvailableWidth)
+
+        local textHeight = descFS:GetStringHeight() or 0
+        local requiredHeight = LABEL_LINE_HEIGHT + padAbove + textHeight + DESC_PADDING_BOTTOM
+        requiredHeight = math.min(requiredHeight, MAX_ROW_HEIGHT)
+
+        local currentHeight = row:GetHeight()
+        if requiredHeight > currentHeight then
+            row:SetHeight(requiredHeight)
+            if row._onHeightChanged then
+                row._onHeightChanged(requiredHeight - currentHeight)
+            end
+        end
+        return true
+    end
+    row._measureDesc = MeasureAndAdjustHeight
+
+    -- Try immediate measurement, fall back to deferred
+    if not MeasureAndAdjustHeight() then
+        C_Timer.After(0.1, MeasureAndAdjustHeight)
+    end
+    return labelFS, descFS
+end

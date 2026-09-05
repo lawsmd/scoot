@@ -31,11 +31,8 @@ local EMPHASIZED_LABEL_SIZE = 14
 local EMPHASIZED_BORDER_WIDTH = 3
 
 -- Dynamic height constants
-local MAX_ROW_HEIGHT = 200        -- Cap to prevent excessively tall rows
-local LABEL_LINE_HEIGHT = 16      -- Approximate label height
 local DESC_PADDING_TOP = 2        -- Space between label and description
 local DESC_PADDING_TOP_EMPH = 4   -- Space for emphasized controls
-local DESC_PADDING_BOTTOM = 36    -- Space below description to border (doubled for center-anchored layout)
 
 -- Selector: Dropdown/selector with arrow buttons on each side
 
@@ -145,67 +142,18 @@ function Controls:CreateSelector(options)
     -- Calculate label padding (account for left border on emphasized)
     local labelLeftPad = sc(SELECTOR_PADDING) + leftBorderWidth
 
-    -- Label text (left side)
-    local labelFS = row:CreateFontString(nil, "OVERLAY")
-    local labelFont = theme:GetFont("LABEL")
-    labelFS:SetFont(labelFont, labelFontSize, "")
-    labelFS:SetPoint("LEFT", row, "LEFT", labelLeftPad, hasDesc and (emphasized and 12 or 6) or 0)
-    labelFS:SetText(label)
-    labelFS:SetTextColor(ar, ag, ab, 1)
-    row._label = labelFS
-
-    -- Description text (below label, if provided)
-    if hasDesc then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        local descFont = theme:GetFont("VALUE")
-        local descFontSize = emphasized and 12 or 11
-        descFS:SetFont(descFont, descFontSize, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, emphasized and -4 or -2)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -(selectorWidth + SELECTOR_PADDING * 2), 0)
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-
-        -- Deferred height measurement after text layout completes
-        local function MeasureAndAdjustHeight()
-            if not row or not descFS then return false end
-
-            -- Get the row's effective width (try row, then parent)
-            local rowWidth = row:GetWidth()
-            if rowWidth == 0 and row:GetParent() then
-                rowWidth = row:GetParent():GetWidth() or 0
-            end
-            if rowWidth == 0 then return false end
-
-            -- Calculate available width for description text
-            local descAvailableWidth = rowWidth - selectorWidth - (SELECTOR_PADDING * 2) - labelLeftPad
-            if descAvailableWidth <= 0 then return false end
-
-            -- Explicitly set description width so GetStringHeight returns wrapped height
-            descFS:SetWidth(descAvailableWidth)
-
-            local textHeight = descFS:GetStringHeight() or 0
-            local paddingAbove = emphasized and DESC_PADDING_TOP_EMPH or DESC_PADDING_TOP
-            local requiredHeight = LABEL_LINE_HEIGHT + paddingAbove + textHeight + DESC_PADDING_BOTTOM
-            requiredHeight = math.min(requiredHeight, MAX_ROW_HEIGHT)
-
-            local currentHeight = row:GetHeight()
-            if requiredHeight > currentHeight then
-                row:SetHeight(requiredHeight)
-                if row._onHeightChanged then
-                    row._onHeightChanged(requiredHeight - currentHeight)
-                end
-            end
-            return true
-        end
-
-        -- Try immediate measurement, fall back to deferred
-        if not MeasureAndAdjustHeight() then
-            C_Timer.After(0.1, MeasureAndAdjustHeight)
-        end
-    end
+    -- Label and description
+    local labelFS = Controls.AddRowChrome(row, {
+        label = label,
+        labelFontSize = labelFontSize,
+        labelYOffset = hasDesc and (emphasized and 12 or 6) or 0,
+        padLeft = labelLeftPad,
+        description = description,
+        descFontSize = emphasized and 12 or 11,
+        padAbove = emphasized and DESC_PADDING_TOP_EMPH or DESC_PADDING_TOP,
+        reserve = selectorWidth + SELECTOR_PADDING * 2,
+        dimColor = { dimR, dimG, dimB },
+    })
 
     -- Selector container (right side)
     local selector = CreateFrame("Frame", nil, row)
