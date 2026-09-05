@@ -5,6 +5,9 @@ local Component = addon.ComponentPrototype
 local Util = addon.ComponentsUtil
 local SS = addon.SecretSafe
 
+addon.CDMOverlays = addon.CDMOverlays or {}
+local Overlays = addon.CDMOverlays
+
 --------------------------------------------------------------------------------
 -- Overlay-based icon styling for CooldownViewer frames
 --------------------------------------------------------------------------------
@@ -222,6 +225,7 @@ local function CenterIconsInViewer(viewerFrame, componentId)
         end
     end
 end
+Overlays._CenterIconsInViewer = CenterIconsInViewer
 
 -- Exposed function to refresh center anchor (called when setting changes)
 function addon.RefreshCDMCenterAnchor(componentId)
@@ -267,15 +271,14 @@ end
 -- Overlay System
 --------------------------------------------------------------------------------
 
-addon.CDMOverlays = addon.CDMOverlays or {}
-local Overlays = addon.CDMOverlays
-
 local activeOverlays = {}  -- Map from CDM icon frame to overlay frame
+Overlays._activeOverlays = activeOverlays
 
 -- Track which icons have been sized (weak keys for GC)
 -- Using a local table instead of writing to Blizzard frames avoids taint
 -- that can cause allowAvailableAlert and other fields to become secret values
 local sizedIcons = setmetatable({}, { __mode = "k" })
+Overlays._sizedIcons = sizedIcons
 
 -- Track cached FontString references per cooldown frame (weak keys for GC)
 -- Using a local table instead of writing _scooterFontString to Blizzard frames avoids taint
@@ -286,6 +289,7 @@ local textAlphaDecoupled = setmetatable({}, { __mode = "k" })
 
 -- Track icon zoom, swipe modifications, and hidden rings (weak keys for GC)
 local zoomedIcons = setmetatable({}, { __mode = "k" })
+Overlays._zoomedIcons = zoomedIcons
 local modifiedSwipes = setmetatable({}, { __mode = "k" })
 local hiddenRings = setmetatable({}, { __mode = "k" })
 
@@ -295,6 +299,7 @@ local viewerChildrenCache = {}
 local function invalidateChildrenCache(viewerFrameName)
     viewerChildrenCache[viewerFrameName] = nil
 end
+Overlays._InvalidateChildrenCache = invalidateChildrenCache
 
 local function getViewerChildren(viewer, viewerFrameName)
     local cached = viewerChildrenCache[viewerFrameName]
@@ -303,6 +308,7 @@ local function getViewerChildren(viewer, viewerFrameName)
     viewerChildrenCache[viewerFrameName] = cached
     return cached
 end
+Overlays._GetViewerChildren = getViewerChildren
 
 -- Forward declarations
 local resizeProcGlow  -- defined in Icon Sizing section, used by hookProcGlowResizing
@@ -324,6 +330,7 @@ local function hasBlizzardDebuffBorder(itemFrame)
     end
     return false
 end
+Overlays._HasBlizzardDebuffBorder = hasBlizzardDebuffBorder
 
 --------------------------------------------------------------------------------
 -- Overlay Frame Management
@@ -376,6 +383,7 @@ local function resetOverlay(overlay)
 end
 
 local overlayPool = addon.Pool.New(createOverlayFrame, resetOverlay)
+Overlays._overlayPool = overlayPool
 
 local function getOverlay(parent)
     local overlay, isNew = overlayPool:Acquire(parent)
@@ -898,6 +906,7 @@ local function hookProcGlowResizing()
 
     procGlowHooked = true
 end
+Overlays._HookProcGlowResizing = hookProcGlowResizing
 
 -- Retroactive scan: find CDM icons where a Blizzard proc glow is active but
 -- should be replaced by a pixel glow (or vice-versa after profile switch).
@@ -970,6 +979,7 @@ local function scanAndReplaceActiveBlizzardGlows()
         end
     end
 end
+Overlays._ScanAndReplaceActiveBlizzardGlows = scanAndReplaceActiveBlizzardGlows
 
 -- Exposed function to refresh text styling (called when settings change)
 function addon.RefreshCDMTextStyling()
@@ -1001,6 +1011,7 @@ local function isValidCDMItemFrame(frame)
     end
     return false
 end
+Overlays._IsValidCDMItemFrame = isValidCDMItemFrame
 
 local function isFrameVisible(frame)
     if not frame then return false end
@@ -1021,6 +1032,7 @@ local function isFrameVisible(frame)
     end
     return true
 end
+Overlays._IsFrameVisible = isFrameVisible
 
 --------------------------------------------------------------------------------
 -- Public Overlay API
@@ -1205,6 +1217,7 @@ resizeProcGlow = function(cdmIcon, iconWidth, iconHeight)
         if glow then glow:SetTargetSize(iconWidth, iconHeight) end
     end
 end
+Overlays._ResizeProcGlow = resizeProcGlow
 
 function Overlays.ApplyIconSize(cdmIcon, opts)
     if not cdmIcon then return end
@@ -1523,6 +1536,7 @@ end
 --------------------------------------------------------------------------------
 
 local hookedViewers = {}
+Overlays._hookedViewers = hookedViewers
 
 function Overlays.HookViewer(viewerFrameName, componentId)
     if hookedViewers[viewerFrameName] then return true end
@@ -1783,9 +1797,6 @@ function Overlays.Initialize()
         addon.SpellBindings.SetActiveOverlays(activeOverlays)
         addon.SpellBindings.Initialize()
     end
-
-    -- Expose for diagnostic commands (read-only intent)
-    Overlays._activeOverlays = activeOverlays
 end
 
 function Overlays.ScheduleRetry()
@@ -1834,6 +1845,7 @@ local CDM_OPACITY_VIEWERS = {
     BuffIconCooldownViewer = "trackedBuffs",
     BuffBarCooldownViewer = "trackedBars",
 }
+Overlays._opacityViewers = CDM_OPACITY_VIEWERS
 
 -- Get the appropriate opacity value based on current game state
 -- Container alpha for the viewer's current state (core/opacity.lua). The
@@ -1866,6 +1878,7 @@ applyViewerOpacity = function(viewerName, componentId)
         viewer:SetAlpha(alpha)
     end)
 end
+Overlays._ApplyViewerOpacity = applyViewerOpacity
 
 -- Update all CDM viewer opacities based on current state
 local function updateAllViewerOpacities()
@@ -1873,6 +1886,7 @@ local function updateAllViewerOpacities()
         applyViewerOpacity(viewerName, componentId)
     end
 end
+Overlays._UpdateAllViewerOpacities = updateAllViewerOpacities
 
 -- Exposed function for settings changes
 function addon.RefreshCDMViewerOpacity(componentId)
@@ -2023,6 +2037,7 @@ applyPerIconCooldownOpacity = function(viewerFrameName, componentId)
         startOffCDRefreshTicker()
     end
 end
+Overlays._ApplyPerIconCooldownOpacity = applyPerIconCooldownOpacity
 
 addon.RefreshCDMCooldownOpacity = applyPerIconCooldownOpacity
 
