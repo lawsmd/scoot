@@ -103,6 +103,31 @@ local Drag = addon.ScootAurasUI.CreateAuraListDrag({
 local ClickGuard, CreateDropZone = Drag.ClickGuard, Drag.CreateDropZone
 local BeginDrag, EndDrag = Drag.BeginDrag, Drag.EndDrag
 
+-- One OnClick body for every spec-restriction trigger. kind is the
+-- RegisterSpecButton key prefix: "t" loads a tracker, "g" a group.
+local function OpenSpecFlyout(anchor, kind, id)
+    if ClickGuard() then return end
+    local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+    if not SpecFlyout then return end
+    local SAU = addon.ScootAuras
+    local isTracker = kind == "t"
+    SpecFlyout.OpenFor(anchor, {
+        title = isTracker and "Load this aura in..." or "Load this group in...",
+        key = kind .. tostring(id),
+        get = function()
+            local rec = isTracker and SAU.GetTracker(id) or SAU.GetGroup(id)
+            return rec and rec.specs
+        end,
+        toggle = function(specID)
+            if isTracker then
+                SAU.ToggleTrackerSpec(id, specID)
+            else
+                SAU.ToggleGroupSpec(id, specID)
+            end
+        end,
+    })
+end
+
 --------------------------------------------------------------------------------
 -- Cleanup (invoked from UIPanel:ClearContent through the registered slot)
 --------------------------------------------------------------------------------
@@ -351,18 +376,7 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     end)
 
     specBtn:SetScript("OnClick", function()
-        if ClickGuard() then return end
-        local SpecFlyout = addon.UI.ScootAuraSpecFlyout
-        if not SpecFlyout then return end
-        SpecFlyout.OpenFor(specBtn, {
-            title = "Load this aura in...",
-            key = "t" .. tostring(trackerId),
-            get = function()
-                local t = SAU.GetTracker(trackerId)
-                return t and t.specs
-            end,
-            toggle = function(specID) SAU.ToggleTrackerSpec(trackerId, specID) end,
-        })
+        OpenSpecFlyout(specBtn, "t", trackerId)
     end)
 
     duplicateBtn:SetScript("OnClick", function()
@@ -531,18 +545,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
         tooltip = "Loaded on these specs", size = BTN_SIZE })
     specBtn:SetPoint("TOPRIGHT", box, "TOPRIGHT", -BOX_PAD, -5)
     specBtn:SetScript("OnClick", function()
-        if ClickGuard() then return end
-        local SpecFlyout = addon.UI.ScootAuraSpecFlyout
-        if not SpecFlyout then return end
-        SpecFlyout.OpenFor(specBtn, {
-            title = "Load this group in...",
-            key = "g" .. tostring(gid),
-            get = function()
-                local g = SAU.GetGroup(gid)
-                return g and g.specs
-            end,
-            toggle = function(specID) SAU.ToggleGroupSpec(gid, specID) end,
-        })
+        OpenSpecFlyout(specBtn, "g", gid)
     end)
 
     local deleteBtn = Controls:CreateGlyphButton({ parent = box, atlas = "common-icon-delete",
@@ -675,18 +678,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
             -- hung off an 11px badge inside the art puts its nub across the
             -- spell icon. From the icon the nub clears both.
             memberSpecBtn:SetScript("OnClick", function()
-                if ClickGuard() then return end
-                local SpecFlyout = addon.UI.ScootAuraSpecFlyout
-                if not SpecFlyout then return end
-                SpecFlyout.OpenFor(btn, {
-                    title = "Load this aura in...",
-                    key = "t" .. tostring(memberId),
-                    get = function()
-                        local t = SAU.GetTracker(memberId)
-                        return t and t.specs
-                    end,
-                    toggle = function(specID) SAU.ToggleTrackerSpec(memberId, specID) end,
-                })
+                OpenSpecFlyout(btn, "t", memberId)
             end)
 
             -- Copies the member into its group beside itself. The editor's own
