@@ -99,7 +99,7 @@ hide-hook	core/components/actionbars.lua	1
 hide-hook	core/components/cooldowns/trackedbars/init.lua	3
 hide-hook	core/components/cooldowns/trackedbars/vertical.lua	2
 hide-hook	core/components/minimap/buttons.lua	1
-hide-hook	core/components/unitframes/bars/partyframes/core.lua	1
+hide-hook	core/components/unitframes/bars/groupicons.lua	1
 hide-hook	core/components/unitframes/bars/raidframes/visibility.lua	3
 hide-hook	core/components/unitframes/bars/textoverlay.lua	2
 hide-hook	core/components/unitframes/text/health.lua	1

@@ -119,6 +119,7 @@ core/components/unitframes/bars/alpha.lua
 core/components/unitframes/bars/preemptive.lua
 core/components/unitframes/bars/debug.lua
 core/components/unitframes/bars/overlays.lua
+core/components/unitframes/bars/groupicons.lua
 core/components/unitframes/bars/raidframes/core.lua
 core/components/unitframes/bars/raidframes/text.lua
 core/components/unitframes/bars/raidframes/extras.lua
