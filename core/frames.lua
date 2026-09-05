@@ -1,7 +1,9 @@
 --------------------------------------------------------------------------------
 -- frames.lua
 -- Shared frame resolution: root unit frames, Edit Mode frames, and the
--- Blizzard sub-frame children (bars, containers, masks, frame art).
+-- Blizzard sub-frame children (bars, containers, masks, frame art, center
+-- texts, name and level FontStrings, contextual elements, portrait parts,
+-- cast bars, aura containers).
 -- Input vocabulary: PascalCase unit keys ("Player", "Target", "Focus", "Pet",
 -- "Boss", "TargetOfTarget", "FocusTarget"; the strict path also accepts
 -- "Party" and "Raid"). Callers with other vocabularies (lowercase debug keys,
@@ -454,10 +456,267 @@ function Frames.resolveBossManaBar(bossFrame)
 end
 
 --------------------------------------------------------------------------------
+-- Contextual Resolution
+--------------------------------------------------------------------------------
+
+-- Sibling of the content-main container that holds the situational children
+-- (threat meter, icons, prestige art, the engine-managed aura container).
+function Frames.resolveContextual(unit)
+    if unit == "Player" then
+        local root = _G.PlayerFrame
+        return root and root.PlayerFrameContent and root.PlayerFrameContent.PlayerFrameContentContextual or nil
+    elseif unit == "Target" then
+        local root = _G.TargetFrame
+        return root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentContextual or nil
+    elseif unit == "Focus" then
+        local root = _G.FocusFrame
+        return root and root.TargetFrameContent and root.TargetFrameContent.TargetFrameContentContextual or nil
+    end
+end
+
+function Frames.resolveBossContextual(bossFrame)
+    return bossFrame
+        and bossFrame.TargetFrameContent
+        and bossFrame.TargetFrameContent.TargetFrameContentContextual
+        or nil
+end
+
+--------------------------------------------------------------------------------
+-- ReputationColor Resolution
+--------------------------------------------------------------------------------
+
+-- The ReputationColor strip of the Target or Focus frame, resolved live because
+-- Blizzard can recreate it during rapid target changes.
+function Frames.resolveReputationColor(unit)
+    if unit ~= "Target" and unit ~= "Focus" then return nil end
+    local main = Frames.resolveUFContentMain(unit)
+    return main and main.ReputationColor or nil
+end
+
+function Frames.resolveBossReputationColor(bossFrame)
+    local main = Frames.resolveBossContentMain(bossFrame)
+    return main and main.ReputationColor or nil
+end
+
+--------------------------------------------------------------------------------
+-- Name and Level FontString Resolution
+--------------------------------------------------------------------------------
+
+function Frames.resolveNameFS(unit)
+    if unit == "Player" then return _G.PlayerName end
+    if unit == "Pet" then return _G.PetName end
+    if unit == "TargetOfTarget" then
+        local tot = _G.TargetFrameToT
+        return tot and tot.Name or nil
+    end
+    if unit == "FocusTarget" then
+        local fot = _G.FocusFrameToT
+        return fot and fot.Name or nil
+    end
+    if unit == "Target" or unit == "Focus" then
+        local main = Frames.resolveUFContentMain(unit)
+        return main and main.Name or nil
+    end
+end
+
+-- Pet has no level FontString.
+function Frames.resolveLevelFS(unit)
+    if unit == "Player" then return _G.PlayerLevelText end
+    if unit == "Target" or unit == "Focus" then
+        local main = Frames.resolveUFContentMain(unit)
+        return main and main.LevelText or nil
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Boss Content and Text Resolution
+--------------------------------------------------------------------------------
+
+function Frames.resolveBossContentMain(bossFrame)
+    return bossFrame
+        and bossFrame.TargetFrameContent
+        and bossFrame.TargetFrameContent.TargetFrameContentMain
+        or nil
+end
+
+-- The name property is preferred; the path serves frames the property has not
+-- been assigned on yet.
+function Frames.resolveBossNameFS(bossFrame)
+    if not bossFrame then return nil end
+    local main = Frames.resolveBossContentMain(bossFrame)
+    return bossFrame.name or (main and main.Name) or nil
+end
+
+function Frames.resolveBossLevelFS(bossFrame)
+    local main = Frames.resolveBossContentMain(bossFrame)
+    return main and main.LevelText or nil
+end
+
+--------------------------------------------------------------------------------
+-- Center Text Resolution
+--------------------------------------------------------------------------------
+
+-- Center FontStrings (the Character Pane shows these instead of Left/Right).
+function Frames.resolveHealthCenterText(unit)
+    if unit == "Pet" then return _G.PetFrameHealthBarText end
+    if unit == "Player" or unit == "Target" or unit == "Focus" then
+        local c = Frames.resolveHealthContainer(nil, unit)
+        return c and c.HealthBarText or nil
+    end
+end
+
+function Frames.resolvePowerCenterText(unit)
+    if unit == "Pet" then return _G.PetFrameManaBarText end
+    if unit == "Player" or unit == "Target" or unit == "Focus" then
+        local mb = Frames.resolvePowerBar(nil, unit)
+        return mb and mb.ManaBarText or nil
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Cast Bar Frame Resolution
+--------------------------------------------------------------------------------
+
+function Frames.resolveCastBarFrame(unit)
+    if unit == "Player" then
+        return _G.PlayerCastingBarFrame
+    end
+    if unit == "Target" then
+        return _G.TargetFrameSpellBar
+    elseif unit == "Focus" then
+        return _G.FocusFrameSpellBar
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Aura Container Resolution
+--------------------------------------------------------------------------------
+
+-- The engine-managed aura container (the capital-A Auras child of the
+-- contextual frame); the lowercase buffs and debuffs children are a different
+-- shape and stay leaf reads at their call sites.
+function Frames.resolveAuraContainer(unit)
+    local contextual = Frames.resolveContextual(unit)
+    return contextual and contextual.Auras or nil
+end
+
+--------------------------------------------------------------------------------
+-- Portrait Part Resolution
+--------------------------------------------------------------------------------
+
+-- Resolve portrait frame for a given unit
+function Frames.resolvePortraitFrame(unit)
+    if unit == "Player" then
+        local root = _G.PlayerFrame
+        return root and root.PlayerFrameContainer and root.PlayerFrameContainer.PlayerPortrait or nil
+    elseif unit == "Target" then
+        local root = _G.TargetFrame
+        return root and root.TargetFrameContainer and root.TargetFrameContainer.Portrait or nil
+    elseif unit == "Focus" then
+        local root = _G.FocusFrame
+        return root and root.TargetFrameContainer and root.TargetFrameContainer.Portrait or nil
+    elseif unit == "Pet" then
+        return _G.PetPortrait
+    elseif unit == "TargetOfTarget" then
+        local tot = _G.TargetFrameToT
+        return tot and tot.Portrait or nil
+    elseif unit == "FocusTarget" then
+        local fot = _G.FocusFrameToT
+        return fot and fot.Portrait or nil
+    end
+end
+
+-- Resolve portrait mask frame for a given unit
+function Frames.resolvePortraitMaskFrame(unit)
+    if unit == "Player" then
+        local root = _G.PlayerFrame
+        return root and root.PlayerFrameContainer and root.PlayerFrameContainer.PlayerPortraitMask or nil
+    elseif unit == "Target" then
+        local root = _G.TargetFrame
+        return root and root.TargetFrameContainer and root.TargetFrameContainer.PortraitMask or nil
+    elseif unit == "Focus" then
+        local root = _G.FocusFrame
+        return root and root.TargetFrameContainer and root.TargetFrameContainer.PortraitMask or nil
+    elseif unit == "Pet" then
+        local root = _G.PetFrame
+        return root and root.PortraitMask or nil
+    elseif unit == "TargetOfTarget" then
+        local tot = _G.TargetFrameToT
+        return tot and tot.PortraitMask or nil
+    elseif unit == "FocusTarget" then
+        local fot = _G.FocusFrameToT
+        return fot and fot.PortraitMask or nil
+    end
+end
+
+-- Resolve portrait corner icon frame for a given unit (Player-only)
+function Frames.resolvePortraitCornerIconFrame(unit)
+    if unit == "Player" then
+        local contextual = Frames.resolveContextual(unit)
+        return contextual and contextual.PlayerPortraitCornerIcon or nil
+    end
+end
+
+-- Resolve portrait rest loop frame for a given unit (Player-only)
+function Frames.resolvePortraitRestLoopFrame(unit)
+    if unit == "Player" then
+        local contextual = Frames.resolveContextual(unit)
+        return contextual and contextual.PlayerRestLoop or nil
+    end
+end
+
+-- Resolve portrait status texture frame for a given unit (Player-only)
+function Frames.resolvePortraitStatusTextureFrame(unit)
+    if unit == "Player" then
+        local main = Frames.resolveUFContentMain(unit)
+        return main and main.StatusTexture or nil
+    end
+end
+
+-- Resolve damage text (HitText) frame for a given unit (Player and Pet)
+function Frames.resolveDamageTextFrame(unit)
+    if unit == "Player" then
+        local main = Frames.resolveUFContentMain(unit)
+        return main and main.HitIndicator and main.HitIndicator.HitText or nil
+    elseif unit == "Pet" then
+        -- PetHitIndicator is directly available as a global and as PetFrame.feedbackText
+        return _G.PetHitIndicator or (_G.PetFrame and _G.PetFrame.feedbackText)
+    end
+end
+
+-- Resolve boss portrait frame texture for a given unit (Target/Focus only).
+-- This texture appears when targeting a boss and hides along with the portrait.
+function Frames.resolveBossPortraitFrameTexture(unit)
+    if unit == "Target" then
+        local root = _G.TargetFrame
+        return root and root.TargetFrameContainer and root.TargetFrameContainer.BossPortraitFrameTexture or nil
+    elseif unit == "Focus" then
+        local root = _G.FocusFrame
+        return root and root.TargetFrameContainer and root.TargetFrameContainer.BossPortraitFrameTexture or nil
+    end
+end
+
+-- Resolve pet attack mode texture (Pet only)
+function Frames.resolvePetAttackModeTexture(unit)
+    if unit == "Pet" then
+        return _G.PetAttackModeTexture
+    end
+end
+
+-- Resolve pet frame flash (Pet only)
+function Frames.resolvePetFrameFlash(unit)
+    if unit == "Pet" then
+        return _G.PetFrameFlash
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Transition aliases
 --------------------------------------------------------------------------------
 
--- The bars/ files destructure these names at load time; both aliases retire
--- once every consumer reads addon.Frames directly.
+-- The bars/ files destructure these names at load time, and text/core.lua owns
+-- the boss name resolver until its callers convert; the aliases retire once
+-- every consumer reads addon.Frames directly.
 Frames.getUnitFrameFor = addon.GetUnitFrame
 addon.BarsResolvers = Frames
+addon.ResolveBossNameFS = Frames.resolveBossNameFS
