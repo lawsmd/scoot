@@ -320,6 +320,7 @@ ui/v2/settings/applyall/ApplyAllRenderer.lua
 ui/v2/settings/auras/AurasRenderer.lua
 ui/v2/unitframes/Helpers.lua
 ui/v2/unitframes/PlayerSections.lua
+ui/v2/unitframes/UFSections.lua
 ui/v2/unitframes/ToTRenderer.lua
 ui/v2/unitframes/PetRenderer.lua
 ui/v2/unitframes/PlayerRenderer.lua

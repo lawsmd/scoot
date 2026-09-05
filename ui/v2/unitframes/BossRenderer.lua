@@ -25,36 +25,7 @@ local B = UF.BindUnit(UNIT_KEY, {
     end,
 })
 
---------------------------------------------------------------------------------
--- Shared Tab Builders
---------------------------------------------------------------------------------
-
-local function buildStyleTab(inner, barPrefix, applyFn, colorValues, colorOrder, colorInfoIcons)
-    local get, set = B.barAccessors(barPrefix)
-    inner:AddBarStyleBlock({
-        get = get, set = set, apply = applyFn,
-        foreground = { values = colorValues, order = colorOrder, infoIcons = colorInfoIcons },
-    })
-    inner:Finalize()
-end
-
-local function buildBorderTab(inner, barPrefix, applyFn)
-    local get, set = B.barAccessors(barPrefix)
-    inner:AddBarBorderBlock({ get = get, set = set, apply = applyFn })
-    inner:Finalize()
-end
-
-local function buildTextTab(inner, textKey, applyFn, defaultAlignment, colorValues, colorOrder)
-    local get, set = B.textAccessors(textKey)
-    inner:AddTextStyleBlock({
-        get = get, set = set, apply = B.applyStyles,
-        applyHidden = applyFn,
-        hideToggle = true,
-        color = { values = colorValues, order = colorOrder },
-        alignment = { kind = "bossDual", default = defaultAlignment, key = textKey .. "AlignmentDual" },
-    })
-    inner:Finalize()
-end
+local Sections = UF.Sections
 
 --------------------------------------------------------------------------------
 -- Renderer Function
@@ -124,8 +95,8 @@ function UF.RenderBoss(panel, scrollContent)
                 componentId = COMPONENT_ID,
                 sectionKey = "healthBar_tabs",
                 buildContent = {
-                    style = function(cf, tabInner) buildStyleTab(tabInner, "healthBar", B.applyBarTextures) end,
-                    border = function(cf, tabInner) buildBorderTab(tabInner, "healthBar", B.applyBarTextures) end,
+                    style = function(cf, tabInner) Sections.BuildStyleTab(B, { inner = tabInner, barPrefix = "healthBar", apply = B.applyBarTextures }) end,
+                    border = function(cf, tabInner) Sections.BuildBorderTab(B, { inner = tabInner, barPrefix = "healthBar", apply = B.applyBarTextures }) end,
                     visibility = function(cf, tabInner)
                         tabInner:AddToggle({
                             label = "Hide the Bar but not its Text",
@@ -147,10 +118,10 @@ function UF.RenderBoss(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     percentText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textHealthPercent", B.applyHealthText, "LEFT", UF.fontColorHealthValues, UF.fontColorHealthOrder)
+                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textHealthPercent", applyHidden = B.applyHealthText, defaultAlignment = "LEFT", colorValues = UF.fontColorHealthValues, colorOrder = UF.fontColorHealthOrder, alignmentKind = "bossDual" })
                     end,
                     valueText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textHealthValue", B.applyHealthText, "RIGHT", UF.fontColorHealthValues, UF.fontColorHealthOrder)
+                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textHealthValue", applyHidden = B.applyHealthText, defaultAlignment = "RIGHT", colorValues = UF.fontColorHealthValues, colorOrder = UF.fontColorHealthOrder, alignmentKind = "bossDual" })
                     end,
                 },
             })
@@ -192,8 +163,8 @@ function UF.RenderBoss(panel, scrollContent)
                         })
                         tabInner:Finalize()
                     end,
-                    style = function(cf, tabInner) buildStyleTab(tabInner, "powerBar", B.applyBarTextures, UF.powerColorValues, UF.powerColorOrder) end,
-                    border = function(cf, tabInner) buildBorderTab(tabInner, "powerBar", B.applyBarTextures) end,
+                    style = function(cf, tabInner) Sections.BuildStyleTab(B, { inner = tabInner, barPrefix = "powerBar", apply = B.applyBarTextures, colorValues = UF.powerColorValues, colorOrder = UF.powerColorOrder }) end,
+                    border = function(cf, tabInner) Sections.BuildBorderTab(B, { inner = tabInner, barPrefix = "powerBar", apply = B.applyBarTextures }) end,
                     visibility = function(cf, tabInner)
                         tabInner:AddToggle({
                             label = "Hide Power Bar",
@@ -220,10 +191,10 @@ function UF.RenderBoss(panel, scrollContent)
                         tabInner:Finalize()
                     end,
                     percentText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textPowerPercent", B.applyPowerText, "LEFT")
+                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textPowerPercent", applyHidden = B.applyPowerText, defaultAlignment = "LEFT", alignmentKind = "bossDual" })
                     end,
                     valueText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textPowerValue", B.applyPowerText, "RIGHT")
+                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textPowerValue", applyHidden = B.applyPowerText, defaultAlignment = "RIGHT", alignmentKind = "bossDual" })
                     end,
                 },
             })
