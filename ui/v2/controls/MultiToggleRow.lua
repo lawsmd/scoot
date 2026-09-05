@@ -26,15 +26,6 @@ local PADDING = 12
 local GAP = 12
 local MINI_TOGGLE_WIDTH = 70
 
--- Dynamic height, same contract as ToggleSliderRow.lua: the description gets
--- the row width MINUS the control column, then the row grows to whatever that
--- wrapping costs. DESC_PADDING_BOTTOM is doubled (36, not 18) because the label
--- is CENTER-anchored, so the description hangs below a block that stays centred
--- and needs its own slack at the bottom.
-local MAX_ROW_HEIGHT = 200
-local LABEL_LINE_HEIGHT = 16
-local DESC_PADDING_TOP = 2
-local DESC_PADDING_BOTTOM = 36
 
 --------------------------------------------------------------------------------
 -- MultiToggleRow
@@ -93,69 +84,20 @@ function Controls:CreateMultiToggleRow(options)
     rowBorder:SetColorTexture(ar, ag, ab, 0.2)
     row._rowBorder = rowBorder
 
-    local labelFS
-    if hasLabel then
-        labelFS = row:CreateFontString(nil, "OVERLAY")
-        labelFS:SetFont(theme:GetFont("LABEL"), 13, "")
-        labelFS:SetPoint("LEFT", row, "LEFT", PADDING, hasDesc and 6 or 0)
-        labelFS:SetText(label)
-        labelFS:SetTextColor(ar, ag, ab, 1)
-        row._label = labelFS
-    end
-
     -- Static reservation for the control column. It holds even if the deferred
-    -- measurement below never gets a width to work with, which is what keeps
-    -- the wrapped explainer from ever reaching under the toggles.
+    -- measurement never gets a width to work with, which is what keeps the
+    -- wrapped explainer from ever reaching under the toggles.
     local CONTROL_RESERVE = PADDING + containerWidth + GAP
 
-    if hasDesc and labelFS then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        descFS:SetFont(theme:GetFont("VALUE"), 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -DESC_PADDING_TOP)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -CONTROL_RESERVE, 0)
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-
-        -- Grow the row to fit the wrapped text. Immediate first: the builder
-        -- reads GetHeight() the instant this returns, and a height that lands
-        -- later would leave the rows below overlapping this one.
-        local function MeasureAndAdjustHeight()
-            if not row or not descFS then return false end
-
-            local rowWidth = row:GetWidth()
-            if rowWidth == 0 and row:GetParent() then
-                rowWidth = row:GetParent():GetWidth() or 0
-            end
-            if rowWidth == 0 then return false end
-
-            local descAvailableWidth = rowWidth - PADDING - CONTROL_RESERVE
-            if descAvailableWidth <= 0 then return false end
-
-            -- Explicit width first: GetStringHeight only reports the WRAPPED
-            -- height once the FontString has one to wrap against.
-            descFS:SetWidth(descAvailableWidth)
-
-            local textHeight = descFS:GetStringHeight() or 0
-            local requiredHeight = LABEL_LINE_HEIGHT + DESC_PADDING_TOP + textHeight + DESC_PADDING_BOTTOM
-            requiredHeight = math.min(requiredHeight, MAX_ROW_HEIGHT)
-
-            local currentHeight = row:GetHeight()
-            if requiredHeight > currentHeight then
-                row:SetHeight(requiredHeight)
-                if row._onHeightChanged then
-                    row._onHeightChanged(requiredHeight - currentHeight)
-                end
-            end
-            return true
-        end
-        row._measureDesc = MeasureAndAdjustHeight
-
-        if not MeasureAndAdjustHeight() then
-            C_Timer.After(0.1, MeasureAndAdjustHeight)
-        end
+    if hasLabel then
+        Controls.AddRowChrome(row, {
+            label = label,
+            padLeft = PADDING,
+            description = description,
+            reserve = CONTROL_RESERVE,
+            measureReserve = PADDING + CONTROL_RESERVE,
+            dimColor = { dimR, dimG, dimB },
+        })
     end
 
     local containerHeight = MINI_LABEL_HEIGHT + MINI_LABEL_GAP + CONTROL_HEIGHT

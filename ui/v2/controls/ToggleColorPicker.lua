@@ -29,11 +29,6 @@ local TOGGLE_COLOR_SWATCH_HEIGHT = 18
 local TOGGLE_COLOR_SWATCH_BORDER = 2
 local TOGGLE_COLOR_SWATCH_GAP = 10
 
--- Dynamic height constants
-local MAX_ROW_HEIGHT = 200        -- Cap to prevent excessively tall rows
-local LABEL_LINE_HEIGHT = 16      -- Approximate label height
-local DESC_PADDING_TOP = 2        -- Space between label and description
-local DESC_PADDING_BOTTOM = 36    -- Space below description to border (doubled for center-anchored layout)
 
 -- ToggleColorPicker: Toggle with inline color swatch (visible when ON)
 
@@ -84,65 +79,15 @@ function Controls:CreateToggleColorPicker(options)
         alpha = 0.2,
     })
 
-    -- Label text (left side)
-    local labelFS = row:CreateFontString(nil, "OVERLAY")
-    local labelFont = theme:GetFont("LABEL")
-    labelFS:SetFont(labelFont, 13, "")
-    labelFS:SetPoint("LEFT", row, "LEFT", TOGGLE_PADDING, hasDesc and 6 or 0)
-    labelFS:SetText(label)
-    labelFS:SetTextColor(ar, ag, ab, 1)
-    row._label = labelFS
-
-    -- Description text (if provided)
-    if hasDesc then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        local descFont = theme:GetFont("VALUE")
-        descFS:SetFont(descFont, 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -(TOGGLE_INDICATOR_WIDTH + swatchWidth + TOGGLE_COLOR_SWATCH_GAP + TOGGLE_PADDING * 2 + 8), 0)
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-
-        -- Deferred height measurement after text layout completes
-        local function MeasureAndAdjustHeight()
-            if not row or not descFS then return false end
-
-            -- Get the row's effective width (try row, then parent)
-            local rowWidth = row:GetWidth()
-            if rowWidth == 0 and row:GetParent() then
-                rowWidth = row:GetParent():GetWidth() or 0
-            end
-            if rowWidth == 0 then return false end
-
-            -- Calculate available width for description text
-            local descAvailableWidth = rowWidth - TOGGLE_INDICATOR_WIDTH - swatchWidth - TOGGLE_COLOR_SWATCH_GAP - (TOGGLE_PADDING * 2) - 8
-            if descAvailableWidth <= 0 then return false end
-
-            -- Explicitly set description width so GetStringHeight returns wrapped height
-            descFS:SetWidth(descAvailableWidth)
-
-            local textHeight = descFS:GetStringHeight() or 0
-            local requiredHeight = LABEL_LINE_HEIGHT + DESC_PADDING_TOP + textHeight + DESC_PADDING_BOTTOM
-            requiredHeight = math.min(requiredHeight, MAX_ROW_HEIGHT)
-
-            local currentHeight = row:GetHeight()
-            if requiredHeight > currentHeight then
-                row:SetHeight(requiredHeight)
-                if row._onHeightChanged then
-                    row._onHeightChanged(requiredHeight - currentHeight)
-                end
-            end
-            return true
-        end
-
-        -- Try immediate measurement, fall back to deferred
-        if not MeasureAndAdjustHeight() then
-            C_Timer.After(0.1, MeasureAndAdjustHeight)
-        end
-    end
+    -- Label and description
+    local labelFS = Controls.AddRowChrome(row, {
+        label = label,
+        padLeft = TOGGLE_PADDING,
+        description = description,
+        reserve = TOGGLE_INDICATOR_WIDTH + swatchWidth + TOGGLE_COLOR_SWATCH_GAP + TOGGLE_PADDING * 2 + 8,
+        measureReserve = TOGGLE_INDICATOR_WIDTH + swatchWidth + TOGGLE_COLOR_SWATCH_GAP + (TOGGLE_PADDING * 2) + 8,
+        dimColor = { dimR, dimG, dimB },
+    })
 
     -- State indicator (right side)
     local indicator = CreateFrame("Frame", nil, row)

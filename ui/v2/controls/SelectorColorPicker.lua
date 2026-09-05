@@ -28,11 +28,6 @@ local SELECTOR_SWATCH_WIDTH = 40
 local SELECTOR_SWATCH_HEIGHT = 16
 local SELECTOR_SWATCH_BORDER = 2
 
--- Dynamic height constants
-local MAX_ROW_HEIGHT = 200        -- Cap to prevent excessively tall rows
-local LABEL_LINE_HEIGHT = 16      -- Approximate label height
-local DESC_PADDING_TOP = 2        -- Space between label and description
-local DESC_PADDING_BOTTOM = 40    -- Space below description to border (increased for center-anchored layout)
 
 -- SelectorColorPicker: Selector with inline color swatch (visible when custom value selected)
 
@@ -101,65 +96,14 @@ function Controls:CreateSelectorColorPicker(options)
     rowBorder:SetColorTexture(ar, ag, ab, 0.2)
     row._rowBorder = rowBorder
 
-    -- Label text (left side)
-    local labelFS = row:CreateFontString(nil, "OVERLAY")
-    local labelFont = theme:GetFont("LABEL")
-    labelFS:SetFont(labelFont, 13, "")
-    labelFS:SetPoint("LEFT", row, "LEFT", SELECTOR_PADDING, hasDesc and 6 or 0)
-    labelFS:SetText(label)
-    labelFS:SetTextColor(ar, ag, ab, 1)
-    row._label = labelFS
-
-    -- Description text (below label, if provided)
-    if hasDesc then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        local descFont = theme:GetFont("VALUE")
-        descFS:SetFont(descFont, 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -(selectorWidth + SELECTOR_PADDING * 2), 0)
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-
-        -- Deferred height measurement after text layout completes
-        local function MeasureAndAdjustHeight()
-            if not row or not descFS then return false end
-
-            -- Get the row's effective width (try row, then parent)
-            local rowWidth = row:GetWidth()
-            if rowWidth == 0 and row:GetParent() then
-                rowWidth = row:GetParent():GetWidth() or 0
-            end
-            if rowWidth == 0 then return false end
-
-            -- Calculate available width for description text
-            local descAvailableWidth = rowWidth - selectorWidth - (SELECTOR_PADDING * 2)
-            if descAvailableWidth <= 0 then return false end
-
-            -- Explicitly set description width so GetStringHeight returns wrapped height
-            descFS:SetWidth(descAvailableWidth)
-
-            local textHeight = descFS:GetStringHeight() or 0
-            local requiredHeight = LABEL_LINE_HEIGHT + DESC_PADDING_TOP + textHeight + DESC_PADDING_BOTTOM
-            requiredHeight = math.min(requiredHeight, MAX_ROW_HEIGHT)
-
-            local currentHeight = row:GetHeight()
-            if requiredHeight > currentHeight then
-                row:SetHeight(requiredHeight)
-                if row._onHeightChanged then
-                    row._onHeightChanged(requiredHeight - currentHeight)
-                end
-            end
-            return true
-        end
-
-        -- Try immediate measurement, fall back to deferred
-        if not MeasureAndAdjustHeight() then
-            C_Timer.After(0.1, MeasureAndAdjustHeight)
-        end
-    end
+    -- Label and description
+    Controls.AddRowChrome(row, {
+        label = label,
+        description = description,
+        reserve = selectorWidth + SELECTOR_PADDING * 2,
+        measureReserve = selectorWidth + (SELECTOR_PADDING * 2),
+        dimColor = { dimR, dimG, dimB },
+    })
 
     -- Selector container (right side)
     local selector = CreateFrame("Frame", nil, row)

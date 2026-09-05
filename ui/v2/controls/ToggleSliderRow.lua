@@ -33,15 +33,6 @@ local THUMB_WIDTH = 10
 local THUMB_HEIGHT = 16
 local VALUE_WIDTH = 42
 
--- Dynamic height, same contract as Selector.lua: the description gets the row
--- width MINUS the control column, then the row grows to whatever that wrapping
--- costs. DESC_PADDING_BOTTOM is doubled (36, not 18) because the label is
--- CENTER-anchored -- the description hangs below a block that stays centred, so
--- it needs its own slack at the bottom.
-local MAX_ROW_HEIGHT = 200
-local LABEL_LINE_HEIGHT = 16
-local DESC_PADDING_TOP = 2
-local DESC_PADDING_BOTTOM = 36
 
 --------------------------------------------------------------------------------
 -- Helper: CreateMiniSlider
@@ -285,71 +276,23 @@ function Controls:CreateToggleSliderRow(options)
     rowBorder:SetColorTexture(ar, ag, ab, 0.2)
     row._rowBorder = rowBorder
 
-    local labelFS
-    if hasLabel then
-        labelFS = row:CreateFontString(nil, "OVERLAY")
-        labelFS:SetFont(theme:GetFont("LABEL"), 13, "")
-        labelFS:SetPoint("LEFT", row, "LEFT", PADDING, hasDesc and 6 or 0)
-        labelFS:SetText(label)
-        labelFS:SetTextColor(ar, ag, ab, 1)
-        row._label = labelFS
-    end
-
     -- The control column's worst case: the deferred sizing below only ever
     -- SHRINKS the container from DEFAULT_CONTAINER_WIDTH, so reserving the full
     -- width here is what makes the description safe at every panel width -- and
-    -- it is a static anchor, so it holds even if the measurement below never
-    -- gets a width to work with.
+    -- it is a static anchor, so it holds even if the measurement never gets a
+    -- width to work with.
     local CONTROL_RESERVE = PADDING + DEFAULT_CONTAINER_WIDTH + GAP
 
-    if hasDesc and labelFS then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        descFS:SetFont(theme:GetFont("VALUE"), 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -DESC_PADDING_TOP)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -CONTROL_RESERVE, 0)
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-
-        -- Grow the row to fit the wrapped text. Immediate first: the builder
-        -- reads GetHeight() the instant this returns, and a height that lands
-        -- later would leave the rows below overlapping this one.
-        local function MeasureAndAdjustHeight()
-            if not row or not descFS then return false end
-
-            local rowWidth = row:GetWidth()
-            if rowWidth == 0 and row:GetParent() then
-                rowWidth = row:GetParent():GetWidth() or 0
-            end
-            if rowWidth == 0 then return false end
-
-            local descAvailableWidth = rowWidth - PADDING - CONTROL_RESERVE
-            if descAvailableWidth <= 0 then return false end
-
-            -- Explicit width first: GetStringHeight only reports the WRAPPED
-            -- height once the FontString has one to wrap against.
-            descFS:SetWidth(descAvailableWidth)
-
-            local textHeight = descFS:GetStringHeight() or 0
-            local requiredHeight = LABEL_LINE_HEIGHT + DESC_PADDING_TOP + textHeight + DESC_PADDING_BOTTOM
-            requiredHeight = math.min(requiredHeight, MAX_ROW_HEIGHT)
-
-            local currentHeight = row:GetHeight()
-            if requiredHeight > currentHeight then
-                row:SetHeight(requiredHeight)
-                if row._onHeightChanged then
-                    row._onHeightChanged(requiredHeight - currentHeight)
-                end
-            end
-            return true
-        end
-        row._measureDesc = MeasureAndAdjustHeight
-
-        if not MeasureAndAdjustHeight() then
-            C_Timer.After(0.1, MeasureAndAdjustHeight)
-        end
+    local labelFS
+    if hasLabel then
+        labelFS = Controls.AddRowChrome(row, {
+            label = label,
+            padLeft = PADDING,
+            description = description,
+            reserve = CONTROL_RESERVE,
+            measureReserve = PADDING + CONTROL_RESERVE,
+            dimColor = { dimR, dimG, dimB },
+        })
     end
 
     local containerHeight = MINI_LABEL_HEIGHT + MINI_LABEL_GAP + CONTROL_HEIGHT
