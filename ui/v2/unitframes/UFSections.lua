@@ -64,4 +64,105 @@ function Sections.BuildTextTab(B, opts)
     opts.inner:Finalize()
 end
 
+--------------------------------------------------------------------------------
+-- Section Builders
+--------------------------------------------------------------------------------
+
+-- Parent-level controls above the sections: the Hide Blizzard Art toggle, then
+-- Use Larger Frame, Frame Size or the Boss Scale slider, and Scale Multiplier
+-- as the unit carries them.
+-- opts: builder, componentId; useCustomBorders = { clearHealthBorder = false
+-- to skip the healthBarHideBorder reset (Boss), onDisable = function(t,
+-- wasEnabled) for extra resets (Player) }; useLargerFrame = { description }
+-- (Focus, Boss); frameSize/scaleMult = false to skip (Boss); bossScale = true
+-- for the Boss db scale slider.
+function Sections.BuildParentControls(B, opts)
+    local builder = opts.builder
+    local ucb = opts.useCustomBorders or {}
+    builder:AddToggle({
+        label = "Hide Blizzard Frame Art & Animations",
+        description = "REQUIRED for custom borders. Hides default frame art.",
+        emphasized = true,
+        get = function()
+            local t = B.getUFDB() or {}
+            return not not t.useCustomBorders
+        end,
+        set = function(v)
+            local t = B.ensureUFDB()
+            if not t then return end
+            local wasEnabled = t.useCustomBorders
+            t.useCustomBorders = not not v
+            if not v then
+                if ucb.clearHealthBorder ~= false then t.healthBarHideBorder = false end
+                if ucb.onDisable then ucb.onDisable(t, wasEnabled) end
+            end
+            B.applyBarTextures()
+        end,
+        infoIcon = UF.TOOLTIPS.hideBlizzardArt,
+    })
+    if opts.useLargerFrame then
+        builder:AddToggle({
+            label = "Use Larger Frame",
+            description = opts.useLargerFrame.description,
+            get = function()
+                return UF.getUseLargerFrame(opts.componentId)
+            end,
+            set = function(v)
+                UF.setUseLargerFrame(opts.componentId, v)
+            end,
+        })
+    end
+    if opts.frameSize ~= false then
+        builder:AddSlider({
+            label = "Frame Size (Scale)",
+            description = "Blizzard's Edit Mode scale (100-200%).",
+            min = 100,
+            max = 200,
+            step = 5,
+            get = function()
+                return UF.getEditModeFrameSize(opts.componentId)
+            end,
+            set = function(v)
+                UF.setEditModeFrameSize(opts.componentId, v)
+            end,
+            minLabel = "100%",
+            maxLabel = "200%",
+            infoIcon = UF.TOOLTIPS.frameSize,
+        })
+    end
+    if opts.bossScale then
+        builder:AddSlider({
+            label = "Scale",
+            description = "Overall scale of boss frames.",
+            min = 0.5, max = 2.0, step = 0.05, precision = 2,
+            get = function() local t = B.getUFDB() or {}; return tonumber(t.scale) or 1.0 end,
+            set = function(v) local t = B.ensureUFDB(); if t then t.scale = tonumber(v) or 1.0; B.applyStyles() end end,
+            minLabel = "0.5x", maxLabel = "2.0x",
+        })
+    end
+    if opts.scaleMult ~= false then
+        builder:AddSlider({
+            label = "Scale Multiplier",
+            description = "Addon multiplier on top of Edit Mode scale.",
+            min = 1.0,
+            max = 2.0,
+            step = 0.05,
+            precision = 2,
+            get = function()
+                local t = B.getUFDB() or {}
+                return tonumber(t.scaleMult) or 1.0
+            end,
+            set = function(v)
+                local t = B.ensureUFDB()
+                if not t then return end
+                t.scaleMult = tonumber(v) or 1.0
+                B.applyScaleMult()
+            end,
+            minLabel = "1.0x",
+            maxLabel = "2.0x",
+            infoIcon = UF.TOOLTIPS.scaleMult,
+        })
+    end
+end
+
 return UF.Sections

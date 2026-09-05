@@ -45,33 +45,11 @@ function UF.RenderBoss(panel, scrollContent)
     -- Parent-Level Settings
     --------------------------------------------------------------------------------
 
-    builder:AddToggle({
-        label = "Hide Blizzard Frame Art & Animations",
-        description = "REQUIRED for custom borders. Hides default frame art.",
-        emphasized = true,
-        get = function() local t = B.getUFDB() or {}; return not not t.useCustomBorders end,
-        set = function(v) local t = B.ensureUFDB(); if t then t.useCustomBorders = not not v; B.applyBarTextures() end end,
-        infoIcon = UF.TOOLTIPS.hideBlizzardArt,
-    })
-
-    builder:AddToggle({
-        label = "Use Larger Frame",
-        description = "Uses the larger Boss frame variant (Edit Mode setting).",
-        get = function()
-            return UF.getUseLargerFrame(COMPONENT_ID)
-        end,
-        set = function(v)
-            UF.setUseLargerFrame(COMPONENT_ID, v)
-        end,
-    })
-
-    builder:AddSlider({
-        label = "Scale",
-        description = "Overall scale of boss frames.",
-        min = 0.5, max = 2.0, step = 0.05, precision = 2,
-        get = function() local t = B.getUFDB() or {}; return tonumber(t.scale) or 1.0 end,
-        set = function(v) local t = B.ensureUFDB(); if t then t.scale = tonumber(v) or 1.0; B.applyStyles() end end,
-        minLabel = "0.5x", maxLabel = "2.0x",
+    Sections.BuildParentControls(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        useCustomBorders = { clearHealthBorder = false },
+        useLargerFrame = { description = "Uses the larger Boss frame variant (Edit Mode setting)." },
+        frameSize = false, scaleMult = false, bossScale = true,
     })
 
     --------------------------------------------------------------------------------

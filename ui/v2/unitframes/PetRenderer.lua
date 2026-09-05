@@ -14,6 +14,7 @@ local UNIT_KEY = "Pet"
 --------------------------------------------------------------------------------
 
 local B = UF.BindUnit(UNIT_KEY)
+local Sections = UF.Sections
 
 --------------------------------------------------------------------------------
 -- Health Bar Tab Builders
@@ -95,62 +96,7 @@ function UF.RenderPet(panel, scrollContent)
     -- Parent-Level Settings (no X/Y Position - handled by Edit Mode)
     --------------------------------------------------------------------------------
 
-    builder:AddToggle({
-        label = "Hide Blizzard Frame Art & Animations",
-        description = "REQUIRED for custom borders. Hides default frame art.",
-        emphasized = true,
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.useCustomBorders
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.useCustomBorders = not not v
-            if not v then t.healthBarHideBorder = false end
-            B.applyBarTextures()
-        end,
-        infoIcon = UF.TOOLTIPS.hideBlizzardArt,
-    })
-
-    builder:AddSlider({
-        label = "Frame Size (Scale)",
-        description = "Blizzard's Edit Mode scale (100-200%).",
-        min = 100,
-        max = 200,
-        step = 5,
-        get = function()
-            return UF.getEditModeFrameSize(COMPONENT_ID)
-        end,
-        set = function(v)
-            UF.setEditModeFrameSize(COMPONENT_ID, v)
-        end,
-        minLabel = "100%",
-        maxLabel = "200%",
-        infoIcon = UF.TOOLTIPS.frameSize,
-    })
-
-    builder:AddSlider({
-        label = "Scale Multiplier",
-        description = "Addon multiplier on top of Edit Mode scale.",
-        min = 1.0,
-        max = 2.0,
-        step = 0.05,
-        precision = 2,
-        get = function()
-            local t = B.getUFDB() or {}
-            return tonumber(t.scaleMult) or 1.0
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.scaleMult = tonumber(v) or 1.0
-            B.applyScaleMult()
-        end,
-        minLabel = "1.0x",
-        maxLabel = "2.0x",
-        infoIcon = UF.TOOLTIPS.scaleMult,
-    })
+    Sections.BuildParentControls(B, { builder = builder, componentId = COMPONENT_ID })
 
     --------------------------------------------------------------------------------
     -- Collapsible Section: Health Bar
