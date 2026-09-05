@@ -186,12 +186,6 @@ function CG._UpdateGroupOpacity(groupIndex)
     container:SetAlpha(CG._getGroupOpacityForState(groupIndex))
 end
 
-function CG._UpdateAllGroupOpacities()
-    for i = 1, CG.NUM_GROUPS do
-        CG._UpdateGroupOpacity(i)
-    end
-end
-
 --------------------------------------------------------------------------------
 -- LibEditMode Integration
 --------------------------------------------------------------------------------

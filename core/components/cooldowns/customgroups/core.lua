@@ -369,20 +369,12 @@ local function onCustomGroupEvent(event)
         or event == "PLAYER_EQUIPMENT_CHANGED" then
         C_Timer.After(0.2, RebuildAllGroups)
 
-    elseif event == "PLAYER_REGEN_DISABLED"
-        or event == "PLAYER_REGEN_ENABLED"
-        or event == "PLAYER_TARGET_CHANGED" then
-        CG._UpdateAllGroupOpacities()
-        -- Re-apply per-icon cooldown opacity with updated container alpha
-        for gi = 1, CG.NUM_GROUPS do
-            CG._UpdateGroupCooldownOpacities(gi)
-        end
-
-        if event == "PLAYER_TARGET_CHANGED" then
-            C_Timer.After(0.5, function()
-                CG._RefreshAllSpellCooldowns()
-            end)
-        end
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        -- Opacity on this edge comes from RefreshOpacityState via each
+        -- group's RefreshOpacity; only the cooldown refresh stays local.
+        C_Timer.After(0.5, function()
+            CG._RefreshAllSpellCooldowns()
+        end)
 
     elseif event == "BAG_UPDATE" then
         if not bagUpdatePending then
@@ -418,8 +410,6 @@ for _, event in ipairs({
     "PLAYER_TALENT_UPDATE",
     "TRAIT_CONFIG_UPDATED",
     "PLAYER_EQUIPMENT_CHANGED",
-    "PLAYER_REGEN_DISABLED",
-    "PLAYER_REGEN_ENABLED",
     "PLAYER_TARGET_CHANGED",
     "ITEM_DATA_LOAD_RESULT",
     "BAG_UPDATE",
@@ -473,6 +463,16 @@ local function CustomGroupApplyStyling(component)
     CG._ApplyBordersToGroup(groupIndex)
     CG._ApplyTextToGroup(groupIndex)
     CG._ApplyKeybindTextToGroup(groupIndex)
+    CG._UpdateGroupOpacity(groupIndex)
+    CG._UpdateGroupCooldownOpacities(groupIndex)
+end
+
+-- Combat and target edges land here from RefreshOpacityState; container and
+-- per-icon cooldown alpha only, no rebuild.
+local function CustomGroupRefreshOpacity(component)
+    local groupIndex = tonumber(component.id:match("%d+"))
+    if not groupIndex then return end
+    if not cgInitialized then return end
     CG._UpdateGroupOpacity(groupIndex)
     CG._UpdateGroupCooldownOpacities(groupIndex)
 end
@@ -592,6 +592,7 @@ addon:RegisterComponentInitializer(function(self)
             name = "Custom Group " .. i,
             settings = CreateCustomGroupSettings(),
             ApplyStyling = CustomGroupApplyStyling,
+            RefreshOpacity = CustomGroupRefreshOpacity,
         })
         self:RegisterComponent(comp)
     end
