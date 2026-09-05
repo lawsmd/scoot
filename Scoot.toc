@@ -114,6 +114,7 @@ core/components/personal_resource_display/bars.lua
 core/components/personal_resource_display/editmode.lua
 core/components/scrollingcombattext.lua
 core/components/unitframes/text/core.lua
+core/components/unitframes/text/pipeline.lua
 core/components/unitframes/text/health.lua
 core/components/unitframes/text/power.lua
 core/components/unitframes/text/names.lua

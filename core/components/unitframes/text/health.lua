@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
 -- text/health.lua
--- Health text font styling, visibility enforcement, and positioning for all
--- unit frames (Player, Target, Focus, Boss, Pet, ToT, FocusTarget).
+-- Health text kind descriptor and forks for the shared text pipeline
+-- (text/pipeline.lua): bar and FontString resolvers, the health color half,
+-- and the DeadText/UnconsciousText font inheritance.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -18,14 +19,8 @@ local ufTextCustomizationOpts = { alignment = true, alignmentMode = true }
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
--- Secret-value safe helpers (shared module)
-local SS = addon.SecretSafe
-local safeOffset = SS.safeOffset
-local safePointToken = SS.safePointToken
-local safeGetWidth = SS.safeGetWidth
-
--- Cross-file import: NAME_ANCHOR_MAP (defined in text/core.lua, loaded first in TOC)
-local NAME_ANCHOR_MAP = addon.UnitFrameText._NAME_ANCHOR_MAP
+-- Cross-file import: the shared text pipeline builder (text/pipeline.lua, loaded first in TOC)
+local buildTextPipeline = addon.UnitFrameText._BuildTextPipeline
 
 --Direct upvalue to the event-driven guard (editmode/core.lua loads first in TOC)
 local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
@@ -34,7 +29,6 @@ local isEditModeActive = addon.EditMode.IsEditModeActiveOrOpening
 -- FrameState, where the profile-switch reset in base/core.lua also clears it;
 -- the keys read it live. Show and SetText re-assert at once, SetAlpha after a
 -- stack break; every hook bails while Edit Mode is open.
-local Enforce = addon.Enforce
 local HEALTH_TEXT_OPTS = {
     methods = { "Show", "SetAlpha", "SetText" },
     timing = { SetAlpha = "defer" },
@@ -49,13 +43,6 @@ local HEALTH_TEXT_CENTER_OPTS = {
 
 -- Unit Frames: Toggle Health % (LeftText) and Value (RightText) visibility per unit
 do
-    -- Cache for resolved health text fontstrings per unit so combat-time hooks stay cheap.
-    addon._ufHealthTextFonts = addon._ufHealthTextFonts or {}
-
-    local getUnitFrameFor = addon.GetUnitFrame
-
-    local findFontStringByNameHint = addon.UnitFrameText._FindFontStringByNameHint
-
     -- Resolve health bar for this unit
     local function resolveHealthBarForVisibility(frame, unit)
         if unit == "Pet" then return _G.PetFrameHealthBar end
@@ -126,47 +113,6 @@ do
     -- Expose for UI modules (builders.lua) to gate the Alternate Power Bar section.
     addon.UnitFrames_PlayerHasAlternatePowerBar = playerHasAlternatePowerBar
 
-    -- Hook UpdateTextString to reapply visibility after Blizzard's updates.
-    -- IMPORTANT: Use hooksecurefunc to avoid replacing the method and taint
-    -- secure StatusBar instances used by Blizzard (Combat Log, unit frames, etc.).
-    local function hookHealthBarUpdateTextString(bar, unit)
-        local fs = FS
-        if not bar or not fs then return end
-        if fs.IsHooked(bar, "healthBarUpdateTextString") then return end
-        fs.MarkHooked(bar, "healthBarUpdateTextString")
-        if _G.hooksecurefunc then
-            _G.hooksecurefunc(bar, "UpdateTextString", function(self, ...)
-                if addon and addon.ApplyUnitFrameHealthTextVisibilityFor then
-                    addon.ApplyUnitFrameHealthTextVisibilityFor(unit)
-                end
-            end)
-        end
-    end
-
-    -- Shared text styling helpers (used by Player/Target/Focus/Pet AND Boss frames).
-    -- Keep these outside applyForUnit so Boss can reuse the exact same styling logic.
-    addon._ufTextBaselines = addon._ufTextBaselines or {}
-
-    local function ensureBaseline(fs, key, fallbackFrame)
-        addon._ufTextBaselines[key] = addon._ufTextBaselines[key] or {}
-        local b = addon._ufTextBaselines[key]
-        if b.point == nil then
-            if fs and fs.GetPoint then
-                local p, relTo, rp, x, y = fs:GetPoint(1)
-                b.point = p or "CENTER"
-                b.relTo = relTo or (fs.GetParent and fs:GetParent()) or fallbackFrame
-                b.relPoint = rp or b.point
-                b.x = safeOffset(x)
-                b.y = safeOffset(y)
-            else
-                b.point, b.relTo, b.relPoint, b.x, b.y = "CENTER", (fs and fs.GetParent and fs:GetParent()) or fallbackFrame, "CENTER", 0, 0
-            end
-        end
-        return b
-    end
-
-    local forceTextRedraw = addon.UnitFrameText._ForceTextRedraw
-
     -- Targeted zero-touch check for DeadText/UnconsciousText: only fontFace and style matter
     -- (color, alignment, offset are irrelevant: Blizzard's original values are kept).
     -- Deliberately narrower than addon.HasTextCustomization.
@@ -221,17 +167,11 @@ do
         end
     end
 
-    local function applyTextStyle(fs, styleCfg, baselineKey, fallbackFrame)
-        if not fs or not styleCfg then return end
-        if not addon.HasTextCustomization(styleCfg, ufTextCustomizationOpts) then
-            return
-        end
-
-        addon.ApplyTextFont(fs, styleCfg, ufTextFontOpts)
-
-        -- Resolve color based on colorMode
+    -- Color half of the text styling: "Color by Value" routes through the
+    -- health color curve, everything else through ResolveColorRGBA.
+    local function applyHealthTextColor(fs, styleCfg, baselineKey)
         local colorMode = styleCfg.colorMode or "default"
-        -- Extract unit token from baselineKey (e.g., "Player:left" -> "player")
+        -- Extract unit token from baselineKey (e.g., "Player:health-left" -> "player")
         local unitToken = baselineKey and baselineKey:match("^(.-):")
         if unitToken then unitToken = unitToken:lower() end
         if addon.IsValueColorMode(colorMode) then
@@ -248,264 +188,49 @@ do
                 pcall(fs.SetTextColor, fs, cr, cg, cb, ca)
             end
         end
+    end
 
-        -- Only modify layout if alignment or offset is explicitly configured (avoids
-        -- Apply All Fonts inadvertently changing text positioning).
-        local hasLayoutCustomization = styleCfg.alignment ~= nil
-            or styleCfg.alignmentMode ~= nil
-            or (styleCfg.offset and (styleCfg.offset.x ~= nil or styleCfg.offset.y ~= nil))
-
-        -- Ensure name-anchor reparenting is undone if layout customizations are removed
-        if not hasLayoutCustomization then
-            local fst = FS
-            if fst then
-                local origParent = fst.GetProp(fs, "nameAnchorOrigParent")
-                if origParent and fs.SetParent then
-                    pcall(fs.SetParent, fs, origParent)
-                    local origLayer = fst.GetProp(fs, "nameAnchorOrigLayer") or "OVERLAY"
-                    local origSub = fst.GetProp(fs, "nameAnchorOrigSublayer") or 1
-                    pcall(fs.SetDrawLayer, fs, origLayer, origSub)
-                    fst.SetProp(fs, "nameAnchorOrigParent", nil)
-                    fst.SetProp(fs, "nameAnchorOrigLayer", nil)
-                    fst.SetProp(fs, "nameAnchorOrigSublayer", nil)
-                end
-            end
+    -- First-rung left/right FontString paths (no scanning); the pipeline falls
+    -- back to the hint scan when these miss.
+    local function directHealthTexts(frame, unit)
+        local leftFS, rightFS
+        if unit == "Pet" then
+            leftFS = _G.PetFrameHealthBarTextLeft
+            rightFS = _G.PetFrameHealthBarTextRight
         end
+        leftFS = leftFS or (frame and frame.HealthBarsContainer and frame.HealthBarsContainer.LeftText)
+        rightFS = rightFS or (frame and frame.HealthBarsContainer and frame.HealthBarsContainer.RightText)
+        return leftFS, rightFS
+    end
 
-        if hasLayoutCustomization then
-            -- Determine default alignment based on text role
-            -- Check for both :right and -right patterns to handle all unit types (Player:right, Boss1:health-right, etc.)
-            local defaultAlign = "LEFT"
-            if baselineKey and (baselineKey:find(":right", 1, true) or baselineKey:find("-right", 1, true)) then
-                defaultAlign = "RIGHT"
-            elseif baselineKey and (baselineKey:find(":center", 1, true) or baselineKey:find("-center", 1, true)) then
-                defaultAlign = "CENTER"
-            end
-            local alignment = styleCfg.alignment or defaultAlign
-
-            local parentBar = fs.GetParent and fs:GetParent()
-
-            -- Get baseline Y position and user offsets
-            local b = ensureBaseline(fs, baselineKey, fallbackFrame or parentBar)
-            local ox = (styleCfg.offset and tonumber(styleCfg.offset.x)) or 0
-            local oy = (styleCfg.offset and tonumber(styleCfg.offset.y)) or 0
-            local yOffset = safeOffset(b.y) + oy
-
-            -- Name-anchor mode: position text relative to boss name FontString
-            local useNameAnchor = false
-            if styleCfg.alignmentMode == "name" and baselineKey and baselineKey:find("^Boss") then
-                local bossIdx = baselineKey:match("^Boss(%d+)")
-                if bossIdx then
-                    local bossFrame = addon.GetBossFrame(bossIdx)
-                    local nameFS = bossFrame and addon.ResolveBossNameFS(bossFrame) or nil
-                    if nameFS then
-                        local anchorKey = styleCfg.nameAnchor or "RIGHT_OF_NAME"
-                        local anchorInfo = NAME_ANCHOR_MAP[anchorKey]
-                        if anchorInfo then
-                            useNameAnchor = true
-                            -- Reparent to contentMain so SetPoint can target nameFS (same hierarchy)
-                            local contentMain = bossFrame.TargetFrameContent
-                                and bossFrame.TargetFrameContent.TargetFrameContentMain
-                            if contentMain and fs.SetParent then
-                                local fst = FS
-                                if fst and not fst.GetProp(fs, "nameAnchorOrigParent") then
-                                    fst.SetProp(fs, "nameAnchorOrigParent", fs:GetParent())
-                                    fst.SetProp(fs, "nameAnchorOrigLayer", select(1, fs:GetDrawLayer()))
-                                    fst.SetProp(fs, "nameAnchorOrigSublayer", select(2, fs:GetDrawLayer()))
-                                end
-                                pcall(fs.SetParent, fs, contentMain)
-                                pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
-                            end
-                            local textPt, namePt, justH, gapX, gapY = anchorInfo[1], anchorInfo[2], anchorInfo[3], anchorInfo[4], anchorInfo[5]
-                            if fs.ClearAllPoints and fs.SetPoint then
-                                fs:ClearAllPoints()
-                                pcall(fs.SetPoint, fs, textPt, nameFS, namePt, gapX + ox, gapY + oy)
-                            end
-                            if fs.SetJustifyH then
-                                pcall(fs.SetJustifyH, fs, justH)
-                            end
-                            -- Undo two-point width constraint — let text auto-size
-                            if fs.SetWidth then
-                                pcall(fs.SetWidth, fs, 0)
-                            end
-                            forceTextRedraw(fs)
-                        end
-                    end
-                end
-            end
-
-            if not useNameAnchor then
-                -- Restore original parent if previously reparented for name-anchor mode
-                local fst = FS
-                if fst then
-                    local origParent = fst.GetProp(fs, "nameAnchorOrigParent")
-                    if origParent and fs.SetParent then
-                        pcall(fs.SetParent, fs, origParent)
-                        local origLayer = fst.GetProp(fs, "nameAnchorOrigLayer") or "OVERLAY"
-                        local origSub = fst.GetProp(fs, "nameAnchorOrigSublayer") or 1
-                        pcall(fs.SetDrawLayer, fs, origLayer, origSub)
-                        fst.SetProp(fs, "nameAnchorOrigParent", nil)
-                        fst.SetProp(fs, "nameAnchorOrigLayer", nil)
-                        fst.SetProp(fs, "nameAnchorOrigSublayer", nil)
-                    end
-                end
-
-                -- Bar-relative mode: two-point anchoring to span the parent bar width.
-                -- Makes JustifyH work correctly without needing GetWidth() (which can
-                -- trigger secret value errors on unit frame StatusBars).
-                if fs.ClearAllPoints and fs.SetPoint and parentBar then
-                    fs:ClearAllPoints()
-                    -- Anchor both left and right edges to span the bar
-                    -- Apply small padding (2px) plus user X offset for text inset
-                    local leftPad = 2 + ox
-                    local rightPad = -2 + ox
-                    pcall(fs.SetPoint, fs, "LEFT", parentBar, "LEFT", leftPad, yOffset)
-                    pcall(fs.SetPoint, fs, "RIGHT", parentBar, "RIGHT", rightPad, yOffset)
-                end
-
-                if fs.SetJustifyH then
-                    pcall(fs.SetJustifyH, fs, alignment)
-                end
-
-                -- Force redraw to apply alignment visually
-                forceTextRedraw(fs)
-            end
+    -- Center TextString per unit (Character Pane shows HealthBarText instead of LeftText/RightText)
+    local function resolveHealthCenterText(unit)
+        if unit == "Pet" then
+            return _G.PetFrameHealthBarText
+        elseif unit == "Player" then
+            local root = _G.PlayerFrame
+            return root and root.PlayerFrameContent
+                and root.PlayerFrameContent.PlayerFrameContentMain
+                and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
+                and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBarText
+        elseif unit == "Target" then
+            local root = _G.TargetFrame
+            return root and root.TargetFrameContent
+                and root.TargetFrameContent.TargetFrameContentMain
+                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
+                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBarText
+        elseif unit == "Focus" then
+            local root = _G.FocusFrame
+            return root and root.TargetFrameContent
+                and root.TargetFrameContent.TargetFrameContentMain
+                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
+                and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBarText
         end
     end
 
-    local function applyForUnit(unit)
-        if not addon:IsModuleEnabled("unitFrames", unit) then return end
-        local db = addon and addon.db and addon.db.profile
-        if not db then return end
-        -- Zero‑Touch: do not create config tables. If this unit has no config, do nothing.
-        local unitFrames = rawget(db, "unitFrames")
-        local cfg = unitFrames and rawget(unitFrames, unit) or nil
-        if not cfg then
-            return
-        end
-        local frame = getUnitFrameFor(unit)
-        if not frame then return end
-
-        -- Resolve health bar and hook its UpdateTextString if not already hooked
-        local hb = resolveHealthBarForVisibility(frame, unit)
-        if hb then
-            hookHealthBarUpdateTextString(hb, unit)
-        end
-
-        --reuse cached FontStrings if available (frame tree is stable)
-        local leftFS, rightFS, textStringFS
-        local existingCache = addon._ufHealthTextFonts[unit]
-        if existingCache and existingCache.leftFS and existingCache.rightFS then
-            leftFS = existingCache.leftFS
-            rightFS = existingCache.rightFS
-            textStringFS = existingCache.textStringFS
-        else
-            if unit == "Pet" then
-                leftFS = _G.PetFrameHealthBarTextLeft or (frame.HealthBarsContainer and frame.HealthBarsContainer.LeftText)
-                rightFS = _G.PetFrameHealthBarTextRight or (frame.HealthBarsContainer and frame.HealthBarsContainer.RightText)
-            end
-            -- Full resolution path (may scan children/regions). This should only run during
-            -- explicit styling passes (ApplyStyles), not on every health text update.
-            leftFS = leftFS
-                or (frame.HealthBarsContainer and frame.HealthBarsContainer.LeftText)
-                or findFontStringByNameHint(frame, "HealthBarsContainer.LeftText")
-                or findFontStringByNameHint(frame, ".LeftText")
-                or findFontStringByNameHint(frame, "HealthBarTextLeft")
-            rightFS = rightFS
-                or (frame.HealthBarsContainer and frame.HealthBarsContainer.RightText)
-                or findFontStringByNameHint(frame, "HealthBarsContainer.RightText")
-                or findFontStringByNameHint(frame, ".RightText")
-                or findFontStringByNameHint(frame, "HealthBarTextRight")
-
-            -- Also resolve the center TextString (used in NUMERIC display mode and Character Pane)
-            -- Ensures styling persists when Blizzard switches between BOTH and NUMERIC modes
-            -- Character Pane shows HealthBarText instead of LeftText/RightText
-            if unit == "Pet" then
-                textStringFS = _G.PetFrameHealthBarText
-            elseif unit == "Player" then
-                local root = _G.PlayerFrame
-                textStringFS = root and root.PlayerFrameContent
-                    and root.PlayerFrameContent.PlayerFrameContentMain
-                    and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer
-                    and root.PlayerFrameContent.PlayerFrameContentMain.HealthBarsContainer.HealthBarText
-            elseif unit == "Target" then
-                local root = _G.TargetFrame
-                textStringFS = root and root.TargetFrameContent
-                    and root.TargetFrameContent.TargetFrameContentMain
-                    and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                    and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBarText
-            elseif unit == "Focus" then
-                local root = _G.FocusFrame
-                textStringFS = root and root.TargetFrameContent
-                    and root.TargetFrameContent.TargetFrameContentMain
-                    and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                    and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBarText
-            end
-
-            -- Cache resolved fontstrings so combat-time hooks can avoid expensive scans.
-            addon._ufHealthTextFonts[unit] = {
-                leftFS = leftFS,
-                rightFS = rightFS,
-                textStringFS = textStringFS,
-            }
-        end
-
-        -- Apply visibility using SetAlpha (combat-safe) instead of SetShown (taint-prone).
-        -- Tri‑state: nil = don't touch; true = hide; false = show.
-        local function applyHealthTextVisibility(fs, hiddenSetting, unitForHook)
-            if not fs then return end
-            local fstate = FS
-            if not fstate then return end
-            --Invalidate hot-path cache so settings changes propagate
-            if fstate then fstate.ClearProp(fs, "healthTextAppliedHidden") end
-            if hiddenSetting == nil then
-                return
-            end
-            local hidden = (hiddenSetting == true)
-            if hidden then
-                if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                Enforce.Install(fs, "healthText", HEALTH_TEXT_OPTS)
-                fstate.SetHidden(fs, "healthText", true)
-            else
-                fstate.SetHidden(fs, "healthText", false)
-                if fs.SetAlpha then pcall(fs.SetAlpha, fs, 1) end
-            end
-        end
-
-        -- Apply current visibility once as part of the styling pass.
-        applyHealthTextVisibility(leftFS, cfg.healthPercentHidden, unit)
-        applyHealthTextVisibility(rightFS, cfg.healthValueHidden, unit)
-
-        -- The center TextString: SetText re-asserts the hidden state only
-        local fstate = FS
-        Enforce.Install(textStringFS, "healthTextCenter", HEALTH_TEXT_CENTER_OPTS)
-
-        if leftFS then applyTextStyle(leftFS, cfg.textHealthPercent or {}, unit .. ":left", frame) end
-        if rightFS then applyTextStyle(rightFS, cfg.textHealthValue or {}, unit .. ":right", frame) end
-        -- Style center TextString using Value settings (used in NUMERIC display mode and Character Pane)
-        -- Always apply styling if text customizations exist; handle visibility separately
-        if textStringFS then
-            -- Handle visibility only when explicitly configured
-            if cfg.healthValueHidden ~= nil then
-                local valueHidden = (cfg.healthValueHidden == true)
-                if valueHidden then
-                    if textStringFS.SetAlpha then pcall(textStringFS.SetAlpha, textStringFS, 0) end
-                    if fstate then fstate.SetHidden(textStringFS, "healthTextCenter", true) end
-                else
-                    if fstate and fstate.IsHidden(textStringFS, "healthTextCenter") then
-                        if textStringFS.SetAlpha then pcall(textStringFS.SetAlpha, textStringFS, 1) end
-                        fstate.SetHidden(textStringFS, "healthTextCenter", false)
-                    end
-                end
-            end
-            -- Always apply styling (applyTextStyle returns early if no customizations)
-            if not (fstate and fstate.IsHidden(textStringFS, "healthTextCenter")) then
-                applyTextStyle(textStringFS, cfg.textHealthValue or {}, unit .. ":health-center", frame)
-            end
-        end
-
-        -- DeadText / UnconsciousText: inherit font face + style from Health Value text settings.
-        -- Only Target and Focus have these (Player/Pet do not).
+    -- DeadText / UnconsciousText: inherit font face + style from Health Value text settings.
+    -- Only Target and Focus have these (Player/Pet do not).
+    local function applyDeadTextForUnit(unit, cfg)
         if unit == "Target" or unit == "Focus" then
             local root = (unit == "Target") and _G.TargetFrame or _G.FocusFrame
             local hbContainer = root and root.TargetFrameContent
@@ -513,160 +238,63 @@ do
                 and root.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
             if hbContainer then
                 local valueCfg = cfg.textHealthValue or {}
-                local deadText = hbContainer.DeadText
-                local unconsciousText = hbContainer.UnconsciousText
-                applyDeadTextFontInheritance(deadText, valueCfg)
-                hookDeadTextShow(deadText, unit)
-                applyDeadTextFontInheritance(unconsciousText, valueCfg)
-                hookDeadTextShow(unconsciousText, unit)
+                applyDeadTextFontInheritance(hbContainer.DeadText, valueCfg)
+                hookDeadTextShow(hbContainer.DeadText, unit)
+                applyDeadTextFontInheritance(hbContainer.UnconsciousText, valueCfg)
+                hookDeadTextShow(hbContainer.UnconsciousText, unit)
             end
         end
     end
 
-    -- Boss frames: Apply Health % (LeftText) and Value (RightText/Center) styling.
-    -- Boss frames are not returned by EditModeManagerFrame's UnitFrame system indices like Player/Target/Focus/Pet,
-    -- so Boss1..Boss5 are resolved deterministically using their global names.
-    function addon.ApplyBossHealthTextStyling()
-        local db = addon and addon.db and addon.db.profile
-        if not db then return end
+    -- The same inheritance for a Boss health bar container
+    local function applyBossDeadText(container, cfg)
+        local valueCfg = cfg.textHealthValue or {}
+        applyDeadTextFontInheritance(container.DeadText, valueCfg)
+        hookDeadTextShow(container.DeadText, "Boss")
+        applyDeadTextFontInheritance(container.UnconsciousText, valueCfg)
+        hookDeadTextShow(container.UnconsciousText, "Boss")
+    end
 
-        local unitFrames = rawget(db, "unitFrames")
-        local cfg = unitFrames and rawget(unitFrames, "Boss") or nil
-        if not cfg then
-            return
-        end
-
-        for i = 1, addon.NUM_BOSS_FRAMES do
-            local bossFrame = addon.GetBossFrame(i)
-            local hbContainer = bossFrame
-                and bossFrame.TargetFrameContent
+    local P = buildTextPipeline({
+        resource = "Health",
+        slug = "health",
+        fontCache = "_ufHealthTextFonts",
+        baselineTable = "_ufTextBaselines",
+        hookMarker = "healthBarUpdateTextString",
+        visibilityForName = "ApplyUnitFrameHealthTextVisibilityFor",
+        hiddenKey = "healthText",
+        hiddenCenterKey = "healthTextCenter",
+        appliedProp = "healthTextAppliedHidden",
+        keys = {
+            percentHidden = "healthPercentHidden",
+            valueHidden = "healthValueHidden",
+            percentStyle = "textHealthPercent",
+            valueStyle = "textHealthValue",
+        },
+        textOpts = HEALTH_TEXT_OPTS,
+        centerOpts = HEALTH_TEXT_CENTER_OPTS,
+        fontOpts = ufTextFontOpts,
+        customizationOpts = ufTextCustomizationOpts,
+        barResolver = resolveHealthBarForVisibility,
+        directTexts = directHealthTexts,
+        hints = {
+            left  = { "HealthBarsContainer.LeftText",  ".LeftText",  "HealthBarTextLeft" },
+            right = { "HealthBarsContainer.RightText", ".RightText", "HealthBarTextRight" },
+        },
+        centerResolver = resolveHealthCenterText,
+        bossContainer = function(bossFrame)
+            return bossFrame.TargetFrameContent
                 and bossFrame.TargetFrameContent.TargetFrameContentMain
                 and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
+        end,
+        bossBar = function(container) return container.HealthBar end,
+        bossCenter = function(container) return container.HealthBarText end,
+        colorApplier = applyHealthTextColor,
+        applyForUnitExtras = applyDeadTextForUnit,
+        bossExtras = applyBossDeadText,
+    })
 
-            if hbContainer then
-                local hb = hbContainer.HealthBar
-                if hb then
-                    -- Ensure combat-time visibility enforcement exists for Boss health texts
-                    hookHealthBarUpdateTextString(hb, "Boss")
-                end
-
-                local leftFS = hbContainer.LeftText
-                local rightFS = hbContainer.RightText
-                local centerFS = hbContainer.HealthBarText
-
-                if leftFS then
-                    applyTextStyle(leftFS, cfg.textHealthPercent or {}, "Boss" .. tostring(i) .. ":health-left", hbContainer)
-                end
-                if rightFS then
-                    applyTextStyle(rightFS, cfg.textHealthValue or {}, "Boss" .. tostring(i) .. ":health-right", hbContainer)
-                end
-                if centerFS then
-                    applyTextStyle(centerFS, cfg.textHealthValue or {}, "Boss" .. tostring(i) .. ":health-center", hbContainer)
-                end
-
-                addon._ufHealthTextFonts["Boss" .. tostring(i)] = {
-                    leftFS = leftFS,
-                    rightFS = rightFS,
-                    textStringFS = centerFS,
-                }
-
-                -- DeadText / UnconsciousText: inherit font face + style from Health Value settings
-                local valueCfg = cfg.textHealthValue or {}
-                local deadText = hbContainer.DeadText
-                local unconsciousText = hbContainer.UnconsciousText
-                applyDeadTextFontInheritance(deadText, valueCfg)
-                hookDeadTextShow(deadText, "Boss")
-                applyDeadTextFontInheritance(unconsciousText, valueCfg)
-                hookDeadTextShow(unconsciousText, "Boss")
-            end
-        end
-
-        -- Apply visibility once as part of the styling pass.
-        if addon.ApplyUnitFrameHealthTextVisibilityFor then
-            addon.ApplyUnitFrameHealthTextVisibilityFor("Boss")
-        end
-    end
-
-    -- Lightweight visibility-only function used by UpdateTextString hooks.
-    -- Uses SetAlpha instead of SetShown to avoid taint during combat.
-    function addon.ApplyUnitFrameHealthTextVisibilityFor(unit)
-        if not addon:IsModuleEnabled("unitFrames", unit) then return end
-        local db = addon and addon.db and addon.db.profile
-        if not db then return end
-        local unitFrames = rawget(db, "unitFrames")
-        local cfg = unitFrames and rawget(unitFrames, unit) or nil
-        if not cfg then
-            return
-        end
-        --Zero-touch fast path — skip entirely when no visibility settings are configured
-        if rawget(cfg, "healthPercentHidden") == nil and rawget(cfg, "healthValueHidden") == nil then return end
-
-        -- Apply visibility using SetAlpha (combat-safe) instead of SetShown (taint-prone).
-        -- Tri‑state: nil = don't touch; true = hide; false = show.
-        local function applyVisibility(fs, hiddenSetting)
-            if not fs then return end
-            local fstate = FS
-            if not fstate then return end
-            if hiddenSetting == nil then
-                return
-            end
-            --Skip if this visibility state is already applied
-            local currentApplied = fstate.GetProp(fs, "healthTextAppliedHidden")
-            if currentApplied == hiddenSetting then return end
-            local hidden = (hiddenSetting == true)
-            if hidden then
-                if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                Enforce.Install(fs, "healthText", HEALTH_TEXT_OPTS)
-                fstate.SetHidden(fs, "healthText", true)
-                fstate.SetProp(fs, "healthTextAppliedHidden", true)
-            else
-                fstate.SetHidden(fs, "healthText", false)
-                if fs.SetAlpha then pcall(fs.SetAlpha, fs, 1) end
-                fstate.SetProp(fs, "healthTextAppliedHidden", false)
-            end
-        end
-
-        -- Boss frames: apply to Boss1..Boss5 deterministically (no cache dependency).
-        if unit == "Boss" then
-            for i = 1, addon.NUM_BOSS_FRAMES do
-                local bossFrame = addon.GetBossFrame(i)
-                local hbContainer = bossFrame
-                    and bossFrame.TargetFrameContent
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer
-                local leftFS = hbContainer and hbContainer.LeftText or nil
-                local rightFS = hbContainer and hbContainer.RightText or nil
-                local centerFS = hbContainer and hbContainer.HealthBarText or nil
-                applyVisibility(leftFS, cfg.healthPercentHidden)
-                applyVisibility(rightFS, cfg.healthValueHidden)
-                -- Center TextString is used in NUMERIC mode; treat it as Value Text for parity with Player/Target.
-                applyVisibility(centerFS, cfg.healthValueHidden)
-            end
-            return
-        end
-
-        local cache = addon._ufHealthTextFonts and addon._ufHealthTextFonts[unit]
-        if not cache then
-            -- If fonts haven't been resolved yet this session, skip work here.
-            -- They will be resolved during the next ApplyStyles() pass.
-            return
-        end
-
-        local leftFS = cache.leftFS
-        local rightFS = cache.rightFS
-
-        applyVisibility(leftFS, cfg.healthPercentHidden)
-        applyVisibility(rightFS, cfg.healthValueHidden)
-    end
-
-	function addon.ApplyAllUnitFrameHealthTextVisibility()
-		applyForUnit("Player")
-		applyForUnit("Target")
-		applyForUnit("Focus")
-		applyForUnit("Pet")
-        if addon.ApplyBossHealthTextStyling then
-            addon.ApplyBossHealthTextStyling()
-        end
-	end
-
+    addon.ApplyBossHealthTextStyling = P.applyBossStyling
+    addon.ApplyUnitFrameHealthTextVisibilityFor = P.applyVisibilityFor
+    addon.ApplyAllUnitFrameHealthTextVisibility = P.applyAll
 end
