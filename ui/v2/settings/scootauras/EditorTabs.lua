@@ -743,4 +743,85 @@ function Tabs.BuildTabSet(ctx)
     return tabs, buildContent
 end
 
+local GROW_LABELS = { RIGHT = "Right", LEFT = "Left", DOWN = "Down", UP = "Up" }
+local GROW_ORDER = { "RIGHT", "LEFT", "DOWN", "UP" }
+
+-- Group layout fly-out for the Aura List page: spacing, group scale, grow
+-- direction. Settings apply live with no list re-render. Returns the flyout;
+-- the caller owns its page-teardown registration.
+function Tabs.BuildGroupLayoutFlyout(anchorBtn, gid)
+    local Controls = addon.UI.Controls
+    local SAU = addon.ScootAuras
+    -- The gap clears the gear's oversized glyph: the nub tip reaches 15px
+    -- above the panel top, the glyph 8px below the button box.
+    local flyout = Controls:CreateFlyout({
+        anchor = anchorBtn,
+        direction = "DOWN",
+        width = 340,
+        height = 140,
+        padding = 10,
+        gap = 26,
+    })
+    local content = flyout:GetContent()
+
+    local spacingSlider = Controls:CreateSlider({
+        parent = content,
+        label = "Spacing",
+        min = 0,
+        max = 50,
+        step = 1,
+        width = 90,
+        inputWidth = 40,
+        get = function()
+            local group = SAU.GetGroup(gid)
+            return (group and group.settings and group.settings.spacing) or 4
+        end,
+        set = function(value)
+            SAU.SetGroupSettings(gid, { spacing = value })
+        end,
+    })
+    spacingSlider:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    spacingSlider:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
+
+    -- Scales the whole group as a unit, on top of each member's own scale.
+    local scaleSlider = Controls:CreateSlider({
+        parent = content,
+        label = "Group Scale",
+        min = 25,
+        max = 200,
+        step = 5,
+        width = 90,
+        inputWidth = 40,
+        get = function()
+            local group = SAU.GetGroup(gid)
+            return (group and group.settings and group.settings.scale) or 100
+        end,
+        set = function(value)
+            SAU.SetGroupSettings(gid, { scale = value })
+        end,
+    })
+    scaleSlider:SetPoint("TOPLEFT", spacingSlider, "BOTTOMLEFT", 0, 0)
+    scaleSlider:SetPoint("TOPRIGHT", spacingSlider, "BOTTOMRIGHT", 0, 0)
+
+    local selector = Controls:CreateSelector({
+        parent = content,
+        label = "Grow Direction",
+        values = GROW_LABELS,
+        order = GROW_ORDER,
+        width = 130,
+        noBottomBorder = true,
+        get = function()
+            local group = SAU.GetGroup(gid)
+            return (group and group.settings and group.settings.grow) or "RIGHT"
+        end,
+        set = function(value)
+            SAU.SetGroupSettings(gid, { grow = value })
+        end,
+    })
+    selector:SetPoint("TOPLEFT", scaleSlider, "BOTTOMLEFT", 0, 0)
+    selector:SetPoint("TOPRIGHT", scaleSlider, "BOTTOMRIGHT", 0, 0)
+
+    return flyout
+end
+
 return Tabs

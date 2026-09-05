@@ -66,8 +66,6 @@ local SHAPE_LABELS = {
     icon = "Icon", bar = "Horizontal Bar", shape = "Shape",
     text = "Text", icontext = "Icon & Text",
 }
-local GROW_LABELS = { RIGHT = "Right", LEFT = "Left", DOWN = "Down", UP = "Up" }
-local GROW_ORDER = { "RIGHT", "LEFT", "DOWN", "UP" }
 
 -- One descriptor for every surface: the tracker row's meta line and the group
 -- icon's hover tooltip.
@@ -529,82 +527,6 @@ end
 -- Right pane: group boxes
 --------------------------------------------------------------------------------
 
-local function CreateGroupFlyout(anchorBtn, gid)
-    local Controls = addon.UI.Controls
-    local SAU = addon.ScootAuras
-    -- The gap clears the gear's oversized glyph: the nub tip reaches 15px
-    -- above the panel top, the glyph 8px below the button box.
-    local flyout = Controls:CreateFlyout({
-        anchor = anchorBtn,
-        direction = "DOWN",
-        width = 340,
-        height = 140,
-        padding = 10,
-        gap = 26,
-    })
-    local content = flyout:GetContent()
-
-    local spacingSlider = Controls:CreateSlider({
-        parent = content,
-        label = "Spacing",
-        min = 0,
-        max = 50,
-        step = 1,
-        width = 90,
-        inputWidth = 40,
-        get = function()
-            local group = SAU.GetGroup(gid)
-            return (group and group.settings and group.settings.spacing) or 4
-        end,
-        set = function(value)
-            SAU.SetGroupSettings(gid, { spacing = value })
-        end,
-    })
-    spacingSlider:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-    spacingSlider:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
-
-    -- Scales the whole group as a unit, on top of each member's own scale.
-    local scaleSlider = Controls:CreateSlider({
-        parent = content,
-        label = "Group Scale",
-        min = 25,
-        max = 200,
-        step = 5,
-        width = 90,
-        inputWidth = 40,
-        get = function()
-            local group = SAU.GetGroup(gid)
-            return (group and group.settings and group.settings.scale) or 100
-        end,
-        set = function(value)
-            SAU.SetGroupSettings(gid, { scale = value })
-        end,
-    })
-    scaleSlider:SetPoint("TOPLEFT", spacingSlider, "BOTTOMLEFT", 0, 0)
-    scaleSlider:SetPoint("TOPRIGHT", spacingSlider, "BOTTOMRIGHT", 0, 0)
-
-    local selector = Controls:CreateSelector({
-        parent = content,
-        label = "Grow Direction",
-        values = GROW_LABELS,
-        order = GROW_ORDER,
-        width = 130,
-        noBottomBorder = true,
-        get = function()
-            local group = SAU.GetGroup(gid)
-            return (group and group.settings and group.settings.grow) or "RIGHT"
-        end,
-        set = function(value)
-            SAU.SetGroupSettings(gid, { grow = value })
-        end,
-    })
-    selector:SetPoint("TOPLEFT", scaleSlider, "BOTTOMLEFT", 0, 0)
-    selector:SetPoint("TOPRIGHT", scaleSlider, "BOTTOMRIGHT", 0, 0)
-
-    table.insert(state.flyouts, flyout)
-    return flyout
-end
-
 local function CreateGroupBox(pane, gid, group, boxW, loaded)
     local theme = addon.UI.Theme
     local ar, ag, ab = theme:GetAccentColor()
@@ -734,7 +656,8 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
         layoutBtn = CreateIconButton(box, "GM-icon-settings", "Layout", theme, BTN_SIZE, 2)
         layoutBtn:SetPoint("RIGHT", duplicateBtn, "LEFT", -BTN_GAP, 0)
 
-        flyout = CreateGroupFlyout(layoutBtn, gid)
+        flyout = addon.UI.Settings.ScootAuraEditorTabs.BuildGroupLayoutFlyout(layoutBtn, gid)
+        table.insert(state.flyouts, flyout)
         layoutBtn:SetScript("OnClick", function()
             if ClickGuard() then return end
             flyout:Toggle()
