@@ -3,11 +3,12 @@
 # A row is a site that stays off a shared module on purpose (it carries a Kept off comment) or drift not yet fixed.
 bar-selector	ui/v2/settings/interface/DamageMeterXRenderer.lua	4
 bar-selector	ui/v2/settings/interface/DamageMeterYRenderer.lua	1
-bar-selector	ui/v2/unitframes/BossRenderer.lua	3
-bar-selector	ui/v2/unitframes/FocusRenderer.lua	3
+bar-selector	ui/v2/unitframes/BossRenderer.lua	1
+bar-selector	ui/v2/unitframes/FocusRenderer.lua	1
 bar-selector	ui/v2/unitframes/PetRenderer.lua	3
 bar-selector	ui/v2/unitframes/PlayerRenderer.lua	1
-bar-selector	ui/v2/unitframes/TargetRenderer.lua	3
+bar-selector	ui/v2/unitframes/TargetRenderer.lua	1
+bar-selector	ui/v2/unitframes/UFSections.lua	2
 blizzard-pool	core/editmode/subgrid.lua	1
 color-switch	core/components/cooldowns/pixelglow.lua	1
 color-switch	core/components/cooldowns/procstart.lua	2
@@ -44,8 +45,8 @@ doc-ref	core/components/unitframesz/engine.lua	1
 doc-ref	core/debug/core.lua	1
 doc-ref	core/editmode/positionables.lua	1
 doc-ref	core/enforce.lua	1
-dual-slider	ui/v2/settings/cdm/CustomGroupsRenderer.lua	1
 dual-slider	ui/v2/settings/cdm/CooldownViewersRenderer.lua	1
+dual-slider	ui/v2/settings/cdm/CustomGroupsRenderer.lua	1
 dual-slider	ui/v2/settings/interface/MinimapRenderer.lua	1
 dual-slider	ui/v2/settings/scootauras/EditorTabs.lua	1
 dual-slider	ui/v2/unitframes/UFZSections.lua	1

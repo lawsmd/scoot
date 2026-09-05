@@ -373,4 +373,236 @@ function Sections.BuildPowerBarSection(B, opts)
     })
 end
 
+-- Cast Bar section (Target, Focus, Boss): the Mode selector and the tabbed
+-- section share one scope so the selector's RefreshTabVisibility closure
+-- reaches the tabbed ref.
+-- opts: builder, componentId; anchorValues, anchorOrder (the per-unit Anchor
+-- To catalog); onAnchorSet, run after the anchorMode write and before
+-- B.applyCastBar (Boss marks the on-side layout dirty). Boss's five-frame
+-- cast applier rides in B.applyCastBar through its BindUnit override.
+function Sections.BuildCastBarSection(B, opts)
+    local componentId = opts.componentId
+    local castBarTabs = UF.getCastBarTabs(componentId, {
+        fillLineVisible = function()
+            local t = B.getCastBarDB() or {}
+            return (t.castBarMode or "default") == "textFill"
+        end,
+    })
+    opts.builder:AddCollapsibleSection({
+        title = "Cast Bar",
+        componentId = componentId,
+        sectionKey = "castBar",
+        defaultExpanded = false,
+        buildContent = function(contentFrame, inner)
+            local tabbedRef
+            inner:AddSelector({
+                label = "Mode",
+                description = "Choose how the cast bar is displayed.",
+                values = { default = "Default Cast Bar", textFill = "Text-Fill Cast Bar" },
+                order = { "default", "textFill" },
+                emphasized = true,
+                get = function() local t = B.getCastBarDB() or {}; return t.castBarMode or "default" end,
+                set = function(v)
+                    local t = B.ensureCastBarDB()
+                    if t then t.castBarMode = v; B.applyCastBar() end
+                    if tabbedRef and tabbedRef.RefreshTabVisibility then
+                        tabbedRef:RefreshTabVisibility()
+                    end
+                end,
+            })
+            tabbedRef = inner:AddTabbedSection({
+                tabs = castBarTabs,
+                componentId = componentId,
+                sectionKey = "castBar_tabs",
+                buildContent = {
+                    positioning = function(cf, tabInner)
+                        tabInner:AddSelector({
+                            label = "Anchor To",
+                            values = opts.anchorValues,
+                            order = opts.anchorOrder,
+                            get = function() local t = B.getCastBarDB() or {}; return t.anchorMode or "default" end,
+                            set = function(v)
+                                local t = B.ensureCastBarDB()
+                                if t then
+                                    t.anchorMode = v
+                                    if opts.onAnchorSet then opts.onAnchorSet() end
+                                    B.applyCastBar()
+                                end
+                            end,
+                        })
+                        tabInner:AddOffsetPair({
+                            range = 200,
+                            get = function(axis) local t = B.getCastBarDB(); return t and t[axis == "x" and "offsetX" or "offsetY"] end,
+                            set = function(axis, v) local t = B.ensureCastBarDB(); if t then t[axis == "x" and "offsetX" or "offsetY"] = v end end,
+                            apply = B.applyCastBar,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    style = function(cf, tabInner)
+                        -- Kept off Builder:AddBarStyleBlock: texture and color sit on separate rows, not the dual row the block emits.
+                        tabInner:AddBarTextureSelector({
+                            label = "Foreground Texture",
+                            get = function() local t = B.getCastBarDB() or {}; return t.castBarTexture or "default" end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarTexture = v or "default"; B.applyCastBar() end end,
+                        })
+                        tabInner:AddSelectorColorPicker({
+                            label = "Foreground Color", values = UF.castBarColorValues, order = UF.castBarColorOrder,
+                            get = function() local t = B.getCastBarDB() or {}; return t.castBarColorMode or "default" end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarColorMode = v or "default"; B.applyCastBar() end end,
+                            getColor = function() local t = B.getCastBarDB() or {}; local c = t.castBarTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensureCastBarDB(); if t then t.castBarTint = {r,g,b,a}; B.applyCastBar() end end,
+                            customValue = "custom", hasAlpha = true,
+                        })
+                        tabInner:AddSpacer(8)
+                        tabInner:AddBarTextureSelector({
+                            label = "Background Texture",
+                            get = function() local t = B.getCastBarDB() or {}; return t.castBarBackgroundTexture or "default" end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBackgroundTexture = v or "default"; B.applyCastBar() end end,
+                        })
+                        tabInner:AddSelectorColorPicker({
+                            label = "Background Color", values = UF.bgColorValues, order = UF.bgColorOrder,
+                            get = function() local t = B.getCastBarDB() or {}; return t.castBarBackgroundColorMode or "default" end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBackgroundColorMode = v or "default"; B.applyCastBar() end end,
+                            getColor = function() local t = B.getCastBarDB() or {}; local c = t.castBarBackgroundTint or {0,0,0,1}; return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensureCastBarDB(); if t then t.castBarBackgroundTint = {r,g,b,a}; B.applyCastBar() end end,
+                            customValue = "custom", hasAlpha = true,
+                        })
+                        tabInner:AddSlider({
+                            label = "Background Opacity", min = 0, max = 100, step = 1,
+                            get = function() local t = B.getCastBarDB() or {}; return tonumber(t.castBarBackgroundOpacity) or 50 end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBackgroundOpacity = tonumber(v) or 50; B.applyCastBar() end end,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    fillLine = function(cf, tabInner)
+                        tabInner:AddDescription(
+                            "The fill color used in Text-Fill Mode is decided by the Spell Name text's font color.",
+                            { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 }
+                        )
+                        tabInner:AddColorPicker({
+                            label = "Unfilled Text Color",
+                            get = function()
+                                local t = B.getCastBarDB() or {}
+                                local c = t.textFillUnfilledTextColor or {0.5, 0.5, 0.5, 1}
+                                return c[1] or 0.5, c[2] or 0.5, c[3] or 0.5, c[4] or 1
+                            end,
+                            set = function(r, g, b, a)
+                                local t = B.ensureCastBarDB()
+                                if t then
+                                    t.textFillUnfilledTextColor = {r, g, b, a}
+                                    B.applyCastBar()
+                                end
+                            end,
+                            hasAlpha = true,
+                        })
+                        tabInner:AddSlider({
+                            label = "Line Height", min = 1, max = 10, step = 1,
+                            get = function() local t = B.getCastBarDB() or {}; return tonumber(t.textFillLineHeight) or 2 end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.textFillLineHeight = tonumber(v) or 2; B.applyCastBar() end end,
+                        })
+                        tabInner:AddSlider({
+                            label = "End Cap Size", min = 2, max = 20, step = 1,
+                            get = function() local t = B.getCastBarDB() or {}; return tonumber(t.textFillEndCapSize) or 6 end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.textFillEndCapSize = tonumber(v) or 6; B.applyCastBar() end end,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    spark = function(cf, tabInner)
+                        tabInner:AddToggle({
+                            label = "Hide Spark",
+                            get = function() local t = B.getCastBarDB() or {}; return not not t.castBarSparkHidden end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarSparkHidden = v and true or false; B.applyCastBar() end end,
+                        })
+                        tabInner:AddSelectorColorPicker({
+                            label = "Spark Color",
+                            values = { ["default"] = "Default", ["custom"] = "Custom" },
+                            order = { "default", "custom" },
+                            get = function() local t = B.getCastBarDB() or {}; return t.castBarSparkColorMode or "default" end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarSparkColorMode = v or "default"; B.applyCastBar() end end,
+                            getColor = function() local t = B.getCastBarDB() or {}; local c = t.castBarSparkTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensureCastBarDB(); if t then t.castBarSparkTint = {r,g,b,a}; B.applyCastBar() end end,
+                            customValue = "custom", hasAlpha = true,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    border = function(cf, tabInner)
+                        local get, set = B.barAccessors("castBar", { store = "castBar" })
+                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyCastBar, enableToggle = true })
+                        tabInner:Finalize()
+                    end,
+                    icon = function(cf, tabInner)
+                        tabInner:AddToggle({
+                            label = "Hide Icon",
+                            get = function() local t = B.getCastBarDB() or {}; return not not t.iconDisabled end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.iconDisabled = v and true or false; B.applyCastBar() end end,
+                        })
+                        tabInner:AddToggle({
+                            label = "Hide Icon Backdrop (Shield)",
+                            get = function() local t = B.getCastBarDB() or {}; return not not t.castBarBorderShieldHidden end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarBorderShieldHidden = v and true or false; B.applyCastBar() end end,
+                        })
+                        tabInner:AddSlider({
+                            label = "Icon Size", min = 10, max = 64, step = 1,
+                            get = function() local t = B.getCastBarDB() or {}; return tonumber(t.iconWidth) or tonumber(t.iconHeight) or 24 end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.iconWidth = tonumber(v) or 24; t.iconHeight = tonumber(v) or 24; B.applyCastBar() end end,
+                        })
+                        tabInner:AddOffsetPair({
+                            label = "Icon Offset",
+                            get = function(axis) local t = B.getCastBarDB(); return t and t[axis == "x" and "castBarIconOffsetX" or "castBarIconOffsetY"] end,
+                            set = function(axis, v) local t = B.ensureCastBarDB(); if t then t[axis == "x" and "castBarIconOffsetX" or "castBarIconOffsetY"] = v end end,
+                            apply = B.applyCastBar,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    spellName = function(cf, tabInner)
+                        tabInner:AddToggle({
+                            label = "Hide Spell Name",
+                            get = function() local t = B.getCastBarDB() or {}; return not not t.castBarSpellNameHidden end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarSpellNameHidden = v and true or false; B.applyCastBar() end end,
+                        })
+                        tabInner:AddToggle({
+                            label = "Hide Spell Name Border",
+                            get = function() local t = B.getCastBarDB() or {}; return not not t.hideSpellNameBorder end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.hideSpellNameBorder = v and true or false; B.applyCastBar() end end,
+                        })
+                        local get, set = B.castBarTextAccessors("spellNameText")
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = B.applyCastBar,
+                            defaults = { size = 10 },
+                            size = { min = 6, max = 32 },
+                            color = {
+                                values = UF.fontColorCastBarNonPlayerValues,
+                                order = UF.fontColorCastBarNonPlayerOrder,
+                                customValue = { "custom", "customGradient" },
+                            },
+                            offset = false,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    castTime = function(cf, tabInner)
+                        local get, set = B.castBarTextAccessors("castTimeText")
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = B.applyCastBar,
+                            defaults = { size = 10 },
+                            size = { min = 6, max = 32 },
+                            color = { kind = "plain" },
+                            offset = false,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    visibility = function(cf, tabInner)
+                        tabInner:AddToggle({
+                            label = "Hide Cast Bar",
+                            get = function() local t = B.getCastBarDB() or {}; return not not t.castBarHidden end,
+                            set = function(v) local t = B.ensureCastBarDB(); if t then t.castBarHidden = v and true or false; B.applyCastBar() end end,
+                        })
+                        tabInner:Finalize()
+                    end,
+                },
+            })
+            inner:Finalize()
+        end,
+    })
+end
+
 return UF.Sections

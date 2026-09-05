@@ -231,37 +231,6 @@ function UF.RenderPlayer(panel, scrollContent)
                         })
                         tabInner:Finalize()
                     end,
-                    sizing = function(cf, tabInner)
-                        tabInner:AddSlider({
-                            label = "Width %",
-                            min = 50, max = 150, step = 1,
-                            get = function()
-                                local t = B.getCastBarDB() or {}
-                                return tonumber(t.widthPct) or 100
-                            end,
-                            set = function(v)
-                                local t = B.ensureCastBarDB()
-                                if not t then return end
-                                t.widthPct = tonumber(v) or 100
-                                B.applyCastBar()
-                            end,
-                        })
-                        tabInner:AddSlider({
-                            label = "Height",
-                            min = 5, max = 50, step = 1,
-                            get = function()
-                                local t = B.getCastBarDB() or {}
-                                return tonumber(t.castBarHeight) or 13
-                            end,
-                            set = function(v)
-                                local t = B.ensureCastBarDB()
-                                if not t then return end
-                                t.castBarHeight = tonumber(v) or 13
-                                B.applyCastBar()
-                            end,
-                        })
-                        tabInner:Finalize()
-                    end,
                     style = function(cf, tabInner)
                         local get, set = B.barAccessors("castBar", { store = "castBar" })
                         tabInner:AddBarStyleBlock({
