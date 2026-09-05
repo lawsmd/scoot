@@ -62,6 +62,7 @@ core/editmode/presets.lua
 core/editmode/offscreenunlock.lua
 core/profiles/core.lua
 core/profiles/actionbars.lua
+core/profiles/cvars.lua
 core/profiles/layouts.lua
 core/profiles/spec.lua
 core/rules.lua
