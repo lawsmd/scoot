@@ -234,6 +234,7 @@ local function applyFonts(inst)
     -- The "lvl" prefix rides at 75% of the number's size, min 1.
     addon.ApplyFontStyle(inst.levelPrefixFS, face, math.max(1, cfg.levelSize * LEVEL_PREFIX_SCALE), cfg.levelStyle)
 end
+UFZ._ApplyFonts = applyFonts
 
 --------------------------------------------------------------------------------
 -- Width-only stretch (the Paint drag): the engine has no per-axis text scale,
@@ -304,6 +305,7 @@ local function applyStretch(inst)
         end
     end
 end
+UFZ._ApplyStretch = applyStretch
 
 -- The tuned name baseline. cfg.nameOffset/nameY are offsets FROM this, so the
 -- shipped Position sliders read 0/0 at the settled position and negatives pull
@@ -629,6 +631,7 @@ local function applyPowerLayout(inst)
     -- trailW/leadW: a texture has no companion glyph.
     anchorClassify(inst)
 end
+UFZ._ApplyPowerLayout = applyPowerLayout
 
 -- The absorb shield text (the glow-only look won the style experiment over a
 -- boxed pill): white number on a soft gold
@@ -693,6 +696,7 @@ local function anchorAbsorbFS(inst)
             ABSORB_GLOW_X, -ABSORB_GLOW_Y + shift)
     end
 end
+UFZ._AnchorAbsorbFS = anchorAbsorbFS
 
 --------------------------------------------------------------------------------
 -- Adornment art: the dead skull and the elite/rare classification icon
@@ -966,6 +970,37 @@ function UFZ._AuraContentSpan(inst)
     return math.max(0, math.floor(W - nameX - inkW)), W - numInset
 end
 
+--- The name row's rect, frame-local, x from the LEFT edge and y DOWN from the
+--- top. Pure config plus inst.nameInkWidth, the shared ruler's plain measurement
+--- rather than a read off the live FontString, mirroring applyLayout's own
+--- anchors: the name's rect centre sits nameSeatY below the numbers box's top,
+--- and its ink runs inward from NAME_BASE_X + nameOffset off the align edge.
+--- Sized for ONE line at the FITTED point size on purpose. The satellites hang
+--- off the live rect's top and bottom edges, so a band sized for the wrapped
+--- ceiling would reach past them and swallow the very numbers this carve-out
+--- exists to leave outside itself.
+local function nameRowRect(inst, env)
+    local cfg = inst.cfg
+    local nameX = NAME_BASE_X + (cfg.nameOffset or 0)
+    local inkW = inst.nameInkWidth
+    if type(inkW) ~= "number" or inkW <= 0 then inkW = cfg.nameMaxWidth or 150 end
+    local l, r
+    if cfg.align == "left" then
+        l, r = nameX, nameX + inkW
+    else
+        l, r = env.W - nameX - inkW, env.W - nameX
+    end
+    -- Clamped into the frame the same way the aura span is: a long name's ink
+    -- edge is the only thing that can reach past an edge, and the part outside
+    -- is unreachable anyway (the receiver has to be hit before this is asked).
+    l = math.max(0, math.floor(l))
+    r = math.min(env.W, math.ceil(r))
+    local half = math.max(1, currentNamePoint(inst) * ENV_LINE_H / 2)
+    local mid = env.T - nameSeatY(cfg)
+    return l, math.max(l + 1, r), mid - half, mid + half
+end
+UFZ._NameRowRect = nameRowRect
+
 --------------------------------------------------------------------------------
 -- Ping receiver (12.1)
 --------------------------------------------------------------------------------
@@ -1069,36 +1104,6 @@ end
 -- back to the whole envelope: a receiver nobody can hit is the worse failure, and
 -- a zero-size region has no rect for the engine to test at all.
 local PING_MIN_SPAN = 8
-
---- The name row's rect, frame-local, x from the LEFT edge and y DOWN from the
---- top. Pure config plus inst.nameInkWidth, the shared ruler's plain measurement
---- rather than a read off the live FontString, mirroring applyLayout's own
---- anchors: the name's rect centre sits nameSeatY below the numbers box's top,
---- and its ink runs inward from NAME_BASE_X + nameOffset off the align edge.
---- Sized for ONE line at the FITTED point size on purpose. The satellites hang
---- off the live rect's top and bottom edges, so a band sized for the wrapped
---- ceiling would reach past them and swallow the very numbers this carve-out
---- exists to leave outside itself.
-local function nameRowRect(inst, env)
-    local cfg = inst.cfg
-    local nameX = NAME_BASE_X + (cfg.nameOffset or 0)
-    local inkW = inst.nameInkWidth
-    if type(inkW) ~= "number" or inkW <= 0 then inkW = cfg.nameMaxWidth or 150 end
-    local l, r
-    if cfg.align == "left" then
-        l, r = nameX, nameX + inkW
-    else
-        l, r = env.W - nameX - inkW, env.W - nameX
-    end
-    -- Clamped into the frame the same way the aura span is: a long name's ink
-    -- edge is the only thing that can reach past an edge, and the part outside
-    -- is unreachable anyway (the receiver has to be hit before this is asked).
-    l = math.max(0, math.floor(l))
-    r = math.min(env.W, math.ceil(r))
-    local half = math.max(1, currentNamePoint(inst) * ENV_LINE_H / 2)
-    local mid = env.T - nameSeatY(cfg)
-    return l, math.max(l + 1, r), mid - half, mid + half
-end
 
 --- Seats the receiver on the visible content: _AuraContentSpan horizontally (the
 --- same ink-true span the aura rows align to), the one-line envelope band
@@ -1237,6 +1242,13 @@ regenActions.position = function(inst) UFZ._RestorePosition(inst) end
 -- the frames just took.
 regenActions.stack = function(inst) UFZ._ApplyStack(inst.unitKey) end
 
+-- The drain for a preview whose frame could not be shown in combat. Flags only,
+-- like every other slot, and previewActive is re-read here because Edit Mode may
+-- have closed while the fight was still running.
+regenActions.preview = function(inst)
+    if inst.previewActive then UFZ._ShowEditModePreview(inst) end
+end
+
 -- Resize the outer frame to the envelope and seat the numbers box inside it,
 -- flush against the align edge, T below the top. Stateless recompute-and-set.
 -- When a setting changes the extents, the frame resizes around whatever anchor
@@ -1299,6 +1311,7 @@ local function applyEnvelope(inst)
         UFZ._RestorePosition(inst)
     end
 end
+UFZ._ApplyEnvelope = applyEnvelope
 regenActions.envelope = applyEnvelope
 
 -- The skull sits where the two numbers were: horizontally on the same column
@@ -1461,6 +1474,7 @@ local function applyLayout(inst)
     if UFZ.Auras then UFZ.Auras.ApplyLayout(inst) end
     applyStretch(inst)
 end
+UFZ._ApplyLayout = applyLayout
 
 --------------------------------------------------------------------------------
 -- Update
@@ -1669,6 +1683,7 @@ local function updatePower(inst)
         applyPowerLayout(inst)
     end
 end
+UFZ._UpdatePower = updatePower
 
 local function applyPowerColor(inst)
     local cfg = inst.cfg
@@ -1711,6 +1726,7 @@ local function applyPowerColor(inst)
         inst.last.altPowerColor = tag
     end
 end
+UFZ._ApplyPowerColor = applyPowerColor
 
 --------------------------------------------------------------------------------
 -- The zero launder. C_StringUtil.TruncateWhenZero is AllowedWhenTainted and
@@ -1821,6 +1837,7 @@ local function updateAbsorb(inst)
         last.absorb = last.absorb .. suffix
     end
 end
+UFZ._UpdateAbsorb = updateAbsorb
 
 --------------------------------------------------------------------------------
 -- The level pair: "lvl <N>" from UnitEffectiveLevel (what Blizzard's own frames
@@ -1966,6 +1983,7 @@ local function updateLevel(inst)
         anchorClassify(inst)
     end
 end
+UFZ._UpdateLevel = updateLevel
 
 -- The elite/rare adornment. Blizzard draws this as a dragon wrapped around the
 -- portrait; UFZ has neither portrait nor frame art, so it becomes a satellite
@@ -2010,6 +2028,33 @@ local function updateClassification(inst)
     tex:Show()
     last.classify = class
 end
+UFZ._UpdateClassification = updateClassification
+
+-- The Edit Mode stand-in's adornments, settled the same way whether or not the
+-- previewed frame has a unit.
+--
+-- Skull: always hidden. Preview paints live-looking numbers, and a skull
+-- sitting on top of "72 / 324.5k" contradicts them. (This also covers
+-- previewing while genuinely dead, which update() would otherwise have shown.)
+--
+-- Classification: always SHOWN, with a stand-in. It is a positionable
+-- adornment, so it has to be visible at the exact moment the user is
+-- placing it -- an invisible icon cannot be dragged into place. Nothing
+-- else in the component paints it during preview: updateClassification
+-- early-outs on previewActive.
+local function paintAdornmentsStandIn(inst)
+    setDeadIconShown(inst, false)
+    if inst.classifyTex and inst.cfg.classifyShow and inst.unit ~= "player" then
+        if atlasExists(CLASSIFY_PREVIEW_ATLAS) then
+            pcall(inst.classifyTex.SetAtlas, inst.classifyTex, CLASSIFY_PREVIEW_ATLAS)
+            inst.classifyAtlas = CLASSIFY_PREVIEW_ATLAS
+            inst.classifyTex:Show()
+        end
+    elseif inst.classifyTex then
+        inst.classifyTex:Hide()
+    end
+end
+UFZ._PaintAdornmentsStandIn = paintAdornmentsStandIn
 
 --------------------------------------------------------------------------------
 -- The name row. Gradient start is the
@@ -2417,6 +2462,7 @@ local function refreshName(inst, hold)
         inst.last.name = tostring(inst.last.name) .. "  " .. verdict
     end)
 end
+UFZ._RefreshName = refreshName
 
 --------------------------------------------------------------------------------
 -- Digit mode: the percent size follows the digit count
@@ -2662,6 +2708,7 @@ local function update(inst)
 
     updateTail(inst)
 end
+UFZ._Update = update
 
 --------------------------------------------------------------------------------
 -- Frame
@@ -2705,6 +2752,7 @@ local function applyScale(inst)
     -- around frames whose spacing is expressed in their own coordinate space.
     if inst.stackIndex then UFZ._ApplyStack(inst.unitKey) end
 end
+UFZ._ApplyScale = applyScale
 regenActions.scale = applyScale
 
 -- Whole-frame conditional opacity, the UFX Visibility offering ported (strict
@@ -2733,6 +2781,7 @@ local function applyOpacity(inst)
     -- whole party fading at once costs one walk.
     if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
 end
+UFZ._ApplyOpacity = applyOpacity
 
 -- Anchors + attributes for the secure click overlay. Both are combat-blocked
 -- on the protected button, so a call that lands in lockdown queues itself and
@@ -2847,6 +2896,7 @@ local function applyUnitWatch(inst)
         inst.watchUnit = nil
     end
 end
+UFZ._ApplyUnitWatch = applyUnitWatch
 regenActions.watch = applyUnitWatch
 
 -- Scoot's own Show/Hide on the outer frame (enable/disable transitions, the
@@ -2862,6 +2912,7 @@ local function setShownSafe(inst, show)
     end
     if show then frame:Show() else frame:Hide() end
 end
+UFZ._SetShownSafe = setShownSafe
 regenActions.visibility = function(inst) UFZ._UpdateVisibility(inst) end
 
 local function ensureFrame(inst)
@@ -3141,6 +3192,7 @@ local function ensureApplied(inst)
     ensureFrame(inst)
     return inst.frame
 end
+UFZ._EnsureApplied = ensureApplied
 
 --------------------------------------------------------------------------------
 -- Commands (instance-bound implementations; the API table at the bottom
@@ -4184,6 +4236,7 @@ local API = {
     SetAuraTooltips = setAuraTooltips,
     Reset = reset,
 }
+UFZ._API = API
 
 --------------------------------------------------------------------------------
 -- Instance lifecycle (called by core.lua's ApplyStyling)
@@ -4405,33 +4458,7 @@ function UFZ._ShowEditModePreview(inst)
     end
 
     -- The two adornments, settled the same way in both branches.
-    --
-    -- Skull: always hidden. Preview paints live-looking numbers, and a skull
-    -- sitting on top of "72 / 324.5k" contradicts them. (This also covers
-    -- previewing while genuinely dead, which the update() branch above would
-    -- otherwise have shown.)
-    setDeadIconShown(inst, false)
-    -- Classification: always SHOWN, with a stand-in. It is a positionable
-    -- adornment, so it has to be visible at the exact moment the user is
-    -- placing it -- an invisible icon cannot be dragged into place. Nothing
-    -- else in the component paints it during preview: updateClassification
-    -- early-outs on previewActive.
-    if inst.classifyTex and inst.cfg.classifyShow and inst.unit ~= "player" then
-        if atlasExists(CLASSIFY_PREVIEW_ATLAS) then
-            pcall(inst.classifyTex.SetAtlas, inst.classifyTex, CLASSIFY_PREVIEW_ATLAS)
-            inst.classifyAtlas = CLASSIFY_PREVIEW_ATLAS
-            inst.classifyTex:Show()
-        end
-    elseif inst.classifyTex then
-        inst.classifyTex:Hide()
-    end
-end
-
--- The drain for a preview whose frame could not be shown in combat. Flags only,
--- like every other slot, and previewActive is re-read here because Edit Mode may
--- have closed while the fight was still running.
-regenActions.preview = function(inst)
-    if inst.previewActive then UFZ._ShowEditModePreview(inst) end
+    paintAdornmentsStandIn(inst)
 end
 
 function UFZ._EndEditModePreview(inst)
