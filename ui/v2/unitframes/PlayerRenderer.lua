@@ -698,7 +698,7 @@ function UF.RenderPlayer(panel, scrollContent)
             local get, set = B.opacityAccessors()
             inner:AddStateOpacityBlock({
                 get = get, set = set, apply = B.applyVisibility,
-                min = 0, endLabels = false,
+                min = 0,
             })
 
             inner:Finalize()

@@ -615,7 +615,7 @@ local function AddUnitSection(builder, opts)
                 inner:AddStateOpacityBlock({
                     get = function(field) return htCfg()[K[field]] end,
                     set = function(field, v) call(SETTER[field], v) end,
-                    min = 0, endLabels = false,
+                    min = 0,
                 })
                 inner:Finalize()
             end,

@@ -1,8 +1,8 @@
 -- visibility.lua - Per-unit opacity for combat, target, and out-of-combat states
 local addonName, addon = ...
--- State opacity (core/opacity.lua): the combat slider floors at 50 and the
--- other two at 1; an unset value reads as the combat value.
-local UF_OPACITY_OPTS = { combatMin = 50, min = 1, fallback = "combat" }
+-- State opacity (core/opacity.lua): 0 through 100 honored as set, matching
+-- Unit Frames Z; an unset value reads as the combat value.
+local UF_OPACITY_OPTS = { fallback = "combat" }
 
 -- Hide-enforcement hooks (core/enforce.lua). Every hide in this file reads its
 -- flag live from the profile, so each key carries a reader instead of a stored
