@@ -151,155 +151,28 @@ function Controls:CreateDropdown(options)
         self._border:Refresh()
     end)
 
-    -- Dropdown menu frame (created once, reused)
-    local menu = CreateFrame("Frame", nil, UIParent)
-    menu:SetFrameStrata("FULLSCREEN_DIALOG")
-    menu:SetFrameLevel(100)
-    menu:SetClampedToScreen(true)
-    menu:Hide()
+    -- Dropdown menu (one shared popup list, rebuilt on every open)
+    local menu = Controls.CreatePopupList({
+        anchor = dropdown,
+        width = dropdownWidth,
+        optionHeight = 24,
+        fontSize = 11,
+        textInset = 10,
+        getKeys = function() return dropdown._keyList end,
+        getValues = function() return dropdown._values end,
+        getSelectedKey = function() return dropdown._currentKey end,
+        onSelect = function(key)
+            dropdown._currentKey = key
+            setValue(key)
+            UpdateDisplay()
+        end,
+    })
     dropdown._menu = menu
-
-    -- Menu chrome: solid fill plus a 1px accent border
-    Controls.AddBackground(menu, { alpha = 0.98 })
-    menu._border = Controls.CreateBorder(menu, { alpha = 0.8 })
-
-    -- Track menu option buttons
-    menu._optionButtons = {}
-
-    -- Close menu function
-    local function CloseMenu()
-        menu:Hide()
-        if menu._closeListener then
-            menu._closeListener:Hide()
-        end
-    end
-    dropdown._closeMenu = CloseMenu
-
-    -- Invisible fullscreen listener to close menu on outside click
-    local closeListener = CreateFrame("Button", nil, UIParent)
-    closeListener:SetFrameStrata("FULLSCREEN")
-    closeListener:SetFrameLevel(99)
-    closeListener:SetAllPoints(UIParent)
-    closeListener:EnableMouse(true)
-    closeListener:RegisterForClicks("AnyUp", "AnyDown")
-    closeListener:SetScript("OnClick", function()
-        CloseMenu()
-    end)
-    closeListener:Hide()
-    menu._closeListener = closeListener
-
-    -- ESC key handling for menu
-    addon.EscapeKey.Attach(menu, function()
-        CloseMenu()
-        PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
-    end)
-
-    -- Build and show menu
-    local function ShowMenu()
-        menu:ClearAllPoints()
-
-        local kList = dropdown._keyList
-        local vMap = dropdown._values
-        local optionHeight = 24
-        local optionPadding = 4
-        local totalHeight = (#kList * optionHeight) + (optionPadding * 2)
-        local menuWidth = dropdownWidth
-
-        menu:SetSize(menuWidth, totalHeight)
-
-        -- Check if there's room below
-        local dropdownBottom = select(2, dropdown:GetCenter()) - (dropdown:GetHeight() / 2)
-        local screenHeight = GetScreenHeight()
-        local scale = UIParent:GetEffectiveScale()
-        local spaceBelow = dropdownBottom * scale
-
-        if spaceBelow > totalHeight + 10 then
-            menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
-        else
-            menu:SetPoint("BOTTOMLEFT", dropdown, "TOPLEFT", 0, 2)
-        end
-
-        -- Clear existing option buttons
-        for _, btn in ipairs(menu._optionButtons) do
-            btn:Hide()
-            btn:SetParent(nil)
-        end
-        wipe(menu._optionButtons)
-
-        -- Get current accent color
-        local accentR, accentG, accentB = theme:GetAccentColor()
-
-        -- Create option buttons
-        for i, key in ipairs(kList) do
-            local optBtn = CreateFrame("Button", nil, menu)
-            optBtn:SetSize(menuWidth - 2, optionHeight)
-            optBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 1, -optionPadding - ((i - 1) * optionHeight))
-            optBtn:EnableMouse(true)
-            optBtn:RegisterForClicks("AnyUp")
-
-            local optBg = optBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
-            optBg:SetAllPoints()
-            optBg:SetColorTexture(0, 0, 0, 0)
-            optBtn._bg = optBg
-
-            local optText = optBtn:CreateFontString(nil, "OVERLAY")
-            local optFont = theme:GetFont("VALUE")
-            optText:SetFont(optFont, 11, "")
-            optText:SetPoint("LEFT", optBtn, "LEFT", 10, 0)
-            optText:SetPoint("RIGHT", optBtn, "RIGHT", -10, 0)
-            optText:SetJustifyH("LEFT")
-            optText:SetText(vMap[key] or key)
-            optBtn._text = optText
-            optBtn._key = key
-
-            local isSelected = (key == dropdown._currentKey)
-            if isSelected then
-                optBg:SetColorTexture(accentR, accentG, accentB, 0.3)
-                optText:SetTextColor(accentR, accentG, accentB, 1)
-            else
-                optText:SetTextColor(1, 1, 1, 1)
-            end
-
-            optBtn:SetScript("OnEnter", function(btn)
-                if btn._key ~= dropdown._currentKey then
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.15)
-                else
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.35)
-                end
-            end)
-            optBtn:SetScript("OnLeave", function(btn)
-                if btn._key == dropdown._currentKey then
-                    btn._bg:SetColorTexture(accentR, accentG, accentB, 0.3)
-                else
-                    btn._bg:SetColorTexture(0, 0, 0, 0)
-                end
-            end)
-
-            optBtn:SetScript("OnClick", function(btn)
-                dropdown._currentKey = btn._key
-                setValue(dropdown._currentKey)
-                UpdateDisplay()
-                CloseMenu()
-                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-            end)
-
-            table.insert(menu._optionButtons, optBtn)
-        end
-
-        closeListener:Show()
-        closeListener:SetFrameLevel(menu:GetFrameLevel() - 1)
-
-        menu:Show()
-        PlaySound(SOUNDKIT.IG_MAINMENU_OPEN)
-    end
+    dropdown._closeMenu = function() menu:Close() end
 
     -- Click to toggle menu
     dropdown:SetScript("OnClick", function(self, mouseButton)
-        if menu:IsShown() then
-            CloseMenu()
-        else
-            ShowMenu()
-        end
+        menu:Toggle()
     end)
 
     -- Public methods
@@ -363,22 +236,8 @@ function Controls:CreateDropdown(options)
         if self._subscribeKey then
             theme:Unsubscribe(self._subscribeKey)
         end
-        if self._closeMenu then
-            self._closeMenu()
-        end
         if self._menu then
-            if self._menu._closeListener then
-                self._menu._closeListener:Hide()
-                self._menu._closeListener:SetParent(nil)
-            end
-            if self._menu._optionButtons then
-                for _, btn in ipairs(self._menu._optionButtons) do
-                    btn:Hide()
-                    btn:SetParent(nil)
-                end
-            end
-            self._menu:Hide()
-            self._menu:SetParent(nil)
+            self._menu:Destroy()
         end
     end
 

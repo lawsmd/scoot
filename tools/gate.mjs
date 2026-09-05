@@ -64,6 +64,8 @@ const PATTERNS = [
     hint: 'Bar style and border rows are Builder:AddBarStyleBlock and Builder:AddBarBorderBlock.' },
   { name: 'clamp-hook', re: /hooksecurefunc\([^,]+,\s*"(SetClampedToScreen|SetClampRectInsets)"/, except: ['core/editmode/offscreenunlock.lua'],
     hint: 'Clamp enforcement is a family from addon.OffscreenUnlock.NewFamily; the hooks live in core/editmode/offscreenunlock.lua only.' },
+  { name: 'popup-list', re: /closeListener/, except: ['ui/v2/controls/Utils.lua'],
+    hint: 'Click-outside dismissal is Controls.AttachDismissOnClickOutside; a selector option list is Controls.CreatePopupList.' },
   // Comment hygiene: the greps the vibes pass runs.
   { name: 'doc-ref', re: /ADDONCONTEXT|[a-z0-9_&-]+\.md\b|wow-ui-source/i, except: [],
     hint: 'Shipped code names no internal doc, doc path, or reference tree.' },

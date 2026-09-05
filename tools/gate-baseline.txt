@@ -122,6 +122,12 @@ newline-join	ui/v2/controls/Preview.lua	1
 newline-join	ui/v2/settings/profiles/PresetsRenderer.lua	1
 newline-join	ui/v2/settingspanel/ascii.lua	1
 opacity-field	core/components/unitframes/visibility.lua	1
+popup-list	ui/v2/controls/DualBarStyleRow.lua	16
+popup-list	ui/v2/controls/DualSelector.lua	16
+popup-list	ui/v2/controls/Flyout.lua	15
+popup-list	ui/v2/controls/Selector.lua	16
+popup-list	ui/v2/controls/SelectorColorPicker.lua	16
+popup-list	ui/v2/controls/SelectorToggleRow.lua	3
 print	core/events.lua	1
 slash-global	core/editmode/core.lua	4
 text-block	ui/v2/settings/castbars/CastBarZRenderer.lua	1

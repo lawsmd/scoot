@@ -558,3 +558,23 @@ function Controls.CreateArrowButton(parent, opts)
     end
     return arrow, sep
 end
+
+--------------------------------------------------------------------------------
+-- Click-outside dismissal
+--------------------------------------------------------------------------------
+
+-- The invisible full-screen click-catcher behind every floating list and
+-- flyout: any click that misses the floating frame lands here and runs
+-- onClose. Returns the catcher Button hidden; the owner shows it one frame
+-- level below the floating frame on open and hides it again on close.
+function Controls.AttachDismissOnClickOutside(onClose)
+    local closeListener = CreateFrame("Button", nil, UIParent)
+    closeListener:SetFrameStrata("FULLSCREEN")
+    closeListener:SetFrameLevel(99)
+    closeListener:SetAllPoints(UIParent)
+    closeListener:EnableMouse(true)
+    closeListener:RegisterForClicks("AnyUp", "AnyDown")
+    closeListener:SetScript("OnClick", onClose)
+    closeListener:Hide()
+    return closeListener
+end
