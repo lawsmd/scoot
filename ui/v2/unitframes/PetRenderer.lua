@@ -17,68 +17,6 @@ local B = UF.BindUnit(UNIT_KEY)
 local Sections = UF.Sections
 
 --------------------------------------------------------------------------------
--- Health Bar Tab Builders
---------------------------------------------------------------------------------
-
-local function buildHealthStyleTab(inner)
-    local get, set = B.barAccessors("healthBar")
-    inner:AddBarStyleBlock({ get = get, set = set, apply = B.applyBarTextures })
-    inner:Finalize()
-end
-
-local function buildHealthBorderTab(inner)
-    local get, set = B.barAccessors("healthBar")
-    inner:AddBarBorderBlock({ get = get, set = set, apply = B.applyBarTextures })
-    inner:Finalize()
-end
-
-local function buildHealthVisibilityTab(inner)
-    inner:AddToggle({
-        label = "Hide the Bar but not its Text",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarHideTextureOnly
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarHideTextureOnly = v and true or false
-            B.applyBarTextures()
-        end,
-        infoIcon = {
-            tooltipTitle = "Hide the Bar but not its Text",
-            tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of health.",
-        },
-    })
-
-    inner:Finalize()
-end
-
-local function buildHealthPercentTextTab(inner)
-    local get, set = B.textAccessors("textHealthPercent")
-    inner:AddTextStyleBlock({
-        get = get, set = set, apply = B.applyStyles,
-        applyHidden = B.applyHealthText,
-        hideToggle = { label = "Disable % Text" },
-        color = { values = UF.fontColorHealthValues, order = UF.fontColorHealthOrder },
-        alignment = { kind = "align", default = "LEFT" },
-    })
-    inner:Finalize()
-end
-
-local function buildHealthValueTextTab(inner)
-    local get, set = B.textAccessors("textHealthValue")
-    inner:AddTextStyleBlock({
-        get = get, set = set, apply = B.applyStyles,
-        applyHidden = B.applyHealthText,
-        hideToggle = { label = "Disable Value Text" },
-        color = { values = UF.fontColorHealthValues, order = UF.fontColorHealthOrder },
-        alignment = { kind = "align", default = "RIGHT" },
-    })
-    inner:Finalize()
-end
-
---------------------------------------------------------------------------------
 -- Renderer Function
 --------------------------------------------------------------------------------
 
@@ -102,28 +40,10 @@ function UF.RenderPet(panel, scrollContent)
     -- Collapsible Section: Health Bar
     --------------------------------------------------------------------------------
 
-    local healthTabs = UF.getHealthBarTabs(COMPONENT_ID)
-
-    builder:AddCollapsibleSection({
-        title = "Health Bar",
-        componentId = COMPONENT_ID,
-        sectionKey = "healthBar",
-        defaultExpanded = false,
-        buildContent = function(contentFrame, inner)
-            inner:AddTabbedSection({
-                tabs = healthTabs,
-                componentId = COMPONENT_ID,
-                sectionKey = "healthBar_tabs",
-                buildContent = {
-                    style = function(cf, tabInner) buildHealthStyleTab(tabInner) end,
-                    border = function(cf, tabInner) buildHealthBorderTab(tabInner) end,
-                    visibility = function(cf, tabInner) buildHealthVisibilityTab(tabInner) end,
-                    percentText = function(cf, tabInner) buildHealthPercentTextTab(tabInner) end,
-                    valueText = function(cf, tabInner) buildHealthValueTextTab(tabInner) end,
-                },
-            })
-            inner:Finalize()
-        end,
+    Sections.BuildHealthBarSection(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        visibilityToggles = { "healthHideTextureOnly" },
+        textHideLabels = { percent = "Disable % Text", value = "Disable Value Text" },
     })
 
     --------------------------------------------------------------------------------

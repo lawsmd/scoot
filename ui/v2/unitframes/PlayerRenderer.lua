@@ -39,83 +39,37 @@ local function buildTextTab(inner, textKey, applyFn, defaultAlignment, colorValu
 end
 
 --------------------------------------------------------------------------------
--- Health Bar Visibility Tab (Player only)
+-- Health Bar Visibility Toggles (Player wording: "your health")
 --------------------------------------------------------------------------------
 
-local function buildHealthVisibilityTab(inner)
-    inner:AddToggle({
+local PLAYER_HEALTH_TOGGLES = {
+    {
+        key = "healthBarHideTextureOnly",
         label = "Hide the Bar but not its Text",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarHideTextureOnly
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarHideTextureOnly = v and true or false
-            B.applyBarTextures()
-        end,
         infoIcon = {
             tooltipTitle = "Hide the Bar but not its Text",
             tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of your health.",
         },
-    })
-
-    inner:AddToggle({
-        label = "Hide Over Absorb Glow",
-        description = "Hides the glow effect when absorb shields exceed max health.",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarHideOverAbsorbGlow
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarHideOverAbsorbGlow = v and true or false
-            B.applyBarTextures()
-        end,
-        infoIcon = UF.TOOLTIPS.hideOverAbsorbGlow,
-    })
-
-    inner:AddToggle({
+    },
+    "hideOverAbsorbGlow",
+    {
+        key = "healthBarHideHealPrediction",
         label = "Hide Heal Prediction",
         description = "Hides the green heal prediction bar when healing is incoming.",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarHideHealPrediction
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarHideHealPrediction = v and true or false
-            B.applyBarTextures()
-        end,
         infoIcon = {
             tooltipTitle = "Hide Heal Prediction",
             tooltipText = "Hides the green heal prediction bar that appears on your health bar when you or a party member is casting a heal on you.",
         },
-    })
-
-    inner:AddToggle({
+    },
+    {
+        key = "healthBarHideHealthLossAnimation",
         label = "Hide Health Loss Animation",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarHideHealthLossAnimation
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarHideHealthLossAnimation = v and true or false
-            B.applyBarTextures()
-        end,
         infoIcon = {
             tooltipTitle = "Health Loss Animation",
             tooltipText = "The dark red bar that appears briefly when you take damage, showing the amount of health lost. Hide this to remove the damage flash effect.",
         },
-    })
-
-    inner:Finalize()
-end
+    },
+}
 
 --------------------------------------------------------------------------------
 -- Renderer Function
@@ -147,42 +101,9 @@ function UF.RenderPlayer(panel, scrollContent)
     -- Collapsible Section: Health Bar
     --------------------------------------------------------------------------------
 
-    local healthTabs = UF.getHealthBarTabs(COMPONENT_ID)
-
-    builder:AddCollapsibleSection({
-        title = "Health Bar",
-        componentId = COMPONENT_ID,
-        sectionKey = "healthBar",
-        defaultExpanded = false,
-        buildContent = function(contentFrame, inner)
-            inner:AddTabbedSection({
-                tabs = healthTabs,
-                componentId = COMPONENT_ID,
-                sectionKey = "healthBar_tabs",
-                buildContent = {
-                    style = function(cf, tabInner)
-                        local get, set = B.barAccessors("healthBar")
-                        tabInner:AddBarStyleBlock({ get = get, set = set, apply = B.applyBarTextures })
-                        tabInner:Finalize()
-                    end,
-                    border = function(cf, tabInner)
-                        local get, set = B.barAccessors("healthBar")
-                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyBarTextures })
-                        tabInner:Finalize()
-                    end,
-                    visibility = function(cf, tabInner)
-                        buildHealthVisibilityTab(tabInner)
-                    end,
-                    percentText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textHealthPercent", B.applyHealthText, "LEFT", UF.fontColorHealthValues, UF.fontColorHealthOrder)
-                    end,
-                    valueText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textHealthValue", B.applyHealthText, "RIGHT", UF.fontColorHealthValues, UF.fontColorHealthOrder)
-                    end,
-                },
-            })
-            inner:Finalize()
-        end,
+    Sections.BuildHealthBarSection(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        visibilityToggles = PLAYER_HEALTH_TOGGLES,
     })
 
     --------------------------------------------------------------------------------

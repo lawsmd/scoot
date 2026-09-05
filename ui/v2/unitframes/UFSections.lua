@@ -17,6 +17,51 @@ UF.Sections = UF.Sections or {}
 local Sections = UF.Sections
 
 --------------------------------------------------------------------------------
+-- Shared Toggle Copy
+--------------------------------------------------------------------------------
+
+-- Visibility-tab toggle entries consumed by BuildToggleListTab. A file whose
+-- wording differs (Player speaks of "your health") passes its own entry table
+-- in place of a name from this catalog.
+Sections.TOGGLES = {
+    healthHideTextureOnly = {
+        key = "healthBarHideTextureOnly",
+        label = "Hide the Bar but not its Text",
+        infoIcon = {
+            tooltipTitle = "Hide the Bar but not its Text",
+            tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of health.",
+        },
+    },
+    hideOverAbsorbGlow = {
+        key = "healthBarHideOverAbsorbGlow",
+        label = "Hide Over Absorb Glow",
+        description = "Hides the glow effect when absorb shields exceed max health.",
+        infoIcon = UF.TOOLTIPS.hideOverAbsorbGlow,
+    },
+    hideHealPrediction = {
+        key = "healthBarHideHealPrediction",
+        label = "Hide Heal Prediction",
+        description = "Hides the green heal prediction bar when healing is incoming.",
+        infoIcon = {
+            tooltipTitle = "Hide Heal Prediction",
+            tooltipText = "Hides the green heal prediction bar that appears on the health bar when a heal is incoming.",
+        },
+    },
+    powerBarHidden = {
+        key = "powerBarHidden",
+        label = "Hide Power Bar",
+    },
+    powerHideTextureOnly = {
+        key = "powerBarHideTextureOnly",
+        label = "Hide the Bar but not its Text",
+        infoIcon = {
+            tooltipTitle = "Hide the Bar but not its Text",
+            tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of power.",
+        },
+    },
+}
+
+--------------------------------------------------------------------------------
 -- Tab Builders
 --------------------------------------------------------------------------------
 
@@ -64,9 +109,88 @@ function Sections.BuildTextTab(B, opts)
     opts.inner:Finalize()
 end
 
+-- Flat-key visibility toggles, one AddToggle per entry.
+-- opts: inner; toggles, an ordered list of entry tables or names from
+-- Sections.TOGGLES (entry fields: key, label, description, infoIcon); apply
+-- (B.applyBarTextures unless overridden).
+function Sections.BuildToggleListTab(B, opts)
+    local apply = opts.apply or B.applyBarTextures
+    for _, entry in ipairs(opts.toggles) do
+        if type(entry) == "string" then entry = Sections.TOGGLES[entry] end
+        local key = entry.key
+        opts.inner:AddToggle({
+            label = entry.label,
+            description = entry.description,
+            get = function()
+                local t = B.getUFDB() or {}
+                return not not t[key]
+            end,
+            set = function(v)
+                local t = B.ensureUFDB()
+                if not t then return end
+                t[key] = v and true or false
+                apply()
+            end,
+            infoIcon = entry.infoIcon,
+        })
+    end
+    opts.inner:Finalize()
+end
+
 --------------------------------------------------------------------------------
 -- Section Builders
 --------------------------------------------------------------------------------
+
+-- Health Bar section: tabs from UF.getHealthBarTabs, style and border on the
+-- healthBar prefix, texts on the health color catalog.
+-- opts: builder, componentId; visibilityToggles (entries for
+-- BuildToggleListTab); alignmentKind (Boss); textHideLabels = { percent,
+-- value } for Pet's labeled hide toggles.
+function Sections.BuildHealthBarSection(B, opts)
+    local componentId = opts.componentId
+    local hideLabels = opts.textHideLabels
+    opts.builder:AddCollapsibleSection({
+        title = "Health Bar",
+        componentId = componentId,
+        sectionKey = "healthBar",
+        defaultExpanded = false,
+        buildContent = function(contentFrame, inner)
+            inner:AddTabbedSection({
+                tabs = UF.getHealthBarTabs(componentId),
+                componentId = componentId,
+                sectionKey = "healthBar_tabs",
+                buildContent = {
+                    style = function(cf, tabInner)
+                        Sections.BuildStyleTab(B, { inner = tabInner, barPrefix = "healthBar", apply = B.applyBarTextures })
+                    end,
+                    border = function(cf, tabInner)
+                        Sections.BuildBorderTab(B, { inner = tabInner, barPrefix = "healthBar", apply = B.applyBarTextures })
+                    end,
+                    visibility = function(cf, tabInner)
+                        Sections.BuildToggleListTab(B, { inner = tabInner, toggles = opts.visibilityToggles })
+                    end,
+                    percentText = function(cf, tabInner)
+                        Sections.BuildTextTab(B, {
+                            inner = tabInner, textKey = "textHealthPercent", applyHidden = B.applyHealthText,
+                            defaultAlignment = "LEFT", colorValues = UF.fontColorHealthValues, colorOrder = UF.fontColorHealthOrder,
+                            alignmentKind = opts.alignmentKind,
+                            hideToggle = hideLabels and { label = hideLabels.percent } or nil,
+                        })
+                    end,
+                    valueText = function(cf, tabInner)
+                        Sections.BuildTextTab(B, {
+                            inner = tabInner, textKey = "textHealthValue", applyHidden = B.applyHealthText,
+                            defaultAlignment = "RIGHT", colorValues = UF.fontColorHealthValues, colorOrder = UF.fontColorHealthOrder,
+                            alignmentKind = opts.alignmentKind,
+                            hideToggle = hideLabels and { label = hideLabels.value } or nil,
+                        })
+                    end,
+                },
+            })
+            inner:Finalize()
+        end,
+    })
+end
 
 -- Parent-level controls above the sections: the Hide Blizzard Art toggle, then
 -- Use Larger Frame, Frame Size or the Boss Scale slider, and Scale Multiplier

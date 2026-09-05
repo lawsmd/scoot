@@ -17,67 +17,6 @@ local B = UF.BindUnit(UNIT_KEY)
 local Sections = UF.Sections
 
 --------------------------------------------------------------------------------
--- Health Bar Visibility Tab (Target/Focus: 3 toggles, no Health Loss Animation)
---------------------------------------------------------------------------------
-
-local function buildHealthVisibilityTab(inner)
-    inner:AddToggle({
-        label = "Hide the Bar but not its Text",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarHideTextureOnly
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarHideTextureOnly = v and true or false
-            B.applyBarTextures()
-        end,
-        infoIcon = {
-            tooltipTitle = "Hide the Bar but not its Text",
-            tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of health.",
-        },
-    })
-
-    inner:AddToggle({
-        label = "Hide Over Absorb Glow",
-        description = "Hides the glow effect when absorb shields exceed max health.",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarHideOverAbsorbGlow
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarHideOverAbsorbGlow = v and true or false
-            B.applyBarTextures()
-        end,
-        infoIcon = UF.TOOLTIPS.hideOverAbsorbGlow,
-    })
-
-    inner:AddToggle({
-        label = "Hide Heal Prediction",
-        description = "Hides the green heal prediction bar when healing is incoming.",
-        get = function()
-            local t = B.getUFDB() or {}
-            return not not t.healthBarHideHealPrediction
-        end,
-        set = function(v)
-            local t = B.ensureUFDB()
-            if not t then return end
-            t.healthBarHideHealPrediction = v and true or false
-            B.applyBarTextures()
-        end,
-        infoIcon = {
-            tooltipTitle = "Hide Heal Prediction",
-            tooltipText = "Hides the green heal prediction bar that appears on the health bar when a heal is incoming.",
-        },
-    })
-
-    inner:Finalize()
-end
-
---------------------------------------------------------------------------------
 -- Renderer Function
 --------------------------------------------------------------------------------
 
@@ -101,38 +40,9 @@ function UF.RenderTarget(panel, scrollContent)
     -- Health Bar
     --------------------------------------------------------------------------------
 
-    local healthTabs = UF.getHealthBarTabs(COMPONENT_ID)
-
-    builder:AddCollapsibleSection({
-        title = "Health Bar",
-        componentId = COMPONENT_ID,
-        sectionKey = "healthBar",
-        defaultExpanded = false,
-        buildContent = function(contentFrame, inner)
-            inner:AddTabbedSection({
-                tabs = healthTabs,
-                componentId = COMPONENT_ID,
-                sectionKey = "healthBar_tabs",
-                buildContent = {
-                    style = function(cf, tabInner)
-                        Sections.BuildStyleTab(B, { inner = tabInner, barPrefix = "healthBar", apply = B.applyBarTextures })
-                    end,
-                    border = function(cf, tabInner)
-                        Sections.BuildBorderTab(B, { inner = tabInner, barPrefix = "healthBar", apply = B.applyBarTextures })
-                    end,
-                    visibility = function(cf, tabInner)
-                        buildHealthVisibilityTab(tabInner)
-                    end,
-                    percentText = function(cf, tabInner)
-                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textHealthPercent", applyHidden = B.applyHealthText, defaultAlignment = "LEFT", colorValues = UF.fontColorHealthValues, colorOrder = UF.fontColorHealthOrder })
-                    end,
-                    valueText = function(cf, tabInner)
-                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textHealthValue", applyHidden = B.applyHealthText, defaultAlignment = "RIGHT", colorValues = UF.fontColorHealthValues, colorOrder = UF.fontColorHealthOrder })
-                    end,
-                },
-            })
-            inner:Finalize()
-        end,
+    Sections.BuildHealthBarSection(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        visibilityToggles = { "healthHideTextureOnly", "hideOverAbsorbGlow", "hideHealPrediction" },
     })
 
     --------------------------------------------------------------------------------

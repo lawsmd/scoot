@@ -56,49 +56,10 @@ function UF.RenderBoss(panel, scrollContent)
     -- Health Bar
     --------------------------------------------------------------------------------
 
-    builder:AddCollapsibleSection({
-        title = "Health Bar",
-        componentId = COMPONENT_ID,
-        sectionKey = "healthBar",
-        defaultExpanded = false,
-        buildContent = function(contentFrame, inner)
-            inner:AddTabbedSection({
-                tabs = UF.getHealthBarTabs(COMPONENT_ID),
-                componentId = COMPONENT_ID,
-                sectionKey = "healthBar_tabs",
-                buildContent = {
-                    style = function(cf, tabInner) Sections.BuildStyleTab(B, { inner = tabInner, barPrefix = "healthBar", apply = B.applyBarTextures }) end,
-                    border = function(cf, tabInner) Sections.BuildBorderTab(B, { inner = tabInner, barPrefix = "healthBar", apply = B.applyBarTextures }) end,
-                    visibility = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Hide the Bar but not its Text",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.healthBarHideTextureOnly
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.healthBarHideTextureOnly = v and true or false
-                                B.applyBarTextures()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Hide the Bar but not its Text",
-                                tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of health.",
-                            },
-                        })
-                        tabInner:Finalize()
-                    end,
-                    percentText = function(cf, tabInner)
-                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textHealthPercent", applyHidden = B.applyHealthText, defaultAlignment = "LEFT", colorValues = UF.fontColorHealthValues, colorOrder = UF.fontColorHealthOrder, alignmentKind = "bossDual" })
-                    end,
-                    valueText = function(cf, tabInner)
-                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textHealthValue", applyHidden = B.applyHealthText, defaultAlignment = "RIGHT", colorValues = UF.fontColorHealthValues, colorOrder = UF.fontColorHealthOrder, alignmentKind = "bossDual" })
-                    end,
-                },
-            })
-            inner:Finalize()
-        end,
+    Sections.BuildHealthBarSection(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        visibilityToggles = { "healthHideTextureOnly" },
+        alignmentKind = "bossDual",
     })
 
     --------------------------------------------------------------------------------
