@@ -87,97 +87,42 @@ function UF.RenderPet(panel, scrollContent)
     })
 
     --------------------------------------------------------------------------------
-    -- Collapsible Section: Name & Level Text
+    -- Name & Level Text
     --------------------------------------------------------------------------------
 
-    builder:AddCollapsibleSection({
-        title = "Name & Level Text",
-        componentId = COMPONENT_ID,
-        sectionKey = "nameLevelText",
-        defaultExpanded = false,
-        buildContent = function(contentFrame, inner)
-            inner:AddTabbedSection({
-                tabs = {
-                    { key = "backdrop", label = "Backdrop" },
-                    { key = "border", label = "Border" },
-                    { key = "nameText", label = "Name Text" },
-                    { key = "levelText", label = "Level Text" },
-                },
-                componentId = COMPONENT_ID,
-                sectionKey = "nameLevelText_tabs",
-                buildContent = {
-                    backdrop = function(cf, tabInner)
-                        tabInner:AddToggle({ label = "Enable Backdrop",
-                            get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropEnabled end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropEnabled = not not v; B.applyNameLevelText() end end })
-                        tabInner:AddBarTextureSelector({ label = "Backdrop Texture",
-                            get = function() local t = B.getUFDB() or {}; return t.nameBackdropTexture or "" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropTexture = v; B.applyNameLevelText() end end })
-                        tabInner:AddSelectorColorPicker({ label = "Backdrop Color", values = UF.bgColorValues, order = UF.bgColorOrder,
-                            get = function() local t = B.getUFDB() or {}; return t.nameBackdropColorMode or "default" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropColorMode = v or "default"; B.applyNameLevelText() end end,
-                            getColor = function() local t = B.getUFDB() or {}; local c = t.nameBackdropTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.nameBackdropTint = {r,g,b,a}; B.applyNameLevelText() end end,
-                            customValue = "custom", hasAlpha = true })
-                        tabInner:AddSlider({ label = "Backdrop Width (%)", min = 25, max = 300, step = 1,
-                            get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropWidthPct) or 100 end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropWidthPct = tonumber(v) or 100; B.applyNameLevelText() end end })
-                        tabInner:AddSlider({ label = "Backdrop Opacity", min = 0, max = 100, step = 1,
-                            get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropOpacity) or 50 end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropOpacity = tonumber(v) or 50; B.applyNameLevelText() end end })
-                        tabInner:Finalize()
-                    end,
-                    border = function(cf, tabInner)
-                        tabInner:AddToggle({ label = "Enable Border",
-                            get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropBorderEnabled end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderEnabled = not not v; B.applyNameLevelText() end end })
-                        local borderValues, borderOrder = UF.buildBarBorderOptions()
-                        tabInner:AddSelector({ label = "Border Style", values = borderValues, order = borderOrder,
-                            get = function() local t = B.getUFDB() or {}; return t.nameBackdropBorderStyle or "square" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderStyle = v or "square"; B.applyNameLevelText() end end })
-                        tabInner:AddToggleColorPicker({ label = "Border Tint",
-                            get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropBorderTintEnable end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderTintEnable = not not v; B.applyNameLevelText() end end,
-                            getColor = function() local t = B.getUFDB() or {}; local c = t.nameBackdropBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.nameBackdropBorderTintColor = {r,g,b,a}; B.applyNameLevelText() end end,
-                            hasAlpha = true })
-                        tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
-                            get = function() local t = B.getUFDB() or {}; local v = tonumber(t.nameBackdropBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyNameLevelText() end end })
-                        local insetGet, insetSet = B.barAccessors("nameBackdrop")
-                        tabInner:AddInsetPair({
-                            apply = B.applyNameLevelText,
-                            get = function(axis) return insetGet(axis == "h" and "insetH" or "insetV") end,
-                            set = function(axis, v) insetSet(axis == "h" and "insetH" or "insetV", v) end,
-                        })
-                        tabInner:Finalize()
-                    end,
-                    nameText = function(cf, tabInner)
-                        local get, set = B.textAccessors("textName", { hiddenKey = "nameTextHidden" })
-                        tabInner:AddTextStyleBlock({
-                            get = get, set = set, apply = B.applyNameLevelText,
-                            defaults = { color = {1, 0.82, 0, 1} },
-                            hideToggle = { label = "Disable Name Text" },
-                            -- Pet name text has no class-color mode
-                            color = {
-                                values = addon.Catalogs.ColorMode.DefaultCustom.values,
-                                order = addon.Catalogs.ColorMode.DefaultCustom.order,
-                            },
-                        })
-                        tabInner:Finalize()
-                    end,
-                    levelText = function(cf, tabInner)
-                        local get, set = B.textAccessors("textLevel", { hiddenKey = "levelTextHidden" })
-                        tabInner:AddTextStyleBlock({
-                            get = get, set = set, apply = B.applyNameLevelText,
-                            defaults = { color = {1, 0.82, 0, 1} },
-                            hideToggle = { label = "Disable Level Text" },
-                        })
-                        tabInner:Finalize()
-                    end,
-                },
+    Sections.BuildNameLevelTextSection(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        nameText = {
+            hideToggleInBlock = true,
+            -- Pet name text has no class-color mode
+            colorValues = addon.Catalogs.ColorMode.DefaultCustom.values,
+            colorOrder = addon.Catalogs.ColorMode.DefaultCustom.order,
+        },
+        -- Kept off Sections.BuildBorderTab: the block's selector adds a hidden-edges pair this page never had.
+        borderTab = function(cf, tabInner)
+            tabInner:AddToggle({ label = "Enable Border",
+                get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropBorderEnabled end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderEnabled = not not v; B.applyNameLevelText() end end })
+            local borderValues, borderOrder = UF.buildBarBorderOptions()
+            tabInner:AddSelector({ label = "Border Style", values = borderValues, order = borderOrder,
+                get = function() local t = B.getUFDB() or {}; return t.nameBackdropBorderStyle or "square" end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderStyle = v or "square"; B.applyNameLevelText() end end })
+            tabInner:AddToggleColorPicker({ label = "Border Tint",
+                get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropBorderTintEnable end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderTintEnable = not not v; B.applyNameLevelText() end end,
+                getColor = function() local t = B.getUFDB() or {}; local c = t.nameBackdropBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.nameBackdropBorderTintColor = {r,g,b,a}; B.applyNameLevelText() end end,
+                hasAlpha = true })
+            tabInner:AddSlider({ label = "Border Thickness", min = 1, max = 8, step = 0.5, precision = 1,
+                get = function() local t = B.getUFDB() or {}; local v = tonumber(t.nameBackdropBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyNameLevelText() end end })
+            local insetGet, insetSet = B.barAccessors("nameBackdrop")
+            tabInner:AddInsetPair({
+                apply = B.applyNameLevelText,
+                get = function(axis) return insetGet(axis == "h" and "insetH" or "insetV") end,
+                set = function(axis, v) insetSet(axis == "h" and "insetH" or "insetV", v) end,
             })
-            inner:Finalize()
+            tabInner:Finalize()
         end,
     })
 

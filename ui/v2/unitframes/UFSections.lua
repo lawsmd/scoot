@@ -141,6 +141,43 @@ function Sections.BuildToggleListTab(B, opts)
     opts.inner:Finalize()
 end
 
+-- Name backdrop tab. The texture and color rows sit on one AddBarStyleBlock
+-- foreground row, which the settings search indexes where the old hand-built
+-- AddBarTextureSelector row was not. The enable toggle and the Width and
+-- Opacity sliders stay hand-written, so the stored keys and the row order are
+-- unchanged. opts: inner.
+function Sections.BuildNameBackdropTab(B, opts)
+    local inner = opts.inner
+    inner:AddToggle({
+        label = "Enable Backdrop",
+        get = function() local t = B.getUFDB() or {}; return not not t.nameBackdropEnabled end,
+        set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropEnabled = not not v; B.applyNameLevelText() end end,
+    })
+    local get, set = B.barAccessors("nameBackdrop")
+    inner:AddBarStyleBlock({
+        get = get, set = set, apply = B.applyNameLevelText,
+        foreground = {
+            label = "Backdrop",
+            textureDefault = "",
+            values = UF.bgColorValues, order = UF.bgColorOrder,
+            infoIcons = false,
+        },
+        background = false,
+        opacity = false,
+    })
+    inner:AddSlider({
+        label = "Backdrop Width (%)", min = 25, max = 300, step = 1,
+        get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropWidthPct) or 100 end,
+        set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropWidthPct = tonumber(v) or 100; B.applyNameLevelText() end end,
+    })
+    inner:AddSlider({
+        label = "Backdrop Opacity", min = 0, max = 100, step = 1,
+        get = function() local t = B.getUFDB() or {}; return tonumber(t.nameBackdropOpacity) or 50 end,
+        set = function(v) local t = B.ensureUFDB(); if t then t.nameBackdropOpacity = tonumber(v) or 50; B.applyNameLevelText() end end,
+    })
+    inner:Finalize()
+end
+
 --------------------------------------------------------------------------------
 -- Section Builders
 --------------------------------------------------------------------------------
@@ -660,6 +697,88 @@ function Sections.BuildBuffsDebuffsSection(B, opts)
                             label = "Show Only Player Buffs",
                             get = function() local t = B.getBuffsDebuffsDB() or {}; return not not t.onlyPlayerBuffs end,
                             set = function(v) local t = B.ensureBuffsDebuffsDB(); if t then t.onlyPlayerBuffs = v and true or false; B.applyBuffsDebuffs() end end,
+                        })
+                        tabInner:Finalize()
+                    end,
+                },
+            })
+            inner:Finalize()
+        end,
+    })
+end
+
+-- Name & Level Text section.
+-- opts: builder, componentId; nameText = { containerWidthMax } for the
+-- Target/Focus/Boss shape (separate Disable toggle, Name Container Width,
+-- left-aligned block) or { hideToggleInBlock = true, colorValues, colorOrder }
+-- for the Player/Pet shape (hide toggle inside the block, no width row);
+-- borderTab = function(cf, tabInner) replacing the border tab (Pet's plain
+-- selector without hidden edges).
+function Sections.BuildNameLevelTextSection(B, opts)
+    local componentId = opts.componentId
+    local nameOpts = opts.nameText or {}
+    opts.builder:AddCollapsibleSection({
+        title = "Name & Level Text",
+        componentId = componentId,
+        sectionKey = "nameLevelText",
+        defaultExpanded = false,
+        buildContent = function(contentFrame, inner)
+            inner:AddTabbedSection({
+                tabs = {
+                    { key = "backdrop", label = "Backdrop" },
+                    { key = "border", label = "Border" },
+                    { key = "nameText", label = "Name Text" },
+                    { key = "levelText", label = "Level Text" },
+                },
+                componentId = componentId,
+                sectionKey = "nameLevelText_tabs",
+                buildContent = {
+                    backdrop = function(cf, tabInner)
+                        Sections.BuildNameBackdropTab(B, { inner = tabInner })
+                    end,
+                    border = opts.borderTab or function(cf, tabInner)
+                        Sections.BuildBorderTab(B, {
+                            inner = tabInner, barPrefix = "nameBackdrop", apply = B.applyNameLevelText,
+                            accessorOpts = { suffixes = { enabled = "BorderEnabled" } },
+                            enableToggle = true,
+                        })
+                    end,
+                    nameText = function(cf, tabInner)
+                        if nameOpts.hideToggleInBlock then
+                            local get, set = B.textAccessors("textName", { hiddenKey = "nameTextHidden" })
+                            tabInner:AddTextStyleBlock({
+                                get = get, set = set, apply = B.applyNameLevelText,
+                                defaults = { color = {1, 0.82, 0, 1} },
+                                hideToggle = { label = "Disable Name Text" },
+                                color = nameOpts.colorValues and { values = nameOpts.colorValues, order = nameOpts.colorOrder } or nil,
+                            })
+                            tabInner:Finalize()
+                        else
+                            tabInner:AddToggle({
+                                label = "Disable Name Text",
+                                get = function() local t = B.getUFDB() or {}; return not not t.nameTextHidden end,
+                                set = function(v) local t = B.ensureUFDB(); if t then t.nameTextHidden = v and true or false; B.applyNameLevelText() end end,
+                            })
+                            tabInner:AddSlider({
+                                label = "Name Container Width", min = 80, max = nameOpts.containerWidthMax or 150, step = 5,
+                                get = function() local s = B.getTextDB("textName") or {}; return tonumber(s.containerWidthPct) or 100 end,
+                                set = function(v) local t = B.ensureTextDB("textName"); if t then t.containerWidthPct = tonumber(v) or 100; B.applyNameLevelText() end end,
+                            })
+                            local get, set = B.textAccessors("textName")
+                            tabInner:AddTextStyleBlock({
+                                get = get, set = set, apply = B.applyNameLevelText,
+                                defaults = { color = {1, 0.82, 0, 1} },
+                                alignment = { kind = "align", default = "LEFT" },
+                            })
+                            tabInner:Finalize()
+                        end
+                    end,
+                    levelText = function(cf, tabInner)
+                        local get, set = B.textAccessors("textLevel", { hiddenKey = "levelTextHidden" })
+                        tabInner:AddTextStyleBlock({
+                            get = get, set = set, apply = B.applyNameLevelText,
+                            defaults = { color = {1, 0.82, 0, 1} },
+                            hideToggle = { label = "Disable Level Text" },
                         })
                         tabInner:Finalize()
                     end,

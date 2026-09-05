@@ -3,11 +3,7 @@
 # A row is a site that stays off a shared module on purpose (it carries a Kept off comment) or drift not yet fixed.
 bar-selector	ui/v2/settings/interface/DamageMeterXRenderer.lua	4
 bar-selector	ui/v2/settings/interface/DamageMeterYRenderer.lua	1
-bar-selector	ui/v2/unitframes/BossRenderer.lua	1
-bar-selector	ui/v2/unitframes/FocusRenderer.lua	1
-bar-selector	ui/v2/unitframes/PetRenderer.lua	3
-bar-selector	ui/v2/unitframes/PlayerRenderer.lua	1
-bar-selector	ui/v2/unitframes/TargetRenderer.lua	1
+bar-selector	ui/v2/unitframes/PetRenderer.lua	2
 bar-selector	ui/v2/unitframes/UFSections.lua	2
 blizzard-pool	core/editmode/subgrid.lua	1
 color-switch	core/components/cooldowns/pixelglow.lua	1
