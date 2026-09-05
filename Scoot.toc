@@ -289,8 +289,7 @@ ui/v2/settings/actionbars/ActionBarRenderer.lua
 ui/v2/settings/actionbars/MicroBarRenderer.lua
 ui/v2/settings/actionbars/ExtraAbilitiesRenderer.lua
 ui/v2/settings/prd/GeneralRenderer.lua
-ui/v2/settings/prd/HealthBarRenderer.lua
-ui/v2/settings/prd/PowerBarRenderer.lua
+ui/v2/settings/prd/HealthPowerRenderer.lua
 ui/v2/settings/prd/AltPowerBarRenderer.lua
 ui/v2/settings/prd/ClassResourceRenderer.lua
 ui/v2/settings/interface/MinimapRenderer.lua
