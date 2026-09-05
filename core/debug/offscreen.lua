@@ -125,9 +125,9 @@ local function DebugOffscreenUnlockDump()
             push("       hasSetClampedToScreen="..tostring(hasClamp).."  hasSetClampRectInsets="..tostring(hasInsets))
             push("       IsClampedToScreen="..tostring(_SafeBoolCall(f, "IsClampedToScreen")))
             push("       ClampInsets="..tostring(_SafeClampInsets(f)))
-            -- Scoot runtime flags (if any)
-            local active = f and rawget(f, "_ScootOffscreenUnclampActive")
-            local enforce = f and rawget(f, "_ScootOffscreenEnforceEnabled")
+            -- Scoot runtime flags (if any), read from FrameState
+            local active = addon.FrameState.GetProp(f, "offscreenUnclampActive")
+            local enforce = addon.FrameState.GetProp(f, "offscreenEnforceEnabled")
             push("       ScootFlags: active="..tostring(active).." enforce="..tostring(enforce))
             push("       Point1="..tostring(_SafePointSummary(f)))
         end
