@@ -329,8 +329,7 @@ ui/v2/unitframes/FocusRenderer.lua
 ui/v2/unitframes/BossRenderer.lua
 ui/v2/unitframes/UFZSections.lua
 ui/v2/groupframes/Helpers.lua
-ui/v2/groupframes/PartyRenderer.lua
-ui/v2/groupframes/RaidRenderer.lua
+ui/v2/groupframes/GroupFramesRenderer.lua
 ui/v2/groupframes/AuraTrackingRenderer.lua
 ui/v2/settingspanel/search.lua
 ui/v2/settingspanel/ascii.lua
