@@ -34,7 +34,7 @@ const LUACHECK_CODES = /\((E\d+|W11[123])\)/
 
 // Each pattern guards one shared module. `except` lists the files that own the
 // module; a hit there is the module itself.
-const COMPOSITES = ['ui/v2/SettingsBuilder.lua', 'ui/v2/settings/BuilderComposites.lua']
+const COMPOSITES = ['ui/v2/SettingsBuilder.lua', 'ui/v2/SettingsBuilderRows.lua', 'ui/v2/settings/BuilderComposites.lua']
 const PATTERNS = [
   { name: 'event-frame', re: /:RegisterEvent\(|SetScript\("OnEvent"/, except: ['core/events.lua'],
     hint: 'Game events go through component:On or addon.Events.On; a private frame is for RegisterUnitEvent or a lift edge with no pending state.' },

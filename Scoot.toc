@@ -288,6 +288,7 @@ ui/v2/Navigation.lua
 ui/v2/JumpingLetters.lua
 ui/v2/SettingsBuilder.lua
 ui/v2/SettingsBuilderContainers.lua
+ui/v2/SettingsBuilderRows.lua
 ui/v2/settings/Helpers.lua
 ui/v2/settings/BuilderComposites.lua
 ui/v2/settingspanel/renderers.lua
