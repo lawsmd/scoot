@@ -324,8 +324,7 @@ ui/v2/unitframes/UFSections.lua
 ui/v2/unitframes/ToTRenderer.lua
 ui/v2/unitframes/PetRenderer.lua
 ui/v2/unitframes/PlayerRenderer.lua
-ui/v2/unitframes/TargetRenderer.lua
-ui/v2/unitframes/FocusRenderer.lua
+ui/v2/unitframes/TargetFocusRenderer.lua
 ui/v2/unitframes/BossRenderer.lua
 ui/v2/unitframes/UFZSections.lua
 ui/v2/groupframes/Helpers.lua
