@@ -13,7 +13,8 @@ color-switch	core/components/damagemetersX/styling.lua	4
 color-switch	core/components/damagemetersY/combat.lua	1
 color-switch	core/components/damagemetersY/styling.lua	2
 color-switch	core/components/personal_resource_display/bars.lua	4
-color-switch	core/components/unitframes/bars.lua	5
+color-switch	core/components/unitframes/bars.lua	3
+color-switch	core/components/unitframes/bars/bossframes.lua	2
 color-switch	core/components/unitframes/bars/groupauras/core.lua	1
 color-switch	core/components/unitframes/bars/groupcore.lua	3
 color-switch	core/components/unitframes/bars/overlays.lua	1

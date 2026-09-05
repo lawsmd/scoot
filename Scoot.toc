@@ -138,6 +138,7 @@ core/components/unitframes/bars/valuecolor.lua
 core/components/unitframes/bars/vehicles.lua
 core/components/unitframes/bars/smallframes.lua
 core/components/unitframes/bars/snapshot.lua
+core/components/unitframes/bars/bossframes.lua
 core/components/unitframes/bars.lua
 core/components/unitframes/portraits.lua
 core/components/unitframes/classresource.lua
