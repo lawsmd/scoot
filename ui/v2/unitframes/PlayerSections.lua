@@ -7,6 +7,51 @@ local UF = addon.UI.UnitFrames
 
 UF.PlayerSections = UF.PlayerSections or {}
 
+-- Alternate Power Bar visibility toggles; the blocks are identical apart from
+-- these fields.
+local ALT_POWER_VISIBILITY_TOGGLES = {
+    {
+        key = "hidden", label = "Hide Alternate Power Bar",
+        tooltipTitle = "Hide Alternate Power Bar",
+        tooltipText = "Completely hides the alternate power bar (e.g., Maelstrom for Elemental Shaman, Insanity for Shadow Priest, Stagger for Brewmaster).",
+    },
+    {
+        key = "hideTextureOnly", label = "Hide the Bar but not its Text",
+        tooltipTitle = "Hide the Bar but not its Text",
+        tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of your alternate power resource.",
+    },
+    {
+        key = "hideFullSpikes", label = "Hide Full Bar Animations",
+        tooltipTitle = "Full Bar Animations",
+        tooltipText = "Disables Blizzard's full-bar celebration animations that play when the resource is full. These overlays can't be resized, so hiding them keeps custom bar heights consistent.",
+    },
+    {
+        key = "hideFeedback", label = "Hide Power Feedback",
+        tooltipTitle = "Power Feedback",
+        tooltipText = "Disables the flash animation that plays when you spend or gain alternate power. This animation shows a quick highlight on the portion of the bar that changed.",
+    },
+    {
+        key = "hideSpark", label = "Hide APB Spark",
+        tooltipTitle = "APB Spark",
+        tooltipText = "Hides the spark/glow indicator that appears at the current power level on the alternate power bar.",
+    },
+    {
+        key = "hideManaCostPrediction", label = "Hide Mana Cost Predictions",
+        tooltipTitle = "Mana Cost Predictions",
+        tooltipText = "Hides the power cost prediction overlay that appears on the alternate power bar when casting a spell.",
+    },
+    {
+        key = "percentHidden", label = "Hide Percent Text",
+        tooltipTitle = "Hide Percent Text",
+        tooltipText = "Hides the percentage text overlay on the alternate power bar.",
+    },
+    {
+        key = "valueHidden", label = "Hide Value Text",
+        tooltipTitle = "Hide Value Text",
+        tooltipText = "Hides the numeric value text overlay on the alternate power bar.",
+    },
+}
+
 --------------------------------------------------------------------------------
 -- Alternate Power Bar Section
 --------------------------------------------------------------------------------
@@ -159,150 +204,26 @@ function UF.PlayerSections.buildAlternatePowerBar(builder, COMPONENT_ID, ensureU
                         tabInner:Finalize()
                     end,
                     visibility = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Hide Alternate Power Bar",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.hidden == true
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.hidden = (v == true)
-                                applyBarTexturesFn()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Hide Alternate Power Bar",
-                                tooltipText = "Completely hides the alternate power bar (e.g., Maelstrom for Elemental Shaman, Insanity for Shadow Priest, Stagger for Brewmaster).",
-                            },
-                        })
-
-                        tabInner:AddToggle({
-                            label = "Hide the Bar but not its Text",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.hideTextureOnly == true
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.hideTextureOnly = (v == true)
-                                applyBarTexturesFn()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Hide the Bar but not its Text",
-                                tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of your alternate power resource.",
-                            },
-                        })
-
-                        tabInner:AddToggle({
-                            label = "Hide Full Bar Animations",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.hideFullSpikes == true
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.hideFullSpikes = (v == true)
-                                applyBarTexturesFn()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Full Bar Animations",
-                                tooltipText = "Disables Blizzard's full-bar celebration animations that play when the resource is full. These overlays can't be resized, so hiding them keeps custom bar heights consistent.",
-                            },
-                        })
-
-                        tabInner:AddToggle({
-                            label = "Hide Power Feedback",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.hideFeedback == true
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.hideFeedback = (v == true)
-                                applyBarTexturesFn()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Power Feedback",
-                                tooltipText = "Disables the flash animation that plays when you spend or gain alternate power. This animation shows a quick highlight on the portion of the bar that changed.",
-                            },
-                        })
-
-                        tabInner:AddToggle({
-                            label = "Hide APB Spark",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.hideSpark == true
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.hideSpark = (v == true)
-                                applyBarTexturesFn()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "APB Spark",
-                                tooltipText = "Hides the spark/glow indicator that appears at the current power level on the alternate power bar.",
-                            },
-                        })
-
-                        tabInner:AddToggle({
-                            label = "Hide Mana Cost Predictions",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.hideManaCostPrediction == true
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.hideManaCostPrediction = (v == true)
-                                applyBarTexturesFn()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Mana Cost Predictions",
-                                tooltipText = "Hides the power cost prediction overlay that appears on the alternate power bar when casting a spell.",
-                            },
-                        })
-
-                        tabInner:AddToggle({
-                            label = "Hide Percent Text",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.percentHidden == true
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.percentHidden = (v == true)
-                                applyBarTexturesFn()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Hide Percent Text",
-                                tooltipText = "Hides the percentage text overlay on the alternate power bar.",
-                            },
-                        })
-
-                        tabInner:AddToggle({
-                            label = "Hide Value Text",
-                            get = function()
-                                local apb = getAltPowerBarDB() or {}
-                                return apb.valueHidden == true
-                            end,
-                            set = function(v)
-                                local apb = ensureAltPowerBarDB()
-                                if not apb then return end
-                                apb.valueHidden = (v == true)
-                                applyBarTexturesFn()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Hide Value Text",
-                                tooltipText = "Hides the numeric value text overlay on the alternate power bar.",
-                            },
-                        })
-
+                        for _, entry in ipairs(ALT_POWER_VISIBILITY_TOGGLES) do
+                            local key = entry.key
+                            tabInner:AddToggle({
+                                label = entry.label,
+                                get = function()
+                                    local apb = getAltPowerBarDB() or {}
+                                    return apb[key] == true
+                                end,
+                                set = function(v)
+                                    local apb = ensureAltPowerBarDB()
+                                    if not apb then return end
+                                    apb[key] = (v == true)
+                                    applyBarTexturesFn()
+                                end,
+                                infoIcon = {
+                                    tooltipTitle = entry.tooltipTitle,
+                                    tooltipText = entry.tooltipText,
+                                },
+                            })
+                        end
                         tabInner:Finalize()
                     end,
                     percentText = function(cf, tabInner)
