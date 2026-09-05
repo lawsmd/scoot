@@ -17,7 +17,6 @@ color-switch	core/components/unitframes/bars.lua	11
 color-switch	core/components/unitframes/bars/groupauras/core.lua	1
 color-switch	core/components/unitframes/bars/groupcore.lua	3
 color-switch	core/components/unitframes/bars/overlays.lua	1
-color-switch	core/components/unitframes/bars/partyframes/core.lua	3
 color-switch	core/components/unitframes/bars/textures.lua	2
 color-switch	core/components/unitframes/cast/boss.lua	1
 color-switch	core/components/unitframes/cast/core.lua	2
