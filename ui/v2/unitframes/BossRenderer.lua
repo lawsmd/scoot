@@ -63,76 +63,13 @@ function UF.RenderBoss(panel, scrollContent)
     })
 
     --------------------------------------------------------------------------------
-    -- Power Bar (7 tabs: Positioning, Sizing, Style, Border, Visibility, % Text, Value Text)
+    -- Power Bar
     --------------------------------------------------------------------------------
 
-    local powerTabs = UF.getPowerBarTabs()
-
-    builder:AddCollapsibleSection({
-        title = "Power Bar",
-        componentId = COMPONENT_ID,
-        sectionKey = "powerBar",
-        defaultExpanded = false,
-        buildContent = function(contentFrame, inner)
-            inner:AddTabbedSection({
-                tabs = powerTabs,
-                componentId = COMPONENT_ID,
-                sectionKey = "powerBar_tabs",
-                buildContent = {
-                    positioning = function(cf, tabInner)
-                        tabInner:AddOffsetPair({
-                            get = function(axis) local t = B.getUFDB(); return t and t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] end,
-                            set = function(axis, v) local t = B.ensureUFDB(); if t then t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] = v end end,
-                            apply = B.applyBarTextures,
-                        })
-                        tabInner:Finalize()
-                    end,
-                    sizing = function(cf, tabInner)
-                        tabInner:AddSlider({
-                            label = "Height %",
-                            min = 10, max = 200, step = 5,
-                            get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarHeightPct) or 100 end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarHeightPct = tonumber(v) or 100; B.applyBarTextures() end end,
-                        })
-                        tabInner:Finalize()
-                    end,
-                    style = function(cf, tabInner) Sections.BuildStyleTab(B, { inner = tabInner, barPrefix = "powerBar", apply = B.applyBarTextures, colorValues = UF.powerColorValues, colorOrder = UF.powerColorOrder }) end,
-                    border = function(cf, tabInner) Sections.BuildBorderTab(B, { inner = tabInner, barPrefix = "powerBar", apply = B.applyBarTextures }) end,
-                    visibility = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Hide Power Bar",
-                            get = function() local t = B.getUFDB() or {}; return not not t.powerBarHidden end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarHidden = v and true or false; B.applyBarTextures() end end,
-                        })
-                        tabInner:AddToggle({
-                            label = "Hide the Bar but not its Text",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.powerBarHideTextureOnly
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarHideTextureOnly = v and true or false
-                                B.applyBarTextures()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Hide the Bar but not its Text",
-                                tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of power.",
-                            },
-                        })
-                        tabInner:Finalize()
-                    end,
-                    percentText = function(cf, tabInner)
-                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textPowerPercent", applyHidden = B.applyPowerText, defaultAlignment = "LEFT", alignmentKind = "bossDual" })
-                    end,
-                    valueText = function(cf, tabInner)
-                        Sections.BuildTextTab(B, { inner = tabInner, textKey = "textPowerValue", applyHidden = B.applyPowerText, defaultAlignment = "RIGHT", alignmentKind = "bossDual" })
-                    end,
-                },
-            })
-            inner:Finalize()
-        end,
+    Sections.BuildPowerBarSection(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        visibilityToggles = { "powerBarHidden", "powerHideTextureOnly" },
+        alignmentKind = "bossDual",
     })
 
     --------------------------------------------------------------------------------

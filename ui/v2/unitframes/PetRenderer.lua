@@ -47,97 +47,43 @@ function UF.RenderPet(panel, scrollContent)
     })
 
     --------------------------------------------------------------------------------
-    -- Collapsible Section: Power Bar (7 tabs)
+    -- Collapsible Section: Power Bar
     --------------------------------------------------------------------------------
 
-    local powerTabs = UF.getPowerBarTabs()
-
-    builder:AddCollapsibleSection({
-        title = "Power Bar",
-        componentId = COMPONENT_ID,
-        sectionKey = "powerBar",
-        defaultExpanded = false,
-        buildContent = function(contentFrame, inner)
-            inner:AddTabbedSection({
-                tabs = powerTabs,
-                componentId = COMPONENT_ID,
-                sectionKey = "powerBar_tabs",
-                buildContent = {
-                    positioning = function(cf, tabInner)
-                        tabInner:AddOffsetPair({
-                            get = function(axis) local t = B.getUFDB(); return t and t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] end,
-                            set = function(axis, v) local t = B.ensureUFDB(); if t then t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] = v end end,
-                            apply = B.applyBarTextures,
-                        })
-                        tabInner:Finalize()
-                    end,
-                    sizing = function(cf, tabInner)
-                        tabInner:AddSlider({ label = "Height %", min = 10, max = 200, step = 5,
-                            get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarHeightPct) or 100 end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarHeightPct = tonumber(v) or 100; B.applyBarTextures() end end })
-                        tabInner:Finalize()
-                    end,
-                    style = function(cf, tabInner)
-                        -- Kept off Builder:AddBarStyleBlock: texture and color sit on separate rows, not the dual row the block emits.
-                        tabInner:AddBarTextureSelector({ label = "Foreground Texture",
-                            get = function() local t = B.getUFDB() or {}; return t.powerBarTexture or "default" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarTexture = v or "default"; B.applyBarTextures() end end })
-                        tabInner:AddSelectorColorPicker({ label = "Foreground Color", values = UF.powerColorValues, order = UF.powerColorOrder,
-                            get = function() local t = B.getUFDB() or {}; return t.powerBarColorMode or "default" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarColorMode = v or "default"; B.applyBarTextures() end end,
-                            getColor = function() local t = B.getUFDB() or {}; local c = t.powerBarTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.powerBarTint = {r,g,b,a}; B.applyBarTextures() end end,
-                            customValue = "custom", hasAlpha = true })
-                        tabInner:AddSpacer(8)
-                        tabInner:AddBarTextureSelector({ label = "Background Texture",
-                            get = function() local t = B.getUFDB() or {}; return t.powerBarBackgroundTexture or "default" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundTexture = v or "default"; B.applyBarTextures() end end })
-                        tabInner:AddSelectorColorPicker({ label = "Background Color", values = UF.bgColorValues, order = UF.bgColorOrder,
-                            get = function() local t = B.getUFDB() or {}; return t.powerBarBackgroundColorMode or "default" end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundColorMode = v or "default"; B.applyBarTextures() end end,
-                            getColor = function() local t = B.getUFDB() or {}; local c = t.powerBarBackgroundTint or {0,0,0,1}; return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1 end,
-                            setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.powerBarBackgroundTint = {r,g,b,a}; B.applyBarTextures() end end,
-                            customValue = "custom", hasAlpha = true })
-                        tabInner:AddSlider({ label = "Background Opacity", min = 0, max = 100, step = 1,
-                            get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarBackgroundOpacity) or 50 end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundOpacity = tonumber(v) or 50; B.applyBarTextures() end end })
-                        tabInner:Finalize()
-                    end,
-                    border = function(cf, tabInner)
-                        local get, set = B.barAccessors("powerBar")
-                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyBarTextures })
-                        tabInner:Finalize()
-                    end,
-                    visibility = function(cf, tabInner)
-                        tabInner:AddToggle({ label = "Hide Power Bar",
-                            get = function() local t = B.getUFDB() or {}; return not not t.powerBarHidden end,
-                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarHidden = v and true or false; B.applyBarTextures() end end })
-                        tabInner:Finalize()
-                    end,
-                    percentText = function(cf, tabInner)
-                        local get, set = B.textAccessors("textPowerPercent")
-                        tabInner:AddTextStyleBlock({
-                            get = get, set = set, apply = B.applyStyles,
-                            applyHidden = B.applyPowerText,
-                            hideToggle = { label = "Disable % Text" },
-                            offset = false,
-                        })
-                        tabInner:Finalize()
-                    end,
-                    valueText = function(cf, tabInner)
-                        local get, set = B.textAccessors("textPowerValue")
-                        tabInner:AddTextStyleBlock({
-                            get = get, set = set, apply = B.applyStyles,
-                            applyHidden = B.applyPowerText,
-                            hideToggle = { label = "Disable Value Text" },
-                            offset = false,
-                        })
-                        tabInner:Finalize()
-                    end,
-                },
-            })
-            inner:Finalize()
+    Sections.BuildPowerBarSection(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        visibilityToggles = { "powerBarHidden" },
+        styleTab = function(cf, tabInner)
+            -- Kept off Builder:AddBarStyleBlock: texture and color sit on separate rows, not the dual row the block emits.
+            tabInner:AddBarTextureSelector({ label = "Foreground Texture",
+                get = function() local t = B.getUFDB() or {}; return t.powerBarTexture or "default" end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarTexture = v or "default"; B.applyBarTextures() end end })
+            tabInner:AddSelectorColorPicker({ label = "Foreground Color", values = UF.powerColorValues, order = UF.powerColorOrder,
+                get = function() local t = B.getUFDB() or {}; return t.powerBarColorMode or "default" end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarColorMode = v or "default"; B.applyBarTextures() end end,
+                getColor = function() local t = B.getUFDB() or {}; local c = t.powerBarTint or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.powerBarTint = {r,g,b,a}; B.applyBarTextures() end end,
+                customValue = "custom", hasAlpha = true })
+            tabInner:AddSpacer(8)
+            tabInner:AddBarTextureSelector({ label = "Background Texture",
+                get = function() local t = B.getUFDB() or {}; return t.powerBarBackgroundTexture or "default" end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundTexture = v or "default"; B.applyBarTextures() end end })
+            tabInner:AddSelectorColorPicker({ label = "Background Color", values = UF.bgColorValues, order = UF.bgColorOrder,
+                get = function() local t = B.getUFDB() or {}; return t.powerBarBackgroundColorMode or "default" end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundColorMode = v or "default"; B.applyBarTextures() end end,
+                getColor = function() local t = B.getUFDB() or {}; local c = t.powerBarBackgroundTint or {0,0,0,1}; return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1 end,
+                setColor = function(r,g,b,a) local t = B.ensureUFDB(); if t then t.powerBarBackgroundTint = {r,g,b,a}; B.applyBarTextures() end end,
+                customValue = "custom", hasAlpha = true })
+            tabInner:AddSlider({ label = "Background Opacity", min = 0, max = 100, step = 1,
+                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarBackgroundOpacity) or 50 end,
+                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarBackgroundOpacity = tonumber(v) or 50; B.applyBarTextures() end end })
+            tabInner:Finalize()
         end,
+        textOpts = {
+            hideLabels = { percent = "Disable % Text", value = "Disable Value Text" },
+            offset = false,
+            defaultAlignments = false,
+        },
     })
 
     --------------------------------------------------------------------------------

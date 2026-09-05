@@ -21,24 +21,6 @@ local Sections = UF.Sections
 -- Player-only sections are in PlayerSections.lua (UF.PlayerSections.*)
 
 --------------------------------------------------------------------------------
--- Text Tab Builder
---------------------------------------------------------------------------------
-
--- dkPair: only the power value/percent texts route their color mode through
--- the colorMode/colorModeDK pair (Death Knight spec coloring).
-local function buildTextTab(inner, textKey, applyFn, defaultAlignment, colorValues, colorOrder, dkPair)
-    local get, set = B.textAccessors(textKey)
-    inner:AddTextStyleBlock({
-        get = get, set = set, apply = B.applyStyles,
-        applyHidden = applyFn,
-        hideToggle = true,
-        color = { values = colorValues, order = colorOrder, dkPair = dkPair },
-        alignment = { kind = "align", default = defaultAlignment },
-    })
-    inner:Finalize()
-end
-
---------------------------------------------------------------------------------
 -- Health Bar Visibility Toggles (Player wording: "your health")
 --------------------------------------------------------------------------------
 
@@ -67,6 +49,54 @@ local PLAYER_HEALTH_TOGGLES = {
         infoIcon = {
             tooltipTitle = "Health Loss Animation",
             tooltipText = "The dark red bar that appears briefly when you take damage, showing the amount of health lost. Hide this to remove the damage flash effect.",
+        },
+    },
+}
+
+--------------------------------------------------------------------------------
+-- Power Bar Visibility Toggles (Player wording: "your power")
+--------------------------------------------------------------------------------
+
+local PLAYER_POWER_TOGGLES = {
+    "powerBarHidden",
+    {
+        key = "powerBarHideTextureOnly",
+        label = "Hide the Bar but not its Text",
+        infoIcon = {
+            tooltipTitle = "Hide the Bar but not its Text",
+            tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of your power resource.",
+        },
+    },
+    {
+        key = "powerBarHideFullSpikes",
+        label = "Hide Full Bar Animations",
+        infoIcon = {
+            tooltipTitle = "Full Bar Animations",
+            tooltipText = "Disables Blizzard's full-bar celebration animations that play when the resource is full. These overlays can't be resized, so hiding them keeps custom bar heights consistent.",
+        },
+    },
+    {
+        key = "powerBarHideFeedback",
+        label = "Hide Power Feedback",
+        infoIcon = {
+            tooltipTitle = "Power Feedback",
+            tooltipText = "Disables the flash animation that plays when you spend or gain power (energy, mana, rage, etc.). This animation shows a quick highlight on the portion of the bar that changed.",
+        },
+    },
+    {
+        key = "powerBarHideSpark",
+        label = "Hide Power Bar Spark",
+        infoIcon = {
+            tooltipTitle = "Power Bar Spark",
+            tooltipText = "Hides the spark/glow indicator that appears at the current power level on certain classes (e.g., Elemental Shaman).",
+        },
+    },
+    {
+        key = "powerBarHideManaCostPrediction",
+        label = "Hide Mana Cost Predictions",
+        infoIcon = {
+            tooltipTitle = "Mana Cost Predictions",
+            tooltipText = "Hides the mana/power cost prediction overlay that appears on the power bar when casting a spell. This blue overlay shows how much power will be consumed by the current cast.",
         },
     },
 }
@@ -110,186 +140,13 @@ function UF.RenderPlayer(panel, scrollContent)
     -- Collapsible Section: Power Bar
     --------------------------------------------------------------------------------
 
-    local powerTabs = UF.getPowerBarTabs()
-
-    builder:AddCollapsibleSection({
-        title = "Power Bar",
-        componentId = COMPONENT_ID,
-        sectionKey = "powerBar",
-        defaultExpanded = false,
-        buildContent = function(contentFrame, inner)
-            inner:AddTabbedSection({
-                tabs = powerTabs,
-                componentId = COMPONENT_ID,
-                sectionKey = "powerBar_tabs",
-                buildContent = {
-                    positioning = function(cf, tabInner)
-                        tabInner:AddOffsetPair({
-                            get = function(axis) local t = B.getUFDB(); return t and t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] end,
-                            set = function(axis, v) local t = B.ensureUFDB(); if t then t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] = v end end,
-                            apply = B.applyBarTextures,
-                        })
-                        tabInner:Finalize()
-                    end,
-                    sizing = function(cf, tabInner)
-                        tabInner:AddSlider({
-                            label = "Width %",
-                            min = 10,
-                            max = 200,
-                            step = 5,
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return tonumber(t.powerBarWidthPct) or 100
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarWidthPct = tonumber(v) or 100
-                                B.applyBarTextures()
-                            end,
-                        })
-                        tabInner:AddSlider({
-                            label = "Height %",
-                            min = 10,
-                            max = 200,
-                            step = 5,
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return tonumber(t.powerBarHeightPct) or 100
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarHeightPct = tonumber(v) or 100
-                                B.applyBarTextures()
-                            end,
-                        })
-                        tabInner:Finalize()
-                    end,
-                    style = function(cf, tabInner)
-                        local get, set = B.barAccessors("powerBar")
-                        tabInner:AddBarStyleBlock({
-                            get = get, set = set, apply = B.applyBarTextures,
-                            foreground = { values = UF.powerColorValues, order = UF.powerColorOrder },
-                        })
-                        tabInner:Finalize()
-                    end,
-                    border = function(cf, tabInner)
-                        local get, set = B.barAccessors("powerBar")
-                        tabInner:AddBarBorderBlock({ get = get, set = set, apply = B.applyBarTextures })
-                        tabInner:Finalize()
-                    end,
-                    visibility = function(cf, tabInner)
-                        tabInner:AddToggle({
-                            label = "Hide Power Bar",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.powerBarHidden
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarHidden = v and true or false
-                                B.applyBarTextures()
-                            end,
-                        })
-                        tabInner:AddToggle({
-                            label = "Hide the Bar but not its Text",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.powerBarHideTextureOnly
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarHideTextureOnly = v and true or false
-                                B.applyBarTextures()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Hide the Bar but not its Text",
-                                tooltipText = "Hides the bar texture and background, showing only the text overlay. Useful for a number-only display of your power resource.",
-                            },
-                        })
-                        tabInner:AddToggle({
-                            label = "Hide Full Bar Animations",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.powerBarHideFullSpikes
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarHideFullSpikes = v and true or false
-                                B.applyBarTextures()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Full Bar Animations",
-                                tooltipText = "Disables Blizzard's full-bar celebration animations that play when the resource is full. These overlays can't be resized, so hiding them keeps custom bar heights consistent.",
-                            },
-                        })
-                        tabInner:AddToggle({
-                            label = "Hide Power Feedback",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.powerBarHideFeedback
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarHideFeedback = v and true or false
-                                B.applyBarTextures()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Power Feedback",
-                                tooltipText = "Disables the flash animation that plays when you spend or gain power (energy, mana, rage, etc.). This animation shows a quick highlight on the portion of the bar that changed.",
-                            },
-                        })
-                        tabInner:AddToggle({
-                            label = "Hide Power Bar Spark",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.powerBarHideSpark
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarHideSpark = v and true or false
-                                B.applyBarTextures()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Power Bar Spark",
-                                tooltipText = "Hides the spark/glow indicator that appears at the current power level on certain classes (e.g., Elemental Shaman).",
-                            },
-                        })
-                        tabInner:AddToggle({
-                            label = "Hide Mana Cost Predictions",
-                            get = function()
-                                local t = B.getUFDB() or {}
-                                return not not t.powerBarHideManaCostPrediction
-                            end,
-                            set = function(v)
-                                local t = B.ensureUFDB()
-                                if not t then return end
-                                t.powerBarHideManaCostPrediction = v and true or false
-                                B.applyBarTextures()
-                            end,
-                            infoIcon = {
-                                tooltipTitle = "Mana Cost Predictions",
-                                tooltipText = "Hides the mana/power cost prediction overlay that appears on the power bar when casting a spell. This blue overlay shows how much power will be consumed by the current cast.",
-                            },
-                        })
-                        tabInner:Finalize()
-                    end,
-                    percentText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textPowerPercent", B.applyPowerText, "LEFT", UF.fontColorPowerValues, UF.fontColorPowerOrder, true)
-                    end,
-                    valueText = function(cf, tabInner)
-                        buildTextTab(tabInner, "textPowerValue", B.applyPowerText, "RIGHT", UF.fontColorPowerValues, UF.fontColorPowerOrder, true)
-                    end,
-                },
-            })
-            inner:Finalize()
-        end,
+    -- dkPair: only the power value/percent texts route their color mode
+    -- through the colorMode/colorModeDK pair (Death Knight spec coloring).
+    Sections.BuildPowerBarSection(B, {
+        builder = builder, componentId = COMPONENT_ID,
+        widthSlider = true,
+        visibilityToggles = PLAYER_POWER_TOGGLES,
+        textOpts = { colorValues = UF.fontColorPowerValues, colorOrder = UF.fontColorPowerOrder, dkPair = true },
     })
 
     --------------------------------------------------------------------------------

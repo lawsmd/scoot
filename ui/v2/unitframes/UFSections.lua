@@ -87,14 +87,17 @@ end
 
 -- Text style tab: one AddTextStyleBlock over a text sub-table.
 -- opts: inner, textKey, applyHidden, defaultAlignment, colorValues, colorOrder,
--- alignmentKind ("align" unless "bossDual", which derives the dual selector key
--- from textKey), hideToggle (true unless overridden).
+-- dkPair, offset (nil keeps the row, false drops it), alignmentKind ("align"
+-- unless "bossDual", which derives the dual selector key from textKey),
+-- hideToggle (true unless overridden). With neither alignmentKind nor
+-- defaultAlignment the alignment field stays unset and the composite renders
+-- its default row.
 function Sections.BuildTextTab(B, opts)
     local get, set = B.textAccessors(opts.textKey)
     local alignment
     if opts.alignmentKind == "bossDual" then
         alignment = { kind = "bossDual", default = opts.defaultAlignment, key = opts.textKey .. "AlignmentDual" }
-    else
+    elseif opts.defaultAlignment ~= nil then
         alignment = { kind = "align", default = opts.defaultAlignment }
     end
     local hideToggle = opts.hideToggle
@@ -103,8 +106,9 @@ function Sections.BuildTextTab(B, opts)
         get = get, set = set, apply = B.applyStyles,
         applyHidden = opts.applyHidden,
         hideToggle = hideToggle,
-        color = { values = opts.colorValues, order = opts.colorOrder },
+        color = { values = opts.colorValues, order = opts.colorOrder, dkPair = opts.dkPair },
         alignment = alignment,
+        offset = opts.offset,
     })
     opts.inner:Finalize()
 end
@@ -287,6 +291,86 @@ function Sections.BuildParentControls(B, opts)
             infoIcon = UF.TOOLTIPS.scaleMult,
         })
     end
+end
+
+-- Power Bar section: tabs from UF.getPowerBarTabs, style and border on the
+-- powerBar prefix, texts on the power text keys.
+-- opts: builder, componentId; widthSlider = true for Player's Width % row;
+-- visibilityToggles; alignmentKind (Boss); styleTab = function(cf, tabInner)
+-- replacing the style tab (Pet's kept hand-rolled pair); textOpts =
+-- { colorValues, colorOrder, dkPair, offset, hideLabels = { percent, value },
+-- defaultAlignments = false to leave the alignment row on composite defaults }.
+function Sections.BuildPowerBarSection(B, opts)
+    local componentId = opts.componentId
+    local textOpts = opts.textOpts or {}
+    local hideLabels = textOpts.hideLabels
+    local function buildTextTab(tabInner, textKey, defaultAlignment, hideLabel)
+        Sections.BuildTextTab(B, {
+            inner = tabInner, textKey = textKey, applyHidden = B.applyPowerText,
+            defaultAlignment = textOpts.defaultAlignments ~= false and defaultAlignment or nil,
+            colorValues = textOpts.colorValues, colorOrder = textOpts.colorOrder,
+            dkPair = textOpts.dkPair, offset = textOpts.offset,
+            alignmentKind = opts.alignmentKind,
+            hideToggle = hideLabel and { label = hideLabel } or nil,
+        })
+    end
+    opts.builder:AddCollapsibleSection({
+        title = "Power Bar",
+        componentId = componentId,
+        sectionKey = "powerBar",
+        defaultExpanded = false,
+        buildContent = function(contentFrame, inner)
+            inner:AddTabbedSection({
+                tabs = UF.getPowerBarTabs(),
+                componentId = componentId,
+                sectionKey = "powerBar_tabs",
+                buildContent = {
+                    positioning = function(cf, tabInner)
+                        tabInner:AddOffsetPair({
+                            get = function(axis) local t = B.getUFDB(); return t and t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] end,
+                            set = function(axis, v) local t = B.ensureUFDB(); if t then t[axis == "x" and "powerBarOffsetX" or "powerBarOffsetY"] = v end end,
+                            apply = B.applyBarTextures,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    sizing = function(cf, tabInner)
+                        if opts.widthSlider then
+                            tabInner:AddSlider({
+                                label = "Width %", min = 10, max = 200, step = 5,
+                                get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarWidthPct) or 100 end,
+                                set = function(v) local t = B.ensureUFDB(); if t then t.powerBarWidthPct = tonumber(v) or 100; B.applyBarTextures() end end,
+                            })
+                        end
+                        tabInner:AddSlider({
+                            label = "Height %", min = 10, max = 200, step = 5,
+                            get = function() local t = B.getUFDB() or {}; return tonumber(t.powerBarHeightPct) or 100 end,
+                            set = function(v) local t = B.ensureUFDB(); if t then t.powerBarHeightPct = tonumber(v) or 100; B.applyBarTextures() end end,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    style = opts.styleTab or function(cf, tabInner)
+                        Sections.BuildStyleTab(B, {
+                            inner = tabInner, barPrefix = "powerBar", apply = B.applyBarTextures,
+                            colorValues = UF.powerColorValues, colorOrder = UF.powerColorOrder,
+                        })
+                    end,
+                    border = function(cf, tabInner)
+                        Sections.BuildBorderTab(B, { inner = tabInner, barPrefix = "powerBar", apply = B.applyBarTextures })
+                    end,
+                    visibility = function(cf, tabInner)
+                        Sections.BuildToggleListTab(B, { inner = tabInner, toggles = opts.visibilityToggles })
+                    end,
+                    percentText = function(cf, tabInner)
+                        buildTextTab(tabInner, "textPowerPercent", "LEFT", hideLabels and hideLabels.percent)
+                    end,
+                    valueText = function(cf, tabInner)
+                        buildTextTab(tabInner, "textPowerValue", "RIGHT", hideLabels and hideLabels.value)
+                    end,
+                },
+            })
+            inner:Finalize()
+        end,
+    })
 end
 
 return UF.Sections
