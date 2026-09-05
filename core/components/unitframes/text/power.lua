@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
 -- text/power.lua
--- Power (mana/energy/rage/etc.) text font styling, visibility enforcement, and
--- positioning for all unit frames.
+-- Power text kind descriptor and forks for the shared text pipeline
+-- (text/pipeline.lua): bar and FontString resolvers, the power color half with
+-- its Death Knight companion slot, and the DK color-mode migration.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -18,39 +19,25 @@ local ufTextCustomizationOpts = { alignment = true, alignmentMode = true, colorM
 -- Reference to FrameState module for safe property storage (avoids writing to Blizzard frames)
 local FS = addon.FrameState
 
+-- Cross-file import: the shared text pipeline builder (text/pipeline.lua, loaded first in TOC)
+local buildTextPipeline = addon.UnitFrameText._BuildTextPipeline
+
 -- Hide-enforcement hooks (core/enforce.lua). The hidden flag stays in
 -- FrameState, where the profile-switch reset in base/core.lua also clears it;
 -- the keys read it live. Show and SetText re-assert at once, SetAlpha after a
 -- stack break. The power hooks never bailed in Edit Mode, and still do not.
-local Enforce = addon.Enforce
 local POWER_TEXT_OPTS = {
-    methods = { "Show", "SetAlpha", "SetText" },
-    timing = { SetAlpha = "defer" },
-    when = function(fs) return FS.IsHidden(fs, "powerText") end,
+	methods = { "Show", "SetAlpha", "SetText" },
+	timing = { SetAlpha = "defer" },
+	when = function(fs) return FS.IsHidden(fs, "powerText") end,
 }
 local POWER_TEXT_CENTER_OPTS = {
-    methods = { "SetText" },
-    when = function(fs) return FS.IsHidden(fs, "powerTextCenter") end,
+	methods = { "SetText" },
+	when = function(fs) return FS.IsHidden(fs, "powerTextCenter") end,
 }
 
--- Secret-value safe helpers (shared module)
-local SS = addon.SecretSafe
-local safeOffset = SS.safeOffset
-local safePointToken = SS.safePointToken
-local safeGetWidth = SS.safeGetWidth
-
--- Cross-file import: NAME_ANCHOR_MAP (defined in text/core.lua, loaded first in TOC)
-local NAME_ANCHOR_MAP = addon.UnitFrameText._NAME_ANCHOR_MAP
-
-	-- Unit Frames: Toggle Power % (LeftText when present) and Value (RightText) visibility per unit
+-- Unit Frames: Toggle Power % (LeftText when present) and Value (RightText) visibility per unit
 do
-    -- Cache for resolved power text fontstrings per unit so combat-time hooks stay cheap.
-    addon._ufPowerTextFonts = addon._ufPowerTextFonts or {}
-
-	local getUnitFrameFor = addon.GetUnitFrame
-
-	local findFontStringByNameHint = addon.UnitFrameText._FindFontStringByNameHint
-
 	-- Resolve power bar for this unit
 	local function resolvePowerBarForVisibility(frame, unit)
 		if unit == "Pet" then return _G.PetFrameManaBar end
@@ -78,301 +65,58 @@ do
 		end
 	end
 
-	-- Hook UpdateTextString to reapply visibility after Blizzard's updates.
-	-- Use hooksecurefunc to avoid replacing the method and taint secure StatusBars.
-	local function hookPowerBarUpdateTextString(bar, unit)
-		local fstate = FS
-		if not bar or not fstate then return end
-		if fstate.IsHooked(bar, "powerBarUpdateTextString") then return end
-		fstate.MarkHooked(bar, "powerBarUpdateTextString")
-		if _G.hooksecurefunc then
-			_G.hooksecurefunc(bar, "UpdateTextString", function(self, ...)
-				if addon and addon.ApplyUnitFramePowerTextVisibilityFor then
-					addon.ApplyUnitFramePowerTextVisibilityFor(unit)
-				end
-			end)
-		end
-	end
-
-	-- Styling helpers (defined at do-block scope for use by both applyForUnit and ApplyBossPowerTextStyling)
-	addon._ufPowerTextBaselines = addon._ufPowerTextBaselines or {}
-	local function ensureBaseline(fs, key, fallbackFrame)
-		addon._ufPowerTextBaselines[key] = addon._ufPowerTextBaselines[key] or {}
-		local b = addon._ufPowerTextBaselines[key]
-		if b.point == nil then
-			if fs and fs.GetPoint then
-				local p, relTo, rp, x, y = fs:GetPoint(1)
-				b.point = p or "CENTER"
-				b.relTo = relTo or (fs.GetParent and fs:GetParent()) or fallbackFrame
-				b.relPoint = rp or b.point
-				b.x = safeOffset(x)
-				b.y = safeOffset(y)
-			else
-				b.point, b.relTo, b.relPoint, b.x, b.y = "CENTER", (fs and fs.GetParent and fs:GetParent()) or fallbackFrame, "CENTER", 0, 0
-			end
-		end
-		return b
-	end
-
-	local forceTextRedraw = addon.UnitFrameText._ForceTextRedraw
-
-	local function applyTextStyle(fs, styleCfg, baselineKey, fallbackFrame)
-		if not fs or not styleCfg then return end
-		if not addon.HasTextCustomization(styleCfg, ufTextCustomizationOpts) then
-			return
-		end
-		addon.ApplyTextFont(fs, styleCfg, ufTextFontOpts)
-		-- Determine effective color based on colorMode (for Power Bar text)
+	-- Color half of the text styling: the DK companion slot merges into the
+	-- effective mode before ResolveColorRGBA
+	local function applyPowerTextColor(fs, styleCfg)
 		local colorMode = addon.ReadColorMode(
 			function() return styleCfg.colorMode end,
 			function() return styleCfg.colorModeDK end
 		)
 		local cr, cg, cb, ca = addon.ResolveColorRGBA(colorMode, styleCfg.color, ufPowerTextColorOpts)
 		if fs.SetTextColor then pcall(fs.SetTextColor, fs, cr, cg, cb, ca) end
+	end
 
-		-- Only modify layout if alignment or offset is explicitly configured (avoids
-		-- Apply All Fonts inadvertently changing text positioning).
-		local hasLayoutCustomization = styleCfg.alignment ~= nil
-			or styleCfg.alignmentMode ~= nil
-			or (styleCfg.offset and (styleCfg.offset.x ~= nil or styleCfg.offset.y ~= nil))
-
-		-- Ensure name-anchor reparenting is undone if layout customizations are removed
-		if not hasLayoutCustomization then
-			local fst = FS
-			if fst then
-				local origParent = fst.GetProp(fs, "nameAnchorOrigParent")
-				if origParent and fs.SetParent then
-					pcall(fs.SetParent, fs, origParent)
-					local origLayer = fst.GetProp(fs, "nameAnchorOrigLayer") or "OVERLAY"
-					local origSub = fst.GetProp(fs, "nameAnchorOrigSublayer") or 1
-					pcall(fs.SetDrawLayer, fs, origLayer, origSub)
-					fst.SetProp(fs, "nameAnchorOrigParent", nil)
-					fst.SetProp(fs, "nameAnchorOrigLayer", nil)
-					fst.SetProp(fs, "nameAnchorOrigSublayer", nil)
-				end
-			end
+	-- First-rung left/right FontString paths (no scanning); the pipeline falls
+	-- back to the hint scan when these miss. Pet uses standalone globals more often.
+	local function directPowerTexts(frame, unit)
+		local leftFS, rightFS
+		if unit == "Pet" then
+			leftFS = _G.PetFrameManaBarTextLeft
+			rightFS = _G.PetFrameManaBarTextRight
 		end
+		leftFS = leftFS or (frame and frame.ManaBar and frame.ManaBar.LeftText)
+		rightFS = rightFS or (frame and frame.ManaBar and frame.ManaBar.RightText)
+		return leftFS, rightFS
+	end
 
-		if hasLayoutCustomization then
-			-- Determine default alignment based on whether this is left (%) or right (value) or center text
-			-- Check for both :right and -right patterns to handle all unit types
-			local defaultAlign = "LEFT"
-			if baselineKey and (baselineKey:find(":right", 1, true) or baselineKey:find("-right", 1, true)) then
-				defaultAlign = "RIGHT"
-			elseif baselineKey and (baselineKey:find(":center", 1, true) or baselineKey:find("-center", 1, true)) then
-				defaultAlign = "CENTER"
-			end
-			local alignment = styleCfg.alignment or defaultAlign
-
-			local parentBar = fs.GetParent and fs:GetParent()
-
-			-- Get baseline Y position and user offsets
-			local b = ensureBaseline(fs, baselineKey, fallbackFrame or parentBar)
-			local ox = (styleCfg.offset and tonumber(styleCfg.offset.x)) or 0
-			local oy = (styleCfg.offset and tonumber(styleCfg.offset.y)) or 0
-			local yOffset = safeOffset(b.y) + oy
-
-			-- Name-anchor mode: position text relative to boss name FontString
-			local useNameAnchor = false
-			if styleCfg.alignmentMode == "name" and baselineKey and baselineKey:find("^Boss") then
-				local bossIdx = baselineKey:match("^Boss(%d+)")
-				if bossIdx then
-					local bossFrame = addon.GetBossFrame(bossIdx)
-					local nameFS = bossFrame and addon.ResolveBossNameFS(bossFrame) or nil
-					if nameFS then
-						local anchorKey = styleCfg.nameAnchor or "RIGHT_OF_NAME"
-						local anchorInfo = NAME_ANCHOR_MAP[anchorKey]
-						if anchorInfo then
-							useNameAnchor = true
-							-- Reparent to contentMain so SetPoint can target nameFS (same hierarchy)
-							local contentMain = bossFrame.TargetFrameContent
-								and bossFrame.TargetFrameContent.TargetFrameContentMain
-							if contentMain and fs.SetParent then
-								local fst = FS
-								if fst and not fst.GetProp(fs, "nameAnchorOrigParent") then
-									fst.SetProp(fs, "nameAnchorOrigParent", fs:GetParent())
-									fst.SetProp(fs, "nameAnchorOrigLayer", select(1, fs:GetDrawLayer()))
-									fst.SetProp(fs, "nameAnchorOrigSublayer", select(2, fs:GetDrawLayer()))
-								end
-								pcall(fs.SetParent, fs, contentMain)
-								pcall(fs.SetDrawLayer, fs, "OVERLAY", 7)
-							end
-							local textPt, namePt, justH, gapX, gapY = anchorInfo[1], anchorInfo[2], anchorInfo[3], anchorInfo[4], anchorInfo[5]
-							if fs.ClearAllPoints and fs.SetPoint then
-								fs:ClearAllPoints()
-								pcall(fs.SetPoint, fs, textPt, nameFS, namePt, gapX + ox, gapY + oy)
-							end
-							if fs.SetJustifyH then
-								pcall(fs.SetJustifyH, fs, justH)
-							end
-							-- Undo two-point width constraint — let text auto-size
-							if fs.SetWidth then
-								pcall(fs.SetWidth, fs, 0)
-							end
-							forceTextRedraw(fs)
-						end
-					end
-				end
-			end
-
-			if not useNameAnchor then
-				-- Restore original parent if previously reparented for name-anchor mode
-				local fst = FS
-				if fst then
-					local origParent = fst.GetProp(fs, "nameAnchorOrigParent")
-					if origParent and fs.SetParent then
-						pcall(fs.SetParent, fs, origParent)
-						local origLayer = fst.GetProp(fs, "nameAnchorOrigLayer") or "OVERLAY"
-						local origSub = fst.GetProp(fs, "nameAnchorOrigSublayer") or 1
-						pcall(fs.SetDrawLayer, fs, origLayer, origSub)
-						fst.SetProp(fs, "nameAnchorOrigParent", nil)
-						fst.SetProp(fs, "nameAnchorOrigLayer", nil)
-						fst.SetProp(fs, "nameAnchorOrigSublayer", nil)
-					end
-				end
-
-				-- Bar-relative mode: two-point anchoring to span the parent bar width.
-				-- Makes JustifyH work correctly without needing GetWidth() (which can
-				-- trigger secret value errors on unit frame StatusBars).
-				if fs.ClearAllPoints and fs.SetPoint and parentBar then
-					fs:ClearAllPoints()
-					local leftPad = 2 + ox
-					local rightPad = -2 + ox
-					pcall(fs.SetPoint, fs, "LEFT", parentBar, "LEFT", leftPad, yOffset)
-					pcall(fs.SetPoint, fs, "RIGHT", parentBar, "RIGHT", rightPad, yOffset)
-				end
-
-				if fs.SetJustifyH then
-					pcall(fs.SetJustifyH, fs, alignment)
-				end
-
-				forceTextRedraw(fs)
-			end
+	-- Center TextString per unit (Character Pane shows ManaBarText instead of LeftText/RightText)
+	local function resolvePowerCenterText(unit)
+		if unit == "Pet" then
+			return _G.PetFrameManaBarText
+		elseif unit == "Player" then
+			local root = _G.PlayerFrame
+			return root and root.PlayerFrameContent
+				and root.PlayerFrameContent.PlayerFrameContentMain
+				and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea
+				and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
+				and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar.ManaBarText
+		elseif unit == "Target" then
+			local root = _G.TargetFrame
+			return root and root.TargetFrameContent
+				and root.TargetFrameContent.TargetFrameContentMain
+				and root.TargetFrameContent.TargetFrameContentMain.ManaBar
+				and root.TargetFrameContent.TargetFrameContentMain.ManaBar.ManaBarText
+		elseif unit == "Focus" then
+			local root = _G.FocusFrame
+			return root and root.TargetFrameContent
+				and root.TargetFrameContent.TargetFrameContentMain
+				and root.TargetFrameContent.TargetFrameContentMain.ManaBar
+				and root.TargetFrameContent.TargetFrameContentMain.ManaBar.ManaBarText
 		end
 	end
 
-	local function applyForUnit(unit)
-		if not addon:IsModuleEnabled("unitFrames", unit) then return end
-		local db = addon and addon.db and addon.db.profile
-		if not db then return end
-		-- Zero‑Touch: do not create config tables. If this unit has no config, do nothing.
-		local unitFrames = rawget(db, "unitFrames")
-		local cfg = unitFrames and rawget(unitFrames, unit) or nil
-		if not cfg then
-			return
-		end
-		local frame = getUnitFrameFor(unit)
-		if not frame then return end
-
-		-- Resolve power bar and hook its UpdateTextString if not already hooked
-		local pb = resolvePowerBarForVisibility(frame, unit)
-		if pb then
-			hookPowerBarUpdateTextString(pb, unit)
-		end
-
-		--reuse cached FontStrings if available (frame tree is stable)
-		local leftFS, rightFS, textStringFS
-		local existingCache = addon._ufPowerTextFonts[unit]
-		if existingCache and existingCache.leftFS and existingCache.rightFS then
-			leftFS = existingCache.leftFS
-			rightFS = existingCache.rightFS
-			textStringFS = existingCache.textStringFS
-		else
-			if unit == "Pet" then
-				-- Pet uses standalone globals more often
-				leftFS = _G.PetFrameManaBarTextLeft
-				rightFS = _G.PetFrameManaBarTextRight
-			end
-
-			-- Full resolution path (may scan children/regions). This should only run during
-			-- explicit styling passes (ApplyStyles), not on every power text update.
-			leftFS = leftFS
-				or (frame.ManaBar and frame.ManaBar.LeftText)
-				or findFontStringByNameHint(frame, "ManaBar.LeftText")
-				or findFontStringByNameHint(frame, ".LeftText")
-				or findFontStringByNameHint(frame, "ManaBarTextLeft")
-			rightFS = rightFS
-				or (frame.ManaBar and frame.ManaBar.RightText)
-				or findFontStringByNameHint(frame, "ManaBar.RightText")
-				or findFontStringByNameHint(frame, ".RightText")
-				or findFontStringByNameHint(frame, "ManaBarTextRight")
-
-			-- Also resolve the center TextString (used in NUMERIC display mode and Character Pane)
-			-- Ensures styling persists when Blizzard switches between BOTH and NUMERIC modes
-			-- Character Pane shows ManaBarText instead of LeftText/RightText
-			if unit == "Pet" then
-				textStringFS = _G.PetFrameManaBarText
-			elseif unit == "Player" then
-				local root = _G.PlayerFrame
-				textStringFS = root and root.PlayerFrameContent
-					and root.PlayerFrameContent.PlayerFrameContentMain
-					and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea
-					and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar
-					and root.PlayerFrameContent.PlayerFrameContentMain.ManaBarArea.ManaBar.ManaBarText
-			elseif unit == "Target" then
-				local root = _G.TargetFrame
-				textStringFS = root and root.TargetFrameContent
-					and root.TargetFrameContent.TargetFrameContentMain
-					and root.TargetFrameContent.TargetFrameContentMain.ManaBar
-					and root.TargetFrameContent.TargetFrameContentMain.ManaBar.ManaBarText
-			elseif unit == "Focus" then
-				local root = _G.FocusFrame
-				textStringFS = root and root.TargetFrameContent
-					and root.TargetFrameContent.TargetFrameContentMain
-					and root.TargetFrameContent.TargetFrameContentMain.ManaBar
-					and root.TargetFrameContent.TargetFrameContentMain.ManaBar.ManaBarText
-			end
-
-			-- Cache resolved fontstrings so combat-time hooks can avoid expensive scans.
-			addon._ufPowerTextFonts[unit] = {
-				leftFS = leftFS,
-				rightFS = rightFS,
-				textStringFS = textStringFS,
-			}
-		end
-
-        -- Apply visibility using SetAlpha (combat-safe) instead of SetShown (taint-prone).
-        -- Tri‑state: nil = don't touch; true = hide; false = show.
-        local function applyPowerTextVisibility(fs, hiddenSetting, unitForHook)
-            if not fs then return end
-            local fstate = FS
-            if not fstate then return end
-            --Invalidate hot-path cache so settings changes propagate
-            if fstate then fstate.ClearProp(fs, "powerTextAppliedHidden") end
-            if hiddenSetting == nil then
-                return
-            end
-            local hidden = (hiddenSetting == true)
-            if hidden then
-                if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                Enforce.Install(fs, "powerText", POWER_TEXT_OPTS)
-                fstate.SetHidden(fs, "powerText", true)
-            else
-                fstate.SetHidden(fs, "powerText", false)
-                if fs.SetAlpha then pcall(fs.SetAlpha, fs, 1) end
-            end
-        end
-
-		-- Visibility: tolerate missing LeftText on some classes/specs (no-op)
-		-- When the entire Power Bar is hidden, force all power texts hidden regardless of individual toggles.
-		local powerBarHiddenSetting = cfg.powerBarHidden -- tri-state
-		local leftHiddenSetting
-		local rightHiddenSetting
-		if powerBarHiddenSetting == true then
-			leftHiddenSetting = true
-			rightHiddenSetting = true
-		else
-			leftHiddenSetting = cfg.powerPercentHidden
-			rightHiddenSetting = cfg.powerValueHidden
-		end
-		applyPowerTextVisibility(leftFS, leftHiddenSetting, unit)
-		applyPowerTextVisibility(rightFS, rightHiddenSetting, unit)
-
-        -- The center TextString: SetText re-asserts the hidden state only
-        local fstate = FS
-        Enforce.Install(textStringFS, "powerTextCenter", POWER_TEXT_CENTER_OPTS)
-
-		-- Migrate dkSpec from base slot to DK companion slot (idempotent)
+	-- Migrate dkSpec from base slot to DK companion slot (idempotent)
+	local function migrateDKColorSlots(cfg)
 		local tpv = cfg.textPowerValue
 		if tpv then
 			addon.MigrateDKColorMode(
@@ -391,180 +135,47 @@ do
 				function(v) tpp.colorModeDK = v end
 			)
 		end
-
-		if leftFS then applyTextStyle(leftFS, cfg.textPowerPercent or {}, unit .. ":power-left", frame) end
-		if rightFS then applyTextStyle(rightFS, cfg.textPowerValue or {}, unit .. ":power-right", frame) end
-        -- Style center TextString using Value settings (used in NUMERIC display mode and Character Pane)
-        -- Always apply styling if text customizations exist; handle visibility separately
-        if textStringFS then
-            -- Handle visibility only when explicitly configured
-            local centerHiddenSetting = nil
-            if powerBarHiddenSetting == true then
-                centerHiddenSetting = true
-            elseif cfg.powerValueHidden ~= nil then
-                centerHiddenSetting = cfg.powerValueHidden
-            end
-
-            if centerHiddenSetting ~= nil then
-                local valueHidden = (centerHiddenSetting == true)
-                if valueHidden then
-                    if textStringFS.SetAlpha then pcall(textStringFS.SetAlpha, textStringFS, 0) end
-                    if fstate then fstate.SetHidden(textStringFS, "powerTextCenter", true) end
-                else
-                    if fstate and fstate.IsHidden(textStringFS, "powerTextCenter") then
-                        if textStringFS.SetAlpha then pcall(textStringFS.SetAlpha, textStringFS, 1) end
-                        fstate.SetHidden(textStringFS, "powerTextCenter", false)
-                    end
-                end
-            end
-            -- Always apply styling (applyTextStyle returns early if no customizations)
-            if not (fstate and fstate.IsHidden(textStringFS, "powerTextCenter")) then
-                applyTextStyle(textStringFS, cfg.textPowerValue or {}, unit .. ":power-center", frame)
-            end
-        end
 	end
 
-    -- Boss frames: Apply Power % (LeftText) and Value (RightText) styling.
-    -- Boss frames are not returned by EditModeManagerFrame's UnitFrame system indices like Player/Target/Focus/Pet,
-    -- so Boss1..Boss5 are resolved deterministically using their global names.
-    function addon.ApplyBossPowerTextStyling()
-        local db = addon and addon.db and addon.db.profile
-        if not db then return end
+	local P = buildTextPipeline({
+		resource = "Power",
+		slug = "power",
+		fontCache = "_ufPowerTextFonts",
+		baselineTable = "_ufPowerTextBaselines",
+		hookMarker = "powerBarUpdateTextString",
+		visibilityForName = "ApplyUnitFramePowerTextVisibilityFor",
+		hiddenKey = "powerText",
+		hiddenCenterKey = "powerTextCenter",
+		appliedProp = "powerTextAppliedHidden",
+		keys = {
+			barHidden = "powerBarHidden",
+			percentHidden = "powerPercentHidden",
+			valueHidden = "powerValueHidden",
+			percentStyle = "textPowerPercent",
+			valueStyle = "textPowerValue",
+		},
+		textOpts = POWER_TEXT_OPTS,
+		centerOpts = POWER_TEXT_CENTER_OPTS,
+		fontOpts = ufTextFontOpts,
+		customizationOpts = ufTextCustomizationOpts,
+		barResolver = resolvePowerBarForVisibility,
+		directTexts = directPowerTexts,
+		hints = {
+			left  = { "ManaBar.LeftText",  ".LeftText",  "ManaBarTextLeft" },
+			right = { "ManaBar.RightText", ".RightText", "ManaBarTextRight" },
+		},
+		centerResolver = resolvePowerCenterText,
+		bossContainer = function(bossFrame)
+			return bossFrame.TargetFrameContent
+				and bossFrame.TargetFrameContent.TargetFrameContentMain
+				and bossFrame.TargetFrameContent.TargetFrameContentMain.ManaBar
+		end,
+		bossBar = function(container) return container end,
+		colorApplier = applyPowerTextColor,
+		migrate = migrateDKColorSlots,
+	})
 
-        local unitFrames = rawget(db, "unitFrames")
-        local cfg = unitFrames and rawget(unitFrames, "Boss") or nil
-        if not cfg then
-            return
-        end
-
-        for i = 1, addon.NUM_BOSS_FRAMES do
-            local bossFrame = addon.GetBossFrame(i)
-            local manaBar = bossFrame
-                and bossFrame.TargetFrameContent
-                and bossFrame.TargetFrameContent.TargetFrameContentMain
-                and bossFrame.TargetFrameContent.TargetFrameContentMain.ManaBar
-
-            if manaBar then
-                -- Ensure combat-time visibility enforcement exists for Boss power texts
-                hookPowerBarUpdateTextString(manaBar, "Boss")
-
-                local leftFS = manaBar.LeftText
-                local rightFS = manaBar.RightText
-
-                if leftFS then
-                    applyTextStyle(leftFS, cfg.textPowerPercent or {}, "Boss" .. tostring(i) .. ":power-left", manaBar)
-                end
-                if rightFS then
-                    applyTextStyle(rightFS, cfg.textPowerValue or {}, "Boss" .. tostring(i) .. ":power-right", manaBar)
-                end
-            end
-        end
-
-        -- Apply visibility once as part of the styling pass.
-        if addon.ApplyUnitFramePowerTextVisibilityFor then
-            addon.ApplyUnitFramePowerTextVisibilityFor("Boss")
-        end
-    end
-
-    -- Lightweight visibility-only function used by UpdateTextString hooks.
-    -- Uses SetAlpha instead of SetShown to avoid taint during combat.
-	function addon.ApplyUnitFramePowerTextVisibilityFor(unit)
-        if not addon:IsModuleEnabled("unitFrames", unit) then return end
-        local db = addon and addon.db and addon.db.profile
-        if not db then return end
-        local unitFrames = rawget(db, "unitFrames")
-        local cfg = unitFrames and rawget(unitFrames, unit) or nil
-        if not cfg then
-            return
-        end
-        --Zero-touch fast path — skip entirely when no visibility settings are configured
-        if rawget(cfg, "powerBarHidden") == nil and rawget(cfg, "powerPercentHidden") == nil and rawget(cfg, "powerValueHidden") == nil then return end
-
-        -- Apply visibility using SetAlpha (combat-safe) instead of SetShown (taint-prone).
-        -- Tri‑state: nil = don't touch; true = hide; false = show.
-        local function applyVisibility(fs, hiddenSetting)
-            if not fs then return end
-            local fstate = FS
-            if not fstate then return end
-            if hiddenSetting == nil then
-                return
-            end
-            --Skip if this visibility state is already applied
-            local currentApplied = fstate.GetProp(fs, "powerTextAppliedHidden")
-            if currentApplied == hiddenSetting then return end
-            local hidden = (hiddenSetting == true)
-            if hidden then
-                if fs.SetAlpha then pcall(fs.SetAlpha, fs, 0) end
-                Enforce.Install(fs, "powerText", POWER_TEXT_OPTS)
-                fstate.SetHidden(fs, "powerText", true)
-                fstate.SetProp(fs, "powerTextAppliedHidden", true)
-            else
-                fstate.SetHidden(fs, "powerText", false)
-                if fs.SetAlpha then pcall(fs.SetAlpha, fs, 1) end
-                fstate.SetProp(fs, "powerTextAppliedHidden", false)
-            end
-        end
-
-        -- Boss frames: apply to Boss1..Boss5 deterministically (no cache dependency).
-        if unit == "Boss" then
-            local powerBarHiddenSetting = cfg.powerBarHidden -- tri-state
-            local leftHiddenSetting
-            local rightHiddenSetting
-            if powerBarHiddenSetting == true then
-                leftHiddenSetting = true
-                rightHiddenSetting = true
-            else
-                leftHiddenSetting = cfg.powerPercentHidden
-                rightHiddenSetting = cfg.powerValueHidden
-            end
-            for i = 1, addon.NUM_BOSS_FRAMES do
-                local bossFrame = addon.GetBossFrame(i)
-                local mana = bossFrame
-                    and bossFrame.TargetFrameContent
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain
-                    and bossFrame.TargetFrameContent.TargetFrameContentMain.ManaBar
-                local leftFS = mana and mana.LeftText or nil
-                local rightFS = mana and mana.RightText or nil
-                applyVisibility(leftFS, leftHiddenSetting)
-                applyVisibility(rightFS, rightHiddenSetting)
-            end
-            return
-        end
-
-        local cache = addon._ufPowerTextFonts and addon._ufPowerTextFonts[unit]
-        if not cache then
-            -- If fonts haven't been resolved yet this session, skip work here.
-            -- They will be resolved during the next ApplyStyles() pass.
-            return
-        end
-
-        local leftFS = cache.leftFS
-        local rightFS = cache.rightFS
-
-        -- Visibility: tolerate missing LeftText on some classes/specs (no-op)
-        -- When the entire Power Bar is hidden, force all power texts hidden regardless of individual toggles.
-		local powerBarHiddenSetting = cfg.powerBarHidden -- tri-state
-		local leftHiddenSetting
-		local rightHiddenSetting
-		if powerBarHiddenSetting == true then
-			leftHiddenSetting = true
-			rightHiddenSetting = true
-		else
-			leftHiddenSetting = cfg.powerPercentHidden
-			rightHiddenSetting = cfg.powerValueHidden
-		end
-        applyVisibility(leftFS, leftHiddenSetting)
-        applyVisibility(rightFS, rightHiddenSetting)
-	end
-
-	function addon.ApplyAllUnitFramePowerTextVisibility()
-		applyForUnit("Player")
-		applyForUnit("Target")
-		applyForUnit("Focus")
-		applyForUnit("Pet")
-        if addon.ApplyBossPowerTextStyling then
-            addon.ApplyBossPowerTextStyling()
-        end
-	end
-
+	addon.ApplyBossPowerTextStyling = P.applyBossStyling
+	addon.ApplyUnitFramePowerTextVisibilityFor = P.applyVisibilityFor
+	addon.ApplyAllUnitFramePowerTextVisibility = P.applyAll
 end
