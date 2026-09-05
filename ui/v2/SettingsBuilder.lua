@@ -23,6 +23,10 @@ local ITEM_SPACING = 12             -- Space between controls
 local CONTENT_PADDING = 8           -- Padding from edges
 local FIRST_ITEM_OFFSET = 8         -- Initial offset from top
 
+-- Shared with the files that attach further methods to this table.
+Builder._ITEM_SPACING = ITEM_SPACING
+Builder._CONTENT_PADDING = CONTENT_PADDING
+
 --------------------------------------------------------------------------------
 -- Builder Instance Methods
 --------------------------------------------------------------------------------
@@ -91,6 +95,81 @@ function Builder:Clear()
     self._inSection = false
 
     return self
+end
+
+--------------------------------------------------------------------------------
+-- Row helpers shared by the delegating Add* methods
+--------------------------------------------------------------------------------
+-- _ScanRecord: during a search-index scan, record the row and skip rendering.
+-- Returns true when the caller should return without creating its control.
+--
+-- _PlaceRow: the placement tail for a created control: item spacing (plus 4 for
+-- emphasized rows), the edge anchors, registration in _controls and
+-- _controlsByKey, the search tags read by settingspanel/search.lua, the Y
+-- advance, and deferred height propagation to a parent collapsible. A nil
+-- control places nothing and advances nothing.
+--
+-- _AttachInfoIcon: an info icon beside the control's label, registered for
+-- cleanup. Runs after _PlaceRow; it reads no layout state.
+--------------------------------------------------------------------------------
+
+function Builder:_ScanRecord(entryType, label, description)
+    if not (Builder._scanMode and label) then return false end
+    table.insert(Builder._scanEntries, {
+        type = entryType,
+        label = label,
+        description = description or "",
+        rendererKey = Builder._scanRendererKey,
+        section = Builder._scanSectionStack[#Builder._scanSectionStack],
+    })
+    return true
+end
+
+function Builder:_PlaceRow(ctl, options)
+    if not ctl then return end
+    local scrollContent = self._scrollContent
+
+    if #self._controls > 0 then
+        local spacing = options.emphasized and (ITEM_SPACING + 4) or ITEM_SPACING
+        self._currentY = self._currentY - spacing
+    end
+
+    ctl:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
+    ctl:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+
+    table.insert(self._controls, ctl)
+    ctl._searchLabel = options.label
+    ctl._searchSection = self._parentSectionTitle
+
+    if options.key then
+        self._controlsByKey[options.key] = ctl
+    end
+
+    self._currentY = self._currentY - ctl:GetHeight()
+
+    if self._parentCollapsible then
+        local parentCollapsible = self._parentCollapsible
+        ctl._onHeightChanged = function(delta)
+            parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
+        end
+    end
+end
+
+function Builder:_AttachInfoIcon(ctl, options)
+    if not ctl then return end
+    local infoSpec = Controls.InfoIconOptions(options.infoIcon)
+    if not (infoSpec and ctl._label) then return end
+    local infoIcon = Controls:CreateInfoIcon({
+        parent = ctl,
+        tooltipText = infoSpec.tooltipText,
+        tooltipTitle = infoSpec.tooltipTitle,
+        size = infoSpec.size or 12,
+    })
+    if infoIcon then
+        infoIcon:SetPoint("LEFT", ctl._label, "RIGHT", 4, 4)
+        ctl._infoIcon = infoIcon
+        table.insert(self._controls, infoIcon)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -182,22 +261,7 @@ function Builder:AddToggle(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "toggle",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    -- Add item spacing (more for emphasized toggles)
-    if #self._controls > 0 then
-        local spacing = options.emphasized and (ITEM_SPACING + 4) or ITEM_SPACING
-        self._currentY = self._currentY - spacing
-    end
+    if self:_ScanRecord("toggle", options.label, options.description) then return self end
 
     local toggle = Controls:CreateToggle({
         parent = scrollContent,
@@ -212,28 +276,7 @@ function Builder:AddToggle(options)
         isDisabled = options.isDisabled,
     })
 
-    if toggle then
-        toggle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        toggle:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, toggle)
-        toggle._searchLabel = options.label
-        toggle._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = toggle
-        end
-
-        self._currentY = self._currentY - toggle:GetHeight()
-
-        -- Propagate deferred height changes to parent collapsible
-        if self._parentCollapsible then
-            local parentCollapsible = self._parentCollapsible
-            toggle._onHeightChanged = function(delta)
-                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
-            end
-        end
-    end
+    self:_PlaceRow(toggle, options)
 
     return self
 end
@@ -588,22 +631,7 @@ function Builder:AddSelector(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "selector",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    -- Add item spacing (more for emphasized selectors)
-    if #self._controls > 0 then
-        local spacing = options.emphasized and (ITEM_SPACING + 4) or ITEM_SPACING
-        self._currentY = self._currentY - spacing
-    end
+    if self:_ScanRecord("selector", options.label, options.description) then return self end
 
     local selector = Controls:CreateSelector({
         parent = scrollContent,
@@ -626,44 +654,8 @@ function Builder:AddSelector(options)
         gear = options.gear,
     })
 
-    if selector then
-        selector:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        selector:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, selector)
-        selector._searchLabel = options.label
-        selector._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = selector
-        end
-
-        -- Add info icon if specified
-        local infoSpec = Controls.InfoIconOptions(options.infoIcon)
-        if infoSpec and selector._label then
-            local infoIcon = Controls:CreateInfoIcon({
-                parent = selector,
-                tooltipText = infoSpec.tooltipText,
-                tooltipTitle = infoSpec.tooltipTitle,
-                size = infoSpec.size or 12,
-            })
-            if infoIcon then
-                infoIcon:SetPoint("LEFT", selector._label, "RIGHT", 4, 4)
-                selector._infoIcon = infoIcon
-                table.insert(self._controls, infoIcon)
-            end
-        end
-
-        self._currentY = self._currentY - selector:GetHeight()
-
-        -- Propagate deferred height changes to parent collapsible
-        if self._parentCollapsible then
-            local parentCollapsible = self._parentCollapsible
-            selector._onHeightChanged = function(delta)
-                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
-            end
-        end
-    end
+    self:_PlaceRow(selector, options)
+    self:_AttachInfoIcon(selector, options)
 
     return self
 end
@@ -695,21 +687,7 @@ function Builder:AddSlider(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "slider",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        local spacing = options.emphasized and (ITEM_SPACING + 4) or ITEM_SPACING
-        self._currentY = self._currentY - spacing
-    end
+    if self:_ScanRecord("slider", options.label, options.description) then return self end
 
     local slider = Controls:CreateSlider({
         parent = scrollContent,
@@ -738,47 +716,8 @@ function Builder:AddSlider(options)
         isDisabled = options.isDisabled,
     })
 
-    if slider then
-        slider:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        slider:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, slider)
-        slider._searchLabel = options.label
-        slider._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = slider
-        end
-
-        -- Add info icon if specified (positioned at top-right corner of label)
-        local infoSpec = Controls.InfoIconOptions(options.infoIcon)
-        if infoSpec and slider._label then
-            local infoIcon = Controls:CreateInfoIcon({
-                parent = slider,
-                tooltipText = infoSpec.tooltipText,
-                tooltipTitle = infoSpec.tooltipTitle,
-                size = infoSpec.size or 12,  -- Slightly smaller for corner position
-            })
-            if infoIcon then
-                -- Position icon at top-right corner of the label text
-                -- Offset up (positive Y) to align with top of text
-                infoIcon:SetPoint("LEFT", slider._label, "RIGHT", 4, 4)
-
-                slider._infoIcon = infoIcon
-                table.insert(self._controls, infoIcon)
-            end
-        end
-
-        self._currentY = self._currentY - slider:GetHeight()
-
-        -- Propagate deferred height changes to parent collapsible
-        if self._parentCollapsible then
-            local parentCollapsible = self._parentCollapsible
-            slider._onHeightChanged = function(delta)
-                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
-            end
-        end
-    end
+    self:_PlaceRow(slider, options)
+    self:_AttachInfoIcon(slider, options)
 
     return self
 end
@@ -798,20 +737,7 @@ function Builder:AddFontSelector(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "font",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("font", options.label, options.description) then return self end
 
     local fontSelector = Controls:CreateFontSelector({
         parent = scrollContent,
@@ -823,20 +749,7 @@ function Builder:AddFontSelector(options)
         useLightDim = self._useLightDim,
     })
 
-    if fontSelector then
-        fontSelector:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        fontSelector:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, fontSelector)
-        fontSelector._searchLabel = options.label
-        fontSelector._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = fontSelector
-        end
-
-        self._currentY = self._currentY - fontSelector:GetHeight()
-    end
+    self:_PlaceRow(fontSelector, options)
 
     return self
 end
@@ -856,10 +769,6 @@ function Builder:AddBarTextureSelector(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
-
     local barTextureSelector = Controls:CreateBarTextureSelector({
         parent = scrollContent,
         label = options.label,
@@ -870,18 +779,7 @@ function Builder:AddBarTextureSelector(options)
         useLightDim = self._useLightDim,
     })
 
-    if barTextureSelector then
-        barTextureSelector:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        barTextureSelector:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, barTextureSelector)
-
-        if options.key then
-            self._controlsByKey[options.key] = barTextureSelector
-        end
-
-        self._currentY = self._currentY - barTextureSelector:GetHeight()
-    end
+    self:_PlaceRow(barTextureSelector, options)
 
     return self
 end
@@ -902,20 +800,7 @@ function Builder:AddBarBorderSelector(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "border",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("border", options.label, options.description) then return self end
 
     local barBorderSelector = Controls:CreateBarBorderSelector({
         parent = scrollContent,
@@ -931,20 +816,7 @@ function Builder:AddBarBorderSelector(options)
         setHiddenEdges = options.setHiddenEdges,
     })
 
-    if barBorderSelector then
-        barBorderSelector:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        barBorderSelector:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, barBorderSelector)
-        barBorderSelector._searchLabel = options.label
-        barBorderSelector._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = barBorderSelector
-        end
-
-        self._currentY = self._currentY - barBorderSelector:GetHeight()
-    end
+    self:_PlaceRow(barBorderSelector, options)
 
     return self
 end
@@ -1124,20 +996,7 @@ function Builder:AddColorPicker(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "color",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("color", options.label, options.description) then return self end
 
     local colorPicker = Controls:CreateColorPicker({
         parent = scrollContent,
@@ -1153,28 +1012,7 @@ function Builder:AddColorPicker(options)
         isDisabled = options.isDisabled,
     })
 
-    if colorPicker then
-        colorPicker:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        colorPicker:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, colorPicker)
-        colorPicker._searchLabel = options.label
-        colorPicker._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = colorPicker
-        end
-
-        self._currentY = self._currentY - colorPicker:GetHeight()
-
-        -- Propagate deferred height changes to parent collapsible
-        if self._parentCollapsible then
-            local parentCollapsible = self._parentCollapsible
-            colorPicker._onHeightChanged = function(delta)
-                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
-            end
-        end
-    end
+    self:_PlaceRow(colorPicker, options)
 
     return self
 end
@@ -1198,20 +1036,7 @@ function Builder:AddToggleColorPicker(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "toggle + color",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("toggle + color", options.label, options.description) then return self end
 
     local toggleColor = Controls:CreateToggleColorPicker({
         parent = scrollContent,
@@ -1229,28 +1054,7 @@ function Builder:AddToggleColorPicker(options)
         isDisabled = options.isDisabled,
     })
 
-    if toggleColor then
-        toggleColor:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        toggleColor:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, toggleColor)
-        toggleColor._searchLabel = options.label
-        toggleColor._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = toggleColor
-        end
-
-        self._currentY = self._currentY - toggleColor:GetHeight()
-
-        -- Propagate deferred height changes to parent collapsible
-        if self._parentCollapsible then
-            local parentCollapsible = self._parentCollapsible
-            toggleColor._onHeightChanged = function(delta)
-                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
-            end
-        end
-    end
+    self:_PlaceRow(toggleColor, options)
 
     return self
 end
@@ -1276,20 +1080,7 @@ function Builder:AddSelectorColorPicker(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "selector + color",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("selector + color", options.label, options.description) then return self end
 
     local selectorColor = Controls:CreateSelectorColorPicker({
         parent = scrollContent,
@@ -1310,28 +1101,7 @@ function Builder:AddSelectorColorPicker(options)
         optionInfoIcons = options.optionInfoIcons,
     })
 
-    if selectorColor then
-        selectorColor:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        selectorColor:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, selectorColor)
-        selectorColor._searchLabel = options.label
-        selectorColor._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = selectorColor
-        end
-
-        self._currentY = self._currentY - selectorColor:GetHeight()
-
-        -- Propagate deferred height changes to parent collapsible
-        if self._parentCollapsible then
-            local parentCollapsible = self._parentCollapsible
-            selectorColor._onHeightChanged = function(delta)
-                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
-            end
-        end
-    end
+    self:_PlaceRow(selectorColor, options)
 
     return self
 end
@@ -1365,20 +1135,7 @@ function Builder:AddDualSlider(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "slider",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("slider", options.label, options.description) then return self end
 
     local dualSlider = Controls:CreateDualSlider({
         parent = scrollContent,
@@ -1396,18 +1153,7 @@ function Builder:AddDualSlider(options)
         isDisabled = options.isDisabled,
     })
 
-    if dualSlider then
-        dualSlider:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        dualSlider:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, dualSlider)
-
-        if options.key then
-            self._controlsByKey[options.key] = dualSlider
-        end
-
-        self._currentY = self._currentY - dualSlider:GetHeight()
-    end
+    self:_PlaceRow(dualSlider, options)
 
     return self
 end
@@ -1435,10 +1181,6 @@ function Builder:AddDualSelector(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
-
     local dualSelector = Controls:CreateDualSelector({
         parent = scrollContent,
         label = options.label,
@@ -1452,18 +1194,7 @@ function Builder:AddDualSelector(options)
         maxContainerWidth = options.maxContainerWidth,
     })
 
-    if dualSelector then
-        dualSelector:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        dualSelector:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, dualSelector)
-
-        if options.key then
-            self._controlsByKey[options.key] = dualSelector
-        end
-
-        self._currentY = self._currentY - dualSelector:GetHeight()
-    end
+    self:_PlaceRow(dualSelector, options)
 
     return self
 end
@@ -1484,20 +1215,7 @@ function Builder:AddSelectorToggleRow(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "selector toggle",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("selector toggle", options.label, options.description) then return self end
 
     local selectorToggle = Controls:CreateSelectorToggleRow({
         parent = scrollContent,
@@ -1511,18 +1229,7 @@ function Builder:AddSelectorToggleRow(options)
         name = options.name,
     })
 
-    if selectorToggle then
-        selectorToggle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        selectorToggle:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, selectorToggle)
-
-        if options.key then
-            self._controlsByKey[options.key] = selectorToggle
-        end
-
-        self._currentY = self._currentY - selectorToggle:GetHeight()
-    end
+    self:_PlaceRow(selectorToggle, options)
 
     return self
 end
@@ -1543,20 +1250,7 @@ function Builder:AddToggleSliderRow(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "toggle slider",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("toggle slider", options.label, options.description) then return self end
 
     local toggleSlider = Controls:CreateToggleSliderRow({
         parent = scrollContent,
@@ -1570,26 +1264,7 @@ function Builder:AddToggleSliderRow(options)
         name = options.name,
     })
 
-    if toggleSlider then
-        toggleSlider:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        toggleSlider:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, toggleSlider)
-
-        if options.key then
-            self._controlsByKey[options.key] = toggleSlider
-        end
-
-        self._currentY = self._currentY - toggleSlider:GetHeight()
-
-        -- Propagate deferred height changes to parent collapsible
-        if self._parentCollapsible then
-            local parentCollapsible = self._parentCollapsible
-            toggleSlider._onHeightChanged = function(delta)
-                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
-            end
-        end
-    end
+    self:_PlaceRow(toggleSlider, options)
 
     return self
 end
@@ -1625,18 +1300,8 @@ function Builder:AddMultiToggleRow(options)
             end
         end
 
-        table.insert(Builder._scanEntries, {
-            type = "multi toggle",
-            label = options.label,
-            description = searchText,
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
+        self:_ScanRecord("multi toggle", options.label, searchText)
         return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
     end
 
     local multiToggle = Controls:CreateMultiToggleRow({
@@ -1650,26 +1315,7 @@ function Builder:AddMultiToggleRow(options)
         name = options.name,
     })
 
-    if multiToggle then
-        multiToggle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        multiToggle:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, multiToggle)
-
-        if options.key then
-            self._controlsByKey[options.key] = multiToggle
-        end
-
-        self._currentY = self._currentY - multiToggle:GetHeight()
-
-        -- Propagate deferred height changes to parent collapsible
-        if self._parentCollapsible then
-            local parentCollapsible = self._parentCollapsible
-            multiToggle._onHeightChanged = function(delta)
-                parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
-            end
-        end
-    end
+    self:_PlaceRow(multiToggle, options)
 
     return self
 end
@@ -1694,20 +1340,7 @@ function Builder:AddDualBarStyleRow(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if Builder._scanMode and options.label then
-        table.insert(Builder._scanEntries, {
-            type = "bar style",
-            label = options.label,
-            description = options.description or "",
-            rendererKey = Builder._scanRendererKey,
-            section = Builder._scanSectionStack[#Builder._scanSectionStack],
-        })
-        return self
-    end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
+    if self:_ScanRecord("bar style", options.label, options.description) then return self end
 
     local dualBarStyle = Controls:CreateDualBarStyleRow({
         parent = scrollContent,
@@ -1730,20 +1363,7 @@ function Builder:AddDualBarStyleRow(options)
         name = options.name,
     })
 
-    if dualBarStyle then
-        dualBarStyle:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        dualBarStyle:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, dualBarStyle)
-        dualBarStyle._searchLabel = options.label
-        dualBarStyle._searchSection = self._parentSectionTitle
-
-        if options.key then
-            self._controlsByKey[options.key] = dualBarStyle
-        end
-
-        self._currentY = self._currentY - dualBarStyle:GetHeight()
-    end
+    self:_PlaceRow(dualBarStyle, options)
 
     return self
 end
@@ -1765,10 +1385,6 @@ function Builder:AddTextInput(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
-
     local textInput = Controls:CreateSingleLineEditBox({
         parent = scrollContent,
         label = options.label,
@@ -1779,8 +1395,7 @@ function Builder:AddTextInput(options)
     })
 
     if textInput then
-        textInput:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        textInput:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+        self:_PlaceRow(textInput, options)
 
         -- Wire up set callback
         textInput:SetOnChange(function(text)
@@ -1788,14 +1403,6 @@ function Builder:AddTextInput(options)
                 options.set(text)
             end
         end)
-
-        table.insert(self._controls, textInput)
-
-        if options.key then
-            self._controlsByKey[options.key] = textInput
-        end
-
-        self._currentY = self._currentY - textInput:GetHeight()
 
         -- Add description if provided
         if options.description then
@@ -1838,10 +1445,6 @@ function Builder:AddMultiLineEditBox(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
 
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
-
     local editBox = Controls:CreateMultiLineEditBox({
         parent = scrollContent,
         label = options.label,
@@ -1852,8 +1455,7 @@ function Builder:AddMultiLineEditBox(options)
     })
 
     if editBox then
-        editBox:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        editBox:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+        self:_PlaceRow(editBox, options)
 
         -- Wire up change detection on focus loss
         local innerEditBox = editBox._editBox
@@ -1862,14 +1464,6 @@ function Builder:AddMultiLineEditBox(options)
                 options.set(self:GetText())
             end)
         end
-
-        table.insert(self._controls, editBox)
-
-        if options.key then
-            self._controlsByKey[options.key] = editBox
-        end
-
-        self._currentY = self._currentY - editBox:GetHeight()
     end
 
     return self
@@ -1882,10 +1476,6 @@ end
 function Builder:AddPreview(options)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
-
-    if #self._controls > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
-    end
 
     local preview = Controls:CreatePreview({
         parent = scrollContent,
@@ -1913,18 +1503,7 @@ function Builder:AddPreview(options)
         timerEpoch = options.timerEpoch,
     })
 
-    if preview then
-        preview:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-        preview:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
-
-        table.insert(self._controls, preview)
-
-        if options.key then
-            self._controlsByKey[options.key] = preview
-        end
-
-        self._currentY = self._currentY - preview:GetHeight()
-    end
+    self:_PlaceRow(preview, options)
 
     return self
 end
