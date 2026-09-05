@@ -367,20 +367,6 @@ local KNOWN_FIELDS = {
     "deathTimeSeconds", "classification",
 }
 
-local function FieldSecrecy(value)
-    if issecretvalue then
-        local ok, result = pcall(issecretvalue, value)
-        if ok then return result end
-    end
-    return nil
-end
-
-local function SafeDisplay(value, isSecret)
-    if isSecret == true then return "(secret)" end
-    if value == nil then return "nil" end
-    return tostring(value)
-end
-
 local function RunFieldsDump()
     local lines = { "== DMY Exhaustive Field Dump ==" }
     local inCombat = InCombatLockdown()
@@ -421,7 +407,7 @@ local function RunFieldsDump()
                 table.insert(lines, string.format("  Source #%d:", srcIdx))
                 for _, fieldName in ipairs(KNOWN_FIELDS) do
                     local val = src[fieldName]
-                    local isSecret = FieldSecrecy(val)
+                    local isSecret = TestSecret(val)
                     local marker = ""
                     if val ~= nil and isSecret == false then
                         marker = "  *** NON-SECRET ***"
@@ -432,7 +418,7 @@ local function RunFieldsDump()
                         table.insert(nonSecretFields[fieldName].values, { meterType = mt.key, srcIdx = srcIdx, value = val })
                     end
                     table.insert(lines, string.format("    %-20s type=%-8s secret=%-6s value=%s%s",
-                        fieldName, type(val), tostring(isSecret), SafeDisplay(val, isSecret), marker))
+                        fieldName, type(val), tostring(isSecret), FormatSafeValue(val, isSecret), marker))
                 end
             end
             table.insert(lines, "")
@@ -478,7 +464,7 @@ local function RunFieldsDump()
             local nilCount = 0
             for _, src in ipairs(dmgSession.combatSources) do
                 local cid = src.sourceCreatureID
-                local cidSecret = FieldSecrecy(cid)
+                local cidSecret = TestSecret(cid)
                 if cid == nil then
                     nilCount = nilCount + 1
                 elseif cidSecret == false then
@@ -501,7 +487,7 @@ local function RunFieldsDump()
         if dmgSession then
             for i, src in ipairs(dmgSession.combatSources) do
                 local cid = src.sourceCreatureID
-                local cidSecret = FieldSecrecy(cid)
+                local cidSecret = TestSecret(cid)
                 if cid ~= nil and cidSecret == false then
                     local okConv, cidKey = pcall(tostring, cid)
                     if okConv then
@@ -517,7 +503,7 @@ local function RunFieldsDump()
             local misses = 0
             for _, src in ipairs(healSession.combatSources) do
                 local cid = src.sourceCreatureID
-                local cidSecret = FieldSecrecy(cid)
+                local cidSecret = TestSecret(cid)
                 if cid ~= nil and cidSecret == false then
                     local okConv, cidKey = pcall(tostring, cid)
                     if okConv then
@@ -555,8 +541,8 @@ local function RunFieldsDump()
         for _, src in ipairs(dmgSession.combatSources) do
             local cls = src.classFilename
             local spec = src.specIconID
-            local clsSecret = FieldSecrecy(cls)
-            local specSecret = FieldSecrecy(spec)
+            local clsSecret = TestSecret(cls)
+            local specSecret = TestSecret(spec)
             if clsSecret == false then
                 classSet[tostring(cls)] = true
                 if specSecret == false and spec ~= nil then
@@ -585,9 +571,9 @@ local function RunFieldsDump()
         table.insert(lines, "  classification values seen:")
         for _, src in ipairs(dmgSession.combatSources) do
             local c = src.classification
-            local cSecret = FieldSecrecy(c)
+            local cSecret = TestSecret(c)
             table.insert(lines, string.format("    class=%s  classification=%s  secret=%s",
-                tostring(src.classFilename), SafeDisplay(c, cSecret), tostring(cSecret)))
+                tostring(src.classFilename), FormatSafeValue(c, cSecret), tostring(cSecret)))
         end
     else
         table.insert(lines, "  SKIPPED — no DamageDone data")
@@ -608,15 +594,15 @@ local function RunFieldsDump()
         local okPairs, errPairs = pcall(function()
             local keys = {}
             for k, v in pairs(src) do
-                local kSecret = FieldSecrecy(k)
-                local vSecret = FieldSecrecy(v)
+                local kSecret = TestSecret(k)
+                local vSecret = TestSecret(v)
                 table.insert(keys, {
-                    key = SafeDisplay(k, kSecret),
+                    key = FormatSafeValue(k, kSecret),
                     keyType = type(k),
                     keySecret = tostring(kSecret),
                     valType = type(v),
                     valSecret = tostring(vSecret),
-                    valDisplay = SafeDisplay(v, vSecret),
+                    valDisplay = FormatSafeValue(v, vSecret),
                 })
             end
             return keys
@@ -638,15 +624,15 @@ local function RunFieldsDump()
         local okSPairs, errSPairs = pcall(function()
             local keys = {}
             for k, v in pairs(dmgSession) do
-                local kSecret = FieldSecrecy(k)
-                local vSecret = FieldSecrecy(v)
+                local kSecret = TestSecret(k)
+                local vSecret = TestSecret(v)
                 if k ~= "combatSources" then -- skip the big array
                     table.insert(keys, {
-                        key = SafeDisplay(k, kSecret),
+                        key = FormatSafeValue(k, kSecret),
                         keyType = type(k),
                         valType = type(v),
                         valSecret = tostring(vSecret),
-                        valDisplay = SafeDisplay(v, vSecret),
+                        valDisplay = FormatSafeValue(v, vSecret),
                     })
                 else
                     table.insert(keys, {
