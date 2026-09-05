@@ -578,3 +578,310 @@ function Controls.AttachDismissOnClickOutside(onClose)
     closeListener:Hide()
     return closeListener
 end
+
+--------------------------------------------------------------------------------
+-- Picker dialog shell
+--------------------------------------------------------------------------------
+
+-- The modal dialog shell shared by the font, bar texture, bar border, and
+-- icon pickers: a movable FULLSCREEN_DIALOG singleton with dark background
+-- and accent border, title, close button, left tab column with separator,
+-- restyled scroll frame with scroll child, ESC and click-outside dismissal,
+-- and one theme subscription that keeps every part on the current accent.
+-- The picker keeps its item lists, previews, Show and Close globals, and
+-- defines frame:PopulateContent() after this returns.
+--
+-- opts:
+--   name          global frame name; also the theme subscription key, and the
+--                  scroll frame is named with Frame swapped for ScrollFrame
+--   width, height  frame size
+--   contentWidth   width basis for the scroll child (the shell insets it by
+--                  padding)
+--   title          title text
+--   onClose        the picker's close routine, wired to the X, ESC, and the
+--                  click-outside poll
+--   onHide         extra OnHide work after the poll stops (animated previews)
+--   tabs           default tab list of { key, label }; a Show that varies the
+--                  list writes frame._workingTabs before calling UpdateTabs
+--   getSelectedTab function() -> the selected tab key
+--   onTabSelected  function(key) -> record the selection; the shell repaints
+--                  the tabs, calls frame:PopulateContent(), and plays the
+--                  click sound
+--   padding        default 12; titleHeight 30; tabWidth 90; tabHeight 32
+--
+-- Returns the frame carrying Title, CloseButton, TabContainer, TabButtons,
+-- UpdateTabs, UpdateTabVisuals, ScrollFrame, _scrollBar, Content, and the
+-- _accentR/_accentG/_accentB fields the populate passes read.
+function Controls.CreatePickerShell(opts)
+    local theme = GetTheme()
+    local accentR, accentG, accentB = theme:GetAccentColor()
+    local padding = opts.padding or 12
+    local titleHeight = opts.titleHeight or 30
+    local tabWidth = opts.tabWidth or 90
+    local tabHeight = opts.tabHeight or 32
+    local onClose = opts.onClose
+    local getSelectedTab = opts.getSelectedTab
+    local onTabSelected = opts.onTabSelected
+
+    local frame = CreateFrame("Frame", opts.name, UIParent)
+    frame:SetSize(opts.width, opts.height)
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(100)
+    frame:EnableMouse(true)
+    frame:SetClampedToScreen(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+
+    -- Background (TUI dark)
+    local bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.04, 0.04, 0.06, 0.96)
+    frame._bg = bg
+
+    -- Border (accent color)
+    frame._borders = Controls.CreateBorder(frame, { alpha = 0.8 })
+
+    -- Title
+    local titleFont = theme:GetFont("HEADER")
+    local title = frame:CreateFontString(nil, "OVERLAY")
+    title:SetFont(titleFont, 14, "")
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -10)
+    title:SetText(opts.title)
+    title:SetTextColor(1, 1, 1, 1)
+    frame.Title = title
+
+    -- Close button (X)
+    local closeBtn = CreateFrame("Button", nil, frame)
+    closeBtn:SetSize(24, 24)
+    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+    closeBtn:EnableMouse(true)
+    closeBtn:RegisterForClicks("AnyUp")
+
+    local closeBtnBg = closeBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
+    closeBtnBg:SetAllPoints()
+    closeBtnBg:SetColorTexture(accentR, accentG, accentB, 1)
+    closeBtnBg:Hide()
+    closeBtn._bg = closeBtnBg
+
+    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY")
+    closeBtnText:SetFont(titleFont, 14, "")
+    closeBtnText:SetPoint("CENTER", 0, 0)
+    closeBtnText:SetText("X")
+    closeBtnText:SetTextColor(accentR, accentG, accentB, 1)
+    closeBtn._text = closeBtnText
+
+    closeBtn:SetScript("OnEnter", function(btn)
+        btn._bg:Show()
+        btn._text:SetTextColor(0, 0, 0, 1)
+    end)
+    closeBtn:SetScript("OnLeave", function(btn)
+        btn._bg:Hide()
+        btn._text:SetTextColor(frame._accentR, frame._accentG, frame._accentB, 1)
+    end)
+    closeBtn:SetScript("OnClick", function()
+        onClose()
+    end)
+    frame.CloseButton = closeBtn
+
+    -- Tab container (left side)
+    local tabContainer = CreateFrame("Frame", nil, frame)
+    tabContainer:SetSize(tabWidth, opts.height - titleHeight - padding * 2)
+    tabContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -(titleHeight + 4))
+    frame.TabContainer = tabContainer
+
+    -- Vertical separator between tabs and content
+    local tabSep = frame:CreateTexture(nil, "BORDER", nil, 0)
+    tabSep:SetWidth(1)
+    tabSep:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 4, 0)
+    tabSep:SetPoint("BOTTOMLEFT", tabContainer, "BOTTOMRIGHT", 4, 0)
+    tabSep:SetColorTexture(accentR, accentG, accentB, 0.4)
+    frame._tabSep = tabSep
+
+    -- Tab buttons (managed pool, rebuilt on each Show via UpdateTabs)
+    frame.TabButtons = {}
+    frame._tabLabelFont = theme:GetFont("LABEL")
+
+    function frame:UpdateTabs()
+        local tabs = self._workingTabs or opts.tabs
+        local tc = self.TabContainer
+        local lf = self._tabLabelFont
+
+        for i, tabData in ipairs(tabs) do
+            local tabBtn = self.TabButtons[i]
+            if not tabBtn then
+                tabBtn = CreateFrame("Button", nil, tc)
+                tabBtn:SetSize(tabWidth, tabHeight)
+                tabBtn:EnableMouse(true)
+                tabBtn:RegisterForClicks("AnyUp")
+
+                local tabBg = tabBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
+                tabBg:SetAllPoints()
+                tabBg:SetColorTexture(0.06, 0.06, 0.08, 1)
+                tabBtn._bg = tabBg
+
+                local indicator = tabBtn:CreateTexture(nil, "OVERLAY", nil, 1)
+                indicator:SetSize(2, tabHeight)
+                indicator:SetPoint("LEFT", tabBtn, "LEFT", 0, 0)
+                indicator:SetColorTexture(frame._accentR, frame._accentG, frame._accentB, 1)
+                indicator:Hide()
+                tabBtn._indicator = indicator
+
+                local tabLabel = tabBtn:CreateFontString(nil, "OVERLAY")
+                tabLabel:SetFont(lf, 11, "")
+                tabLabel:SetPoint("CENTER", tabBtn, "CENTER", 2, 0)
+                tabLabel:SetTextColor(0.6, 0.6, 0.6, 1)
+                tabBtn._label = tabLabel
+
+                tabBtn:SetScript("OnEnter", function(btn)
+                    if getSelectedTab() ~= btn._key then
+                        btn._bg:SetColorTexture(frame._accentR, frame._accentG, frame._accentB, 0.15)
+                    end
+                end)
+                tabBtn:SetScript("OnLeave", function(btn)
+                    if getSelectedTab() ~= btn._key then
+                        btn._bg:SetColorTexture(0.06, 0.06, 0.08, 1)
+                    end
+                end)
+                tabBtn:SetScript("OnClick", function(btn)
+                    if getSelectedTab() ~= btn._key then
+                        onTabSelected(btn._key)
+                        frame:UpdateTabVisuals()
+                        frame:PopulateContent()
+                        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+                    end
+                end)
+
+                self.TabButtons[i] = tabBtn
+            end
+
+            tabBtn._key = tabData.key
+            tabBtn._label:SetText(tabData.label)
+            tabBtn:ClearAllPoints()
+            tabBtn:SetPoint("TOPLEFT", tc, "TOPLEFT", 0, -((i - 1) * tabHeight))
+            tabBtn:Show()
+        end
+
+        -- Hide extra buttons from previous Show
+        for i = #tabs + 1, #self.TabButtons do
+            self.TabButtons[i]:Hide()
+        end
+    end
+
+    function frame:UpdateTabVisuals()
+        for _, tabBtn in ipairs(self.TabButtons) do
+            local isSelected = (getSelectedTab() == tabBtn._key)
+            if isSelected then
+                tabBtn._indicator:Show()
+                tabBtn._label:SetTextColor(1, 1, 1, 1)
+                tabBtn._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.2)
+            else
+                tabBtn._indicator:Hide()
+                tabBtn._label:SetTextColor(0.6, 0.6, 0.6, 1)
+                tabBtn._bg:SetColorTexture(0.06, 0.06, 0.08, 1)
+            end
+        end
+    end
+
+    -- Content area (scroll frame, right of tabs)
+    local scrollFrame = CreateFrame("ScrollFrame", opts.name:gsub("Frame$", "ScrollFrame"), frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 12, 0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(padding + 20), padding)
+    frame.ScrollFrame = scrollFrame
+
+    -- Style the scrollbar
+    local scrollBar = scrollFrame.ScrollBar or _G[scrollFrame:GetName() .. "ScrollBar"]
+    if scrollBar then
+        scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 6, -16)
+        scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 6, 16)
+
+        -- Hide default textures
+        if scrollBar.Background then scrollBar.Background:Hide() end
+        if scrollBar.Track then
+            if scrollBar.Track.Begin then scrollBar.Track.Begin:Hide() end
+            if scrollBar.Track.End then scrollBar.Track.End:Hide() end
+            if scrollBar.Track.Middle then scrollBar.Track.Middle:Hide() end
+        end
+
+        -- Custom track background
+        local trackBg = scrollBar:CreateTexture(nil, "BACKGROUND", nil, -8)
+        trackBg:SetPoint("TOPLEFT", 4, 0)
+        trackBg:SetPoint("BOTTOMRIGHT", -4, 0)
+        trackBg:SetColorTexture(accentR, accentG, accentB, 0.15)
+        scrollBar._trackBg = trackBg
+
+        -- Style the thumb
+        local thumb = scrollBar.ThumbTexture or scrollBar:GetThumbTexture()
+        if thumb then
+            thumb:SetColorTexture(accentR, accentG, accentB, 0.6)
+            thumb:SetSize(8, 40)
+        end
+
+        -- Hide up/down buttons
+        local upBtn = scrollBar.ScrollUpButton or scrollBar.Back or _G[scrollBar:GetName() .. "ScrollUpButton"]
+        local downBtn = scrollBar.ScrollDownButton or scrollBar.Forward or _G[scrollBar:GetName() .. "ScrollDownButton"]
+        if upBtn then upBtn:SetAlpha(0) upBtn:EnableMouse(false) end
+        if downBtn then downBtn:SetAlpha(0) downBtn:EnableMouse(false) end
+
+        frame._scrollBar = scrollBar
+    end
+
+    -- Content frame (scroll child)
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetSize(opts.contentWidth - padding, 100)  -- Height adjusted by the populate pass
+    scrollFrame:SetScrollChild(content)
+    frame.Content = content
+
+    -- Store accent colors for the populate passes
+    frame._accentR = accentR
+    frame._accentG = accentG
+    frame._accentB = accentB
+
+    -- ESC to close
+    addon.EscapeKey.Attach(frame, function()
+        onClose()
+    end)
+
+    -- Click outside to close
+    frame:SetScript("OnShow", function(self)
+        self:SetScript("OnUpdate", function(f)
+            if not f:IsMouseOver() and IsMouseButtonDown("LeftButton") then
+                C_Timer.After(0.05, function()
+                    if frame:IsShown() and not frame:IsMouseOver() then
+                        onClose()
+                    end
+                end)
+            end
+        end)
+    end)
+    frame:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
+        if opts.onHide then
+            opts.onHide(self)
+        end
+    end)
+
+    -- One subscription per shell keeps the chrome on the current accent; the
+    -- frames are singletons, so the key never needs to be released.
+    theme:Subscribe(opts.name, function(r, g, b)
+        frame._accentR, frame._accentG, frame._accentB = r, g, b
+        frame._tabSep:SetColorTexture(r, g, b, 0.4)
+        frame.CloseButton._bg:SetColorTexture(r, g, b, 1)
+        frame.CloseButton._text:SetTextColor(r, g, b, 1)
+        for _, tabBtn in ipairs(frame.TabButtons) do
+            tabBtn._indicator:SetColorTexture(r, g, b, 1)
+        end
+        if frame._scrollBar then
+            frame._scrollBar._trackBg:SetColorTexture(r, g, b, 0.15)
+            local thumb = frame._scrollBar.ThumbTexture or frame._scrollBar:GetThumbTexture()
+            if thumb then thumb:SetColorTexture(r, g, b, 0.6) end
+        end
+        frame:UpdateTabVisuals()
+        if frame:IsShown() and frame.PopulateContent then
+            frame:PopulateContent()
+        end
+    end)
+
+    return frame
+end
