@@ -27,6 +27,7 @@ local BTN_SIZE = 16      -- group box action buttons
 local BTN_GAP = 8
 local ROW_BTN_SIZE = 13  -- tracker row action buttons (smaller rows)
 local ROW_BTN_GAP = 6
+local IND_W = 27         -- ON/OFF indicator width; the row textClear math reads it
 local MEMBER_BTN_SIZE = 11  -- badges on a group member icon (ICON_SIZE is 26)
 local MEMBER_BTN_GAP = 1
 local ROW_TOP_PAD = 6    -- row top to the name line
@@ -36,7 +37,6 @@ local ROW_BTN_Y = -7     -- button cluster inset from the row top
 -- The spec restriction button. A funnel says "narrow this down", which is
 -- what it does; the flat glyph matches the delete and gear art beside it.
 local SPEC_ATLAS = "ui-questtrackerbutton-filter"
-local SPEC_ATLAS_FALLBACK = "common-icon-undo"
 
 -- The left column holds single rows; the right holds group boxes and earns
 -- the wider share.
@@ -206,107 +206,6 @@ local function RegisterSpecButton(key, button, reveal)
     state.specButtons[key] = { button = button, reveal = reveal }
 end
 
--- Flat glyph button: desaturated atlas tinted accent, brightening on hover,
--- named by tooltip. All three actions (gear, duplicate, delete) draw from the
--- same flat Blizzard glyph vocabulary as the rename pencil. glyphScale grows
--- the art without changing the button's layout box (the gear atlas carries
--- padding inside its glyph box and renders half the size of its neighbors).
-local function CreateIconButton(row, atlas, tooltipLabel, theme, size, glyphScale)
-    local ar, ag, ab = theme:GetAccentColor()
-    local btn = CreateFrame("Button", nil, row)
-    size = size or BTN_SIZE
-    btn:SetSize(size, size)
-    local tex = btn:CreateTexture(nil, "ARTWORK")
-    local glyph = size * (glyphScale or 1)
-    tex:SetSize(glyph, glyph)
-    tex:SetPoint("CENTER", 0, 0)
-    -- An atlas name that does not resolve leaves the texture blank rather
-    -- than erroring, so check rather than trust.
-    if not pcall(tex.SetAtlas, tex, atlas) or not tex:GetAtlas() then
-        pcall(tex.SetAtlas, tex, SPEC_ATLAS_FALLBACK)
-    end
-    tex:SetDesaturated(true)
-    tex:SetVertexColor(ar, ag, ab)
-    tex:SetAlpha(0.6)
-    btn._tex = tex
-    btn:SetScript("OnEnter", function(self)
-        tex:SetAlpha(1)
-        if row.UpdateHover then row.UpdateHover() end
-        if tooltipLabel then
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(tooltipLabel, 1, 1, 1)
-            GameTooltip:Show()
-        end
-    end)
-    btn:SetScript("OnLeave", function()
-        tex:SetAlpha(0.6)
-        GameTooltip:Hide()
-        if row.UpdateHover then row.UpdateHover() end
-    end)
-    btn:Hide()
-    return btn
-end
-
--- Compact ON/OFF state indicator (the Features-page form): bordered box with
--- an accent fill when on, dim hollow when off. Sized to match the icon
--- buttons beside it.
-local IND_W, IND_H, IND_BORDER = 27, ROW_BTN_SIZE, 2
-
-local function CreateEnabledIndicator(row, theme)
-    local ar, ag, ab = theme:GetAccentColor()
-    local dimR, dimG, dimB = theme:GetDimTextColor()
-    local btn = CreateFrame("Button", nil, row)
-    btn:SetSize(IND_W, IND_H)
-
-    local borders = {}
-    local function edge()
-        local tex = btn:CreateTexture(nil, "BORDER")
-        table.insert(borders, tex)
-        return tex
-    end
-    local top = edge()
-    top:SetPoint("TOPLEFT", 0, 0)
-    top:SetPoint("TOPRIGHT", 0, 0)
-    top:SetHeight(IND_BORDER)
-    local bottom = edge()
-    bottom:SetPoint("BOTTOMLEFT", 0, 0)
-    bottom:SetPoint("BOTTOMRIGHT", 0, 0)
-    bottom:SetHeight(IND_BORDER)
-    local left = edge()
-    left:SetPoint("TOPLEFT", 0, -IND_BORDER)
-    left:SetPoint("BOTTOMLEFT", 0, IND_BORDER)
-    left:SetWidth(IND_BORDER)
-    local right = edge()
-    right:SetPoint("TOPRIGHT", 0, -IND_BORDER)
-    right:SetPoint("BOTTOMRIGHT", 0, IND_BORDER)
-    right:SetWidth(IND_BORDER)
-
-    local fill = btn:CreateTexture(nil, "ARTWORK")
-    fill:SetPoint("TOPLEFT", IND_BORDER, -IND_BORDER)
-    fill:SetPoint("BOTTOMRIGHT", -IND_BORDER, IND_BORDER)
-    fill:SetColorTexture(ar, ag, ab, 1)
-
-    local text = btn:CreateFontString(nil, "OVERLAY")
-    text:SetFont(theme:GetFont("BUTTON"), 8, "")
-    text:SetPoint("CENTER", 0, 0)
-
-    btn.SetOn = function(_, isOn)
-        for _, tex in ipairs(borders) do
-            tex:SetColorTexture(ar, ag, ab, isOn and 1 or 0.4)
-        end
-        fill:SetShown(isOn)
-        if isOn then
-            text:SetText("ON")
-            text:SetTextColor(0, 0, 0, 1)
-        else
-            text:SetText("OFF")
-            text:SetTextColor(dimR, dimG, dimB, 1)
-        end
-    end
-    btn:Hide()
-    return btn
-end
-
 --------------------------------------------------------------------------------
 -- Left pane: tracker rows
 --------------------------------------------------------------------------------
@@ -395,15 +294,20 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     end
 
     -- All four buttons ride the row hover.
-    local specBtn = CreateIconButton(row, SPEC_ATLAS, "Loaded on these specs", theme, ROW_BTN_SIZE)
+    local Controls = addon.UI.Controls
+    local specBtn = Controls:CreateGlyphButton({ parent = row, atlas = SPEC_ATLAS,
+        tooltip = "Loaded on these specs", size = ROW_BTN_SIZE })
     specBtn:SetPoint("TOPRIGHT", row, "TOPRIGHT", -PAD, ROW_BTN_Y)
 
-    local deleteBtn = CreateIconButton(row, "common-icon-delete", "Delete", theme, ROW_BTN_SIZE)
+    local deleteBtn = Controls:CreateGlyphButton({ parent = row, atlas = "common-icon-delete",
+        tooltip = "Delete", size = ROW_BTN_SIZE })
     deleteBtn:SetPoint("RIGHT", specBtn, "LEFT", -ROW_BTN_GAP, 0)
-    local duplicateBtn = CreateIconButton(row, "friends-icon-battlenet-copy", "Duplicate", theme, ROW_BTN_SIZE)
+    local duplicateBtn = Controls:CreateGlyphButton({ parent = row, atlas = "friends-icon-battlenet-copy",
+        tooltip = "Duplicate", size = ROW_BTN_SIZE })
     duplicateBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -ROW_BTN_GAP, 0)
 
-    local enabledBtn = CreateEnabledIndicator(row, theme)
+    local enabledBtn = Controls:CreateOnOffIndicator({ parent = row,
+        width = IND_W, height = ROW_BTN_SIZE })
     enabledBtn:SetPoint("RIGHT", duplicateBtn, "LEFT", -ROW_BTN_GAP, 0)
     enabledBtn:SetOn(tracker.enabled ~= false)
     enabledBtn:SetScript("OnEnter", function()
@@ -472,7 +376,6 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     end)
 
     deleteBtn:SetScript("OnClick", function()
-        local Controls = addon.UI.Controls
         local trackerName = tracker.name or tostring(tracker.spellId)
         local doDelete = function()
             if addon.UI.ScootAuraEditor and addon.UI.ScootAuraEditor.IsOpen() then
@@ -628,7 +531,9 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
     pencilBtn:SetScript("OnClick", StartRename)
 
     -- Hover-revealed, right to left: spec filter, delete, duplicate, layout gear.
-    local specBtn = CreateIconButton(box, SPEC_ATLAS, "Loaded on these specs", theme)
+    local Controls = addon.UI.Controls
+    local specBtn = Controls:CreateGlyphButton({ parent = box, atlas = SPEC_ATLAS,
+        tooltip = "Loaded on these specs", size = BTN_SIZE })
     specBtn:SetPoint("TOPRIGHT", box, "TOPRIGHT", -BOX_PAD, -5)
     specBtn:SetScript("OnClick", function()
         if ClickGuard() then return end
@@ -645,15 +550,18 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
         })
     end)
 
-    local deleteBtn = CreateIconButton(box, "common-icon-delete", "Delete Group", theme)
+    local deleteBtn = Controls:CreateGlyphButton({ parent = box, atlas = "common-icon-delete",
+        tooltip = "Delete Group", size = BTN_SIZE })
     deleteBtn:SetPoint("RIGHT", specBtn, "LEFT", -BTN_GAP, 0)
-    local duplicateBtn = CreateIconButton(box, "friends-icon-battlenet-copy", "Duplicate Group", theme)
+    local duplicateBtn = Controls:CreateGlyphButton({ parent = box, atlas = "friends-icon-battlenet-copy",
+        tooltip = "Duplicate Group", size = BTN_SIZE })
     duplicateBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -BTN_GAP, 0)
     -- Layout settings describe a group that is on screen. An unloaded group has
     -- none, so it carries no gear and builds no fly-out.
     local layoutBtn, flyout
     if loaded ~= false then
-        layoutBtn = CreateIconButton(box, "GM-icon-settings", "Layout", theme, BTN_SIZE, 2)
+        layoutBtn = Controls:CreateGlyphButton({ parent = box, atlas = "GM-icon-settings",
+            tooltip = "Layout", size = BTN_SIZE, glyphScale = 2 })
         layoutBtn:SetPoint("RIGHT", duplicateBtn, "LEFT", -BTN_GAP, 0)
 
         flyout = addon.UI.Settings.ScootAuraEditorTabs.BuildGroupLayoutFlyout(layoutBtn, gid)
@@ -669,7 +577,6 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
     end)
 
     deleteBtn:SetScript("OnClick", function()
-        local Controls = addon.UI.Controls
         local groupName = group.name or ("Aura Group " .. gid)
         local doDelete = function()
             SAU.DeleteGroup(gid)
@@ -735,14 +642,14 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
             -- the parent's own rect, so the badge would hide itself under the
             -- pointer. An unloaded member keeps both, the way a grayed tracker
             -- row does, because the spec badge is how an aura gets loaded.
-            local memberSpecBtn = CreateIconButton(btn, SPEC_ATLAS,
-                "Loaded on these specs", theme, MEMBER_BTN_SIZE)
+            local memberSpecBtn = Controls:CreateGlyphButton({ parent = btn, atlas = SPEC_ATLAS,
+                tooltip = "Loaded on these specs", size = MEMBER_BTN_SIZE })
             memberSpecBtn:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 0, 0)
-            local memberDupBtn = CreateIconButton(btn, "friends-icon-battlenet-copy",
-                "Duplicate in Group", theme, MEMBER_BTN_SIZE)
+            local memberDupBtn = Controls:CreateGlyphButton({ parent = btn, atlas = "friends-icon-battlenet-copy",
+                tooltip = "Duplicate in Group", size = MEMBER_BTN_SIZE })
             memberDupBtn:SetPoint("RIGHT", memberSpecBtn, "LEFT", -MEMBER_BTN_GAP, 0)
 
-            -- The accent glyph would sink into bright spell art. CreateIconButton
+            -- The accent glyph would sink into bright spell art. CreateGlyphButton
             -- draws it in ARTWORK, so a BACKGROUND plate sits under it.
             for _, badge in ipairs({ memberSpecBtn, memberDupBtn }) do
                 local shade = badge:CreateTexture(nil, "BACKGROUND")

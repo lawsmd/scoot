@@ -253,6 +253,7 @@ ui/v2/Theme.lua
 ui/v2/controls/Utils.lua
 ui/v2/controls/PopupList.lua
 ui/v2/controls/Button.lua
+ui/v2/controls/GlyphButton.lua
 ui/v2/controls/Toggle.lua
 ui/v2/controls/Collapsible.lua
 ui/v2/controls/Selector.lua
