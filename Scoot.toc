@@ -76,6 +76,7 @@ core/components/cooldowns/centering.lua
 core/components/cooldowns/icongeometry.lua
 core/components/cooldowns/glowintercept.lua
 core/components/cooldowns/opacity.lua
+core/components/cooldowns/viewerhooks.lua
 core/components/cooldowns/keybinds.lua
 core/components/cooldowns/viewers.lua
 core/components/cooldowns/pixelglow.lua
