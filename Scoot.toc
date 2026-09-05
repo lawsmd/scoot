@@ -72,6 +72,7 @@ core/components/base/core.lua
 core/components/base/utilities.lua
 core/components/base/iconborders.lua
 core/components/cooldowns/core.lua
+core/components/cooldowns/centering.lua
 core/components/cooldowns/keybinds.lua
 core/components/cooldowns/viewers.lua
 core/components/cooldowns/pixelglow.lua
