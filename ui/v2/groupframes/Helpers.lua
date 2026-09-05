@@ -172,9 +172,10 @@ function GF.applyStyles(frameKey)
     addon.Refresh.Run(frameKey)
 end
 
--- A text change restyles the whole family; there is no text-only chain.
+-- Text-only settings edits run the family's text chain (partyText, raidText
+-- in core/refresh.lua) instead of the full family restyle.
 function GF.applyText(frameKey)
-    GF.applyStyles(frameKey)
+    addon.Refresh.Run(frameKey .. "Text")
 end
 
 function GF.applyRoleIcons(frameKey)

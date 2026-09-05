@@ -77,6 +77,18 @@ local Chains = {
         "ApplyPartyHealPredictionClipping",
         "ApplyPartyGroupLeadIcons",
     },
+    -- Text-only settings edits (GF.applyText). Each is a strict subsequence
+    -- of its family chain above, so relative order is the family order.
+    raidText = {
+        "ApplyRaidFrameStatusTextStyle",
+        "ApplyRaidFrameGroupTitlesStyle",
+        "ApplyRaidFrameNameOverlays",
+    },
+    partyText = {
+        "ApplyPartyFrameTitleStyle",
+        "ApplyPartyFrameStatusTextStyle",
+        "ApplyPartyFrameNameOverlays",
+    },
 
     -- Per unit: every name is called as fn(unit).
     -- Full restyle of one unit (settings copy, category reset). The cast bar

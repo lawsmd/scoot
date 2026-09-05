@@ -61,32 +61,6 @@ local disableRaidStatusTextOverlay = Raid.disableStatusOverlay
 -- Target: CompactRaidGroup*Member*Name (the name FontString on each raid unit frame)
 --------------------------------------------------------------------------------
 
--- Main entry point: Apply raid frame text styling from DB settings
-function addon.ApplyRaidFrameTextStyle()
-    local db = addon and addon.db and addon.db.profile
-    if not db then return end
-
-    -- Zero-Touch: only apply if user has configured raid text styling.
-    local groupFrames = rawget(db, "groupFrames")
-    local raidCfg = groupFrames and rawget(groupFrames, "raid") or nil
-    local cfg = raidCfg and rawget(raidCfg, "textPlayerName") or nil
-    if not cfg then
-        return
-    end
-
-    -- Zero-Touch: if the user changed nothing from the defaults, do nothing.
-    if not Utils.hasCustomTextSettings(cfg) then
-        return
-    end
-
-    -- Name styling delegates to overlay FontStrings. Moving Blizzard's `frame.name`
-    -- is avoided because the overlay clipping container copies its anchor geometry to preserve
-    -- truncation. Touching `frame.name` here reintroduces leaking/incorrect clipping.
-    if addon.ApplyRaidFrameNameOverlays then
-        addon.ApplyRaidFrameNameOverlays()
-    end
-end
-
 -- Install hooks to reapply text styling when raid frames update
 local function installRaidFrameTextHooks()
     if addon._RaidFrameTextHooksInstalled then return end

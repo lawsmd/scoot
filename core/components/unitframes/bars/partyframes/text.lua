@@ -61,27 +61,6 @@ local disablePartyStatusTextOverlay = Party.disableStatusOverlay
 -- Target: CompactPartyFrameMember[1-5].name (FontString with parentKey="name")
 --------------------------------------------------------------------------------
 
-function addon.ApplyPartyFrameTextStyle()
-    local db = addon and addon.db and addon.db.profile
-    if not db then return end
-
-    local groupFrames = rawget(db, "groupFrames")
-    local partyCfg = groupFrames and rawget(groupFrames, "party") or nil
-    local cfg = partyCfg and rawget(partyCfg, "textPlayerName") or nil
-    if not cfg then
-        return
-    end
-
-    if not Utils.hasCustomTextSettings(cfg) then
-        return
-    end
-
-    -- Name styling delegates to overlay FontStrings (avoids touching Blizzard's frame.name).
-    if addon.ApplyPartyFrameNameOverlays then
-        addon.ApplyPartyFrameNameOverlays()
-    end
-end
-
 local function installPartyFrameTextHooks()
     if addon._PartyFrameTextHooksInstalled then return end
     addon._PartyFrameTextHooksInstalled = true
