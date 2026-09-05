@@ -287,36 +287,6 @@ function UF.RenderPet(panel, scrollContent)
         inner:Finalize()
     end
 
-    local function buildPortraitPersonalTextTab(inner)
-        -- Portrait damage text: the hide flag and text table live in the
-        -- portrait sub-table, not the unit table
-        inner:AddTextStyleBlock({
-            get = function(field)
-                local t = B.getPortraitDB()
-                if not t then return nil end
-                if field == "hidden" then return t.damageTextDisabled end
-                local s = rawget(t, "damageText")
-                if not s then return nil end
-                return s[field]
-            end,
-            set = function(field, value)
-                local t = B.ensurePortraitDB()
-                if not t then return end
-                if field == "hidden" then
-                    t.damageTextDisabled = value
-                    return
-                end
-                t.damageText = t.damageText or {}
-                t.damageText[field] = value
-            end,
-            apply = B.applyPortrait,
-            hideToggle = { label = "Hide Personal Text" },
-            color = { kind = "plain" },
-            offset = false,
-        })
-        inner:Finalize()
-    end
-
     builder:AddCollapsibleSection({
         title = "Portrait",
         componentId = COMPONENT_ID,
@@ -337,7 +307,7 @@ function UF.RenderPet(panel, scrollContent)
                     sizing = function(cf, tabInner) buildPortraitSizingTab(tabInner) end,
                     zoom = function(cf, tabInner) buildPortraitZoomTab(tabInner) end,
                     border = function(cf, tabInner) buildPortraitBorderTab(tabInner) end,
-                    personalText = function(cf, tabInner) buildPortraitPersonalTextTab(tabInner) end,
+                    personalText = function(cf, tabInner) Sections.BuildPortraitPersonalTextTab(B, { inner = tabInner }) end,
                     visibility = function(cf, tabInner) buildPortraitVisibilityTab(tabInner) end,
                 },
             })

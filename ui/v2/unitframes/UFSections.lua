@@ -178,6 +178,36 @@ function Sections.BuildNameBackdropTab(B, opts)
     inner:Finalize()
 end
 
+-- Portrait personal (damage) text tab (Player, Pet): the hide flag and text
+-- table live in the portrait sub-table, not the unit table. opts: inner.
+function Sections.BuildPortraitPersonalTextTab(B, opts)
+    opts.inner:AddTextStyleBlock({
+        get = function(field)
+            local t = B.getPortraitDB()
+            if not t then return nil end
+            if field == "hidden" then return t.damageTextDisabled end
+            local s = rawget(t, "damageText")
+            if not s then return nil end
+            return s[field]
+        end,
+        set = function(field, value)
+            local t = B.ensurePortraitDB()
+            if not t then return end
+            if field == "hidden" then
+                t.damageTextDisabled = value
+                return
+            end
+            t.damageText = t.damageText or {}
+            t.damageText[field] = value
+        end,
+        apply = B.applyPortrait,
+        hideToggle = { label = "Hide Personal Text" },
+        color = { kind = "plain" },
+        offset = false,
+    })
+    opts.inner:Finalize()
+end
+
 --------------------------------------------------------------------------------
 -- Section Builders
 --------------------------------------------------------------------------------
@@ -779,6 +809,99 @@ function Sections.BuildNameLevelTextSection(B, opts)
                             get = get, set = set, apply = B.applyNameLevelText,
                             defaults = { color = {1, 0.82, 0, 1} },
                             hideToggle = { label = "Disable Level Text" },
+                        })
+                        tabInner:Finalize()
+                    end,
+                },
+            })
+            inner:Finalize()
+        end,
+    })
+end
+
+-- Portrait section (Target, Focus, Player; Pet's diverges and stays in its
+-- file). opts: builder, componentId; fullCircleMask = true for Player's mask
+-- toggle; personalText = true for Player's damage text tab (getPortraitTabs
+-- lists that tab for Player and Pet only).
+function Sections.BuildPortraitSection(B, opts)
+    local componentId = opts.componentId
+    opts.builder:AddCollapsibleSection({
+        title = "Portrait",
+        componentId = componentId,
+        sectionKey = "portrait",
+        defaultExpanded = false,
+        buildContent = function(contentFrame, inner)
+            inner:AddTabbedSection({
+                tabs = UF.getPortraitTabs(componentId),
+                componentId = componentId,
+                sectionKey = "portrait_tabs",
+                buildContent = {
+                    positioning = function(cf, tabInner)
+                        tabInner:AddOffsetPair({
+                            get = function(axis) local t = B.getPortraitDB(); return t and t[axis == "x" and "offsetX" or "offsetY"] end,
+                            set = function(axis, v) local t = B.ensurePortraitDB(); if t then t[axis == "x" and "offsetX" or "offsetY"] = v end end,
+                            apply = B.applyPortrait,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    sizing = function(cf, tabInner)
+                        tabInner:AddSlider({
+                            label = "Portrait Size (Scale)", min = 50, max = 200, step = 1,
+                            get = function() local t = B.getPortraitDB() or {}; return tonumber(t.scale) or 100 end,
+                            set = function(v) local t = B.ensurePortraitDB(); if t then t.scale = tonumber(v) or 100; B.applyPortrait() end end,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    mask = function(cf, tabInner)
+                        tabInner:AddSlider({
+                            label = "Portrait Zoom", min = 100, max = 200, step = 1,
+                            get = function() local t = B.getPortraitDB() or {}; return tonumber(t.zoom) or 100 end,
+                            set = function(v) local t = B.ensurePortraitDB(); if t then t.zoom = tonumber(v) or 100; B.applyPortrait() end end,
+                        })
+                        if opts.fullCircleMask then
+                            tabInner:AddToggle({
+                                label = "Use Full Circle Mask",
+                                get = function() local t = B.getPortraitDB() or {}; return t.useFullCircleMask == true end,
+                                set = function(v) local t = B.ensurePortraitDB(); if t then t.useFullCircleMask = (v == true); B.applyPortrait() end end,
+                            })
+                        end
+                        tabInner:Finalize()
+                    end,
+                    border = function(cf, tabInner)
+                        -- Kept off Builder:AddBarBorderBlock: a portrait border is a single texture with its own style list and color modes.
+                        tabInner:AddToggle({
+                            label = "Use Custom Border",
+                            get = function() local t = B.getPortraitDB() or {}; return t.portraitBorderEnable == true end,
+                            set = function(v) local t = B.ensurePortraitDB(); if t then t.portraitBorderEnable = (v == true); B.applyPortrait() end end,
+                        })
+                        tabInner:AddSelector({
+                            label = "Border Style", values = UF.portraitBorderValues, order = UF.portraitBorderOrder,
+                            get = function() local t = B.getPortraitDB() or {}; return t.portraitBorderStyle or "texture_c" end,
+                            set = function(v) local t = B.ensurePortraitDB(); if t then t.portraitBorderStyle = v or "texture_c"; B.applyPortrait() end end,
+                        })
+                        tabInner:AddSlider({
+                            label = "Border Inset", min = 1, max = 8, step = 0.5, precision = 1,
+                            get = function() local t = B.getPortraitDB() or {}; local v = tonumber(t.portraitBorderThickness) or 1; return math.max(1, math.min(8, math.floor(v * 2 + 0.5) / 2)) end,
+                            set = function(v) local t = B.ensurePortraitDB(); if t then t.portraitBorderThickness = math.max(1, math.min(8, math.floor((tonumber(v) or 1) * 2 + 0.5) / 2)); B.applyPortrait() end end,
+                        })
+                        tabInner:AddSelectorColorPicker({
+                            label = "Border Color", values = UF.portraitBorderColorValues, order = UF.portraitBorderColorOrder,
+                            get = function() local t = B.getPortraitDB() or {}; return t.portraitBorderColorMode or "texture" end,
+                            set = function(v) local t = B.ensurePortraitDB(); if t then t.portraitBorderColorMode = v or "texture"; B.applyPortrait() end end,
+                            getColor = function() local t = B.getPortraitDB() or {}; local c = t.portraitBorderTintColor or {1,1,1,1}; return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1 end,
+                            setColor = function(r,g,b,a) local t = B.ensurePortraitDB(); if t then t.portraitBorderTintColor = {r,g,b,a}; B.applyPortrait() end end,
+                            customValue = "custom", hasAlpha = true,
+                        })
+                        tabInner:Finalize()
+                    end,
+                    personalText = opts.personalText and function(cf, tabInner)
+                        Sections.BuildPortraitPersonalTextTab(B, { inner = tabInner })
+                    end or nil,
+                    visibility = function(cf, tabInner)
+                        tabInner:AddToggle({
+                            label = "Hide Portrait",
+                            get = function() local t = B.getPortraitDB() or {}; return not not t.hidePortrait end,
+                            set = function(v) local t = B.ensurePortraitDB(); if t then t.hidePortrait = v and true or false; B.applyPortrait() end end,
                         })
                         tabInner:Finalize()
                     end,
