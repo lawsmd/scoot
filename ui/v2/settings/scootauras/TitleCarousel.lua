@@ -179,6 +179,17 @@ local function Metrics(c, i)
     return size, w, room, ad
 end
 
+-- One name's color at ring position t: 0 is the dim neighbor color, 1 is the
+-- accent on the selected name. Shared by the layout pass and by SetAccent, so a
+-- drag and an accent change paint a name the same way.
+local function TintItem(c, it, t)
+    local sel, dim = c.opts.color, c.dim
+    it.fs:SetTextColor(dim[1] + (sel[1] - dim[1]) * t,
+                       dim[2] + (sel[2] - dim[2]) * t,
+                       dim[3] + (sel[3] - dim[3]) * t, 1)
+    it.curTint = t
+end
+
 local function ApplyItem(c, it, size, w, x, ad, half)
     local q = math.floor(size * 2 + 0.5) / 2
     if it.curSize ~= q then
@@ -191,11 +202,7 @@ local function ApplyItem(c, it, size, w, x, ad, half)
     local t = Clamp(1 - ad, 0, 1)
     t = math.floor(t * t * 32 + 0.5) / 32
     if it.curTint ~= t then
-        local sel, dim = c.opts.color, c.dim
-        it.fs:SetTextColor(dim[1] + (sel[1] - dim[1]) * t,
-                           dim[2] + (sel[2] - dim[2]) * t,
-                           dim[3] + (sel[3] - dim[3]) * t, 1)
-        it.curTint = t
+        TintItem(c, it, t)
     end
 
     w = math.max(w, 8)
@@ -474,6 +481,19 @@ function Proto:SetContext(gid, selectedId)
     return true
 end
 
+--- The accent moved. opts.color is the table the layout pass reads, so it is
+--- written in place; the names on screen retint at the ring they already sit on
+--- and the chevrons go solid in the new color.
+function Proto:SetAccent(r, g, b)
+    local sel = self.opts.color
+    sel[1], sel[2], sel[3] = r, g, b
+    if self.prevBtn then self.prevBtn._glyph:SetTextColor(r, g, b, 1) end
+    if self.nextBtn then self.nextBtn._glyph:SetTextColor(r, g, b, 1) end
+    for _, it in ipairs(self.items) do
+        TintItem(self, it, it.curTint or 0)
+    end
+end
+
 function Proto:Show()
     self.viewport:Show()
 end
@@ -553,6 +573,7 @@ function Carousel.Create(titleBar, opts)
         fs:SetPoint("CENTER", b, "CENTER", 0, 0)
         fs:SetText(glyph)
         fs:SetTextColor(opts.color[1], opts.color[2], opts.color[3], 1)
+        b._glyph = fs
         b:SetAlpha(0)   -- Layout sets it
         b:SetScript("OnClick", function() StepBy(c, dir) end)
         b:SetScript("OnEnter", function() b.hover = true; ApplyChevronAlpha(c) end)

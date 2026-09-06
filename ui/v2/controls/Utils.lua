@@ -377,6 +377,24 @@ function Controls.AddHoverFill(frame, opts)
     return fill
 end
 
+-- Put a texture the caller built itself on the shared accent subscription, and
+-- paint it now. For accent-tinted chrome that is not a hover fill and so has no
+-- reason to come from AddHoverFill: a scroll thumb, a rule, a separator. The
+-- registry is weak-keyed, so a caller never has to unregister.
+function Controls.RegisterThemedFill(fill, alpha)
+    if not fill then return end
+    alpha = (alpha ~= nil) and alpha or Controls.ALPHA_HOVER
+    themedFills[fill] = alpha
+    local r, g, b = 1, 1, 1
+    local theme = GetTheme()
+    if theme then
+        r, g, b = theme:GetAccentColor()
+    end
+    fill:SetColorTexture(r, g, b, alpha)
+    EnsureThemeSubscription()
+    return fill
+end
+
 -- Change a hover fill's alpha (hover 0.08 vs selected 0.12 on one texture).
 -- Keeps the stored alpha in sync so the next accent change repaints correctly.
 function Controls.SetFillTint(fill, alpha)

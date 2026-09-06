@@ -269,10 +269,10 @@ local function RestorePosition()
 end
 
 local function CreateSeparator(parent)
-    local theme = addon.UI.Theme
     local tex = parent:CreateTexture(nil, "BORDER", nil, 1)
-    local ar, ag, ab = theme:GetAccentColor()
-    tex:SetColorTexture(ar, ag, ab, 0.25)
+    -- The shared accent registry paints it now and repaints it later, so the
+    -- four separators need no entry in the window's own repaint below.
+    addon.UI.Controls.RegisterThemedFill(tex, 0.25)
     return tex
 end
 
@@ -341,6 +341,7 @@ local function InitializeFrame()
         tex:SetDesaturated(true)
         tex:SetVertexColor(ar, ag, ab)
         tex:SetAlpha(0.35)
+        btn._tex = tex
         btn:SetScript("OnEnter", function(self)
             tex:SetAlpha(0.8)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -485,7 +486,7 @@ local function InitializeFrame()
     closeBtn:RegisterForClicks("AnyUp")
     local closeBg = closeBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
     closeBg:SetAllPoints()
-    closeBg:SetColorTexture(ar, ag, ab, 1)
+    addon.UI.Controls.RegisterThemedFill(closeBg, 1)
     closeBg:Hide()
     local closeTxt = closeBtn:CreateFontString(nil, "OVERLAY")
     closeTxt:SetFont(theme:GetFont("BUTTON"), 14, "")
@@ -498,7 +499,10 @@ local function InitializeFrame()
     end)
     closeBtn:SetScript("OnLeave", function()
         closeBg:Hide()
-        closeTxt:SetTextColor(ar, ag, ab, 1)
+        -- Read here rather than closing over the color the window was built
+        -- with: the accent can change between the two.
+        local r, g, b = addon.GetAccentColorRGB()
+        closeTxt:SetTextColor(r, g, b, 1)
     end)
     closeBtn:SetScript("OnClick", function() Editor.Close() end)
 
@@ -644,6 +648,22 @@ local function InitializeFrame()
     tabsScroll:SetPoint("BOTTOMRIGHT", bottomRight, "BOTTOMRIGHT", 0, 0)
     widgets.tabsScroll = tabsScroll
     widgets.tabsChild = tabsChild
+
+    -- The window is built once and kept for the session, so its chrome follows
+    -- the accent rather than freezing at the color of the first open. The
+    -- separators, the close button's hover fill and the scroll thumbs are on
+    -- the shared Controls registry already; this covers the rest.
+    theme:Subscribe("ScootAuraEditor", function(r, g, b)
+        titleText:SetTextColor(r, g, b, 1)
+        renameBtn._tex:SetVertexColor(r, g, b)
+        duplicateBtn._tex:SetVertexColor(r, g, b)
+        previewLabel:SetTextColor(r, g, b, 1)
+        -- The X is black under the pointer; OnLeave picks up the new color.
+        if not closeBtn:IsMouseOver() then
+            closeTxt:SetTextColor(r, g, b, 1)
+        end
+        widgets.carousel:SetAccent(r, g, b)
+    end)
 
     -- ESC closes (combat-safe attach)
     addon.EscapeKey.Attach(frame, function() Editor.Close() end)

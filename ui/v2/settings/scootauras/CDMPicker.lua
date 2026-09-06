@@ -35,15 +35,12 @@ function Picker.CreateScrollRegion(parent)
     track:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", -1, 0)
     track:SetColorTexture(1, 1, 1, 0.06)
 
+    -- All three callers keep their scroll region for the session, so the thumb
+    -- goes on the shared accent subscription rather than freezing at the color
+    -- the accent happened to be when the region was built.
     local thumb = scrollFrame:CreateTexture(nil, "OVERLAY", nil, 2)
     thumb:SetWidth(4)
-    local theme = addon.UI and addon.UI.Theme
-    if theme then
-        local ar, ag, ab = theme:GetAccentColor()
-        thumb:SetColorTexture(ar, ag, ab, 0.5)
-    else
-        thumb:SetColorTexture(1, 1, 1, 0.4)
-    end
+    addon.UI.Controls.RegisterThemedFill(thumb, 0.5)
 
     local function UpdateThumb()
         local viewH = scrollFrame:GetHeight() or 0
