@@ -5,6 +5,8 @@ local _, addon = ...
 -- X/Y/Z Variant Color Definitions
 --------------------------------------------------------------------------------
 
+-- Kept off Theme accent: variant identity. Green means Native only when it is
+-- read against its yellow and blue siblings.
 addon.VARIANT_COLORS = {
     X = { 0.2, 0.9, 0.3 },   -- Green (Native)
     Y = { 1.0, 0.85, 0.1 },  -- Yellow (Modern)

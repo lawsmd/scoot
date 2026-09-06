@@ -663,12 +663,13 @@ local function CreateExportMenu(exportBtn, sessionWindow)
                 end
                 local comp = addon.Components and addon.Components["damageMeter"]
                 local current = comp and comp.db and comp.db.exportChatChannel or "PARTY"
+                local ar, ag, ab = addon.GetAccentColorRGB()
                 for _, row in ipairs(self._rows) do
                     local isAvail = avail[row._key] or false
                     row._available = isAvail
                     row._text:SetTextColor(1, 1, 1, isAvail and 0.9 or 0.3)
                     row._check:SetText(row._key == current and ">" or "")
-                    row._check:SetTextColor(0.20, 0.90, 0.30, 1)
+                    row._check:SetTextColor(ar, ag, ab, 1)
                 end
             end
 
