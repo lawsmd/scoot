@@ -575,7 +575,11 @@ function ImportExport.Render(panel, scrollContent)
     warningText:SetPoint("TOPLEFT", importContent, "TOPLEFT", 12, importY)
     warningText:SetPoint("TOPRIGHT", importContent, "TOPRIGHT", -12, importY)
     warningText:SetText("Imported Scoot profiles can either be attached to an existing Edit Mode profile, or you can use an Edit Mode export string to create a new one in the next step.")
-    warningText:SetTextColor(1, 0.82, 0, 0.9) -- yellow warning
+    -- Kept off Theme accent: warning yellow. This is the caution color for the
+    -- whole menu, shared with every AddDescription note that passes
+    -- { 1, 0.82, 0 }; the accent is the color a user picks, and a caution note
+    -- has to read as caution whatever they pick. One comment for the family.
+    warningText:SetTextColor(1, 0.82, 0, 0.9)
     warningText:SetJustifyH("LEFT")
     warningText:SetWordWrap(true)
 

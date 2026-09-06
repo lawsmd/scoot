@@ -455,6 +455,7 @@ function Manage.Render(panel, scrollContent)
     warningText:SetPoint("TOPLEFT", warningFrame, "TOPLEFT", 0, -12)
     warningText:SetPoint("TOPRIGHT", warningFrame, "TOPRIGHT", 0, -12)
     warningText:SetText("Creating, deleting, or switching between profiles will require a |cFFFFD100RELOAD|r.\n\nScoot only layers customizations on top of the Blizzard UI and a reload is needed to obtain current defaults for fields which you have customized in one profile but not another.")
+    -- Kept off Theme accent: warning yellow, the menu's caution color.
     warningText:SetTextColor(1.0, 0.82, 0.0, 1)
     warningText:SetJustifyH("CENTER")
     warningText:SetWordWrap(true)

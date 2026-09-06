@@ -85,6 +85,9 @@ local function CreateDropTarget(parent, groupIndex)
     bg:SetAllPoints()
     bg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
 
+    -- Kept off Theme accent: drop-target cue. The plus, the hover wash and the
+    -- border below are one green that means "the spell goes here"; a red accent
+    -- would make the empty slot read as forbidden.
     -- Plus icon
     local icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(DROP_TARGET_ICON)
@@ -97,7 +100,7 @@ local function CreateDropTarget(parent, groupIndex)
     hl:SetAllPoints()
     hl:SetColorTexture(0.3, 0.9, 0.3, 0.2)
 
-    -- Border (static green; never follows the accent)
+    -- An explicit color opts the border out of the shared accent retint.
     f._border = addon.UI.Controls.CreateBorder(f, {
         layer = "OVERLAY",
         sublevel = 0,

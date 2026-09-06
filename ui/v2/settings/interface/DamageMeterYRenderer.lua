@@ -198,6 +198,9 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
             local dropValues = {}
             local dropOrder = {}
             if c > 1 then
+                -- Kept off Theme accent: destructive cue. This entry deletes the
+                -- column; it has to read as destructive beside the metric names
+                -- above it whatever accent the user picked.
                 dropValues["_remove"] = "|cffff4444Remove Column|r"
                 table.insert(dropOrder, "_remove")
             end

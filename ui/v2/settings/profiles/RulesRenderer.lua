@@ -168,6 +168,8 @@ local function ShowSpecPicker(anchor, rule, callback)
     closeText:SetText("×")
     closeText:SetTextColor(dimR, dimG, dimB, 1)
 
+    -- Kept off Theme accent: destructive cue. Red under the pointer says the
+    -- click discards the picker; a green accent would say it confirms.
     closeBtn:SetScript("OnEnter", function() closeText:SetTextColor(1, 0.3, 0.3, 1) end)
     closeBtn:SetScript("OnLeave", function() closeText:SetTextColor(dimR, dimG, dimB, 1) end)
     closeBtn:SetScript("OnClick", function()

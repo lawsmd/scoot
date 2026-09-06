@@ -20,6 +20,10 @@ Theme.ACCENT_MODE_CUSTOM = "custom"
 Theme.ACCENT_MODE_CLASS = "class"
 Theme.DEFAULT_ACCENT_MODE = Theme.ACCENT_MODE_CUSTOM
 
+-- Kept off Theme accent: contrast floor. The six constants below are the near
+-- black and the greys the accent is read against; they are what makes a dark
+-- accent legible, so they cannot move with it.
+
 -- Background colors (semi-transparent for layered effect with noise overlay)
 Theme.BACKGROUND = { r = 0.004, g = 0.004, b = 0.006, a = 0.96 }
 Theme.BACKGROUND_SOLID = { r = 0.004, g = 0.004, b = 0.006, a = 0.99 }

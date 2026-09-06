@@ -9,6 +9,8 @@ addon.ScootAurasUI = addon.ScootAurasUI or {}
 -- One color for the whole drag language: the insertion line, the outline every
 -- zone wears while a drag can land in it, and the wash on the one under the
 -- cursor. Anything green on this page means "the aura goes here".
+-- Kept off Theme accent: drop-target cue. A red accent would make "drop here"
+-- read as forbidden.
 local DROP_R, DROP_G, DROP_B = 0.3, 0.9, 0.3
 
 -- deps:
