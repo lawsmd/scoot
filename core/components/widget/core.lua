@@ -1,4 +1,4 @@
--- widget/core.lua - QoL Widget: floating green diamond launchpad for notifications and reports
+-- widget/core.lua - QoL Widget: floating diamond launchpad for notifications and reports
 local addonName, addon = ...
 
 addon.Widget = addon.Widget or {}
@@ -12,7 +12,6 @@ local DEFAULT_SIZE = 20
 local MIN_SIZE = 16
 local MAX_SIZE = 40
 
-local DIAMOND_GREEN = { 0.20, 0.90, 0.30, 1 }
 local DIAMOND_BLACK = { 0, 0, 0, 1 }
 
 local SQRT2_INV = 0.70710678  -- 1 / sqrt(2)
@@ -43,7 +42,7 @@ local STRATA_RANK = {
 
 local widgetFrame      -- main container Frame
 local diamondOutline   -- black rotated square (texture)
-local diamondFill      -- green rotated square (texture)
+local diamondFill      -- accent-colored rotated square (texture)
 
 local flyoutChain = {}  -- ordered list of registered child handles
 local nextHandleId = 1
@@ -103,15 +102,25 @@ local function createWidgetFrame()
     outline:SetRotation(math.rad(45))
     outline:SetPoint("CENTER")
 
-    -- Green fill diamond (rotated square above the outline)
+    -- Accent-colored fill diamond (rotated square above the outline)
     local fill = frame:CreateTexture(nil, "ARTWORK", nil, 1)
-    fill:SetColorTexture(DIAMOND_GREEN[1], DIAMOND_GREEN[2], DIAMOND_GREEN[3], DIAMOND_GREEN[4])
+    local ar, ag, ab = addon.GetAccentColorRGB()
+    fill:SetColorTexture(ar, ag, ab, 1)
     fill:SetRotation(math.rad(45))
     fill:SetPoint("CENTER")
 
     widgetFrame = frame
     diamondOutline = outline
     diamondFill = fill
+
+    -- The widget is built once and lives for the session, so the diamond
+    -- repaints on accent changes rather than freezing at build.
+    local theme = addon.UI and addon.UI.Theme
+    if theme and theme.Subscribe then
+        theme:Subscribe("ScootWidgetDiamond", function(r, g, b)
+            fill:SetColorTexture(r, g, b, 1)
+        end)
+    end
 
     applyDiamondSize(DEFAULT_SIZE)
     frame:SetPoint(DEFAULT_POINT, UIParent, DEFAULT_RELATIVE, DEFAULT_X, DEFAULT_Y)

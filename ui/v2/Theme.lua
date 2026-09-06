@@ -157,16 +157,22 @@ function Theme:GetAccentColor()
     return self:GetCustomAccentColor()
 end
 
+local function hexChannel(v)
+    v = math.floor((v or 0) * 255 + 0.5)
+    if v < 0 then return 0 end
+    if v > 255 then return 255 end
+    return v
+end
+
+-- 0-1 floats as "rrggbb". A plain function, not a method: the fallback path in
+-- addon.GetAccentHex has no Theme instance to call it on.
+function Theme.RGBToHex(r, g, b)
+    return string.format("%02x%02x%02x", hexChannel(r), hexChannel(g), hexChannel(b))
+end
+
 -- The accent as "rrggbb", for the |cff escapes in chat prefixes.
 function Theme:GetAccentHex()
-    local r, g, b = self:GetAccentColor()
-    local function channel(v)
-        v = math.floor((v or 0) * 255 + 0.5)
-        if v < 0 then return 0 end
-        if v > 255 then return 255 end
-        return v
-    end
-    return string.format("%02x%02x%02x", channel(r), channel(g), channel(b))
+    return Theme.RGBToHex(self:GetAccentColor())
 end
 
 function Theme:SetAccentColor(r, g, b, a)
@@ -208,6 +214,16 @@ function addon.GetAccentColorRGB()
     end
     local d = Theme.DEFAULT_ACCENT
     return d.r, d.g, d.b, 1
+end
+
+-- The same resolver in "rrggbb" form, for the |cff escapes in chat prefixes.
+function addon.GetAccentHex()
+    local theme = addon.UI and addon.UI.Theme
+    if theme and theme.GetAccentHex then
+        return theme:GetAccentHex()
+    end
+    local d = Theme.DEFAULT_ACCENT
+    return Theme.RGBToHex(d.r, d.g, d.b)
 end
 
 --------------------------------------------------------------------------------
