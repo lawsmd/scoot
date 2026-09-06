@@ -24,7 +24,8 @@ color-switch	core/components/unitframes/cast/core.lua	2
 color-switch	core/components/unitframes/cast/styling.lua	1
 color-switch	core/components/unitframes/cast/textfill.lua	1
 color-switch	core/components/unitframes/portraits.lua	2
-color-switch	core/components/unitframes/text/names.lua	8
+color-switch	core/components/unitframes/text/namebackdrop.lua	3
+color-switch	core/components/unitframes/text/names.lua	5
 competitor	core/components/damagemetersX/core.lua	1
 competitor	core/components/damagemetersY/styling.lua	1
 competitor	ui/v2/settings/interface/DamageMeterXRenderer.lua	2

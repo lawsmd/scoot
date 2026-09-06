@@ -117,6 +117,7 @@ core/components/unitframes/text/core.lua
 core/components/unitframes/text/pipeline.lua
 core/components/unitframes/text/health.lua
 core/components/unitframes/text/power.lua
+core/components/unitframes/text/namebackdrop.lua
 core/components/unitframes/text/names.lua
 core/components/unitframes/bars/utils.lua
 core/components/unitframes/bars/combat.lua
