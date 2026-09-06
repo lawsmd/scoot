@@ -13,6 +13,13 @@ local Theme = addon.UI.Theme
 -- Default Matrix green: #00FF41 (classic terminal green)
 Theme.DEFAULT_ACCENT = { r = 0, g = 1, b = 0.255, a = 1 }
 
+-- Accent modes. "custom" returns the color stored in db.global.accentColor;
+-- "class" resolves the player's class color on every read, leaving the stored
+-- custom color untouched so switching back restores the user's pick.
+Theme.ACCENT_MODE_CUSTOM = "custom"
+Theme.ACCENT_MODE_CLASS = "class"
+Theme.DEFAULT_ACCENT_MODE = Theme.ACCENT_MODE_CUSTOM
+
 -- Background colors (semi-transparent for layered effect with noise overlay)
 Theme.BACKGROUND = { r = 0.004, g = 0.004, b = 0.006, a = 0.96 }
 Theme.BACKGROUND_SOLID = { r = 0.004, g = 0.004, b = 0.006, a = 0.99 }
@@ -99,7 +106,8 @@ end
 -- Accent Color Accessors
 --------------------------------------------------------------------------------
 
-function Theme:GetAccentColor()
+-- The stored custom color, whichever mode is active.
+function Theme:GetCustomAccentColor()
     local db = addon.db and addon.db.global
     if db and db.accentColor then
         local c = db.accentColor
@@ -109,6 +117,56 @@ function Theme:GetAccentColor()
                c.a or 1
     end
     return self.DEFAULT_ACCENT.r, self.DEFAULT_ACCENT.g, self.DEFAULT_ACCENT.b, 1
+end
+
+function Theme:GetAccentColorMode()
+    local db = addon.db and addon.db.global
+    if db and db.accentColorMode == self.ACCENT_MODE_CLASS then
+        return self.ACCENT_MODE_CLASS
+    end
+    return self.ACCENT_MODE_CUSTOM
+end
+
+function Theme:SetAccentColorMode(mode)
+    if not addon.db or not addon.db.global then
+        return false
+    end
+    if mode ~= self.ACCENT_MODE_CLASS then
+        mode = self.ACCENT_MODE_CUSTOM
+    end
+    addon.db.global.accentColorMode = mode
+    self:NotifySubscribers()
+    return true
+end
+
+-- Resolves the mode on every read, so all 237 call sites and both retint
+-- mechanisms inherit class mode without a call-site edit.
+function Theme:GetAccentColor()
+    if self:GetAccentColorMode() == self.ACCENT_MODE_CLASS then
+        -- Statement form, not `f and f(...)`: an and/or expression is adjusted
+        -- to one value, which would drop g and b.
+        local r, g, b
+        if addon.GetClassColorRGB then
+            r, g, b = addon.GetClassColorRGB("player")
+        end
+        if r and g and b then
+            return r, g, b, 1
+        end
+        -- Class unresolved (taint, secret unit): fall through to the custom color.
+    end
+    return self:GetCustomAccentColor()
+end
+
+-- The accent as "rrggbb", for the |cff escapes in chat prefixes.
+function Theme:GetAccentHex()
+    local r, g, b = self:GetAccentColor()
+    local function channel(v)
+        v = math.floor((v or 0) * 255 + 0.5)
+        if v < 0 then return 0 end
+        if v > 255 then return 255 end
+        return v
+    end
+    return string.format("%02x%02x%02x", channel(r), channel(g), channel(b))
 end
 
 function Theme:SetAccentColor(r, g, b, a)
@@ -125,7 +183,12 @@ function Theme:SetAccentColor(r, g, b, a)
     return true
 end
 
+-- Restores both the default color and the default mode. The mode is written
+-- first so the SetAccentColor notify below carries the reset state.
 function Theme:ResetAccentColor()
+    if addon.db and addon.db.global then
+        addon.db.global.accentColorMode = self.DEFAULT_ACCENT_MODE
+    end
     return self:SetAccentColor(
         self.DEFAULT_ACCENT.r,
         self.DEFAULT_ACCENT.g,

@@ -633,6 +633,7 @@ function addon:GetDefaults()
             _profileSwitchLog = nil,  -- persists debug entries across reload
             -- Settings Panel (global accent color, position, size)
             accentColor = { r = 0, g = 1, b = 0.255, a = 1 },  -- Matrix green #00FF41
+            accentColorMode = "custom",  -- "custom" uses accentColor; "class" uses the player class color
             windowPosition = nil,  -- Saved as { point, relPoint, x, y }
             scootAuraEditorPosition = nil,  -- ScootAura editor window, same shape
         },
