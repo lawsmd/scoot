@@ -26,12 +26,7 @@ end
 -- Secret-value safe helpers (shared module)
 local SS = addon.SecretSafe
 
--- Hide-enforcement hooks (core/enforce.lua) for the ToT and FoT names: the
--- flags stay in FrameState and the keys read them live; SetText and Show
--- re-assert at once.
 local Enforce = addon.Enforce
-local TOT_NAME_OPTS = { methods = { "SetText", "Show" }, when = function(fs) return FS.IsHidden(fs, "totName") end }
-local FOT_NAME_OPTS = { methods = { "SetText", "Show" }, when = function(fs) return FS.IsHidden(fs, "fotName") end }
 local safeOffset = SS.safeOffset
 local safePointToken = SS.safePointToken
 local safeGetWidth = SS.safeGetWidth
@@ -1226,26 +1221,75 @@ do
 	end
 end
 
+--- Unit Frames: ToT and FoT Name Text styling
 do
-	-- Resolve ToT Name FontString
-	local function resolveToTNameFS()
-		return addon.Frames.resolveNameFS("TargetOfTarget")
+	-- The two small-frame names differ only by these tokens (the descriptor idiom
+	-- from bars/smallframes.lua). hookFlag is asymmetric: the ToT flag predates
+	-- the unit-prefixed convention, and the flags are per-frame, so the names
+	-- never collide. Carry both verbatim.
+	local SMALL_NAME_CONFIG = {
+		{
+			unitKey = "TargetOfTarget",
+			globalName = "TargetFrameToT",
+			baselineStore = "_ufToTNameTextBaseline",
+			hiddenKey = "totName",
+			hookFlag = "nameTextHooked",
+			unitForClass = "targettarget",
+		},
+		{
+			unitKey = "FocusTarget",
+			globalName = "FocusFrameToT",
+			baselineStore = "_ufFoTNameTextBaseline",
+			hiddenKey = "fotName",
+			hookFlag = "fotNameTextHooked",
+			unitForClass = "focustarget",
+		},
+	}
+
+	-- Hide-enforcement hooks (core/enforce.lua): the flags stay in FrameState and
+	-- the keys read them live; SetText and Show re-assert at once.
+	for _, desc in ipairs(SMALL_NAME_CONFIG) do
+		addon[desc.baselineStore] = addon[desc.baselineStore] or {}
+		local hiddenKey = desc.hiddenKey
+		desc.enforceOpts = { methods = { "SetText", "Show" }, when = function(fs) return FS.IsHidden(fs, hiddenKey) end }
+	end
+	table.freeze(SMALL_NAME_CONFIG)
+
+	-- Capture baseline position once per store. The store is re-read through addon
+	-- on every call: the style revert in base/core.lua replaces these tables.
+	-- Kept off addon.UnitFrameText: capture into a flat single baseline, not the keyed store.
+	local function ensureBaseline(nameFS, storeName)
+		local store = addon[storeName]
+		if not store.point then
+			if nameFS and nameFS.GetPoint then
+				local p, relTo, rp, x, y = nameFS:GetPoint(1)
+				store.point = p or "TOPLEFT"
+				store.relTo = relTo or (nameFS.GetParent and nameFS:GetParent())
+				store.relPoint = rp or store.point
+				store.x = safeOffset(x)
+				store.y = safeOffset(y)
+			else
+				store.point = "TOPLEFT"
+				store.relTo = nameFS and nameFS.GetParent and nameFS:GetParent()
+				store.relPoint = "TOPLEFT"
+				store.x = 0
+				store.y = 0
+			end
+		end
+		return store
 	end
 
-	-- Baseline storage for ToT Name text
-	addon._ufToTNameTextBaseline = addon._ufToTNameTextBaseline or {}
-
-	-- Apply ToT Name Text styling
-	local function applyToTNameText()
+	-- Apply small-frame Name Text styling for one descriptor
+	local function applySmallNameText(desc)
 		local db = addon and addon.db and addon.db.profile
 		if not db then return end
-		-- Zero‑Touch: do not create config tables. If ToT has no config, do nothing.
+		-- Zero‑Touch: do not create config tables. If the unit has no config, do nothing.
 		local unitFrames = rawget(db, "unitFrames")
-		local cfg = unitFrames and rawget(unitFrames, "TargetOfTarget") or nil
+		local cfg = unitFrames and rawget(unitFrames, desc.unitKey) or nil
 		if not cfg then return end
 		local styleCfg = rawget(cfg, "textName")
 
-		local nameFS = resolveToTNameFS()
+		local nameFS = addon.Frames.resolveNameFS(desc.unitKey)
 		if not nameFS then return end
 
 		-- Zero‑Touch: if neither visibility nor style is configured, do nothing.
@@ -1262,10 +1306,10 @@ do
 			local hidden = (cfg.nameTextHidden == true)
 			if hidden then
 				if nameFS.SetAlpha then pcall(nameFS.SetAlpha, nameFS, 0) end
-				fstate.SetHidden(nameFS, "totName", true)
-				Enforce.Install(nameFS, "totName", TOT_NAME_OPTS)
+				fstate.SetHidden(nameFS, desc.hiddenKey, true)
+				Enforce.Install(nameFS, desc.hiddenKey, desc.enforceOpts)
 			else
-				fstate.SetHidden(nameFS, "totName", false)
+				fstate.SetHidden(nameFS, desc.hiddenKey, false)
 				if nameFS.SetAlpha then pcall(nameFS.SetAlpha, nameFS, 1) end
 			end
 		end
@@ -1277,34 +1321,12 @@ do
 			return
 		end
 
-		-- Capture baseline position once
-		-- Kept off addon.UnitFrameText: zero-arg capture into a flat single baseline, not the keyed store.
-		local function ensureBaseline()
-			if not addon._ufToTNameTextBaseline.point then
-				if nameFS and nameFS.GetPoint then
-					local p, relTo, rp, x, y = nameFS:GetPoint(1)
-					addon._ufToTNameTextBaseline.point = p or "TOPLEFT"
-					addon._ufToTNameTextBaseline.relTo = relTo or (nameFS.GetParent and nameFS:GetParent())
-					addon._ufToTNameTextBaseline.relPoint = rp or addon._ufToTNameTextBaseline.point
-					addon._ufToTNameTextBaseline.x = safeOffset(x)
-					addon._ufToTNameTextBaseline.y = safeOffset(y)
-				else
-					addon._ufToTNameTextBaseline.point = "TOPLEFT"
-					addon._ufToTNameTextBaseline.relTo = nameFS and nameFS.GetParent and nameFS:GetParent()
-					addon._ufToTNameTextBaseline.relPoint = "TOPLEFT"
-					addon._ufToTNameTextBaseline.x = 0
-					addon._ufToTNameTextBaseline.y = 0
-				end
-			end
-			return addon._ufToTNameTextBaseline
-		end
-
 		-- Apply font styling
 		addon.ApplyTextFont(nameFS, styleCfg, totFotNameFontOpts)
 
-		-- Apply color based on colorMode (no barKind: ToT name default is white)
+		-- Apply color based on colorMode (no barKind: the small-frame name default is white)
 		local colorMode = (styleCfg and styleCfg.colorMode) or "default"
-		nameTextColorOpts.unitForClass = "targettarget"
+		nameTextColorOpts.unitForClass = desc.unitForClass
 		local r, g, b, a = addon.ResolveColorRGBA(colorMode, styleCfg and styleCfg.color, nameTextColorOpts)
 		if nameFS.SetTextColor then pcall(nameFS.SetTextColor, nameFS, r, g, b, a) end
 
@@ -1316,7 +1338,7 @@ do
 		local ox = tonumber(styleCfg and styleCfg.offset and styleCfg.offset.x) or 0
 		local oy = tonumber(styleCfg and styleCfg.offset and styleCfg.offset.y) or 0
 		if nameFS.ClearAllPoints and nameFS.SetPoint then
-			local b = ensureBaseline()
+			local b = ensureBaseline(nameFS, desc.baselineStore)
 			nameFS:ClearAllPoints()
 			local point = safePointToken(b.point, "TOPLEFT")
 			local relTo = b.relTo or (nameFS.GetParent and nameFS:GetParent())
@@ -1332,168 +1354,38 @@ do
 	end
 
 	-- Expose for UI and Copy From
+	local function applyToTNameText() applySmallNameText(SMALL_NAME_CONFIG[1]) end
+	local function applyFoTNameText() applySmallNameText(SMALL_NAME_CONFIG[2]) end
 	addon.ApplyToTNameText = applyToTNameText
-
-	-- Hook TargetofTarget frame updates to reapply styling
-	-- ToT frame is re-shown when target changes, so hook the ToT OnShow
-	-- NOTE: Uses FrameState to avoid writing properties directly to Blizzard frames (causes taint).
-	local function installToTHooks()
-		local fstate = FS
-		if not fstate then return end
-		local tot = _G.TargetFrameToT
-		if tot and not fstate.IsHooked(tot, "nameTextHooked") then
-			fstate.MarkHooked(tot, "nameTextHooked")
-			if tot.HookScript then
-				tot:HookScript("OnShow", function()
-					if _G.C_Timer and _G.C_Timer.After then
-						_G.C_Timer.After(0, applyToTNameText)
-					end
-				end)
-			end
-		end
-	end
-
-	-- Install hooks after PLAYER_ENTERING_WORLD
-	addon.Events.On("UnitFrames:Names", "PLAYER_ENTERING_WORLD", function()
-		if _G.C_Timer and _G.C_Timer.After then
-			_G.C_Timer.After(0.5, function()
-				installToTHooks()
-				-- Apply initial styling
-				applyToTNameText()
-			end)
-		end
-	end)
-end
-
-do
-	local function resolveFoTNameFS()
-		return addon.Frames.resolveNameFS("FocusTarget")
-	end
-
-	addon._ufFoTNameTextBaseline = addon._ufFoTNameTextBaseline or {}
-
-	local function applyFoTNameText()
-		local db = addon and addon.db and addon.db.profile
-		if not db then return end
-		local unitFrames = rawget(db, "unitFrames")
-		local cfg = unitFrames and rawget(unitFrames, "FocusTarget") or nil
-		if not cfg then return end
-		local styleCfg = rawget(cfg, "textName")
-
-		local nameFS = resolveFoTNameFS()
-		if not nameFS then return end
-
-		-- Zero‑Touch: if neither visibility nor style is configured, do nothing.
-		local hasVisibilitySetting = (cfg.nameTextHidden ~= nil)
-		local hasStyleSetting = addon.HasTextCustomization(styleCfg, totFotNameCustomizationOpts)
-		if not hasVisibilitySetting and not hasStyleSetting then
-			return
-		end
-
-		-- Apply visibility: tri‑state (nil=no touch) via SetAlpha (combat-safe)
-		-- NOTE: Uses FrameState to avoid writing properties directly to Blizzard frames (causes taint).
-		local fstate = FS
-		if cfg.nameTextHidden ~= nil and fstate then
-			local hidden = (cfg.nameTextHidden == true)
-			if hidden then
-				if nameFS.SetAlpha then pcall(nameFS.SetAlpha, nameFS, 0) end
-				fstate.SetHidden(nameFS, "fotName", true)
-				Enforce.Install(nameFS, "fotName", FOT_NAME_OPTS)
-			else
-				fstate.SetHidden(nameFS, "fotName", false)
-				if nameFS.SetAlpha then pcall(nameFS.SetAlpha, nameFS, 1) end
-			end
-		end
-
-		-- Skip styling if hidden
-		if cfg.nameTextHidden == true then return end
-		-- Zero‑Touch: only apply font/position/style if explicitly customized.
-		if not hasStyleSetting then
-			return
-		end
-
-		-- Capture baseline position once
-		-- Kept off addon.UnitFrameText: zero-arg capture into a flat single baseline, not the keyed store.
-		local function ensureBaseline()
-			if not addon._ufFoTNameTextBaseline.point then
-				if nameFS and nameFS.GetPoint then
-					local p, relTo, rp, x, y = nameFS:GetPoint(1)
-					addon._ufFoTNameTextBaseline.point = p or "TOPLEFT"
-					addon._ufFoTNameTextBaseline.relTo = relTo or (nameFS.GetParent and nameFS:GetParent())
-					addon._ufFoTNameTextBaseline.relPoint = rp or addon._ufFoTNameTextBaseline.point
-					addon._ufFoTNameTextBaseline.x = safeOffset(x)
-					addon._ufFoTNameTextBaseline.y = safeOffset(y)
-				else
-					addon._ufFoTNameTextBaseline.point = "TOPLEFT"
-					addon._ufFoTNameTextBaseline.relTo = nameFS and nameFS.GetParent and nameFS:GetParent()
-					addon._ufFoTNameTextBaseline.relPoint = "TOPLEFT"
-					addon._ufFoTNameTextBaseline.x = 0
-					addon._ufFoTNameTextBaseline.y = 0
-				end
-			end
-			return addon._ufFoTNameTextBaseline
-		end
-
-		-- Apply font styling
-		addon.ApplyTextFont(nameFS, styleCfg, totFotNameFontOpts)
-
-		-- Apply color based on colorMode (no barKind: FoT name default is white)
-		local colorMode = (styleCfg and styleCfg.colorMode) or "default"
-		nameTextColorOpts.unitForClass = "focustarget"
-		local r, g, b, a = addon.ResolveColorRGBA(colorMode, styleCfg and styleCfg.color, nameTextColorOpts)
-		if nameFS.SetTextColor then pcall(nameFS.SetTextColor, nameFS, r, g, b, a) end
-
-		-- Apply alignment
-		local alignment = (styleCfg and styleCfg.alignment) or "LEFT"
-		if nameFS.SetJustifyH then pcall(nameFS.SetJustifyH, nameFS, alignment) end
-
-		-- Apply offset relative to baseline
-		local ox = tonumber(styleCfg and styleCfg.offset and styleCfg.offset.x) or 0
-		local oy = tonumber(styleCfg and styleCfg.offset and styleCfg.offset.y) or 0
-		if nameFS.ClearAllPoints and nameFS.SetPoint then
-			local b = ensureBaseline()
-			nameFS:ClearAllPoints()
-			local point = safePointToken(b.point, "TOPLEFT")
-			local relTo = b.relTo or (nameFS.GetParent and nameFS:GetParent())
-			local relPoint = safePointToken(b.relPoint, point)
-			local x = safeOffset(b.x) + ox
-			local y = safeOffset(b.y) + oy
-			local ok = pcall(nameFS.SetPoint, nameFS, point, relTo, relPoint, x, y)
-			if not ok then
-				local parent = (nameFS.GetParent and nameFS:GetParent())
-				pcall(nameFS.SetPoint, nameFS, point, parent, relPoint, 0, 0)
-			end
-		end
-	end
-
-	-- Expose for UI and Copy From
 	addon.ApplyFoTNameText = applyFoTNameText
 
-	-- Hook FocusFrameToT frame updates to reapply styling
-	-- FoT frame is re-shown when focus target changes, so hook the FoT OnShow
+	-- Hook the small frame's OnShow to reapply styling: both frames are re-shown
+	-- when their unit changes.
 	-- NOTE: Uses FrameState to avoid writing properties directly to Blizzard frames (causes taint).
-	local function installFoTHooks()
+	local function installSmallNameHooks(desc, apply)
 		local fstate = FS
 		if not fstate then return end
-		local fot = _G.FocusFrameToT
-		if fot and not fstate.IsHooked(fot, "fotNameTextHooked") then
-			fstate.MarkHooked(fot, "fotNameTextHooked")
-			if fot.HookScript then
-				fot:HookScript("OnShow", function()
+		local frame = _G[desc.globalName]
+		if frame and not fstate.IsHooked(frame, desc.hookFlag) then
+			fstate.MarkHooked(frame, desc.hookFlag)
+			if frame.HookScript then
+				frame:HookScript("OnShow", function()
 					if _G.C_Timer and _G.C_Timer.After then
-						_G.C_Timer.After(0, applyFoTNameText)
+						_G.C_Timer.After(0, apply)
 					end
 				end)
 			end
 		end
 	end
 
-	-- Install hooks after PLAYER_ENTERING_WORLD
+	-- Install hooks after PLAYER_ENTERING_WORLD; one registration serves both
+	-- frames, ToT then FoT, the order the two per-block registrations fired in.
 	addon.Events.On("UnitFrames:Names", "PLAYER_ENTERING_WORLD", function()
 		if _G.C_Timer and _G.C_Timer.After then
 			_G.C_Timer.After(0.5, function()
-				installFoTHooks()
-				-- Apply initial styling
+				installSmallNameHooks(SMALL_NAME_CONFIG[1], applyToTNameText)
+				applyToTNameText()
+				installSmallNameHooks(SMALL_NAME_CONFIG[2], applyFoTNameText)
 				applyFoTNameText()
 			end)
 		end

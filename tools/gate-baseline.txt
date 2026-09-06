@@ -135,4 +135,4 @@ text-block	ui/v2/settings/reports/ReportsRenderer.lua	1
 text-block	ui/v2/unitframes/UFZSections.lua	1
 uft-helper	core/components/cooldowns/trackedbars/default.lua	1
 uft-helper	core/components/unitframes/bars/altpower.lua	1
-uft-helper	core/components/unitframes/text/names.lua	3
+uft-helper	core/components/unitframes/text/names.lua	2
