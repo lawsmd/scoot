@@ -20,7 +20,9 @@ local ScootLDB = LDB:NewDataObject("Scoot", {
         end
     end,
     OnTooltipShow = function(tooltip)
-        tooltip:AddLine("|cff00ff00Scoot|r")
+        -- The addon name is a brand mark, so it follows the accent. Read on
+        -- every tooltip show; the white keys below are labels, not marks.
+        tooltip:AddLine("|cff" .. addon.GetAccentHex() .. "Scoot|r")
         tooltip:AddLine(" ")
         tooltip:AddLine("|cffffffffClick|r to open settings")
         tooltip:AddLine("|cffffffffDrag|r to move this button")

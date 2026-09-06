@@ -7,7 +7,13 @@ _G.Scoot = addon
 
 local function PrintScootMessage(text)
     if not text or text == "" then return end
-    local prefix = "|cff00ff00[SCOOT]|r"
+    -- Built per print, not hoisted to a file-scope constant: the prefix is a
+    -- brand mark and follows the accent, which the user can change mid session.
+    -- The only guarded accent read in the addon. This is the channel that
+    -- reports a broken load, so it has to survive ui/v2/Theme.lua failing to
+    -- load at all; everywhere else a missing resolver is already fatal.
+    local hex = addon.GetAccentHex and addon.GetAccentHex() or "00ff41"
+    local prefix = "|cff" .. hex .. "[SCOOT]|r"
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(string.format("%s: %s", prefix, text))
     end

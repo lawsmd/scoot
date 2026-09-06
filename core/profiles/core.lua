@@ -6,8 +6,6 @@ local Profiles = addon.Profiles
 
 local LEO = LibStub and LibStub("LibEditModeOverride-1.0")
 
-local DEBUG_PREFIX = "|cffa0ff00ScootProfiles|r"
-
 local function Debug(...)
     if not addon or not addon._dbgProfiles then return end
     local messages = {}
@@ -15,7 +13,11 @@ local function Debug(...)
         messages[#messages + 1] = tostring(select(i, ...))
     end
     local msg = table.concat(messages, " ")
-    addon:Print(DEBUG_PREFIX .. " " .. msg)
+    -- A channel name tag, not a severity mark: this file has no red or orange
+    -- counterpart, so the accent is free to recolor it. Built here rather than
+    -- at file scope; Debug only runs once the user sets _dbgProfiles.
+    local prefix = "|cff" .. addon.GetAccentHex() .. "ScootProfiles|r"
+    addon:Print(prefix .. " " .. msg)
 end
 
 -- Persistent debug log that survives /reload (stored in addon.db.global)

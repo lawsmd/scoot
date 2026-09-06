@@ -415,6 +415,9 @@ function addon.EditMode.SetSetting(frame, settingId, value)
             return nil
         end
     end
+    -- Kept off Theme accent: severity mark. Green means the write went through
+    -- and is read against the red bail lines above it in the same trace; a red
+    -- accent would print a success in the color of a failure.
     if addon._dbgEditMode then
         local frameName = frame and frame:GetName() or "?"
         addon.DebugPrint("|cFF00FF00[EM.SetSetting]|r frame=" .. tostring(frameName) .. " settingId=" .. tostring(settingId) .. " value=" .. tostring(value))
@@ -683,6 +686,8 @@ function addon.EditMode.SaveOnly()
         if addon._dbgEditMode then addon.DebugPrint("|cFFFF6600[EM.SaveOnly]|r Skipped: profile ~= active layout") end
         return
     end
+    -- Kept off Theme accent: severity mark, same palette as the red and orange
+    -- lines above. Green here means the save ran, not that Scoot is speaking.
     if addon._dbgEditMode then addon.DebugPrint("|cFF00FF00[EM.SaveOnly]|r Calling LEO:SaveOnly()") end
     LEO:SaveOnly()
 end
