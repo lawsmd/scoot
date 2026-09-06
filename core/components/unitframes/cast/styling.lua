@@ -37,6 +37,20 @@ do
 		return addon.Frames.resolveNameFS(unit)
 	end
 
+	-- Anchor target for a custom anchor mode: the frame to anchor to and which
+	-- of its edges ("top" or "bottom") the cast bar sits against.
+	local function resolveAnchorTarget(unit, anchorMode)
+		if anchorMode == "nameTop" then
+			return resolveNameFS(unit), "top"
+		elseif anchorMode == "healthBottom" then
+			return resolveHealthBar(unit), "bottom"
+		elseif anchorMode == "powerTop" then
+			return resolvePowerBar(unit), "top"
+		elseif anchorMode == "powerBottom" then
+			return resolvePowerBar(unit), "bottom"
+		end
+	end
+
 	-- Track which cast bars have custom anchor mode active, so the SetPoint hook knows when to re-apply
 	local activeAnchorModes = {}
 	-- Track scheduled re-apply timers to avoid duplicate scheduling
@@ -88,20 +102,7 @@ do
 		end
 		if anchorMode == "default" then return end
 
-		local anchorBar, anchorEdge
-		if anchorMode == "nameTop" then
-			anchorBar = resolveNameFS(unit)
-			anchorEdge = "top"
-		elseif anchorMode == "healthBottom" then
-			anchorBar = resolveHealthBar(unit)
-			anchorEdge = "bottom"
-		elseif anchorMode == "powerTop" then
-			anchorBar = resolvePowerBar(unit)
-			anchorEdge = "top"
-		elseif anchorMode == "powerBottom" then
-			anchorBar = resolvePowerBar(unit)
-			anchorEdge = "bottom"
-		end
+		local anchorBar, anchorEdge = resolveAnchorTarget(unit, anchorMode)
 
 		if not anchorBar then return end
 
@@ -119,60 +120,11 @@ do
 		pendingPostCombatRefresh[unit] = true
 	end
 
-	-- Flush deferred full re-applies after combat ends
-	function addon.FlushPendingCastBarRefresh()
-		for unit in pairs(pendingPostCombatRefresh) do
-			if addon.ApplyUnitFrameCastBarFor then
-				addon.ApplyUnitFrameCastBarFor(unit)
-			end
-		end
-		pendingPostCombatRefresh = {}
-	end
-
-	local function applyCastBarForUnit(unit)
-		if unit ~= "Player" and unit ~= "Target" and unit ~= "Focus" then return end
-		if not addon:IsModuleEnabled("unitFrames", unit) then return end
-		if not addon:IsCastBarXEnabled() then return end
-
-		local db = addon and addon.db and addon.db.profile
-		if not db then return end
-
-		local unitFrames = rawget(db, "unitFrames")
-		local unitCfg = unitFrames and rawget(unitFrames, unit) or nil
-		if not unitCfg then return end
-		local cfg = rawget(unitCfg, "castBar")
-		if not cfg then return end
-		-- Zero-Touch: skip empty tables (browsed settings but nothing configured)
-		local hasConfig = false
-		for k, v in pairs(cfg) do
-			if v ~= nil then hasConfig = true; break end
-		end
-		if not hasConfig then return end
-
-		local frame = resolveCastBarFrame(unit)
-		if not frame then return end
-
-		local isPlayer = (unit == "Player")
-
-		-- For the Player cast bar, read the current Edit Mode "Lock to Player Frame" setting so
-		-- only overrides position when the bar is locked underneath the Player frame. When the
-		-- bar is unlocked and freely positioned in Edit Mode, Scoot should not fight that.
-		local isLockedToPlayerFrame = false
-		if isPlayer and addon and addon.EditMode and addon.EditMode.GetSetting then
-			local mgr = _G.EditModeManagerFrame
-			local EMSys = _G.Enum and _G.Enum.EditModeSystem
-			local sid = _G.Enum and _G.Enum.EditModeCastBarSetting and _G.Enum.EditModeCastBarSetting.LockToPlayerFrame
-			if mgr and EMSys and mgr.GetRegisteredSystemFrame and sid then
-				local emFrame = mgr:GetRegisteredSystemFrame(EMSys.CastBar, nil)
-				if emFrame then
-					local v = addon.EditMode.GetSetting(emFrame, sid)
-					isLockedToPlayerFrame = (tonumber(v) or 0) ~= 0
-				end
-			end
-		end
-
-		-- Install lightweight hooks once to keep cast bar styling persistent when
-		-- Blizzard updates the bar's texture/color (cast start/stop, etc.).
+	-- Install the cast bar persistence hooks once per frame; Blizzard rewrites
+	-- the bar's texture, color, and position on cast start/stop, and the hooks
+	-- re-apply Scoot styling when that happens. Guarded by the frame's
+	-- castHooksInstalled state, so it is safe to call repeatedly.
+	local function installCastHooks(frame, unit)
 		if not getProp(frame, "castHooksInstalled") and _G.hooksecurefunc then
 			setProp(frame, "castHooksInstalled", true)
 			local hookUnit = unit
@@ -251,6 +203,61 @@ do
 				end)
 			end
 		end
+	end
+
+	-- Flush deferred full re-applies after combat ends
+	function addon.FlushPendingCastBarRefresh()
+		for unit in pairs(pendingPostCombatRefresh) do
+			if addon.ApplyUnitFrameCastBarFor then
+				addon.ApplyUnitFrameCastBarFor(unit)
+			end
+		end
+		pendingPostCombatRefresh = {}
+	end
+
+	local function applyCastBarForUnit(unit)
+		if unit ~= "Player" and unit ~= "Target" and unit ~= "Focus" then return end
+		if not addon:IsModuleEnabled("unitFrames", unit) then return end
+		if not addon:IsCastBarXEnabled() then return end
+
+		local db = addon and addon.db and addon.db.profile
+		if not db then return end
+
+		local unitFrames = rawget(db, "unitFrames")
+		local unitCfg = unitFrames and rawget(unitFrames, unit) or nil
+		if not unitCfg then return end
+		local cfg = rawget(unitCfg, "castBar")
+		if not cfg then return end
+		-- Zero-Touch: skip empty tables (browsed settings but nothing configured)
+		local hasConfig = false
+		for k, v in pairs(cfg) do
+			if v ~= nil then hasConfig = true; break end
+		end
+		if not hasConfig then return end
+
+		local frame = resolveCastBarFrame(unit)
+		if not frame then return end
+
+		local isPlayer = (unit == "Player")
+
+		-- For the Player cast bar, read the current Edit Mode "Lock to Player Frame" setting so
+		-- only overrides position when the bar is locked underneath the Player frame. When the
+		-- bar is unlocked and freely positioned in Edit Mode, Scoot should not fight that.
+		local isLockedToPlayerFrame = false
+		if isPlayer and addon and addon.EditMode and addon.EditMode.GetSetting then
+			local mgr = _G.EditModeManagerFrame
+			local EMSys = _G.Enum and _G.Enum.EditModeSystem
+			local sid = _G.Enum and _G.Enum.EditModeCastBarSetting and _G.Enum.EditModeCastBarSetting.LockToPlayerFrame
+			if mgr and EMSys and mgr.GetRegisteredSystemFrame and sid then
+				local emFrame = mgr:GetRegisteredSystemFrame(EMSys.CastBar, nil)
+				if emFrame then
+					local v = addon.EditMode.GetSetting(emFrame, sid)
+					isLockedToPlayerFrame = (tonumber(v) or 0) ~= 0
+				end
+			end
+		end
+
+		installCastHooks(frame, unit)
 
 		-- Capture baseline anchor:
 		-- - Player: capture a baseline that represents the Edit Mode "under Player" layout,
@@ -402,21 +409,7 @@ do
 						local anchorApplied = false
 						if anchorMode ~= "default" then
 							-- Resolve the target bar based on anchor mode
-							local anchorBar
-							local anchorEdge -- "top" or "bottom"
-							if anchorMode == "nameTop" then
-								anchorBar = resolveNameFS(unit)
-								anchorEdge = "top"
-							elseif anchorMode == "healthBottom" then
-								anchorBar = resolveHealthBar(unit)
-								anchorEdge = "bottom"
-							elseif anchorMode == "powerTop" then
-								anchorBar = resolvePowerBar(unit)
-								anchorEdge = "top"
-							elseif anchorMode == "powerBottom" then
-								anchorBar = resolvePowerBar(unit)
-								anchorEdge = "bottom"
-							end
+							local anchorBar, anchorEdge = resolveAnchorTarget(unit, anchorMode)
 
 							if anchorBar then
 								-- Use direct relative anchoring to the Health/Power bar
@@ -1552,71 +1545,7 @@ do
 		local frame = resolveCastBarFrame(unit)
 		if not frame then return end
 
-		-- Reuse the same hook installation block used by applyCastBarForUnit().
-		-- It is guarded by frame castHooksInstalled state so it is safe to call repeatedly.
-		if not getProp(frame, "castHooksInstalled") and _G.hooksecurefunc then
-			setProp(frame, "castHooksInstalled", true)
-			local hookUnit = unit
-			_G.hooksecurefunc(frame, "SetStatusBarTexture", function(self, texArg, ...)
-				-- Ignore Scoot's own internal texture writes
-				if getProp(self, "ufInternalTextureWrite") then return end
-				-- Track interruptibility from Blizzard's atlas change
-				if type(texArg) == "string" and not issecretvalue(texArg) then
-					setProp(self, "castNotInterruptible", texArg == "ui-castingbar-uninterruptable")
-				end
-				-- Don't re-apply foreground during empowered casts (tiers provide visuals)
-				local token = (hookUnit == "Player" and "player") or (hookUnit == "Target" and "target") or (hookUnit == "Focus" and "focus")
-				if token and empoweredCastActive[token] then return end
-				if addon and addon.ApplyUnitFrameCastBarFor then
-					setProp(self, "castVisualOnly", true)
-					addon.ApplyUnitFrameCastBarFor(hookUnit)
-					setProp(self, "castVisualOnly", nil)
-				end
-			end)
-			_G.hooksecurefunc(frame, "SetStatusBarColor", function(self, ...)
-				-- Don't re-apply color during empowered casts (stage tiers provide visuals)
-				local token = (hookUnit == "Player" and "player") or (hookUnit == "Target" and "target") or (hookUnit == "Focus" and "focus")
-				if token and empoweredCastActive[token] then return end
-				if addon and addon.ApplyUnitFrameCastBarFor then
-					setProp(self, "castVisualOnly", true)
-					addon.ApplyUnitFrameCastBarFor(hookUnit)
-					setProp(self, "castVisualOnly", nil)
-				end
-			end)
-			_G.hooksecurefunc(frame, "SetPoint", function(self, ...)
-				if getProp(self, "ignoreSetPoint") then return end
-				local mode = activeAnchorModes[hookUnit]
-				if mode and mode ~= "default" then
-					if InCombatLockdown and InCombatLockdown() then
-						reanchorCastBar(self, hookUnit)
-					else
-						if not pendingReapply[hookUnit] then
-							pendingReapply[hookUnit] = true
-							C_Timer.After(0, function()
-								pendingReapply[hookUnit] = nil
-								if addon and addon.ApplyUnitFrameCastBarFor then
-									addon.ApplyUnitFrameCastBarFor(hookUnit)
-								end
-							end)
-						end
-					end
-				end
-			end)
-			if (hookUnit == "Target" or hookUnit == "Focus") and frame.AdjustPosition then
-				_G.hooksecurefunc(frame, "AdjustPosition", function(self)
-					local mode = activeAnchorModes[hookUnit]
-					if mode and mode ~= "default" then
-						if InCombatLockdown and InCombatLockdown() then
-							reanchorCastBar(self, hookUnit)
-						else
-							if addon and addon.ApplyUnitFrameCastBarFor then
-								addon.ApplyUnitFrameCastBarFor(hookUnit)
-							end
-						end
-					end
-				end)
-			end
-		end
+		installCastHooks(frame, unit)
 	end
 
 	function addon.EnsureAllUnitFrameCastBarHooks()
