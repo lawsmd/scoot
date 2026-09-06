@@ -287,6 +287,7 @@ ui/v2/controls/MultiLineEditBox.lua
 ui/v2/controls/SingleLineEditBox.lua
 ui/v2/controls/Flyout.lua
 ui/v2/controls/SelectorGear.lua
+ui/v2/controls/FlyoutColorPicker.lua
 ui/v2/HighScoreWindow.lua
 ui/v2/reports/WidgetMenu.lua
 ui/v2/reports/GroupAnalysisPanel.lua

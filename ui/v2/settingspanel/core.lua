@@ -924,7 +924,7 @@ function UIPanel:CreateContentPane()
 
     local versionText = homeContainer:CreateFontString(nil, "OVERLAY")
     versionText:SetFont(labelFont2, 13, "")
-    versionText:SetTextColor(0.2, 0.9, 0.3, 1)
+    versionText:SetTextColor(ar, ag, ab, 1)
     do
         local ver
         if C_AddOns and C_AddOns.GetAddOnMetadata then
@@ -1015,6 +1015,42 @@ function UIPanel:CreateContentPane()
         guideLabels[i] = summaryText
     end
 
+    -- Accent color control. The trigger sits under the guide rows, left-aligned
+    -- with the icon column, using the same step the loop above anchors rows by.
+    local accentControl = Controls:CreateFlyoutColorPicker({
+        parent = homeContent,
+        name = "ScootAccentColorPicker",
+        label = "Accent Color",
+        direction = "UP",
+        width = 280,
+        get = function() return Theme:GetCustomAccentColor() end,
+        set = function(r, g, b) Theme:SetAccentColor(r, g, b, 1) end,
+        preview = function() return Theme:GetAccentColor() end,
+        colorLabel = "Custom Color",
+        colorDisabled = function()
+            return Theme:GetAccentColorMode() == Theme.ACCENT_MODE_CLASS
+        end,
+        toggleLabel = "Class Color",
+        toggleGet = function()
+            return Theme:GetAccentColorMode() == Theme.ACCENT_MODE_CLASS
+        end,
+        toggleSet = function(value)
+            Theme:SetAccentColorMode(value and Theme.ACCENT_MODE_CLASS or Theme.ACCENT_MODE_CUSTOM)
+        end,
+        resetLabel = "Reset to Default",
+        onReset = function() Theme:ResetAccentColor() end,
+    })
+    if accentControl then
+        local lastGuideLabel = guideLabels[#guideLabels]
+        if lastGuideLabel then
+            accentControl:SetPoint("TOPLEFT", lastGuideLabel, "BOTTOMLEFT",
+                -(GUIDE_ICON_SIZE + GUIDE_ICON_TEXT_GAP), -GUIDE_ROW_SPACING)
+        else
+            accentControl:SetPoint("TOP", guideHeader, "BOTTOM", 0, -GUIDE_ROW_SPACING)
+        end
+        homeContent._accentControl = accentControl
+    end
+
     homeContent._guideIcons = guideIcons
     homeContent._guideLabels = guideLabels
     homeContent._guideDivider = guideDivider
@@ -1038,6 +1074,9 @@ function UIPanel:CreateContentPane()
         end
         if homeMascot then
             homeMascot:SetTextColor(r, g, b, 1)
+        end
+        if versionText then
+            versionText:SetTextColor(r, g, b, 1)
         end
     end)
 
