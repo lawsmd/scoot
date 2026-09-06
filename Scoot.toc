@@ -160,6 +160,7 @@ core/components/unitframes/cast/core.lua
 core/components/unitframes/cast/textfill.lua
 core/components/unitframes/cast/text.lua
 core/components/unitframes/cast/styling.lua
+core/components/unitframes/cast/empowered.lua
 core/components/unitframes/cast/boss.lua
 ## Cast Bar Z (Text — Scoot-owned frames, clipped-column text fill)
 core/components/castbarz/core.lua
