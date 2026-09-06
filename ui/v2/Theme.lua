@@ -197,6 +197,19 @@ function Theme:ResetAccentColor()
     )
 end
 
+-- One resolver for the callers that guard against a missing Theme, so the
+-- fallback literal lives here rather than once per file. Written as statements,
+-- never `theme and theme:GetAccentColor() or r, g, b`: that expression is
+-- adjusted to one value and leaves g and b as the literals.
+function addon.GetAccentColorRGB()
+    local theme = addon.UI and addon.UI.Theme
+    if theme and theme.GetAccentColor then
+        return theme:GetAccentColor()
+    end
+    local d = Theme.DEFAULT_ACCENT
+    return d.r, d.g, d.b, 1
+end
+
 --------------------------------------------------------------------------------
 -- Derived Color Helpers
 --------------------------------------------------------------------------------

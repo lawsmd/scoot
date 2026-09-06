@@ -221,11 +221,10 @@ local function ensureFrame()
     frame:Hide()
 
     local theme = addon.UI.Theme
-    local ar, ag, ab = 0.2, 0.9, 0.3
+    local ar, ag, ab = addon.GetAccentColorRGB()
     local bgR, bgG, bgB = 0.06, 0.06, 0.08
-    if theme then
-        if theme.GetAccentColor then ar, ag, ab = theme:GetAccentColor() end
-        if theme.GetBackgroundSolidColor then bgR, bgG, bgB = theme:GetBackgroundSolidColor() end
+    if theme and theme.GetBackgroundSolidColor then
+        bgR, bgG, bgB = theme:GetBackgroundSolidColor()
     end
 
     local bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
@@ -247,6 +246,16 @@ local function ensureFrame()
         if edge[3] then t:SetHeight(BORDER) else t:SetWidth(BORDER) end
         t:SetColorTexture(ar, ag, ab, 0.8)
         table.insert(frame._border, t)
+    end
+
+    -- The panel is built once and cached for the session, so the border follows
+    -- later accent changes rather than freezing at build.
+    if theme and theme.Subscribe then
+        theme:Subscribe("ScootGroupAnalysisPanel", function(r, g, b)
+            for _, t in ipairs(frame._border) do
+                t:SetColorTexture(r, g, b, 0.8)
+            end
+        end)
     end
 
     -- Centered on the panel, under the diamond. Anchored per render so it

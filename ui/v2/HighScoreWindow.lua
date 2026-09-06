@@ -159,7 +159,7 @@ local function CreateHighScoreFrame()
     local closeBg = closeBtn:CreateTexture(nil, "BACKGROUND")
     closeBg:SetAllPoints()
     local Theme = addon.UI and addon.UI.Theme
-    local ar, ag, ab = Theme and Theme:GetAccentColor() or 0.20, 0.90, 0.30
+    local ar, ag, ab = addon.GetAccentColorRGB()
     closeBg:SetColorTexture(ar, ag, ab, 1)
     closeBg:Hide()
 
@@ -171,16 +171,18 @@ local function CreateHighScoreFrame()
     closeLabel:SetText("X")
     closeLabel:SetTextColor(ar, ag, ab, 1)
 
-    closeBtn:SetScript("OnEnter", function(btn)
-        local r, g, b = Theme and Theme:GetAccentColor() or ar, ag, ab
+    closeBtn:SetScript("OnEnter", function()
+        local r, g, b = addon.GetAccentColorRGB()
         closeBg:SetColorTexture(r, g, b, 1)
         closeBg:Show()
         closeLabel:SetTextColor(0, 0, 0, 1)
+        frame._closeHovered = true
     end)
-    closeBtn:SetScript("OnLeave", function(btn)
+    closeBtn:SetScript("OnLeave", function()
         closeBg:Hide()
-        local r, g, b = Theme and Theme:GetAccentColor() or ar, ag, ab
+        local r, g, b = addon.GetAccentColorRGB()
         closeLabel:SetTextColor(r, g, b, 1)
+        frame._closeHovered = false
     end)
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
@@ -200,7 +202,7 @@ local function CreateHighScoreFrame()
     pcall(title.SetFont, title, arcadeFont, 18, "")
     title:SetPoint("TOP", banner, "BOTTOM", 0, 50)
     title:SetText("HIGH SCORES")
-    title:SetTextColor(0.20, 0.90, 0.30, 1)
+    title:SetTextColor(ar, ag, ab, 1)
     frame._title = title
 
     -- Column headers
@@ -245,7 +247,21 @@ local function CreateHighScoreFrame()
     local headerDiv = headerFrame:CreateTexture(nil, "ARTWORK")
     headerDiv:SetSize(FRAME_WIDTH - SIDE_PADDING * 2, 1)
     headerDiv:SetPoint("BOTTOMLEFT", headerFrame, "BOTTOMLEFT", xStart, -2)
-    headerDiv:SetColorTexture(0.20, 0.90, 0.30, 0.4)
+    headerDiv:SetColorTexture(ar, ag, ab, 0.4)
+
+    -- The window is built once and cached for the session, so it outlives any
+    -- accent change and reads once at build is not enough.
+    if Theme and Theme.Subscribe then
+        Theme:Subscribe("ScootHighScoreWindow", function(r, g, b)
+            closeBg:SetColorTexture(r, g, b, 1)
+            -- Black while the cursor is on the button; OnLeave repaints it.
+            if not frame._closeHovered then
+                closeLabel:SetTextColor(r, g, b, 1)
+            end
+            title:SetTextColor(r, g, b, 1)
+            headerDiv:SetColorTexture(r, g, b, 0.4)
+        end)
+    end
 
     frame._headerFrame = headerFrame
 
