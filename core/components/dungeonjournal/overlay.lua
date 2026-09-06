@@ -11,10 +11,20 @@ local OVERLAY_SIZE = 22
 local OVERLAY_PREALLOC = 16
 local BORDER_THICKNESS = 1.5
 
--- Scoot accent green (matches HighScoreWindow title + widget diamond).
-local SCOOT_GREEN_R, SCOOT_GREEN_G, SCOOT_GREEN_B = 0.20, 0.90, 0.30
-
 local activeOverlays = setmetatable({}, { __mode = "k" })  -- [button] = overlay
+
+-- Every overlay ever built. The pool's free list holds only the detached ones,
+-- so one accent subscription needs its own roster to repaint the attached ones
+-- too. Overlays are never destroyed, so entries are never removed.
+local allOverlays = {}
+
+-- The border and the checkmark are the accent; the background stays black.
+local function paintAccent(overlay, r, g, b)
+    for _, t in pairs(overlay._border) do
+        t:SetColorTexture(r, g, b, 1)
+    end
+    overlay._check:SetVertexColor(r, g, b, 1)
+end
 
 --------------------------------------------------------------------------------
 -- Frame factory
@@ -37,11 +47,10 @@ local function CreateOverlayFrame()
     bg:SetColorTexture(0, 0, 0, 0.92)
     f._bg = bg
 
-    -- Scoot-green border, four edges.
+    -- Accent-colored border, four edges.
     local border = {}
     local function edge(point1, point2, w, h)
         local t = f:CreateTexture(nil, "BORDER")
-        t:SetColorTexture(SCOOT_GREEN_R, SCOOT_GREEN_G, SCOOT_GREEN_B, 1)
         if w then t:SetWidth(w) end
         if h then t:SetHeight(h) end
         t:SetPoint(point1, f, point1)
@@ -54,16 +63,18 @@ local function CreateOverlayFrame()
     border.right  = edge("TOPRIGHT",   "BOTTOMRIGHT", BORDER_THICKNESS, nil)
     f._border = border
 
-    -- Checkmark texture (Blizzard's stock checkbox check, vertex-tinted to scoot
-    -- green). Drawn ~1.4x the box so it reads as bold and the checked state is
+    -- Checkmark texture (Blizzard's stock checkbox check, vertex-tinted to the
+    -- accent). Drawn ~1.4x the box so it reads as bold and the checked state is
     -- clearly distinct from empty.
     local check = f:CreateTexture(nil, "OVERLAY")
     check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
     check:SetSize(OVERLAY_SIZE * 1.4, OVERLAY_SIZE * 1.4)
     check:SetPoint("CENTER", f, "CENTER", 0, 0)
-    check:SetVertexColor(SCOOT_GREEN_R, SCOOT_GREEN_G, SCOOT_GREEN_B, 1)
     check:Hide()
     f._check = check
+
+    allOverlays[#allOverlays + 1] = f
+    paintAccent(f, addon.GetAccentColorRGB())
 
     f:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
@@ -236,6 +247,18 @@ local function installHooks()
         ScrollUtil.AddReleasedFrameCallback(sb, function(_, button)
             detachOverlay(button)
         end, sb)
+    end
+
+    -- Overlays outlive a journal open-close cycle: the pool holds the detached
+    -- ones and hands the same frames back. One subscription repaints the whole
+    -- roster, rather than one per pooled frame.
+    local theme = addon.UI and addon.UI.Theme
+    if theme and theme.Subscribe then
+        theme:Subscribe("ScootDungeonJournalOverlays", function(r, g, b)
+            for _, overlay in ipairs(allOverlays) do
+                paintAccent(overlay, r, g, b)
+            end
+        end)
     end
 
     _hooked = true
