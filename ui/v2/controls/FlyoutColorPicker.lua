@@ -31,7 +31,9 @@ local TRIGGER_BORDER_ALPHA = 0.8
 
 local PANEL_WIDTH = 260
 local PANEL_PADDING = 10
-local PANEL_GAP = 6
+-- The nub protrudes 15px past the panel edge, so the gap has to clear that
+-- before the tip stands off the swatch instead of overlapping it.
+local PANEL_GAP = 20
 local PANEL_DIRECTION = "DOWN"
 local PANEL_BORDER_WIDTH = 1
 
@@ -130,6 +132,18 @@ function Controls:CreateFlyoutColorPicker(options)
     MeasureWidth()
     C_Timer.After(0, MeasureWidth)
 
+    -- The flyout centers on the trigger, but the nub points at the swatch, which
+    -- sits at the trigger's right end. GetCenter needs a laid-out rect, so fall
+    -- back to the label width until the trigger has one.
+    local function SwatchNubOffset()
+        local sx = swatch:GetCenter()
+        local tx = trigger:GetCenter()
+        if sx and tx then
+            return sx - tx
+        end
+        return ((labelFS:GetStringWidth() or 0) + labelGap) / 2
+    end
+
     trigger:SetScript("OnEnter", function()
         swatch._border:Refresh()
     end)
@@ -187,6 +201,13 @@ function Controls:CreateFlyoutColorPicker(options)
             description = options.colorDescription,
             hasAlpha = false,
             get = getColor,
+            -- ColorPickerFrame is DIALOG strata, under both the flyout and its
+            -- click-outside catcher, so the flyout closes to hand it the screen.
+            onOpen = function()
+                if panel then
+                    panel:Close()
+                end
+            end,
             -- Fires on every drag frame in ColorPickerFrame, so it does the one
             -- cheap update rather than a full Refresh.
             set = function(r, g, b, a)
@@ -231,6 +252,7 @@ function Controls:CreateFlyoutColorPicker(options)
             width = panelWidth,
             padding = panelPadding,
             gap = options.gap or PANEL_GAP,
+            nubOffset = SwatchNubOffset(),
             name = name and (name .. "Flyout") or nil,
         })
         if not panel then return nil end
@@ -244,6 +266,7 @@ function Controls:CreateFlyoutColorPicker(options)
         local p = EnsurePanel()
         if not p then return end
         Refresh()
+        p:SetNubOffset(SwatchNubOffset())
         p:Toggle()
     end)
 

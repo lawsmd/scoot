@@ -1015,13 +1015,14 @@ function UIPanel:CreateContentPane()
         guideLabels[i] = summaryText
     end
 
-    -- Accent color control. The trigger sits under the guide rows, left-aligned
-    -- with the icon column, using the same step the loop above anchors rows by.
+    -- Accent color control, pinned into the bottom-left corner of the home page.
+    -- The flyout opens downward, past the panel's bottom edge.
+    local HOME_ACCENT_INSET = 6
     local accentControl = Controls:CreateFlyoutColorPicker({
         parent = homeContent,
         name = "ScootAccentColorPicker",
-        label = "Accent Color",
-        direction = "UP",
+        label = "UI Color",
+        direction = "DOWN",
         width = 280,
         get = function() return Theme:GetCustomAccentColor() end,
         set = function(r, g, b) Theme:SetAccentColor(r, g, b, 1) end,
@@ -1041,13 +1042,8 @@ function UIPanel:CreateContentPane()
         onReset = function() Theme:ResetAccentColor() end,
     })
     if accentControl then
-        local lastGuideLabel = guideLabels[#guideLabels]
-        if lastGuideLabel then
-            accentControl:SetPoint("TOPLEFT", lastGuideLabel, "BOTTOMLEFT",
-                -(GUIDE_ICON_SIZE + GUIDE_ICON_TEXT_GAP), -GUIDE_ROW_SPACING)
-        else
-            accentControl:SetPoint("TOP", guideHeader, "BOTTOM", 0, -GUIDE_ROW_SPACING)
-        end
+        accentControl:SetPoint("BOTTOMLEFT", homeContent, "BOTTOMLEFT",
+            HOME_ACCENT_INSET, HOME_ACCENT_INSET)
         homeContent._accentControl = accentControl
     end
 

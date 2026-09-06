@@ -46,6 +46,9 @@ function Controls:CreateColorPicker(options)
     local swatchHeight = options.swatchHeight or COLOR_SWATCH_HEIGHT
     local name = options.name
     local isDisabledFn = options.disabled or options.isDisabled
+    -- Fires just before ColorPickerFrame shows. ColorPickerFrame sits at DIALOG
+    -- strata, so a caller floating this row above that has to move out of the way.
+    local onOpen = options.onOpen
 
     local hasDesc = description and description ~= ""
     local height = hasDesc and COLOR_ROW_HEIGHT_WITH_DESC or COLOR_ROW_HEIGHT
@@ -173,6 +176,9 @@ function Controls:CreateColorPicker(options)
         -- Don't respond to clicks when disabled
         if row._isDisabled then
             return
+        end
+        if onOpen then
+            onOpen(row)
         end
         local curR, curG, curB, curA = ReadColor()
 
