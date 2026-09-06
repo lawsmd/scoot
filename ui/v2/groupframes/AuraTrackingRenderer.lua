@@ -81,10 +81,7 @@ end
 
 local function CreateIconStyleRow(parent, spellId, builder)
     local theme = addon.UI.Theme
-    local accentR, accentG, accentB = 0.20, 0.90, 0.30
-    if theme and theme.GetAccentColor then
-        accentR, accentG, accentB = theme:GetAccentColor()
-    end
+    local accentR, accentG, accentB = addon.GetAccentColorRGB()
     local labelFont = (theme and theme.GetFont and theme:GetFont("LABEL")) or "Fonts\\FRIZQT__.TTF"
     local valueFont = (theme and theme.GetFont and theme:GetFont("VALUE")) or "Fonts\\FRIZQT__.TTF"
 
@@ -305,11 +302,7 @@ local function CreateSpellGrid(parent, classToken, scrollContent, panel, builder
     local spells = HA.SPELL_REGISTRY[classToken]
     if not spells or #spells == 0 then return nil, 0 end
 
-    local theme = addon.UI.Theme
-    local accentR, accentG, accentB = 0.20, 0.90, 0.30
-    if theme and theme.GetAccentColor then
-        accentR, accentG, accentB = theme:GetAccentColor()
-    end
+    local accentR, accentG, accentB = addon.GetAccentColorRGB()
 
     local container = CreateFrame("Frame", nil, parent)
     local parentWidth = scrollContent:GetWidth() or 500
@@ -765,8 +758,7 @@ function AuraTrackingUI.Render(panel, scrollContent)
                     local row = CreateFrame("Frame", nil, tabContent)
                     row:SetHeight(rowHeight)
 
-                    local accR, accG, accB = 0.2, 0.9, 0.3
-                    if theme and theme.GetAccentColor then accR, accG, accB = theme:GetAccentColor() end
+                    local accR, accG, accB = addon.GetAccentColorRGB()
                     local dimR, dimG, dimB = 0.5, 0.5, 0.5
                     if theme and theme.GetDimTextColor then dimR, dimG, dimB = theme:GetDimTextColor() end
 

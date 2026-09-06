@@ -105,9 +105,6 @@ local function CreatePreviewPane(parentFrame, comp, windowIndex, builder)
     local numColumns = math.min(#columns, 5)
     if cfg and cfg.sessionType ~= 0 then numColumns = 1 end  -- Current/Expired: show only primary
     local Controls = GetControls()
-    local Theme = GetTheme()
-    local ar, ag, ab = 0.2, 0.9, 0.3
-    if Theme and Theme.GetAccentColor then ar, ag, ab = Theme:GetAccentColor() end
 
     -- Resolved the same way the live window resolves them, so a partially
     -- stored group (or a fresh Zero-Touch profile that stores nothing) previews
@@ -410,8 +407,7 @@ end
 
 local function CreateOnOffIndicator(parent, isOn, onClick)
     local Theme = GetTheme()
-    local ar, ag, ab = 0.2, 0.9, 0.3
-    if Theme and Theme.GetAccentColor then ar, ag, ab = Theme:GetAccentColor() end
+    local ar, ag, ab = addon.GetAccentColorRGB()
     local dimR, dimG, dimB = 0.6, 0.6, 0.6
     if Theme and Theme.GetDimTextColor then dimR, dimG, dimB = Theme:GetDimTextColor() end
 
@@ -462,8 +458,7 @@ local function CreateWindowSelector(parentFrame, builder)
 
     local Theme = GetTheme()
     local Controls = GetControls()
-    local ar, ag, ab = 0.2, 0.9, 0.3
-    if Theme and Theme.GetAccentColor then ar, ag, ab = Theme:GetAccentColor() end
+    local ar, ag, ab = addon.GetAccentColorRGB()
 
     -- [1]-[5] buttons
     for i = 1, (DMY and DMY.MAX_WINDOWS or 5) do

@@ -175,8 +175,7 @@ end
 
 local function CreateOnOffIndicator(parent, isOn, onClick)
     local Theme = GetTheme()
-    local ar, ag, ab = 0.2, 0.9, 0.3
-    if Theme and Theme.GetAccentColor then ar, ag, ab = Theme:GetAccentColor() end
+    local ar, ag, ab = addon.GetAccentColorRGB()
     local dimR, dimG, dimB = 0.6, 0.6, 0.6
     if Theme and Theme.GetDimTextColor then dimR, dimG, dimB = Theme:GetDimTextColor() end
 
@@ -235,8 +234,7 @@ local function CreateUnitSelector(parentFrame, builder)
     row:SetHeight(UNIT_ROW_HEIGHT)
 
     local Theme = GetTheme()
-    local ar, ag, ab = 0.2, 0.9, 0.3
-    if Theme and Theme.GetAccentColor then ar, ag, ab = Theme:GetAccentColor() end
+    local ar, ag, ab = addon.GetAccentColorRGB()
 
     -- Where the selected tab sits, so the toggle can be centred under it.
     local selX, selW = 4, 50
