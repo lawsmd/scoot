@@ -773,20 +773,6 @@ do
 						-- inherit its visibility (hidden when no cast is active).
 						setProp(frame, "borderContainerParentRef", nil)
 
-						-- Unit-specific per-side pad adjustments for Cast Bar:
-						-- Player: symmetric (no extra nudges; baseInset handles feel).
-						-- Target: top pulled down slightly, left/right pulled in slightly more, bottom unchanged.
-						if enabled and unit == "Target" then
-							setProp(frame, "borderPadAdjust", {
-								left = -2,
-								right = -2,
-								top = -1,
-								bottom = 0,
-							})
-						else
-							setProp(frame, "borderPadAdjust", nil)
-						end
-
 						handled = addon.BarBorders.ApplyToBarFrame(frame, styleKey, {
 							color = color,
 							thickness = thickness,

@@ -521,20 +521,6 @@ do
 					if addon.BarBorders.ClearBarFrame then addon.BarBorders.ClearBarFrame(frame) end
 					setProp(frame, "borderContainerParentRef", nil)
 
-				-- Unit-specific per-side pad adjustments for Cast Bar:
-				-- Boss: Similar to Target - StatusBar bounds extend beyond visible bar texture.
-				-- Apply padding adjustments to pull border edges in to match the visible bar.
-				if enabled then
-					setProp(frame, "borderPadAdjust", {
-						left = -2,
-						right = -2,
-						top = -1,
-						bottom = -1,
-					})
-				else
-					setProp(frame, "borderPadAdjust", nil)
-				end
-
 					handled = addon.BarBorders.ApplyToBarFrame(frame, styleKey, {
 						color = color,
 						thickness = thickness,
