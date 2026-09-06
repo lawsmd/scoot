@@ -66,28 +66,25 @@ end
 -- Clear: Remove all existing content from the scroll content
 --------------------------------------------------------------------------------
 
-function Builder:Clear()
-    -- Cleanup existing controls
-    for _, control in ipairs(self._controls) do
-        if control.Cleanup then
-            control:Cleanup()
-        end
-        if control.Hide then
-            control:Hide()
-        end
-        if control.SetParent then
-            control:SetParent(nil)
-        end
+-- Controls and section headers tear down the same way: Cleanup first, so a
+-- frame releases its theme subscription before it is detached. Headers used to
+-- get Hide() on their own, which left one UISection_<frame> key in
+-- Theme._subscribers per page navigation, each holding its font string and
+-- line alive. One loop for both lists so the two cannot drift apart again.
+local function releaseFrames(frames)
+    for _, f in ipairs(frames) do
+        if f.Cleanup then f:Cleanup() end
+        if f.Hide then f:Hide() end
+        if f.SetParent then f:SetParent(nil) end
     end
+end
+
+function Builder:Clear()
+    releaseFrames(self._controls)
     self._controls = {}
     self._controlsByKey = {}
 
-    -- Hide section headers
-    for _, header in ipairs(self._sections) do
-        if header.Hide then
-            header:Hide()
-        end
-    end
+    releaseFrames(self._sections)
     self._sections = {}
 
     -- Reset position
