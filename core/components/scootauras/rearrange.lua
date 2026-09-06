@@ -29,12 +29,6 @@ local ICON_SIZE = 26
 
 local BeginMemberDrag, EndDrag
 
-local function AccentColor()
-    local theme = addon.UI and addon.UI.Theme
-    if theme and theme.GetAccentColor then return theme:GetAccentColor() end
-    return 0.2, 0.9, 0.3
-end
-
 local function IsPlainNumber(v)
     return type(v) == "number" and not issecretvalue(v)
 end
@@ -143,7 +137,7 @@ local overlays = addon.Pool.NewIndexed(CreateOverlay, HideOverlay)
 local function BuildOverlays()
     local group = SAU.GetGroup(mode.gid)
     local Engine = SAU.Engine
-    local r, g, b = AccentColor()
+    local r, g, b = addon.GetAccentColorRGB()
     local n = 0
     if group then
         for index, trackerId in ipairs(group.memberOrder or {}) do
@@ -191,6 +185,8 @@ local function EnsureMarker()
     marker:SetFrameLevel(99)
     local tex = marker:CreateTexture(nil, "OVERLAY")
     tex:SetAllPoints()
+    -- Kept off Theme accent: drop-target cue. A red accent would make "drop
+    -- here" read as forbidden.
     tex:SetColorTexture(0.3, 0.9, 0.3, 1)
     marker:Hide()
     return marker

@@ -41,12 +41,6 @@ local function GetTheme()
     return addon.UI and addon.UI.Theme
 end
 
-local function GetAccent()
-    local theme = GetTheme()
-    if theme and theme.GetAccentColor then return theme:GetAccentColor() end
-    return 0.2, 0.9, 0.3, 1
-end
-
 --------------------------------------------------------------------------------
 -- Desaturation
 --------------------------------------------------------------------------------
@@ -147,7 +141,7 @@ local function FallbackRecolor(selection, state)
         end
     end
 
-    local r, g, b = GetAccent()
+    local r, g, b = addon.GetAccentColorRGB()
     local parts = GetFallbackParts(selection)
     local width = FALLBACK_BORDER_WIDTH[state] or 1
 
@@ -176,7 +170,7 @@ local function Recolor(selection, state)
         Desaturate(selection[name])
     end
 
-    local r, g, b = GetAccent()
+    local r, g, b = addon.GetAccentColorRGB()
     if selection.SetBorderColor then
         selection:SetBorderColor(r, g, b, BORDER_ALPHA[state] or 0.75)
     end
@@ -196,7 +190,7 @@ local function RecolorMouseOverHighlight(selection)
         Desaturate(hi[name])
     end
     if hi.SetVertexColor then
-        local r, g, b = GetAccent()
+        local r, g, b = addon.GetAccentColorRGB()
         pcall(hi.SetVertexColor, hi, r, g, b, 1)
     end
 end
@@ -205,7 +199,7 @@ local function RecolorLabel(selection)
     local label = selection and selection.Label
     if not label then return end
 
-    local r, g, b = GetAccent()
+    local r, g, b = addon.GetAccentColorRGB()
     label:SetTextColor(r, g, b, 1)
 
     if SelectionSkin.SKIN_LABEL_FONT then

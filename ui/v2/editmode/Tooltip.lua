@@ -37,12 +37,6 @@ local function GetTheme()
     return addon.UI and addon.UI.Theme
 end
 
-local function GetAccent()
-    local theme = GetTheme()
-    if theme and theme.GetAccentColor then return theme:GetAccentColor() end
-    return 0.2, 0.9, 0.3, 1
-end
-
 local function GetTitleFont()
     local theme = GetTheme()
     if theme and theme.GetFont then return theme:GetFont(TITLE_FONT_KEY) end
@@ -77,7 +71,7 @@ function Tooltip.BuildBrandRow(parent, size)
     text:SetText("Scoot")
     text:SetJustifyH("LEFT")
 
-    local r, g, b = GetAccent()
+    local r, g, b = addon.GetAccentColorRGB()
     text:SetTextColor(r, g, b, 1)
 
     return { icon = icon, text = text, height = iconSize }
@@ -137,7 +131,7 @@ end
 
 local function SetContent(name)
     local f = EnsureFrame()
-    local r, g, b = GetAccent()
+    local r, g, b = addon.GetAccentColorRGB()
 
     f._title:SetText(name or "")
     f._title:SetTextColor(r, g, b, 1)

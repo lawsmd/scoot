@@ -53,19 +53,13 @@ local function GetTheme()
     return addon.UI and addon.UI.Theme
 end
 
-local function GetAccent()
-    local theme = GetTheme()
-    if theme and theme.GetAccentColor then return theme:GetAccentColor() end
-    return 0.2, 0.9, 0.3, 1
-end
-
 --------------------------------------------------------------------------------
 -- Chrome
 --------------------------------------------------------------------------------
 
 local function CreateCloseButton(parent, onClick)
     local theme = GetTheme()
-    local r, g, b = GetAccent()
+    local r, g, b = addon.GetAccentColorRGB()
 
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(CLOSE_SIZE, CLOSE_SIZE)
@@ -90,7 +84,7 @@ local function CreateCloseButton(parent, onClick)
     end)
     btn:SetScript("OnLeave", function()
         bg:Hide()
-        local ar, ag, ab = GetAccent()
+        local ar, ag, ab = addon.GetAccentColorRGB()
         label:SetTextColor(ar, ag, ab, 1)
     end)
     btn:SetScript("OnClick", onClick)
@@ -347,7 +341,7 @@ local function EnterScootMode(dialog, selection, info)
     -- it returns for free once AddFrameSettings is ever called.
     SetLEMChromeShown(dialog, false)
 
-    local r, g, b = GetAccent()
+    local r, g, b = addon.GetAccentColorRGB()
     skin._title:SetText(Brand:GetSystemName(selection))
     skin._title:SetTextColor(r, g, b, 1)
     skin._brand.text:SetTextColor(r, g, b, 1)

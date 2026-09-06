@@ -4,14 +4,6 @@ local addonName, addon = ...
 addon.UI = addon.UI or {}
 addon.UI.Controls = addon.UI.Controls or {}
 local Controls = addon.UI.Controls
-local Theme
-
-local function GetTheme()
-    if not Theme then
-        Theme = addon.UI.Theme
-    end
-    return Theme
-end
 
 --------------------------------------------------------------------------------
 -- Constants
@@ -36,7 +28,6 @@ local ROW_PADDING = 8
 --------------------------------------------------------------------------------
 
 function Controls:CreateThreeColumnChecklist(options)
-    local theme = GetTheme()
     if not options or not options.parent or not options.items then
         return nil
     end
@@ -113,14 +104,9 @@ function Controls:CreateThreeColumnChecklist(options)
 
             if checked then
                 checkMark:Show()
-                if theme then
-                    local r, g, b = theme:GetAccentColor()
-                    checkMark:SetVertexColor(r, g, b, 1)
-                    checkBg:SetColorTexture(r * 0.3, g * 0.3, b * 0.3, 0.6)
-                else
-                    checkMark:SetVertexColor(0.2, 0.8, 0.4, 1)
-                    checkBg:SetColorTexture(0.1, 0.3, 0.15, 0.6)
-                end
+                local r, g, b = addon.GetAccentColorRGB()
+                checkMark:SetVertexColor(r, g, b, 1)
+                checkBg:SetColorTexture(r * 0.3, g * 0.3, b * 0.3, 0.6)
             else
                 checkMark:Hide()
                 checkBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)

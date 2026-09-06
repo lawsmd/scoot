@@ -144,8 +144,7 @@ function Controls:CreateRankSelector(options)
     local currentSpellIdFn = options.currentSpellId or function() return nil end
 
     local theme = GetTheme()
-    local ar, ag, ab = 0.2, 0.9, 0.3
-    if theme and theme.GetAccentColor then ar, ag, ab = theme:GetAccentColor() end
+    local ar, ag, ab = addon.GetAccentColorRGB()
     local dimR, dimG, dimB = 0.5, 0.5, 0.5
     if theme and theme.GetDimTextColor then dimR, dimG, dimB = theme:GetDimTextColor() end
 
