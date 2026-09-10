@@ -264,6 +264,45 @@ local function ApplyBorders(trackerId, tracker, state)
     end
 end
 
+-- The fill's texture path and color for one bar: fgPath (nil when the key
+-- resolves to no file), then r, g, b, a. `powerToken` names the power whose
+-- color the power mode takes (the Class Resource kind passes its resource's
+-- token); without one the mode reads the display power.
+local function ResolveBarFill(tracker, db, powerToken)
+    local fgPath = addon.Media.ResolveBarTexturePath(db.barForegroundTexture or "bevelled")
+
+    -- Kept off addon.ResolveColorRGBA: two-mode dialect, class default; the class lookup is already GetClassColorRGB.
+    -- The Class Power kind's power mode does go through the resolver.
+    local fgColorMode = db.barForegroundColorMode or "class"
+    if tracker.kind == "classpower" and fgColorMode ~= "custom" then
+        -- Power Color or Custom, nothing else on this kind; a Class
+        -- Color left by a kind flip reads as Power Color.
+        fgColorMode = "power"
+    elseif tracker.kind == "classresource" and fgColorMode ~= "custom" and fgColorMode ~= "class" then
+        -- Power Color, Class Color or Custom on this kind.
+        fgColorMode = "power"
+    end
+    local fgR, fgG, fgB, fgA = 1, 1, 1, 1
+    if fgColorMode == "power" then
+        local r, g, b
+        if powerToken then
+            r, g, b = addon.GetPowerColorRGB(powerToken)
+        else
+            r, g, b = addon.ResolveColorRGBA("power", nil, POWER_FILL_COLOR_OPTS)
+        end
+        fgR, fgG, fgB, fgA = r or 1, g or 1, b or 1, 1
+    elseif fgColorMode == "class" then
+        local r, g, b = addon.GetClassColorRGB("player")
+        if r ~= nil then
+            fgR, fgG, fgB, fgA = r, g, b, 1
+        end
+    elseif fgColorMode == "custom" then
+        local c = db.barForegroundTint or { 1, 1, 1, 1 }
+        fgR, fgG, fgB, fgA = c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
+    end
+    return fgPath, fgR, fgG, fgB, fgA
+end
+
 local function ApplyBarStyling(trackerId, tracker, state)
     local db = SAU.GetDB(trackerId)
     if not db then return end
@@ -274,33 +313,11 @@ local function ApplyBarStyling(trackerId, tracker, state)
             local h = tonumber(db.barHeight) or 12
             elem.widget:SetSize(w, h)
 
-            local fgPath = addon.Media.ResolveBarTexturePath(db.barForegroundTexture or "bevelled")
+            local fgPath, fgR, fgG, fgB, fgA = ResolveBarFill(tracker, db, nil)
             if fgPath then
                 elem.barFill:SetStatusBarTexture(fgPath)
             else
                 elem.barFill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
-            end
-
-            -- Kept off addon.ResolveColorRGBA: two-mode dialect, class default; the class lookup is already GetClassColorRGB.
-            -- The Class Power kind's power mode does go through the resolver.
-            local fgColorMode = db.barForegroundColorMode or "class"
-            if tracker.kind == "classpower" and fgColorMode ~= "custom" then
-                -- Power Color or Custom, nothing else on this kind; a Class
-                -- Color left by a kind flip reads as Power Color.
-                fgColorMode = "power"
-            end
-            local fgR, fgG, fgB, fgA = 1, 1, 1, 1
-            if fgColorMode == "power" then
-                local r, g, b = addon.ResolveColorRGBA("power", nil, POWER_FILL_COLOR_OPTS)
-                fgR, fgG, fgB, fgA = r or 1, g or 1, b or 1, 1
-            elseif fgColorMode == "class" then
-                local r, g, b = addon.GetClassColorRGB("player")
-                if r ~= nil then
-                    fgR, fgG, fgB, fgA = r, g, b, 1
-                end
-            elseif fgColorMode == "custom" then
-                local c = db.barForegroundTint or { 1, 1, 1, 1 }
-                fgR, fgG, fgB, fgA = c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
             end
             local fillTex = elem.barFill:GetStatusBarTexture()
             if fillTex then
@@ -392,9 +409,9 @@ end
 -- Kinds whose "Only in Combat" verdict is applied by hiding the whole frame.
 -- A missing-buff reminder is not one of them: its own gate drives a clip window
 -- over the engine-sized container (missing.lua, Missing.UpdateGate), and that
--- mechanism stays its sole owner. A Class Power tracker has no container at
--- all, so the frame is the only thing there is to hide.
-local SHELL_GATED_KINDS = { buff = true, debuff = true, classpower = true }
+-- mechanism stays its sole owner. A Class Power or Class Resource tracker has
+-- no container at all, so the frame is the only thing there is to hide.
+local SHELL_GATED_KINDS = { buff = true, debuff = true, classpower = true, classresource = true }
 
 -- Grouped visuals live under the group frame; the shell stays hidden and
 -- scale/opacity/shown apply to the visual itself. The flag is physical (set by
@@ -442,6 +459,7 @@ local function ApplyStyling(trackerId, tracker)
         if SAU.Underlay then SAU.Underlay.UpdateGate(trackerId) end
         -- Leaves the power event fan-out; the Hide above conceals the art.
         if SAU.ClassPower then SAU.ClassPower.Release(trackerId, state.entry) end
+        if SAU.ClassResource then SAU.ClassResource.Release(trackerId, state.entry) end
         if grouped and SAU.Groups then SAU.Groups.RequestReflow() end
         return
     end
@@ -486,6 +504,10 @@ local function ApplyStyling(trackerId, tracker)
     -- it. Runs for every kind so a stale set hides on a kind flip.
     if SAU.ClassPower then
         SAU.ClassPower.Sync(trackerId, tracker, state)
+    end
+    -- Class Resource (classresource.lua): the same shape, one pip per point.
+    if SAU.ClassResource then
+        SAU.ClassResource.Sync(trackerId, tracker, state)
     end
     -- Missing-state underlay (underlay.lua): Scoot-owned art on the visual,
     -- so it repaints here even while ApplyAll queues behind the structural
@@ -557,3 +579,4 @@ SAU._ApplyShapeStyling = ApplyShapeStyling
 SAU._ApplyTextStyling = ApplyTextStyling
 SAU._ApplyBorders = ApplyBorders
 SAU._ApplyBarStyling = ApplyBarStyling
+SAU._ResolveBarFill = ResolveBarFill

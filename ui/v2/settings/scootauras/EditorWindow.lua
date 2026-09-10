@@ -55,6 +55,14 @@ local function CurrentTracker()
     return session and session.trackerId and SAU().GetTracker(session.trackerId) or nil
 end
 
+-- Per-kind starting-value stamps (core.lua): a draft reads the stamp its kind
+-- will write at materialization, so controls and preview agree pre- and post-.
+local KIND_STARTING_VALUES = {
+    missingbuff = "MissingKindStartingValues",
+    classpower = "ClassPowerStartingValues",
+    classresource = "ClassResourceStartingValues",
+}
+
 local ctx = {}
 
 function ctx.get(key)
@@ -71,12 +79,10 @@ function ctx.get(key)
         local o = SAU().BarShapeStartingValues[key]
         if o ~= nil then v = o end
     end
-    if v == nil and ctx.kind() == "missingbuff" then
-        local o = SAU().MissingKindStartingValues[key]
-        if o ~= nil then v = o end
-    end
-    if v == nil and ctx.kind() == "classpower" then
-        local o = SAU().ClassPowerStartingValues[key]
+    if v == nil then
+        local field = KIND_STARTING_VALUES[ctx.kind()]
+        local stamp = field and SAU()[field]
+        local o = stamp and stamp[key]
         if o ~= nil then v = o end
     end
     if v == nil then v = DefaultFor(key) end
@@ -697,13 +703,18 @@ end
 
 local KIND_LABELS = {
     buff = "a Buff", debuff = "a Debuff", missingbuff = "a Missing Buff", classpower = "my Class Power",
+    classresource = "my Class Resource",
 }
-local KIND_ORDER = { "buff", "debuff", "missingbuff", "classpower" }
+local KIND_ORDER = { "buff", "debuff", "missingbuff", "classpower", "classresource" }
 -- What the spell region says for a kind that tracks no spell.
 local KIND_NOTES = {
     classpower = "Class Power tracks the resource your character runs on: Energy, Rage, Mana, Focus, "
         .. "Runic Power, Insanity, Fury, Maelstrom or Astral Power. It follows the display power, so a "
         .. "Druid's tracker changes with the form. There is no spell to pick.",
+    classresource = "Class Resource tracks the points your character builds and spends: Combo Points for a "
+        .. "Rogue or a Druid in Cat Form, Runes, Arcane Charges, Holy Power, Chi, Soul Shards or Essence. It "
+        .. "follows your specialization and form, so there is nothing to pick. A character whose spec has no "
+        .. "such resource shows nothing.",
 }
 local UNIT_LABELS = {
     player = "Myself", group = "My Group", target = "My Target", focus = "My Focus",
@@ -720,6 +731,9 @@ local MISSING_SHAPE_ORDER = { "icon", "text", "icontext" }
 -- A Class Power tracker is the bar, or the number alone (the "text" token).
 local CLASS_POWER_SHAPE_LABELS = { bar = "a Bar", text = "a Number" }
 local CLASS_POWER_SHAPE_ORDER = { "bar", "text" }
+-- A Class Resource tracker is a segmented bar, or one icon per point.
+local CLASS_RESOURCE_SHAPE_LABELS = { bar = "a Bar", icons = "a Group of Icons" }
+local CLASS_RESOURCE_SHAPE_ORDER = { "bar", "icons" }
 -- Shared by both missing-buff gate rows.
 local YES_NO_LABELS = { yes = "Yes", no = "No" }
 local YES_NO_ORDER = { "yes", "no" }
@@ -843,6 +857,10 @@ local function ClassPowerShapeGear()
     }
 end
 
+-- Kinds whose shape options carry an in-field gear; a kind without a row
+-- shows none.
+local SHAPE_GEAR_BY_KIND = { classpower = ClassPowerShapeGear }
+
 local function ContentValue(field)
     local tracker = CurrentTracker()
     if tracker then return tracker[field] end
@@ -941,6 +959,8 @@ local function ShapeOptions(kind)
         return MISSING_SHAPE_LABELS, MISSING_SHAPE_ORDER
     elseif kind == "classpower" then
         return CLASS_POWER_SHAPE_LABELS, CLASS_POWER_SHAPE_ORDER
+    elseif kind == "classresource" then
+        return CLASS_RESOURCE_SHAPE_LABELS, CLASS_RESOURCE_SHAPE_ORDER
     end
     return SHAPE_LABELS, SHAPE_ORDER
 end
@@ -1020,11 +1040,13 @@ local function RenderSelectors()
 
     if kind and unit then
         local sValues, sOrder = ShapeOptions(kind)
-        -- Both Class Power shapes carry the gear with the percent toggle.
+        -- Class Power's shapes carry the gear with the percent toggle; a kind
+        -- without a row in SHAPE_GEAR_BY_KIND shows none.
+        local gearFn = SHAPE_GEAR_BY_KIND[kind]
         AddChoiceSelector(selBuilder, "Shown as...",
             sValues, sOrder, shape,
             function(v) SetContent("shape", v) end,
-            { gear = (kind == "classpower") and ClassPowerShapeGear() or nil })
+            { gear = gearFn and gearFn() or nil })
     end
 
     -- Missing-state visual, debuff only (the Missing Buff kind owns the buff
@@ -1149,6 +1171,89 @@ local function RenderClassPowerPreview(shape)
     prevBuilder:Finalize()
 end
 
+-- The Class Resource colors: the resource's own color from the module (the
+-- display power's when the module is absent), the class color, or the tint.
+local function ResourceColorRGB()
+    local CR = SAU().ClassResource
+    if CR and CR.ResourceColorRGB then
+        local r, g, b = CR.ResourceColorRGB()
+        if r then return r, g, b end
+    end
+    return addon.ResolveColorRGBA("power", nil, CLASS_POWER_FILL_COLOR_OPTS)
+end
+
+local function ResolveResourceFill(mode, tintKey)
+    if mode == "custom" then
+        local c = ctx.get(tintKey) or { 1, 1, 1, 1 }
+        return { c[1] or 1, c[2] or 1, c[3] or 1, 1 }
+    elseif mode == "class" then
+        local r, g, b = addon.GetClassColorRGB("player")
+        return r and { r, g, b, 1 } or { 1, 1, 1, 1 }
+    end
+    local r, g, b = ResourceColorRGB()
+    return { r or 1, g or 1, b or 1, 1 }
+end
+
+-- The Class Resource preview: five points with three full, as the segmented
+-- bar or the icon row, with the fill color resolved here and handed over as
+-- a custom tint, since the control knows the aura color modes alone.
+local function RenderClassResourcePreview(shape)
+    local componentId = session and session.trackerId
+        and SAU().GetComponentId(session.trackerId) or "scootAuraDraft"
+    if shape == "icons" then
+        local key = ctx.get("pipStyle") or "border:SquareMask"
+        local tint = ctx.get("pipBackdropTint") or { 0, 0, 0, 1 }
+        local opacity = (tonumber(ctx.get("pipBackdropOpacity")) or 100) / 100
+        prevBuilder:AddPreview({
+            componentId = componentId,
+            mode = "pips",
+            pipShape = "icons",
+            pipCount = 5,
+            pipFilled = 3,
+            pipAtlas = SAU()._AtlasFromShapeKey(key) or "SquareMask",
+            pipColor = ResolveResourceFill(ctx.get("pipColorMode"), "pipTint"),
+            pipBackdropColor = { tint[1] or 0, tint[2] or 0, tint[3] or 0, opacity },
+            rowHeight = 200,
+            previewScale = 1,
+            maxRowHeight = 340,
+            getSetting = ctx.get,
+            noBottomBorder = true,
+            noHover = true,
+            noLabel = true,
+        })
+    else
+        local fill = ResolveResourceFill(ctx.get("barForegroundColorMode"), "barForegroundTint")
+        local function getSetting(key)
+            if key == "barForegroundColorMode" then return "custom" end
+            if key == "barForegroundTint" then return fill end
+            if key == "barShowIcon" then return false end
+            if key == "hideNameText" or key == "hideStackText" then return true end
+            return ctx.get(key)
+        end
+        prevBuilder:AddPreview({
+            componentId = componentId,
+            mode = "pips",
+            pipShape = "bar",
+            pipCount = 5,
+            pipFilled = 3,
+            rowHeight = 200,
+            previewScale = 1,
+            maxRowHeight = 340,
+            getSetting = getSetting,
+            noBottomBorder = true,
+            noHover = true,
+            noLabel = true,
+        })
+    end
+    prevBuilder:Finalize()
+end
+
+-- Kinds that draw their own preview instead of the generic aura one.
+local KIND_PREVIEWS = {
+    classpower = RenderClassPowerPreview,
+    classresource = RenderClassResourcePreview,
+}
+
 local function RenderPreview()
     if prevBuilder then prevBuilder:Cleanup() end
     local SettingsBuilder = addon.UI.SettingsBuilder
@@ -1165,8 +1270,9 @@ local function RenderPreview()
     prevBuilder = SettingsBuilder:CreateFor(widgets.previewHost)
 
     local shape = ctx.shape()
-    if kind == "classpower" then
-        RenderClassPowerPreview(shape)
+    local kindPreview = KIND_PREVIEWS[kind]
+    if kindPreview then
+        kindPreview(shape)
         return
     end
     local mode, shapeAtlas, shapeColor, shapeDrain

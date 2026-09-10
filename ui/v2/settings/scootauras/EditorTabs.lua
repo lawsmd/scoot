@@ -14,8 +14,8 @@
 --   refreshPreview()                      (preview-only re-render; use for
 --                                          value edits, so the tab body is
 --                                          not rebuilt under the cursor)
---   shape()               -> "icon"|"bar"|"shape"|"text"|"icontext"
---   kind()                -> "buff"|"debuff"|"missingbuff"|"classpower"
+--   shape()               -> "icon"|"bar"|"shape"|"text"|"icontext"|"icons"
+--   kind()                -> "buff"|"debuff"|"missingbuff"|"classpower"|"classresource"
 --   missingVisual()       -> resolved missing-state token, "none" when unset
 -- }
 local addonName, addon = ...
@@ -586,8 +586,12 @@ end
 -- The picker hides its Animated tab and the "spell" entry for this caller
 -- (the callback rejects both as a backstop): shape trackers need a plain
 -- atlas (animated shapes ride scripts, which never fire on denied button
--- subtrees in combat).
-local function CreateShapeStyleRow(parent, ctx)
+-- subtrees in combat). `opts` names the key, label, button text and default
+-- so the Class Resource Icons tab can share the row.
+local function CreateShapeStyleRow(parent, ctx, opts)
+    opts = opts or {}
+    local key = opts.key or "shapeStyle"
+    local default = opts.default or "border:SquareMask"
     local theme = addon.UI.Theme
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(36)
@@ -595,7 +599,7 @@ local function CreateShapeStyleRow(parent, ctx)
     local label = row:CreateFontString(nil, "OVERLAY")
     label:SetFont(theme:GetFont("LABEL"), 13, "")
     label:SetPoint("LEFT", row, "LEFT", 8, 0)
-    label:SetText("Shape")
+    label:SetText(opts.label or "Shape")
     label:SetTextColor(theme:GetAccentColor())
 
     local preview = row:CreateTexture(nil, "ARTWORK")
@@ -603,8 +607,7 @@ local function CreateShapeStyleRow(parent, ctx)
     preview:SetPoint("LEFT", row, "LEFT", 120, 0)
 
     local function UpdatePreview()
-        local key = ctx.get("shapeStyle") or "border:SquareMask"
-        local atlas = addon.ScootAuras._AtlasFromShapeKey(key) or "SquareMask"
+        local atlas = addon.ScootAuras._AtlasFromShapeKey(ctx.get(key) or default) or "SquareMask"
         local ok = pcall(preview.SetAtlas, preview, atlas)
         preview:SetShown(ok)
     end
@@ -620,7 +623,7 @@ local function CreateShapeStyleRow(parent, ctx)
     local btnText = btn:CreateFontString(nil, "OVERLAY")
     btnText:SetFont(theme:GetFont("BUTTON"), 12, "")
     btnText:SetPoint("CENTER", 0, 0)
-    btnText:SetText("Change Shape")
+    btnText:SetText(opts.button or "Change Shape")
     btnText:SetTextColor(ar, ag, ab, 1)
     btn:SetScript("OnEnter", function() btnBg:SetColorTexture(ar, ag, ab, 0.25) end)
     btn:SetScript("OnLeave", function() btnBg:SetColorTexture(ar, ag, ab, 0.12) end)
@@ -628,10 +631,10 @@ local function CreateShapeStyleRow(parent, ctx)
         if not addon.ShowIconPicker then return end
         -- The picker hides the "use the spell's icon" entry and the Animated
         -- tab for this caller; the callback rejection stays as the backstop.
-        addon.ShowIconPicker(self, ctx.get("shapeStyle") or "border:SquareMask", function(selectedKey)
+        addon.ShowIconPicker(self, ctx.get(key) or default, function(selectedKey)
             if type(selectedKey) ~= "string" then return end
             if selectedKey == "spell" or selectedKey:sub(1, 5) == "anim:" then return end
-            ctx.setAndApply("shapeStyle", selectedKey)
+            ctx.setAndApply(key, selectedKey)
             UpdatePreview()
             ctx.refreshPreview()
         end, { hideSpellEntry = true, hideAnimatedTab = true })
@@ -640,10 +643,9 @@ local function CreateShapeStyleRow(parent, ctx)
     return row
 end
 
-function Tabs.BuildShapeTab(tabBuilder, ctx)
-    -- Splice the bespoke row into the builder's flow.
+-- Splices a bespoke row into the builder's flow.
+local function SpliceRow(tabBuilder, row)
     local content = tabBuilder._scrollContent
-    local row = CreateShapeStyleRow(content, ctx)
     if #tabBuilder._controls > 0 then
         tabBuilder._currentY = tabBuilder._currentY - 12
     end
@@ -651,6 +653,10 @@ function Tabs.BuildShapeTab(tabBuilder, ctx)
     row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, tabBuilder._currentY)
     table.insert(tabBuilder._controls, row)
     tabBuilder._currentY = tabBuilder._currentY - row:GetHeight()
+end
+
+function Tabs.BuildShapeTab(tabBuilder, ctx)
+    SpliceRow(tabBuilder, CreateShapeStyleRow(tabBuilder._scrollContent, ctx))
 
     tabBuilder:AddSelectorColorPicker({
         label = "Color",
@@ -763,6 +769,114 @@ function Tabs.BuildClassPowerTextTab(tabBuilder, ctx)
 end
 
 --------------------------------------------------------------------------------
+-- Class Resource tabs (scootauras/classresource.lua): the segmented bar and
+-- its ticks, or the icon row and its backdrop
+--------------------------------------------------------------------------------
+
+-- The fill: the resource's own color, the class color, or a tint. Class Power
+-- keeps its two-entry list above.
+local RESOURCE_COLOR_VALUES = { power = "Power Color", class = "Class Color", custom = "Custom" }
+local RESOURCE_COLOR_ORDER = { "power", "class", "custom" }
+
+-- Any other stored mode reads as Power Color: a value a spell tracker set
+-- before a kind flip must not leave the selector on an option it lacks.
+local function PowerClassOrCustom(mode)
+    if mode == "class" or mode == "custom" then return mode end
+    return "power"
+end
+
+function Tabs.BuildClassResourceBarTab(tabBuilder, ctx)
+    AddBarSizeRow(tabBuilder, ctx)
+
+    AddBarStyleAndBorderBlocks(tabBuilder, ctx, {
+        values = RESOURCE_COLOR_VALUES,
+        order = RESOURCE_COLOR_ORDER,
+        infoIcons = false, textureDefault = "bevelled", colorModeDefault = "power",
+    }, PowerClassOrCustom)
+
+    tabBuilder:Finalize()
+end
+
+function Tabs.BuildClassResourceTicksTab(tabBuilder, ctx)
+    tabBuilder:AddSlider({
+        label = "Tick Thickness",
+        description = "Width of the line between segments, in pixels. 0 draws no ticks.",
+        min = 0, max = 8, step = 1,
+        get = function() return ctx.get("tickThickness") or 2 end,
+        set = function(v) ctx.setAndApply("tickThickness", v); ctx.refreshPreview() end,
+        minLabel = "None", maxLabel = "8",
+    })
+
+    tabBuilder:AddColorPicker({
+        label = "Tick Color",
+        description = "Color of the lines between segments.",
+        hasAlpha = true,
+        get = ColorGet(ctx, "tickColor", { 0, 0, 0, 1 }),
+        set = ColorSet(ctx, "tickColor"),
+    })
+
+    tabBuilder:Finalize()
+end
+
+function Tabs.BuildClassResourceIconsTab(tabBuilder, ctx)
+    SpliceRow(tabBuilder, CreateShapeStyleRow(tabBuilder._scrollContent, ctx, {
+        key = "pipStyle", label = "Icon", button = "Change Icon", default = "border:SquareMask",
+    }))
+
+    tabBuilder:AddSlider({
+        label = "Icon Size",
+        description = "Size of each icon in pixels.",
+        min = 8, max = 48, step = 1,
+        get = function() return ctx.get("pipSize") or 16 end,
+        set = function(v) ctx.setAndApply("pipSize", v); ctx.refreshPreview() end,
+        minLabel = "8", maxLabel = "48",
+    })
+
+    tabBuilder:AddSlider({
+        label = "Icon Spacing",
+        description = "Gap between icons in pixels. Negative values overlap them.",
+        min = -4, max = 20, step = 1,
+        get = function() return ctx.get("pipSpacing") or 2 end,
+        set = function(v) ctx.setAndApply("pipSpacing", v); ctx.refreshPreview() end,
+        minLabel = "-4", maxLabel = "20",
+    })
+
+    tabBuilder:AddSelectorColorPicker({
+        label = "Color",
+        values = RESOURCE_COLOR_VALUES,
+        order = RESOURCE_COLOR_ORDER,
+        get = function() return PowerClassOrCustom(ctx.get("pipColorMode")) end,
+        set = function(v) ctx.setAndApply("pipColorMode", v) ctx.refreshPreview() end,
+        getColor = ColorGet(ctx, "pipTint"),
+        setColor = ColorSet(ctx, "pipTint"),
+        hasAlpha = true,
+    })
+
+    tabBuilder:Finalize()
+end
+
+function Tabs.BuildClassResourceBackdropTab(tabBuilder, ctx)
+    tabBuilder:AddColorPicker({
+        label = "Backdrop Color",
+        description = "Drawn beneath every icon; an empty point shows it alone.",
+        hasAlpha = false,
+        get = ColorGet(ctx, "pipBackdropTint", { 0, 0, 0, 1 }),
+        set = ColorSet(ctx, "pipBackdropTint"),
+    })
+
+    tabBuilder:AddSlider({
+        label = "Backdrop Opacity",
+        description = "Opacity of the backdrop beneath the icons.",
+        min = 0, max = 100, step = 1,
+        get = function() return ctx.get("pipBackdropOpacity") or 100 end,
+        set = function(v) ctx.setAndApply("pipBackdropOpacity", v); ctx.refreshPreview() end,
+        minLabel = "0%", maxLabel = "100%",
+    })
+
+    tabBuilder:Finalize()
+end
+
+--------------------------------------------------------------------------------
 -- Sizing and Visibility tabs
 --------------------------------------------------------------------------------
 
@@ -846,6 +960,21 @@ function Tabs.BuildTabSet(ctx)
             add("bar", "Bar", Tabs.BuildClassPowerBarTab)
         end
         add("text", "Text", Tabs.BuildClassPowerTextTab)
+        add("visibility", "Visibility", Tabs.BuildVisibilityTab)
+        return tabs, buildContent
+    end
+
+    if kind == "classresource" then
+        -- One point per pip: the segmented bar and its ticks, or the icon
+        -- row over its backdrop; then Visibility, since the frame is up
+        -- regardless.
+        if shape == "icons" then
+            add("icons", "Icons", Tabs.BuildClassResourceIconsTab)
+            add("backdrop", "Backdrop", Tabs.BuildClassResourceBackdropTab)
+        else
+            add("bar", "Bar", Tabs.BuildClassResourceBarTab)
+            add("ticks", "Ticks", Tabs.BuildClassResourceTicksTab)
+        end
         add("visibility", "Visibility", Tabs.BuildVisibilityTab)
         return tabs, buildContent
     end

@@ -467,14 +467,16 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
     local entry = state and state.entry
     if not db or not entry or not state.container then return end
 
-    if tracker.kind == "classpower" then
+    if not SAU.KindOwnsContainer(tracker.kind) then
         -- The live art is Scoot-owned and shows the real value, so it is its
         -- own preview (Edit Mode is out of combat); a preview set left by an
         -- earlier occupant hides. The missing-state underlay's gate reads the
-        -- Edit Mode flag on its own.
+        -- Edit Mode flag on its own, and so does the Class Resource gate,
+        -- which shows an inapplicable resource as empty pips here.
         activePreviews[entry] = nil
         if entry.preview then entry.preview.root:Hide() end
         if SAU.Underlay then SAU.Underlay.UpdateGate(trackerId) end
+        if SAU.ClassResource then SAU.ClassResource.UpdateGate(trackerId) end
         return
     end
 
@@ -569,5 +571,8 @@ function Engine.HideEditModePreview(state)
     end
     if SAU.Underlay and entry.occupantId then
         SAU.Underlay.UpdateGate(entry.occupantId)
+    end
+    if SAU.ClassResource and entry.occupantId then
+        SAU.ClassResource.UpdateGate(entry.occupantId)
     end
 end

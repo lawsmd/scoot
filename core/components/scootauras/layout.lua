@@ -66,6 +66,20 @@ function SAU.ResolveVisibility(tracker, db)
             showName = false,
         }
     end
+    if tracker.kind == "classresource" then
+        -- The pips are a Scoot-owned set outside any engine button
+        -- (classresource.lua). The bar element is the outer bar on the Bar
+        -- shape; nothing else in the element set shows on either shape.
+        return {
+            shape = shape,
+            classResource = true,
+            showIcon = false,
+            showBar = (shape == "bar"),
+            showText = false,
+            showStacks = false,
+            showName = false,
+        }
+    end
     local showIcon
     if shape == "bar" then
         showIcon = db and db.barShowIcon or false
@@ -269,6 +283,23 @@ local function LayoutElements(trackerId, tracker, state)
             textH = math.max(textH, math.ceil(fontSize * 1.4))
         end
         SetHostSize(textW + 2 * math.abs(txOff), textH + 2 * math.abs(tyOff))
+        return
+    end
+
+    if vis.classResource and vis.shape == "icons" then
+        -- Class Resource icons (classresource.lua): one pip per point, laid
+        -- out by the module on its own root. The host is the row's extent
+        -- from the pip count and the two sliders; no element here shows.
+        if texElem then texElem.widget:Hide() end
+        if stacksElem then stacksElem.widget:Hide() end
+        if nameElem then nameElem.widget:Hide() end
+        if textElem then textElem.widget:Hide() end
+        if barElem then barElem.widget:Hide() end
+        local w, h = 32, 16
+        if SAU.ClassResource and SAU.ClassResource.IconsHostSize then
+            w, h = SAU.ClassResource.IconsHostSize(state.entry, db)
+        end
+        SetHostSize(w, h)
         return
     end
 

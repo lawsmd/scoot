@@ -825,8 +825,8 @@ end
 --------------------------------------------------------------------------------
 
 local VALID_UNITS = { player = true, group = true, target = true, focus = true }
-local VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true }
-local VALID_KINDS = { buff = true, debuff = true, missingbuff = true, classpower = true }
+local VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true, icons = true }
+local VALID_KINDS = { buff = true, debuff = true, missingbuff = true, classpower = true, classresource = true }
 
 local Commands = addon.Commands
 
@@ -940,7 +940,7 @@ addon:RegisterDebugCommand({
         { word = "specs", help = "per record: stored specs, current spec, gate verdict", fn = SpecsDump },
         { word = "catalog", help = "every picker cell: shown name, stored base", fn = CatalogDump },
         { word = "log", help = "probe log", fn = DumpLog },
-        { word = "add", usage = "add <spellId|classpower> [player|group|target|focus] [buff|debuff|missingbuff] [icon|bar|shape|text|icontext]",
+        { word = "add", usage = "add <spellId|classpower|classresource> [player|group|target|focus] [buff|debuff|missingbuff] [icon|bar|shape|text|icontext|icons]",
           help = "create a tracker; the arguments after the first are order-free", fn = function(a1, a2, a3, a4)
             local spellId = tonumber(a1)
             local unit, shape, kind = nil, nil, "buff"
@@ -949,7 +949,7 @@ addon:RegisterDebugCommand({
                 if VALID_SHAPES[a] then shape = a end
                 if VALID_KINDS[a] then kind = a end
             end
-            -- A kind with no spell (classpower) takes the kind word first.
+            -- A kind with no spell (classpower, classresource) takes the kind word first.
             if not spellId and addon.ScootAuras.KindNeedsSpell(kind) then return Commands.USAGE end
             unit = unit or addon.ScootAuras.DefaultUnitForKind(kind)
             shape = shape or addon.ScootAuras.DefaultShapeForKind(kind)
@@ -1045,6 +1045,12 @@ addon:RegisterDebugCommand({
             local trackerId = tonumber(a1)
             if not trackerId or not SAU.ClassPower then return Commands.USAGE end
             addon.DebugShowWindow("ScootAuras Class Power t" .. trackerId, SAU.ClassPower.DebugInfo(trackerId))
+        end },
+        { word = "resource", usage = "resource <id>", help = "class resource tracker: resolved resource, secrecy, reads, pip count, rune order, last paint", fn = function(a1)
+            local SAU = addon.ScootAuras
+            local trackerId = tonumber(a1)
+            if not trackerId or not SAU.ClassResource then return Commands.USAGE end
+            addon.DebugShowWindow("ScootAuras Class Resource t" .. trackerId, SAU.ClassResource.DebugInfo(trackerId))
         end },
         { word = "cadence", usage = "cadence <id|spellId> [on|off|set <0..1>|alpha <0..1>|mirror <y|off>]",
           help = "cadence lock record and probes", fn = cadence },

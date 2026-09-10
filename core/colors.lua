@@ -39,6 +39,8 @@ addon.PowerColors = {
 	ARCANE_CHARGES = { r = 0.10, g = 0.10, b = 0.98 },
 	FURY = { r = 0.788, g = 0.259, b = 0.992 },
 	PAIN = { r = 1.00, g = 0.61176470588235, b = 0.00 }, -- 255/255,156/255,0
+	-- Blizzard's power color table carries no Essence row; this fallback is the only source.
+	ESSENCE = { r = 0.20, g = 0.58, b = 0.50 },
 	-- Numeric fallbacks (indices from Blizzard)
 	[0] = { r = 0.00, g = 0.00, b = 1.00 }, -- MANA
 	[1] = { r = 1.00, g = 0.00, b = 0.00 }, -- RAGE
@@ -54,6 +56,7 @@ addon.PowerColors = {
 	[13] = { r = 0.40, g = 0.00, b = 0.80 }, -- INSANITY
 	[17] = { r = 0.788, g = 0.259, b = 0.992 }, -- FURY
 	[18] = { r = 1.00, g = 0.61176470588235, b = 0.00 }, -- PAIN
+	[19] = { r = 0.20, g = 0.58, b = 0.50 }, -- ESSENCE
 }
 
 addon.DKSpecColors = {

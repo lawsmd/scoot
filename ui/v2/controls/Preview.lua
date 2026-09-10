@@ -109,7 +109,7 @@ end
 -- Options:
 --   parent          Frame    Scroll content frame (set by builder)
 --   componentId     string   Component to read settings from
---   mode            string   "icon" / "bar" / "iconbar" / "text"
+--   mode            string   "icon" / "bar" / "iconbar" / "text" / "pips"
 --   settingKeys     table    Key name mapping (canonical -> real DB key)
 --   iconTexture     number/string/nil  Override icon texture
 --   auraDefaultBarColor  table/nil  Default bar foreground color
@@ -144,6 +144,16 @@ end
 --   fillFraction    number/nil  Hold the bar at this fraction instead of running the
 --                            countdown on it (a resource bar previews a level, not a
 --                            drain). The duration text still follows caTextLiteral.
+--   pipShape        string   "pips" mode: "bar" splits the styled bar into pipCount
+--                            segments by tick lines (tickThickness / tickColor through
+--                            getSetting) with the first pipFilled full; "icons" draws
+--                            pipCount atlas glyphs at pipSize / pipSpacing (getSetting),
+--                            the first pipFilled in pipColor over a pipBackdropColor copy.
+--   pipCount        number   "pips" mode: points drawn (default 5)
+--   pipFilled       number   "pips" mode: points drawn full (default 3)
+--   pipAtlas        string   "pips" icons: the resolved atlas name
+--   pipColor        table    "pips" icons: {r,g,b,a} for a full glyph, resolved by the caller
+--   pipBackdropColor table   "pips" icons: {r,g,b,a} for the backdrop, opacity folded into a
 --   timerEpoch      table/nil  Caller-owned countdown anchor { start = <GetTime()> }.
 --                            Seeded on first use; a rebuilt row resumes the same
 --                            15s cycle instead of restarting it. The caller resets
@@ -192,6 +202,13 @@ function Controls:CreatePreview(options)
     local showIcon = (mode == "icon" or mode == "iconbar")
     local showBar = (mode == "bar" or mode == "iconbar")
     local showTextOnly = (mode == "text")
+    -- Pips mode (Class Resource): a fixed sample of pipCount points with the
+    -- first pipFilled full, as a segmented bar or a row of atlas glyphs.
+    local showPips = (mode == "pips")
+    local pipShape = showPips and (options.pipShape or "bar") or nil
+    local pipCount = math.max(1, math.floor(tonumber(options.pipCount) or 5))
+    local pipFilled = math.max(0, math.min(pipCount, math.floor(tonumber(options.pipFilled) or 3)))
+    if showPips and pipShape == "bar" then showBar = true end
     local showCDMText = settingKeys._showCDMText and true or false
     -- Mirror live behavior: hideText suppresses the duration/stacks text everywhere
     local showCAText = (settingKeys._showCAText and true or false)
@@ -525,6 +542,32 @@ function Controls:CreatePreview(options)
         previewBar._barFill = barFill
         row._barFill = barFill
 
+        -- Pips mode: the fill ends at a segment edge, and the separators sit
+        -- in bar-local pixels so they scale with the bar like the live art.
+        if showPips then
+            local tickThickness = math.max(0, math.floor(tonumber(readSetting("tickThickness", 2)) or 2))
+            local segW = (barWidth - (pipCount - 1) * tickThickness) / pipCount
+            if pipFilled > 0 then
+                barFill:SetValue((pipFilled * segW + (pipFilled - 1) * tickThickness) / math.max(barWidth, 1))
+            else
+                barFill:SetValue(0)
+            end
+            if tickThickness > 0 and pipCount > 1 then
+                local tickColor = readSetting("tickColor", { 0, 0, 0, 1 })
+                local tickFrame = CreateFrame("Frame", nil, previewBar)
+                tickFrame:SetAllPoints(previewBar)
+                tickFrame:SetFrameLevel(barFill:GetFrameLevel() + 1)
+                for i = 1, pipCount - 1 do
+                    local tick = tickFrame:CreateTexture(nil, "ARTWORK")
+                    tick:SetColorTexture(tickColor[1] or 0, tickColor[2] or 0, tickColor[3] or 0, tickColor[4] or 1)
+                    local x = math.floor(i * segW + (i - 1) * tickThickness + 0.5)
+                    tick:SetPoint("TOPLEFT", previewBar, "TOPLEFT", x, 0)
+                    tick:SetPoint("BOTTOMLEFT", previewBar, "BOTTOMLEFT", x, 0)
+                    tick:SetWidth(tickThickness)
+                end
+            end
+        end
+
         -- Bar border (mirrors the live paths in scootauras/styling.lua)
         local barBorderStyle = readSetting("barBorderStyle", "none")
         if barBorderStyle and barBorderStyle ~= "none" then
@@ -560,6 +603,50 @@ function Controls:CreatePreview(options)
                     color = borderColor,
                     hiddenEdges = hiddenEdges,
                 })
+            end
+        end
+    end
+
+    ----------------------------------------------------------------------------
+    -- PIPS (Class Resource icons: one atlas glyph per point over its backdrop)
+    ----------------------------------------------------------------------------
+
+    local previewPips, pipScale
+    if showPips and pipShape == "icons" then
+        local size = math.max(1, tonumber(readSetting("pipSize", 16)) or 16)
+        local gap = tonumber(readSetting("pipSpacing", 2)) or 2
+        local totalW = math.max(1, size * pipCount + gap * (pipCount - 1))
+        -- The bar's display budget: true size when asked, else fit with a
+        -- modest upscale cap.
+        pipScale = trueScale or math.min(PREVIEW_BAR_DISPLAY_MAX_WIDTH / totalW,
+            PREVIEW_BAR_DISPLAY_MAX_HEIGHT / size, 2.5)
+        previewPips = CreateFrame("Frame", nil, container)
+        previewPips:SetSize(totalW, size)
+        previewPips:SetScale(pipScale)
+        local atlas = options.pipAtlas or "SquareMask"
+        local fgColor = options.pipColor or { 1, 1, 1, 1 }
+        local bdColor = options.pipBackdropColor or { 0, 0, 0, 1 }
+        for i = 1, pipCount do
+            local x = (i - 1) * (size + gap)
+            local backdrop = previewPips:CreateTexture(nil, "BACKGROUND", nil, -1)
+            if pcall(backdrop.SetAtlas, backdrop, atlas) then
+                backdrop:SetDesaturated(true)
+            else
+                backdrop:SetColorTexture(1, 1, 1, 1)
+            end
+            backdrop:SetVertexColor(bdColor[1] or 0, bdColor[2] or 0, bdColor[3] or 0, bdColor[4] or 1)
+            backdrop:SetSize(size, size)
+            backdrop:SetPoint("LEFT", previewPips, "LEFT", x, 0)
+            if i <= pipFilled then
+                local fg = previewPips:CreateTexture(nil, "ARTWORK")
+                if pcall(fg.SetAtlas, fg, atlas) then
+                    fg:SetDesaturated(false)
+                else
+                    fg:SetColorTexture(1, 1, 1, 1)
+                end
+                fg:SetVertexColor(fgColor[1] or 1, fgColor[2] or 1, fgColor[3] or 1, fgColor[4] or 1)
+                fg:SetSize(size, size)
+                fg:SetPoint("LEFT", previewPips, "LEFT", x, 0)
             end
         end
     end
@@ -755,6 +842,10 @@ function Controls:CreatePreview(options)
         -- Centered like the live bar-only layout, leaving room for outside-anchored text
         previewBar:SetPoint("CENTER", container, "CENTER", 0, 0)
         totalWidth = previewBar:GetWidth() * barScale
+    elseif showPips and previewPips then
+        previewPips:SetPoint("CENTER", container, "CENTER", 0, 0)
+        totalWidth = previewPips:GetWidth() * pipScale
+        containerHeight = math.max(containerHeight, previewPips:GetHeight() * pipScale + PREVIEW_CONTENT_PAD)
     elseif showTextOnly and caTextFS then
         -- Text-only mode: center text in container, size to fit
         caTextFS:SetPoint("CENTER", container, "CENTER", 0, 0)
@@ -933,7 +1024,7 @@ function Controls:CreatePreview(options)
     ----------------------------------------------------------------------------
 
     local animText = (caTextSource ~= "applications" and not caTextLiteral) and row._caTextFS or nil
-    local animFill = (options.fillFraction == nil) and row._barFill or nil
+    local animFill = (options.fillFraction == nil and not showPips) and row._barFill or nil
     local animDrain = row._shapeCooldown
     if animText or animFill or animDrain then
         local epoch = options.timerEpoch

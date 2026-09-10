@@ -188,6 +188,22 @@ function SAU.CurrentSpecID()
     return nil
 end
 
+--- The class token a spec belongs to ("PRIEST" for 258), from the same Rules
+-- spec buckets SpecIDsForClassToken walks the other way.
+function SAU.ClassTokenForSpec(specID)
+    if type(specID) ~= "number" then return nil end
+    local Rules = addon.Rules
+    if not (Rules and Rules.GetSpecBuckets) then return nil end
+    local ok, buckets = pcall(Rules.GetSpecBuckets, Rules)
+    if not ok or type(buckets) ~= "table" then return nil end
+    for _, classEntry in ipairs(buckets) do
+        for _, spec in ipairs(classEntry.specs or {}) do
+            if spec.specID == specID then return classEntry.file end
+        end
+    end
+    return nil
+end
+
 --- Spec IDs for a class token ("PRIEST"), in Blizzard's own order. Sits on the
 -- Rules spec buckets so the addon keeps one enumeration of every class's specs.
 function SAU.SpecIDsForClassToken(token)
@@ -402,20 +418,23 @@ end
 
 -- missingbuff: the visual shows while the player LACKS the buff (missing.lua).
 -- classpower: the player's display power as a bar or a number (classpower.lua).
-SAU.VALID_KINDS = { buff = true, debuff = true, missingbuff = true, classpower = true }
+-- classresource: the player's point resource as pips (classresource.lua).
+SAU.VALID_KINDS = { buff = true, debuff = true, missingbuff = true, classpower = true, classresource = true }
 
 -- Shapes per kind. Buff/debuff trackers display the aura; a missing-buff
 -- tracker is a reminder, so it offers icon, text, or both and no bar/shape.
 -- A Class Power tracker is the bar, or the number alone (the same "text"
--- token the reminder uses).
+-- token the reminder uses). A Class Resource tracker is the segmented bar,
+-- or one icon per point (the "icons" token).
 SAU.VALID_SHAPES_BY_KIND = {
     buff        = { icon = true, bar = true, shape = true },
     debuff      = { icon = true, bar = true, shape = true },
     missingbuff = { icon = true, text = true, icontext = true },
     classpower  = { bar = true, text = true },
+    classresource = { bar = true, icons = true },
 }
 -- Union, for callers that only need "is this a shape at all".
-SAU.VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true }
+SAU.VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true, icons = true }
 
 -- The friendly-debuff wall: debuff information on friendly units is not
 -- acquirable, so Debuff offers hostile-capable units only. Missing-buff
@@ -427,6 +446,7 @@ SAU.VALID_UNITS = {
     debuff      = { target = true, focus = true },
     missingbuff = { player = true, group = true },
     classpower  = { player = true },
+    classresource = { player = true },
 }
 
 -- Per-kind traits the engine and the editor branch on, so no site outside
@@ -440,6 +460,7 @@ local KIND_TRAITS = {
     debuff      = { spell = true,  container = true,  gated = true },
     missingbuff = { spell = true,  container = true,  gated = true },
     classpower  = { spell = false, container = false, gated = false },
+    classresource = { spell = false, container = false, gated = false },
 }
 
 -- Auto names for the kinds with no spell to name them after: a string, or a
@@ -451,9 +472,13 @@ local KIND_AUTO_NAMES = {
         local CP = SAU.ClassPower
         return CP and CP.NameForSpecs(specs) or "Class Power"
     end,
+    classresource = function(specs)
+        local CR = SAU.ClassResource
+        return CR and CR.NameForSpecs(specs) or "Class Resource"
+    end,
 }
 -- What those kinds stored before they were named live; dropped at load.
-local LEGACY_AUTO_NAMES = { classpower = "Class Power" }
+local LEGACY_AUTO_NAMES = { classpower = "Class Power", classresource = "Class Resource" }
 
 function SAU.KindNeedsSpell(kind)
     local traits = KIND_TRAITS[kind]
@@ -489,7 +514,7 @@ function SAU.DefaultUnitForKind(kind)
 end
 
 -- Kinds whose fallback shape is not "icon" and not the table's first entry.
-local DEFAULT_SHAPE_BY_KIND = { classpower = "bar" }
+local DEFAULT_SHAPE_BY_KIND = { classpower = "bar", classresource = "bar" }
 
 --- The shape a kind falls back to when the chosen one is invalid for it:
 -- "icon" wherever a kind offers it, else the kind's first shape.
@@ -503,7 +528,7 @@ function SAU.DefaultShapeForKind(kind)
 end
 
 function SAU.ValidateContent(spellId, kind, unit, shape)
-    if not SAU.VALID_KINDS[kind] then return nil, "kind must be buff, debuff, missingbuff, or classpower" end
+    if not SAU.VALID_KINDS[kind] then return nil, "kind must be buff, debuff, missingbuff, classpower, or classresource" end
     if SAU.KindNeedsSpell(kind) and (type(spellId) ~= "number" or spellId <= 0) then
         return nil, "invalid spell ID"
     end
@@ -679,6 +704,18 @@ function SAU.DefaultSettings()
         powerTextPercent        = { type = "addon", default = false },
         barSmoothFill           = { type = "addon", default = true },
         textColorMode           = { type = "addon", default = "default" },
+        -- Class Resource kind (classresource.lua): the bar's segment ticks,
+        -- and the icon row's glyph, geometry, color and backdrop. The Bar
+        -- shape reads the bar* keys above.
+        tickThickness           = { type = "addon", default = 2 },
+        tickColor               = { type = "addon", default = { 0, 0, 0, 1 } },
+        pipStyle                = { type = "addon", default = "border:SquareMask" },
+        pipSize                 = { type = "addon", default = 16 },
+        pipSpacing              = { type = "addon", default = 2 },
+        pipColorMode            = { type = "addon", default = "power" },
+        pipTint                 = { type = "addon", default = { 1, 1, 1, 1 } },
+        pipBackdropTint         = { type = "addon", default = { 0, 0, 0, 1 } },
+        pipBackdropOpacity      = { type = "addon", default = 100 },
     }
 end
 
@@ -778,6 +815,21 @@ end
 
 function SAU.RemoveClassPowerStartingValues(trackerId)
     RemoveStartingValues(trackerId, SAU.ClassPowerStartingValues)
+end
+
+-- Class Resource kind: the segments fill in the resource's color (the
+-- registered default is the aura bars' class color). Same stamp/unstamp
+-- rules as the bar values; a bar of this kind takes the bar values too.
+SAU.ClassResourceStartingValues = {
+    barForegroundColorMode = "power",
+}
+
+function SAU.ApplyClassResourceStartingValues(trackerId)
+    ApplyStartingValues(trackerId, SAU.ClassResourceStartingValues)
+end
+
+function SAU.RemoveClassResourceStartingValues(trackerId)
+    RemoveStartingValues(trackerId, SAU.ClassResourceStartingValues)
 end
 
 --------------------------------------------------------------------------------
@@ -1123,6 +1175,8 @@ function SAU.CreateTracker(spec)
         SAU.ApplyMissingStartingValues(trackerId)
     elseif kind == "classpower" then
         SAU.ApplyClassPowerStartingValues(trackerId)
+    elseif kind == "classresource" then
+        SAU.ApplyClassResourceStartingValues(trackerId)
     end
     SAU.Engine.ClaimForTracker(trackerId)
     return trackerId
@@ -1254,6 +1308,11 @@ function SAU.SetTrackerContent(trackerId, changes)
     elseif oldKind == "classpower" and kind ~= "classpower" then
         SAU.RemoveClassPowerStartingValues(trackerId)
     end
+    if kind == "classresource" and oldKind ~= "classresource" then
+        SAU.ApplyClassResourceStartingValues(trackerId)
+    elseif oldKind == "classresource" and kind ~= "classresource" then
+        SAU.RemoveClassResourceStartingValues(trackerId)
+    end
 
     SAU.Engine.ClaimForTracker(trackerId)
     SAU.Engine.UpdateEditModeName(trackerId)
@@ -1309,6 +1368,8 @@ function SAU.DuplicateTracker(trackerId)
         SAU.ApplyMissingStartingValues(newId)
     elseif source.kind == "classpower" then
         SAU.ApplyClassPowerStartingValues(newId)
+    elseif source.kind == "classresource" then
+        SAU.ApplyClassResourceStartingValues(newId)
     end
     SAU.Engine.ClaimForTracker(newId)
     return newId

@@ -451,7 +451,8 @@ function Engine.ApplyAll(trackerId)
 
     if not SAU.KindOwnsContainer(tracker.kind) then
         -- No AuraContainer to build: the visible set is Scoot-owned and fed
-        -- by plain setters (classpower.lua), painted from ApplyStyling, so
+        -- by plain setters (classpower.lua, classresource.lua), painted from
+        -- ApplyStyling, so
         -- nothing here waits on the structural gate or the pending queue. A
         -- container parked on this entry by an earlier occupant stays parked.
         -- Before the gate check on purpose, or the kind would queue for
@@ -658,6 +659,9 @@ function Engine.ReleaseForTracker(trackerId)
     end
     if SAU.ClassPower then
         SAU.ClassPower.OnEntryReleased(entry, trackerId)
+    end
+    if SAU.ClassResource then
+        SAU.ClassResource.OnEntryReleased(entry, trackerId)
     end
     -- A grouped visual must not stay parented in the group: the next occupant
     -- of this entry would render inside it.

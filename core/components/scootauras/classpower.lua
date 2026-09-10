@@ -86,26 +86,11 @@ local function PowerLabel(token)
     return POWER_LABELS[token]
 end
 
--- The class a spec belongs to, from the addon's own spec buckets (the same
--- enumeration SAU.SpecIDsForClassToken walks the other way).
-local function ClassTokenForSpec(specID)
-    local Rules = addon.Rules
-    if not (Rules and Rules.GetSpecBuckets) then return nil end
-    local ok, buckets = pcall(Rules.GetSpecBuckets, Rules)
-    if not ok or type(buckets) ~= "table" then return nil end
-    for _, classEntry in ipairs(buckets) do
-        for _, spec in ipairs(classEntry.specs or {}) do
-            if spec.specID == specID then return classEntry.file end
-        end
-    end
-    return nil
-end
-
 local function TokenForSpec(specID)
     if type(specID) ~= "number" then return nil end
     local token = POWER_TOKEN_BY_SPEC[specID]
     if token then return token end
-    local class = ClassTokenForSpec(specID)
+    local class = SAU.ClassTokenForSpec(specID)
     return class and POWER_TOKEN_BY_CLASS[class] or nil
 end
 
