@@ -362,6 +362,7 @@ end
 --   customValue : Key value that triggers color swatch display (default "custom")
 --   hasAlpha    : Boolean, show opacity slider (default true)
 --   width       : Selector width (optional)
+--   gear        : Optional in-field gear config, as AddSelector's
 --------------------------------------------------------------------------------
 
 function Builder:AddSelectorColorPicker(options)
@@ -387,6 +388,7 @@ function Builder:AddSelectorColorPicker(options)
         disabled = options.disabled,
         isDisabled = options.isDisabled,
         optionInfoIcons = options.optionInfoIcons,
+        gear = options.gear,
     })
 
     self:_PlaceRow(selectorColor, options)

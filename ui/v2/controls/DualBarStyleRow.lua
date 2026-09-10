@@ -1,4 +1,6 @@
 -- DualBarStyleRow.lua - Compact bar texture + color selector in a single row
+-- The color mini takes the in-field gear (options.colorGear,
+-- ui/v2/controls/SelectorGear.lua); its value text placement makes room.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -273,14 +275,15 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     local valueFont = theme:GetFont("VALUE")
     local valueText = valueBtn:CreateFontString(nil, "OVERLAY")
     valueText:SetFont(valueFont, 12, "")
-    valueText:SetPoint("CENTER", -6, 0)
+    valueText:SetPoint("CENTER", 0, 0)
     valueText:SetTextColor(1, 1, 1, 1)
     valueBtn._text = valueText
 
-    -- Small dropdown indicator arrow
+    -- Small dropdown indicator arrow, pinned to the field's right edge so the
+    -- in-field gear beside the text never meets it
     local dropIndicator = valueBtn:CreateFontString(nil, "OVERLAY")
     dropIndicator:SetFont(valueFont, 9, "")
-    dropIndicator:SetPoint("LEFT", valueText, "RIGHT", 4, -1)
+    dropIndicator:SetPoint("RIGHT", valueBtn, "RIGHT", -8, -1)
     dropIndicator:SetText("\226\150\188")  -- ▼
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
     valueBtn._dropIndicator = dropIndicator
@@ -354,6 +357,26 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
         return 1
     end
 
+    -- Value text placement for both swatch states. trailing and shift are the
+    -- in-field gear's room (its glyph plus gap, and half of it), 0 without one;
+    -- the gear calls this itself through mini._placeValueText.
+    local function PlaceValueText(trailing, shift)
+        trailing = trailing or 0
+        shift = shift or 0
+        valueText:ClearAllPoints()
+        valueText:SetWidth(0)
+        if mini._isCustom then
+            valueText:SetPoint("LEFT", swatch, "RIGHT", 4, 0)
+            valueText:SetPoint("RIGHT", valueBtn, "RIGHT", -16 - trailing, 0)
+            valueText:SetJustifyH("LEFT")
+            valueText:SetWordWrap(false)
+        else
+            valueText:SetPoint("CENTER", valueBtn, "CENTER", -shift, 0)
+            valueText:SetJustifyH("CENTER")
+        end
+    end
+    mini._placeValueText = PlaceValueText
+
     -- Update visual display
     local function UpdateDisplay()
         local currentKey = mini._currentKey
@@ -369,22 +392,22 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
         else
             isCustom = (currentKey == mini._customValue)
         end
+        mini._isCustom = isCustom
 
         if isCustom then
             swatch:Show()
             UpdateSwatchColor()
-            valueText:ClearAllPoints()
-            valueText:SetPoint("LEFT", swatch, "RIGHT", 4, 0)
-            valueText:SetPoint("RIGHT", valueBtn, "RIGHT", -16, 0)
-            valueText:SetJustifyH("LEFT")
         else
             swatch:Hide()
-            valueText:ClearAllPoints()
-            valueText:SetPoint("CENTER", -6, 0)
-            valueText:SetJustifyH("CENTER")
         end
+        PlaceValueText(0, 0)
 
         valueText:SetText(displayText)
+        -- One hook covering every path that changes the value; the gear
+        -- re-places the text with its own room.
+        if mini._onDisplayChanged then
+            mini._onDisplayChanged(currentKey)
+        end
     end
     mini._updateDisplay = UpdateDisplay
 
@@ -624,6 +647,14 @@ function Controls:CreateDualBarStyleRow(options)
     colorMini:SetWidth(initColorW)
     row._colorMini = colorMini
 
+    -- In-field gear on the color mini, which is its own selector; the row's
+    -- hover fill stands in for the one a full selector row carries. See
+    -- ui/v2/controls/SelectorGear.lua.
+    if options.colorGear and Controls.AttachSelectorGear then
+        colorMini._hoverBg = row._hoverBg
+        Controls.AttachSelectorGear(colorMini, options.colorGear)
+    end
+
     -- Cross-wire: opening one closes the other
     local origColorShow = colorMini._showDropdown
     colorMini._showDropdown = function()
@@ -693,6 +724,10 @@ function Controls:CreateDualBarStyleRow(options)
         self._hoverBg:Show()
     end)
     row:SetScript("OnLeave", function(self)
+        -- The color mini's in-field gear is a descendant, so entering it
+        -- leaves the row.
+        local gear = self._colorMini and self._colorMini._gear
+        if gear and gear:IsMouseOver() then return end
         self._hoverBg:Hide()
     end)
 
@@ -829,6 +864,10 @@ function Controls:CreateDualBarStyleRow(options)
         if cMini then
             if cMini._dropdown then
                 cMini._dropdown:Destroy()
+            end
+            -- The gear installs a Cleanup of its own on the mini.
+            if cMini.Cleanup then
+                cMini:Cleanup()
             end
         end
     end

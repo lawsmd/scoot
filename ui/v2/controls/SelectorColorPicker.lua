@@ -1,4 +1,6 @@
 -- SelectorColorPicker.lua - Selector with inline color swatch (visible when custom value selected)
+-- Takes the in-field gear (options.gear, ui/v2/controls/SelectorGear.lua);
+-- the value text placement makes room for it in both swatch states.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -151,14 +153,15 @@ function Controls:CreateSelectorColorPicker(options)
     local valueText = valueBtn:CreateFontString(nil, "OVERLAY")
     local valueFont = theme:GetFont("VALUE")
     valueText:SetFont(valueFont, 12, "")
-    valueText:SetPoint("CENTER", -6, 0)
+    valueText:SetPoint("CENTER", 0, 0)
     valueText:SetTextColor(1, 1, 1, 1)
     valueBtn._text = valueText
 
-    -- Small dropdown indicator arrow
+    -- Small dropdown indicator arrow, pinned to the field's right edge so the
+    -- in-field gear beside the text never meets it
     local dropIndicator = valueBtn:CreateFontString(nil, "OVERLAY")
     dropIndicator:SetFont(valueFont, 9, "")
-    dropIndicator:SetPoint("LEFT", valueText, "RIGHT", 4, -1)
+    dropIndicator:SetPoint("RIGHT", valueBtn, "RIGHT", -8, -1)
     dropIndicator:SetText("\226\150\188")
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
     valueBtn._dropIndicator = dropIndicator
@@ -237,6 +240,26 @@ function Controls:CreateSelectorColorPicker(options)
         return 1
     end
 
+    -- Value text placement for both swatch states. trailing and shift are the
+    -- in-field gear's room (its glyph plus gap, and half of it), 0 without one;
+    -- the gear calls this itself through row._placeValueText.
+    local function PlaceValueText(trailing, shift)
+        trailing = trailing or 0
+        shift = shift or 0
+        valueText:ClearAllPoints()
+        valueText:SetWidth(0)
+        if row._isCustom then
+            valueText:SetPoint("LEFT", swatch, "RIGHT", 4, 0)
+            valueText:SetPoint("RIGHT", valueBtn, "RIGHT", -16 - trailing, 0)
+            valueText:SetJustifyH("LEFT")
+            valueText:SetWordWrap(false)
+        else
+            valueText:SetPoint("CENTER", valueBtn, "CENTER", -shift, 0)
+            valueText:SetJustifyH("CENTER")
+        end
+    end
+    row._placeValueText = PlaceValueText
+
     -- Update visual display
     local function UpdateDisplay()
         local currentKey = row._currentKey
@@ -252,24 +275,23 @@ function Controls:CreateSelectorColorPicker(options)
         else
             isCustom = (currentKey == row._customValue)
         end
+        row._isCustom = isCustom
 
         if isCustom then
-            -- Show swatch, adjust text position
             swatch:Show()
             UpdateSwatchColor()
-            valueText:ClearAllPoints()
-            valueText:SetPoint("LEFT", swatch, "RIGHT", 4, 0)
-            valueText:SetPoint("RIGHT", valueBtn, "RIGHT", -16, 0)
-            valueText:SetJustifyH("LEFT")
         else
-            -- Hide swatch, center text
             swatch:Hide()
-            valueText:ClearAllPoints()
-            valueText:SetPoint("CENTER", -6, 0)
-            valueText:SetJustifyH("CENTER")
         end
+        PlaceValueText(0, 0)
 
         valueText:SetText(displayText)
+        -- One hook covering every path that changes the value: both arrows,
+        -- the dropdown, SetValue and Refresh all land here. The gear re-places
+        -- the text with its own room.
+        if row._onDisplayChanged then
+            row._onDisplayChanged(currentKey)
+        end
     end
     row._updateDisplay = UpdateDisplay
 
@@ -507,9 +529,11 @@ function Controls:CreateSelectorColorPicker(options)
         self._hoverBg:Show()
     end)
     row:SetScript("OnLeave", function(self)
-        if not swatch:IsMouseOver() then
-            self._hoverBg:Hide()
-        end
+        -- The swatch and the in-field gear are descendants, so entering
+        -- either leaves the row.
+        if swatch:IsMouseOver() then return end
+        if self._gear and self._gear:IsMouseOver() then return end
+        self._hoverBg:Hide()
     end)
 
     -- Theme subscription
@@ -649,6 +673,12 @@ function Controls:CreateSelectorColorPicker(options)
 
     function row:GetDescriptionFontString()
         return self._description
+    end
+
+    -- In-field gear opening a per-option sub-options fly-out; attached last
+    -- so it wraps the Cleanup above. See ui/v2/controls/SelectorGear.lua.
+    if options.gear and Controls.AttachSelectorGear then
+        Controls.AttachSelectorGear(row, options.gear)
     end
 
     return row

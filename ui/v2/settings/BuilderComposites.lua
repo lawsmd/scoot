@@ -459,7 +459,9 @@ end
 --   foreground : { label = "Foreground", description, key, values, order,
 --                  infoIcons (false for none), customValue = "custom",
 --                  hasAlpha = true, textureDefault = "default",
---                  colorModeDefault = "default", colorDefault = {1,1,1,1} };
+--                  colorModeDefault = "default", colorDefault = {1,1,1,1},
+--                  colorGear (an in-field gear config on the color mini,
+--                  as AddSelector's gear) };
 --                  values, order, and infoIcons default to
 --                  Catalogs.ColorMode.Health
 --   spacer     : true (default) | false; the AddSpacer(8) before Background
@@ -507,6 +509,7 @@ local function addBarStyleRow(self, opts, row, defaultLabel, fields, catalog, co
         end,
         customColorValue = row.customValue or "custom",
         hasAlpha = row.hasAlpha ~= false,
+        colorGear = row.colorGear,
     })
 end
 

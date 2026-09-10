@@ -43,7 +43,13 @@ local PANEL_DEFAULT_PADDING = 10
 -- Controls.AttachSelectorGear(host, config)
 --------------------------------------------------------------------------------
 -- host   : a selector row exposing _selector._valueBtn._text (Selector.lua and
---          the controls built from it). Returns nil for anything else.
+--          the controls built from it), or a control that is its own selector
+--          and exposes _valueBtn._text (the dual bar style row's color mini).
+--          Returns nil for anything else. A host whose value text moves with
+--          its own state (the swatch selectors) supplies
+--          _placeValueText(trailing, shift) and lays the text out itself,
+--          with trailing (the glyph plus its gap) and shift (half of it) both
+--          0 while the gear is hidden; the gear then never anchors the text.
 -- config :
 --   pages      : table (required) keyed by option key -> page config. The gear
 --                shows for exactly the keys present here. A page:
@@ -69,7 +75,7 @@ function Controls.AttachSelectorGear(host, config)
         return nil
     end
 
-    local selector = host._selector
+    local selector = host._selector or host
     local valueBtn = selector and selector._valueBtn
     local valueText = valueBtn and valueBtn._text
     if not valueText then
@@ -141,6 +147,10 @@ function Controls.AttachSelectorGear(host, config)
     local pendingMeasure = false
 
     local function ShiftText()
+        if host._placeValueText then
+            host._placeValueText(trailing, shift)
+            return
+        end
         valueText:ClearAllPoints()
         valueText:SetPoint(origPoint, origRel, origRelPoint, origX - shift, origY)
 
@@ -167,6 +177,10 @@ function Controls.AttachSelectorGear(host, config)
     end
 
     local function RestoreText()
+        if host._placeValueText then
+            host._placeValueText(0, 0)
+            return
+        end
         valueText:ClearAllPoints()
         valueText:SetPoint(origPoint, origRel, origRelPoint, origX, origY)
         valueText:SetWidth(0)

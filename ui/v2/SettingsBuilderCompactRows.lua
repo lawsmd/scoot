@@ -234,6 +234,8 @@ end
 --   hasAlpha           : Whether color picker supports alpha
 --   disabled / isDisabled : Function returning disabled state
 --   key                : Optional unique key for dynamic updates
+--   colorGear          : Optional in-field gear config on the color mini,
+--                        as AddSelector's gear
 --------------------------------------------------------------------------------
 
 function Builder:AddDualBarStyleRow(options)
@@ -257,6 +259,7 @@ function Builder:AddDualBarStyleRow(options)
         setColor = options.setColor,
         customColorValue = options.customColorValue,
         hasAlpha = options.hasAlpha,
+        colorGear = options.colorGear,
         useLightDim = self._useLightDim,
         disabled = options.disabled,
         isDisabled = options.isDisabled,
