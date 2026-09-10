@@ -46,6 +46,13 @@ local function DebugCDMLayers()
 
                     -- Blizzard children
                     table.insert(lines, "  Children:")
+                    -- The pandemic ring is a pooled unnamed frame, so name it by identity.
+                    -- type() before any comparison: a tainted item hands back a secret.
+                    local pandemicFrame = child.PandemicIcon
+                    if type(pandemicFrame) ~= "table"
+                       or (issecretvalue and issecretvalue(pandemicFrame)) then
+                        pandemicFrame = nil
+                    end
                     local blizChildren = { child:GetChildren() }
                     for _, bc in ipairs(blizChildren) do
                         local bcName = frameName(bc)
@@ -64,6 +71,9 @@ local function DebugCDMLayers()
                             -- Strip parent prefix for readability
                             if bcName and childName then
                                 label = bcName:gsub("^" .. childName:gsub("([%.%-%+%*%?%[%]%^%$%(%)%%])", "%%%1") .. "%.", "")
+                            end
+                            if pandemicFrame and bc == pandemicFrame then
+                                label = "PandemicIcon"
                             end
                             local raised = ""
                             if type(iconLevel) == "number" and type(bcLevel) == "number" and bcLevel > iconLevel + 2 then
