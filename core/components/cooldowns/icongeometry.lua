@@ -58,6 +58,59 @@ local resizeProcGlow = function(cdmIcon, iconWidth, iconHeight)
 end
 Overlays._ResizeProcGlow = resizeProcGlow
 
+--------------------------------------------------------------------------------
+-- Pandemic Window Ring
+--------------------------------------------------------------------------------
+
+-- Blizzard anchors the pooled pandemic frame 6px outside the item on all four
+-- sides (CooldownViewerMixin:AnchorPandemicStateFrame) and stretches a square
+-- atlas into it. The ring art carries transparent padding as a fixed fraction of
+-- the image, so on a non-square icon the two axes scale by different amounts and
+-- the ring stops short of the icon edge on the short axis. Scaling the outset per
+-- axis keeps the frame the same shape as the icon, which restores uniform
+-- scaling: the long axis keeps Blizzard's 6, the short axis shrinks in
+-- proportion.
+local PANDEMIC_OUTSET = 6
+-- One above overlay.borderFrame (iconLevel + 2), so the ring draws over the
+-- border. The rest of the ladder keeps Blizzard's relative order: proc glow
+-- (+10), keybind text (+12) and charge counts (+14) all stay above it.
+local PANDEMIC_LEVEL = 3
+
+function Overlays.ApplyPandemicGeometry(cdmIcon, pandemicFrame)
+    if not cdmIcon then return end
+
+    -- type() first, then issecretvalue(), then index: a tainted item table hands
+    -- back a secret and nothing may be compared to nil before that is ruled out.
+    local frame = pandemicFrame
+    if type(frame) ~= "table" then
+        frame = cdmIcon.PandemicIcon
+    end
+    if type(frame) ~= "table" then return end
+    if issecretvalue and issecretvalue(frame) then return end
+    if not frame.SetPoint then return end
+
+    local outsetH, outsetV = PANDEMIC_OUTSET, PANDEMIC_OUTSET
+    local sized = Overlays._sizedIcons
+    local size = sized and sized[cdmIcon]
+    if size then
+        local w = tonumber(size.width)
+        local h = tonumber(size.height)
+        if w and h and w > 0 and h > 0 then
+            local longest = math.max(w, h)
+            outsetH = PANDEMIC_OUTSET * w / longest
+            outsetV = PANDEMIC_OUTSET * h / longest
+        end
+    end
+
+    pcall(function()
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", cdmIcon, "TOPLEFT", -outsetH, outsetV)
+        frame:SetPoint("BOTTOMRIGHT", cdmIcon, "BOTTOMRIGHT", outsetH, -outsetV)
+        frame:SetFrameStrata(cdmIcon:GetFrameStrata())
+        frame:SetFrameLevel(cdmIcon:GetFrameLevel() + PANDEMIC_LEVEL)
+    end)
+end
+
 function Overlays.ApplyIconSize(cdmIcon, opts)
     if not cdmIcon then return end
     if not opts then return end
@@ -122,6 +175,9 @@ function Overlays.ApplyIconSize(cdmIcon, opts)
 
     -- Store dimensions so the ShowAlert hook can resize on first proc too
     Overlays._sizedIcons[cdmIcon] = { width = iconWidth, height = iconHeight }
+
+    -- Re-shape a pandemic ring that is already on screen
+    Overlays.ApplyPandemicGeometry(cdmIcon)
 end
 
 function Overlays.ResetIconSize(cdmIcon)
@@ -137,6 +193,9 @@ function Overlays.ResetIconSize(cdmIcon)
 
     Overlays._sizedIcons[cdmIcon] = nil
     Overlays._zoomedIcons[cdmIcon] = nil
+
+    -- Hand a live pandemic ring back to Blizzard's uniform outset
+    Overlays.ApplyPandemicGeometry(cdmIcon)
 end
 
 --------------------------------------------------------------------------------

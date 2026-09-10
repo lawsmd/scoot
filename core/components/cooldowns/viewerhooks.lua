@@ -144,15 +144,26 @@ function Overlays.HookViewer(viewerFrameName, componentId)
         end)
     end
 
+    -- Blizzard anchors the pandemic ring 6px outside the item on every acquire and
+    -- gives it no frame level, which leaves it square on a shaped icon and under
+    -- the border. Synchronous like the Layout hook: this is pure repositioning,
+    -- and a deferred pass would show one frame at the wrong rect.
+    if viewer.AnchorPandemicStateFrame then
+        hooksecurefunc(viewer, "AnchorPandemicStateFrame", function(_, frame, cooldownItem)
+            Overlays.ApplyPandemicGeometry(cooldownItem, frame)
+        end)
+    end
+
     -- Diagnostic record for /scoot debug cdm: which methods existed at hook time
     -- (RefreshData/OnCooldownDataChanged are recorded but not hooked)
     Overlays._hookState = Overlays._hookState or {}
     Overlays._hookState[viewerFrameName] = string.format(
-        "OnAcquireItemFrame=%s OnReleaseItemFrame=%s RefreshLayout=%s Layout=%s RefreshData=%s OnCooldownDataChanged=%s",
+        "OnAcquireItemFrame=%s OnReleaseItemFrame=%s RefreshLayout=%s Layout=%s AnchorPandemicStateFrame=%s RefreshData=%s OnCooldownDataChanged=%s",
         tostring(viewer.OnAcquireItemFrame ~= nil),
         tostring(viewer.OnReleaseItemFrame ~= nil),
         tostring(viewer.RefreshLayout ~= nil),
         tostring(viewer.Layout ~= nil),
+        tostring(viewer.AnchorPandemicStateFrame ~= nil),
         tostring(viewer.RefreshData ~= nil),
         tostring(viewer.OnCooldownDataChanged ~= nil))
 
