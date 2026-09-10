@@ -105,9 +105,11 @@ local POWER_ENERGY = PT.Energy or 3
 
 -- token: the string Blizzard's power color table and the power events use.
 -- Colors are looked up by this token, never by the enum number, whose
--- numeric fallback rows disagree with the enum.
+-- numeric fallback rows disagree with the enum. classColor: the resource
+-- has no power color of its own, so the power mode paints the class color.
+-- variedTail: the last two points may take their own colors.
 local RESOURCES = {
-    COMBO_POINTS   = { token = "COMBO_POINTS",   powerType = PT.ComboPoints   or 4,  defaultCount = 5, label = "Combo Points" },
+    COMBO_POINTS   = { token = "COMBO_POINTS",   powerType = PT.ComboPoints   or 4,  defaultCount = 5, label = "Combo Points", classColor = true, variedTail = true },
     RUNES          = { token = "RUNES",          powerType = PT.Runes         or 5,  defaultCount = 6, label = "Runes", runes = true },
     SOUL_SHARDS    = { token = "SOUL_SHARDS",    powerType = PT.SoulShards    or 7,  defaultCount = 5, label = "Soul Shards", fractionalSpec = 267 },
     HOLY_POWER     = { token = "HOLY_POWER",     powerType = PT.HolyPower     or 9,  defaultCount = 5, label = "Holy Power" },
@@ -359,18 +361,54 @@ end
 -- Colors
 --------------------------------------------------------------------------------
 
-local function PowerColor(resolved)
-    if resolved and resolved.res then
-        local r, g, b = addon.GetPowerColorRGB(resolved.res.token)
-        return r or 1, g or 1, b or 1
-    end
+local function ClassColor()
     local r, g, b = addon.GetClassColorRGB("player")
     return r or 1, g or 1, b or 1
+end
+
+-- The resource's own color: the power color by token, or the class color
+-- for a resource that has none (Combo Points).
+local function PowerColor(resolved)
+    local res = resolved and resolved.res
+    if res and not res.classColor then
+        local r, g, b = addon.GetPowerColorRGB(res.token)
+        return r or 1, g or 1, b or 1
+    end
+    return ClassColor()
 end
 
 --- The resource's own color, for the editor preview.
 function ClassResource.ResourceColorRGB()
     return PowerColor(Resolve())
+end
+
+-- The last two combo points: the last in TAIL_COLOR, a crimson, the one
+-- before it halfway between the base color and TAIL_COLOR. Every earlier
+-- point keeps the base color. Crimson rather than a plain red: the Druid
+-- orange differs from a red in the green channel alone, so a red midpoint
+-- reads as a duller orange; the blue cast keeps both tail points apart
+-- from it and the midpoint bright.
+local TAIL_COLOR = { 0.90, 0.12, 0.30 }
+
+local function VariedTail(db, resolved)
+    local res = resolved and resolved.res
+    return (res and res.variedTail and (not db or db.variedLastPoints ~= false)) and true or false
+end
+
+--- Pip i of n in the tail scheme, from the base color; the editor preview
+--- paints its sample through this.
+function ClassResource.TailColorAt(i, n, r, g, b)
+    if n < 2 then return r, g, b end
+    if i == n then return TAIL_COLOR[1], TAIL_COLOR[2], TAIL_COLOR[3] end
+    if i == n - 1 then
+        return (r + TAIL_COLOR[1]) / 2, (g + TAIL_COLOR[2]) / 2, (b + TAIL_COLOR[3]) / 2
+    end
+    return r, g, b
+end
+
+local function PipColorAt(varied, i, n, r, g, b)
+    if not varied then return r, g, b end
+    return ClassResource.TailColorAt(i, n, r, g, b)
 end
 
 -- Kept off addon.ResolveColorRGBA: three-mode dialect whose power source is the resource token, not a unit.
@@ -380,8 +418,7 @@ local function PipColor(db, resolved)
         local c = db.pipTint or { 1, 1, 1, 1 }
         return c[1] or 1, c[2] or 1, c[3] or 1
     elseif mode == "class" then
-        local r, g, b = addon.GetClassColorRGB("player")
-        return r or 1, g or 1, b or 1
+        return ClassColor()
     end
     return PowerColor(resolved)
 end
@@ -392,15 +429,16 @@ end
 
 -- Bar shape: N segments tiling the outer bar's width exactly, a tick of the
 -- configured thickness between neighbours, each segment carrying the fill
--- texture and color the shared chain resolves for a bar.
+-- texture and color the shared chain resolves for a bar, the last two in
+-- the tail colors where the resource offers them.
 local function LayoutBarPips(cr, db, barElem, tracker, resolved)
     local n = cr.count
     local barW = tonumber(db and db.barWidth) or 120
     local barH = tonumber(db and db.barHeight) or 12
     local tick = math.max(0, math.floor(tonumber(db and db.tickThickness) or 2))
     local tickColor = (db and db.tickColor) or { 0, 0, 0, 1 }
-    local token = resolved and resolved.res and resolved.res.token or nil
-    local fgPath, r, g, b, a = SAU._ResolveBarFill(tracker, db, token)
+    local fgPath, r, g, b, a = SAU._ResolveBarFill(tracker, db, { PowerColor(resolved) })
+    local varied = VariedTail(db, resolved)
     local segW = (barW - (n - 1) * tick) / n
     if segW < 1 then segW = 1 end
     local host = barElem.widget
@@ -413,7 +451,8 @@ local function LayoutBarPips(cr, db, barElem, tracker, resolved)
         bar:SetPoint("TOPLEFT", host, "TOPLEFT", x0, 0)
         bar:SetSize(math.max(1, x1 - x0), barH)
         bar:SetStatusBarTexture(fgPath or WHITE8x8)
-        bar:SetStatusBarColor(r, g, b, a)
+        local sr, sg, sb = PipColorAt(varied, i, n, r, g, b)
+        bar:SetStatusBarColor(sr, sg, sb, a)
         bar:Show()
         pip.backdrop:Hide()
         pip.fg:Hide()
@@ -443,6 +482,7 @@ local function LayoutIconPips(cr, db, resolved)
     local gap = tonumber(db and db.pipSpacing) or 2
     local atlas = SAU._AtlasFromShapeKey(db and db.pipStyle) or "SquareMask"
     local pr, pg, pb = PipColor(db, resolved)
+    local varied = VariedTail(db, resolved)
     local bd = (db and db.pipBackdropTint) or { 0, 0, 0, 1 }
     local bdAlpha = (tonumber(db and db.pipBackdropOpacity) or 100) / 100
     local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
@@ -470,19 +510,20 @@ local function LayoutIconPips(cr, db, resolved)
         backdrop:SetAlpha(bdAlpha)
         backdrop:Show()
 
+        local pipR, pipG, pipB = PipColorAt(varied, i, n, pr, pg, pb)
         local fg = pip.fg
         if pcall(fg.SetAtlas, fg, atlas) then
             fg:SetDesaturated(false)
-            fg:SetVertexColor(pr, pg, pb, 1)
+            fg:SetVertexColor(pipR, pipG, pipB, 1)
         else
-            fg:SetColorTexture(pr, pg, pb, 1)
+            fg:SetColorTexture(pipR, pipG, pipB, 1)
         end
         fg:ClearAllPoints()
         fg:SetAllPoints(bar:GetStatusBarTexture())
         fg:Show()
 
         local cd = pip.cooldown
-        pcall(cd.SetSwipeColor, cd, pr, pg, pb, 1)
+        pcall(cd.SetSwipeColor, cd, pipR, pipG, pipB, 1)
         if info and (info.file or info.filename) then
             pcall(cd.SetSwipeTexture, cd, info.file or info.filename)
             pcall(cd.SetTexCoordRange, cd,
@@ -938,7 +979,8 @@ function ClassResource.DebugInfo(trackerId)
     end
     local fr, fgc, fb = PowerColor(resolved)
     local pr, pg, pb = PipColor(db or {}, resolved)
-    add("power color=%.2f %.2f %.2f  pip color=%.2f %.2f %.2f", fr, fgc, fb, pr, pg, pb)
+    add("power color=%.2f %.2f %.2f  pip color=%.2f %.2f %.2f  varied tail=%s (setting %s)",
+        fr, fgc, fb, pr, pg, pb, tostring(VariedTail(db, resolved)), tostring(db and db.variedLastPoints))
 
     local state = SAU._activeStates[trackerId]
     local entry = state and state.entry

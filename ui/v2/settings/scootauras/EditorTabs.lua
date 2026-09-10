@@ -770,7 +770,8 @@ end
 
 --------------------------------------------------------------------------------
 -- Class Resource tabs (scootauras/classresource.lua): the segmented bar and
--- its ticks, or the icon row and its backdrop
+-- its ticks, or the icon row and its backdrop; the fill list follows the
+-- character's resource
 --------------------------------------------------------------------------------
 
 -- The fill: the resource's own color, the class color, or a tint. Class Power
@@ -785,14 +786,84 @@ local function PowerClassOrCustom(mode)
     return "power"
 end
 
+-- Combo Points have no power color of their own: the fill is the class color
+-- or a tint, and the list offers those two alone. A stored `power` (the
+-- kind's starting value) reads here, and paints in the engine, as Class
+-- Color.
+local COMBO_COLOR_VALUES = { class = "Class Color", custom = "Custom" }
+local COMBO_COLOR_ORDER = { "class", "custom" }
+
+local function ClassOrCustom(mode)
+    if mode == "custom" then return "custom" end
+    return "class"
+end
+
+-- Sub-option on the Combo Points fill selectors, opened by the gear inside
+-- the field (ui/v2/controls/SelectorGear.lua): the last two points in their
+-- own colors. One page for both options, since the tail applies whatever the
+-- base color is. The toggle writes through ctx.setAndApply and refreshes the
+-- preview alone; a page that re-rendered the tab would destroy the gear its
+-- own fly-out is anchored to.
+local function VariedTailGear(ctx)
+    local page = {
+        tooltip = "Options for the combo point colors",
+        width = 340,
+        height = 96,
+        build = function(content)
+            local Controls = addon.UI.Controls
+            local theme = addon.UI.Theme
+            local toggle = Controls:CreateToggle({
+                parent = content,
+                label = "Varied Color for Last 2 Combo Points",
+                get = function() return ctx.get("variedLastPoints") ~= false end,
+                set = function(v)
+                    ctx.setAndApply("variedLastPoints", v and true or false)
+                    ctx.refreshPreview()
+                end,
+            })
+            if not toggle then return end
+            toggle:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+            toggle:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
+
+            local hint = content:CreateFontString(nil, "OVERLAY")
+            hint:SetFont(theme:GetFont("VALUE"), 11, "")
+            hint:SetPoint("TOPLEFT", toggle, "BOTTOMLEFT", 12, -2)
+            hint:SetPoint("TOPRIGHT", toggle, "BOTTOMRIGHT", -12, -2)
+            hint:SetJustifyH("LEFT")
+            hint:SetWordWrap(true)
+            hint:SetText("The last point is crimson; the one before it sits halfway between the fill color and that crimson.")
+            local dimR, dimG, dimB = theme:GetDimTextColor()
+            hint:SetTextColor(dimR, dimG, dimB, 1)
+        end,
+    }
+    return { direction = "DOWN", gap = 8, pages = { class = page, custom = page } }
+end
+
+-- The character's resource decides the fill list, the coercion of a stored
+-- mode, and the gear: Combo Points offer Class Color and Custom with the
+-- varied-tail gear on both; every other resource offers Power Color, Class
+-- Color and Custom with none.
+local function ResourceColorOptions(ctx)
+    local CR = addon.ScootAuras and addon.ScootAuras.ClassResource
+    local rec = CR and CR.CurrentResource and CR.CurrentResource()
+    local res = rec and rec.res
+    if res and res.classColor then
+        local gear = res.variedTail and VariedTailGear(ctx) or nil
+        return COMBO_COLOR_VALUES, COMBO_COLOR_ORDER, ClassOrCustom, gear
+    end
+    return RESOURCE_COLOR_VALUES, RESOURCE_COLOR_ORDER, PowerClassOrCustom, nil
+end
+
 function Tabs.BuildClassResourceBarTab(tabBuilder, ctx)
     AddBarSizeRow(tabBuilder, ctx)
 
+    local values, order, coerce, gear = ResourceColorOptions(ctx)
     AddBarStyleAndBorderBlocks(tabBuilder, ctx, {
-        values = RESOURCE_COLOR_VALUES,
-        order = RESOURCE_COLOR_ORDER,
-        infoIcons = false, textureDefault = "bevelled", colorModeDefault = "power",
-    }, PowerClassOrCustom)
+        values = values,
+        order = order,
+        colorGear = gear,
+        infoIcons = false, textureDefault = "bevelled", colorModeDefault = order[1],
+    }, coerce)
 
     tabBuilder:Finalize()
 end
@@ -841,15 +912,17 @@ function Tabs.BuildClassResourceIconsTab(tabBuilder, ctx)
         minLabel = "-4", maxLabel = "20",
     })
 
+    local values, order, coerce, gear = ResourceColorOptions(ctx)
     tabBuilder:AddSelectorColorPicker({
         label = "Color",
-        values = RESOURCE_COLOR_VALUES,
-        order = RESOURCE_COLOR_ORDER,
-        get = function() return PowerClassOrCustom(ctx.get("pipColorMode")) end,
+        values = values,
+        order = order,
+        get = function() return coerce(ctx.get("pipColorMode")) end,
         set = function(v) ctx.setAndApply("pipColorMode", v) ctx.refreshPreview() end,
         getColor = ColorGet(ctx, "pipTint"),
         setColor = ColorSet(ctx, "pipTint"),
         hasAlpha = true,
+        gear = gear,
     })
 
     tabBuilder:Finalize()

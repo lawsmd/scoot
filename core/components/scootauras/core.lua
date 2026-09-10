@@ -705,7 +705,8 @@ function SAU.DefaultSettings()
         barSmoothFill           = { type = "addon", default = true },
         textColorMode           = { type = "addon", default = "default" },
         -- Class Resource kind (classresource.lua): the bar's segment ticks,
-        -- and the icon row's glyph, geometry, color and backdrop. The Bar
+        -- the icon row's glyph, geometry, color and backdrop, and the combo
+        -- point tail (the last two points in their own colors). The Bar
         -- shape reads the bar* keys above.
         tickThickness           = { type = "addon", default = 2 },
         tickColor               = { type = "addon", default = { 0, 0, 0, 1 } },
@@ -716,6 +717,7 @@ function SAU.DefaultSettings()
         pipTint                 = { type = "addon", default = { 1, 1, 1, 1 } },
         pipBackdropTint         = { type = "addon", default = { 0, 0, 0, 1 } },
         pipBackdropOpacity      = { type = "addon", default = 100 },
+        variedLastPoints        = { type = "addon", default = true },
     }
 end
 

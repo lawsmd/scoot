@@ -1194,9 +1194,32 @@ local function ResolveResourceFill(mode, tintKey)
     return { r or 1, g or 1, b or 1, 1 }
 end
 
--- The Class Resource preview: five points with three full, as the segmented
--- bar or the icon row, with the fill color resolved here and handed over as
--- a custom tint, since the control knows the aura color modes alone.
+-- The combo point tail for the preview sample: one color per pip from the
+-- module's scheme, when the character's resource carries it and the toggle
+-- is on; nil otherwise. The sample then shows four full, so the blended
+-- point and the backdrop both show.
+local PREVIEW_PIP_COUNT = 5
+local PREVIEW_PIP_FILLED = 3
+local PREVIEW_PIP_FILLED_TAIL = 4
+
+local function ResourcePipColors(fill)
+    local CR = SAU().ClassResource
+    local rec = CR and CR.CurrentResource and CR.CurrentResource()
+    local res = rec and rec.res
+    if not (res and res.variedTail and CR.TailColorAt) then return nil end
+    if ctx.get("variedLastPoints") == false then return nil end
+    local colors = {}
+    for i = 1, PREVIEW_PIP_COUNT do
+        local r, g, b = CR.TailColorAt(i, PREVIEW_PIP_COUNT, fill[1], fill[2], fill[3])
+        colors[i] = { r, g, b, 1 }
+    end
+    return colors
+end
+
+-- The Class Resource preview: five points with three full (four with the
+-- combo point tail on), as the segmented bar or the icon row, with the fill
+-- color resolved here and handed over as a custom tint, since the control
+-- knows the aura color modes alone.
 local function RenderClassResourcePreview(shape)
     local componentId = session and session.trackerId
         and SAU().GetComponentId(session.trackerId) or "scootAuraDraft"
@@ -1204,14 +1227,17 @@ local function RenderClassResourcePreview(shape)
         local key = ctx.get("pipStyle") or "border:SquareMask"
         local tint = ctx.get("pipBackdropTint") or { 0, 0, 0, 1 }
         local opacity = (tonumber(ctx.get("pipBackdropOpacity")) or 100) / 100
+        local fill = ResolveResourceFill(ctx.get("pipColorMode"), "pipTint")
+        local pipColors = ResourcePipColors(fill)
         prevBuilder:AddPreview({
             componentId = componentId,
             mode = "pips",
             pipShape = "icons",
-            pipCount = 5,
-            pipFilled = 3,
+            pipCount = PREVIEW_PIP_COUNT,
+            pipFilled = pipColors and PREVIEW_PIP_FILLED_TAIL or PREVIEW_PIP_FILLED,
             pipAtlas = SAU()._AtlasFromShapeKey(key) or "SquareMask",
-            pipColor = ResolveResourceFill(ctx.get("pipColorMode"), "pipTint"),
+            pipColor = fill,
+            pipColors = pipColors,
             pipBackdropColor = { tint[1] or 0, tint[2] or 0, tint[3] or 0, opacity },
             rowHeight = 200,
             previewScale = 1,
@@ -1223,6 +1249,7 @@ local function RenderClassResourcePreview(shape)
         })
     else
         local fill = ResolveResourceFill(ctx.get("barForegroundColorMode"), "barForegroundTint")
+        local pipColors = ResourcePipColors(fill)
         local function getSetting(key)
             if key == "barForegroundColorMode" then return "custom" end
             if key == "barForegroundTint" then return fill end
@@ -1234,8 +1261,9 @@ local function RenderClassResourcePreview(shape)
             componentId = componentId,
             mode = "pips",
             pipShape = "bar",
-            pipCount = 5,
-            pipFilled = 3,
+            pipCount = PREVIEW_PIP_COUNT,
+            pipFilled = pipColors and PREVIEW_PIP_FILLED_TAIL or PREVIEW_PIP_FILLED,
+            pipColors = pipColors,
             rowHeight = 200,
             previewScale = 1,
             maxRowHeight = 340,

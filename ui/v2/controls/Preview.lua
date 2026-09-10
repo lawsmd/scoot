@@ -153,6 +153,8 @@ end
 --   pipFilled       number   "pips" mode: points drawn full (default 3)
 --   pipAtlas        string   "pips" icons: the resolved atlas name
 --   pipColor        table    "pips" icons: {r,g,b,a} for a full glyph, resolved by the caller
+--   pipColors       table/nil "pips" mode: {r,g,b,a} per point, overriding pipColor on a
+--                            glyph and painting each full bar segment its own color
 --   pipBackdropColor table   "pips" icons: {r,g,b,a} for the backdrop, opacity folded into a
 --   timerEpoch      table/nil  Caller-owned countdown anchor { start = <GetTime()> }.
 --                            Seeded on first use; a rebuilt row resumes the same
@@ -552,11 +554,37 @@ function Controls:CreatePreview(options)
             else
                 barFill:SetValue(0)
             end
+            -- Per-segment colors: each full segment is its own stretched copy
+            -- of the fill texture over the fill, the way the live segments are
+            -- their own bars.
+            local pipColors = options.pipColors
+            if pipColors and pipFilled > 0 then
+                local segFrame = CreateFrame("Frame", nil, previewBar)
+                segFrame:SetAllPoints(previewBar)
+                segFrame:SetFrameLevel(barFill:GetFrameLevel() + 1)
+                for i = 1, pipFilled do
+                    local c = pipColors[i]
+                    if c then
+                        local seg = segFrame:CreateTexture(nil, "ARTWORK")
+                        if fgTexPath then
+                            seg:SetTexture(fgTexPath)
+                        else
+                            seg:SetColorTexture(1, 1, 1, 1)
+                        end
+                        seg:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+                        local x0 = math.floor((i - 1) * (segW + tickThickness) + 0.5)
+                        local x1 = math.floor(i * segW + (i - 1) * tickThickness + 0.5)
+                        seg:SetPoint("TOPLEFT", previewBar, "TOPLEFT", x0, 0)
+                        seg:SetPoint("BOTTOMLEFT", previewBar, "BOTTOMLEFT", x0, 0)
+                        seg:SetWidth(math.max(1, x1 - x0))
+                    end
+                end
+            end
             if tickThickness > 0 and pipCount > 1 then
                 local tickColor = readSetting("tickColor", { 0, 0, 0, 1 })
                 local tickFrame = CreateFrame("Frame", nil, previewBar)
                 tickFrame:SetAllPoints(previewBar)
-                tickFrame:SetFrameLevel(barFill:GetFrameLevel() + 1)
+                tickFrame:SetFrameLevel(barFill:GetFrameLevel() + 2)
                 for i = 1, pipCount - 1 do
                     local tick = tickFrame:CreateTexture(nil, "ARTWORK")
                     tick:SetColorTexture(tickColor[1] or 0, tickColor[2] or 0, tickColor[3] or 0, tickColor[4] or 1)
@@ -638,13 +666,14 @@ function Controls:CreatePreview(options)
             backdrop:SetSize(size, size)
             backdrop:SetPoint("LEFT", previewPips, "LEFT", x, 0)
             if i <= pipFilled then
+                local c = (options.pipColors and options.pipColors[i]) or fgColor
                 local fg = previewPips:CreateTexture(nil, "ARTWORK")
                 if pcall(fg.SetAtlas, fg, atlas) then
                     fg:SetDesaturated(false)
                 else
                     fg:SetColorTexture(1, 1, 1, 1)
                 end
-                fg:SetVertexColor(fgColor[1] or 1, fgColor[2] or 1, fgColor[3] or 1, fgColor[4] or 1)
+                fg:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
                 fg:SetSize(size, size)
                 fg:SetPoint("LEFT", previewPips, "LEFT", x, 0)
             end

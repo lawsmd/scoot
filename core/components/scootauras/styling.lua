@@ -265,10 +265,10 @@ local function ApplyBorders(trackerId, tracker, state)
 end
 
 -- The fill's texture path and color for one bar: fgPath (nil when the key
--- resolves to no file), then r, g, b, a. `powerToken` names the power whose
--- color the power mode takes (the Class Resource kind passes its resource's
--- token); without one the mode reads the display power.
-local function ResolveBarFill(tracker, db, powerToken)
+-- resolves to no file), then r, g, b, a. `powerColor` is the { r, g, b } the
+-- power mode takes (the Class Resource kind passes its resource's color);
+-- without one the mode reads the display power.
+local function ResolveBarFill(tracker, db, powerColor)
     local fgPath = addon.Media.ResolveBarTexturePath(db.barForegroundTexture or "bevelled")
 
     -- Kept off addon.ResolveColorRGBA: two-mode dialect, class default; the class lookup is already GetClassColorRGB.
@@ -285,8 +285,8 @@ local function ResolveBarFill(tracker, db, powerToken)
     local fgR, fgG, fgB, fgA = 1, 1, 1, 1
     if fgColorMode == "power" then
         local r, g, b
-        if powerToken then
-            r, g, b = addon.GetPowerColorRGB(powerToken)
+        if powerColor then
+            r, g, b = powerColor[1], powerColor[2], powerColor[3]
         else
             r, g, b = addon.ResolveColorRGBA("power", nil, POWER_FILL_COLOR_OPTS)
         end
