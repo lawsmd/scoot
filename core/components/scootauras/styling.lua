@@ -143,6 +143,21 @@ local function ApplyShapeStyling(trackerId, tracker, state)
     end
 end
 
+-- Which text a kind writes itself through Lua SetText. The engine writes
+-- every other string natively, and a Deep Shadow companion copy (fed by
+-- SetText hooks) would never see that text.
+local function ScootWritesText(tracker, source)
+    if tracker.kind == "missingbuff" then return source == "name" end
+    if tracker.kind == "classpower" then return source == "duration" end
+    return false
+end
+
+-- The Class Power kind's colors: the display power's color for the fill, and
+-- for the number the same with mana lightened, as the unit frame power texts
+-- do. Re-resolved every pass, since a form change moves the power type.
+local POWER_FILL_COLOR_OPTS = { barKind = "power", unitForPower = "player" }
+local POWER_TEXT_COLOR_OPTS = { classPowerMode = true, lightenMana = true, unitForPower = "player" }
+
 local function ApplyTextStyling(trackerId, tracker, state)
     local db = SAU.GetDB(trackerId)
     if not db then return end
@@ -176,15 +191,24 @@ local function ApplyTextStyling(trackerId, tracker, state)
             -- debuff trackers the spell name into these FontStrings natively.
             -- A Deep Shadow copy is fed by hooks on Lua SetText, so it would
             -- never see that text. The missing-buff reminder writes its own
-            -- name (missing.lua), so it is the one text here that keeps the
-            -- copy; every other style drops to its base.
+            -- name (missing.lua) and the Class Power kind its own number
+            -- (classpower.lua); those keep the copy, every other style drops
+            -- to its base.
             local style = fontStyle or "OUTLINE"
-            if source ~= "name" or tracker.kind ~= "missingbuff" then
+            if not ScootWritesText(tracker, source) then
                 style = addon.FontStyles.Unpaired(style)
             end
             addon.ApplyFontStyle(elem.widget, fontFace, size, style)
 
-            if color and type(color) == "table" then
+            if source == "duration" and tracker.kind == "classpower" and db.textColorMode ~= "custom" then
+                -- Default is white; power is the class power color, mana
+                -- lightened, re-resolved every pass.
+                local r, g, b = 1, 1, 1
+                if db.textColorMode == "power" then
+                    r, g, b = addon.ResolveColorRGBA("classPower", nil, POWER_TEXT_COLOR_OPTS)
+                end
+                elem.widget:SetTextColor(r or 1, g or 1, b or 1, 1)
+            elseif color and type(color) == "table" then
                 elem.widget:SetTextColor(color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
             end
         end
@@ -258,9 +282,18 @@ local function ApplyBarStyling(trackerId, tracker, state)
             end
 
             -- Kept off addon.ResolveColorRGBA: two-mode dialect, class default; the class lookup is already GetClassColorRGB.
+            -- The Class Power kind's power mode does go through the resolver.
             local fgColorMode = db.barForegroundColorMode or "class"
+            if tracker.kind == "classpower" and fgColorMode ~= "custom" then
+                -- Power Color or Custom, nothing else on this kind; a Class
+                -- Color left by a kind flip reads as Power Color.
+                fgColorMode = "power"
+            end
             local fgR, fgG, fgB, fgA = 1, 1, 1, 1
-            if fgColorMode == "class" then
+            if fgColorMode == "power" then
+                local r, g, b = addon.ResolveColorRGBA("power", nil, POWER_FILL_COLOR_OPTS)
+                fgR, fgG, fgB, fgA = r or 1, g or 1, b or 1, 1
+            elseif fgColorMode == "class" then
                 local r, g, b = addon.GetClassColorRGB("player")
                 if r ~= nil then
                     fgR, fgG, fgB, fgA = r, g, b, 1
@@ -359,8 +392,9 @@ end
 -- Kinds whose "Only in Combat" verdict is applied by hiding the whole frame.
 -- A missing-buff reminder is not one of them: its own gate drives a clip window
 -- over the engine-sized container (missing.lua, Missing.UpdateGate), and that
--- mechanism stays its sole owner.
-local SHELL_GATED_KINDS = { buff = true, debuff = true }
+-- mechanism stays its sole owner. A Class Power tracker has no container at
+-- all, so the frame is the only thing there is to hide.
+local SHELL_GATED_KINDS = { buff = true, debuff = true, classpower = true }
 
 -- Grouped visuals live under the group frame; the shell stays hidden and
 -- scale/opacity/shown apply to the visual itself. The flag is physical (set by
@@ -406,6 +440,8 @@ local function ApplyStyling(trackerId, tracker)
         end
         -- Also stops a running blink; the Hide above already conceals it.
         if SAU.Underlay then SAU.Underlay.UpdateGate(trackerId) end
+        -- Leaves the power event fan-out; the Hide above conceals the art.
+        if SAU.ClassPower then SAU.ClassPower.Release(trackerId, state.entry) end
         if grouped and SAU.Groups then SAU.Groups.RequestReflow() end
         return
     end
@@ -415,6 +451,9 @@ local function ApplyStyling(trackerId, tracker)
 
     local alpha = addon.Opacity.Resolve(db, addon.Opacity.Keys.InCombat)
     target:SetAlpha(alpha)
+    -- A Deep Shadow copy tapers with the alpha it inherits, and nothing tells
+    -- it the frame moved (core/fontpair.lua).
+    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
 
     -- A tracker set to "Only in Combat" is hidden outright out of combat. Edit
     -- Mode forces it back: the preview and the draggable frame live under this
@@ -424,7 +463,12 @@ local function ApplyStyling(trackerId, tracker)
         state.shell:Hide()
         if SAU.Groups then SAU.Groups.RequestReflow() end
     end
-    SAU.Engine.SetEnabledState(trackerId, true)
+    -- A kind with no container must not enable one: the entry may hold a
+    -- container parked by an earlier occupant, and reviving it would draw
+    -- that occupant's aura under this tracker.
+    if SAU.KindOwnsContainer(tracker.kind) then
+        SAU.Engine.SetEnabledState(trackerId, true)
+    end
     -- Missing-buff reminder: the visible set is Scoot-owned, so its styling,
     -- layout, combat gate and blink apply here, outside the structural gate;
     -- ApplyAll only carries the gate container build. Any other kind on an
@@ -436,6 +480,12 @@ local function ApplyStyling(trackerId, tracker)
         else
             SAU.Missing.UpdateGate(trackerId)
         end
+    end
+    -- Class Power (classpower.lua): the whole tracker is Scoot-owned, so its
+    -- styling, layout and values apply here and ApplyAll carries nothing for
+    -- it. Runs for every kind so a stale set hides on a kind flip.
+    if SAU.ClassPower then
+        SAU.ClassPower.Sync(trackerId, tracker, state)
     end
     -- Missing-state underlay (underlay.lua): Scoot-owned art on the visual,
     -- so it repaints here even while ApplyAll queues behind the structural
@@ -461,6 +511,7 @@ local function RefreshOpacity(trackerId, tracker)
     if not (SAU.IsTrackerActive(trackerId, tracker) and SAU.IsModuleActive()) then return end
     local target = StyleTarget(state)
     target:SetAlpha(addon.Opacity.Resolve(SAU.GetDB(trackerId), addon.Opacity.Keys.InCombat))
+    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
 end
 
 --- Both regen edges, Edit Mode enter, and the events.lua poll: re-apply the

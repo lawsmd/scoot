@@ -663,9 +663,14 @@ local function SpellDump(arg)
     push("")
 
     if tracker then
-        push(("Tracker t%d '%s': spell=%d kind=%s unit=%s shape=%s enabled=%s owner=%s"):format(
-            trackerId, tostring(tracker.name), spellId, tostring(tracker.kind), tostring(tracker.unit),
+        push(("Tracker t%d '%s': spell=%s kind=%s unit=%s shape=%s enabled=%s owner=%s"):format(
+            trackerId, tostring(tracker.name), tostring(spellId), tostring(tracker.kind), tostring(tracker.unit),
             tostring(tracker.shape), tostring(tracker.enabled), tostring(tracker.owner)))
+        if not spellId then
+            push("This kind tracks no spell. See /scoot debug sa power " .. trackerId)
+            addon.DebugShowWindow("ScootAuras Spell Resolution", lines)
+            return
+        end
         push("Filter string: " .. tostring(SAU.FilterForKind(tracker.kind)))
         local entry = Engine._byTracker[trackerId]
         if entry then
@@ -821,7 +826,7 @@ end
 
 local VALID_UNITS = { player = true, group = true, target = true, focus = true }
 local VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true }
-local VALID_KINDS = { buff = true, debuff = true, missingbuff = true }
+local VALID_KINDS = { buff = true, debuff = true, missingbuff = true, classpower = true }
 
 local Commands = addon.Commands
 
@@ -935,16 +940,17 @@ addon:RegisterDebugCommand({
         { word = "specs", help = "per record: stored specs, current spec, gate verdict", fn = SpecsDump },
         { word = "catalog", help = "every picker cell: shown name, stored base", fn = CatalogDump },
         { word = "log", help = "probe log", fn = DumpLog },
-        { word = "add", usage = "add <spellId> [player|group|target|focus] [buff|debuff|missingbuff] [icon|bar|shape|text|icontext]",
-          help = "create a tracker; the arguments after the spell are order-free", fn = function(a1, a2, a3, a4)
+        { word = "add", usage = "add <spellId|classpower> [player|group|target|focus] [buff|debuff|missingbuff] [icon|bar|shape|text|icontext]",
+          help = "create a tracker; the arguments after the first are order-free", fn = function(a1, a2, a3, a4)
             local spellId = tonumber(a1)
-            if not spellId then return Commands.USAGE end
             local unit, shape, kind = nil, nil, "buff"
-            for _, a in ipairs({ lc(a2), lc(a3), lc(a4) }) do
+            for _, a in ipairs({ lc(a1), lc(a2), lc(a3), lc(a4) }) do
                 if VALID_UNITS[a] then unit = a end
                 if VALID_SHAPES[a] then shape = a end
                 if VALID_KINDS[a] then kind = a end
             end
+            -- A kind with no spell (classpower) takes the kind word first.
+            if not spellId and addon.ScootAuras.KindNeedsSpell(kind) then return Commands.USAGE end
             unit = unit or addon.ScootAuras.DefaultUnitForKind(kind)
             shape = shape or addon.ScootAuras.DefaultShapeForKind(kind)
             local trackerId, err = addon.ScootAuras.CreateTracker({
@@ -954,8 +960,8 @@ addon:RegisterDebugCommand({
                 onlyInCombat = false,
             })
             if trackerId then
-                addon:Print(("ScootAuras t%d created: spell %d (%s on %s as %s)"):format(
-                    trackerId, spellId, kind, unit, shape))
+                addon:Print(("ScootAuras t%d created: spell %s (%s on %s as %s)"):format(
+                    trackerId, tostring(spellId), kind, unit, shape))
                 if not addon.ScootAuras.Engine.CanDoStructuralWork() then
                     addon:Print("Wiring queued; it applies when combat or instance restrictions end.")
                 end
@@ -1033,6 +1039,12 @@ addon:RegisterDebugCommand({
             local trackerId = tonumber(a1)
             if not trackerId or not SAU.Missing then return Commands.USAGE end
             addon.DebugShowWindow("ScootAuras Missing Buff t" .. trackerId, SAU.Missing.DebugInfo(trackerId))
+        end },
+        { word = "power", usage = "power <id>", help = "class power tracker: display power, secrecy, reads, colors, last paint", fn = function(a1)
+            local SAU = addon.ScootAuras
+            local trackerId = tonumber(a1)
+            if not trackerId or not SAU.ClassPower then return Commands.USAGE end
+            addon.DebugShowWindow("ScootAuras Class Power t" .. trackerId, SAU.ClassPower.DebugInfo(trackerId))
         end },
         { word = "cadence", usage = "cadence <id|spellId> [on|off|set <0..1>|alpha <0..1>|mirror <y|off>]",
           help = "cadence lock record and probes", fn = cadence },

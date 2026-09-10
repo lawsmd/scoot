@@ -15,7 +15,7 @@
 --                                          value edits, so the tab body is
 --                                          not rebuilt under the cursor)
 --   shape()               -> "icon"|"bar"|"shape"|"text"|"icontext"
---   kind()                -> "buff"|"debuff"|"missingbuff"
+--   kind()                -> "buff"|"debuff"|"missingbuff"|"classpower"
 --   missingVisual()       -> resolved missing-state token, "none" when unset
 -- }
 local addonName, addon = ...
@@ -182,8 +182,9 @@ end
 -- Bar tab
 --------------------------------------------------------------------------------
 
-function Tabs.BuildBarTab(tabBuilder, ctx)
-    -- Kept off Builder:AddOffsetPair: the pair is bar width and bar height, each with its own range.
+-- Bar Size, shared by the aura bar and the Class Power bar.
+-- Kept off Builder:AddOffsetPair: the pair is bar width and bar height, each with its own range.
+local function AddBarSizeRow(tabBuilder, ctx)
     tabBuilder:AddDualSlider({
         label = "Bar Size",
         sliderA = {
@@ -199,6 +200,55 @@ function Tabs.BuildBarTab(tabBuilder, ctx)
             minLabel = "4", maxLabel = "48",
         },
     })
+end
+
+-- The style and border blocks, shared by the aura bar and the Class Power
+-- bar. `foreground` is the fill's color-mode list; `mapFillMode`, when given,
+-- coerces a stored mode onto that list.
+local function AddBarStyleAndBorderBlocks(tabBuilder, ctx, foreground, mapFillMode)
+    local Helpers = addon.UI.Settings.Helpers
+    local rawGet, barWrite = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, {
+        texture = "barForegroundTexture", colorMode = "barForegroundColorMode", color = "barForegroundTint",
+        bgTexture = "barBackgroundTexture", bgColorMode = "barBackgroundColorMode", bgColor = "barBackgroundTint",
+        bgOpacity = "barBackgroundOpacity",
+        style = "barBorderStyle", hiddenEdges = "barBorderHiddenEdges",
+        tintEnabled = "barBorderTintEnable", tintColor = "barBorderTintColor",
+        thickness = "barBorderThickness", insetH = "barBorderInsetH", insetV = "barBorderInsetV",
+    })
+    local function barGet(field)
+        local v = rawGet(field)
+        if field == "colorMode" and mapFillMode then return mapFillMode(v) end
+        return v
+    end
+    -- ctx.setAndApply writes and applies. A color mode, border style, or tint
+    -- toggle change re-renders the tab (the swatch and edge controls follow
+    -- it); anything else refreshes the preview.
+    local REFRESHES_TAB = { colorMode = true, bgColorMode = true, style = true, tintEnabled = true }
+    local function barSet(field, value)
+        barWrite(field, value)
+        if REFRESHES_TAB[field] then ctx.refresh() else ctx.refreshPreview() end
+    end
+
+    tabBuilder:AddBarStyleBlock({
+        get = barGet, set = barSet,
+        foreground = foreground,
+        background = {
+            values = { custom = "Custom", original = "Texture Original" },
+            order = { "custom", "original" },
+            textureDefault = "bevelled", colorModeDefault = "custom",
+        },
+        opacity = { minLabel = "0%", maxLabel = "100%" },
+    })
+
+    tabBuilder:AddBarBorderBlock({
+        get = barGet, set = barSet,
+        style = { default = "none" },
+        thickness = { clamp = false, minLabel = "1", maxLabel = "8" },
+    })
+end
+
+function Tabs.BuildBarTab(tabBuilder, ctx)
+    AddBarSizeRow(tabBuilder, ctx)
 
     tabBuilder:AddSelector({
         label = "Fill Direction",
@@ -217,43 +267,10 @@ function Tabs.BuildBarTab(tabBuilder, ctx)
         set = function(v) ctx.setAndApply("barLockCadence", v) end,
     })
 
-    local Helpers = addon.UI.Settings.Helpers
-    local barGet, barWrite = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, {
-        texture = "barForegroundTexture", colorMode = "barForegroundColorMode", color = "barForegroundTint",
-        bgTexture = "barBackgroundTexture", bgColorMode = "barBackgroundColorMode", bgColor = "barBackgroundTint",
-        bgOpacity = "barBackgroundOpacity",
-        style = "barBorderStyle", hiddenEdges = "barBorderHiddenEdges",
-        tintEnabled = "barBorderTintEnable", tintColor = "barBorderTintColor",
-        thickness = "barBorderThickness", insetH = "barBorderInsetH", insetV = "barBorderInsetV",
-    })
-    -- ctx.setAndApply writes and applies. A color mode, border style, or tint
-    -- toggle change re-renders the tab (the swatch and edge controls follow
-    -- it); anything else refreshes the preview.
-    local REFRESHES_TAB = { colorMode = true, bgColorMode = true, style = true, tintEnabled = true }
-    local function barSet(field, value)
-        barWrite(field, value)
-        if REFRESHES_TAB[field] then ctx.refresh() else ctx.refreshPreview() end
-    end
-
-    tabBuilder:AddBarStyleBlock({
-        get = barGet, set = barSet,
-        foreground = {
-            values = { custom = "Custom", class = "Class Color", original = "Texture Original" },
-            order = { "custom", "class", "original" },
-            infoIcons = false, textureDefault = "bevelled", colorModeDefault = "class",
-        },
-        background = {
-            values = { custom = "Custom", original = "Texture Original" },
-            order = { "custom", "original" },
-            textureDefault = "bevelled", colorModeDefault = "custom",
-        },
-        opacity = { minLabel = "0%", maxLabel = "100%" },
-    })
-
-    tabBuilder:AddBarBorderBlock({
-        get = barGet, set = barSet,
-        style = { default = "none" },
-        thickness = { clamp = false, minLabel = "1", maxLabel = "8" },
+    AddBarStyleAndBorderBlocks(tabBuilder, ctx, {
+        values = { custom = "Custom", class = "Class Color", original = "Texture Original" },
+        order = { "custom", "class", "original" },
+        infoIcons = false, textureDefault = "bevelled", colorModeDefault = "class",
     })
 
     tabBuilder:Finalize()
@@ -388,6 +405,8 @@ end
 -- Duration tab (remaining-time text)
 --------------------------------------------------------------------------------
 
+local AddTextPositionControls
+
 function Tabs.BuildDurationTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
 
@@ -416,6 +435,15 @@ function Tabs.BuildDurationTab(tabBuilder, ctx)
         offset = false,
     })
 
+    AddTextPositionControls(tabBuilder, ctx)
+
+    tabBuilder:Finalize()
+end
+
+-- Position (inside or outside the host, with the anchor) and the offset pair
+-- for the duration-slot text: the aura Duration tab and the Class Power
+-- number on a bar.
+function AddTextPositionControls(tabBuilder, ctx)
     local shape = ctx.shape()
     local host = (shape == "bar") and "Bar" or (shape == "shape") and "Shape" or "Icon"
     local currentPos = ctx.get("textPosition") or "inside"
@@ -464,8 +492,6 @@ function Tabs.BuildDurationTab(tabBuilder, ctx)
     })
 
     AddCtxOffsetPair(tabBuilder, ctx, "textOffsetX", "textOffsetY")
-
-    tabBuilder:Finalize()
 end
 
 --------------------------------------------------------------------------------
@@ -648,6 +674,95 @@ function Tabs.BuildShapeTab(tabBuilder, ctx)
 end
 
 --------------------------------------------------------------------------------
+-- Class Power tabs (scootauras/classpower.lua): the bar and the number
+--------------------------------------------------------------------------------
+
+local POWER_COLOR_VALUES = { power = "Power Color", custom = "Custom" }
+local POWER_COLOR_ORDER = { "power", "custom" }
+-- The number adds Default (white) and names the power color the way the
+-- power texts do (core/catalogs.lua).
+local POWER_TEXT_COLOR_VALUES = { default = "Default", power = "Class Power Color", custom = "Custom" }
+local POWER_TEXT_COLOR_ORDER = { "default", "power", "custom" }
+
+-- Any mode but Custom reads as Power Color on this kind: the fill key's
+-- registered default is the aura bars' Class Color, and a value a spell
+-- tracker set before a kind flip must not leave the selector on an option
+-- it lacks.
+local function PowerOrCustom(mode)
+    return (mode == "custom") and "custom" or "power"
+end
+
+-- The number's three modes; anything else reads as Default.
+local function DefaultPowerOrCustom(mode)
+    if mode == "custom" or mode == "power" then return mode end
+    return "default"
+end
+
+function Tabs.BuildClassPowerBarTab(tabBuilder, ctx)
+    AddBarSizeRow(tabBuilder, ctx)
+
+    tabBuilder:AddToggle({
+        label = "Smooth Fill",
+        description = "Ease the bar toward each new value instead of snapping to it.",
+        get = function() return ctx.get("barSmoothFill") ~= false end,
+        set = function(v) ctx.setAndApply("barSmoothFill", v) end,
+    })
+
+    AddBarStyleAndBorderBlocks(tabBuilder, ctx, {
+        values = POWER_COLOR_VALUES,
+        order = POWER_COLOR_ORDER,
+        infoIcons = false, textureDefault = "bevelled", colorModeDefault = "power",
+    }, PowerOrCustom)
+
+    tabBuilder:Finalize()
+end
+
+function Tabs.BuildClassPowerTextTab(tabBuilder, ctx)
+    local Helpers = addon.UI.Settings.Helpers
+    local isBar = ctx.shape() == "bar"
+
+    local rawGet, set = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, {
+        hidden = "hideText",
+        fontFace = "textFont",
+        style = "textStyle",
+        size = "textSize",
+        colorMode = "textColorMode",
+        color = "textColor",
+    })
+    local function get(field)
+        local v = rawGet(field)
+        if field == "colorMode" then return DefaultPowerOrCustom(v) end
+        return v
+    end
+    tabBuilder:AddTextStyleBlock({
+        get = get, set = set, apply = ctx.refreshPreview,
+        defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", style = "SHADOWTHICKOUTLINESLUG",
+            size = isBar and 12 or 24, colorMode = "default" },
+        -- The number alone is the whole tracker; only on the bar can it hide.
+        hideToggle = isBar and {
+            label = "Hide Number",
+            description = "Hide the number on the bar.",
+        } or nil,
+        font = { description = "The font used for the number." },
+        -- Scoot writes this string itself (classpower.lua), so the paired
+        -- Deep Shadow styles render here.
+        style = { order = Helpers.fontStyleOrderPaired },
+        size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt",
+            description = "Size of the number in points." },
+        color = { kind = "selector", values = POWER_TEXT_COLOR_VALUES, order = POWER_TEXT_COLOR_ORDER },
+        offset = false,
+    })
+
+    if isBar then
+        AddTextPositionControls(tabBuilder, ctx)
+    else
+        AddCtxOffsetPair(tabBuilder, ctx, "textOffsetX", "textOffsetY")
+    end
+
+    tabBuilder:Finalize()
+end
+
+--------------------------------------------------------------------------------
 -- Sizing and Visibility tabs
 --------------------------------------------------------------------------------
 
@@ -724,6 +839,17 @@ function Tabs.BuildTabSet(ctx)
         return tabs, buildContent
     end
 
+    if kind == "classpower" then
+        -- No aura: the bar (Bar shape) and the number, then Visibility, since
+        -- the frame is up whether or not anything is happening to it.
+        if shape == "bar" then
+            add("bar", "Bar", Tabs.BuildClassPowerBarTab)
+        end
+        add("text", "Text", Tabs.BuildClassPowerTextTab)
+        add("visibility", "Visibility", Tabs.BuildVisibilityTab)
+        return tabs, buildContent
+    end
+
     if shape == "bar" then
         add("bar", "Bar", Tabs.BuildBarTab)
         add("icon", "Icon", Tabs.BuildIconTab)
@@ -737,8 +863,8 @@ function Tabs.BuildTabSet(ctx)
     add("duration", "Duration", Tabs.BuildDurationTab)
     add("stacks", "Stacks", Tabs.BuildStacksTab)
     -- No Visibility tab for buff/debuff tracking: an aura is its own
-    -- visibility condition. BuildVisibilityTab stays for the cooldown
-    -- tracking mode, where the frame exists with nothing to show.
+    -- visibility condition. BuildVisibilityTab serves the kinds whose frame
+    -- is always up (Class Power above; cooldowns later).
 
     return tabs, buildContent
 end

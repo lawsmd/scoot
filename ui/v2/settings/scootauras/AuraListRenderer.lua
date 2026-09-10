@@ -58,7 +58,7 @@ local state = {
     textRows = {},        -- rows whose height came from a text measurement
 }
 
-local KIND_LABELS = { buff = "Buff", debuff = "Debuff", missingbuff = "Missing Buff" }
+local KIND_LABELS = { buff = "Buff", debuff = "Debuff", missingbuff = "Missing Buff", classpower = "Class Power" }
 local UNIT_LABELS = {
     player = "Player", group = "Group", target = "Target", focus = "Focus",
 }
@@ -66,14 +66,20 @@ local SHAPE_LABELS = {
     icon = "Icon", bar = "Horizontal Bar", shape = "Shape",
     text = "Text", icontext = "Icon & Text",
 }
+-- A Class Power tracker's two shapes read as the editor names them.
+local CLASS_POWER_SHAPE_LABELS = { bar = "Bar", text = "Number" }
 
 -- One descriptor for every surface: the tracker row's meta line and the group
--- icon's hover tooltip.
+-- icon's hover tooltip. A kind with one possible unit (Class Power) drops the
+-- "on" clause: the row has nothing to say about it.
 local function TrackerMetaText(tracker)
-    local text = (KIND_LABELS[tracker.kind] or "?") .. " on "
-        .. (UNIT_LABELS[tracker.unit] or "?") .. ", shown as "
-        .. (SHAPE_LABELS[tracker.shape] or "?")
     local SAU = addon.ScootAuras
+    local shapeLabels = (tracker.kind == "classpower") and CLASS_POWER_SHAPE_LABELS or SHAPE_LABELS
+    local text = (KIND_LABELS[tracker.kind] or "?")
+    if not (SAU and SAU.SoleUnitForKind and SAU.SoleUnitForKind(tracker.kind)) then
+        text = text .. " on " .. (UNIT_LABELS[tracker.unit] or "?")
+    end
+    text = text .. ", shown as " .. (shapeLabels[tracker.shape] or "?")
     local named = SAU and SAU.DescribeSpecs and SAU.DescribeSpecs(tracker.specs)
     if named then text = text .. ", " .. named .. " only" end
     if tracker.enabled == false then
@@ -265,9 +271,9 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ROW_ICON, ROW_ICON)
     icon:SetPoint("TOPLEFT", row, "TOPLEFT", PAD, -5)
-    local texture = addon.ScootAuras._SpellIcon(tracker.spellId)
-    icon:SetTexture(texture)
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- The spell's icon, or the class crest for a kind with no spell.
+    local texture = SAU.TrackerIcon(tracker)
+    SAU.PaintTrackerIcon(icon, texture)
 
     -- Text stops short of the button cluster, so a long name or meta line
     -- never runs under it. Four buttons now: spec, delete, duplicate, ON.
@@ -282,7 +288,7 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     name:SetWidth(textW)
     name:SetJustifyH("LEFT")
     name:SetWordWrap(false)
-    name:SetText(tracker.name or ("Aura " .. tostring(tracker.spellId)))
+    name:SetText(SAU.DisplayName(tracker))
     name:SetTextColor(0.92, 0.92, 0.92, 1)
 
     -- Wrapped, not truncated: the list scrolls, so lines are cheaper than a
@@ -385,7 +391,7 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     end)
 
     deleteBtn:SetScript("OnClick", function()
-        local trackerName = tracker.name or tostring(tracker.spellId)
+        local trackerName = SAU.DisplayName(tracker)
         local doDelete = function()
             if addon.UI.ScootAuraEditor and addon.UI.ScootAuraEditor.IsOpen() then
                 addon.UI.ScootAuraEditor.Close()
@@ -608,9 +614,8 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
 
             local tex = btn:CreateTexture(nil, "ARTWORK")
             tex:SetAllPoints()
-            local texture = addon.ScootAuras._SpellIcon(tracker.spellId)
-            tex:SetTexture(texture)
-            tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local texture = SAU.TrackerIcon(tracker)
+            SAU.PaintTrackerIcon(tex, texture)
             if loaded == false or not SAU.IsTrackerActive(memberId, tracker) then
                 tex:SetDesaturated(true)
                 tex:SetAlpha(0.45)
@@ -680,7 +685,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
                 btn.UpdateHover()
                 if Drag.active then return end
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(tracker.name or ("Aura " .. tostring(tracker.spellId)), 1, 1, 1)
+                GameTooltip:SetText(SAU.DisplayName(tracker), 1, 1, 1)
                 GameTooltip:AddLine(TrackerMetaText(tracker), 0.7, 0.7, 0.7, true)
                 GameTooltip:Show()
             end)

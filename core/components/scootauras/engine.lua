@@ -223,7 +223,7 @@ function Engine.UpdateEditModeName(trackerId)
     local entry = byTracker[trackerId]
     local tracker = SAU.GetTracker(trackerId)
     if entry and tracker then
-        entry.shell.editModeName = tracker.name or ("ScootAura " .. trackerId)
+        entry.shell.editModeName = SAU.DisplayName(tracker)
     end
 end
 
@@ -449,6 +449,22 @@ function Engine.ApplyAll(trackerId)
     local entry = byTracker[trackerId]
     if not tracker or not state or not entry then return end
 
+    if not SAU.KindOwnsContainer(tracker.kind) then
+        -- No AuraContainer to build: the visible set is Scoot-owned and fed
+        -- by plain setters (classpower.lua), painted from ApplyStyling, so
+        -- nothing here waits on the structural gate or the pending queue. A
+        -- container parked on this entry by an earlier occupant stays parked.
+        -- Before the gate check on purpose, or the kind would queue for
+        -- nothing in combat.
+        pendingWire[trackerId] = nil
+        UpdateFlushTicker()
+        entry.button = nil
+        entry.wired = true
+        SetResult("wire.t" .. trackerId, "no container (Scoot-owned kind)")
+        Record("applied", "t" .. trackerId)
+        return
+    end
+
     if not Engine.CanDoStructuralWork() then
         pendingWire[trackerId] = true
         UpdateFlushTicker()
@@ -543,7 +559,9 @@ function Engine.MarkStaleFilters(reason)
         local marked = {}
         for trackerId, entry in pairs(byTracker) do
             local tracker = SAU.GetTracker(trackerId)
-            if tracker and entry.container and entry.wiredFilterKey then
+            -- A kind with no spell has no filter; a container on its entry
+            -- belongs to an earlier occupant and stays parked as it is.
+            if tracker and SAU.KindNeedsSpell(tracker.kind) and entry.container and entry.wiredFilterKey then
                 local _, key = BuildCandidateFilters(tracker, nil)
                 -- Never rebuild toward a degenerate key. An empty or partial
                 -- catalog expands to the bare spell id, and acting on that
@@ -599,7 +617,9 @@ function Engine.ClaimForTracker(trackerId)
     state.lockBar = entry.lockBar
     SAU._activeStates[trackerId] = state
 
-    entry.shell.editModeName = tracker.name or ("ScootAura " .. trackerId)
+    -- Resolved live, so a spec change reaching this through RebuildAll
+    -- renames a Class Power tracker after its new resource.
+    entry.shell.editModeName = SAU.DisplayName(tracker)
     EnsureLEMFrame(entry)
     ApplySavedPosition(entry)
 
@@ -635,6 +655,9 @@ function Engine.ReleaseForTracker(trackerId)
     end
     if SAU.Underlay then
         SAU.Underlay.OnEntryReleased(entry)
+    end
+    if SAU.ClassPower then
+        SAU.ClassPower.OnEntryReleased(entry, trackerId)
     end
     -- A grouped visual must not stay parented in the group: the next occupant
     -- of this entry would render inside it.

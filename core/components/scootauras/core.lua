@@ -401,14 +401,18 @@ end
 --------------------------------------------------------------------------------
 
 -- missingbuff: the visual shows while the player LACKS the buff (missing.lua).
-SAU.VALID_KINDS = { buff = true, debuff = true, missingbuff = true }
+-- classpower: the player's display power as a bar or a number (classpower.lua).
+SAU.VALID_KINDS = { buff = true, debuff = true, missingbuff = true, classpower = true }
 
 -- Shapes per kind. Buff/debuff trackers display the aura; a missing-buff
 -- tracker is a reminder, so it offers icon, text, or both and no bar/shape.
+-- A Class Power tracker is the bar, or the number alone (the same "text"
+-- token the reminder uses).
 SAU.VALID_SHAPES_BY_KIND = {
     buff        = { icon = true, bar = true, shape = true },
     debuff      = { icon = true, bar = true, shape = true },
     missingbuff = { icon = true, text = true, icontext = true },
+    classpower  = { bar = true, text = true },
 }
 -- Union, for callers that only need "is this a shape at all".
 SAU.VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true }
@@ -416,21 +420,81 @@ SAU.VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontex
 -- The friendly-debuff wall: debuff information on friendly units is not
 -- acquirable, so Debuff offers hostile-capable units only. Missing-buff
 -- trackers offer the player and "group", which is the whole party or raid
--- rather than one token (missing.lua resolves it).
+-- rather than one token (missing.lua resolves it). Class Power is the
+-- player's own resource, so it offers one unit and the editor skips the row.
 SAU.VALID_UNITS = {
     buff        = { player = true, target = true, focus = true },
     debuff      = { target = true, focus = true },
     missingbuff = { player = true, group = true },
+    classpower  = { player = true },
 }
+
+-- Per-kind traits the engine and the editor branch on, so no site outside
+-- this table string-matches a kind for them. `spell`: the record carries a
+-- spellId and the editor validates one. `container`: the engine builds an
+-- AuraContainer for it; a kind without one is Scoot-owned art fed by plain
+-- setters and never waits on the structural gate. `gated`: a new tracker
+-- starts with Only in Combat on.
+local KIND_TRAITS = {
+    buff        = { spell = true,  container = true,  gated = true },
+    debuff      = { spell = true,  container = true,  gated = true },
+    missingbuff = { spell = true,  container = true,  gated = true },
+    classpower  = { spell = false, container = false, gated = false },
+}
+
+-- Auto names for the kinds with no spell to name them after: a string, or a
+-- function of the tracker's spec list. A Class Power tracker is named after
+-- the resource its specs run on (classpower.lua), and stores no name, so the
+-- name follows a spec change or a widened spec list.
+local KIND_AUTO_NAMES = {
+    classpower = function(specs)
+        local CP = SAU.ClassPower
+        return CP and CP.NameForSpecs(specs) or "Class Power"
+    end,
+}
+-- What those kinds stored before they were named live; dropped at load.
+local LEGACY_AUTO_NAMES = { classpower = "Class Power" }
+
+function SAU.KindNeedsSpell(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits == nil or traits.spell ~= false
+end
+
+function SAU.KindOwnsContainer(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits == nil or traits.container ~= false
+end
+
+function SAU.KindStartsGated(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits == nil or traits.gated ~= false
+end
+
+--- The one unit a kind offers, or nil when it offers a choice. The editor
+-- skips the "On..." row for such a kind and seeds this unit instead.
+function SAU.SoleUnitForKind(kind)
+    local units = SAU.VALID_UNITS[kind]
+    if not units then return nil end
+    local only, count = nil, 0
+    for unit in pairs(units) do
+        only = unit
+        count = count + 1
+    end
+    return (count == 1) and only or nil
+end
 
 --- The unit a kind falls back to when the chosen one is invalid for it.
 function SAU.DefaultUnitForKind(kind)
     return (kind == "debuff") and "target" or "player"
 end
 
+-- Kinds whose fallback shape is not "icon" and not the table's first entry.
+local DEFAULT_SHAPE_BY_KIND = { classpower = "bar" }
+
 --- The shape a kind falls back to when the chosen one is invalid for it:
 -- "icon" wherever a kind offers it, else the kind's first shape.
 function SAU.DefaultShapeForKind(kind)
+    if DEFAULT_SHAPE_BY_KIND[kind] then return DEFAULT_SHAPE_BY_KIND[kind] end
     local shapes = SAU.VALID_SHAPES_BY_KIND[kind]
     if shapes and not shapes.icon then
         return (next(shapes))
@@ -439,8 +503,10 @@ function SAU.DefaultShapeForKind(kind)
 end
 
 function SAU.ValidateContent(spellId, kind, unit, shape)
-    if type(spellId) ~= "number" or spellId <= 0 then return nil, "invalid spell ID" end
-    if not SAU.VALID_KINDS[kind] then return nil, "kind must be buff, debuff, or missingbuff" end
+    if not SAU.VALID_KINDS[kind] then return nil, "kind must be buff, debuff, missingbuff, or classpower" end
+    if SAU.KindNeedsSpell(kind) and (type(spellId) ~= "number" or spellId <= 0) then
+        return nil, "invalid spell ID"
+    end
     local units = SAU.VALID_UNITS[kind]
     if not units[unit] then return nil, kind .. " cannot target unit '" .. tostring(unit) .. "'" end
     local shapes = SAU.VALID_SHAPES_BY_KIND[kind]
@@ -606,6 +672,13 @@ function SAU.DefaultSettings()
         -- Missing-buff kind (missing.lua): text suffix and blink.
         missingSuffix           = { type = "addon", default = false },
         blinkWhenShown          = { type = "addon", default = false },
+        -- Class Power kind (classpower.lua): the number as a percentage, the
+        -- bar's interpolation, and the number's color mode (default is white,
+        -- power the class power color, custom the textColor tint; the aura
+        -- kinds read textColor alone).
+        powerTextPercent        = { type = "addon", default = false },
+        barSmoothFill           = { type = "addon", default = true },
+        textColorMode           = { type = "addon", default = "default" },
     }
 end
 
@@ -617,11 +690,23 @@ end
 -- stay icon-appropriate; these are stamped into the component db when a
 -- tracker becomes a bar (unwritten keys only, so user choices always win) and
 -- removed again when it stops being one (still-pristine keys only).
+--
+-- The geometry, textures, border and text size start every new bar of every
+-- kind thin and flat: 200 x 18, Flat 1 on both sides, a square border 2
+-- thick, the text at 12pt. The registered defaults (250 x 32, bevelled, no
+-- border, 24pt) still stand behind bars stamped before these keys existed.
 SAU.BarShapeStartingValues = {
-    textInnerAnchor   = "RIGHT",
-    stackTextPosition = "outside",
-    stackTextSize     = 18,
-    stackTextColor    = { 1, 0, 0, 1 },
+    textInnerAnchor      = "RIGHT",
+    textSize             = 12,
+    stackTextPosition    = "outside",
+    stackTextSize        = 18,
+    stackTextColor       = { 1, 0, 0, 1 },
+    barWidth             = 200,
+    barHeight            = 18,
+    barForegroundTexture = "a1",
+    barBackgroundTexture = "a1",
+    barBorderStyle       = "square",
+    barBorderThickness   = 2,
 }
 
 local function StampEqual(a, b)
@@ -676,6 +761,23 @@ end
 
 function SAU.RemoveMissingStartingValues(trackerId)
     RemoveStartingValues(trackerId, SAU.MissingKindStartingValues)
+end
+
+-- Class Power kind: the number starts on Crisp Shadow Thick Outline (the
+-- registered font, Roboto SemiCond Black, stands), and the bar fills in the
+-- power color (the registered default is the aura bars' class color). Same
+-- stamp/unstamp rules as the bar values.
+SAU.ClassPowerStartingValues = {
+    textStyle              = "SHADOWTHICKOUTLINESLUG",
+    barForegroundColorMode = "power",
+}
+
+function SAU.ApplyClassPowerStartingValues(trackerId)
+    ApplyStartingValues(trackerId, SAU.ClassPowerStartingValues)
+end
+
+function SAU.RemoveClassPowerStartingValues(trackerId)
+    RemoveStartingValues(trackerId, SAU.ClassPowerStartingValues)
 end
 
 --------------------------------------------------------------------------------
@@ -862,10 +964,61 @@ end
 
 SAU._PlainSpellName = PlainSpellName
 
+--- The name a tracker gets when its owner has not named it: the spell as the
+-- player knows it, or for a kind with no spell its own name, which may read
+-- the tracker's spec list.
+function SAU.AutoName(kind, spellId, specs)
+    if not SAU.KindNeedsSpell(kind) then
+        local auto = KIND_AUTO_NAMES[kind]
+        if type(auto) == "function" then return auto(specs) end
+        return auto or "Tracker"
+    end
+    return PlainSpellName(spellId)
+end
+
+--- Records of a live-named kind that still carry the fixed name the kind
+-- stored before it was named live drop it, so DisplayName resolves them.
+function SAU.DropStoredAutoNames()
+    local store = SAU.EnsureStore()
+    if not store then return end
+    for _, tracker in pairs(store.trackers or {}) do
+        local legacy = tracker.kind and LEGACY_AUTO_NAMES[tracker.kind]
+        if legacy and tracker.name == legacy then
+            tracker.name = nil
+        end
+    end
+end
+
 --- Icon fileID for a stored spell ID (see DescribeSpell).
 function SAU._SpellIcon(spellId)
     local _, icon = SAU.DescribeSpell(spellId)
     return icon
+end
+
+--- The art the Aura List row, a group member badge, and the drag ghosts show
+-- for a tracker: the spell's icon, or the player's class crest for a kind
+-- with no spell. A number is a texture file id, a string an atlas name.
+function SAU.TrackerIcon(tracker)
+    if tracker and not SAU.KindNeedsSpell(tracker.kind) then
+        local token = addon.GetClassTokenForUnit and addon.GetClassTokenForUnit("player") or nil
+        local atlas = token and GetClassAtlas and GetClassAtlas(token) or nil
+        return atlas or 134400
+    end
+    return SAU._SpellIcon(tracker and tracker.spellId)
+end
+
+--- Paints a TrackerIcon value onto a texture: a file id is cropped the way
+-- every spell icon in the addon is, an atlas keeps its own coordinates.
+function SAU.PaintTrackerIcon(tex, icon)
+    if type(icon) == "string" then
+        tex:SetTexCoord(0, 1, 0, 1)
+        if not pcall(tex.SetAtlas, tex, icon) then
+            tex:SetTexture(134400)
+        end
+    else
+        tex:SetTexture(icon or 134400)
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
 end
 
 --- Registers the settings component for one tracker. Idempotent; respects the
@@ -916,8 +1069,8 @@ function SAU.CreateTracker(spec)
     if not SAU.IsModuleActive() then
         return nil, "ScootAuras module is disabled (enable it on the Features page, then reload)"
     end
-    local spellId = tonumber(spec and spec.spellId)
     local kind = spec and spec.kind or "buff"
+    local spellId = SAU.KindNeedsSpell(kind) and tonumber(spec and spec.spellId) or nil
     local unit = spec and spec.unit or SAU.DefaultUnitForKind(kind)
     local shape = spec and spec.shape or SAU.DefaultShapeForKind(kind)
     local ok, err = SAU.ValidateContent(spellId, kind, unit, shape)
@@ -935,15 +1088,23 @@ function SAU.CreateTracker(spec)
         kind = kind,
         unit = unit,
         shape = shape,
-        name = spec.name or PlainSpellName(spellId),
+        -- A spell kind stores its auto name; a kind with no spell stores
+        -- nothing and is named live from its specs (DisplayName).
+        name = spec.name or (SAU.KindNeedsSpell(kind) and SAU.AutoName(kind, spellId) or nil),
         enabled = true,
         order = trackerId,
     }
     -- Content, not styling: they decide when the tracker may show at all. Every
-    -- kind carries the combat gate, and a new tracker starts gated unless the
-    -- editor says otherwise (a My Group reminder passes false, since raid buffs
-    -- go up between pulls). The instance gate is a missing-buff field.
-    store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat ~= false)
+    -- kind carries the combat gate. A new tracker of a gated kind starts on
+    -- Yes unless the editor says otherwise (a My Group reminder passes false,
+    -- since raid buffs go up between pulls); a kind that starts ungated (Class
+    -- Power, watched between pulls as much as in them) starts on No. The
+    -- instance gate is a missing-buff field.
+    if SAU.KindStartsGated(kind) then
+        store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat ~= false)
+    else
+        store.trackers[trackerId].onlyInCombat = (spec.onlyInCombat == true)
+    end
     if kind == "missingbuff" then
         store.trackers[trackerId].onlyInInstances = (spec.onlyInInstances == true)
     end
@@ -960,6 +1121,8 @@ function SAU.CreateTracker(spec)
     end
     if kind == "missingbuff" then
         SAU.ApplyMissingStartingValues(trackerId)
+    elseif kind == "classpower" then
+        SAU.ApplyClassPowerStartingValues(trackerId)
     end
     SAU.Engine.ClaimForTracker(trackerId)
     return trackerId
@@ -1066,13 +1229,13 @@ function SAU.SetTrackerContent(trackerId, changes)
     end
     if type(changes.name) == "string" and changes.name ~= "" then
         tracker.name = changes.name
-    elseif spellId ~= oldSpellId then
+    elseif spellId ~= oldSpellId or kind ~= oldKind then
         -- The name was the auto name (or a Duplicate / Copy from Global of
         -- one, where the point is to swap the spell next); follow the new
-        -- spell. Custom names stay.
-        local oldAuto = PlainSpellName(oldSpellId)
-        if tracker.name == oldAuto or tracker.name == oldAuto .. " copy" then
-            tracker.name = PlainSpellName(spellId)
+        -- spell, or the new kind's own name. Custom names stay.
+        local oldAuto = SAU.AutoName(oldKind, oldSpellId, tracker.specs)
+        if tracker.name == nil or tracker.name == oldAuto or tracker.name == oldAuto .. " copy" then
+            tracker.name = SAU.KindNeedsSpell(kind) and SAU.AutoName(kind, spellId) or nil
         end
     end
 
@@ -1085,6 +1248,11 @@ function SAU.SetTrackerContent(trackerId, changes)
         SAU.ApplyMissingStartingValues(trackerId)
     elseif oldKind == "missingbuff" and kind ~= "missingbuff" then
         SAU.RemoveMissingStartingValues(trackerId)
+    end
+    if kind == "classpower" and oldKind ~= "classpower" then
+        SAU.ApplyClassPowerStartingValues(trackerId)
+    elseif oldKind == "classpower" and kind ~= "classpower" then
+        SAU.RemoveClassPowerStartingValues(trackerId)
     end
 
     SAU.Engine.ClaimForTracker(trackerId)
@@ -1106,7 +1274,7 @@ function SAU.DuplicateTracker(trackerId)
         kind = source.kind,
         unit = source.unit,
         shape = source.shape,
-        name = (source.name or PlainSpellName(source.spellId)) .. " copy",
+        name = (source.name or SAU.AutoName(source.kind, source.spellId, source.specs)) .. " copy",
         enabled = source.enabled ~= false,
         order = newId,
         onlyInCombat = source.onlyInCombat,
@@ -1139,6 +1307,8 @@ function SAU.DuplicateTracker(trackerId)
     end
     if source.kind == "missingbuff" then
         SAU.ApplyMissingStartingValues(newId)
+    elseif source.kind == "classpower" then
+        SAU.ApplyClassPowerStartingValues(newId)
     end
     SAU.Engine.ClaimForTracker(newId)
     return newId
@@ -1211,7 +1381,13 @@ end
 function SAU.RenameTracker(trackerId, name)
     local tracker = SAU.GetTracker(trackerId)
     if not tracker or type(name) ~= "string" or name == "" then return nil, "bad rename" end
-    tracker.name = name
+    -- A live-named kind renamed to its own auto name goes back to live naming.
+    if not SAU.KindNeedsSpell(tracker.kind)
+        and name == SAU.AutoName(tracker.kind, tracker.spellId, tracker.specs) then
+        tracker.name = nil
+    else
+        tracker.name = name
+    end
     SAU.Engine.UpdateEditModeName(trackerId)
     return true
 end
@@ -1219,7 +1395,7 @@ end
 --- Display name shared by the editor title, its carousel, and the list rows.
 function SAU.DisplayName(tracker)
     if not tracker then return "" end
-    return tracker.name or ("Aura " .. tostring(tracker.spellId))
+    return tracker.name or SAU.AutoName(tracker.kind, tracker.spellId, tracker.specs)
 end
 
 --------------------------------------------------------------------------------

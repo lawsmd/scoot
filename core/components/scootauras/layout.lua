@@ -52,6 +52,20 @@ function SAU.ResolveVisibility(tracker, db)
             showStacks = false,
         }
     end
+    if tracker.kind == "classpower" then
+        -- The bar and the number are a Scoot-owned element set outside any
+        -- engine button (classpower.lua); these flags describe that set. The
+        -- number alone can never be hidden, the Hide toggle is a bar option.
+        return {
+            shape = shape,
+            classPower = true,
+            showIcon = false,
+            showBar = (shape == "bar"),
+            showText = (shape ~= "bar") or not (db and db.hideText),
+            showStacks = false,
+            showName = false,
+        }
+    end
     local showIcon
     if shape == "bar" then
         showIcon = db and db.barShowIcon or false
@@ -221,6 +235,40 @@ local function LayoutElements(trackerId, tracker, state)
         else
             SetHostSize(iconW > 0 and iconW or 32, iconH > 0 and iconH or 32)
         end
+        return
+    end
+
+    if vis.classPower and vis.shape ~= "bar" then
+        -- Class Power number (classpower.lua): the number alone, centered on
+        -- the host with its offsets. The host is a ruler measure of a fixed
+        -- sample string, never of the value, so no geometry depends on a
+        -- secret and a value change never re-lays out. The bar shape takes
+        -- the generic bar branch below with the icon off.
+        if texElem then texElem.widget:Hide() end
+        if stacksElem then stacksElem.widget:Hide() end
+        if nameElem then nameElem.widget:Hide() end
+        if barElem then barElem.widget:Hide() end
+        local txOff = tonumber(db and db.textOffsetX) or 0
+        local tyOff = tonumber(db and db.textOffsetY) or 0
+        local textW, textH = 0, 0
+        if textElem and vis.showText then
+            local fs = textElem.widget
+            fs:ClearAllPoints()
+            fs:SetWidth(0)
+            fs:SetWordWrap(false)
+            fs:SetJustifyH("CENTER")
+            fs:SetPoint("CENTER", state.container, "CENTER", txOff, tyOff)
+            fs:Show()
+            local w, h
+            if SAU.ClassPower and SAU.ClassPower.MeasureSample then
+                w, h = SAU.ClassPower.MeasureSample(state.entry, db)
+            end
+            if type(w) == "number" then textW = math.ceil(w) + 2 end
+            if type(h) == "number" then textH = math.ceil(h) end
+            local fontSize = tonumber(db and db.textSize) or 24
+            textH = math.max(textH, math.ceil(fontSize * 1.4))
+        end
+        SetHostSize(textW + 2 * math.abs(txOff), textH + 2 * math.abs(tyOff))
         return
     end
 

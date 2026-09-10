@@ -266,7 +266,8 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
         Drag.targetGid, Drag.targetIndex, Drag.targetUngroup = nil, nil, false
 
         local cursor = GetDragCursor()
-        cursor._tex:SetTexture(texture or 134400)
+        -- A file id or a class crest atlas (SAU.TrackerIcon).
+        addon.ScootAuras.PaintTrackerIcon(cursor._tex, texture)
         cursor:SetAlpha(0.85)
         SetDragHint(nil)
         cursor:Show()

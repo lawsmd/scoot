@@ -63,6 +63,7 @@ local function InitializeFromProfile()
     -- Records migrated from the per-profile stores carry a class token instead
     -- of a spec list, because the migration runs before class data is loaded.
     SAU.ResolvePendingSpecStamps()
+    SAU.DropStoredAutoNames()
     -- Claims only what loads in this character's current spec; the rest is
     -- listed under Not Loaded and holds no container.
     SAU.ReconcileActivation("pew")

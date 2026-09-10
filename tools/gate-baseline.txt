@@ -76,6 +76,7 @@ event-frame	core/components/castbarz/events.lua	2
 event-frame	core/components/cooldowns/trackedbars/suppression.lua	5
 event-frame	core/components/personal_resource_display/core.lua	1
 event-frame	core/components/scootauras/cadence.lua	2
+event-frame	core/components/scootauras/classpower.lua	1
 event-frame	core/components/unitframes/auracontainer.lua	2
 event-frame	core/components/unitframes/bars/preemptive.lua	2
 event-frame	core/components/unitframesz/engine.lua	10

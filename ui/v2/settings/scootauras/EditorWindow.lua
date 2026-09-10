@@ -75,6 +75,10 @@ function ctx.get(key)
         local o = SAU().MissingKindStartingValues[key]
         if o ~= nil then v = o end
     end
+    if v == nil and ctx.kind() == "classpower" then
+        local o = SAU().ClassPowerStartingValues[key]
+        if o ~= nil then v = o end
+    end
     if v == nil then v = DefaultFor(key) end
     return v
 end
@@ -151,10 +155,14 @@ end
 local function TryMaterialize()
     if not session or session.trackerId then return end
     local c = session.draft.content
-    if not (c.kind and c.unit and c.shape and session.validated) then return end
+    if not (c.kind and c.unit and c.shape) then return end
+    -- A kind with no spell (Class Power) materializes on the three choices
+    -- alone; every other kind waits for a validated spell.
+    local needsSpell = SAU().KindNeedsSpell(c.kind)
+    if needsSpell and not session.validated then return end
 
     local id, err = SAU().CreateTracker({
-        spellId = session.validated.spellId,
+        spellId = needsSpell and session.validated.spellId or nil,
         kind = c.kind,
         unit = c.unit,
         shape = c.shape,
@@ -585,6 +593,19 @@ local function InitializeFrame()
     spellExplainer:SetText("Select a Spell to track from the CDM list below, or enter its ID:")
     local dimR, dimG, dimB = theme:GetDimTextColor()
     spellExplainer:SetTextColor(dimR, dimG, dimB, 1)
+    widgets.spellExplainer = spellExplainer
+
+    -- Stands in for the whole spell region on a kind that tracks no spell.
+    local kindNote = bottomLeft:CreateFontString(nil, "OVERLAY")
+    kindNote:SetFont(theme:GetFont("LABEL"), 12, "")
+    kindNote:SetPoint("TOPLEFT", bottomLeft, "TOPLEFT", 8, -20)
+    kindNote:SetPoint("TOPRIGHT", bottomLeft, "TOPRIGHT", -8, -20)
+    kindNote:SetJustifyH("LEFT")
+    kindNote:SetJustifyV("TOP")
+    kindNote:SetWordWrap(true)
+    kindNote:SetTextColor(dimR, dimG, dimB, 1)
+    kindNote:Hide()
+    widgets.kindNote = kindNote
 
     local spellBox = addon.UI.Controls:CreateSingleLineEditBox({
         parent = bottomLeft,
@@ -635,6 +656,7 @@ local function InitializeFrame()
     local catalogHost = CreateFrame("Frame", nil, bottomLeft)
     catalogHost:SetPoint("TOPLEFT", bottomLeft, "TOPLEFT", 4, -98)
     catalogHost:SetPoint("BOTTOMRIGHT", bottomLeft, "BOTTOMRIGHT", -4, 4)
+    widgets.catalogHost = catalogHost
     cdmPicker = addon.UI.ScootAuraCDMPicker.Attach(catalogHost, {
         onPick = function(spellId)
             spellBox:SetText(tostring(spellId))
@@ -673,8 +695,16 @@ end
 -- Dynamic regions
 --------------------------------------------------------------------------------
 
-local KIND_LABELS = { buff = "a Buff", debuff = "a Debuff", missingbuff = "a Missing Buff" }
-local KIND_ORDER = { "buff", "debuff", "missingbuff" }
+local KIND_LABELS = {
+    buff = "a Buff", debuff = "a Debuff", missingbuff = "a Missing Buff", classpower = "my Class Power",
+}
+local KIND_ORDER = { "buff", "debuff", "missingbuff", "classpower" }
+-- What the spell region says for a kind that tracks no spell.
+local KIND_NOTES = {
+    classpower = "Class Power tracks the resource your character runs on: Energy, Rage, Mana, Focus, "
+        .. "Runic Power, Insanity, Fury, Maelstrom or Astral Power. It follows the display power, so a "
+        .. "Druid's tracker changes with the form. There is no spell to pick.",
+}
 local UNIT_LABELS = {
     player = "Myself", group = "My Group", target = "My Target", focus = "My Focus",
 }
@@ -687,6 +717,9 @@ local SHAPE_ORDER = { "icon", "bar", "shape" }
 -- A missing-buff tracker is a reminder: icon, text, or both.
 local MISSING_SHAPE_LABELS = { icon = "an Icon", text = "Text", icontext = "an Icon & Text" }
 local MISSING_SHAPE_ORDER = { "icon", "text", "icontext" }
+-- A Class Power tracker is the bar, or the number alone (the "text" token).
+local CLASS_POWER_SHAPE_LABELS = { bar = "a Bar", text = "a Number" }
+local CLASS_POWER_SHAPE_ORDER = { "bar", "text" }
 -- Shared by both missing-buff gate rows.
 local YES_NO_LABELS = { yes = "Yes", no = "No" }
 local YES_NO_ORDER = { "yes", "no" }
@@ -776,6 +809,40 @@ local function MissingVisualGear(order)
     return { direction = "DOWN", gap = 8, pages = pages }
 end
 
+-- Sub-option for both Class Power shapes, opened by the gear inside the
+-- "Shown as..." field: the number as a percentage of the maximum instead of
+-- the value. One page table for both tokens, so they share one panel body.
+-- The toggle writes through ctx.setAndApply and refreshes the preview alone;
+-- a page that re-rendered the selectors would destroy the gear its own
+-- fly-out is anchored to.
+local POWER_PERCENT_PAGE = {
+    tooltip = "Options for the number",
+    width = 310,
+    height = 56,
+    build = function(page)
+        local Controls = addon.UI.Controls
+        local toggle = Controls:CreateToggle({
+            parent = page,
+            label = "Show as a percentage",
+            get = function() return ctx.get("powerTextPercent") == true end,
+            set = function(v)
+                ctx.setAndApply("powerTextPercent", v and true or false)
+                ctx.refreshPreview()
+            end,
+        })
+        if not toggle then return end
+        toggle:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+        toggle:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 0)
+    end,
+}
+
+local function ClassPowerShapeGear()
+    return {
+        direction = "DOWN", gap = 8,
+        pages = { bar = POWER_PERCENT_PAGE, text = POWER_PERCENT_PAGE },
+    }
+end
+
 local function ContentValue(field)
     local tracker = CurrentTracker()
     if tracker then return tracker[field] end
@@ -808,6 +875,28 @@ local function SetContent(field, value)
             local units = SAU().VALID_UNITS[value]
             if c.unit and not (units and units[c.unit]) then
                 c.unit = nil
+            end
+            -- A kind with one possible unit (Class Power) has no "On..." row:
+            -- the draft seeds that unit here. The seed is not a choice the
+            -- user made, so a flip to a kind that offers the row clears it.
+            if c.unitSeeded then
+                c.unit = nil
+                c.unitSeeded = nil
+            end
+            local sole = SAU().SoleUnitForKind(value)
+            if sole then
+                c.unit = sole
+                c.unitSeeded = true
+            end
+            -- Same for the combat gate: a kind that starts ungated seeds No,
+            -- and a flip to a gated kind takes the seed back.
+            if c.combatSeeded then
+                c.onlyInCombat = nil
+                c.combatSeeded = nil
+            end
+            if not SAU().KindStartsGated(value) and c.onlyInCombat == nil then
+                c.onlyInCombat = false
+                c.combatSeeded = true
             end
             local shapes = SAU().VALID_SHAPES_BY_KIND[value]
             if c.shape and not (shapes and shapes[c.shape]) then
@@ -850,6 +939,8 @@ end
 local function ShapeOptions(kind)
     if kind == "missingbuff" then
         return MISSING_SHAPE_LABELS, MISSING_SHAPE_ORDER
+    elseif kind == "classpower" then
+        return CLASS_POWER_SHAPE_LABELS, CLASS_POWER_SHAPE_ORDER
     end
     return SHAPE_LABELS, SHAPE_ORDER
 end
@@ -902,11 +993,25 @@ local function RenderSelectors()
     local unit = ContentValue("unit")
     local shape = ContentValue("shape")
 
+    -- A live tracker created without a spell cannot turn into a spell kind
+    -- in place (there is nothing to validate), so those options show dimmed
+    -- and inert. One that carries a spell from before a kind flip keeps them.
+    local live = CurrentTracker()
+    local kindDisabled
+    if live and not SAU().KindNeedsSpell(live.kind) and not live.spellId then
+        kindDisabled = {}
+        for _, k in ipairs(KIND_ORDER) do
+            if SAU().KindNeedsSpell(k) then kindDisabled[k] = true end
+        end
+    end
     AddChoiceSelector(selBuilder, "I want to track...",
         KIND_LABELS, KIND_ORDER, kind,
-        function(v) SetContent("kind", v) end)
+        function(v) SetContent("kind", v) end,
+        { disabledOptions = kindDisabled })
 
-    if kind then
+    -- A kind with one possible unit (Class Power: the player) has no row to
+    -- show; SetContent seeded that unit on the kind pick.
+    if kind and not SAU().SoleUnitForKind(kind) then
         local uValues, uOrder, uDisabled = UnitOptions(kind)
         AddChoiceSelector(selBuilder, "On...", uValues, uOrder, unit,
             function(v) SetContent("unit", v) end,
@@ -915,9 +1020,11 @@ local function RenderSelectors()
 
     if kind and unit then
         local sValues, sOrder = ShapeOptions(kind)
+        -- Both Class Power shapes carry the gear with the percent toggle.
         AddChoiceSelector(selBuilder, "Shown as...",
             sValues, sOrder, shape,
-            function(v) SetContent("shape", v) end)
+            function(v) SetContent("shape", v) end,
+            { gear = (kind == "classpower") and ClassPowerShapeGear() or nil })
     end
 
     -- Missing-state visual, debuff only (the Missing Buff kind owns the buff
@@ -993,20 +1100,75 @@ local function RenderTabs()
     if widgets.tabsScroll.UpdateThumb then widgets.tabsScroll.UpdateThumb() end
 end
 
+-- The Class Power colors, as classpower.lua resolves them for the HUD.
+local CLASS_POWER_FILL_COLOR_OPTS = { barKind = "power", unitForPower = "player" }
+local CLASS_POWER_TEXT_COLOR_OPTS = { classPowerMode = true, lightenMana = true, unitForPower = "player" }
+
+-- The Class Power preview: the bar held at a fixed fraction in the resolved
+-- power color, with the number in its mode's color (white on Default). The
+-- generic preview knows the aura color modes only, so the read path hands it
+-- Custom with the resolved tint, and turns off everything the kind never
+-- shows.
+local function RenderClassPowerPreview(shape)
+    local fillR, fillG, fillB = addon.ResolveColorRGBA("power", nil, CLASS_POWER_FILL_COLOR_OPTS)
+    local textR, textG, textB = addon.ResolveColorRGBA("classPower", nil, CLASS_POWER_TEXT_COLOR_OPTS)
+    local isBar = (shape == "bar")
+    local function getSetting(key)
+        if key == "barForegroundColorMode" then return "custom" end
+        if key == "barForegroundTint" and ctx.get("barForegroundColorMode") ~= "custom" then
+            return { fillR, fillG, fillB, 1 }
+        end
+        if key == "textColor" then
+            local mode = ctx.get("textColorMode")
+            if mode == "power" then return { textR, textG, textB, 1 } end
+            if mode ~= "custom" then return { 1, 1, 1, 1 } end
+        end
+        if key == "barShowIcon" then return false end
+        if key == "hideNameText" or key == "hideStackText" then return true end
+        -- The Hide toggle is a bar option; the number alone always shows.
+        if key == "hideText" and not isBar then return false end
+        return ctx.get(key)
+    end
+    local percent = ctx.get("powerTextPercent") == true
+    prevBuilder:AddPreview({
+        componentId = session and session.trackerId
+            and SAU().GetComponentId(session.trackerId) or "scootAuraDraft",
+        mode = isBar and "bar" or "text",
+        settingKeys = { _showCAText = true },
+        caTextSource = "duration",
+        caTextLiteral = percent and "75%" or "75",
+        fillFraction = 0.75,
+        rowHeight = 200,
+        previewScale = 1,
+        maxRowHeight = 340,
+        getSetting = getSetting,
+        noBottomBorder = true,
+        noHover = true,
+        noLabel = true,
+    })
+    prevBuilder:Finalize()
+end
+
 local function RenderPreview()
     if prevBuilder then prevBuilder:Cleanup() end
     local SettingsBuilder = addon.UI.SettingsBuilder
 
     -- No preview until a spell is chosen: without one there is nothing real
-    -- to show, and the engine's fallback is the player's spec icon.
+    -- to show, and the engine's fallback is the player's spec icon. A kind
+    -- with no spell previews as soon as its shape is chosen.
     local tracker = CurrentTracker()
-    if not ((session and session.validated) or tracker) then
+    local kind = ctx.kind()
+    if SAU().KindNeedsSpell(kind) and not ((session and session.validated) or tracker) then
         return
     end
 
     prevBuilder = SettingsBuilder:CreateFor(widgets.previewHost)
 
     local shape = ctx.shape()
+    if kind == "classpower" then
+        RenderClassPowerPreview(shape)
+        return
+    end
     local mode, shapeAtlas, shapeColor, shapeDrain
     if shape == "bar" then
         mode = ctx.get("barShowIcon") and "iconbar" or "bar"
@@ -1121,9 +1283,31 @@ local function PositionChip()
     widgets.chipIcon:SetPoint("TOPLEFT", widgets.bottomLeft, "TOP", -pairW / 2, -46)
 end
 
+-- The spell region (explainer, ID box, chip, status, catalog) serves the
+-- kinds that track a spell; a kind without one shows its note in its place.
+local function SetSpellRegionShown(shown)
+    widgets.spellExplainer:SetShown(shown)
+    widgets.spellBox:SetShown(shown)
+    widgets.statusText:SetShown(shown)
+    widgets.catalogHost:SetShown(shown)
+    if not shown then
+        widgets.chipIcon:Hide()
+        widgets.chipName:Hide()
+    end
+    widgets.kindNote:SetShown(not shown)
+end
+
 local function UpdateSpellRegion()
     if not session then return end
     local tracker = CurrentTracker()
+
+    local kind = ctx.kind()
+    local spellKind = SAU().KindNeedsSpell(kind)
+    SetSpellRegionShown(spellKind)
+    if not spellKind then
+        widgets.kindNote:SetText(KIND_NOTES[kind] or "")
+        return
+    end
 
     if not widgets.spellBox:HasFocus() then
         local shownId
@@ -1246,7 +1430,7 @@ local function RenderDynamic()
     -- The catalog carries extra cells for some kinds (missing-buff: class
     -- buff and forms), so a kind change rebuilds it.
     local kind = ctx.kind()
-    if needCatalogRefresh or kind ~= catalogKind then
+    if SAU().KindNeedsSpell(kind) and (needCatalogRefresh or kind ~= catalogKind) then
         needCatalogRefresh = false
         catalogKind = kind
         if cdmPicker then cdmPicker.Refresh(kind) end

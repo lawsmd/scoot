@@ -103,6 +103,7 @@ core/components/scootauras/rearrange.lua
 core/components/scootauras/regions.lua
 core/components/scootauras/missing.lua
 core/components/scootauras/underlay.lua
+core/components/scootauras/classpower.lua
 core/components/scootauras/events.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua

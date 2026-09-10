@@ -274,7 +274,7 @@ BeginMemberDrag = function(ov)
     if drag.visual then drag.visual:SetAlpha(0.4) end
 
     local g = EnsureGhost()
-    g._tex:SetTexture(SAU._SpellIcon(tracker.spellId))
+    SAU.PaintTrackerIcon(g._tex, SAU.TrackerIcon(tracker))
     g:SetAlpha(0.85)
     g:Show()
 

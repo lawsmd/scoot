@@ -141,6 +141,9 @@ end
 --   noBottomBorder  bool     Skip the divider line under the row.
 --   noHover         bool     Skip the accent hover highlight on the row.
 --   noLabel         bool     Skip the "Preview:" label (caller draws its own).
+--   fillFraction    number/nil  Hold the bar at this fraction instead of running the
+--                            countdown on it (a resource bar previews a level, not a
+--                            drain). The duration text still follows caTextLiteral.
 --   timerEpoch      table/nil  Caller-owned countdown anchor { start = <GetTime()> }.
 --                            Seeded on first use; a rebuilt row resumes the same
 --                            15s cycle instead of restarting it. The caller resets
@@ -496,7 +499,7 @@ function Controls:CreatePreview(options)
         local barFill = CreateFrame("StatusBar", nil, previewBar)
         barFill:SetAllPoints()
         barFill:SetMinMaxValues(0, 1)
-        barFill:SetValue(0.5)
+        barFill:SetValue(options.fillFraction or 0.5)
         local fgTexPath = addon.Media.ResolveBarTexturePath(barFGTexKey)
         if fgTexPath then
             barFill:SetStatusBarTexture(fgTexPath)
@@ -930,7 +933,7 @@ function Controls:CreatePreview(options)
     ----------------------------------------------------------------------------
 
     local animText = (caTextSource ~= "applications" and not caTextLiteral) and row._caTextFS or nil
-    local animFill = row._barFill
+    local animFill = (options.fillFraction == nil) and row._barFill or nil
     local animDrain = row._shapeCooldown
     if animText or animFill or animDrain then
         local epoch = options.timerEpoch
