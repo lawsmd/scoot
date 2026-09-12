@@ -143,30 +143,55 @@ function addon.FontPair.StripEscapes(text)
     return s
 end
 
+-- A mirror that cannot reproduce the real text blanks the copy rather than
+-- keeping the last value it managed. Apply box-anchors the copy to the real
+-- string's rect, so a copy holding an older value is drawn clipped or
+-- ellipsized inside the wrong box: a black smear behind the new text instead of
+-- a shadow of it. ClearText releases the Text aspect where SetText("") only
+-- drops the glyphs, the same distinction the measurement ruler in core/fonts.lua
+-- depends on, so try it first.
+local function blankCompanion(companion)
+    if not companion then return end
+    if companion.ClearText and pcall(companion.ClearText, companion) then return end
+    pcall(companion.SetText, companion, "")
+end
+
+-- Every branch leaves the copy either right or blank. The plain branch is
+-- protected as well: this runs inside a hooksecurefunc post-hook on the caller's
+-- SetText, so a raise here lands in the caller, and damagemetersY/layout.lua
+-- writes its rows in a bare loop where one raise leaves the rest of the pass
+-- unwritten.
 local function mirrorValue(fs, text)
     local companion = fs.__scootPair
     if not companion or not fs.__scootPairActive then return end
     if text == nil then
-        companion:SetText("")
+        blankCompanion(companion)
     elseif type(issecretvalue) == "function" and issecretvalue(text) then
-        pcall(companion.SetText, companion, text)
+        if not pcall(companion.SetText, companion, text) then blankCompanion(companion) end
     else
-        companion:SetText(addon.FontPair.StripEscapes(tostring(text)))
+        local ok, stripped = pcall(addon.FontPair.StripEscapes, tostring(text))
+        if not ok or not pcall(companion.SetText, companion, stripped) then
+            blankCompanion(companion)
+        end
     end
 end
 
 -- For paths where the final text is not an argument (SetFormattedText, the
--- initial sync). GetText can raise on secret-stamped strings; a failed read
--- leaves the companion as it was.
+-- initial sync). GetText can raise on secret-stamped strings, and a copy left on
+-- the previous value is worse than a copy with none.
 local function mirrorFromGetText(fs)
-    if not fs.__scootPair or not fs.__scootPairActive then return end
+    local companion = fs.__scootPair
+    if not companion or not fs.__scootPairActive then return end
     local ok, text = pcall(fs.GetText, fs)
-    if ok then mirrorValue(fs, text) end
+    if ok then
+        mirrorValue(fs, text)
+    else
+        blankCompanion(companion)
+    end
 end
 
 local function onClearText(fs)
-    local companion = fs.__scootPair
-    if companion then companion:SetText("") end
+    blankCompanion(fs.__scootPair)
 end
 
 local function onShow(fs)
@@ -177,6 +202,17 @@ end
 local function onHide(fs)
     local companion = fs.__scootPair
     if companion then companion:Hide() end
+end
+
+-- SetShown is its own widget method, so a SetShown(false) never reaches the
+-- Hide hook: the black copy stood behind a '%' sign the engine had switched
+-- off (unitframesz symbolFS:SetShown) until a reload rebuilt the pair. The
+-- argument is forwarded untested; the original call already accepted it.
+local function onSetShown(fs, shown)
+    local companion = fs.__scootPair
+    if companion and fs.__scootPairActive then
+        pcall(companion.SetShown, companion, shown)
+    end
 end
 
 -- Alpha rides along too: holds and fades that hide a string by SetAlpha(0)
@@ -210,9 +246,10 @@ local function installHooks(fs)
     -- this the copy keeps the old text: a black ghost name after the target
     -- goes away (unitframesz/engine.lua's "no unit" / "no name" paths).
     if fs.ClearText then hooksecurefunc(fs, "ClearText", onClearText) end
-    -- Kept off addon.Enforce: not a hide; mirrors Show, Hide and SetAlpha onto the companion string.
+    -- Kept off addon.Enforce: not a hide; mirrors Show, Hide, SetShown and SetAlpha onto the companion string.
     hooksecurefunc(fs, "Show", onShow)
     hooksecurefunc(fs, "Hide", onHide)
+    hooksecurefunc(fs, "SetShown", onSetShown)
     hooksecurefunc(fs, "SetAlpha", onSetAlpha)
     if fs.SetTextColor then hooksecurefunc(fs, "SetTextColor", onSetTextColor) end
 end
@@ -285,6 +322,15 @@ function addon.FontPair.Apply(fs, face, size, engineFlags)
     if fs.GetJustifyV then pcall(companion.SetJustifyV, companion, fs:GetJustifyV()) end
     if fs.GetWordWrap and companion.SetWordWrap then
         pcall(companion.SetWordWrap, companion, fs:GetWordWrap())
+    end
+    -- The line budget and the non-space rule ride along too, or a wrapped string
+    -- breaks at a different point in the copy than in the original: the damage
+    -- meter title is two-line word-wrapped (damagemetersY/frames.lua).
+    if fs.GetMaxLines and companion.SetMaxLines then
+        pcall(companion.SetMaxLines, companion, fs:GetMaxLines())
+    end
+    if fs.GetNonSpaceWrap and companion.SetNonSpaceWrap then
+        pcall(companion.SetNonSpaceWrap, companion, fs:GetNonSpaceWrap())
     end
 
     installHooks(fs)

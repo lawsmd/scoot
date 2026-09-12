@@ -56,24 +56,63 @@ local function taperOf(fs, companion)
     return lum, drawn, copyAlpha
 end
 
+-- Every damage meter row, name clip and column cell is an anonymous frame, so
+-- the immediate parent prints as a table address and no two pairs can be told
+-- apart. Walk up to the first named ancestor and say how many hops that took.
 local function parentNameOf(region)
     if not region or not region.GetParent then return "?" end
     local ok, parent = pcall(region.GetParent, region)
     if not ok or not parent then return "?" end
-    local okName, name = pcall(parent.GetName, parent)
-    if okName and name then return name end
+    local node, hops = parent, 0
+    while node and hops < 6 do
+        local okName, name = pcall(node.GetName, node)
+        if okName and name then
+            if hops == 0 then return name end
+            return string.format("%s (+%d)", name, hops)
+        end
+        local okUp, up = pcall(node.GetParent, node)
+        if not okUp then break end
+        node = up
+        hops = hops + 1
+    end
     return tostring(parent):gsub("table: ", "")
 end
 
 -- The text is often secret, so report only whether it reads, never the value.
-local function textStateOf(region)
+-- Pass strip for the real string: the copy is fed through StripEscapes, so a
+-- name carrying a color escape is shorter in the copy by construction and the
+-- two lengths would never line up.
+local function textStateOf(region, strip)
     if not region or not region.GetText then return "?" end
     local ok, text = pcall(region.GetText, region)
     if not ok then return "<throws>" end
     if text == nil then return "nil" end
     if type(issecretvalue) == "function" and issecretvalue(text) then return "secret" end
     if text == "" then return "empty" end
-    return string.format("plain (%d chars)", #tostring(text))
+    local s = tostring(text)
+    if strip and addon.FontPair and addon.FontPair.StripEscapes then
+        local okStrip, stripped = pcall(addon.FontPair.StripEscapes, s)
+        if okStrip then s = stripped end
+    end
+    if s == "" then return "empty" end
+    return string.format("plain (%d chars)", #s)
+end
+
+-- The real string and its copy must hold the same text. The copy is box-anchored
+-- to the real string's rect, so one left holding an older value is drawn clipped
+-- or ellipsized inside that rect: a smear rather than a shadow. Two secrets
+-- cannot be compared, so that pair reports as unverifiable instead of OK.
+local BLANK_STATE = { ["nil"] = true, ["empty"] = true }
+
+local function syncOf(realState, copyState)
+    if realState == "secret" and copyState == "secret" then
+        return "secret on both, contents not comparable", false
+    end
+    if BLANK_STATE[realState] and BLANK_STATE[copyState] then
+        return "OK, both blank", false
+    end
+    if realState == copyState then return "OK", false end
+    return string.format("DESYNC -- real %s, copy %s", realState, copyState), true
 end
 
 local function DebugFontPair()
@@ -86,6 +125,8 @@ local function DebugFontPair()
     table.insert(lines, "BACKGROUND < BORDER < ARTWORK < OVERLAY < HIGHLIGHT.")
     table.insert(lines, "Copy alpha tapers with text luminance and drawn alpha: dark text")
     table.insert(lines, "at reduced opacity gets a lighter copy, white text never tapers.")
+    table.insert(lines, "Sync compares the two text states. A DESYNC means the copy kept an")
+    table.insert(lines, "older value, which draws as a smear inside the real string's box.")
     table.insert(lines, "")
 
     if not registry then
@@ -94,11 +135,12 @@ local function DebugFontPair()
         return
     end
 
-    local count, wrong = 0, 0
+    local count, wrong, desynced = 0, 0, 0
     for fs, companion in pairs(registry) do
         count = count + 1
         local realLayer, realSub = drawLayerOf(fs)
         local copyLayer, copySub = drawLayerOf(companion)
+        local realText, copyText = textStateOf(fs, true), textStateOf(companion)
 
         local verdict
         local realRank, copyRank = LAYER_RANK[realLayer], LAYER_RANK[copyLayer]
@@ -114,17 +156,28 @@ local function DebugFontPair()
             wrong = wrong + 1
         end
 
+        -- An inactive pair has been blanked on purpose by FontPair.Hide, so its
+        -- copy is empty while the real string still reads. Not a desync.
+        local active = fs.__scootPairActive and true or false
+        local sync, isDesync = syncOf(realText, copyText)
+        if not active then
+            sync = "n/a, pair inactive"
+        elseif isDesync then
+            desynced = desynced + 1
+        end
+
         table.insert(lines, string.format("[%d] parent: %s", count, parentNameOf(fs)))
         table.insert(lines, string.format("    Real layer: %s %s   shown=%s alpha=%s text=%s",
-            realLayer, realSub, boolOf(fs, "IsShown"), boolOf(fs, "GetAlpha"), textStateOf(fs)))
+            realLayer, realSub, boolOf(fs, "IsShown"), boolOf(fs, "GetAlpha"), realText))
         table.insert(lines, string.format("    Copy layer: %s %s   shown=%s alpha=%s text=%s",
             copyLayer, copySub, boolOf(companion, "IsShown"), boolOf(companion, "GetAlpha"),
-            textStateOf(companion)))
+            copyText))
         local lum, drawn, copyAlpha = taperOf(fs, companion)
         table.insert(lines, string.format("    Taper: text luminance %s   drawn alpha %s   copy alpha %s",
             lum, drawn, copyAlpha))
+        table.insert(lines, string.format("    Sync: %s", sync))
         table.insert(lines, string.format("    Active: %s   %s",
-            tostring(fs.__scootPairActive and true or false), verdict))
+            tostring(active), verdict))
         table.insert(lines, "")
     end
 
@@ -133,13 +186,14 @@ local function DebugFontPair()
         table.insert(lines, "or the strings using one have not been styled yet.")
     else
         table.insert(lines, string.rep("-", 64))
-        table.insert(lines, string.format("%d pair(s), %d misordered.", count, wrong))
+        table.insert(lines, string.format("%d pair(s), %d misordered, %d desynced.",
+            count, wrong, desynced))
     end
 
     addon.DebugShowWindow("Deep Shadow pairs", lines)
 end
 
 addon:RegisterDebugCommand({
-    name = "fontpair", help = "Deep Shadow copy draw order",
+    name = "fontpair", help = "Deep Shadow copy draw order and text sync",
     handler = function() DebugFontPair() end,
 })

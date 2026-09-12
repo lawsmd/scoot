@@ -115,7 +115,7 @@ hide-hook	core/components/unitframes/bars/raidframes/visibility.lua	3
 hide-hook	core/components/unitframes/bars/textoverlay.lua	2
 hide-hook	core/components/unitframes/text/health.lua	1
 hide-hook	core/debug/repcolor.lua	3
-hide-hook	core/fontpair.lua	3
+hide-hook	core/fontpair.lua	4
 hide-hook	core/nativeframe.lua	1
 hide-hook	core/qol.lua	1
 newline-join	core/colorramp.lua	2

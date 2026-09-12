@@ -305,6 +305,10 @@ function DMY._RefreshOpacity(comp)
         end
     end
 
+    -- Nothing tells a FontString that an ancestor's alpha moved, so the Deep
+    -- Shadow copies re-read it here (core/fontpair.lua copyAlphaFor).
+    if addon.FontPair then addon.FontPair.RefreshInheritedAlpha() end
+
     -- Update visibility for combat-based modes
     for i = 1, DMY.MAX_WINDOWS do
         DMY._UpdateVisibility(i, comp)
