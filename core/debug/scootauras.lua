@@ -515,8 +515,8 @@ local function SpecsDump()
     if #trackerIds == 0 then push("(none)") end
     for _, id in ipairs(trackerIds) do
         local t = SAU.GetTracker(id)
-        push(("t%d '%s' specs=%s -> %s | enabled=%s group=%s active=%s"):format(
-            id, tostring(t.name), SAU.DescribeSpecs(t.specs) or "none", reason(t),
+        push(("t%d '%s' specs=%s home=%s -> %s | enabled=%s group=%s active=%s"):format(
+            id, tostring(t.name), SAU.DescribeSpecs(t.specs) or "none", tostring(t.homeSpec), reason(t),
             tostring(t.enabled), tostring(t.groupId),
             tostring(SAU.IsTrackerActive(id, t))))
     end

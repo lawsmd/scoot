@@ -48,7 +48,7 @@ local SyncEvents
 
 -- The display power each spec runs on, by Blizzard spec ID, as the token
 -- UnitPowerType returns. A Druid's or a Priest's specs disagree, so the name
--- is resolved per tracker from its spec list (NameForSpecs). A spec this
+-- is resolved per tracker from its naming spec (NameForSpecs). A spec this
 -- table does not know falls back to its class where the class has one
 -- resource.
 local POWER_TOKEN_BY_SPEC = {
@@ -94,29 +94,22 @@ local function TokenForSpec(specID)
     return class and POWER_TOKEN_BY_CLASS[class] or nil
 end
 
---- The tracker's auto name: the resource its specs run on ("Energy" for a
--- Rogue's), or, where the listed specs disagree (a Priest's three), the one
--- the player is in now when it is listed. "Class Power" when nothing
--- resolves. Live, never stored: the Aura List, the editor title and the Edit
--- Mode label read it through SAU.DisplayName, so a spec change or a widened
--- spec list renames the tracker on its own.
-function ClassPower.NameForSpecs(specs)
-    local token, mixed, listed = nil, false, {}
+--- The tracker's auto name: the resource its naming spec runs on
+-- (SAU.NamingSpec: the player's spec while listed, else the spec the tracker
+-- was created in, else the first listed), so a Rogue's reads "Energy" and a
+-- Shaman's created in Elemental reads "Maelstrom" on every other class. A
+-- naming spec with no power falls to the first listed spec that has one;
+-- "Class Power" when none does. Live, never stored: the Aura List, the
+-- editor title and the Edit Mode label read it through SAU.DisplayName, so a
+-- spec change or a widened spec list renames the tracker on its own.
+function ClassPower.NameForSpecs(specs, homeSpec)
+    local first
     for _, specID in ipairs(type(specs) == "table" and specs or {}) do
-        listed[specID] = true
-        local t = TokenForSpec(specID)
-        if t then
-            if token and t ~= token then mixed = true end
-            token = token or t
-        end
+        first = TokenForSpec(specID)
+        if first then break end
     end
-    if token and not mixed then return PowerLabel(token) end
-    if mixed then
-        local current = SAU.CurrentSpecID()
-        local t = current and listed[current] and TokenForSpec(current)
-        if t then return PowerLabel(t) end
-    end
-    return "Class Power"
+    local token = TokenForSpec(SAU.NamingSpec(specs, homeSpec)) or first
+    return token and PowerLabel(token) or "Class Power"
 end
 
 --------------------------------------------------------------------------------
@@ -519,8 +512,9 @@ function ClassPower.DebugInfo(trackerId)
         tostring(db and db.powerTextPercent), tostring(db and db.barSmoothFill),
         tostring(db and db.barForegroundColorMode), tostring(db and db.textColorMode),
         tostring(db and db.textFont), tostring(db and db.textStyle), tostring(db and db.textSize))
-    add("specs=%s specAllows=%s currentSpec=%s active=%s",
-        SAU.DescribeSpecs(tracker.specs) or "all", tostring(SAU.SpecAllows(tracker)),
+    add("specs=%s homeSpec=%s namingSpec=%s specAllows=%s currentSpec=%s active=%s",
+        SAU.DescribeSpecs(tracker.specs) or "all", tostring(tracker.homeSpec),
+        tostring(SAU.NamingSpec(tracker.specs, tracker.homeSpec)), tostring(SAU.SpecAllows(tracker)),
         tostring(SAU.CurrentSpecID()), tostring(SAU.IsTrackerActive(trackerId, tracker)))
     add("InCombatLockdown=%s editMode=%s gateOpen=%s",
         tostring(InCombatLockdown()),

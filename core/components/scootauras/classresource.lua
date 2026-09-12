@@ -199,27 +199,19 @@ local function KeyForSpec(specID)
     return key
 end
 
---- The tracker's auto name: the resource its specs run on ("Combo Points"
--- for a Rogue's), or, where the listed specs disagree, the one the player is
--- in now when it is listed. "Class Resource" when nothing resolves. Live,
--- never stored, as the Class Power name is.
-function ClassResource.NameForSpecs(specs)
-    local key, mixed, listed = nil, false, {}
+--- The tracker's auto name: the resource its naming spec runs on
+-- (SAU.NamingSpec, as the Class Power name), "Combo Points" for a Rogue's. A
+-- naming spec the table excludes falls to the first listed spec it accepts,
+-- so a Fire Mage's three-spec tracker still reads "Arcane Charges"; "Class
+-- Resource" when none does. Live, never stored, as the Class Power name is.
+function ClassResource.NameForSpecs(specs, homeSpec)
+    local first
     for _, specID in ipairs(type(specs) == "table" and specs or {}) do
-        listed[specID] = true
-        local k = KeyForSpec(specID)
-        if k then
-            if key and k ~= key then mixed = true end
-            key = key or k
-        end
+        first = KeyForSpec(specID)
+        if first then break end
     end
-    if key and not mixed then return ResourceLabel(RESOURCES[key]) end
-    if mixed then
-        local current = SAU.CurrentSpecID()
-        local k = current and listed[current] and KeyForSpec(current)
-        if k then return ResourceLabel(RESOURCES[k]) end
-    end
-    return "Class Resource"
+    local key = KeyForSpec(SAU.NamingSpec(specs, homeSpec)) or first
+    return key and ResourceLabel(RESOURCES[key]) or "Class Resource"
 end
 
 --------------------------------------------------------------------------------
@@ -930,8 +922,9 @@ function ClassResource.DebugInfo(trackerId)
         tostring(db and db.barForegroundColorMode), tostring(db and db.tickThickness),
         tostring(db and db.pipStyle), tostring(db and db.pipSize), tostring(db and db.pipSpacing),
         tostring(db and db.pipColorMode), tostring(db and db.pipBackdropOpacity))
-    add("specs=%s specAllows=%s currentSpec=%s active=%s",
-        SAU.DescribeSpecs(tracker.specs) or "all", tostring(SAU.SpecAllows(tracker)),
+    add("specs=%s homeSpec=%s namingSpec=%s specAllows=%s currentSpec=%s active=%s",
+        SAU.DescribeSpecs(tracker.specs) or "all", tostring(tracker.homeSpec),
+        tostring(SAU.NamingSpec(tracker.specs, tracker.homeSpec)), tostring(SAU.SpecAllows(tracker)),
         tostring(SAU.CurrentSpecID()), tostring(SAU.IsTrackerActive(trackerId, tracker)))
     add("InCombatLockdown=%s editMode=%s gateOpen=%s",
         tostring(InCombatLockdown()),

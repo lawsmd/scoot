@@ -174,7 +174,10 @@ end
 -- Every tracker and group carries `specs`, an array of numeric spec IDs it
 -- loads in, stamped at create with every spec of the creating character's
 -- class. The gate fails closed: an empty list loads nowhere, which the Aura
--- List shows as Not Loaded and the spec fly-out fixes.
+-- List shows as Not Loaded and the spec fly-out fixes. A tracker also
+-- carries `homeSpec`, the spec the creating character was in: a kind with no
+-- spell is named and crested after it on a character its list does not
+-- cover (NamingSpec).
 
 local specNameCache = {}
 
@@ -287,6 +290,29 @@ function SAU.SpecAllows(record)
     if not current then return false end
     for _, id in ipairs(specs) do
         if id == current then return true end
+    end
+    return false
+end
+
+--- The spec a kind with no spell is named and crested after: the player's
+-- own while the list carries it, else the one the tracker was created in
+-- while the list carries it, else the first listed. So a Shaman's tracker
+-- created in Elemental reads "Maelstrom" under the Shaman crest on a Priest,
+-- which cannot load it, and "Mana" on the same Shaman in Restoration.
+function SAU.NamingSpec(specs, homeSpec)
+    if type(specs) ~= "table" or #specs == 0 then return nil end
+    local listed = {}
+    for _, id in ipairs(specs) do listed[id] = true end
+    local current = SAU.CurrentSpecID()
+    if current and listed[current] then return current end
+    if homeSpec and listed[homeSpec] then return homeSpec end
+    return specs[1]
+end
+
+--- Whether a spec list carries any spec of a class ("PRIEST").
+function SAU.SpecsListClass(specs, token)
+    for _, id in ipairs(type(specs) == "table" and specs or {}) do
+        if SAU.ClassTokenForSpec(id) == token then return true end
     end
     return false
 end
@@ -464,17 +490,17 @@ local KIND_TRAITS = {
 }
 
 -- Auto names for the kinds with no spell to name them after: a string, or a
--- function of the tracker's spec list. A Class Power tracker is named after
--- the resource its specs run on (classpower.lua), and stores no name, so the
--- name follows a spec change or a widened spec list.
+-- function of the tracker's spec list and home spec. A Class Power tracker
+-- is named after the resource its naming spec runs on (classpower.lua), and
+-- stores no name, so the name follows a spec change or a widened spec list.
 local KIND_AUTO_NAMES = {
-    classpower = function(specs)
+    classpower = function(specs, homeSpec)
         local CP = SAU.ClassPower
-        return CP and CP.NameForSpecs(specs) or "Class Power"
+        return CP and CP.NameForSpecs(specs, homeSpec) or "Class Power"
     end,
-    classresource = function(specs)
+    classresource = function(specs, homeSpec)
         local CR = SAU.ClassResource
-        return CR and CR.NameForSpecs(specs) or "Class Resource"
+        return CR and CR.NameForSpecs(specs, homeSpec) or "Class Resource"
     end,
 }
 -- What those kinds stored before they were named live; dropped at load.
@@ -1019,12 +1045,12 @@ end
 SAU._PlainSpellName = PlainSpellName
 
 --- The name a tracker gets when its owner has not named it: the spell as the
--- player knows it, or for a kind with no spell its own name, which may read
--- the tracker's spec list.
-function SAU.AutoName(kind, spellId, specs)
+-- player knows it, or for a kind with no spell its own name, which reads the
+-- tracker's spec list and home spec.
+function SAU.AutoName(kind, spellId, specs, homeSpec)
     if not SAU.KindNeedsSpell(kind) then
         local auto = KIND_AUTO_NAMES[kind]
-        if type(auto) == "function" then return auto(specs) end
+        if type(auto) == "function" then return auto(specs, homeSpec) end
         return auto or "Tracker"
     end
     return PlainSpellName(spellId)
@@ -1050,11 +1076,13 @@ function SAU._SpellIcon(spellId)
 end
 
 --- The art the Aura List row, a group member badge, and the drag ghosts show
--- for a tracker: the spell's icon, or the player's class crest for a kind
--- with no spell. A number is a texture file id, a string an atlas name.
+-- for a tracker: the spell's icon, or for a kind with no spell the crest of
+-- the class its naming spec belongs to (the player's own class when the list
+-- is empty). A number is a texture file id, a string an atlas name.
 function SAU.TrackerIcon(tracker)
     if tracker and not SAU.KindNeedsSpell(tracker.kind) then
-        local token = addon.GetClassTokenForUnit and addon.GetClassTokenForUnit("player") or nil
+        local token = SAU.ClassTokenForSpec(SAU.NamingSpec(tracker.specs, tracker.homeSpec))
+            or (addon.GetClassTokenForUnit and addon.GetClassTokenForUnit("player")) or nil
         local atlas = token and GetClassAtlas and GetClassAtlas(token) or nil
         return atlas or 134400
     end
@@ -1138,6 +1166,9 @@ function SAU.CreateTracker(spec)
         -- Every spec of this character's class. The aura is listed on every
         -- character on the account and loads only where its specs say.
         specs = SAU.DefaultSpecsForPlayer(),
+        -- The spec this character is in: a kind with no spell is named and
+        -- crested after it where the list does not carry the viewer's spec.
+        homeSpec = SAU.CurrentSpecID(),
         spellId = spellId,
         kind = kind,
         unit = unit,
@@ -1289,7 +1320,7 @@ function SAU.SetTrackerContent(trackerId, changes)
         -- The name was the auto name (or a Duplicate / Copy from Global of
         -- one, where the point is to swap the spell next); follow the new
         -- spell, or the new kind's own name. Custom names stay.
-        local oldAuto = SAU.AutoName(oldKind, oldSpellId, tracker.specs)
+        local oldAuto = SAU.AutoName(oldKind, oldSpellId, tracker.specs, tracker.homeSpec)
         if tracker.name == nil or tracker.name == oldAuto or tracker.name == oldAuto .. " copy" then
             tracker.name = SAU.KindNeedsSpell(kind) and SAU.AutoName(kind, spellId) or nil
         end
@@ -1322,12 +1353,31 @@ function SAU.SetTrackerContent(trackerId, changes)
 end
 
 --- Duplicates a tracker: new id, deep-copied styling and positions (offset so
--- the copy is visibly separate), name suffixed.
-function SAU.DuplicateTracker(trackerId)
+-- the copy is visibly separate), a stored name suffixed. A kind with no spell
+-- follows the character: a copy made on a class the source's specs do not
+-- list takes this character's specs and home spec, the way a new tracker
+-- does, so a Shaman's Maelstrom number duplicated on a Priest is that
+-- Priest's Insanity number with the same styling. A live-named source gives
+-- a live-named copy. `exact` keeps the source's specs on any character (a
+-- group copy, whose group specs are copied as they are).
+function SAU.DuplicateTracker(trackerId, exact)
     local source = SAU.GetTracker(trackerId)
     if not source then return nil, "no such tracker" end
     local store = SAU.EnsureStore()
     if not store then return nil, "profile not ready" end
+
+    local specs = source.specs and CopyTable(source.specs) or nil
+    local homeSpec = source.homeSpec
+    local name = source.name and (source.name .. " copy") or nil
+    if SAU.KindNeedsSpell(source.kind) then
+        name = name or (SAU.AutoName(source.kind, source.spellId) .. " copy")
+    elseif not exact then
+        local playerClass = addon.GetClassTokenForUnit and addon.GetClassTokenForUnit("player") or nil
+        if playerClass and not SAU.SpecsListClass(source.specs, playerClass) then
+            specs = SAU.DefaultSpecsForPlayer()
+            homeSpec = SAU.CurrentSpecID()
+        end
+    end
 
     local newId = AllocateId(store)
     store.trackers[newId] = {
@@ -1335,13 +1385,14 @@ function SAU.DuplicateTracker(trackerId)
         kind = source.kind,
         unit = source.unit,
         shape = source.shape,
-        name = (source.name or SAU.AutoName(source.kind, source.spellId, source.specs)) .. " copy",
+        name = name,
         enabled = source.enabled ~= false,
         order = newId,
         onlyInCombat = source.onlyInCombat,
         onlyInInstances = source.onlyInInstances,
         missingVisual = source.missingVisual,
-        specs = source.specs and CopyTable(source.specs) or nil,
+        specs = specs,
+        homeSpec = homeSpec,
     }
 
     -- Styling copy must land in the container BEFORE EnsureComponentDB links
@@ -1446,7 +1497,7 @@ function SAU.RenameTracker(trackerId, name)
     if not tracker or type(name) ~= "string" or name == "" then return nil, "bad rename" end
     -- A live-named kind renamed to its own auto name goes back to live naming.
     if not SAU.KindNeedsSpell(tracker.kind)
-        and name == SAU.AutoName(tracker.kind, tracker.spellId, tracker.specs) then
+        and name == SAU.AutoName(tracker.kind, tracker.spellId, tracker.specs, tracker.homeSpec) then
         tracker.name = nil
     else
         tracker.name = name
@@ -1458,7 +1509,7 @@ end
 --- Display name shared by the editor title, its carousel, and the list rows.
 function SAU.DisplayName(tracker)
     if not tracker then return "" end
-    return tracker.name or SAU.AutoName(tracker.kind, tracker.spellId, tracker.specs)
+    return tracker.name or SAU.AutoName(tracker.kind, tracker.spellId, tracker.specs, tracker.homeSpec)
 end
 
 --------------------------------------------------------------------------------
@@ -1615,7 +1666,9 @@ function SAU.SetTrackerGroup(trackerId, gid, index)
 end
 
 --- Duplicates a group and a copy of every member. The copies join the new
--- group in the same order; the new group lands offset from the source.
+-- group in the same order; the new group lands offset from the source. The
+-- group's specs are copied as they are, so its members copy exactly rather
+-- than follow the character.
 function SAU.DuplicateGroup(gid)
     local source = SAU.GetGroup(gid)
     if not source then return nil, "no such group" end
@@ -1633,7 +1686,7 @@ function SAU.DuplicateGroup(gid)
 
     for _, memberId in ipairs(source.memberOrder or {}) do
         if SAU.GetTracker(memberId) then
-            local newId = SAU.DuplicateTracker(memberId)
+            local newId = SAU.DuplicateTracker(memberId, true)
             if newId then
                 local copy = SAU.GetTracker(newId)
                 copy.groupId = newGid
