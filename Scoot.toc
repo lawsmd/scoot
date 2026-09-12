@@ -179,6 +179,7 @@ core/components/castbarz/editmode.lua
 ## Unit Frames Z (Text — Scoot-owned frames, the promoted health-text engine)
 core/components/unitframesz/core.lua
 core/components/unitframesz/engine.lua
+core/components/unitframesz/compact.lua
 core/components/unitframesz/ping.lua
 core/components/unitframesz/setters.lua
 core/components/unitframesz/auras.lua
@@ -248,6 +249,7 @@ core/debug/repcolor.lua
 core/debug/auracontainer.lua
 core/debug/scootauras.lua
 core/debug/ufzauras.lua
+core/debug/ufzname.lua
 core/debug/gfauras.lua
 core/debug/ping.lua
 core/debug/fontpair.lua

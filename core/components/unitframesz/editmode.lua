@@ -27,11 +27,14 @@ local paintAdornmentsStandIn = UFZ._PaintAdornmentsStandIn
 -- Starting positions, in UIParent space, flanking screen center so the frames
 -- never land on top of each other before a layout is saved. Boss goes to the
 -- right edge, where Blizzard's own boss frames live (its Edit Mode preset
--- anchors RIGHT/UIParent/RIGHT).
+-- anchors RIGHT/UIParent/RIGHT). Focus sits above Target's slot and the
+-- target's target directly under it, where Blizzard hangs its own.
 local DEFAULT_POSITIONS = {
-    Player = { point = "CENTER", x = -260, y = -160 },
-    Target = { point = "CENTER", x =  260, y = -160 },
-    Boss   = { point = "RIGHT",  x = -140, y =  100 },
+    Player         = { point = "CENTER", x = -260, y = -160 },
+    Target         = { point = "CENTER", x =  260, y = -160 },
+    Focus          = { point = "CENTER", x =  260, y =  -40 },
+    TargetOfTarget = { point = "CENTER", x =  260, y = -230 },
+    Boss           = { point = "RIGHT",  x = -140, y =  100 },
 }
 
 local function DefaultPositionFor(unitKey)
@@ -43,15 +46,19 @@ end
 -- Boss has five frames but still exactly one page, and its Edit Mode entry is
 -- the stack box rather than any one frame).
 local NAV_KEYS = {
-    Player = "ufzPlayer",
-    Target = "ufzTarget",
-    Boss   = "ufzBoss",
+    Player         = "ufzPlayer",
+    Target         = "ufzTarget",
+    Focus          = "ufzFocus",
+    TargetOfTarget = "ufzToT",
+    Boss           = "ufzBoss",
 }
 
--- What Edit Mode calls each entry. Stacked units name the group, not a frame.
+-- What Edit Mode calls each entry. Stacked units name the group, not a frame;
+-- the label table turns "TargetOfTarget" into words.
 local function EditModeNameFor(unitKey)
     if UFZ._IsStacked(unitKey) then return "Boss Frames" end
-    return unitKey .. " Unit Frame"
+    local label = UFZ.UNIT_LABELS and UFZ.UNIT_LABELS[unitKey] or unitKey
+    return label .. " Unit Frame"
 end
 
 -- UFZ frames carry a fractional effective scale (cfg.scale x UIParent scale),
@@ -111,13 +118,17 @@ local function ContentRect(unitKey)
 
     local W, H = env.W, env.H
 
-    -- applyEnvelope seats the box env.T below the rect's top edge, flush against
-    -- the align edge. The reference is its TOPLEFT on BOTH handednesses, rather
-    -- than the align-side corner it is pinned by: flipping align
-    -- mirrors the element, and mirroring it about the box leaves the box roughly
-    -- where it was instead of throwing the whole element a frame-width sideways.
+    -- applyEnvelope seats the box env.L in from the rect's left edge and env.T
+    -- below its top, and the envelope is the one source of both numbers, so
+    -- this cannot disagree with the seat. The reference is the box's TOPLEFT on
+    -- BOTH handednesses, rather than the align-side corner it is pinned by:
+    -- flipping align mirrors the element, and mirroring it about the box leaves
+    -- the box roughly where it was instead of throwing the whole element a
+    -- frame-width sideways. On the compact arrangement the box is the name's
+    -- own one-line box, so a flipped number position moves the number and
+    -- leaves the name still.
     local oy = -env.T
-    local ox = (env.align == "left") and 0 or (W - (inst.cfg.width or 0))
+    local ox = env.L or 0
 
     if UFZ._IsStacked(unitKey) then
         -- The box is the union of five overlapping frame rects, and growth
@@ -314,6 +325,25 @@ function UFZ._EditModeMirror(frame)
             set = function(v)
                 local a = api()
                 if a then a.SetStackGrowth(v) end
+            end,
+        }
+    end
+
+    -- The compact arrangement's one positioning control, on the same bar the
+    -- stack controls passed: which side of the name the number sits on is
+    -- judged by looking at the frame in place.
+    local head = UFZ._HeadInstance(unitKey)
+    if head and head.compact then
+        specs[#specs + 1] = {
+            kind = "selector", label = "Number",
+            values = { bottom = "Below", top = "Above", left = "Left", right = "Right" },
+            order = { "bottom", "top", "left", "right" },
+            get = function()
+                return cfg.align or "bottom"
+            end,
+            set = function(v)
+                local a = api()
+                if a then a.SetAlign(v) end
             end,
         }
     end

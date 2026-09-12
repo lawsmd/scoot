@@ -21,9 +21,16 @@
 --                   PlayerCastingBarFrame while Edit Mode's "Lock to Player
 --                   Frame" is on (PlayerFrame.lua:40)
 --   TargetFrame  -> TargetFrameToT, TargetFrameSpellBar
+--   FocusFrame   -> FocusFrameToT, FocusFrameSpellBar
 --   BossTargetFrameContainer -> all five Boss<N>TargetFrame and their spell bars
 -- Those children come back the moment the unit leaves Z mode; their own Z
 -- equivalents are future components (Cast Bar Z already covers the boss bars).
+--
+-- The target-of-target frame is the one child Z owns directly. It goes with
+-- TargetFrame whenever Target is Z; with Target on X or OFF it is dimmed on
+-- its own, because a child of a system frame is never parked (its parent's
+-- layout code reads it). Blizzard never writes alpha on it, so the dim needs
+-- no per-event re-assert, and Dim is a deferred SetAlpha, legal in combat.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -49,9 +56,11 @@ local OWNER = "unitFramesZ"
 -- exit, so NativeFrame's deferred SetParent re-park hook is load-bearing here
 -- rather than belt-and-braces.
 local BLIZZARD_FRAME = {
-    Player = { name = "PlayerFrame", method = "park" },
-    Target = { name = "TargetFrame", method = "park" },
-    Boss   = { name = "BossTargetFrameContainer", method = "park" },
+    Player         = { name = "PlayerFrame", method = "park" },
+    Target         = { name = "TargetFrame", method = "park" },
+    Focus          = { name = "FocusFrame", method = "park" },
+    TargetOfTarget = { name = "TargetFrameToT", method = "alpha" },
+    Boss           = { name = "BossTargetFrameContainer", method = "park" },
 }
 
 -- Which frames Z currently owns. Nothing is ever released that was not

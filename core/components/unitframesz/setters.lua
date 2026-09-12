@@ -104,6 +104,9 @@ local function setStyleImpl(inst, key, style)
     refreshName(inst)
 end
 
+-- With digit mode on the rendered size comes from digitSize1/2/3 and this only
+-- sets row geometry and the digits-off fallback; the compact arrangement runs
+-- digits off, so there it is the percent's one size.
 local function setPctSize(inst, n)
     ensureApplied(inst)
     local cfg = inst.cfg
@@ -111,10 +114,6 @@ local function setPctSize(inst, n)
     applyFonts(inst)
     applyLayout(inst)
     update(inst)
-    addon:Print("Percent size: " .. cfg.pctSize)
-    if cfg.digits then
-        addon:Print("Note: digit mode is on, so the rendered size comes from digitsize 1/2/3; pct sets row geometry and the digits-off fallback.")
-    end
 end
 
 local function setValSize(inst, n)
@@ -430,8 +429,9 @@ local function setSymbol(inst, state, size)
     update(inst)
     -- The experimental secret-width anchor only exists in the NON-centered left
     -- branch; centered mode anchors the '%' identically for both aligns, and the
-    -- target instance defaults to centered-left -- no warning noise there.
-    if cfg.symbol and cfg.align == "left" and not cfg.center then
+    -- target instance defaults to centered-left -- no warning noise there. The
+    -- compact arrangement has no such branch at all.
+    if cfg.symbol and cfg.align == "left" and not cfg.center and not inst.compact then
         addon:Print("Left mode with symbol on anchors '%' to a secret-width edge (the experiment). Check 'report'.")
     end
 end
@@ -452,33 +452,32 @@ local function setSymbolGap(inst, n)
     update(inst)
 end
 
+-- Which side of the name the health block sits on. The full layout has two
+-- sides; the compact arrangement (compact.lua) adds top and bottom, and a
+-- non-compact instance handed one of those falls back to its unit's default
+-- side rather than to an arrangement it has no seat for.
+local ALIGNS = { left = true, right = true, top = true, bottom = true }
+
 local function setAlign(inst, a)
     ensureApplied(inst)
     local cfg = inst.cfg
     a = tostring(a or ""):lower()
-    if a ~= "right" and a ~= "left" then
-        addon:Print("Align must be one of: right | left")
-        return
+    if not ALIGNS[a] then return end
+    if not inst.compact and (a == "top" or a == "bottom") then
+        local override = UFZ._UNIT_DEFAULTS[inst.unitKey]
+        a = (override and override.align) or UFZ._UNIT_DEFAULTS_SHARED.align
     end
     cfg.align = a
     applyLayout(inst)
     update(inst)
-    if cfg.symbol and cfg.align == "left" and not cfg.center then
-        addon:Print("Left mode with symbol on anchors '%' to a secret-width edge (the experiment). Check 'report'.")
-    end
-    addon:Print("Align: " .. cfg.align)
 end
 
 local function setColor(inst, m)
     ensureApplied(inst)
     m = tostring(m or ""):lower()
-    if m ~= "curve" and m ~= "dark" and m ~= "white" then
-        addon:Print("Color must be one of: curve | dark | white")
-        return
-    end
+    if m ~= "curve" and m ~= "dark" and m ~= "white" then return end
     inst.cfg.color = m
     update(inst)
-    addon:Print("Color: " .. inst.cfg.color)
 end
 
 local function setRound(inst, m)

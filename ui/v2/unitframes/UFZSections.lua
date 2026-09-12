@@ -16,7 +16,10 @@ local addonName, addon = ...
 
 local UIPanel = addon.UI.SettingsPanel
 
--- One UFZ unit page body. opts = { title, componentId, unitKey, unitWord }.
+-- One UFZ unit page body. opts = { title, componentId, unitKey, unitWord,
+-- stacked, compact }. stacked adds the Boss stack section; compact is the
+-- Target of Target page, which keeps Overall Scale and offers a Layout and a
+-- Text section in place of everything after them.
 local function AddUnitSection(builder, opts)
     builder:AddSection(opts.title)
 
@@ -54,7 +57,9 @@ local function AddUnitSection(builder, opts)
     local styleValues = (UFHelpers and UFHelpers.fontStyleValues) or addon.FontStyles.values
     local styleOrder = (UFHelpers and UFHelpers.fontStyleOrderPaired) or addon.FontStyles.orderPaired
 
-    if opts.stacked then
+    if opts.compact then
+        builder:AddDescription("Scoot's compact " .. (opts.unitWord or "target of target") .. " readout: the unit's name over its health percent, and nothing else. Position the frame in Edit Mode, where Overall Scale and the number's position are also mirrored.")
+    elseif opts.stacked then
         builder:AddDescription("Scoot's text-first " .. (opts.unitWord or "boss") .. " frames. All five share these settings and stack vertically as one block -- position the block in Edit Mode, where Overall Scale is also mirrored.")
     else
         builder:AddDescription("Scoot's text-first " .. (opts.unitWord or "player") .. " frame. Controls apply live and save with your profile. Position the frame in Edit Mode, where Overall Scale is also mirrored.")
@@ -72,6 +77,113 @@ local function AddUnitSection(builder, opts)
         get = function() return htCfg().scale or 1 end,
         set = function(v) call("SetScale", v) end,
     })
+
+    -- The compact page (Target of Target): the number's side of the name, and
+    -- one text block for both texts. The name is the frame's anchor; every
+    -- other element the full pages offer is absent by design, so the page ends
+    -- here.
+    if opts.compact then
+        builder:AddCollapsibleSection({
+            title = "Layout",
+            componentId = opts.componentId,
+            sectionKey = "layout",
+            defaultExpanded = true,
+            buildContent = function(contentFrame, inner)
+                inner:AddSelector({
+                    label = "Number Position",
+                    description = "Which side of the name the health percent sits on. The name is the frame's anchor and stays put.",
+                    values = {
+                        bottom = "Below the Name",
+                        top = "Above the Name",
+                        left = "Left of the Name",
+                        right = "Right of the Name",
+                    },
+                    order = { "bottom", "top", "left", "right" },
+                    get = function() return htCfg().align or "bottom" end,
+                    set = function(v) call("SetAlign", v) end,
+                })
+                inner:Finalize()
+            end,
+        })
+        builder:AddCollapsibleSection({
+            title = "Text",
+            componentId = opts.componentId,
+            sectionKey = "text",
+            defaultExpanded = false,
+            buildContent = function(contentFrame, inner)
+                -- One face and one style for both texts: the face writes the
+                -- health face and the name face together, the style writes
+                -- both style keys. Size and color here are the name's; the
+                -- percent's size and color follow below.
+                inner:AddTextStyleBlock({
+                    get = function(field)
+                        local c = htCfg()
+                        if field == "fontFace" then return c.face end
+                        if field == "style" then return c.nameStyle end
+                        if field == "size" then return c.nameSize end
+                        if field == "colorMode" then return c.nameColorMode end
+                        if field == "color" then return { c.nameColorR, c.nameColorG, c.nameColorB, c.nameColorA } end
+                    end,
+                    set = function(field, value)
+                        if field == "fontFace" then
+                            call("SetFont", value)
+                            call("SetNameFont", value)
+                        elseif field == "style" then
+                            call("SetStyle", value)
+                            call("SetNameStyle", value)
+                        elseif field == "size" then call("SetNameSize", value)
+                        elseif field == "colorMode" then call("SetNameColorMode", value)
+                        elseif field == "color" then call("SetNameColor", value[1], value[2], value[3], value[4])
+                        end
+                    end,
+                    defaults = { style = "DEEPSHADOWTHICKOUTLINE", size = 20, colorMode = "gradient" },
+                    font = { description = "Shared by the name and the percent." },
+                    style = { label = "Font Style", description = "Shared by the name and the percent.", values = styleValues, order = styleOrder },
+                    size = { label = "Name Size", min = 8, max = 40, description = "The ceiling: a long name auto-shrinks from here to fit one line." },
+                    color = {
+                        label = "Name Color",
+                        values = { gradient = "Class Gradient", custom = "Custom" },
+                        order = { "gradient", "custom" },
+                    },
+                    offset = false,
+                })
+                -- The one-line fit's only room is this width: the shrink stops
+                -- at a floor, and a name the floor cannot fit in the box
+                -- ellipsizes. The name centers in the box, so widening it
+                -- moves nothing on screen.
+                inner:AddSlider({
+                    label = "Name Max Width",
+                    description = "The auto-shrink fit box. A name too wide for this at the set Name Size renders smaller; wider gives long names more room before they shrink or truncate.",
+                    min = 60, max = 400, step = 5,
+                    get = function() return htCfg().nameMaxWidth or 240 end,
+                    set = function(v) call("SetNameMaxWidth", v) end,
+                })
+                inner:AddSlider({
+                    label = "% Font Size",
+                    description = "One size for the percent, whatever its digit count.",
+                    min = 8, max = 40, step = 1,
+                    get = function() return htCfg().pctSize or 20 end,
+                    set = function(v) call("SetPctSize", v) end,
+                })
+                inner:AddToggle({
+                    label = "% Symbol",
+                    description = "Small '%' at the top-right of the number.",
+                    get = function() return htCfg().symbol and true or false end,
+                    set = function(v) call("SetSymbol", v and "on" or "off") end,
+                })
+                inner:AddSelector({
+                    label = "Health Color",
+                    description = "How the percent is colored by the unit's health.",
+                    values = { curve = "Health Curve", dark = "Dark Curve", white = "White" },
+                    order = { "curve", "dark", "white" },
+                    get = function() return htCfg().color or "curve" end,
+                    set = function(v) call("SetColor", v) end,
+                })
+                inner:Finalize()
+            end,
+        })
+        return
+    end
 
     -- Stacked units only (Boss). How the five frames sit relative to each
     -- other; where the block as a whole sits is Edit Mode's job.
@@ -707,6 +819,9 @@ end
 local PAGES = {
     ufzPlayer = { title = "Player Frame Z", componentId = "ufzPlayer", unitKey = "Player", unitWord = "player" },
     ufzTarget = { title = "Target Frame Z", componentId = "ufzTarget", unitKey = "Target", unitWord = "target" },
+    ufzFocus  = { title = "Focus Frame Z",  componentId = "ufzFocus",  unitKey = "Focus",  unitWord = "focus" },
+    ufzToT    = { title = "Target of Target Z", componentId = "ufzToT", unitKey = "TargetOfTarget",
+                  unitWord = "target of target", compact = true },
     ufzBoss   = { title = "Boss Frames Z",  componentId = "ufzBoss",   unitKey = "Boss",   unitWord = "boss", stacked = true },
 }
 

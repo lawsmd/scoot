@@ -30,30 +30,65 @@ local UFZ = addon.UnitFramesZ
 --   frameKey  "Boss3"   the instance, the frame name, the stack index
 --   token     "boss3"   every unit API call (inst.unit; NOT a config value)
 --
--- For Player and Target all three coincide (modulo case), so nothing about
--- those two changes in practice.
+-- For Player, Target, Focus and Target of Target all three coincide (modulo
+-- case), so nothing about those changes in practice.
 --
--- Extension point: Focus/Pet/ToT/FocusTarget land by adding rows to both lists
--- here, a sub-toggle + modeCycle in modules.lua, per-unit default overrides
--- below, a default Edit Mode position (editmode.lua), a suppression target
+-- Optional row fields, read once by the engine's newInstance:
+--   changeEvents      plain events that mean "the subject changed" (the handler
+--                     self-filters through them; Player has none)
+--   changeUnitEvents  { EVENT = unitToken }: the same, unit-filtered C-side.
+--                     Target of Target takes UNIT_TARGET on "target": the
+--                     target's target changes occupant without changing
+--                     existence, and the unit watch answers existence only
+--   compact           the name-and-percent arrangement (compact.lua)
+--   poll              the token receives no unit events, so a throttled
+--                     OnUpdate repaints the numbers while the frame is shown
+--   parentUnit        hide the frame while UnitIsUnit(parentUnit, "player"),
+--                     Blizzard's own rule for the target-of-target frame
+--   standInLabel      the Edit Mode stand-in's name, where frameKey would not
+--                     fit the compact box
+--
+-- Extension point: Pet/FocusTarget land by adding rows to both lists here, a
+-- sub-toggle + modeCycle in modules.lua, per-unit default overrides below, a
+-- default Edit Mode position (editmode.lua), a suppression target
 -- (suppression.lua) and a nav/renderer pair.
 
-UFZ.UNITS = { "Player", "Target", "Boss" }   -- config keys
+UFZ.UNITS = { "Player", "Target", "Focus", "TargetOfTarget", "Boss" }   -- config keys
 UFZ.NUM_BOSS_FRAMES = addon.NUM_BOSS_FRAMES
+
+-- What a person reads wherever a unit key is shown (the Edit Mode entry name).
+UFZ.UNIT_LABELS = {
+    Player = "Player", Target = "Target", Focus = "Focus",
+    TargetOfTarget = "Target of Target", Boss = "Boss",
+}
 
 UFZ.FRAMES = {
     { frameKey = "Player", unitKey = "Player", token = "player" },
-    { frameKey = "Target", unitKey = "Target", token = "target" },
+    { frameKey = "Target", unitKey = "Target", token = "target",
+      changeEvents = { "PLAYER_TARGET_CHANGED" } },
+    { frameKey = "Focus", unitKey = "Focus", token = "focus",
+      changeEvents = { "PLAYER_FOCUS_CHANGED" } },
+    -- Name and health percent only. The token gets no unit events (Blizzard
+    -- drives its own frame from a per-frame Update script), so identity rides
+    -- the two change events and health rides the poll.
+    { frameKey = "TargetOfTarget", unitKey = "TargetOfTarget", token = "targettarget",
+      compact = true, poll = true, parentUnit = "target",
+      changeEvents = { "PLAYER_TARGET_CHANGED" },
+      changeUnitEvents = { UNIT_TARGET = "target" },
+      standInLabel = "ToT" },
 }
 
 -- Boss: one config, five frames. They stack vertically off a shared anchor
--- (stack.lua); stackIndex is that anchor's ordering.
+-- (stack.lua); stackIndex is that anchor's ordering. Boss slots change
+-- occupant without changing existence (a phase transition, an add swap), and
+-- the engage event is Blizzard's own signal for it.
 for i = 1, UFZ.NUM_BOSS_FRAMES do
     UFZ.FRAMES[#UFZ.FRAMES + 1] = {
         frameKey   = "Boss" .. i,
         unitKey    = "Boss",
         token      = "boss" .. i,
         stackIndex = i,
+        changeEvents = { "INSTANCE_ENCOUNTER_ENGAGE_UNIT" },
     }
 end
 
@@ -268,6 +303,35 @@ local UNIT_DEFAULTS = {
         -- to the one free corner. Restored, so fresh profiles now
         -- look like every Target DB saved before that dodge.
         levelLoc = "topright",
+    },
+    -- Focus is Target: the same mirrored block, its own config and page.
+    Focus = {
+        align = "left",
+        powerLoc = "bottomleft", altPowerLoc = "bottomright",
+        levelLoc = "topright",
+    },
+    -- Target of Target: the compact arrangement (compact.lua). Name and health
+    -- percent at one size, the number below the name; align here takes the
+    -- two vertical values the full layout has no seat for. Digit-count sizing
+    -- is off so the number keeps one height beside a name of the same height.
+    -- The *Show = false keys are honesty for anyone reading the saved profile:
+    -- the engine skips those elements structurally on a compact instance, so
+    -- a stray true cannot bring them back.
+    TargetOfTarget = {
+        align = "bottom",
+        digits = false, pctSize = 20, nameSize = 20, nameMaxLines = 1,
+        -- One line has to hold the whole name, and the fit only shrinks as
+        -- far as nameMinSize. Anton Wide 1.5x averages 0.68 em per lowercase
+        -- glyph, so the shared 150 px box holds about nine characters at
+        -- 20 pt and twenty at the 10 pt floor; an NPC name with a title
+        -- ellipsized at the floor in game. 240 px holds sixteen at 20 pt
+        -- and about thirty-three at the floor. The name centers in the box,
+        -- so the wider box moves nothing on screen.
+        nameMaxWidth = 240,
+        symbol = true, symbolSize = 8,   -- auto (a fifth of 20) is too small to read
+        powerShow = false, altPowerShow = false, absorbShow = false,
+        classifyShow = false,
+        auraBuffsShow = false, auraDebuffsShow = false,
     },
     -- Boss: styling identical to Target (Target, Focus and Boss all put the
     -- health block left of the name; nothing else changes between units), with

@@ -267,8 +267,20 @@ addon.MODULE_CATEGORIES = {
                 { id = "Z", variant = "Z", category = "unitFramesZ", subId = "Target",
                   versionBadge = { label = "Z", title = "Target Frame Z", text = "Scoot's own text-first Target frame, replacing Blizzard's while enabled. Positioned in Edit Mode; configured on the Target page." } },
               } },
-            { id = "TargetOfTarget", label = "Target of Target", variant = "X" },
-            { id = "Focus", label = "Focus", variant = "X" },
+            { id = "TargetOfTarget", label = "Target of Target",
+              modeCycle = {
+                { id = "X", variant = "X", category = "unitFrames", subId = "TargetOfTarget",
+                  versionBadge = { label = "X", title = "Target of Target X", text = "Blizzard's own Target of Target frame, restyled in place by Scoot. Configured on the Target of Target page under Unit Frames." } },
+                { id = "Z", variant = "Z", category = "unitFramesZ", subId = "TargetOfTarget",
+                  versionBadge = { label = "Z", title = "Target of Target Z", text = "Scoot's compact text-first Target of Target frame: the unit's name and health percent, nothing more. Replaces Blizzard's while enabled; positioned in Edit Mode and configured on the Target of Target page." } },
+              } },
+            { id = "Focus", label = "Focus",
+              modeCycle = {
+                { id = "X", variant = "X", category = "unitFrames", subId = "Focus",
+                  versionBadge = { label = "X", title = "Focus Frame X", text = "Blizzard's own Focus frame, restyled in place by Scoot. Configured on the Focus page under Unit Frames." } },
+                { id = "Z", variant = "Z", category = "unitFramesZ", subId = "Focus",
+                  versionBadge = { label = "Z", title = "Focus Frame Z", text = "Scoot's own text-first Focus frame, replacing Blizzard's while enabled. Positioned in Edit Mode; configured on the Focus page." } },
+              } },
             { id = "FocusTarget", label = "Target of Focus", variant = "X" },
             { id = "Pet", label = "Pet", variant = "X" },
             { id = "Boss", label = "Boss",
@@ -305,6 +317,8 @@ addon.MODULE_CATEGORIES = {
         subToggles = {
             { id = "Player", label = "Player", variant = "Z" },
             { id = "Target", label = "Target", variant = "Z" },
+            { id = "TargetOfTarget", label = "Target of Target", variant = "Z" },
+            { id = "Focus", label = "Focus", variant = "Z" },
             -- One sub-toggle, five frames: Boss is a single configuration in Z
             -- exactly as it is in X (unitframesz/core.lua).
             { id = "Boss", label = "Boss", variant = "Z" },

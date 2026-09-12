@@ -160,6 +160,7 @@ local function currentPctPoint(inst)
     local cfg = inst.cfg
     return (cfg.digits and inst.lastDigitCount and cfg["digitSize" .. inst.lastDigitCount]) or cfg.pctSize
 end
+UFZ._CurrentPctPoint = currentPctPoint
 
 -- The percent row's ink-bottom compensation (see DEFAULTS.descent): positive
 -- pushes the rect down (sizes above the master), negative lifts it, zero at the
@@ -194,6 +195,7 @@ local function currentSymbolPoint(inst)
     if inst.cfg.symbolSize and inst.cfg.symbolSize > 0 then return inst.cfg.symbolSize end
     return math.max(1, currentPctPoint(inst) / 5)
 end
+UFZ._CurrentSymbolPoint = currentSymbolPoint
 
 -- With the name fit on, the fitted size wins over cfg.nameSize so font/style
 -- commands re-applying fonts do not stomp the current fit -- the same
@@ -202,6 +204,7 @@ end
 local function currentNamePoint(inst)
     return (inst.cfg.nameFit and inst.nameFitSize) or inst.cfg.nameSize
 end
+UFZ._CurrentNamePoint = currentNamePoint
 
 -- The level pair: "lvl" leads the number on its own FontString (no inline
 -- size markup exists -- the '%' companion precedent) at 75% of the number's
@@ -257,7 +260,8 @@ local function applyStretch(inst)
     if stretchUnsupported or not inst.frame then return end
     local cfg = inst.cfg
     local fx = cfg.stretch or 1
-    local edgeOrigin = (cfg.align == "left") and "LEFT" or "RIGHT"
+    -- The compact arrangement centers every text on its own anchor.
+    local edgeOrigin = inst.compact and "CENTER" or ((cfg.align == "left") and "LEFT" or "RIGHT")
     for _, fs in ipairs({ inst.pctFS, inst.valFS, inst.symbolFS, inst.nameFS,
         inst.powerFS, inst.powerSymbolFS, inst.altPowerFS, inst.altPowerSymbolFS, inst.absorbFS,
         inst.levelFS, inst.levelPrefixFS }) do
@@ -333,6 +337,8 @@ end
 local function nameSeatY(cfg)
     return -(pctRowHeight(cfg) + cfg.gap / 2) + NAME_BASE_Y + cfg.nameY
 end
+UFZ._PctGlyphCeiling = pctGlyphCeiling
+UFZ._PctRowHeight = pctRowHeight
 
 -- Where the name's INK sits, as opposed to where its rect is anchored. The
 -- name's single-point LEFT/RIGHT anchor pins its RECT's vertical center, and
@@ -595,7 +601,10 @@ end
 -- texts alone -- applyLayout restarts the stretch animations (see probeDigits),
 -- churn a positioning nudge does not need.
 local function applyPowerLayout(inst)
-    if not inst.frame then return end
+    -- No satellites on the compact arrangement; this one guard covers every
+    -- caller (resolveNameInk, refreshName's no-name paths, updatePower, the
+    -- location and offset setters).
+    if not inst.frame or inst.compact then return end
     local cfg = inst.cfg
     anchorPowerFS(inst, inst.powerFS, cfg.powerLoc, cfg.powerX, cfg.powerY,
         powerSymbolReserve(inst, cfg.powerSize, inst.powerIsPct))
@@ -810,6 +819,8 @@ end
 
 local ENV_LINE_H = 1.25   -- conservative line box per point of text size
 local ENV_PAD    = 6      -- breathing room past the name-side extents
+UFZ._ENV_LINE_H = ENV_LINE_H
+UFZ._ENV_PAD = ENV_PAD
 
 -- One satellite text's contribution, in box-local down-positive coordinates.
 -- Mirrors anchorPowerFS's five locations against the same name-box geometry
@@ -841,6 +852,8 @@ end
 
 local function envelopeFor(inst, lines)
     local cfg = inst.cfg
+    -- The compact arrangement has its own coordinate model (compact.lua).
+    if inst.compact then return UFZ._CompactEnvelope(inst, lines) end
 
     -- The same row geometry applyLayout derives, in down-positive box coords.
     local nameX = NAME_BASE_X + cfg.nameOffset
@@ -889,9 +902,13 @@ local function envelopeFor(inst, lines)
     local far = math.ceil(acc.far + ENV_PAD)
     local top = math.floor(math.min(0, acc.top))
     local bottom = math.ceil(acc.bottom)
+    -- L is the box's left offset inside the rect: flush to the align edge
+    -- here, and the one number applyEnvelope and editmode.lua's ContentRect
+    -- both read, so the seat and the content origin cannot disagree.
     return {
         align = cfg.align,
         W = far, H = bottom - top, T = -top,
+        L = (cfg.align == "left") and 0 or (far - cfg.width),
     }
 end
 
@@ -939,12 +956,16 @@ end
 -- measures), the full wrap box when it could not.
 local AURA_GLYPH_EM  = 0.55  -- rendered width per digit glyph, in em
 local AURA_VAL_GLYPHS = 4.5  -- glyph budget of a "505k"-style abbreviated value
+UFZ._AURA_GLYPH_EM = AURA_GLYPH_EM
 
 function UFZ._AuraContentSpan(inst)
     local cfg = inst.cfg
     -- appliedEnv mirrors the frame's real rect; cfg.width is the documented
     -- combat-staleness fallback (self-heals on the regen drain).
     local W = (inst.appliedEnv and inst.appliedEnv.W) or cfg.width or 140
+    -- The compact rect is content edge to edge, and "bottom"/"top" would
+    -- otherwise fall into the right-handed branch below.
+    if inst.compact then return 0, W end
     local numInset = 0
     if cfg.center then
         local pctW
@@ -1101,7 +1122,8 @@ local function applyEnvelope(inst)
     -- itself draws: stack.lua reads it off appliedEnv, so a stale one there
     -- would be a stale chain step.
     if applied and applied.W == env.W and applied.H == env.H
-        and applied.T == env.T and applied.align == env.align
+        and applied.T == env.T and applied.L == env.L
+        and applied.align == env.align
         and applied.snug == env.snug then
         -- The rect is unchanged, but the content inside it may not be: the ping
         -- receiver tracks the name's ink, which moves per subject.
@@ -1114,11 +1136,8 @@ local function applyEnvelope(inst)
     end
     frame:SetSize(env.W, env.H)
     box:ClearAllPoints()
-    if env.align == "left" then
-        box:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -env.T)
-    else
-        box:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -env.T)
-    end
+    -- One seat for every arrangement: the envelope says where its box goes.
+    box:SetPoint("TOPLEFT", frame, "TOPLEFT", env.L or 0, -env.T)
     inst.appliedEnv = env
     UFZ._ApplyPingRect(inst)
     -- The rect just changed shape, and the stored position anchors the CONTENT
@@ -1172,6 +1191,8 @@ local DEAD_ICON_BASE = 0.5
 local function layoutDeadIcon(inst)
     local tex = inst.deadTex
     if not tex then return end
+    -- The compact arrangement has one number row, not a stack (compact.lua).
+    if inst.compact then return UFZ._LayoutCompactDeadIcon(inst) end
     local box = inst.box or inst.frame
     if not box then return end
     local cfg = inst.cfg
@@ -1200,6 +1221,8 @@ local function applyLayout(inst)
     if not frame then return end
     -- Envelope first: content anchors to the numbers box this seats.
     applyEnvelope(inst)
+    -- Name and percent only, on their own anchors (compact.lua).
+    if inst.compact then return UFZ._ApplyCompactLayout(inst) end
     local box = inst.box or frame
     local cfg = inst.cfg
     local pctFS, valFS, symbolFS, nameFS = inst.pctFS, inst.valFS, inst.symbolFS, inst.nameFS
@@ -1806,6 +1829,7 @@ end
 -- previewActive -- previewing a frame that DOES have a unit keeps the live
 -- paint, which is the more accurate preview of the two.
 local function updateLevel(inst)
+    if inst.compact then return end
     local paint = inst.previewStandIn and previewLevel or paintLevel
     local painted = paint(inst) and true or false
     if inst.levelPainted ~= painted then
@@ -1823,7 +1847,7 @@ UFZ._UpdateLevel = updateLevel
 -- anyway, and the settings page hides the section, so this is belt-and-braces.
 local function updateClassification(inst)
     local cfg, tex = inst.cfg, inst.classifyTex
-    if not tex then return end
+    if not tex or inst.compact then return end
     local last = inst.last
     -- Edit Mode owns the texture while previewing (a positionable adornment
     -- must be visible while it is being positioned); do not fight it.
@@ -1874,7 +1898,8 @@ UFZ._UpdateClassification = updateClassification
 -- early-outs on previewActive.
 local function paintAdornmentsStandIn(inst)
     setDeadIconShown(inst, false)
-    if inst.classifyTex and inst.cfg.classifyShow and inst.unit ~= "player" then
+    if inst.classifyTex and inst.cfg.classifyShow and inst.unit ~= "player"
+        and not inst.compact then
         if atlasExists(CLASSIFY_PREVIEW_ATLAS) then
             pcall(inst.classifyTex.SetAtlas, inst.classifyTex, CLASSIFY_PREVIEW_ATLAS)
             inst.classifyAtlas = CLASSIFY_PREVIEW_ATLAS
@@ -2165,11 +2190,13 @@ local function paintStandInName(inst)
     if nameFS.ClearText then nameFS:ClearText() end
     pcall(nameFS.SetTextColor, nameFS, 1, 1, 1, 1)
     -- frameKey, not unitKey: five boss stand-ins all reading "Boss" would give
-    -- the user no way to tell which slot they are placing.
-    pcall(nameFS.SetText, nameFS, inst.frameKey)
+    -- the user no way to tell which slot they are placing. A row can name its
+    -- own label where the key would not fit the box ("TargetOfTarget").
+    local label = inst.standInLabel or inst.frameKey
+    pcall(nameFS.SetText, nameFS, label)
     revealNameRow(inst)
     inst.last.name = "edit mode stand-in"
-    resolveNameInk(inst, inst.frameKey)
+    resolveNameInk(inst, label)
 end
 
 -- hold: nil/true = keep the current picture up until the new one is ready
@@ -2392,6 +2419,8 @@ end
 -- replaces the health readout, not the frame.
 local function updateTail(inst)
     applyColor(inst)
+    -- The compact arrangement ends at the percent's color.
+    if inst.compact then return end
     updatePower(inst)
     applyPowerColor(inst)
     updateAbsorb(inst)
@@ -2506,7 +2535,13 @@ local function update(inst)
         scheduleDigitProbe(inst)
     end
 
-    -- Value.
+    -- Value. Not on the compact arrangement, which has no value row and
+    -- repaints on a poll where the spared UnitHealth call matters.
+    if inst.compact then
+        last.val = "compact"
+        updateTail(inst)
+        return
+    end
     if valFS.ClearText then valFS:ClearText() end
     last.val = "?"
     if not abbrevBuildTried then rebuildAbbrevConfig() end
@@ -2552,9 +2587,14 @@ local UNIT_EVENTS = {
     "UNIT_CLASSIFICATION_CHANGED",
 }
 
+-- The polled rows' repaint cadence (the target's target gets no unit events).
+-- Blizzard's own frame repaints every frame; a shipped 12.1 suite uses 0.5s.
+local POLL_INTERVAL = 0.25
+
 -- Re-registering a unit event replaces its unit filter, so a unit switch is a
--- plain re-register of the whole list. Registration is per-frame, so the two
--- instances never collide; both receive PLAYER_TARGET_CHANGED and self-filter.
+-- plain re-register of the whole list. Registration is per-frame, so instances
+-- never collide; the subject-change events come from the frame row and the
+-- handler self-filters through inst.changeEventSet.
 local function registerUnitEvents(inst)
     if not inst.frame then return end
     for _, ev in ipairs(UNIT_EVENTS) do
@@ -2605,7 +2645,19 @@ local function applyOpacity(inst)
         return
     end
     local alpha = addon.Opacity.Resolve(inst.cfg, addon.Opacity.Keys.InCombat, UFZ_OPACITY_OPTS)
-    frame:SetAlpha(alpha)
+    if inst.parentUnit then
+        -- Blizzard hides its target-of-target frame while the target is the
+        -- player (TargetFrame.lua:891). UnitIsUnit is secret under comparison
+        -- restrictions, so the bool goes straight into SetAlphaFromBoolean,
+        -- evaluated in C on the Scoot-owned frame, never tested or stored. Existence
+        -- stays with the unit watch; this is alpha only, legal in combat.
+        local ok, isSelf = pcall(UnitIsUnit, inst.parentUnit, "player")
+        if not (ok and pcall(frame.SetAlphaFromBoolean, frame, isSelf, 0, alpha)) then
+            frame:SetAlpha(alpha)
+        end
+    else
+        frame:SetAlpha(alpha)
+    end
     -- A Deep Shadow name copy tapers itself against the alpha it inherits, and
     -- the alpha above just moved. core/fontpair.lua coalesces the pass, so a
     -- whole party fading at once costs one walk.
@@ -2910,8 +2962,21 @@ local function ensureFrame(inst)
 
     -- Kept off addon.Events: RegisterUnitEvent filters to inst.unit C-side; plain events share the same frame.
     registerUnitEvents(inst)
-    frame:RegisterEvent("PLAYER_TARGET_CHANGED")
-    frame:RegisterEvent("PLAYER_FOCUS_CHANGED")
+    -- The subject-change events come from the frame ROW (core.lua): Target
+    -- takes PLAYER_TARGET_CHANGED, Focus PLAYER_FOCUS_CHANGED, Boss the
+    -- encounter engage event (a boss slot changes occupant without changing
+    -- existence, and the unit watch answers existence only -- Blizzard's own
+    -- boss frame registers it, and it is Cast Bar Z's boss changeEvent), and
+    -- Target of Target both PLAYER_TARGET_CHANGED and UNIT_TARGET filtered to
+    -- "target", the event Blizzard's TargetFrame drives its ToT child from
+    -- (TargetFrame.lua:109). Plain events carry no argument to filter on, so
+    -- the handler self-filters through inst.changeEventSet.
+    for _, ev in ipairs(inst.changeEvents) do
+        frame:RegisterEvent(ev)
+    end
+    for ev, unit in pairs(inst.changeUnitEvents) do
+        pcall(frame.RegisterUnitEvent, frame, ev, unit)
+    end
     -- The alternate power bar appears/disappears with the spec (the secondary
     -- info is keyed off class + primary power type). Falls through the handler
     -- to update(inst), which re-resolves it.
@@ -2929,14 +2994,6 @@ local function ensureFrame(inst)
     frame:RegisterEvent("PLAYER_DEAD")
     frame:RegisterEvent("PLAYER_ALIVE")
     frame:RegisterEvent("PLAYER_UNGHOST")
-    -- Boss slots change occupant without changing existence: a phase transition
-    -- or an add swap re-points boss3 at a different creature while the frame
-    -- stays shown, and the unit watch -- which answers existence only -- sees
-    -- nothing. This is Blizzard's own signal for it (BossTargetFrameMixin:OnLoad
-    -- registers it, TargetFrame.lua) and Cast Bar Z's boss changeEvent. It is
-    -- not a unit event and carries no argument to filter on, so each frame
-    -- takes it plainly and the handler self-filters.
-    frame:RegisterEvent("INSTANCE_ENCOUNTER_ENGAGE_UNIT")
     frame:SetScript("OnEvent", function(_, event)
         -- The Edit Mode stand-in paints static sample text; live data must not
         -- overwrite it mid-drag. Everything re-syncs on _EndEditModePreview.
@@ -2950,11 +3007,7 @@ local function ensureFrame(inst)
             refreshName(inst, true)
             return
         end
-        if event == "PLAYER_TARGET_CHANGED" and inst.unit ~= "target" then return end
-        if event == "PLAYER_FOCUS_CHANGED" and inst.unit ~= "focus" then return end
-        if event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" and not inst.stackIndex then return end
-        if event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_FOCUS_CHANGED"
-            or event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
+        if inst.changeEventSet[event] then
             -- The subject itself changed. Show/hide on existence is the secure
             -- unit watch's (combat-legal); this settles the watch and repaints
             -- a currently-shown frame. A frame the watch shows a beat later
@@ -2976,6 +3029,7 @@ local function ensureFrame(inst)
     -- showing" must re-run here instead. Idempotent for Scoot's own OOC shows.
     frame:SetScript("OnShow", function()
         if inst.previewActive then return end
+        inst.pollElapsed = 0
         update(inst)
         refreshName(inst, false)
         -- Force: the subject usually changed while hidden, and a new subject
@@ -2983,6 +3037,23 @@ local function ensureFrame(inst)
         if UFZ.Auras then UFZ.Auras.ForceRefresh(inst) end
         applyOpacity(inst)
     end)
+
+    -- A polled row: the target's target receives no unit events (Blizzard
+    -- drives its own frame from a per-frame Update script, TargetFrame.lua:869),
+    -- so the numbers repaint on a throttle. OnUpdate only runs on a shown frame
+    -- and the unit watch owns shown, so there is no bookkeeping; update() is
+    -- child-region writes only, legal in combat. The poll never touches the
+    -- name: identity changes always arrive as one of the change events above,
+    -- and a blind fit per tick would be a storm under identity restrictions.
+    if inst.poll then
+        frame:SetScript("OnUpdate", function(_, elapsed)
+            if inst.previewActive then return end
+            inst.pollElapsed = inst.pollElapsed + elapsed
+            if inst.pollElapsed < POLL_INTERVAL then return end
+            inst.pollElapsed = 0
+            update(inst)
+        end)
+    end
 
     -- CreateFrame returns a shown frame; start hidden -- _UpdateVisibility is
     -- the only shower. A frame born in combat cannot (visibility-protected by
@@ -3066,6 +3137,15 @@ local function newInstance(row, cfg)
         frameKey = row.frameKey,
         unit = row.token,
         stackIndex = row.stackIndex,
+        -- The row's optional traits (core.lua documents each).
+        compact = row.compact or nil,
+        poll = row.poll or nil,
+        parentUnit = row.parentUnit,
+        standInLabel = row.standInLabel,
+        changeEvents = row.changeEvents or {},
+        changeUnitEvents = row.changeUnitEvents or {},
+        changeEventSet = {},
+        pollElapsed = 0,
         frameName = "ScootUnitFrameZ" .. row.frameKey,
         label = row.token,
         poolKey = "ufz:" .. row.frameKey,   -- one blind-fit ruler pool per instance
@@ -3121,6 +3201,9 @@ local function newInstance(row, cfg)
     -- One stable closure for the probe's timer chain (C_Timer.After cannot pass
     -- arguments, and allocating a closure per schedule would defeat coalescing).
     inst.probeDigitsFn = function() probeDigits(inst) end
+    -- The handler's lookup: every event that means "the subject changed".
+    for _, ev in ipairs(inst.changeEvents) do inst.changeEventSet[ev] = true end
+    for ev in pairs(inst.changeUnitEvents) do inst.changeEventSet[ev] = true end
     return inst
 end
 
@@ -3251,8 +3334,10 @@ end
 --- every live Z frame's alpha with zero engine event wiring. Walks only
 --- instances that already exist -- zero-touch safe.
 function UFZ.RefreshOpacity()
-    for unitKey, inst in pairs(UFZ._instances) do
-        if UFZ._IsUnitEnabled(unitKey) then
+    -- _instances is keyed by frameKey; the sub-toggle is per unitKey. Reading
+    -- the key as a unit key skipped every Boss frame silently.
+    for _, inst in pairs(UFZ._instances) do
+        if UFZ._IsUnitEnabled(inst.unitKey) then
             applyOpacity(inst)
         end
     end

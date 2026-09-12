@@ -198,8 +198,12 @@ function UFZ._BuildPingReceiver(inst)
     -- region to answer about. A child of the receiver so it follows it into and
     -- out of Edit Mode, anchored to the outer frame so nothing secret is in its
     -- chain. nameRowRect replaces these stand-in anchors on the first apply.
-    inst.pingNameBox = CreateFrame("Frame", nil, ping)
-    inst.pingNameBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    inst.pingNameBox:SetSize(1, 1)
+    -- Player only: no other unit's mixin reads it, and the compact frame's
+    -- name row is not where nameRowRect would put it.
+    if inst.unit == "player" then
+        inst.pingNameBox = CreateFrame("Frame", nil, ping)
+        inst.pingNameBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        inst.pingNameBox:SetSize(1, 1)
+    end
     wirePingReceiver(inst)
 end

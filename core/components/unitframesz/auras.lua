@@ -768,6 +768,9 @@ end
 --- Full pass (_ApplyAll, reset, Copy From, profile switch, mid-session enable).
 function Auras.ApplyAll(inst)
     if not inst or not inst.frame then return end
+    -- The compact arrangement has no rows, whatever its config says: the show
+    -- keys are shared, so a copied true must not build containers here.
+    if inst.compact then return end
     -- Zero-touch: nothing is built until a row is turned on.
     if not inst.auraContainers and not anyRowEnabled(inst.cfg) then return end
 

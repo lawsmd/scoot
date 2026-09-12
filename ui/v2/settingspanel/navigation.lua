@@ -330,16 +330,21 @@ local TOT_FOT_SOURCES = {
 
 -- Unit Frames Z: a separate copy type -- the X and Z settings schemas share
 -- nothing, so Z pages only ever offer Z sources. Future Z units join these
--- tables.
+-- tables. Target of Target Z is deliberately absent in both directions: its
+-- compact defaults (one size, digit sizing off, one name line) are the whole
+-- frame, and a copy from a full page would overwrite them with the full
+-- page's numbers.
 local UFZ_COPY_TARGETS = {
     ufzPlayer = true,
     ufzTarget = true,
+    ufzFocus = true,
     ufzBoss = true,
 }
 
 local UFZ_NAMES = {
     ufzPlayer = "Player Frame Z",
     ufzTarget = "Target Frame Z",
+    ufzFocus = "Focus Frame Z",
     ufzBoss = "Boss Frames Z",
 }
 
@@ -348,10 +353,11 @@ local UFZ_NAMES = {
 local UFZ_KEYS = {
     ufzPlayer = "Player",
     ufzTarget = "Target",
+    ufzFocus = "Focus",
     ufzBoss = "Boss",
 }
 
-local UFZ_ORDER = { "ufzPlayer", "ufzTarget", "ufzBoss" }
+local UFZ_ORDER = { "ufzPlayer", "ufzTarget", "ufzFocus", "ufzBoss" }
 
 local CUSTOM_GROUP_COPY_TARGETS = {
     customGroup1 = true,
