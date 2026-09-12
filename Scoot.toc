@@ -252,6 +252,7 @@ core/debug/gfauras.lua
 core/debug/ping.lua
 core/debug/fontpair.lua
 core/debug/accent.lua
+core/debug/prdclass.lua
 core/taintdebug.lua
 core/dialogs.lua
 core/importexport.lua
