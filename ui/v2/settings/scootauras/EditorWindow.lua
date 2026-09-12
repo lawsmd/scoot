@@ -55,14 +55,6 @@ local function CurrentTracker()
     return session and session.trackerId and SAU().GetTracker(session.trackerId) or nil
 end
 
--- Per-kind starting-value stamps (core.lua): a draft reads the stamp its kind
--- will write at materialization, so controls and preview agree pre- and post-.
-local KIND_STARTING_VALUES = {
-    missingbuff = "MissingKindStartingValues",
-    classpower = "ClassPowerStartingValues",
-    classresource = "ClassResourceStartingValues",
-}
-
 local ctx = {}
 
 function ctx.get(key)
@@ -73,17 +65,16 @@ function ctx.get(key)
         return v
     end
     local v = session.draft.styling[key]
-    if v == nil and ctx.shape() == "bar" then
-        -- Bar drafts see the bar-shape starting values the stamp will write
-        -- at materialization, so controls and preview agree pre- and post-.
-        local o = SAU().BarShapeStartingValues[key]
-        if o ~= nil then v = o end
-    end
     if v == nil then
-        local field = KIND_STARTING_VALUES[ctx.kind()]
-        local stamp = field and SAU()[field]
-        local o = stamp and stamp[key]
-        if o ~= nil then v = o end
+        -- A draft reads the starting values its kind and shape stamp at
+        -- materialization (core.lua), so controls and preview agree pre-
+        -- and post-.
+        for _, stamp in ipairs(SAU().StartingValueStamps(ctx.kind(), ctx.shape())) do
+            if stamp[key] ~= nil then
+                v = stamp[key]
+                break
+            end
+        end
     end
     if v == nil then v = DefaultFor(key) end
     return v

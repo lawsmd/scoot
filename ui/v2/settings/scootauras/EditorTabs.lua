@@ -742,8 +742,12 @@ function Tabs.BuildClassPowerTextTab(tabBuilder, ctx)
     end
     tabBuilder:AddTextStyleBlock({
         get = get, set = set, apply = ctx.refreshPreview,
-        defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", style = "SHADOWTHICKOUTLINESLUG",
-            size = isBar and 12 or 24, colorMode = "default" },
+        -- The number alone starts in Anton Wide 1.5x and the power color
+        -- (SAU.ClassPowerNumberStartingValues); the bar's number in the
+        -- registered face and white.
+        defaults = { fontFace = isBar and "ROBOTO_SEMICOND_BLACK" or "ANTON_WIDE_150",
+            style = "SHADOWTHICKOUTLINESLUG", size = isBar and 12 or 24,
+            colorMode = isBar and "default" or "power" },
         -- The number alone is the whole tracker; only on the bar can it hide.
         hideToggle = isBar and {
             label = "Hide Number",

@@ -726,7 +726,8 @@ function SAU.DefaultSettings()
         -- Class Power kind (classpower.lua): the number as a percentage, the
         -- bar's interpolation, and the number's color mode (default is white,
         -- power the class power color, custom the textColor tint; the aura
-        -- kinds read textColor alone).
+        -- kinds read textColor alone). The number shape starts on power
+        -- (ClassPowerNumberStartingValues below).
         powerTextPercent        = { type = "addon", default = false },
         barSmoothFill           = { type = "addon", default = true },
         textColorMode           = { type = "addon", default = "default" },
@@ -812,22 +813,6 @@ local function RemoveStartingValues(trackerId, values)
     end
 end
 
-function SAU.ApplyBarStartingValues(trackerId)
-    ApplyStartingValues(trackerId, SAU.BarShapeStartingValues)
-end
-
-function SAU.RemoveBarStartingValues(trackerId)
-    RemoveStartingValues(trackerId, SAU.BarShapeStartingValues)
-end
-
-function SAU.ApplyMissingStartingValues(trackerId)
-    ApplyStartingValues(trackerId, SAU.MissingKindStartingValues)
-end
-
-function SAU.RemoveMissingStartingValues(trackerId)
-    RemoveStartingValues(trackerId, SAU.MissingKindStartingValues)
-end
-
 -- Class Power kind: the number starts on Crisp Shadow Thick Outline (the
 -- registered font, Roboto SemiCond Black, stands), and the bar fills in the
 -- power color (the registered default is the aura bars' class color). Same
@@ -837,13 +822,14 @@ SAU.ClassPowerStartingValues = {
     barForegroundColorMode = "power",
 }
 
-function SAU.ApplyClassPowerStartingValues(trackerId)
-    ApplyStartingValues(trackerId, SAU.ClassPowerStartingValues)
-end
-
-function SAU.RemoveClassPowerStartingValues(trackerId)
-    RemoveStartingValues(trackerId, SAU.ClassPowerStartingValues)
-end
+-- Class Power number shape, on top of the kind's values: the number alone is
+-- the tracker, so it starts in the class power color and in the unit frames'
+-- Anton Wide 1.5x. The bar's number sits on a fill already in that color, so
+-- it keeps the registered Default (white) and Roboto SemiCond Black.
+SAU.ClassPowerNumberStartingValues = {
+    textFont      = "ANTON_WIDE_150",
+    textColorMode = "power",
+}
 
 -- Class Resource kind: the segments fill in the resource's color (the
 -- registered default is the aura bars' class color). Same stamp/unstamp
@@ -852,12 +838,58 @@ SAU.ClassResourceStartingValues = {
     barForegroundColorMode = "power",
 }
 
-function SAU.ApplyClassResourceStartingValues(trackerId)
-    ApplyStartingValues(trackerId, SAU.ClassResourceStartingValues)
+-- The stamps a tracker of this kind and shape carries, in the order they are
+-- read: the bar shape's, then the kind's, then the kind's for the shape. The
+-- editor walks the same list for a draft, so its controls and preview show
+-- what materialization writes.
+function SAU.StartingValueStamps(kind, shape)
+    local stamps = {}
+    if shape == "bar" then
+        stamps[#stamps + 1] = SAU.BarShapeStartingValues
+    end
+    if kind == "missingbuff" then
+        stamps[#stamps + 1] = SAU.MissingKindStartingValues
+    elseif kind == "classpower" then
+        stamps[#stamps + 1] = SAU.ClassPowerStartingValues
+        if shape == "text" then
+            stamps[#stamps + 1] = SAU.ClassPowerNumberStartingValues
+        end
+    elseif kind == "classresource" then
+        stamps[#stamps + 1] = SAU.ClassResourceStartingValues
+    end
+    return stamps
 end
 
-function SAU.RemoveClassResourceStartingValues(trackerId)
-    RemoveStartingValues(trackerId, SAU.ClassResourceStartingValues)
+function SAU.ApplyStartingValuesFor(trackerId, kind, shape)
+    for _, values in ipairs(SAU.StartingValueStamps(kind, shape)) do
+        ApplyStartingValues(trackerId, values)
+    end
+end
+
+local function HasStamp(stamps, values)
+    for _, v in ipairs(stamps) do
+        if v == values then return true end
+    end
+    return false
+end
+
+-- A kind or shape change: unstamp what the old pair carried and the new one
+-- does not, then stamp what the new pair adds. Removals go first because two
+-- stamps can share a key (barForegroundColorMode on both class kinds): a
+-- removal after the addition would clear the value the addition had kept.
+function SAU.RestampStartingValues(trackerId, oldKind, oldShape, kind, shape)
+    local old = SAU.StartingValueStamps(oldKind, oldShape)
+    local new = SAU.StartingValueStamps(kind, shape)
+    for _, values in ipairs(old) do
+        if not HasStamp(new, values) then
+            RemoveStartingValues(trackerId, values)
+        end
+    end
+    for _, values in ipairs(new) do
+        if not HasStamp(old, values) then
+            ApplyStartingValues(trackerId, values)
+        end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -1201,16 +1233,7 @@ function SAU.CreateTracker(spec)
 
     SAU.RegisterTrackerComponent(trackerId)
     addon:EnsureComponentDB(SAU.GetComponentId(trackerId))
-    if shape == "bar" then
-        SAU.ApplyBarStartingValues(trackerId)
-    end
-    if kind == "missingbuff" then
-        SAU.ApplyMissingStartingValues(trackerId)
-    elseif kind == "classpower" then
-        SAU.ApplyClassPowerStartingValues(trackerId)
-    elseif kind == "classresource" then
-        SAU.ApplyClassResourceStartingValues(trackerId)
-    end
+    SAU.ApplyStartingValuesFor(trackerId, kind, shape)
     SAU.Engine.ClaimForTracker(trackerId)
     return trackerId
 end
@@ -1326,26 +1349,7 @@ function SAU.SetTrackerContent(trackerId, changes)
         end
     end
 
-    if shape == "bar" and oldShape ~= "bar" then
-        SAU.ApplyBarStartingValues(trackerId)
-    elseif oldShape == "bar" and shape ~= "bar" then
-        SAU.RemoveBarStartingValues(trackerId)
-    end
-    if kind == "missingbuff" and oldKind ~= "missingbuff" then
-        SAU.ApplyMissingStartingValues(trackerId)
-    elseif oldKind == "missingbuff" and kind ~= "missingbuff" then
-        SAU.RemoveMissingStartingValues(trackerId)
-    end
-    if kind == "classpower" and oldKind ~= "classpower" then
-        SAU.ApplyClassPowerStartingValues(trackerId)
-    elseif oldKind == "classpower" and kind ~= "classpower" then
-        SAU.RemoveClassPowerStartingValues(trackerId)
-    end
-    if kind == "classresource" and oldKind ~= "classresource" then
-        SAU.ApplyClassResourceStartingValues(trackerId)
-    elseif oldKind == "classresource" and kind ~= "classresource" then
-        SAU.RemoveClassResourceStartingValues(trackerId)
-    end
+    SAU.RestampStartingValues(trackerId, oldKind, oldShape, kind, shape)
 
     SAU.Engine.ClaimForTracker(trackerId)
     SAU.Engine.UpdateEditModeName(trackerId)
@@ -1414,16 +1418,7 @@ function SAU.DuplicateTracker(trackerId, exact)
 
     SAU.RegisterTrackerComponent(newId)
     addon:EnsureComponentDB(SAU.GetComponentId(newId))
-    if source.shape == "bar" then
-        SAU.ApplyBarStartingValues(newId)
-    end
-    if source.kind == "missingbuff" then
-        SAU.ApplyMissingStartingValues(newId)
-    elseif source.kind == "classpower" then
-        SAU.ApplyClassPowerStartingValues(newId)
-    elseif source.kind == "classresource" then
-        SAU.ApplyClassResourceStartingValues(newId)
-    end
+    SAU.ApplyStartingValuesFor(newId, source.kind, source.shape)
     SAU.Engine.ClaimForTracker(newId)
     return newId
 end
