@@ -654,7 +654,11 @@ function GC.NewFamily(desc)
 
             -- Position edges around the health bar
             -- Horizontal edges span full width including corners
-            -- Vertical edges are trimmed by edge thickness to avoid corner overlap
+            -- Vertical edges are trimmed by edge thickness to avoid corner overlap,
+            -- except where that horizontal edge is hidden: nothing else covers
+            -- the corner then, so the vertical runs the full height instead.
+            local trimTop = (hiddenEdges and hiddenEdges.top) and 0 or edgeSize
+            local trimBottom = (hiddenEdges and hiddenEdges.bottom) and 0 or edgeSize
             edges.Top:ClearAllPoints()
             edges.Top:SetPoint("TOPLEFT", bar, "TOPLEFT", -padH, padV)
             edges.Top:SetPoint("TOPRIGHT", bar, "TOPRIGHT", padH, padV)
@@ -666,13 +670,13 @@ function GC.NewFamily(desc)
             edges.Bottom:SetHeight(edgeSize)
 
             edges.Left:ClearAllPoints()
-            edges.Left:SetPoint("TOPLEFT", bar, "TOPLEFT", -padH, padV - edgeSize)
-            edges.Left:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", -padH, -padV + edgeSize)
+            edges.Left:SetPoint("TOPLEFT", bar, "TOPLEFT", -padH, padV - trimTop)
+            edges.Left:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", -padH, -padV + trimBottom)
             edges.Left:SetWidth(edgeSize)
 
             edges.Right:ClearAllPoints()
-            edges.Right:SetPoint("TOPRIGHT", bar, "TOPRIGHT", padH, padV - edgeSize)
-            edges.Right:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", padH, -padV + edgeSize)
+            edges.Right:SetPoint("TOPRIGHT", bar, "TOPRIGHT", padH, padV - trimTop)
+            edges.Right:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", padH, -padV + trimBottom)
             edges.Right:SetWidth(edgeSize)
 
             -- Apply texture and color to all edges
@@ -817,6 +821,10 @@ function GC.NewFamily(desc)
                 if anchor.TopRightCorner and (hiddenEdges.top or hiddenEdges.right) then anchor.TopRightCorner:Hide() end
                 if anchor.BottomLeftCorner and (hiddenEdges.bottom or hiddenEdges.left) then anchor.BottomLeftCorner:Hide() end
                 if anchor.BottomRightCorner and (hiddenEdges.bottom or hiddenEdges.right) then anchor.BottomRightCorner:Hide() end
+                -- Run the surviving edges over the corners the hidden edge took away
+                if addon.BarBorders.CloseHiddenCorners then
+                    addon.BarBorders.CloseHiddenCorners(anchor, hiddenEdges)
+                end
             end
         end
     end

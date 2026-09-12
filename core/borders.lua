@@ -179,13 +179,18 @@ function Borders.ApplySquare(frame, opts)
     -- This yields a single-draw corner (from the horizontal edge) at each corner.
     -- opts.untrimmedCorners keeps full-height verticals for callers that draw the
     -- legacy double-blended corner on purpose.
+    local hiddenEdges = opts.hiddenEdges
     local vTrim = opts.untrimmedCorners and 0 or size
+    -- Trim a vertical end only where the horizontal edge that paints that corner
+    -- is drawn. With that edge hidden nothing covers the corner, so the vertical
+    -- has to run the full height or it leaves a notch.
+    local vTrimTop = (hiddenEdges and hiddenEdges.top) and 0 or vTrim
+    local vTrimBottom = (hiddenEdges and hiddenEdges.bottom) and 0 or vTrim
     e.Top:ClearAllPoints();    e.Top:SetPoint("TOPLEFT", target, "TOPLEFT", -exLeft, eyTop);        e.Top:SetPoint("TOPRIGHT", target, "TOPRIGHT", exRight, eyTop);        e.Top:SetHeight(size)
     e.Bottom:ClearAllPoints(); e.Bottom:SetPoint("BOTTOMLEFT", target, "BOTTOMLEFT", -exLeft, -eyBottom); e.Bottom:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", exRight, -eyBottom); e.Bottom:SetHeight(size)
-    e.Left:ClearAllPoints();   e.Left:SetPoint("TOPLEFT", target, "TOPLEFT", -exLeft, eyTop - vTrim);        e.Left:SetPoint("BOTTOMLEFT", target, "BOTTOMLEFT", -exLeft, (-eyBottom) + vTrim);   e.Left:SetWidth(size)
-    e.Right:ClearAllPoints();  e.Right:SetPoint("TOPRIGHT", target, "TOPRIGHT", exRight, eyTop - vTrim);     e.Right:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", exRight, (-eyBottom) + vTrim); e.Right:SetWidth(size)
+    e.Left:ClearAllPoints();   e.Left:SetPoint("TOPLEFT", target, "TOPLEFT", -exLeft, eyTop - vTrimTop);        e.Left:SetPoint("BOTTOMLEFT", target, "BOTTOMLEFT", -exLeft, (-eyBottom) + vTrimBottom);   e.Left:SetWidth(size)
+    e.Right:ClearAllPoints();  e.Right:SetPoint("TOPRIGHT", target, "TOPRIGHT", exRight, eyTop - vTrimTop);     e.Right:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", exRight, (-eyBottom) + vTrimBottom); e.Right:SetWidth(size)
     for _, t in pairs(e) do if t.Show then t:Show() end end
-    local hiddenEdges = opts.hiddenEdges
     if hiddenEdges then
         if hiddenEdges.top and e.Top then e.Top:Hide() end
         if hiddenEdges.bottom and e.Bottom then e.Bottom:Hide() end

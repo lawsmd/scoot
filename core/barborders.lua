@@ -73,6 +73,94 @@ local function cloneColor(color)
     return { color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1 }
 end
 
+-- BackdropTemplate anchors every edge between its two corner pieces: LeftEdge
+-- runs from TopLeftCorner's bottom to BottomLeftCorner's top. Hiding an edge
+-- also hides that edge's two corners, and the edges beside it still stop one
+-- edgeSize short, so a hidden edge leaves a notch at each of its corners.
+-- EDGE_GEOMETRY records, for both ends of every edge, the corner the end
+-- anchors to, the hidden edge that frees it, and the two texture coordinates
+-- that carry that end. GetTexCoord returns ULx ULy LLx LLy URx URy LRx LRy, and
+-- the tile count always sits in the y components: the atlas stores each edge as
+-- a vertical strip and rotates it for the horizontal edges.
+local EDGE_GEOMETRY = {
+    {
+        name = "LeftEdge", side = "left",
+        ends = {
+            { point = "TOPLEFT", corner = "TopLeftCorner", cornerPoint = "BOTTOMLEFT", freedBy = "top", coords = { 2, 6 }, delta = -1 },
+            { point = "BOTTOMLEFT", corner = "BottomLeftCorner", cornerPoint = "TOPLEFT", freedBy = "bottom", coords = { 4, 8 }, delta = 1 },
+        },
+    },
+    {
+        name = "RightEdge", side = "right",
+        ends = {
+            { point = "TOPRIGHT", corner = "TopRightCorner", cornerPoint = "BOTTOMRIGHT", freedBy = "top", coords = { 2, 6 }, delta = -1 },
+            { point = "BOTTOMRIGHT", corner = "BottomRightCorner", cornerPoint = "TOPRIGHT", freedBy = "bottom", coords = { 4, 8 }, delta = 1 },
+        },
+    },
+    {
+        name = "TopEdge", side = "top",
+        ends = {
+            { point = "TOPLEFT", corner = "TopLeftCorner", cornerPoint = "TOPRIGHT", freedBy = "left", coords = { 2, 4 }, delta = 1 },
+            { point = "TOPRIGHT", corner = "TopRightCorner", cornerPoint = "TOPLEFT", freedBy = "right", coords = { 6, 8 }, delta = -1 },
+        },
+    },
+    {
+        name = "BottomEdge", side = "bottom",
+        ends = {
+            { point = "BOTTOMLEFT", corner = "BottomLeftCorner", cornerPoint = "BOTTOMRIGHT", freedBy = "left", coords = { 2, 4 }, delta = 1 },
+            { point = "BOTTOMRIGHT", corner = "BottomRightCorner", cornerPoint = "BOTTOMLEFT", freedBy = "right", coords = { 6, 8 }, delta = -1 },
+        },
+    },
+}
+
+-- Add one corner's worth of tiling for each freed end so a patterned border
+-- keeps its scale over the longer run.
+local function stretchEdgeCoords(piece, edge, hiddenEdges)
+    if not piece.GetTexCoord or not piece.SetTexCoord then return end
+    local ok, c1, c2, c3, c4, c5, c6, c7, c8 = pcall(piece.GetTexCoord, piece)
+    if not ok then return end
+    local coords = { c1, c2, c3, c4, c5, c6, c7, c8 }
+    for i = 1, 8 do
+        local v = coords[i]
+        if type(v) ~= "number" or issecretvalue(v) then return end
+    end
+    for _, edgeEnd in ipairs(edge.ends) do
+        if hiddenEdges[edgeEnd.freedBy] then
+            for _, index in ipairs(edgeEnd.coords) do
+                coords[index] = coords[index] + edgeEnd.delta
+            end
+        end
+    end
+    pcall(piece.SetTexCoord, piece,
+        coords[1], coords[2], coords[3], coords[4],
+        coords[5], coords[6], coords[7], coords[8])
+end
+
+-- Run each surviving edge out to the holder's own corner wherever the hidden
+-- edge took its corner piece away. Without this the bottom-left and
+-- bottom-right of a bar whose bottom edge is off show a notch the width of the
+-- border. Blizzard re-anchors every piece inside SetBackdrop, so this has to
+-- run after each ApplyBackdrop; applyHiddenEdges is that spot.
+function BarBorders.CloseHiddenCorners(holder, hiddenEdges)
+    if not holder or type(hiddenEdges) ~= "table" then return end
+    for _, edge in ipairs(EDGE_GEOMETRY) do
+        local piece = holder[edge.name]
+        local freed = hiddenEdges[edge.ends[1].freedBy] or hiddenEdges[edge.ends[2].freedBy]
+        if piece and freed and not hiddenEdges[edge.side] then
+            piece:ClearAllPoints()
+            for _, edgeEnd in ipairs(edge.ends) do
+                local corner = (not hiddenEdges[edgeEnd.freedBy]) and holder[edgeEnd.corner]
+                if corner then
+                    piece:SetPoint(edgeEnd.point, corner, edgeEnd.cornerPoint, 0, 0)
+                else
+                    piece:SetPoint(edgeEnd.point, holder, edgeEnd.point, 0, 0)
+                end
+            end
+            stretchEdgeCoords(piece, edge, hiddenEdges)
+        end
+    end
+end
+
 local function applyHiddenEdges(holder, bfState)
     local hiddenEdges = bfState and bfState.hiddenEdges
     local hasAny = hiddenEdges and (hiddenEdges.top or hiddenEdges.bottom or hiddenEdges.left or hiddenEdges.right)
@@ -136,6 +224,8 @@ local function applyHiddenEdges(holder, bfState)
         if hiddenEdges.left and g.left then g.left:Hide() end
         if hiddenEdges.right and g.right then g.right:Hide() end
     end
+
+    BarBorders.CloseHiddenCorners(holder, hiddenEdges)
 end
 
 local function ensureBorderFrame(barFrame)
