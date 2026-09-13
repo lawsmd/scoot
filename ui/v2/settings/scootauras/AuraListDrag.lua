@@ -16,7 +16,7 @@ local DROP_R, DROP_G, DROP_B = 0.3, 0.9, 0.3
 -- deps:
 --   state     the renderer's page-state table. Read through `state.` at call
 --             time, never cached: Cleanup replaces state.hoverables and
---             state.flyouts wholesale. state.dropGroups entries are the
+--             state.triggers wholesale. state.dropGroups entries are the
 --             renderer's registrations, [gid] = { box, zone, icons }, with
 --             zone produced by CreateDropZone.
 --   refresh   re-render request; EndDrag calls it after a drop lands.

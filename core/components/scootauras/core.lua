@@ -267,7 +267,7 @@ end
 
 --- Spec names for a stored list, joined for prose: "Shadow",
 -- "Discipline & Holy", "Discipline, Holy & Shadow". nil when unrestricted, so
--- callers can append their own " only" and skip the clause entirely.
+-- callers can skip the clause entirely.
 function SAU.DescribeSpecs(specs)
     if type(specs) ~= "table" or #specs == 0 then return nil end
     local names = {}
@@ -346,11 +346,14 @@ function SAU.PlayerHasSpell(spellId)
     return next(matched) ~= nil
 end
 
---- Whether a group loads in the current spec. The list, the group layout, and
--- the Edit Mode mirror all ask this one function.
+--- Whether a group loads right now: the manual toggle and the spec list. The
+-- list, the group layout, the Edit Mode mirror, and the member gate below all
+-- ask this one function. `enabled` is absent on a group that was never
+-- switched off, so only an explicit false blocks.
 function SAU.IsGroupActive(gid, group)
     group = group or SAU.GetGroup(gid)
     if not group then return false end
+    if group.enabled == false then return false end
     return SAU.SpecAllows(group)
 end
 
@@ -364,7 +367,7 @@ function SAU.IsTrackerActive(trackerId, tracker)
     if not SAU.SpecAllows(tracker) then return false end
     if tracker.groupId then
         local group = SAU.GetGroup(tracker.groupId)
-        if group and not SAU.SpecAllows(group) then return false end
+        if group and not SAU.IsGroupActive(tracker.groupId, group) then return false end
     end
     return true
 end
@@ -409,6 +412,8 @@ local function NormalizeSpecs(ids)
     table.sort(out)
     return out
 end
+-- The import path writes spec lists it did not build; same shape as stored.
+SAU._NormalizeSpecs = NormalizeSpecs
 
 local function ToggledSpecs(specs, specID)
     local out, found = {}, false
@@ -1638,6 +1643,18 @@ function SAU.RenameGroup(gid, name)
     return true
 end
 
+--- The group's ON/OFF switch, the shape of SetTrackerEnabled. IsGroupActive
+-- reads it, so activation releases every member and the group frame, and the
+-- reflow closes the layout behind them; ON claims them back.
+function SAU.SetGroupEnabled(gid, enabled)
+    local group = SAU.GetGroup(gid)
+    if not group then return nil, "no such group" end
+    group.enabled = not not enabled
+    SAU.ReconcileActivation("enable:g" .. tostring(gid))
+    if SAU.Groups then SAU.Groups.RequestReflow() end
+    return true
+end
+
 --- Applies layout settings (spacing, grow direction, scale) to a group.
 function SAU.SetGroupSettings(gid, changes)
     local group = SAU.GetGroup(gid)
@@ -1768,6 +1785,7 @@ function SAU.DuplicateGroup(gid)
     local newGid = AllocateId(store)
     local newGroup = {
         name = (source.name or ("Aura Group " .. gid)) .. " copy",
+        enabled = source.enabled ~= false,
         settings = CopyTable(source.settings or SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},
         specs = specs,

@@ -3,8 +3,8 @@
 -- Two panes: individual trackers on the left (the narrower column), groups on
 -- the right. Drag a tracker row onto a group box to add it; drag a member icon
 -- to reorder it, onto another group to move it, or onto the tracker list to
--- remove it from its group. Hand-rolled rows registered for teardown via
--- panel._scootAurasCleanup.
+-- remove it from its group. A search box on the page header filters both
+-- panes. Hand-rolled rows registered for teardown via panel._scootAurasCleanup.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -27,7 +27,7 @@ local BTN_SIZE = 16      -- group box action buttons
 local BTN_GAP = 8
 local ROW_BTN_SIZE = 13  -- tracker row action buttons (smaller rows)
 local ROW_BTN_GAP = 6
-local IND_W = 27         -- ON/OFF indicator width; the row textClear math reads it
+local IND_W = 27         -- ON/OFF indicator width; the row textClear and box reserve math read it
 -- A group member is a cell: the icon on the left, its two buttons stacked on the
 -- icon's right edge, and a hover highlight wrapping both. The grid reserves the
 -- column's room at rest, so the highlight never crosses a neighbour and the cell
@@ -42,6 +42,51 @@ local MEMBER_CELL_H = MEMBER_HALO_PAD * 2 + math.max(ICON_SIZE, MEMBER_STACK_H)
 local ROW_TOP_PAD = 6    -- row top to the name line
 local ROW_TEXT_GAP = 2   -- name line to the wrapped meta line
 local ROW_BTN_Y = -7     -- button cluster inset from the row top
+-- Trigger-to-panel gaps for the gear fly-out. The nub tip reaches 15px above
+-- the panel top and the gear glyph is drawn at twice its button, so each gap
+-- lands the tip a few pixels clear of the art: 24 for the 13px row gear
+-- (6.5px of overhang), 18 for a member cell (the panel hangs off the cell,
+-- clear of the buttons inside it), 26 for the 16px group gear.
+local ROW_GEAR_GAP = 24
+local MEMBER_GEAR_GAP = 18
+local BOX_GEAR_GAP = 26
+local MEMBER_GEAR_GLYPH_SCALE = 2
+
+-- The group box's hover cluster, right to left: delete, the gear, the spec
+-- filter, and the ON/OFF pill. The header reserves this much of its row for
+-- it, with air on the left since the gear glyph is drawn at twice its
+-- button; the name and the spec line under it both stop there, so the line
+-- wraps before it reaches the pill.
+local BOX_CLUSTER_W = BOX_PAD + 3 * (BTN_SIZE + BTN_GAP) + IND_W
+local BOX_BTN_RESERVE = BOX_CLUSTER_W + 58
+
+-- The page header: the how-to line hangs under the title at an explicit
+-- width, and the search box and Import button sit on the divider line at
+-- the header's bottom-right.
+local HEADER_SIDE = 16           -- header inset, title and widgets alike
+local SUBTITLE_TOP = 36          -- header top to the how-to line
+local SUBTITLE_BOTTOM = 6        -- how-to line to the header bottom
+local SUBTITLE_CLUSTER_GAP = 12  -- how-to line to the search box
+local SEARCH_W = 180
+local SEARCH_H = 22
+local SEARCH_CLUSTER_GAP = 8     -- search box to the Import button
+local SEARCH_DEBOUNCE = 0.15
+local SEARCH_DEBOUNCE_KEY = "ScootAuraListSearch"
+local RESIZE_DEBOUNCE_KEY = "ScootAuraListResize"
+-- The Import fly-out under the Import button: a paste box, the Import
+-- button, and a status line between them.
+local IMPORT_W = 360
+local IMPORT_INSET = 11          -- content inset (the flyout's padding + 1px border)
+local IMPORT_BOX_H = 90
+local IMPORT_BTN_H = 22
+local IMPORT_ROW_GAP = 8         -- paste box to the button row
+local IMPORT_GAP = 8             -- button to panel
+local IMPORT_PREVIEW_DEBOUNCE = 0.15
+local IMPORT_PREVIEW_KEY = "ScootAuraListImportPreview"
+local SEARCH_DIM_ALPHA = 0.3     -- a group member the search did not match
+-- The nav key this page renders under; Cleanup reads it to tell a re-render
+-- from leaving the page.
+local PAGE_KEY = "scootAurasList"
 
 -- The spec restriction button. A funnel says "narrow this down", which is
 -- what it does; the flat glyph matches the delete and gear art beside it.
@@ -58,11 +103,10 @@ local state = {
     panel = nil,
     scrollContent = nil,
     rows = {},
-    flyouts = {},
     dropGroups = {},      -- [gid] = { box, zone, icons = { {frame, index} } }
     leftPane = nil,
     leftDropZone = nil,
-    specButtons = {},     -- [key] = { button, reveal } for the spec fly-out
+    triggers = {},        -- [key] = { spec, gear, reveal } for the two shared fly-outs
     hoverables = {},      -- every frame carrying an UpdateHover
     textRows = {},        -- rows whose height came from a text measurement
 }
@@ -96,7 +140,7 @@ local function TrackerMetaText(tracker)
     end
     text = text .. ", shown as " .. (shapeLabels[tracker.shape] or "?")
     local named = SAU and SAU.DescribeSpecs and SAU.DescribeSpecs(tracker.specs)
-    if named then text = text .. ", " .. named .. " only" end
+    if named then text = text .. ", " .. named end
     if tracker.enabled == false then
         text = text .. "  (disabled)"
     end
@@ -124,8 +168,8 @@ local Drag = addon.ScootAurasUI.CreateAuraListDrag({
 local ClickGuard, CreateDropZone = Drag.ClickGuard, Drag.CreateDropZone
 local BeginDrag, EndDrag = Drag.BeginDrag, Drag.EndDrag
 
--- One OnClick body for every spec-restriction trigger. kind is the
--- RegisterSpecButton key prefix: "t" loads a tracker, "g" a group.
+-- One OnClick body for every spec-restriction trigger. kind is the trigger
+-- key prefix: "t" loads a tracker, "g" a group.
 local function OpenSpecFlyout(anchor, kind, id)
     if ClickGuard() then return end
     local SpecFlyout = addon.UI.ScootAuraSpecFlyout
@@ -149,22 +193,32 @@ local function OpenSpecFlyout(anchor, kind, id)
     })
 end
 
+-- One OnClick body for every gear trigger. kind is the trigger key prefix:
+-- "t" a tracker (a list row, or a member cell with opts.inGroup), "g" a
+-- group. opts.gap is the trigger-to-panel spacing for that surface.
+local function OpenGearFlyout(anchor, kind, id, opts)
+    if ClickGuard() then return end
+    local GearFlyout = addon.UI.ScootAuraGearFlyout
+    if not GearFlyout then return end
+    opts = opts or {}
+    opts.key = kind .. tostring(id)
+    GearFlyout.OpenFor(anchor, kind, id, opts)
+end
+
 --------------------------------------------------------------------------------
 -- Cleanup (invoked from UIPanel:ClearContent through the registered slot)
 --------------------------------------------------------------------------------
 
 local function Cleanup(panel)
     if Drag.active then EndDrag(true) end
-    -- The spec fly-out outlives the page (one instance, re-anchored per row),
-    -- so close it before its anchor is destroyed. The exception is a re-render
-    -- it asked for: RenderList hands it the rebuilt trigger instead.
+    -- The spec and gear fly-outs outlive the page (one instance each,
+    -- re-anchored per row), so close them before their anchors are destroyed.
+    -- The exception is a re-render one of them asked for: RenderList hands it
+    -- the rebuilt trigger instead.
     local SpecFlyout = addon.UI.ScootAuraSpecFlyout
     if SpecFlyout and not SpecFlyout.IsReanchoring() then SpecFlyout.Close() end
-    for _, fly in ipairs(state.flyouts) do
-        if fly.Cleanup then fly:Cleanup() end
-        fly:Hide()
-    end
-    state.flyouts = {}
+    local GearFlyout = addon.UI.ScootAuraGearFlyout
+    if GearFlyout and not GearFlyout.IsReanchoring() then GearFlyout.Close() end
     for _, row in ipairs(state.rows) do
         row:Hide()
         row:SetParent(nil)
@@ -172,7 +226,7 @@ local function Cleanup(panel)
     state.rows = {}
     state.textRows = {}
     state.hoverables = {}
-    state.specButtons = {}
+    state.triggers = {}
     for gid in pairs(state.dropGroups) do
         state.dropGroups[gid] = nil
     end
@@ -181,29 +235,185 @@ local function Cleanup(panel)
     state.active = false
     panel._scootAurasCleanup = nil
 
-    -- Header pieces this page borrows: the Import button and the restyled
-    -- subtitle. The button is built once per window and cached (not in
-    -- state.flyouts, whose entries are destroyed here), so hide it rather than
-    -- tear it down.
+    -- Header pieces this page borrows: the search box, the Import button
+    -- with its fly-out, and the restyled subtitle. The widgets are built once
+    -- per window and cached (not in the per-render state, which is destroyed
+    -- here), and they come down only when the page is left. RenderList runs
+    -- this same teardown on every rebuild, and hiding the search box then
+    -- would drop the focus of a box the user is typing in. OnNavigationSelect
+    -- writes the new page key before ClearContent, so the key tells the two
+    -- apart.
+    if panel._currentCategoryKey == PAGE_KEY then return end
+    local Controls = addon.UI.Controls
+    if Controls and Controls.CancelDebounce then
+        Controls.CancelDebounce(SEARCH_DEBOUNCE_KEY)
+        Controls.CancelDebounce(RESIZE_DEBOUNCE_KEY)
+        Controls.CancelDebounce(IMPORT_PREVIEW_KEY)
+    end
     local contentPane = panel.frame and panel.frame._contentPane
-    if contentPane and contentPane._scootAuraImportBtn then
-        contentPane._scootAuraImportBtn:Hide()
+    if contentPane then
+        contentPane._onResize = nil
+        if contentPane._scootAuraImportBtn then
+            contentPane._scootAuraImportBtn:Hide()
+        end
+        -- The pasted text stays: a user who left mid-paste gets it back.
+        if contentPane._scootAuraImportFlyout then
+            contentPane._scootAuraImportFlyout:Close()
+        end
+        local search = contentPane._scootAuraSearch
+        if search then
+            search:ClearFocus()
+            search:SetText("")
+            search:Hide()
+        end
     end
     if panel.ResetHeaderSubtitle then panel:ResetHeaderSubtitle() end
 end
 
 --------------------------------------------------------------------------------
--- Header action: "Import" (placeholder)
+-- Header widgets: the search box and the Import button with its fly-out
 --------------------------------------------------------------------------------
 
--- Built once per settings window on the shared page header, right of the
--- title, in the header's small-button recipe (see the Collapse All button in
--- settingspanel/core.lua). Shown by RenderList, hidden by Cleanup.
-local function EnsureHeaderButtons(contentPane)
+-- The Import fly-out hangs under the header button: a paste box, an Import
+-- button, and a status line that previews what the pasted string holds and
+-- names the error when the import fails. Built once per window with the
+-- button, outside the per-render state: Cleanup runs on every RenderList, and
+-- a failed import must keep its pasted text through a resize- or
+-- search-triggered rebuild. The anchor is itself once-per-window, so no
+-- reanchor bracket. Returns the flyout.
+local function EnsureImportFlyout(contentPane, importBtn)
+    if contentPane._scootAuraImportFlyout then return contentPane._scootAuraImportFlyout end
+    local Controls = addon.UI.Controls
+    if not Controls.CreateFlyout or not Controls.CreateMultiLineEditBox then return nil end
+    local theme = addon.UI.Theme
+
+    -- The button sits at the header's right edge, so the panel hangs
+    -- right-aligned under it with the nub on the button.
+    local flyout = Controls:CreateFlyout({
+        anchor = importBtn,
+        direction = "DOWN",
+        align = "RIGHT",
+        width = IMPORT_W,
+        height = IMPORT_BOX_H + IMPORT_ROW_GAP + IMPORT_BTN_H + 2 * IMPORT_INSET,
+        padding = IMPORT_INSET - 1,
+        gap = IMPORT_GAP,
+        name = "ScootAuraImportFlyout",
+    })
+    if not flyout then return nil end
+    local content = flyout:GetContent()
+
+    local pasteBox = Controls:CreateMultiLineEditBox({
+        parent = content,
+        width = IMPORT_W - 2 * IMPORT_INSET,
+        height = IMPORT_BOX_H,
+        placeholder = "Paste a Scoot aura string...",
+        fontSize = 11,
+    })
+    pasteBox:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    -- The first Escape leaves the box; the next one closes the panel.
+    pasteBox._editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+    local status = content:CreateFontString(nil, "OVERLAY")
+    status:SetFont(theme:GetFont("LABEL"), 10, "")
+    status:SetJustifyH("LEFT")
+    status:SetJustifyV("MIDDLE")
+    status:SetWordWrap(true)
+    status:SetMaxLines(2)
+
+    local function SetStatus(text, isError)
+        if isError then
+            status:SetTextColor(1, 0.35, 0.35, 1)
+        else
+            local dr, dg, db = theme:GetDimTextColor()
+            status:SetTextColor(dr, dg, db, 1)
+        end
+        status:SetText(text or "")
+    end
+
+    local function Trimmed()
+        local text = pasteBox:GetText()
+        if type(text) ~= "string" then return "" end
+        return text:match("^%s*(.-)%s*$") or ""
+    end
+
+    local function DoImport()
+        local SAU = addon.ScootAuras
+        if InCombatLockdown() then
+            SetStatus("Cannot import in combat", true)
+            return
+        end
+        local str = Trimmed()
+        if str == "" then
+            SetStatus("Paste a string first", true)
+            return
+        end
+        local result, err = SAU.ImportString(str)
+        if not result then
+            SetStatus(err or "Import failed", true)
+            return
+        end
+        pasteBox:SetText("")
+        SetStatus("")
+        flyout:Close()
+        Refresh()
+    end
+
+    local runBtn = Controls:CreateButton({
+        parent = content,
+        text = "Import",
+        height = IMPORT_BTN_H,
+        fontSize = 11,
+        borderWidth = 1,
+        borderAlpha = 0.6,
+        onClick = DoImport,
+    })
+    runBtn:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+    status:SetPoint("TOPLEFT", pasteBox, "BOTTOMLEFT", 0, -IMPORT_ROW_GAP)
+    status:SetPoint("BOTTOMRIGHT", runBtn, "BOTTOMLEFT", -8, 0)
+
+    -- What the pasted string holds, before anything is created. userInput
+    -- alone, because the control re-asserts its text on show.
+    pasteBox._editBox:HookScript("OnTextChanged", function(_, userInput)
+        if not userInput then return end
+        Controls.Debounce(IMPORT_PREVIEW_KEY, IMPORT_PREVIEW_DEBOUNCE, function()
+            local SAU = addon.ScootAuras
+            local str = Trimmed()
+            if str == "" then
+                SetStatus("")
+                return
+            end
+            if not (SAU and SAU.DescribeImportString) then return end
+            local info, err = SAU.DescribeImportString(str)
+            if not info then
+                SetStatus(err or "Import failed", true)
+                return
+            end
+            local what
+            if info.kind == "group" then
+                local n = info.memberCount or 0
+                what = ("Group '%s', %d %s"):format(tostring(info.name), n, n == 1 and "aura" or "auras")
+            else
+                what = ("Aura '%s'"):format(tostring(info.name))
+            end
+            if info.className then what = what .. ", " .. info.className end
+            SetStatus(what, false)
+        end)
+    end)
+
+    flyout._pasteBox = pasteBox
+    contentPane._scootAuraImportFlyout = flyout
+    return flyout
+end
+
+-- Built once per settings window on the shared page header, on the divider
+-- line at the header's bottom-right in the header's small-button recipe (see
+-- the Collapse All button in settingspanel/core.lua), the search box left of
+-- the button. Shown by RenderList, hidden by Cleanup when the page is left.
+local function EnsureHeaderWidgets(contentPane)
     if not contentPane or not contentPane._header then return end
     if contentPane._scootAuraImportBtn then return end
     local Controls = addon.UI.Controls
-    if not Controls or not Controls.CreateButton then return end
+    if not Controls or not Controls.CreateButton or not Controls.CreateSingleLineEditBox then return end
     local header = contentPane._header
 
     local importBtn = Controls:CreateButton({
@@ -214,37 +424,131 @@ local function EnsureHeaderButtons(contentPane)
         fontSize = 10,
         borderWidth = 1,
         borderAlpha = 0.6,
+        onClick = function()
+            if ClickGuard() then return end
+            local flyout = contentPane._scootAuraImportFlyout
+            if flyout then flyout:Toggle() end
+        end,
     })
-    importBtn:SetPoint("TOPRIGHT", header, "TOPRIGHT", -16, -12)
+    importBtn:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -HEADER_SIDE, 8)
     importBtn:Hide()
-    -- Placeholder: no action yet. HookScript, because the button control owns
-    -- OnEnter/OnLeave for its hover fill.
-    importBtn:HookScript("OnEnter", function(self)
-        if Controls.GetOrCreateTooltip then
-            local tip = Controls:GetOrCreateTooltip()
-            tip:SetContent(nil, "Coming soon...")
-            tip:ShowAtAnchor(self, "TOPRIGHT", "BOTTOMRIGHT", 0, -4)
-        end
-    end)
-    importBtn:HookScript("OnLeave", function()
-        if Controls.GetOrCreateTooltip then
-            Controls:GetOrCreateTooltip():Hide()
-        end
-    end)
     contentPane._scootAuraImportBtn = importBtn
+    EnsureImportFlyout(contentPane, importBtn)
+
+    -- The search box filters both panes as the user types. RenderList reads
+    -- the query straight from it, so the text is the one source of truth and
+    -- survives every rebuild by construction.
+    local search = Controls:CreateSingleLineEditBox({
+        parent = header,
+        width = SEARCH_W,
+        height = SEARCH_H,
+        fontSize = 11,
+        placeholder = "Search...",
+    })
+    search:SetPoint("RIGHT", importBtn, "LEFT", -SEARCH_CLUSTER_GAP, 0)
+    search:Hide()
+    local editBox = search._editBox
+    -- HookScript: the control's own OnTextChanged drives its placeholder.
+    -- userInput alone, because the control re-asserts its text on show.
+    editBox:HookScript("OnTextChanged", function(_, userInput)
+        if not userInput then return end
+        Controls.Debounce(SEARCH_DEBOUNCE_KEY, SEARCH_DEBOUNCE, Refresh)
+    end)
+    -- The stock handler reverts to the text the box had when it took focus;
+    -- a search box clears instead. The focused box takes this Escape, so the
+    -- next one closes the window.
+    editBox:SetScript("OnEscapePressed", function()
+        Controls.CancelDebounce(SEARCH_DEBOUNCE_KEY)
+        local had = search:GetText() ~= ""
+        search:SetText("")
+        search:ClearFocus()
+        if had then Refresh() end
+    end)
+    contentPane._scootAuraSearch = search
+end
+
+-- The search box's text, trimmed and lowercased, or "" with no box or none.
+local function SearchQuery(contentPane)
+    local search = contentPane and contentPane._scootAuraSearch
+    local text = search and search:GetText()
+    if type(text) ~= "string" then return "" end
+    return (text:match("^%s*(.-)%s*$") or ""):lower()
+end
+
+-- Lowercased for a plain find, or "" for anything that is not a plain
+-- string: a secret name cannot be lowercased.
+local function Norm(s)
+    if type(s) ~= "string" or issecretvalue(s) then return "" end
+    return s:lower()
+end
+
+-- A tracker matches on the name its row shows, and for a spell kind on the
+-- aura's live name and its ID digits. A kind with no spell is named after
+-- its resource, so its display name is the whole of it (DescribeSpell(nil)
+-- would answer "Aura nil" and match every such tracker on "aura").
+local function TrackerMatches(SAU, tracker, query)
+    if Norm(SAU.DisplayName(tracker)):find(query, 1, true) then return true end
+    if tracker.spellId and SAU.KindNeedsSpell(tracker.kind) then
+        if Norm((SAU.DescribeSpell(tracker.spellId))):find(query, 1, true) then return true end
+        if tostring(tracker.spellId):find(query, 1, true) then return true end
+    end
+    return false
+end
+
+-- A group stays on the page when its own name matches or any member does.
+-- keep names the members that matched, so the box can dim the rest; it is
+-- nil when the name matched, and nothing inside dims.
+local function GroupMatch(SAU, gid, group, query)
+    if Norm(group.name or ("Aura Group " .. gid)):find(query, 1, true) then
+        return { shown = true }
+    end
+    local keep, any = {}, false
+    for _, memberId in ipairs(group.memberOrder or {}) do
+        local tracker = SAU.GetTracker(memberId)
+        if tracker and TrackerMatches(SAU, tracker, query) then
+            keep[memberId] = true
+            any = true
+        end
+    end
+    return { shown = any, keep = keep }
+end
+
+-- The how-to line's width: from the header's left inset to a gap short of
+-- the search box. Before the header has a rect it reads 0, and a stand-in
+-- keeps the header at its base height until the deferred pass in RenderList
+-- lays the line out again.
+local function SubtitleWidth(contentPane)
+    local headerW = contentPane._header:GetWidth() or 0
+    if headerW <= 0 then return 600 end
+    local importBtn = contentPane._scootAuraImportBtn
+    local clusterW = SEARCH_W + SEARCH_CLUSTER_GAP + ((importBtn and importBtn:GetWidth()) or 0)
+    return math.max(120, headerW - HEADER_SIDE * 2 - clusterW - SUBTITLE_CLUSTER_GAP)
+end
+
+-- The header height the wrapped how-to line wants, never under the stock
+-- height. GetStringHeight reports the wrapped height once the FontString
+-- has an explicit width; a cold font measures short, so the deferred pass
+-- in RenderList asks again.
+local function HeaderHeightFor(contentPane)
+    local base = contentPane._headerBaseHeight or 66
+    local sub = contentPane._headerSubtitle
+    local subH = (sub and sub:GetStringHeight()) or 0
+    if subH <= 0 then return base end
+    return math.max(base, SUBTITLE_TOP + math.ceil(subH) + SUBTITLE_BOTTOM)
 end
 
 --------------------------------------------------------------------------------
 -- Shared row pieces
 --------------------------------------------------------------------------------
 
--- The spec fly-out outlives a re-render; its trigger does not. Every surface
--- carrying one files it under the record's own key ("t<id>" for a tracker,
--- "g<gid>" for a group), so the open panel finds the replacement once the
--- rebuilt rows exist. A tracker is a list row or a group member, never both,
--- so one key covers both surfaces.
-local function RegisterSpecButton(key, button, reveal)
-    state.specButtons[key] = { button = button, reveal = reveal }
+-- The spec and gear fly-outs outlive a re-render; their triggers do not.
+-- Every surface carrying them files both under the record's own key ("t<id>"
+-- for a tracker, "g<gid>" for a group), so an open panel finds its
+-- replacement once the rebuilt rows exist. A tracker is a list row or a group
+-- member, never both, so one key covers both surfaces; reveal is the
+-- surface's hover repaint, the same for both panels.
+local function RegisterTriggers(key, specBtn, gearBtn, reveal)
+    state.triggers[key] = { spec = specBtn, gear = gearBtn, reveal = reveal }
 end
 
 --------------------------------------------------------------------------------
@@ -291,7 +595,7 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     SAU.PaintTrackerIcon(icon, texture)
 
     -- Text stops short of the button cluster, so a long name or meta line
-    -- never runs under it. Four buttons now: spec, delete, duplicate, ON.
+    -- never runs under it. Four buttons: delete, gear, spec, ON.
     local textClear = PAD + IND_W + 3 * (ROW_BTN_SIZE + ROW_BTN_GAP) + 6
 
     local textLeft = PAD + ROW_ICON + 6
@@ -334,22 +638,23 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
         name:SetTextColor(0.55, 0.55, 0.55, 1)
     end
 
-    -- All four buttons ride the row hover.
+    -- All four buttons ride the row hover. Right to left: delete, the gear
+    -- (Duplicate and Export in its fly-out), spec filter, ON/OFF pill, the
+    -- group box's cluster at the row's smaller size.
     local Controls = addon.UI.Controls
-    local specBtn = Controls:CreateGlyphButton({ parent = row, atlas = SPEC_ATLAS,
-        tooltip = "Loaded on these specs", size = ROW_BTN_SIZE })
-    specBtn:SetPoint("TOPRIGHT", row, "TOPRIGHT", -PAD, ROW_BTN_Y)
-
     local deleteBtn = Controls:CreateGlyphButton({ parent = row, atlas = "common-icon-delete",
         tooltip = "Delete", size = ROW_BTN_SIZE })
-    deleteBtn:SetPoint("RIGHT", specBtn, "LEFT", -ROW_BTN_GAP, 0)
-    local duplicateBtn = Controls:CreateGlyphButton({ parent = row, atlas = "friends-icon-battlenet-copy",
-        tooltip = "Duplicate", size = ROW_BTN_SIZE })
-    duplicateBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -ROW_BTN_GAP, 0)
+    deleteBtn:SetPoint("TOPRIGHT", row, "TOPRIGHT", -PAD, ROW_BTN_Y)
+    local gearBtn = Controls:CreateGlyphButton({ parent = row, atlas = "GM-icon-settings",
+        tooltip = "Options", size = ROW_BTN_SIZE, glyphScale = 2 })
+    gearBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -ROW_BTN_GAP, 0)
+    local specBtn = Controls:CreateGlyphButton({ parent = row, atlas = SPEC_ATLAS,
+        tooltip = "Loaded on these specs", size = ROW_BTN_SIZE })
+    specBtn:SetPoint("RIGHT", gearBtn, "LEFT", -ROW_BTN_GAP, 0)
 
     local enabledBtn = Controls:CreateOnOffIndicator({ parent = row,
         width = IND_W, height = ROW_BTN_SIZE })
-    enabledBtn:SetPoint("RIGHT", duplicateBtn, "LEFT", -ROW_BTN_GAP, 0)
+    enabledBtn:SetPoint("RIGHT", specBtn, "LEFT", -ROW_BTN_GAP, 0)
     enabledBtn:SetOn(tracker.enabled ~= false)
     enabledBtn:SetScript("OnEnter", function()
         if row.UpdateHover then row.UpdateHover() end
@@ -364,20 +669,22 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     -- pane's own green wash is the answer for that drag.
     row.UpdateHover = function()
         local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+        local GearFlyout = addon.UI.ScootAuraGearFlyout
         local over = not Drag.active
             and (row:IsMouseOver()
                 or (SpecFlyout and SpecFlyout.IsOpenFor(specBtn))
+                or (GearFlyout and GearFlyout.IsOpenFor(gearBtn))
                 or false)
         hoverBg:SetShown(over)
         specBtn:SetShown(over)
         deleteBtn:SetShown(over)
-        duplicateBtn:SetShown(over)
+        gearBtn:SetShown(over)
         enabledBtn:SetShown(over)
     end
     row:SetScript("OnEnter", row.UpdateHover)
     row:SetScript("OnLeave", row.UpdateHover)
     table.insert(state.hoverables, row)
-    RegisterSpecButton("t" .. tostring(trackerId), specBtn, row.UpdateHover)
+    RegisterTriggers("t" .. tostring(trackerId), specBtn, gearBtn, row.UpdateHover)
 
     row:SetScript("OnMouseUp", function(_, button)
         if ClickGuard() then return end
@@ -400,9 +707,8 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
         OpenSpecFlyout(specBtn, "t", trackerId)
     end)
 
-    duplicateBtn:SetScript("OnClick", function()
-        local newId = SAU.DuplicateTracker(trackerId)
-        if newId then Refresh() end
+    gearBtn:SetScript("OnClick", function()
+        OpenGearFlyout(gearBtn, "t", trackerId, { gap = ROW_GEAR_GAP })
     end)
 
     deleteBtn:SetScript("OnClick", function()
@@ -460,7 +766,38 @@ end
 -- Right pane: group boxes
 --------------------------------------------------------------------------------
 
-local function CreateGroupBox(pane, gid, group, boxW, loaded)
+-- The spec line's wrapped height, floored at one line; the box height math
+-- and the deferred re-measure both read it.
+local function MeasuredSpecHeight(specFS)
+    return math.ceil(math.max(9, specFS:GetStringHeight() or 9))
+end
+
+-- A restricted group says so under its name. Groups have no meta line, so
+-- the header grows by this one when it is there. The line stops where the
+-- name stops, clear of the hover cluster; at the box's full width it ran
+-- under the buttons. Files the FontString and its measured height on the
+-- box, so RenderList can re-measure once the font is warm. Returns the
+-- header height.
+local function AddGroupSpecLine(box, group, boxW, theme)
+    local SAU = addon.ScootAuras
+    local groupSpecs = SAU.DescribeSpecs and SAU.DescribeSpecs(group.specs)
+    if not groupSpecs then return BOX_HEADER_H end
+    local specFS = box:CreateFontString(nil, "OVERLAY")
+    specFS:SetFont(theme:GetFont("LABEL"), 7, "")
+    specFS:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD, -(BOX_HEADER_H - 6))
+    specFS:SetWidth(math.max(40, boxW - BOX_BTN_RESERVE))
+    specFS:SetJustifyH("LEFT")
+    specFS:SetWordWrap(true)
+    specFS:SetText(groupSpecs)
+    specFS:SetTextColor(0.55, 0.55, 0.55, 1)
+    box._specFS = specFS
+    box._specH = MeasuredSpecHeight(specFS)
+    return BOX_HEADER_H + box._specH + 2
+end
+
+-- keepSet, under a search, names the members that matched; every other
+-- member's cell dims. nil means nothing dims.
+local function CreateGroupBox(pane, gid, group, boxW, loaded, keepSet)
     local theme = addon.UI.Theme
     local ar, ag, ab = theme:GetAccentColor()
     local SAU = addon.ScootAuras
@@ -489,9 +826,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
     nameFS:SetPoint("LEFT", 0, 0)
     nameFS:SetText(group.name or ("Aura Group " .. gid))
     nameFS:SetTextColor(0.92, 0.92, 0.92, 1)
-    -- Reserve room for the button cluster, one wider than it used to be.
-    local btnReserve = 130 + BTN_SIZE + BTN_GAP
-    nameBtn:SetWidth(math.max(20, math.min(nameFS:GetStringWidth() + 6, boxW - btnReserve)))
+    nameBtn:SetWidth(math.max(20, math.min(nameFS:GetStringWidth() + 6, boxW - BOX_BTN_RESERVE)))
 
     local pencilBtn = CreateFrame("Button", nil, box)
     pencilBtn:SetSize(12, 12)
@@ -508,7 +843,9 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
     local renameBox = CreateFrame("EditBox", nil, box, "InputBoxTemplate")
     renameBox:SetHeight(18)
     renameBox:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD + 6, -4)
-    renameBox:SetPoint("TOPRIGHT", box, "TOPRIGHT", -(90 + BTN_SIZE + BTN_GAP), -4)
+    -- Stops short of the cluster, which stays revealed while the pointer is
+    -- in the box.
+    renameBox:SetPoint("TOPRIGHT", box, "TOPRIGHT", -(BOX_CLUSTER_W + 18), -4)
     renameBox:SetAutoFocus(false)
     renameBox:SetFontObject("GameFontHighlightSmall")
     renameBox:Hide()
@@ -544,39 +881,45 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
     nameBtn:SetScript("OnClick", StartRename)
     pencilBtn:SetScript("OnClick", StartRename)
 
-    -- Hover-revealed, right to left: spec filter, delete, duplicate, layout gear.
+    -- Hover-revealed, right to left: delete, the gear, spec filter, and the
+    -- ON/OFF pill, the tracker row's cluster at the box's button size. The
+    -- gear opens the group's fly-out (Duplicate, Export, and the layout
+    -- controls). An unloaded group keeps the pill, since it is how a
+    -- switched-off group comes back, and the gear with it; the layout
+    -- controls, which describe a group on screen, hide themselves inside the
+    -- panel.
     local Controls = addon.UI.Controls
+    local deleteBtn = Controls:CreateGlyphButton({ parent = box, atlas = "common-icon-delete",
+        tooltip = "Delete Group", size = BTN_SIZE })
+    deleteBtn:SetPoint("TOPRIGHT", box, "TOPRIGHT", -BOX_PAD, -5)
+    local layoutBtn = Controls:CreateGlyphButton({ parent = box, atlas = "GM-icon-settings",
+        tooltip = "Group Options", size = BTN_SIZE, glyphScale = 2 })
+    layoutBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -BTN_GAP, 0)
+    layoutBtn:SetScript("OnClick", function()
+        OpenGearFlyout(layoutBtn, "g", gid, { gap = BOX_GEAR_GAP })
+    end)
+
     local specBtn = Controls:CreateGlyphButton({ parent = box, atlas = SPEC_ATLAS,
         tooltip = "Loaded on these specs", size = BTN_SIZE })
-    specBtn:SetPoint("TOPRIGHT", box, "TOPRIGHT", -BOX_PAD, -5)
+    specBtn:SetPoint("RIGHT", layoutBtn, "LEFT", -BTN_GAP, 0)
     specBtn:SetScript("OnClick", function()
         OpenSpecFlyout(specBtn, "g", gid)
     end)
 
-    local deleteBtn = Controls:CreateGlyphButton({ parent = box, atlas = "common-icon-delete",
-        tooltip = "Delete Group", size = BTN_SIZE })
-    deleteBtn:SetPoint("RIGHT", specBtn, "LEFT", -BTN_GAP, 0)
-    local duplicateBtn = Controls:CreateGlyphButton({ parent = box, atlas = "friends-icon-battlenet-copy",
-        tooltip = "Duplicate Group", size = BTN_SIZE })
-    duplicateBtn:SetPoint("RIGHT", deleteBtn, "LEFT", -BTN_GAP, 0)
-    -- Layout settings describe a group that is on screen. An unloaded group has
-    -- none, so it carries no gear and builds no fly-out.
-    local layoutBtn, flyout
-    if loaded ~= false then
-        layoutBtn = Controls:CreateGlyphButton({ parent = box, atlas = "GM-icon-settings",
-            tooltip = "Layout", size = BTN_SIZE, glyphScale = 2 })
-        layoutBtn:SetPoint("RIGHT", duplicateBtn, "LEFT", -BTN_GAP, 0)
-
-        flyout = addon.UI.Settings.ScootAuraEditorTabs.BuildGroupLayoutFlyout(layoutBtn, gid)
-        table.insert(state.flyouts, flyout)
-        layoutBtn:SetScript("OnClick", function()
-            if ClickGuard() then return end
-            flyout:Toggle()
-        end)
-    end
-
-    duplicateBtn:SetScript("OnClick", function()
-        if SAU.DuplicateGroup(gid) then Refresh() end
+    local enabledBtn = Controls:CreateOnOffIndicator({ parent = box,
+        width = IND_W, height = BTN_SIZE })
+    enabledBtn:SetPoint("RIGHT", specBtn, "LEFT", -BTN_GAP, 0)
+    enabledBtn:SetOn(group.enabled ~= false)
+    enabledBtn:SetScript("OnEnter", function()
+        if box.UpdateHover then box.UpdateHover() end
+    end)
+    enabledBtn:SetScript("OnLeave", function()
+        if box.UpdateHover then box.UpdateHover() end
+    end)
+    enabledBtn:SetScript("OnClick", function()
+        -- The box moves between the Loaded and Not Loaded blocks.
+        SAU.SetGroupEnabled(gid, group.enabled == false)
+        Refresh()
     end)
 
     deleteBtn:SetScript("OnClick", function()
@@ -598,21 +941,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
         end
     end)
 
-    -- A restricted group says so under its name. Groups have no meta line,
-    -- so the header grows by this one when it is there.
-    local headerH = BOX_HEADER_H
-    local groupSpecs = SAU.DescribeSpecs and SAU.DescribeSpecs(group.specs)
-    if groupSpecs then
-        local specFS = box:CreateFontString(nil, "OVERLAY")
-        specFS:SetFont(theme:GetFont("LABEL"), 7, "")
-        specFS:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD, -(BOX_HEADER_H - 6))
-        specFS:SetWidth(math.max(40, boxW - BOX_PAD * 2))
-        specFS:SetJustifyH("LEFT")
-        specFS:SetWordWrap(true)
-        specFS:SetText(groupSpecs .. " only")
-        specFS:SetTextColor(0.55, 0.55, 0.55, 1)
-        headerH = BOX_HEADER_H + math.ceil(math.max(9, specFS:GetStringHeight() or 9)) + 2
-    end
+    local headerH = AddGroupSpecLine(box, group, boxW, theme)
 
     -- Member icon grid, in memberOrder order.
     local icons = {}
@@ -634,6 +963,10 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
                 BOX_PAD + col * (MEMBER_CELL_W + ICON_GAP),
                 -(headerH + rowIdx * (MEMBER_CELL_H + ICON_GAP)))
             cell:EnableMouse(true)
+            -- A member the search did not match dims as a whole: the icon,
+            -- its two buttons, and the hover art multiply with the cell.
+            local dimmed = keepSet ~= nil and not keepSet[memberId]
+            if dimmed then cell:SetAlpha(SEARCH_DIM_ALPHA) end
 
             -- The tracker row's hover language on a cell instead of a row: an
             -- accent wash under everything and a 1px accent border, both a
@@ -657,35 +990,39 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
             SAU.PaintTrackerIcon(tex, texture)
             if loaded == false or not SAU.IsTrackerActive(memberId, tracker) then
                 tex:SetDesaturated(true)
-                tex:SetAlpha(0.45)
+                -- A search-dimmed cell carries the whole reduction; the
+                -- icon's own alpha would multiply into it.
+                if not dimmed then tex:SetAlpha(0.45) end
             end
 
             -- A group is shared by the whole account, but its members are often
-            -- one class each, so a member's spec list and an in-group copy are
-            -- reachable without pulling it out of the group first. The two stack
-            -- in a column on the icon's right edge, clear of the spell art and
-            -- inside the room the cell reserves for them. An unloaded member
-            -- keeps both, the way a grayed tracker row does, because the spec
-            -- button is how an aura gets loaded.
-            local memberDupBtn = Controls:CreateGlyphButton({ parent = cell, atlas = "friends-icon-battlenet-copy",
-                tooltip = "Duplicate in Group", size = MEMBER_BTN_SIZE })
-            memberDupBtn:SetPoint("BOTTOMRIGHT", cell, "RIGHT", -MEMBER_HALO_PAD, MEMBER_BTN_STACK_GAP / 2)
+            -- one class each, so a member's spec list and its gear (an in-group
+            -- copy, an export) are reachable without pulling it out of the
+            -- group first. The two stack in a column on the icon's right edge,
+            -- clear of the spell art and inside the room the cell reserves for
+            -- them. An unloaded member keeps both, the way a grayed tracker row
+            -- does, because the spec button is how an aura gets loaded.
             local memberSpecBtn = Controls:CreateGlyphButton({ parent = cell, atlas = SPEC_ATLAS,
                 tooltip = "Loaded on these specs", size = MEMBER_BTN_SIZE })
-            memberSpecBtn:SetPoint("TOPRIGHT", memberDupBtn, "BOTTOMRIGHT", 0, -MEMBER_BTN_STACK_GAP)
+            memberSpecBtn:SetPoint("BOTTOMRIGHT", cell, "RIGHT", -MEMBER_HALO_PAD, MEMBER_BTN_STACK_GAP / 2)
+            local memberGearBtn = Controls:CreateGlyphButton({ parent = cell, atlas = "GM-icon-settings",
+                tooltip = "Options", size = MEMBER_BTN_SIZE, glyphScale = MEMBER_GEAR_GLYPH_SCALE })
+            memberGearBtn:SetPoint("TOPRIGHT", memberSpecBtn, "BOTTOMRIGHT", 0, -MEMBER_BTN_STACK_GAP)
 
             -- IsMouseOver covers children, so the pointer on either button still
             -- reads as over the cell. Cells never overlap, so two members cannot
             -- light at once and no frame-level ordering is needed.
             local UpdateHover = function()
                 local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+                local GearFlyout = addon.UI.ScootAuraGearFlyout
                 local over = not Drag.active
                     and (cell:IsMouseOver()
-                        or (SpecFlyout and SpecFlyout.IsOpenFor(memberSpecBtn))
+                        or (SpecFlyout and SpecFlyout.IsOpenFor(cell))
+                        or (GearFlyout and GearFlyout.IsOpenFor(cell))
                         or false)
                 haloBg:SetShown(over)
                 haloBorder:SetShown(over)
-                memberDupBtn:SetShown(over)
+                memberGearBtn:SetShown(over)
                 memberSpecBtn:SetShown(over)
                 if box.UpdateHover then box.UpdateHover() end
             end
@@ -694,21 +1031,18 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
             cell:SetScript("OnEnter", UpdateHover)
             cell:SetScript("OnLeave", UpdateHover)
             table.insert(state.hoverables, cell)
-            RegisterSpecButton("t" .. tostring(memberId), memberSpecBtn, UpdateHover)
+            RegisterTriggers("t" .. tostring(memberId), cell, cell, UpdateHover)
 
+            -- Both panels hang off the cell, not the button inside it: a
+            -- panel's nub rises 15px, and from either button it would cross
+            -- the other one and the spell art. From the cell it clears both.
+            -- Only one fly-out is ever open, so each panel's IsOpenFor(cell)
+            -- answers for itself.
             memberSpecBtn:SetScript("OnClick", function()
-                OpenSpecFlyout(memberSpecBtn, "t", memberId)
+                OpenSpecFlyout(cell, "t", memberId)
             end)
-
-            -- Copies the member into its group beside itself. The editor's own
-            -- duplicate then edits the copy; here the user is browsing the list,
-            -- so it stays put.
-            memberDupBtn:SetScript("OnClick", function()
-                if ClickGuard() then return end
-                if SAU.DuplicateTrackerInGroup(memberId) then
-                    GameTooltip:Hide()
-                    Refresh()
-                end
+            memberGearBtn:SetScript("OnClick", function()
+                OpenGearFlyout(cell, "t", memberId, { gap = MEMBER_GEAR_GAP, inGroup = true })
             end)
 
             btn:SetScript("OnEnter", function()
@@ -755,20 +1089,21 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
 
     box.UpdateHover = function()
         local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+        local GearFlyout = addon.UI.ScootAuraGearFlyout
         local over = not Drag.active
             and (box:IsMouseOver()
-                or (flyout and flyout:IsOpen())
+                or (GearFlyout and GearFlyout.IsOpenFor(layoutBtn))
                 or (SpecFlyout and SpecFlyout.IsOpenFor(specBtn))
                 or false)
         specBtn:SetShown(over)
         deleteBtn:SetShown(over)
-        duplicateBtn:SetShown(over)
-        if layoutBtn then layoutBtn:SetShown(over) end
+        layoutBtn:SetShown(over)
+        enabledBtn:SetShown(over)
     end
     box:SetScript("OnEnter", box.UpdateHover)
     box:SetScript("OnLeave", box.UpdateHover)
     table.insert(state.hoverables, box)
-    RegisterSpecButton("g" .. tostring(gid), specBtn, box.UpdateHover)
+    RegisterTriggers("g" .. tostring(gid), specBtn, layoutBtn, box.UpdateHover)
 
     state.dropGroups[gid] = { box = box, zone = zone, icons = icons }
     return box
@@ -793,6 +1128,18 @@ local function ColumnLabel(pane, text, theme)
     underline:SetColorTexture(ar, ag, ab, 0.6)
 end
 
+-- A dim centered label with its top y below the pane's top: the Not Loaded
+-- heading and the placeholder lines share it.
+local function DimLabel(pane, y, text, theme)
+    local fs = pane:CreateFontString(nil, "OVERLAY")
+    fs:SetFont(theme:GetFont("LABEL"), 11, "")
+    fs:SetPoint("TOP", pane, "TOP", 0, -y)
+    fs:SetText(text)
+    local dr, dg, db = theme:GetDimTextColor()
+    fs:SetTextColor(dr, dg, db, 1)
+    return fs
+end
+
 -- Section heading for the Not Loaded block: a hairline rule, then a dim label.
 -- Returns the height it consumed.
 local function NotLoadedHeading(pane, y, theme)
@@ -803,47 +1150,52 @@ local function NotLoadedHeading(pane, y, theme)
     rule:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -(y + NOT_LOADED_TOP_GAP))
     rule:SetColorTexture(ar, ag, ab, 0.25)
 
-    local fs = pane:CreateFontString(nil, "OVERLAY")
-    fs:SetFont(theme:GetFont("LABEL"), 11, "")
-    fs:SetPoint("TOP", pane, "TOP", 0, -(y + NOT_LOADED_TOP_GAP + 10))
-    fs:SetText("Not Loaded")
-    local dr, dg, db = theme:GetDimTextColor()
-    fs:SetTextColor(dr, dg, db, 1)
+    DimLabel(pane, y + NOT_LOADED_TOP_GAP + 10, "Not Loaded", theme)
 
     return NOT_LOADED_HEADER_H
 end
 
--- Stand-in for an empty loaded block, so a pane holding only grayed records
--- reads as a state rather than a rendering gap. Returns the height it consumed.
-local function NoneLoadedText(pane, y, theme)
-    local fs = pane:CreateFontString(nil, "OVERLAY")
-    fs:SetFont(theme:GetFont("LABEL"), 11, "")
-    fs:SetPoint("TOP", pane, "TOP", 0, -(y + NONE_LOADED_TOP_GAP))
-    fs:SetText("None Loaded")
-    local dr, dg, db = theme:GetDimTextColor()
-    fs:SetTextColor(dr, dg, db, 1)
-
+-- Stand-in for an empty block, so a pane holding only grayed records ("None
+-- Loaded"), or one the search emptied ("No matches"), reads as a state
+-- rather than a rendering gap. Returns the height it consumed.
+local function PlaceholderLine(pane, y, text, theme)
+    DimLabel(pane, y + NONE_LOADED_TOP_GAP, text, theme)
     return NONE_LOADED_H
 end
 
 RenderList = function(panel, scrollContent, corrective)
     if Drag.active then EndDrag(true) end
 
-    -- An open spec fly-out survives the rebuild that its own edit asked for.
-    -- Its trigger does not, so it is unpinned here and handed the replacement
-    -- once the new rows exist; every re-render path runs through this bracket,
-    -- the deferred corrective pass included.
+    -- An open spec or gear fly-out survives the rebuild that its own edit
+    -- asked for. Its trigger does not, so it is unpinned here and handed the
+    -- replacement once the new rows exist; every re-render path runs through
+    -- this bracket, the deferred corrective pass included.
     local SpecFlyout = addon.UI.ScootAuraSpecFlyout
     local specKey = SpecFlyout and SpecFlyout.GetOpenKey() or nil
     if specKey and not SpecFlyout.BeginReanchor() then specKey = nil end
+    local GearFlyout = addon.UI.ScootAuraGearFlyout
+    local gearKey = GearFlyout and GearFlyout.GetOpenKey() or nil
+    if gearKey and not GearFlyout.BeginReanchor() then gearKey = nil end
 
     panel:ClearContent()
 
     local SAU = addon.ScootAuras
     local SettingsBuilder = addon.UI.SettingsBuilder
+    local contentPane = panel.frame and panel.frame._contentPane
 
     if not (SAU and SAU.IsModuleActive()) then
         if specKey then SpecFlyout.EndReanchor(nil) end
+        if gearKey then GearFlyout.EndReanchor(nil) end
+        -- The header widgets belong to the live page alone.
+        if contentPane and contentPane._scootAuraImportBtn then
+            contentPane._scootAuraImportBtn:Hide()
+        end
+        if contentPane and contentPane._scootAuraImportFlyout then
+            contentPane._scootAuraImportFlyout:Close()
+        end
+        if contentPane and contentPane._scootAuraSearch then
+            contentPane._scootAuraSearch:Hide()
+        end
         local builder = SettingsBuilder:CreateFor(scrollContent)
         panel._currentBuilder = builder
         builder:AddDescription(
@@ -863,34 +1215,52 @@ RenderList = function(panel, scrollContent, corrective)
     local ar, ag, ab = theme:GetAccentColor()
     local totalW = scrollContent:GetWidth() or 600
 
+    -- Header widgets first: the how-to line's width reads the Import
+    -- button's, which the button control sets at build.
+    EnsureHeaderWidgets(contentPane)
+    if contentPane and contentPane._scootAuraImportBtn then
+        contentPane._scootAuraImportBtn:Show()
+    end
+    if contentPane and contentPane._scootAuraSearch then
+        contentPane._scootAuraSearch:Show()
+    end
+
     -- The how-to line rides the page header as its subtitle: gray like the
-    -- row meta text, hung under the title and spanning the header's width so
-    -- it wraps to a second line instead of truncating. The header buttons sit
-    -- on the title row above it. Cleanup restores the stock look through
-    -- UIPanel:ResetHeaderSubtitle before another page reuses the FontString;
-    -- the flag keeps the theme subscription from recoloring it to accent.
-    local contentPane = panel.frame and panel.frame._contentPane
+    -- row meta text, hung under the title at an explicit width that ends
+    -- before the search box, so it wraps instead of running under it. The
+    -- stock header leaves 26px under the title, two lines at most, so the
+    -- header grows to what the wrapped line needs. Cleanup restores the
+    -- stock look through UIPanel:ResetHeaderSubtitle before another page
+    -- reuses the FontString; the flag keeps the theme subscription from
+    -- recoloring it to accent.
     if contentPane and contentPane._headerSubtitle and contentPane._header then
         local sub = contentPane._headerSubtitle
         sub:SetText(
             "Auras are shared by every character on your account and load in the specializations you pick. Click a tracker to edit it. Drag trackers into groups; drag a group's icons to reorder or remove them. Position frames in Edit Mode.")
         sub:ClearAllPoints()
-        sub:SetPoint("TOPLEFT", contentPane._header, "TOPLEFT", 16, -36)
-        sub:SetPoint("BOTTOMRIGHT", contentPane._header, "BOTTOMRIGHT", -16, 4)
+        sub:SetPoint("TOPLEFT", contentPane._header, "TOPLEFT", HEADER_SIDE, -SUBTITLE_TOP)
         sub:SetFont(theme:GetFont("LABEL"), 10, "")
         sub:SetJustifyH("LEFT")
         sub:SetJustifyV("TOP")
         sub:SetWordWrap(true)
         sub:SetTextColor(0.55, 0.55, 0.55, 1)
+        sub:SetHeight(0)
+        sub:SetWidth(SubtitleWidth(contentPane))
+        contentPane._header:SetHeight(HeaderHeightFor(contentPane))
         contentPane._headerSubtitleCustom = true
         sub:Show()
     end
 
-    -- Header actions, right of the title.
-    EnsureHeaderButtons(contentPane)
-    if contentPane and contentPane._scootAuraImportBtn then
-        contentPane._scootAuraImportBtn:Show()
+    -- A resize moves the width the how-to line wraps to and the widths the
+    -- rows and boxes wrap to; rebuild once the drag settles.
+    if contentPane then
+        contentPane._onResize = function()
+            addon.UI.Controls.Debounce(RESIZE_DEBOUNCE_KEY, 0.2, Refresh)
+        end
     end
+
+    local query = SearchQuery(contentPane)
+    local searching = query ~= ""
 
     -- Pane split: fixed offsets from the measured content width, divider
     -- between them with clearance on both sides.
@@ -921,7 +1291,8 @@ RenderList = function(panel, scrollContent, corrective)
     local yL = COL_LABEL_H
     local loadedT, unloadedT = {}, {}
     for _, item in ipairs(SAU.SortedTrackers()) do
-        if item.tracker.groupId == nil then
+        if item.tracker.groupId == nil
+            and (not searching or TrackerMatches(SAU, item.tracker, query)) then
             local bucket = SAU.IsTrackerActive(item.id, item.tracker) and loadedT or unloadedT
             table.insert(bucket, item)
         end
@@ -938,14 +1309,18 @@ RenderList = function(panel, scrollContent, corrective)
         end
     end
 
+    -- Under a search the "None Loaded" stand-in is skipped: it describes the
+    -- store, not the query. A pane the search emptied says so instead.
     if #loadedT > 0 then
         AddTrackerRows(loadedT, true)
-    else
-        yL = yL + NoneLoadedText(leftPane, yL, theme)
+    elseif not searching then
+        yL = yL + PlaceholderLine(leftPane, yL, "None Loaded", theme)
     end
     if #unloadedT > 0 then
         yL = yL + NotLoadedHeading(leftPane, yL, theme)
         AddTrackerRows(unloadedT, false)
+    elseif searching and #loadedT == 0 then
+        yL = yL + PlaceholderLine(leftPane, yL, "No matches", theme)
     end
 
     -- Right pane: group boxes. Widths come from the content frame (pane rects
@@ -953,29 +1328,38 @@ RenderList = function(panel, scrollContent, corrective)
     local rightW = math.max(120, totalW - rightX)
     local yR = COL_LABEL_H
     local loadedG, unloadedG = {}, {}
+    local keepByGroup = {}   -- [gid] = the members the search matched
     for _, item in ipairs(SAU.SortedGroups()) do
-        local bucket = SAU.IsGroupActive(item.id, item.group) and loadedG or unloadedG
-        table.insert(bucket, item)
+        local match = searching and GroupMatch(SAU, item.id, item.group, query) or nil
+        if not match or match.shown then
+            keepByGroup[item.id] = match and match.keep or nil
+            local bucket = SAU.IsGroupActive(item.id, item.group) and loadedG or unloadedG
+            table.insert(bucket, item)
+        end
     end
 
     local function AddGroupBoxes(items, loaded)
         for _, item in ipairs(items) do
-            local box = CreateGroupBox(rightPane, item.id, item.group, rightW, loaded)
+            local box = CreateGroupBox(rightPane, item.id, item.group, rightW, loaded, keepByGroup[item.id])
             box:SetPoint("TOPLEFT", rightPane, "TOPLEFT", 0, -yR)
             box:SetPoint("TOPRIGHT", rightPane, "TOPRIGHT", 0, -yR)
             table.insert(state.rows, box)
+            -- A box with a spec line joins the deferred re-measure.
+            if box._specFS then table.insert(state.textRows, box) end
             yR = yR + box:GetHeight() + BOX_GAP
         end
     end
 
     if #loadedG > 0 then
         AddGroupBoxes(loadedG, true)
-    else
-        yR = yR + NoneLoadedText(rightPane, yR, theme)
+    elseif not searching then
+        yR = yR + PlaceholderLine(rightPane, yR, "None Loaded", theme)
     end
     if #unloadedG > 0 then
         yR = yR + NotLoadedHeading(rightPane, yR, theme)
         AddGroupBoxes(unloadedG, false)
+    elseif searching and #loadedG == 0 then
+        yR = yR + PlaceholderLine(rightPane, yR, "No matches", theme)
     end
 
     -- Content height: enough for the longer list plus the add buttons, but
@@ -1017,21 +1401,26 @@ RenderList = function(panel, scrollContent, corrective)
 
     -- Hand the fly-out its rebuilt trigger. A record that moved between the
     -- Loaded and Not Loaded blocks has a new button at a new height, so the
-    -- panel jumps with it; one that is gone from the page closes it.
+    -- panel jumps with it; one that is gone from the page, deleted or
+    -- filtered out by the search, closes it.
     if specKey then
-        local entry = state.specButtons[specKey]
-        SpecFlyout.EndReanchor(entry and entry.button, entry and entry.reveal)
+        local entry = state.triggers[specKey]
+        SpecFlyout.EndReanchor(entry and entry.spec, entry and entry.reveal)
+    end
+    if gearKey then
+        local entry = state.triggers[gearKey]
+        GearFlyout.EndReanchor(entry and entry.gear, entry and entry.reveal)
     end
 
     -- The shared content scrollbar re-measures on the next frame. The first
     -- render after a page switch can also read a stale viewport height (the
-    -- scroll frame re-anchors in the same tick); one corrective re-render
-    -- pins the add buttons to the true bottom. The viewport height does not
-    -- depend on the content, so this cannot loop.
-    local pane = panel.frame and panel.frame._contentPane
+    -- scroll frame re-anchors in the same tick, and the header above it is
+    -- resized in this one); one corrective re-render pins the add buttons to
+    -- the true bottom. The viewport height depends on the header's width and
+    -- the how-to line, never on the list, so this cannot loop.
     C_Timer.After(0, function()
-        if pane and pane._scrollbar and pane._scrollbar.Update then
-            pane._scrollbar:Update()
+        if contentPane and contentPane._scrollbar and contentPane._scrollbar.Update then
+            contentPane._scrollbar:Update()
         end
         if state.active and state.scrollContent == scrollContent then
             local vh = (scrollFrame and scrollFrame:GetHeight()) or 0
@@ -1039,15 +1428,38 @@ RenderList = function(panel, scrollContent, corrective)
                 RenderList(panel, scrollContent, corrective)
                 return
             end
-            -- A cold font measures short. Now that the rows have rendered
-            -- once, re-measure and restack if any of them wants more room.
+            -- A cold font measures short. Now that the rows and boxes have
+            -- rendered once, re-measure and restack if any wants more room.
             -- One corrective pass only: the flag rides the recursion.
             if corrective then return end
             for _, row in ipairs(state.textRows) do
-                if row._name and row._meta
-                    and math.abs(MeasuredRowHeight(row._name, row._meta) - (row:GetHeight() or 0)) > 1 then
+                local moved = false
+                if row._name and row._meta then
+                    moved = math.abs(MeasuredRowHeight(row._name, row._meta) - (row:GetHeight() or 0)) > 1
+                elseif row._specFS then
+                    moved = MeasuredSpecHeight(row._specFS) ~= row._specH
+                end
+                if moved then
                     RenderList(panel, scrollContent, true)
                     return
+                end
+            end
+            -- The how-to line measured cold, or before the header had a rect.
+            -- Lay it out again; when the header's height moves, the viewport
+            -- moves with it a frame later, so the rebuild waits for that
+            -- frame and reads the settled height.
+            if contentPane and contentPane._headerSubtitleCustom and contentPane._header then
+                local header, sub = contentPane._header, contentPane._headerSubtitle
+                local wantW = SubtitleWidth(contentPane)
+                if math.abs(wantW - (sub:GetWidth() or 0)) > 1 then sub:SetWidth(wantW) end
+                local wantH = HeaderHeightFor(contentPane)
+                if math.abs(wantH - (header:GetHeight() or 0)) > 1 then
+                    header:SetHeight(wantH)
+                    C_Timer.After(0, function()
+                        if state.active and state.scrollContent == scrollContent then
+                            RenderList(panel, scrollContent, true)
+                        end
+                    end)
                 end
             end
         end
@@ -1061,6 +1473,19 @@ end
 addon.ScootAurasUI = addon.ScootAurasUI or {}
 function addon.ScootAurasUI.RefreshList()
     Refresh()
+end
+
+-- The three fly-outs outlive the page and would strand over the world when
+-- the settings window hides under them (a /scoot toggle, the combat
+-- auto-hide); the window's OnHide calls this.
+function addon.ScootAurasUI.CloseFlyouts()
+    local SpecFlyout = addon.UI.ScootAuraSpecFlyout
+    if SpecFlyout then SpecFlyout.Close() end
+    local GearFlyout = addon.UI.ScootAuraGearFlyout
+    if GearFlyout then GearFlyout.Close() end
+    local contentPane = state.panel and state.panel.frame and state.panel.frame._contentPane
+    local import = contentPane and contentPane._scootAuraImportFlyout
+    if import then import:Close() end
 end
 
 addon.UI.SettingsPanel:RegisterRenderer("scootAurasList", function(panel, scrollContent)

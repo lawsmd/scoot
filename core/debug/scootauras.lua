@@ -448,9 +448,10 @@ local function LifecycleDump()
         for _, row in ipairs(groupRows) do
             local g = row.group
             local s = g.settings or {}
-            push(("g%d '%s': grow=%s spacing=%s members=[%s] owner=%s"):format(
-                row.id, tostring(g.name), tostring(s.grow), tostring(s.spacing),
-                table.concat(g.memberOrder or {}, ","), tostring(g.owner)))
+            push(("g%d '%s': grow=%s spacing=%s scale=%s members=[%s] enabled=%s loaded=%s"):format(
+                row.id, tostring(g.name), tostring(s.grow), tostring(s.spacing), tostring(s.scale),
+                table.concat(g.memberOrder or {}, ","), tostring(g.enabled ~= false),
+                tostring(SAU.IsGroupActive(row.id, g))))
         end
         push("")
         push("--- Group pool ---")
@@ -841,6 +842,63 @@ local function setTrackerEnabled(word, a1)
     addon:Print(ok and ("ScootAuras t" .. trackerId .. " " .. word .. "d.") or (word .. " failed: " .. tostring(err)))
 end
 
+-- The last string `sa export` produced. Chat input caps at 255 characters,
+-- so `sa import last` is the round trip; the Aura List box is the paste path.
+local lastExport
+
+local function exportRecord(a1)
+    local SAU = addon.ScootAuras
+    local prefix, num = lc(a1):match("^([tg]?)(%d+)$")
+    if not num then return Commands.USAGE end
+    local id = tonumber(num)
+    local key = (prefix ~= "" and prefix or "t") .. id
+    local str, err
+    if prefix == "g" then
+        str, err = SAU.ExportGroup(id)
+    else
+        str, err = SAU.ExportTracker(id)
+    end
+    local lines, push = addon.DebugLines()
+    if str then
+        lastExport = str
+        push(str)
+    else
+        push("Export failed: %s", tostring(err))
+    end
+    addon.DebugShowWindow("ScootAuras Export " .. key, lines)
+end
+
+local function importRecord(a1)
+    local SAU = addon.ScootAuras
+    local str = (lc(a1) == "last") and lastExport or a1
+    if not str then return Commands.USAGE end
+    local lines, push = addon.DebugLines()
+    local result, err = SAU.ImportString(str)
+    if result then
+        if result.kind == "group" then
+            push("g%d imported with %d members", result.id, #(result.memberIds or {}))
+        else
+            push("t%d imported", result.id)
+        end
+        if not SAU.Engine.CanDoStructuralWork() then
+            push("Wiring queued; it applies when combat or instance restrictions end.")
+        end
+    else
+        push("Import failed: %s", tostring(err))
+    end
+    addon.DebugShowWindow("ScootAuras Import", lines)
+end
+
+local function setGroupEnabled(a1, a2)
+    local gid = tonumber(a1)
+    local word = lc(a2)
+    if not gid or (word ~= "on" and word ~= "off") then return Commands.USAGE end
+    local ok, err = addon.ScootAuras.SetGroupEnabled(gid, word == "on")
+    local lines, push = addon.DebugLines()
+    push(ok and ("g%d switched %s"):format(gid, word) or ("genable failed: " .. tostring(err)))
+    addon.DebugShowWindow("ScootAuras Group Enable", lines)
+end
+
 local function createProbes(times, a1, a2, a3)
     local spellId = tonumber(a1)
     if not spellId then return Commands.USAGE end
@@ -979,6 +1037,9 @@ addon:RegisterDebugCommand({
         end },
         { word = "enable", usage = "enable <id>", help = "enable a tracker", fn = function(a1) setTrackerEnabled("enable", a1) end },
         { word = "disable", usage = "disable <id>", help = "disable a tracker", fn = function(a1) setTrackerEnabled("disable", a1) end },
+        { word = "genable", usage = "genable <gid> <on|off>", help = "switch a group on or off", fn = setGroupEnabled },
+        { word = "export", usage = "export <t<id>|g<gid>>", help = "an aura or a group as an import string; a bare number is a tracker", fn = exportRecord },
+        { word = "import", usage = "import <string|last>", help = "create records from an aura string; last re-imports the last export (chat input caps at 255 characters)", fn = importRecord },
         { word = "edit", usage = "edit [id]", help = "open the editor on a tracker, or on a fresh draft", fn = function(a1)
             if not addon.ShowScootAuraEditor then
                 addon:Print("Editor unavailable.")

@@ -84,6 +84,10 @@ function UIPanel:Initialize()
         if addon.CloseBarBorderPicker then addon.CloseBarBorderPicker() end
         if addon.CloseIconPicker then addon.CloseIconPicker() end
         if addon.CloseScootAuraEditor then addon.CloseScootAuraEditor() end
+        -- The Aura List's fly-outs float over the window on their own frames.
+        if addon.ScootAurasUI and addon.ScootAurasUI.CloseFlyouts then
+            addon.ScootAurasUI.CloseFlyouts()
+        end
     end)
 
     Window:RestorePosition(frame)

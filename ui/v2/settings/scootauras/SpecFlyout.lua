@@ -151,19 +151,6 @@ end
 -- Build
 --------------------------------------------------------------------------------
 
--- The control centers the panel under its trigger. These triggers sit at the
--- right edge of their row or box, so right-align instead and aim the nub at
--- the button. SetFlyoutSize re-centers whenever it runs on an open panel, so
--- this is always the last word on placement.
-local function AlignUnderTrigger()
-    local anchor = panel._anchor
-    if not anchor then return end
-    panel:ClearAllPoints()
-    panel:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -GAP)
-    local aw = anchor:GetWidth() or 0
-    panel:SetNubOffset(math.floor(WIDTH / 2 - aw / 2))
-end
-
 -- The player's own class first, then alphabetical: the common edit is a spec of
 -- the class you are on.
 local function OrderedBuckets()
@@ -210,7 +197,6 @@ local function Rebuild()
         panel._empty:Show()
         panel._scroll:Hide()
         panel:SetFlyoutSize(WIDTH, 2 * INSET + TITLE_H + ROW_H + 4)
-        AlignUnderTrigger()
         return
     end
     panel._empty:Hide()
@@ -282,7 +268,6 @@ local function Rebuild()
     panel._scroll:SetHeight(listH)
     panel:SetFlyoutSize(WIDTH, TITLE_H + listH + 2 * INSET + 4)
     if panel._scroll.UpdateThumb then panel._scroll.UpdateThumb() end
-    AlignUnderTrigger()
 end
 
 local function Create(anchorBtn)
@@ -290,9 +275,12 @@ local function Create(anchorBtn)
     if not Controls or not Controls.CreateFlyout then return nil end
     local theme = GetTheme()
 
+    -- Right-aligned under the trigger, nub on the button: every trigger sits
+    -- at the right edge of its row or box.
     local p = Controls:CreateFlyout({
         anchor = anchorBtn,
         direction = "DOWN",
+        align = "RIGHT",
         width = WIDTH,
         height = 200,
         padding = PADDING,
@@ -407,7 +395,6 @@ function Flyout.EndReanchor(newAnchor, reveal)
         return
     end
     panel:SetAnchor(newAnchor)
-    AlignUnderTrigger()
     if reveal then reveal() end
 end
 

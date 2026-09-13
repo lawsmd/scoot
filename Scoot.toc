@@ -106,6 +106,7 @@ core/components/scootauras/underlay.lua
 core/components/scootauras/classpower.lua
 core/components/scootauras/classresource.lua
 core/components/scootauras/events.lua
+core/components/scootauras/importexport.lua
 core/components/actionbars.lua
 core/components/extraabilities.lua
 core/components/auras.lua
@@ -318,6 +319,7 @@ ui/v2/settings/cdm/SpellbookOverlay.lua
 ui/v2/settings/scootauras/EditorTabs.lua
 ui/v2/settings/scootauras/CDMPicker.lua
 ui/v2/settings/scootauras/SpecFlyout.lua
+ui/v2/settings/scootauras/GearFlyout.lua
 ui/v2/settings/scootauras/TitleCarousel.lua
 ui/v2/settings/scootauras/EditorWindow.lua
 ui/v2/settings/scootauras/AuraListDrag.lua
