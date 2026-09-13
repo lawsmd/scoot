@@ -5,7 +5,7 @@
 -- three content choices are made AND a spell ID validates. Closing before
 -- that discards the draft and leaves saved variables untouched.
 --
--- Strata: DIALOG level 120. Above the settings window (DIALOG 100), below
+-- Strata: DIALOG level 210. Above the settings window (DIALOG 100), below
 -- every Selector dropdown, Flyout and picker (FULLSCREEN_DIALOG).
 local addonName, addon = ...
 
@@ -338,12 +338,14 @@ local function InitializeFrame()
     TOP_LEFT_W = math.floor(WINDOW_W * 0.55)
     BOTTOM_LEFT_W = math.floor(WINDOW_W * 0.46)
 
-    -- Modal dim behind the editor, dialog-style: DIALOG 110 darkens and
-    -- mouse-blocks everything below (settings panel included), the editor at
-    -- 120 floats above it.
+    -- Modal dim behind the editor, dialog-style: DIALOG 200 darkens and
+    -- mouse-blocks everything below, the editor at 210 floats above it. The
+    -- settings panel is DIALOG 100 and its widgets climb from there (the
+    -- shared button control adds 15, info icons another 10), so the dim has
+    -- to clear the whole panel tree, header buttons included.
     local dim = CreateFrame("Frame", "ScootAuraEditorDim", UIParent)
     dim:SetFrameStrata("DIALOG")
-    dim:SetFrameLevel(110)
+    dim:SetFrameLevel(200)
     dim:SetAllPoints(UIParent)
     dim:EnableMouse(true)
     dim:Hide()
@@ -353,7 +355,7 @@ local function InitializeFrame()
     widgets.dim = dim
 
     frame = Window:Create("ScootAuraEditorFrame", UIParent, WINDOW_W, WINDOW_H)
-    frame:SetFrameLevel(120)
+    frame:SetFrameLevel(210)
     frame:HookScript("OnShow", function() dim:Show() end)
     frame:HookScript("OnHide", function() dim:Hide() end)
     frame:Hide()
