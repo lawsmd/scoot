@@ -23,6 +23,11 @@ local DEFAULT_FONT_SIZE = 12
 local INPUT_HEIGHT = 32
 
 -- SingleLineEditBox
+--
+-- Options: parent (required), width (400), height (32), label, placeholder,
+-- text, fontSize (12), maxLetters, numeric, justifyH. The raw EditBox is
+-- container._editBox for callers that hook OnTextChanged per keystroke;
+-- SetOnChange fires on Enter and on focus loss only.
 
 function Controls:CreateSingleLineEditBox(options)
     local theme = GetTheme()
@@ -39,13 +44,14 @@ function Controls:CreateSingleLineEditBox(options)
     local maxLetters = options.maxLetters or 0
     local numeric = options.numeric
     local justifyH = options.justifyH
+    local height = options.height or INPUT_HEIGHT
 
     -- Theme colors
     local dimR, dimG, dimB = theme:GetDimTextColor()
 
     -- Calculate total height including optional label
     local labelHeight = labelText and 20 or 0
-    local totalHeight = INPUT_HEIGHT + labelHeight
+    local totalHeight = height + labelHeight
 
     -- Container frame
     local container = CreateFrame("Frame", nil, parent)
@@ -67,7 +73,7 @@ function Controls:CreateSingleLineEditBox(options)
     local bordered = CreateFrame("Frame", nil, container)
     bordered:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -labelHeight)
     bordered:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", 0, 0)
-    bordered:SetSize(width, INPUT_HEIGHT)
+    bordered:SetSize(width, height)
 
     -- Background
     bordered._bg = Controls.AddBackground(bordered, { inset = BORDER_WIDTH })

@@ -65,15 +65,21 @@ end
 -- New sections with custom state tracking must add their cleanup logic here.
 
 -- The header subtitle is one shared FontString. Pages that restyle it (the
--- Aura List hangs a gray, wrapped how-to line under the title) put it back
--- through this before another page reuses it: single bottom-left anchor,
--- 11pt, accent at half alpha, wrap on (the stock look from CreateContentPane).
+-- Aura List hangs a gray, wrapped how-to line under the title at an explicit
+-- width and grows the header to fit it) put it back through this before
+-- another page reuses it: single bottom-left anchor, auto size, 11pt, accent
+-- at half alpha, wrap on (the stock look from CreateContentPane), and the
+-- header at its base height. The width matters: UpdateDefaultsButton hangs
+-- the Defaults button off the subtitle's right edge.
 function UIPanel:ResetHeaderSubtitle()
     local contentPane = self.frame and self.frame._contentPane
     local sub = contentPane and contentPane._headerSubtitle
     if not sub or not contentPane._header then return end
     sub:ClearAllPoints()
     sub:SetPoint("BOTTOMLEFT", contentPane._header, "BOTTOMLEFT", 16, 8)
+    sub:SetWidth(0)
+    sub:SetHeight(0)
+    contentPane._header:SetHeight(contentPane._headerBaseHeight or 66)
     sub:SetFont(Theme:GetFont("LABEL"), 11, "")
     sub:SetJustifyH("LEFT")
     sub:SetJustifyV("MIDDLE")

@@ -23,6 +23,7 @@ local CLOSE_BUTTON_SIZE = 24
 local RESIZE_HANDLE_SIZE = 16
 local HEADER_BUTTON_HEIGHT = 26
 local HEADER_BUTTON_SPACING = 10  -- Gap between header buttons
+local CONTENT_HEADER_HEIGHT = 66  -- Content pane header; a page may grow it (see _headerBaseHeight)
 
 -- Resize limits
 local MIN_WIDTH = 800
@@ -758,7 +759,7 @@ function UIPanel:CreateContentPane()
     contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Theme.BORDER_WIDTH, Theme.BORDER_WIDTH)
 
     local header = CreateFrame("Frame", nil, contentPane)
-    header:SetHeight(66)
+    header:SetHeight(CONTENT_HEADER_HEIGHT)
     header:SetPoint("TOPLEFT", contentPane, "TOPLEFT", 0, 0)
     header:SetPoint("TOPRIGHT", contentPane, "TOPRIGHT", 0, 0)
 
@@ -856,6 +857,9 @@ function UIPanel:CreateContentPane()
     headerSep:SetColorTexture(ar, ag, ab, 0.3)
     contentPane._headerSep = headerSep
     contentPane._header = header
+    -- A page that grows the header (the Aura List, to fit its wrapped how-to
+    -- line) restores this through UIPanel:ResetHeaderSubtitle.
+    contentPane._headerBaseHeight = CONTENT_HEADER_HEIGHT
 
     local scrollFrame = CreateFrame("ScrollFrame", "ScootContentScrollFrame", contentPane)
     scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", CONTENT_PADDING, -CONTENT_PADDING)
@@ -888,7 +892,9 @@ function UIPanel:CreateContentPane()
     contentPane._scrollContent = scrollContent
 
     local scrollbar = CreateContentScrollbar(contentPane, scrollFrame)
-    scrollbar:SetPoint("TOPRIGHT", contentPane, "TOPRIGHT", -CONTENT_SCROLLBAR_MARGIN, -header:GetHeight() - CONTENT_PADDING)
+    -- Hung from the header rather than a fixed offset from the pane, so it
+    -- follows a header a page has grown.
+    scrollbar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -CONTENT_SCROLLBAR_MARGIN, -CONTENT_PADDING)
     scrollbar:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -CONTENT_SCROLLBAR_MARGIN, CONTENT_SCROLLBAR_BOTTOM_MARGIN)
     contentPane._scrollbar = scrollbar
 
@@ -1116,6 +1122,9 @@ function UIPanel:CreateContentPane()
                 scrollContent:SetWidth(math.max(width - 16, contentPane._minContentWidth or 0))
             end
         end
+        -- A page whose layout reads the window's width at render (the Aura
+        -- List) rebuilds itself from this slot once the drag settles.
+        if contentPane._onResize then contentPane._onResize() end
         if scrollbar and scrollbar.Update then
             C_Timer.After(0.05, function()
                 scrollbar:Update()

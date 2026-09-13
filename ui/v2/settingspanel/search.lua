@@ -97,6 +97,12 @@ local MANUAL_ENTRIES = {
         description = "Group aura trackers to arrange and move them together.",
         rendererKey = "scootAurasList",
     },
+    {
+        type = "search",
+        label = "Search Auras",
+        description = "Filter the Aura List by tracker name, aura name, or spell ID.",
+        rendererKey = "scootAurasList",
+    },
 }
 
 --------------------------------------------------------------------------------
