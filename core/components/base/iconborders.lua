@@ -275,6 +275,33 @@ local function clampSublevel(val)
     return val
 end
 
+-- Mask tint (opts.maskTint): one MaskTexture per tint overlay, carrying the
+-- border art's alpha, so a flat color can be drawn in the art's shape at full
+-- brightness. A vertex tint only multiplies the art's own colors, which leaves
+-- dark frame art nearly black under any tint.
+local tintMasks = setmetatable({}, { __mode = "k" })  -- overlay texture -> { mask, attached }
+
+local function attachTintMask(targetFrame, overlay)
+    local rec = tintMasks[overlay]
+    if not rec then
+        rec = { mask = targetFrame:CreateMaskTexture(), attached = false }
+        tintMasks[overlay] = rec
+    end
+    if not rec.attached then
+        overlay:AddMaskTexture(rec.mask)
+        rec.attached = true
+    end
+    return rec.mask
+end
+
+local function detachTintMask(overlay)
+    local rec = overlay and tintMasks[overlay]
+    if rec and rec.attached then
+        overlay:RemoveMaskTexture(rec.mask)
+        rec.attached = false
+    end
+end
+
 function addon.ApplyIconBorderStyle(frame, styleKey, opts)
     if not frame then return "none" end
 
@@ -506,6 +533,7 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             for _, ov in ipairs(overlays) do
                 if ov then
                     ov:Hide()
+                    detachTintMask(ov)
                     if ov.SetTexture then pcall(ov.SetTexture, ov, nil) end
                     if ov.SetAtlas then pcall(ov.SetAtlas, ov, nil) end
                     if ov.SetVertexColor then pcall(ov.SetVertexColor, ov, 1, 1, 1, 0) end
@@ -514,7 +542,33 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             end
         end
 
-        if tintEnabled and opts and opts.simpleTint then
+        if tintEnabled and opts and opts.maskTint then
+            -- Mask tint: the overlay is a flat color, and the art rides along as
+            -- the overlay's mask, so the shape is the art's and the color is the
+            -- tint at full brightness.
+            overlay = ensureOverlay()
+            addon.SetBorderTexturePixelSnap(overlay, subPixel)
+            local layer, sublevel = appliedTexture:GetDrawLayer()
+            local desiredSub = clampSublevel((sublevel or 0) + 1)
+            if layer then overlay:SetDrawLayer(layer, desiredSub or clampSublevel(sublevel) or 0) end
+            overlay:ClearAllPoints()
+            overlay:SetAllPoints(appliedTexture)
+            local mask = attachTintMask(targetFrame, overlay)
+            mask:ClearAllPoints()
+            mask:SetAllPoints(appliedTexture)
+            if styleDef.type == "atlas" and styleDef.atlas then
+                mask:SetAtlas(styleDef.atlas)
+            elseif styleDef.type == "texture" and styleDef.texture then
+                mask:SetTexture(styleDef.texture, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            end
+            overlay:SetColorTexture(tintColor[1] or 1, tintColor[2] or 1, tintColor[3] or 1, 1)
+            if overlay.SetBlendMode then pcall(overlay.SetBlendMode, overlay, "BLEND") end
+            if overlay.SetDesaturated then pcall(overlay.SetDesaturated, overlay, false) end
+            overlay:SetVertexColor(1, 1, 1, 1)
+            overlay:SetAlpha(tintColor[4] or 1)
+            overlay:Show()
+            appliedTexture:SetAlpha(0)
+        elseif tintEnabled and opts and opts.simpleTint then
             -- Simple tint: vertex-color the border art itself, with no tint overlay
             -- and no blend-mode or desaturation heuristics. The conservative path for
             -- dispatchers that have always tinted this way.
@@ -523,6 +577,7 @@ function addon.ApplyIconBorderStyle(frame, styleKey, opts)
             wipeTintOverlays()
         elseif tintEnabled then
             overlay = ensureOverlay()
+            detachTintMask(overlay)
             addon.SetBorderTexturePixelSnap(overlay, subPixel)
             local layer, sublevel = appliedTexture:GetDrawLayer()
             local desiredSub = clampSublevel((sublevel or 0) + 1)

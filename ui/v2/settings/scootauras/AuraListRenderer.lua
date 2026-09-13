@@ -15,7 +15,7 @@ local PAD = 8
 local COL_LABEL_H = 30
 local ROW_ICON = 17
 local ICON_SIZE = 26
-local ICON_GAP = 4
+local ICON_GAP = 2       -- between member cells in a group box
 local BOX_HEADER_H = 26
 local BOX_PAD = 8
 local BOX_GAP = 10
@@ -28,8 +28,17 @@ local BTN_GAP = 8
 local ROW_BTN_SIZE = 13  -- tracker row action buttons (smaller rows)
 local ROW_BTN_GAP = 6
 local IND_W = 27         -- ON/OFF indicator width; the row textClear math reads it
-local MEMBER_BTN_SIZE = 11  -- badges on a group member icon (ICON_SIZE is 26)
-local MEMBER_BTN_GAP = 1
+-- A group member is a cell: the icon on the left, its two buttons stacked on the
+-- icon's right edge, and a hover highlight wrapping both. The grid reserves the
+-- column's room at rest, so the highlight never crosses a neighbour and the cell
+-- rect is what the hover test reads.
+local MEMBER_BTN_SIZE = 11        -- the two stacked buttons beside a member icon
+local MEMBER_BTN_STACK_GAP = 2    -- between the two of them
+local MEMBER_BTN_GAP = 2          -- icon right edge to the button column
+local MEMBER_HALO_PAD = 2         -- icon or button edge to the highlight border
+local MEMBER_STACK_H = MEMBER_BTN_SIZE * 2 + MEMBER_BTN_STACK_GAP
+local MEMBER_CELL_W = MEMBER_HALO_PAD * 2 + ICON_SIZE + MEMBER_BTN_GAP + MEMBER_BTN_SIZE
+local MEMBER_CELL_H = MEMBER_HALO_PAD * 2 + math.max(ICON_SIZE, MEMBER_STACK_H)
 local ROW_TOP_PAD = 6    -- row top to the name line
 local ROW_TEXT_GAP = 2   -- name line to the wrapped meta line
 local ROW_BTN_Y = -7     -- button cluster inset from the row top
@@ -573,12 +582,16 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
     deleteBtn:SetScript("OnClick", function()
         local groupName = group.name or ("Aura Group " .. gid)
         local doDelete = function()
+            -- The members go too, and the editor may be open on one of them.
+            if addon.UI.ScootAuraEditor and addon.UI.ScootAuraEditor.IsOpen() then
+                addon.UI.ScootAuraEditor.Close()
+            end
             SAU.DeleteGroup(gid)
             Refresh()
         end
         if Controls and Controls.ConfirmDialog then
             Controls:ConfirmDialog(
-                "Delete '" .. groupName .. "'? Its trackers are kept and return to their own positions.",
+                "Delete '" .. groupName .. "' and every aura in it?",
                 doDelete)
         else
             doDelete()
@@ -603,7 +616,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
 
     -- Member icon grid, in memberOrder order.
     local icons = {}
-    local perRow = math.max(1, math.floor((boxW - BOX_PAD * 2 + ICON_GAP) / (ICON_SIZE + ICON_GAP)))
+    local perRow = math.max(1, math.floor((boxW - BOX_PAD * 2 + ICON_GAP) / (MEMBER_CELL_W + ICON_GAP)))
     local shown = 0
     for index, memberId in ipairs(group.memberOrder or {}) do
         local tracker = SAU.GetTracker(memberId)
@@ -612,11 +625,31 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
             shown = shown + 1
             local col = slot % perRow
             local rowIdx = math.floor(slot / perRow)
-            local btn = CreateFrame("Button", nil, box)
+            -- The cell owns the hover art and the hover test for the icon and
+            -- both buttons. Mouse is on so the pointer entering the gutter
+            -- beside the icon lights it too.
+            local cell = CreateFrame("Frame", nil, box)
+            cell:SetSize(MEMBER_CELL_W, MEMBER_CELL_H)
+            cell:SetPoint("TOPLEFT", box, "TOPLEFT",
+                BOX_PAD + col * (MEMBER_CELL_W + ICON_GAP),
+                -(headerH + rowIdx * (MEMBER_CELL_H + ICON_GAP)))
+            cell:EnableMouse(true)
+
+            -- The tracker row's hover language on a cell instead of a row: an
+            -- accent wash under everything and a 1px accent border, both a
+            -- static snapshot like the group box border above.
+            local haloBg = cell:CreateTexture(nil, "BACKGROUND", nil, -8)
+            haloBg:SetAllPoints()
+            haloBg:SetColorTexture(ar, ag, ab, 0.08)
+            haloBg:Hide()
+            local haloBorder = Controls.CreateBorder(cell, {
+                color = { ar, ag, ab, 0.6 },
+            })
+            haloBorder:SetShown(false)
+
+            local btn = CreateFrame("Button", nil, cell)
             btn:SetSize(ICON_SIZE, ICON_SIZE)
-            btn:SetPoint("TOPLEFT", box, "TOPLEFT",
-                BOX_PAD + col * (ICON_SIZE + ICON_GAP),
-                -(headerH + rowIdx * (ICON_SIZE + ICON_GAP)))
+            btn:SetPoint("LEFT", cell, "LEFT", MEMBER_HALO_PAD, 0)
 
             local tex = btn:CreateTexture(nil, "ARTWORK")
             tex:SetAllPoints()
@@ -628,52 +661,43 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
             end
 
             -- A group is shared by the whole account, but its members are often
-            -- one class each. Both badges live in the icon's top-right corner so
-            -- a member's spec list and an in-group copy are reachable without
-            -- pulling it out of the group first. They sit inside the icon rect:
-            -- an outset badge would cover the neighbour, and IsMouseOver tests
-            -- the parent's own rect, so the badge would hide itself under the
-            -- pointer. An unloaded member keeps both, the way a grayed tracker
-            -- row does, because the spec badge is how an aura gets loaded.
-            local memberSpecBtn = Controls:CreateGlyphButton({ parent = btn, atlas = SPEC_ATLAS,
-                tooltip = "Loaded on these specs", size = MEMBER_BTN_SIZE })
-            memberSpecBtn:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 0, 0)
-            local memberDupBtn = Controls:CreateGlyphButton({ parent = btn, atlas = "friends-icon-battlenet-copy",
+            -- one class each, so a member's spec list and an in-group copy are
+            -- reachable without pulling it out of the group first. The two stack
+            -- in a column on the icon's right edge, clear of the spell art and
+            -- inside the room the cell reserves for them. An unloaded member
+            -- keeps both, the way a grayed tracker row does, because the spec
+            -- button is how an aura gets loaded.
+            local memberDupBtn = Controls:CreateGlyphButton({ parent = cell, atlas = "friends-icon-battlenet-copy",
                 tooltip = "Duplicate in Group", size = MEMBER_BTN_SIZE })
-            memberDupBtn:SetPoint("RIGHT", memberSpecBtn, "LEFT", -MEMBER_BTN_GAP, 0)
+            memberDupBtn:SetPoint("BOTTOMRIGHT", cell, "RIGHT", -MEMBER_HALO_PAD, MEMBER_BTN_STACK_GAP / 2)
+            local memberSpecBtn = Controls:CreateGlyphButton({ parent = cell, atlas = SPEC_ATLAS,
+                tooltip = "Loaded on these specs", size = MEMBER_BTN_SIZE })
+            memberSpecBtn:SetPoint("TOPRIGHT", memberDupBtn, "BOTTOMRIGHT", 0, -MEMBER_BTN_STACK_GAP)
 
-            -- The accent glyph would sink into bright spell art. CreateGlyphButton
-            -- draws it in ARTWORK, so a BACKGROUND plate sits under it.
-            for _, badge in ipairs({ memberSpecBtn, memberDupBtn }) do
-                local shade = badge:CreateTexture(nil, "BACKGROUND")
-                shade:SetAllPoints()
-                shade:SetColorTexture(0, 0, 0, 0.72)
-                -- The badges cover the icon's corner and would otherwise eat a
-                -- drag started there.
-                badge:RegisterForDrag("LeftButton")
-                badge:SetScript("OnDragStart", function()
-                    BeginDrag(memberId, gid, index, texture, btn)
-                end)
-            end
-
-            btn.UpdateHover = function()
+            -- IsMouseOver covers children, so the pointer on either button still
+            -- reads as over the cell. Cells never overlap, so two members cannot
+            -- light at once and no frame-level ordering is needed.
+            local UpdateHover = function()
                 local SpecFlyout = addon.UI.ScootAuraSpecFlyout
                 local over = not Drag.active
-                    and (btn:IsMouseOver()
-                        or (SpecFlyout and SpecFlyout.IsOpenFor(btn))
+                    and (cell:IsMouseOver()
+                        or (SpecFlyout and SpecFlyout.IsOpenFor(memberSpecBtn))
                         or false)
-                memberSpecBtn:SetShown(over)
+                haloBg:SetShown(over)
+                haloBorder:SetShown(over)
                 memberDupBtn:SetShown(over)
+                memberSpecBtn:SetShown(over)
                 if box.UpdateHover then box.UpdateHover() end
             end
-            table.insert(state.hoverables, btn)
-            RegisterSpecButton("t" .. tostring(memberId), btn, btn.UpdateHover)
+            -- CreateGlyphButton pokes parent.UpdateHover, and the parent is the cell.
+            cell.UpdateHover = UpdateHover
+            cell:SetScript("OnEnter", UpdateHover)
+            cell:SetScript("OnLeave", UpdateHover)
+            table.insert(state.hoverables, cell)
+            RegisterSpecButton("t" .. tostring(memberId), memberSpecBtn, UpdateHover)
 
-            -- Anchored to the icon, not to the badge in its corner: a panel
-            -- hung off an 11px badge inside the art puts its nub across the
-            -- spell icon. From the icon the nub clears both.
             memberSpecBtn:SetScript("OnClick", function()
-                OpenSpecFlyout(btn, "t", memberId)
+                OpenSpecFlyout(memberSpecBtn, "t", memberId)
             end)
 
             -- Copies the member into its group beside itself. The editor's own
@@ -687,17 +711,18 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
                 end
             end)
 
-            btn:SetScript("OnEnter", function(self)
-                btn.UpdateHover()
+            btn:SetScript("OnEnter", function()
+                UpdateHover()
                 if Drag.active then return end
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                -- Owned by the cell, so it opens clear of the button column.
+                GameTooltip:SetOwner(cell, "ANCHOR_RIGHT")
                 GameTooltip:SetText(SAU.DisplayName(tracker), 1, 1, 1)
                 GameTooltip:AddLine(TrackerMetaText(tracker), 0.7, 0.7, 0.7, true)
                 GameTooltip:Show()
             end)
             btn:SetScript("OnLeave", function()
                 GameTooltip:Hide()
-                btn.UpdateHover()
+                UpdateHover()
             end)
             btn:SetScript("OnClick", function()
                 if ClickGuard() then return end
@@ -705,10 +730,13 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
                     addon.ShowScootAuraEditor(memberId)
                 end
             end)
-            btn:RegisterForDrag("LeftButton")
-            btn:SetScript("OnDragStart", function()
-                BeginDrag(memberId, gid, index, texture, btn)
-            end)
+            -- The whole cell drags, the gutter beside the icon included.
+            for _, dragFrom in ipairs({ btn, cell }) do
+                dragFrom:RegisterForDrag("LeftButton")
+                dragFrom:SetScript("OnDragStart", function()
+                    BeginDrag(memberId, gid, index, texture, btn)
+                end)
+            end
 
             table.insert(icons, { frame = btn, index = index })
         end
@@ -723,7 +751,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded)
     end
 
     local iconRows = math.max(1, math.ceil(shown / perRow))
-    box:SetHeight(headerH + iconRows * (ICON_SIZE + ICON_GAP) + BOX_PAD)
+    box:SetHeight(headerH + iconRows * (MEMBER_CELL_H + ICON_GAP) + BOX_PAD)
 
     box.UpdateHover = function()
         local SpecFlyout = addon.UI.ScootAuraSpecFlyout

@@ -414,10 +414,12 @@ local function LifecycleDump()
             local t = row.tracker
             local active = SAU.IsTrackerActive(row.id, t)
             if active then loaded = loaded + 1 else notLoaded = notLoaded + 1 end
-            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s oic=%s miss=%s wired=%s loaded=%s"):format(
+            local db = SAU.GetDB(row.id)
+            local pand = (db and SAU._WantPandemic and SAU._WantPandemic(t, db)) and "on" or "off"
+            push(("t%d '%s': spell=%s %s on %s as %s enabled=%s oic=%s miss=%s pand=%s wired=%s loaded=%s"):format(
                 row.id, tostring(t.name), tostring(t.spellId), t.kind, t.unit, t.shape,
                 tostring(t.enabled), tostring(SAU.OnlyInCombat(t)),
-                tostring(SAU.MissingVisualFor(t)),
+                tostring(SAU.MissingVisualFor(t)), pand,
                 tostring(SAU.Engine.IsWired(row.id)), tostring(active)))
         end
         push(("(%d loaded / %d not loaded; see /scoot debug sa specs)"):format(loaded, notLoaded))
@@ -551,6 +553,7 @@ local function DumpButtonMethods(trackerId)
         "SetApplicationCount", "ClearApplicationCount", "SetApplicationBar", "ClearApplicationBar",
         "SetSpellName", "ClearSpellName", "SetAuraBorder", "ClearAuraBorder",
         "SetDispelTypeText", "ClearDispelTypeText",
+        "AddPandemicRegion", "RemovePandemicRegion", "ClearPandemicRegions",
     }
     local lines = { "=== Engine button methods (t" .. trackerId .. ") ===", "" }
     for _, n in ipairs(names) do
@@ -997,10 +1000,10 @@ addon:RegisterDebugCommand({
             local gid, err = addon.ScootAuras.CreateGroup(name)
             addon:Print(gid and ("ScootAuras g" .. gid .. " created.") or ("Group add failed: " .. tostring(err)))
         end },
-        { word = "gdel", usage = "gdel <gid>", help = "delete a group; members are kept", fn = function(a1)
+        { word = "gdel", usage = "gdel <gid>", help = "delete a group and its members", fn = function(a1)
             local gid = tonumber(a1)
             local ok, err = addon.ScootAuras.DeleteGroup(gid or -1)
-            addon:Print(ok and ("ScootAuras g" .. gid .. " deleted; members kept.") or ("Group delete failed: " .. tostring(err)))
+            addon:Print(ok and ("ScootAuras g" .. gid .. " deleted with its members.") or ("Group delete failed: " .. tostring(err)))
         end },
         { word = "join", usage = "join <id> <gid> [index]", help = "move a tracker into a group", fn = function(a1, a2, a3)
             local trackerId, gid = tonumber(a1), tonumber(a2)

@@ -317,6 +317,35 @@ function SAU.SpecsListClass(specs, token)
     return false
 end
 
+local function CharacterKnowsSpell(id)
+    if IsPlayerSpell and IsPlayerSpell(id) then return true end
+    local book = C_SpellBook
+    if book and book.IsSpellKnownOrInSpellBook and Enum and Enum.SpellBookSpellBank then
+        local ok, known = pcall(book.IsSpellKnownOrInSpellBook, id, Enum.SpellBookSpellBank.Player, true)
+        if ok and known == true then return true end
+    end
+    return false
+end
+
+--- Whether this character has a spell: known, in its spellbook, or listed by
+-- its Cooldown Manager, which carries the current spec's talents taken or not.
+-- These are the sources the spell picker offers. The game has no call naming
+-- the class that owns a spell this character lacks, so nothing here guesses.
+function SAU.PlayerHasSpell(spellId)
+    if type(spellId) ~= "number" then return false end
+    if CharacterKnowsSpell(spellId) then return true end
+    local AuraIds = addon.AuraIds
+    if not AuraIds then return false end
+    -- The memoised expansion always holds the spell itself, so it cannot say
+    -- whether a CDM entry matched. An empty set only gains ids from a match.
+    for id in pairs(AuraIds.GetExpansion(spellId) or {}) do
+        if id ~= spellId and CharacterKnowsSpell(id) then return true end
+    end
+    local matched = {}
+    pcall(AuraIds.ExpandFromCDM, matched, spellId)
+    return next(matched) ~= nil
+end
+
 --- Whether a group loads in the current spec. The list, the group layout, and
 -- the Edit Mode mirror all ask this one function.
 function SAU.IsGroupActive(gid, group)
@@ -388,6 +417,15 @@ local function ToggledSpecs(specs, specID)
     end
     if not found then table.insert(out, specID) end
     return out
+end
+
+-- Every id in either list. The group-to-member write adds and never takes
+-- away, so a member narrowed to one spec of its group keeps that narrowing.
+local function UnionSpecs(a, b)
+    local out = {}
+    for _, id in ipairs(a or {}) do table.insert(out, id) end
+    for _, id in ipairs(b or {}) do table.insert(out, id) end
+    return NormalizeSpecs(out)
 end
 
 --- Finishes migration V8. Records moved out of the per-profile stores carry
@@ -594,10 +632,18 @@ local MISSING_VISUAL_TRAITS = {
     blinkdesaticon = { desat = true,  blink = true,  art = "baricon" },
 }
 
---- The one scope switch for missing-state visuals. Debuff only by decision
--- (2026-08-29): the Missing Buff kind owns the buff case.
+--- The one scope switch for missing-state visuals: buff and debuff trackers
+-- (buff since 2026-09-13). The Missing Buff kind shows only while the aura is
+-- absent; a buff tracker with a visual shows its live art while the aura is up
+-- and the reveal while it is not, so the two do not overlap.
 function SAU.KindSupportsMissingVisual(kind)
-    return kind == "debuff"
+    return kind == "buff" or kind == "debuff"
+end
+
+--- The kinds whose icon carries the pandemic border: an aura the player can
+-- refresh. The engine computes the window; this only says who asks for it.
+function SAU.KindSupportsPandemic(kind)
+    return kind == "buff" or kind == "debuff"
 end
 
 --- Resolves a tracker's missing-state visual to a token, or "none". nil, a
@@ -684,6 +730,8 @@ function SAU.DefaultSettings()
         borderInsetV    = { type = "addon", default = 0 },
         borderTintEnable = { type = "addon", default = false },
         borderTintColor  = { type = "addon", default = { 1, 1, 1, 1 } },
+        -- Pandemic window border on the icon shape (regions.lua, ApplyBorders).
+        pandemicBorder  = { type = "addon", default = true },
         barWidth                = { type = "addon", default = 250 },
         barHeight               = { type = "addon", default = 32 },
         barShowIcon             = { type = "addon", default = true },
@@ -712,10 +760,13 @@ function SAU.DefaultSettings()
         shapeColorMode  = { type = "addon", default = "class" },
         shapeTint       = { type = "addon", default = { 1, 1, 1, 1 } },
         shapeShowDrain  = { type = "addon", default = true },
+        -- Icon trackers: the full-color swipe over a desaturated copy
+        -- (styling.lua ApplyIconSwipe).
+        iconShowSwipe   = { type = "addon", default = true },
         opacityInCombat         = { type = "addon", default = 100 },
         opacityWithTarget       = { type = "addon", default = 100 },
         opacityOutOfCombat      = { type = "addon", default = 100 },
-        -- Missing-state visual on a debuff tracker (underlay.lua). Read only
+        -- Missing-state visual on a buff or debuff tracker (underlay.lua). Read only
         -- for tokens whose traits carry `opacity`. The underlay root is a
         -- child of the visual, so this multiplies with the tracker's own
         -- opacity rather than replacing it.
@@ -1272,6 +1323,25 @@ function SAU.DeleteTracker(trackerId)
     return true
 end
 
+-- A grouped member given content this character has, while it or its group
+-- does not load in this spec, loads both for every spec of this class. Picking
+-- the spell is the statement that the aura is for this character. The group
+-- spec edit never writes the other way: a group shared across classes holds
+-- auras that exist for one class only.
+local function LoadGroupedTrackerHere(tracker)
+    local group = tracker.groupId and SAU.GetGroup(tracker.groupId)
+    if not group then return false end
+    if SAU.SpecAllows(tracker) and SAU.SpecAllows(group) then return false end
+    if SAU.KindNeedsSpell(tracker.kind) and not SAU.PlayerHasSpell(tracker.spellId) then
+        return false
+    end
+    local mine = SAU.DefaultSpecsForPlayer()
+    if #mine == 0 then return false end
+    tracker.specs = UnionSpecs(tracker.specs, mine)
+    group.specs = UnionSpecs(group.specs, mine)
+    return true
+end
+
 --- Applies content edits (spellId/kind/unit/shape/onlyInCombat/onlyInInstances/
 -- missingVisual) to a live tracker and routes the engine consequence: shape and gate edits
 -- restyle in place, spell/unit/kind edits park the mismatched container
@@ -1353,6 +1423,10 @@ function SAU.SetTrackerContent(trackerId, changes)
 
     SAU.Engine.ClaimForTracker(trackerId)
     SAU.Engine.UpdateEditModeName(trackerId)
+    if (spellId ~= oldSpellId or kind ~= oldKind) and LoadGroupedTrackerHere(tracker) then
+        SAU.ReconcileActivation("content:t" .. tostring(trackerId))
+        if SAU.Groups then SAU.Groups.RequestReflow() end
+    end
     return true
 end
 
@@ -1532,18 +1606,19 @@ function SAU.CreateGroup(name)
     return gid
 end
 
---- Deletes a group. Its members are kept: each returns to standalone form at
--- the screen spot where it currently renders.
+--- Deletes a group and every tracker in it. Members used to return to the
+-- individual list, which left a group duplicated by mistake to be emptied by
+-- hand one aura at a time.
 function SAU.DeleteGroup(gid)
     local store = SAU.GetStore()
     local group = SAU.GetGroup(gid)
     if not group then return nil, "no such group" end
 
-    for _, trackerId in ipairs(group.memberOrder or {}) do
+    -- DeleteTracker removes each id from memberOrder, so walk a copy.
+    for _, trackerId in ipairs(CopyTable(group.memberOrder or {})) do
         local tracker = SAU.GetTracker(trackerId)
         if tracker and tracker.groupId == gid then
-            SAU.Groups.SnapShellToVisual(trackerId)
-            tracker.groupId = nil
+            SAU.DeleteTracker(trackerId)
         end
     end
     store.groups[gid] = nil
@@ -1589,6 +1664,11 @@ end
 --- Restricts a group to a set of spec IDs. Members gate on their own list and
 -- their group's, so a blocked group lays out zero members and hides its frame
 -- outside Edit Mode (groups.lua).
+--
+-- Members keep their own lists. A group shared across classes holds auras
+-- that exist for one class only, and no API names the class that owns a spell
+-- this character lacks, so there is no telling which members a new class
+-- should load. A content edit on a member loads it (LoadGroupedTrackerHere).
 function SAU.SetGroupSpecs(gid, ids)
     local group = SAU.GetGroup(gid)
     if not group then return nil, "no such group" end
@@ -1661,21 +1741,36 @@ function SAU.SetTrackerGroup(trackerId, gid, index)
 end
 
 --- Duplicates a group and a copy of every member. The copies join the new
--- group in the same order; the new group lands offset from the source. The
--- group's specs are copied as they are, so its members copy exactly rather
--- than follow the character.
+-- group in the same order; the new group lands offset from the source.
+--
+-- A copy made on a class the source loads in nowhere is the start of that
+-- class's version of the group, so the group copy takes this character's
+-- specs. Member copies keep the source's lists (SetGroupSpecs says why); a
+-- member loads here when it is checked for this class or given a spell this
+-- character has.
 function SAU.DuplicateGroup(gid)
     local source = SAU.GetGroup(gid)
     if not source then return nil, "no such group" end
     local store = SAU.EnsureStore()
     if not store then return nil, "profile not ready" end
 
+    local specs = source.specs and CopyTable(source.specs) or nil
+    local playerClass = addon.GetClassTokenForUnit and addon.GetClassTokenForUnit("player") or nil
+    if playerClass and not SAU.SpecsListClass(source.specs, playerClass) then
+        local mine = SAU.DefaultSpecsForPlayer()
+        -- Class data missing this early is not a reason to write an empty
+        -- list: the source's specs beat a copy that loads nowhere.
+        if #mine > 0 then
+            specs = mine
+        end
+    end
+
     local newGid = AllocateId(store)
     local newGroup = {
         name = (source.name or ("Aura Group " .. gid)) .. " copy",
         settings = CopyTable(source.settings or SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},
-        specs = source.specs and CopyTable(source.specs) or nil,
+        specs = specs,
     }
     store.groups[newGid] = newGroup
 

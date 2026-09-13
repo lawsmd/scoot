@@ -15,6 +15,12 @@ local SetResult = Engine._SetResult
 local DIR_ELAPSED = (Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime) or 0
 local DIR_REMAINING = (Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.RemainingTime) or 1
 
+-- Pandemic border host level, above the icon border (button + 2) and below
+-- the text host (button + 4); and one leg of its alpha bounce, so a 1.5 s
+-- cycle, the interval of the Cooldown Manager ripple.
+local PANDEMIC_LEVEL = 3
+local PANDEMIC_PULSE_SECONDS = 0.75
+
 --------------------------------------------------------------------------------
 -- Element creators
 --------------------------------------------------------------------------------
@@ -43,8 +49,19 @@ local function CreateBarElement(parent, elemDef)
     local size = elemDef.defaultSize or { 120, 12 }
     barRegion:SetSize(size[1], size[2])
 
+    -- The inner rect: the bar's art stops at the Square border's inward
+    -- reach (ApplyBarStyling sets the four insets), so a border pixel never
+    -- has fill or background under it. At full opacity the opaque border
+    -- covered those pixels anyway; below it the border composes over the
+    -- world alone and reads the same on every bar whatever its fill color.
+    -- Same level as barRegion, so the children keep their draw order.
+    local inner = CreateFrame("Frame", nil, barRegion)
+    inner:SetFrameLevel(barRegion:GetFrameLevel())
+    inner:SetPoint("TOPLEFT", barRegion, "TOPLEFT", 0, 0)
+    inner:SetPoint("BOTTOMRIGHT", barRegion, "BOTTOMRIGHT", 0, 0)
+
     local barBg = barRegion:CreateTexture(nil, "BACKGROUND", nil, -1)
-    barBg:SetAllPoints(barRegion)
+    barBg:SetAllPoints(inner)
 
     -- Cadence lock geometry (cadence.lua). Both clips are neutral here and are
     -- re-anchored by BindForMode (structural gate) to the lock bar, which
@@ -62,20 +79,20 @@ local function CreateBarElement(parent, elemDef)
     local lockClip = CreateFrame("Frame", nil, barRegion)
     lockClip:SetClipsChildren(true)
     lockClip:SetFrameLevel(barRegion:GetFrameLevel())
-    lockClip:SetAllPoints(barRegion)
+    lockClip:SetAllPoints(inner)
     lockClip:Hide()
     local lockOverlay = lockClip:CreateTexture(nil, "ARTWORK")
-    lockOverlay:SetAllPoints(barRegion)
+    lockOverlay:SetAllPoints(inner)
 
     local barClip = CreateFrame("Frame", nil, barRegion)
     barClip:SetClipsChildren(true)
-    barClip:SetAllPoints(barRegion)
+    barClip:SetAllPoints(inner)
 
     -- Created under barClip from the start: ChangeParent is forbidden once the
     -- engine binds the bar. Same rect and level as before (barRegion + 1).
     local barFill = CreateFrame("StatusBar", nil, barClip)
     barFill:SetFrameLevel(barRegion:GetFrameLevel() + 1)
-    barFill:SetAllPoints(barRegion)
+    barFill:SetAllPoints(inner)
     barFill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
     barFill:SetMinMaxValues(0, 1)
     barFill:SetValue(0)
@@ -85,6 +102,7 @@ local function CreateBarElement(parent, elemDef)
     return {
         type = "bar",
         widget = barRegion,
+        inner = inner,
         barFill = barFill,
         barBg = barBg,
         barClip = barClip,
@@ -94,10 +112,20 @@ local function CreateBarElement(parent, elemDef)
     }
 end
 
+-- A fully transparent mask file: added to the live icon, it hides the icon
+-- wherever the mask is visible.
+local MASK_EMPTY = "Interface\\AddOns\\" .. addonName .. "\\media\\scootauras\\mask-empty"
+
 -- Drain swipe host: a native Cooldown clipped to its parent. On the live
 -- button the engine drives it through SetDurationCooldown, and the swipe
 -- animation is C-side, so it keeps ticking while the button subtree is denied
 -- in combat. The Edit Mode preview reuses the same recipe on its own frame.
+--
+-- The icon swipe (styling.lua ApplyIconSwipe) adds two regions on the
+-- Cooldown. Regions on a Cooldown draw under its swipe and hide when it
+-- hides, so the desaturated backdrop shows only while a duration runs, and
+-- the mask, once added to the live icon, hides that icon only while a
+-- duration runs. Both must exist before the engine binds the Cooldown.
 local function CreateDrainCooldown(parent)
     local drain = CreateFrame("Cooldown", nil, parent, "CooldownFrameTemplate")
     drain:SetAllPoints(parent)
@@ -107,7 +135,21 @@ local function CreateDrainCooldown(parent)
     drain:SetHideCountdownNumbers(true)
     drain:SetReverse(true)
     drain:SetDrawSwipe(false)
-    return drain
+
+    local backdrop = drain:CreateTexture(nil, "ARTWORK")
+    backdrop:SetAllPoints(drain)
+    backdrop:Hide()
+
+    local mask = drain:CreateMaskTexture()
+    mask:SetAllPoints(drain)
+    mask:SetTexture(MASK_EMPTY, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+
+    return drain, backdrop, mask
+end
+
+local function DrainElement(parent)
+    local drain, backdrop, mask = CreateDrainCooldown(parent)
+    return { type = "cooldown", widget = drain, backdrop = backdrop, mask = mask, def = { key = "drain" } }
 end
 
 -- Icon border host frame ApplyBorders expects, parented to the button so it
@@ -118,6 +160,40 @@ local function PreCreateIconBorder(elem, button)
     local bf = CreateFrame("Frame", nil, button)
     bf:SetFrameLevel(button:GetFrameLevel() + 2)
     elem.borderFrame = bf
+end
+
+-- Pandemic window border host. The holder is the region the engine toggles
+-- (SetShown from the button's own update): hidden here, before the bind, and
+-- never shown, hidden, re-anchored or re-parented afterward. The art lives on
+-- two children the styling pass owns, base (dim) under pulse (bright), whose
+-- alpha bounces on a group played once here and never stopped; the engine's
+-- toggle of the holder carries both. Pulse is created after base because
+-- same-level siblings draw in creation order.
+local function PreCreatePandemic(elem, button)
+    if elem.type ~= "texture" or elem.pandemic then return end
+    local level = button:GetFrameLevel() + PANDEMIC_LEVEL
+    local holder = CreateFrame("Frame", nil, button)
+    holder:SetFrameLevel(level)
+    holder:SetAllPoints(elem.widget)
+    holder:Hide()
+
+    local base = CreateFrame("Frame", nil, holder)
+    base:SetFrameLevel(level)
+    base:SetAllPoints(holder)
+
+    local pulse = CreateFrame("Frame", nil, holder)
+    pulse:SetFrameLevel(level)
+    pulse:SetAllPoints(holder)
+    local group = pulse:CreateAnimationGroup()
+    group:SetLooping("BOUNCE")
+    local alpha = group:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(0)
+    alpha:SetToAlpha(1)
+    alpha:SetDuration(PANDEMIC_PULSE_SECONDS)
+    alpha:SetSmoothing("IN_OUT")
+    group:Play()
+
+    elem.pandemic = { holder = holder, base = base, pulse = pulse }
 end
 
 --------------------------------------------------------------------------------
@@ -146,6 +222,12 @@ function Engine.WireButton(trackerId, tracker, state, entry, button)
         type = "texture", key = "icon", defaultSize = { 32, 32 },
     }))
     PreCreateIconBorder(elements[#elements], button)
+    -- Own armor: a failure here degrades to no pandemic border rather than an
+    -- unwired tracker.
+    local pandemicOk, pandemicErr = pcall(PreCreatePandemic, elements[#elements], button)
+    if not pandemicOk then
+        SetResult("pandemic.t" .. trackerId, "create FAILED: " .. SafeToString(pandemicErr))
+    end
 
     table.insert(elements, CreateTextElement(button, {
         type = "text", key = "duration", source = "duration", baseSize = 24,
@@ -174,9 +256,9 @@ function Engine.WireButton(trackerId, tracker, state, entry, button)
     stacks.widget:Show()
     table.insert(elements, stacks)
 
-    -- Drain swipe host (shape trackers); the engine drives it through
-    -- SetDurationCooldown.
-    table.insert(elements, { type = "cooldown", widget = CreateDrainCooldown(button), def = { key = "drain" } })
+    -- Drain swipe host (the shape drain and the icon swipe); the engine
+    -- drives it through SetDurationCooldown.
+    table.insert(elements, DrainElement(button))
 
     state.elements = elements
 end
@@ -278,6 +360,17 @@ function Engine.BindForMode(trackerId, tracker, state)
             else
                 CallBinding(trackerId, button, "ClearIcon")
             end
+            -- Pandemic registrations accumulate, so every pass clears before it
+            -- adds. CallBinding records failures only; the pandemic result names
+            -- the outcome either way.
+            if elem.pandemic then
+                local wanted = SAU._WantPandemic(tracker, db)
+                local pandemicOk = CallBinding(trackerId, button, "ClearPandemicRegions")
+                if wanted then
+                    pandemicOk = CallBinding(trackerId, button, "AddPandemicRegion", elem.pandemic.holder) and pandemicOk
+                end
+                SetResult("pandemic.t" .. trackerId, pandemicOk and (wanted and "bound" or "cleared") or "bind FAILED")
+            end
         elseif elem.type == "text" then
             local source = elem.def.source
             if source == "duration" then
@@ -314,7 +407,7 @@ function Engine.BindForMode(trackerId, tracker, state)
                 if lockTex and not fillMode then
                     elem.barClip:SetAllPoints(lockTex)
                 else
-                    elem.barClip:SetAllPoints(elem.widget)
+                    elem.barClip:SetAllPoints(elem.inner)
                 end
             end
             if elem.lockClip then
@@ -329,7 +422,7 @@ function Engine.BindForMode(trackerId, tracker, state)
                 else
                     elem.lockClip:Hide()
                     elem.lockClip:ClearAllPoints()
-                    elem.lockClip:SetAllPoints(elem.widget)
+                    elem.lockClip:SetAllPoints(elem.inner)
                 end
             end
             if vis.showBar then
@@ -342,7 +435,8 @@ function Engine.BindForMode(trackerId, tracker, state)
                 CallBinding(trackerId, button, "ClearDurationBar")
             end
         elseif elem.type == "cooldown" then
-            if tracker.shape == "shape" and db.shapeShowDrain ~= false then
+            local shapeDrain = tracker.shape == "shape" and db.shapeShowDrain ~= false
+            if shapeDrain or SAU.WantsIconSwipe(tracker, db, vis) then
                 CallBinding(trackerId, button, "SetDurationCooldown", elem.widget)
             else
                 CallBinding(trackerId, button, "ClearDurationCooldown")
@@ -399,7 +493,7 @@ function Engine.BuildElementSet(root)
         type = "text", key = "stacks", source = "applications", baseSize = 14,
     }, textHost))
 
-    table.insert(elements, { type = "cooldown", widget = CreateDrainCooldown(root), def = { key = "drain" } })
+    table.insert(elements, DrainElement(root))
 
     return { root = root, textFrame = textHost, elements = elements }
 end
@@ -509,6 +603,7 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
     -- everything else is element-table driven.
     SAU._ApplyIconMode(trackerId, tracker, shim)
     SAU._ApplyShapeStyling(trackerId, tracker, shim)
+    SAU._ApplyIconSwipe(trackerId, tracker, shim, true)
     SAU._ApplyBorders(trackerId, tracker, shim)
     SAU._ApplyBarStyling(trackerId, tracker, shim)
     SAU._ApplyTextStyling(trackerId, tracker, shim)
@@ -543,7 +638,8 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
 
     SAU._LayoutElements(trackerId, tracker, shim)
 
-    local wantDrain = (tracker.shape == "shape") and (db.shapeShowDrain ~= false)
+    local wantDrain = ((tracker.shape == "shape") and (db.shapeShowDrain ~= false))
+        or SAU.WantsIconSwipe(tracker, db, vis)
     if not wantDrain then
         pcall(drainCD.Clear, drainCD)
     end

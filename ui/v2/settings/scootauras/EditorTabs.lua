@@ -998,6 +998,32 @@ function Tabs.BuildAnimationsTab(tabBuilder, ctx)
 end
 
 --------------------------------------------------------------------------------
+-- Misc tab (buff and debuff icon trackers)
+--------------------------------------------------------------------------------
+
+function Tabs.BuildMiscTab(tabBuilder, ctx)
+    -- Pandemic border (styling.lua ApplyBorders, regions.lua PreCreatePandemic):
+    -- the engine's own refresh window on a buff or debuff icon. No preview
+    -- refresh: neither preview draws it.
+    tabBuilder:AddToggle({
+        label = "Pandemic Border",
+        description = "Pulse a red border during the pandemic window.",
+        get = function() return ctx.get("pandemicBorder") ~= false end,
+        set = function(v) ctx.setAndApply("pandemicBorder", v) end,
+    })
+
+    -- Icon swipe (styling.lua ApplyIconSwipe); both previews draw it.
+    tabBuilder:AddToggle({
+        label = "Show Duration Swipe",
+        description = "The icon sweeps away clockwise as the aura runs out, uncovering a desaturated copy.",
+        get = function() return ctx.get("iconShowSwipe") ~= false end,
+        set = function(v) ctx.setAndApply("iconShowSwipe", v) ctx.refreshPreview() end,
+    })
+
+    tabBuilder:Finalize()
+end
+
+--------------------------------------------------------------------------------
 -- Tab assembly per shape
 --------------------------------------------------------------------------------
 
@@ -1068,6 +1094,9 @@ function Tabs.BuildTabSet(ctx)
 
     add("duration", "Duration", Tabs.BuildDurationTab)
     add("stacks", "Stacks", Tabs.BuildStacksTab)
+    if shape == "icon" then
+        add("misc", "Misc", Tabs.BuildMiscTab)
+    end
     -- No Visibility tab for buff/debuff tracking: an aura is its own
     -- visibility condition. BuildVisibilityTab serves the kinds whose frame
     -- is always up (Class Power above; cooldowns later).

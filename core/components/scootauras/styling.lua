@@ -127,6 +127,9 @@ local function ApplyShapeStyling(trackerId, tracker, state)
                     pcall(cd.ClearAllPoints, cd)
                     pcall(cd.SetAllPoints, cd, texElem.widget)
                 end
+                -- The icon swipe shares this Cooldown and runs it forward;
+                -- the drain runs reversed, so a flip back must restore it.
+                pcall(cd.SetReverse, cd, true)
                 pcall(cd.SetDrawSwipe, cd, true)
                 pcall(cd.SetSwipeColor, cd, 0, 0, 0, 0.6)
                 local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
@@ -142,6 +145,116 @@ local function ApplyShapeStyling(trackerId, tracker, state)
         end
     end
 end
+
+--------------------------------------------------------------------------------
+-- Icon swipe (Icon trackers)
+--------------------------------------------------------------------------------
+-- The drain Cooldown draws the spell icon in full color as its swipe, run
+-- forward, so the colored wedge covers the remaining share and recedes
+-- clockwise. A desaturated copy of the icon sits on the Cooldown, where
+-- regions draw under the swipe. The engine hides the Cooldown for an aura
+-- with no duration, and the copy with it, so a permanent aura shows the live
+-- icon in full color. SetSwipeTexture takes no secret file, so the swipe and
+-- the copy use the picked spell's icon rather than the matched aura's.
+--
+-- With a Desaturated missing visual (the token carrying the Opacity gear) the
+-- copy stays hidden and the Cooldown's transparent mask is added to the live
+-- icon: while a duration runs the mask hides the live icon, and the elapsed
+-- share uncovers the underlay at its own opacity (underlay.lua). The Edit Mode
+-- preview has no underlay beneath it, so it shows the copy at that opacity.
+
+local ICON_CROP_LOW = { x = 0.08, y = 0.08 }
+local ICON_CROP_HIGH = { x = 0.92, y = 0.92 }
+
+--- Whether a tracker's drain Cooldown carries the icon swipe. BindForMode and
+-- the Edit Mode preview ask the same question.
+function SAU.WantsIconSwipe(tracker, db, vis)
+    if not (tracker and db and vis and vis.showIcon) then return false end
+    return (tracker.kind == "buff" or tracker.kind == "debuff")
+        and tracker.shape == "icon"
+        and (db.iconMode or "default") == "default"
+        and db.iconShowSwipe ~= false
+end
+
+-- The reveal's opacity for a token that carries the Opacity sub-option, nil
+-- for every other token (underlay.lua RevealAlpha reads the same setting).
+local function RevealOpacity(db, token)
+    local traits = SAU.MissingVisualTraits(token)
+    if not (traits and traits.opacity) then return nil end
+    local pct = tonumber(db.missingVisualOpacity) or 100
+    if pct < 0 then pct = 0 elseif pct > 100 then pct = 100 end
+    return pct / 100
+end
+
+local function ApplyIconSwipe(trackerId, tracker, state, isPreview)
+    local db = SAU.GetDB(trackerId)
+    if not db then return end
+    local vis = SAU.ResolveVisibility(tracker, db)
+    local on = SAU.WantsIconSwipe(tracker, db, vis)
+    local shapeDrain = tracker.shape == "shape" and db.shapeShowDrain ~= false
+
+    local iconTex
+    for _, elem in ipairs(state.elements or {}) do
+        if elem.type == "texture" then iconTex = elem.widget end
+    end
+
+    for _, elem in ipairs(state.elements or {}) do
+        if elem.type == "cooldown" then
+            local cd, backdrop, mask = elem.widget, elem.backdrop, elem.mask
+            -- A mask added on an earlier pass comes off first; the pass below
+            -- adds it back when it still applies.
+            if elem.maskedIcon then
+                pcall(elem.maskedIcon.RemoveMaskTexture, elem.maskedIcon, mask)
+                elem.maskedIcon = nil
+            end
+
+            local result
+            if not (on and iconTex) then
+                if backdrop then backdrop:Hide() end
+                if not shapeDrain then pcall(cd.SetDrawSwipe, cd, false) end
+                result = "off"
+            else
+                local icon = SAU._SpellIcon(tracker.spellId)
+                pcall(cd.ClearAllPoints, cd)
+                pcall(cd.SetAllPoints, cd, iconTex)
+                pcall(cd.SetReverse, cd, false)
+                pcall(cd.SetUseAuraDisplayTime, cd, true)
+                pcall(cd.SetDrawSwipe, cd, true)
+                if icon then
+                    pcall(cd.SetSwipeTexture, cd, icon, 1, 1, 1, 1)
+                    pcall(cd.SetTexCoordRange, cd, ICON_CROP_LOW, ICON_CROP_HIGH)
+                end
+                pcall(cd.SetSwipeColor, cd, 1, 1, 1, 1)
+
+                -- A failed AddMaskTexture leaves the backdrop on: full
+                -- opacity while ticking, the fallback.
+                local reveal = RevealOpacity(db, SAU.MissingVisualFor(tracker))
+                local masked = false
+                if reveal and not isPreview and mask then
+                    masked = pcall(iconTex.AddMaskTexture, iconTex, mask)
+                    if masked then elem.maskedIcon = iconTex end
+                end
+
+                if backdrop then
+                    if icon then backdrop:SetTexture(icon) end
+                    backdrop:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    backdrop:SetVertexColor(1, 1, 1, 1)
+                    backdrop:SetDesaturated(true)
+                    backdrop:SetAlpha((isPreview and reveal) or 1)
+                    backdrop:SetShown(not masked)
+                end
+                result = masked and "on+mask" or "on"
+            end
+
+            local Engine = SAU.Engine
+            if not isPreview and Engine and Engine._SetResult then
+                Engine._SetResult("swipe.t" .. trackerId, result)
+            end
+        end
+    end
+end
+
+SAU._ApplyIconSwipe = ApplyIconSwipe
 
 -- Which text a kind writes itself through Lua SetText. The engine writes
 -- every other string natively, and a Deep Shadow companion copy (fed by
@@ -215,6 +328,40 @@ local function ApplyTextStyling(trackerId, tracker, state)
     end
 end
 
+-- Pandemic border: the dim layer under the pulsing bright one; the square
+-- thickness stands in when the tracker draws no border of its own.
+local PANDEMIC_SQUARE_THICKNESS = 2
+local PANDEMIC_DIM = { 0.55, 0.05, 0.05, 1 }
+local PANDEMIC_BRIGHT = { 1.00, 0.15, 0.15, 1 }
+
+-- Whether the tracker's icon carries the pandemic border: a buff or debuff
+-- tracker, the icon shape, and the toggle on. BindForMode reads the same
+-- predicate, so the art and the binding cannot disagree.
+local function WantPandemic(tracker, db)
+    return SAU.KindSupportsPandemic(tracker.kind)
+        and tracker.shape == "icon"
+        and db.pandemicBorder ~= false
+end
+SAU._WantPandemic = WantPandemic
+
+-- One pandemic layer: the border style in a fixed red through the shared
+-- dispatcher, drawn through the art's alpha so the red is at full brightness
+-- on dark frame art too.
+local function PaintPandemicLayer(frame, style, thickness, insetH, insetV, color)
+    addon.ApplyIconBorderStyle(frame, style, {
+        thickness = thickness,
+        insetH = insetH,
+        insetV = insetV,
+        tintEnabled = true,
+        color = color,
+        simpleTint = true,
+        maskTint = true,
+        styleAdjusts = true,
+        expandClamp = 12,
+    })
+    frame:Show()
+end
+
 local function ApplyBorders(trackerId, tracker, state)
     local db = SAU.GetDB(trackerId)
     if not db then return end
@@ -259,6 +406,34 @@ local function ApplyBorders(trackerId, tracker, state)
                     styleAdjusts = true,
                     expandClamp = 12,
                 })
+            end
+
+            -- The pandemic pair: the same style, thickness and insets in red on
+            -- two Scoot-owned children of the engine-toggled holder (regions.lua
+            -- PreCreatePandemic). Only the children are painted, shown or hidden
+            -- here; the holder belongs to the engine from the bind on, and
+            -- nothing under it is ever read.
+            local p = elem.pandemic
+            if p then
+                if WantPandemic(tracker, db) then
+                    local pStyle = (style ~= "none") and style or "square"
+                    local pThickness = (style ~= "none") and db.borderThickness or PANDEMIC_SQUARE_THICKNESS
+                    local pH = tonumber(db.borderInsetH) or 0
+                    local pV = tonumber(db.borderInsetV) or 0
+                    local pDef = addon.IconBorders and addon.IconBorders.GetStyle and addon.IconBorders.GetStyle(pStyle)
+                    if not pDef or pDef.type == "square" then
+                        pH, pV = -pH, -pV
+                    end
+                    PaintPandemicLayer(p.base, pStyle, pThickness, pH, pV, PANDEMIC_DIM)
+                    PaintPandemicLayer(p.pulse, pStyle, pThickness, pH, pV, PANDEMIC_BRIGHT)
+                else
+                    if addon.Borders and addon.Borders.HideAll then
+                        addon.Borders.HideAll(p.base)
+                        addon.Borders.HideAll(p.pulse)
+                    end
+                    p.base:Hide()
+                    p.pulse:Hide()
+                end
             end
         end
     end
@@ -398,6 +573,32 @@ local function ApplyBarStyling(trackerId, tracker, state)
                     addon.BarBorders.ClearBarFrame(elem.barFill)
                 end
             end
+
+            -- The inner rect (CreateBarElement): the art stops at the Square
+            -- border's inward reach, so a border pixel never has fill or
+            -- background under it and reads the same on every bar at reduced
+            -- opacity. The inset sliders move the edges outward, so the reach
+            -- is thickness minus the slider, floored at zero; a hidden edge
+            -- reaches nothing; a textured style keeps its art over the fill.
+            local l, r, t, b = 0, 0, 0, 0
+            if borderStyle == "square" then
+                local reachH = math.max(0, borderThickness - borderInsetH)
+                local reachV = math.max(0, borderThickness - borderInsetV)
+                l = (hiddenEdges and hiddenEdges.left) and 0 or reachH
+                r = (hiddenEdges and hiddenEdges.right) and 0 or reachH
+                t = (hiddenEdges and hiddenEdges.top) and 0 or reachV
+                b = (hiddenEdges and hiddenEdges.bottom) and 0 or reachV
+                -- A border thicker than the bar leaves nothing to inset.
+                if l + r >= w then l, r = 0, 0 end
+                if t + b >= h then t, b = 0, 0 end
+            end
+            if elem.inner then
+                elem.inner:ClearAllPoints()
+                elem.inner:SetPoint("TOPLEFT", elem.widget, "TOPLEFT", l, -t)
+                elem.inner:SetPoint("BOTTOMRIGHT", elem.widget, "BOTTOMRIGHT", -r, b)
+            end
+            -- Read by LayoutElements (the lock bar) and LayoutBarPips.
+            elem.fillInset = { left = l, right = r, top = t, bottom = b }
         end
     end
 end

@@ -1,4 +1,4 @@
--- scootauras/underlay.lua - Missing-state visuals for debuff trackers
+-- scootauras/underlay.lua - Missing-state visuals for buff and debuff trackers
 --
 -- "When it's missing, show..." (tracker.missingVisual, vocabulary in
 -- core.lua). The engine cannot report a missing aura: the button's shown state

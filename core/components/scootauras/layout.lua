@@ -314,14 +314,23 @@ local function LayoutElements(trackerId, tracker, state)
         local iconGap = tonumber(db and db.barIconGap) or 2
 
         -- The cadence lock bar (state.lockBar, outside the button tree) mirrors
-        -- the bar region's host-relative rect so its fill texture can serve
-        -- as the clip anchor. Absent on the Edit Mode preview shim.
+        -- the bar's inner rect (regions.lua, CreateBarElement) so its fill
+        -- texture can serve as the clip anchor: the engine fill stops at the
+        -- Square border's inward reach, and the lock share must measure the
+        -- same width. Absent on the Edit Mode preview shim.
+        local inL, inR, inT, inB = 0, 0, 0, 0
+        if barElem and barElem.fillInset then
+            local fi = barElem.fillInset
+            inL, inR, inT, inB = fi.left or 0, fi.right or 0, fi.top or 0, fi.bottom or 0
+        end
         local function PlaceLockBar(point)
             local lockBar = state.lockBar
             if not lockBar then return end
+            local dx = (inL - inR) / 2
+            if point == "LEFT" then dx = inL elseif point == "RIGHT" then dx = -inR end
             lockBar:ClearAllPoints()
-            lockBar:SetSize(barW, barH)
-            lockBar:SetPoint(point, state.container, point, 0, 0)
+            lockBar:SetSize(math.max(1, barW - inL - inR), math.max(1, barH - inT - inB))
+            lockBar:SetPoint(point, state.container, point, dx, (inB - inT) / 2)
         end
 
         if barElem and vis.showBar then

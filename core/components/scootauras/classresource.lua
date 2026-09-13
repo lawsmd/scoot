@@ -419,21 +419,27 @@ end
 -- Pip layout (Tier 1: Scoot frames only)
 --------------------------------------------------------------------------------
 
--- Bar shape: N segments tiling the outer bar's width exactly, a tick of the
--- configured thickness between neighbours, each segment carrying the fill
--- texture and color the shared chain resolves for a bar, the last two in
--- the tail colors where the resource offers them.
+-- Bar shape: N segments tiling the outer bar's inner rect exactly (the rect
+-- inside the Square border's reach, regions.lua CreateBarElement), a tick of
+-- the configured thickness between neighbours, each segment carrying the
+-- fill texture and color the shared chain resolves for a bar, the last two
+-- in the tail colors where the resource offers them.
 local function LayoutBarPips(cr, db, barElem, tracker, resolved)
     local n = cr.count
     local barW = tonumber(db and db.barWidth) or 120
     local barH = tonumber(db and db.barHeight) or 12
+    local inset = barElem.fillInset
+    if inset then
+        barW = math.max(1, barW - (inset.left or 0) - (inset.right or 0))
+        barH = math.max(1, barH - (inset.top or 0) - (inset.bottom or 0))
+    end
     local tick = math.max(0, math.floor(tonumber(db and db.tickThickness) or 2))
     local tickColor = (db and db.tickColor) or { 0, 0, 0, 1 }
     local fgPath, r, g, b, a = SAU._ResolveBarFill(tracker, db, { PowerColor(resolved) })
     local varied = VariedTail(db, resolved)
     local segW = (barW - (n - 1) * tick) / n
     if segW < 1 then segW = 1 end
-    local host = barElem.widget
+    local host = barElem.inner or barElem.widget
     for i = 1, n do
         local pip = cr.pips[i]
         local x0 = math.floor((i - 1) * (segW + tick) + 0.5)

@@ -24,6 +24,12 @@ local PAD = 10
 -- Gap between the quadrant top and the selector block (the builder adds its
 -- own 8 px first-row offset beneath this).
 local SELECTORS_TOP_GAP = 24
+-- Light plate behind the preview, inset from the top-right quadrant; the top
+-- inset clears the "Preview:" label.
+local PREVIEW_BACKDROP_COLOR = { 0.48, 0.48, 0.48, 0.55 }
+local PREVIEW_BACKDROP_INSET = 8
+local PREVIEW_BACKDROP_TOP = 30
+local PREVIEW_BACKDROP_RADIUS = 12
 local TITLE_ICON = 16      -- rename pencil, duplicate copy
 local TITLE_ICON_GAP = 5   -- name glyphs to the first icon, and icon to icon
 
@@ -279,6 +285,45 @@ local function CreateSeparator(parent)
     -- four separators need no entry in the window's own repaint below.
     addon.UI.Controls.RegisterThemedFill(tex, 0.25)
     return tex
+end
+
+-- A rounded rect with a fixed corner radius: a full-height center column, a
+-- strip down each side between the corners, and a quarter of a white circle
+-- in each corner. No piece overlaps another, so a translucent color stays even.
+local CIRCLE_TEXTURE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local PLATE_CORNERS = {
+    { "TOPLEFT", 0, 0.5, 0, 0.5 },
+    { "TOPRIGHT", 0.5, 1, 0, 0.5 },
+    { "BOTTOMLEFT", 0, 0.5, 0.5, 1 },
+    { "BOTTOMRIGHT", 0.5, 1, 0.5, 1 },
+}
+
+local function CreateRoundedPlate(owner, rect, radius, color)
+    local r, g, b, a = color[1], color[2], color[3], color[4]
+
+    local center = owner:CreateTexture(nil, "BACKGROUND")
+    center:SetPoint("TOPLEFT", rect, "TOPLEFT", radius, 0)
+    center:SetPoint("BOTTOMRIGHT", rect, "BOTTOMRIGHT", -radius, 0)
+    center:SetColorTexture(r, g, b, a)
+
+    local left = owner:CreateTexture(nil, "BACKGROUND")
+    left:SetPoint("TOPLEFT", rect, "TOPLEFT", 0, -radius)
+    left:SetPoint("BOTTOMRIGHT", rect, "BOTTOMLEFT", radius, radius)
+    left:SetColorTexture(r, g, b, a)
+
+    local right = owner:CreateTexture(nil, "BACKGROUND")
+    right:SetPoint("TOPRIGHT", rect, "TOPRIGHT", 0, -radius)
+    right:SetPoint("BOTTOMLEFT", rect, "BOTTOMRIGHT", -radius, radius)
+    right:SetColorTexture(r, g, b, a)
+
+    for _, c in ipairs(PLATE_CORNERS) do
+        local corner = owner:CreateTexture(nil, "BACKGROUND")
+        corner:SetSize(radius, radius)
+        corner:SetPoint(c[1], rect, c[1], 0, 0)
+        corner:SetTexture(CIRCLE_TEXTURE)
+        corner:SetTexCoord(c[2], c[3], c[4], c[5])
+        corner:SetVertexColor(r, g, b, a)
+    end
 end
 
 local function InitializeFrame()
@@ -539,11 +584,21 @@ local function InitializeFrame()
     previewLabel:SetTextColor(ar, ag, ab, 1)
     widgets.previewLabel = previewLabel
 
+    -- A black border on an icon or bar disappears against the window's own
+    -- dark ground, so the preview sits on a light plate. The frame holds the
+    -- plate's rect only; its art goes on the quadrant, beneath every child.
+    local previewBackdrop = CreateFrame("Frame", nil, topRight)
+    previewBackdrop:SetPoint("TOPLEFT", topRight, "TOPLEFT", PREVIEW_BACKDROP_INSET, -PREVIEW_BACKDROP_TOP)
+    previewBackdrop:SetPoint("BOTTOMRIGHT", topRight, "BOTTOMRIGHT", -PREVIEW_BACKDROP_INSET, PREVIEW_BACKDROP_INSET)
+    CreateRoundedPlate(topRight, previewBackdrop, PREVIEW_BACKDROP_RADIUS, PREVIEW_BACKDROP_COLOR)
+    widgets.previewBackdrop = previewBackdrop
+
     -- Preview builder host: Finalize() resizes this frame, not the quadrant,
-    -- so the quadrant keeps its full rect.
+    -- so the quadrant keeps its full rect. Anchored by its sides to the
+    -- plate's middle, the row stays centered in the plate as it grows.
     local previewHost = CreateFrame("Frame", nil, topRight)
-    previewHost:SetPoint("TOPLEFT", topRight, "TOPLEFT", 0, -32)
-    previewHost:SetPoint("TOPRIGHT", topRight, "TOPRIGHT", 0, -32)
+    previewHost:SetPoint("LEFT", previewBackdrop, "LEFT", 0, 0)
+    previewHost:SetPoint("RIGHT", previewBackdrop, "RIGHT", 0, 0)
     previewHost:SetHeight(100)
     widgets.previewHost = previewHost
 
@@ -728,7 +783,7 @@ local CLASS_RESOURCE_SHAPE_ORDER = { "bar", "icons" }
 -- Shared by both missing-buff gate rows.
 local YES_NO_LABELS = { yes = "Yes", no = "No" }
 local YES_NO_ORDER = { "yes", "no" }
--- "When it's missing, show..." per shape (debuff only; the tokens and their
+-- "When it's missing, show..." per shape (buff and debuff; the tokens and their
 -- per-shape validity live in core.lua). Every visual is a reveal: art beneath
 -- the engine button, uncovered when the slot empties.
 local MISSING_VISUAL_LABELS_ICON = {
@@ -1040,9 +1095,8 @@ local function RenderSelectors()
             { gear = gearFn and gearFn() or nil })
     end
 
-    -- Missing-state visual, debuff only (the Missing Buff kind owns the buff
-    -- case). Options follow the shape; the row always carries a value, so it
-    -- never sits on "Choose".
+    -- Missing-state visual, buff and debuff kinds. Options follow the shape;
+    -- the row always carries a value, so it never sits on "Choose".
     if kind and unit and shape and SAU().KindSupportsMissingVisual(kind) then
         local mValues, mOrder = MissingVisualOptions(shape)
         local missingCurrent
@@ -1294,7 +1348,7 @@ local function RenderPreview()
         kindPreview(shape)
         return
     end
-    local mode, shapeAtlas, shapeColor, shapeDrain
+    local mode, shapeAtlas, shapeColor, shapeDrain, iconSwipe, iconSwipeBackdropAlpha
     if shape == "bar" then
         mode = ctx.get("barShowIcon") and "iconbar" or "bar"
     elseif shape == "shape" then
@@ -1309,6 +1363,15 @@ local function RenderPreview()
         end
     else
         mode = "icon"
+        iconSwipe = ctx.get("iconShowSwipe") ~= false
+            and (ctx.get("iconMode") or "default") == "default"
+        if iconSwipe then
+            -- Under a Desaturated missing visual the elapsed share shows the
+            -- reveal, which carries its own opacity.
+            local traits = SAU().MissingVisualTraits(ctx.missingVisual())
+            local pct = (traits and traits.opacity and tonumber(ctx.get("missingVisualOpacity"))) or 100
+            iconSwipeBackdropAlpha = math.max(0, math.min(100, pct)) / 100
+        end
     end
 
     local iconTexture
@@ -1381,6 +1444,8 @@ local function RenderPreview()
         shapeAtlas = shapeAtlas,
         shapeColor = shapeColor,
         shapeDrain = shapeDrain,
+        iconSwipe = iconSwipe,
+        iconSwipeBackdropAlpha = iconSwipeBackdropAlpha,
         noBottomBorder = true,
         noHover = true,
         noLabel = true,

@@ -497,6 +497,7 @@ function Engine.ApplyAll(trackerId)
     -- Static art first, then engine bindings, then fonts/colors, then geometry.
     SAU._ApplyIconMode(trackerId, tracker, state)
     SAU._ApplyShapeStyling(trackerId, tracker, state)
+    SAU._ApplyIconSwipe(trackerId, tracker, state)
     SAU._ApplyBorders(trackerId, tracker, state)
     SAU._ApplyBarStyling(trackerId, tracker, state)
     Engine.BindForMode(trackerId, tracker, state)

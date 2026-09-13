@@ -525,6 +525,8 @@ function Builder:AddPreview(options)
         shapeAtlas = options.shapeAtlas,
         shapeColor = options.shapeColor,
         shapeDrain = options.shapeDrain,
+        iconSwipe = options.iconSwipe,
+        iconSwipeBackdropAlpha = options.iconSwipeBackdropAlpha,
         noBottomBorder = options.noBottomBorder,
         noHover = options.noHover,
         noLabel = options.noLabel,

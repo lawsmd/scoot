@@ -138,6 +138,10 @@ end
 --   shapeColor      table/nil   {r,g,b,a} vertex color for shapeAtlas.
 --   shapeDrain      bool     Animate a drain sweep over shapeAtlas: a Cooldown clipped to
 --                            the glyph, driven by the same 15s cycle as the countdown.
+--   iconSwipe       bool     Animate the ScootAuras icon swipe over a default icon: the
+--                            icon desaturated beneath, the same icon in full color as a
+--                            Cooldown swipe that recedes clockwise, on the same cycle.
+--   iconSwipeBackdropAlpha number/nil  Alpha of the desaturated icon under the swipe.
 --   noBottomBorder  bool     Skip the divider line under the row.
 --   noHover         bool     Skip the accent hover highlight on the row.
 --   noLabel         bool     Skip the "Preview:" label (caller draws its own).
@@ -335,6 +339,7 @@ function Controls:CreatePreview(options)
 
         -- Borders (suppress when iconMode ~= "default", matching runtime behavior)
         local iconMode = readSetting("iconMode", "default")
+        local borderHost = previewIcon
 
         -- TexCoord cropping (only for default icons — custom pixel art uses full texture).
         -- Shares the HUD's cropping math so the Icon Zoom slider reads the same here.
@@ -342,6 +347,29 @@ function Controls:CreatePreview(options)
             local l, r, t, b = addon.CalculateIconTexCoords(
                 iconW / iconH, readSetting("iconZoom", 0), ICON_TEXCOORD_INSET)
             iconTex:SetTexCoord(l, r, t, b)
+            if options.iconSwipe and iconTexture then
+                -- The live tracker's icon swipe (scootauras/styling.lua
+                -- ApplyIconSwipe), cropped like the icon. The animation block
+                -- below re-arms it each countdown cycle.
+                iconTex:SetDesaturated(true)
+                iconTex:SetAlpha(options.iconSwipeBackdropAlpha or 1)
+                local cd = CreateFrame("Cooldown", nil, previewIcon, "CooldownFrameTemplate")
+                cd:SetAllPoints()
+                cd:SetDrawBling(false)
+                cd:SetDrawEdge(false)
+                cd:SetHideCountdownNumbers(true)
+                cd:SetReverse(false)
+                pcall(cd.SetSwipeTexture, cd, iconTexture, 1, 1, 1, 1)
+                cd:SetSwipeColor(1, 1, 1, 1)
+                pcall(cd.SetTexCoordRange, cd, { x = l, y = t }, { x = r, y = b })
+                row._shapeCooldown = cd
+                -- The swipe is a child frame, so it draws over any art on
+                -- previewIcon. The border gets its own frame above the swipe,
+                -- the order the live tracker uses (regions.lua).
+                borderHost = CreateFrame("Frame", nil, previewIcon)
+                borderHost:SetAllPoints()
+                borderHost:SetFrameLevel(cd:GetFrameLevel() + 1)
+            end
         end
         local borderEnable = readSetting("borderEnable", nil)
         local borderStyle = readSetting("borderStyle", "square")
@@ -364,7 +392,7 @@ function Controls:CreatePreview(options)
                 CG.EnsureIconBorderTextures(previewIcon)
                 reachX, reachY = CG.ApplyBorderToIcon(previewIcon, CG.BuildBorderOpts(cgDb))
             else
-                local _, ex, ey = addon.ApplyIconBorderStyle(previewIcon, borderStyle, {
+                local _, ex, ey = addon.ApplyIconBorderStyle(borderHost, borderStyle, {
                     tintEnabled = readSetting("borderTintEnable", false),
                     color = readSetting("borderTintColor", nil),
                     thickness = readSetting("borderThickness", 1),
@@ -383,7 +411,7 @@ function Controls:CreatePreview(options)
         if showCDMText then
             local textFrame = CreateFrame("Frame", nil, previewIcon)
             textFrame:SetAllPoints()
-            textFrame:SetFrameLevel(previewIcon:GetFrameLevel() + 2)
+            textFrame:SetFrameLevel(previewIcon:GetFrameLevel() + 3)
 
             -- Helper: resolve CDM color from a sub-table config
             local function resolveCDMTextColor(subTableKey)
@@ -905,10 +933,11 @@ function Controls:CreatePreview(options)
     -- Anchor CA text for non-text-only modes (icon must be positioned first)
     if caTextFS and not showTextOnly then
         local cfg = container._caTextConfig
-        -- Boost frame level so text renders above the icon texture (bar-hosted
-        -- text was already leveled above the bar fill at creation)
+        -- Boost frame level so text renders above the icon texture and the
+        -- swipe's border frame (bar-hosted text was already leveled above the
+        -- bar fill at creation)
         if caTextFrame and previewIcon and not (cfg and cfg.onBar) then
-            caTextFrame:SetFrameLevel(previewIcon:GetFrameLevel() + 2)
+            caTextFrame:SetFrameLevel(previewIcon:GetFrameLevel() + 3)
         end
         if cfg and cfg.onBar and previewBar then
             -- Bar-hosted text: anchor to the bar itself (raw offsets; the text
