@@ -84,42 +84,47 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
     end
 
     if isBar and ctx.get("barShowIcon") then
-        -- The bar is the anchor; these place the icon beside it. One wrapper
-        -- row, half a width each, placed through the builder so it takes the
-        -- builder-drawn divider. Show Icon rebuilds the tab, so the row is
-        -- simply absent while the icon is off.
+        -- The bar is the anchor; these place the icon beside it. One scaffold
+        -- row: the icon-position mini selector and the gap mini slider. Show
+        -- Icon rebuilds the tab, so the row is simply absent while the icon
+        -- is off.
         local content = tabBuilder._scrollContent
         local Controls = addon.UI.Controls
-        local rowWrap = CreateFrame("Frame", nil, content)
-        local sideSel = Controls:CreateSelector({
-            parent = rowWrap,
-            label = "Icon Position",
+        local theme = addon.UI.Theme
+        local dimR, dimG, dimB
+        if tabBuilder._useLightDim then
+            dimR, dimG, dimB = theme:GetDimTextLightColor()
+        else
+            dimR, dimG, dimB = theme:GetDimTextColor()
+        end
+        local row = CreateFrame("Frame", nil, content)
+        local _, slotFrames = Controls.BuildSlotRow(row, {
+            rowWidth = (tabBuilder._rowWidth and tabBuilder._rowWidth > 0)
+                and tabBuilder._rowWidth or (content:GetWidth() or 0),
+            dimColor = { dimR, dimG, dimB },
+            slots = {
+                { kind = "selector", label = "Icon Position" },
+                { kind = "slider", label = "Bar/Icon Gap" },
+            },
+        })
+        local sideSel = Controls._CreateMiniSelector({
             values = { LEFT = "Left of Bar", RIGHT = "Right of Bar" },
             order = { "LEFT", "RIGHT" },
-            width = 180,
             get = function() return ctx.get("barIconSide") or "LEFT" end,
             set = function(v) ctx.setAndApply("barIconSide", v) ctx.refreshPreview() end,
-        })
-        local gapSlider = Controls:CreateSlider({
-            parent = rowWrap,
-            label = "Bar/Icon Gap",
+        }, slotFrames[1], theme, tabBuilder._useLightDim)
+        sideSel:SetAllPoints(slotFrames[1])
+        local gapSlider = Controls._CreateMiniSlider({
             min = 0, max = 30, step = 1,
-            width = 100,
-            inputWidth = 40,
             get = function() return ctx.get("barIconGap") or 2 end,
             set = function(v) ctx.setAndApply("barIconGap", v) ctx.refreshPreview() end,
-        })
-        sideSel:SetPoint("TOPLEFT", rowWrap, "TOPLEFT", 0, 0)
-        sideSel:SetPoint("TOPRIGHT", rowWrap, "TOP", -8, 0)
-        gapSlider:SetPoint("TOPLEFT", rowWrap, "TOP", 8, 0)
-        gapSlider:SetPoint("TOPRIGHT", rowWrap, "TOPRIGHT", 0, 0)
-        -- The wrapper carries clearance under the controls, so the divider
-        -- the builder draws at its bottom edge keeps its distance.
-        local rowH = math.max(sideSel:GetHeight() or 36, gapSlider:GetHeight() or 36)
-        rowWrap:SetHeight(rowH + 10)
-        tabBuilder:PlaceCustom(rowWrap, { fullBleed = true, dividerAfter = true })
-        tabBuilder:Adopt(sideSel)
-        tabBuilder:Adopt(gapSlider)
+        }, slotFrames[2], theme, tabBuilder._useLightDim)
+        gapSlider:SetAllPoints(slotFrames[2])
+        row.Cleanup = function()
+            if sideSel._syncLockTimer then sideSel._syncLockTimer:Cancel() end
+            if sideSel._dropdown then sideSel._dropdown:Destroy() end
+        end
+        tabBuilder:PlaceCustom(row, { fullBleed = true, dividerAfter = true })
     end
 
     local function iconControlsDisabled()

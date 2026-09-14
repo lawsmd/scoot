@@ -265,6 +265,7 @@ ui/v2/Theme.lua
 ui/v2/SettingPatterns.lua
 ui/v2/skins/tui.lua
 ui/v2/controls/Utils.lua
+ui/v2/controls/RowScaffold.lua
 ui/v2/controls/PopupList.lua
 ui/v2/controls/Button.lua
 ui/v2/controls/GlyphButton.lua

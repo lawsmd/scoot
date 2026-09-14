@@ -17,16 +17,8 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local MINI_LABEL_HEIGHT = 14
-local MINI_LABEL_GAP = 3
 local CONTROL_HEIGHT = 28
-local ROW_HEIGHT = 36 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
-local ROW_HEIGHT_WITH_DESC = 80 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
-local PADDING = 12
 local GAP = 12
-local DEFAULT_CONTAINER_WIDTH = 360
-local LABEL_RIGHT_MARGIN = 12
-local MINI_TOGGLE_WIDTH = 70
 
 local TRACK_HEIGHT = 4
 local THUMB_WIDTH = 10
@@ -250,13 +242,11 @@ function Controls:CreateToggleSliderRow(options)
     local isDisabledFn = options.disabled or options.isDisabled
     local useLightDim = options.useLightDim
 
-    local hasLabel = label and label ~= ""
-    local hasDesc = description and description ~= ""
     local toggleLabel = toggleOpts.label
     local sliderLabel = sliderOpts.label
-    local rowHeight = hasDesc and ROW_HEIGHT_WITH_DESC or ROW_HEIGHT
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
 
-    local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB
     if useLightDim then
         dimR, dimG, dimB = theme:GetDimTextLightColor()
@@ -265,65 +255,32 @@ function Controls:CreateToggleSliderRow(options)
     end
 
     local row = CreateFrame("Frame", name, parent)
-    row:SetHeight(rowHeight)
 
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- The control column's worst case: the deferred sizing below only ever
-    -- SHRINKS the container from DEFAULT_CONTAINER_WIDTH, so reserving the full
-    -- width here is what makes the description safe at every panel width -- and
-    -- it is a static anchor, so it holds even if the measurement never gets a
-    -- width to work with.
-    local CONTROL_RESERVE = PADDING + DEFAULT_CONTAINER_WIDTH + GAP
-
-    local labelFS
-    if hasLabel then
-        labelFS = Controls.AddRowChrome(row, {
-            label = label,
-            padLeft = PADDING,
-            description = description,
-            reserve = CONTROL_RESERVE,
-            measureReserve = PADDING + CONTROL_RESERVE,
-            dimColor = { dimR, dimG, dimB },
-        })
-    end
-
-    local containerHeight = MINI_LABEL_HEIGHT + MINI_LABEL_GAP + CONTROL_HEIGHT
-    local container = CreateFrame("Frame", nil, row)
-    container:SetSize(DEFAULT_CONTAINER_WIDTH, containerHeight)
-    container:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
+    -- Chrome and the labeled toggle and slider slots
+    local container, slotFrames = Controls.BuildSlotRow(row, {
+        rowWidth = rowWidth,
+        label = label,
+        description = description,
+        dimColor = { dimR, dimG, dimB },
+        slots = {
+            { kind = "toggle", label = toggleLabel },
+            { kind = "slider", label = sliderLabel },
+        },
+    })
     row._container = container
+    row._toggleLabelFS = slotFrames[1]._miniLabel
+    row._sliderLabelFS = slotFrames[2]._miniLabel
 
-    -- Toggle on the left, slider filling the rest
     local CreateMiniToggle = Controls._CreateMiniToggle
-    local miniToggle = CreateMiniToggle(toggleOpts, container, theme, useLightDim)
-    miniToggle:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 0, 0)
+    local miniToggle = CreateMiniToggle(toggleOpts, slotFrames[1], theme, useLightDim)
+    miniToggle:SetAllPoints(slotFrames[1])
     row._toggle = miniToggle
 
-    local miniSlider = CreateMiniSlider(sliderOpts, container, theme, useLightDim)
-    miniSlider:SetPoint("BOTTOMLEFT", miniToggle, "BOTTOMRIGHT", GAP, 0)
-    miniSlider:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", 0, 0)
+    local miniSlider = CreateMiniSlider(sliderOpts, slotFrames[2], theme, useLightDim)
+    miniSlider:SetAllPoints(slotFrames[2])
     row._slider = miniSlider
-
-    -- Mini-labels sit centred over the control they name, not in the container's
-    -- corners: the slider's own width is set by anchors and moves with the
-    -- container, so a corner-pinned label drifts away from what it labels.
-    if toggleLabel and toggleLabel ~= "" then
-        local fs = container:CreateFontString(nil, "OVERLAY")
-        fs:SetFont(theme:GetFont("VALUE"), 11, "")
-        fs:SetPoint("BOTTOM", miniToggle, "TOP", 0, MINI_LABEL_GAP)
-        fs:SetText(toggleLabel)
-        fs:SetTextColor(dimR, dimG, dimB, 0.8)
-        row._toggleLabelFS = fs
-    end
-    if sliderLabel and sliderLabel ~= "" then
-        local fs = container:CreateFontString(nil, "OVERLAY")
-        fs:SetFont(theme:GetFont("VALUE"), 11, "")
-        fs:SetPoint("BOTTOM", miniSlider, "TOP", 0, MINI_LABEL_GAP)
-        fs:SetText(sliderLabel)
-        fs:SetTextColor(dimR, dimG, dimB, 0.8)
-        row._sliderLabelFS = fs
-    end
 
     -- The slider follows the toggle: off means nothing to tune.
     local function SyncSliderEnabled()
@@ -355,29 +312,7 @@ function Controls:CreateToggleSliderRow(options)
         end
     end)
 
-    C_Timer.After(0, function()
-        if not row or not row:GetParent() then return end
-
-        local rowWidth = row:GetWidth()
-        if rowWidth == 0 and row:GetParent() then
-            rowWidth = row:GetParent():GetWidth() or 0
-        end
-        if rowWidth == 0 then return end
-
-        local labelWidth = 0
-        if labelFS then
-            labelWidth = labelFS:GetStringWidth() + LABEL_RIGHT_MARGIN
-        end
-        local containerWidth = rowWidth - labelWidth - (PADDING * 2)
-        if containerWidth < 100 then containerWidth = DEFAULT_CONTAINER_WIDTH end
-        if containerWidth > DEFAULT_CONTAINER_WIDTH then containerWidth = DEFAULT_CONTAINER_WIDTH end
-
-        container:SetWidth(containerWidth)
-        SyncSliderEnabled()
-        -- Last chance for a row that had no width at creation: the description
-        -- anchor already stops any overlap, this only recovers the height.
-        if row._measureDesc then row._measureDesc() end
-    end)
+    SyncSliderEnabled()
 
     row._isDisabled = false
     row._isDisabledFn = isDisabledFn

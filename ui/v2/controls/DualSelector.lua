@@ -20,19 +20,7 @@ end
 
 local DUAL_SELECTOR_HEIGHT = 28
 local DUAL_SELECTOR_ARROW_WIDTH = 28
-local DUAL_SELECTOR_ROW_HEIGHT = 36
-local DUAL_SELECTOR_ROW_HEIGHT_WITH_DESC = 80
-local DUAL_SELECTOR_PADDING = 12
 local DUAL_SELECTOR_BORDER_ALPHA = 0.5
-local DUAL_SELECTOR_GAP = 12
-local DUAL_SELECTOR_DEFAULT_CONTAINER_WIDTH = 400
-local DUAL_SELECTOR_LABEL_RIGHT_MARGIN = 12
-
--- Dynamic height constants (match Selector.lua)
-local MAX_ROW_HEIGHT = 200
-local LABEL_LINE_HEIGHT = 16
-local DESC_PADDING_TOP = 2
-local DESC_PADDING_BOTTOM = 36
 
 --------------------------------------------------------------------------------
 -- Helper: CreateMiniSelector
@@ -320,14 +308,10 @@ function Controls:CreateDualSelector(options)
     local name = options.name
     local isDisabledFn = options.disabled or options.isDisabled
     local useLightDim = options.useLightDim
-    local maxContainerWidth = options.maxContainerWidth
 
-    local hasLabel = label and label ~= ""
-    local hasDesc = description and description ~= ""
-    local rowHeight = hasDesc and DUAL_SELECTOR_ROW_HEIGHT_WITH_DESC or DUAL_SELECTOR_ROW_HEIGHT
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
 
-    -- Get theme colors
-    local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB
     if useLightDim then
         dimR, dimG, dimB = theme:GetDimTextLightColor()
@@ -337,58 +321,26 @@ function Controls:CreateDualSelector(options)
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
-    row:SetHeight(rowHeight)
 
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Label text (left side, if provided)
-    local labelFS
-    if hasLabel then
-        labelFS = row:CreateFontString(nil, "OVERLAY")
-        local labelFont = theme:GetFont("LABEL")
-        labelFS:SetFont(labelFont, 13, "")
-        labelFS:SetPoint("LEFT", row, "LEFT", DUAL_SELECTOR_PADDING, hasDesc and 6 or 0)
-        labelFS:SetText(label)
-        labelFS:SetTextColor(ar, ag, ab, 1)
-        row._label = labelFS
-    end
-
-    -- Description text (below label, if provided)
-    if hasDesc and labelFS then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        local descFont = theme:GetFont("VALUE")
-        descFS:SetFont(descFont, 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
-        -- RIGHT anchor comes after the dual container exists: the description
-        -- column must end where the selectors begin, not at the row edge --
-        -- full-width text rendered straight through the selector gaps.
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-    end
-
-    -- Dual container (right side)
-    local dualContainer = CreateFrame("Frame", nil, row)
-    dualContainer:SetSize(DUAL_SELECTOR_DEFAULT_CONTAINER_WIDTH, DUAL_SELECTOR_HEIGHT)
-    dualContainer:SetPoint("RIGHT", row, "RIGHT", -DUAL_SELECTOR_PADDING, 0)
+    -- Chrome and the two selector slots
+    local dualContainer, slotFrames = Controls.BuildSlotRow(row, {
+        rowWidth = rowWidth,
+        label = label,
+        description = description,
+        dimColor = { dimR, dimG, dimB },
+        slots = { { kind = "selector" }, { kind = "selector" } },
+    })
     row._dualSelectorContainer = dualContainer
 
-    if row._description then
-        row._description:SetPoint("RIGHT", dualContainer, "LEFT",
-            -DUAL_SELECTOR_LABEL_RIGHT_MARGIN, 0)
-    end
-
-    -- Create mini-selector A (left within container)
-    local miniSelectorA = CreateMiniSelector(selectorAOpts, dualContainer, theme, useLightDim)
-    miniSelectorA:SetPoint("LEFT", dualContainer, "LEFT", 0, 0)
+    local miniSelectorA = CreateMiniSelector(selectorAOpts, slotFrames[1], theme, useLightDim)
+    miniSelectorA:SetAllPoints(slotFrames[1])
     row._selectorA = miniSelectorA
 
-    -- Create mini-selector B (right of A with gap)
-    local miniSelectorB = CreateMiniSelector(selectorBOpts, dualContainer, theme, useLightDim)
-    miniSelectorB:SetPoint("LEFT", miniSelectorA, "RIGHT", DUAL_SELECTOR_GAP, 0)
+    local miniSelectorB = CreateMiniSelector(selectorBOpts, slotFrames[2], theme, useLightDim)
+    miniSelectorB:SetAllPoints(slotFrames[2])
     row._selectorB = miniSelectorB
 
     -- Cross-wire dropdowns: opening one closes the other
@@ -419,41 +371,6 @@ function Controls:CreateDualSelector(options)
         else
             miniSelectorB._showDropdown()
         end
-    end)
-
-    -- Deferred width measurement
-    C_Timer.After(0, function()
-        if not row or not row:GetParent() then return end
-
-        local rowWidth = row:GetWidth()
-        if rowWidth == 0 and row:GetParent() then
-            rowWidth = row:GetParent():GetWidth() or 0
-        end
-        if rowWidth == 0 then return end
-
-        -- Calculate available container width
-        local labelWidth = 0
-        if labelFS then
-            labelWidth = labelFS:GetStringWidth() + DUAL_SELECTOR_LABEL_RIGHT_MARGIN
-        end
-        -- A description needs a readable wrap column, not just the label's
-        -- string width (the selectors would otherwise cover most of it).
-        if row._description then
-            local descReserve = 200 + DUAL_SELECTOR_LABEL_RIGHT_MARGIN
-            if descReserve > labelWidth then labelWidth = descReserve end
-        end
-        local containerWidth = rowWidth - labelWidth - (DUAL_SELECTOR_PADDING * 2)
-        if containerWidth < 100 then containerWidth = DUAL_SELECTOR_DEFAULT_CONTAINER_WIDTH end
-        if maxContainerWidth and containerWidth > maxContainerWidth then
-            containerWidth = maxContainerWidth
-        end
-
-        dualContainer:SetWidth(containerWidth)
-
-        -- Each selector gets half the container minus the gap
-        local eachWidth = (containerWidth - DUAL_SELECTOR_GAP) / 2
-        miniSelectorA:SetWidth(eachWidth)
-        miniSelectorB:SetWidth(eachWidth)
     end)
 
     -- State tracking

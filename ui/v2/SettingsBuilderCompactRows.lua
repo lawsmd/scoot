@@ -39,6 +39,7 @@ function Builder:AddDualSlider(options)
 
     local dualSlider = Controls:CreateDualSlider({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         sliderA = options.sliderA,
@@ -83,6 +84,7 @@ function Builder:AddDualSelector(options)
 
     local dualSelector = Controls:CreateDualSelector({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         selectorA = options.selectorA,
@@ -91,7 +93,6 @@ function Builder:AddDualSelector(options)
         disabled = options.disabled,
         isDisabled = options.isDisabled,
         name = options.name,
-        maxContainerWidth = options.maxContainerWidth,
     })
 
     self:_PlaceRow(dualSelector, options)
@@ -119,6 +120,7 @@ function Builder:AddSelectorToggleRow(options)
 
     local selectorToggle = Controls:CreateSelectorToggleRow({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         selector = options.selector,
@@ -154,6 +156,7 @@ function Builder:AddToggleSliderRow(options)
 
     local toggleSlider = Controls:CreateToggleSliderRow({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         toggle = options.toggle,
@@ -247,6 +250,7 @@ function Builder:AddDualBarStyleRow(options)
 
     local dualBarStyle = Controls:CreateDualBarStyleRow({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         getTexture = options.getTexture,

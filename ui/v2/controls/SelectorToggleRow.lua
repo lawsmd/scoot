@@ -17,23 +17,9 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local MINI_LABEL_HEIGHT = 14
-local MINI_LABEL_GAP = 3
 local CONTROL_HEIGHT = 28
-local ROW_HEIGHT = 36 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
-local ROW_HEIGHT_WITH_DESC = 80 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
-local PADDING = 12
-local GAP = 12
-local DEFAULT_CONTAINER_WIDTH = 360
-local LABEL_RIGHT_MARGIN = 12
 local MINI_TOGGLE_WIDTH = 70
 local TOGGLE_BORDER = 2
-
--- Dynamic height constants
-local MAX_ROW_HEIGHT = 200
-local LABEL_LINE_HEIGHT = 16
-local DESC_PADDING_TOP = 2
-local DESC_PADDING_BOTTOM = 36
 
 --------------------------------------------------------------------------------
 -- Helper: CreateMiniToggle
@@ -180,13 +166,10 @@ function Controls:CreateSelectorToggleRow(options)
     local isDisabledFn = options.disabled or options.isDisabled
     local useLightDim = options.useLightDim
 
-    local hasLabel = label and label ~= ""
-    local hasDesc = description and description ~= ""
     local toggleLabel = toggleOpts.label
-    local hasToggleLabel = toggleLabel and toggleLabel ~= ""
-    local rowHeight = hasDesc and ROW_HEIGHT_WITH_DESC or ROW_HEIGHT
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
 
-    local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB
     if useLightDim then
         dimR, dimG, dimB = theme:GetDimTextLightColor()
@@ -196,94 +179,32 @@ function Controls:CreateSelectorToggleRow(options)
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
-    row:SetHeight(rowHeight)
 
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Label text (left side)
-    local labelFS
-    if hasLabel then
-        labelFS = row:CreateFontString(nil, "OVERLAY")
-        local labelFont = theme:GetFont("LABEL")
-        labelFS:SetFont(labelFont, 13, "")
-        labelFS:SetPoint("LEFT", row, "LEFT", PADDING, hasDesc and 6 or 0)
-        labelFS:SetText(label)
-        labelFS:SetTextColor(ar, ag, ab, 1)
-        row._label = labelFS
-    end
-
-    -- Description text
-    if hasDesc and labelFS then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        local descFont = theme:GetFont("VALUE")
-        descFS:SetFont(descFont, 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-    end
-
-    -- Container (right side) — tall enough for mini-label + control
-    local containerHeight = MINI_LABEL_HEIGHT + MINI_LABEL_GAP + CONTROL_HEIGHT
-    local container = CreateFrame("Frame", nil, row)
-    container:SetSize(DEFAULT_CONTAINER_WIDTH, containerHeight)
-    container:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
+    -- Chrome, the selector slot, and the labeled toggle slot
+    local container, slotFrames = Controls.BuildSlotRow(row, {
+        rowWidth = rowWidth,
+        label = label,
+        description = description,
+        dimColor = { dimR, dimG, dimB },
+        slots = {
+            { kind = "selector" },
+            { kind = "toggle", label = toggleLabel },
+        },
+    })
     row._container = container
+    row._toggleLabelFS = slotFrames[2]._miniLabel
 
-    -- Mini-label above the toggle (right side of container)
-    local toggleLabelFS
-    if hasToggleLabel then
-        local miniLabelFont = theme:GetFont("VALUE")
-        toggleLabelFS = container:CreateFontString(nil, "OVERLAY")
-        toggleLabelFS:SetFont(miniLabelFont, 11, "")
-        toggleLabelFS:SetPoint("TOPRIGHT", container, "TOPRIGHT", -2, 0)
-        toggleLabelFS:SetText(toggleLabel)
-        toggleLabelFS:SetTextColor(dimR, dimG, dimB, 0.8)
-        row._toggleLabelFS = toggleLabelFS
-    end
-
-    -- Control Y offset (below mini-label area)
-    local controlOffsetY = -(MINI_LABEL_HEIGHT + MINI_LABEL_GAP)
-
-    -- Create mini-selector (left, bottom of container)
     local CreateMiniSelector = Controls._CreateMiniSelector
-    local miniSelector = CreateMiniSelector(selectorOpts, container, theme, useLightDim)
-    miniSelector:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 0, 0)
+    local miniSelector = CreateMiniSelector(selectorOpts, slotFrames[1], theme, useLightDim)
+    miniSelector:SetAllPoints(slotFrames[1])
     row._selector = miniSelector
 
-    -- Create mini-toggle (right, bottom of container)
-    local miniToggle = CreateMiniToggle(toggleOpts, container, theme, useLightDim)
-    miniToggle:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", 0, 0)
+    local miniToggle = CreateMiniToggle(toggleOpts, slotFrames[2], theme, useLightDim)
+    miniToggle:SetAllPoints(slotFrames[2])
     row._toggle = miniToggle
-
-    -- Deferred width measurement
-    C_Timer.After(0, function()
-        if not row or not row:GetParent() then return end
-
-        local rowWidth = row:GetWidth()
-        if rowWidth == 0 and row:GetParent() then
-            rowWidth = row:GetParent():GetWidth() or 0
-        end
-        if rowWidth == 0 then return end
-
-        local labelWidth = 0
-        if labelFS then
-            labelWidth = labelFS:GetStringWidth() + LABEL_RIGHT_MARGIN
-        end
-        local containerWidth = rowWidth - labelWidth - (PADDING * 2)
-        if containerWidth < 100 then containerWidth = DEFAULT_CONTAINER_WIDTH end
-        if containerWidth > DEFAULT_CONTAINER_WIDTH then containerWidth = DEFAULT_CONTAINER_WIDTH end
-
-        container:SetWidth(containerWidth)
-
-        -- Toggle gets fixed width, selector gets the rest
-        local selectorWidth = containerWidth - MINI_TOGGLE_WIDTH - GAP
-        miniSelector:SetWidth(selectorWidth)
-    end)
 
     -- State tracking
     row._isDisabled = false

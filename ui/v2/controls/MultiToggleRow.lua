@@ -17,12 +17,6 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local MINI_LABEL_HEIGHT = 14
-local MINI_LABEL_GAP = 3
-local CONTROL_HEIGHT = 28
-local PADDING = 12
-local GAP = 12
-local MINI_TOGGLE_WIDTH = 70
 
 
 --------------------------------------------------------------------------------
@@ -55,13 +49,8 @@ function Controls:CreateMultiToggleRow(options)
     local isDisabledFn = options.disabled or options.isDisabled
     local useLightDim = options.useLightDim
 
-    local hasLabel = label and label ~= ""
     -- Builder rows always pass rowWidth; the parent width is the fallback.
     local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
-    local rowHeight = Controls.Metrics().dualRowHeight
-
-    local count = #toggleDefs
-    local containerWidth = count * MINI_TOGGLE_WIDTH + (count - 1) * GAP
 
     local dimR, dimG, dimB
     if useLightDim then
@@ -71,26 +60,21 @@ function Controls:CreateMultiToggleRow(options)
     end
 
     local row = CreateFrame("Frame", name, parent)
-    row:SetHeight(rowHeight)
 
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    if hasLabel then
-        Controls.AddRowChrome(row, {
-            rowWidth = rowWidth,
-            baseHeight = rowHeight,
-            label = label,
-            padLeft = PADDING,
-            description = description,
-            controlReserve = PADDING + containerWidth + GAP,
-            dimColor = { dimR, dimG, dimB },
-        })
+    -- Chrome and one labeled toggle slot per definition
+    local slots = {}
+    for _, def in ipairs(toggleDefs) do
+        table.insert(slots, { kind = "toggle", label = def.label })
     end
-
-    local containerHeight = MINI_LABEL_HEIGHT + MINI_LABEL_GAP + CONTROL_HEIGHT
-    local container = CreateFrame("Frame", nil, row)
-    container:SetSize(containerWidth, containerHeight)
-    Controls.AnchorCluster(row, container, { x = -PADDING, band = rowHeight })
+    local container, slotFrames = Controls.BuildSlotRow(row, {
+        rowWidth = rowWidth,
+        label = label,
+        description = description,
+        dimColor = { dimR, dimG, dimB },
+        slots = slots,
+    })
     row._container = container
 
     local CreateMiniToggle = Controls._CreateMiniToggle
@@ -98,13 +82,9 @@ function Controls:CreateMultiToggleRow(options)
     row._toggles = toggles
 
     for i, def in ipairs(toggleDefs) do
-        local miniToggle = CreateMiniToggle(def, container, theme, useLightDim)
-
-        if i == 1 then
-            miniToggle:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 0, 0)
-        else
-            miniToggle:SetPoint("BOTTOMLEFT", toggles[i - 1], "BOTTOMRIGHT", GAP, 0)
-        end
+        local miniToggle = CreateMiniToggle(def, slotFrames[i], theme, useLightDim)
+        miniToggle:SetAllPoints(slotFrames[i])
+        miniToggle._labelFS = slotFrames[i]._miniLabel
 
         -- The visual update runs BEFORE the setter, and the setter is isolated
         -- in a pcall. A setter that errors while applying must not leave the
@@ -123,25 +103,8 @@ function Controls:CreateMultiToggleRow(options)
             end
         end)
 
-        -- Mini-labels sit centred over the control they name.
-        if def.label and def.label ~= "" then
-            local fs = container:CreateFontString(nil, "OVERLAY")
-            fs:SetFont(theme:GetFont("VALUE"), 11, "")
-            fs:SetPoint("BOTTOM", miniToggle, "TOP", 0, MINI_LABEL_GAP)
-            fs:SetText(def.label)
-            fs:SetTextColor(dimR, dimG, dimB, 0.8)
-            miniToggle._labelFS = fs
-        end
-
         toggles[i] = miniToggle
     end
-
-    C_Timer.After(0, function()
-        if not row or not row:GetParent() then return end
-        -- Last chance for a row that had no width at creation: the description
-        -- anchor already stops any overlap, this only recovers the height.
-        if row._measureDesc then row._measureDesc() end
-    end)
 
     row._isDisabled = false
     row._isDisabledFn = isDisabledFn

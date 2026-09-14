@@ -88,7 +88,7 @@ Skin.Register("tui", {
         miniLabelHeight = 14,
         miniLabelGap = 3,
         maxClusterWidth = 410,
-        slots = { toggle = 70, slider = 130, selector = 140, swatch = 28, input = 36 },
+        slots = { toggle = 70, slider = 130, selector = 140, selectorWide = 240, swatch = 28, input = 36 },
 
         -- Background z-stack and house alphas. The three sublevels are
         -- load-bearing: base fill below, emphasis fill above it, hover fill

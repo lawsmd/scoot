@@ -747,13 +747,6 @@ function AuraTrackingUI.Render(panel, scrollContent)
                     local Controls = addon.UI and addon.UI.Controls
                     local theme = addon.UI and addon.UI.Theme
 
-                    local rowHeight = 54
-                    local topLabelY = -6
-                    local controlY = -24
-
-                    local row = CreateFrame("Frame", nil, tabContent)
-                    row:SetHeight(rowHeight)
-
                     local accR, accG, accB = addon.GetAccentColorRGB()
                     local dimR, dimG, dimB = 0.5, 0.5, 0.5
                     if theme and theme.GetDimTextColor then dimR, dimG, dimB = theme:GetDimTextColor() end
@@ -763,19 +756,28 @@ function AuraTrackingUI.Render(panel, scrollContent)
                         return { dimR, dimG, dimB }
                     end
 
-                    local anchorLabel = row:CreateFontString(nil, "OVERLAY")
-                    if theme and theme.ApplyLabelFont then
-                        theme:ApplyLabelFont(anchorLabel, 12)
-                    else
-                        anchorLabel:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+                    local row = CreateFrame("Frame", nil, tabContent)
+                    local slotFrames
+                    if Controls and Controls.BuildSlotRow then
+                        local _
+                        _, slotFrames = Controls.BuildSlotRow(row, {
+                            rowWidth = (tabBuilder._rowWidth and tabBuilder._rowWidth > 0)
+                                and tabBuilder._rowWidth or (tabContent:GetWidth() or 0),
+                            dimColor = { dimR, dimG, dimB },
+                            slots = {
+                                { kind = "custom", width = 190, label = "Anchor" },
+                                { kind = "custom", width = 240 },
+                            },
+                        })
+                        -- The anchor header tracks the enabled state's color
+                        local hc = headerColor()
+                        if slotFrames[1]._miniLabel then
+                            slotFrames[1]._miniLabel:SetTextColor(hc[1], hc[2], hc[3], 1)
+                        end
                     end
-                    anchorLabel:SetPoint("TOPLEFT", row, "TOPLEFT", 0, topLabelY)
-                    anchorLabel:SetText("Anchor")
-                    local hc = headerColor()
-                    anchorLabel:SetTextColor(hc[1], hc[2], hc[3], 1)
 
                     local anchorSel
-                    if Controls and Controls._CreateMiniSelector then
+                    if slotFrames and Controls and Controls._CreateMiniSelector then
                         anchorSel = Controls._CreateMiniSelector({
                             values = GF.anchorValues,
                             order  = GF.anchorOrder,
@@ -794,15 +796,18 @@ function AuraTrackingUI.Render(panel, scrollContent)
                                 if HA and HA.OnConfigChanged then HA.OnConfigChanged() end
                                 AuraTrackingUI.Render(panel, scrollContent)
                             end,
-                        }, row, theme, false)
-                        anchorSel:SetWidth(190)
-                        anchorSel:SetPoint("TOPLEFT", row, "TOPLEFT", 0, controlY)
+                        }, slotFrames[1], theme, false)
+                        anchorSel:SetAllPoints(slotFrames[1])
+                        row.Cleanup = function()
+                            if anchorSel._syncLockTimer then anchorSel._syncLockTimer:Cancel() end
+                            if anchorSel._dropdown then anchorSel._dropdown:Destroy() end
+                        end
                     end
 
                     local rankSel
-                    if Controls and Controls.CreateRankSelector then
+                    if slotFrames and Controls and Controls.CreateRankSelector then
                         rankSel = Controls:CreateRankSelector({
-                            parent = row,
+                            parent = slotFrames[2],
                             count = 6,
                             labelText = "Priority",
                             get = function()
@@ -836,16 +841,10 @@ function AuraTrackingUI.Render(panel, scrollContent)
                                 AuraTrackingUI.Render(panel, scrollContent)
                             end,
                         })
-                        rankSel:SetPoint("TOPLEFT", row, "TOPLEFT", 220, controlY + 4)
+                        rankSel:SetPoint("LEFT", slotFrames[2], "LEFT", 0, 0)
                     end
 
-                    if #tabBuilder._controls > 0 then
-                        tabBuilder._currentY = tabBuilder._currentY - 12
-                    end
-                    row:SetPoint("TOPLEFT", tabContent, "TOPLEFT", 0, tabBuilder._currentY)
-                    row:SetPoint("TOPRIGHT", tabContent, "TOPRIGHT", 0, tabBuilder._currentY)
-                    table.insert(tabBuilder._controls, row)
-                    tabBuilder._currentY = tabBuilder._currentY - rowHeight
+                    tabBuilder:PlaceCustom(row, { fullBleed = true })
 
                     -- Position Group Spacing (per-anchor)
                     local cfg = ensureSpellConfig(selectedId)

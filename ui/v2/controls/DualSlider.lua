@@ -51,8 +51,6 @@ local DUAL_SLIDER_ARROW_GAP = 0
 local DUAL_SLIDER_INPUT_GAP = 6
 local DUAL_SLIDER_GROUP_GAP = 20
 local DUAL_SLIDER_AXIS_LABEL_HEIGHT = 14
-local DUAL_SLIDER_ROW_HEIGHT = 52           -- With axis labels on top
-local DUAL_SLIDER_ROW_HEIGHT_WITH_LABELS = 68  -- With axis labels AND end labels
 local DUAL_SLIDER_PADDING = 12
 local DUAL_SLIDER_THUMB_WIDTH = 10
 local DUAL_SLIDER_THUMB_HEIGHT = 16
@@ -123,13 +121,16 @@ function Controls:CreateDualSlider(options)
     local debounceDelay = options.debounceDelay or 0.2
     local debounceKey = options.debounceKey or ("DualSlider_" .. tostring({}))
 
-    local hasDesc = description and description ~= ""
     local hasEndLabelsA = (sliderAOpts.minLabel and sliderAOpts.minLabel ~= "") or (sliderAOpts.maxLabel and sliderAOpts.maxLabel ~= "")
     local hasEndLabelsB = (sliderBOpts.minLabel and sliderBOpts.minLabel ~= "") or (sliderBOpts.maxLabel and sliderBOpts.maxLabel ~= "")
     local hasEndLabels = hasEndLabelsA or hasEndLabelsB
 
-    -- Calculate row height (always has axis labels on top now)
-    local rowHeight = hasEndLabels and DUAL_SLIDER_ROW_HEIGHT_WITH_LABELS or DUAL_SLIDER_ROW_HEIGHT
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
+    -- The axis-label band matches the dual-row role; end labels add the
+    -- mini-label band below.
+    local m = Controls.Metrics()
+    local rowHeight = m.dualRowHeight + (hasEndLabels and m.miniLabelHeight or 0)
 
     -- Get theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -143,33 +144,35 @@ function Controls:CreateDualSlider(options)
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
-    row:SetHeight(rowHeight)
 
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
-
-    -- Calculate vertical offset for label positioning (center vertically)
-    local labelYOffset = 0
-
-    -- Label text (left side)
-    local labelFS = row:CreateFontString(nil, "OVERLAY")
-    local labelFont = theme:GetFont("LABEL")
-    labelFS:SetFont(labelFont, 13, "")
-    labelFS:SetPoint("LEFT", row, "LEFT", DUAL_SLIDER_PADDING, labelYOffset)
-    labelFS:SetText(label)
-    labelFS:SetTextColor(ar, ag, ab, 1)
-    row._label = labelFS
 
     -- Calculate total width for both sliders
     -- Each slider: arrow + track + arrow + gap + input
     local singleSliderWidth = DUAL_SLIDER_ARROW_WIDTH + DUAL_SLIDER_ARROW_GAP + trackWidth + DUAL_SLIDER_ARROW_GAP + DUAL_SLIDER_ARROW_WIDTH + DUAL_SLIDER_INPUT_GAP + inputWidth
     local totalDualWidth = singleSliderWidth * 2 + DUAL_SLIDER_GROUP_GAP
 
-    -- Dual slider container (right side)
+    -- Label and description; the cluster width is fixed, so the wrap column
+    -- is exact
+    Controls.AddRowChrome(row, {
+        rowWidth = rowWidth,
+        baseHeight = rowHeight,
+        label = label,
+        padLeft = DUAL_SLIDER_PADDING,
+        description = description,
+        controlReserve = totalDualWidth + DUAL_SLIDER_PADDING * 2,
+        dimColor = { dimR, dimG, dimB },
+    })
+
+    -- Dual slider container (right side, centered in the top band)
     local dualContainer = CreateFrame("Frame", nil, row)
     local containerHeight = DUAL_SLIDER_AXIS_LABEL_HEIGHT + DUAL_SLIDER_SLIDER_HEIGHT + (hasEndLabels and 14 or 0)
     dualContainer:SetSize(totalDualWidth, containerHeight)
-    dualContainer:SetPoint("RIGHT", row, "RIGHT", -DUAL_SLIDER_PADDING, hasEndLabels and -4 or 0)
+    Controls.AnchorCluster(row, dualContainer, {
+        x = -DUAL_SLIDER_PADDING,
+        y = hasEndLabels and -4 or 0,
+    })
     row._dualSliderContainer = dualContainer
 
     -- Helper function to create a single mini-slider within the dual container

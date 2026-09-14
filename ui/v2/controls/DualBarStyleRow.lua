@@ -20,31 +20,13 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local MINI_LABEL_HEIGHT = 14
-local MINI_LABEL_GAP = 3
-local ROW_HEIGHT = 36 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
-local ROW_HEIGHT_WITH_DESC = 80 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
 local CONTROL_HEIGHT = 28
 local ARROW_WIDTH = 28
-local PADDING = 12
-local GAP = 12
 local BORDER_ALPHA = 0.5
-local DEFAULT_CONTAINER_WIDTH = 340
-local MAX_CONTAINER_WIDTH = 410
-local LABEL_RIGHT_MARGIN = 12
-
-local TEXTURE_WIDTH_PCT = 0.38   -- Texture gets 38%
-local COLOR_WIDTH_PCT = 0.62     -- Color gets 62%
 
 local SWATCH_WIDTH = 40
 local SWATCH_HEIGHT = 16
 local SWATCH_BORDER = 2
-
--- Dynamic height constants (match Selector.lua)
-local MAX_ROW_HEIGHT = 200
-local LABEL_LINE_HEIGHT = 16
-local DESC_PADDING_TOP = 2
-local DESC_PADDING_BOTTOM = 36
 
 --------------------------------------------------------------------------------
 -- Helper: GetTextureDisplayName (mirrors BarTexturePicker.lua logic)
@@ -135,9 +117,33 @@ local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
     mini._getTexture = getTexture
     mini._setTexture = setTexture
 
-    -- Update display
+    -- Update display; while the field holds the global token, a small
+    -- in-field info icon appears (skipped when the mini is too narrow)
     local function UpdateDisplay()
         valueText:SetText(GetTextureDisplayName(mini._currentValue))
+
+        local isToken = addon.IsBarTextureToken and addon.IsBarTextureToken(mini._currentValue)
+        local wideEnough = (mini:GetWidth() or 0) >= 90
+        if isToken and wideEnough then
+            if not mini._tokenInfoIcon then
+                local icon = Controls:CreateInfoIcon({
+                    parent = valueBtn,
+                    tooltipText = "The Global Bar Texture is set on the Apply All > Bar Texture menu.",
+                    size = 10,
+                })
+                if icon then
+                    icon:SetPoint("RIGHT", valueBtn, "RIGHT", -16, 0)
+                    mini._tokenInfoIcon = icon
+                end
+            end
+            if mini._tokenInfoIcon then
+                mini._tokenInfoIcon:Show()
+                valueText:SetPoint("RIGHT", valueBtn, "RIGHT", -28, 0)
+            end
+        else
+            if mini._tokenInfoIcon then mini._tokenInfoIcon:Hide() end
+            valueText:SetPoint("RIGHT", valueBtn, "RIGHT", -20, 0)
+        end
     end
     mini._updateDisplay = UpdateDisplay
     UpdateDisplay()
@@ -537,12 +543,9 @@ function Controls:CreateDualBarStyleRow(options)
     local isDisabledFn = options.disabled or options.isDisabled
     local useLightDim = options.useLightDim
 
-    local hasLabel = label and label ~= ""
-    local hasDesc = description and description ~= ""
-    local rowHeight = hasDesc and ROW_HEIGHT_WITH_DESC or ROW_HEIGHT
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
 
-    -- Get theme colors
-    local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB
     if useLightDim then
         dimR, dimG, dimB = theme:GetDimTextLightColor()
@@ -552,76 +555,34 @@ function Controls:CreateDualBarStyleRow(options)
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
-    row:SetHeight(rowHeight)
 
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Label text (left side, if provided)
-    local labelFS
-    if hasLabel then
-        labelFS = row:CreateFontString(nil, "OVERLAY")
-        local labelFont = theme:GetFont("LABEL")
-        labelFS:SetFont(labelFont, 13, "")
-        labelFS:SetPoint("LEFT", row, "LEFT", PADDING, hasDesc and 6 or 0)
-        labelFS:SetText(label)
-        labelFS:SetTextColor(ar, ag, ab, 1)
-        row._label = labelFS
-    end
-
-    -- Description text (below label, if provided)
-    if hasDesc and labelFS then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        local descFont = theme:GetFont("VALUE")
-        descFS:SetFont(descFont, 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-    end
-
-    -- Dual container (right side) — tall enough for mini-label + control
-    local dualContainerHeight = MINI_LABEL_HEIGHT + MINI_LABEL_GAP + CONTROL_HEIGHT
-    local dualContainer = CreateFrame("Frame", nil, row)
-    dualContainer:SetSize(DEFAULT_CONTAINER_WIDTH, dualContainerHeight)
-    dualContainer:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
+    -- Chrome and the two labeled slots
+    local dualContainer, slotFrames = Controls.BuildSlotRow(row, {
+        rowWidth = rowWidth,
+        label = label,
+        description = description,
+        dimColor = { dimR, dimG, dimB },
+        slots = {
+            { kind = "selector", label = "Texture" },
+            { kind = "selectorWide", label = "Color" },
+        },
+    })
     row._dualContainer = dualContainer
+    row._textureLabelFS = slotFrames[1]._miniLabel
+    row._colorLabelFS = slotFrames[2]._miniLabel
 
-    -- Mini-labels above each selector
-    local miniLabelFont = theme:GetFont("VALUE")
-
-    local textureLabelFS = dualContainer:CreateFontString(nil, "OVERLAY")
-    textureLabelFS:SetFont(miniLabelFont, 11, "")
-    textureLabelFS:SetPoint("TOPLEFT", dualContainer, "TOPLEFT", 2, 0)
-    textureLabelFS:SetText("Texture")
-    textureLabelFS:SetTextColor(dimR, dimG, dimB, 0.8)
-    row._textureLabelFS = textureLabelFS
-
-    local colorLabelFS = dualContainer:CreateFontString(nil, "OVERLAY")
-    colorLabelFS:SetFont(miniLabelFont, 11, "")
-    colorLabelFS:SetText("Color")
-    colorLabelFS:SetTextColor(dimR, dimG, dimB, 0.8)
-    row._colorLabelFS = colorLabelFS
-    -- colorLabelFS position is set after textureMini is created (needs anchor)
-
-    -- Create texture mini (left within container, below label)
+    -- Create texture mini
     local textureMini = CreateTextureMini({
         getTexture = options.getTexture,
         setTexture = options.setTexture,
-    }, dualContainer, theme, useLightDim)
-    textureMini:SetPoint("TOPLEFT", dualContainer, "TOPLEFT", 0, -(MINI_LABEL_HEIGHT + MINI_LABEL_GAP))
-    -- Set initial width so text is visible before deferred measurement
-    local initTextureW = (DEFAULT_CONTAINER_WIDTH - GAP) * TEXTURE_WIDTH_PCT
-    textureMini:SetWidth(initTextureW)
+    }, slotFrames[1], theme, useLightDim)
+    textureMini:SetAllPoints(slotFrames[1])
     row._textureMini = textureMini
 
-    -- Position color label above the color mini area
-    colorLabelFS:SetPoint("TOPLEFT", textureMini, "TOPRIGHT", GAP + 2, MINI_LABEL_HEIGHT + MINI_LABEL_GAP)
-
-    -- Create color mini (right of texture with gap, below label)
+    -- Create color mini
     local colorMini = CreateColorMini({
         colorValues = options.colorValues,
         colorOrder = options.colorOrder,
@@ -632,11 +593,8 @@ function Controls:CreateDualBarStyleRow(options)
         setColor = options.setColor,
         customColorValue = options.customColorValue or "custom",
         hasAlpha = options.hasAlpha,
-    }, dualContainer, theme, useLightDim)
-    colorMini:SetPoint("LEFT", textureMini, "RIGHT", GAP, 0)
-    -- Set initial width so text is visible before deferred measurement
-    local initColorW = (DEFAULT_CONTAINER_WIDTH - GAP) * COLOR_WIDTH_PCT
-    colorMini:SetWidth(initColorW)
+    }, slotFrames[2], theme, useLightDim)
+    colorMini:SetAllPoints(slotFrames[2])
     row._colorMini = colorMini
 
     -- In-field gear on the color mini, which is its own selector; the row's
@@ -674,34 +632,10 @@ function Controls:CreateDualBarStyleRow(options)
         end
     end)
 
-    -- Deferred width measurement
+    -- Re-run the display passes once the slot rects have resolved: the token
+    -- info icon reads the mini's width.
     C_Timer.After(0, function()
         if not row or not row:GetParent() then return end
-
-        local rowWidth = row:GetWidth()
-        if rowWidth == 0 and row:GetParent() then
-            rowWidth = row:GetParent():GetWidth() or 0
-        end
-        if rowWidth == 0 then return end
-
-        -- Calculate available container width
-        local labelWidth = 0
-        if labelFS then
-            labelWidth = labelFS:GetStringWidth() + LABEL_RIGHT_MARGIN
-        end
-        local containerWidth = rowWidth - labelWidth - (PADDING * 2)
-        if containerWidth < 100 then containerWidth = DEFAULT_CONTAINER_WIDTH end
-        if containerWidth > MAX_CONTAINER_WIDTH then containerWidth = MAX_CONTAINER_WIDTH end
-
-        dualContainer:SetWidth(containerWidth)
-
-        -- Split: texture 38%, color 62%
-        local textureWidth = (containerWidth - GAP) * TEXTURE_WIDTH_PCT
-        local colorWidth = (containerWidth - GAP) * COLOR_WIDTH_PCT
-        textureMini:SetWidth(textureWidth)
-        colorMini:SetWidth(colorWidth)
-
-        -- Re-trigger display updates now that frames have proper width
         if textureMini._updateDisplay then textureMini._updateDisplay() end
         if colorMini._updateDisplay then colorMini._updateDisplay() end
     end)
@@ -846,6 +780,11 @@ function Controls:CreateDualBarStyleRow(options)
     function row:Cleanup()
         if self._subscribeKey then
             theme:Unsubscribe(self._subscribeKey)
+        end
+        -- Clean up texture mini
+        local tMini = self._textureMini
+        if tMini and tMini._tokenInfoIcon and tMini._tokenInfoIcon.Cleanup then
+            tMini._tokenInfoIcon:Cleanup()
         end
         -- Clean up color mini
         local cMini = self._colorMini
