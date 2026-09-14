@@ -113,7 +113,7 @@ end
 -- the two are not interchangeable.
 function Utils.hasCustomTextSettings(cfg)
     if not cfg then return false end
-    if cfg.fontFace and cfg.fontFace ~= "FRIZQT__" then return true end
+    if not addon.IsStockFontKey(cfg.fontFace) then return true end
     if cfg.size and cfg.size ~= 12 then return true end
     if cfg.style and cfg.style ~= "OUTLINE" then return true end
     if cfg.colorMode and cfg.colorMode ~= "default" then return true end
@@ -132,9 +132,9 @@ end
 -- Check if bar styling has any customization (used for Zero-Touch)
 function Utils.hasCustomBarSettings(cfg)
     if not cfg then return false end
-    local hasCustom = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default") or
+    local hasCustom = (not addon.Media.IsDefaultBarTexture(cfg.healthBarTexture)) or
                       (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default") or
-                      (cfg.healthBarBackgroundTexture and cfg.healthBarBackgroundTexture ~= "default") or
+                      (not addon.Media.IsDefaultBarTexture(cfg.healthBarBackgroundTexture)) or
                       (cfg.healthBarBackgroundColorMode and cfg.healthBarBackgroundColorMode ~= "default")
     return hasCustom
 end
@@ -142,7 +142,7 @@ end
 -- Check if health bar overlay should be active
 function Utils.hasCustomHealthBarOverlay(cfg)
     if not cfg then return false end
-    return (cfg.healthBarTexture and cfg.healthBarTexture ~= "default") or
+    return (not addon.Media.IsDefaultBarTexture(cfg.healthBarTexture)) or
            (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
 end
 

@@ -429,7 +429,7 @@ local function PopulateEntryOverlay(overlay, entry, db, sessionWindow)
     end
 
     -- Bar texture
-    if db.barTexture and db.barTexture ~= "default" then
+    if not addon.Media.IsDefaultBarTexture(db.barTexture) then
         local resolved = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(db.barTexture)
         if resolved then
             overlay.barOverlay:SetStatusBarTexture(resolved)

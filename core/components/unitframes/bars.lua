@@ -184,7 +184,7 @@ do
 			-- right-side "chip" area using the same texture/tint as the health bar.
 			ensureRectHealthOverlay(unit, hb, cfg)
             -- If restoring default texture and no captured original exists, restore to the known stock atlas for this unit
-            local isDefaultHB = (texKeyHB == "default" or not addon.Media.ResolveBarTexturePath(texKeyHB))
+            local isDefaultHB = (addon.Media.IsDefaultBarTexture(texKeyHB) or not addon.Media.ResolveBarTexturePath(texKeyHB))
             if isDefaultHB and not getProp(hb, "ufOrigAtlas") and not getProp(hb, "ufOrigPath") then
 				local stockAtlas
 				if unit == "Player" then
@@ -372,7 +372,7 @@ do
                         local colorMode = cfgP.healthBarColorMode or "default"
                         local tint = cfgP.healthBarTint
                         -- Re-apply if custom texture OR "value"/"valueDark" color mode (Blizzard's new texture needs coloring)
-                        local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                        local hasCustomTexture = not addon.Media.IsDefaultBarTexture(texKey)
                         local needsValueColor = (colorMode == "value" or colorMode == "valueDark")
                         if not hasCustomTexture and not needsValueColor then
                             return
@@ -412,7 +412,7 @@ do
                         local unitIdP = "player"
                         -- Only do work when the user has customized either texture or color;
                         -- default settings can safely follow Blizzard's behavior.
-                        local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                        local hasCustomTexture = not addon.Media.IsDefaultBarTexture(texKey)
                         -- Kept off addon.ResolveColorRGBA: hook-install gate; the compare decides whether to hook, not what to paint.
                         local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "value") or (colorMode == "valueDark")
                         if not hasCustomTexture and not hasCustomColor then
@@ -608,7 +608,7 @@ do
                             local colorMode = cfgP.powerBarColorMode or "default"
                             local tint = cfgP.powerBarTint
                             -- Only re-apply if the user has configured a non-default texture.
-                            if not (type(texKey) == "string" and texKey ~= "" and texKey ~= "default") then
+                            if addon.Media.IsDefaultBarTexture(texKey) then
                                 return
                             end
                             applyToBar(bar, texKey, colorMode, tint, "player", "power", "player")
@@ -667,7 +667,7 @@ do
 
                             -- Only do work when the user has customized either texture or color;
                             -- default settings can safely follow Blizzard's behavior.
-                            local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                            local hasCustomTexture = not addon.Media.IsDefaultBarTexture(texKey)
                             -- Kept off addon.ResolveColorRGBA: hook-install gate; the compare decides whether to hook, not what to paint.
                             local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class")
                             if not hasCustomTexture and not hasCustomColor then

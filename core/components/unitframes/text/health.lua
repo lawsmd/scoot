@@ -90,7 +90,7 @@ do
     -- Deliberately narrower than addon.HasTextCustomization.
     local function hasFontFaceOrStyle(styleCfg)
         if not styleCfg then return false end
-        if styleCfg.fontFace ~= nil and styleCfg.fontFace ~= "" and styleCfg.fontFace ~= "FRIZQT__" then
+        if not addon.IsStockFontKey(styleCfg.fontFace) then
             return true
         end
         if styleCfg.style ~= nil then

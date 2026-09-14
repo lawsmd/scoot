@@ -28,9 +28,12 @@ function SctDamage.Render(panel, scrollContent)
     )
 
     -- Kept off Builder:AddTextStyleBlock: the damage font pairs with a scale percentage; the block has no scale slider.
+    -- suppressTokens: this font needs a game restart, so it cannot follow the
+    -- global tokens (which propagate via /reload).
     builder:AddFontSelector({
         label = "Font",
         description = "The font used for floating combat text damage numbers.",
+        suppressTokens = true,
         get = function()
             return getSetting("fontFace") or "FRIZQT__"
         end,

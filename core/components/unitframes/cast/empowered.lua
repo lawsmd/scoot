@@ -146,7 +146,7 @@ do
 		local cfg = db.unitFrames and db.unitFrames[titleUnit] and db.unitFrames[titleUnit].castBar
 		if not cfg then return end
 		local texKey = cfg.castBarTexture or "default"
-		if texKey == "default" then return end
+		if addon.Media.IsDefaultBarTexture(texKey) then return end
 
 		-- Resolve to a file path
 		local texturePath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(texKey)

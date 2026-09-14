@@ -355,7 +355,7 @@ function Boss.applyForBoss(cfg)
                                     local colorMode = cfgBoss.healthBarColorMode or "default"
                                     local tint = cfgBoss.healthBarTint
 
-                                    local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                                    local hasCustomTexture = not addon.Media.IsDefaultBarTexture(texKey)
                                     -- Kept off addon.ResolveColorRGBA: hook-install gate; the compare decides whether to hook, not what to paint.
                                     local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
                                     if not hasCustomTexture and not hasCustomColor then return end
@@ -624,7 +624,7 @@ function Boss.applyForBoss(cfg)
                                 local colorMode = cfgBoss.powerBarColorMode or "default"
                                 local tint = cfgBoss.powerBarTint
 
-                                local hasCustomTexture = (type(texKey) == "string" and texKey ~= "" and texKey ~= "default")
+                                local hasCustomTexture = not addon.Media.IsDefaultBarTexture(texKey)
                                 -- Kept off addon.ResolveColorRGBA: hook-install gate; the compare decides whether to hook, not what to paint.
                                 local hasCustomColor = (colorMode == "custom" and type(tint) == "table") or (colorMode == "class") or (colorMode == "texture")
                                 if not hasCustomTexture and not hasCustomColor then return end

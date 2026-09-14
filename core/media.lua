@@ -3,6 +3,31 @@ local addonName, addon = ...
 
 addon.Media = addon.Media or {}
 
+-- Global media tokens: virtual keys a font/texture setting can hold instead of
+-- a concrete media key. They resolve through db.global.media at the resolver
+-- choke points (ResolveFontFace, ResolveBarTexturePath), so every consumer
+-- follows the account-wide globals without per-feature registration.
+addon.MediaTokens = {
+	PREFIX      = "global:",
+	HEADER_FONT = "global:header",
+	BODY_FONT   = "global:body",
+	BAR_TEXTURE = "global:barTexture",
+}
+
+local TOKEN_PREFIX = addon.MediaTokens.PREFIX
+
+function addon.IsMediaToken(key)
+	return type(key) == "string" and key:sub(1, #TOKEN_PREFIX) == TOKEN_PREFIX
+end
+
+function addon.IsFontToken(key)
+	return key == addon.MediaTokens.HEADER_FONT or key == addon.MediaTokens.BODY_FONT
+end
+
+function addon.IsBarTextureToken(key)
+	return key == addon.MediaTokens.BAR_TEXTURE
+end
+
 local BAR_MEDIA_PREFIX = "Interface\\AddOns\\Scoot\\media\\bar\\"
 
 -- Per-bar state (weak keys). Local table avoids tainting Blizzard frames.
@@ -150,8 +175,34 @@ function addon.BuildBarTextureOptionsContainer()
     return container:GetData()
 end
 
+-- Swap a Global Bar Texture token for the account-wide value it points at.
+-- One level only: a token stored as the global's own value (blocked by the
+-- ApplyAll setters, but guarded here) degrades to "default". Safe before DB
+-- init: no db means "default".
+function addon.Media.NormalizeBarTextureKey(key)
+	if not addon.IsBarTextureToken(key) then return key end
+	local media = addon.db and addon.db.global and addon.db.global.media
+	local value = media and media.barTexture
+	if type(value) ~= "string" or value == "" or addon.IsMediaToken(value) then
+		return "default"
+	end
+	return value
+end
+
+-- Zero-Touch gate: a key counts as "default" (leave Blizzard's bar alone) when
+-- the key itself, or the global a token points at, is the stock value. Every
+-- customization gate must use this instead of comparing the raw key against
+-- "default", or a token default would build overlays on untouched frames.
+function addon.Media.IsDefaultBarTexture(key)
+	local k = addon.Media.NormalizeBarTextureKey(key)
+	return type(k) ~= "string" or k == "" or k == "default"
+end
+
 function addon.Media.ResolveBarTexturePath(key)
 	if type(key) ~= "string" or key == "" then return nil end
+	-- Token swap must precede the "default" early-return so a global of
+	-- "default" still yields nil (stock texture).
+	key = addon.Media.NormalizeBarTextureKey(key)
 	if key == "default" then return nil end
 	-- LSM-sourced statusbar texture
 	if addon.IsLSMKey and addon.IsLSMKey(key) then
@@ -161,6 +212,9 @@ function addon.Media.ResolveBarTexturePath(key)
 end
 
 function addon.Media.GetBarTextureDisplayName(key)
+	if key == addon.MediaTokens.BAR_TEXTURE then
+		return "Global Bar Texture"
+	end
 	if addon.IsLSMKey and addon.IsLSMKey(key) then
 		return addon.LSMKeyToName(key)
 	end

@@ -107,6 +107,8 @@ local function CreateRenderer(mode)
             labelFontSize = 16,
             selectorHeight = 35,
             rowHeight = 52,
+            -- This page sets the globals themselves; a token here would be circular
+            suppressTokens = true,
         })
         if selector then
             selector:SetPoint("TOPLEFT", container, "TOPLEFT", 20, mode.selectorOffsetY)

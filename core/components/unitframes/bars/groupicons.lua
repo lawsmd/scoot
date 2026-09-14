@@ -58,7 +58,7 @@ local function applyCustomRoleIcon(frame)
     local shouldDesaturate = rawget(cfg, "roleIconDesaturate") and true or false
 
     -- A) Draw layer elevation (only when Scoot overlays active)
-    local hasOverlay = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default")
+    local hasOverlay = (not addon.Media.IsDefaultBarTexture(cfg.healthBarTexture))
                     or (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
     if not hasOverlay then
         local textCfg = rawget(cfg, "textPlayerName") or nil

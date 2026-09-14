@@ -236,7 +236,7 @@ local function applyPRDForegroundStyle(bar, barType, component)
     local colorMode = ensureSettingValue(component, "styleForegroundColorMode") or "default"
     local tint = ensureColorSetting(component, "styleForegroundTint", {1, 1, 1, 1})
 
-    local isDefaultTex = (textureKey == nil or textureKey == "" or textureKey == "default")
+    local isDefaultTex = addon.Media.IsDefaultBarTexture(textureKey)
     local isDefaultColor = (colorMode == nil or colorMode == "" or colorMode == "default")
 
     if isDefaultTex and isDefaultColor then
@@ -335,7 +335,7 @@ local function applyPRDBackgroundStyle(bar, barType, component)
     opacity = clampValue(math.floor(opacity + 0.5), 0, 100)
     normalizeSettingValue(component, "styleBackgroundOpacity", opacity)
 
-    local isDefaultTex = (bgTextureKey == nil or bgTextureKey == "" or bgTextureKey == "default")
+    local isDefaultTex = addon.Media.IsDefaultBarTexture(bgTextureKey)
     local isDefaultColor = (colorMode == nil or colorMode == "" or colorMode == "default")
 
     if isDefaultTex and isDefaultColor then

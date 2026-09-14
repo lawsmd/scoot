@@ -12,7 +12,6 @@ local Controls = addon.UI.Controls
 local fontPickerFrame = nil
 local fontPickerSetting = nil
 local fontPickerCallback = nil
-local fontPickerAnchor = nil
 local selectedFontTab = "default"
 
 -- Grid layout constants
@@ -24,11 +23,17 @@ local PICKER_PADDING = 12
 local PICKER_HEIGHT = 420
 local TAB_WIDTH = 90
 
+-- Token band (the two global-font buttons under the title)
+local TOKEN_BUTTON_WIDTH = 180
+local TOKEN_BUTTON_HEIGHT = 26
+local TITLE_INSET_PLAIN = 30
+local TITLE_INSET_BAND = 68
+
 --------------------------------------------------------------------------------
 -- Font Category Tables
 --------------------------------------------------------------------------------
 
-local DEFAULT_FONTS = { "FRIZQT__", "ARIALN", "MORPHEUS", "SKURRI" }
+local DEFAULT_FONTS = { "GAME_DEFAULT", "FRIZQT__", "ARIALN", "MORPHEUS", "SKURRI" }
 
 local GOOGLE_FONTS = {
     -- Dosis
@@ -93,7 +98,6 @@ local function CloseFontPicker()
     end
     fontPickerSetting = nil
     fontPickerCallback = nil
-    fontPickerAnchor = nil
 end
 
 local function CreateFontPicker()
@@ -118,8 +122,112 @@ local function CreateFontPicker()
     -- Button pool for font options
     frame.Buttons = {}
 
+    -- Token band: two buttons under the title that write the global font
+    -- tokens (global:header / global:body) into the field. Hidden when the
+    -- caller passes suppressTokens (the Apply All and SCT pickers).
+    local band = CreateFrame("Frame", nil, frame)
+    band:SetPoint("TOPLEFT", frame, "TOPLEFT", PICKER_PADDING, -(TITLE_INSET_PLAIN + 2))
+    band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PICKER_PADDING, -(TITLE_INSET_PLAIN + 2))
+    band:SetHeight(TOKEN_BUTTON_HEIGHT + 4)
+    band:Hide()
+    band.Buttons = {}
+    frame.TokenBand = band
+
+    local bandTokens = { addon.MediaTokens.HEADER_FONT, addon.MediaTokens.BODY_FONT }
+    for i, token in ipairs(bandTokens) do
+        local btn = CreateFrame("Button", nil, band)
+        btn:SetSize(TOKEN_BUTTON_WIDTH, TOKEN_BUTTON_HEIGHT)
+        btn:EnableMouse(true)
+        btn:RegisterForClicks("AnyUp")
+        if i == 1 then
+            btn:SetPoint("RIGHT", band, "CENTER", -4, 0)
+        else
+            btn:SetPoint("LEFT", band, "CENTER", 4, 0)
+        end
+
+        local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -6)
+        bg:SetAllPoints()
+        bg:SetColorTexture(0, 0, 0, 0)
+        btn._bg = bg
+        btn._borders = Controls.CreateBorder(btn, { alpha = 0.5 })
+
+        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", btn, "LEFT", 4, 0)
+        label:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+        label:SetJustifyH("CENTER")
+        label:SetWordWrap(false)
+        btn.Label = label
+
+        btn._fontValue = token
+
+        btn:SetScript("OnClick", function(self)
+            local value = self._fontValue
+            if fontPickerSetting and fontPickerSetting.SetValue then
+                fontPickerSetting:SetValue(value)
+            end
+            if fontPickerCallback then
+                fontPickerCallback(value)
+            end
+            CloseFontPicker()
+            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        end)
+        btn:SetScript("OnEnter", function(self)
+            if self._isSelected then
+                self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.30)
+            else
+                self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.12)
+                self.Label:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
+            end
+        end)
+        btn:SetScript("OnLeave", function(self)
+            if self._isSelected then
+                self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.25)
+                self.Label:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
+            else
+                self._bg:SetColorTexture(0, 0, 0, 0)
+                self.Label:SetTextColor(1, 1, 1, 0.9)
+            end
+        end)
+
+        band.Buttons[i] = btn
+    end
+
+    -- Repaint the band: label in the token's resolved face, selection
+    -- highlight when the field already holds that token. Runs from
+    -- PopulateContent so accent changes retint it too.
+    function frame:UpdateTokenBand()
+        if not self.TokenBand:IsShown() then return end
+        local currentValue = nil
+        if fontPickerSetting and fontPickerSetting.GetValue then
+            currentValue = fontPickerSetting:GetValue()
+        end
+        local displayNames = addon.FontDisplayNames or {}
+        local defaultFont = select(1, _G.GameFontNormal:GetFont()) or "Fonts\\FRIZQT__.TTF"
+        for _, btn in ipairs(self.TokenBand.Buttons) do
+            local token = btn._fontValue
+            local face = addon.ResolveFontFace(token)
+            if not (face and pcall(btn.Label.SetFont, btn.Label, face, 12, "")) then
+                pcall(btn.Label.SetFont, btn.Label, defaultFont, 12, "")
+            end
+            btn.Label:SetText(displayNames[token] or token)
+            btn._accentR = self._accentR
+            btn._accentG = self._accentG
+            btn._accentB = self._accentB
+            local isSelected = (currentValue == token)
+            btn._isSelected = isSelected
+            if isSelected then
+                btn._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.25)
+                btn.Label:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
+            else
+                btn._bg:SetColorTexture(0, 0, 0, 0)
+                btn.Label:SetTextColor(1, 1, 1, 0.9)
+            end
+        end
+    end
+
     -- Populate content for selected tab
     function frame:PopulateContent()
+        self:UpdateTokenBand()
         local currentTab = nil
         for _, tabData in ipairs(self._workingTabs or FONT_TABS) do
             if tabData.key == selectedFontTab then
@@ -237,15 +345,6 @@ local function CreateFontPicker()
                 if fontPickerCallback then
                     fontPickerCallback(value)
                 end
-                if fontPickerAnchor and fontPickerAnchor.Text then
-                    local dt
-                    if addon.IsLSMKey and addon.IsLSMKey(value) then
-                        dt = addon.LSMKeyToName(value)
-                    else
-                        dt = addon.FontDisplayNames and addon.FontDisplayNames[value] or value
-                    end
-                    fontPickerAnchor.Text:SetText(dt)
-                end
                 CloseFontPicker()
                 PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
             end)
@@ -276,12 +375,17 @@ end
 -- Public API
 --------------------------------------------------------------------------------
 
-function addon.ShowFontPicker(anchor, setting, optionsProvider, callback)
+-- opts (optional table): suppressTokens hides the global-token band; the
+-- Apply All pickers (which SET the globals) and SCT (game restart) pass it.
+function addon.ShowFontPicker(anchor, setting, opts, callback)
     local frame = CreateFontPicker()
 
     fontPickerSetting = setting
     fontPickerCallback = callback
-    fontPickerAnchor = anchor
+
+    local suppressTokens = type(opts) == "table" and opts.suppressTokens == true
+    frame.TokenBand:SetShown(not suppressTokens)
+    frame:SetTitleInset(suppressTokens and TITLE_INSET_PLAIN or TITLE_INSET_BAND)
 
     -- Get current value and determine which tab to show
     local currentValue = nil
@@ -357,10 +461,6 @@ function addon.ShowFontPicker(anchor, setting, optionsProvider, callback)
     if addon.PreloadFonts then
         addon.PreloadFonts()
     end
-end
-
-function addon.CloseFontPicker()
-    CloseFontPicker()
 end
 
 function addon.CloseFontPicker()

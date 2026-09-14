@@ -582,6 +582,11 @@ function addon:OnInitialize()
     -- NOTE: pendingProfileActivation is consumed in Profiles:Initialize() so the new
     -- profile/layout is activated as early as possible (before ApplyStyles runs).
 
+    -- One-shot upgrade from the sweep-era Apply All to the token system.
+    if self.ApplyAll and self.ApplyAll.RunTokenMigration then
+        self.ApplyAll:RunTokenMigration()
+    end
+
     -- 2. Define components — disabled modules are skipped via moduleEnabled checks.
     self:InitializeComponents()
 
@@ -636,14 +641,16 @@ function addon:GetDefaults()
             accentColorMode = "custom",  -- "custom" uses accentColor; "class" uses the player class color
             windowPosition = nil,  -- Saved as { point, relPoint, x, y }
             scootAuraEditorPosition = nil,  -- ScootAura editor window, same shape
+            -- Account-wide values behind the Global Font / Bar Texture tokens
+            -- (addon.MediaTokens). GAME_DEFAULT is a pseudo-key that resolves
+            -- to GameFontNormal's locale face. Never a token (setter-guarded).
+            media = {
+                headerFont = "GAME_DEFAULT",
+                bodyFont = "GAME_DEFAULT",
+                barTexture = "default",
+            },
         },
         profile = {
-            applyAll = {
-                fontPending = "FRIZQT__",
-                barTexturePending = "default",
-                lastFontApplied = nil,
-                lastTextureApplied = nil,
-            },
             -- Cooldown Manager quality-of-life settings
             -- NOTE: enableCDM is intentionally omitted from defaults so it remains nil
             -- (inherit Blizzard CVar) until the user explicitly sets it per profile.

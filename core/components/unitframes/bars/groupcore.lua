@@ -106,13 +106,13 @@ function GC.NewFamily(desc)
     -- Custom foreground settings: texture or color mode off "default". The
     -- overlay exists only for these; the bar predicate adds the background.
     local function hasOverlayCustom(cfg)
-        return (cfg.healthBarTexture and cfg.healthBarTexture ~= "default")
+        return (not addon.Media.IsDefaultBarTexture(cfg.healthBarTexture))
             or (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
     end
 
     local function hasBarCustom(cfg)
         return hasOverlayCustom(cfg)
-            or (cfg.healthBarBackgroundTexture and cfg.healthBarBackgroundTexture ~= "default")
+            or (not addon.Media.IsDefaultBarTexture(cfg.healthBarBackgroundTexture))
             or (cfg.healthBarBackgroundColorMode and cfg.healthBarBackgroundColorMode ~= "default")
     end
 

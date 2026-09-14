@@ -83,7 +83,8 @@ local function setFont(inst, face)
     if face and face ~= "" then cfg.face = face end
     local isPath = type(cfg.face) == "string" and cfg.face:find("[/\\]") ~= nil
     local isLSM = addon.IsLSMKey and addon.IsLSMKey(cfg.face)
-    if not isPath and not isLSM and not addon.Fonts[cfg.face] then
+    local isToken = addon.IsFontToken and addon.IsFontToken(cfg.face)
+    if not isPath and not isLSM and not isToken and not addon.Fonts[cfg.face] then
         addon:Print("Warning: '" .. cfg.face .. "' is not in this session's font registry, so the resolver falls back to the default face. Registry changes need /reload; new font files need a full client restart.")
     end
     applyFonts(inst)
@@ -145,7 +146,8 @@ local function setValFont(inst, face)
         cfg.valFace = face
         local isPath = cfg.valFace:find("[/\\]") ~= nil
         local isLSM = addon.IsLSMKey and addon.IsLSMKey(cfg.valFace)
-        if not isPath and not isLSM and not addon.Fonts[cfg.valFace] then
+        local isToken = addon.IsFontToken and addon.IsFontToken(cfg.valFace)
+        if not isPath and not isLSM and not isToken and not addon.Fonts[cfg.valFace] then
             addon:Print("Warning: '" .. cfg.valFace .. "' is not in this session's font registry, so the resolver falls back to the default face. Registry changes need /reload; new font files need a full client restart.")
         end
     end
@@ -283,7 +285,8 @@ local function setNameFont(inst, face)
         cfg.nameFace = face
         local isPath = cfg.nameFace:find("[/\\]") ~= nil
         local isLSM = addon.IsLSMKey and addon.IsLSMKey(cfg.nameFace)
-        if not isPath and not isLSM and not addon.Fonts[cfg.nameFace] then
+        local isToken = addon.IsFontToken and addon.IsFontToken(cfg.nameFace)
+        if not isPath and not isLSM and not isToken and not addon.Fonts[cfg.nameFace] then
             addon:Print("Warning: '" .. cfg.nameFace .. "' is not in this session's font registry, so the resolver falls back to the default face. Registry changes need /reload; new font files need a full client restart.")
         end
     end

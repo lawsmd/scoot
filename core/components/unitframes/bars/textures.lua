@@ -423,7 +423,7 @@ function Textures.applyToBar(bar, textureKey, colorMode, tint, unitForClass, bar
     -- Apply custom texture if selected, then apply initial value-based color.
     if colorMode == "value" or colorMode == "valueDark" then
         local useDark = (colorMode == "valueDark")
-        local isCustom = type(textureKey) == "string" and textureKey ~= "" and textureKey ~= "default"
+        local isCustom = not addon.Media.IsDefaultBarTexture(textureKey)
         local resolvedPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(textureKey)
         if isCustom and resolvedPath then
             -- 12.0.5 dispel-layering fix: cache the last-applied texture path
@@ -454,7 +454,7 @@ function Textures.applyToBar(bar, textureKey, colorMode, tint, unitForClass, bar
     -- (e.g., Druid switching between Mana/Energy forms). Touching ANYTHING here risks
     -- overwriting Blizzard's correctly-set state with stale captured values. By returning
     -- early, Blizzard's native system handles everything.
-    local isDefaultTexture = (textureKey == nil or textureKey == "" or textureKey == "default")
+    local isDefaultTexture = addon.Media.IsDefaultBarTexture(textureKey)
     local isDefaultColor = (colorMode == nil or colorMode == "" or colorMode == "default")
     if (barKind == "power" or barKind == "altpower") and isDefaultTexture and isDefaultColor then
         return
@@ -492,7 +492,7 @@ function Textures.applyToBar(bar, textureKey, colorMode, tint, unitForClass, bar
         setProp(bar, "ufOrigCaptured", true)
     end
 
-    local isCustom = type(textureKey) == "string" and textureKey ~= "" and textureKey ~= "default"
+    local isCustom = not addon.Media.IsDefaultBarTexture(textureKey)
     local resolvedPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(textureKey)
     if isCustom and resolvedPath then
         if bar.SetStatusBarTexture and getProp(bar, "ufLastTexturePath") ~= resolvedPath then
@@ -582,7 +582,7 @@ end
 -- "powerBar". A default profile must not change the look of Blizzard's bars.
 function Textures.hasBackgroundCustomization(cfg, barKey)
     local texKey = cfg[barKey .. "BackgroundTexture"]
-    if type(texKey) == "string" and texKey ~= "" and texKey ~= "default" then
+    if not addon.Media.IsDefaultBarTexture(texKey) then
         return true
     end
     local mode = cfg[barKey .. "BackgroundColorMode"]
@@ -647,7 +647,7 @@ function Textures.applyBackgroundToBar(bar, backgroundTextureKey, backgroundColo
     opacity = math.max(0, math.min(100, opacity)) / 100
     
     -- Check for a custom background texture
-    local isCustomTexture = type(backgroundTextureKey) == "string" and backgroundTextureKey ~= "" and backgroundTextureKey ~= "default"
+    local isCustomTexture = not addon.Media.IsDefaultBarTexture(backgroundTextureKey)
     local resolvedPath = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(backgroundTextureKey)
     
     if isCustomTexture and resolvedPath then

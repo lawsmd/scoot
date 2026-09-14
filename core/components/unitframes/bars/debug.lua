@@ -236,7 +236,7 @@ function addon.DebugDumpRaidFrames()
         add(string.format("healthBarColorMode: %s", tostring(cfg.healthBarColorMode)))
         add(string.format("healthBarBackgroundTexture: %s", tostring(cfg.healthBarBackgroundTexture)))
         add(string.format("healthBarBackgroundColorMode: %s", tostring(cfg.healthBarBackgroundColorMode)))
-        local hasCustom = (cfg.healthBarTexture and cfg.healthBarTexture ~= "default")
+        local hasCustom = (not addon.Media.IsDefaultBarTexture(cfg.healthBarTexture))
                        or (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
         add(string.format("hasCustom (fg): %s", tostring(hasCustom)))
     else

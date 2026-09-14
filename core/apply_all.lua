@@ -325,6 +325,135 @@ function ApplyAll:ApplyFonts(fontKey, opts)
     return buildResult(success, changed, success and nil or "noChanges")
 end
 
+--------------------------------------------------------------------------------
+-- Global media store (token system)
+--------------------------------------------------------------------------------
+-- The Global Font / Bar Texture tokens (addon.MediaTokens) resolve against
+-- these account-wide values via ResolveFontFace / ResolveBarTexturePath.
+-- Setters reject tokens so a global can never point at another token.
+
+local function globalMedia()
+    local db = addon.db
+    return db and db.global and db.global.media
+end
+
+local function setGlobalValue(field, value)
+    if type(value) ~= "string" or value == ""
+        or (addon.IsMediaToken and addon.IsMediaToken(value)) then
+        return false
+    end
+    local media = globalMedia()
+    if not media then
+        return false
+    end
+    media[field] = value
+    return true
+end
+
+function ApplyAll:GetGlobalHeaderFont()
+    local media = globalMedia()
+    return (media and media.headerFont) or "GAME_DEFAULT"
+end
+
+function ApplyAll:GetGlobalBodyFont()
+    local media = globalMedia()
+    return (media and media.bodyFont) or "GAME_DEFAULT"
+end
+
+function ApplyAll:GetGlobalBarTexture()
+    local media = globalMedia()
+    return (media and media.barTexture) or "default"
+end
+
+function ApplyAll:SetGlobalHeaderFont(fontKey)
+    return setGlobalValue("headerFont", fontKey)
+end
+
+function ApplyAll:SetGlobalBodyFont(fontKey)
+    return setGlobalValue("bodyFont", fontKey)
+end
+
+function ApplyAll:SetGlobalBarTexture(textureKey)
+    return setGlobalValue("barTexture", textureKey)
+end
+
+-- One-shot upgrade from the sweep-era Apply All: seed the Body/Bar globals
+-- from the last swept values (what the user last applied everywhere), then
+-- drop the dead per-profile applyAll tables. The flag is deliberately absent
+-- from the registered defaults so AceDB never dedupes it away.
+function ApplyAll:RunTokenMigration()
+    local db = addon.db
+    if not db or not db.global then
+        return
+    end
+    if rawget(db.global, "applyAllTokenMigration") then
+        return
+    end
+
+    local media = globalMedia()
+    local profile = db.profile
+    local old = profile and rawget(profile, "applyAll")
+    if media and old then
+        local font = old.lastFontApplied and old.lastFontApplied.value
+        if type(font) == "string" and font ~= "" and font ~= "FRIZQT__"
+            and not (addon.IsMediaToken and addon.IsMediaToken(font)) then
+            media.bodyFont = font
+        end
+        local texture = old.lastTextureApplied and old.lastTextureApplied.value
+        if type(texture) == "string" and texture ~= "" and texture ~= "default"
+            and not (addon.IsMediaToken and addon.IsMediaToken(texture)) then
+            media.barTexture = texture
+        end
+    end
+
+    local profiles = db.sv and db.sv.profiles
+    if type(profiles) == "table" then
+        for _, p in pairs(profiles) do
+            if type(p) == "table" then
+                p.applyAll = nil
+            end
+        end
+    end
+
+    db.global.applyAllTokenMigration = true
+end
+
+addon:RegisterDebugCommand({
+    name = "media", help = "Global Font / Bar Texture values and stored token counts",
+    handler = function()
+        local header = ApplyAll:GetGlobalHeaderFont()
+        local body = ApplyAll:GetGlobalBodyFont()
+        local texture = ApplyAll:GetGlobalBarTexture()
+        addon:Print(("Global Header Font: %s -> %s"):format(header, tostring(addon.ResolveFontFace(header))))
+        addon:Print(("Global Body Font: %s -> %s"):format(body, tostring(addon.ResolveFontFace(body))))
+        addon:Print(("Global Bar Texture: %s -> %s"):format(texture, tostring(addon.Media.ResolveBarTexturePath(texture))))
+
+        local counts, visited = {}, {}
+        local function walk(tbl)
+            if type(tbl) ~= "table" or visited[tbl] then return end
+            visited[tbl] = true
+            for _, child in pairs(tbl) do
+                if type(child) == "table" then
+                    walk(child)
+                elseif addon.IsMediaToken and addon.IsMediaToken(child) then
+                    counts[child] = (counts[child] or 0) + 1
+                end
+            end
+        end
+        walk(addon.db and addon.db.profile)
+        local parts = {}
+        for token, n in pairs(counts) do
+            parts[#parts + 1] = ("%s x%d"):format(token, n)
+        end
+        if #parts == 0 then
+            addon:Print("No token values stored in the active profile.")
+        else
+            table.sort(parts)
+            addon:Print("Stored tokens: " .. table.concat(parts, ", "))
+        end
+    end,
+})
+
 function ApplyAll:ApplyBarTextures(textureKey, opts)
     local state, profile = ensureStateWritable()
     if not state or not profile then

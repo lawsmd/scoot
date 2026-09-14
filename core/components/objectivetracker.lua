@@ -935,7 +935,7 @@ local function ApplyDungeonTrackerTimerBarStyling(dtDB)
 
     -- Foreground texture
     local fgTexKey = rawget(dtDB, "timerBarForegroundTexture")
-    local usingCustomFgTex = fgTexKey and fgTexKey ~= "default"
+    local usingCustomFgTex = not addon.Media.IsDefaultBarTexture(fgTexKey)
     if usingCustomFgTex then
         local path = addon.Media and addon.Media.ResolveBarTexturePath and addon.Media.ResolveBarTexturePath(fgTexKey)
         if path then

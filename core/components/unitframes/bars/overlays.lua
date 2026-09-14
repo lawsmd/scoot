@@ -789,7 +789,7 @@ local function ensureRectHealthOverlay(unit, bar, cfg)
     local colorMode = cfg and cfg.healthBarColorMode or "default"
     local texKey = cfg and cfg.healthBarTexture or "default"
     local hasNonDefaultColor = (colorMode ~= "default" and colorMode ~= "" and colorMode ~= nil)
-    local hasNonDefaultTexture = (texKey ~= "default" and texKey ~= "" and texKey ~= nil)
+    local hasNonDefaultTexture = not addon.Media.IsDefaultBarTexture(texKey)
     local needsOverlayForStyling = hasNonDefaultColor or hasNonDefaultTexture
 
     if unit == "Target" or unit == "Focus" then
@@ -1159,7 +1159,7 @@ local function ensureRectPowerOverlay(unit, bar, cfg)
     local colorMode = cfg.powerBarColorMode or "default"
 
     -- Determine whether overlay should be active: only for non-default settings
-    local isDefaultTexture = (texKey == "default" or texKey == "" or texKey == nil)
+    local isDefaultTexture = addon.Media.IsDefaultBarTexture(texKey)
     local isDefaultColor = (colorMode == "default" or colorMode == "" or colorMode == nil)
     local shouldActivate = not (isDefaultTexture and isDefaultColor)
 

@@ -130,10 +130,40 @@ function addon.GetGameFontNormalFace()
     return cachedGameFontNormalFace
 end
 
+-- Swap a Global Font token for the account-wide value it points at. One level
+-- only: a token stored as a global's own value (blocked by the ApplyAll
+-- setters, but guarded here) degrades to "FRIZQT__". Safe before DB init.
+function addon.NormalizeFontKey(key)
+    if not (addon.IsFontToken and addon.IsFontToken(key)) then return key end
+    local media = addon.db and addon.db.global and addon.db.global.media
+    local value
+    if media then
+        value = (key == addon.MediaTokens.HEADER_FONT) and media.headerFont or media.bodyFont
+    end
+    if type(value) ~= "string" or value == "" or (addon.IsMediaToken and addon.IsMediaToken(value)) then
+        return "FRIZQT__"
+    end
+    return value
+end
+
+-- Zero-Touch gate: a key counts as stock (leave Blizzard text alone) when the
+-- key itself, or the global a token points at, renders the default face.
+-- GAME_DEFAULT is the pseudo-key for GameFontNormal's locale face; it misses
+-- addon.Fonts on purpose and lands on the resolver's fallback.
+function addon.IsStockFontKey(key)
+    local k = addon.NormalizeFontKey(key)
+    return type(k) ~= "string" or k == "" or k == "FRIZQT__" or k == "GAME_DEFAULT"
+end
+
 -- Resolve a font face name to a file path for SetFont.
 -- Falls back to the face of GameFontNormal if unknown. Never returns nil.
+-- Accepts Global Font tokens (addon.MediaTokens) and the GAME_DEFAULT
+-- pseudo-key, which resolves to the GameFontNormal fallback.
 function addon.ResolveFontFace(key)
     key = key or "FRIZQT__"
+    if addon.IsFontToken and addon.IsFontToken(key) then
+        key = addon.NormalizeFontKey(key)
+    end
     -- LSM-sourced font
     if addon.IsLSMKey and addon.IsLSMKey(key) then
         local path = addon.LSMFetch and addon.LSMFetch("font", key)
@@ -535,7 +565,7 @@ end
 --       (colorModeDK counts when stored and not "default").
 function addon.HasTextCustomization(cfg, opts)
     if not cfg then return false end
-    if cfg.fontFace ~= nil and cfg.fontFace ~= "" and cfg.fontFace ~= "FRIZQT__" then return true end
+    if not addon.IsStockFontKey(cfg.fontFace) then return true end
     if cfg.size ~= nil or cfg.style ~= nil or cfg.color ~= nil then return true end
     if cfg.colorMode ~= nil and cfg.colorMode ~= "" and cfg.colorMode ~= "default" then return true end
     if opts then
@@ -1121,7 +1151,7 @@ function addon.InitFontDropdown(dropdown, setting, optionsProvider)
             pcall(_G.CloseDropDownMenus)
         end
 
-        addon.ShowFontPicker(dropdown, setting, optionsProvider, function(selectedValue)
+        addon.ShowFontPicker(dropdown, setting, nil, function(selectedValue)
             -- Callback after selection - update display
             updateDropdownText()
         end)
@@ -1256,6 +1286,11 @@ end
 
 -- Human-readable display names for the font dropdown
 addon.FontDisplayNames = {
+    -- Virtual values (no file behind them): the Global Font tokens and the
+    -- GAME_DEFAULT pseudo-key for GameFontNormal's locale face
+    [addon.MediaTokens.HEADER_FONT] = "Global Header Font",
+    [addon.MediaTokens.BODY_FONT]   = "Global Body Font",
+    GAME_DEFAULT = "Game Default",
     -- Stock fonts
     FRIZQT__  = "Friz Quadrata (Default)",
     ARIALN    = "Arial Narrow",

@@ -22,6 +22,12 @@ local PICKER_HEIGHT = 420
 local TAB_WIDTH = 90
 local PADDING = 12
 
+-- Token band (the global-texture button under the title)
+local TOKEN_BUTTON_WIDTH = 200
+local TOKEN_BUTTON_HEIGHT = 26
+local TITLE_INSET_PLAIN = 30
+local TITLE_INSET_BAND = 68
+
 -- 3-column grid layout
 local TEXTURES_PER_ROW = 3
 local TEXTURE_BUTTON_WIDTH = 160
@@ -146,8 +152,111 @@ local function CreateBarTexturePicker()
     -- Button pool for texture options
     frame.TextureButtons = {}
 
+    -- Token band: one button under the title that writes the global bar
+    -- texture token (global:barTexture) into the field. Hidden when the
+    -- caller passes suppressTokens (the Apply All picker).
+    local band = CreateFrame("Frame", nil, frame)
+    band:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -(TITLE_INSET_PLAIN + 2))
+    band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PADDING, -(TITLE_INSET_PLAIN + 2))
+    band:SetHeight(TOKEN_BUTTON_HEIGHT + 4)
+    band:Hide()
+    frame.TokenBand = band
+
+    local tokenBtn = CreateFrame("Button", nil, band)
+    tokenBtn:SetSize(TOKEN_BUTTON_WIDTH, TOKEN_BUTTON_HEIGHT)
+    tokenBtn:SetPoint("CENTER", band, "CENTER", 0, 0)
+    tokenBtn:EnableMouse(true)
+    tokenBtn:RegisterForClicks("AnyUp")
+    band.Button = tokenBtn
+
+    local tokenBg = tokenBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
+    tokenBg:SetAllPoints()
+    tokenBg:SetColorTexture(0, 0, 0, 0)
+    tokenBtn._bg = tokenBg
+    tokenBtn._borders = Controls.CreateBorder(tokenBtn, { alpha = 0.5 })
+
+    -- Preview strip of the resolved global texture (hidden when the global
+    -- is "default", like the Default tile)
+    local tokenPreview = tokenBtn:CreateTexture(nil, "ARTWORK", nil, 1)
+    tokenPreview:SetSize(60, 10)
+    tokenPreview:SetPoint("RIGHT", tokenBtn, "RIGHT", -6, 0)
+    tokenBtn._preview = tokenPreview
+
+    local tokenLabel = tokenBtn:CreateFontString(nil, "OVERLAY")
+    tokenLabel:SetFont((theme and theme.GetFont and theme:GetFont("VALUE")) or "Fonts\\FRIZQT__.TTF", 11, "")
+    tokenLabel:SetPoint("LEFT", tokenBtn, "LEFT", 8, 0)
+    tokenLabel:SetPoint("RIGHT", tokenPreview, "LEFT", -4, 0)
+    tokenLabel:SetJustifyH("LEFT")
+    tokenLabel:SetWordWrap(false)
+    tokenBtn._nameText = tokenLabel
+
+    tokenBtn._textureKey = addon.MediaTokens.BAR_TEXTURE
+
+    tokenBtn:SetScript("OnClick", function(self)
+        local key = self._textureKey
+        if pickerSetting and pickerSetting.SetValue then
+            pickerSetting:SetValue(key)
+        end
+        if pickerCallback then
+            pickerCallback(key)
+        end
+        CloseBarTexturePicker()
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+    end)
+    tokenBtn:SetScript("OnEnter", function(self)
+        if self._isSelected then
+            self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.30)
+        else
+            self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.12)
+            self._nameText:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
+        end
+    end)
+    tokenBtn:SetScript("OnLeave", function(self)
+        if self._isSelected then
+            self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.25)
+            self._nameText:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
+        else
+            self._bg:SetColorTexture(0, 0, 0, 0)
+            self._nameText:SetTextColor(1, 1, 1, 0.9)
+        end
+    end)
+
+    -- Repaint the band: preview of the resolved global, selection highlight
+    -- when the field already holds the token. Runs from PopulateContent so
+    -- accent changes retint it too.
+    function frame:UpdateTokenBand()
+        if not self.TokenBand:IsShown() then return end
+        local btn = self.TokenBand.Button
+        local token = btn._textureKey
+        btn._nameText:SetText(GetTextureDisplayName(token))
+        local path = GetTexturePath(token)
+        if path then
+            btn._preview:SetTexture(path)
+            btn._preview:Show()
+        else
+            btn._preview:Hide()
+        end
+        btn._accentR = self._accentR
+        btn._accentG = self._accentG
+        btn._accentB = self._accentB
+        local currentValue = nil
+        if pickerSetting and pickerSetting.GetValue then
+            currentValue = pickerSetting:GetValue()
+        end
+        local isSelected = (currentValue == token)
+        btn._isSelected = isSelected
+        if isSelected then
+            btn._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.25)
+            btn._nameText:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
+        else
+            btn._bg:SetColorTexture(0, 0, 0, 0)
+            btn._nameText:SetTextColor(1, 1, 1, 0.9)
+        end
+    end
+
     -- Populate content function
     function frame:PopulateContent()
+        self:UpdateTokenBand()
         local currentTab = nil
         for _, tabData in ipairs(self._workingTabs or TABS) do
             if tabData.key == selectedTab then
@@ -308,12 +417,18 @@ end
 -- Public API
 --------------------------------------------------------------------------------
 
-function addon.ShowBarTexturePicker(anchor, setting, optionsProvider, callback)
+-- opts (optional table): suppressTokens hides the global-token band; the
+-- Apply All picker (which SETS the global) passes it.
+function addon.ShowBarTexturePicker(anchor, setting, opts, callback)
     local frame = CreateBarTexturePicker()
 
     pickerSetting = setting
     pickerCallback = callback
     pickerAnchor = anchor
+
+    local suppressTokens = type(opts) == "table" and opts.suppressTokens == true
+    frame.TokenBand:SetShown(not suppressTokens)
+    frame:SetTitleInset(suppressTokens and TITLE_INSET_PLAIN or TITLE_INSET_BAND)
 
     -- Get current value and determine which tab to show
     local currentValue = nil
@@ -509,6 +624,22 @@ function Controls:CreateBarTextureSelector(options)
     row._currentValue = getValue() or "default"
     row._getValue = getValue
     row._setValue = setValue
+    row._pickerOpts = options.suppressTokens and { suppressTokens = true } or nil
+
+    -- In-field info icon, shown while the field holds the global token
+    local function EnsureTokenIcon()
+        if row._tokenInfoIcon then return row._tokenInfoIcon end
+        local icon = Controls:CreateInfoIcon({
+            parent = selector,
+            tooltipText = "The Global Bar Texture is set on the Apply All > Bar Texture menu.",
+            size = 12,
+        })
+        if icon then
+            icon:SetPoint("RIGHT", selector, "RIGHT", -20, 0)
+            row._tokenInfoIcon = icon
+        end
+        return icon
+    end
 
     -- Update display (NAME only, no texture preview)
     local function UpdateDisplay()
@@ -518,6 +649,14 @@ function Controls:CreateBarTextureSelector(options)
             displayText = displayText .. " (missing)"
         end
         valueText:SetText(displayText)
+
+        if addon.IsBarTextureToken and addon.IsBarTextureToken(currentValue) and EnsureTokenIcon() then
+            row._tokenInfoIcon:Show()
+            valueText:SetPoint("RIGHT", selector, "RIGHT", -34, 0)
+        else
+            if row._tokenInfoIcon then row._tokenInfoIcon:Hide() end
+            valueText:SetPoint("RIGHT", selector, "RIGHT", -24, 0)
+        end
     end
 
     -- Initial display update
@@ -555,7 +694,7 @@ function Controls:CreateBarTextureSelector(options)
         }
 
         -- Show the bar texture picker anchored to this selector
-        addon.ShowBarTexturePicker(self, pseudoSetting, nil, function(selectedValue)
+        addon.ShowBarTexturePicker(self, pseudoSetting, row._pickerOpts, function(selectedValue)
             row._currentValue = selectedValue
             row._setValue(selectedValue)
             UpdateDisplay()
@@ -599,6 +738,9 @@ function Controls:CreateBarTextureSelector(options)
     function row:Cleanup()
         if self._subscribeKey then
             theme:Unsubscribe(self._subscribeKey)
+        end
+        if self._tokenInfoIcon and self._tokenInfoIcon.Cleanup then
+            self._tokenInfoIcon:Cleanup()
         end
     end
 
