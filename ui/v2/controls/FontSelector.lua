@@ -19,8 +19,6 @@ end
 --------------------------------------------------------------------------------
 
 local FONT_SELECTOR_HEIGHT = 28
-local FONT_SELECTOR_ROW_HEIGHT = 42
-local FONT_SELECTOR_ROW_HEIGHT_WITH_DESC = 60
 local FONT_SELECTOR_WIDTH = 200
 local FONT_SELECTOR_PADDING = 12
 local FONT_SELECTOR_BORDER_ALPHA = 0.6
@@ -42,12 +40,11 @@ function Controls:CreateFontSelector(options)
     local setValue = options.set or function() end
     local selectorWidth = options.width or FONT_SELECTOR_WIDTH
     local selectorHeight = options.selectorHeight or FONT_SELECTOR_HEIGHT
-    local labelFontSize = options.labelFontSize or 13
     local name = options.name
 
-    local hasDesc = description and description ~= ""
-    local defaultRowHeight = hasDesc and FONT_SELECTOR_ROW_HEIGHT_WITH_DESC or FONT_SELECTOR_ROW_HEIGHT
-    local rowHeight = options.rowHeight or defaultRowHeight
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
+    local rowHeight = options.rowHeight or Controls.Metrics().rowHeightField
 
     -- Get theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -65,33 +62,23 @@ function Controls:CreateFontSelector(options)
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Label text (left side)
-    local labelFS = row:CreateFontString(nil, "OVERLAY")
-    local labelFont = theme:GetFont("LABEL")
-    labelFS:SetFont(labelFont, labelFontSize, "")
-    labelFS:SetPoint("LEFT", row, "LEFT", FONT_SELECTOR_PADDING, hasDesc and 6 or 0)
-    labelFS:SetText(label)
-    labelFS:SetTextColor(ar, ag, ab, 1)
-    row._label = labelFS
+    -- Label and description
+    local labelFS = Controls.AddRowChrome(row, {
+        rowWidth = rowWidth,
+        baseHeight = rowHeight,
+        label = label,
+        labelFontSize = options.labelFontSize,
+        padLeft = FONT_SELECTOR_PADDING,
+        description = description,
+        controlReserve = selectorWidth + FONT_SELECTOR_PADDING * 2,
+        dimColor = { dimR, dimG, dimB },
+    })
 
-    -- Description text (below label, if provided)
-    if hasDesc then
-        local descFS = row:CreateFontString(nil, "OVERLAY")
-        local descFont = theme:GetFont("VALUE")
-        descFS:SetFont(descFont, 11, "")
-        descFS:SetPoint("TOPLEFT", labelFS, "BOTTOMLEFT", 0, -2)
-        descFS:SetPoint("RIGHT", row, "RIGHT", -(selectorWidth + FONT_SELECTOR_PADDING * 2), 0)
-        descFS:SetText(description)
-        descFS:SetTextColor(dimR, dimG, dimB, 1)
-        descFS:SetJustifyH("LEFT")
-        descFS:SetWordWrap(true)
-        row._description = descFS
-    end
-
-    -- Selector button (right side, clickable to open popup)
+    -- Selector button (right side, clickable to open popup, centered in the
+    -- top band)
     local selector = CreateFrame("Button", nil, row)
     selector:SetSize(selectorWidth, selectorHeight)
-    selector:SetPoint("RIGHT", row, "RIGHT", -FONT_SELECTOR_PADDING, 0)
+    Controls.AnchorCluster(row, selector, { x = -FONT_SELECTOR_PADDING })
     selector:EnableMouse(true)
     selector:RegisterForClicks("AnyUp")
 

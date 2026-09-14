@@ -51,7 +51,15 @@ function Controls:CreateColorPicker(options)
     local onOpen = options.onOpen
 
     local hasDesc = description and description ~= ""
-    local height = hasDesc and COLOR_ROW_HEIGHT_WITH_DESC or COLOR_ROW_HEIGHT
+    local rowWidth = options.rowWidth
+    -- Width-driven rows take the base height from the metrics; the direct
+    -- caller (the Rules page) keeps the fixed heights until it converts.
+    local height
+    if rowWidth then
+        height = Controls.Metrics().rowHeight
+    else
+        height = hasDesc and COLOR_ROW_HEIGHT_WITH_DESC or COLOR_ROW_HEIGHT
+    end
 
     -- Get theme colors
     local dimR, dimG, dimB
@@ -69,19 +77,38 @@ function Controls:CreateColorPicker(options)
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Label and description
-    local labelFS = Controls.AddRowChrome(row, {
-        label = label,
-        padLeft = COLOR_PADDING,
-        description = description,
-        reserve = swatchWidth + COLOR_PADDING * 2 + 8,
-        measureReserve = swatchWidth + (COLOR_PADDING * 2) + 8,
-        dimColor = { dimR, dimG, dimB },
-    })
+    local chromeOpts
+    if rowWidth then
+        chromeOpts = {
+            rowWidth = rowWidth,
+            baseHeight = height,
+            label = label,
+            padLeft = COLOR_PADDING,
+            description = description,
+            controlReserve = swatchWidth + COLOR_PADDING * 2 + 8,
+            dimColor = { dimR, dimG, dimB },
+        }
+    else
+        chromeOpts = {
+            label = label,
+            padLeft = COLOR_PADDING,
+            description = description,
+            reserve = swatchWidth + COLOR_PADDING * 2 + 8,
+            measureReserve = swatchWidth + (COLOR_PADDING * 2) + 8,
+            dimColor = { dimR, dimG, dimB },
+        }
+    end
+    local labelFS = Controls.AddRowChrome(row, chromeOpts)
 
-    -- Color swatch button (right side)
+    -- Color swatch button (right side, centered in the top band on
+    -- width-driven rows)
     local swatch = CreateFrame("Button", nil, row)
     swatch:SetSize(swatchWidth, swatchHeight)
-    swatch:SetPoint("RIGHT", row, "RIGHT", -COLOR_PADDING, 0)
+    if rowWidth then
+        Controls.AnchorCluster(row, swatch, { x = -COLOR_PADDING })
+    else
+        swatch:SetPoint("RIGHT", row, "RIGHT", -COLOR_PADDING, 0)
+    end
     swatch:EnableMouse(true)
     swatch:RegisterForClicks("AnyUp")
 

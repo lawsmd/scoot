@@ -205,6 +205,7 @@ function Builder:AddMultiToggleRow(options)
     end
 
     local multiToggle = Controls:CreateMultiToggleRow({
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         parent = scrollContent,
         label = options.label,
         description = options.description,

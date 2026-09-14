@@ -50,8 +50,9 @@ function Controls:CreateToggleColorPicker(options)
     local name = options.name
     local isDisabledFn = options.disabled or options.isDisabled
 
-    local hasDesc = description and description ~= ""
-    local height = hasDesc and TOGGLE_HEIGHT_WITH_DESC or TOGGLE_HEIGHT
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
+    local height = Controls.Metrics().rowHeight
 
     -- Get theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -73,18 +74,19 @@ function Controls:CreateToggleColorPicker(options)
 
     -- Label and description
     local labelFS = Controls.AddRowChrome(row, {
+        rowWidth = rowWidth,
+        baseHeight = height,
         label = label,
         padLeft = TOGGLE_PADDING,
         description = description,
-        reserve = TOGGLE_INDICATOR_WIDTH + swatchWidth + TOGGLE_COLOR_SWATCH_GAP + TOGGLE_PADDING * 2 + 8,
-        measureReserve = TOGGLE_INDICATOR_WIDTH + swatchWidth + TOGGLE_COLOR_SWATCH_GAP + (TOGGLE_PADDING * 2) + 8,
+        controlReserve = TOGGLE_INDICATOR_WIDTH + swatchWidth + TOGGLE_COLOR_SWATCH_GAP + TOGGLE_PADDING * 2 + 8,
         dimColor = { dimR, dimG, dimB },
     })
 
-    -- State indicator (right side)
+    -- State indicator (right side, centered in the top band)
     local indicator = CreateFrame("Frame", nil, row)
     indicator:SetSize(TOGGLE_INDICATOR_WIDTH, TOGGLE_INDICATOR_HEIGHT)
-    indicator:SetPoint("RIGHT", row, "RIGHT", -TOGGLE_PADDING, 0)
+    Controls.AnchorCluster(row, indicator, { x = -TOGGLE_PADDING })
 
     -- Indicator border. Static color: UpdateVisual owns all indicator tinting
     -- (state-dependent color and alpha).

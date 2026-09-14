@@ -21,8 +21,6 @@ end
 local SELECTOR_HEIGHT = 28
 local SELECTOR_ARROW_WIDTH = 28
 local SELECTOR_DEFAULT_WIDTH = 270
-local SELECTOR_ROW_HEIGHT = 36
-local SELECTOR_ROW_HEIGHT_WITH_DESC = 80
 local SELECTOR_PADDING = 12
 local SELECTOR_BORDER_ALPHA = 0.5
 
@@ -56,8 +54,9 @@ function Controls:CreateSelectorColorPicker(options)
     local isDisabledFn = options.isDisabled or options.disabled or function() return false end
     local optionInfoIcons = options.optionInfoIcons
 
-    local hasDesc = description and description ~= ""
-    local rowHeight = hasDesc and SELECTOR_ROW_HEIGHT_WITH_DESC or SELECTOR_ROW_HEIGHT
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
+    local rowHeight = Controls.Metrics().rowHeight
 
     -- Build ordered key list
     local keyList = {}
@@ -92,17 +91,18 @@ function Controls:CreateSelectorColorPicker(options)
 
     -- Label and description
     Controls.AddRowChrome(row, {
+        rowWidth = rowWidth,
+        baseHeight = rowHeight,
         label = label,
         description = description,
-        reserve = selectorWidth + SELECTOR_PADDING * 2,
-        measureReserve = selectorWidth + (SELECTOR_PADDING * 2),
+        controlReserve = selectorWidth + SELECTOR_PADDING * 2,
         dimColor = { dimR, dimG, dimB },
     })
 
-    -- Selector container (right side)
+    -- Selector container (right side, centered in the top band)
     local selector = CreateFrame("Frame", nil, row)
     selector:SetSize(selectorWidth, SELECTOR_HEIGHT)
-    selector:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_PADDING, 0)
+    Controls.AnchorCluster(row, selector, { x = -SELECTOR_PADDING })
 
     -- Selector border
     selector._border = Controls.CreateBorder(selector, { alpha = SELECTOR_BORDER_ALPHA })

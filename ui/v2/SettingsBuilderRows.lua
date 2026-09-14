@@ -185,6 +185,7 @@ function Builder:AddFontSelector(options)
 
     local fontSelector = Controls:CreateFontSelector({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         get = options.get,
@@ -290,6 +291,7 @@ function Builder:AddColorPicker(options)
 
     local colorPicker = Controls:CreateColorPicker({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         get = options.get,
@@ -330,6 +332,7 @@ function Builder:AddToggleColorPicker(options)
 
     local toggleColor = Controls:CreateToggleColorPicker({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         get = options.get,
@@ -375,6 +378,7 @@ function Builder:AddSelectorColorPicker(options)
 
     local selectorColor = Controls:CreateSelectorColorPicker({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         values = options.values,

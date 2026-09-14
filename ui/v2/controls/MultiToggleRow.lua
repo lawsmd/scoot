@@ -20,8 +20,6 @@ end
 local MINI_LABEL_HEIGHT = 14
 local MINI_LABEL_GAP = 3
 local CONTROL_HEIGHT = 28
-local ROW_HEIGHT = 36 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
-local ROW_HEIGHT_WITH_DESC = 80 + MINI_LABEL_HEIGHT + MINI_LABEL_GAP
 local PADDING = 12
 local GAP = 12
 local MINI_TOGGLE_WIDTH = 70
@@ -58,8 +56,9 @@ function Controls:CreateMultiToggleRow(options)
     local useLightDim = options.useLightDim
 
     local hasLabel = label and label ~= ""
-    local hasDesc = description and description ~= ""
-    local rowHeight = hasDesc and ROW_HEIGHT_WITH_DESC or ROW_HEIGHT
+    -- Builder rows always pass rowWidth; the parent width is the fallback.
+    local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
+    local rowHeight = Controls.Metrics().dualRowHeight
 
     local count = #toggleDefs
     local containerWidth = count * MINI_TOGGLE_WIDTH + (count - 1) * GAP
@@ -76,18 +75,14 @@ function Controls:CreateMultiToggleRow(options)
 
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Static reservation for the control column. It holds even if the deferred
-    -- measurement never gets a width to work with, which is what keeps the
-    -- wrapped explainer from ever reaching under the toggles.
-    local CONTROL_RESERVE = PADDING + containerWidth + GAP
-
     if hasLabel then
         Controls.AddRowChrome(row, {
+            rowWidth = rowWidth,
+            baseHeight = rowHeight,
             label = label,
             padLeft = PADDING,
             description = description,
-            reserve = CONTROL_RESERVE,
-            measureReserve = PADDING + CONTROL_RESERVE,
+            controlReserve = PADDING + containerWidth + GAP,
             dimColor = { dimR, dimG, dimB },
         })
     end
@@ -95,7 +90,7 @@ function Controls:CreateMultiToggleRow(options)
     local containerHeight = MINI_LABEL_HEIGHT + MINI_LABEL_GAP + CONTROL_HEIGHT
     local container = CreateFrame("Frame", nil, row)
     container:SetSize(containerWidth, containerHeight)
-    container:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
+    Controls.AnchorCluster(row, container, { x = -PADDING, band = rowHeight })
     row._container = container
 
     local CreateMiniToggle = Controls._CreateMiniToggle
