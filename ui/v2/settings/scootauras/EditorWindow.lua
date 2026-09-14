@@ -835,7 +835,6 @@ local MISSING_OPACITY_PAGE = {
             inputWidth = 40,
             minLabel = "Hidden",
             maxLabel = "100%",
-            noBottomBorder = true,
             get = function() return ctx.get("missingVisualOpacity") or 100 end,
             set = function(v) ctx.setAndApply("missingVisualOpacity", v) end,
         })

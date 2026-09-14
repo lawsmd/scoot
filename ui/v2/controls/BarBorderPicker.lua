@@ -619,14 +619,6 @@ function Controls:CreateBarBorderSelector(options)
     hoverBg:Hide()
     row._hoverBg = hoverBg
 
-    -- Row border (subtle line below)
-    local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
-    rowBorder:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-    rowBorder:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-    rowBorder:SetHeight(1)
-    rowBorder:SetColorTexture(ar, ag, ab, 0.2)
-    row._rowBorder = rowBorder
-
     -- Label text (left side)
     local labelFS = row:CreateFontString(nil, "OVERLAY")
     local labelFont = theme:GetFont("LABEL")
@@ -808,7 +800,6 @@ function Controls:CreateBarBorderSelector(options)
     local subscribeKey = "BarBorderSelector_" .. tostring(row)
     theme:Subscribe(subscribeKey, function(r, g, b)
         labelFS:SetTextColor(r, g, b, 1)
-        rowBorder:SetColorTexture(r, g, b, 0.2)
         hoverBg:SetColorTexture(r, g, b, 0.08)
         arrowText:SetTextColor(r, g, b, 0.8)
         for _, tex in pairs(selBorder) do

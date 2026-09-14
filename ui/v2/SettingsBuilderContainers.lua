@@ -46,6 +46,8 @@ function Builder:AddCollapsibleSection(options)
         return self
     end
 
+    self:_FlushRowDivider()
+
     if #self._controls > 0 or #self._sections > 0 then
         self._currentY = self._currentY - self._itemSpacing
     end
@@ -162,6 +164,8 @@ function Builder:AddTabbedSection(options)
         end
         return self
     end
+
+    self:_FlushRowDivider()
 
     if #self._controls > 0 or #self._sections > 0 then
         self._currentY = self._currentY - self._itemSpacing

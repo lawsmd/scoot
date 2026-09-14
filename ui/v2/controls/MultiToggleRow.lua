@@ -64,7 +64,6 @@ function Controls:CreateMultiToggleRow(options)
     local count = #toggleDefs
     local containerWidth = count * MINI_TOGGLE_WIDTH + (count - 1) * GAP
 
-    local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB
     if useLightDim then
         dimR, dimG, dimB = theme:GetDimTextLightColor()
@@ -76,13 +75,6 @@ function Controls:CreateMultiToggleRow(options)
     row:SetHeight(rowHeight)
 
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
-
-    local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
-    rowBorder:SetPoint("BOTTOMLEFT", 0, 0)
-    rowBorder:SetPoint("BOTTOMRIGHT", 0, 0)
-    rowBorder:SetHeight(1)
-    rowBorder:SetColorTexture(ar, ag, ab, 0.2)
-    row._rowBorder = rowBorder
 
     -- Static reservation for the control column. It holds even if the deferred
     -- measurement never gets a width to work with, which is what keeps the
@@ -168,7 +160,6 @@ function Controls:CreateMultiToggleRow(options)
 
     theme:Subscribe(subscribeKey, function(r, g, b)
         if row._label then row._label:SetTextColor(r, g, b, 1) end
-        if row._rowBorder then row._rowBorder:SetColorTexture(r, g, b, 0.2) end
         for _, toggle in ipairs(row._toggles) do
             if toggle._updateVisual then toggle._updateVisual() end
         end

@@ -414,12 +414,6 @@ local function CreateRenderer(viewer)
                     iconBg:SetAllPoints()
                     iconBg:SetColorTexture(0, 0, 0, 0.6)
 
-                    local bottomBorder = row:CreateTexture(nil, "BORDER", nil, -1)
-                    bottomBorder:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-                    bottomBorder:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-                    bottomBorder:SetHeight(1)
-                    bottomBorder:SetColorTexture(ar, ag, ab, 0.2)
-
                     contentFrame:HookScript("OnShow", function() startAnimations() end)
                     contentFrame:HookScript("OnHide", function() stopAnimations() end)
                     if contentFrame:IsShown() then

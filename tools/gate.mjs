@@ -81,6 +81,8 @@ const PATTERNS = [
     hint: 'Layout and style numbers live in the active skin: Controls.Metrics() for metrics, Theme:GetFontRole for font sizes. A new file-local constant is drift; rows ratchet down as files convert.' },
   { name: 'skin-font', re: /:SetFont\(/, only: 'ui/v2/', except: ['ui/v2/Theme.lua', 'ui/v2/controls/Utils.lua'],
     hint: 'Panel text takes face and size from a font role: Theme:ApplyFont(fs, role) or Theme:GetFontRole(role).' },
+  { name: 'hand-divider', re: /_rowBorder\s*=[^=]/, only: 'ui/v2/', except: ['ui/v2/SettingsBuilder.lua'],
+    hint: 'The divider under a settings row is builder-drawn in _PlaceRow; a row opts out with noBottomBorder. An emphasized left accent bar is not a divider, mark it.' },
   // Comment hygiene: the greps the vibes pass runs.
   { name: 'doc-ref', re: /ADDONCONTEXT|[a-z0-9_&-]+\.md\b|wow-ui-source/i, except: [],
     hint: 'Shipped code names no internal doc, doc path, or reference tree.' },

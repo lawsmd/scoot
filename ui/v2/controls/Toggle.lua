@@ -19,7 +19,6 @@ end
 local BORDER_WIDTH = 2
 local TOGGLE_HEIGHT = 36
 local TOGGLE_HEIGHT_WITH_DESC = 60  -- Increased for better description spacing
-local TOGGLE_BORDER = 1
 local TOGGLE_INDICATOR_WIDTH = 60
 local TOGGLE_INDICATOR_HEIGHT = 22
 local TOGGLE_PADDING = 12
@@ -86,17 +85,16 @@ function Controls:CreateToggle(options)
     -- Row hover background (hidden by default)
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Row border (subtle line below only, plus left accent border for emphasized)
-    local rowSides = { "BOTTOM" }
+    -- The divider under a row is builder-drawn; the row keeps only the
+    -- emphasized left accent bar.
     if emphasized and leftBorderWidth > 0 then
-        table.insert(rowSides, "LEFT")
+        -- Kept off builder divider: left accent bar, not a row divider.
+        row._rowBorder = Controls.CreateBorder(row, {
+            sides = { "LEFT" },
+            thickness = { LEFT = leftBorderWidth },
+            alpha = 1,
+        })
     end
-    row._rowBorder = Controls.CreateBorder(row, {
-        sides = rowSides,
-        thickness = { BOTTOM = TOGGLE_BORDER, LEFT = leftBorderWidth },
-        alpha = 0.2,
-        sideAlphas = { LEFT = 1 },
-    })
 
     if emphasized and leftBorderWidth > 0 then
         -- Faint background highlight for emphasized

@@ -68,9 +68,6 @@ function Controls:CreateColorPicker(options)
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Row bottom border
-    row._rowBorder = Controls.CreateBorder(row, { sides = {"BOTTOM"}, alpha = 0.2 })
-
     -- Label and description
     local labelFS = Controls.AddRowChrome(row, {
         label = label,

@@ -148,14 +148,6 @@ function Controls:CreateDualSlider(options)
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Row border (subtle line below)
-    local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
-    rowBorder:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-    rowBorder:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-    rowBorder:SetHeight(1)
-    rowBorder:SetColorTexture(ar, ag, ab, 0.2)
-    row._rowBorder = rowBorder
-
     -- Calculate vertical offset for label positioning (center vertically)
     local labelYOffset = 0
 
@@ -701,10 +693,6 @@ function Controls:CreateDualSlider(options)
         -- Update label
         if row._label then
             row._label:SetTextColor(r, g, b, 1)
-        end
-        -- Update row border
-        if row._rowBorder then
-            row._rowBorder:SetColorTexture(r, g, b, 0.2)
         end
         -- Update both mini sliders
         for _, miniSlider in ipairs({row._sliderA, row._sliderB}) do

@@ -90,6 +90,7 @@ function Builder:Clear()
     -- Reset position
     self._currentY = -self._firstItemOffset
     self._inSection = false
+    self._pendingDividerRow = nil
 
     return self
 end
@@ -108,6 +109,13 @@ end
 --
 -- _AttachInfoIcon: an info icon beside the control's label, registered for
 -- cleanup. Runs after _PlaceRow; it reads no layout state.
+--
+-- _FlushRowDivider: the builder owns row dividers. A row's divider is drawn
+-- only when further content follows it: _PlaceRow, AddDescription, AddLabel,
+-- and the section containers flush the pending row; AddSection and Finalize
+-- do not, so the last row of a page, section, or tab never gets one. A row
+-- placed with noBottomBorder opts out. The divider is a texture on the row
+-- itself, so it moves with row growth and releases with the row in Clear.
 --------------------------------------------------------------------------------
 
 function Builder:_ScanRecord(entryType, label, description)
@@ -122,9 +130,24 @@ function Builder:_ScanRecord(entryType, label, description)
     return true
 end
 
+function Builder:_FlushRowDivider()
+    local prev = self._pendingDividerRow
+    self._pendingDividerRow = nil
+    if not prev or prev._noDividerAfter then return end
+    local m = Controls.Metrics()
+    local divider = prev:CreateTexture(nil, "BORDER", nil, -1)
+    divider:SetHeight(m.dividerThickness)
+    divider:SetPoint("BOTTOMLEFT", prev, "BOTTOMLEFT", 0, 0)
+    divider:SetPoint("BOTTOMRIGHT", prev, "BOTTOMRIGHT", 0, 0)
+    Controls.RegisterThemedFill(divider, m.dividerAlpha)
+    prev._divider = divider
+end
+
 function Builder:_PlaceRow(ctl, options)
     if not ctl then return end
     local scrollContent = self._scrollContent
+
+    self:_FlushRowDivider()
 
     if #self._controls > 0 then
         local spacing = options.emphasized and (self._itemSpacing + 4) or self._itemSpacing
@@ -143,6 +166,11 @@ function Builder:_PlaceRow(ctl, options)
     end
 
     self._currentY = self._currentY - ctl:GetHeight()
+
+    if options.noBottomBorder then
+        ctl._noDividerAfter = true
+    end
+    self._pendingDividerRow = ctl
 
     if self._parentCollapsible then
         local parentCollapsible = self._parentCollapsible
@@ -184,6 +212,10 @@ function Builder:AddSection(title, options)
     options = options or {}
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
+
+    -- A section header separates on its own; the previous section's last row
+    -- gets no divider.
+    self._pendingDividerRow = nil
 
     -- Add spacing before section (unless it's the first item)
     if self._inSection or #self._controls > 0 then
@@ -253,6 +285,8 @@ function Builder:AddDescription(text, options)
     options = options or {}
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
+
+    self:_FlushRowDivider()
 
     if #self._controls > 0 or #self._sections > 0 then
         self._currentY = self._currentY - self._itemSpacing
@@ -324,6 +358,8 @@ end
 function Builder:AddLabel(text)
     local scrollContent = self._scrollContent
     if not scrollContent then return self end
+
+    self:_FlushRowDivider()
 
     if #self._controls > 0 or #self._sections > 0 then
         self._currentY = self._currentY - self._itemSpacing

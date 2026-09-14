@@ -201,14 +201,6 @@ function Controls:CreateSelectorToggleRow(options)
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Row border (bottom line)
-    local rowBorder = row:CreateTexture(nil, "BORDER", nil, -1)
-    rowBorder:SetPoint("BOTTOMLEFT", 0, 0)
-    rowBorder:SetPoint("BOTTOMRIGHT", 0, 0)
-    rowBorder:SetHeight(1)
-    rowBorder:SetColorTexture(ar, ag, ab, 0.2)
-    row._rowBorder = rowBorder
-
     -- Label text (left side)
     local labelFS
     if hasLabel then
@@ -312,7 +304,6 @@ function Controls:CreateSelectorToggleRow(options)
 
     theme:Subscribe(subscribeKey, function(r, g, b)
         if row._label then row._label:SetTextColor(r, g, b, 1) end
-        if row._rowBorder then row._rowBorder:SetColorTexture(r, g, b, 0.2) end
         if row._toggleLabelFS then row._toggleLabelFS:SetTextColor(r, g, b, 0.5) end
 
         -- Update mini-selector

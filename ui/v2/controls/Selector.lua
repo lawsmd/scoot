@@ -66,7 +66,6 @@ function Controls:CreateSelector(options)
     -- edge (for description-less selectors; the description anchors to the
     -- label and would follow it rightward).
     local labelAlign = options.labelAlign
-    local noBottomBorder = options.noBottomBorder
     -- sizeScale scales the whole control (fonts, field height, arrows, row
     -- height). Field width stays the caller's `width`. Not supported together
     -- with description or emphasized rows.
@@ -116,19 +115,17 @@ function Controls:CreateSelector(options)
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Row border (subtle line below, plus left accent border for emphasized)
+    -- The divider under a row is builder-drawn; the row keeps only the
+    -- emphasized left accent bar.
     row._emphasized = emphasized
-    local rowSides = { "BOTTOM" }
     if emphasized and leftBorderWidth > 0 then
-        table.insert(rowSides, "LEFT")
+        -- Kept off builder divider: left accent bar, not a row divider.
+        row._rowBorder = Controls.CreateBorder(row, {
+            sides = { "LEFT" },
+            thickness = { LEFT = leftBorderWidth },
+            alpha = 1,
+        })
     end
-    row._rowBorder = Controls.CreateBorder(row, {
-        sides = rowSides,
-        thickness = { BOTTOM = 1, LEFT = leftBorderWidth },
-        alpha = 0.2,
-        sideAlphas = { LEFT = 1 },
-    })
-    if noBottomBorder then row._rowBorder.BOTTOM:Hide() end
 
     if emphasized and leftBorderWidth > 0 then
         -- Faint background highlight for emphasized

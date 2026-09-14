@@ -58,7 +58,7 @@ end
 --   key         : Optional unique key for dynamic updates (SetLabel, SetOptions)
 --   emphasized  : Optional boolean for "Hero" styling (master controls)
 --   labelAlign  : "field" right-aligns the label against the field's left edge
---   noBottomBorder : Optional boolean to hide the 1px row bottom border
+--   noBottomBorder : Optional boolean to skip the builder-drawn divider under the row
 --   sizeScale   : Optional factor scaling the whole control (fonts, heights);
 --                 not supported together with description or emphasized
 --   gear        : Optional in-field gear button opening a sub-options fly-out.
@@ -87,7 +87,6 @@ function Builder:AddSelector(options)
         useLightDim = self._useLightDim,
         emphasized = options.emphasized,
         labelAlign = options.labelAlign,
-        noBottomBorder = options.noBottomBorder,
         sizeScale = options.sizeScale,
         disabled = options.disabled,
         isDisabled = options.isDisabled,
@@ -525,7 +524,6 @@ function Builder:AddPreview(options)
         shapeDrain = options.shapeDrain,
         iconSwipe = options.iconSwipe,
         iconSwipeBackdropAlpha = options.iconSwipeBackdropAlpha,
-        noBottomBorder = options.noBottomBorder,
         noHover = options.noHover,
         noLabel = options.noLabel,
         timerEpoch = options.timerEpoch,

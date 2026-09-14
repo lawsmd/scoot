@@ -19,7 +19,6 @@ end
 local BORDER_WIDTH = 2
 local TOGGLE_HEIGHT = 36
 local TOGGLE_HEIGHT_WITH_DESC = 60
-local TOGGLE_BORDER = 1
 local TOGGLE_INDICATOR_WIDTH = 60
 local TOGGLE_INDICATOR_HEIGHT = 22
 local TOGGLE_PADDING = 12
@@ -71,13 +70,6 @@ function Controls:CreateToggleColorPicker(options)
 
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
-
-    -- Row bottom border
-    row._rowBorder = Controls.CreateBorder(row, {
-        sides = {"BOTTOM"},
-        thickness = TOGGLE_BORDER,
-        alpha = 0.2,
-    })
 
     -- Label and description
     local labelFS = Controls.AddRowChrome(row, {

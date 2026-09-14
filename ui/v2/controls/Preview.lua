@@ -24,7 +24,6 @@ local PREVIEW_ICON_DISPLAY_SIZE = 36
 local PREVIEW_BAR_DISPLAY_MAX_WIDTH = 280
 local PREVIEW_BAR_DISPLAY_MAX_HEIGHT = 40
 local PREVIEW_PADDING = 12
-local PREVIEW_BORDER = 1
 local ICON_TEXCOORD_INSET = 0.07
 local PREVIEW_MIN_FONT_SIZE = 6
 local CA_TEXT_MAX_SIZE = 36
@@ -142,7 +141,7 @@ end
 --                            icon desaturated beneath, the same icon in full color as a
 --                            Cooldown swipe that recedes clockwise, on the same cycle.
 --   iconSwipeBackdropAlpha number/nil  Alpha of the desaturated icon under the swipe.
---   noBottomBorder  bool     Skip the divider line under the row.
+--   noBottomBorder  bool     Read by SettingsBuilder: skips the divider under the row.
 --   noHover         bool     Skip the accent hover highlight on the row.
 --   noLabel         bool     Skip the "Preview:" label (caller draws its own).
 --   fillFraction    number/nil  Hold the bar at this fraction instead of running the
@@ -244,15 +243,6 @@ function Controls:CreatePreview(options)
         row:SetScript("OnEnter", function(self) self._hoverBg:Show() end)
         row:SetScript("OnLeave", function(self) self._hoverBg:Hide() end)
     end
-
-    -- Bottom border
-    local bottomBorder = row:CreateTexture(nil, "BORDER", nil, -1)
-    bottomBorder:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-    bottomBorder:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-    bottomBorder:SetHeight(PREVIEW_BORDER)
-    bottomBorder:SetColorTexture(ar, ag, ab, 0.2)
-    row._bottomBorder = bottomBorder
-    if options.noBottomBorder then bottomBorder:Hide() end
 
     -- "Preview:" label (left side)
     if not options.noLabel then
@@ -1057,9 +1047,6 @@ function Controls:CreatePreview(options)
     row._subscribeKey = subscribeKey
 
     theme:Subscribe(subscribeKey, function(r, g, b)
-        if row._bottomBorder then
-            row._bottomBorder:SetColorTexture(r, g, b, 0.2)
-        end
         if row._previewLabel then
             row._previewLabel:SetTextColor(r, g, b, 1)
         end

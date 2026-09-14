@@ -96,7 +96,6 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
             values = { LEFT = "Left of Bar", RIGHT = "Right of Bar" },
             order = { "LEFT", "RIGHT" },
             width = 180,
-            noBottomBorder = true,
             get = function() return ctx.get("barIconSide") or "LEFT" end,
             set = function(v) ctx.setAndApply("barIconSide", v) ctx.refreshPreview() end,
         })
@@ -106,7 +105,6 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
             min = 0, max = 30, step = 1,
             width = 100,
             inputWidth = 40,
-            noBottomBorder = true,
             get = function() return ctx.get("barIconGap") or 2 end,
             set = function(v) ctx.setAndApply("barIconGap", v) ctx.refreshPreview() end,
         })

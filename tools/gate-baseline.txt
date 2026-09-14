@@ -105,6 +105,9 @@ first-person	core/fontpair.lua	1
 first-person	core/secretsafe.lua	2
 first-person	core/smallfixes.lua	1
 first-person	ui/v2/settings/cdm/CustomGroupsTab.lua	2
+hand-divider	ui/v2/controls/Selector.lua	1
+hand-divider	ui/v2/controls/Toggle.lua	1
+hand-divider	ui/v2/groupframes/AuraTrackingRenderer.lua	1
 hide-hook	core/chat.lua	2
 hide-hook	core/components/actionbars.lua	1
 hide-hook	core/components/cooldowns/trackedbars/init.lua	3
@@ -143,7 +146,7 @@ metric-constant	ui/v2/controls/IconPicker.lua	11
 metric-constant	ui/v2/controls/InfoIcon.lua	8
 metric-constant	ui/v2/controls/MultiLineEditBox.lua	8
 metric-constant	ui/v2/controls/MultiToggleRow.lua	8
-metric-constant	ui/v2/controls/Preview.lua	14
+metric-constant	ui/v2/controls/Preview.lua	13
 metric-constant	ui/v2/controls/RankSelector.lua	8
 metric-constant	ui/v2/controls/Selector.lua	13
 metric-constant	ui/v2/controls/SelectorColorPicker.lua	10
@@ -153,12 +156,12 @@ metric-constant	ui/v2/controls/SingleLineEditBox.lua	6
 metric-constant	ui/v2/controls/Slider.lua	17
 metric-constant	ui/v2/controls/Tabbed.lua	11
 metric-constant	ui/v2/controls/ThreeColumnChecklist.lua	5
-metric-constant	ui/v2/controls/Toggle.lua	15
-metric-constant	ui/v2/controls/ToggleColorPicker.lua	11
+metric-constant	ui/v2/controls/Toggle.lua	14
+metric-constant	ui/v2/controls/ToggleColorPicker.lua	10
 metric-constant	ui/v2/controls/ToggleSliderRow.lua	14
 metric-constant	ui/v2/controls/Utils.lua	4
 metric-constant	ui/v2/editmode/Dialog.lua	12
-metric-constant	ui/v2/editmode/Mirror.lua	6
+metric-constant	ui/v2/editmode/Mirror.lua	9
 metric-constant	ui/v2/editmode/Tooltip.lua	5
 metric-constant	ui/v2/groupframes/AuraTrackingRenderer.lua	7
 metric-constant	ui/v2/reports/GroupAnalysisPanel.lua	18

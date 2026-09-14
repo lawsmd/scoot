@@ -266,7 +266,6 @@ local function EnsureLayoutControls()
         values = GROW_LABELS,
         order = GROW_ORDER,
         width = 130,
-        noBottomBorder = true,
         get = function()
             local group = CurrentGroup()
             return (group and group.settings and group.settings.grow) or "RIGHT"

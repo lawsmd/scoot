@@ -519,6 +519,7 @@ function AuraTrackingUI.Render(panel, scrollContent)
         key = "classSelector",
         label = "",
         emphasized = true,
+        noBottomBorder = true,
         values = selectorValues,
         order = selectorOrder,
         width = 400,
@@ -544,13 +545,8 @@ function AuraTrackingUI.Render(panel, scrollContent)
         if selectorRow._label then
             selectorRow._label:Hide()
         end
-        if selectorRow._rowBorder then
-            if selectorRow._rowBorder.LEFT then
-                selectorRow._rowBorder.LEFT:Hide()
-            end
-            if selectorRow._rowBorder.BOTTOM then
-                selectorRow._rowBorder.BOTTOM:Hide()
-            end
+        if selectorRow._rowBorder and selectorRow._rowBorder.LEFT then
+            selectorRow._rowBorder.LEFT:Hide()
         end
         if selectorRow._emphBg then
             selectorRow._emphBg:Hide()
