@@ -1,12 +1,16 @@
-# Claude Code
-.claude/
+# Local-only, Syncthing-synced context (never committed, never released)
+/docs/
+/CLAUDE.md
+/.claude/
+/.stfolder/
+/.stignore
+/.stversions/
 
-# WoW AddOn build artifacts
-*_retail_/Cache/**
-*_retail_/Logs/**
-*.log
+# OS and editor
 .DS_Store
 Thumbs.db
+*.log
+*.bak
 
 # No binaries in repo
 *.zip
@@ -15,6 +19,3 @@ Thumbs.db
 *.icns
 *.slug
 *.slugo
-
-# Ignore game data mirror, keep addon
-!/_retail_/Interface/AddOns/Scoot/**
