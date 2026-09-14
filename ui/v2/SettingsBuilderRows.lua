@@ -7,8 +7,6 @@ local Builder = addon.UI.SettingsBuilder
 local Theme = addon.UI.Theme
 local Controls = addon.UI.Controls
 
-local CONTENT_PADDING = Builder._CONTENT_PADDING
-
 --------------------------------------------------------------------------------
 -- AddToggle: Add a toggle (boolean) setting
 --------------------------------------------------------------------------------
@@ -419,7 +417,7 @@ function Builder:AddTextInput(options)
         placeholder = options.placeholder,
         maxLetters = options.maxLetters,
         text = options.get and options.get() or "",
-        width = scrollContent:GetWidth() - (CONTENT_PADDING * 2),
+        width = scrollContent:GetWidth() - (self._contentPadding * 2),
     })
 
     if textInput then
@@ -438,8 +436,8 @@ function Builder:AddTextInput(options)
             local descFS = scrollContent:CreateFontString(nil, "OVERLAY")
             local fontPath = Theme:GetFont("VALUE")
             descFS:SetFont(fontPath, 11, "")
-            descFS:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING + 2, self._currentY)
-            descFS:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+            descFS:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", self._contentPadding + 2, self._currentY)
+            descFS:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -self._contentPadding, self._currentY)
             descFS:SetText(options.description)
             descFS:SetJustifyH("LEFT")
             descFS:SetWordWrap(true)
@@ -479,7 +477,7 @@ function Builder:AddMultiLineEditBox(options)
         placeholder = options.placeholder,
         height = options.height or 120,
         text = options.get and options.get() or "",
-        width = scrollContent:GetWidth() - (CONTENT_PADDING * 2),
+        width = scrollContent:GetWidth() - (self._contentPadding * 2),
     })
 
     if editBox then

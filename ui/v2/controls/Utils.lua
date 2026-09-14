@@ -73,20 +73,17 @@ local function GetTheme()
     return Theme
 end
 
--- Background z-stack. The three sublevels are load-bearing: base fill below,
--- emphasis/secondary fill above it, hover fill on top.
-Controls.SUBLEVEL_BG    = -8
-Controls.SUBLEVEL_FILL  = -7
-Controls.SUBLEVEL_HOVER = -6
+-- The background z-stack (SUBLEVEL_BG, SUBLEVEL_FILL, SUBLEVEL_HOVER) and the
+-- house alphas (ALPHA_HOVER, ALPHA_EMPHASIS, ALPHA_SELECTED,
+-- BORDER_ALPHA_NORMAL, BORDER_ALPHA_FOCUS) are pushed onto Controls by
+-- Skin.SetActive from the active skin's metrics. The three sublevels are
+-- load-bearing: base fill below, emphasis/secondary fill above it, hover fill
+-- on top.
 
--- House alpha conventions for accent-tinted fills.
-Controls.ALPHA_HOVER    = 0.08
-Controls.ALPHA_EMPHASIS = 0.03
-Controls.ALPHA_SELECTED = 0.12
-
--- House alpha conventions for borders on focusable controls.
-Controls.BORDER_ALPHA_NORMAL = 0.6
-Controls.BORDER_ALPHA_FOCUS  = 1.0
+-- Layout and style numbers for controls come from the active skin.
+function Controls.Metrics()
+    return addon.UI.Skin.Metrics()
+end
 
 -- Per-border state lives here, keyed by the border object, so pairs(border)
 -- yields only edge textures. External code iterates _border tables directly

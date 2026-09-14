@@ -20,63 +20,15 @@ Theme.ACCENT_MODE_CUSTOM = "custom"
 Theme.ACCENT_MODE_CLASS = "class"
 Theme.DEFAULT_ACCENT_MODE = Theme.ACCENT_MODE_CUSTOM
 
--- Kept off Theme accent: contrast floor. The six constants below are the near
--- black and the greys the accent is read against; they are what makes a dark
--- accent legible, so they cannot move with it.
+-- The palette (DEFAULT_ACCENT, BACKGROUND, BACKGROUND_SOLID, TEXT_PRIMARY,
+-- TEXT_DIM, TEXT_DIM_LIGHT, COLLAPSIBLE_BG), the Fonts and Textures tables,
+-- the font roles behind GetFontRole, and BORDER_WIDTH are pushed onto this
+-- table by Skin.SetActive from the active skin. This file owns the accessors;
+-- the values live in the skin.
 
--- Background colors (semi-transparent for layered effect with noise overlay)
-Theme.BACKGROUND = { r = 0.004, g = 0.004, b = 0.006, a = 0.96 }
-Theme.BACKGROUND_SOLID = { r = 0.004, g = 0.004, b = 0.006, a = 0.99 }
-
--- Text colors
-Theme.TEXT_PRIMARY = { r = 1, g = 1, b = 1, a = 1 }
-Theme.TEXT_DIM = { r = 0.6, g = 0.6, b = 0.6, a = 1 }
-Theme.TEXT_DIM_LIGHT = { r = 0.75, g = 0.75, b = 0.75, a = 1 }  -- Lighter for use on gray backgrounds
-
--- Collapsible section background (subtle gray for visual distinction)
-Theme.COLLAPSIBLE_BG = { r = 0.12, g = 0.12, b = 0.14, a = 1 }
-
--- Border settings (glow disabled until proper texture assets are created)
-Theme.BORDER_WIDTH = 3  -- Slightly thicker for visibility
+-- Glow settings (glow disabled until proper texture assets are created)
 Theme.GLOW_ALPHA = 0.35  -- Reserved for future use
 Theme.GLOW_WIDTH = 6     -- Reserved for future use
-
---------------------------------------------------------------------------------
--- Font Registration (JetBrains Mono)
---------------------------------------------------------------------------------
-
-local FONT_BASE = "Interface\\AddOns\\Scoot\\media\\fonts\\"
-
--- Register JetBrains Mono in addon.Fonts alongside existing fonts
--- NOTE: Font files must be bundled in media/fonts/
-addon.Fonts = addon.Fonts or {}
-addon.Fonts.JETBRAINS_REG = FONT_BASE .. "JetBrainsMono-Regular.ttf"
-addon.Fonts.JETBRAINS_MED = FONT_BASE .. "JetBrainsMono-Medium.ttf"
-addon.Fonts.JETBRAINS_BOLD = FONT_BASE .. "JetBrainsMono-Bold.ttf"
-
--- UI font references
-Theme.Fonts = {
-    LABEL = addon.Fonts.JETBRAINS_MED,
-    VALUE = addon.Fonts.JETBRAINS_REG,
-    HEADER = addon.Fonts.JETBRAINS_BOLD,
-    BUTTON = addon.Fonts.JETBRAINS_MED,
-    -- Fallback to Roboto if JetBrains not available
-    PROPORTIONAL = addon.Fonts.ROBOTO_REG or FONT_BASE .. "Roboto-Regular.ttf",
-    -- Heavier proportional face for text read against the game world rather
-    -- than a panel background.
-    PROPORTIONAL_MED = addon.Fonts.ROBOTO_MED or FONT_BASE .. "Roboto-Medium.ttf",
-}
-
---------------------------------------------------------------------------------
--- Texture paths
---------------------------------------------------------------------------------
-
-Theme.Textures = {
-    NOISE_OVERLAY = "Interface\\AddOns\\Scoot\\media\\textures\\noise-overlay",
-    SCOOT_ICON    = "Interface\\AddOns\\Scoot\\ScootIcon",
-    -- Same logo with the black backdrop keyed out, for surfaces that are not black.
-    SCOOT_ICON_TRANSPARENT = "Interface\\AddOns\\Scoot\\ScootIconTransparent",
-}
 
 --------------------------------------------------------------------------------
 -- Pub/Sub System for Accent Color Changes
@@ -313,6 +265,33 @@ function Theme:GetFont(fontType)
     return "Fonts\\FRIZQT__.TTF"
 end
 
+-- The active skin supplies { path, size } per font role (label, value, desc,
+-- header, button, miniLabel, proportional, proportionalMed). GetFontRole
+-- resolves the path through the same existence fallback as GetFont and
+-- returns the role's size beside it.
+function Theme:GetFontRole(role)
+    local roles = self._fontRoles
+    local entry = roles and roles[role]
+    local path = entry and entry.path
+    if not (path and FontExists(path)) then
+        local prop = roles and roles.proportional and roles.proportional.path
+        if prop and FontExists(prop) then
+            path = prop
+        else
+            path = "Fonts\\FRIZQT__.TTF"
+        end
+    end
+    return path, (entry and entry.size) or 12
+end
+
+-- The one place a panel font face and size are applied together. A size
+-- argument overrides the role's size; color stays with the caller.
+function Theme:ApplyFont(fontString, role, size)
+    if not fontString or not fontString.SetFont then return end
+    local path, roleSize = self:GetFontRole(role)
+    pcall(fontString.SetFont, fontString, path, size or roleSize, "")
+end
+
 -- Apply label font (accent-colored monospace)
 function Theme:ApplyLabelFont(fontString, size)
     if not fontString or not fontString.SetFont then return end
@@ -375,120 +354,5 @@ function Theme:Initialize()
     -- Nothing special needed yet; accent color defaults are handled via AceDB
 end
 
---------------------------------------------------------------------------------
--- Setting Patterns: Reusable relationships between settings
---------------------------------------------------------------------------------
--- Centralized definitions for common setting dependencies across the addon.
--- Use these patterns instead of one-off helper functions in renderers.
---
--- Usage in renderers:
---   local Patterns = addon.UI.SettingPatterns
---   local values, order = Patterns.Orientation.getDirectionOptions(currentOrientation)
---   local label = Patterns.Orientation.getColumnsLabel(currentOrientation)
---------------------------------------------------------------------------------
-
-addon.UI.SettingPatterns = {}
-local Patterns = addon.UI.SettingPatterns
-
---------------------------------------------------------------------------------
--- Orientation-Dependent Patterns
---------------------------------------------------------------------------------
--- Many Edit Mode systems have orientation (H/V) that affects:
---   - Available direction options (Left/Right vs Up/Down)
---   - Label text for columns/rows settings
---   - Description text
--- Used by: Essential Cooldowns, Utility Cooldowns, Tracked Buffs, Action Bars, etc.
-
-Patterns.Orientation = {}
-
--- Get direction selector options based on orientation
--- @param orientation: "H" (horizontal) or "V" (vertical)
--- @return values (table), order (array)
-function Patterns.Orientation.getDirectionOptions(orientation)
-    if orientation == "V" then
-        return { up = "Up", down = "Down" }, { "down", "up" }
-    else
-        return { left = "Left", right = "Right" }, { "right", "left" }
-    end
-end
-
--- Get default direction value for an orientation
--- @param orientation: "H" or "V"
--- @return default direction key
-function Patterns.Orientation.getDefaultDirection(orientation)
-    if orientation == "V" then
-        return "down"
-    else
-        return "right"
-    end
-end
-
--- Get columns/rows label based on orientation
--- @param orientation: "H" or "V"
--- @return label string
-function Patterns.Orientation.getColumnsLabel(orientation)
-    if orientation == "V" then
-        return "# Rows"
-    else
-        return "# Columns"
-    end
-end
-
--- Get columns/rows description based on orientation
--- @param orientation: "H" or "V"
--- @return description string
-function Patterns.Orientation.getColumnsDescription(orientation)
-    if orientation == "V" then
-        return "Number of icons per column before wrapping to the next column."
-    else
-        return "Number of icons per row before wrapping to the next row."
-    end
-end
-
---------------------------------------------------------------------------------
--- Visibility-Dependent Patterns
---------------------------------------------------------------------------------
--- Some components have visibility modes that affect available sub-options.
--- Used by: Various component visibility settings
-
-Patterns.Visibility = {}
-
--- Standard visibility mode options
-function Patterns.Visibility.getModeOptions()
-    return {
-        always = "Always Show",
-        combat = "Only in Combat",
-        nocombat = "Only Out of Combat",
-        never = "Never Show",
-    }, { "always", "combat", "nocombat", "never" }
-end
-
---------------------------------------------------------------------------------
--- Growth Direction Patterns (for icon wrap behavior)
---------------------------------------------------------------------------------
--- Icon wrap direction options that depend on primary direction
--- Used by: Cooldown viewers, buff frames
-
-Patterns.IconWrap = {}
-
--- Get wrap direction options based on primary direction
--- @param primaryDirection: "left", "right", "up", or "down"
--- @return values (table), order (array)
-function Patterns.IconWrap.getWrapOptions(primaryDirection)
-    if primaryDirection == "left" or primaryDirection == "right" then
-        -- Horizontal primary → vertical wrap options
-        return { up = "Up", down = "Down" }, { "down", "up" }
-    else
-        -- Vertical primary → horizontal wrap options
-        return { left = "Left", right = "Right" }, { "right", "left" }
-    end
-end
-
--- Get default wrap direction based on primary direction
-function Patterns.IconWrap.getDefaultWrap(primaryDirection)
-    if primaryDirection == "left" or primaryDirection == "right" then
-        return "down"
-    else
-        return "right"
-    end
-end
+-- Setting patterns (reusable relationships between settings) live in
+-- SettingPatterns.lua on addon.UI.SettingPatterns.

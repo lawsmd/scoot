@@ -33,7 +33,8 @@ const SKIP_AT_ROOT = new Set(['libs', '.git', 'tools'])
 const LUACHECK_CODES = /\((E\d+|W11[123])\)/
 
 // Each pattern guards one shared module. `except` lists the files that own the
-// module; a hit there is the module itself.
+// module; a hit there is the module itself. `only` restricts a pattern to
+// paths under one prefix.
 const COMPOSITES = ['ui/v2/SettingsBuilder.lua', 'ui/v2/SettingsBuilderRows.lua', 'ui/v2/SettingsBuilderCompactRows.lua', 'ui/v2/settings/BuilderComposites.lua']
 const PATTERNS = [
   { name: 'event-frame', re: /:RegisterEvent\(|SetScript\("OnEvent"/, except: ['core/events.lua'],
@@ -76,6 +77,10 @@ const PATTERNS = [
     hint: 'FontString lookup is UFT._FindFontStringByNameHint, redraw is UFT._ForceTextRedraw, and text anchor baselines belong to the UnitFrameText pipeline; a copy with different capture semantics stays hand-rolled, mark it.' },
   { name: 'frame-path', re: /^(?!\s*--).*FrameContent(Main|Contextual)/, except: ['core/frames.lua'],
     hint: 'A FrameContentMain or FrameContentContextual child resolves through an addon.Frames resolver in core/frames.lua; a whole-line comment documenting a path is exempt.' },
+  { name: 'metric-constant', re: /^\s*local\s+[A-Z][A-Z0-9_]*\s*=\s*-?[0-9.]/, only: 'ui/v2/', except: [],
+    hint: 'Layout and style numbers live in the active skin: Controls.Metrics() for metrics, Theme:GetFontRole for font sizes. A new file-local constant is drift; rows ratchet down as files convert.' },
+  { name: 'skin-font', re: /:SetFont\(/, only: 'ui/v2/', except: ['ui/v2/Theme.lua', 'ui/v2/controls/Utils.lua'],
+    hint: 'Panel text takes face and size from a font role: Theme:ApplyFont(fs, role) or Theme:GetFontRole(role).' },
   // Comment hygiene: the greps the vibes pass runs.
   { name: 'doc-ref', re: /ADDONCONTEXT|[a-z0-9_&-]+\.md\b|wow-ui-source/i, except: [],
     hint: 'Shipped code names no internal doc, doc path, or reference tree.' },
@@ -122,6 +127,7 @@ function scan (files) {
     const lines = text.split(/\r?\n/)
     for (const p of PATTERNS) {
       if (p.except.includes(path)) continue
+      if (p.only && !path.startsWith(p.only)) continue
       let n = 0
       for (const line of lines) if (p.re.test(line)) n++
       if (n) counts.set(`${p.name}\t${path}`, n)

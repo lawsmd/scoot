@@ -14,18 +14,12 @@ Builder._scanRendererKey = nil
 Builder._scanSectionStack = {}
 
 --------------------------------------------------------------------------------
--- Constants
+-- Spacing
 --------------------------------------------------------------------------------
-
-local SECTION_HEADER_HEIGHT = 32
-local SECTION_SPACING = 16          -- Space before a section header
-local ITEM_SPACING = 12             -- Space between controls
-local CONTENT_PADDING = 8           -- Padding from edges
-local FIRST_ITEM_OFFSET = 8         -- Initial offset from top
-
--- Shared with the files that attach further methods to this table.
-Builder._ITEM_SPACING = ITEM_SPACING
-Builder._CONTENT_PADDING = CONTENT_PADDING
+-- The page-spine spacing (item spacing, content padding, section spacing and
+-- header height, first-item offset) comes from the active skin's metrics,
+-- read once per instance in CreateFor. A page rebuild creates fresh builders,
+-- so a skin switch reaches every page through the re-render.
 
 --------------------------------------------------------------------------------
 -- Builder Instance Methods
@@ -45,9 +39,15 @@ Builder._CONTENT_PADDING = CONTENT_PADDING
 --------------------------------------------------------------------------------
 
 function Builder:CreateFor(scrollContent)
+    local m = Controls.Metrics()
     local instance = {
         _scrollContent = scrollContent,
-        _currentY = -FIRST_ITEM_OFFSET,
+        _itemSpacing = m.itemSpacing,
+        _contentPadding = m.contentPadding,
+        _sectionSpacing = m.sectionSpacing,
+        _sectionHeaderHeight = m.sectionHeaderHeight,
+        _firstItemOffset = m.firstItemOffset,
+        _currentY = -m.firstItemOffset,
         _controls = {},         -- Track created controls for cleanup
         _controlsByKey = {},    -- Track controls by key for dynamic updates
         _sections = {},         -- Track section headers
@@ -88,7 +88,7 @@ function Builder:Clear()
     self._sections = {}
 
     -- Reset position
-    self._currentY = -FIRST_ITEM_OFFSET
+    self._currentY = -self._firstItemOffset
     self._inSection = false
 
     return self
@@ -127,12 +127,12 @@ function Builder:_PlaceRow(ctl, options)
     local scrollContent = self._scrollContent
 
     if #self._controls > 0 then
-        local spacing = options.emphasized and (ITEM_SPACING + 4) or ITEM_SPACING
+        local spacing = options.emphasized and (self._itemSpacing + 4) or self._itemSpacing
         self._currentY = self._currentY - spacing
     end
 
-    ctl:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-    ctl:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+    ctl:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", self._contentPadding, self._currentY)
+    ctl:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -self._contentPadding, self._currentY)
 
     table.insert(self._controls, ctl)
     ctl._searchLabel = options.label
@@ -187,11 +187,11 @@ function Builder:AddSection(title, options)
 
     -- Add spacing before section (unless it's the first item)
     if self._inSection or #self._controls > 0 then
-        self._currentY = self._currentY - SECTION_SPACING
+        self._currentY = self._currentY - self._sectionSpacing
     end
 
     local header = CreateFrame("Frame", nil, scrollContent)
-    header:SetHeight(SECTION_HEADER_HEIGHT)
+    header:SetHeight(self._sectionHeaderHeight)
     header:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 0, self._currentY)
     header:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", 0, self._currentY)
 
@@ -203,7 +203,7 @@ function Builder:AddSection(title, options)
     local titleFS = header:CreateFontString(nil, "OVERLAY")
     local fontPath = Theme:GetFont("HEADER")
     titleFS:SetFont(fontPath, 14, "")
-    titleFS:SetPoint("LEFT", header, "LEFT", CONTENT_PADDING, 0)
+    titleFS:SetPoint("LEFT", header, "LEFT", self._contentPadding, 0)
     titleFS:SetText(prefix .. " " .. (title or "Section"))
     titleFS:SetTextColor(ar, ag, ab, 1)
     header._title = titleFS
@@ -212,7 +212,7 @@ function Builder:AddSection(title, options)
     local line = header:CreateTexture(nil, "BORDER")
     line:SetHeight(1)
     line:SetPoint("LEFT", titleFS, "RIGHT", 8, 0)
-    line:SetPoint("RIGHT", header, "RIGHT", -CONTENT_PADDING, 0)
+    line:SetPoint("RIGHT", header, "RIGHT", -self._contentPadding, 0)
     line:SetColorTexture(ar, ag, ab, 0.3)
     header._line = line
 
@@ -235,7 +235,7 @@ function Builder:AddSection(title, options)
 
     table.insert(self._sections, header)
 
-    self._currentY = self._currentY - SECTION_HEADER_HEIGHT
+    self._currentY = self._currentY - self._sectionHeaderHeight
     self._inSection = true
 
     return self
@@ -255,15 +255,15 @@ function Builder:AddDescription(text, options)
     if not scrollContent then return self end
 
     if #self._controls > 0 or #self._sections > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
+        self._currentY = self._currentY - self._itemSpacing
     end
     if options.topPadding then
         self._currentY = self._currentY - options.topPadding
     end
 
     local frame = CreateFrame("Frame", nil, scrollContent)
-    frame:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-    frame:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+    frame:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", self._contentPadding, self._currentY)
+    frame:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -self._contentPadding, self._currentY)
 
     local descFS = frame:CreateFontString(nil, "OVERLAY")
     local fontPath = Theme:GetFont("VALUE")
@@ -326,12 +326,12 @@ function Builder:AddLabel(text)
     if not scrollContent then return self end
 
     if #self._controls > 0 or #self._sections > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
+        self._currentY = self._currentY - self._itemSpacing
     end
 
     local frame = CreateFrame("Frame", nil, scrollContent)
-    frame:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-    frame:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+    frame:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", self._contentPadding, self._currentY)
+    frame:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -self._contentPadding, self._currentY)
 
     local labelFS = frame:CreateFontString(nil, "OVERLAY")
     local fontPath = Theme:GetFont("VALUE")
@@ -375,7 +375,7 @@ function Builder:Finalize()
     if not scrollContent then return self end
 
     -- Add bottom padding
-    local totalHeight = math.abs(self._currentY) + CONTENT_PADDING
+    local totalHeight = math.abs(self._currentY) + self._contentPadding
 
     -- Set scroll content height
     scrollContent:SetHeight(totalHeight)

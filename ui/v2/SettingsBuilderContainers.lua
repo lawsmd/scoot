@@ -7,9 +7,6 @@ local addonName, addon = ...
 local Builder = addon.UI.SettingsBuilder
 local Controls = addon.UI.Controls
 
-local ITEM_SPACING = Builder._ITEM_SPACING
-local CONTENT_PADDING = Builder._CONTENT_PADDING
-
 --------------------------------------------------------------------------------
 -- AddCollapsibleSection: Add an expandable/collapsible section
 --------------------------------------------------------------------------------
@@ -50,7 +47,7 @@ function Builder:AddCollapsibleSection(options)
     end
 
     if #self._controls > 0 or #self._sections > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
+        self._currentY = self._currentY - self._itemSpacing
     end
 
     -- Store reference to onRefresh callback if set
@@ -81,8 +78,8 @@ function Builder:AddCollapsibleSection(options)
     -- Store outer refresh callback on section for dynamic height updates from nested controls
     section._outerOnRefresh = onRefresh
 
-    section:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-    section:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+    section:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", self._contentPadding, self._currentY)
+    section:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -self._contentPadding, self._currentY)
 
     table.insert(self._controls, section)
 
@@ -167,7 +164,7 @@ function Builder:AddTabbedSection(options)
     end
 
     if #self._controls > 0 or #self._sections > 0 then
-        self._currentY = self._currentY - ITEM_SPACING
+        self._currentY = self._currentY - self._itemSpacing
     end
 
     -- Store reference to onRefresh callback if set
@@ -198,8 +195,8 @@ function Builder:AddTabbedSection(options)
 
     if not section then return self end
 
-    section:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, self._currentY)
-    section:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, self._currentY)
+    section:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", self._contentPadding, self._currentY)
+    section:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -self._contentPadding, self._currentY)
 
     table.insert(self._controls, section)
 
@@ -250,7 +247,7 @@ function Builder:AddTabbedSection(options)
     self._currentY = self._currentY - sectionHeight
 
     -- Add gap after section
-    self._currentY = self._currentY - ITEM_SPACING
+    self._currentY = self._currentY - self._itemSpacing
 
     -- If inside a collapsible, set up dynamic height updates
     -- This must be done AFTER _currentY is updated to capture the correct initial height
