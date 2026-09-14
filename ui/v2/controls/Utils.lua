@@ -417,13 +417,119 @@ local LABEL_LINE_HEIGHT = 16      -- Approximate label height
 local DESC_PADDING_TOP = 2        -- Space between label and description
 local DESC_PADDING_BOTTOM = 36    -- Space below description to border
 
--- Label, description, and deferred height measurement for a settings row.
--- Writes row._label, row._description, and row._measureDesc onto the row and
--- calls row._onHeightChanged on growth; SettingsBuilder, Navigation, and the
--- search jump all read those fields, so they stay on the frame. Returns the
--- label and description FontStrings.
+-- Reapplies every cluster anchor against the row's current height. Called by
+-- the chrome measure after a height change, so clusters stay centered in the
+-- top band while the description extends the row downward.
+local function ApplyClusterAnchors(row)
+    local anchors = row._clusterAnchors
+    if not anchors then return end
+    local h = row:GetHeight() or 0
+    for _, a in ipairs(anchors) do
+        local yOff = 0
+        if h > a.band then yOff = (h - a.band) / 2 end
+        a.frame:SetPoint(a.point, row, a.point, a.x, yOff + a.y)
+    end
+end
+
+-- Anchors a control cluster centered in the row's top band, so the cluster
+-- stays level with the label instead of floating mid-description. The anchor
+-- is reapplied whenever the chrome measure changes the row height.
 --
--- opts:
+-- opts: point (default "RIGHT"), x (default -rowPadding), y (extra offset,
+--       default 0), band (default the row's base height from AddRowChrome)
+function Controls.AnchorCluster(row, frame, opts)
+    opts = opts or {}
+    local m = Controls.Metrics()
+    row._clusterAnchors = row._clusterAnchors or {}
+    table.insert(row._clusterAnchors, {
+        frame = frame,
+        point = opts.point or "RIGHT",
+        x = (opts.x ~= nil) and opts.x or -m.rowPadding,
+        y = opts.y or 0,
+        band = opts.band or row._clusterBand or m.rowHeight,
+    })
+    ApplyClusterAnchors(row)
+end
+
+-- The width-driven layout path: the caller passes the definite row width, the
+-- label anchors at the top so growth extends downward only, the description
+-- wraps against an explicit width, and the row height is set before the
+-- function returns. row._measureDesc re-runs the measure (font-load edge);
+-- it may shrink as well as grow and reapplies the cluster anchors.
+local function AddRowChromeV2(row, opts)
+    local theme = GetTheme()
+    local m = Controls.Metrics()
+    local hasDesc = opts.description and opts.description ~= ""
+    local padLeft = opts.padLeft or m.rowPadding
+    local baseHeight = opts.baseHeight or m.rowHeight
+    row._clusterBand = opts.band or baseHeight
+
+    local labelFS = row:CreateFontString(nil, "OVERLAY")
+    theme:ApplyFont(labelFS, "label", opts.labelFontSize)
+    labelFS:SetText(opts.label)
+    labelFS:SetTextColor(theme:GetAccentColor())
+    row._label = labelFS
+
+    if not hasDesc then
+        labelFS:SetPoint("LEFT", row, "LEFT", padLeft, 0)
+        row:SetHeight(baseHeight)
+        return labelFS, nil
+    end
+
+    labelFS:SetPoint("TOPLEFT", row, "TOPLEFT", padLeft, -m.labelTopPad)
+
+    local controlReserve = opts.controlReserve or 0
+    local descTop = m.labelTopPad + m.labelLineHeight + m.descGap
+    local descFS = row:CreateFontString(nil, "OVERLAY")
+    theme:ApplyFont(descFS, "desc", opts.descFontSize)
+    descFS:SetPoint("TOPLEFT", row, "TOPLEFT", padLeft, -descTop)
+    descFS:SetText(opts.description)
+    local dim = opts.dimColor
+    if dim then
+        descFS:SetTextColor(dim[1], dim[2], dim[3], 1)
+    end
+    descFS:SetJustifyH("LEFT")
+    descFS:SetWordWrap(true)
+    row._description = descFS
+
+    local function Measure()
+        local wrapWidth = opts.rowWidth - padLeft - controlReserve
+        if wrapWidth <= 0 then return false end
+        descFS:SetWidth(wrapWidth)
+        local textHeight = descFS:GetStringHeight() or 0
+        local required = descTop + textHeight + m.descPadBottom
+        local newHeight = math.min(math.max(baseHeight, required), m.maxRowHeight)
+        local current = row:GetHeight() or 0
+        if math.abs(newHeight - current) > 0.5 then
+            row:SetHeight(newHeight)
+            ApplyClusterAnchors(row)
+            if row._onHeightChanged then
+                row._onHeightChanged(newHeight - current)
+            end
+        end
+        return true
+    end
+    row._measureDesc = Measure
+    Measure()
+    return labelFS, descFS
+end
+
+-- Label, description, and height measurement for a settings row. Writes
+-- row._label, row._description, and row._measureDesc onto the row and calls
+-- row._onHeightChanged on a height change; SettingsBuilder, Navigation, and
+-- the search jump all read those fields, so they stay on the frame. Returns
+-- the label and description FontStrings.
+--
+-- Two contracts share the name. With opts.rowWidth the v2 path above runs:
+--   rowWidth        the definite row width (required for the v2 path)
+--   controlReserve  width kept clear of the description for the control
+--                   cluster, one number for both the wrap and the anchor
+--   baseHeight      minimum row height (default metrics rowHeight)
+--   band            cluster band for AnchorCluster (default baseHeight)
+--   label, labelFontSize, padLeft, description, descFontSize, dimColor as below
+--
+-- Without rowWidth the legacy path runs, deferred measure and all; it phases
+-- out as the remaining row controls convert:
 --   label          label text
 --   labelFontSize  default 13
 --   labelYOffset   label y offset (default 6 with a description, else 0)
@@ -440,6 +546,9 @@ local DESC_PADDING_BOTTOM = 36    -- Space below description to border
 --                  the wrap width (default reserve + padLeft)
 --   dimColor       {r,g,b} for the description text
 function Controls.AddRowChrome(row, opts)
+    if opts.rowWidth then
+        return AddRowChromeV2(row, opts)
+    end
     local theme = GetTheme()
     local hasDesc = opts.description and opts.description ~= ""
     local padLeft = opts.padLeft or 12

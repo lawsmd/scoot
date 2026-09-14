@@ -353,22 +353,16 @@ function CBZSettings.Render(panel, scrollContent)
     ----------------------------------------------------------------------------
     -- Unit selector
     ----------------------------------------------------------------------------
-    local sel, selHeight = CreateUnitSelector(scrollContent, builder)
-    sel:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 12, -8)
-    sel:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -12, -8)
-    table.insert(builder._controls, sel)
-    builder._currentY = -8 - selHeight - 8
+    local sel = CreateUnitSelector(scrollContent, builder)
+    builder:PlaceCustom(sel, { inset = 12, gapAfter = 8 })
 
     ----------------------------------------------------------------------------
     -- Preview
     ----------------------------------------------------------------------------
     if CBZ._comp then
-        local pane, ph = CreatePreviewPane(scrollContent, builder)
+        local pane = CreatePreviewPane(scrollContent, builder)
         if pane then
-            pane:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 12, builder._currentY)
-            pane:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -12, builder._currentY)
-            table.insert(builder._controls, pane)
-            builder._currentY = builder._currentY - ph - 8
+            builder:PlaceCustom(pane, { gapBefore = 0, inset = 12, gapAfter = 8 })
         end
     end
 

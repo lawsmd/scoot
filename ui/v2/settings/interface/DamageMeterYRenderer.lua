@@ -604,19 +604,13 @@ function DMYSettings.Render(panel, scrollContent)
 
     -- Window Selector
     local ws = CreateWindowSelector(scrollContent, builder)
-    ws:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 12, -8)
-    ws:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -12, -8)
-    table.insert(builder._controls, ws)
-    builder._currentY = -8 - 28 - 8
+    builder:PlaceCustom(ws, { inset = 12, gapAfter = 8 })
 
     -- Preview Pane
     if comp then
-        local pp, ph = CreatePreviewPane(scrollContent, comp, selectedWindow, builder)
+        local pp = CreatePreviewPane(scrollContent, comp, selectedWindow, builder)
         if pp then
-            pp:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 12, builder._currentY)
-            pp:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -12, builder._currentY)
-            table.insert(builder._controls, pp)
-            builder._currentY = builder._currentY - ph - 8
+            builder:PlaceCustom(pp, { gapBefore = 0, inset = 12, gapAfter = 8 })
         end
     end
 

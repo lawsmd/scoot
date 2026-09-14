@@ -28,6 +28,7 @@ function Builder:AddToggle(options)
 
     local toggle = Controls:CreateToggle({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         get = options.get,
@@ -77,6 +78,7 @@ function Builder:AddSelector(options)
 
     local selector = Controls:CreateSelector({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         values = options.values,
@@ -132,6 +134,7 @@ function Builder:AddSlider(options)
 
     local slider = Controls:CreateSlider({
         parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
         label = options.label,
         description = options.description,
         emphasized = options.emphasized,
@@ -187,6 +190,7 @@ function Builder:AddFontSelector(options)
         get = options.get,
         set = options.set,
         width = options.width,
+        suppressTokens = options.suppressTokens,
         useLightDim = self._useLightDim,
     })
 
@@ -219,6 +223,7 @@ function Builder:AddBarTextureSelector(options)
         get = options.get,
         set = options.set,
         width = options.width,
+        suppressTokens = options.suppressTokens,
         useLightDim = self._useLightDim,
     })
 

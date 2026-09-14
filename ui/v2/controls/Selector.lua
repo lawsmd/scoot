@@ -73,8 +73,15 @@ function Controls:CreateSelector(options)
     local function sc(v) return math.floor(v * S + 0.5) end
 
     local hasDesc = description and description ~= ""
+    local rowWidth = options.rowWidth
+
+    -- Width-driven rows take the base height from the metrics; the chrome
+    -- measure grows description rows synchronously. Direct callers without a
+    -- rowWidth keep the fixed height table until they convert.
     local rowHeight
-    if emphasized then
+    if rowWidth then
+        rowHeight = emphasized and sc(EMPHASIZED_ROW_HEIGHT) or sc(Controls.Metrics().rowHeight)
+    elseif emphasized then
         rowHeight = hasDesc and EMPHASIZED_ROW_HEIGHT_WITH_DESC or sc(EMPHASIZED_ROW_HEIGHT)
     else
         rowHeight = hasDesc and SELECTOR_ROW_HEIGHT_WITH_DESC or sc(SELECTOR_ROW_HEIGHT)
@@ -140,22 +147,43 @@ function Controls:CreateSelector(options)
     local labelLeftPad = sc(SELECTOR_PADDING) + leftBorderWidth
 
     -- Label and description
-    local labelFS = Controls.AddRowChrome(row, {
-        label = label,
-        labelFontSize = labelFontSize,
-        labelYOffset = hasDesc and (emphasized and 12 or 6) or 0,
-        padLeft = labelLeftPad,
-        description = description,
-        descFontSize = emphasized and 12 or 11,
-        padAbove = emphasized and DESC_PADDING_TOP_EMPH or DESC_PADDING_TOP,
-        reserve = selectorWidth + SELECTOR_PADDING * 2,
-        dimColor = { dimR, dimG, dimB },
-    })
+    local chromeOpts
+    if rowWidth then
+        chromeOpts = {
+            rowWidth = rowWidth,
+            baseHeight = rowHeight,
+            label = label,
+            labelFontSize = (emphasized or S ~= 1) and labelFontSize or nil,
+            padLeft = labelLeftPad,
+            description = description,
+            descFontSize = emphasized and 12 or nil,
+            controlReserve = selectorWidth + sc(SELECTOR_PADDING) * 2,
+            dimColor = { dimR, dimG, dimB },
+        }
+    else
+        chromeOpts = {
+            label = label,
+            labelFontSize = labelFontSize,
+            labelYOffset = hasDesc and (emphasized and 12 or 6) or 0,
+            padLeft = labelLeftPad,
+            description = description,
+            descFontSize = emphasized and 12 or 11,
+            padAbove = emphasized and DESC_PADDING_TOP_EMPH or DESC_PADDING_TOP,
+            reserve = selectorWidth + SELECTOR_PADDING * 2,
+            dimColor = { dimR, dimG, dimB },
+        }
+    end
+    local labelFS = Controls.AddRowChrome(row, chromeOpts)
 
-    -- Selector container (right side)
+    -- Selector container (right side, centered in the top band on
+    -- width-driven rows)
     local selector = CreateFrame("Frame", nil, row)
     selector:SetSize(selectorWidth, sc(SELECTOR_HEIGHT))
-    selector:SetPoint("RIGHT", row, "RIGHT", -sc(SELECTOR_PADDING), 0)
+    if rowWidth then
+        Controls.AnchorCluster(row, selector, { x = -sc(SELECTOR_PADDING) })
+    else
+        selector:SetPoint("RIGHT", row, "RIGHT", -sc(SELECTOR_PADDING), 0)
+    end
 
     if labelAlign == "field" then
         labelFS:ClearAllPoints()

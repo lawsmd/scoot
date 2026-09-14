@@ -354,7 +354,7 @@ local function CreateCustomGroupRenderer(groupIndex)
 
                 inner:AddDescription("Priority System", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
                 inner:AddDescription("In Combat > With Target > Out of Combat. Only the highest active condition applies. "
-                    .. modeWord .. " competes with the result \226\128\148 whichever is the stronger dim takes effect.", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
+                    .. modeWord .. " competes with the result \226\128\148 whichever is the stronger dim takes effect.", { color = {1, 0.82, 0} })
 
                 -- Mode selector: On Cooldown vs Off Cooldown
                 inner:AddSelector({

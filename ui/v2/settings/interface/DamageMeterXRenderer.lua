@@ -649,13 +649,7 @@ function DamageMetersX.Render(panel, scrollContent)
                     syncEditModeSetting("showSpecIcon")
                     -- Refresh all controls in this section to update disabled states
                     C_Timer.After(0, function()
-                        if inner and inner._controls then
-                            for _, control in ipairs(inner._controls) do
-                                if control and control.Refresh then
-                                    pcall(control.Refresh, control)
-                                end
-                            end
-                        end
+                        if inner then inner:RefreshControls() end
                     end)
                 end,
             })

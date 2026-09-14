@@ -128,7 +128,7 @@ metric-constant	ui/v2/Navigation.lua	14
 metric-constant	ui/v2/SettingsBuilderContainers.lua	2
 metric-constant	ui/v2/Window.lua	2
 metric-constant	ui/v2/controls/BarBorderPicker.lua	19
-metric-constant	ui/v2/controls/BarTexturePicker.lua	15
+metric-constant	ui/v2/controls/BarTexturePicker.lua	19
 metric-constant	ui/v2/controls/Button.lua	3
 metric-constant	ui/v2/controls/Collapsible.lua	6
 metric-constant	ui/v2/controls/ColorPicker.lua	6
@@ -139,7 +139,7 @@ metric-constant	ui/v2/controls/DualSelector.lua	13
 metric-constant	ui/v2/controls/DualSlider.lua	16
 metric-constant	ui/v2/controls/Flyout.lua	15
 metric-constant	ui/v2/controls/FlyoutColorPicker.lua	13
-metric-constant	ui/v2/controls/FontPicker.lua	7
+metric-constant	ui/v2/controls/FontPicker.lua	11
 metric-constant	ui/v2/controls/FontSelector.lua	6
 metric-constant	ui/v2/controls/GlyphButton.lua	1
 metric-constant	ui/v2/controls/IconPicker.lua	11
@@ -203,7 +203,7 @@ skin-font	ui/v2/Navigation.lua	1
 skin-font	ui/v2/SettingsBuilder.lua	3
 skin-font	ui/v2/SettingsBuilderRows.lua	1
 skin-font	ui/v2/controls/BarBorderPicker.lua	7
-skin-font	ui/v2/controls/BarTexturePicker.lua	5
+skin-font	ui/v2/controls/BarTexturePicker.lua	6
 skin-font	ui/v2/controls/Button.lua	1
 skin-font	ui/v2/controls/Collapsible.lua	2
 skin-font	ui/v2/controls/Dialog.lua	7

@@ -553,8 +553,8 @@ function Helpers.AddDruidFormsFlyout(builder, options)
         flyout:Toggle()
     end)
 
-    table.insert(builder._controls, druidBtn)
-    table.insert(builder._controls, flyout)
+    builder:Adopt(druidBtn)
+    builder:Adopt(flyout)
 end
 
 --------------------------------------------------------------------------------

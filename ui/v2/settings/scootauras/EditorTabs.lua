@@ -84,14 +84,15 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
     end
 
     if isBar and ctx.get("barShowIcon") then
-        -- The bar is the anchor; these place the icon beside it. One row,
-        -- half a width each, standalone controls spliced into the builder
-        -- flow (the shape-row idiom). Show Icon rebuilds the tab, so the row
-        -- is simply absent while the icon is off.
+        -- The bar is the anchor; these place the icon beside it. One wrapper
+        -- row, half a width each, placed through the builder so it takes the
+        -- builder-drawn divider. Show Icon rebuilds the tab, so the row is
+        -- simply absent while the icon is off.
         local content = tabBuilder._scrollContent
         local Controls = addon.UI.Controls
+        local rowWrap = CreateFrame("Frame", nil, content)
         local sideSel = Controls:CreateSelector({
-            parent = content,
+            parent = rowWrap,
             label = "Icon Position",
             values = { LEFT = "Left of Bar", RIGHT = "Right of Bar" },
             order = { "LEFT", "RIGHT" },
@@ -100,7 +101,7 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
             set = function(v) ctx.setAndApply("barIconSide", v) ctx.refreshPreview() end,
         })
         local gapSlider = Controls:CreateSlider({
-            parent = content,
+            parent = rowWrap,
             label = "Bar/Icon Gap",
             min = 0, max = 30, step = 1,
             width = 100,
@@ -108,29 +109,17 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
             get = function() return ctx.get("barIconGap") or 2 end,
             set = function(v) ctx.setAndApply("barIconGap", v) ctx.refreshPreview() end,
         })
-        if #tabBuilder._controls > 0 then
-            tabBuilder._currentY = tabBuilder._currentY - 12
-        end
-        local y = tabBuilder._currentY
-        sideSel:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
-        sideSel:SetPoint("TOPRIGHT", content, "TOP", -8, y)
-        gapSlider:SetPoint("TOPLEFT", content, "TOP", 8, y)
-        gapSlider:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
-        table.insert(tabBuilder._controls, sideSel)
-        table.insert(tabBuilder._controls, gapSlider)
+        sideSel:SetPoint("TOPLEFT", rowWrap, "TOPLEFT", 0, 0)
+        sideSel:SetPoint("TOPRIGHT", rowWrap, "TOP", -8, 0)
+        gapSlider:SetPoint("TOPLEFT", rowWrap, "TOP", 8, 0)
+        gapSlider:SetPoint("TOPRIGHT", rowWrap, "TOPRIGHT", 0, 0)
+        -- The wrapper carries clearance under the controls, so the divider
+        -- the builder draws at its bottom edge keeps its distance.
         local rowH = math.max(sideSel:GetHeight() or 36, gapSlider:GetHeight() or 36)
-        -- One full-width divider under the whole row with clearance, replacing
-        -- the controls' own per-half bottom borders (suppressed above, which
-        -- left a tight line under the slider half only). Parented to the
-        -- selector row so Builder:Clear takes it along on tab rebuilds.
-        local theme = addon.UI.Theme
-        local dr, dg, db2 = theme:GetAccentColor()
-        local divider = sideSel:CreateTexture(nil, "BORDER", nil, -1)
-        divider:SetHeight(1)
-        divider:SetColorTexture(dr, dg, db2, 0.2)
-        divider:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - rowH - 10)
-        divider:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y - rowH - 10)
-        tabBuilder._currentY = y - rowH - 11
+        rowWrap:SetHeight(rowH + 10)
+        tabBuilder:PlaceCustom(rowWrap, { fullBleed = true, dividerAfter = true })
+        tabBuilder:Adopt(sideSel)
+        tabBuilder:Adopt(gapSlider)
     end
 
     local function iconControlsDisabled()
@@ -643,14 +632,7 @@ end
 
 -- Splices a bespoke row into the builder's flow.
 local function SpliceRow(tabBuilder, row)
-    local content = tabBuilder._scrollContent
-    if #tabBuilder._controls > 0 then
-        tabBuilder._currentY = tabBuilder._currentY - 12
-    end
-    row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, tabBuilder._currentY)
-    row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, tabBuilder._currentY)
-    table.insert(tabBuilder._controls, row)
-    tabBuilder._currentY = tabBuilder._currentY - row:GetHeight()
+    tabBuilder:PlaceCustom(row, { fullBleed = true })
 end
 
 function Tabs.BuildShapeTab(tabBuilder, ctx)

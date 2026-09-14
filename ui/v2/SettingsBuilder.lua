@@ -38,8 +38,15 @@ Builder._scanSectionStack = {}
 --   builder:Finalize()
 --------------------------------------------------------------------------------
 
-function Builder:CreateFor(scrollContent)
+-- opts.availWidth: the content frame's width when the caller knows it better
+-- than the frame does (containers pass the inset child width). Rows anchor at
+-- the content padding on both edges, so _rowWidth is what a row control may
+-- claim as its definite width; 0 when no width is known, and the row controls
+-- then fall back to their deferred measure.
+function Builder:CreateFor(scrollContent, opts)
     local m = Controls.Metrics()
+    local availWidth = (opts and opts.availWidth)
+        or (scrollContent and scrollContent:GetWidth()) or 0
     local instance = {
         _scrollContent = scrollContent,
         _itemSpacing = m.itemSpacing,
@@ -48,9 +55,12 @@ function Builder:CreateFor(scrollContent)
         _sectionHeaderHeight = m.sectionHeaderHeight,
         _firstItemOffset = m.firstItemOffset,
         _currentY = -m.firstItemOffset,
+        _availWidth = availWidth,
+        _rowWidth = math.max(0, availWidth - 2 * m.contentPadding),
         _controls = {},         -- Track created controls for cleanup
         _controlsByKey = {},    -- Track controls by key for dynamic updates
         _sections = {},         -- Track section headers
+        _placed = {},           -- Vertical layout records for Relayout
         _inSection = false,     -- Currently inside a section?
         _useLightDim = false,   -- Use lighter dim text (for collapsible section interiors)
         _parentCollapsible = nil, -- Reference to parent collapsible section (if inside one)
@@ -86,6 +96,7 @@ function Builder:Clear()
 
     releaseFrames(self._sections)
     self._sections = {}
+    self._placed = {}
 
     -- Reset position
     self._currentY = -self._firstItemOffset
@@ -130,6 +141,83 @@ function Builder:_ScanRecord(entryType, label, description)
     return true
 end
 
+-- Records one vertically placed frame for Relayout. gapAfter may be a number
+-- or a function returning one (a collapsible's trailing gap depends on its
+-- expanded state at relayout time).
+function Builder:_Record(frame, gapBefore, xLeft, xRight, gapAfter)
+    table.insert(self._placed, {
+        frame = frame,
+        gapBefore = gapBefore or 0,
+        xLeft = xLeft or 0,
+        xRight = xRight or 0,
+        gapAfter = gapAfter,
+    })
+end
+
+-- Re-walks the placed records and recomputes every Y from current frame
+-- heights, then updates the content height. The gaps were recorded as they
+-- were applied at build time, so a relayout with unchanged heights is a
+-- no-op. Coalesce bursts through _MarkDirty.
+function Builder:Relayout()
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+    local y = -self._firstItemOffset
+    for _, item in ipairs(self._placed) do
+        if not item.frame then
+            y = y - item.gapBefore
+        else
+            y = y - item.gapBefore
+            item.frame:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", item.xLeft, y)
+            item.frame:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", item.xRight, y)
+            y = y - (item.frame:GetHeight() or 0)
+            local gapAfter = item.gapAfter
+            if type(gapAfter) == "function" then gapAfter = gapAfter() end
+            y = y - (gapAfter or 0)
+        end
+    end
+    self._currentY = y
+    if self._finalHeight then
+        self._finalHeight = math.abs(y) + self._contentPadding
+        scrollContent:SetHeight(self._finalHeight)
+    end
+    return self
+end
+
+function Builder:_MarkDirty()
+    if self._relayoutScheduled then return end
+    self._relayoutScheduled = true
+    C_Timer.After(0, function()
+        self._relayoutScheduled = nil
+        self:Relayout()
+        -- A nested builder's growth changes its section's height, so the
+        -- outer builder reflows the rows below the section.
+        if self._parentBuilder then
+            self._parentBuilder:_MarkDirty()
+        end
+    end)
+end
+
+-- Font-load edge: a face that loads after first render wraps at a different
+-- height. One deferred pass re-runs every placed row's measure; a change
+-- reflows the page. Finalize and the section containers schedule it, so
+-- nested builders are covered at any depth.
+function Builder:_ScheduleRemeasure()
+    C_Timer.After(0, function()
+        local changed = false
+        for _, item in ipairs(self._placed) do
+            local f = item.frame
+            if f and f._measureDesc then
+                local before = f:GetHeight() or 0
+                f._measureDesc()
+                if math.abs((f:GetHeight() or 0) - before) > 0.5 then
+                    changed = true
+                end
+            end
+        end
+        if changed then self:Relayout() end
+    end)
+end
+
 function Builder:_FlushRowDivider()
     local prev = self._pendingDividerRow
     self._pendingDividerRow = nil
@@ -149,8 +237,9 @@ function Builder:_PlaceRow(ctl, options)
 
     self:_FlushRowDivider()
 
+    local spacing = 0
     if #self._controls > 0 then
-        local spacing = options.emphasized and (self._itemSpacing + 4) or self._itemSpacing
+        spacing = options.emphasized and (self._itemSpacing + 4) or self._itemSpacing
         self._currentY = self._currentY - spacing
     end
 
@@ -171,12 +260,18 @@ function Builder:_PlaceRow(ctl, options)
         ctl._noDividerAfter = true
     end
     self._pendingDividerRow = ctl
+    self:_Record(ctl, spacing, self._contentPadding, -self._contentPadding)
 
-    if self._parentCollapsible then
-        local parentCollapsible = self._parentCollapsible
-        ctl._onHeightChanged = function(delta)
+    -- A late height change (the deferred measure of a legacy row, a font that
+    -- loads after first render) bumps the parent collapsible by its delta and
+    -- reflows the rows below on the next frame.
+    local parentCollapsible = self._parentCollapsible
+    local builder = self
+    ctl._onHeightChanged = function(delta)
+        if parentCollapsible then
             parentCollapsible:SetContentHeight(parentCollapsible._contentHeight + delta)
         end
+        builder:_MarkDirty()
     end
 end
 
@@ -218,8 +313,10 @@ function Builder:AddSection(title, options)
     self._pendingDividerRow = nil
 
     -- Add spacing before section (unless it's the first item)
+    local spacing = 0
     if self._inSection or #self._controls > 0 then
-        self._currentY = self._currentY - self._sectionSpacing
+        spacing = self._sectionSpacing
+        self._currentY = self._currentY - spacing
     end
 
     local header = CreateFrame("Frame", nil, scrollContent)
@@ -266,6 +363,7 @@ function Builder:AddSection(title, options)
     end
 
     table.insert(self._sections, header)
+    self:_Record(header, spacing, 0, 0)
 
     self._currentY = self._currentY - self._sectionHeaderHeight
     self._inSection = true
@@ -288,12 +386,14 @@ function Builder:AddDescription(text, options)
 
     self:_FlushRowDivider()
 
+    local gapBefore = 0
     if #self._controls > 0 or #self._sections > 0 then
-        self._currentY = self._currentY - self._itemSpacing
+        gapBefore = self._itemSpacing
     end
     if options.topPadding then
-        self._currentY = self._currentY - options.topPadding
+        gapBefore = gapBefore + options.topPadding
     end
+    self._currentY = self._currentY - gapBefore
 
     local frame = CreateFrame("Frame", nil, scrollContent)
     frame:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", self._contentPadding, self._currentY)
@@ -303,7 +403,6 @@ function Builder:AddDescription(text, options)
     local fontPath = Theme:GetFont("VALUE")
     descFS:SetFont(fontPath, options.fontSize or 12, "")
     descFS:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    descFS:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     descFS:SetText(text or "")
     descFS:SetJustifyH("LEFT")
     descFS:SetWordWrap(true)
@@ -326,19 +425,26 @@ function Builder:AddDescription(text, options)
 
     frame._text = descFS
 
-    -- Calculate height based on text
-    C_Timer.After(0, function()
-        if descFS and frame then
-            local textHeight = descFS:GetStringHeight() or 16
-            frame:SetHeight(textHeight + 4)
-        end
-    end)
-
-    -- Initial height estimate (will be corrected)
-    local estimatedHeight = math.ceil((string.len(text or "") / 80) + 1) * 14
-    frame:SetHeight(math.max(16, estimatedHeight))
+    -- Wrap against the known row width and set the height before returning.
+    -- Without a known width (a caller-built content frame that is not sized
+    -- yet), fall back to an estimate corrected on the next frame.
+    if self._rowWidth and self._rowWidth > 0 then
+        descFS:SetWidth(self._rowWidth)
+        frame:SetHeight((descFS:GetStringHeight() or 16) + 4)
+    else
+        local estimatedHeight = math.ceil((string.len(text or "") / 80) + 1) * 14
+        frame:SetHeight(math.max(16, estimatedHeight))
+        C_Timer.After(0, function()
+            if descFS and frame then
+                local w = frame:GetWidth() or 0
+                if w > 0 then descFS:SetWidth(w) end
+                frame:SetHeight((descFS:GetStringHeight() or 16) + 4)
+            end
+        end)
+    end
 
     table.insert(self._controls, frame)
+    self:_Record(frame, gapBefore, self._contentPadding, -self._contentPadding, options.bottomPadding)
 
     self._currentY = self._currentY - frame:GetHeight()
     if options.bottomPadding then
@@ -361,9 +467,11 @@ function Builder:AddLabel(text)
 
     self:_FlushRowDivider()
 
+    local gapBefore = 0
     if #self._controls > 0 or #self._sections > 0 then
-        self._currentY = self._currentY - self._itemSpacing
+        gapBefore = self._itemSpacing
     end
+    self._currentY = self._currentY - gapBefore
 
     local frame = CreateFrame("Frame", nil, scrollContent)
     frame:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", self._contentPadding, self._currentY)
@@ -386,6 +494,7 @@ function Builder:AddLabel(text)
     frame:SetHeight(18)
 
     table.insert(self._controls, frame)
+    self:_Record(frame, gapBefore, self._contentPadding, -self._contentPadding)
 
     self._currentY = self._currentY - frame:GetHeight()
 
@@ -399,6 +508,7 @@ end
 function Builder:AddSpacer(height)
     height = height or 16
     self._currentY = self._currentY - height
+    table.insert(self._placed, { gapBefore = height })
     return self
 end
 
@@ -419,6 +529,95 @@ function Builder:Finalize()
     -- Store final height for reference
     self._finalHeight = totalHeight
 
+    self:_ScheduleRemeasure()
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- PlaceCustom: place a renderer-built frame through the builder's layout
+--------------------------------------------------------------------------------
+-- Spacing, edge anchors, cleanup registration, and the relayout record for a
+-- frame the renderer built itself. Replaces direct _currentY/_controls writes.
+--
+-- opts:
+--   gapBefore    : Vertical gap above; defaults to the item spacing once any
+--                  content precedes the frame
+--   gapAfter     : Extra gap below (default 0)
+--   inset        : Horizontal inset from the content edges (default the
+--                  content padding)
+--   fullBleed    : Anchor at the content edges (same as inset = 0)
+--   dividerAfter : Let the builder draw a divider under this frame when more
+--                  content follows (default off)
+--   key, label   : The _controlsByKey entry and the search tag
+--------------------------------------------------------------------------------
+
+function Builder:PlaceCustom(frame, opts)
+    if not frame then return self end
+    opts = opts or {}
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    self:_FlushRowDivider()
+
+    local gapBefore = opts.gapBefore
+    if gapBefore == nil then
+        gapBefore = (#self._controls > 0 or #self._sections > 0) and self._itemSpacing or 0
+    end
+    self._currentY = self._currentY - gapBefore
+
+    local inset = opts.inset
+    if inset == nil then
+        inset = opts.fullBleed and 0 or self._contentPadding
+    end
+    local xLeft = inset
+    local xRight = -inset
+    frame:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", xLeft, self._currentY)
+    frame:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", xRight, self._currentY)
+
+    table.insert(self._controls, frame)
+    if opts.key then self._controlsByKey[opts.key] = frame end
+    if opts.label then frame._searchLabel = opts.label end
+    frame._searchSection = self._parentSectionTitle
+
+    self._currentY = self._currentY - (frame:GetHeight() or 0)
+    local gapAfter = opts.gapAfter or 0
+    self._currentY = self._currentY - gapAfter
+
+    if opts.dividerAfter then
+        self._pendingDividerRow = frame
+    end
+    self:_Record(frame, gapBefore, xLeft, xRight, gapAfter > 0 and gapAfter or nil)
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- Adopt: register a caller-built frame for cleanup without placing it
+--------------------------------------------------------------------------------
+-- For satellites of a placed row: an attached button, a fly-out, a widget
+-- anchored inside a PlaceCustom wrapper. Clear releases it with the page.
+--------------------------------------------------------------------------------
+
+function Builder:Adopt(frame)
+    if frame then
+        table.insert(self._controls, frame)
+    end
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- RefreshControls: re-run Refresh on every registered control
+--------------------------------------------------------------------------------
+-- For set handlers whose value gates sibling rows' disabled states.
+--------------------------------------------------------------------------------
+
+function Builder:RefreshControls()
+    for _, control in ipairs(self._controls) do
+        if control and control.Refresh then
+            pcall(control.Refresh, control)
+        end
+    end
     return self
 end
 

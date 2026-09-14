@@ -103,15 +103,25 @@ function Controls:CreateSlider(options)
 
     local hasDesc = description and description ~= ""
     local hasEndLabels = (minLabel and minLabel ~= "") or (maxLabel and maxLabel ~= "")
+    local rowWidth = options.rowWidth
 
-    -- Calculate row height based on features
-    local rowHeight = SLIDER_ROW_HEIGHT
-    if hasDesc and hasEndLabels then
-        rowHeight = SLIDER_ROW_HEIGHT_WITH_BOTH
-    elseif hasDesc then
-        rowHeight = SLIDER_ROW_HEIGHT_WITH_DESC
-    elseif hasEndLabels then
-        rowHeight = SLIDER_ROW_HEIGHT_WITH_LABELS
+    -- Width-driven rows take the base height from the metrics, end labels
+    -- adding the mini-label band; the chrome measure grows description rows
+    -- synchronously. Direct callers without a rowWidth keep the fixed height
+    -- table until they convert.
+    local rowHeight
+    if rowWidth then
+        local m = Controls.Metrics()
+        rowHeight = m.rowHeight + (hasEndLabels and m.miniLabelHeight or 0)
+    else
+        rowHeight = SLIDER_ROW_HEIGHT
+        if hasDesc and hasEndLabels then
+            rowHeight = SLIDER_ROW_HEIGHT_WITH_BOTH
+        elseif hasDesc then
+            rowHeight = SLIDER_ROW_HEIGHT_WITH_DESC
+        elseif hasEndLabels then
+            rowHeight = SLIDER_ROW_HEIGHT_WITH_LABELS
+        end
     end
     if emphasized then
         rowHeight = rowHeight + EMPHASIZED_EXTRA_HEIGHT
@@ -155,7 +165,10 @@ function Controls:CreateSlider(options)
         row._emphBg = emphBg
     end
 
-    -- Calculate vertical offset for label positioning
+    -- Calculate total slider area width
+    local totalSliderAreaWidth = SLIDER_ARROW_WIDTH + sliderWidth + SLIDER_ARROW_WIDTH + 8 + inputWidth
+
+    -- Calculate vertical offset for label positioning (legacy path only)
     local labelYOffset = 0
     if hasDesc then
         labelYOffset = hasEndLabels and 14 or 10
@@ -164,25 +177,46 @@ function Controls:CreateSlider(options)
     end
 
     -- Label and description
-    Controls.AddRowChrome(row, {
-        label = label,
-        labelFontSize = labelFontSize,
-        labelYOffset = labelYOffset,
-        padLeft = SLIDER_PADDING + leftBorderWidth,
-        description = description,
-        descFontSize = emphasized and 12 or 11,
-        padAbove = emphasized and 4 or 2,
-        measureReserve = sliderWidth + (SLIDER_ARROW_WIDTH * 2) + inputWidth + (SLIDER_PADDING * 3) + leftBorderWidth,
-        dimColor = { dimR, dimG, dimB },
-    })
+    local chromeOpts
+    if rowWidth then
+        chromeOpts = {
+            rowWidth = rowWidth,
+            baseHeight = rowHeight,
+            label = label,
+            labelFontSize = emphasized and EMPHASIZED_LABEL_SIZE or nil,
+            padLeft = SLIDER_PADDING + leftBorderWidth,
+            description = description,
+            descFontSize = emphasized and 12 or nil,
+            controlReserve = totalSliderAreaWidth + SLIDER_PADDING * 2,
+            dimColor = { dimR, dimG, dimB },
+        }
+    else
+        chromeOpts = {
+            label = label,
+            labelFontSize = labelFontSize,
+            labelYOffset = labelYOffset,
+            padLeft = SLIDER_PADDING + leftBorderWidth,
+            description = description,
+            descFontSize = emphasized and 12 or 11,
+            padAbove = emphasized and 4 or 2,
+            measureReserve = sliderWidth + (SLIDER_ARROW_WIDTH * 2) + inputWidth + (SLIDER_PADDING * 3) + leftBorderWidth,
+            dimColor = { dimR, dimG, dimB },
+        }
+    end
+    Controls.AddRowChrome(row, chromeOpts)
 
-    -- Calculate total slider area width
-    local totalSliderAreaWidth = SLIDER_ARROW_WIDTH + sliderWidth + SLIDER_ARROW_WIDTH + 8 + inputWidth
-
-    -- Slider container (right side)
+    -- Slider container (right side, centered in the top band on width-driven
+    -- rows)
     local sliderContainer = CreateFrame("Frame", nil, row)
     sliderContainer:SetSize(totalSliderAreaWidth, SLIDER_HEIGHT + (hasEndLabels and 14 or 0))
-    sliderContainer:SetPoint("RIGHT", row, "RIGHT", -SLIDER_PADDING, hasEndLabels and -4 or 0)
+    if rowWidth then
+        Controls.AnchorCluster(row, sliderContainer, {
+            x = -SLIDER_PADDING,
+            y = hasEndLabels and -4 or 0,
+        })
+    else
+        sliderContainer:SetPoint("RIGHT", row, "RIGHT", -SLIDER_PADDING, hasEndLabels and -4 or 0)
+    end
 
     -- Left arrow button (decrement)
     local leftArrow = Controls.CreateArrowButton(sliderContainer, {

@@ -1127,8 +1127,29 @@ function UIPanel:CreateContentPane()
             end
         end
         -- A page whose layout reads the window's width at render (the Aura
-        -- List) rebuilds itself from this slot once the drag settles.
-        if contentPane._onResize then contentPane._onResize() end
+        -- List) rebuilds itself from this slot once the drag settles. Every
+        -- other page re-renders through the navigation dispatch: rows wrap
+        -- their text against the width they were built with, so the page must
+        -- rebuild at the new width. Debounced so a drag renders once, with
+        -- the scroll offset carried over.
+        if contentPane._onResize then
+            contentPane._onResize()
+        else
+            local token = (contentPane._resizeToken or 0) + 1
+            contentPane._resizeToken = token
+            C_Timer.After(0.2, function()
+                if contentPane._resizeToken ~= token then return end
+                local key = UIPanel._currentCategoryKey
+                if key and UIPanel.frame and UIPanel.frame:IsShown() then
+                    local scrollOffset = contentPane._scrollFrame
+                        and contentPane._scrollFrame:GetVerticalScroll()
+                    UIPanel:OnNavigationSelect(key)
+                    if scrollOffset and scrollOffset > 0 and contentPane._scrollFrame then
+                        contentPane._scrollFrame:SetVerticalScroll(scrollOffset)
+                    end
+                end
+            end)
+        end
         if scrollbar and scrollbar.Update then
             C_Timer.After(0.05, function()
                 scrollbar:Update()

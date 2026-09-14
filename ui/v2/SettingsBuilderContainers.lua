@@ -48,8 +48,10 @@ function Builder:AddCollapsibleSection(options)
 
     self:_FlushRowDivider()
 
+    local spacing = 0
     if #self._controls > 0 or #self._sections > 0 then
-        self._currentY = self._currentY - self._itemSpacing
+        spacing = self._itemSpacing
+        self._currentY = self._currentY - spacing
     end
 
     -- Store reference to onRefresh callback if set
@@ -84,16 +86,23 @@ function Builder:AddCollapsibleSection(options)
     section:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -self._contentPadding, self._currentY)
 
     table.insert(self._controls, section)
+    self:_Record(section, spacing, self._contentPadding, -self._contentPadding, function()
+        return section:IsExpanded() and COLLAPSIBLE_GAP_EXPANDED or COLLAPSIBLE_GAP_COLLAPSED
+    end)
 
     -- Build content using an inner builder
     if options.buildContent then
         local contentFrame = section:GetContentFrame()
 
-        -- Create inner builder for the content area
-        local innerBuilder = Builder:CreateFor(contentFrame)
+        -- Create inner builder for the content area, at the width the content
+        -- frame's insets leave it
+        local innerBuilder = Builder:CreateFor(contentFrame, {
+            availWidth = math.max(0, self._rowWidth - (section._contentInset or 0)),
+        })
         innerBuilder._useLightDim = true  -- Use lighter description text on gray background
         innerBuilder._parentSectionTitle = options.title  -- For search navigate-to-result
         innerBuilder._parentCollapsible = section  -- Reference for dynamic height updates
+        innerBuilder._parentBuilder = self  -- Growth bubbles into the outer relayout
         innerBuilder._onRefresh = onRefresh  -- Nested builders can DeferredRefreshAll()
 
         -- Call the build function
@@ -107,6 +116,8 @@ function Builder:AddCollapsibleSection(options)
 
         -- Store inner builder for cleanup
         section._innerBuilder = innerBuilder
+
+        innerBuilder:_ScheduleRemeasure()
     end
 
     -- Update Y position based on current expanded state
@@ -167,8 +178,10 @@ function Builder:AddTabbedSection(options)
 
     self:_FlushRowDivider()
 
+    local spacing = 0
     if #self._controls > 0 or #self._sections > 0 then
-        self._currentY = self._currentY - self._itemSpacing
+        spacing = self._itemSpacing
+        self._currentY = self._currentY - spacing
     end
 
     -- Store reference to onRefresh callback if set
@@ -203,6 +216,7 @@ function Builder:AddTabbedSection(options)
     section:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -self._contentPadding, self._currentY)
 
     table.insert(self._controls, section)
+    self:_Record(section, spacing, self._contentPadding, -self._contentPadding, self._itemSpacing)
 
     -- Build content for each tab using inner builders
     if options.buildContent then
@@ -214,10 +228,14 @@ function Builder:AddTabbedSection(options)
                 local contentFrame = section:GetTabContent(tabKey)
 
                 if contentFrame then
-                    -- Create inner builder for this tab's content
-                    local innerBuilder = Builder:CreateFor(contentFrame)
+                    -- Create inner builder for this tab's content, at the
+                    -- width the tab frame's insets leave it
+                    local innerBuilder = Builder:CreateFor(contentFrame, {
+                        availWidth = math.max(0, self._rowWidth - (section._contentInset or 0)),
+                    })
                     innerBuilder._useLightDim = self._useLightDim  -- Inherit parent's light dim setting
                     innerBuilder._parentSectionTitle = tabData.label  -- For search navigate-to-result
+                    innerBuilder._parentBuilder = self  -- Growth bubbles into the outer relayout
                     innerBuilder._onRefresh = onRefresh  -- Nested builders can DeferredRefreshAll()
 
                     -- Call the build function
@@ -241,6 +259,8 @@ function Builder:AddTabbedSection(options)
 
                     -- Store inner builder on content frame for cleanup
                     contentFrame._innerBuilder = innerBuilder
+
+                    innerBuilder:_ScheduleRemeasure()
                 end
             end
         end

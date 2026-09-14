@@ -232,6 +232,10 @@ function Controls:CreateTabbedSection(options)
         return tabBtn
     end
 
+    -- Total horizontal inset of a tab content frame against the section, read
+    -- by the builder to pass the reduced width into the inner builders.
+    section._contentInset = (TABBED_BORDER_WIDTH + TABBED_CONTENT_PADDING) * 2
+
     local function CreateTabContent(tabData, index)
         local content = CreateFrame("Frame", nil, contentContainer)
         content:SetPoint("TOPLEFT", contentContainer, "TOPLEFT", TABBED_BORDER_WIDTH + TABBED_CONTENT_PADDING, -TABBED_CONTENT_PADDING)

@@ -436,7 +436,7 @@ function AuraTrackingUI.Render(panel, scrollContent)
         .. "Patch 12.1 added a Blizzard setting that can turn those buff icons off entirely; the toggle below controls it. "
         .. "Scoot's custom tracked icons are drawn separately and work whether Blizzard's icons are shown or hidden. "
         .. "Each tracked aura keeps its own position, so an aura that is not currently on a group member leaves its spot empty rather than shifting the others.",
-        { color = {1, 0.82, 0}, topPadding = 4, bottomPadding = -16 }
+        { color = {1, 0.82, 0}, topPadding = 4 }
     )
 
     --------------------------------------------------------------------------

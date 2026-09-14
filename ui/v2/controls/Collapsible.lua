@@ -198,6 +198,9 @@ function Controls:CreateCollapsibleSection(options)
     content:SetPoint("TOPLEFT", header, "BOTTOMLEFT", COLLAPSIBLE_BORDER_WIDTH, 0)
     content:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -COLLAPSIBLE_BORDER_WIDTH, 0)
     content:SetHeight(contentHeight)
+    -- Total horizontal inset of the content frame against the section, read
+    -- by the builder to pass the reduced width into the inner builder.
+    section._contentInset = COLLAPSIBLE_BORDER_WIDTH * 2
 
     -- Content left border
     local contentLeftBorder = section:CreateTexture(nil, "BORDER", nil, -1)

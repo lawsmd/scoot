@@ -54,8 +54,14 @@ function Controls:CreateToggle(options)
     local isDisabledFn = options.disabled or options.isDisabled
 
     local hasDesc = description and description ~= ""
+    local rowWidth = options.rowWidth
+    -- Width-driven rows take the base height from the metrics; the chrome
+    -- measure grows description rows synchronously. Direct callers without a
+    -- rowWidth keep the fixed height table until they convert.
     local height
-    if emphasized then
+    if rowWidth then
+        height = emphasized and EMPHASIZED_HEIGHT or Controls.Metrics().rowHeight
+    elseif emphasized then
         height = hasDesc and EMPHASIZED_HEIGHT_WITH_DESC or EMPHASIZED_HEIGHT
     else
         height = hasDesc and TOGGLE_HEIGHT_WITH_DESC or TOGGLE_HEIGHT
@@ -110,22 +116,43 @@ function Controls:CreateToggle(options)
     local labelLeftPad = TOGGLE_PADDING + leftBorderWidth
 
     -- Label and description
-    local labelFS = Controls.AddRowChrome(row, {
-        label = label,
-        labelFontSize = labelFontSize,
-        labelYOffset = hasDesc and (emphasized and 12 or 6) or 0,
-        padLeft = labelLeftPad,
-        description = description,
-        descFontSize = emphasized and 12 or 11,
-        padAbove = emphasized and DESC_PADDING_TOP_EMPH or DESC_PADDING_TOP,
-        reserve = indicatorWidth + TOGGLE_PADDING * 2,
-        dimColor = { dimR, dimG, dimB },
-    })
+    local chromeOpts
+    if rowWidth then
+        chromeOpts = {
+            rowWidth = rowWidth,
+            baseHeight = height,
+            label = label,
+            labelFontSize = emphasized and EMPHASIZED_LABEL_SIZE or nil,
+            padLeft = labelLeftPad,
+            description = description,
+            descFontSize = emphasized and 12 or nil,
+            controlReserve = indicatorWidth + TOGGLE_PADDING * 2,
+            dimColor = { dimR, dimG, dimB },
+        }
+    else
+        chromeOpts = {
+            label = label,
+            labelFontSize = labelFontSize,
+            labelYOffset = hasDesc and (emphasized and 12 or 6) or 0,
+            padLeft = labelLeftPad,
+            description = description,
+            descFontSize = emphasized and 12 or 11,
+            padAbove = emphasized and DESC_PADDING_TOP_EMPH or DESC_PADDING_TOP,
+            reserve = indicatorWidth + TOGGLE_PADDING * 2,
+            dimColor = { dimR, dimG, dimB },
+        }
+    end
+    local labelFS = Controls.AddRowChrome(row, chromeOpts)
 
-    -- State indicator container (right side)
+    -- State indicator container (right side, centered in the top band on
+    -- width-driven rows)
     local indicator = CreateFrame("Frame", nil, row)
     indicator:SetSize(indicatorWidth, indicatorHeight)
-    indicator:SetPoint("RIGHT", row, "RIGHT", -TOGGLE_PADDING, 0)
+    if rowWidth then
+        Controls.AnchorCluster(row, indicator, { x = -TOGGLE_PADDING })
+    else
+        indicator:SetPoint("RIGHT", row, "RIGHT", -TOGGLE_PADDING, 0)
+    end
 
     -- Indicator border (edges inset to avoid corner overlap). Static color:
     -- UpdateVisual owns all indicator tinting (state-dependent color and alpha).

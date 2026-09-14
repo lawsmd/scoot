@@ -421,10 +421,7 @@ local function CreateRenderer(viewer)
                     end
 
                     row.Cleanup = function(self) stopAnimations() end
-                    row:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 8, inner._currentY)
-                    row:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -8, inner._currentY)
-                    table.insert(inner._controls, row)
-                    inner._currentY = inner._currentY - PREVIEW_ROW_HEIGHT
+                    inner:PlaceCustom(row, { gapBefore = 0 })
                 end
 
                 inner:AddTabbedSection({
@@ -696,7 +693,7 @@ local function CreateRenderer(viewer)
 
                 inner:AddDescription("Priority System", { color = {1, 0.82, 0}, fontSize = 14, topPadding = 4 })
                 inner:AddDescription("In Combat > With Target > Out of Combat. Only the highest active condition applies. "
-                    .. modeWord .. " competes with the result \226\128\148 whichever is the stronger dim takes effect.", { color = {1, 0.82, 0}, topPadding = -8, bottomPadding = -4 })
+                    .. modeWord .. " competes with the result \226\128\148 whichever is the stronger dim takes effect.", { color = {1, 0.82, 0} })
 
                 -- Mode selector: On Cooldown vs Off Cooldown
                 inner:AddSelector({
