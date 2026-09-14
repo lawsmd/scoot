@@ -83,6 +83,8 @@ const PATTERNS = [
     hint: 'Panel text takes face and size from a font role: Theme:ApplyFont(fs, role) or Theme:GetFontRole(role).' },
   { name: 'hand-divider', re: /_rowBorder\s*=[^=]/, only: 'ui/v2/', except: ['ui/v2/SettingsBuilder.lua'],
     hint: 'The divider under a settings row is builder-drawn in _PlaceRow; a row opts out with noBottomBorder. An emphasized left accent bar is not a divider, mark it.' },
+  { name: 'skin-override', re: /Skin\.Override\./, only: 'ui/v2/', except: ['ui/v2/Skin.lua'],
+    hint: 'Draw overrides ship in a skin table (skins/<name>.lua overrides = {...}); a direct Skin.Override assignment outside a skin is drift, mark it.' },
   // Comment hygiene: the greps the vibes pass runs.
   { name: 'doc-ref', re: /ADDONCONTEXT|[a-z0-9_&-]+\.md\b|wow-ui-source/i, except: [],
     hint: 'Shipped code names no internal doc, doc path, or reference tree.' },

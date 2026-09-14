@@ -7,11 +7,16 @@
 -- SetActive copies the active skin into those facades, so their table
 -- identities never change and file-scope captures of the tables stay valid.
 --
---   Skin.Register(name, skin)   skin = { palette, fonts, textures, metrics }
---   Skin.SetActive(name)        push the skin into the facades and notify
+--   Skin.Register(name, skin)   skin = { palette, fonts, textures, metrics,
+--                               overrides }
+--   Skin.SetActive(name)        push the skin into the facades, install its
+--                               overrides, notify, re-render the open panel
 --   Skin.Active()               the active skin table
 --   Skin.ActiveName()           its registry name
 --   Skin.Metrics()              the active skin's metrics table
+--   Skin.Override               draw-replacement proxy; an assignment records
+--                               its source and a skin switch clears the set
+--   Skin.GetOverride(name)      the override the row factories dispatch on
 --   Skin.Dump()                 registry listing in the copyable debug window
 --
 -- Palette roles: background, backgroundSolid, textPrimary, textDim,
@@ -20,6 +25,12 @@
 -- proportionalMed; each { path, size }.
 -- Metrics: flat layout and style numbers plus the slots, sublevels, and
 -- alphas sub-tables; the full catalog is the tui skin table.
+--
+-- An override replaces a row factory's draw body only:
+-- overrides.<Control> = function(options) must return a frame satisfying the
+-- stock control's public methods and the fields the framework reads (_label,
+-- _description, _measureDesc), honor options.rowWidth, and set its height
+-- before returning.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -28,6 +39,32 @@ local Skin = addon.UI.Skin
 
 Skin._registry = {}
 Skin._activeName = nil
+Skin._overrides = {}
+Skin._installSource = nil
+
+-- Assignments through the proxy record where the override came from: the
+-- skin being activated, or "manual" for a direct assignment.
+Skin.Override = setmetatable({}, {
+    __newindex = function(_, controlName, fn)
+        if fn == nil then
+            Skin._overrides[controlName] = nil
+        else
+            Skin._overrides[controlName] = {
+                fn = fn,
+                source = Skin._installSource or "manual",
+            }
+        end
+    end,
+    __index = function(_, controlName)
+        local entry = Skin._overrides[controlName]
+        return entry and entry.fn or nil
+    end,
+})
+
+function Skin.GetOverride(controlName)
+    local entry = Skin._overrides[controlName]
+    return entry and entry.fn or nil
+end
 
 function Skin.Register(name, skin)
     if type(name) ~= "string" or type(skin) ~= "table" then return false end
@@ -104,10 +141,28 @@ function Skin.SetActive(name)
         Controls.BORDER_ALPHA_FOCUS  = m.alphas.borderFocus
     end
 
+    -- Replace the previous skin's override set with this skin's.
+    for controlName in pairs(Skin._overrides) do
+        Skin._overrides[controlName] = nil
+    end
+    Skin._installSource = name
+    for controlName, fn in pairs(skin.overrides or {}) do
+        Skin.Override[controlName] = fn
+    end
+    Skin._installSource = nil
+
     -- At load there are no subscribers yet; a runtime switch retints every
     -- themed border and fill through the one shared subscription.
     if Theme and Theme.NotifySubscribers then
         Theme:NotifySubscribers()
+    end
+
+    -- A runtime switch rebuilds the open panel, so every page re-renders in
+    -- the new skin.
+    local panel = addon.UI.SettingsPanel
+    if panel and panel.frame and panel.frame.IsShown and panel.frame:IsShown()
+        and panel._currentCategoryKey and panel.OnNavigationSelect then
+        panel:OnNavigationSelect(panel._currentCategoryKey)
     end
     return true
 end
@@ -127,9 +182,59 @@ function Skin.Dump()
     table.sort(names)
     for _, name in ipairs(names) do
         local skin = Skin._registry[name]
-        push(string.format("%s: %d palette roles, %d font roles, %d textures, %d metrics",
+        push(string.format("%s: %d palette roles, %d font roles, %d textures, %d metrics, %d overrides",
             name, countKeys(skin.palette), countKeys(skin.fonts),
-            countKeys(skin.textures), countKeys(skin.metrics)))
+            countKeys(skin.textures), countKeys(skin.metrics),
+            countKeys(skin.overrides)))
+    end
+
+    local overrideNames = {}
+    for controlName in pairs(Skin._overrides) do
+        overrideNames[#overrideNames + 1] = controlName
+    end
+    table.sort(overrideNames)
+    push("active overrides: " .. (#overrideNames == 0 and "none" or tostring(#overrideNames)))
+    for _, controlName in ipairs(overrideNames) do
+        push(string.format("  %s (from %s)", controlName, Skin._overrides[controlName].source))
+    end
+
+    local m = Skin.Metrics()
+    if m then
+        push("metrics:")
+        local keys = {}
+        for k in pairs(m) do keys[#keys + 1] = k end
+        table.sort(keys)
+        for _, k in ipairs(keys) do
+            local v = m[k]
+            if type(v) == "table" then
+                local subKeys = {}
+                for sk in pairs(v) do subKeys[#subKeys + 1] = sk end
+                table.sort(subKeys)
+                local parts = {}
+                for _, sk in ipairs(subKeys) do
+                    parts[#parts + 1] = sk .. "=" .. tostring(v[sk])
+                end
+                push(string.format("  %s: %s", k, table.concat(parts, " ")))
+            else
+                push(string.format("  %s: %s", k, tostring(v)))
+            end
+        end
     end
     addon.DebugShowWindow("Skins", lines)
 end
+
+addon:RegisterDebugCommand({
+    name = "skin",
+    help = "Skin registry and metrics; 'skin <name>' switches and re-renders",
+    handler = function(sub)
+        if sub and sub ~= "" then
+            if Skin.SetActive(sub) then
+                addon:Print("Skin: " .. sub)
+            else
+                addon:Print("Skin: no skin named '" .. tostring(sub) .. "'")
+            end
+            return
+        end
+        Skin.Dump()
+    end,
+})

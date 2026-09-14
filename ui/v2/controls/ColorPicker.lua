@@ -31,6 +31,8 @@ local COLOR_PADDING = 12
 --------------------------------------------------------------------------------
 
 function Controls:CreateColorPicker(options)
+    local override = Controls.SkinOverride("ColorPicker", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then
         return nil

@@ -37,6 +37,8 @@ local DESC_PADDING_TOP_EMPH = 4   -- Space for emphasized controls
 -- Selector: Dropdown/selector with arrow buttons on each side
 
 function Controls:CreateSelector(options)
+    local override = Controls.SkinOverride("Selector", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then
         return nil

@@ -230,6 +230,8 @@ Controls._CreateMiniSlider = CreateMiniSlider
 --------------------------------------------------------------------------------
 
 function Controls:CreateToggleSliderRow(options)
+    local override = Controls.SkinOverride("ToggleSliderRow", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then return nil end
 

@@ -417,6 +417,18 @@ local LABEL_LINE_HEIGHT = 16      -- Approximate label height
 local DESC_PADDING_TOP = 2        -- Space between label and description
 local DESC_PADDING_BOTTOM = 36    -- Space below description to border
 
+-- The draw-override dispatch every row factory runs first: when the active
+-- skin registered a replacement for the control, its frame is returned and
+-- the stock drawing is skipped. See ui/v2/Skin.lua for the override contract.
+function Controls.SkinOverride(controlName, options)
+    local Skin = addon.UI.Skin
+    local fn = Skin and Skin.GetOverride and Skin.GetOverride(controlName)
+    if fn then
+        return fn(options)
+    end
+    return nil
+end
+
 -- Reapplies every cluster anchor against the row's current height. Called by
 -- the chrome measure after a height change, so clusters stay centered in the
 -- top band while the description extends the row downward.
@@ -734,8 +746,8 @@ end
 --   padding        default 12; titleHeight 30; tabWidth 90; tabHeight 32
 --
 -- Returns the frame carrying Title, CloseButton, TabContainer, TabButtons,
--- UpdateTabs, UpdateTabVisuals, ScrollFrame, _scrollBar, Content, and the
--- _accentR/_accentG/_accentB fields the populate passes read.
+-- UpdateTabs, UpdateTabVisuals, SetTitleInset, ScrollFrame, _scrollBar,
+-- Content, and the _accentR/_accentG/_accentB fields the populate passes read.
 function Controls.CreatePickerShell(opts)
     local theme = GetTheme()
     local accentR, accentG, accentB = theme:GetAccentColor()
@@ -814,6 +826,19 @@ function Controls.CreatePickerShell(opts)
     tabContainer:SetSize(tabWidth, opts.height - titleHeight - padding * 2)
     tabContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -(titleHeight + 4))
     frame.TabContainer = tabContainer
+
+    -- A picker with a header band under the title (the global-token buttons)
+    -- calls this with a larger inset; the tab column and the scroll frame
+    -- anchored to it move down together.
+    frame._titleInset = titleHeight
+    function frame:SetTitleInset(px)
+        px = px or titleHeight
+        if self._titleInset == px then return end
+        self._titleInset = px
+        tabContainer:SetSize(tabWidth, opts.height - px - padding * 2)
+        tabContainer:ClearAllPoints()
+        tabContainer:SetPoint("TOPLEFT", self, "TOPLEFT", padding, -(px + 4))
+    end
 
     -- Vertical separator between tabs and content
     local tabSep = frame:CreateTexture(nil, "BORDER", nil, 0)

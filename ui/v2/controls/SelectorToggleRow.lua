@@ -154,6 +154,8 @@ Controls._CreateMiniToggle = CreateMiniToggle
 --------------------------------------------------------------------------------
 
 function Controls:CreateSelectorToggleRow(options)
+    local override = Controls.SkinOverride("SelectorToggleRow", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then return nil end
 

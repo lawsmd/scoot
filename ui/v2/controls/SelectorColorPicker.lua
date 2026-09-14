@@ -32,6 +32,8 @@ local SELECTOR_SWATCH_BORDER = 2
 -- SelectorColorPicker: Selector with inline color swatch (visible when custom value selected)
 
 function Controls:CreateSelectorColorPicker(options)
+    local override = Controls.SkinOverride("SelectorColorPicker", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then
         return nil

@@ -531,6 +531,8 @@ end
 --------------------------------------------------------------------------------
 
 function Controls:CreateDualBarStyleRow(options)
+    local override = Controls.SkinOverride("DualBarStyleRow", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then
         return nil

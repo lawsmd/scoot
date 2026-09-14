@@ -295,6 +295,8 @@ Controls._CreateMiniSelector = CreateMiniSelector
 --------------------------------------------------------------------------------
 
 function Controls:CreateDualSelector(options)
+    local override = Controls.SkinOverride("DualSelector", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then
         return nil

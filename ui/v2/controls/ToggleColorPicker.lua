@@ -32,6 +32,8 @@ local TOGGLE_COLOR_SWATCH_GAP = 10
 -- ToggleColorPicker: Toggle with inline color swatch (visible when ON)
 
 function Controls:CreateToggleColorPicker(options)
+    local override = Controls.SkinOverride("ToggleColorPicker", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then
         return nil

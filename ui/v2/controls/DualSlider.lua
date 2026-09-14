@@ -94,6 +94,8 @@ local DUAL_SLIDER_END_LABEL_FONT_SIZE = 9
 --------------------------------------------------------------------------------
 
 function Controls:CreateDualSlider(options)
+    local override = Controls.SkinOverride("DualSlider", options)
+    if override then return override end
     local theme = GetTheme()
     local Debounce = GetDebounce()
     local CancelDebounce = GetCancelDebounce()

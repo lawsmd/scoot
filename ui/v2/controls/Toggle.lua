@@ -38,6 +38,8 @@ local EMPHASIZED_INDICATOR_HEIGHT = 26
 -- Toggle: Full-row toggle control with ON/OFF state indicator
 
 function Controls:CreateToggle(options)
+    local override = Controls.SkinOverride("Toggle", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then
         return nil

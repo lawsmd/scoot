@@ -28,6 +28,8 @@ local FONT_SELECTOR_BORDER_ALPHA = 0.6
 --------------------------------------------------------------------------------
 
 function Controls:CreateFontSelector(options)
+    local override = Controls.SkinOverride("FontSelector", options)
+    if override then return override end
     local theme = GetTheme()
     if not options or not options.parent then
         return nil
@@ -117,6 +119,22 @@ function Controls:CreateFontSelector(options)
     row._currentValue = getValue() or "FRIZQT__"
     row._getValue = getValue
     row._setValue = setValue
+    row._pickerOpts = options.suppressTokens and { suppressTokens = true } or nil
+
+    -- In-field info icon, shown while the field holds a global font token
+    local function EnsureTokenIcon()
+        if row._tokenInfoIcon then return row._tokenInfoIcon end
+        local icon = Controls:CreateInfoIcon({
+            parent = selector,
+            tooltipText = "The Global Fonts are set on the Apply All > Font menu.",
+            size = 12,
+        })
+        if icon then
+            icon:SetPoint("RIGHT", selector, "RIGHT", -20, 0)
+            row._tokenInfoIcon = icon
+        end
+        return icon
+    end
 
     -- Get display text and update font rendering
     local function UpdateDisplay()
@@ -132,10 +150,19 @@ function Controls:CreateFontSelector(options)
         end
         valueText:SetText(displayText)
 
-        -- Try to render the text in the selected font
+        -- Try to render the text in the selected font (a token renders in the
+        -- resolved global face, a live preview)
         local fontFace = addon.ResolveFontFace(currentValue)
         if fontFace then
             pcall(valueText.SetFont, valueText, fontFace, 12, "")
+        end
+
+        if addon.IsFontToken and addon.IsFontToken(currentValue) and EnsureTokenIcon() then
+            row._tokenInfoIcon:Show()
+            valueText:SetPoint("RIGHT", selector, "RIGHT", -34, 0)
+        else
+            if row._tokenInfoIcon then row._tokenInfoIcon:Hide() end
+            valueText:SetPoint("RIGHT", selector, "RIGHT", -24, 0)
         end
     end
 
@@ -174,7 +201,7 @@ function Controls:CreateFontSelector(options)
         }
 
         -- Show the font picker anchored to this selector
-        addon.ShowFontPicker(self, pseudoSetting, nil, function(selectedValue)
+        addon.ShowFontPicker(self, pseudoSetting, row._pickerOpts, function(selectedValue)
             row._currentValue = selectedValue
             row._setValue(selectedValue)
             UpdateDisplay()
@@ -219,6 +246,9 @@ function Controls:CreateFontSelector(options)
     function row:Cleanup()
         if self._subscribeKey then
             theme:Unsubscribe(self._subscribeKey)
+        end
+        if self._tokenInfoIcon and self._tokenInfoIcon.Cleanup then
+            self._tokenInfoIcon:Cleanup()
         end
     end
 

@@ -65,6 +65,8 @@ local EMPHASIZED_BORDER_WIDTH = 3
 -- Slider: Numeric slider with arrows, text input, and optional end labels
 
 function Controls:CreateSlider(options)
+    local override = Controls.SkinOverride("Slider", options)
+    if override then return override end
     local theme = GetTheme()
     local Debounce = GetDebounce()
     local CancelDebounce = GetCancelDebounce()
