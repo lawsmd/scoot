@@ -1,60 +1,63 @@
--- ApplyAllRenderer.lua - Apply All Fonts and Bar Textures settings renderers
+-- ApplyAllRenderer.lua - Global Font and Bar Texture settings pages
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
 addon.UI.Settings = addon.UI.Settings or {}
 addon.UI.Settings.ApplyAll = addon.UI.Settings.ApplyAll or {}
 
+local function FontDisplayName(key)
+    return addon.FontDisplayNames and addon.FontDisplayNames[key] or key
+end
+
+local function TextureDisplayName(key)
+    return addon.Media and addon.Media.GetBarTextureDisplayName
+        and addon.Media.GetBarTextureDisplayName(key) or key
+end
+
 local MODES = {
     {
         key = "applyAllFonts",
         controlsField = "_applyAllFontsControls",
-        containerHeight = 280,
-        infoText = "Select a font below, then click Apply. This will overwrite every Scoot font face and force a UI reload. Sizes, colors, offsets, and outlines remain unchanged.\n\nScrolling Combat Text fonts are excluded (require game restart).",
-        selectorMethod = "CreateFontSelector",
-        selectorLabel = "Font",
-        selectorOffsetY = -120,
-        buttonOffsetY = -200,
-        pendingDefault = "FRIZQT__",
-        getPendingName = "GetPendingFont",
-        setPendingName = "SetPendingFont",
+        containerHeight = 340,
+        scrollHeight = 460,
+        infoText = "Any Scoot font field can hold the Global Header Font or Global Body Font token, picked from its font picker, and follow the values set here. Apply commits both values and reloads the UI.\n\nScrolling Combat Text is excluded: its font changes need a full game restart.",
+        selectors = {
+            { method = "CreateFontSelector", label = "Header Font", offsetY = -130,
+              getName = "GetPendingHeaderFont", setName = "SetPendingHeaderFont" },
+            { method = "CreateFontSelector", label = "Body Font", offsetY = -186,
+              getName = "GetPendingBodyFont", setName = "SetPendingBodyFont" },
+        },
+        buttonOffsetY = -262,
         applyName = "ApplyFonts",
         dialogId = "SCOOT_APPLYALL_FONTS",
-        payloadKey = "fontKey",
         noun = "font",
         abortLabel = "Fonts",
-        displayName = function(pending)
-            return addon.FontDisplayNames and addon.FontDisplayNames[pending] or pending
-        end,
+        displayName = FontDisplayName,
+        alreadySetText = "The Global Fonts already hold those values; no reload needed.",
     },
     {
         key = "applyAllTextures",
         controlsField = "_applyAllTexturesControls",
         containerHeight = 260,
-        infoText = "Select a texture below, then click Apply. This will overwrite every Scoot bar texture (foreground and background) and force a UI reload. Tint, opacity, and color settings remain unchanged.",
-        selectorMethod = "CreateBarTextureSelector",
-        selectorLabel = "Texture",
-        selectorOffsetY = -100,
+        scrollHeight = 400,
+        infoText = "Any Scoot bar texture field can hold the Global Bar Texture token, picked from its texture picker, and follow the value set here. Apply commits the value and reloads the UI.",
+        selectors = {
+            { method = "CreateBarTextureSelector", label = "Bar Texture", offsetY = -100,
+              getName = "GetPendingBarTexture", setName = "SetPendingBarTexture" },
+        },
         buttonOffsetY = -180,
-        pendingDefault = "default",
-        getPendingName = "GetPendingBarTexture",
-        setPendingName = "SetPendingBarTexture",
         applyName = "ApplyBarTextures",
         dialogId = "SCOOT_APPLYALL_TEXTURES",
-        payloadKey = "textureKey",
         noun = "texture",
         abortLabel = "Bar Textures",
-        displayName = function(pending)
-            return addon.Media and addon.Media.GetBarTextureDisplayName
-                and addon.Media.GetBarTextureDisplayName(pending) or pending
-        end,
+        displayName = TextureDisplayName,
+        alreadySetText = "The Global Bar Texture is already set to that texture; no reload needed.",
     },
 }
 
 -- Note: Controls are stored on panel[mode.controlsField] for ClearContent() compatibility;
 -- navigation.lua ClearContent() looks for the two literal field names.
 
--- Kept off Builder:AddTextStyleBlock: the page writes one face to every component and has no builder-backed storage.
 local function CreateRenderer(mode)
     local function render(panel, scrollContent)
         panel:ClearContent()
@@ -89,31 +92,33 @@ local function CreateRenderer(mode)
         info:SetText(mode.infoText)
         info:SetTextColor(0.6, 0.6, 0.6, 1)
 
-        -- Selector row (larger, minimal label)
-        local selector = Controls[mode.selectorMethod](Controls, {
-            parent = container,
-            label = mode.selectorLabel,
-            get = function()
-                local aa = addon.ApplyAll
-                return aa and aa[mode.getPendingName](aa) or mode.pendingDefault
-            end,
-            set = function(valueKey)
-                local aa = addon.ApplyAll
-                if aa and aa[mode.setPendingName] then
-                    aa[mode.setPendingName](aa, valueKey)
-                end
-            end,
-            width = 320,
-            labelFontSize = 16,
-            selectorHeight = 35,
-            rowHeight = 52,
-            -- This page sets the globals themselves; a token here would be circular
-            suppressTokens = true,
-        })
-        if selector then
-            selector:SetPoint("TOPLEFT", container, "TOPLEFT", 20, mode.selectorOffsetY)
-            selector:SetPoint("TOPRIGHT", container, "TOPRIGHT", -20, mode.selectorOffsetY)
-            table.insert(controls, selector)
+        -- Selector rows (larger, minimal labels); pickers opened here must not
+        -- offer the token buttons -- a global holding a token would be circular
+        for _, sel in ipairs(mode.selectors) do
+            local selector = Controls[sel.method](Controls, {
+                parent = container,
+                label = sel.label,
+                get = function()
+                    local aa = addon.ApplyAll
+                    return aa and aa[sel.getName](aa)
+                end,
+                set = function(valueKey)
+                    local aa = addon.ApplyAll
+                    if aa and aa[sel.setName] then
+                        aa[sel.setName](aa, valueKey)
+                    end
+                end,
+                width = 320,
+                labelFontSize = 16,
+                selectorHeight = 35,
+                rowHeight = 52,
+                suppressTokens = true,
+            })
+            if selector then
+                selector:SetPoint("TOPLEFT", container, "TOPLEFT", 20, sel.offsetY)
+                selector:SetPoint("TOPRIGHT", container, "TOPRIGHT", -20, sel.offsetY)
+                table.insert(controls, selector)
+            end
         end
 
         local selectPrompt = "Select a " .. mode.noun .. " before applying."
@@ -127,32 +132,43 @@ local function CreateRenderer(mode)
             fontSize = 14,
             onClick = function()
                 local aa = addon.ApplyAll
-                local pending = aa and aa[mode.getPendingName](aa)
-                if not pending or pending == "" then
-                    if addon.Print then addon:Print(selectPrompt) end
-                    return
+                if not aa then return end
+
+                local values = {}
+                for i, sel in ipairs(mode.selectors) do
+                    local value = aa[sel.getName](aa)
+                    if not value or value == "" then
+                        if addon.Print then addon:Print(selectPrompt) end
+                        return
+                    end
+                    values[i] = value
                 end
 
-                local displayName = mode.displayName(pending)
+                local formatArgs = {}
+                for i, value in ipairs(values) do
+                    formatArgs[i] = mode.displayName(value)
+                end
 
                 if addon.Dialogs and addon.Dialogs.Show then
                     addon.Dialogs:Show(mode.dialogId, {
-                        formatArgs = { displayName },
-                        data = { [mode.payloadKey] = pending },
+                        formatArgs = formatArgs,
+                        data = { values = values },
                         onAccept = function(data)
-                            local value = data and data[mode.payloadKey]
-                            if not value then return end
+                            local vals = data and data.values
+                            if not vals then return end
                             if not addon.ApplyAll or not addon.ApplyAll[mode.applyName] then return end
 
-                            local result = addon.ApplyAll[mode.applyName](addon.ApplyAll, value, { updatePending = true })
-                            if result and result.ok and result.changed and result.changed > 0 then
+                            local result = addon.ApplyAll[mode.applyName](addon.ApplyAll, unpack(vals))
+                            if result and result.ok then
                                 ReloadUI()
+                            elseif result and result.reason == "noChanges" then
+                                if addon.Print then addon:Print(mode.alreadySetText) end
                             else
                                 local reason = result and result.reason or "Unknown"
                                 local friendly = {
-                                    noProfile = "Profile database unavailable.",
+                                    noDatabase = "Settings database unavailable.",
                                     noSelection = selectPrompt,
-                                    noChanges = "All entries already use that " .. mode.noun .. ".",
+                                    tokenValue = "A Global value cannot be a Global token.",
                                 }
                                 local detail = friendly[reason] or tostring(reason or "Unknown error.")
                                 if addon.Print then
@@ -170,7 +186,7 @@ local function CreateRenderer(mode)
         table.insert(controls, applyBtn)
 
         -- Set scroll content height
-        scrollContent:SetHeight(400)
+        scrollContent:SetHeight(mode.scrollHeight)
     end
 
     return render

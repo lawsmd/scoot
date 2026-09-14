@@ -67,14 +67,20 @@ local MANUAL_ENTRIES = {
     },
     {
         type = "font",
-        label = "Font",
-        description = "Select a font to apply across all Scoot settings.",
+        label = "Header Font",
+        description = "Set the Global Header Font that font fields holding its token follow.",
+        rendererKey = "applyAllFonts",
+    },
+    {
+        type = "font",
+        label = "Body Font",
+        description = "Set the Global Body Font that font fields holding its token follow.",
         rendererKey = "applyAllFonts",
     },
     {
         type = "texture",
-        label = "Texture",
-        description = "Select a bar texture to apply across all Scoot settings.",
+        label = "Bar Texture",
+        description = "Set the Global Bar Texture that texture fields holding its token follow.",
         rendererKey = "applyAllTextures",
     },
     -- ScootAuras: the Aura List page is hand-rolled, so the scanner never

@@ -1213,15 +1213,15 @@ Controls:RegisterDialog("SCOOT_EXTERNAL_LAYOUT_DELETED", {
 })
 
 Controls:RegisterDialog("SCOOT_APPLYALL_FONTS", {
-    text = "Apply '%s' to ALL Scoot font settings?\n\nThis will overwrite every font face across all components. A UI reload is required to apply the changes.",
+    text = "Set the Global Header Font to '%s' and the Global Body Font to '%s'?\n\nEvery font field holding a Global Font token follows these values. A UI reload is required to apply the change.",
     acceptText = "Apply & Reload",
     acceptWidth = 130,
     cancelText = CANCEL or "Cancel",
-    height = 180,
+    height = 200,
 })
 
 Controls:RegisterDialog("SCOOT_APPLYALL_TEXTURES", {
-    text = "Apply '%s' to ALL Scoot bar textures?\n\nThis will overwrite every bar texture across all components. A UI reload is required to apply the changes.",
+    text = "Set the Global Bar Texture to '%s'?\n\nEvery texture field holding the Global Bar Texture token follows this value. A UI reload is required to apply the change.",
     acceptText = "Apply & Reload",
     acceptWidth = 130,
     cancelText = CANCEL or "Cancel",

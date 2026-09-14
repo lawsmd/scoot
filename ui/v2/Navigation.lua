@@ -53,8 +53,8 @@ Navigation.NavModel = {
         label = "Apply All",
         collapsible = true,
         children = {
-            { key = "applyAllFonts", label = "Fonts" },
-            { key = "applyAllTextures", label = "Bar Textures" },
+            { key = "applyAllFonts", label = "Font" },
+            { key = "applyAllTextures", label = "Bar Texture" },
         },
     },
     {

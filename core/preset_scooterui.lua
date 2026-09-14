@@ -1685,15 +1685,6 @@ Presets:Register({
     enableBar5 = true,
     enableBar6 = true,
   },
-  applyAll = {
-    barTexturePending = "default",
-    fontPending = "default",
-    lastFontApplied = {
-      changed = 102,
-      timestamp = 1764607972,
-      value = "ROBOTO_SEMICOND_BLACK",
-    },
-  },
   bugSackButtonSeparate = true,
   cdmQoL = {
     enableCDM = true,
