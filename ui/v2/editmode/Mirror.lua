@@ -19,6 +19,12 @@
 --     { kind = "selector", values = {k=label}, order = {k}, rebuild = true }
 --     { kind = "slider",   min = -200, max = 200, step = 1, precision = 0 }
 --     { kind = "toggle" }
+--     { kind = "position" }
+--
+-- `position` is the X/Y pair on one row: `get` returns centerX, centerY (or
+-- nil while unreadable) and `set` takes one { x, y } table. The pair is the
+-- frame's center relative to the screen center, in UI units; the provider in
+-- core/editmode/positionables.lua supplies it.
 --
 -- Action kinds take `label` and `set` (the click handler); they have no `get`:
 --
@@ -59,6 +65,12 @@ local SLIDER_INPUT_W = 38
 local ACTION_BTN_H  = 26   -- matches Dialog.lua's BTN_H
 local ACTION_ROW_H  = 34   -- button + top gap; both action kinds share it
 local STATUS_BTN_W  = 64   -- the compact status-row button
+
+-- Kept off addon.UI.Skin.Metrics: dialog-only squeeze values, sized to the
+-- 232px box like every other constant in this file.
+local POS_BOX_W     = 60   -- each coordinate box; two beside the label in 232px
+local POS_BOX_H     = 22
+local POS_ROW_H     = 30
 
 --------------------------------------------------------------------------------
 -- State
@@ -107,6 +119,93 @@ local BUILDERS = {
             get    = spec.get,
             set    = set,
         })
+    end,
+
+    position = function(Controls, parent, spec, set)
+        local row = CreateFrame("Frame", nil, parent)
+        row:SetHeight(POS_ROW_H)
+
+        local theme = addon.UI and addon.UI.Theme
+
+        local label = row:CreateFontString(nil, "OVERLAY")
+        if theme and theme.ApplyLabelFont then theme:ApplyLabelFont(label, 11) end
+        label:SetJustifyH("LEFT")
+        label:SetPoint("LEFT", row, "LEFT", 12, 0)
+        label:SetText(spec.label or "")
+
+        -- The pair get() last returned: a committed box supplies one
+        -- coordinate and this supplies the other.
+        local lastX, lastY
+
+        local function makeBox()
+            -- Free text validated on commit: SetNumeric rejects the minus sign.
+            return Controls:CreateSingleLineEditBox({
+                parent   = row,
+                width    = POS_BOX_W,
+                height   = POS_BOX_H,
+                fontSize = 11,
+                justifyH = "CENTER",
+            })
+        end
+
+        local function makeTag(text, anchorTo)
+            local tag = row:CreateFontString(nil, "OVERLAY")
+            if theme and theme.ApplyLabelFont then theme:ApplyLabelFont(tag, 10) end
+            tag:SetText(text)
+            tag:SetPoint("RIGHT", anchorTo, "LEFT", -4, 0)
+            return tag
+        end
+
+        local yBox = makeBox()
+        yBox:SetPoint("RIGHT", row, "RIGHT", -12, 0)
+        local yTag = makeTag("Y", yBox)
+        local xBox = makeBox()
+        xBox:SetPoint("RIGHT", yTag, "LEFT", -10, 0)
+        makeTag("X", xBox)
+
+        local function paint(box, v)
+            if box.HasFocus and box.HasFocus() then return end
+            local text = (v ~= nil) and ("%.1f"):format(v) or "-"
+            if text == "-0.0" then text = "0.0" end
+            box._painted = text
+            box:SetText(text)
+        end
+
+        local function commit(box, which, text)
+            -- Focus loss commits upstream no matter what; act only on a real
+            -- edit, or the 0.1-rounded display would re-commit as a move.
+            if text == box._painted then return end
+            local v = tonumber(text)
+            if v ~= nil and lastX ~= nil and lastY ~= nil then
+                if which == "x" then
+                    set({ x = v, y = lastY })
+                else
+                    set({ x = lastX, y = v })
+                end
+            end
+            row:Refresh()
+        end
+
+        xBox:SetOnChange(function(text) commit(xBox, "x", text) end)
+        yBox:SetOnChange(function(text) commit(yBox, "y", text) end)
+
+        function row:Refresh()
+            local cx, cy = spec.get()
+            lastX, lastY = cx, cy
+            paint(xBox, cx)
+            paint(yBox, cy)
+            local enabled = (cx ~= nil) and not InCombatLockdown()
+            xBox._editBox:SetEnabled(enabled)
+            yBox._editBox:SetEnabled(enabled)
+        end
+
+        function row:Cleanup()
+            if xBox.Cleanup then xBox:Cleanup() end
+            if yBox.Cleanup then yBox:Cleanup() end
+        end
+
+        row:Refresh()
+        return row
     end,
 
     button = function(Controls, parent, spec, set)

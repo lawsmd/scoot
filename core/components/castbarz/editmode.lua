@@ -106,6 +106,11 @@ function CBZ._RegisterBarEditMode(bar, row)
         store = { get = GetBarPosition, set = CBZ._SavePosition },
         apply = ApplyBarPosition,
         restoreDefault = true,
+        -- A snapped bar discards drops and its live anchor answers secret, so
+        -- the dialog's position row renders only in free mode.
+        positionEditable = function(b)
+            return CBZ._GetPositionMode(b.unitKey) == "free"
+        end,
         brand = {
             navKey    = "castBarZ",
             pageState = { key = "_castBarZSelectedUnit", value = row.unitKey },
