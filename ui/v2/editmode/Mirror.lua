@@ -21,10 +21,11 @@
 --     { kind = "toggle" }
 --     { kind = "position" }
 --
--- `position` is the X/Y pair on one row: `get` returns centerX, centerY (or
--- nil while unreadable) and `set` takes one { x, y } table. The pair is the
--- frame's center relative to the screen center, in UI units; the provider in
--- core/editmode/positionables.lua supplies it.
+-- `position` is the X/Y pair under a centered label: `get` returns centerX,
+-- centerY (or nil while unreadable) and `set` takes one { x, y } table. The pair
+-- is the frame's center relative to the screen center, in UI units; the provider
+-- in core/editmode/positionables.lua supplies it. The boxes show and accept whole
+-- units only: display rounds, and a typed fraction rounds before `set`.
 --
 -- Action kinds take `label` and `set` (the click handler); they have no `get`:
 --
@@ -67,10 +68,15 @@ local ACTION_ROW_H  = 34   -- button + top gap; both action kinds share it
 local STATUS_BTN_W  = 64   -- the compact status-row button
 
 -- Kept off addon.UI.Skin.Metrics: dialog-only squeeze values, sized to the
--- 232px box like every other constant in this file.
-local POS_BOX_W     = 60   -- each coordinate box; two beside the label in 232px
-local POS_BOX_H     = 22
-local POS_ROW_H     = 30
+-- 232px box like every other constant in this file. The label has its own line,
+-- so the boxes get the full width: 12 pad + tag + 4 + 80 box + 16 gap + tag +
+-- 4 + 80 box + 12 pad.
+local POS_BOX_W       = 80   -- each coordinate box; 62px of text after the control's padding
+local POS_BOX_H       = 22
+local POS_HALF_GAP    = 16   -- between the X half and the Y half
+local POS_PAD_BOTTOM  = 4
+local POS_ROW_H       = 46   -- label line + box line
+local POS_MAX_LETTERS = 6    -- "-12345" is wider than any screen and still fits the box
 
 --------------------------------------------------------------------------------
 -- State
@@ -129,8 +135,8 @@ local BUILDERS = {
 
         local label = row:CreateFontString(nil, "OVERLAY")
         if theme and theme.ApplyLabelFont then theme:ApplyLabelFont(label, 11) end
-        label:SetJustifyH("LEFT")
-        label:SetPoint("LEFT", row, "LEFT", 12, 0)
+        label:SetJustifyH("CENTER")
+        label:SetPoint("TOP", row, "TOP", 0, -2)
         label:SetText(spec.label or "")
 
         -- The pair get() last returned: a committed box supplies one
@@ -140,43 +146,49 @@ local BUILDERS = {
         local function makeBox()
             -- Free text validated on commit: SetNumeric rejects the minus sign.
             return Controls:CreateSingleLineEditBox({
-                parent   = row,
-                width    = POS_BOX_W,
-                height   = POS_BOX_H,
-                fontSize = 11,
-                justifyH = "CENTER",
+                parent     = row,
+                width      = POS_BOX_W,
+                height     = POS_BOX_H,
+                fontSize   = 11,
+                justifyH   = "CENTER",
+                maxLetters = POS_MAX_LETTERS,
             })
         end
 
-        local function makeTag(text, anchorTo)
+        local function makeTag(text)
             local tag = row:CreateFontString(nil, "OVERLAY")
             if theme and theme.ApplyLabelFont then theme:ApplyLabelFont(tag, 10) end
             tag:SetText(text)
-            tag:SetPoint("RIGHT", anchorTo, "LEFT", -4, 0)
             return tag
         end
 
-        local yBox = makeBox()
-        yBox:SetPoint("RIGHT", row, "RIGHT", -12, 0)
-        local yTag = makeTag("Y", yBox)
+        -- Each half is tag + box, one on each side of the row's center line, so
+        -- the pair sits centered under the label.
         local xBox = makeBox()
-        xBox:SetPoint("RIGHT", yTag, "LEFT", -10, 0)
-        makeTag("X", xBox)
+        xBox:SetPoint("BOTTOMRIGHT", row, "BOTTOM", -POS_HALF_GAP / 2, POS_PAD_BOTTOM)
+        makeTag("X"):SetPoint("RIGHT", xBox, "LEFT", -4, 0)
+        local yTag = makeTag("Y")
+        yTag:SetPoint("LEFT", row, "BOTTOM", POS_HALF_GAP / 2, POS_PAD_BOTTOM + POS_BOX_H / 2)
+        local yBox = makeBox()
+        yBox:SetPoint("LEFT", yTag, "RIGHT", 4, 0)
 
         local function paint(box, v)
             if box.HasFocus and box.HasFocus() then return end
-            local text = (v ~= nil) and ("%.1f"):format(v) or "-"
-            if text == "-0.0" then text = "0.0" end
+            local text = (v ~= nil) and ("%d"):format(math.floor(v + 0.5)) or "-"
             box._painted = text
             box:SetText(text)
         end
 
         local function commit(box, which, text)
             -- Focus loss commits upstream no matter what; act only on a real
-            -- edit, or the 0.1-rounded display would re-commit as a move.
+            -- edit, or re-committing the rounded display would move a frame
+            -- that sits at a fractional position.
             if text == box._painted then return end
             local v = tonumber(text)
-            if v ~= nil and lastX ~= nil and lastY ~= nil then
+            -- tonumber accepts "inf" and "nan"; neither is a position.
+            if v ~= nil and v == v and v > -math.huge and v < math.huge
+                and lastX ~= nil and lastY ~= nil then
+                v = math.floor(v + 0.5)
                 if which == "x" then
                     set({ x = v, y = lastY })
                 else

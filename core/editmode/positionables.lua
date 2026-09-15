@@ -224,7 +224,8 @@ local function commitPosition(entry, frame, pos)
     local s = frameScale(frame)
     if not (w and s) then return end
     local W, H = UIParent:GetSize()
-    local rx, ry = (W - w * s) / 2, (H - h * s) / 2
+    -- Bounds round inward so a clamped whole-unit entry stays whole.
+    local rx, ry = math.floor((W - w * s) / 2), math.floor((H - h * s) / 2)
     if rx > 0 then tx = math.max(-rx, math.min(rx, tx)) end
     if ry > 0 then ty = math.max(-ry, math.min(ry, ty)) end
 
