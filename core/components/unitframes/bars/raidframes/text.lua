@@ -54,6 +54,34 @@ local styleRaidStatusTextOverlay = Raid.styleStatusOverlay
 local ensureRaidStatusTextOverlay = Raid.ensureStatusOverlay
 local disableRaidStatusTextOverlay = Raid.disableStatusOverlay
 
+local function anyOverlayActive(activeKey)
+    for i = 1, 40 do
+        local frame = _G["CompactRaidFrame" .. i]
+        local state = frame and getState(frame)
+        if state and state[activeKey] then return true end
+    end
+    for group = 1, 8 do
+        for member = 1, 5 do
+            local frame = _G["CompactRaidGroup" .. group .. "Member" .. member]
+            local state = frame and getState(frame)
+            if state and state[activeKey] then return true end
+        end
+    end
+    return false
+end
+
+-- Runs a restore loop after a text config loses its custom settings, when a
+-- raid frame still shows an overlay. The restore shows Blizzard's text again,
+-- which never happens in lockdown: combat queues the family reapply.
+local function restoreActiveOverlays(activeKey, restore)
+    if not anyOverlayActive(activeKey) then return end
+    if InCombatLockdown and InCombatLockdown() then
+        Combat.queueRaidFrameReapply()
+        return
+    end
+    restore()
+end
+
 --------------------------------------------------------------------------------
 -- Text Styling (Player Name)
 --------------------------------------------------------------------------------
@@ -86,15 +114,13 @@ function addon.ApplyRaidFrameNameOverlays()
 
     local groupFrames = rawget(db, "groupFrames")
     local raidCfg = groupFrames and rawget(groupFrames, "raid") or nil
+    local cfg = raidCfg and rawget(raidCfg, "textPlayerName") or nil
 
-    -- Zero-Touch: if no raid config exists, don't touch raid frames at all
-    if not raidCfg then return end
-
-    local cfg = rawget(raidCfg, "textPlayerName") or nil
-    local hasCustom = Utils.hasCustomTextSettings(cfg)
-
-    -- If no custom settings, skip - let RestoreRaidFrameNameOverlays handle cleanup
-    if not hasCustom then return end
+    -- No raid config or no custom settings: take down overlays an earlier pass created
+    if not Utils.hasCustomTextSettings(cfg) then
+        restoreActiveOverlays("nameOverlayActive", addon.RestoreRaidFrameNameOverlays)
+        return
+    end
 
     -- Combined layout: CompactRaidFrame1..40
     for i = 1, 40 do
@@ -229,16 +255,13 @@ function addon.ApplyRaidFrameStatusTextStyle()
     local db = addon and addon.db and addon.db.profile
     if not db then return end
 
-    -- Zero-Touch: only apply if user has configured raid status text styling.
     local groupFrames = rawget(db, "groupFrames")
     local raidCfg = groupFrames and rawget(groupFrames, "raid") or nil
     local cfg = raidCfg and rawget(raidCfg, "textStatusText") or nil
-    if not cfg then
-        return
-    end
 
-    -- Zero-Touch: if the user changed nothing from the defaults, do nothing.
+    -- No raid config or no custom settings: take down overlays an earlier pass created
     if not Utils.hasCustomTextSettings(cfg) then
+        restoreActiveOverlays("statusTextOverlayActive", addon.RestoreRaidFrameStatusTextOverlays)
         return
     end
 

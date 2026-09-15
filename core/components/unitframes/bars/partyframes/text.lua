@@ -54,6 +54,24 @@ local stylePartyStatusTextOverlay = Party.styleStatusOverlay
 local ensurePartyStatusTextOverlay = Party.ensureStatusOverlay
 local disablePartyStatusTextOverlay = Party.disableStatusOverlay
 
+-- Runs a restore loop after a text config loses its custom settings, when a
+-- member frame still shows an overlay. The restore shows Blizzard's text
+-- again, which never happens in lockdown: combat queues the family reapply.
+local function restoreActiveOverlays(activeKey, restore)
+    for i = 1, 5 do
+        local frame = _G["CompactPartyFrameMember" .. i]
+        local state = frame and getState(frame)
+        if state and state[activeKey] then
+            if InCombatLockdown and InCombatLockdown() then
+                Combat.queuePartyFrameReapply()
+            else
+                restore()
+            end
+            return
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Text Styling (Player Name)
 --------------------------------------------------------------------------------
@@ -86,15 +104,13 @@ function addon.ApplyPartyFrameNameOverlays()
 
     local groupFrames = rawget(db, "groupFrames")
     local partyCfg = groupFrames and rawget(groupFrames, "party") or nil
+    local cfg = partyCfg and rawget(partyCfg, "textPlayerName") or nil
 
-    -- Zero-Touch: if no party config exists, don't touch party frames at all
-    if not partyCfg then return end
-
-    local cfg = rawget(partyCfg, "textPlayerName") or nil
-    local hasCustom = Utils.hasCustomTextSettings(cfg)
-
-    -- If no custom settings, skip - let RestorePartyFrameNameOverlays handle cleanup
-    if not hasCustom then return end
+    -- No party config or no custom settings: take down overlays an earlier pass created
+    if not Utils.hasCustomTextSettings(cfg) then
+        restoreActiveOverlays("nameOverlayActive", addon.RestorePartyFrameNameOverlays)
+        return
+    end
 
     for i = 1, 5 do
         local frame = _G["CompactPartyFrameMember" .. i]
@@ -377,11 +393,10 @@ function addon.ApplyPartyFrameStatusTextStyle()
     local groupFrames = rawget(db, "groupFrames")
     local partyCfg = groupFrames and rawget(groupFrames, "party") or nil
     local cfg = partyCfg and rawget(partyCfg, "textStatusText") or nil
-    if not cfg then
-        return
-    end
 
+    -- No party config or no custom settings: take down overlays an earlier pass created
     if not Utils.hasCustomTextSettings(cfg) then
+        restoreActiveOverlays("statusTextOverlayActive", addon.RestorePartyFrameStatusTextOverlays)
         return
     end
 

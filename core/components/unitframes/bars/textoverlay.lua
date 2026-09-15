@@ -371,15 +371,13 @@ function TO.NewFamily(desc)
         end
     end
 
+    -- A frame that never had an overlay is left untouched (Zero-Touch).
     function family.disableNameOverlay(frame)
         if not frame then return end
         local frameState = getState(frame)
-        if frameState then
-            frameState.nameOverlayActive = false
-            if frameState.nameOverlayText then
-                frameState.nameOverlayText:Hide()
-            end
-        end
+        if not (frameState and frameState.nameOverlayText) then return end
+        frameState.nameOverlayActive = false
+        frameState.nameOverlayText:Hide()
         showBlizzardName(frame)
 
         -- Restore roleIcon to stock draw layer
@@ -554,12 +552,9 @@ function TO.NewFamily(desc)
     function family.disableStatusOverlay(frame)
         if not frame then return end
         local frameState = getState(frame)
-        if frameState then
-            frameState.statusTextOverlayActive = false
-            if frameState.statusTextOverlay then
-                frameState.statusTextOverlay:Hide()
-            end
-        end
+        if not (frameState and frameState.statusTextOverlay) then return end
+        frameState.statusTextOverlayActive = false
+        frameState.statusTextOverlay:Hide()
         showBlizzardStatus(frame)
     end
 

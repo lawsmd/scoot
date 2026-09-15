@@ -471,19 +471,17 @@ function GC.NewFamily(desc)
         end)
     end
 
+    -- A bar that never had an overlay is left untouched (Zero-Touch).
     function family.disableHealthOverlay(bar)
         if not bar then return end
         local state = getState(bar)
-        if state then
-            state.overlayActive = false
-            -- Clear the fingerprint so re-enabling styles fresh, and the
-            -- anchored-fill cache so it re-anchors once.
-            state.lastAppliedFingerprint = nil
-            state.lastAnchoredFill = nil
-        end
-        if state and state.healthOverlay then
-            state.healthOverlay:Hide()
-        end
+        if not (state and state.healthOverlay) then return end
+        state.overlayActive = false
+        -- Clear the fingerprint so re-enabling styles fresh, and the
+        -- anchored-fill cache so it re-anchors once.
+        state.lastAppliedFingerprint = nil
+        state.lastAnchoredFill = nil
+        state.healthOverlay:Hide()
         showBlizzardFill(bar)
         -- Restore roleIcon to stock draw layer
         local unitFrame = bar.GetParent and bar:GetParent()
@@ -885,12 +883,25 @@ function GC.NewFamily(desc)
 
     -- Apply overlays to all family health bars
     function family.applyHealthOverlays()
-        -- Zero-Touch: if no family config exists, don't touch the frames at all
         local cfg = readCfg()
-        if not cfg then return end
 
-        -- If no custom settings, also skip - let the explicit restore handle cleanup
-        if not hasOverlayCustom(cfg) then return end
+        -- No family config or no custom foreground: take down overlays an
+        -- earlier pass created. The restore shows Blizzard's fill again, so
+        -- combat queues the reapply instead.
+        if not (cfg and hasOverlayCustom(cfg)) then
+            local anyActive = false
+            desc.forEachHealthBar(function(bar)
+                local state = getState(bar)
+                if state and state.overlayActive then anyActive = true end
+            end)
+            if not anyActive then return end
+            if InCombatLockdown and InCombatLockdown() then
+                queueReapply()
+            else
+                family.restoreHealthOverlays()
+            end
+            return
+        end
 
         desc.forEachHealthBar(function(bar)
             if not (InCombatLockdown and InCombatLockdown()) then
