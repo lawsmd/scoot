@@ -24,12 +24,6 @@ local function setProp(frame, key, value)
 end
 
 local Util = addon.ComponentsUtil
-local UNIT_FRAME_CATEGORY_TO_UNIT = {
-    ufPlayer = "Player",
-    ufTarget = "Target",
-    ufFocus  = "Focus",
-    ufPet    = "Pet",
-}
 
 local function CopyDefaultValue(value)
     if type(value) ~= "table" then
@@ -569,99 +563,6 @@ function addon:ApplyEarlyComponentStyles()
             component:ApplyStyling()
         end
     end
-end
-
-function addon:ResetComponentToDefaults(componentOrId)
-    local component = componentOrId
-    if type(componentOrId) == "string" then
-        component = self.Components and self.Components[componentOrId]
-    end
-
-    if not component then
-        return false, "component_missing"
-    end
-
-    if not component.db then
-        if type(self.EnsureComponentDB) == "function" then
-            self:EnsureComponentDB(component)
-        end
-    end
-
-    if not component.db then
-        return false, "component_db_unavailable"
-    end
-
-    local seen = {}
-    for settingId, setting in pairs(component.settings or {}) do
-        if type(setting) == "table" then
-            seen[settingId] = true
-            if setting.default ~= nil then
-                if type(setting.default) == "table" then
-                    component.db[settingId] = nil  -- Clear to nil; metatable provides default for reads
-                else
-                    component.db[settingId] = CopyDefaultValue(setting.default)
-                end
-            else
-                component.db[settingId] = nil
-            end
-        end
-    end
-
-    for key in pairs(component.db) do
-        if not seen[key] then
-            component.db[key] = nil
-        end
-    end
-
-    if self.EditMode and self.EditMode.ResetComponentPositionToDefault then
-        self.EditMode.ResetComponentPositionToDefault(component)
-    end
-
-    if self.EditMode and self.EditMode.SyncComponentToEditMode then
-        self.EditMode.SyncComponentToEditMode(component, { skipApply = true })
-    end
-
-    if self.ApplyStyles then
-        self:ApplyStyles()
-    end
-
-    return true
-end
-
-function addon:ResetUnitFrameCategoryToDefaults(categoryKey)
-    if type(categoryKey) ~= "string" then
-        return false, "invalid_category"
-    end
-
-    local unit = UNIT_FRAME_CATEGORY_TO_UNIT[categoryKey]
-    if not unit then
-        return false, "unknown_unit"
-    end
-
-    local profile = self.db and self.db.profile
-    if not profile then
-        return false, "db_unavailable"
-    end
-
-    if profile.unitFrames then
-        profile.unitFrames[unit] = nil
-        local hasAny = false
-        for _ in pairs(profile.unitFrames) do
-            hasAny = true
-            break
-        end
-        if not hasAny then
-            profile.unitFrames = nil
-        end
-    end
-
-    if self.EditMode and self.EditMode.ResetUnitFramePosition then
-        self.EditMode.ResetUnitFramePosition(unit)
-    end
-
-    addon.Refresh.Run("unit", unit)
-
-    return true
 end
 
 function addon:SyncAllEditModeSettings()
