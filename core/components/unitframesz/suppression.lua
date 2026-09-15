@@ -55,12 +55,51 @@ local OWNER = "unitFramesZ"
 -- Blizzard re-parents this container to UIParent on EVERY Edit Mode enter and
 -- exit, so NativeFrame's deferred SetParent re-park hook is load-bearing here
 -- rather than belt-and-braces.
+--
+-- The same re-parent happens on every Edit Mode layout pass
+-- (ApplySystemAnchor -> BreakFromFrameManager, EditModeSystemTemplates.lua:343),
+-- and that pass can run in combat, where the re-park waits for
+-- PLAYER_REGEN_ENABLED. So the Boss claim carries a quiet list: the events that
+-- show a boss frame, silenced while the container is parked, and a Hide for any
+-- boss frame already shown. A boss frame with no show events stays hidden
+-- wherever the container goes.
+--   BossTargetFrameContainer  PLAYER_ENTERING_WORLD -> UpdateShownState, which
+--                             shows each boss frame whose unit exists
+--                             (TargetFrame.lua:1053-1057,
+--                             EditModeSystemTemplates.lua:1642-1652)
+--   Boss<N>TargetFrame        PLAYER_ENTERING_WORLD and UNIT_TARGETABLE_CHANGED
+--                             -> Update; on Boss1 also
+--                             INSTANCE_ENCOUNTER_ENGAGE_UNIT, which updates all
+--                             five (TargetFrame.lua:161-191, 962, 1008)
+-- Their other events repaint without showing. Edit Mode enter and exit still
+-- show the frames (RefreshBossFrames, EditModeManager.lua:2379); the Reapply on
+-- exit hides them again. The container is not hidden: with its children hidden
+-- it draws nothing.
+--
+-- Player, Target and Focus need no list. They are not frame-manager frames, so
+-- the layout pass never re-parents them.
+local BOSS_CONTAINER_EVENTS = { "PLAYER_ENTERING_WORLD" }
+local BOSS_FRAME_EVENTS = {
+    "PLAYER_ENTERING_WORLD", "UNIT_TARGETABLE_CHANGED", "INSTANCE_ENCOUNTER_ENGAGE_UNIT",
+}
+
+local function QuietBossFrames(container)
+    local quiet = { { frame = container, events = BOSS_CONTAINER_EVENTS } }
+    for i = 1, UFZ.NUM_BOSS_FRAMES do
+        local bossFrame = _G["Boss" .. i .. "TargetFrame"]
+        if bossFrame then
+            quiet[#quiet + 1] = { frame = bossFrame, events = BOSS_FRAME_EVENTS, hide = true }
+        end
+    end
+    return quiet
+end
+
 local BLIZZARD_FRAME = {
     Player         = { name = "PlayerFrame", method = "park" },
     Target         = { name = "TargetFrame", method = "park" },
     Focus          = { name = "FocusFrame", method = "park" },
     TargetOfTarget = { name = "TargetFrameToT", method = "alpha" },
-    Boss           = { name = "BossTargetFrameContainer", method = "park" },
+    Boss           = { name = "BossTargetFrameContainer", method = "park", quiet = QuietBossFrames },
 }
 
 -- Which frames Z currently owns. Nothing is ever released that was not
@@ -101,7 +140,8 @@ function UFZ._ApplySuppression()
             local frame = ResolveFrame(unitKey)
             if frame then
                 if want then
-                    addon.NativeFrame:Suppress(frame, OWNER, BLIZZARD_FRAME[unitKey].method)
+                    local row = BLIZZARD_FRAME[unitKey]
+                    addon.NativeFrame:Suppress(frame, OWNER, row.method, row.quiet and row.quiet(frame))
                 else
                     addon.NativeFrame:Release(frame, OWNER)
                 end

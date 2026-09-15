@@ -40,9 +40,39 @@ local OWNER = "castBarZ"
 -- `self:GetParent().powerBarAlt` (:1115), so re-parenting them throws from inside
 -- Blizzard's own OnEvent the first time Edit Mode targets something. They take
 -- alpha, which is weaker -- hence _ReassertSuppression below.
+--
+-- The parked bars also give NativeFrame a quiet list: the events that start a
+-- cast, silenced while the bar is parked. Blizzard's Edit Mode layout pass
+-- re-parents PlayerCastingBarFrame to UIParent (EditModeSystemTemplates.lua:343),
+-- and in combat the re-park waits for PLAYER_REGEN_ENABLED. A bar with no cast
+-- events draws nothing during that wait. The list is the one
+-- CastingBarMixin:SetUnit registers (CastingBarFrame.lua:238-251); the pet bar
+-- adds UNIT_PET (PetFrame.lua:178). Nothing re-parents the pet bar, but it takes
+-- the same treatment so both parked bars behave alike.
+local CAST_EVENTS = {
+    "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_DELAYED",
+    "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_UPDATE", "UNIT_SPELLCAST_CHANNEL_STOP",
+    "UNIT_SPELLCAST_EMPOWER_START", "UNIT_SPELLCAST_EMPOWER_UPDATE", "UNIT_SPELLCAST_EMPOWER_STOP",
+    "UNIT_SPELLCAST_INTERRUPTIBLE", "UNIT_SPELLCAST_NOT_INTERRUPTIBLE",
+    "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED",
+    "PLAYER_ENTERING_WORLD",
+}
+local PET_CAST_EVENTS = { "UNIT_PET" }
+for _, event in ipairs(CAST_EVENTS) do
+    PET_CAST_EVENTS[#PET_CAST_EVENTS + 1] = event
+end
+
+-- The bar itself, silenced, and hidden if it was parked mid-cast: parked, it
+-- runs no OnUpdate, so a shown bar never finishes on its own.
+local function QuietBar(events)
+    return function(frame)
+        return { { frame = frame, events = events, hide = true } }
+    end
+end
+
 local BLIZZARD_BAR = {
-    Player = { name = "PlayerCastingBarFrame", method = "park" },
-    Pet    = { name = "PetCastingBarFrame",    method = "park" },
+    Player = { name = "PlayerCastingBarFrame", method = "park", quiet = QuietBar(CAST_EVENTS) },
+    Pet    = { name = "PetCastingBarFrame",    method = "park", quiet = QuietBar(PET_CAST_EVENTS) },
     Target = { name = "TargetFrameSpellBar",   method = "alpha" },
     Focus  = { name = "FocusFrameSpellBar",    method = "alpha" },
 }
@@ -104,7 +134,8 @@ function CBZ._ApplySuppression()
             local frame = ResolveFrame(barKey)
             if frame then
                 if want then
-                    addon.NativeFrame:Suppress(frame, OWNER, BLIZZARD_BAR[barKey].method)
+                    local bar = BLIZZARD_BAR[barKey]
+                    addon.NativeFrame:Suppress(frame, OWNER, bar.method, bar.quiet and bar.quiet(frame))
                 else
                     addon.NativeFrame:Release(frame, OWNER)
                 end

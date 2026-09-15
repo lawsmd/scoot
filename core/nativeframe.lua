@@ -16,16 +16,16 @@
 --
 -- Deliberately NOT done here:
 --
--- * No UnregisterAllEvents. Silencing a Blizzard frame's events is destructive
---   and has no honest inverse -- re-registering means guessing at Blizzard's own
---   registration list, and getting it wrong leaves a frame that is alive but
---   subtly wrong for the rest of the session. A hidden parent needs no event
---   change at all: the frame keeps updating itself, invisibly, and handing it
---   back is one SetParent.
--- * No Hide() on the frame itself. On an Edit Mode system frame Hide is a Lua
---   override that writes to the frame's table (EditModeSystemTemplates.lua:35-36);
---   HideBase would dodge that, but Blizzard calls plain Show() on the next update
---   and the fight for the same pixel would resume.
+-- * No UnregisterAllEvents. Nothing can list what a frame had registered, so
+--   re-arming after it means guessing, and a wrong guess leaves a frame alive
+--   but subtly wrong for the session. Events are silenced only by name, from a
+--   caller's quiet list, and put back exactly as captured (see THE COMBAT GAP).
+-- * No Hide() on a frame that still has its events. On an Edit Mode system
+--   frame Hide is a Lua override that writes to the frame's table
+--   (EditModeSystemTemplates.lua:35-36); HideBase would dodge that, but Blizzard
+--   calls plain Show() on the next update and the fight for the same pixel
+--   would resume. A quiet entry may ask for a Hide, because its show events are
+--   gone.
 -- * No fields written to the Blizzard frame. All state lives in the weak-keyed
 --   table below. Writing even one bookkeeping flag onto a system frame is the
 --   documented permanent-taint vector.
@@ -44,6 +44,22 @@
 -- re-asserted per cast) but is the only option that leaves the parent chain
 -- Blizzard's layout code depends on intact. Rule of thumb: park top-level frames,
 -- dim frames that are children of a system.
+--
+-- THE COMBAT GAP. Blizzard re-parents some parked frames itself. The Edit Mode
+-- layout pass moves every frame the frame manager owns
+-- (ApplySystemAnchor -> BreakFromFrameManager -> SetParent(UIParent),
+-- EditModeSystemTemplates.lua:335-365), PlayerCastingBarFrame and
+-- BossTargetFrameContainer among them, and it runs on EDIT_MODE_LAYOUTS_UPDATED
+-- and PLAYER_SPECIALIZATION_CHANGED, in combat too. Every re-park here skips
+-- combat, so a pass that lands mid-fight leaves Blizzard's frame on screen
+-- until PLAYER_REGEN_ENABLED.
+--
+-- A "park" claim closes that gap with a QUIET list: entries of
+-- { frame = f, events = { ... }, hide = true }. Park unregisters each named
+-- event after capturing its registration with IsEventRegistered, units
+-- included, and Unpark registers each one again exactly as captured. A frame
+-- with no events left to show itself stays hidden wherever Blizzard puts it.
+-- The caller owns the list and cites where Blizzard registers each event.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -196,6 +212,66 @@ local function Undim(frame)
     d.restoreAlpha = nil
 end
 
+--- Silence the events a claim's quiet list names, and hide what it asks for.
+---
+--- Runs under the same gate as the re-park, and after it, so a Hide lands on a
+--- frame the holder has already taken off screen. Safe to repeat: a
+--- registration is captured once, and an event registered again since is
+--- removed again.
+local function Quiet(d)
+    local quiet = d.quiet
+    if not quiet or InCombatLockdown() or EditModeOpen() then return end
+
+    d.captured = d.captured or {}
+    for _, entry in ipairs(quiet) do
+        local frame = Resolve(entry.frame)
+        if frame then
+            local captured = d.captured[frame] or {}
+            d.captured[frame] = captured
+            for _, event in ipairs(entry.events) do
+                if frame:IsEventRegistered(event) then
+                    if not captured[event] then
+                        -- The returns after the first are the units the
+                        -- registration filters on; none means RegisterEvent.
+                        captured[event] = { select(2, frame:IsEventRegistered(event)) }
+                    end
+                    frame:UnregisterEvent(event)
+                end
+            end
+            -- Only while nothing is drawn. The engine fires OnHide when a frame
+            -- goes from visible to hidden, so hiding a frame whose ancestor is
+            -- already hidden runs no Blizzard handler in addon execution (a boss
+            -- frame's OnHide lays out the container). HideBase is the C-level
+            -- Hide a system frame keeps next to its table-writing override.
+            if entry.hide and frame:IsShown() and not frame:IsVisible() then
+                local hide = frame.HideBase or frame.Hide
+                hide(frame)
+            end
+        end
+    end
+end
+
+--- Register every captured event again, as it was captured.
+---
+--- A frame Quiet hid stays hidden until Blizzard's next show event for it: the
+--- next cast, or the next boss engage.
+local function Unquiet(d)
+    local captured = d.captured
+    if not captured then return end
+    d.captured = nil
+
+    for frame, events in pairs(captured) do
+        for event, units in pairs(events) do
+            if units[1] then
+                frame:RegisterUnitEvent(event, unpack(units))
+            else
+                -- Kept off addon.Events: this restores a Blizzard frame's own registration, not a Scoot handler.
+                frame:RegisterEvent(event)
+            end
+        end
+    end
+end
+
 local function Park(frame)
     local d = State(frame)
     local hidden = Holder()
@@ -232,6 +308,7 @@ local function Park(frame)
 
     d.parked = true
     ApplySelection(frame, true)
+    Quiet(d)
 end
 
 local function Unpark(frame)
@@ -240,6 +317,10 @@ local function Unpark(frame)
     ApplySelection(frame, false)
 
     if InCombatLockdown() or EditModeOpen() then return end
+
+    -- Before the ownership check below: the silenced events are Scoot's own
+    -- write, and they go back whoever holds the frame now.
+    Unquiet(d)
 
     -- Only ever hand back a frame Scoot itself parked. If something else has
     -- since taken it, resurrecting it would put two bars on screen -- the exact
@@ -273,13 +354,17 @@ end
 ---
 --- `method` is "park" (default, hidden parent) or "alpha". Use "alpha" for any
 --- frame whose own code reads its parent -- see the header note on the spell bars.
-function NativeFrame:Suppress(frame, owner, method)
+---
+--- `quiet` is an optional list for "park" claims, one entry per frame:
+--- { frame = f, events = { ... }, hide = true }. See THE COMBAT GAP in the header.
+function NativeFrame:Suppress(frame, owner, method, quiet)
     frame = Resolve(frame)
     if not frame or not owner then return false end
 
     local d = State(frame)
     d.owners[owner] = true
     d.method = method or d.method or "park"
+    if quiet then d.quiet = quiet end
 
     if d.method == "alpha" then
         Dim(frame)
@@ -331,7 +416,7 @@ function NativeFrame:Reapply(frame)
     for f, d in pairs(data) do
         if d.parked then
             if d.method == "alpha" then Dim(f) else Park(f) end
-        elseif d.origParent ~= nil then
+        elseif d.origParent ~= nil or d.captured then
             Unpark(f)
         end
     end
