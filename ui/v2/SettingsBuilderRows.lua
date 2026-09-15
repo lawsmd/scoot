@@ -533,6 +533,8 @@ function Builder:AddPreview(options)
         shapeDrain = options.shapeDrain,
         iconSwipe = options.iconSwipe,
         iconSwipeBackdropAlpha = options.iconSwipeBackdropAlpha,
+        iconSwipeBackdropShade = options.iconSwipeBackdropShade,
+        iconSwipeLine = options.iconSwipeLine,
         noHover = options.noHover,
         noLabel = options.noLabel,
         timerEpoch = options.timerEpoch,

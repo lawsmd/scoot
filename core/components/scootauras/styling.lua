@@ -124,6 +124,10 @@ local function ApplyShapeStyling(trackerId, tracker, state)
             local cd = elem.widget
             if db.shapeShowDrain ~= false then
                 if texElem then
+                    if elem.clip then
+                        elem.clip:ClearAllPoints()
+                        elem.clip:SetAllPoints(texElem.widget)
+                    end
                     pcall(cd.ClearAllPoints, cd)
                     pcall(cd.SetAllPoints, cd, texElem.widget)
                 end
@@ -151,11 +155,19 @@ end
 --------------------------------------------------------------------------------
 -- The drain Cooldown draws the spell icon in full color as its swipe, run
 -- forward, so the colored wedge covers the remaining share and recedes
--- clockwise. A desaturated copy of the icon sits on the Cooldown, where
--- regions draw under the swipe. The engine hides the Cooldown for an aura
+-- clockwise. A desaturated copy of the icon, shaded darker, sits on the
+-- Cooldown, where regions draw under the swipe, and the Cooldown's edge draws
+-- a tinted line where the two halves meet. The engine hides the Cooldown for an aura
 -- with no duration, and the copy with it, so a permanent aura shows the live
 -- icon in full color. SetSwipeTexture takes no secret file, so the swipe and
 -- the copy use the picked spell's icon rather than the matched aura's.
+--
+-- The edge line never leaves the circle inside its Cooldown, and
+-- SetEdgeScale does not change that. So the Cooldown is a square as wide as
+-- the icon's diagonal, centered on the icon, which puts every point of the
+-- icon's rim inside that circle, and its clip frame (regions.lua) cuts the
+-- overhang back to the icon. The swipe's crop scales out to match, so its
+-- art stays on the live icon's.
 --
 -- With a Desaturated missing visual (the token carrying the Opacity gear) the
 -- copy stays hidden and the Cooldown's transparent mask is added to the live
@@ -165,6 +177,38 @@ end
 
 local ICON_CROP_LOW = { x = 0.08, y = 0.08 }
 local ICON_CROP_HIGH = { x = 0.92, y = 0.92 }
+
+-- The icon crop spread across a side x side square centered on a w x h icon.
+-- Coordinates past 0..1 fall only in the overhang the clip hides.
+local function SwipeCropRange(w, h, side)
+    local cu = (ICON_CROP_LOW.x + ICON_CROP_HIGH.x) / 2
+    local cv = (ICON_CROP_LOW.y + ICON_CROP_HIGH.y) / 2
+    local su = (ICON_CROP_HIGH.x - ICON_CROP_LOW.x) / 2 * side / w
+    local sv = (ICON_CROP_HIGH.y - ICON_CROP_LOW.y) / 2 * side / h
+    return { x = cu - su, y = cv - sv }, { x = cu + su, y = cv + sv }
+end
+
+-- A white line from the texture's center to its top edge, widening from a
+-- point to full width at 55% of its length, then even out to the edge: a
+-- wide icon's top and bottom sit near halfway along it. The Cooldown turns
+-- it with the swipe and tints it.
+local SWIPE_LINE_TEXTURE = "Interface\\AddOns\\" .. addonName .. "\\media\\scootauras\\swipe-line"
+
+SAU.SWIPE_LINE_TEXTURE = SWIPE_LINE_TEXTURE
+
+--- The swipe line's color from a stored { r, g, b, a }, the default when unset.
+function SAU.SwipeLineColor(c)
+    if type(c) ~= "table" then c = SAU.SWIPE_LINE_COLOR_DEFAULT end
+    return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
+end
+
+--- The gray half's darkness as a fraction, 0 (none) to 1 (black), from a
+-- stored 0-100, the default when unset.
+function SAU.SwipeDarkness(pct)
+    pct = tonumber(pct) or SAU.SWIPE_DARKNESS_DEFAULT
+    if pct < 0 then pct = 0 elseif pct > 100 then pct = 100 end
+    return pct / 100
+end
 
 --- Whether a tracker's drain Cooldown carries the icon swipe. BindForMode and
 -- the Edit Mode preview ask the same question.
@@ -200,7 +244,7 @@ local function ApplyIconSwipe(trackerId, tracker, state, isPreview)
 
     for _, elem in ipairs(state.elements or {}) do
         if elem.type == "cooldown" then
-            local cd, backdrop, mask = elem.widget, elem.backdrop, elem.mask
+            local cd, backdrop, mask, shade = elem.widget, elem.backdrop, elem.mask, elem.shade
             -- A mask added on an earlier pass comes off first; the pass below
             -- adds it back when it still applies.
             if elem.maskedIcon then
@@ -211,37 +255,69 @@ local function ApplyIconSwipe(trackerId, tracker, state, isPreview)
             local result
             if not (on and iconTex) then
                 if backdrop then backdrop:Hide() end
+                if shade then shade:Hide() end
                 if not shapeDrain then pcall(cd.SetDrawSwipe, cd, false) end
+                pcall(cd.SetDrawEdge, cd, false)
                 result = "off"
             else
                 local icon = SAU._SpellIcon(tracker.spellId)
+                local w, h = SAU.IconDimensions(db, vis)
+                w, h = math.max(w, 1), math.max(h, 1)
+                local side = math.sqrt(w * w + h * h)
+                if elem.clip then
+                    elem.clip:ClearAllPoints()
+                    elem.clip:SetAllPoints(iconTex)
+                end
                 pcall(cd.ClearAllPoints, cd)
-                pcall(cd.SetAllPoints, cd, iconTex)
+                pcall(cd.SetPoint, cd, "CENTER", iconTex, "CENTER", 0, 0)
+                pcall(cd.SetSize, cd, side, side)
                 pcall(cd.SetReverse, cd, false)
                 pcall(cd.SetUseAuraDisplayTime, cd, true)
                 pcall(cd.SetDrawSwipe, cd, true)
                 if icon then
                     pcall(cd.SetSwipeTexture, cd, icon, 1, 1, 1, 1)
-                    pcall(cd.SetTexCoordRange, cd, ICON_CROP_LOW, ICON_CROP_HIGH)
+                    pcall(cd.SetTexCoordRange, cd, SwipeCropRange(w, h, side))
                 end
                 pcall(cd.SetSwipeColor, cd, 1, 1, 1, 1)
 
+                -- SetEdgeTexture can turn edge drawing back on, so the flag
+                -- goes last.
+                local lr, lg, lb, la = SAU.SwipeLineColor(db.iconSwipeLineColor)
+                pcall(cd.SetEdgeTexture, cd, SWIPE_LINE_TEXTURE, lr, lg, lb, la)
+                pcall(cd.SetEdgeScale, cd, 1)
+                pcall(cd.SetDrawEdge, cd, true)
+
                 -- A failed AddMaskTexture leaves the backdrop on: full
                 -- opacity while ticking, the fallback.
-                local reveal = RevealOpacity(db, SAU.MissingVisualFor(tracker))
+                local token = SAU.MissingVisualFor(tracker)
+                local reveal = RevealOpacity(db, token)
                 local masked = false
                 if reveal and not isPreview and mask then
                     masked = pcall(iconTex.AddMaskTexture, iconTex, mask)
                     if masked then elem.maskedIcon = iconTex end
                 end
 
+                local dark = SAU.SwipeDarkness(db.iconSwipeDarkness)
                 if backdrop then
+                    -- On the icon, not the Cooldown: the Cooldown overhangs it.
+                    backdrop:ClearAllPoints()
+                    backdrop:SetAllPoints(iconTex)
                     if icon then backdrop:SetTexture(icon) end
                     backdrop:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                    backdrop:SetVertexColor(1, 1, 1, 1)
+                    backdrop:SetVertexColor(1 - dark, 1 - dark, 1 - dark, 1)
                     backdrop:SetDesaturated(true)
                     backdrop:SetAlpha((isPreview and reveal) or 1)
                     backdrop:SetShown(not masked)
+                end
+                if shade then
+                    -- Under the mask the gray half is the underlay's art,
+                    -- which also shows once the aura drops. Black on the
+                    -- Cooldown hides with it, so only the swipe darkens.
+                    -- Scaled by the reveal's opacity, so Hidden stays hidden.
+                    shade:ClearAllPoints()
+                    shade:SetAllPoints(iconTex)
+                    shade:SetAlpha(dark * (reveal or 1))
+                    shade:SetShown(masked)
                 end
                 result = masked and "on+mask" or "on"
             end
@@ -270,6 +346,23 @@ end
 -- do. Re-resolved every pass, since a form change moves the power type.
 local POWER_FILL_COLOR_OPTS = { barKind = "power", unitForPower = "player" }
 local POWER_TEXT_COLOR_OPTS = { classPowerMode = true, lightenMana = true, unitForPower = "player" }
+
+--- The Class Power number's color: white on Default, the class power color on
+-- power, the textColor tint on Custom (nil when none is stored). The percent
+-- sign (classpower.lua) paints the same.
+function SAU._ClassPowerTextColor(db)
+    local mode = db and db.textColorMode
+    if mode == "custom" then
+        local c = db.textColor
+        if type(c) ~= "table" then return nil end
+        return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
+    end
+    if mode == "power" then
+        local r, g, b = addon.ResolveColorRGBA("classPower", nil, POWER_TEXT_COLOR_OPTS)
+        return r or 1, g or 1, b or 1, 1
+    end
+    return 1, 1, 1, 1
+end
 
 local function ApplyTextStyling(trackerId, tracker, state)
     local db = SAU.GetDB(trackerId)
@@ -313,14 +406,10 @@ local function ApplyTextStyling(trackerId, tracker, state)
             end
             addon.ApplyFontStyle(elem.widget, fontFace, size, style)
 
-            if source == "duration" and tracker.kind == "classpower" and db.textColorMode ~= "custom" then
-                -- Default is white; power is the class power color, mana
-                -- lightened, re-resolved every pass.
-                local r, g, b = 1, 1, 1
-                if db.textColorMode == "power" then
-                    r, g, b = addon.ResolveColorRGBA("classPower", nil, POWER_TEXT_COLOR_OPTS)
-                end
-                elem.widget:SetTextColor(r or 1, g or 1, b or 1, 1)
+            if source == "duration" and tracker.kind == "classpower" then
+                -- Re-resolved every pass: a form change moves the power type.
+                local r, g, b, a = SAU._ClassPowerTextColor(db)
+                if r then elem.widget:SetTextColor(r, g, b, a) end
             elseif color and type(color) == "table" then
                 elem.widget:SetTextColor(color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1)
             end

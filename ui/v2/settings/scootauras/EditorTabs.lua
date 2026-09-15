@@ -350,7 +350,6 @@ function Tabs.BuildAuraNameTab(tabBuilder, ctx)
     tabBuilder:AddDualSelector({
         label = "Position",
         key = "saNameTextPositionDual",
-        maxContainerWidth = 420,
         selectorA = {
             values = { inside = "Inside the Bar", outside = "Outside of Bar" },
             order = { "inside", "outside" },
@@ -405,19 +404,31 @@ function Tabs.BuildDurationTab(tabBuilder, ctx)
     -- Scoot Aura text is Scoot-drawn, so the paired Deep Shadow styles are
     -- offered here.
     local get, set = Helpers.CreateFlatAccessors(ctx.get, ctx.setAndApply, {
-        hidden = "hideText",
         fontFace = "textFont",
         style = "textStyle",
         size = "textSize",
         color = "textColor",
     })
+
+    -- The hide toggle is built here instead of by the text style block, so
+    -- the decimal toggle can sit directly beneath it.
+    tabBuilder:AddToggle({
+        label = "Hide Duration Text",
+        description = "Hide the remaining-time text.",
+        get = function() return ctx.get("hideText") == true end,
+        set = function(v) ctx.setAndApply("hideText", v and true or false) ctx.refreshPreview() end,
+    })
+
+    tabBuilder:AddToggle({
+        label = "Show One Decimal Place",
+        description = "Show tenths of a second on the timer, such as 4.7.",
+        get = function() return ctx.get("textDecimal") == true end,
+        set = function(v) ctx.setAndApply("textDecimal", v) ctx.refreshPreview() end,
+    })
+
     tabBuilder:AddTextStyleBlock({
         get = get, set = set, apply = ctx.refreshPreview,
         defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", size = 24 },
-        hideToggle = {
-            label = "Hide Duration Text",
-            description = "Hide the remaining-time text.",
-        },
         font = { description = "The font used for the duration text." },
         -- Engine-written text: no Deep Shadow (see the aura name block).
         style = { order = Helpers.fontStyleOrder },
@@ -445,7 +456,6 @@ function AddTextPositionControls(tabBuilder, ctx)
     tabBuilder:AddDualSelector({
         label = "Position",
         key = "saTextPositionDual",
-        maxContainerWidth = 420,
         selectorA = {
             values = { inside = "Inside the " .. host, outside = "Outside of " .. host },
             order = { "inside", "outside" },
@@ -527,7 +537,6 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
     tabBuilder:AddDualSelector({
         label = "Position",
         key = "saStackPositionDual",
-        maxContainerWidth = 420,
         selectorA = {
             values = { inside = "Inside the " .. host, outside = "Outside of " .. host },
             order = { "inside", "outside" },
@@ -983,6 +992,48 @@ function Tabs.BuildAnimationsTab(tabBuilder, ctx)
 end
 
 --------------------------------------------------------------------------------
+-- Animations tab (buff and debuff icon trackers)
+--------------------------------------------------------------------------------
+
+function Tabs.BuildIconAnimationsTab(tabBuilder, ctx)
+    -- Icon swipe, the line on its edge, and the gray half's darkness
+    -- (styling.lua ApplyIconSwipe); both previews draw them.
+    tabBuilder:AddToggleColorRow({
+        label = "Duration Swipe",
+        description = "The icon sweeps away clockwise as the aura runs out, uncovering a darkened, desaturated copy. A line marks the edge of the sweep.",
+        toggle = {
+            label = "Enable",
+            get = function() return ctx.get("iconShowSwipe") ~= false end,
+            set = function(v)
+                ctx.setAndApply("iconShowSwipe", v)
+                ctx.refresh()   -- adds or removes the Swipe Darkness row
+            end,
+        },
+        color = {
+            label = "Swipe Line Color",
+            hasAlpha = true,
+            get = ColorGet(ctx, "iconSwipeLineColor", addon.ScootAuras.SWIPE_LINE_COLOR_DEFAULT),
+            set = ColorSet(ctx, "iconSwipeLineColor"),
+        },
+    })
+
+    if ctx.get("iconShowSwipe") ~= false then
+        tabBuilder:AddSlider({
+            label = "Swipe Darkness",
+            description = "How dark the desaturated copy under the swipe is. With a Desaturated missing visual, the missing-state icon keeps its own look.",
+            min = 0, max = 100, step = 1,
+            get = function()
+                return tonumber(ctx.get("iconSwipeDarkness")) or addon.ScootAuras.SWIPE_DARKNESS_DEFAULT
+            end,
+            set = function(v) ctx.setAndApply("iconSwipeDarkness", v); ctx.refreshPreview() end,
+            minLabel = "None", maxLabel = "Black",
+        })
+    end
+
+    tabBuilder:Finalize()
+end
+
+--------------------------------------------------------------------------------
 -- Misc tab (buff and debuff icon trackers)
 --------------------------------------------------------------------------------
 
@@ -995,14 +1046,6 @@ function Tabs.BuildMiscTab(tabBuilder, ctx)
         description = "Pulse a red border during the pandemic window.",
         get = function() return ctx.get("pandemicBorder") ~= false end,
         set = function(v) ctx.setAndApply("pandemicBorder", v) end,
-    })
-
-    -- Icon swipe (styling.lua ApplyIconSwipe); both previews draw it.
-    tabBuilder:AddToggle({
-        label = "Show Duration Swipe",
-        description = "The icon sweeps away clockwise as the aura runs out, uncovering a desaturated copy.",
-        get = function() return ctx.get("iconShowSwipe") ~= false end,
-        set = function(v) ctx.setAndApply("iconShowSwipe", v) ctx.refreshPreview() end,
     })
 
     tabBuilder:Finalize()
@@ -1080,6 +1123,7 @@ function Tabs.BuildTabSet(ctx)
     add("duration", "Duration", Tabs.BuildDurationTab)
     add("stacks", "Stacks", Tabs.BuildStacksTab)
     if shape == "icon" then
+        add("animations", "Animations", Tabs.BuildIconAnimationsTab)
         add("misc", "Misc", Tabs.BuildMiscTab)
     end
     -- No Visibility tab for buff/debuff tracking: an aura is its own

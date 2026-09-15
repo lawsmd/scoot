@@ -46,6 +46,15 @@ local CA_INSIDE_OFFSETS = {
 }
 local CA_GAP = 2
 
+-- How far CA text with a suffix string moves left so the pair sits where the
+-- text alone would: all of the suffix's advance for a RIGHT point, half for a
+-- centered one.
+local function SuffixShift(point, suffixW)
+    if suffixW == 0 or point:find("LEFT", 1, true) then return 0 end
+    if point:find("RIGHT", 1, true) then return -suffixW end
+    return -suffixW / 2
+end
+
 local function clampBarOffsetX(v) return math.max(-20, math.min(20, v or 0)) end
 local function clampBarOffsetY(v) return math.max(-16, math.min(16, v or 0)) end
 
@@ -117,6 +126,12 @@ end
 --   caTextLiteral   string/nil  Exact text for the CA text element instead of the
 --                            countdown placeholder; the ticker leaves it alone (a
 --                            missing-buff reminder shows the aura name)
+--   caTextSuffix    table/nil  { text, sizeFor, gap }: a second, smaller string whose
+--                            vertical center sits on the CA text's right edge (the
+--                            Class Power percent sign). sizeFor(displaySize) returns
+--                            its point size (default a third); gap defaults to 1. The
+--                            CA text moves left so the pair sits where the text alone
+--                            would. Honored for text-only and bar-hosted CA text.
 --   previewNameLabel string/nil  Aura label shown as the bar's name text when the
 --                            Aura Name feature is enabled (hideNameText false)
 --   useLightDim     bool     Use lighter dim text color
@@ -141,6 +156,9 @@ end
 --                            icon desaturated beneath, the same icon in full color as a
 --                            Cooldown swipe that recedes clockwise, on the same cycle.
 --   iconSwipeBackdropAlpha number/nil  Alpha of the desaturated icon under the swipe.
+--   iconSwipeBackdropShade number/nil  Vertex shade of that icon; nil leaves it unshaded.
+--   iconSwipeLine   table/nil   { r, g, b, a, texture = path }: the line drawn on the
+--                            swipe's edge; nil draws none.
 --   noBottomBorder  bool     Read by SettingsBuilder: skips the divider under the row.
 --   noHover         bool     Skip the accent hover highlight on the row.
 --   noLabel         bool     Skip the "Preview:" label (caller draws its own).
@@ -179,6 +197,7 @@ function Controls:CreatePreview(options)
     local auraDefaultBarColor = options.auraDefaultBarColor
     local caTextSource = options.caTextSource
     local caTextLiteral = options.caTextLiteral
+    local caTextSuffix = options.caTextSuffix
     local previewNameLabel = options.previewNameLabel
     local useLightDim = options.useLightDim
     local rowHeight = options.rowHeight or PREVIEW_ROW_HEIGHT
@@ -220,6 +239,8 @@ function Controls:CreatePreview(options)
     -- Mirror live behavior: hideText suppresses the duration/stacks text everywhere
     local showCAText = (settingKeys._showCAText and true or false)
         and (readSetting("hideText", false) ~= true)
+    -- Mirror live behavior: textDecimal counts the duration down in tenths
+    local caTenths = readSetting("textDecimal", false) == true
 
     -- Theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -343,16 +364,38 @@ function Controls:CreatePreview(options)
                 -- ApplyIconSwipe), cropped like the icon. The animation block
                 -- below re-arms it each countdown cycle.
                 iconTex:SetDesaturated(true)
+                local shade = options.iconSwipeBackdropShade or 1
+                iconTex:SetVertexColor(shade, shade, shade, 1)
                 iconTex:SetAlpha(options.iconSwipeBackdropAlpha or 1)
-                local cd = CreateFrame("Cooldown", nil, previewIcon, "CooldownFrameTemplate")
-                cd:SetAllPoints()
+                -- A square Cooldown as wide as the icon's diagonal, so the
+                -- edge line reaches the icon's rim, in a clip frame cut to
+                -- the icon. The crop scales out by the overhang on each axis
+                -- to keep the swipe's art on the icon's.
+                local clip = CreateFrame("Frame", nil, previewIcon)
+                clip:SetAllPoints()
+                clip:SetClipsChildren(true)
+                local side = math.sqrt(iconW * iconW + iconH * iconH)
+                local cd = CreateFrame("Cooldown", nil, clip, "CooldownFrameTemplate")
+                cd:ClearAllPoints()
+                cd:SetPoint("CENTER")
+                cd:SetSize(side, side)
                 cd:SetDrawBling(false)
-                cd:SetDrawEdge(false)
                 cd:SetHideCountdownNumbers(true)
                 cd:SetReverse(false)
                 pcall(cd.SetSwipeTexture, cd, iconTexture, 1, 1, 1, 1)
                 cd:SetSwipeColor(1, 1, 1, 1)
-                pcall(cd.SetTexCoordRange, cd, { x = l, y = t }, { x = r, y = b })
+                local cu, cv = (l + r) / 2, (t + b) / 2
+                local su = (r - l) / 2 * side / iconW
+                local sv = (b - t) / 2 * side / iconH
+                pcall(cd.SetTexCoordRange, cd, { x = cu - su, y = cv - sv }, { x = cu + su, y = cv + sv })
+                -- The line on the swipe's edge. SetEdgeTexture can turn edge
+                -- drawing back on, so the flag goes last.
+                local line = options.iconSwipeLine
+                if line and line.texture then
+                    pcall(cd.SetEdgeTexture, cd, line.texture, line[1] or 1, line[2] or 1, line[3] or 1, line[4] or 1)
+                    pcall(cd.SetEdgeScale, cd, 1)
+                end
+                cd:SetDrawEdge((line and line.texture) and true or false)
                 row._shapeCooldown = cd
                 -- The swipe is a child frame, so it draws over any art on
                 -- previewIcon. The border gets its own frame above the swipe,
@@ -701,9 +744,11 @@ function Controls:CreatePreview(options)
 
     -- Anchors a FontString to the preview bar per an inside/outside position config.
     -- Offsets are raw: callers live inside the scaled bar subtree, so barScale applies.
-    local function AnchorTextToBar(fs, bar, cfg)
+    -- suffixW: the advance of a caTextSuffix string hanging off fs, or 0.
+    local function AnchorTextToBar(fs, bar, cfg, suffixW)
         local txOff = cfg.offsetX or 0
         local tyOff = cfg.offsetY or 0
+        suffixW = suffixW or 0
         if cfg.position == "outside" then
             local anchor = cfg.outerAnchor or "RIGHT"
             if anchor == "RIGHT" then
@@ -711,18 +756,18 @@ function Controls:CreatePreview(options)
                 fs:SetPoint("LEFT", bar, "RIGHT", CA_GAP + txOff, tyOff)
             elseif anchor == "LEFT" then
                 fs:SetJustifyH("RIGHT")
-                fs:SetPoint("RIGHT", bar, "LEFT", -CA_GAP + txOff, tyOff)
+                fs:SetPoint("RIGHT", bar, "LEFT", -CA_GAP + txOff + SuffixShift("RIGHT", suffixW), tyOff)
             elseif anchor == "ABOVE" then
                 fs:SetJustifyH("CENTER")
-                fs:SetPoint("BOTTOM", bar, "TOP", txOff, CA_GAP + tyOff)
+                fs:SetPoint("BOTTOM", bar, "TOP", txOff + SuffixShift("BOTTOM", suffixW), CA_GAP + tyOff)
             else -- BELOW
                 fs:SetJustifyH("CENTER")
-                fs:SetPoint("TOP", bar, "BOTTOM", txOff, -CA_GAP + tyOff)
+                fs:SetPoint("TOP", bar, "BOTTOM", txOff + SuffixShift("TOP", suffixW), -CA_GAP + tyOff)
             end
         else
             local anchor = cfg.innerAnchor or "CENTER"
             local offsets = CA_INSIDE_OFFSETS[anchor] or { 0, 0 }
-            fs:SetPoint(anchor, bar, anchor, offsets[1] + txOff, offsets[2] + tyOff)
+            fs:SetPoint(anchor, bar, anchor, offsets[1] + txOff + SuffixShift(anchor, suffixW), offsets[2] + tyOff)
         end
     end
 
@@ -765,6 +810,7 @@ function Controls:CreatePreview(options)
 
     local caTextFS
     local caTextFrame
+    local caSuffixW = 0
     if showCAText then
         local caTextFont = readSetting("textFont", "FRIZQT__")
         local caTextSize = readSetting("textSize", 24)
@@ -807,7 +853,7 @@ function Controls:CreatePreview(options)
         addon.ApplyFontStyle(caTextFS, resolvedCAFont, caDisplaySize, caTextStyle)
         -- "15" is the widest value the animated countdown shows, so the width
         -- measurements below reserve two digits before the ticker takes over.
-        caTextFS:SetText(caTextLiteral or (caTextSource == "applications" and "5" or "15"))
+        caTextFS:SetText(caTextLiteral or (caTextSource == "applications" and "5" or (caTenths and "15.0" or "15")))
         row._caTextFS = caTextFS
 
         if type(caTextColor) == "table" then
@@ -816,6 +862,18 @@ function Controls:CreatePreview(options)
                 caTextColor[3] or 1, caTextColor[4] or 1)
         else
             caTextFS:SetTextColor(1, 1, 1, 1)
+        end
+
+        if caTextSuffix and caTextSuffix.text then
+            local suffixFS = caTextFrame:CreateFontString(nil, "OVERLAY")
+            local sizeFor = caTextSuffix.sizeFor
+            local suffixSize = (sizeFor and sizeFor(caDisplaySize)) or caDisplaySize / 3
+            addon.ApplyFontStyle(suffixFS, resolvedCAFont, suffixSize, caTextStyle)
+            suffixFS:SetText(caTextSuffix.text)
+            suffixFS:SetTextColor(caTextFS:GetTextColor())
+            local gap = caTextSuffix.gap or 1
+            suffixFS:SetPoint("LEFT", caTextFS, "RIGHT", gap, 0)
+            caSuffixW = (suffixFS:GetStringWidth() or 0) + gap
         end
 
         -- Store positioning config for deferred anchoring (needs icon positioned first)
@@ -896,10 +954,10 @@ function Controls:CreatePreview(options)
         containerHeight = math.max(containerHeight, previewPips:GetHeight() * pipScale + PREVIEW_CONTENT_PAD)
     elseif showTextOnly and caTextFS then
         -- Text-only mode: center text in container, size to fit
-        caTextFS:SetPoint("CENTER", container, "CENTER", 0, 0)
+        caTextFS:SetPoint("CENTER", container, "CENTER", SuffixShift("CENTER", caSuffixW), 0)
         local textW = caTextFS:GetStringWidth() or 20
         local textH = caTextFS:GetStringHeight() or 16
-        totalWidth = textW + 8
+        totalWidth = textW + caSuffixW + 8
         containerHeight = math.max(containerHeight, textH + 4)
     end
 
@@ -934,9 +992,9 @@ function Controls:CreatePreview(options)
             -- Bar-hosted text: anchor to the bar itself (raw offsets; the text
             -- lives inside the scaled bar subtree), then grow the clip
             -- container for outside placements
-            AnchorTextToBar(caTextFS, previewBar, cfg)
+            AnchorTextToBar(caTextFS, previewBar, cfg, caSuffixW)
             if cfg.position == "outside" then
-                local tw = (caTextFS:GetStringWidth() or 0) * barScale
+                local tw = ((caTextFS:GetStringWidth() or 0) + caSuffixW) * barScale
                 local th = (caTextFS:GetStringHeight() or 0) * barScale
                 local anchor = cfg.outerAnchor or "RIGHT"
                 if anchor == "LEFT" or anchor == "RIGHT" then
@@ -1088,10 +1146,10 @@ function Controls:CreatePreview(options)
                 animFill:SetValue(remaining / 15)
             end
             if animText then
-                local shown = math.ceil(remaining)
+                local shown = caTenths and math.ceil(remaining * 10) or math.ceil(remaining)
                 if shown ~= lastShown then
                     lastShown = shown
-                    animText:SetText(tostring(shown))
+                    animText:SetText(caTenths and string.format("%.1f", shown / 10) or tostring(shown))
                 end
             end
             if animDrain then

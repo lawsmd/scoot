@@ -22,6 +22,16 @@ local INSIDE_OFFSETS = {
 
 local GAP = 2
 
+-- Class Power's percent sign (classpower.lua) hangs off the number's right
+-- edge. The number moves left by the share of the sign's advance its anchor
+-- point implies, so the pair sits where the number alone would: all of it
+-- for a RIGHT point, half for a centered one.
+local function SignShift(point, signW)
+    if signW == 0 or point:find("LEFT", 1, true) then return 0 end
+    if point:find("RIGHT", 1, true) then return -signW end
+    return -signW / 2
+end
+
 -- Flush-corner outside anchors: the text's opposing point pins to the host's
 -- same-named point, one GAP outward. { textPoint, offsetX, offsetY }
 local OUTSIDE_ANCHORS = {
@@ -98,6 +108,20 @@ function SAU.ResolveVisibility(tracker, db)
     }
 end
 
+--- An icon's width and height from settings only. Icon Shape applies to Icon
+-- trackers and the missing-buff reminder; shape art and the bar's side icon
+-- stay square. The icon swipe (styling.lua) sizes its Cooldown from these.
+function SAU.IconDimensions(db, vis)
+    local base = tonumber(db and db.iconSize) or 32
+    if vis and (vis.shape == "icon" or vis.missing) then
+        local ratio = tonumber(db and db.iconShape) or 0
+        if ratio ~= 0 and addon.IconRatio and addon.IconRatio.CalculateDimensions then
+            return addon.IconRatio.CalculateDimensions(base, ratio)
+        end
+    end
+    return base, base
+end
+
 local function LayoutElements(trackerId, tracker, state)
     if not state or not state.elements then return end
 
@@ -131,18 +155,7 @@ local function LayoutElements(trackerId, tracker, state)
             iconW, iconH = 0, 0
             texElem.widget:Hide()
         else
-            local base = tonumber(db and db.iconSize) or 32
-            if vis.shape == "icon" or vis.missing then
-                local ratio = tonumber(db and db.iconShape) or 0
-                if ratio ~= 0 and addon.IconRatio and addon.IconRatio.CalculateDimensions then
-                    iconW, iconH = addon.IconRatio.CalculateDimensions(base, ratio)
-                else
-                    iconW, iconH = base, base
-                end
-            else
-                -- Shape art and the bar's side icon stay square.
-                iconW, iconH = base, base
-            end
+            iconW, iconH = SAU.IconDimensions(db, vis)
         end
     end
 
@@ -267,11 +280,12 @@ local function LayoutElements(trackerId, tracker, state)
         local textW, textH = 0, 0
         if textElem and vis.showText then
             local fs = textElem.widget
+            local signW = SAU.ClassPower and SAU.ClassPower.SignAdvance(state.entry, db) or 0
             fs:ClearAllPoints()
             fs:SetWidth(0)
             fs:SetWordWrap(false)
             fs:SetJustifyH("CENTER")
-            fs:SetPoint("CENTER", state.container, "CENTER", txOff, tyOff)
+            fs:SetPoint("CENTER", state.container, "CENTER", txOff + SignShift("CENTER", signW), tyOff)
             fs:Show()
             local w, h
             if SAU.ClassPower and SAU.ClassPower.MeasureSample then
@@ -464,6 +478,7 @@ local function LayoutElements(trackerId, tracker, state)
         textElem.widget:ClearAllPoints()
         local txOff = tonumber(db and db.textOffsetX) or 0
         local tyOff = tonumber(db and db.textOffsetY) or 0
+        local signW = vis.classPower and SAU.ClassPower and SAU.ClassPower.SignAdvance(state.entry, db) or 0
         if textPosition == "outside" then
             local anchor = (db and db.textOuterAnchor) or "RIGHT"
             if anchor == "RIGHT" then
@@ -471,19 +486,23 @@ local function LayoutElements(trackerId, tracker, state)
                 textElem.widget:SetPoint("LEFT", barElem.widget, "RIGHT", GAP + txOff, tyOff)
             elseif anchor == "LEFT" then
                 textElem.widget:SetJustifyH("RIGHT")
-                textElem.widget:SetPoint("RIGHT", barElem.widget, "LEFT", -GAP + txOff, tyOff)
+                textElem.widget:SetPoint("RIGHT", barElem.widget, "LEFT",
+                    -GAP + txOff + SignShift("RIGHT", signW), tyOff)
             elseif anchor == "ABOVE" then
                 textElem.widget:SetJustifyH("CENTER")
-                textElem.widget:SetPoint("BOTTOM", barElem.widget, "TOP", txOff, GAP + tyOff)
+                textElem.widget:SetPoint("BOTTOM", barElem.widget, "TOP",
+                    txOff + SignShift("BOTTOM", signW), GAP + tyOff)
             else -- "BELOW"
                 textElem.widget:SetJustifyH("CENTER")
-                textElem.widget:SetPoint("TOP", barElem.widget, "BOTTOM", txOff, -GAP + tyOff)
+                textElem.widget:SetPoint("TOP", barElem.widget, "BOTTOM",
+                    txOff + SignShift("TOP", signW), -GAP + tyOff)
             end
         else
             local innerAnchor = (db and db.textInnerAnchor) or "CENTER"
             local offsets = INSIDE_OFFSETS[innerAnchor] or { 0, 0 }
             textElem.widget:SetJustifyH("CENTER")
-            textElem.widget:SetPoint(innerAnchor, barElem.widget, innerAnchor, offsets[1] + txOff, offsets[2] + tyOff)
+            textElem.widget:SetPoint(innerAnchor, barElem.widget, innerAnchor,
+                offsets[1] + txOff + SignShift(innerAnchor, signW), offsets[2] + tyOff)
         end
         textElem.widget:Show()
     end

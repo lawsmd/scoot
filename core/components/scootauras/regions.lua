@@ -116,20 +116,30 @@ end
 -- wherever the mask is visible.
 local MASK_EMPTY = "Interface\\AddOns\\" .. addonName .. "\\media\\scootauras\\mask-empty"
 
--- Drain swipe host: a native Cooldown clipped to its parent. On the live
+-- Drain swipe host: a native Cooldown inside a clip frame. On the live
 -- button the engine drives it through SetDurationCooldown, and the swipe
 -- animation is C-side, so it keeps ticking while the button subtree is denied
 -- in combat. The Edit Mode preview reuses the same recipe on its own frame.
 --
--- The icon swipe (styling.lua ApplyIconSwipe) adds two regions on the
--- Cooldown. Regions on a Cooldown draw under its swipe and hide when it
--- hides, so the desaturated backdrop shows only while a duration runs, and
--- the mask, once added to the live icon, hides that icon only while a
--- duration runs. Both must exist before the engine binds the Cooldown.
+-- The icon swipe (styling.lua ApplyIconSwipe) grows the Cooldown past the
+-- icon so its edge line reaches the icon's rim, and anchors the clip to the
+-- icon to cut the overhang. A bound Cooldown cannot change parent, so the
+-- clip exists from the start.
+--
+-- The icon swipe also adds three regions on the Cooldown. Regions on a
+-- Cooldown draw under its swipe and hide when it hides, so the desaturated
+-- backdrop and the black shade show only while a duration runs, and the
+-- mask, once added to the live icon, hides that icon only while a duration
+-- runs. All three must exist before the engine binds the Cooldown.
 local function CreateDrainCooldown(parent)
-    local drain = CreateFrame("Cooldown", nil, parent, "CooldownFrameTemplate")
-    drain:SetAllPoints(parent)
-    drain:SetFrameLevel(parent:GetFrameLevel() + 1)
+    local clip = CreateFrame("Frame", nil, parent)
+    clip:SetAllPoints(parent)
+    clip:SetFrameLevel(parent:GetFrameLevel() + 1)
+    clip:SetClipsChildren(true)
+
+    local drain = CreateFrame("Cooldown", nil, clip, "CooldownFrameTemplate")
+    drain:SetAllPoints(clip)
+    drain:SetFrameLevel(clip:GetFrameLevel())
     drain:SetDrawEdge(false)
     drain:SetDrawBling(false)
     drain:SetHideCountdownNumbers(true)
@@ -140,16 +150,25 @@ local function CreateDrainCooldown(parent)
     backdrop:SetAllPoints(drain)
     backdrop:Hide()
 
+    local shade = drain:CreateTexture(nil, "ARTWORK", nil, 1)
+    shade:SetColorTexture(0, 0, 0, 1)
+    shade:SetAllPoints(drain)
+    shade:Hide()
+
     local mask = drain:CreateMaskTexture()
     mask:SetAllPoints(drain)
     mask:SetTexture(MASK_EMPTY, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
 
-    return drain, backdrop, mask
+    return drain, backdrop, mask, clip, shade
 end
 
 local function DrainElement(parent)
-    local drain, backdrop, mask = CreateDrainCooldown(parent)
-    return { type = "cooldown", widget = drain, backdrop = backdrop, mask = mask, def = { key = "drain" } }
+    local drain, backdrop, mask, clip, shade = CreateDrainCooldown(parent)
+    return {
+        type = "cooldown", widget = drain, backdrop = backdrop, mask = mask, clip = clip,
+        shade = shade,
+        def = { key = "drain" },
+    }
 end
 
 -- Icon border host frame ApplyBorders expects, parented to the button so it
@@ -271,45 +290,80 @@ end
 -- switches units at the minute. Scoot shows plain seconds at every magnitude:
 -- a 90 s debuff reads "90", never "90s" or "1m". One band, ceiling rounding,
 -- so a fresh application reads its full duration and the last partial second
--- reads "1", not "0". Shared across trackers; the formatter holds breakpoints
--- and nothing per-caller (the casttime.lua precedent). On any failure the
--- binding falls back to the engine default.
-local sharedDurationFormatter
-local durationFormatterFailed = false
+-- reads "1", not "0". The textDecimal setting swaps in tenths on the same
+-- rules: "90.0" down to "0.1". One formatter per precision, shared across
+-- trackers; a formatter holds breakpoints and nothing per-caller (the
+-- casttime.lua precedent). A failed tenths formatter falls back to whole
+-- seconds, a failed whole-seconds one to the engine default.
+local durationFormatters = {}       -- [tenths] = formatter
+local durationFormatterFailed = {}  -- [tenths] = true
 
-local function GetDurationFormatter()
-    if sharedDurationFormatter then return sharedDurationFormatter end
-    if durationFormatterFailed then return nil end
+local function GetDurationFormatter(tenths)
+    tenths = tenths == true
+    if durationFormatters[tenths] then return durationFormatters[tenths] end
+    if durationFormatterFailed[tenths] then return nil end
+    local resultKey = tenths and "durfmt.tenths" or "durfmt"
+    local fallback = tenths and "whole seconds" or "engine default text"
 
     local su = C_StringUtil
     local up = Enum and Enum.NumericRuleFormatRounding
         and Enum.NumericRuleFormatRounding.Up
     if not (su and su.CreateNumericRuleFormatter and up) then
-        durationFormatterFailed = true
-        SetResult("durfmt", "API missing; engine default text")
+        durationFormatterFailed[tenths] = true
+        SetResult(resultKey, "API missing; " .. fallback)
         return nil
     end
 
     local ok, f = pcall(su.CreateNumericRuleFormatter)
     if not ok or not f then
-        durationFormatterFailed = true
-        SetResult("durfmt", "create failed; engine default text")
+        durationFormatterFailed[tenths] = true
+        SetResult(resultKey, "create failed; " .. fallback)
         return nil
     end
 
     -- rounding is annotated Nilable = false despite carrying a default
     -- (NumericRuleFormatterSharedDocumentation.lua:25); sent explicitly.
-    local okSet = pcall(f.SetBreakpoints, f, {
-        { threshold = 0, step = 1, rounding = up, format = "%.0f" },
-    })
+    local band = tenths
+        and { threshold = 0, step = 0.1, rounding = up, format = "%.1f" }
+        or { threshold = 0, step = 1, rounding = up, format = "%.0f" }
+    local okSet = pcall(f.SetBreakpoints, f, { band })
     if not okSet then
-        durationFormatterFailed = true
-        SetResult("durfmt", "breakpoints rejected; engine default text")
+        durationFormatterFailed[tenths] = true
+        SetResult(resultKey, "breakpoints rejected; " .. fallback)
         return nil
     end
 
-    sharedDurationFormatter = f
-    return sharedDurationFormatter
+    durationFormatters[tenths] = f
+    return f
+end
+
+-- Tenths change ten times a second, and SetToDefaults does not document the
+-- update interval it leaves, so the tenths bind hands the engine a template
+-- binding that updates every tick (SetUpdateInterval(0), as casttime.lua
+-- does). SetDurationText copies it with Assign before setting the FontString
+-- and duration, and ApplyDurationText owns the enabled state, so one template
+-- serves every button.
+local tenthsBinding
+local tenthsBindingFailed = false
+
+local function GetTenthsBinding(formatter)
+    if tenthsBinding then return tenthsBinding end
+    if tenthsBindingFailed then return nil end
+
+    local ok, binding = pcall(function()
+        local b = C_DurationUtil.CreateDurationTextBinding()
+        b:SetFormatter(formatter)
+        b:SetUpdateInterval(0)
+        return b
+    end)
+    if not ok or not binding then
+        tenthsBindingFailed = true
+        SetResult("durfmt.tenths", "binding template failed; default update interval")
+        return nil
+    end
+
+    tenthsBinding = binding
+    return binding
 end
 
 local function CallBinding(trackerId, button, methodName, region, options)
@@ -375,9 +429,20 @@ function Engine.BindForMode(trackerId, tracker, state)
             local source = elem.def.source
             if source == "duration" then
                 if vis.showText then
-                    local formatter = GetDurationFormatter()
-                    local options = formatter and { textFormatter = formatter } or {}
-                    CallBinding(trackerId, button, "SetDurationText", elem.widget, options)
+                    local tenths = db.textDecimal == true
+                    local formatter = GetDurationFormatter(tenths)
+                    if tenths and not formatter then
+                        tenths, formatter = false, GetDurationFormatter(false)
+                    end
+                    local template = tenths and GetTenthsBinding(formatter) or nil
+                    local options = formatter and { textFormatter = formatter, binding = template } or {}
+                    if not CallBinding(trackerId, button, "SetDurationText", elem.widget, options)
+                        and template then
+                        -- Without the template the tenths still show, on the
+                        -- default update interval.
+                        CallBinding(trackerId, button, "SetDurationText", elem.widget,
+                            { textFormatter = formatter })
+                    end
                 else
                     CallBinding(trackerId, button, "ClearDurationText")
                 end
@@ -512,7 +577,7 @@ end
 -- One central driver instead of per-preview OnUpdates: lockstep by
 -- construction, one start/stop site, and it hides itself when idle.
 local previewEpoch
-local activePreviews = {}   -- [poolEntry] = { fill, invertFill, text, drain, lastShown, lastCycle }
+local activePreviews = {}   -- [poolEntry] = { fill, invertFill, text, tenths, drain, lastShown, lastCycle }
 local driver
 
 local function DriverOnUpdate()
@@ -522,15 +587,19 @@ local function DriverOnUpdate()
     end
     local now = GetTime()
     local remaining = 15 - ((now - previewEpoch) % 15)
-    local shown = math.ceil(remaining)
+    local wholeShown = math.ceil(remaining)
+    local tenthsShown = math.ceil(remaining * 10)
     local cycle = math.floor((now - previewEpoch) / 15)
     for _, rec in pairs(activePreviews) do
         if rec.fill then
             rec.fill:SetValue(rec.invertFill and (1 - remaining / 15) or (remaining / 15))
         end
-        if rec.text and shown ~= rec.lastShown then
-            rec.lastShown = shown
-            rec.text:SetText(tostring(shown))
+        if rec.text then
+            local shown = rec.tenths and tenthsShown or wholeShown
+            if shown ~= rec.lastShown then
+                rec.lastShown = shown
+                rec.text:SetText(rec.tenths and string.format("%.1f", shown / 10) or tostring(shown))
+            end
         end
         if rec.drain and cycle ~= rec.lastCycle then
             -- One SetCooldown per cycle; the swipe animates C-side and a
@@ -631,7 +700,8 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
     -- width, so the duration text must carry its widest value in its final
     -- font. Stacks are excluded from the preview on purpose: most tracked
     -- auras never stack, and a sample count on them reads as a bug.
-    durationFS:SetText("15")
+    local tenths = db.textDecimal == true
+    durationFS:SetText(tenths and "15.0" or "15")
     nameFS:SetText(tracker.name or "Aura Tracker")
     stacksFS:SetText("")
     stacksFS:SetShown(false)
@@ -647,6 +717,7 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
         fill = (vis.showBar and barFill) or nil,
         invertFill = (db.barFillMode == "fill"),
         text = (vis.showText and durationFS) or nil,
+        tenths = tenths,
         drain = wantDrain and drainCD or nil,
     })
 

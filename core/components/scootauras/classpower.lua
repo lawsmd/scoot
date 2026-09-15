@@ -33,9 +33,21 @@ local INTERP_SMOOTH = (Enum and Enum.StatusBarInterpolation
 local INTERP_IMMEDIATE = (Enum and Enum.StatusBarInterpolation
     and Enum.StatusBarInterpolation.Immediate) or 0
 
--- The widest strings either mode shows at the styled font: a full percent,
--- and the abbreviated values a mana pool reaches. The host takes the widest.
-local SAMPLE_STRINGS = { "100%", "888K", "8.8M" }
+-- The widest strings either mode shows at the styled font: a full percent
+-- (plus the sign's advance, since the sign is its own string), and the
+-- abbreviated values a mana pool reaches. The host takes the widest.
+local PERCENT_SAMPLE = "100"
+local SAMPLE_STRINGS = { PERCENT_SAMPLE, "888K", "8.8M" }
+
+-- The percent sign: a second FontString a third the number's size, its
+-- vertical center on the number's right edge. Size markup does not exist and
+-- the number's secret text cannot be measured, but the engine sizes the
+-- number's rect to its text, so an anchor to that rect follows the value
+-- with nothing read back.
+local SIGN_TEXT = "%"
+local SIGN_SCALE = 1 / 3
+local SIGN_MIN_SIZE = 6
+local SIGN_GAP = 1
 
 -- [trackerId] = entry, for the live trackers. The event frame registers while
 -- this holds anything and unregisters when it empties.
@@ -140,12 +152,30 @@ local function EnsureVisual(entry)
     addon.ApplyFontStyle(ruler, addon.ResolveFontFace("FRIZQT__"), 12, "")
     ruler:SetWidth(0)
     ruler:SetWordWrap(false)
+    -- The sign's own ruler, so neither measure re-fonts the other's string.
+    local signRuler = holder:CreateFontString(nil, "OVERLAY")
+    signRuler:SetPoint("CENTER", holder, "CENTER", 0, 0)
+    addon.ApplyFontStyle(signRuler, addon.ResolveFontFace("FRIZQT__"), 12, "")
+    signRuler:SetWidth(0)
+    signRuler:SetWordWrap(false)
+
+    -- Beside the number on the same text host. The anchor is set once: the
+    -- layout pass re-anchors the number, never the sign.
+    local numberFS
+    for _, elem in ipairs(set.elements) do
+        if elem.type == "text" and elem.def.source == "duration" then numberFS = elem.widget end
+    end
+    local sign = set.textFrame:CreateFontString(nil, "OVERLAY")
+    sign:SetPoint("LEFT", numberFS, "RIGHT", SIGN_GAP, 0)
+    sign:Hide()
 
     entry.classPower = {
         root = root,
         elements = set.elements,
         textFrame = set.textFrame,
         ruler = ruler,
+        signRuler = signRuler,
+        sign = sign,
         last = {},
     }
     return entry.classPower
@@ -163,15 +193,42 @@ local function FindElements(elements)
     return barElem, textElem
 end
 
+-- The number's font, as the text styling pass resolves it.
+local function NumberFont(db)
+    return addon.ResolveFontFace(db and db.textFont), tonumber(db and db.textSize) or 24,
+        (db and db.textStyle) or "OUTLINE"
+end
+
+--- Point size of the percent sign beside a number at `size`: a third of it,
+-- floored where a smaller sign would not read. The editor preview sizes its
+-- sign through this too.
+function ClassPower.SignSize(size)
+    return math.max(SIGN_MIN_SIZE, (tonumber(size) or 24) * SIGN_SCALE)
+end
+
+--- Width the percent sign adds beside the number (its string width plus the
+-- gap), or 0 when the number shows the value. Plain, because the ruler holds
+-- only the sign. The layout pass shifts the number by it.
+function ClassPower.SignAdvance(entry, db)
+    if not (entry and db and db.powerTextPercent == true) then return 0 end
+    local cp = EnsureVisual(entry)
+    local face, size, style = NumberFont(db)
+    local ruler = cp.signRuler
+    addon.ApplyFontStyle(ruler, face, ClassPower.SignSize(size), addon.FontStyles.MetricStyle(style))
+    ruler:SetText(SIGN_TEXT)
+    local ok, w = pcall(ruler.GetUnboundedStringWidth, ruler)
+    if not ok or type(w) ~= "number" or issecretvalue(w) then return 0 end
+    return w + SIGN_GAP
+end
+
 --- Natural width and height of the widest sample string in the number's
 -- font. Called by the layout pass for the number shape; the result is plain
 -- because the ruler never holds a secret.
 function ClassPower.MeasureSample(entry, db)
     if not entry then return 0, nil end
     local cp = EnsureVisual(entry)
-    local face = addon.ResolveFontFace(db and db.textFont)
-    local size = tonumber(db and db.textSize) or 24
-    local style = (db and db.textStyle) or "OUTLINE"
+    local face, size, style = NumberFont(db)
+    local signW = ClassPower.SignAdvance(entry, db)
     local ruler = cp.ruler
     -- MetricStyle: a Deep Shadow style must not build a companion copy on a
     -- hidden ruler. The metrics are the same either way.
@@ -181,15 +238,16 @@ function ClassPower.MeasureSample(entry, db)
         ruler:SetText(sample)
         local ok, w = pcall(ruler.GetUnboundedStringWidth, ruler)
         local ok2, h = pcall(ruler.GetStringHeight, ruler)
-        if ok and type(w) == "number" and not issecretvalue(w) and w > width then
-            width = w
+        if ok and type(w) == "number" and not issecretvalue(w) then
+            if sample == PERCENT_SAMPLE then w = w + signW end
+            if w > width then width = w end
         end
         if ok2 and type(h) == "number" and not issecretvalue(h) and (not height or h > height) then
             height = h
         end
     end
     if width == 0 and addon.MeasureTextWidth then
-        width = addon.MeasureTextWidth(SAMPLE_STRINGS[1], face, size, style) or 0
+        width = (addon.MeasureTextWidth(PERCENT_SAMPLE, face, size, style) or 0) + signW
     end
     return width, height
 end
@@ -226,12 +284,6 @@ local function PercentCurve()
     return curve
 end
 
--- Concatenation is on the secret whitelist; a named function keeps the pcall
--- free of a closure per tick.
-local function Concat(a, b)
-    return a .. b
-end
-
 -- The value chain: ClearText has already run. Returns the verdict string.
 local function PaintValue(fs)
     local okV, value = pcall(UnitPower, "player")
@@ -255,8 +307,8 @@ local function PaintValue(fs)
     return opts and "ok" or "ok (engine default breakpoints)"
 end
 
--- The percent chain. The sign rides in the same string so the Deep Shadow
--- copy carries it too.
+-- The percent chain: the number alone, since the sign is its own smaller
+-- string (StyleSign).
 local function PaintPercent(fs)
     local curve = PercentCurve()
     if not (curve and UnitPowerPercent and C_StringUtil and C_StringUtil.FloorToNearestString) then
@@ -272,9 +324,7 @@ local function PaintPercent(fs)
         return okF and ("formatter returned " .. type(str))
             or ("formatter error: " .. tostring(str))
     end
-    local okC, withSign = pcall(Concat, str, "%")
-    if not okC then return "concat failed" end
-    if not pcall(fs.SetText, fs, withSign) then return "SetText failed" end
+    if not pcall(fs.SetText, fs, str) then return "SetText failed" end
     return "ok (percent)"
 end
 
@@ -356,10 +406,29 @@ function ClassPower.PaintElementSet(trackerId, tracker, shim, elements)
     end
 end
 
+-- The percent sign: shown while the toggle is on and the number shows, in the
+-- number's face, style and color at SignSize. Its text is a literal, so a
+-- Deep Shadow copy mirrors it through the SetText hook.
+local function StyleSign(tracker, cp, db)
+    local sign = cp.sign
+    if not (db and db.powerTextPercent == true and SAU.ResolveVisibility(tracker, db).showText) then
+        sign:Hide()
+        return
+    end
+    local face, size, style = NumberFont(db)
+    addon.ApplyFontStyle(sign, face, ClassPower.SignSize(size), style)
+    local r, g, b, a = SAU._ClassPowerTextColor(db)
+    if r then sign:SetTextColor(r, g, b, a) end
+    sign:SetText(SIGN_TEXT)
+    sign:Show()
+end
+
 local function PaintLive(trackerId, tracker, entry, cp)
     local shim = { container = cp.root, elements = cp.elements, entry = entry }
     ClassPower.PaintElementSet(trackerId, tracker, shim, cp.elements)
-    ClassPower.PaintValues(trackerId, tracker, cp, SAU.GetDB(trackerId))
+    local db = SAU.GetDB(trackerId)
+    StyleSign(tracker, cp, db)
+    ClassPower.PaintValues(trackerId, tracker, cp, db)
 end
 
 --- Full Tier 1 pass for one live tracker: build the art on first use, paint
@@ -375,8 +444,11 @@ function ClassPower.Restyle(trackerId, tracker, state)
     Engine._SetResult("build.t" .. trackerId, "class power (no container)")
     -- Text metrics settle a frame after a font change; one deferred repaint
     -- picks up the settled sample width so the number's host is never left
-    -- a frame stale.
-    if tracker.shape ~= "bar" and not cp.repaintPending then
+    -- a frame stale. A bar's number moves by the sign's measured advance, so
+    -- a bar showing the percent takes the same repaint.
+    local db = SAU.GetDB(trackerId)
+    local measures = tracker.shape ~= "bar" or (db and db.powerTextPercent == true)
+    if measures and not cp.repaintPending then
         cp.repaintPending = true
         C_Timer.After(0, function()
             cp.repaintPending = false
@@ -571,5 +643,7 @@ function ClassPower.DebugInfo(trackerId)
     add("root shown=%s live=%s events=%s", tostring(cp.root:IsShown()),
         tostring(live[trackerId] ~= nil), tostring(registered))
     add("last paint: bar=%s text=%s", tostring(cp.last.bar), tostring(cp.last.text))
+    add("sign shown=%s advance=%s", tostring(cp.sign:IsShown()),
+        tostring(ClassPower.SignAdvance(entry, db)))
     return lines
 end

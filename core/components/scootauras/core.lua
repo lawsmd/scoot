@@ -691,6 +691,14 @@ end
 -- Settings factory
 --------------------------------------------------------------------------------
 
+--- The icon swipe line's starting color, a light yellow matched to the default
+-- cooldown edge. ApplyIconSwipe and the editor fall back to it.
+SAU.SWIPE_LINE_COLOR_DEFAULT = { 0.973, 0.839, 0.604, 1 }
+
+--- The icon swipe's gray-half darkness, 0 (none) to 100 (black), when unset.
+-- SAU.SwipeDarkness falls back to it.
+SAU.SWIPE_DARKNESS_DEFAULT = 50
+
 --- Fresh settings table for one tracker component. Shape/kind/unit/enabled are
 -- content, not settings; everything here is styling.
 function SAU.DefaultSettings()
@@ -707,6 +715,8 @@ function SAU.DefaultSettings()
         textOuterAnchor = { type = "addon", default = "RIGHT" },
         textInnerAnchor = { type = "addon", default = "CENTER" },
         hideText        = { type = "addon", default = false },
+        -- Duration text in tenths of a second (regions.lua, BindForMode).
+        textDecimal     = { type = "addon", default = false },
         textOffsetX     = { type = "addon", default = 0 },
         textOffsetY     = { type = "addon", default = 0 },
         hideStackText   = { type = "addon", default = false },
@@ -765,9 +775,12 @@ function SAU.DefaultSettings()
         shapeColorMode  = { type = "addon", default = "class" },
         shapeTint       = { type = "addon", default = { 1, 1, 1, 1 } },
         shapeShowDrain  = { type = "addon", default = true },
-        -- Icon trackers: the full-color swipe over a desaturated copy
-        -- (styling.lua ApplyIconSwipe).
+        -- Icon trackers: the full-color swipe over a shaded desaturated copy,
+        -- the line on its edge, and the gray half's darkness (styling.lua
+        -- ApplyIconSwipe).
         iconShowSwipe   = { type = "addon", default = true },
+        iconSwipeLineColor = { type = "addon", default = CopyTable(SAU.SWIPE_LINE_COLOR_DEFAULT) },
+        iconSwipeDarkness  = { type = "addon", default = SAU.SWIPE_DARKNESS_DEFAULT },
         opacityInCombat         = { type = "addon", default = 100 },
         opacityWithTarget       = { type = "addon", default = 100 },
         opacityOutOfCombat      = { type = "addon", default = 100 },

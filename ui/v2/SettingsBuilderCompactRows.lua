@@ -173,6 +173,54 @@ function Builder:AddToggleSliderRow(options)
 end
 
 --------------------------------------------------------------------------------
+-- AddToggleColorRow: Toggle + Color swatch compact row
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Row label text
+--   description : Optional description below label
+--   toggle      : Table with toggle options (get, set, label)
+--   color       : Table with color options (get, set, label, hasAlpha); get
+--                 returns {r, g, b, a} or r, g, b, a
+--   disabled / isDisabled : Function returning disabled state
+--   key         : Optional unique key for dynamic updates
+--------------------------------------------------------------------------------
+
+function Builder:AddToggleColorRow(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    if Builder._scanMode and options.label then
+        -- Fold the slot labels into the indexed text so searching for either
+        -- control surfaces the row.
+        local searchText = options.description or ""
+        for _, part in ipairs({ options.toggle, options.color }) do
+            if type(part) == "table" and part.label and part.label ~= "" then
+                searchText = searchText .. " " .. part.label
+            end
+        end
+        self:_ScanRecord("toggle color", options.label, searchText)
+        return self
+    end
+
+    local toggleColor = Controls:CreateToggleColorRow({
+        parent = scrollContent,
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
+        label = options.label,
+        description = options.description,
+        toggle = options.toggle,
+        color = options.color,
+        useLightDim = self._useLightDim,
+        disabled = options.disabled,
+        isDisabled = options.isDisabled,
+        name = options.name,
+    })
+
+    self:_PlaceRow(toggleColor, options)
+
+    return self
+end
+
+--------------------------------------------------------------------------------
 -- AddMultiToggleRow: Several compact toggles in one row
 --------------------------------------------------------------------------------
 -- Options:

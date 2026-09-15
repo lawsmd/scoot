@@ -817,8 +817,9 @@ local MISSING_VISUAL_ORDER_SHAPE = { "none", "desat", "blink", "blinkdesat" }
 -- offers it, so Icon and Shape build one panel body between them.
 --
 -- The slider writes through ctx.setAndApply, which restyles the tracker
--- without re-rendering the selectors. A page that called ctx.refresh() would
--- destroy the gear its own fly-out is anchored to.
+-- without re-rendering the selectors, then refreshes the preview alone. A
+-- page that called ctx.refresh() would destroy the gear its own fly-out is
+-- anchored to.
 local MISSING_OPACITY_PAGE = {
     tooltip = "Options for this missing-state visual",
     width = 310,
@@ -836,7 +837,10 @@ local MISSING_OPACITY_PAGE = {
             minLabel = "Hidden",
             maxLabel = "100%",
             get = function() return ctx.get("missingVisualOpacity") or 100 end,
-            set = function(v) ctx.setAndApply("missingVisualOpacity", v) end,
+            set = function(v)
+                ctx.setAndApply("missingVisualOpacity", v)
+                ctx.refreshPreview()
+            end,
         })
         if not slider then return end
         slider:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
@@ -1198,13 +1202,16 @@ local function RenderClassPowerPreview(shape)
         return ctx.get(key)
     end
     local percent = ctx.get("powerTextPercent") == true
+    local ClassPower = SAU().ClassPower
     prevBuilder:AddPreview({
         componentId = session and session.trackerId
             and SAU().GetComponentId(session.trackerId) or "scootAuraDraft",
         mode = isBar and "bar" or "text",
         settingKeys = { _showCAText = true },
         caTextSource = "duration",
-        caTextLiteral = percent and "75%" or "75",
+        caTextLiteral = "75",
+        -- The sign is its own smaller string, as on the HUD (classpower.lua).
+        caTextSuffix = percent and { text = "%", sizeFor = ClassPower and ClassPower.SignSize } or nil,
         fillFraction = 0.75,
         rowHeight = 200,
         previewScale = 1,
@@ -1350,6 +1357,7 @@ local function RenderPreview()
         return
     end
     local mode, shapeAtlas, shapeColor, shapeDrain, iconSwipe, iconSwipeBackdropAlpha
+    local iconSwipeBackdropShade, iconSwipeLine
     if shape == "bar" then
         mode = ctx.get("barShowIcon") and "iconbar" or "bar"
     elseif shape == "shape" then
@@ -1372,6 +1380,10 @@ local function RenderPreview()
             local traits = SAU().MissingVisualTraits(ctx.missingVisual())
             local pct = (traits and traits.opacity and tonumber(ctx.get("missingVisualOpacity"))) or 100
             iconSwipeBackdropAlpha = math.max(0, math.min(100, pct)) / 100
+            -- Swipe Darkness applies with or without a reveal.
+            iconSwipeBackdropShade = 1 - SAU().SwipeDarkness(ctx.get("iconSwipeDarkness"))
+            local r, g, b, a = SAU().SwipeLineColor(ctx.get("iconSwipeLineColor"))
+            iconSwipeLine = { r, g, b, a, texture = SAU().SWIPE_LINE_TEXTURE }
         end
     end
 
@@ -1447,6 +1459,8 @@ local function RenderPreview()
         shapeDrain = shapeDrain,
         iconSwipe = iconSwipe,
         iconSwipeBackdropAlpha = iconSwipeBackdropAlpha,
+        iconSwipeBackdropShade = iconSwipeBackdropShade,
+        iconSwipeLine = iconSwipeLine,
         noBottomBorder = true,
         noHover = true,
         noLabel = true,
@@ -1702,5 +1716,8 @@ end
 function addon.CloseScootAuraEditor()
     Editor.Close()
 end
+
+-- /scoot debug fit walks the open editor beside the settings page.
+addon.UI.Controls.RegisterFitRoot("scootaura editor", function() return frame end)
 
 return Editor
