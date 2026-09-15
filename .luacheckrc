@@ -11,8 +11,9 @@
 std = "lua51"
 max_line_length = false
 
--- Vendored libraries are not ours to lint
-exclude_files = { "libs/" }
+-- Vendored libraries are not ours to lint; docs/ is the synced doc base, and
+-- its Lua (dev tools, payloads) is not addon code
+exclude_files = { "libs/", "docs/" }
 
 -- Suppress unused variable warnings for common WoW patterns
 unused_args = false
@@ -385,7 +386,7 @@ ignore = {
 -- Globals with one legitimate site. Declared per file so a read or write
 -- anywhere else is a W113 or W111, the same signal as a broken reference.
 -- The color tables are read through _G today; the block keeps a bare read
--- legal here and nowhere else. The conventions gate (tools/gate.mjs) catches
+-- legal here and nowhere else. The conventions gate (docs/tools/gate.mjs) catches
 -- the _G form.
 files["Scoot.lua"] = {
     globals = { "SLASH_SCOOT1", "SLASH_SCOOTCDM1", "SLASH_SCOOTDMSHOW1", "SLASH_SCOOTDMRESET1", "SlashCmdList" },
