@@ -10,8 +10,7 @@ local Component = addon.ComponentPrototype
 local BAR_OPACITY_OPTS = { fallback = "combat" }
 
 -- Alpha driver: hooks SetAlpha to enforce addon opacity settings over Blizzard's visibility transitions
-local actionBarState = {}  -- per-frame state (component, baseOpacity, isMousedOver, desiredAlpha)
-local actionBarHooked = {} -- frames with OnEnter/OnLeave hooks
+local actionBarState = {}  -- per-frame state (component, baseOpacity, isMousedOver, desiredAlpha, hoverButtons)
 local alphaHooked = {}     -- frames with SetAlpha hooks
 local settingAlpha = {}    -- recursion guard for SetAlpha calls
 local iconShapedButtons = setmetatable({}, { __mode = "k" })  -- tracks buttons modified by icon shape
@@ -95,6 +94,42 @@ local function hookBarAlpha(bar)
     end)
 end
 
+local function isBarMousedOver(bar, buttons)
+    if bar:IsMouseOver() then return true end
+    for _, btn in ipairs(buttons) do
+        if btn:IsMouseOver() then return true end
+    end
+    return false
+end
+
+-- Mouseover fade: one ticker polls every bar with the setting on.
+-- HookScript("OnEnter") on a bar or button taints its script handlers, and
+-- the button's own event handlers then read secret values in combat.
+local hoverTicker = nil
+local function startHoverTicker()
+    if hoverTicker then return end
+    hoverTicker = C_Timer.NewTicker(0.15, function(ticker)
+        local anyEnabled = false
+        for bar, state in pairs(actionBarState) do
+            local db = state.component and state.component.db
+            if db and db.mouseoverMode and state.hoverButtons then
+                anyEnabled = true
+                if bar:IsShown() then
+                    local isOver = isBarMousedOver(bar, state.hoverButtons)
+                    if isOver ~= (state.isMousedOver == true) then
+                        state.isMousedOver = isOver
+                        setBarDesiredAlpha(bar, isOver and 1 or (state.baseOpacity or 1))
+                    end
+                end
+            end
+        end
+        if not anyEnabled then
+            ticker:Cancel()
+            hoverTicker = nil
+        end
+    end)
+end
+
 -- OPT-21: Hoisted from inside ApplyActionBarStyling with region classification caching.
 -- Region cache uses weak keys — entries are GC'd if button is collected (never happens in practice).
 local function toggleDefaultButtonArt(button, restore)
@@ -166,69 +201,18 @@ local function ApplyActionBarStyling(self)
         return buttons
     end
     
-    local function isMouseCurrentlyOverBar()
-        if bar.IsMouseOver and bar:IsMouseOver() then return true end
-        for _, btn in ipairs(enumerateButtonsForBar()) do
-            if btn.IsMouseOver and btn:IsMouseOver() then return true end
-        end
-        return false
-    end
-    
     state.component = self
     state.baseOpacity = appliedAlpha
-    
+
     if mouseoverEnabled then
-        local function onMouseEnter()
-            local s = actionBarState[bar]
-            if s and s.component and s.component.db and s.component.db.mouseoverMode then
-                s.isMousedOver = true
-                setBarDesiredAlpha(bar, 1)
-            end
-        end
-        local function onMouseLeave()
-            local s = actionBarState[bar]
-            if s and s.component and s.component.db and s.component.db.mouseoverMode then
-                local isOverBar = bar:IsMouseOver()
-                if not isOverBar then
-                    for _, btn in ipairs(enumerateButtonsForBar()) do
-                        if btn.IsMouseOver and btn:IsMouseOver() then
-                            isOverBar = true
-                            break
-                        end
-                    end
-                end
-                if not isOverBar then
-                    s.isMousedOver = false
-                    setBarDesiredAlpha(bar, s.baseOpacity or 1)
-                end
-            end
-        end
-
-        if not actionBarHooked[bar] then
-            bar:HookScript("OnEnter", onMouseEnter)
-            bar:HookScript("OnLeave", onMouseLeave)
-            actionBarHooked[bar] = true
-        end
-
-        for _, btn in ipairs(enumerateButtonsForBar()) do
-            if not actionBarHooked[btn] then
-                btn:HookScript("OnEnter", onMouseEnter)
-                btn:HookScript("OnLeave", onMouseLeave)
-                actionBarHooked[btn] = true
-            end
-        end
-
-        if isMouseCurrentlyOverBar() then
-            state.isMousedOver = true
-            setBarDesiredAlpha(bar, 1)
-        else
-            state.isMousedOver = false
-            setBarDesiredAlpha(bar, appliedAlpha)
-        end
+        state.hoverButtons = enumerateButtonsForBar()
+        state.isMousedOver = isBarMousedOver(bar, state.hoverButtons)
+        startHoverTicker()
     else
+        state.hoverButtons = nil
         state.isMousedOver = false
-        setBarDesiredAlpha(bar, appliedAlpha)
     end
+    setBarDesiredAlpha(bar, state.isMousedOver and 1 or appliedAlpha)
 
     -- OPT-21: Skip per-button visual styling when no visual DB keys have changed.
     -- Subsumes OPT-05 epoch guard: opacity-only changes (RefreshOpacityState) don't alter
@@ -634,72 +618,19 @@ local function ApplyMicroBarStyling(self)
         return buttons
     end
     
-    local function isMouseCurrentlyOverBar()
-        if bar.IsMouseOver and bar:IsMouseOver() then return true end
-        for _, btn in ipairs(enumerateMicroButtons()) do
-            if btn.IsMouseOver and btn:IsMouseOver() then return true end
-        end
-        return false
-    end
-
     local state = getBarState(bar)
     state.component = self
     state.baseOpacity = appliedAlpha
-    
-    local mouseoverEnabled = self.db and self.db.mouseoverMode
-    
-    if mouseoverEnabled then
-        local function onMouseEnter()
-            local s = actionBarState[bar]
-            if s and s.component and s.component.db and s.component.db.mouseoverMode then
-                s.isMousedOver = true
-                setBarDesiredAlpha(bar, 1)
-            end
-        end
-        local function onMouseLeave()
-            local s = actionBarState[bar]
-            if s and s.component and s.component.db and s.component.db.mouseoverMode then
-                local isOverBar = bar:IsMouseOver()
-                if not isOverBar then
-                    for _, btn in ipairs(enumerateMicroButtons()) do
-                        if btn.IsMouseOver and btn:IsMouseOver() then
-                            isOverBar = true
-                            break
-                        end
-                    end
-                end
-                if not isOverBar then
-                    s.isMousedOver = false
-                    setBarDesiredAlpha(bar, s.baseOpacity or 1)
-                end
-            end
-        end
 
-        if not actionBarHooked[bar] then
-            bar:HookScript("OnEnter", onMouseEnter)
-            bar:HookScript("OnLeave", onMouseLeave)
-            actionBarHooked[bar] = true
-        end
-
-        for _, btn in ipairs(enumerateMicroButtons()) do
-            if not actionBarHooked[btn] then
-                btn:HookScript("OnEnter", onMouseEnter)
-                btn:HookScript("OnLeave", onMouseLeave)
-                actionBarHooked[btn] = true
-            end
-        end
-
-        if isMouseCurrentlyOverBar() then
-            state.isMousedOver = true
-            setBarDesiredAlpha(bar, 1)
-        else
-            state.isMousedOver = false
-            setBarDesiredAlpha(bar, appliedAlpha)
-        end
+    if self.db and self.db.mouseoverMode then
+        state.hoverButtons = enumerateMicroButtons()
+        state.isMousedOver = isBarMousedOver(bar, state.hoverButtons)
+        startHoverTicker()
     else
+        state.hoverButtons = nil
         state.isMousedOver = false
-        setBarDesiredAlpha(bar, appliedAlpha)
     end
+    setBarDesiredAlpha(bar, state.isMousedOver and 1 or appliedAlpha)
 end
 
 addon:RegisterComponentInitializer(function(self)
