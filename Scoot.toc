@@ -266,6 +266,7 @@ ui/v2/SettingPatterns.lua
 ui/v2/skins/tui.lua
 ui/v2/skins/testcard.lua
 ui/v2/controls/Utils.lua
+ui/v2/controls/Fit.lua
 ui/v2/controls/RowScaffold.lua
 ui/v2/controls/PopupList.lua
 ui/v2/controls/Button.lua

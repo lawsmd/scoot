@@ -208,6 +208,18 @@ Skin.Register("testcard", {
         miniLabelGap = 3,
         maxClusterWidth = 430,
         slots = { toggle = 70, slider = 130, selector = 140, selectorWide = 240, swatch = 28, input = 36 },
+        minDescWidth = 200,
+
+        field = {
+            arrowWidth = 28,
+            indicatorWidth = 8,
+            indicatorGap = 6,
+            textInset = 10,
+            gearWidth = 22,
+            tokenIconWidth = 10,
+            widthStep = 20,
+            popupMaxWidth = 380,
+        },
 
         sublevels = { bg = -8, fill = -7, hover = -6 },
         alphas = { hover = 0.1, emphasis = 0.04, selected = 0.15, borderNormal = 0.7, borderFocus = 1.0 },

@@ -36,7 +36,9 @@ local FLEXIBLE = { slider = true, selector = true, selectorWide = true, input = 
 --   slots        : Array of { kind, label, width }. kind picks the metric
 --                  slot width (toggle, slider, selector, swatch, input);
 --                  width overrides it and is required for kind "custom".
---                  label puts a mini-label centered above the slot.
+--                  label puts a mini-label above the slot; a label wider
+--                  than its slot pushes the slots apart and widens the
+--                  cluster, never the slot.
 --
 -- Returns the cluster container and the array of slot frames, left to right.
 -- Each slot frame is control-height, bottom-aligned in the cluster, and
@@ -68,23 +70,52 @@ function Controls.BuildSlotRow(row, opts)
     if clusterWidth > m.maxClusterWidth and flexTotal > 0 then
         local excess = clusterWidth - m.maxClusterWidth
         local scale = math.max(0, (flexTotal - excess) / flexTotal)
-        total = 0
         for i, s in ipairs(slots) do
             if FLEXIBLE[s.kind] then
                 widths[i] = math.floor(widths[i] * scale + 0.5)
             end
-            total = total + widths[i]
         end
-        clusterWidth = total + gaps
     end
 
+    -- Mini-labels are measured, and slots move apart until neighbouring labels
+    -- sit at least slotGap apart. A label centers over its slot, except that
+    -- the last label right-aligns with its slot when wider, so the cluster's
+    -- right edge stays on the row padding. The cluster widens by the room the
+    -- labels take, and the description's reserve with it.
+    local labelWidths = {}
     local hasMiniLabels = false
-    for _, s in ipairs(slots) do
+    for i, s in ipairs(slots) do
         if s.label and s.label ~= "" then
             hasMiniLabels = true
-            break
+            labelWidths[i] = math.ceil(Controls.MeasureText("miniLabel", s.label) or 0)
         end
     end
+
+    local offsets, alignRight = {}, {}
+    local slotRight, labelRight = 0, 0
+    for i = 1, #slots do
+        local w, lw = widths[i], labelWidths[i] or 0
+        -- The label's left edge, relative to the slot's left edge.
+        local labelLeft = (w - lw) / 2
+        if i == #slots and lw > w then
+            labelLeft = w - lw
+            alignRight[i] = true
+        end
+        local x
+        if i == 1 then
+            x = math.max(0, -labelLeft)
+        else
+            x = slotRight + m.slotGap
+            if lw > 0 then
+                x = math.max(x, labelRight + m.slotGap - labelLeft)
+            end
+        end
+        x = math.ceil(x)
+        offsets[i] = x
+        slotRight = x + w
+        labelRight = math.max(slotRight, x + labelLeft + lw)
+    end
+    clusterWidth = slotRight
 
     local clusterHeight = m.controlHeight
         + (hasMiniLabels and (m.miniLabelHeight + m.miniLabelGap) or 0)
@@ -110,16 +141,18 @@ function Controls.BuildSlotRow(row, opts)
     row._slotContainer = container
 
     local frames = {}
-    local x = 0
     for i, s in ipairs(slots) do
         local slot = CreateFrame("Frame", nil, container)
         slot:SetSize(widths[i], m.controlHeight)
-        slot:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", x, 0)
-        x = x + widths[i] + m.slotGap
+        slot:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", offsets[i], 0)
         if s.label and s.label ~= "" then
             local fs = container:CreateFontString(nil, "OVERLAY")
             theme:ApplyFont(fs, "miniLabel")
-            fs:SetPoint("BOTTOM", slot, "TOP", 0, m.miniLabelGap)
+            if alignRight[i] then
+                fs:SetPoint("BOTTOMRIGHT", slot, "TOPRIGHT", 0, m.miniLabelGap)
+            else
+                fs:SetPoint("BOTTOM", slot, "TOP", 0, m.miniLabelGap)
+            end
             fs:SetText(s.label)
             if dim then
                 fs:SetTextColor(dim[1], dim[2], dim[3], 0.8)

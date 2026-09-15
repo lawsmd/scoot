@@ -89,6 +89,23 @@ Skin.Register("tui", {
         miniLabelGap = 3,
         maxClusterWidth = 410,
         slots = { toggle = 70, slider = 130, selector = 140, selectorWide = 240, swatch = 28, input = 36 },
+        -- The narrowest description wrap /scoot debug fit accepts beside a
+        -- control cluster.
+        minDescWidth = 200,
+
+        -- Field chrome around a selector's value text, per side where it
+        -- flanks the text. Controls.FieldNeed adds it to the widest option
+        -- label and rounds up to widthStep.
+        field = {
+            arrowWidth = 28,
+            indicatorWidth = 8,
+            indicatorGap = 4,
+            textInset = 8,
+            gearWidth = 22,
+            tokenIconWidth = 10,
+            widthStep = 20,
+            popupMaxWidth = 360,
+        },
 
         -- Background z-stack and house alphas. The three sublevels are
         -- load-bearing: base fill below, emphasis fill above it, hover fill

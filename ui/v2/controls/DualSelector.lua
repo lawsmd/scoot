@@ -327,13 +327,16 @@ function Controls:CreateDualSelector(options)
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
-    -- Chrome and the two selector slots
+    -- Chrome and the two selector slots. Two wide slots overflow the maximum
+    -- cluster width, so BuildSlotRow shrinks both to share it: about 200 each
+    -- on tui. A plain selector slot (140) clips labels such as "Inside the
+    -- Icon" under the arrows.
     local dualContainer, slotFrames = Controls.BuildSlotRow(row, {
         rowWidth = rowWidth,
         label = label,
         description = description,
         dimColor = { dimR, dimG, dimB },
-        slots = { { kind = "selector" }, { kind = "selector" } },
+        slots = { { kind = "selectorWide" }, { kind = "selectorWide" } },
     })
     row._dualSelectorContainer = dualContainer
 
