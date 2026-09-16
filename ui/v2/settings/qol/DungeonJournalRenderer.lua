@@ -71,8 +71,11 @@ function DJUI.Render(panel, scrollContent)
     local countLine = string.format("%d items marked on this character.", getMarkCount())
     builder:AddDescription(countLine, { topPadding = 12 })
 
-    -- Reset button — anchored manually below the last builder row.
-    if Controls and Controls.CreateButton then
+    -- Reset button — anchored manually below the last builder row. The search
+    -- index scan runs every renderer against the shared scroll content, so a
+    -- control the builder does not own would survive the teardown and stack up
+    -- on whatever page the scan ran from.
+    if Controls and Controls.CreateButton and not SettingsBuilder._scanMode then
         builder._currentY = builder._currentY - 16
 
         local btn = Controls:CreateButton({
@@ -102,6 +105,8 @@ function DJUI.Render(panel, scrollContent)
             btn:ClearAllPoints()
             btn:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 8, builder._currentY)
             builder._currentY = builder._currentY - 28 - 8
+            -- Register with the builder so Clear() releases it on navigation.
+            table.insert(builder._controls, btn)
         end
     end
 
