@@ -72,6 +72,10 @@ read_globals = {
     "GetPowerRegenForPowerType",
     "GetUnitSecondaryPowerInfo",
     "UnitGetTotalAbsorbs",
+    "SetPortraitTexture",
+    "IsResting",
+    "GetLootMethod",
+    "GetFileIDFromPath",
     "CreateUnitHealPredictionCalculator",
     "UnitGetDetailedHealPrediction",
     "UnitExists",
@@ -399,4 +403,9 @@ files["core/colors.lua"] = {
 }
 files["core/editmode/subgrid.lua"] = {
     read_globals = { "CreateObjectPool" },
+}
+-- Camelot's slash entry. Scoot.lua above holds the same globals for the same
+-- reason: the addon that owns a slash token binds it once, in one file.
+files["forever/debug.lua"] = {
+    globals = { "SLASH_CAMELOT1", "SlashCmdList" },
 }

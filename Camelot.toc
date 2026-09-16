@@ -1,0 +1,34 @@
+## Interface: 120100
+## Title: Camelot
+## Notes: Classic-look unit frames for Forever. Development build, not released.
+## Author: Scooter
+## Version: 0.1.0
+## SavedVariables: CamelotDB
+## SlashCmd: /camelot
+
+## Libraries. Camelot loads these itself rather than relying on the other addon
+## having gone first: WoW loads addons in alphabetical order, so Camelot always
+## precedes Scoot, and it has to stand alone on a client where Scoot is absent.
+## LibStub returns the already-registered copy when another addon got there
+## first, so listing them twice on one machine costs nothing.
+libs/LibStub/LibStub.lua
+libs/CallbackHandler-1.0/CallbackHandler-1.0.xml
+libs/AceEvent-3.0/AceEvent-3.0.xml
+
+## Reused from Scoot, listed rather than copied. WoW passes each addon its own
+## `addon` table, so every file below loads a second, private instance here and
+## Scoot's copy is untouched. This list is the shared/ promotion list, written
+## by use; docs/camelot/unitframes.md records why each row is on it.
+core/secretsafe.lua
+core/debug/core.lua
+core/events.lua
+core/strata.lua
+core/colors.lua
+
+## Camelot
+forever/camelot.lua
+forever/unitframes/art.lua
+forever/unitframes/values.lua
+forever/unitframes/harness.lua
+forever/unitframes/player.lua
+forever/debug.lua
