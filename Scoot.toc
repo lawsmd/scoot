@@ -69,6 +69,7 @@ core/rules.lua
 core/apply_all.lua
 core/iconratio.lua
 core/modules.lua
+core/searchterms.lua
 core/inspect.lua
 core/components/base/core.lua
 core/components/base/utilities.lua
@@ -376,6 +377,7 @@ ui/v2/unitframes/UFZSections.lua
 ui/v2/groupframes/Helpers.lua
 ui/v2/groupframes/GroupFramesRenderer.lua
 ui/v2/groupframes/AuraTrackingRenderer.lua
+ui/v2/settingspanel/searchmatch.lua
 ui/v2/settingspanel/search.lua
 ui/v2/settingspanel/ascii.lua
 ui/v2/settingspanel/core.lua

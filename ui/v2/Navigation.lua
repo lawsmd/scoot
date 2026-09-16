@@ -600,6 +600,73 @@ function Navigation:InitializeExpandedState()
 end
 
 --------------------------------------------------------------------------------
+-- Visibility
+--------------------------------------------------------------------------------
+-- The two rules that decide what the sidebar shows. BuildRows is one caller;
+-- the settings search index is the other, and it has to agree, or search offers
+-- a page the sidebar is hiding. Extracted rather than copied for that reason.
+
+--- True when a top-level section appears in the sidebar at all.
+function Navigation:IsParentVisible(parent)
+    if not parent then return false end
+    if not parent.hidden then return true end
+    return (addon.db and addon.db.profile and addon.db.profile.debugMenuEnabled) and true or false
+end
+
+--- The children the sidebar currently shows under parent: class-gated pages
+--- dropped, and among a variantGroup or a mutually exclusive category only the
+--- active member, with groupFallback standing in when the whole group is off.
+--- Returns an empty array for a parent with no children.
+function Navigation:GetVisibleChildren(parent)
+    if not parent or not parent.children then return {} end
+
+    -- variantGroup pass: children sharing a variantGroup are alternative
+    -- pages for one three-state unit (OFF/X/Z), spanning two categories
+    -- -- which is why the mutuallyExclusive filter below cannot serve
+    -- them. Among members, only the active one shows; when the whole
+    -- group is off, only the groupFallback member shows (grayed, via
+    -- the normal disabled path).
+    local groupActive = nil
+    for _, child in ipairs(parent.children) do
+        if child.variantGroup and self:IsNavModuleActive(child.module, child.moduleSubId) then
+            groupActive = groupActive or {}
+            groupActive[child.variantGroup] = true
+        end
+    end
+
+    -- Pre-filter: skip inactive variants for mutuallyExclusive categories
+    local visibleChildren = {}
+    for _, child in ipairs(parent.children) do
+        local catDef = child.module and addon.MODULE_CATEGORIES and addon.MODULE_CATEGORIES[child.module]
+        local isMutuallyExclusive = catDef and catDef.mutuallyExclusive
+        if type(child.isVisible) == "function" and not child.isVisible() then
+            -- Page exists but does not apply to this character (class-gated pages)
+        elseif child.variantGroup then
+            if groupActive and groupActive[child.variantGroup] then
+                if self:IsNavModuleActive(child.module, child.moduleSubId) then
+                    visibleChildren[#visibleChildren + 1] = child
+                end
+            elseif child.groupFallback then
+                visibleChildren[#visibleChildren + 1] = child
+            end
+        elseif isMutuallyExclusive and not child.alwaysShow then
+            -- Only show the active variant: the variants of a mutually
+            -- exclusive category are alternative pages for one feature,
+            -- so showing both would read as duplicates. alwaysShow opts
+            -- out for a section that has no other variant page to fall
+            -- back on, keeping the row visible but grayed.
+            if self:IsNavModuleActive(child.module, child.moduleSubId) then
+                visibleChildren[#visibleChildren + 1] = child
+            end
+        else
+            visibleChildren[#visibleChildren + 1] = child
+        end
+    end
+
+    return visibleChildren
+end
+
+--------------------------------------------------------------------------------
 -- Build Navigation Rows
 --------------------------------------------------------------------------------
 
@@ -619,11 +686,10 @@ function Navigation:BuildRows(contentFrame)
     local rowIndex = 0
 
     -- Build sorted iteration order: disabled parent groups sink to bottom
-    local debugEnabled = addon.db and addon.db.profile and addon.db.profile.debugMenuEnabled
     local enabledIndices = {}
     local disabledIndices = {}
     for i, parent in ipairs(self.NavModel) do
-        local skip = parent.hidden and not debugEnabled
+        local skip = not self:IsParentVisible(parent)
         if not skip and parent.collapsible and self:AreAllChildrenModuleDisabled(parent) then
             disabledIndices[#disabledIndices + 1] = i
         elseif not skip then
@@ -653,48 +719,7 @@ function Navigation:BuildRows(contentFrame)
         if parent.collapsible and parent.children then
             local isExpanded = self._expandedSections[parent.key]
 
-            -- variantGroup pass: children sharing a variantGroup are alternative
-            -- pages for one three-state unit (OFF/X/Z), spanning two categories
-            -- -- which is why the mutuallyExclusive filter below cannot serve
-            -- them. Among members, only the active one shows; when the whole
-            -- group is off, only the groupFallback member shows (grayed, via
-            -- the normal disabled path).
-            local groupActive = nil
-            for _, child in ipairs(parent.children) do
-                if child.variantGroup and self:IsNavModuleActive(child.module, child.moduleSubId) then
-                    groupActive = groupActive or {}
-                    groupActive[child.variantGroup] = true
-                end
-            end
-
-            -- Pre-filter: skip inactive variants for mutuallyExclusive categories
-            local visibleChildren = {}
-            for _, child in ipairs(parent.children) do
-                local catDef = child.module and addon.MODULE_CATEGORIES and addon.MODULE_CATEGORIES[child.module]
-                local isMutuallyExclusive = catDef and catDef.mutuallyExclusive
-                if type(child.isVisible) == "function" and not child.isVisible() then
-                    -- Page exists but does not apply to this character (class-gated pages)
-                elseif child.variantGroup then
-                    if groupActive and groupActive[child.variantGroup] then
-                        if self:IsNavModuleActive(child.module, child.moduleSubId) then
-                            visibleChildren[#visibleChildren + 1] = child
-                        end
-                    elseif child.groupFallback then
-                        visibleChildren[#visibleChildren + 1] = child
-                    end
-                elseif isMutuallyExclusive and not child.alwaysShow then
-                    -- Only show the active variant: the variants of a mutually
-                    -- exclusive category are alternative pages for one feature,
-                    -- so showing both would read as duplicates. alwaysShow opts
-                    -- out for a section that has no other variant page to fall
-                    -- back on, keeping the row visible but grayed.
-                    if self:IsNavModuleActive(child.module, child.moduleSubId) then
-                        visibleChildren[#visibleChildren + 1] = child
-                    end
-                else
-                    visibleChildren[#visibleChildren + 1] = child
-                end
-            end
+            local visibleChildren = self:GetVisibleChildren(parent)
 
             for childIdx, child in ipairs(visibleChildren) do
                 rowIndex = rowIndex + 1

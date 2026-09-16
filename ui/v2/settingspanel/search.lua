@@ -8,6 +8,7 @@ local Theme = addon.UI.Theme
 local Controls = addon.UI.Controls
 local Navigation = addon.UI.Navigation
 local Builder = addon.UI.SettingsBuilder
+local Matcher = addon.UI.SearchMatch
 
 local CONTENT_PADDING = 8
 local ROW_HEIGHT = 24
@@ -16,11 +17,30 @@ local INPUT_HEIGHT = 32
 local DEBOUNCE_DELAY = 0.15
 
 --------------------------------------------------------------------------------
+-- Limits
+--------------------------------------------------------------------------------
+-- Search policy, kept in a table rather than in file constants: a skin has no
+-- business deciding when a query is too short or a result list too long, and
+-- the debug command can print the table as it stands.
+--
+-- minQuery 2 and not 3: "UI", "HP" and "XP" are real queries.
+-- maxRows 60: pooling removes the allocation cost of a long list, not the
+-- layout cost. Sixty rows is about two screens at the default panel height,
+-- long enough to read as complete and short enough that a keystroke stays
+-- inside one frame.
+local Limits = {
+    minQuery = 2,
+    maxRows  = 60,
+}
+
+--------------------------------------------------------------------------------
 -- Search State
 --------------------------------------------------------------------------------
 
 local Search = {}
 UIPanel._search = Search
+
+Search.Limits = Limits
 
 Search._index = nil
 Search._query = ""
@@ -84,13 +104,8 @@ local MANUAL_ENTRIES = {
         rendererKey = "applyAllTextures",
     },
     -- ScootAuras: the Aura List page is hand-rolled, so the scanner never
-    -- sees it; these entries make its flows findable.
-    {
-        type = "page",
-        label = "Aura List",
-        description = "ScootAuras: track any buff or debuff as an icon, bar, or shape on player, target, or focus.",
-        rendererKey = "scootAurasList",
-    },
+    -- sees it; these entries make its flows findable. The page itself needs no
+    -- row here, because page entries come from the nav model.
     {
         type = "button",
         label = "Add Aura",
@@ -120,6 +135,7 @@ local MANUAL_ENTRIES = {
 local function BuildBreadcrumbMap()
     local breadcrumbs = {}
     local moduleCategories = {}
+    local pageKeywords = {}
 
     for _, parent in ipairs(Navigation.NavModel) do
         if parent.children then
@@ -127,6 +143,12 @@ local function BuildBreadcrumbMap()
                 breadcrumbs[child.key] = parent.label .. " > " .. child.label
                 if child.module then
                     moduleCategories[child.key] = child.module
+                end
+                -- versionBadge.title is the page's other name ("Player Frame X"),
+                -- and it is the only spare prose the nav model carries. Every
+                -- setting on the page inherits it as keywords.
+                if child.versionBadge and child.versionBadge.title then
+                    pageKeywords[child.key] = child.versionBadge.title
                 end
             end
         elseif parent.key ~= "search" then
@@ -136,11 +158,87 @@ local function BuildBreadcrumbMap()
 
     Search._breadcrumbMap = breadcrumbs
     Search._moduleCategoryMap = moduleCategories
+    Search._pageKeywordMap = pageKeywords
 end
 
 --------------------------------------------------------------------------------
 -- Index Building
 --------------------------------------------------------------------------------
+
+-- Declared above BuildIndex because BuildIndex reads it to set entry.demoted.
+-- Below it, the upvalue is nil at build time and every entry scores undemoted.
+local function IsModuleDisabled(entry)
+    if not entry.moduleCategory then return false end
+    if not addon._activeModules then return false end
+    return addon._activeModules[entry.moduleCategory] == false
+end
+
+--- Flatten strings and arrays of strings into one space-joined string, or nil.
+local function JoinTerms(...)
+    local parts = nil
+    for i = 1, select("#", ...) do
+        local value = select(i, ...)
+        if type(value) == "string" and value ~= "" then
+            parts = parts or {}
+            parts[#parts + 1] = value
+        elseif type(value) == "table" then
+            for j = 1, #value do
+                if type(value[j]) == "string" and value[j] ~= "" then
+                    parts = parts or {}
+                    parts[#parts + 1] = value[j]
+                end
+            end
+        end
+    end
+    return parts and table.concat(parts, " ") or nil
+end
+
+-- The matcher reads entry.fields and nothing else. Normalize memoizes on the
+-- raw string, so the hundreds of rows labelled "Size" and the one page path
+-- every row on a page shares each fold once.
+local function AttachFields(entry)
+    entry.fields = {
+        label       = Matcher.Normalize(entry.label),
+        keywords    = Matcher.Normalize(entry.keywords),
+        path        = Matcher.Normalize(entry.pagePath),
+        section     = Matcher.Normalize(entry.sectionTitle),
+        description = Matcher.Normalize(entry.description),
+        type        = Matcher.Normalize(entry.type),
+    }
+end
+
+-- Page entries come from the nav model, not from the scan, so a page whose
+-- renderer the scan skips still has one. That is what makes the profile pages,
+-- both Apply All pages and the hand-rolled Aura List findable: a scan can never
+-- reach them. Nav visibility is asked of Navigation rather than restated, so
+-- search never offers a page the sidebar is hiding.
+local function BuildPageEntries(out)
+    local vocab = addon.SearchVocabulary
+    local pages = (vocab and vocab.pages) or {}
+
+    for _, parent in ipairs(Navigation.NavModel) do
+        if Navigation:IsParentVisible(parent) then
+            for _, child in ipairs(Navigation:GetVisibleChildren(parent)) do
+                local badge = child.versionBadge
+                local record = {
+                    kind = "page",
+                    type = "page",
+                    label = child.label,
+                    description = (badge and badge.text) or "",
+                    rendererKey = child.key,
+                    breadcrumb = parent.label .. " > " .. child.label,
+                    pagePath = parent.label .. " " .. child.label,
+                    sectionTitle = nil,
+                    keywords = JoinTerms(pages[child.key], pages[parent.key], badge and badge.title),
+                    moduleCategory = child.module,
+                }
+                record.demoted = IsModuleDisabled(record)
+                AttachFields(record)
+                out[#out + 1] = record
+            end
+        end
+    end
+end
 
 function Search:BuildIndex()
     if not UIPanel._renderers then return end
@@ -202,28 +300,63 @@ function Search:BuildIndex()
 
     -- Augment entries with breadcrumbs and module categories
     local index = {}
+    local ordinals = {}
     for _, entry in ipairs(Builder._scanEntries) do
-        local breadcrumb = Search._breadcrumbMap[entry.rendererKey] or entry.rendererKey
+        local pagePath = Search._breadcrumbMap[entry.rendererKey] or entry.rendererKey
+        local breadcrumb = pagePath
         local sectionInfo = entry.section
+        local sectionTitle = nil
 
         -- Append section/tab title to breadcrumb
         if sectionInfo then
-            local sectionTitle = type(sectionInfo) == "table" and sectionInfo.title or sectionInfo
+            sectionTitle = type(sectionInfo) == "table" and sectionInfo.title or sectionInfo
             if sectionTitle then
                 breadcrumb = breadcrumb .. " > " .. sectionTitle
             end
         end
 
-        table.insert(index, {
+        -- The scan walks a page in render order, so a counter per page and
+        -- label is the cheapest way to tell two rows sharing a label apart.
+        local ordinalKey = entry.rendererKey .. "\0" .. entry.label
+        ordinals[ordinalKey] = (ordinals[ordinalKey] or 0) + 1
+
+        local moduleCategory = Search._moduleCategoryMap[entry.rendererKey]
+        local record = {
+            kind = "setting",
             type = entry.type,
             label = entry.label,
             description = entry.description,
             rendererKey = entry.rendererKey,
             breadcrumb = breadcrumb,
+            pagePath = pagePath,
+            sectionTitle = sectionTitle,
+            keywords = Search._pageKeywordMap and Search._pageKeywordMap[entry.rendererKey] or nil,
+            ordinal = ordinals[ordinalKey],
             section = sectionInfo,
-            moduleCategory = Search._moduleCategoryMap[entry.rendererKey],
-        })
+            moduleCategory = moduleCategory,
+        }
+        record.demoted = IsModuleDisabled(record)
+        AttachFields(record)
+        table.insert(index, record)
     end
+
+    BuildPageEntries(index)
+
+    -- Features is a header button rather than a nav entry, so no page entry is
+    -- generated for it, and it is where every disabled-module result already
+    -- sends people.
+    local features = {
+        kind = "page",
+        type = "page",
+        label = "Features",
+        description = "Turn each part of the addon on or off.",
+        rendererKey = "startHere",
+        breadcrumb = "Features",
+        pagePath = "Features",
+        keywords = "modules enable disable",
+    }
+    AttachFields(features)
+    table.insert(index, features)
 
     -- Clean up scan state
     Builder._scanMode = false
@@ -238,54 +371,22 @@ end
 -- Search Algorithm
 --------------------------------------------------------------------------------
 
+--- Rank the index against a query. Returns the scored records and the parsed
+--- query; a record is { entry, score, fields, contextOnly, rank }.
 function Search:Execute(query)
     if not Search._index then
         Search:BuildIndex()
     end
     if not Search._index then return {} end
 
-    local queryLower = query:lower()
-    if queryLower == "" then return {} end
-
-    local tier1, tier2, tier3 = {}, {}, {}
-
-    for _, entry in ipairs(Search._index) do
-        local labelLower = entry.label:lower()
-        local descLower = entry.description:lower()
-
-        if labelLower:find(queryLower, 1, true) == 1 then
-            table.insert(tier1, entry)
-        elseif labelLower:find(queryLower, 1, true) then
-            table.insert(tier2, entry)
-        elseif descLower:find(queryLower, 1, true) then
-            table.insert(tier3, entry)
-        end
-    end
-
-    local function sortByBreadcrumb(a, b)
-        return a.breadcrumb < b.breadcrumb
-    end
-    table.sort(tier1, sortByBreadcrumb)
-    table.sort(tier2, sortByBreadcrumb)
-    table.sort(tier3, sortByBreadcrumb)
-
-    local results = {}
-    for _, e in ipairs(tier1) do table.insert(results, e) end
-    for _, e in ipairs(tier2) do table.insert(results, e) end
-    for _, e in ipairs(tier3) do table.insert(results, e) end
-
+    local results, parsed = Matcher.Run(Search._index, query)
+    Search._parsed = parsed
     return results
 end
 
 --------------------------------------------------------------------------------
 -- Navigate to Result
 --------------------------------------------------------------------------------
-
-local function IsModuleDisabled(entry)
-    if not entry.moduleCategory then return false end
-    if not addon._activeModules then return false end
-    return addon._activeModules[entry.moduleCategory] == false
-end
 
 function Search:HighlightControl(control)
     if not control then return end
@@ -374,6 +475,10 @@ function Search:NavigateToResult(entry)
     } or nil)
     if not ok then return end
 
+    -- A page entry names no control, so there is nothing to scroll to and the
+    -- walk would only find a setting that happens to share the page's name.
+    if entry.kind == "page" then return end
+
     -- Search-only: scroll the matched control into view and flash it.
     local delay = sectionInfo and 0.15 or 0.05
     C_Timer.After(delay, function()
@@ -420,8 +525,17 @@ function Search:RenderResults(scrollContent)
     statusFS:SetJustifyH("LEFT")
     Search._statusText = statusFS
 
-    if query == "" then
+    local trimmed = query:match("^%s*(.-)%s*$") or ""
+
+    if trimmed == "" then
         statusFS:SetText("Type to search across all settings...")
+        statusFS:SetTextColor(0.5, 0.5, 0.5, 0.6)
+        scrollContent:SetHeight(math.abs(yOffset) + 40)
+        return
+    end
+
+    if #trimmed < Limits.minQuery then
+        statusFS:SetText("Keep typing to search.")
         statusFS:SetTextColor(0.5, 0.5, 0.5, 0.6)
         scrollContent:SetHeight(math.abs(yOffset) + 40)
         return
@@ -434,12 +548,19 @@ function Search:RenderResults(scrollContent)
         return
     end
 
-    statusFS:SetText(#results .. " result" .. (#results ~= 1 and "s" or "") .. " for \"" .. query .. "\"")
+    local shown = math.min(#results, Limits.maxRows)
+    if shown < #results then
+        statusFS:SetText("Showing " .. shown .. " of " .. #results
+            .. " results for \"" .. query .. "\". Type more to narrow.")
+    else
+        statusFS:SetText(#results .. " result" .. (#results ~= 1 and "s" or "") .. " for \"" .. query .. "\"")
+    end
     statusFS:SetTextColor(0.5, 0.5, 0.5, 0.8)
     yOffset = yOffset - 20
 
     -- Result rows
-    for i, entry in ipairs(results) do
+    for i = 1, shown do
+        local entry = results[i].entry
         local isDisabled = IsModuleDisabled(entry)
         local alphaMultiplier = isDisabled and 0.4 or 1.0
 
@@ -625,14 +746,81 @@ UIPanel:RegisterRenderer("search", function(panel, scrollContent)
 end)
 
 --------------------------------------------------------------------------------
+-- Debug Command
+--------------------------------------------------------------------------------
+-- The instrument for every ranking claim: it prints the score and the fields
+-- that carried it, so a "why did that rank there" question has an answer that
+-- does not need the panel open.
+
+addon:RegisterDebugCommand({
+    name = "search",
+    help = "Rank a settings query and show the scores; 'search limits' prints the policy numbers",
+    handler = function(sub, rest)
+        local lines, push = addon.DebugLines()
+
+        if sub == "limits" then
+            push("Limits:")
+            for key, value in pairs(Limits) do
+                push("  %-10s %s", key, tostring(value))
+            end
+            addon.DebugShowWindow("Settings Search", lines)
+            return
+        end
+
+        local query = sub or ""
+        if rest and #rest > 0 then
+            query = query .. " " .. table.concat(rest, " ")
+        end
+
+        local results = Search:Execute(query)
+        local parsed = Search._parsed
+        push("query   %s", query ~= "" and query or "(empty)")
+        push("index   %d entries", #(Search._index or {}))
+        push("terms   %s", parsed and parsed.head or "(too short to rank)")
+        push("matched %d", #results)
+        push("")
+        for i = 1, math.min(#results, 30) do
+            local r = results[i]
+            local fields = {}
+            for key in pairs(r.fields or {}) do fields[#fields + 1] = key end
+            table.sort(fields)
+            push("%6.2f  %-7s %-34s %-44s [%s]",
+                r.score,
+                r.entry.kind or "setting",
+                r.entry.label or "",
+                r.entry.breadcrumb or "",
+                table.concat(fields, ","))
+        end
+
+        addon.DebugShowWindow("Settings Search", lines)
+    end,
+})
+
+--------------------------------------------------------------------------------
 -- Profile Invalidation
 --------------------------------------------------------------------------------
+
+--- Drop the index and everything derived from it. Clearing _results as well
+--- matters: RenderSearchPage only re-executes when _results is nil, so a
+--- profile switch used to repaint records built against the old index.
+function Search:Invalidate()
+    Search._index = nil
+    Search._breadcrumbMap = nil
+    Search._moduleCategoryMap = nil
+    Search._pageKeywordMap = nil
+    Search._results = nil
+    Search._parsed = nil
+    if Matcher then
+        Matcher.ResetCache()
+        Matcher.InvalidateVocabulary()
+    end
+end
 
 C_Timer.After(0, function()
     if addon.db and addon.db.RegisterCallback then
         local callbackObj = {}
         function callbackObj:InvalidateSearch()
-            Search._index = nil
+            Search:Invalidate()
         end
         addon.db.RegisterCallback(callbackObj, "OnProfileChanged", "InvalidateSearch")
         addon.db.RegisterCallback(callbackObj, "OnProfileCopied", "InvalidateSearch")
