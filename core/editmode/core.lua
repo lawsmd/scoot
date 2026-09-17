@@ -2,12 +2,6 @@
 
 local addonName, addon = ...
 
--- Central suppression check (used only during short post-copy window)
-local function _ShouldSuppressWrites()
-    local prof = addon and addon.Profiles
-    if not prof or not prof.IsPostCopySuppressed then return false end
-    return prof:IsPostCopySuppressed()
-end
 local function _SafePCall(method, frame, useSecure)
     if not (frame and type(method) == "string") then return end
     local fn = frame[method]
@@ -31,7 +25,10 @@ local function getEditModeState(frame)
     return editModeState[frame]
 end
 
-addon.EditMode = {}
+-- Layout persistence (LoadLayouts, SaveOnly, ProfileMatchesActiveLayout,
+-- RefreshSyncAndNotify, the SaveLayouts hook) is core/editmode/persist.lua,
+-- which loads first and creates the table.
+addon.EditMode = addon.EditMode or {}
 
 -- OPT-28: Event-driven Edit Mode state flag. Set true on EditMode.Enter,
 -- false on EditMode.Exit. Eliminates pcall + Blizzard API checks from the
@@ -641,57 +638,6 @@ function addon.EditMode.CloseEditMode(onClosed)
     end
 end
 
--- Helper functions
-function addon.EditMode.LoadLayouts()
-    if not LEO or not LEO.LoadLayouts or not LEO.IsReady then return end
-    if not LEO:IsReady() then return end
-    if LEO.AreLayoutsLoaded and LEO:AreLayoutsLoaded() then return end
-    pcall(LEO.LoadLayouts, LEO)
-end
-
--- Persist Edit Mode settings and trigger visual refresh via deferred SetActiveLayout.
--- Primary "apply settings visually" entry point for Scoot writes.
--- Debug logging: Enable with `/run Scoot._dbgEditMode = true` to trace save calls.
---
--- Scoot-authored Edit Mode writes are only valid when the active AceDB profile and the
--- active Edit Mode layout agree (they are keyed 1:1 by name). They disagree in exactly
--- two situations: a cross-machine login where the account-synced layout differs from
--- this machine's last-used profile, and the post-reload window where the C API still
--- reports the previous session's layout. In both, a write would land data from one
--- profile in another profile's layout, so callers skip. Skipped syncs are retried by
--- the SaveLayouts 3-pass hook once RefreshFromEditMode aligns profile and layout.
-function addon.EditMode.ProfileMatchesActiveLayout()
-    if not (LEO and LEO.AreLayoutsLoaded and LEO:AreLayoutsLoaded()) then return false end
-    local ok, layoutName = pcall(LEO.GetActiveLayout, LEO)
-    if not ok or type(layoutName) ~= "string" then return false end
-    local prof = addon.db and addon.db.GetCurrentProfile and addon.db:GetCurrentProfile()
-    return prof == layoutName
-end
-
--- IMPORTANT: The visual refresh depends on LEO:SaveOnly() calling SetActiveLayout in a
--- deferred context. If settings save but don't apply visually, check:
--- 1. That LEO:SaveOnly() is being called (not suppressed)
--- 2. That layoutInfo.activeLayout is valid (not nil, must be >= 1)
--- 3. That the deferred C_Timer.After callback executes
-function addon.EditMode.SaveOnly()
-    if not LEO or not LEO.SaveOnly then
-        if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SaveOnly]|r LEO not available") end
-        return
-    end
-    if _ShouldSuppressWrites() then
-        if addon._dbgEditMode then addon.DebugPrint("|cFFFF0000[EM.SaveOnly]|r Suppressed by _ShouldSuppressWrites") end
-        return
-    end
-    if not addon.EditMode.ProfileMatchesActiveLayout() then
-        if addon._dbgEditMode then addon.DebugPrint("|cFFFF6600[EM.SaveOnly]|r Skipped: profile ~= active layout") end
-        return
-    end
-    -- Kept off Theme accent: severity mark, same palette as the red and orange
-    -- lines above. Green here means the save ran, not that Scoot is speaking.
-    if addon._dbgEditMode then addon.DebugPrint("|cFF00FF00[EM.SaveOnly]|r Calling LEO:SaveOnly()") end
-    LEO:SaveOnly()
-end
-
 -- Centralized write helper for Edit Mode–controlled settings.
 -- All Scoot-initiated writes to Edit Mode should flow through this helper
 -- so that SaveOnly and panel refresh suppression behave
@@ -978,14 +924,7 @@ function addon.EditMode.Initialize()
             end
         end
     end
-    if not addon._hookedSave and type(_G.C_EditMode) == "table" and type(_G.C_EditMode.SaveLayouts) == "function" then
-        hooksecurefunc(_G.C_EditMode, "SaveLayouts", function()
-            C_Timer.After(0.0, function() if addon.EditMode then addon.EditMode.RefreshSyncAndNotify("SaveLayouts:pass1") end end)
-            C_Timer.After(0.25, function() if addon.EditMode then addon.EditMode.RefreshSyncAndNotify("SaveLayouts:pass2") end end)
-            C_Timer.After(0.6, function() if addon.EditMode then addon.EditMode.RefreshSyncAndNotify("SaveLayouts:pass3") end end)
-        end)
-        addon._hookedSave = true
-    end
+    addon.EditMode.InstallLayoutHooks()
 
     if _G.EventRegistry and not addon._editModeCBRegistered then
         local ER = _G.EventRegistry

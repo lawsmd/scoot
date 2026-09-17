@@ -53,6 +53,7 @@ core/presets.lua
 core/preset_scooterui.lua
 core/preset_scooterdeck.lua
 core/borders.lua
+core/editmode/persist.lua
 core/editmode/core.lua
 core/editmode/positionables.lua
 core/editmode/sync.lua
@@ -65,6 +66,7 @@ core/profiles/actionbars.lua
 core/profiles/cvars.lua
 core/profiles/layouts.lua
 core/profiles/spec.lua
+core/profiles/restyle.lua
 core/rules.lua
 core/apply_all.lua
 core/iconratio.lua

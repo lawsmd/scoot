@@ -649,7 +649,7 @@ function Profiles:PerformDeleteLayout(layoutName)
                 suffix = suffix + 1
                 tempName = "New Layout " .. suffix
             end
-            local success = self:ClonePresetLayout({ presetName = "Modern" }, tempName)
+            local success = self:ClonePresetLayout({ presetName = self:DefaultPresetName() }, tempName)
             if success then
                 fallback = tempName
             end
@@ -743,6 +743,108 @@ function Profiles:PerformDeleteLayout(layoutName)
     notifyUI()
     if addon and addon.EditMode and addon.EditMode.RefreshSyncAndNotify then
         addon.EditMode.RefreshSyncAndNotify("DeleteLayout")
+    end
+    return true
+end
+
+--------------------------------------------------------------------------------
+-- Import: a profile table plus an optional Edit Mode string into a layout
+--------------------------------------------------------------------------------
+
+-- A host that has to touch an imported profile table before it is stored
+-- registers a hook here; fn(profileTable) runs on the copy that is saved.
+local importHooks = {}
+
+function Profiles.RegisterImportHook(name, fn)
+    if type(name) ~= "string" or type(fn) ~= "function" then return false end
+    importHooks[name] = fn
+    return true
+end
+
+-- Writes profileData under targetLayoutName, creating the Edit Mode layout when
+-- no layout of that name exists (from editModeStr when it parses, else a copy of
+-- the active layout, else the first preset), then stages the activation for the
+-- next load: the pending token, the character's profile key, and the layout
+-- list's activeLayout. The caller reloads from its click handler. Returns
+-- true or false, err.
+function Profiles:PerformImportLayout(targetLayoutName, profileData, editModeStr)
+    if isCombatLocked() then return false, "Cannot import during combat. Please try again after combat ends." end
+    if not (self.db and self.db.profiles) then return false, "Profile database is not available." end
+    local name = normalizeName(targetLayoutName)
+    if not name then return false, "A name is required." end
+    if type(profileData) ~= "table" then return false, "Import data is missing profile data." end
+
+    if not layoutExists(name) then
+        if not (C_EditMode and C_EditMode.GetLayouts and C_EditMode.SaveLayouts) then
+            return false, "Edit Mode API is not available."
+        end
+        local layoutInfo = C_EditMode.GetLayouts()
+        if not layoutInfo or not layoutInfo.layouts then
+            return false, "Unable to read Edit Mode layouts."
+        end
+        for _, l in ipairs(layoutInfo.layouts) do
+            if l and l.layoutName == name then
+                return false, "A layout with that name already exists."
+            end
+        end
+
+        local newLayout
+        if editModeStr and editModeStr ~= "" and C_EditMode.ConvertStringToLayoutInfo then
+            local ok, parsed = pcall(C_EditMode.ConvertStringToLayoutInfo, editModeStr)
+            if ok and parsed then newLayout = parsed end
+        end
+        if not newLayout then
+            local activeIdx = layoutInfo.activeLayout
+            if activeIdx and layoutInfo.layouts[activeIdx] then
+                newLayout = CopyTable(layoutInfo.layouts[activeIdx])
+            else
+                for _, l in ipairs(layoutInfo.layouts) do
+                    if l.layoutType == Enum.EditModeLayoutType.Preset then
+                        newLayout = CopyTable(l)
+                        break
+                    end
+                end
+            end
+        end
+        if not newLayout then
+            return false, "Unable to create new layout: no base layout found."
+        end
+
+        newLayout.layoutName = name
+        newLayout.layoutType = Enum.EditModeLayoutType.Account
+        newLayout.isPreset = nil
+        newLayout.isModified = nil
+        table.insert(layoutInfo.layouts, newLayout)
+        C_EditMode.SaveLayouts(layoutInfo)
+    end
+
+    local imported = CopyTable(profileData)
+    for _, fn in pairs(importHooks) do
+        fn(imported)
+    end
+    self.db.profiles[name] = imported
+
+    if self.db.global then
+        self.db.global.pendingProfileActivation = { layoutName = name, reason = "ProfileImport" }
+    end
+    local sv = rawget(self.db, "sv")
+    local charKey = self.db.keys and self.db.keys.char
+    if sv and sv.profileKeys and charKey then
+        sv.profileKeys[charKey] = name
+    end
+
+    if C_EditMode and C_EditMode.GetLayouts and C_EditMode.SaveLayouts then
+        local li = C_EditMode.GetLayouts()
+        if li and li.layouts then
+            for idx, layout in ipairs(li.layouts) do
+                if layout and layout.layoutName == name then
+                    -- li.layouts excludes presets; activeLayout indexes the presets-prepended list.
+                    li.activeLayout = idx + presetLayoutOffset()
+                    break
+                end
+            end
+            pcall(C_EditMode.SaveLayouts, li)
+        end
     end
     return true
 end

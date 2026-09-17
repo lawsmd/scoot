@@ -63,128 +63,15 @@ end
 -- performImport: runs the import
 --------------------------------------------------------------------------------
 
+-- The layout and profile writes are the backend's (Profiles:PerformImportLayout,
+-- core/profiles/layouts.lua). ReloadUI() stays here because it is only legal
+-- from the click that reached this function.
 local function performImport(envelope, targetLayoutName, editModeStr)
-    if isCombatLocked() then
-        showInfoDialog("Cannot import during combat. Please try again after combat ends.")
+    local ok, err = addon.Profiles:PerformImportLayout(targetLayoutName, envelope.data, editModeStr)
+    if not ok then
+        showInfoDialog(err or "Import failed.")
         return
     end
-
-    if not addon.db or not addon.db.profiles then
-        showInfoDialog("Profile database is not available.")
-        return
-    end
-
-    -- Check whether the target layout already exists
-    local isNewLayout = not (addon.Profiles._layoutLookup and addon.Profiles._layoutLookup[targetLayoutName])
-
-    if isNewLayout then
-        if not (C_EditMode and C_EditMode.GetLayouts and C_EditMode.SaveLayouts) then
-            showInfoDialog("Edit Mode API is not available.")
-            return
-        end
-
-        local layoutInfo = C_EditMode.GetLayouts()
-        if not layoutInfo or not layoutInfo.layouts then
-            showInfoDialog("Unable to read Edit Mode layouts.")
-            return
-        end
-
-        -- Check name uniqueness
-        for _, l in ipairs(layoutInfo.layouts) do
-            if l and l.layoutName == targetLayoutName then
-                showInfoDialog("A layout with that name already exists.")
-                return
-            end
-        end
-
-        -- Build the new Edit Mode layout
-        local newLayout
-        if editModeStr and editModeStr ~= "" then
-            -- Parse the provided Edit Mode string
-            if C_EditMode.ConvertStringToLayoutInfo then
-                local ok, parsed = pcall(C_EditMode.ConvertStringToLayoutInfo, editModeStr)
-                if ok and parsed then
-                    newLayout = parsed
-                else
-                    -- Fall back to cloning active layout
-                    local activeIdx = layoutInfo.activeLayout
-                    if activeIdx and layoutInfo.layouts[activeIdx] then
-                        newLayout = CopyTable(layoutInfo.layouts[activeIdx])
-                    end
-                end
-            end
-        end
-
-        if not newLayout then
-            -- Clone active layout
-            local activeIdx = layoutInfo.activeLayout
-            if activeIdx and layoutInfo.layouts[activeIdx] then
-                newLayout = CopyTable(layoutInfo.layouts[activeIdx])
-            else
-                -- Fallback to first preset
-                for _, l in ipairs(layoutInfo.layouts) do
-                    if l.layoutType == Enum.EditModeLayoutType.Preset then
-                        newLayout = CopyTable(l)
-                        break
-                    end
-                end
-            end
-        end
-
-        if not newLayout then
-            showInfoDialog("Unable to create new layout: no base layout found.")
-            return
-        end
-
-        newLayout.layoutName = targetLayoutName
-        newLayout.layoutType = Enum.EditModeLayoutType.Account
-        newLayout.isPreset = nil
-        newLayout.isModified = nil
-
-        table.insert(layoutInfo.layouts, newLayout)
-        C_EditMode.SaveLayouts(layoutInfo)
-    end
-
-    -- Write Scoot profile data
-    local importedProfile = CopyTable(envelope.data)
-    -- Personal Resource Display mirrors: push the imported PRD values into the layout
-    -- the first time this profile is active with Edit Mode ready.
-    if addon.PRD and addon.PRD.MarkProfilePendingNativePush then
-        addon.PRD.MarkProfilePendingNativePush(importedProfile)
-    end
-    addon.db.profiles[targetLayoutName] = importedProfile
-
-    -- Set pending activation token
-    if addon.db.global then
-        addon.db.global.pendingProfileActivation = {
-            layoutName = targetLayoutName,
-            reason = "ProfileImport",
-        }
-    end
-
-    -- Persist AceDB profileKeys for current character
-    local sv = rawget(addon.db, "sv")
-    local charKey = addon.db.keys and addon.db.keys.char
-    if sv and sv.profileKeys and charKey then
-        sv.profileKeys[charKey] = targetLayoutName
-    end
-
-    -- Set Edit Mode active layout to the target
-    if C_EditMode and C_EditMode.GetLayouts and C_EditMode.SaveLayouts then
-        local li = C_EditMode.GetLayouts()
-        if li and li.layouts then
-            local offset = addon.Profiles._presetLayoutOffset and addon.Profiles._presetLayoutOffset() or 2
-            for idx, layout in ipairs(li.layouts) do
-                if layout and layout.layoutName == targetLayoutName then
-                    -- li.layouts excludes presets; activeLayout indexes the presets-prepended list.
-                    li.activeLayout = idx + offset
-                    break
-                end
-            end
-            pcall(C_EditMode.SaveLayouts, li)
-        end
-    end
-
     ReloadUI()
 end
 

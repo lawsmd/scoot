@@ -12,6 +12,14 @@ local PREFIX = "!SM1!"
 IE.PREFIX_PROFILE = PREFIX
 IE.PREFIX_AURA = "!SA1!"
 
+-- Both addons write strings with the same prefixes, and a profile from one
+-- means nothing to the other, so the envelope carries the writer's name and
+-- the profile importer refuses the other's. A string written before the field
+-- existed came from Scoot.
+local function brand()
+    return addon.Brand or "Scoot"
+end
+
 --------------------------------------------------------------------------------
 -- Library references (resolved lazily)
 --------------------------------------------------------------------------------
@@ -63,6 +71,7 @@ function IE:EncodeEnvelope(envelope, prefix)
     if type(envelope) ~= "table" then
         return nil, "Nothing to export."
     end
+    envelope.addon = envelope.addon or brand()
     envelope.addonVersion = envelope.addonVersion or GetAddonVersion()
     envelope.exportedAt = envelope.exportedAt or date("%Y-%m-%d %H:%M:%S")
 
@@ -98,7 +107,7 @@ function IE:DecodeEnvelope(importStr, prefix, label)
     end
 
     if importStr:sub(1, #prefix) ~= prefix then
-        return false, "Invalid import string. Expected Scoot " .. (label or "import")
+        return false, "Invalid import string. Expected " .. brand() .. " " .. (label or "import")
             .. " string starting with '" .. prefix .. "'."
     end
 
@@ -169,7 +178,7 @@ end
 
 function IE:ImportProfile(importStr)
     if type(importStr) == "string" and importStr:sub(1, #IE.PREFIX_AURA) == IE.PREFIX_AURA then
-        return false, "That is a Scoot aura string. Import it from the Aura List."
+        return false, "That is a " .. brand() .. " aura string. Import it from the Aura List."
     end
 
     local ok, envelope = self:DecodeEnvelope(importStr, PREFIX, "profile")
@@ -177,12 +186,18 @@ function IE:ImportProfile(importStr)
         return false, envelope
     end
 
+    local writer = envelope.addon or "Scoot"
+    if writer ~= brand() then
+        return false, "That is a " .. tostring(writer) .. " profile string. " .. brand()
+            .. " profiles are separate and cannot import it."
+    end
+
     if not envelope.version then
         return false, "Import data is missing version information."
     end
 
     if envelope.version > VERSION then
-        return false, "This profile was created with a newer version of Scoot. Please update your addon."
+        return false, "This profile was created with a newer version of " .. brand() .. ". Please update your addon."
     end
 
     if type(envelope.data) ~= "table" then

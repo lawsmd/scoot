@@ -15,8 +15,11 @@ local function Debug(...)
     local msg = table.concat(messages, " ")
     -- A channel name tag, not a severity mark: this file has no red or orange
     -- counterpart, so the accent is free to recolor it. Built here rather than
-    -- at file scope; Debug only runs once the user sets _dbgProfiles.
-    local prefix = "|cff" .. addon.GetAccentHex() .. "ScootProfiles|r"
+    -- at file scope; Debug only runs once the user sets _dbgProfiles. The tag
+    -- carries the brand because both addons load this file.
+    local tag = (addon.Brand or "Scoot") .. "Profiles"
+    local hex = addon.GetAccentHex and addon.GetAccentHex()
+    local prefix = hex and ("|cff" .. hex .. tag .. "|r") or tag
     addon:Print(prefix .. " " .. msg)
 end
 
@@ -82,25 +85,33 @@ end
 -- taints ALL registered system frames at once (via UpdateSystems → secureexecuterange).
 -- All callers replaced with direct C_EditMode API reads (GetLayouts/SaveLayouts).
 
--- Re-link components, restyle, and reconcile the toggles for the active profile.
-local function applyActiveProfile(reason)
-    addon:LinkComponentsToDB()
-    addon:ApplyStyles()
-    addon.Profiles._reconcileProfileToggles(reason)
+-- What happens on screen after the active profile's contents change is the
+-- host addon's business, not this file's. A host registers steps; the engine
+-- runs them in order from every path that changes the contents: the three
+-- AceDB callbacks, _setActiveProfile (which switches with the callback
+-- suppressed and runs them directly), the deferred SwitchToProfile branch,
+-- and once from Initialize with ctx.initial set. Each path runs them exactly
+-- once. fn(reason, ctx): reason names the caller; ctx.initial marks the
+-- Initialize pass, ctx.switch a pass that just changed the active profile.
+local applySteps = {}
+
+function Profiles.RegisterApplyStep(name, fn, order)
+    if type(name) ~= "string" or type(fn) ~= "function" then return false end
+    for i = #applySteps, 1, -1 do
+        if applySteps[i].name == name then table.remove(applySteps, i) end
+    end
+    applySteps[#applySteps + 1] = { name = name, fn = fn, order = tonumber(order) or 100 }
+    table.sort(applySteps, function(a, b)
+        if a.order ~= b.order then return a.order < b.order end
+        return a.name < b.name
+    end)
+    return true
 end
 
--- Body of the three AceDB callbacks and of _setActiveProfile, which switches
--- with the callback suppressed and runs this directly, so every switch path
--- reaches the aura reconcile exactly once.
-local function onProfileContentsChanged(reason)
-    applyActiveProfile(reason)
-    if addon.ScootAuras and addon.ScootAuras.ReconcileForActiveProfile then
-        addon.ScootAuras.ReconcileForActiveProfile(reason)
-    end
-    if addon.AuraTracking and addon.AuraTracking.OnConfigChanged then
-        -- Group-frame aura slots are per-profile: a switch has to retire the
-        -- old profile's spells and point slots at the new ones.
-        addon.AuraTracking.OnConfigChanged()
+local function onProfileContentsChanged(reason, ctx)
+    ctx = ctx or {}
+    for _, step in ipairs(applySteps) do
+        step.fn(reason, ctx)
     end
 end
 
@@ -427,15 +438,81 @@ function Profiles:Initialize()
         end
     end
 
-    -- Bar enable settings do not exist yet at Initialize (ADDON_LOADED); Blizzard
-    -- registers them only after VARIABLES_LOADED + PLAYER_ENTERING_WORLD. Arm the
-    -- SETTINGS_LOADED hook unconditionally -- it is what applies the profile
-    -- on login. The action bar reconcile below is a harmless no-op until then.
-    addon.Profiles._ensureBarSettingsArrivalHook()
-    addon.Profiles._reconcileProfileToggles("Initialize")
+    -- PLAYER_SPECIALIZATION_CHANGED can fire during initial login. The host's
+    -- OnEnteringWorld clears this guard; until then a spec event never prompts.
+    self._specLoginGuard = true
+
+    -- The host's initial pass: what it arms at ADDON_LOADED, before any world
+    -- state exists. No restyle here; that follows the first world entry.
+    onProfileContentsChanged("Initialize", { initial = true })
 
     self:RequestSync("Initialize")
 end
+
+--------------------------------------------------------------------------------
+-- Host entry points. The host calls these from its own event handlers so it
+-- keeps its own ordering around them (Scoot runs EditMode.Initialize before the
+-- first RefreshSyncAndNotify). Combat-end handling is the engine's own listener.
+--------------------------------------------------------------------------------
+
+function Profiles:OnEnteringWorld(isInitialLogin, isReloadingUi)
+    if addon.EditMode and addon.EditMode.RefreshSyncAndNotify then
+        pcall(addon.EditMode.RefreshSyncAndNotify, "PLAYER_ENTERING_WORLD")
+    end
+    self:TryPendingSync()
+    -- On initial world entry, spec profiles may need to switch to an assigned
+    -- layout. Do this without a reload only on a real login or reload.
+    self:OnPlayerSpecChanged({ fromLogin = not not (isInitialLogin or isReloadingUi) })
+
+    if isInitialLogin or isReloadingUi then
+        -- Clear the login guard shortly after login, then record a baseline
+        -- spec so loading screens later in the session are not read as changes.
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.5, function()
+                self._specLoginGuard = false
+                self:RecordCurrentSpec()
+            end)
+        else
+            self._specLoginGuard = false
+            self:RecordCurrentSpec()
+        end
+    end
+end
+
+function Profiles:OnLayoutsUpdated()
+    if addon.EditMode and addon.EditMode.RefreshSyncAndNotify then
+        pcall(addon.EditMode.RefreshSyncAndNotify, "EDIT_MODE_LAYOUTS_UPDATED")
+    end
+    self:RequestSync("EDIT_MODE_LAYOUTS_UPDATED")
+end
+
+function Profiles:OnSpecChanged()
+    self:OnPlayerSpecChanged({ fromLogin = not not self._specLoginGuard })
+end
+
+-- Prompts queued while combat-locked. ReloadUI() itself only ever runs from
+-- the dialog's click, so nothing here reloads.
+addon.Events.On("Profiles", "PLAYER_REGEN_ENABLED", function()
+    C_Timer.After(0.1, function()
+        local pendingSpec = Profiles._pendingSpecReload
+        if pendingSpec then
+            Profiles._pendingSpecReload = nil
+            local specName = (pendingSpec.specID and GetSpecializationNameByID
+                and GetSpecializationNameByID(pendingSpec.specID)) or "unknown"
+            if pendingSpec.profile then
+                Profiles:PromptReloadToProfile(pendingSpec.profile,
+                    { reason = "SpecChanged", specID = pendingSpec.specID, specName = specName })
+            end
+        end
+        local pending = Profiles._pendingReloadToProfile
+        if pending then
+            Profiles._pendingReloadToProfile = nil
+            if pending.layoutName then
+                Profiles:PromptReloadToProfile(pending.layoutName, pending.meta)
+            end
+        end
+    end)
+end)
 
 function Profiles:OnNewProfile(_, profileKey)
     if not profileKey then
@@ -530,6 +607,23 @@ function Profiles:IsPreset(profileKey)
     return self._presetLookup[profileKey] or false
 end
 
+-- Names the orphan sweep and the external-deletion check never touch: AceDB's
+-- shared "Default" and every Blizzard preset. The presets are read from the
+-- client's list rather than named, because Forever ships a third one
+-- (Gamepad) beside Modern and Classic. Valid once RefreshFromEditMode has
+-- rebuilt the lookups, which is where both callers run.
+function Profiles:IsProtectedProfileName(name)
+    if name == "Default" then return true end
+    return (self._presetLookup and self._presetLookup[name]) and true or false
+end
+
+-- The preset a new layout is cloned from when nothing better is available:
+-- Modern where the client has it, else the first preset by name.
+function Profiles:DefaultPresetName()
+    if self._presetLookup and self._presetLookup["Modern"] then return "Modern" end
+    return self._sortedPresetLayouts and self._sortedPresetLayouts[1] or nil
+end
+
 function Profiles:EnsureProfileExists(profileKey, opts)
     if not profileKey or not self.db or not self.db.profiles then
         return
@@ -578,20 +672,7 @@ function Profiles:_setActiveProfile(profileKey, opts)
     else
     end
 
-    -- If switching to a truly empty/Zero‑Touch profile without reloading, clear
-    -- frame-level enforcement flags so old-profile hooks stop forcing hidden states.
-    do
-        local profile = addon and addon.db and addon.db.profile
-        local unitFrames = profile and rawget(profile, "unitFrames") or nil
-        local components = profile and rawget(profile, "components") or nil
-        local hasUF = type(unitFrames) == "table" and next(unitFrames) ~= nil
-        local hasComponents = type(components) == "table" and next(components) ~= nil
-        if (not hasUF) and (not hasComponents) and addon and addon.ClearFrameLevelState then
-            addon:ClearFrameLevelState()
-        end
-    end
-
-    onProfileContentsChanged("_setActiveProfile")
+    onProfileContentsChanged("_setActiveProfile", { switch = true })
 
     -- Clear the suppression flag after profile switch completes
     addon._profileSwitchInProgress = false

@@ -99,19 +99,13 @@ function Profiles:CleanupOrphanedProfiles()
         return
     end
 
-    local protected = {
-        ["Default"] = true, -- AceDB shared default (created via AceDB:New(..., true))
-        ["Modern"] = true,  -- Blizzard preset layout name (may have a profile mirror)
-        ["Classic"] = true, -- Blizzard preset layout name (may have a profile mirror)
-    }
-
     local currentProfile = self.db.GetCurrentProfile and self.db:GetCurrentProfile() or nil
     local sessionCreated = self._sessionCreatedProfiles or {}
     local orphaned = {}
 
     for profileName in pairs(self.db.profiles) do
         if type(profileName) == "string"
-            and not protected[profileName]
+            and not self:IsProtectedProfileName(profileName)
             and profileName ~= currentProfile
             -- A layout Scoot created this session is not an orphan from a previous
             -- machine; if it is missing, that is a creation failure to surface, not
@@ -181,14 +175,8 @@ function Profiles:CheckForExternalDeletion()
         return
     end
 
-    local protected = {
-        ["Default"] = true,
-        ["Modern"] = true,
-        ["Classic"] = true,
-    }
-
     local currentProfile = self.db:GetCurrentProfile()
-    if not currentProfile or protected[currentProfile] then
+    if not currentProfile or self:IsProtectedProfileName(currentProfile) then
         return
     end
 

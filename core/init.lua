@@ -618,10 +618,6 @@ function addon:OnInitialize()
     end
 
     -- 5. Register for events
-    -- Login/spec-change guard: PLAYER_SPECIALIZATION_CHANGED can fire during initial login.
-    -- Prompting/reloading in that phase must be suppressed; only live spec switches should prompt.
-    self._scootSpecLoginGuard = true
-
     -- Initialize Edit Mode integration (hooks + compatibility flags).
     if self.EditMode and self.EditMode.Initialize then
         pcall(self.EditMode.Initialize)
@@ -880,25 +876,8 @@ function addon:PLAYER_REGEN_ENABLED()
         if addon.FlushPendingBossCastBarRefresh then
             addon.FlushPendingBossCastBarRefresh()
         end
-
-        -- If a spec change required a profile switch while combat-locked, prompt now (out of combat).
-        if self.Profiles and self.Profiles._pendingSpecReload then
-            local pending = self.Profiles._pendingSpecReload
-            self.Profiles._pendingSpecReload = nil
-            local specName = (pending and pending.specID and GetSpecializationNameByID and GetSpecializationNameByID(pending.specID)) or "unknown"
-            if pending and pending.profile and self.Profiles.PromptReloadToProfile then
-                self.Profiles:PromptReloadToProfile(pending.profile, { reason = "SpecChanged", specID = pending.specID, specName = specName })
-            end
-        end
-
-        -- Generic queued reload-to-profile requests (never execute ReloadUI() directly here).
-        if self.Profiles and self.Profiles._pendingReloadToProfile and self.Profiles.PromptReloadToProfile then
-            local p = self.Profiles._pendingReloadToProfile
-            self.Profiles._pendingReloadToProfile = nil
-            if p and p.layoutName then
-                self.Profiles:PromptReloadToProfile(p.layoutName, p.meta)
-            end
-        end
+        -- Reload prompts queued during combat are the profile engine's own
+        -- PLAYER_REGEN_ENABLED listener (core/profiles/core.lua).
     end)
 end
 
@@ -933,43 +912,13 @@ function addon:PLAYER_ENTERING_WORLD(event, isInitialLogin, isReloadingUi)
     -- "press and hold" system. The cosmetic benefit of suppressing announcements is not worth
     -- breaking core action bar functionality.
     
-    -- Use centralized sync function (if available)
-    if addon.EditMode and addon.EditMode.RefreshSyncAndNotify then
-        pcall(addon.EditMode.RefreshSyncAndNotify, "PLAYER_ENTERING_WORLD")
+    -- Edit Mode back-sync, pending profile sync, spec assignment on login, and
+    -- the spec login guard: the profile engine's world-entry pass.
+    if self.Profiles and self.Profiles.OnEnteringWorld then
+        self.Profiles:OnEnteringWorld(isInitialLogin, isReloadingUi)
     end
     -- Re-evaluate combat/instance-driven opacity overrides when zoning (including entering/leaving instances).
     self:RefreshOpacityState()
-    if self.Profiles then
-        if self.Profiles.TryPendingSync then
-            self.Profiles:TryPendingSync()
-        end
-        if self.Profiles.OnPlayerSpecChanged then
-            -- On initial world entry, spec profiles may need to switch to an assigned layout.
-            -- Do this without triggering a reload ONLY on real login/reload.
-            self.Profiles:OnPlayerSpecChanged({ fromLogin = not not (isInitialLogin or isReloadingUi) })
-        end
-    end
-
-    -- Clear login guard shortly after initial login/reload.
-    if isInitialLogin or isReloadingUi then
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0.5, function()
-                if addon then
-                    addon._scootSpecLoginGuard = false
-                    -- Record a stable baseline spec after login/reload to ignore
-                    -- non-spec-change triggers (like loading screens) later in the session.
-                    if addon.Profiles and addon.Profiles.RecordCurrentSpec then
-                        addon.Profiles:RecordCurrentSpec()
-                    end
-                end
-            end)
-        else
-            self._scootSpecLoginGuard = false
-            if addon.Profiles and addon.Profiles.RecordCurrentSpec then
-                addon.Profiles:RecordCurrentSpec()
-            end
-        end
-    end
     if self.Rules and self.Rules.OnPlayerLogin then
         self.Rules:OnPlayerLogin()
     end
@@ -1240,12 +1189,9 @@ function addon:PLAYER_LEVEL_UP()
 end
 
 function addon:EDIT_MODE_LAYOUTS_UPDATED()
-    -- Use centralized sync function (if available)
-    if addon.EditMode and addon.EditMode.RefreshSyncAndNotify then
-        pcall(addon.EditMode.RefreshSyncAndNotify, "EDIT_MODE_LAYOUTS_UPDATED")
-    end
-    if self.Profiles and self.Profiles.RequestSync then
-        self.Profiles:RequestSync("EDIT_MODE_LAYOUTS_UPDATED")
+    -- Edit Mode back-sync, then the profile list resync.
+    if self.Profiles and self.Profiles.OnLayoutsUpdated then
+        self.Profiles:OnLayoutsUpdated()
     end
     -- Invalidate scale multiplier baselines so they get recaptured with new Edit Mode scale
     if addon.OnUnitFrameScaleMultLayoutsUpdated then
@@ -1267,8 +1213,8 @@ function addon:PLAYER_SPECIALIZATION_CHANGED(event, unit)
     if unit and unit ~= "player" then
         return
     end
-    if self.Profiles and self.Profiles.OnPlayerSpecChanged then
-        self.Profiles:OnPlayerSpecChanged({ fromLogin = not not self._scootSpecLoginGuard })
+    if self.Profiles and self.Profiles.OnSpecChanged then
+        self.Profiles:OnSpecChanged()
     end
     if self.Rules and self.Rules.OnPlayerSpecChanged then
         self.Rules:OnPlayerSpecChanged()

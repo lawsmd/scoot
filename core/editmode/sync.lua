@@ -1168,49 +1168,29 @@ end
     Initialization and Event Handling
 ----------------------------------------------------------------------------]]--
 
--- Centralized helper to run all back-sync operations
-function addon.EditMode.RefreshSyncAndNotify(origin)
-    if LEO and LEO.IsReady and LEO:IsReady() and LEO.LoadLayouts then pcall(LEO.LoadLayouts, LEO) end
-
-    local matchedBeforePull = addon.EditMode.ProfileMatchesActiveLayout
-        and addon.EditMode.ProfileMatchesActiveLayout()
-
+-- The back-sync passes RefreshSyncAndNotify (core/editmode/persist.lua) runs
+-- before the profile resync and, when that resync has just aligned profile and
+-- layout, once more with isRetry true.
+addon.EditMode.RegisterBackSync("settings", function()
     addon:SyncAllEditModeSettings()
+end)
 
-    if origin and addon.EditMode and addon.EditMode.QueueAuraIconSizeBackfill then
-        local lowerOrigin = (type(origin) == "string") and _lower(origin) or ""
-        if (lowerOrigin:find("savelayouts", 1, true) or lowerOrigin:find("editmodeexit", 1, true)) and lowerOrigin:find("pass3", 1, true) then
-            local delay = 0.35
-            if lowerOrigin:find("editmodeexit", 1, true) then
-                delay = 0.25
-            end
-            for _, auraId in ipairs({ "buffs", "debuffs" }) do
-                addon.EditMode.QueueAuraIconSizeBackfill(auraId, {
-                    delay = delay,
-                    origin = origin,
-                    retryDelays = { 0.35, 0.75 },
-                })
-            end
+-- The aura icon-size backfill queues once per third pass. It skips the retry
+-- so a flipped match does not queue it twice.
+addon.EditMode.RegisterBackSync("auraIconSize", function(origin, isRetry)
+    if isRetry or not origin or not addon.EditMode.QueueAuraIconSizeBackfill then return end
+    local lowerOrigin = (type(origin) == "string") and _lower(origin) or ""
+    if (lowerOrigin:find("savelayouts", 1, true) or lowerOrigin:find("editmodeexit", 1, true)) and lowerOrigin:find("pass3", 1, true) then
+        local delay = 0.35
+        if lowerOrigin:find("editmodeexit", 1, true) then
+            delay = 0.25
+        end
+        for _, auraId in ipairs({ "buffs", "debuffs" }) do
+            addon.EditMode.QueueAuraIconSizeBackfill(auraId, {
+                delay = delay,
+                origin = origin,
+                retryDelays = { 0.35, 0.75 },
+            })
         end
     end
-
-    if addon and addon.Profiles and addon.Profiles.RefreshFromEditMode then
-        addon.Profiles:RefreshFromEditMode(origin)
-    end
-
-    -- If the pull above was skipped because profile and layout disagreed, and
-    -- RefreshFromEditMode has just aligned them, run the pull now so back-sync is
-    -- not starved until the next external trigger.
-    if not matchedBeforePull
-        and addon.EditMode.ProfileMatchesActiveLayout
-        and addon.EditMode.ProfileMatchesActiveLayout() then
-        addon:SyncAllEditModeSettings()
-    end
-
-    -- Settings list is not refreshed here; routine Edit Mode saves are reflected
-    -- via control bindings and per-row helpers to avoid right-pane flicker.
-
-    if addon._dbgSync and origin then
-        addon.DebugPrint("Scoot RefreshSyncAndNotify origin=" .. tostring(origin))
-    end
-end
+end)
