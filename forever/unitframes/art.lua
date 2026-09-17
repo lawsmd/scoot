@@ -240,3 +240,25 @@ Art.Player.Text = {
         point = "CENTER", x = 34, y = -12,
     },
 }
+
+--------------------------------------------------------------------------------
+-- The reader
+--------------------------------------------------------------------------------
+
+-- This file defines the region format, so it owns the one function that turns a
+-- def into a texture.
+function Art.BuildRegion(host, def)
+    local tex = host:CreateTexture(nil, def.layer)
+    if def.path then tex:SetTexture(def.path) end
+    tex:SetSize(def.w, def.h)
+    tex:SetPoint(def.point, host, def.point, def.x or 0, def.y or 0)
+    if def.coords then
+        tex:SetTexCoord(def.coords[1], def.coords[2], def.coords[3], def.coords[4])
+    end
+    if def.blend then tex:SetBlendMode(def.blend) end
+    if def.color then
+        tex:SetColorTexture(def.color[1], def.color[2], def.color[3], def.color[4] or 1)
+    end
+    if def.hidden then tex:Hide() end
+    return tex
+end

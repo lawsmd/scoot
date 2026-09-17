@@ -114,6 +114,15 @@ function Values.ApplyIdentity(inst)
     end
 end
 
+-- SetPortraitTexture renders through a camera the client owns. Lua supplies no
+-- zoom and no angle, and no CVar does either, so the vanilla framing is not
+-- reachable from this call. It is not reachable from a PlayerModel either: a
+-- model can be aimed anywhere, but the flat low-detail look the old portraits
+-- had comes from the models the client loads, not from where the lens sits.
+-- Measured over three builds of a scrap lab and closed.
+--
+-- Two arguments, so disableMasking stays false and the engine applies its own
+-- circular mask. That is the vanilla call: Classic Era passes two as well.
 function Values.ApplyPortrait(inst)
     if not inst.portrait then return end
     pcall(SetPortraitTexture, inst.portrait, inst.unit)

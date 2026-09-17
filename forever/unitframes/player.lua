@@ -52,22 +52,6 @@ local ON_BASE = {
 -- Widget construction
 --------------------------------------------------------------------------------
 
-local function buildRegion(host, def)
-    local tex = host:CreateTexture(nil, def.layer)
-    if def.path then tex:SetTexture(def.path) end
-    tex:SetSize(def.w, def.h)
-    tex:SetPoint(def.point, host, def.point, def.x or 0, def.y or 0)
-    if def.coords then
-        tex:SetTexCoord(def.coords[1], def.coords[2], def.coords[3], def.coords[4])
-    end
-    if def.blend then tex:SetBlendMode(def.blend) end
-    if def.color then
-        tex:SetColorTexture(def.color[1], def.color[2], def.color[3], def.color[4] or 1)
-    end
-    if def.hidden then tex:Hide() end
-    return tex
-end
-
 local function buildBar(parent, def, level)
     local bar = CreateFrame("StatusBar", nil, parent)
     bar:SetSize(def.w, def.h)
@@ -161,7 +145,7 @@ function Player.Build()
     -- and the additive glows have to land on top of the icons they cover.
     for _, key in ipairs(spec.DrawOrder) do
         if ON_BASE[key] then
-            inst.regions[key] = buildRegion(base, spec.Regions[key])
+            inst.regions[key] = Art.BuildRegion(base, spec.Regions[key])
         end
     end
 
@@ -175,7 +159,7 @@ function Player.Build()
 
     for _, key in ipairs(spec.DrawOrder) do
         if not ON_BASE[key] then
-            inst.regions[key] = buildRegion(artFrame, spec.Regions[key])
+            inst.regions[key] = Art.BuildRegion(artFrame, spec.Regions[key])
         end
     end
 
@@ -320,6 +304,11 @@ function Player.WireEvents(inst)
     local function onPips() applyGroupPips(inst) end
     addon.Events.On(OWNER, "PARTY_LEADER_CHANGED", onPips)
     addon.Events.On(OWNER, "PARTY_LOOT_METHOD_CHANGED", onPips)
+
+    -- PORTRAITS_UPDATED carries no unit, so the C filter cannot narrow it and it
+    -- goes through the shared dispatcher. It is the global portrait refresh that
+    -- Blizzard's own unit frames register beside UNIT_PORTRAIT_UPDATE.
+    addon.Events.On(OWNER, "PORTRAITS_UPDATED", function() Values.ApplyPortrait(inst) end)
 
     addon.Events.OnWorldEntered(function() Player.PaintAll(inst) end)
 
