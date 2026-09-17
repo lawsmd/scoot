@@ -1,12 +1,11 @@
 --------------------------------------------------------------------------------
 -- forever/debug.lua
--- /camelot, the only way to drive the frame while there is no settings page.
+-- The /camelot verbs that drive the player frame without a settings page.
 --
--- The command registry in core/ is not on Camelot.toc. It wants addon.Print,
--- addon.DebugDump and addon.DebugDumpTargets from the other addon's entry file,
--- and its help title is a brand literal, so borrowing it would cost three stubs
--- and still read wrong. Four verbs do not justify that; this is written out and
--- the registry stays a later promotion.
+-- Each verb registers with the command registry in core/commands.lua, which
+-- reads the brand and the slash word from the entry file, so `/camelot` lists
+-- these beside the debug commands the borrowed files bring with them. This
+-- file loads last on Camelot.toc and binds the slash word at its end.
 --
 -- Output goes to the copyable window, never to chat.
 --------------------------------------------------------------------------------
@@ -15,13 +14,6 @@ local addonName, addon = ...
 
 local Art = addon.UnitFrames.Art
 local Harness = addon.UnitFrames.Harness
-
-local USAGE = {
-    "/camelot show    build and show the player frame",
-    "/camelot hide    hide it",
-    "/camelot state   dump the instance",
-    "/camelot art     draw every texture as a labelled swatch",
-}
 
 --------------------------------------------------------------------------------
 -- state
@@ -124,35 +116,38 @@ local function showArt()
 end
 
 --------------------------------------------------------------------------------
--- Dispatch
+-- Commands
 --------------------------------------------------------------------------------
 
-local function usage()
-    local lines = addon.DebugLines("=== /camelot ===", "")
-    for _, line in ipairs(USAGE) do
-        lines[#lines + 1] = line
+addon:RegisterSlashCommand({
+    name = "show", help = "build and show the player frame",
+    handler = function() addon.UnitFrames.Player.SetShown(true) end,
+})
+
+addon:RegisterSlashCommand({
+    name = "hide", help = "hide the player frame",
+    handler = function() addon.UnitFrames.Player.SetShown(false) end,
+})
+
+addon:RegisterSlashCommand({
+    name = "state", help = "dump the player frame instance",
+    handler = dumpState,
+})
+
+addon:RegisterSlashCommand({
+    name = "art", help = "draw every texture as a labelled swatch",
+    handler = showArt,
+})
+
+addon:RegisterSlashCommand({
+    name = "db", help = "dump CamelotDB: schema, profile, stored values",
+    handler = function() addon.DB.Dump() end,
+})
+
+-- /camelot. The registry owns the word, the parse and the dispatch; a bare
+-- /camelot opens the settings panel, the one behavior that is this addon's.
+addon.Commands.InstallSlash(function()
+    if addon.UI and addon.UI.SettingsPanel and addon.UI.SettingsPanel.Toggle then
+        addon.UI.SettingsPanel:Toggle()
     end
-    addon.DebugShowWindow("Camelot", lines)
-end
-
-local function dispatch(msg)
-    local verb = (msg or ""):lower():match("^%s*(%S*)")
-    local Player = addon.UnitFrames.Player
-
-    if verb == "show" then
-        Player.SetShown(true)
-    elseif verb == "hide" then
-        Player.SetShown(false)
-    elseif verb == "state" then
-        dumpState()
-    elseif verb == "art" then
-        showArt()
-    else
-        usage()
-    end
-end
-
--- Kept off addon.Commands: the command registry is not on this addon's TOC, for
--- the reasons at the top of this file. Promoting it retires these two lines.
-SLASH_CAMELOT1 = "/camelot"
-SlashCmdList.CAMELOT = dispatch
+end)

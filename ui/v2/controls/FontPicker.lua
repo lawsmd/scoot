@@ -108,7 +108,9 @@ local function CreateFontPicker()
     local totalWidth = TAB_WIDTH + contentWidth + 24 -- tabs + content + scrollbar
 
     local frame = Controls.CreatePickerShell({
-        name = "ScootFontPickerFrame",
+        -- Brand-named, and still ending in "Frame": CreatePickerShell derives
+        -- the scroll frame and scrollbar names from that suffix.
+        name = (addon.Brand or "Scoot") .. "FontPickerFrame",
         width = totalWidth,
         height = PICKER_HEIGHT,
         contentWidth = contentWidth,

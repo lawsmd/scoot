@@ -31,7 +31,9 @@ local FLYOUT_CONTENT_PADDING = 8
 local FLYOUT_DEFAULT_WIDTH = 200
 local FLYOUT_DEFAULT_HEIGHT = 150
 
-local TRIANGLE_TEXTURE = "Interface\\AddOns\\Scoot\\media\\textures\\flyout-nub"
+-- The loading addon's folder, not a literal: the Forever client has no Scoot
+-- folder to resolve against.
+local TRIANGLE_TEXTURE = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\textures\\flyout-nub"
 
 -- The nub is the panel border continued: an accent triangle with a
 -- background-colored triangle over it, inset by the border width along the

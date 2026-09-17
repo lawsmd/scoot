@@ -72,14 +72,13 @@ function addon:OpenCooldownManagerSettings()
     return opened and true or false
 end
 
-SLASH_SCOOT1 = "/scoot"
-function SlashCmdList.SCOOT(msg)
-    local args = addon.Commands.Parse(msg)
-    if #args > 0 and addon.Commands.Dispatch("slash", args) then return end
+-- /scoot. The registry owns the word, the parse and the dispatch; opening the
+-- settings panel on a bare /scoot is the part that is this addon's alone.
+addon.Commands.InstallSlash(function()
     if addon.UI and addon.UI.SettingsPanel and addon.UI.SettingsPanel.Toggle then
         addon.UI.SettingsPanel:Toggle()
     end
-end
+end)
 
 -- debugmenu stays with the bootstrap: it toggles a profile flag the settings panel reads.
 addon:RegisterSlashCommand({

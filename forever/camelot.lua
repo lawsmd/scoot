@@ -30,5 +30,32 @@ addon.SlashToken = "camelot"
 
 _G.CamelotAddon = addon
 
+-- The settings framework reports a finished action on addon:Print, so Camelot
+-- owns one. Diagnostics never come through here: they build lines with
+-- addon.DebugLines and open the copyable window.
+local function chatLine(text)
+    if not text or text == "" then return end
+    -- Uncolored until a skin registers an accent, which is also where the
+    -- other addon reads its prefix color from.
+    local hex = addon.GetAccentHex and addon.GetAccentHex()
+    local prefix = hex and ("|cff" .. hex .. "[CAMELOT]|r") or "[CAMELOT]"
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(string.format("%s: %s", prefix, text))
+    end
+end
+
+function addon:Print(message)
+    chatLine(message)
+end
+
+-- Developer trace sink, gated at every call site by that site's own flag.
+function addon.DebugPrint(...)
+    local parts = {}
+    for i = 1, select("#", ...) do
+        parts[i] = tostring((select(i, ...)))
+    end
+    chatLine(table.concat(parts, " "))
+end
+
 -- One namespace for the unit frames, filled by the files after this one.
 addon.UnitFrames = addon.UnitFrames or {}

@@ -35,7 +35,12 @@ end
 
 local function ShowDebugCopyWindow(title, text)
     if not addon.DebugCopyWindow then
-        local f = CreateFrame("Frame", "ScootDebugCopyWindow", UIParent, "BasicFrameTemplateWithInset")
+        -- The name is what /framestack and the Table Inspector reach for, and
+        -- it carries the brand because both addons load this file in the retail
+        -- client and one global cannot hold two frames. Scoot leaves addon.Brand
+        -- unset, so its window keeps the name it has always had.
+        local name = (addon.Brand or "Scoot") .. "DebugCopyWindow"
+        local f = CreateFrame("Frame", name, UIParent, "BasicFrameTemplateWithInset")
         f:SetSize(780, 540)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
@@ -69,7 +74,7 @@ local function ShowDebugCopyWindow(title, text)
         addon.DebugCopyWindow = f
     end
     local f = addon.DebugCopyWindow
-    if f.title then f.title:SetText(title or "Scoot Debug") end
+    if f.title then f.title:SetText(title or ((addon.Brand or "Scoot") .. " Debug")) end
     if f.EditBox then f.EditBox:SetText(text or "") end
     f:Show()
     -- Defer focus/highlight to avoid scroll system taint.

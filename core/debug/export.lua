@@ -134,8 +134,9 @@ local function _SerializeLuaValue(value, indent, visited, depth)
 end
 
 local function DebugExportProfile(profileName)
+    local title = (addon.Brand or "Scoot") .. " Profile Export"
     if not addon or not addon.db then
-        addon.DebugShowWindow("Scoot Profile Export", "AceDB not initialized.")
+        addon.DebugShowWindow(title, "AceDB not initialized.")
         return
     end
 
@@ -159,20 +160,20 @@ local function DebugExportProfile(profileName)
     end
 
     if type(profile) ~= "table" then
-        addon.DebugShowWindow("Scoot Profile Export - " .. tostring(key), "Profile table not found.")
+        addon.DebugShowWindow(title .. " - " .. tostring(key), "Profile table not found.")
         return
     end
 
     local snapshot = CopyTable(profile)
     local header = table.concat({
-        "-- Scoot profile export",
+        "-- " .. (addon.Brand or "Scoot") .. " profile export",
         "-- Profile: " .. tostring(key),
         "-- Captured: " .. (date and date("%Y-%m-%d %H:%M:%S") or "unknown"),
         "",
     }, "\n")
 
     local payload = _SerializeLuaValue(snapshot, 0, {}, 0)
-    addon.DebugShowWindow("Scoot Profile Export - " .. tostring(key), header .. payload)
+    addon.DebugShowWindow(title .. " - " .. tostring(key), header .. payload)
 
     -- Persist the last export into SavedVariables so preset ingestion can be
     -- performed without manual copy/paste (run export, then /reload or logout).

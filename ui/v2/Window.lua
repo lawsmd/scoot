@@ -10,7 +10,9 @@ local Theme = addon.UI.Theme
 -- Noise Overlay Constants
 --------------------------------------------------------------------------------
 
-local NOISE_TEXTURE_PATH = "Interface\\AddOns\\Scoot\\media\\textures\\frosted-noise"
+-- The loading addon's folder, not a literal: the Forever client has no Scoot
+-- folder to resolve against.
+local NOISE_TEXTURE_PATH = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\textures\\frosted-noise"
 local NOISE_TEXTURE_SIZE = 2048  -- Matches the 2048x2048 frosted-noise.tga
 local NOISE_ALPHA = 0.25       -- Subtle noise blending
 

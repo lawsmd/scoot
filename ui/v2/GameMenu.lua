@@ -9,6 +9,10 @@ local Theme = addon.UI.Theme
 local Window = addon.UI.Window
 local Controls = addon.UI.Controls
 
+-- The button label, the tooltip and the frame name carry the brand: both
+-- addons load this file in the retail client.
+local BRAND = addon.Brand or "Scoot"
+
 --------------------------------------------------------------------------------
 -- Constants
 --------------------------------------------------------------------------------
@@ -76,7 +80,7 @@ local function CreateScootButton(parent)
 
     local btn = Controls:CreateButton({
         parent = parent,
-        text = "Scoot",
+        text = BRAND,
         width = BUTTON_WIDTH,
         height = SCOOT_BUTTON_HEIGHT,
         fontSize = 14,
@@ -380,7 +384,7 @@ local function InitializeFrame()
     if initialized then return end
     initialized = true
 
-    frame = Window:Create("ScootGameMenuFrame", UIParent, MENU_WIDTH, 1)
+    frame = Window:Create(BRAND .. "GameMenuFrame", UIParent, MENU_WIDTH, 1)
     frame:SetMovable(false)
     frame:EnableMouse(true)
     frame:Hide()
@@ -390,7 +394,7 @@ local function InitializeFrame()
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 
     -- Register for ESC-to-close
-    tinsert(UISpecialFrames, "ScootGameMenuFrame")
+    tinsert(UISpecialFrames, BRAND .. "GameMenuFrame")
 
     -- Header: "Game Menu" title
     local title = frame:CreateFontString(nil, "OVERLAY")
@@ -402,8 +406,8 @@ local function InitializeFrame()
     -- Info icon to the right of title
     Controls:CreateInfoIconForLabel({
         label = title,
-        tooltipTitle = "Scoot Game Menu",
-        tooltipText = "To switch back to the default menu, go to Scoot > Interface > Misc.",
+        tooltipTitle = BRAND .. " Game Menu",
+        tooltipText = "To switch back to the default menu, go to " .. BRAND .. " > Interface > Misc.",
         size = 14,
         position = "right",
         offsetX = 8,

@@ -149,7 +149,9 @@ local function CreateBarBorderPicker()
     local totalWidth = TAB_WIDTH + contentWidth + 24 -- Extra for scrollbar
 
     local frame = Controls.CreatePickerShell({
-        name = "ScootBarBorderPickerFrame",
+        -- Brand-named, and still ending in "Frame": CreatePickerShell derives
+        -- the scroll frame and scrollbar names from that suffix.
+        name = (addon.Brand or "Scoot") .. "BarBorderPickerFrame",
         width = totalWidth,
         height = PICKER_HEIGHT,
         contentWidth = contentWidth,

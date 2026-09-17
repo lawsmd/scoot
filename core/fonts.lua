@@ -283,7 +283,9 @@ function addon.FontStyles.DebugSlugProbe()
     local candidates = { "OUTLINE", "OUTLINE SLUG", "OUTLINE, SLUG", "OUTLINE,SLUG", "SLUG" }
     local f = addon._slugProbeFrame
     if not f then
-        f = CreateFrame("Frame", "ScootSlugProbe", UIParent)
+        -- Named from the brand: this file loads under both addons, and one
+        -- global cannot hold two frames.
+        f = CreateFrame("Frame", (addon.Brand or "Scoot") .. "SlugProbe", UIParent)
         f:SetSize(460, 30 + #candidates * 36)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
@@ -1190,7 +1192,9 @@ do
     f.MORPHEUS = "Fonts\\MORPHEUS.TTF"
     f.SKURRI   = "Fonts\\SKURRI.TTF"
 
-    local base = "Interface\\AddOns\\Scoot\\media\\fonts\\"
+    -- The addon that loaded this file, not a literal. addon.MediaPath is set
+    -- by the entry file, which every TOC listing this one loads first.
+    local base = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\fonts\\"
 
     -- Fira Sans family
     f.FIRASANS_REG       = base .. "FiraSans-Regular.ttf"

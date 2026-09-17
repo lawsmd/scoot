@@ -4,6 +4,10 @@ local addonName, addon = ...
 addon.Dialogs = {}
 addon.Dialogs._registry = {}
 
+-- StaticPopupDialogs is one global table, and both addons load this file in
+-- the retail client, so the fallback popup is keyed by brand.
+local FALLBACK = (addon.Brand or "Scoot") .. "_FALLBACK"
+
 function addon.Dialogs:Register(name, definition)
     if name and definition then
         self._registry[name] = definition
@@ -22,7 +26,7 @@ function addon.Dialogs:Show(name, options)
     end
 
     -- Use StaticPopup as fallback
-    StaticPopupDialogs["SCOOT_FALLBACK"] = {
+    StaticPopupDialogs[FALLBACK] = {
         text = text,
         button1 = options.acceptText or def.acceptText or OKAY,
         button2 = options.cancelText or def.cancelText or CANCEL,
@@ -44,7 +48,7 @@ function addon.Dialogs:Show(name, options)
         hideOnEscape = true,
         preferredIndex = 3,
     }
-    StaticPopup_Show("SCOOT_FALLBACK", nil, nil, options.data)
+    StaticPopup_Show(FALLBACK, nil, nil, options.data)
 end
 
 function addon.Dialogs:Confirm(message, onAccept, onCancel)
@@ -64,5 +68,5 @@ function addon.Dialogs:Info(message, onDismiss)
 end
 
 function addon.Dialogs:Hide()
-    StaticPopup_Hide("SCOOT_FALLBACK")
+    StaticPopup_Hide(FALLBACK)
 end

@@ -393,7 +393,12 @@ ignore = {
 -- legal here and nowhere else. The conventions gate (docs/tools/gate.mjs) catches
 -- the _G form.
 files["Scoot.lua"] = {
-    globals = { "SLASH_SCOOT1", "SLASH_SCOOTCDM1", "SLASH_SCOOTDMSHOW1", "SLASH_SCOOTDMRESET1", "SlashCmdList" },
+    globals = { "SLASH_SCOOTCDM1", "SLASH_SCOOTDMSHOW1", "SLASH_SCOOTDMRESET1", "SlashCmdList" },
+}
+-- The registry binds the brand's own slash word for whichever addon loaded it,
+-- so the one write lives here instead of once per entry file.
+files["core/commands.lua"] = {
+    globals = { "SlashCmdList" },
 }
 files["core/dialogs.lua"] = {
     globals = { "StaticPopupDialogs" },
@@ -403,9 +408,4 @@ files["core/colors.lua"] = {
 }
 files["core/editmode/subgrid.lua"] = {
     read_globals = { "CreateObjectPool" },
-}
--- Camelot's slash entry. Scoot.lua above holds the same globals for the same
--- reason: the addon that owns a slash token binds it once, in one file.
-files["forever/debug.lua"] = {
-    globals = { "SLASH_CAMELOT1", "SlashCmdList" },
 }

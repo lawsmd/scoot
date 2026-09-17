@@ -268,6 +268,7 @@ ui/v2/Theme.lua
 ui/v2/SettingPatterns.lua
 ui/v2/skins/tui.lua
 ui/v2/skins/testcard.lua
+ui/v2/skins/forever.lua
 ui/v2/controls/Utils.lua
 ui/v2/controls/Fit.lua
 ui/v2/controls/RowScaffold.lua
@@ -310,6 +311,7 @@ ui/v2/reports/WidgetMenu.lua
 ui/v2/reports/GroupAnalysisPanel.lua
 ui/v2/Window.lua
 ui/v2/Navigation.lua
+ui/v2/settings/NavModel.lua
 ui/v2/JumpingLetters.lua
 ui/v2/SettingsBuilder.lua
 ui/v2/SettingsBuilderContainers.lua

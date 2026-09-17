@@ -6,7 +6,11 @@ local addonName, addon = ...
 
 local Skin = addon.UI.Skin
 
-local FONT_BASE = "Interface\\AddOns\\Scoot\\media\\fonts\\"
+-- The loading addon's folder, not a literal: the Forever client has no Scoot
+-- folder to resolve against. The JetBrains registrations below are what the
+-- other two skins read back, so this root serves all three.
+local ROOT = addon.MediaPath or "Interface\\AddOns\\Scoot\\"
+local FONT_BASE = ROOT .. "media\\fonts\\"
 
 -- JetBrains Mono registration alongside the faces core/fonts.lua registers.
 addon.Fonts = addon.Fonts or {}
@@ -49,11 +53,11 @@ Skin.Register("tui", {
     },
 
     textures = {
-        NOISE_OVERLAY = "Interface\\AddOns\\Scoot\\media\\textures\\noise-overlay",
-        SCOOT_ICON    = "Interface\\AddOns\\Scoot\\ScootIcon",
+        NOISE_OVERLAY = ROOT .. "media\\textures\\noise-overlay",
+        SCOOT_ICON    = ROOT .. "ScootIcon",
         -- The logo with the black backdrop keyed out, for surfaces that are
         -- not black.
-        SCOOT_ICON_TRANSPARENT = "Interface\\AddOns\\Scoot\\ScootIconTransparent",
+        SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent",
     },
 
     metrics = {

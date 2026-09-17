@@ -10,6 +10,11 @@ local Controls = addon.UI.Controls
 local Navigation = addon.UI.Navigation
 local SettingsBuilder = addon.UI.SettingsBuilder
 
+-- Frame names carry the brand because both addons load this file in the
+-- retail client and one global cannot hold two frames. Scoot leaves
+-- addon.Brand unset and keeps the names it has always had.
+local BRAND = addon.Brand or "Scoot"
+
 -- ASCII data from ascii.lua
 local ASCII_LOGO = UIPanel._ASCII_LOGO
 local ASCII_MASCOT = UIPanel._ASCII_MASCOT
@@ -61,7 +66,7 @@ function UIPanel:Initialize()
         savedHeight = size.height or PANEL_HEIGHT
     end
 
-    local frame = Window:Create("ScootSettingsFrame", UIParent, savedWidth, savedHeight)
+    local frame = Window:Create(BRAND .. "SettingsFrame", UIParent, savedWidth, savedHeight)
     frame:SetPoint("CENTER")
     frame:Hide()
     self.frame = frame
@@ -76,7 +81,7 @@ function UIPanel:Initialize()
     self:CreateNavigation()
     self:CreateContentPane()
 
-    tinsert(UISpecialFrames, "ScootSettingsFrame")
+    tinsert(UISpecialFrames, BRAND .. "SettingsFrame")
 
     frame:SetScript("OnHide", function()
         if addon.CloseFontPicker then addon.CloseFontPicker() end
@@ -124,7 +129,7 @@ function UIPanel:CreateTitleBar()
         end
     end)
 
-    local logoBtn = CreateFrame("Button", "ScootLogoBtn", titleBar)
+    local logoBtn = CreateFrame("Button", BRAND .. "LogoBtn", titleBar)
     logoBtn:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 10, -6)
     logoBtn:EnableMouse(true)
     logoBtn:RegisterForClicks("AnyUp")
@@ -233,7 +238,7 @@ function UIPanel:CreateCloseButton()
     local frame = self.frame
     if not frame then return end
 
-    local closeBtn = CreateFrame("Button", "ScootCloseButton", frame)
+    local closeBtn = CreateFrame("Button", BRAND .. "CloseButton", frame)
     closeBtn:SetSize(CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE)
     closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -10)
     closeBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
@@ -303,7 +308,7 @@ function UIPanel:CreateHeaderButtons()
     -- Features button (replaces former "Start Here" nav entry)
     local featuresBtn = Controls:CreateButton({
         parent = frame,
-        name = "ScootFeaturesBtn",
+        name = BRAND .. "FeaturesBtn",
         text = "Features",
         height = HEADER_BUTTON_HEIGHT,
         fontSize = 11,
@@ -315,7 +320,7 @@ function UIPanel:CreateHeaderButtons()
     -- Search button (replaces former "Search" nav entry)
     local searchBtn = Controls:CreateButton({
         parent = frame,
-        name = "ScootSearchBtn",
+        name = BRAND .. "SearchBtn",
         text = "Search",
         height = HEADER_BUTTON_HEIGHT,
         fontSize = 11,
@@ -327,7 +332,7 @@ function UIPanel:CreateHeaderButtons()
     -- Edit Mode button
     local editModeBtn = Controls:CreateButton({
         parent = frame,
-        name = "ScootEditModeBtn",
+        name = BRAND .. "EditModeBtn",
         text = "Edit Mode",
         height = HEADER_BUTTON_HEIGHT,
         fontSize = 11,
@@ -364,7 +369,7 @@ function UIPanel:CreateHeaderButtons()
     -- Cooldown Manager button
     local cdmBtn = Controls:CreateButton({
         parent = frame,
-        name = "ScootCdmBtn",
+        name = BRAND .. "CdmBtn",
         text = "Cooldown Manager",
         height = HEADER_BUTTON_HEIGHT,
         fontSize = 11,
@@ -482,7 +487,7 @@ function UIPanel:CreateResizeHandle()
     local frame = self.frame
     if not frame then return end
 
-    local resizeHandle = CreateFrame("Button", "ScootResizeHandle", frame)
+    local resizeHandle = CreateFrame("Button", BRAND .. "ResizeHandle", frame)
     resizeHandle:SetSize(RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE)
     resizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
     resizeHandle:SetFrameLevel(frame:GetFrameLevel() + 10)
@@ -758,7 +763,7 @@ function UIPanel:CreateContentPane()
     local frame = self.frame
     if not frame then return end
 
-    local contentPane = CreateFrame("Frame", "ScootContentPane", frame)
+    local contentPane = CreateFrame("Frame", BRAND .. "ContentPane", frame)
     contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", NAV_WIDTH + Theme.BORDER_WIDTH + 1, -(TITLE_BAR_HEIGHT))
     contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Theme.BORDER_WIDTH, Theme.BORDER_WIDTH)
 
@@ -784,7 +789,7 @@ function UIPanel:CreateContentPane()
 
     local defaultsBtn = Controls:CreateButton({
         parent = header,
-        name = "ScootDefaultsBtn",
+        name = BRAND .. "DefaultsBtn",
         text = "Defaults",
         height = 17,
         fontSize = 10,
@@ -814,7 +819,7 @@ function UIPanel:CreateContentPane()
     local panel = self
     local collapseAllBtn = Controls:CreateButton({
         parent = header,
-        name = "ScootCollapseAllBtn",
+        name = BRAND .. "CollapseAllBtn",
         text = "Collapse All",
         height = 17,
         fontSize = 10,
@@ -830,7 +835,7 @@ function UIPanel:CreateContentPane()
 
     local copyFromDropdown = Controls:CreateDropdown({
         parent = header,
-        name = "ScootCopyFromDropdown",
+        name = BRAND .. "CopyFromDropdown",
         values = {},  -- Will be populated dynamically
         placeholder = "Select...",
         width = 140,
@@ -865,7 +870,7 @@ function UIPanel:CreateContentPane()
     -- line) restores this through UIPanel:ResetHeaderSubtitle.
     contentPane._headerBaseHeight = CONTENT_HEADER_HEIGHT
 
-    local scrollFrame = CreateFrame("ScrollFrame", "ScootContentScrollFrame", contentPane)
+    local scrollFrame = CreateFrame("ScrollFrame", BRAND .. "ContentScrollFrame", contentPane)
     scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", CONTENT_PADDING, -CONTENT_PADDING)
     scrollFrame:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -(CONTENT_SCROLLBAR_MARGIN + CONTENT_SCROLLBAR_WIDTH + CONTENT_PADDING), CONTENT_PADDING)
     scrollFrame:EnableMouseWheel(true)
@@ -888,7 +893,7 @@ function UIPanel:CreateContentPane()
         end
     end)
 
-    local scrollContent = CreateFrame("Frame", "ScootContentScrollContent", scrollFrame)
+    local scrollContent = CreateFrame("Frame", BRAND .. "ContentScrollContent", scrollFrame)
     local sfWidth = scrollFrame:GetWidth()
     scrollContent:SetWidth((sfWidth and sfWidth > 0) and (sfWidth - 16) or 400)
     scrollFrame:SetScrollChild(scrollContent)
@@ -917,7 +922,7 @@ function UIPanel:CreateContentPane()
     placeholder:Hide()  -- Start hidden (Home page is blank)
     contentPane._placeholder = placeholder
 
-    local homeContent = CreateFrame("Frame", "ScootHomeContent", contentPane)
+    local homeContent = CreateFrame("Frame", BRAND .. "HomeContent", contentPane)
     homeContent:SetAllPoints(contentPane)
 
     local homeContainer = CreateFrame("Frame", nil, homeContent)
@@ -1030,7 +1035,7 @@ function UIPanel:CreateContentPane()
     local HOME_ACCENT_INSET = 6
     local accentControl = Controls:CreateFlyoutColorPicker({
         parent = homeContent,
-        name = "ScootAccentColorPicker",
+        name = BRAND .. "AccentColorPicker",
         label = "UI Color",
         direction = "DOWN",
         width = 280,
@@ -1250,7 +1255,7 @@ local function onCombatEvent(event)
             UIPanel._closedByCombat = true
             UIPanel.frame:Hide()
             if addon and addon.Print then
-                addon:Print("Scoot settings will reopen when combat ends.")
+                addon:Print(BRAND .. " settings will reopen when combat ends.")
             end
         end
     elseif event == "PLAYER_REGEN_ENABLED" then

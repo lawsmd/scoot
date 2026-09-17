@@ -7,7 +7,10 @@ local addonName, addon = ...
 
 local Skin = addon.UI.Skin
 
-local FONT_BASE = "Interface\\AddOns\\Scoot\\media\\fonts\\"
+-- The loading addon's folder, not a literal: the Forever client has no Scoot
+-- folder to resolve against.
+local ROOT = addon.MediaPath or "Interface\\AddOns\\Scoot\\"
+local FONT_BASE = ROOT .. "media\\fonts\\"
 
 local PROP_REG  = addon.Fonts.ROBOTO_REG or (FONT_BASE .. "Roboto-Regular.ttf")
 local PROP_MED  = addon.Fonts.ROBOTO_MED or (FONT_BASE .. "Roboto-Medium.ttf")
@@ -174,9 +177,9 @@ Skin.Register("testcard", {
     },
 
     textures = {
-        NOISE_OVERLAY = "Interface\\AddOns\\Scoot\\media\\textures\\noise-overlay",
-        SCOOT_ICON    = "Interface\\AddOns\\Scoot\\ScootIcon",
-        SCOOT_ICON_TRANSPARENT = "Interface\\AddOns\\Scoot\\ScootIconTransparent",
+        NOISE_OVERLAY = ROOT .. "media\\textures\\noise-overlay",
+        SCOOT_ICON    = ROOT .. "ScootIcon",
+        SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent",
     },
 
     metrics = {

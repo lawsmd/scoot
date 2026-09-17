@@ -1,6 +1,6 @@
--- commands.lua - /scoot command registry (refactor #32).
+-- commands.lua - the slash command registry (refactor #32).
 --
--- Two scopes: "slash" for /scoot <name> and "debug" for /scoot debug <name>.
+-- Two scopes: "slash" for /<brand> <name> and "debug" for /<brand> debug <name>.
 -- A file registers at its end with addon:RegisterSlashCommand(def) or
 -- addon:RegisterDebugCommand(def). The registration must follow every
 -- definition it references: a registration error aborts the chunk.
@@ -26,6 +26,14 @@
 -- Help and usage open the copy window; one-line results stay on addon:Print.
 -- This file loads before addon:Print and addon.DebugShowWindow exist and
 -- calls neither at load time.
+--
+-- Both addons load their own copy. Everything below is shared; the brand is
+-- the only thing that differs, and it reaches the registry through
+-- addon.Brand, which an entry file sets before this file loads. Scoot leaves
+-- it unset and takes the fallback, the same pattern core/debug/core.lua uses
+-- for its window name. The registry never calls a brand-specific function:
+-- the Edit Mode dump is optional, and the word with no command behind it goes
+-- to whatever Commands.InstallSlash was handed.
 local addonName, addon = ...
 
 local Commands = {}
@@ -34,9 +42,14 @@ addon.Commands = Commands
 -- Sentinel a handler or verb returns to request its usage block.
 Commands.USAGE = {}
 
+local BRAND = addon.Brand or "Scoot"
+-- addon.SlashToken where an entry file names the word itself; the brand
+-- lowercased otherwise, which is what Scoot has always typed.
+local SLASH = "/" .. (addon.SlashToken or string.lower(BRAND))
+
 local scopes = {
-    slash = { list = {}, byName = {}, prefix = "/scoot " },
-    debug = { list = {}, byName = {}, prefix = "/scoot debug " },
+    slash = { list = {}, byName = {}, prefix = SLASH .. " " },
+    debug = { list = {}, byName = {}, prefix = SLASH .. " debug " },
 }
 
 local function register(scope, def)
@@ -241,24 +254,57 @@ function Commands.TraceVerbs(opts, into)
 end
 
 --------------------------------------------------------------------------------
--- /scoot debug gateway
+-- The debug gateway
 --------------------------------------------------------------------------------
 
 addon:RegisterSlashCommand({
     name = "debug",
-    help = "diagnostic dumps and probes; /scoot debug alone lists them",
+    help = "diagnostic dumps and probes; " .. SLASH .. " debug alone lists them",
     handler = function(sub, rest)
-        if sub == "" or sub == "help" then
+        local function showHelp()
             local extra = {}
             if addon.DebugDumpTargets then
                 extra[1] = ""
-                extra[2] = "/scoot debug <target> - Edit Mode settings dump of a frame; target is one of "
+                extra[2] = SLASH .. " debug <target> - Edit Mode settings dump of a frame; target is one of "
                     .. table.concat(addon.DebugDumpTargets(), ", ") .. ", or any global frame name"
             end
-            Commands.ShowHelp("debug", "Scoot debug commands", extra)
+            Commands.ShowHelp("debug", BRAND .. " debug commands", extra)
+        end
+
+        if sub == "" or sub == "help" then
+            showHelp()
             return
         end
         if dispatch("debug", rest, 1) then return end
-        addon.DebugDump(rest[1])
+        -- The Edit Mode dump is Scoot's; where it is absent an unmatched word
+        -- has nowhere left to go, so the listing answers instead.
+        if addon.DebugDump then
+            addon.DebugDump(rest[1])
+        else
+            showHelp()
+        end
     end,
 })
+
+--------------------------------------------------------------------------------
+-- The slash word
+--------------------------------------------------------------------------------
+
+-- Wires /<brand> to the registry. `fallback` runs when the line names no
+-- command, which is the one behavior each addon decides for itself: Scoot
+-- opens the settings panel, and an addon without one shows its help.
+-- Kept off addon.Commands: this is the registry. The slash word has to reach
+-- the globals WoW reads somewhere, and one guarded place beats one per addon.
+function Commands.InstallSlash(fallback)
+    local token = string.upper(BRAND)
+    _G["SLASH_" .. token .. "1"] = SLASH
+    SlashCmdList[token] = function(msg)
+        local args = Commands.Parse(msg)
+        if #args > 0 and Commands.Dispatch("slash", args) then return end
+        if fallback then
+            fallback()
+        else
+            Commands.ShowHelp("slash", BRAND .. " commands")
+        end
+    end
+end

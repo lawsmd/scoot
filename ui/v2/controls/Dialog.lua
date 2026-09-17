@@ -4,6 +4,10 @@ local addonName, addon = ...
 addon.UI = addon.UI or {}
 addon.UI.Controls = addon.UI.Controls or {}
 local Controls = addon.UI.Controls
+
+-- The dialog title and its frame names carry the brand: both addons load this
+-- file in the retail client, and one global cannot hold two frames.
+local BRAND = addon.Brand or "Scoot"
 local Theme -- Lazy loaded
 
 -- Lazy Theme accessor
@@ -582,7 +586,7 @@ local function CreateDialogFrame()
     local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Modal backdrop (fullscreen dimmer)
-    modalBackdrop = CreateFrame("Frame", "ScootDialogBackdrop", UIParent)
+    modalBackdrop = CreateFrame("Frame", BRAND .. "DialogBackdrop", UIParent)
     modalBackdrop:SetFrameStrata("FULLSCREEN_DIALOG")
     modalBackdrop:SetFrameLevel(0)
     modalBackdrop:SetAllPoints(UIParent)
@@ -595,7 +599,7 @@ local function CreateDialogFrame()
     modalBackdrop._dimmer = dimmer
 
     -- Dialog frame
-    local f = CreateFrame("Frame", "ScootDialog", modalBackdrop)
+    local f = CreateFrame("Frame", BRAND .. "Dialog", modalBackdrop)
     f:SetSize(DIALOG_WIDTH, DIALOG_HEIGHT)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -632,7 +636,7 @@ local function CreateDialogFrame()
     local fontPath = theme:GetFont("HEADER")
     title:SetFont(fontPath, 14, "")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", CONTENT_PADDING, -12)
-    title:SetText("Scoot")
+    title:SetText(BRAND)
     title:SetTextColor(ar, ag, ab, 1)
     f._title = title
 
@@ -1186,7 +1190,7 @@ Controls:RegisterDialog("SCOOT_PRESET_TARGET_CHOICE", {
 })
 
 Controls:RegisterDialog("SCOOT_PRESET_OVERWRITE_CONFIRM", {
-    text = "This will overwrite both the Edit Mode layout settings AND the Scoot profile for '%s'.\n\nAll existing customizations will be replaced with %s preset data.\n\nContinue?",
+    text = "This will overwrite both the Edit Mode layout settings AND the " .. BRAND .. " profile for '%s'.\n\nAll existing customizations will be replaced with %s preset data.\n\nContinue?",
     acceptText = "Overwrite",
     cancelText = CANCEL or "Cancel",
     height = 200,
@@ -1206,7 +1210,7 @@ Controls:RegisterDialog("SCOOT_DM_RESET_CONFIRM", {
 })
 
 Controls:RegisterDialog("SCOOT_EXTERNAL_LAYOUT_DELETED", {
-    text = "The Edit Mode layout '%s' was deleted outside of Scoot.\n\nA UI reload is required to properly sync your profile state.",
+    text = "The Edit Mode layout '%s' was deleted outside of " .. BRAND .. ".\n\nA UI reload is required to properly sync your profile state.",
     acceptText = "Reload UI",
     locked = true,
     height = 180,

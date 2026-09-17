@@ -147,7 +147,9 @@ local function CreateIconPicker()
     local contentWidth = (ICON_BUTTON_SIZE * ICONS_PER_ROW) + (ICON_BUTTON_SPACING * (ICONS_PER_ROW - 1)) + (PADDING * 2)
 
     local frame = Controls.CreatePickerShell({
-        name = "ScootIconPickerFrame",
+        -- Brand-named, and still ending in "Frame": CreatePickerShell derives
+        -- the scroll frame and scrollbar names from that suffix.
+        name = (addon.Brand or "Scoot") .. "IconPickerFrame",
         width = PICKER_WIDTH,
         height = PICKER_HEIGHT,
         contentWidth = contentWidth,

@@ -28,7 +28,9 @@ function addon.IsBarTextureToken(key)
 	return key == addon.MediaTokens.BAR_TEXTURE
 end
 
-local BAR_MEDIA_PREFIX = "Interface\\AddOns\\Scoot\\media\\bar\\"
+-- The addon that loaded this file, not a literal: the Forever client has no
+-- Scoot folder to resolve against. core/fonts.lua takes the same fallback.
+local BAR_MEDIA_PREFIX = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\bar\\"
 
 -- Per-bar state (weak keys). Local table avoids tainting Blizzard frames.
 local barFrameState = setmetatable({}, { __mode = "k" })

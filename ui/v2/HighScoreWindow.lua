@@ -1,6 +1,12 @@
 -- HighScoreWindow.lua - Arcade-styled "High Score" damage meter export display
 local addonName, addon = ...
 
+-- The frame name carries the brand because both addons load this file in the
+-- retail client; the media root is the loading addon's folder because the
+-- Forever client has no Scoot folder to resolve against.
+local BRAND = addon.Brand or "Scoot"
+local ROOT = addon.MediaPath or "Interface\\AddOns\\Scoot\\"
+
 local FRAME_WIDTH = 920
 local FRAME_HEIGHT = 780
 local BANNER_HEIGHT = 200
@@ -28,7 +34,7 @@ end
 
 local function GetArcadeFont()
     return addon.ResolveFontFace and addon.ResolveFontFace("PRESS_START_2P")
-        or "Interface\\AddOns\\Scoot\\media\\fonts\\PressStart2P-Regular.ttf"
+        or ROOT .. "media\\fonts\\PressStart2P-Regular.ttf"
 end
 
 local function TruncateToWidth(fontString, text, maxWidth)
@@ -103,7 +109,7 @@ end)
 local function CreateHighScoreFrame()
     if highScoreFrame then return highScoreFrame end
 
-    local frame = CreateFrame("Frame", "ScootHighScoreFrame", UIParent)
+    local frame = CreateFrame("Frame", BRAND .. "HighScoreFrame", UIParent)
     frame:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("DIALOG")
@@ -165,7 +171,7 @@ local function CreateHighScoreFrame()
 
     local closeLabel = closeBtn:CreateFontString(nil, "OVERLAY")
     local closeFontPath = Theme and Theme.GetFont and Theme:GetFont("BUTTON")
-        or "Interface\\AddOns\\Scoot\\media\\fonts\\JetBrainsMono-Medium.ttf"
+        or ROOT .. "media\\fonts\\JetBrainsMono-Medium.ttf"
     closeLabel:SetFont(closeFontPath, 16, "")
     closeLabel:SetPoint("CENTER", 0, -1)
     closeLabel:SetText("X")
@@ -187,13 +193,13 @@ local function CreateHighScoreFrame()
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
     -- ESC-close
-    tinsert(UISpecialFrames, "ScootHighScoreFrame")
+    tinsert(UISpecialFrames, BRAND .. "HighScoreFrame")
 
     -- Banner (ScootBanner.png at top center)
     local banner = frame:CreateTexture(nil, "ARTWORK")
     banner:SetSize(400, BANNER_HEIGHT)
     banner:SetPoint("TOP", frame, "TOP", 0, 30)
-    banner:SetTexture("Interface\\AddOns\\Scoot\\media\\ScootBanner")
+    banner:SetTexture(ROOT .. "media\\ScootBanner")
     frame._banner = banner
 
     -- "HIGH SCORES" title
@@ -359,7 +365,9 @@ local function CreateHighScoreFrame()
 
             -- Spec/ilvl annotation
             if row.specInfo then
-                local info = addon.FormatPlayerSpecInfo(p)
+                -- The formatter belongs to the damage meter, which not every
+                -- addon loading this file carries.
+                local info = addon.FormatPlayerSpecInfo and addon.FormatPlayerSpecInfo(p)
                 if info then
                     row.specInfo:SetText(string.upper(info))
                     row.specInfo:SetTextColor(0.5, 0.5, 0.5, 0.8)
