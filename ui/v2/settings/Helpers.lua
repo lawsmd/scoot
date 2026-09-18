@@ -494,11 +494,11 @@ function Helpers.AddDruidFormsFlyout(builder, options)
         text = "Druid Forms",
         height = 20,
         fontSize = 10,
+        padding = 8,
         borderWidth = 1,
         borderAlpha = 0.35,
     })
-    druidBtn._label:SetTextColor(0.6, 0.6, 0.6, 1)
-    druidBtn:SetWidth(druidBtn._label:GetStringWidth() + 16)
+    druidBtn:SetLabelColor(0.6, 0.6, 0.6, 1)
     druidBtn:SetPoint("LEFT", showToggle._label, "RIGHT", 8, 0)
     druidBtn:SetFrameLevel(showToggle:GetFrameLevel() + 5)
 

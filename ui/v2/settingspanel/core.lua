@@ -7,6 +7,7 @@ local UIPanel = addon.UI.SettingsPanel
 local Theme = addon.UI.Theme
 local Window = addon.UI.Window
 local Controls = addon.UI.Controls
+local Chrome = addon.UI.Chrome
 local Navigation = addon.UI.Navigation
 local SettingsBuilder = addon.UI.SettingsBuilder
 
@@ -218,58 +219,19 @@ function UIPanel:CreateCloseButton()
     local frame = self.frame
     if not frame then return end
 
-    local closeBtn = CreateFrame("Button", BRAND .. "CloseButton", frame)
-    closeBtn:SetSize(M().closeButton.size, M().closeButton.size)
+    local panel = self
+    local closeBtn = Controls:CreateCloseButton({
+        parent = frame,
+        name = BRAND .. "CloseButton",
+        onClick = function()
+            if panel and panel.frame then
+                panel.frame:Hide()
+            end
+        end,
+    })
     closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", M().closeButton.x, M().closeButton.y)
     closeBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
-    closeBtn:EnableMouse(true)
-    closeBtn:RegisterForClicks("AnyUp", "AnyDown")
-
-    local bg = closeBtn:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    local ar, ag, ab = Theme:GetAccentColor()
-    bg:SetColorTexture(ar, ag, ab, 1)
-    bg:Hide()
-    closeBtn._bg = bg
-
-    local label = closeBtn:CreateFontString(nil, "OVERLAY")
-    Theme:ApplyFont(label, "button", M().closeButton.fontSize)
-    label:SetPoint("CENTER", 0, -1)
-    label:SetText("X")
-    label:SetTextColor(ar, ag, ab, 1)
-    closeBtn._label = label
-
-    local panel = self
-
-    closeBtn:SetScript("OnEnter", function(btn)
-        local r, g, b = Theme:GetAccentColor()
-        btn._bg:SetColorTexture(r, g, b, 1)
-        btn._bg:Show()
-        btn._label:SetTextColor(0, 0, 0, 1)
-    end)
-
-    closeBtn:SetScript("OnLeave", function(btn)
-        btn._bg:Hide()
-        local r, g, b = Theme:GetAccentColor()
-        btn._label:SetTextColor(r, g, b, 1)
-    end)
-
-    closeBtn:SetScript("OnClick", function(btn, button, down)
-        if panel and panel.frame then
-            panel.frame:Hide()
-        end
-    end)
-
     frame._closeBtn = closeBtn
-
-    Theme:Subscribe("UIPanel_CloseBtn", function(r, g, b)
-        if closeBtn._bg then
-            closeBtn._bg:SetColorTexture(r, g, b, 1)
-        end
-        if closeBtn._label and not closeBtn:IsMouseOver() then
-            closeBtn._label:SetTextColor(r, g, b, 1)
-        end
-    end)
 end
 
 -- Header Buttons (Features, Search, Edit Mode, Cooldown Manager)
@@ -287,7 +249,7 @@ function UIPanel:CreateHeaderButtons()
         name = BRAND .. "FeaturesBtn",
         text = "Features",
         height = M().toolbar.height,
-        fontSize = 11,
+        fontSize = M().toolbar.fontSize,
         onClick = function()
             Navigation:SelectItem("startHere")
         end,
@@ -299,7 +261,7 @@ function UIPanel:CreateHeaderButtons()
         name = BRAND .. "SearchBtn",
         text = "Search",
         height = M().toolbar.height,
-        fontSize = 11,
+        fontSize = M().toolbar.fontSize,
         onClick = function()
             Navigation:SelectItem("search")
         end,
@@ -311,7 +273,7 @@ function UIPanel:CreateHeaderButtons()
         name = BRAND .. "EditModeBtn",
         text = "Edit Mode",
         height = M().toolbar.height,
-        fontSize = 11,
+        fontSize = M().toolbar.fontSize,
         template = "SecureActionButtonTemplate, SecureHandlerClickTemplate",
         secureAction = {}, -- triggers AnyUp registration in Button.lua
     })
@@ -348,7 +310,7 @@ function UIPanel:CreateHeaderButtons()
         name = BRAND .. "CdmBtn",
         text = "Cooldown Manager",
         height = M().toolbar.height,
-        fontSize = 11,
+        fontSize = M().toolbar.fontSize,
         onClick = function(btn, mouseButton)
             if addon and addon.OpenCooldownManagerSettings then
                 addon:OpenCooldownManagerSettings()
@@ -391,70 +353,14 @@ function UIPanel:CreateHeaderButtons()
     frame._editModeBtn = editModeBtn
     frame._cdmBtn = cdmBtn
 
-    -- Active state helpers: invert button colors when its page is selected
-    local function SetButtonActive(btn, active)
-        if not btn or not btn._border or not btn._label then return end
-        local ar, ag, ab = Theme:GetAccentColor()
-        local bgR, bgG, bgB, bgA = Theme:GetBackgroundSolidColor()
-        if active then
-            btn._hoverFill:SetColorTexture(ar, ag, ab, 1)
-            btn._hoverFill:Show()
-            btn._label:SetTextColor(bgR, bgG, bgB, 1)
-            btn._isActive = true
-        else
-            btn._hoverFill:Hide()
-            btn._label:SetTextColor(ar, ag, ab, 1)
-            btn._isActive = false
-        end
-    end
-
-    -- Expose active-state setter for OnNavigationSelect to call
+    -- The Features and Search buttons show pressed-in while their page is open
     frame._SetHeaderButtonActive = function(key)
-        SetButtonActive(featuresBtn, key == "startHere")
-        SetButtonActive(searchBtn, key == "search")
+        featuresBtn:SetActive(key == "startHere")
+        searchBtn:SetActive(key == "search")
     end
 
-    -- Pulsing glow on Features button when all modules are disabled
-    local function StartFeaturesPulse()
-        if featuresBtn._pulseTicker then return end
-        local elapsed = 0
-        featuresBtn._pulseTicker = C_Timer.NewTicker(M().pulse.tick, function()
-            elapsed = elapsed + M().pulse.tick
-            local phase = (elapsed % M().pulse.period) / M().pulse.period
-            local alpha = M().pulse.minAlpha + (1 - M().pulse.minAlpha) * (0.5 + 0.5 * math.cos(phase * 2 * math.pi))
-            if featuresBtn._border then
-                for _, tex in pairs(featuresBtn._border) do
-                    tex:SetAlpha(alpha)
-                end
-            end
-            if featuresBtn._label then
-                featuresBtn._label:SetAlpha(alpha)
-            end
-        end)
-    end
-
-    local function StopFeaturesPulse()
-        if featuresBtn._pulseTicker then
-            featuresBtn._pulseTicker:Cancel()
-            featuresBtn._pulseTicker = nil
-        end
-        if featuresBtn._border then
-            for _, tex in pairs(featuresBtn._border) do
-                tex:SetAlpha(1)
-            end
-        end
-        if featuresBtn._label then
-            featuresBtn._label:SetAlpha(1)
-        end
-    end
-
-    frame._StartFeaturesPulse = StartFeaturesPulse
-    frame._StopFeaturesPulse = StopFeaturesPulse
-
-    -- Check on creation
-    if addon.AreAllModulesDisabled and addon:AreAllModulesDisabled() then
-        StartFeaturesPulse()
-    end
+    -- The Features button pulses while every module is off
+    featuresBtn:SetPulsing((addon.AreAllModulesDisabled and addon:AreAllModulesDisabled()) and true or false)
 end
 
 -- Resize Handle (bottom-right corner grip)
@@ -463,56 +369,64 @@ function UIPanel:CreateResizeHandle()
     local frame = self.frame
     if not frame then return end
 
+    local m = M().resizeGrip
+    local spec = Chrome.Spec("resizeGrip")
     local resizeHandle = CreateFrame("Button", BRAND .. "ResizeHandle", frame)
-    resizeHandle:SetSize(M().resizeGrip.size, M().resizeGrip.size)
-    resizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", M().resizeGrip.x, M().resizeGrip.y)
+    resizeHandle:SetSize(m.size, m.size)
+    resizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", m.x, m.y)
     resizeHandle:SetFrameLevel(frame:GetFrameLevel() + 10)
     resizeHandle:EnableMouse(true)
 
-    local ar, ag, ab = Theme:GetAccentColor()
-    local lines = {}
-    for i = 1, 3 do
-        local line = resizeHandle:CreateTexture(nil, "OVERLAY")
-        line:SetColorTexture(ar, ag, ab, 0.7)
-        line:SetSize(2, 2)
-        -- Position lines diagonally from bottom-right
-        local offset = (i - 1) * 4
-        line:SetPoint("BOTTOMRIGHT", resizeHandle, "BOTTOMRIGHT", -offset - 2, offset + 2)
-        lines[i] = line
+    -- The atlas kind is one texture with a hover swap; flat is the dotted
+    -- diagonal, accent-tinted, brighter under the cursor.
+    local function paint(handle, hover)
+        if handle._art then
+            handle._art:SetAtlas((hover and spec.hover) or spec.normal, true)
+            handle._art:SetAllPoints(handle)
+            return
+        end
+        local r, g, b = Theme:GetAccentColor()
+        local alpha = hover and 1 or m.alpha
+        for _, line in ipairs(handle._lines) do
+            line:SetColorTexture(r, g, b, alpha)
+        end
     end
 
-    for i = 1, 2 do
-        local line = resizeHandle:CreateTexture(nil, "OVERLAY")
-        line:SetColorTexture(ar, ag, ab, 0.7)
-        line:SetSize(2, 2)
-        local offset = (i - 1) * 4
-        line:SetPoint("BOTTOMRIGHT", resizeHandle, "BOTTOMRIGHT", -offset - 6, offset + 2)
-        lines[3 + i] = line
+    if spec.kind == "atlas" then
+        local art = resizeHandle:CreateTexture(nil, "OVERLAY")
+        art:SetAllPoints()
+        resizeHandle._art = art
+    else
+        local lines = {}
+        for i = 1, 3 do
+            local line = resizeHandle:CreateTexture(nil, "OVERLAY")
+            line:SetSize(m.dot, m.dot)
+            local offset = (i - 1) * m.step
+            line:SetPoint("BOTTOMRIGHT", resizeHandle, "BOTTOMRIGHT", -offset - m.dot, offset + m.dot)
+            lines[i] = line
+        end
+        for i = 1, 2 do
+            local line = resizeHandle:CreateTexture(nil, "OVERLAY")
+            line:SetSize(m.dot, m.dot)
+            local offset = (i - 1) * m.step
+            line:SetPoint("BOTTOMRIGHT", resizeHandle, "BOTTOMRIGHT", -offset - m.dot - m.step, offset + m.dot)
+            lines[3 + i] = line
+        end
+        local cornerDot = resizeHandle:CreateTexture(nil, "OVERLAY")
+        cornerDot:SetSize(m.dot, m.dot)
+        cornerDot:SetPoint("BOTTOMRIGHT", resizeHandle, "BOTTOMRIGHT", -m.dot, m.dot + m.step)
+        lines[6] = cornerDot
+        resizeHandle._lines = lines
     end
-
-    local cornerDot = resizeHandle:CreateTexture(nil, "OVERLAY")
-    cornerDot:SetColorTexture(ar, ag, ab, 0.7)
-    cornerDot:SetSize(2, 2)
-    cornerDot:SetPoint("BOTTOMRIGHT", resizeHandle, "BOTTOMRIGHT", -2, 6)
-    lines[6] = cornerDot
-
-    resizeHandle._lines = lines
-
-    local panel = self
+    paint(resizeHandle, false)
 
     resizeHandle:SetScript("OnEnter", function(handle)
-        local r, g, b = Theme:GetAccentColor()
-        for _, line in ipairs(handle._lines) do
-            line:SetColorTexture(r, g, b, 1)
-        end
+        paint(handle, true)
         SetCursor("Interface\\CURSOR\\UI-Cursor-Size")
     end)
 
     resizeHandle:SetScript("OnLeave", function(handle)
-        local r, g, b = Theme:GetAccentColor()
-        for _, line in ipairs(handle._lines) do
-            line:SetColorTexture(r, g, b, 0.7)
-        end
+        paint(handle, false)
         ResetCursor()
     end)
 
@@ -535,11 +449,9 @@ function UIPanel:CreateResizeHandle()
 
     frame._resizeHandle = resizeHandle
 
-    Theme:Subscribe("UIPanel_ResizeHandle", function(r, g, b)
-        if resizeHandle._lines and not resizeHandle:IsMouseOver() then
-            for _, line in ipairs(resizeHandle._lines) do
-                line:SetColorTexture(r, g, b, 0.7)
-            end
+    Theme:Subscribe("UIPanel_ResizeHandle", function()
+        if not resizeHandle:IsMouseOver() then
+            paint(resizeHandle, false)
         end
     end)
 end
@@ -1147,13 +1059,12 @@ function UIPanel:Teardown()
 
     self:StopAsciiAnimation()
     frame:Hide()
-    if frame._StopFeaturesPulse then frame._StopFeaturesPulse() end
 
     if Navigation and Navigation.Cleanup then
         Navigation:Cleanup()
     end
 
-    for _, btn in ipairs({ frame._featuresBtn, frame._searchBtn, frame._editModeBtn, frame._cdmBtn }) do
+    for _, btn in ipairs({ frame._featuresBtn, frame._searchBtn, frame._editModeBtn, frame._cdmBtn, frame._closeBtn }) do
         if btn and btn.Cleanup then btn:Cleanup() end
     end
     local contentPane = frame._contentPane
@@ -1165,7 +1076,7 @@ function UIPanel:Teardown()
             Theme:Unsubscribe(contentPane._scrollbar._subscribeKey)
         end
     end
-    for _, key in ipairs({ "UIPanel_TitleBar", "UIPanel_CloseBtn", "UIPanel_ResizeHandle",
+    for _, key in ipairs({ "UIPanel_TitleBar", "UIPanel_ResizeHandle",
                            "UIPanel_HomeContent", "UIPanel_ContentPane" }) do
         Theme:Unsubscribe(key)
     end

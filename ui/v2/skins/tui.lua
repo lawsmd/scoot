@@ -72,7 +72,7 @@ Skin.Register("tui", {
         },
         titleBar      = { kind = "ascii", fontRole = "label" },
         closeButton   = { kind = "flat", glyph = "X" },
-        button        = { kind = "flat" },
+        button        = { kind = "flat", labelColors = { normal = "accent", hover = "black", active = "background", disabled = "accent" } },
         resizeGrip    = { kind = "flat" },
         scrollBar     = { kind = "flat" },
         tab           = { kind = "flat" },

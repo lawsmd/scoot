@@ -94,70 +94,47 @@ local function CreateScootButton(parent)
         end,
     })
 
-    -- Force inverted resting state: accent fill shown, dark text
-    btn._hoverFill:Show()
-    btn._label:SetTextColor(0, 0, 0, 1)
+    -- Pressed-in at rest: the accent fill shown and dark text, kept through
+    -- hover and accent changes by the button itself.
+    btn:SetActive(true)
 
-    -- Store the inverted flag so theme updates can maintain it
-    btn._scootInverted = true
+    -- Scanline sweep over the fill, a flourish of the flat draw: a template
+    -- button has no fill to sweep, so it stays off there.
+    if btn._hoverFill then
+        local borderInset = btn._borderWidth or 2
+        local scanline = btn:CreateTexture(nil, "ARTWORK")
+        scanline:SetHeight(2)
+        scanline:SetPoint("TOPLEFT", btn, "TOPLEFT", borderInset, -borderInset)
+        scanline:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -borderInset, -borderInset)
+        scanline:SetColorTexture(1, 1, 1, 0.6)
+        scanline:Hide()
+        btn._scanline = scanline
+        btn._scanlineOffset = 0
+        btn._scanlineAnimating = false
 
-    -- Scanline sweep texture (2px tall white line for CRT refresh effect)
-    local borderInset = btn._borderWidth or 2
-    local scanline = btn:CreateTexture(nil, "ARTWORK")
-    scanline:SetHeight(2)
-    scanline:SetPoint("TOPLEFT", btn, "TOPLEFT", borderInset, -borderInset)
-    scanline:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -borderInset, -borderInset)
-    scanline:SetColorTexture(1, 1, 1, 0.6)
-    scanline:Hide()
-    btn._scanline = scanline
-    btn._scanlineOffset = 0
-    btn._scanlineAnimating = false
-
-    -- Hover: show scanline sweep, fill stays, text stays black
-    btn:SetScript("OnEnter", function(self)
-        self._scanline:Show()
-        self._scanlineOffset = 0
-        self._scanlineAnimating = true
-    end)
-
-    btn:SetScript("OnLeave", function(self)
-        self._scanline:Hide()
-        self._scanlineAnimating = false
-    end)
-
-    btn:SetScript("OnUpdate", function(self, elapsed)
-        if not self._scanlineAnimating then return end
-        local inset = self._borderWidth or 2
-        local innerH = self:GetHeight() - (2 * inset)
-        self._scanlineOffset = self._scanlineOffset + (elapsed / 0.4) * innerH
-        if self._scanlineOffset >= innerH then
+        btn:HookScript("OnEnter", function(self)
+            self._scanline:Show()
             self._scanlineOffset = 0
-        end
-        self._scanline:SetPoint("TOPLEFT", self, "TOPLEFT", inset, -(inset + self._scanlineOffset))
-        self._scanline:SetPoint("TOPRIGHT", self, "TOPRIGHT", -inset, -(inset + self._scanlineOffset))
-    end)
+            self._scanlineAnimating = true
+        end)
 
-    -- Override theme subscription to maintain inverted state
-    if btn._subscribeKey then
-        theme:Unsubscribe(btn._subscribeKey)
-    end
-    local subscribeKey = "GameMenu_ScootBtn_" .. tostring(btn)
-    btn._subscribeKey = subscribeKey
-    theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update border
-        if btn._border then
-            for _, tex in pairs(btn._border) do
-                tex:SetColorTexture(r, g, b, 1)
+        btn:HookScript("OnLeave", function(self)
+            self._scanline:Hide()
+            self._scanlineAnimating = false
+        end)
+
+        btn:SetScript("OnUpdate", function(self, elapsed)
+            if not self._scanlineAnimating then return end
+            local inset = self._borderWidth or 2
+            local innerH = self:GetHeight() - (2 * inset)
+            self._scanlineOffset = self._scanlineOffset + (elapsed / 0.4) * innerH
+            if self._scanlineOffset >= innerH then
+                self._scanlineOffset = 0
             end
-        end
-        -- Maintain inverted fill (always shown)
-        if btn._hoverFill then
-            btn._hoverFill:SetColorTexture(r, g, b, 1)
-            btn._hoverFill:Show()
-        end
-        -- Text stays black in all states
-        btn._label:SetTextColor(0, 0, 0, 1)
-    end)
+            self._scanline:SetPoint("TOPLEFT", self, "TOPLEFT", inset, -(inset + self._scanlineOffset))
+            self._scanline:SetPoint("TOPRIGHT", self, "TOPRIGHT", -inset, -(inset + self._scanlineOffset))
+        end)
+    end
 
     return btn
 end

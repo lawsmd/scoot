@@ -761,31 +761,9 @@ end
 local function UpdateReloadButtonVisual(area, isDirty)
     local btn = area and area._reloadBtn
     if not btn then return end
-    local theme = addon.UI.Theme
-    local ar, ag, ab = theme:GetAccentColor()
-
-    if isDirty then
-        -- Inverted: accent fill shown permanently, dark text
-        btn._hoverFill:Show()
-        btn._label:SetTextColor(0, 0, 0, 1)
-        btn:SetScript("OnEnter", function() end)
-        btn:SetScript("OnLeave", function() end)
-    else
-        -- Normal: dark background, accent text, standard hover
-        btn._hoverFill:Hide()
-        btn._label:SetTextColor(ar, ag, ab, 1)
-        btn:SetScript("OnEnter", function(self)
-            local r, g, b = theme:GetAccentColor()
-            self._hoverFill:SetColorTexture(r, g, b, 1)
-            self._hoverFill:Show()
-            self._label:SetTextColor(0, 0, 0, 1)
-        end)
-        btn:SetScript("OnLeave", function(self)
-            self._hoverFill:Hide()
-            local r, g, b = theme:GetAccentColor()
-            self._label:SetTextColor(r, g, b, 1)
-        end)
-    end
+    -- Dirty reads as pressed-in: the accent fill shown and dark text, held
+    -- through hover by the button itself.
+    btn:SetActive(isDirty and true or false)
 end
 
 --------------------------------------------------------------------------------
