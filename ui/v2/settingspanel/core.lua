@@ -473,180 +473,6 @@ function UIPanel:CreateNavigation()
 end
 
 -- Content Pane
-local function CreateContentScrollbar(parent, scrollFrame)
-    local ar, ag, ab = Theme:GetAccentColor()
-
-    local scrollbar = CreateFrame("Frame", nil, parent)
-    scrollbar:SetWidth(M().scrollBar.width)
-    -- Anchors set in CreateContentPane after header height is known
-
-    -- Track
-    local track = scrollbar:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(ar, ag, ab, 0.1)
-    scrollbar._track = track
-
-    -- Thumb
-    local thumb = CreateFrame("Button", nil, scrollbar)
-    thumb:SetWidth(M().scrollBar.width)
-    thumb:SetHeight(M().scrollBar.thumbMin)
-    thumb:SetPoint("TOP", scrollbar, "TOP", 0, 0)
-    thumb:EnableMouse(true)
-    thumb:RegisterForDrag("LeftButton")
-
-    local thumbTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbTex:SetAllPoints()
-    thumbTex:SetColorTexture(ar, ag, ab, 0.5)
-    thumb._tex = thumbTex
-
-    thumb:SetScript("OnEnter", function(self)
-        local r, g, b = Theme:GetAccentColor()
-        self._tex:SetColorTexture(r, g, b, 0.8)
-    end)
-
-    thumb:SetScript("OnLeave", function(self)
-        if not self._isDragging then
-            local r, g, b = Theme:GetAccentColor()
-            self._tex:SetColorTexture(r, g, b, 0.5)
-        end
-    end)
-
-    scrollbar._thumb = thumb
-    scrollbar._scrollFrame = scrollFrame
-
-    local function UpdateScrollbar()
-        if not scrollFrame then return end
-
-        local contentHeight = 0
-        local scrollChild = scrollFrame:GetScrollChild()
-        if scrollChild then
-            contentHeight = scrollChild:GetHeight() or 0
-        end
-
-        local visibleHeight = scrollFrame:GetHeight() or 1
-        local trackHeight = scrollbar:GetHeight() or 1
-
-        if contentHeight <= visibleHeight then
-            scrollbar:Hide()
-            return
-        end
-
-        scrollbar:Show()
-
-        local thumbHeight = math.max(
-            M().scrollBar.thumbMin,
-            (visibleHeight / contentHeight) * trackHeight
-        )
-        thumb:SetHeight(thumbHeight)
-
-        local maxScroll = contentHeight - visibleHeight
-        local currentScroll = scrollFrame:GetVerticalScroll() or 0
-        local scrollPercent = maxScroll > 0 and (currentScroll / maxScroll) or 0
-
-        local maxThumbOffset = trackHeight - thumbHeight
-        local thumbOffset = scrollPercent * maxThumbOffset
-
-        thumb:ClearAllPoints()
-        thumb:SetPoint("TOP", scrollbar, "TOP", 0, -thumbOffset)
-    end
-
-    scrollbar.Update = UpdateScrollbar
-
-    local dragStartY, dragStartScroll
-
-    thumb:SetScript("OnDragStart", function(self)
-        self._isDragging = true
-        local r, g, b = Theme:GetAccentColor()
-        self._tex:SetColorTexture(r, g, b, 1)
-
-        local _, cursorY = GetCursorPosition()
-        local scale = self:GetEffectiveScale()
-        dragStartY = cursorY / scale
-        dragStartScroll = scrollFrame:GetVerticalScroll() or 0
-    end)
-
-    thumb:SetScript("OnDragStop", function(self)
-        self._isDragging = false
-        local r, g, b = Theme:GetAccentColor()
-        if self:IsMouseOver() then
-            self._tex:SetColorTexture(r, g, b, 0.8)
-        else
-            self._tex:SetColorTexture(r, g, b, 0.5)
-        end
-    end)
-
-    thumb:SetScript("OnUpdate", function(self)
-        if not self._isDragging then return end
-
-        local _, cursorY = GetCursorPosition()
-        local scale = self:GetEffectiveScale()
-        cursorY = cursorY / scale
-
-        local deltaY = dragStartY - cursorY
-
-        local contentHeight = 0
-        local scrollChild = scrollFrame:GetScrollChild()
-        if scrollChild then
-            contentHeight = scrollChild:GetHeight() or 0
-        end
-
-        local visibleHeight = scrollFrame:GetHeight() or 1
-        local trackHeight = scrollbar:GetHeight() or 1
-        local thumbHeight = thumb:GetHeight()
-
-        local maxScroll = contentHeight - visibleHeight
-        local maxThumbOffset = trackHeight - thumbHeight
-
-        if maxThumbOffset > 0 and maxScroll > 0 then
-            local scrollDelta = (deltaY / maxThumbOffset) * maxScroll
-            local newScroll = math.max(0, math.min(maxScroll, dragStartScroll + scrollDelta))
-            scrollFrame:SetVerticalScroll(newScroll)
-            UpdateScrollbar()
-        end
-    end)
-
-    scrollbar:EnableMouse(true)
-    scrollbar:SetScript("OnMouseDown", function(self, button)
-        if button ~= "LeftButton" then return end
-
-        local _, cursorY = GetCursorPosition()
-        local scale = self:GetEffectiveScale()
-        cursorY = cursorY / scale
-
-        local selfBottom = self:GetBottom() or 0
-        local clickY = cursorY - selfBottom
-        local trackHeight = self:GetHeight() or 1
-
-        local clickPercent = 1 - (clickY / trackHeight)
-
-        local contentHeight = 0
-        local scrollChild = scrollFrame:GetScrollChild()
-        if scrollChild then
-            contentHeight = scrollChild:GetHeight() or 0
-        end
-
-        local visibleHeight = scrollFrame:GetHeight() or 1
-        local maxScroll = contentHeight - visibleHeight
-
-        if maxScroll > 0 then
-            local newScroll = clickPercent * maxScroll
-            scrollFrame:SetVerticalScroll(math.max(0, math.min(maxScroll, newScroll)))
-            UpdateScrollbar()
-        end
-    end)
-
-    scrollbar._subscribeKey = "UIContentScrollbar_" .. tostring(scrollbar)
-    Theme:Subscribe(scrollbar._subscribeKey, function(r, g, b)
-        if scrollbar._track then
-            scrollbar._track:SetColorTexture(r, g, b, 0.1)
-        end
-        if thumb._tex and not thumb._isDragging then
-            thumb._tex:SetColorTexture(r, g, b, 0.5)
-        end
-    end)
-
-    return scrollbar
-end
 
 function UIPanel:CreateContentPane()
     local frame = self.frame
@@ -788,18 +614,12 @@ function UIPanel:CreateContentPane()
     contentPane._scrollFrame = scrollFrame
     contentPane._scrollContent = scrollContent
 
-    local scrollbar = CreateContentScrollbar(contentPane, scrollFrame)
+    local scrollbar = Controls.CreateScrollBar({ parent = contentPane, scrollFrame = scrollFrame })
     -- Hung from the header rather than a fixed offset from the pane, so it
     -- follows a header a page has grown.
     scrollbar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -M().scrollBar.margin, -M().paneInset)
     scrollbar:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -M().scrollBar.margin, (M().resizeGrip.size + M().scrollBar.margin))
     contentPane._scrollbar = scrollbar
-
-    scrollFrame:SetScript("OnScrollRangeChanged", function()
-        if scrollbar and scrollbar.Update then
-            scrollbar:Update()
-        end
-    end)
 
     local placeholder = scrollContent:CreateFontString(nil, "OVERLAY")
     Theme:ApplyDimFont(placeholder, 13)
@@ -1072,8 +892,8 @@ function UIPanel:Teardown()
         for _, btn in ipairs({ contentPane._defaultsBtn, contentPane._collapseAllBtn }) do
             if btn and btn.Cleanup then btn:Cleanup() end
         end
-        if contentPane._scrollbar and contentPane._scrollbar._subscribeKey then
-            Theme:Unsubscribe(contentPane._scrollbar._subscribeKey)
+        if contentPane._scrollbar and contentPane._scrollbar.Cleanup then
+            contentPane._scrollbar:Cleanup()
         end
     end
     for _, key in ipairs({ "UIPanel_TitleBar", "UIPanel_ResizeHandle",

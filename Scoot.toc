@@ -271,6 +271,7 @@ ui/v2/skins/tui.lua
 ui/v2/skins/testcard.lua
 ui/v2/skins/forever.lua
 ui/v2/controls/Utils.lua
+ui/v2/controls/ScrollBar.lua
 ui/v2/controls/Fit.lua
 ui/v2/controls/RowScaffold.lua
 ui/v2/controls/PopupList.lua

@@ -66,194 +66,6 @@ function Navigation:AreAllChildrenModuleDisabled(navItem)
 end
 
 --------------------------------------------------------------------------------
--- Custom Scrollbar
---------------------------------------------------------------------------------
-
-local function CreateScrollbar(parent, scrollFrame)
-    local ar, ag, ab = Theme:GetAccentColor()
-
-    -- Scrollbar container (with margin from right edge)
-    local scrollbar = CreateFrame("Frame", nil, parent)
-    scrollbar:SetWidth(M().scrollBar.width)
-    scrollbar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -M().scrollBar.margin, -M().nav.padTop)
-    scrollbar:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -M().scrollBar.margin, M().nav.padTop)
-
-    -- Track background (subtle)
-    local track = scrollbar:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(ar, ag, ab, 0.1)
-    scrollbar._track = track
-
-    -- Thumb (draggable part)
-    local thumb = CreateFrame("Button", nil, scrollbar)
-    thumb:SetWidth(M().scrollBar.width)
-    thumb:SetHeight(M().scrollBar.thumbMin)
-    thumb:SetPoint("TOP", scrollbar, "TOP", 0, 0)
-    thumb:EnableMouse(true)
-    thumb:RegisterForDrag("LeftButton")
-
-    local thumbTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbTex:SetAllPoints()
-    thumbTex:SetColorTexture(ar, ag, ab, 0.5)
-    thumb._tex = thumbTex
-
-    -- Hover effect for thumb
-    thumb:SetScript("OnEnter", function(self)
-        local r, g, b = Theme:GetAccentColor()
-        self._tex:SetColorTexture(r, g, b, 0.8)
-    end)
-
-    thumb:SetScript("OnLeave", function(self)
-        if not self._isDragging then
-            local r, g, b = Theme:GetAccentColor()
-            self._tex:SetColorTexture(r, g, b, 0.5)
-        end
-    end)
-
-    scrollbar._thumb = thumb
-    scrollbar._scrollFrame = scrollFrame
-
-    -- Calculate and update thumb size/position based on content
-    local function UpdateScrollbar()
-        if not scrollFrame then return end
-
-        local contentHeight = 0
-        local scrollChild = scrollFrame:GetScrollChild()
-        if scrollChild then
-            contentHeight = scrollChild:GetHeight() or 0
-        end
-
-        local visibleHeight = scrollFrame:GetHeight() or 1
-        local trackHeight = scrollbar:GetHeight() or 1
-
-        -- Hide scrollbar if content fits
-        if contentHeight <= visibleHeight then
-            scrollbar:Hide()
-            return
-        end
-
-        scrollbar:Show()
-
-        -- Calculate thumb height proportionally
-        local thumbHeight = math.max(
-            M().scrollBar.thumbMin,
-            (visibleHeight / contentHeight) * trackHeight
-        )
-        thumb:SetHeight(thumbHeight)
-
-        -- Calculate thumb position based on scroll offset
-        local maxScroll = contentHeight - visibleHeight
-        local currentScroll = scrollFrame:GetVerticalScroll() or 0
-        local scrollPercent = maxScroll > 0 and (currentScroll / maxScroll) or 0
-
-        local maxThumbOffset = trackHeight - thumbHeight
-        local thumbOffset = scrollPercent * maxThumbOffset
-
-        thumb:ClearAllPoints()
-        thumb:SetPoint("TOP", scrollbar, "TOP", 0, -thumbOffset)
-    end
-
-    scrollbar.Update = UpdateScrollbar
-
-    -- Dragging the thumb
-    local dragStartY, dragStartScroll
-
-    thumb:SetScript("OnDragStart", function(self)
-        self._isDragging = true
-        local r, g, b = Theme:GetAccentColor()
-        self._tex:SetColorTexture(r, g, b, 1)
-
-        local _, cursorY = GetCursorPosition()
-        local scale = self:GetEffectiveScale()
-        dragStartY = cursorY / scale
-        dragStartScroll = scrollFrame:GetVerticalScroll() or 0
-    end)
-
-    thumb:SetScript("OnDragStop", function(self)
-        self._isDragging = false
-        if not self:IsMouseOver() then
-            local r, g, b = Theme:GetAccentColor()
-            self._tex:SetColorTexture(r, g, b, 0.5)
-        else
-            local r, g, b = Theme:GetAccentColor()
-            self._tex:SetColorTexture(r, g, b, 0.8)
-        end
-    end)
-
-    thumb:SetScript("OnUpdate", function(self)
-        if not self._isDragging then return end
-
-        local _, cursorY = GetCursorPosition()
-        local scale = self:GetEffectiveScale()
-        cursorY = cursorY / scale
-
-        local deltaY = dragStartY - cursorY  -- Inverted because Y increases downward in scroll
-
-        local contentHeight = 0
-        local scrollChild = scrollFrame:GetScrollChild()
-        if scrollChild then
-            contentHeight = scrollChild:GetHeight() or 0
-        end
-
-        local visibleHeight = scrollFrame:GetHeight() or 1
-        local trackHeight = scrollbar:GetHeight() or 1
-        local thumbHeight = thumb:GetHeight()
-
-        local maxScroll = contentHeight - visibleHeight
-        local maxThumbOffset = trackHeight - thumbHeight
-
-        if maxThumbOffset > 0 and maxScroll > 0 then
-            local scrollDelta = (deltaY / maxThumbOffset) * maxScroll
-            local newScroll = math.max(0, math.min(maxScroll, dragStartScroll + scrollDelta))
-            scrollFrame:SetVerticalScroll(newScroll)
-        end
-    end)
-
-    -- Click on track to jump
-    scrollbar:EnableMouse(true)
-    scrollbar:SetScript("OnMouseDown", function(self, button)
-        if button ~= "LeftButton" then return end
-
-        local _, cursorY = GetCursorPosition()
-        local scale = self:GetEffectiveScale()
-        cursorY = cursorY / scale
-
-        local selfBottom = self:GetBottom() or 0
-        local clickY = cursorY - selfBottom
-        local trackHeight = self:GetHeight() or 1
-
-        local clickPercent = 1 - (clickY / trackHeight)  -- Inverted
-
-        local contentHeight = 0
-        local scrollChild = scrollFrame:GetScrollChild()
-        if scrollChild then
-            contentHeight = scrollChild:GetHeight() or 0
-        end
-
-        local visibleHeight = scrollFrame:GetHeight() or 1
-        local maxScroll = contentHeight - visibleHeight
-
-        if maxScroll > 0 then
-            local newScroll = clickPercent * maxScroll
-            scrollFrame:SetVerticalScroll(math.max(0, math.min(maxScroll, newScroll)))
-        end
-    end)
-
-    -- Subscribe to theme updates
-    scrollbar._subscribeKey = "Scrollbar_" .. tostring(scrollbar)
-    Theme:Subscribe(scrollbar._subscribeKey, function(r, g, b)
-        if scrollbar._track then
-            scrollbar._track:SetColorTexture(r, g, b, 0.1)
-        end
-        if thumb._tex and not thumb._isDragging then
-            thumb._tex:SetColorTexture(r, g, b, 0.5)
-        end
-    end)
-
-    return scrollbar
-end
-
---------------------------------------------------------------------------------
 -- Navigation Frame Creation
 --------------------------------------------------------------------------------
 
@@ -309,16 +121,11 @@ function Navigation:Create(parent)
     navFrame._content = contentFrame
     navFrame._scrollFrame = scrollFrame
 
-    -- Create custom scrollbar
-    local scrollbar = CreateScrollbar(navFrame, scrollFrame)
+    -- The scrollbar owns the scroll frame's range handler
+    local scrollbar = Controls.CreateScrollBar({ parent = navFrame, scrollFrame = scrollFrame })
+    scrollbar:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", -M().scrollBar.margin, -M().nav.padTop)
+    scrollbar:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -M().scrollBar.margin, M().nav.padTop)
     navFrame._scrollbar = scrollbar
-
-    -- Update scrollbar when scroll changes
-    scrollFrame:SetScript("OnScrollRangeChanged", function()
-        if scrollbar and scrollbar.Update then
-            scrollbar:Update()
-        end
-    end)
 
     -- Initialize expanded state (start collapsed)
     self:InitializeExpandedState()
@@ -1027,8 +834,8 @@ function Navigation:Cleanup()
     end
 
     Theme:Unsubscribe("Navigation_Frame")
-    if self._frame and self._frame._scrollbar and self._frame._scrollbar._subscribeKey then
-        Theme:Unsubscribe(self._frame._scrollbar._subscribeKey)
+    if self._frame and self._frame._scrollbar and self._frame._scrollbar.Cleanup then
+        self._frame._scrollbar:Cleanup()
     end
 
     for _, row in ipairs(self._rows) do

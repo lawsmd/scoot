@@ -234,7 +234,8 @@ Skin.Register("testcard", {
             treeLineWidth = 1, treeLineLength = 10, treeLineAlpha = 0.4,
             indicatorSize = 10,
         },
-        scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4 },
+        scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4,
+                      trackAlpha = 0.1, thumbAlpha = 0.5, thumbHoverAlpha = 0.8, thumbDragAlpha = 1 },
         button = { height = 26, padding = 12, borderWidth = 2, fontSize = 12 },
         tab = {
             height = 26, padding = 16, spacing = 2, barPadding = 8, rowSpacing = 2,
