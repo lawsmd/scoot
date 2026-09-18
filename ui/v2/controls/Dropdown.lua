@@ -45,6 +45,9 @@ end
 --------------------------------------------------------------------------------
 
 function Controls:CreateDropdown(options)
+    local override = Controls.SkinOverride("Dropdown", options)
+    if override then return override end
+
     local theme = GetTheme()
     if not options or not options.parent then
         return nil
@@ -84,17 +87,8 @@ function Controls:CreateDropdown(options)
     dropdown:EnableMouse(true)
     dropdown:RegisterForClicks("AnyUp")
 
-    -- Dropdown border
-    dropdown._border = Controls.CreateBorder(dropdown, {
-        alpha = M().dropdown.borderAlpha,
-        getAlpha = function(self) return self:IsMouseOver() and 0.9 or M().dropdown.borderAlpha end,
-    })
-
-    -- Dropdown background
-    dropdown._bg = Controls.AddBackground(dropdown, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
-
-    -- Hover background
-    dropdown._hoverBg = Controls.AddHoverFill(dropdown, { alpha = 0.15, inset = 1, sublevel = Controls.SUBLEVEL_HOVER })
+    -- Border, fill and hover fill come from the dropdown role
+    dropdown._backdrop = addon.UI.Chrome.Backdrop("dropdown", dropdown)
 
     -- Value text
     local valueText = dropdown:CreateFontString(nil, "OVERLAY")
@@ -139,15 +133,13 @@ function Controls:CreateDropdown(options)
     -- Hover effects
     dropdown:SetScript("OnEnter", function(self)
         local r, g, b = theme:GetAccentColor()
-        self._hoverBg:Show()
+        self._backdrop:SetHover(true)
         self._dropIndicator:SetTextColor(r, g, b, 1)
-        self._border:Refresh()
     end)
     dropdown:SetScript("OnLeave", function(self)
         local dr, dg, db = theme:GetDimTextColor()
-        self._hoverBg:Hide()
+        self._backdrop:SetHover(false)
         self._dropIndicator:SetTextColor(dr, dg, db, 0.7)
-        self._border:Refresh()
     end)
 
     -- Dropdown menu (one shared popup list, rebuilt on every open)

@@ -6,6 +6,7 @@ addon.UI.Navigation = {}
 local Navigation = addon.UI.Navigation
 local Theme = addon.UI.Theme
 local Controls = addon.UI.Controls
+local Chrome = addon.UI.Chrome
 
 -- Frame names and the one tooltip that names the addon carry the brand: both
 -- addons load this file in the retail client.
@@ -342,20 +343,6 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
 
     local ar, ag, ab = Theme:GetAccentColor()
 
-    -- Hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND")
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.15)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
-
-    -- Selection background
-    local selectBg = row:CreateTexture(nil, "BACKGROUND", nil, -1)
-    selectBg:SetAllPoints()
-    selectBg:SetColorTexture(ar, ag, ab, 0.25)
-    selectBg:Hide()
-    row._selectBg = selectBg
-
     -- Expand/collapse indicator (▶/▼) - only for collapsible
     local indicator = row:CreateFontString(nil, "OVERLAY")
     Theme:ApplyFont(indicator, "button", M().nav.indicatorSize)
@@ -382,10 +369,14 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
     label:SetText(navItem.label)
     row._label = label
 
+    -- Hover and selection fills, and the label's color by state, come from
+    -- the navRow role's parent variant
+    row._backdrop = Chrome.Backdrop("navRow", row, { variant = "parent", label = label })
+    row._backdrop:SetDisabled(isModuleDisabled)
+
     if isModuleDisabled then
-        -- Disabled: gray out label + indicator, show tooltip on hover
+        -- Disabled: gray out the indicator, show tooltip on hover
         local dimR, dimG, dimB = Theme:GetDimTextColor()
-        label:SetTextColor(dimR, dimG, dimB, 0.35)
         if navItem.collapsible then
             indicator:SetTextColor(dimR, dimG, dimB, 0.35)
         end
@@ -406,22 +397,12 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
         end)
         row:SetScript("OnClick", nil)
     else
-        -- Hover effect
         row:SetScript("OnEnter", function(self)
-            local r, g, b = Theme:GetAccentColor()
-            self._hoverBg:SetColorTexture(r, g, b, 0.15)
-            self._hoverBg:Show()
-            self._label:SetTextColor(1, 1, 1, 1)
+            self._backdrop:SetHover(true)
         end)
 
         row:SetScript("OnLeave", function(self)
-            self._hoverBg:Hide()
-            local r, g, b = Theme:GetAccentColor()
-            if Navigation._selectedKey == self._key then
-                self._label:SetTextColor(1, 1, 1, 1)
-            else
-                self._label:SetTextColor(r, g, b, 1)
-            end
+            self._backdrop:SetHover(false)
         end)
 
         -- Click handler
@@ -459,20 +440,6 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
 
     local ar, ag, ab = Theme:GetAccentColor()
 
-    -- Hover background
-    local hoverBg = row:CreateTexture(nil, "BACKGROUND")
-    hoverBg:SetAllPoints()
-    hoverBg:SetColorTexture(ar, ag, ab, 0.15)
-    hoverBg:Hide()
-    row._hoverBg = hoverBg
-
-    -- Selection background
-    local selectBg = row:CreateTexture(nil, "BACKGROUND", nil, -1)
-    selectBg:SetAllPoints()
-    selectBg:SetColorTexture(ar, ag, ab, 0.25)
-    selectBg:Hide()
-    row._selectBg = selectBg
-
     -- Tree lines using textures (not text characters)
     local treeLines = {}
 
@@ -507,6 +474,11 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
     label:SetPoint("LEFT", row, "LEFT", M().nav.childIndent + 6, 0)
     label:SetText(navItem.label)
     row._label = label
+
+    -- Hover and selection fills, and the label's color by state, come from
+    -- the navRow role's child variant
+    row._backdrop = Chrome.Backdrop("navRow", row, { variant = "child", label = label })
+    row._backdrop:SetDisabled(isModuleDisabled)
 
     -- Version badge info icon (e.g., "X" / "Y" with variant color).
     -- hideBadgesWhenDisabled: a variantGroup's OFF fallback row must read as
@@ -575,9 +547,8 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
     end
 
     if isModuleDisabled then
-        -- Disabled module: gray out label and tree lines, no interaction
+        -- Disabled module: dim the tree lines and badges, no interaction
         local dimR, dimG, dimB = Theme:GetDimTextColor()
-        label:SetTextColor(dimR, dimG, dimB, 0.35)
         for _, line in pairs(treeLines) do
             line:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha * 0.3)
         end
@@ -613,22 +584,12 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
         end)
         row:SetScript("OnClick", nil)
     else
-        -- Hover effect
         row:SetScript("OnEnter", function(self)
-            local r, g, b = Theme:GetAccentColor()
-            self._hoverBg:SetColorTexture(r, g, b, 0.15)
-            self._hoverBg:Show()
-            self._label:SetTextColor(r, g, b, 1)
+            self._backdrop:SetHover(true)
         end)
 
         row:SetScript("OnLeave", function(self)
-            self._hoverBg:Hide()
-            if Navigation._selectedKey == self._key then
-                local r, g, b = Theme:GetAccentColor()
-                self._label:SetTextColor(r, g, b, 1)
-            else
-                self._label:SetTextColor(1, 1, 1, 1)
-            end
+            self._backdrop:SetHover(false)
         end)
 
         -- Click handler
@@ -691,24 +652,8 @@ function Navigation:UpdateRowSelectionState(row)
     if not row or not row._key then return end
     if row._isModuleDisabled then return end
 
-    local isSelected = (self._selectedKey == row._key)
-    local ar, ag, ab = Theme:GetAccentColor()
-
-    if isSelected then
-        row._selectBg:SetColorTexture(ar, ag, ab, 0.25)
-        row._selectBg:Show()
-        if row._isParent then
-            row._label:SetTextColor(1, 1, 1, 1)
-        else
-            row._label:SetTextColor(ar, ag, ab, 1)
-        end
-    else
-        row._selectBg:Hide()
-        if row._isParent then
-            row._label:SetTextColor(ar, ag, ab, 1)
-        else
-            row._label:SetTextColor(1, 1, 1, 1)
-        end
+    if row._backdrop then
+        row._backdrop:SetSelected(self._selectedKey == row._key)
     end
 
     if self.UpdateJumpingLettersColor then
@@ -729,13 +674,6 @@ function Navigation:UpdateRowColors()
                 row._indicator:SetTextColor(ar, ag, ab, 0.7)
             end
 
-            if row._hoverBg then
-                row._hoverBg:SetColorTexture(ar, ag, ab, 0.15)
-            end
-            if row._selectBg then
-                row._selectBg:SetColorTexture(ar, ag, ab, 0.25)
-            end
-
             -- Update tree line colors for child rows
             if row._treeLines then
                 local alpha = row._isModuleDisabled and (M().nav.treeLineAlpha * 0.3) or M().nav.treeLineAlpha
@@ -744,15 +682,14 @@ function Navigation:UpdateRowColors()
                 end
             end
 
-            -- Re-apply dim colors for disabled rows (parent or child)
-            if row._isModuleDisabled then
+            -- Re-apply the dim indicator on disabled rows; the label follows
+            -- its backdrop
+            if row._isModuleDisabled and row._indicator then
                 local dimR, dimG, dimB = Theme:GetDimTextColor()
-                if row._label then
-                    row._label:SetTextColor(dimR, dimG, dimB, 0.35)
-                end
-                if row._indicator then
-                    row._indicator:SetTextColor(dimR, dimG, dimB, 0.35)
-                end
+                row._indicator:SetTextColor(dimR, dimG, dimB, 0.35)
+            end
+            if row._backdrop then
+                row._backdrop:Refresh()
             end
 
             self:UpdateRowSelectionState(row)

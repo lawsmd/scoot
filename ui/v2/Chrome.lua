@@ -30,6 +30,10 @@
 --   Chrome.CreateFrame(role, frameType, name, parent, extraTemplates)
 --                                    a frame on the role's template, if it has one
 --   Chrome.NineSlice(frame, spec)    the nine-slice child a nineSlice role draws
+--   Chrome.Backdrop(role, frame, opts)
+--                                    a state handle drawing a role's backdrop on a
+--                                    control's frame (tab, tabBody, sectionHeader,
+--                                    sectionBody, navRow, dropdown)
 --   Chrome.Dump(push)                one line per role for the skin listing
 local addonName, addon = ...
 
@@ -55,11 +59,16 @@ Chrome.FLAT = {
     button        = { kind = "flat", labelColors = { normal = "accent", hover = "black", active = "background", disabled = "accent" } },
     resizeGrip    = { kind = "flat" },
     scrollBar     = { kind = "flat" },
-    tab           = { kind = "flat" },
-    tabBody       = { kind = "flat" },
-    sectionHeader = { kind = "flat", glyphs = { expanded = "\226\150\188", collapsed = "\226\150\182" } },
-    sectionBody   = { kind = "flat" },
-    navRow        = { kind = "flat" },
+    tab           = { kind = "flat", labelColors = { normal = "accent", hover = "accent", selected = "black" } },
+    tabBody       = { kind = "flat", fill = { 0, 0, 0, 0.15 } },
+    sectionHeader = { kind = "flat", background = "collapsible",
+                      glyphs = { expanded = "\226\150\188", collapsed = "\226\150\182" } },
+    sectionBody   = { kind = "flat", background = "collapsible" },
+    navRow        = {
+        kind = "flat",
+        parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
+        child  = { labelColors = { normal = "primary", hover = "accent", selected = "accent", disabled = { token = "dim", alpha = 0.35 } } },
+    },
     dropdown      = { kind = "flat" },
 }
 
@@ -179,6 +188,10 @@ end
 -- or {r=, g=, b=, a=}.
 function Chrome.Color(token)
     local Theme = addon.UI.Theme
+    if type(token) == "table" and token.token then
+        local r, g, b, a = Chrome.Color(token.token)
+        return r, g, b, (token.alpha ~= nil) and token.alpha or a
+    end
     if type(token) == "table" then
         return token[1] or token.r or 0, token[2] or token.g or 0, token[3] or token.b or 0,
             (token[4] ~= nil and token[4]) or (token.a ~= nil and token.a) or 1
@@ -238,6 +251,253 @@ function Chrome.NineSlice(frame, spec)
         child:SetBorderColor(Chrome.Color(spec.tint))
     end
     return child
+end
+
+--------------------------------------------------------------------------------
+-- Backdrop handles
+--------------------------------------------------------------------------------
+-- Chrome.Backdrop(role, frame, opts) draws a role's backdrop on a frame the
+-- control owns and returns a handle the control drives by state:
+--   SetHover(bool), SetSelected(bool), SetDisabled(bool), SetOpen(bool)
+--   Refresh()              repaint from the flags; the accent subscription calls it
+--   LabelColor([state])    r, g, b, a for the current or a named state
+--   SetShown(bool), Destroy()
+--   inset                  the horizontal content inset the parts take
+-- opts: variant ("parent" or "child", the navRow color maps), label (a
+-- FontString the handle colors by state), inset (an override).
+--
+-- The flat parts reproduce the framework's own draw for each role. The
+-- atlas kind shows one texture per declared state and falls back to normal.
+
+local function Ctl()
+    return addon.UI.Controls
+end
+
+local function Metrics()
+    return addon.UI.Controls.Metrics()
+end
+
+local handles = setmetatable({}, { __mode = "k" })
+local handlesSubscribed = false
+local function EnsureHandleSubscription()
+    if handlesSubscribed then return end
+    local Theme = addon.UI.Theme
+    if not Theme then return end
+    handlesSubscribed = true
+    Theme:Subscribe("ChromeBackdrops", function()
+        for h in pairs(handles) do
+            pcall(h.Refresh, h)
+        end
+    end)
+end
+
+local BackdropMT = {}
+BackdropMT.__index = BackdropMT
+
+-- Hover wins over selected where the control reads that way (a nav row's
+-- label brightens under the cursor even while selected); a tab keeps its
+-- selected look under the cursor.
+function BackdropMT:State()
+    if self.disabled then return "disabled" end
+    if self.hover and (self.hoverWins or not self.selected) then return "hover" end
+    if self.selected then return "selected" end
+    if self.open then return "open" end
+    return "normal"
+end
+
+function BackdropMT:LabelColor(state)
+    state = state or self:State()
+    local colors = self.labelColors or {}
+    local token = colors[state] or colors.normal or "accent"
+    return Chrome.Color(token)
+end
+
+function BackdropMT:Refresh()
+    if self.paint then self.paint() end
+    if self.label and self.labelColors then
+        self.label:SetTextColor(self:LabelColor())
+    end
+end
+
+function BackdropMT:SetHover(v) self.hover = v and true or false; self:Refresh() end
+function BackdropMT:SetSelected(v) self.selected = v and true or false; self:Refresh() end
+function BackdropMT:SetDisabled(v) self.disabled = v and true or false; self:Refresh() end
+function BackdropMT:SetOpen(v) self.open = v and true or false; self:Refresh() end
+
+function BackdropMT:SetShown(shown)
+    if shown then
+        if self.border then self.border:SetShown(true) end
+        self:Refresh()
+        return
+    end
+    for _, part in ipairs(self.parts or {}) do part:Hide() end
+    if self.border then self.border:SetShown(false) end
+end
+
+function BackdropMT:Destroy()
+    handles[self] = nil
+    for _, part in ipairs(self.parts or {}) do part:Hide() end
+    if self.border and self.border.Destroy then self.border:Destroy() end
+end
+
+local Flat = {}
+
+Flat.tab = function(h, frame, spec)
+    local m = Metrics().tab
+    h.selectedFill = Ctl().AddHoverFill(frame, { alpha = 1, inset = 1 })
+    h.hoverFill = Ctl().AddHoverFill(frame, { alpha = m.hoverAlpha, inset = 1, sublevel = Ctl().SUBLEVEL_BG })
+    h.border = Ctl().CreateBorder(frame, { alpha = m.borderAlpha })
+    h.parts = { h.selectedFill, h.hoverFill }
+    h.paint = function()
+        h.selectedFill:SetShown(h.selected)
+        h.hoverFill:SetShown(h.hover and not h.selected)
+    end
+end
+
+Flat.tabBody = function(h, frame, spec)
+    local m = Metrics().tab
+    h.border = Ctl().CreateBorder(frame, { thickness = m.borderWidth, alpha = m.borderAlpha })
+    local fill = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+    fill:SetPoint("TOPLEFT", m.borderWidth, 0)
+    fill:SetPoint("BOTTOMRIGHT", -m.borderWidth, m.borderWidth)
+    local c = spec.fill or { 0, 0, 0, 0.15 }
+    fill:SetColorTexture(c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1)
+    h.parts = { fill }
+    h.inset = m.borderWidth + m.contentPadding
+    h.paint = function() end
+end
+
+Flat.sectionHeader = function(h, frame, spec)
+    local m = Metrics().collapsible
+    h.bg = Ctl().AddBackground(frame, { color = spec.background or "collapsible" })
+    h.hoverFill = Ctl().AddHoverFill(frame)
+    h.border = Ctl().CreateBorder(frame, { thickness = m.borderWidth, alpha = m.borderAlpha, corners = "overlap" })
+    -- The verticals start under the top edge and run to the bottom, where
+    -- the body's edges take over while the section is open.
+    h.border.LEFT:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -m.borderWidth)
+    h.border.RIGHT:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -m.borderWidth)
+    h.parts = { h.bg, h.hoverFill }
+    h.paint = function()
+        h.hoverFill:SetShown(h.hover)
+        h.border.BOTTOM:SetShown(not h.open)
+    end
+end
+
+Flat.sectionBody = function(h, frame, spec)
+    local m = Metrics().collapsible
+    h.bg = Ctl().AddBackground(frame, { color = spec.background or "collapsible" })
+    -- Left, right and bottom edges just outside the content rect, closing the
+    -- box the header opened.
+    local function edge()
+        return frame:CreateTexture(nil, "BORDER", nil, -1)
+    end
+    local left = edge()
+    left:SetPoint("TOPLEFT", frame, "TOPLEFT", -m.borderWidth, 0)
+    left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -m.borderWidth, 0)
+    left:SetWidth(m.borderWidth)
+    local right = edge()
+    right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", m.borderWidth, 0)
+    right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", m.borderWidth, 0)
+    right:SetWidth(m.borderWidth)
+    local bottom = edge()
+    bottom:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", -m.borderWidth, 0)
+    bottom:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", m.borderWidth, 0)
+    bottom:SetHeight(m.borderWidth)
+    for _, tex in ipairs({ left, right, bottom }) do
+        Ctl().RegisterThemedFill(tex, m.borderAlpha)
+    end
+    h.parts = { h.bg, left, right, bottom }
+    h.inset = m.borderWidth
+    h.paint = function() end
+end
+
+Flat.navRow = function(h, frame, spec)
+    local m = Metrics().nav
+    local hoverBg = frame:CreateTexture(nil, "BACKGROUND")
+    hoverBg:SetAllPoints()
+    Ctl().RegisterThemedFill(hoverBg, m.hoverAlpha)
+    local selectBg = frame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    selectBg:SetAllPoints()
+    Ctl().RegisterThemedFill(selectBg, m.selectedAlpha)
+    h.hoverWins = true
+    h.parts = { hoverBg, selectBg }
+    h.paint = function()
+        hoverBg:SetShown(h.hover and not h.disabled)
+        selectBg:SetShown(h.selected and not h.disabled)
+    end
+end
+
+Flat.dropdown = function(h, frame, spec)
+    local m = Metrics().dropdown
+    h.border = Ctl().CreateBorder(frame, {
+        alpha = m.borderAlpha,
+        getAlpha = function() return h.hover and m.borderHoverAlpha or m.borderAlpha end,
+    })
+    h.bg = Ctl().AddBackground(frame, { inset = 1, sublevel = Ctl().SUBLEVEL_FILL })
+    h.hoverFill = Ctl().AddHoverFill(frame, { alpha = m.hoverAlpha, inset = 1, sublevel = Ctl().SUBLEVEL_HOVER })
+    h.parts = { h.bg, h.hoverFill }
+    h.paint = function()
+        h.hoverFill:SetShown(h.hover)
+        h.border:Refresh()
+    end
+end
+
+local function AtlasParts(h, frame, spec)
+    h.textures = {}
+    h.parts = {}
+    for _, state in ipairs(ATLAS_STATES) do
+        local name = spec[state]
+        if name then
+            local tex = frame:CreateTexture(nil, spec.layer or "BACKGROUND", nil, spec.sublevel)
+            if spec.sizing == "native" then
+                tex:SetAtlas(name, true)
+                tex:SetPoint(spec.point or "CENTER")
+            else
+                tex:SetAtlas(name)
+                tex:SetAllPoints()
+            end
+            tex:Hide()
+            h.textures[state] = tex
+            h.parts[#h.parts + 1] = tex
+        end
+    end
+    h.inset = spec.inset or 0
+    h.paint = function()
+        local pick = h.textures[h:State()] or h.textures.normal
+        for _, tex in pairs(h.textures) do
+            tex:SetShown(tex == pick)
+        end
+    end
+end
+
+function Chrome.Backdrop(role, frame, opts)
+    opts = opts or {}
+    local spec = Chrome.Spec(role)
+    local h = setmetatable({
+        role = role, frame = frame, spec = spec, label = opts.label,
+        hover = false, selected = false, disabled = false, open = false,
+        inset = 0, hoverWins = false,
+    }, BackdropMT)
+
+    local flat = Chrome.FLAT[role] or {}
+    local variant = opts.variant and (spec[opts.variant] or flat[opts.variant])
+    h.labelColors = (variant and variant.labelColors) or spec.labelColors or flat.labelColors
+
+    if spec.kind == "atlas" then
+        AtlasParts(h, frame, spec)
+    elseif Flat[role] then
+        Flat[role](h, frame, spec)
+    else
+        h.parts = {}
+        h.paint = function() end
+    end
+    if spec.hoverOverSelected ~= nil then h.hoverWins = spec.hoverOverSelected and true or false end
+    if opts.inset then h.inset = opts.inset end
+
+    handles[h] = true
+    EnsureHandleSubscription()
+    h:Refresh()
+    return h
 end
 
 --------------------------------------------------------------------------------

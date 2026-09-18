@@ -24,8 +24,12 @@ local function M()
     return Controls.Metrics()
 end
 
-local CHAR_EXPANDED = "▼"
-local CHAR_COLLAPSED = "▶"
+-- The indicator glyphs come from the sectionHeader role.
+local function Glyph(expanded)
+    local glyphs = addon.UI.Chrome.Spec("sectionHeader").glyphs or {}
+    if expanded then return glyphs.expanded or "\226\150\188" end
+    return glyphs.collapsed or "\226\150\182"
+end
 
 --------------------------------------------------------------------------------
 -- Session-only state storage
@@ -69,6 +73,9 @@ end
 --------------------------------------------------------------------------------
 
 function Controls:CreateCollapsibleSection(options)
+    local override = Controls.SkinOverride("Collapsible", options)
+    if override then return override end
+
     local theme = GetTheme()
     if not options or not options.parent then
         return nil
@@ -113,52 +120,14 @@ function Controls:CreateCollapsibleSection(options)
     header:SetHeight(M().sectionHeaderHeight)
     header:RegisterForClicks("AnyUp")
 
-    -- Solid gray background (always visible for visual distinction)
-    header._solidBg = Controls.AddBackground(header, { color = "collapsible" })
-
-    -- Hover background (on top of solid bg)
-    header._hoverBg = Controls.AddHoverFill(header)
-
-    -- Header border textures (stored for updating)
-    header._borders = {}
-
-    -- TOP border
-    local topBorder = header:CreateTexture(nil, "BORDER", nil, -1)
-    topBorder:SetPoint("TOPLEFT", header, "TOPLEFT", 0, 0)
-    topBorder:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, 0)
-    topBorder:SetHeight(M().collapsible.borderWidth)
-    topBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
-    header._borders.TOP = topBorder
-
-    -- LEFT border (extends down when expanded)
-    local leftBorder = header:CreateTexture(nil, "BORDER", nil, -1)
-    leftBorder:SetPoint("TOPLEFT", header, "TOPLEFT", 0, -M().collapsible.borderWidth)
-    leftBorder:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
-    leftBorder:SetWidth(M().collapsible.borderWidth)
-    leftBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
-    header._borders.LEFT = leftBorder
-
-    -- RIGHT border
-    local rightBorder = header:CreateTexture(nil, "BORDER", nil, -1)
-    rightBorder:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, -M().collapsible.borderWidth)
-    rightBorder:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
-    rightBorder:SetWidth(M().collapsible.borderWidth)
-    rightBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
-    header._borders.RIGHT = rightBorder
-
-    -- BOTTOM border (only shown when collapsed)
-    local bottomBorder = header:CreateTexture(nil, "BORDER", nil, -1)
-    bottomBorder:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
-    bottomBorder:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
-    bottomBorder:SetHeight(M().collapsible.borderWidth)
-    bottomBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
-    header._borders.BOTTOM = bottomBorder
+    -- Background, hover fill and the box edges come from the sectionHeader role
+    header._backdrop = addon.UI.Chrome.Backdrop("sectionHeader", header)
 
     -- Indicator (▼/▶)
     local indicator = header:CreateFontString(nil, "OVERLAY")
     theme:ApplyFont(indicator, "label", M().collapsible.indicatorSize)
     indicator:SetPoint("LEFT", header, "LEFT", M().collapsible.contentPadding, 0)
-    indicator:SetText(expanded and CHAR_EXPANDED or CHAR_COLLAPSED)
+    indicator:SetText(Glyph(expanded))
     indicator:SetTextColor(ar, ag, ab, 1)
     header._indicator = indicator
 
@@ -195,45 +164,13 @@ function Controls:CreateCollapsibleSection(options)
     content:SetPoint("TOPLEFT", header, "BOTTOMLEFT", M().collapsible.borderWidth, 0)
     content:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -M().collapsible.borderWidth, 0)
     content:SetHeight(contentHeight)
+
+    -- Background and the box's remaining edges come from the sectionBody role
+    content._backdrop = addon.UI.Chrome.Backdrop("sectionBody", content)
+    section._content = content
     -- Total horizontal inset of the content frame against the section, read
     -- by the builder to pass the reduced width into the inner builder.
-    section._contentInset = M().collapsible.borderWidth * 2
-
-    -- Content left border
-    local contentLeftBorder = section:CreateTexture(nil, "BORDER", nil, -1)
-    contentLeftBorder:SetPoint("TOPLEFT", content, "TOPLEFT", -M().collapsible.borderWidth, 0)
-    contentLeftBorder:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", -M().collapsible.borderWidth, 0)
-    contentLeftBorder:SetWidth(M().collapsible.borderWidth)
-    contentLeftBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
-    content._leftBorder = contentLeftBorder
-
-    -- Content right border
-    local contentRightBorder = section:CreateTexture(nil, "BORDER", nil, -1)
-    contentRightBorder:SetPoint("TOPRIGHT", content, "TOPRIGHT", M().collapsible.borderWidth, 0)
-    contentRightBorder:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", M().collapsible.borderWidth, 0)
-    contentRightBorder:SetWidth(M().collapsible.borderWidth)
-    contentRightBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
-    content._rightBorder = contentRightBorder
-
-    -- Content background (matching header gray for visual consistency)
-    content._bg = Controls.AddBackground(content, { color = "collapsible" })
-
-    section._content = content
-
-    ----------------------------------------------------------------------------
-    -- Footer (bottom border when expanded)
-    ----------------------------------------------------------------------------
-    local footer = CreateFrame("Frame", nil, section)
-    footer:SetPoint("TOPLEFT", content, "BOTTOMLEFT", -M().collapsible.borderWidth, 0)
-    footer:SetPoint("TOPRIGHT", content, "BOTTOMRIGHT", M().collapsible.borderWidth, 0)
-    footer:SetHeight(M().collapsible.borderWidth)
-
-    local footerBorder = footer:CreateTexture(nil, "BORDER", nil, -1)
-    footerBorder:SetAllPoints()
-    footerBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
-    footer._border = footerBorder
-
-    section._footer = footer
+    section._contentInset = content._backdrop.inset * 2
 
     ----------------------------------------------------------------------------
     -- Update visual state based on expanded/collapsed
@@ -241,23 +178,13 @@ function Controls:CreateCollapsibleSection(options)
     local function UpdateExpandedState()
         local isExpanded = section._expanded
 
+        header._backdrop:SetOpen(isExpanded)
+        header._indicator:SetText(Glyph(isExpanded))
         if isExpanded then
-            -- Expanded: show content, hide header bottom border
             content:Show()
-            content._leftBorder:Show()
-            content._rightBorder:Show()
-            footer:Show()
-            header._borders.BOTTOM:Hide()
-            header._indicator:SetText(CHAR_EXPANDED)
             section:SetHeight(M().sectionHeaderHeight + section._contentHeight + M().collapsible.borderWidth)
         else
-            -- Collapsed: hide content, show header bottom border
             content:Hide()
-            content._leftBorder:Hide()
-            content._rightBorder:Hide()
-            footer:Hide()
-            header._borders.BOTTOM:Show()
-            header._indicator:SetText(CHAR_COLLAPSED)
             section:SetHeight(M().sectionHeaderHeight)
         end
     end
@@ -270,11 +197,11 @@ function Controls:CreateCollapsibleSection(options)
     -- Header interaction
     ----------------------------------------------------------------------------
     header:SetScript("OnEnter", function(self)
-        self._hoverBg:Show()
+        self._backdrop:SetHover(true)
     end)
 
     header:SetScript("OnLeave", function(self)
-        self._hoverBg:Hide()
+        self._backdrop:SetHover(false)
     end)
 
     header:SetScript("OnClick", function(self, mouseButton)
@@ -295,18 +222,9 @@ function Controls:CreateCollapsibleSection(options)
     section._subscribeKey = subscribeKey
 
     theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update header borders (dimmed)
-        for _, tex in pairs(header._borders) do
-            tex:SetColorTexture(r, g, b, 0.6)
-        end
-        -- Update header elements
+        -- The box edges and fills retint through the backdrop handles; the
+        -- indicator is the one accent text here and the title stays white.
         header._indicator:SetTextColor(r, g, b, 1)
-        -- Title stays white (not accent)
-        -- Update content borders (dimmed)
-        content._leftBorder:SetColorTexture(r, g, b, 0.6)
-        content._rightBorder:SetColorTexture(r, g, b, 0.6)
-        -- Update footer (dimmed)
-        footer._border:SetColorTexture(r, g, b, 0.6)
     end)
 
     ----------------------------------------------------------------------------

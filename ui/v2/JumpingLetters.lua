@@ -170,26 +170,16 @@ local function DoSetup(row)
     -- Hide original label
     row._label:Hide()
 
-    -- Override hover/leave to sync colors on char FontStrings
+    -- Hover and leave go through the row's backdrop, and the character
+    -- FontStrings take the label color it resolves
     row:SetScript("OnEnter", function(self)
-        local ar, ag, ab = Theme:GetAccentColor()
-        self._hoverBg:SetColorTexture(ar, ag, ab, 0.15)
-        self._hoverBg:Show()
-        -- Hover: white text (matches original parent row behavior)
-        self._label:SetTextColor(1, 1, 1, 1)
-        SetAllCharColors(1, 1, 1, 1)
+        self._backdrop:SetHover(true)
+        SetAllCharColors(self._backdrop:LabelColor())
     end)
 
     row:SetScript("OnLeave", function(self)
-        self._hoverBg:Hide()
-        local ar, ag, ab = Theme:GetAccentColor()
-        if Navigation._selectedKey == self._key then
-            self._label:SetTextColor(1, 1, 1, 1)
-            SetAllCharColors(1, 1, 1, 1)
-        else
-            self._label:SetTextColor(ar, ag, ab, 1)
-            SetAllCharColors(ar, ag, ab, 1)
-        end
+        self._backdrop:SetHover(false)
+        SetAllCharColors(self._backdrop:LabelColor())
     end)
 
     -- Start first cycle

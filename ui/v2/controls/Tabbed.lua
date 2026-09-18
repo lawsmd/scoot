@@ -40,6 +40,9 @@ end
 -- TabbedSection: Horizontal tabs for organizing sub-settings
 
 function Controls:CreateTabbedSection(options)
+    local override = Controls.SkinOverride("TabbedSection", options)
+    if override then return override end
+
     local theme = GetTheme()
     if not options or not options.parent or not options.tabs or #options.tabs == 0 then
         return nil
@@ -105,18 +108,8 @@ function Controls:CreateTabbedSection(options)
     -- Height set dynamically based on selected tab content
     section._contentContainer = contentContainer
 
-    -- Content border textures (all 4 sides)
-    section._contentBorders = Controls.CreateBorder(contentContainer, {
-        thickness = M().tab.borderWidth,
-        alpha = M().tab.borderAlpha,
-    })
-
-    -- Content background
-    local contentBg = contentContainer:CreateTexture(nil, "BACKGROUND", nil, -8)
-    contentBg:SetPoint("TOPLEFT", M().tab.borderWidth, 0)
-    contentBg:SetPoint("BOTTOMRIGHT", -M().tab.borderWidth, M().tab.borderWidth)
-    contentBg:SetColorTexture(0, 0, 0, 0.15)
-    section._contentBg = contentBg
+    -- The body's border and fill come from the tabBody role
+    section._bodyBackdrop = addon.UI.Chrome.Backdrop("tabBody", contentContainer)
 
     -- Create tab buttons and content frames
 
@@ -159,19 +152,6 @@ function Controls:CreateTabbedSection(options)
         end
         tabBtn:SetWidth(btnWidth)
 
-        -- Selected fill background (accent color, shown when selected)
-        tabBtn._selectedFill = Controls.AddHoverFill(tabBtn, { alpha = 1, inset = 1 })
-
-        -- Hover background (subtle highlight)
-        tabBtn._hoverBg = Controls.AddHoverFill(tabBtn, {
-            alpha = 0.15,
-            inset = 1,
-            sublevel = Controls.SUBLEVEL_BG,
-        })
-
-        -- Tab border (full box)
-        tabBtn._borders = Controls.CreateBorder(tabBtn, { alpha = M().tab.borderAlpha })
-
         -- Label (offset left if info icon present)
         local labelStr = tabBtn:CreateFontString(nil, "OVERLAY")
         theme:ApplyFont(labelStr, "label", M().tab.fontSize)
@@ -182,8 +162,10 @@ function Controls:CreateTabbedSection(options)
             labelStr:SetPoint("CENTER", 0, 0)
         end
         labelStr:SetText(tabData.label)
-        labelStr:SetTextColor(ar, ag, ab, 1)
         tabBtn._label = labelStr
+
+        -- Fills, border and the label's color by state come from the tab role
+        tabBtn._backdrop = addon.UI.Chrome.Backdrop("tab", tabBtn, { label = labelStr })
 
         -- Info icon (if specified)
         if hasInfoIcon and Controls.CreateInfoIcon then
@@ -210,13 +192,11 @@ function Controls:CreateTabbedSection(options)
 
         -- Hover handlers
         tabBtn:SetScript("OnEnter", function(self)
-            if section._selectedTabKey ~= self._tabKey then
-                self._hoverBg:Show()
-            end
+            self._backdrop:SetHover(true)
         end)
 
         tabBtn:SetScript("OnLeave", function(self)
-            self._hoverBg:Hide()
+            self._backdrop:SetHover(false)
         end)
 
         return tabBtn
@@ -224,12 +204,12 @@ function Controls:CreateTabbedSection(options)
 
     -- Total horizontal inset of a tab content frame against the section, read
     -- by the builder to pass the reduced width into the inner builders.
-    section._contentInset = (M().tab.borderWidth + M().tab.contentPadding) * 2
+    section._contentInset = section._bodyBackdrop.inset * 2
 
     local function CreateTabContent(tabData, index)
         local content = CreateFrame("Frame", nil, contentContainer)
-        content:SetPoint("TOPLEFT", contentContainer, "TOPLEFT", M().tab.borderWidth + M().tab.contentPadding, -M().tab.contentPadding)
-        content:SetPoint("TOPRIGHT", contentContainer, "TOPRIGHT", -(M().tab.borderWidth + M().tab.contentPadding), -M().tab.contentPadding)
+        content:SetPoint("TOPLEFT", contentContainer, "TOPLEFT", section._bodyBackdrop.inset, -M().tab.contentPadding)
+        content:SetPoint("TOPRIGHT", contentContainer, "TOPRIGHT", -section._bodyBackdrop.inset, -M().tab.contentPadding)
         -- Height managed dynamically
         content._tabKey = tabData.key
         content._tabIndex = index
@@ -314,17 +294,8 @@ function Controls:CreateTabbedSection(options)
     local function UpdateTabVisuals()
         for key, tabBtn in pairs(section._tabButtons) do
             local isSelected = (key == section._selectedTabKey)
-            tabBtn._selectedFill:SetShown(isSelected)
-            tabBtn._hoverBg:Hide()
-
-            if isSelected then
-                -- Selected: inverted colors (accent fill, dark text)
-                tabBtn._label:SetTextColor(0, 0, 0, 1)
-            else
-                -- Not selected: accent text, no fill
-                local r, g, b = theme:GetAccentColor()
-                tabBtn._label:SetTextColor(r, g, b, 1)
-            end
+            tabBtn._backdrop.hover = false
+            tabBtn._backdrop:SetSelected(isSelected)
         end
 
         -- Show/hide content frames
@@ -351,20 +322,7 @@ function Controls:CreateTabbedSection(options)
     UpdateTabVisuals()
     UpdateSectionHeight()
 
-    -- Theme subscription
-    local subscribeKey = "TabbedSection_" .. componentId .. "_" .. sectionKey
-    section._subscribeKey = subscribeKey
-
-    theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Borders and fills retint via Utils; only the labels need per-state handling
-        for key, tabBtn in pairs(section._tabButtons) do
-            if key == section._selectedTabKey then
-                tabBtn._label:SetTextColor(0, 0, 0, 1)  -- Dark text on accent fill
-            else
-                tabBtn._label:SetTextColor(r, g, b, 1)  -- Accent text
-            end
-        end
-    end)
+    -- Fills, borders and label colors retint through the backdrop handles.
 
     -- Public methods
     function section:SelectTab(tabKey)
