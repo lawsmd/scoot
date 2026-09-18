@@ -21,6 +21,8 @@ libs/LibStub/LibStub.lua
 libs/CallbackHandler-1.0/CallbackHandler-1.0.xml
 libs/AceEvent-3.0/AceEvent-3.0.xml
 libs/AceDB-3.0/AceDB-3.0.xml
+libs/LibDataBroker-1.1/LibDataBroker-1.1.lua
+libs/LibDBIcon-1.0/lib.xml
 
 ## Identity before everything else. A borrowed file that wants a name or a
 ## media root reads addon.Brand and addon.MediaPath, and a file-scope read of
@@ -51,6 +53,12 @@ core/fontpair.lua
 core/pool.lua
 core/barborders.lua
 core/dialogs.lua
+
+## The minimap button. One file for both addons: it reads its icon and its
+## storage off addon.MinimapIcon and addon.MinimapButtonStore at login, and
+## forever/minimap.lua below sets both. commands.lua above it, because it
+## registers a slash command at file scope.
+core/minimap.lua
 
 ## Camelot
 forever/db.lua
@@ -126,8 +134,9 @@ ui/v2/settingspanel/navigation.lua
 ui/v2/settingspanel/deeplink.lua
 ui/v2/GameMenu.lua
 
-## Camelot's page tree and its chrome gallery, then the slash entry, which
-## binds the word last.
+## Camelot's page tree, the minimap button's icon and storage, then the
+## slash entry, which binds the word last.
 forever/menu.lua
+forever/minimap.lua
 forever/gallery.lua
 forever/debug.lua
