@@ -172,6 +172,12 @@ function Navigation:InitializeExpandedState()
             self._expandedSections[parent.key] = false
         end
     end
+    -- One group is open at a time, and it is the selected page's. A rebuild
+    -- after a skin switch keeps the selected key, so its group comes back open.
+    local parentKey = self:ParentKeyOf(self._selectedKey)
+    if parentKey then
+        self._expandedSections[parentKey] = true
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -382,6 +388,9 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
     -- the navRow role's parent variant
     row._backdrop = Chrome.Backdrop("navRow", row, { variant = "parent", label = label })
     row._backdrop:SetDisabled(isModuleDisabled)
+    if navItem.collapsible then
+        row._backdrop:SetOpen(self._expandedSections[navItem.key] and true or false)
+    end
 
     if isModuleDisabled then
         -- Disabled: gray out the indicator, show tooltip on hover
@@ -623,16 +632,49 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
 end
 
 --------------------------------------------------------------------------------
--- Toggle Section Expand/Collapse
+-- Expand One Section (the nav is an accordion)
 --------------------------------------------------------------------------------
 
+-- The parent key a child key sits under; nil for a parent key or for a page
+-- the tree does not hold, such as the toolbar's.
+function Navigation:ParentKeyOf(key)
+    if not key then return nil end
+    for _, parent in ipairs(self.NavModel) do
+        if parent.children then
+            for _, child in ipairs(parent.children) do
+                if child.key == key then return parent.key end
+            end
+        end
+    end
+    return nil
+end
+
+-- The one writer of the expanded state besides the disabled force-collapse
+-- in BuildRows: opens parentKey, closes every other group, and rebuilds when
+-- anything moved. nil closes them all. Returns whether anything changed.
+function Navigation:ExpandOnly(parentKey)
+    local changed = false
+    for _, parent in ipairs(self.NavModel) do
+        if parent.collapsible then
+            local want = (parent.key == parentKey)
+            if (self._expandedSections[parent.key] or false) ~= want then
+                self._expandedSections[parent.key] = want
+                changed = true
+            end
+        end
+    end
+    if changed then self:Rebuild() end
+    return changed
+end
+
+-- A click on a group's row: a closed group opens and the rest close; the
+-- open group closes. The content pane keeps its page either way.
 function Navigation:ToggleSection(parentKey)
     if not parentKey then return end
-
-    self._expandedSections[parentKey] = not self._expandedSections[parentKey]
-
-    if self._frame and self._frame._content then
-        self:BuildRows(self._frame._content)
+    if self._expandedSections[parentKey] then
+        self:ExpandOnly(nil)
+    else
+        self:ExpandOnly(parentKey)
     end
 end
 
@@ -645,6 +687,13 @@ function Navigation:SelectItem(key)
 
     local previousKey = self._selectedKey
     self._selectedKey = key
+
+    -- The page's group opens and the others close. A page outside the tree,
+    -- the toolbar's, leaves the groups as they are.
+    local parentKey = self:ParentKeyOf(key)
+    if parentKey then
+        self:ExpandOnly(parentKey)
+    end
 
     for _, row in ipairs(self._rows) do
         if row and row._key then
@@ -707,34 +756,6 @@ function Navigation:UpdateRowColors()
 
             self:UpdateRowSelectionState(row)
         end
-    end
-end
-
---------------------------------------------------------------------------------
--- Expand All / Collapse All
---------------------------------------------------------------------------------
-
-function Navigation:ExpandAll()
-    for _, parent in ipairs(self.NavModel) do
-        if parent.collapsible then
-            self._expandedSections[parent.key] = true
-        end
-    end
-
-    if self._frame and self._frame._content then
-        self:BuildRows(self._frame._content)
-    end
-end
-
-function Navigation:CollapseAll()
-    for _, parent in ipairs(self.NavModel) do
-        if parent.collapsible then
-            self._expandedSections[parent.key] = false
-        end
-    end
-
-    if self._frame and self._frame._content then
-        self:BuildRows(self._frame._content)
     end
 end
 

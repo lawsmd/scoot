@@ -13,17 +13,15 @@ local Navigation = addon.UI.Navigation
 -- NavModel lookups
 --------------------------------------------------------------------------------
 
-local parentKeys      -- childKey -> parentKey
 local navChildren     -- childKey -> nav child entry
 
 local function BuildMaps()
-    if parentKeys then return end
-    parentKeys, navChildren = {}, {}
+    if navChildren then return end
+    navChildren = {}
 
     for _, parent in ipairs(Navigation.NavModel or {}) do
         if parent.children then
             for _, child in ipairs(parent.children) do
-                parentKeys[child.key] = parent.key
                 navChildren[child.key] = child
             end
         end
@@ -100,23 +98,14 @@ function addon.UI:OpenToPage(navKey, opts)
         UIPanel[opts.pageState.key] = opts.pageState.value
     end
 
-    -- Step 2: expand the parent nav section.
-    local parentKey = parentKeys[targetKey]
-    local expandChanged = false
-    if parentKey and not Navigation._expandedSections[parentKey] then
-        Navigation._expandedSections[parentKey] = true
-        expandChanged = true
-    end
-
-    -- Step 3: show. Show() rebuilds the nav itself.
+    -- Step 2: show. Show() rebuilds the nav itself.
     if not UIPanel:IsShown() then
         UIPanel:Show()
-    elseif expandChanged then
-        Navigation:Rebuild()
     end
 
-    -- Step 4: render. Must follow Show(); the guard in UIPanel:Show's deferred
+    -- Step 3: render. Must follow Show(); the guard in UIPanel:Show's deferred
     -- re-render is what stops it repainting the previous page over this one.
+    -- SelectItem opens the page's nav group and closes the rest.
     Navigation:SelectItem(targetKey)
     return true
 end
