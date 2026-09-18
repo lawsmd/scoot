@@ -15,6 +15,8 @@
 --              the window role the frame itself is the template, and the
 --              descriptor names the portrait and a contentBackground
 --   window     the window template supplies this part (titleBar, closeButton)
+--   card       a nine-slice cut out of one atlas by texcoords, with a glow
+--              shown while open: atlas (or texture and size), slice, glow
 --   ascii, text, texture   how the title bar presents the product's title
 -- Any descriptor may carry fallback (another descriptor), labelColors (a
 -- color token per state), font ("role" or "template") and inset.
@@ -36,6 +38,8 @@
 --                                    a frame on the role's template, if it has one;
 --                                    a resolved descriptor stands in for the role
 --   Chrome.NineSlice(frame, spec)    the nine-slice child a nineSlice role draws
+--   Chrome.SlicedAtlas(frame, spec, layer, sublevel)
+--                                    nine textures cut from one atlas by texcoords
 --   Chrome.Backdrop(role, frame, opts)
 --                                    a state handle drawing a role's backdrop on a
 --                                    control's frame (tab, tabBody, sectionHeader,
@@ -145,6 +149,10 @@ function Chrome.Available(spec)
     elseif kind == "window" then
         -- The window template's own part: there when the window is a template
         return Chrome.Spec("window").kind == "template"
+    elseif kind == "card" then
+        -- The face has to exist; the glow resolves on its own and may be absent
+        if spec.atlas then return atlasExists(spec.atlas) end
+        return type(spec.texture) == "string"
     elseif kind == "atlas" then
         -- One atlas (a content background, a glow), or one per state
         if spec.atlas then return atlasExists(spec.atlas) end
@@ -279,6 +287,96 @@ function Chrome.NineSlice(frame, spec)
         child:SetBorderColor(Chrome.Color(spec.tint))
     end
     return child
+end
+
+-- A nine-slice cut out of one atlas member, or one bundled file, by
+-- texcoords: spec.atlas, or spec.texture with spec.size = { w, h } and an
+-- optional spec.texCoords = { l, r, t, b }; spec.slice = { left, right, top,
+-- bottom } in the member's own pixels. The corners keep their size, the
+-- edges stretch one way and the center both, all on anchors to the frame, so
+-- a resize costs nothing. A zero side omits its pieces, which makes
+-- { top, bottom } a vertical three-slice. Returns nil when the art is
+-- missing, else a handle: pieces, SetShown, SetDesaturated, SetAlpha,
+-- SetVertexColor, Destroy.
+function Chrome.SlicedAtlas(frame, spec, layer, sublevel)
+    local file, w, h, L, R, T, B
+    if spec.atlas then
+        if not (C_Texture and C_Texture.GetAtlasInfo) then return nil end
+        local ok, info = pcall(C_Texture.GetAtlasInfo, spec.atlas)
+        if not ok or type(info) ~= "table" then return nil end
+        file = info.file or info.filename
+        w, h = info.width, info.height
+        L, R, T, B = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+    elseif type(spec.texture) == "string" then
+        file = spec.texture
+        w, h = spec.size and spec.size[1], spec.size and spec.size[2]
+        local tc = spec.texCoords or { 0, 1, 0, 1 }
+        L, R, T, B = tc[1], tc[2], tc[3], tc[4]
+    else
+        return nil
+    end
+    if not (file and w and h and w > 0 and h > 0 and L and R and T and B) then return nil end
+
+    local slice = spec.slice or {}
+    local sl, sr = slice.left or 0, slice.right or 0
+    local st, sb = slice.top or 0, slice.bottom or 0
+    local du, dv = (R - L) / w, (B - T) / h
+    local u = { L, L + sl * du, R - sr * du, R }
+    local v = { T, T + st * dv, B - sb * dv, B }
+    local colWidth = { sl, nil, sr }
+    local rowHeight = { st, nil, sb }
+
+    local pieces = {}
+    local function piece(col, row)
+        local tex = frame:CreateTexture(nil, layer or "BACKGROUND", nil, sublevel)
+        tex:SetTexture(file)
+        tex:SetTexCoord(u[col], u[col + 1], v[row], v[row + 1])
+        pieces[#pieces + 1] = tex
+        return tex
+    end
+    for row = 1, 3 do
+        for col = 1, 3 do
+            local cw, rh = colWidth[col], rowHeight[row]
+            local skip = (cw ~= nil and cw <= 0) or (rh ~= nil and rh <= 0)
+            if not skip then
+                local tex = piece(col, row)
+                if cw then tex:SetWidth(cw) end
+                if rh then tex:SetHeight(rh) end
+                -- Column anchors: left column at the left edge, right column
+                -- at the right edge, the middle between the two slice widths
+                local x1, x2 = (col == 1) and 0 or sl, (col == 3) and 0 or -sr
+                local y1, y2 = (row == 1) and 0 or -st, (row == 3) and 0 or sb
+                if col == 1 and row == 1 then tex:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+                elseif col == 3 and row == 1 then tex:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+                elseif col == 1 and row == 3 then tex:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+                elseif col == 3 and row == 3 then tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+                elseif row == 1 then
+                    tex:SetPoint("TOPLEFT", frame, "TOPLEFT", x1, 0)
+                    tex:SetPoint("TOPRIGHT", frame, "TOPRIGHT", x2, 0)
+                elseif row == 3 then
+                    tex:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", x1, 0)
+                    tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", x2, 0)
+                elseif col == 1 then
+                    tex:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, y1)
+                    tex:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, y2)
+                elseif col == 3 then
+                    tex:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, y1)
+                    tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, y2)
+                else
+                    tex:SetPoint("TOPLEFT", frame, "TOPLEFT", x1, y1)
+                    tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", x2, y2)
+                end
+            end
+        end
+    end
+
+    local handle = { pieces = pieces }
+    function handle:SetShown(shown) for _, t in ipairs(self.pieces) do t:SetShown(shown) end end
+    function handle:SetDesaturated(on) for _, t in ipairs(self.pieces) do t:SetDesaturated(on and true or false) end end
+    function handle:SetAlpha(a) for _, t in ipairs(self.pieces) do t:SetAlpha(a) end end
+    function handle:SetVertexColor(r, g, b, a) for _, t in ipairs(self.pieces) do t:SetVertexColor(r, g, b, a or 1) end end
+    function handle:Destroy() for _, t in ipairs(self.pieces) do t:Hide() end end
+    return handle
 end
 
 --------------------------------------------------------------------------------
@@ -498,6 +596,44 @@ local function AtlasParts(h, frame, spec)
     end
 end
 
+-- The card: the face sliced from its atlas, a glow at the right edge while
+-- the group is open, a hover fill inside the face, the label colored by
+-- state. The glow and the fill read the flags directly, since the glow has
+-- to stay while the cursor is over it.
+local function CardParts(h, frame, spec)
+    local m = Metrics().nav.card
+    h.parts = {}
+    h.art = Chrome.SlicedAtlas(frame, spec, spec.layer or "BACKGROUND", spec.sublevel)
+    if h.art then
+        for _, tex in ipairs(h.art.pieces) do h.parts[#h.parts + 1] = tex end
+    end
+    local glowSpec = spec.glow and Chrome.Resolve(spec.glow, nil)
+    if glowSpec and glowSpec.kind == "atlas" and glowSpec.atlas then
+        local ok, info = pcall(C_Texture.GetAtlasInfo, glowSpec.atlas)
+        local aspect = (ok and info and info.height and info.height > 0) and (info.width / info.height) or 1
+        local glow = frame:CreateTexture(nil, "ARTWORK")
+        glow:SetAtlas(glowSpec.atlas)
+        glow:SetSize(m.height * aspect, m.height)
+        glow:SetPoint(glowSpec.point or "RIGHT", frame, glowSpec.point or "RIGHT", glowSpec.x or m.glowOffset, glowSpec.y or 0)
+        glow:Hide()
+        h.glow = glow
+        h.parts[#h.parts + 1] = glow
+    end
+    if m.hoverAlpha and m.hoverAlpha > 0 then
+        h.hoverFill = Ctl().AddHoverFill(frame, { alpha = m.hoverAlpha, inset = (spec.slice and spec.slice.left) or 0 })
+        h.parts[#h.parts + 1] = h.hoverFill
+    end
+    h.hoverWins = true
+    h.paint = function()
+        if h.glow then h.glow:SetShown((h.open or h.selected) and not h.disabled) end
+        if h.hoverFill then h.hoverFill:SetShown(h.hover and not h.disabled) end
+        if h.art then
+            h.art:SetDesaturated(h.disabled)
+            h.art:SetAlpha(h.disabled and m.disabledAlpha or 1)
+        end
+    end
+end
+
 function Chrome.Backdrop(role, frame, opts)
     opts = opts or {}
     local spec = Chrome.Spec(role)
@@ -513,6 +649,8 @@ function Chrome.Backdrop(role, frame, opts)
 
     if spec.kind == "atlas" then
         AtlasParts(h, frame, spec)
+    elseif spec.kind == "card" then
+        CardParts(h, frame, spec)
     elseif Flat[role] then
         Flat[role](h, frame, spec)
     else
@@ -537,6 +675,10 @@ local function describe(spec)
     local kind = spec.kind or "?"
     if kind == "template" then return kind .. " " .. tostring(spec.template) end
     if kind == "window" then return "window (the window template's part)" end
+    if kind == "card" then
+        local glow = type(spec.glow) == "table" and spec.glow.atlas
+        return kind .. " " .. tostring(spec.atlas or spec.texture) .. (glow and (" glow=" .. glow) or "")
+    end
     if kind == "nineSlice" then
         return kind .. " " .. tostring(spec.layout) .. (spec.textureKit and (" / " .. spec.textureKit) or "")
     end

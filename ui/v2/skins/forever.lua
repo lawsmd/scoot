@@ -139,8 +139,25 @@ Skin.Register("forever", {
             parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
             child  = { labelColors = { normal = "primary", hover = "accent", selected = "accent", disabled = { token = "dim", alpha = 0.35 } } },
         },
-        navCard = { kind = "flat" },
-        navDivider = { kind = "flat" },
+        -- The Legacy pane's group cards, the label centered on the card face
+        -- and the gold glow at the right edge while the group is open. The
+        -- face is cut into nine slices by texcoords so the cell can be a
+        -- line of text tall; the slice widths are read off the gallery
+        -- report. Neither atlas exists on retail, where the group is the
+        -- text row navRow draws.
+        navCard = {
+            kind = "card", atlas = "Legacy-Tree-Frame-Card",
+            slice = { left = 12, right = 12, top = 12, bottom = 12 },
+            glow = { kind = "atlas", atlas = "Legacy-Tree-Frame-Card-Glow" },
+            labelColors = { normal = "primary", hover = "accent", open = "accent", selected = "accent",
+                            disabled = { token = "dim", alpha = 0.35 } },
+            fallback = { kind = "flat" },
+        },
+        -- The Legacy pane's divider between its column and its content.
+        navDivider = {
+            kind = "atlas", normal = "Legacy-Tree-Frame-divider-Vertical",
+            fallback = { kind = "flat" },
+        },
         dropdown = { kind = "flat" },
     },
 
@@ -200,10 +217,15 @@ Skin.Register("forever", {
         nav = {
             rowHeight = 24, parentRowHeight = 28, childIndent = 20,
             padLeft = 8, padTop = 8,
-            treeLineWidth = 1, treeLineX = 10, treeLineLength = 10, treeLineAlpha = 0.4,
+            treeLineWidth = 0, treeLineX = 10, treeLineLength = 10, treeLineAlpha = 0.4,
             dividerWidth = 1, dividerAlpha = 0.4,
             indicatorSize = 10,
             hoverAlpha = 0.15, selectedAlpha = 0.25,
+            -- The group cards: a line of text tall, the glow scaled to the
+            -- height. Every number here waits on the beta.
+            card = { height = 40, spacing = 4, padX = 4, glowOffset = -6,
+                     hoverAlpha = 0.08, disabledAlpha = 0.75,
+                     labelFontRole = "label", labelSize = 12 },
         },
         scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4,
                       trackAlpha = 0.1, thumbAlpha = 0.5, thumbHoverAlpha = 0.8, thumbDragAlpha = 1 },

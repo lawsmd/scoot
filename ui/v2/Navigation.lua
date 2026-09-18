@@ -296,7 +296,7 @@ function Navigation:BuildRows(contentFrame)
         -- Create parent row
         local parentRow = self:CreateParentRow(contentFrame, parent, yOffset, isParentModuleDisabled)
         self._rows[rowIndex] = parentRow
-        yOffset = yOffset - M().nav.parentRowHeight
+        yOffset = yOffset - self:ParentRowHeight()
 
         -- Create child rows if parent is collapsible and has children
         if parent.collapsible and parent.children then
@@ -341,11 +341,33 @@ end
 -- Create Parent Row (Section header - no tree lines)
 --------------------------------------------------------------------------------
 
+-- A parent row is a card when the navCard role says so: the label centered
+-- on the card's art, no glyph, a glow while the group is open, its height
+-- and spacing from nav.card. Otherwise it is the text row navRow draws.
+function Navigation:IsCardNav()
+    return Chrome.Spec("navCard").kind == "card"
+end
+
+function Navigation:ParentRowHeight()
+    if self:IsCardNav() then
+        return M().nav.card.height + M().nav.card.spacing
+    end
+    return M().nav.parentRowHeight
+end
+
 function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
+    local isCard = self:IsCardNav()
     local row = CreateFrame("Button", nil, parent)
-    row:SetHeight(M().nav.parentRowHeight)
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, yOffset)
+    if isCard then
+        local c = M().nav.card
+        row:SetHeight(c.height)
+        row:SetPoint("TOPLEFT", parent, "TOPLEFT", c.padX, yOffset)
+        row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -c.padX, yOffset)
+    else
+        row:SetHeight(M().nav.parentRowHeight)
+        row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
+        row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, yOffset)
+    end
     row:EnableMouse(true)
     row:RegisterForClicks("AnyUp")
 
@@ -358,35 +380,48 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
 
     local ar, ag, ab = Theme:GetAccentColor()
 
-    -- Expand/collapse indicator (▶/▼) - only for collapsible
-    local indicator = row:CreateFontString(nil, "OVERLAY")
-    Theme:ApplyFont(indicator, "button", M().nav.indicatorSize)
-    indicator:SetPoint("LEFT", row, "LEFT", 4, 0)
-
-    if navItem.collapsible then
-        local isExpanded = self._expandedSections[navItem.key]
-        indicator:SetText(isExpanded and "▼" or "▶")
-        indicator:SetTextColor(ar, ag, ab, 0.7)
-    else
-        indicator:SetText("")
-    end
-    row._indicator = indicator
-
-    -- Label text
+    local indicator
     local label = row:CreateFontString(nil, "OVERLAY")
-    local labelSize = navItem.fontSize or 12
-    Theme:ApplyLabelFont(label, labelSize)
-    if navItem.collapsible then
-        label:SetPoint("LEFT", indicator, "RIGHT", 6, 0)
-    else
-        label:SetPoint("LEFT", row, "LEFT", 8, 0)
-    end
-    label:SetText(navItem.label)
-    row._label = label
+    if isCard then
+        local c = M().nav.card
+        Theme:ApplyFont(label, c.labelFontRole, c.labelSize)
+        label:SetPoint("CENTER", row, "CENTER", 0, 0)
+        label:SetJustifyH("CENTER")
+        label:SetText(navItem.label)
+        row._label = label
 
-    -- Hover and selection fills, and the label's color by state, come from
-    -- the navRow role's parent variant
-    row._backdrop = Chrome.Backdrop("navRow", row, { variant = "parent", label = label })
+        -- The card's art, glow and hover fill, and the label's color by state
+        row._backdrop = Chrome.Backdrop("navCard", row, { label = label })
+    else
+        -- Expand/collapse indicator (▶/▼) - only for collapsible
+        indicator = row:CreateFontString(nil, "OVERLAY")
+        Theme:ApplyFont(indicator, "button", M().nav.indicatorSize)
+        indicator:SetPoint("LEFT", row, "LEFT", 4, 0)
+
+        if navItem.collapsible then
+            local isExpanded = self._expandedSections[navItem.key]
+            indicator:SetText(isExpanded and "▼" or "▶")
+            indicator:SetTextColor(ar, ag, ab, 0.7)
+        else
+            indicator:SetText("")
+        end
+        row._indicator = indicator
+
+        -- Label text
+        local labelSize = navItem.fontSize or 12
+        Theme:ApplyLabelFont(label, labelSize)
+        if navItem.collapsible then
+            label:SetPoint("LEFT", indicator, "RIGHT", 6, 0)
+        else
+            label:SetPoint("LEFT", row, "LEFT", 8, 0)
+        end
+        label:SetText(navItem.label)
+        row._label = label
+
+        -- Hover and selection fills, and the label's color by state, come from
+        -- the navRow role's parent variant
+        row._backdrop = Chrome.Backdrop("navRow", row, { variant = "parent", label = label })
+    end
     row._backdrop:SetDisabled(isModuleDisabled)
     if navItem.collapsible then
         row._backdrop:SetOpen(self._expandedSections[navItem.key] and true or false)
@@ -395,7 +430,7 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
     if isModuleDisabled then
         -- Disabled: gray out the indicator, show tooltip on hover
         local dimR, dimG, dimB = Theme:GetDimTextColor()
-        if navItem.collapsible then
+        if navItem.collapsible and indicator then
             indicator:SetTextColor(dimR, dimG, dimB, 0.35)
         end
 

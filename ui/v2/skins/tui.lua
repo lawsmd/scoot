@@ -146,6 +146,11 @@ Skin.Register("tui", {
             dividerWidth = 1, dividerAlpha = 0.4,
             indicatorSize = 10,
             hoverAlpha = 0.15, selectedAlpha = 0.25,
+            -- The card a parent row becomes under a card navCard role; unused
+            -- while the role is flat, carried so every skin has the keys
+            card = { height = 40, spacing = 4, padX = 4, glowOffset = -6,
+                     hoverAlpha = 0.08, disabledAlpha = 0.75,
+                     labelFontRole = "label", labelSize = 12 },
         },
         scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4,
                       trackAlpha = 0.1, thumbAlpha = 0.5, thumbHoverAlpha = 0.8, thumbDragAlpha = 1 },
