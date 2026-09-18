@@ -1,4 +1,11 @@
--- Window.lua - Base window component with glow border and frosted glass effect
+-- Window.lua - the settings window's frame: background, chrome and border,
+-- drawn the way the active skin's window role says.
+--
+-- The window role (addon.UI.Chrome, Spec("window")) is flat or nineSlice.
+-- Flat is the panel's own look: a background fill, a noise layer over it,
+-- and a solid border windowBorderWidth wide. nineSlice puts Blizzard's
+-- nine-slice pieces on a child frame instead, and the content inset the
+-- panes anchor from is the skin's windowInset metric either way.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -6,21 +13,15 @@ addon.UI.Window = {}
 local Window = addon.UI.Window
 local Theme = addon.UI.Theme
 
---------------------------------------------------------------------------------
--- Noise Overlay Constants
---------------------------------------------------------------------------------
-
--- The loading addon's folder, not a literal: the Forever client has no Scoot
--- folder to resolve against.
-local NOISE_TEXTURE_PATH = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\textures\\frosted-noise"
-local NOISE_TEXTURE_SIZE = 2048  -- Matches the 2048x2048 frosted-noise.tga
-local NOISE_ALPHA = 0.25       -- Subtle noise blending
+local function Metrics()
+    return addon.UI.Controls.Metrics()
+end
 
 --------------------------------------------------------------------------------
 -- Window Factory
 --------------------------------------------------------------------------------
 
--- Create a UI-styled window with glow border and frosted glass background
+-- Create the settings window frame
 -- @param name: Global frame name
 -- @param parent: Parent frame (default UIParent)
 -- @param width: Window width (default 900)
@@ -41,11 +42,25 @@ function Window:Create(name, parent, width, height)
     frame._defaultWidth = width or 900
     frame._defaultHeight = height or 650
 
-    -- Build window layers
-    self:CreateBackground(frame)
-    self:CreateNoiseOverlay(frame)  -- Frosted glass effect
-    -- self:CreateGlowBorder(frame)  -- Disabled: needs gradient texture for real glow
-    self:CreateSolidBorder(frame)
+    local spec = addon.UI.Chrome.Spec("window")
+    frame._chromeSpec = spec
+
+    self:CreateBackground(frame, spec)
+    if spec.kind == "nineSlice" then
+        frame._chrome = addon.UI.Chrome.NineSlice(frame, spec)
+    else
+        if spec.noise then
+            self:CreateNoiseOverlay(frame, spec.noise)
+        end
+        self:CreateSolidBorder(frame, spec)
+    end
+
+    -- The inset every pane anchors from: the flat border's width, or the
+    -- distance a nine-slice frame's art reaches into the rect.
+    function frame:GetContentInset()
+        local m = Metrics()
+        return (m and m.windowInset) or Theme.BORDER_WIDTH or 3
+    end
 
     -- NOTE: Dragging is NOT registered on the main frame.
     -- The SettingsPanel creates a title bar that handles dragging instead,
@@ -62,26 +77,35 @@ end
 -- Background Layer (semi-transparent dark)
 --------------------------------------------------------------------------------
 
-function Window:CreateBackground(frame)
-    frame._bg = addon.UI.Controls.AddBackground(frame, { color = "window" })
+function Window:CreateBackground(frame, spec)
+    frame._bg = addon.UI.Controls.AddBackground(frame, {
+        color = (spec and spec.background) or "window",
+        inset = (spec and spec.backgroundInset) or 0,
+    })
 end
 
 --------------------------------------------------------------------------------
 -- Noise Overlay (frosted glass effect)
 --------------------------------------------------------------------------------
 
-function Window:CreateNoiseOverlay(frame)
+-- noise = { texture = <Theme.Textures key>, size = <texture side in px>,
+--           alpha, blend }, from the window descriptor.
+function Window:CreateNoiseOverlay(frame, noiseSpec)
+    local path = Theme.Textures and Theme.Textures[noiseSpec.texture or "NOISE_OVERLAY"]
+    if not path then return nil end
+    local textureSize = noiseSpec.size or 2048
+
     local noise = frame:CreateTexture(nil, "BACKGROUND", nil, -7)  -- Above bg (-8)
     noise:SetAllPoints()
-    noise:SetTexture(NOISE_TEXTURE_PATH)
-    noise:SetAlpha(NOISE_ALPHA)
-    noise:SetBlendMode("ADD")
+    noise:SetTexture(path)
+    noise:SetAlpha(noiseSpec.alpha or 0.25)
+    noise:SetBlendMode(noiseSpec.blend or "ADD")
 
     -- Manual tex-coord tiling (bypasses unreliable SetHorizTile/SetVertTile)
     local function UpdateNoiseCoords()
         local width, height = frame:GetSize()
         if width and height and width > 0 and height > 0 then
-            noise:SetTexCoord(0, width / NOISE_TEXTURE_SIZE, 0, height / NOISE_TEXTURE_SIZE)
+            noise:SetTexCoord(0, width / textureSize, 0, height / textureSize)
         end
     end
 
@@ -99,10 +123,11 @@ end
 -- Solid Border (clean square border with proper corners)
 --------------------------------------------------------------------------------
 
-function Window:CreateSolidBorder(frame)
+function Window:CreateSolidBorder(frame, spec)
+    local m = Metrics()
     frame._border = addon.UI.Controls.CreateBorder(frame, {
-        thickness = Theme.BORDER_WIDTH or 3,
-        corners = "outset",
+        thickness = (m and m.windowBorderWidth) or Theme.BORDER_WIDTH or 3,
+        corners = (spec and spec.corners) or "outset",
     })
 end
 
@@ -115,6 +140,9 @@ function Window:Destroy(frame)
 
     if frame._border and frame._border.Destroy then
         frame._border:Destroy()
+    end
+    if frame._chrome and frame._chrome.Destroy then
+        frame._chrome:Destroy()
     end
 
     -- Hide and clear

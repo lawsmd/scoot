@@ -53,11 +53,34 @@ Skin.Register("tui", {
     },
 
     textures = {
-        NOISE_OVERLAY = ROOT .. "media\\textures\\noise-overlay",
+        NOISE_OVERLAY = ROOT .. "media\\textures\\frosted-noise",
         SCOOT_ICON    = ROOT .. "ScootIcon",
         -- The logo with the black backdrop keyed out, for surfaces that are
         -- not black.
         SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent",
+    },
+
+    -- How each surface is drawn. Every role here is the framework's own flat
+    -- draw, which is the look the panel shipped with; a role left out resolves
+    -- to the same flat default in Chrome.FLAT, so this table is the catalog
+    -- rather than a requirement. The window's noise is the frosted layer over
+    -- the background fill.
+    chrome = {
+        window = {
+            kind = "flat", corners = "outset", background = "window",
+            noise = { texture = "NOISE_OVERLAY", size = 2048, alpha = 0.25, blend = "ADD" },
+        },
+        titleBar      = { kind = "ascii", fontRole = "label" },
+        closeButton   = { kind = "flat", glyph = "X" },
+        button        = { kind = "flat" },
+        resizeGrip    = { kind = "flat" },
+        scrollBar     = { kind = "flat" },
+        tab           = { kind = "flat" },
+        tabBody       = { kind = "flat" },
+        sectionHeader = { kind = "flat", glyphs = { expanded = "\226\150\188", collapsed = "\226\150\182" } },
+        sectionBody   = { kind = "flat" },
+        navRow        = { kind = "flat" },
+        dropdown      = { kind = "flat" },
     },
 
     metrics = {
@@ -86,6 +109,25 @@ Skin.Register("tui", {
         dividerAlpha = 0.2,
         borderWidth = 2,
         windowBorderWidth = 3,
+
+        -- Panel chrome. windowInset is the content inset the panes anchor
+        -- from; with a flat border it equals windowBorderWidth, and a
+        -- nine-slice window moves it to wherever that art reaches.
+        windowInset = 3,
+        panelWidth = 1125,
+        panelHeight = 715,
+        panelMinWidth = 800,
+        panelMinHeight = 550,
+        panelMaxWidth = 1600,
+        panelMaxHeight = 1000,
+        titleBarHeight = 80,
+        logoFontSize = 6,
+        contentHeaderHeight = 66,
+        navWidth = 220,
+        closeButton = { size = 24, x = -10, y = -10, fontSize = 16 },
+        resizeGrip = { size = 16, x = -4, y = 4, dot = 2, step = 4, alpha = 0.7 },
+        toolbar = { height = 26, spacing = 10, y = 0, fontSize = 11 },
+        pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
 
         -- Dual-row slots
         slotGap = 12,

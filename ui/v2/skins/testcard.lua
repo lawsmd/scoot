@@ -177,7 +177,7 @@ Skin.Register("testcard", {
     },
 
     textures = {
-        NOISE_OVERLAY = ROOT .. "media\\textures\\noise-overlay",
+        NOISE_OVERLAY = ROOT .. "media\\textures\\frosted-noise",
         SCOOT_ICON    = ROOT .. "ScootIcon",
         SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent",
     },
@@ -205,6 +205,25 @@ Skin.Register("testcard", {
         dividerAlpha = 0.45,
         borderWidth = 1,
         windowBorderWidth = 2,
+
+        -- Panel chrome. windowInset is the content inset the panes anchor
+        -- from; with a flat border it equals windowBorderWidth, and a
+        -- nine-slice window moves it to wherever that art reaches.
+        windowInset = 2,
+        panelWidth = 1125,
+        panelHeight = 715,
+        panelMinWidth = 800,
+        panelMinHeight = 550,
+        panelMaxWidth = 1600,
+        panelMaxHeight = 1000,
+        titleBarHeight = 80,
+        logoFontSize = 6,
+        contentHeaderHeight = 66,
+        navWidth = 220,
+        closeButton = { size = 24, x = -10, y = -10, fontSize = 16 },
+        resizeGrip = { size = 16, x = -4, y = 4, dot = 2, step = 4, alpha = 0.7 },
+        toolbar = { height = 26, spacing = 10, y = 0, fontSize = 11 },
+        pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
 
         slotGap = 16,
         miniLabelHeight = 14,

@@ -66,6 +66,7 @@ forever/unitframes/player.lua
 ## comes from forever/menu.lua below (docs/camelot/shared.md).
 ui/v2/Skin.lua
 ui/v2/Theme.lua
+ui/v2/Chrome.lua
 ui/v2/SettingPatterns.lua
 ui/v2/skins/tui.lua
 ui/v2/skins/testcard.lua

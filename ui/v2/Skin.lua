@@ -8,7 +8,7 @@
 -- identities never change and file-scope captures of the tables stay valid.
 --
 --   Skin.Register(name, skin)   skin = { palette, fonts, textures, metrics,
---                               overrides }
+--                               chrome, overrides }
 --   Skin.SetActive(name)        push the skin into the facades, install its
 --                               overrides, notify, re-render the open panel
 --   Skin.Active()               the active skin table
@@ -25,6 +25,11 @@
 -- proportionalMed; each { path, size }.
 -- Metrics: flat layout and style numbers plus the slots, sublevels, and
 -- alphas sub-tables; the full catalog is the tui skin table.
+-- Chrome: one descriptor per panel surface (window, titleBar, closeButton,
+-- button, resizeGrip, scrollBar, tab, tabBody, sectionHeader, sectionBody,
+-- navRow, dropdown), each a kind (flat, nineSlice, atlas, template) with the
+-- names that kind draws from; ui/v2/Chrome.lua resolves them against the
+-- client and supplies the flat default for a role a skin leaves out.
 --
 -- An override replaces a row factory's draw body only:
 -- overrides.<Control> = function(options) must return a frame satisfying the
@@ -124,6 +129,16 @@ function Skin.SetActive(name)
         Theme.Textures = skin.textures
     end
 
+    -- The chrome table is the declaration; Chrome.Spec resolves each role
+    -- against the client at draw time, so a switch only has to forget the
+    -- previous resolutions.
+    if Theme then
+        Theme.Chrome = skin.chrome or {}
+    end
+    if addon.UI.Chrome and addon.UI.Chrome.Invalidate then
+        addon.UI.Chrome.Invalidate()
+    end
+
     local m = skin.metrics
     if m then
         if Theme then
@@ -157,12 +172,22 @@ function Skin.SetActive(name)
         Theme:NotifySubscribers()
     end
 
-    -- A runtime switch rebuilds the open panel, so every page re-renders in
-    -- the new skin.
+    -- A runtime switch rebuilds the panel from the window out, so the chrome
+    -- follows the skin as well as the rows, and the page that was open comes
+    -- back. At load nothing is built yet, so the boot-time activations in the
+    -- skin files and the product menu skip this.
     local panel = addon.UI.SettingsPanel
-    if panel and panel.frame and panel.frame.IsShown and panel.frame:IsShown()
-        and panel._currentCategoryKey and panel.OnNavigationSelect then
-        panel:OnNavigationSelect(panel._currentCategoryKey)
+    if panel and panel._initialized and panel.Teardown then
+        local shown = panel.frame and panel.frame.IsShown and panel.frame:IsShown()
+        local key = panel._currentCategoryKey
+        panel:Teardown()
+        if shown then
+            panel:Show()
+            local Navigation = addon.UI.Navigation
+            if key and key ~= "home" and Navigation and Navigation.SelectItem then
+                Navigation:SelectItem(key)
+            end
+        end
     end
     return true
 end
@@ -182,10 +207,10 @@ function Skin.Dump()
     table.sort(names)
     for _, name in ipairs(names) do
         local skin = Skin._registry[name]
-        push(string.format("%s: %d palette roles, %d font roles, %d textures, %d metrics, %d overrides",
+        push(string.format("%s: %d palette roles, %d font roles, %d textures, %d metrics, %d chrome roles, %d overrides",
             name, countKeys(skin.palette), countKeys(skin.fonts),
             countKeys(skin.textures), countKeys(skin.metrics),
-            countKeys(skin.overrides)))
+            countKeys(skin.chrome), countKeys(skin.overrides)))
     end
 
     local overrideNames = {}
@@ -219,6 +244,10 @@ function Skin.Dump()
                 push(string.format("  %s: %s", k, tostring(v)))
             end
         end
+    end
+
+    if addon.UI.Chrome and addon.UI.Chrome.Dump then
+        addon.UI.Chrome.Dump(push)
     end
     addon.DebugShowWindow("Skins", lines)
 end

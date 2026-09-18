@@ -747,7 +747,8 @@ local function CreateContentScrollbar(parent, scrollFrame)
         end
     end)
 
-    Theme:Subscribe("UIContentScrollbar_" .. tostring(scrollbar), function(r, g, b)
+    scrollbar._subscribeKey = "UIContentScrollbar_" .. tostring(scrollbar)
+    Theme:Subscribe(scrollbar._subscribeKey, function(r, g, b)
         if scrollbar._track then
             scrollbar._track:SetColorTexture(r, g, b, 0.1)
         end
@@ -1168,6 +1169,49 @@ function UIPanel:CreateContentPane()
             scrollbar:Update()
         end
     end)
+end
+
+-- Teardown
+
+-- Takes the panel back to nothing built, so the next Show rebuilds it from the
+-- window out. Skin.SetActive takes this path on a runtime switch and nothing
+-- else does. The frame keeps its global name, so the UISpecialFrames entry
+-- resolves to the rebuilt frame.
+function UIPanel:Teardown()
+    local frame = self.frame
+    if not frame then return end
+
+    self:StopAsciiAnimation()
+    frame:Hide()
+    if frame._StopFeaturesPulse then frame._StopFeaturesPulse() end
+
+    if Navigation and Navigation.Cleanup then
+        Navigation:Cleanup()
+    end
+
+    for _, btn in ipairs({ frame._featuresBtn, frame._searchBtn, frame._editModeBtn, frame._cdmBtn }) do
+        if btn and btn.Cleanup then btn:Cleanup() end
+    end
+    local contentPane = frame._contentPane
+    if contentPane then
+        for _, btn in ipairs({ contentPane._defaultsBtn, contentPane._collapseAllBtn }) do
+            if btn and btn.Cleanup then btn:Cleanup() end
+        end
+        if contentPane._scrollbar and contentPane._scrollbar._subscribeKey then
+            Theme:Unsubscribe(contentPane._scrollbar._subscribeKey)
+        end
+    end
+    for _, key in ipairs({ "UIPanel_TitleBar", "UIPanel_CloseBtn", "UIPanel_ResizeHandle",
+                           "UIPanel_HomeContent", "UIPanel_ContentPane" }) do
+        Theme:Unsubscribe(key)
+    end
+
+    Window:Destroy(frame)
+
+    self.frame = nil
+    self._initialized = false
+    self._currentCategoryKey = nil
+    self._currentBuilder = nil
 end
 
 -- Public API

@@ -253,7 +253,8 @@ local function CreateScrollbar(parent, scrollFrame)
     end)
 
     -- Subscribe to theme updates
-    Theme:Subscribe("Scrollbar_" .. tostring(scrollbar), function(r, g, b)
+    scrollbar._subscribeKey = "Scrollbar_" .. tostring(scrollbar)
+    Theme:Subscribe(scrollbar._subscribeKey, function(r, g, b)
         if scrollbar._track then
             scrollbar._track:SetColorTexture(r, g, b, 0.1)
         end
@@ -1039,6 +1040,9 @@ function Navigation:Cleanup()
     end
 
     Theme:Unsubscribe("Navigation_Frame")
+    if self._frame and self._frame._scrollbar and self._frame._scrollbar._subscribeKey then
+        Theme:Unsubscribe(self._frame._scrollbar._subscribeKey)
+    end
 
     for _, row in ipairs(self._rows) do
         if row then
