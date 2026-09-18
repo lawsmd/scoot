@@ -26,8 +26,9 @@ end
 -- @param parent: Parent frame (default UIParent)
 -- @param width: Window width (default 900)
 -- @param height: Window height (default 650)
+-- @param opts: per-caller choices a window kind reads (none yet)
 -- @return: The created frame
-function Window:Create(name, parent, width, height)
+function Window:Create(name, parent, width, height, opts)
     local frame = CreateFrame("Frame", name, parent or UIParent)
     frame:SetSize(width or 900, height or 650)
     -- Use DIALOG strata to match old SettingsPanel - HIGH strata + SetToplevel
@@ -60,6 +61,14 @@ function Window:Create(name, parent, width, height)
     function frame:GetContentInset()
         local m = Metrics()
         return (m and m.windowInset) or Theme.BORDER_WIDTH or 3
+    end
+
+    -- The frame level a part takes to draw over the window's border art: the
+    -- resize grip sits in the corner the border owns. Flat and nine-slice
+    -- borders draw on the frame itself, so a step above the panel's own
+    -- children is enough.
+    function frame:GetOverlayLevel()
+        return self:GetFrameLevel() + 10
     end
 
     -- NOTE: Dragging is NOT registered on the main frame.

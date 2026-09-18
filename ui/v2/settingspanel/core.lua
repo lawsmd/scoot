@@ -432,7 +432,7 @@ function UIPanel:CreateResizeHandle()
     local resizeHandle = CreateFrame("Button", BRAND .. "ResizeHandle", frame)
     resizeHandle:SetSize(m.size, m.size)
     resizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", m.x, m.y)
-    resizeHandle:SetFrameLevel(frame:GetFrameLevel() + 10)
+    resizeHandle:SetFrameLevel(frame:GetOverlayLevel())
     resizeHandle:EnableMouse(true)
 
     -- The atlas kind is one texture with a hover swap; flat is the dotted
@@ -538,7 +538,7 @@ function UIPanel:CreateContentPane()
 
     local contentPane = CreateFrame("Frame", BRAND .. "ContentPane", frame)
     local inset = M().windowInset
-    contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", M().navWidth + inset + 1, -(M().titleBarHeight))
+    contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", M().navWidth + inset + M().nav.dividerWidth, -(M().titleBarHeight))
     contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
 
     local header = CreateFrame("Frame", nil, contentPane)

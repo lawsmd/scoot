@@ -4,8 +4,8 @@
 --
 -- A skin's chrome table holds one descriptor per role: window, titleBar,
 -- closeButton, button, resizeGrip, scrollBar, tab, tabBody, sectionHeader,
--- sectionBody, navRow, dropdown. A descriptor names a kind and what that kind
--- needs:
+-- sectionBody, navRow, navCard, navDivider, dropdown. A descriptor names a
+-- kind and what that kind needs:
 --   flat       the framework's own draw (CreateBorder, AddBackground,
 --              AddHoverFill) with numbers from the skin metrics
 --   nineSlice  NineSliceUtil.ApplyLayout on a child frame: layout, textureKit
@@ -24,11 +24,14 @@
 --
 --   Chrome.Spec(role)                the resolved descriptor
 --   Chrome.Declared(role)            the skin's own descriptor, or nil
+--   Chrome.Resolve(spec, flat)       one descriptor's chain, for a sub-descriptor
+--                                    or a caller that declines a kind
 --   Chrome.Available(spec)           whether this client can draw it
 --   Chrome.Invalidate()              forget resolutions; Skin.SetActive calls it
 --   Chrome.Color(token)              r, g, b, a for a color token or a literal
 --   Chrome.CreateFrame(role, frameType, name, parent, extraTemplates)
---                                    a frame on the role's template, if it has one
+--                                    a frame on the role's template, if it has one;
+--                                    a resolved descriptor stands in for the role
 --   Chrome.NineSlice(frame, spec)    the nine-slice child a nineSlice role draws
 --   Chrome.Backdrop(role, frame, opts)
 --                                    a state handle drawing a role's backdrop on a
@@ -43,7 +46,8 @@ local Chrome = addon.UI.Chrome
 
 Chrome.ROLES = {
     "window", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
-    "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "dropdown",
+    "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider",
+    "dropdown",
 }
 
 -- The flat defaults: the panel's own drawing, one per role. A skin that
@@ -69,6 +73,10 @@ Chrome.FLAT = {
         parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
         child  = { labelColors = { normal = "primary", hover = "accent", selected = "accent", disabled = { token = "dim", alpha = 0.35 } } },
     },
+    -- Flat navCard is the text parent row navRow draws; flat navDivider is
+    -- the one-pixel accent line on the nav's right edge.
+    navCard       = { kind = "flat" },
+    navDivider    = { kind = "flat" },
     dropdown      = { kind = "flat" },
 }
 
@@ -163,18 +171,26 @@ function Chrome.Declared(role)
     return chrome and chrome[role] or nil
 end
 
-function Chrome.Spec(role)
-    local hit = resolved[role]
-    if hit then return hit end
-    local spec = Chrome.Declared(role)
+-- The first descriptor in a chain this client can draw, or flat when none
+-- can. Spec memoizes it per role; Resolve is the same walk for a descriptor
+-- nested inside another (a window's content background, a card's glow) and
+-- for a caller that declines the resolved kind and takes its fallback.
+function Chrome.Resolve(spec, flat)
     local depth = 0
     while spec and not Chrome.Available(spec) and depth < 8 do
         spec = spec.fallback
         depth = depth + 1
     end
     if not spec or not Chrome.Available(spec) then
-        spec = Chrome.FLAT[role] or { kind = "flat" }
+        return flat or { kind = "flat" }
     end
+    return spec
+end
+
+function Chrome.Spec(role)
+    local hit = resolved[role]
+    if hit then return hit end
+    local spec = Chrome.Resolve(Chrome.Declared(role), Chrome.FLAT[role])
     resolved[role] = spec
     return spec
 end
@@ -215,7 +231,7 @@ end
 -- template first and the caller's own after it, so a secure button keeps
 -- its handler templates whatever the skin draws it with.
 function Chrome.CreateFrame(role, frameType, name, parent, extraTemplates)
-    local spec = Chrome.Spec(role)
+    local spec = type(role) == "table" and role or Chrome.Spec(role)
     local template
     if spec.kind == "template" then template = spec.template end
     if type(extraTemplates) == "string" and extraTemplates ~= "" then

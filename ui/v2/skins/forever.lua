@@ -115,6 +115,8 @@ Skin.Register("forever", {
             parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
             child  = { labelColors = { normal = "primary", hover = "accent", selected = "accent", disabled = { token = "dim", alpha = 0.35 } } },
         },
+        navCard = { kind = "flat" },
+        navDivider = { kind = "flat" },
         dropdown = { kind = "flat" },
     },
 
@@ -173,7 +175,8 @@ Skin.Register("forever", {
         nav = {
             rowHeight = 24, parentRowHeight = 28, childIndent = 20,
             padLeft = 8, padTop = 8,
-            treeLineWidth = 1, treeLineLength = 10, treeLineAlpha = 0.4,
+            treeLineWidth = 1, treeLineX = 10, treeLineLength = 10, treeLineAlpha = 0.4,
+            dividerWidth = 1, dividerAlpha = 0.4,
             indicatorSize = 10,
             hoverAlpha = 0.15, selectedAlpha = 0.25,
         },

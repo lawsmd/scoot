@@ -80,13 +80,23 @@ function Navigation:Create(parent)
     navFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", inset, -(M().titleBarHeight + inset))
     navFrame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", inset, inset)
 
-    -- Right border separator
+    -- The divider on the nav's right edge, the way the navDivider role says:
+    -- an atlas at its own width stretched to the pane's height, or the flat
+    -- accent line at nav.dividerWidth. The content pane clears
+    -- nav.dividerWidth either way.
+    local dividerSpec = Chrome.Spec("navDivider")
     local separator = navFrame:CreateTexture(nil, "BORDER")
-    separator:SetWidth(1)
-    separator:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", 0, 0)
-    separator:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", 0, 0)
-    local ar, ag, ab = Theme:GetAccentColor()
-    separator:SetColorTexture(ar, ag, ab, 0.4)
+    if dividerSpec.kind == "atlas" and dividerSpec.normal then
+        separator:SetAtlas(dividerSpec.normal, true)
+        if dividerSpec.width then separator:SetWidth(dividerSpec.width) end
+        separator:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", dividerSpec.x or 0, dividerSpec.y or 0)
+        separator:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", dividerSpec.x or 0, -(dividerSpec.y or 0))
+    else
+        separator:SetWidth(M().nav.dividerWidth)
+        Controls.RegisterThemedFill(separator, M().nav.dividerAlpha)
+        separator:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", 0, 0)
+        separator:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", 0, 0)
+    end
     navFrame._separator = separator
 
     -- Custom scroll frame (no template - built from scratch)
@@ -144,11 +154,8 @@ function Navigation:Create(parent)
     -- Store reference
     self._frame = navFrame
 
-    -- Subscribe to theme updates
-    Theme:Subscribe("Navigation_Frame", function(r, g, b)
-        if navFrame._separator then
-            navFrame._separator:SetColorTexture(r, g, b, 0.4)
-        end
+    -- Subscribe to theme updates; the flat divider follows the accent on its own
+    Theme:Subscribe("Navigation_Frame", function()
         self:UpdateRowColors()
     end)
 
@@ -241,9 +248,11 @@ end
 function Navigation:BuildRows(contentFrame)
     if not contentFrame then return end
 
-    -- Clear existing rows
+    -- Clear existing rows. A backdrop handle stays in the accent registry
+    -- until destroyed, so each one goes with its row.
     for _, row in ipairs(self._rows) do
         if row and row.Hide then
+            if row._backdrop then row._backdrop:Destroy() end
             row:Hide()
             row:SetParent(nil)
         end
@@ -440,33 +449,37 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
 
     local ar, ag, ab = Theme:GetAccentColor()
 
-    -- Tree lines using textures (not text characters)
-    local treeLines = {}
+    -- Tree lines as textures, where the skin draws them: a zero
+    -- nav.treeLineWidth skips them and the label keeps its indent.
+    if M().nav.treeLineWidth > 0 then
+        local treeLines = {}
+        local lineX = M().nav.treeLineX
 
-    -- Vertical line (from parent down to this item)
-    local vertLine = row:CreateTexture(nil, "ARTWORK")
-    vertLine:SetWidth(M().nav.treeLineWidth)
-    vertLine:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha)
-    vertLine:SetPoint("TOPLEFT", row, "TOPLEFT", 10, 0)
+        -- Vertical line (from parent down to this item)
+        local vertLine = row:CreateTexture(nil, "ARTWORK")
+        vertLine:SetWidth(M().nav.treeLineWidth)
+        vertLine:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha)
+        vertLine:SetPoint("TOPLEFT", row, "TOPLEFT", lineX, 0)
 
-    if isLastChild then
-        -- For last child, vertical line goes from top to center (where horizontal line is)
-        vertLine:SetPoint("BOTTOM", row, "LEFT", 10, 0)
-    else
-        -- For other children, vertical line goes full height
-        vertLine:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 10, 0)
+        if isLastChild then
+            -- For last child, vertical line goes from top to center (where horizontal line is)
+            vertLine:SetPoint("BOTTOM", row, "LEFT", lineX, 0)
+        else
+            -- For other children, vertical line goes full height
+            vertLine:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", lineX, 0)
+        end
+        treeLines.vertical = vertLine
+
+        -- Horizontal line (branch to label)
+        local horizLine = row:CreateTexture(nil, "ARTWORK")
+        horizLine:SetHeight(M().nav.treeLineWidth)
+        horizLine:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha)
+        horizLine:SetPoint("LEFT", row, "LEFT", lineX + M().nav.treeLineWidth, 0)
+        horizLine:SetWidth(M().nav.treeLineLength - M().nav.treeLineWidth)
+        treeLines.horizontal = horizLine
+
+        row._treeLines = treeLines
     end
-    treeLines.vertical = vertLine
-
-    -- Horizontal line (branch to label)
-    local horizLine = row:CreateTexture(nil, "ARTWORK")
-    horizLine:SetHeight(M().nav.treeLineWidth)
-    horizLine:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha)
-    horizLine:SetPoint("LEFT", row, "LEFT", 10 + M().nav.treeLineWidth, 0)
-    horizLine:SetWidth(M().nav.treeLineLength - M().nav.treeLineWidth)
-    treeLines.horizontal = horizLine
-
-    row._treeLines = treeLines
 
     -- Label text
     local label = row:CreateFontString(nil, "OVERLAY")
@@ -549,7 +562,7 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
     if isModuleDisabled then
         -- Disabled module: dim the tree lines and badges, no interaction
         local dimR, dimG, dimB = Theme:GetDimTextColor()
-        for _, line in pairs(treeLines) do
+        for _, line in pairs(row._treeLines or {}) do
             line:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha * 0.3)
         end
         if row._versionBadge and row._versionBadge._iconText then
@@ -777,6 +790,7 @@ function Navigation:Cleanup()
 
     for _, row in ipairs(self._rows) do
         if row then
+            if row._backdrop then row._backdrop:Destroy() end
             row:Hide()
             row:SetParent(nil)
         end

@@ -231,7 +231,8 @@ Skin.Register("testcard", {
         nav = {
             rowHeight = 24, parentRowHeight = 28, childIndent = 20,
             padLeft = 8, padTop = 8,
-            treeLineWidth = 1, treeLineLength = 10, treeLineAlpha = 0.4,
+            treeLineWidth = 1, treeLineX = 10, treeLineLength = 10, treeLineAlpha = 0.4,
+            dividerWidth = 1, dividerAlpha = 0.4,
             indicatorSize = 10,
             hoverAlpha = 0.15, selectedAlpha = 0.25,
         },
