@@ -11,7 +11,9 @@
 --
 -- Everything is built under pcall. A template or frame type one client lacks
 -- reports as missing in its cell and in the report; nothing aborts. The
--- report goes to the copyable window, never to chat.
+-- report goes to the copyable window, never to chat. It also reads every
+-- atlas Blizzard's own Legacy pane draws, when that pane has been opened, so
+-- a part copied from it is named from the client rather than from a sheet.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -64,6 +66,19 @@ local TEMPLATES = {
       size = { 190, 30 }, setup = function(f) if f.Text then f.Text:SetText("Section") end end },
     { label = "SettingsFrameTemplate", frameType = "Frame", template = "SettingsFrameTemplate", size = { 200, 96 } },
     { label = "InsetFrameTemplate", frameType = "Frame", template = "InsetFrameTemplate", size = { 200, 80 } },
+    -- The Legacy pane's window: the portrait panel with its title plate,
+    -- close button and ring
+    { label = "PortraitFrameTemplate", frameType = "Frame", template = "PortraitFrameTemplate", size = { 190, 84 },
+      setup = function(f)
+          f:SetTitle("Portrait")
+          f:SetPortraitToAsset(addon.MinimapIcon or "Interface\\ICONS\\INV_Misc_QuestionMark")
+      end },
+    -- The Legacy pane's cell button. Its OnLoad reads XML key values a bare
+    -- construct does not supply, so the construct is expected to fail and
+    -- the template's presence is the answer that matters.
+    { label = "RingedMaskedButtonTemplate", frameType = "CheckButton", template = "RingedMaskedButtonTemplate",
+      size = { 67, 67 }, note = "OnLoad wants XML key values; a bare construct is expected to fail" },
+    { label = "LargeSideTabButtonTemplate", frameType = "Frame", template = "LargeSideTabButtonTemplate", size = { 43, 55 } },
 }
 
 -- Nine-slice layouts applied to a bare frame. A kit formats the piece names,
@@ -102,6 +117,14 @@ local ATLASES = {
     "RedButton-Exit",
     "Options_Tab_Middle",
     "uiframe-activetab-left",
+    "common-sidetab",
+    "common-sidetab-selected",
+    -- The Legacy pane's own parts, drawn by Blizzard without the Forever suffix
+    "Legacy-Tree-Frame-background",
+    "Legacy-Tree-Frame-divider-Vertical",
+    "Legacy-Tree-Frame-Card",
+    "Legacy-Tree-Frame-Card-Glow",
+    "UI-Legacy-Tree-Professions",
     "ui-hud-unitframe-player-portraiton",
 }
 
@@ -124,8 +147,10 @@ local function atlasLine(name)
     local info = atlasInfo(name)
     if not info then return string.format("%-44s nil", name) end
     local tiles = (info.tilesHorizontally and "H" or "") .. (info.tilesVertically and "V" or "")
-    return string.format("%-44s file %s  %dx%d%s", name, tostring(info.file),
-        info.width or 0, info.height or 0, tiles ~= "" and ("  tiles " .. tiles) or "")
+    -- The texcoords are what a sliced card's slice widths are read from
+    return string.format("%-44s file %s  %dx%d%s  tc %.4f %.4f %.4f %.4f", name, tostring(info.file),
+        info.width or 0, info.height or 0, tiles ~= "" and ("  tiles " .. tiles) or "",
+        info.leftTexCoord or 0, info.rightTexCoord or 0, info.topTexCoord or 0, info.bottomTexCoord or 0)
 end
 
 local function templateInfo(name)
@@ -287,6 +312,25 @@ end
 -- The report
 --------------------------------------------------------------------------------
 
+-- Every atlas name drawn anywhere under a frame, for the report's read of
+-- Blizzard's Legacy pane. Reads only; the frame is Blizzard's.
+local function collectAtlases(frame, seen, depth)
+    if not frame or depth > 8 then return end
+    if frame.GetRegions then
+        for _, region in ipairs({ frame:GetRegions() }) do
+            if region.GetAtlas then
+                local ok, atlas = pcall(region.GetAtlas, region)
+                if ok and type(atlas) == "string" and atlas ~= "" then seen[atlas] = true end
+            end
+        end
+    end
+    if frame.GetChildren then
+        for _, child in ipairs({ frame:GetChildren() }) do
+            collectAtlases(child, seen, depth + 1)
+        end
+    end
+end
+
 local function fontLine(name)
     local obj = _G[name]
     if not obj or not obj.GetFont then return string.format("%-20s nil", name) end
@@ -315,6 +359,7 @@ local function report()
         local b = built[entry.label] or {}
         local status = b.missing and "construct failed" or "constructed"
         if b.setupOk == false then status = status .. ", setup error: " .. tostring(b.err) end
+        if entry.note then status = status .. "  (" .. entry.note .. ")" end
         push("  %-36s %-10s %s", entry.template, tostring(state), status)
     end
     local btn = built["UIPanelButtonTemplate"] and built["UIPanelButtonTemplate"].frame
@@ -355,6 +400,25 @@ local function report()
     push("Fonts")
     push("  " .. fontLine("GameFontNormal"))
     push("  " .. fontLine("GameFontHighlight"))
+
+    push("")
+    push("Blizzard's Legacy pane")
+    local legacy = rawget(_G, "LegacySystemFrame")
+    if not legacy then
+        push("  LegacySystemFrame absent (a load-on-demand addon; open the pane once, then report again)")
+    else
+        local okL, layoutType = pcall(function() return legacy.NineSlice and legacy.NineSlice.layoutType end)
+        push("  LegacySystemFrame present  NineSlice.layoutType %s", okL and tostring(layoutType) or "error")
+        local seen = {}
+        pcall(collectAtlases, legacy, seen, 0)
+        local names = {}
+        for name in pairs(seen) do names[#names + 1] = name end
+        table.sort(names)
+        push("  atlases drawn under it: %d", #names)
+        for _, name in ipairs(names) do
+            push("    " .. atlasLine(name))
+        end
+    end
 
     push("")
     push("Blizzard's own options panel")
