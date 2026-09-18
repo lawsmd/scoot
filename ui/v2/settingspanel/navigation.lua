@@ -920,7 +920,8 @@ function UIPanel:OnNavigationSelect(key, previousKey)
         end
 
         if contentPane._scrollFrame and contentPane._header then
-            contentPane._scrollFrame:SetPoint("TOPLEFT", contentPane._header, "BOTTOMLEFT", Controls.Metrics().paneInset, -Controls.Metrics().paneInset)
+            local topRel, topLeft = self:ContentTopAnchor(true)
+            contentPane._scrollFrame:SetPoint("TOPLEFT", topRel, topLeft, Controls.Metrics().paneInset, -Controls.Metrics().paneInset)
         end
 
         -- Ensure scrollContent width is up to date (handles first-render timing)

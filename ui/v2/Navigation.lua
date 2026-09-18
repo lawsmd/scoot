@@ -83,18 +83,21 @@ function Navigation:Create(parent)
     -- The divider on the nav's right edge, the way the navDivider role says:
     -- an atlas centered on the edge at its own width, cut into a vertical
     -- three-slice when the role names one so its caps keep their size, or
-    -- the flat accent line at nav.dividerWidth inside the edge. The content
-    -- pane clears nav.dividerGap past the edge either way. The rows draw
-    -- over the divider, so a card's right border meets it the way the
-    -- Legacy pane's cards do.
+    -- the flat accent line at nav.dividerWidth inside the edge. The atlas
+    -- runs reach.top past the nav's top edge and reach.bottom past its
+    -- bottom, so it can start on the page's border above the nav and end
+    -- on the window's edge below it. The content pane clears nav.dividerGap
+    -- past the edge either way. The rows draw over the divider, so a card's
+    -- right border meets it the way the Legacy pane's cards do.
     local dividerSpec = Chrome.Spec("navDivider")
     if dividerSpec.kind == "atlas" and dividerSpec.normal then
         local divider = CreateFrame("Frame", nil, navFrame)
         divider:SetFrameLevel(navFrame:GetFrameLevel() + 1)
         local ok, info = pcall(C_Texture.GetAtlasInfo, dividerSpec.normal)
+        local reach = dividerSpec.reach or {}
         divider:SetWidth(dividerSpec.width or (ok and info and info.width) or M().nav.dividerWidth)
-        divider:SetPoint("TOP", navFrame, "TOPRIGHT", dividerSpec.x or 0, dividerSpec.y or 0)
-        divider:SetPoint("BOTTOM", navFrame, "BOTTOMRIGHT", dividerSpec.x or 0, -(dividerSpec.y or 0))
+        divider:SetPoint("TOP", navFrame, "TOPRIGHT", dividerSpec.x or 0, reach.top or 0)
+        divider:SetPoint("BOTTOM", navFrame, "BOTTOMRIGHT", dividerSpec.x or 0, -(reach.bottom or 0))
         local art
         if dividerSpec.slice then
             art = Chrome.SlicedAtlas(divider, { atlas = dividerSpec.normal, slice = dividerSpec.slice }, "BORDER")
@@ -426,8 +429,8 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled, 
     if isCard then
         local c = M().nav.card
         Theme:ApplyFont(label, c.labelFontRole, c.labelSize)
-        label:SetPoint("CENTER", row, "TOP", 0, -c.height / 2)
-        label:SetJustifyH("CENTER")
+        label:SetPoint("LEFT", row, "TOPLEFT", c.labelPadLeft, -c.height / 2)
+        label:SetJustifyH("LEFT")
         label:SetText(navItem.label)
         row._label = label
 

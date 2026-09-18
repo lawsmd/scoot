@@ -221,7 +221,8 @@ Skin.Register("testcard", {
         contentHeaderHeight = 66,
         -- The page header's layout: the action buttons under the title, the
         -- separator under the header, the copy-from field present
-        contentHeader = { actions = "left", separator = true, copyFrom = true, padRight = 8, gap = 8, iconGap = 6 },
+        contentHeader = { placement = "pane", top = 0, padLeft = 16, actions = "left",
+                          separator = true, copyFrom = true, padRight = 8, gap = 8, iconGap = 6 },
         navWidth = 220,
         closeButton = { size = 24, x = -10, y = -10, fontSize = 16 },
         resizeGrip = { size = 16, x = -4, y = 4, dot = 2, step = 4, alpha = 0.7 },
@@ -241,8 +242,8 @@ Skin.Register("testcard", {
             -- The card a parent row becomes under a card navCard role; unused
             -- while the role is flat, carried so every skin has the keys
             card = { height = 40, spacing = 6, padLeft = 4, padRight = 0, inner = 8, padBottom = 8,
-                     glowOffset = -7, glowOverhang = 4, hoverAlpha = 0.08, disabledAlpha = 0.75,
-                     labelFontRole = "label", labelSize = 12 },
+                     glowOffset = -7, glowInset = 5, hoverAlpha = 0.08, disabledAlpha = 0.75,
+                     labelFontRole = "label", labelSize = 14, labelPadLeft = 16 },
         },
         scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4,
                       trackAlpha = 0.1, thumbAlpha = 0.5, thumbHoverAlpha = 0.8, thumbDragAlpha = 1 },

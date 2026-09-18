@@ -100,15 +100,18 @@ Skin.Register("forever", {
         -- rest, so it is cut at the panel's edges (column 121; rows 52 and
         -- 60 bracket the top border) and each cell stretched to its own
         -- pane, which puts the baked edges on the nav's right edge and the
-        -- title band's bottom whatever the window's size. Retail has no
-        -- such atlas and fills the rect flat. The options border stands in
-        -- if a client ever lacks the template.
+        -- title band's bottom whatever the window's size. The wood column
+        -- was painted around Blizzard's three fixed cells and goes dark
+        -- behind them (rows 160 to 400), so under the border it repeats
+        -- its light band, rows 64 to 128, instead of stretching. Retail has
+        -- no such atlas and fills the rect flat. The options border stands
+        -- in if a client ever lacks the template.
         window = {
             kind = "template", template = "PortraitFrameTemplate",
             portrait = { texture = "PLACEHOLDER_ICON" },
             contentBackground = {
                 kind = "atlas", atlas = "Legacy-Tree-Frame-background",
-                grid = { cols = { 121 }, rows = { 52, 60 } },
+                grid = { cols = { 121 }, rows = { 52, 60 }, tile = { { col = 1, row = 3, v = { 64, 128 } } } },
                 inset = { left = 2, top = 21, right = 2, bottom = 2 }, sublevel = -5,
                 fallback = { kind = "flat", fill = "window" },
             },
@@ -147,9 +150,11 @@ Skin.Register("forever", {
             parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
             child  = { labelColors = { normal = "primary", hover = "accent", selected = "accent", disabled = { token = "dim", alpha = 0.35 } } },
         },
-        -- The Legacy pane's group cards: the group's name centered on the
-        -- header band, the child rows inside the same card while it is
-        -- open, and the gold glow at the right edge while open. The face is
+        -- The Legacy pane's group cards: the group's name at the left of
+        -- the header band, the child rows indented inside the same card
+        -- while it is open, and the gold glow at the right edge while open,
+        -- standing inside the card's top and bottom edges the way Blizzard's
+        -- ends on the border. The face is
         -- cut into nine slices by texcoords; the slices hold the corner
         -- knots, which reach 10 pixels in, and the edge is the margin the
         -- art keeps outside its border (a clear column or two and the
@@ -168,9 +173,13 @@ Skin.Register("forever", {
         },
         -- The Legacy pane's divider between its column and its content, its
         -- caps (4 rows at the top, 5 at the bottom) kept at their own size.
+        -- Blizzard starts it on the page border's bronze line and ends it
+        -- on the window's edge: reach.top is windowInset up to the border
+        -- band's bottom plus 4 into the band, reach.bottom is windowInset.
         navDivider = {
             kind = "atlas", normal = "Legacy-Tree-Frame-divider-Vertical",
             slice = { top = 4, bottom = 5 },
+            reach = { top = 10, bottom = 6 },
             fallback = { kind = "flat" },
         },
         dropdown = { kind = "flat" },
@@ -207,10 +216,13 @@ Skin.Register("forever", {
         -- Panel chrome. The portrait panel's metal border draws outside the
         -- frame rect and its own background sits 2px inside it, so the
         -- panes stand a few pixels in. The title band is the template's
-        -- 21px title plate, the toolbar row under it, and the page
-        -- background's top border, 8 pixels ending at the band's bottom;
-        -- the close button keeps the template's corner. The closeButton
-        -- offsets are read only if the chain falls past the window kind.
+        -- 21px title plate, the toolbar row under it (toolbar.y), the page
+        -- header's line (contentHeader.top, contentHeaderHeight) and the
+        -- page background's top border, 8 pixels ending at the band's
+        -- bottom: 50 + 32 + 8. The Legacy pane's own band, title plate to
+        -- border, is 47 pixels and holds one line; this one holds two. The
+        -- close button keeps the template's corner. The closeButton offsets
+        -- are read only if the chain falls past the window kind.
         windowInset = 6,
         panelWidth = 1125,
         panelHeight = 715,
@@ -218,13 +230,16 @@ Skin.Register("forever", {
         panelMinHeight = 550,
         panelMaxWidth = 1600,
         panelMaxHeight = 1000,
-        titleBarHeight = 60,
+        titleBarHeight = 90,
         logoFontSize = 6,
-        -- The page header is the title line: the action buttons sit at its
-        -- right end, the page background's own border is the divider under
-        -- it, and the copy-from field waits on a dropdown in this chrome.
-        contentHeaderHeight = 48,
-        contentHeader = { actions = "right", separator = false, copyFrom = false, padRight = 8, gap = 8, iconGap = 6 },
+        -- The page header sits in the title band, above the content pane
+        -- and level with the Legacy pane's points widget: the page's name
+        -- at the left, the action buttons at the right end, the page
+        -- background's own border under it, and the copy-from field waiting
+        -- on a dropdown in this chrome.
+        contentHeaderHeight = 32,
+        contentHeader = { placement = "band", top = 50, padLeft = 16, actions = "right",
+                          separator = false, copyFrom = false, padRight = 8, gap = 8, iconGap = 6 },
         navWidth = 220,
         closeButton = { size = 24, x = -6, y = -6, fontSize = 16 },
         resizeGrip = { size = 16, x = -8, y = 8, dot = 2, step = 4, alpha = 0.7 },
@@ -248,10 +263,13 @@ Skin.Register("forever", {
             -- inside; padBottom closes the card under the last child. The
             -- card's right edge is the nav's edge, so padRight is 0 and the
             -- glow's bar hugs the border's inner edge at glowOffset. The
-            -- glow reaches glowOverhang past the card top and bottom.
+            -- glow ends glowInset inside the card's top and bottom, on the
+            -- border, the 5 of 93 rows Blizzard's does. The name starts
+            -- labelPadLeft in, past the border; the child rows' labels
+            -- start inner + childIndent + 6 in, so they read indented.
             card = { height = 40, spacing = 6, padLeft = 4, padRight = 0, inner = 8, padBottom = 8,
-                     glowOffset = -7, glowOverhang = 4, hoverAlpha = 0.08, disabledAlpha = 0.75,
-                     labelFontRole = "label", labelSize = 12 },
+                     glowOffset = -7, glowInset = 5, hoverAlpha = 0.08, disabledAlpha = 0.75,
+                     labelFontRole = "label", labelSize = 14, labelPadLeft = 16 },
         },
         scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4,
                       trackAlpha = 0.1, thumbAlpha = 0.5, thumbHoverAlpha = 0.8, thumbDragAlpha = 1 },

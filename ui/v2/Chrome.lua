@@ -44,7 +44,9 @@
 --                                    nine textures cut from one atlas by texcoords
 --   Chrome.GridAtlas(frame, spec, layer, sublevel, xs, ys)
 --                                    one atlas cut at named splits, each split laid
---                                    on a frame position the caller gives
+--                                    on a frame position the caller gives; a cell
+--                                    may repeat a band of the art instead of
+--                                    stretching (grid.tile)
 --   Chrome.Backdrop(role, frame, opts)
 --                                    a state handle drawing a role's backdrop on a
 --                                    control's frame (tab, tabBody, sectionHeader,
@@ -399,13 +401,57 @@ function Chrome.SlicedAtlas(frame, spec, layer, sublevel)
     return handle
 end
 
+-- A grid cell that repeats one band of the member's rows down its rect
+-- instead of stretching: copies at the band's own height from the top,
+-- every other one flipped so each seam meets its own row, the last cut
+-- short by its texcoords. The count follows the cell's height. v0 and v1
+-- are texcoords, bandHeight the band's height in the member's pixels.
+local function TiledCell(frame, place, file, u0, u1, v0, v1, bandHeight, layer, sublevel)
+    local cell = CreateFrame("Frame", nil, frame)
+    cell:SetFrameLevel(frame:GetFrameLevel())
+    place(cell)
+    cell.tiles = {}
+    local function layout(f)
+        local height = f:GetHeight() or 0
+        local n = math.max(1, math.ceil(height / bandHeight))
+        for i = 1, n do
+            local t = f.tiles[i]
+            if not t then
+                t = f:CreateTexture(nil, layer or "BACKGROUND", nil, sublevel)
+                t:SetTexture(file)
+                f.tiles[i] = t
+            end
+            local top = (i - 1) * bandHeight
+            local shown = math.max(0.5, math.min(bandHeight, height - top))
+            local span = (v1 - v0) * (shown / bandHeight)
+            if i % 2 == 1 then
+                t:SetTexCoord(u0, u1, v0, v0 + span)
+            else
+                t:SetTexCoord(u0, u1, v1, v1 - span)
+            end
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -top)
+            t:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, -top)
+            t:SetHeight(shown)
+            t:Show()
+        end
+        for i = n + 1, #f.tiles do f.tiles[i]:Hide() end
+    end
+    cell:SetScript("OnSizeChanged", layout)
+    layout(cell)
+    return cell
+end
+
 -- One atlas cut into a grid and laid over the frame with each cut at a
 -- frame position the caller names: spec.grid.cols and spec.grid.rows are
 -- the splits in the member's own pixels, xs and ys the matching positions
 -- in frame pixels from the frame's top-left corner. Every cell stretches to
 -- its rect, so an edge baked into the art lands where the layout puts the
--- edge it stands for. Returns nil when the art is missing, else a handle:
--- pieces, SetShown, Destroy.
+-- edge it stands for. A cell named in spec.grid.tile = { { col, row, v =
+-- { top, bottom } } } repeats that band of the member's rows down its rect
+-- instead, for a column whose art was painted around one fixed layout.
+-- Returns nil when the art is missing, else a handle: pieces, SetShown,
+-- Destroy.
 function Chrome.GridAtlas(frame, spec, layer, sublevel, xs, ys)
     local file, w, h, L, R, T, B = AtlasSource(spec)
     if not file then return nil end
@@ -417,28 +463,50 @@ function Chrome.GridAtlas(frame, spec, layer, sublevel, xs, ys)
     for _, r in ipairs(grid.rows or {}) do v[#v + 1] = T + r * dv end
     v[#v + 1] = B
     xs, ys = xs or {}, ys or {}
+    local tiled = {}
+    for _, t in ipairs(grid.tile or {}) do
+        if t.row and t.col and t.v then
+            tiled[t.row] = tiled[t.row] or {}
+            tiled[t.row][t.col] = t
+        end
+    end
 
-    local pieces = {}
+    local pieces, cells = {}, {}
     for row = 1, #v - 1 do
         for col = 1, #u - 1 do
-            local tex = frame:CreateTexture(nil, layer or "BACKGROUND", nil, sublevel)
-            tex:SetTexture(file)
-            tex:SetTexCoord(u[col], u[col + 1], v[row], v[row + 1])
             local x1 = (col == 1) and 0 or xs[col - 1]
             local y1 = (row == 1) and 0 or ys[row - 1]
             local lastCol, lastRow = col == #u - 1, row == #v - 1
             -- Three points fix the rect: the top-left, the right edge (a
             -- split or the frame's edge) and the bottom edge (likewise)
-            tex:SetPoint("TOPLEFT", frame, "TOPLEFT", x1, -y1)
-            tex:SetPoint("TOPRIGHT", frame, lastCol and "TOPRIGHT" or "TOPLEFT", lastCol and 0 or xs[col], -y1)
-            tex:SetPoint("BOTTOMLEFT", frame, lastRow and "BOTTOMLEFT" or "TOPLEFT", x1, lastRow and 0 or -ys[row])
-            pieces[#pieces + 1] = tex
+            local function place(region)
+                region:SetPoint("TOPLEFT", frame, "TOPLEFT", x1, -y1)
+                region:SetPoint("TOPRIGHT", frame, lastCol and "TOPRIGHT" or "TOPLEFT", lastCol and 0 or xs[col], -y1)
+                region:SetPoint("BOTTOMLEFT", frame, lastRow and "BOTTOMLEFT" or "TOPLEFT", x1, lastRow and 0 or -ys[row])
+            end
+            local tile = tiled[row] and tiled[row][col]
+            if tile then
+                cells[#cells + 1] = TiledCell(frame, place, file, u[col], u[col + 1],
+                    T + tile.v[1] * dv, T + tile.v[2] * dv, tile.v[2] - tile.v[1], layer, sublevel)
+            else
+                local tex = frame:CreateTexture(nil, layer or "BACKGROUND", nil, sublevel)
+                tex:SetTexture(file)
+                tex:SetTexCoord(u[col], u[col + 1], v[row], v[row + 1])
+                place(tex)
+                pieces[#pieces + 1] = tex
+            end
         end
     end
 
-    local handle = { pieces = pieces }
-    function handle:SetShown(shown) for _, t in ipairs(self.pieces) do t:SetShown(shown) end end
-    function handle:Destroy() for _, t in ipairs(self.pieces) do t:Hide() end end
+    local handle = { pieces = pieces, cells = cells }
+    function handle:SetShown(shown)
+        for _, t in ipairs(self.pieces) do t:SetShown(shown) end
+        for _, c in ipairs(self.cells) do c:SetShown(shown) end
+    end
+    function handle:Destroy()
+        for _, t in ipairs(self.pieces) do t:Hide() end
+        for _, c in ipairs(self.cells) do c:SetScript("OnSizeChanged", nil); c:Hide() end
+    end
     return handle
 end
 
@@ -663,9 +731,10 @@ end
 -- The card: the face sliced from its atlas over the whole frame, a hover
 -- fill inside the border across the header band (opts.header, else the
 -- frame's height), the label colored by state, and a glow at the right edge
--- while the group is open or selected. The glow spans the frame's height
--- plus nav.card.glowOverhang above and below, on a frame above the card's
--- children. With glow.fixed = { top, bottom }, rows of the glow's atlas,
+-- while the group is open or selected. The glow stands nav.card.glowInset
+-- inside the frame's top and bottom edges, the way Blizzard's ends on the
+-- card's border, on a frame above the card's children. With glow.fixed =
+-- { top, bottom }, rows of the glow's atlas,
 -- the band between them keeps its own scale while the rows outside stretch,
 -- so an arrow baked into the middle stays an arrow on a tall card; the whole
 -- glow scales down together when the card is shorter than the atlas.
@@ -675,12 +744,12 @@ end
 local function GlowFrame(frame, glowSpec, m)
     local file, w, gh, L, R, T, B = AtlasSource(glowSpec)
     if not file then return nil end
-    local overhang = m.glowOverhang or 0
+    local inset = m.glowInset or 0
     local x = glowSpec.x or m.glowOffset or 0
     local glow = CreateFrame("Frame", nil, frame)
     glow:SetFrameLevel(frame:GetFrameLevel() + 5)
-    glow:SetPoint("TOPRIGHT", frame, "TOPRIGHT", x, overhang)
-    glow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", x, -overhang)
+    glow:SetPoint("TOPRIGHT", frame, "TOPRIGHT", x, -inset)
+    glow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", x, inset)
     glow:SetWidth(w)
 
     local dv = (B - T) / gh

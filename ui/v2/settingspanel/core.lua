@@ -25,6 +25,7 @@ end
 -- Every layout number here comes from the active skin's metrics: the panel
 -- size and bounds, titleBarHeight, closeButton, resizeGrip, toolbar, pulse,
 -- contentHeaderHeight (a page may grow the header, see _headerBaseHeight),
+-- contentHeader (where the page header sits and how its actions lay out),
 -- navWidth, scrollBar, paneInset and home.
 local function M()
     return Controls.Metrics()
@@ -566,29 +567,56 @@ end
 
 -- Content Pane
 
+-- What the content's top edge hangs from, as relativeTo and the points for
+-- a left- and a right-anchored region. With a page up and the header in
+-- the pane, the header's bottom edge; with the header in the title band, or
+-- on the home page, the pane's own top.
+function UIPanel:ContentTopAnchor(pageUp)
+    local contentPane = self.frame and self.frame._contentPane
+    if pageUp and contentPane._header and M().contentHeader.placement ~= "band" then
+        return contentPane._header, "BOTTOMLEFT", "BOTTOMRIGHT"
+    end
+    return contentPane, "TOPLEFT", "TOPRIGHT"
+end
+
 function UIPanel:CreateContentPane()
     local frame = self.frame
     if not frame then return end
 
     local contentPane = CreateFrame("Frame", BRAND .. "ContentPane", frame)
     local inset = M().windowInset
-    contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", M().navWidth + inset + M().nav.dividerGap, -(M().titleBarHeight))
+    local contentX = M().navWidth + inset + M().nav.dividerGap
+    contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", contentX, -(M().titleBarHeight))
     contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
+    frame._contentPane = contentPane
 
     -- The page header: title, subtitle, and the action buttons. The skin's
-    -- contentHeader metric says where the actions sit (left, under the title,
-    -- or right, on the title line), whether the separator under the header
-    -- is drawn, and whether the copy-from field exists at all.
+    -- contentHeader metric says where the header sits (placement: pane, at
+    -- the top of the content pane, or band, in the title band above the
+    -- panes at hdr.top, between the content pane's left edge and the
+    -- window's inset), where the actions sit (left, under the title, or
+    -- right, on the title line), whether the separator under the header is
+    -- drawn, and whether the copy-from field exists at all.
     local hdr = M().contentHeader
+    local inBand = hdr.placement == "band"
     local ar, ag, ab = Theme:GetAccentColor()
     local header = CreateFrame("Frame", nil, contentPane)
     header:SetHeight(M().contentHeaderHeight)
-    header:SetPoint("TOPLEFT", contentPane, "TOPLEFT", 0, 0)
-    header:SetPoint("TOPRIGHT", contentPane, "TOPRIGHT", 0, 0)
+    if inBand then
+        header:SetPoint("TOPLEFT", frame, "TOPLEFT", contentX, -hdr.top)
+        header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -inset, -hdr.top)
+    else
+        header:SetPoint("TOPLEFT", contentPane, "TOPLEFT", 0, 0)
+        header:SetPoint("TOPRIGHT", contentPane, "TOPRIGHT", 0, 0)
+    end
 
     local headerTitle = header:CreateFontString(nil, "OVERLAY")
     Theme:ApplyHeaderFont(headerTitle, 20)
-    headerTitle:SetPoint("TOPLEFT", header, "TOPLEFT", 16, -10)
+    if inBand then
+        headerTitle:SetPoint("LEFT", header, "LEFT", hdr.padLeft, 0)
+    else
+        headerTitle:SetPoint("TOPLEFT", header, "TOPLEFT", hdr.padLeft, -10)
+    end
     headerTitle:SetText("Home")  -- Default
     contentPane._headerTitle = headerTitle
 
@@ -687,8 +715,9 @@ function UIPanel:CreateContentPane()
     -- line) restores this through UIPanel:ResetHeaderSubtitle.
     contentPane._headerBaseHeight = M().contentHeaderHeight
 
+    local topRel, topLeft, topRight = self:ContentTopAnchor(true)
     local scrollFrame = CreateFrame("ScrollFrame", BRAND .. "ContentScrollFrame", contentPane)
-    scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", M().paneInset, -M().paneInset)
+    scrollFrame:SetPoint("TOPLEFT", topRel, topLeft, M().paneInset, -M().paneInset)
     scrollFrame:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -(M().scrollBar.margin + M().scrollBar.width + M().paneInset), M().paneInset)
     scrollFrame:EnableMouseWheel(true)
 
@@ -720,7 +749,7 @@ function UIPanel:CreateContentPane()
     local scrollbar = Controls.CreateScrollBar({ parent = contentPane, scrollFrame = scrollFrame })
     -- Hung from the header rather than a fixed offset from the pane, so it
     -- follows a header a page has grown.
-    scrollbar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -M().scrollBar.margin, -M().paneInset)
+    scrollbar:SetPoint("TOPRIGHT", topRel, topRight, -M().scrollBar.margin, -M().paneInset)
     scrollbar:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -M().scrollBar.margin, (M().resizeGrip.size + M().scrollBar.margin))
     contentPane._scrollbar = scrollbar
 

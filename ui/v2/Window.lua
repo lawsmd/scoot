@@ -127,7 +127,9 @@ end
 -- laid so its column split lands on the nav's right edge (windowInset plus
 -- navWidth) and its last row split on the title bar's bottom edge, the
 -- earlier row splits keeping their own distance above it; a background with
--- a panel edge baked into it then meets the panes where they meet.
+-- a panel edge baked into it then meets the panes where they meet. A grid
+-- cell named in grid.tile repeats a band of the art down its rect instead
+-- of stretching (Chrome.GridAtlas).
 function Window:BuildTemplateParts(frame, spec)
     local Chrome = addon.UI.Chrome
     local portrait = spec.portrait
