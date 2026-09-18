@@ -1,11 +1,21 @@
 -- Window.lua - the settings window's frame: background, chrome and border,
 -- drawn the way the active skin's window role says.
 --
--- The window role (addon.UI.Chrome, Spec("window")) is flat or nineSlice.
--- Flat is the panel's own look: a background fill, a noise layer over it,
--- and a solid border windowBorderWidth wide. nineSlice puts Blizzard's
--- nine-slice pieces on a child frame instead, and the content inset the
--- panes anchor from is the skin's windowInset metric either way.
+-- The window role (addon.UI.Chrome, Spec("window")) is flat, nineSlice or
+-- template. Flat is the panel's own look: a background fill, a noise layer
+-- over it, and a solid border windowBorderWidth wide. nineSlice puts
+-- Blizzard's nine-slice pieces on a child frame. template makes the frame
+-- itself an instance of a Blizzard panel template, whose border, title
+-- plate, close button and portrait ring come with it; the descriptor names
+-- what fills the ring (portrait) and the art laid under the title band
+-- (contentBackground). A caller takes the template kind by passing
+-- opts.template; a game menu or an editor window gets the role's fallback
+-- instead of a portrait panel. The content inset the panes anchor from is
+-- the skin's windowInset metric in every kind.
+--
+-- A template frame carries Blizzard's title and portrait mixin, so the two
+-- methods added here, GetContentInset and GetOverlayLevel, share a name with
+-- none of its methods; a new one has to be checked the same way.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -26,10 +36,16 @@ end
 -- @param parent: Parent frame (default UIParent)
 -- @param width: Window width (default 900)
 -- @param height: Window height (default 650)
--- @param opts: per-caller choices a window kind reads (none yet)
+-- @param opts: template = true takes the window role's template kind; the
+--               default declines it and draws the role's fallback
 -- @return: The created frame
 function Window:Create(name, parent, width, height, opts)
-    local frame = CreateFrame("Frame", name, parent or UIParent)
+    local Chrome = addon.UI.Chrome
+    local spec = Chrome.Spec("window")
+    if spec.kind == "template" and not (opts and opts.template) then
+        spec = Chrome.Resolve(spec.fallback, Chrome.FLAT.window)
+    end
+    local frame = Chrome.CreateFrame(spec, "Frame", name, parent or UIParent)
     frame:SetSize(width or 900, height or 650)
     -- Use DIALOG strata to match old SettingsPanel - HIGH strata + SetToplevel
     -- can cause Blizzard's ShowUIPanel to hide the frame unexpectedly
@@ -43,17 +59,20 @@ function Window:Create(name, parent, width, height, opts)
     frame._defaultWidth = width or 900
     frame._defaultHeight = height or 650
 
-    local spec = addon.UI.Chrome.Spec("window")
     frame._chromeSpec = spec
 
-    self:CreateBackground(frame, spec)
-    if spec.kind == "nineSlice" then
-        frame._chrome = addon.UI.Chrome.NineSlice(frame, spec)
+    if spec.kind == "template" then
+        self:BuildTemplateParts(frame, spec)
     else
-        if spec.noise then
-            self:CreateNoiseOverlay(frame, spec.noise)
+        self:CreateBackground(frame, spec)
+        if spec.kind == "nineSlice" then
+            frame._chrome = Chrome.NineSlice(frame, spec)
+        else
+            if spec.noise then
+                self:CreateNoiseOverlay(frame, spec.noise)
+            end
+            self:CreateSolidBorder(frame, spec)
         end
-        self:CreateSolidBorder(frame, spec)
     end
 
     -- The inset every pane anchors from: the flat border's width, or the
@@ -64,10 +83,14 @@ function Window:Create(name, parent, width, height, opts)
     end
 
     -- The frame level a part takes to draw over the window's border art: the
-    -- resize grip sits in the corner the border owns. Flat and nine-slice
-    -- borders draw on the frame itself, so a step above the panel's own
-    -- children is enough.
+    -- resize grip sits in the corner the border owns. A template's border is
+    -- a child frame of its own, levels above the panel's parts; flat and
+    -- nine-slice borders draw on the frame itself, so a step above the
+    -- panel's own children is enough.
     function frame:GetOverlayLevel()
+        if self._chromeSpec and self._chromeSpec.kind == "template" and self.NineSlice then
+            return self.NineSlice:GetFrameLevel() + 1
+        end
         return self:GetFrameLevel() + 10
     end
 
@@ -80,6 +103,72 @@ function Window:Create(name, parent, width, height, opts)
     frame._isSettingsWindow = true
 
     return frame
+end
+
+--------------------------------------------------------------------------------
+-- Template parts: the portrait and the content background
+--------------------------------------------------------------------------------
+
+local function atlasExists(name)
+    if type(name) ~= "string" or not (C_Texture and C_Texture.GetAtlasInfo) then return false end
+    local ok, info = pcall(C_Texture.GetAtlasInfo, name)
+    return ok and info ~= nil
+end
+
+-- portrait: { texture = <Theme.Textures key or path> } | { atlas = name } |
+-- { unit = "player" } | { class = true } | false, which hides the ring's
+-- contents and swaps the border to spec.layout when the skin names one; nil
+-- leaves the template's empty ring. Every call is the template's own method.
+-- contentBackground: the declared descriptor gives the rect (inset) and the
+-- draw sublevel, the resolved one the art, so a missing atlas keeps the
+-- geometry and changes only the fill. The template's own tiled background
+-- stays under it in the margins and the title band.
+function Window:BuildTemplateParts(frame, spec)
+    local Chrome = addon.UI.Chrome
+    local portrait = spec.portrait
+    if portrait == false then
+        if frame.SetPortraitShown then frame:SetPortraitShown(false) end
+        if spec.layout and frame.SetBorder then frame:SetBorder(spec.layout) end
+    elseif type(portrait) == "table" then
+        if portrait.unit and frame.SetPortraitToUnit then
+            frame:SetPortraitToUnit(portrait.unit)
+            frame:HookScript("OnShow", function(f) f:SetPortraitToUnit(portrait.unit) end)
+        elseif portrait.atlas and frame.SetPortraitAtlasRaw then
+            if atlasExists(portrait.atlas) then
+                frame:SetPortraitAtlasRaw(portrait.atlas)
+            elseif frame.SetPortraitShown then
+                frame:SetPortraitShown(false)
+            end
+        elseif portrait.texture and frame.SetPortraitToAsset then
+            local path = (Theme.Textures and Theme.Textures[portrait.texture]) or portrait.texture
+            frame:SetPortraitToAsset(path)
+        elseif portrait.class and frame.SetPortraitToClassIcon then
+            local _, classFile = UnitClass("player")
+            if classFile then frame:SetPortraitToClassIcon(classFile) end
+        end
+    end
+
+    local declared = spec.contentBackground
+    if declared then
+        local cb = Chrome.Resolve(declared, { kind = "flat", fill = "window" })
+        local inset = declared.inset or {}
+        local tex = frame:CreateTexture(nil, "BACKGROUND", nil, declared.sublevel or -5)
+        tex:SetPoint("TOPLEFT", frame, "TOPLEFT", inset.left or 0, -(inset.top or 0))
+        tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(inset.right or 0), inset.bottom or 0)
+        if cb.kind == "atlas" and cb.atlas then
+            tex:SetAtlas(cb.atlas)
+        else
+            local fill = cb.fill or "window"
+            local r, g, b, a
+            if fill == "window" then
+                r, g, b, a = Theme:GetBackgroundColor()
+            else
+                r, g, b, a = Chrome.Color(fill)
+            end
+            tex:SetColorTexture(r, g, b, a or 1)
+        end
+        frame._contentBackground = tex
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -153,8 +242,13 @@ function Window:Destroy(frame)
     if frame._chrome and frame._chrome.Destroy then
         frame._chrome:Destroy()
     end
+    if frame._contentBackground then
+        frame._contentBackground:Hide()
+    end
 
-    -- Hide and clear
+    -- Hide and clear. A template frame created again under the same name
+    -- takes over the name and its children's; the old one is orphaned here,
+    -- which only the runtime skin switch does.
     frame:Hide()
     frame:SetParent(nil)
 end

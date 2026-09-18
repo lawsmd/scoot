@@ -11,7 +11,10 @@
 --   nineSlice  NineSliceUtil.ApplyLayout on a child frame: layout, textureKit
 --   atlas      one atlas per state: normal, hover, selected, disabled, pressed
 --   template   a Blizzard frame template supplies the art and part of the
---              method surface: template, joined with the caller's own
+--              method surface: template, joined with the caller's own. On
+--              the window role the frame itself is the template, and the
+--              descriptor names the portrait and a contentBackground
+--   window     the window template supplies this part (titleBar, closeButton)
 --   ascii, text, texture   how the title bar presents the product's title
 -- Any descriptor may carry fallback (another descriptor), labelColors (a
 -- color token per state), font ("role" or "template") and inset.
@@ -134,8 +137,17 @@ function Chrome.Available(spec)
         for name in spec.template:gmatch("[^,%s]+") do
             if not templateExists(name, spec.frameType) then return false end
         end
+        -- A layout the descriptor swaps in (the no-portrait border) has to exist too
+        if spec.layout and not (NineSliceLayouts and type(NineSliceLayouts[spec.layout]) == "table") then
+            return false
+        end
         return true
+    elseif kind == "window" then
+        -- The window template's own part: there when the window is a template
+        return Chrome.Spec("window").kind == "template"
     elseif kind == "atlas" then
+        -- One atlas (a content background, a glow), or one per state
+        if spec.atlas then return atlasExists(spec.atlas) end
         local any = false
         for _, state in ipairs(ATLAS_STATES) do
             local name = spec[state]
@@ -524,10 +536,12 @@ local function describe(spec)
     if type(spec) ~= "table" then return "nil" end
     local kind = spec.kind or "?"
     if kind == "template" then return kind .. " " .. tostring(spec.template) end
+    if kind == "window" then return "window (the window template's part)" end
     if kind == "nineSlice" then
         return kind .. " " .. tostring(spec.layout) .. (spec.textureKit and (" / " .. spec.textureKit) or "")
     end
     if kind == "atlas" then
+        if spec.atlas then return kind .. " " .. tostring(spec.atlas) end
         local names = {}
         for _, state in ipairs(ATLAS_STATES) do
             if spec[state] then names[#names + 1] = state .. "=" .. tostring(spec[state]) end

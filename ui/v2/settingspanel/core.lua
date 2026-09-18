@@ -50,7 +50,7 @@ function UIPanel:Initialize()
         savedHeight = size.height or M().panelHeight
     end
 
-    local frame = Window:Create(BRAND .. "SettingsFrame", UIParent, savedWidth, savedHeight)
+    local frame = Window:Create(BRAND .. "SettingsFrame", UIParent, savedWidth, savedHeight, { template = true })
     frame:SetPoint("CENTER")
     frame:Hide()
     self.frame = frame
@@ -125,8 +125,9 @@ end
 -- The title handle: SetHome(isHome) while the home page is up, Reveal(animate)
 -- when a page comes up, Cleanup(). ascii is the block-letter logo with its
 -- column reveal and a click home; text is the product name in the header
--- role or the role's fontObject; texture is the product's own image. A role
--- the model has no art for falls back to text.
+-- role or the role's fontObject; texture is the product's own image; window
+-- is the window template's own title plate. A role the model has no art
+-- for, or a window kind on a frame with no title plate, falls back to text.
 function UIPanel:CreateTitle(titleBar)
     local frame = self.frame
     local model = HeaderModel().title or {}
@@ -134,6 +135,7 @@ function UIPanel:CreateTitle(titleBar)
     local kind = spec.kind
     if kind == "ascii" and not model.ascii then kind = "text" end
     if kind == "texture" and not model.texture then kind = "text" end
+    if kind == "window" and not (frame.TitleContainer and frame.SetTitle) then kind = "text" end
     local panel = self
     local handle = { kind = kind }
 
@@ -225,6 +227,31 @@ function UIPanel:CreateTitle(titleBar)
         function handle:Cleanup()
             Theme:Unsubscribe("UIPanel_TitleBar")
         end
+    elseif kind == "window" then
+        -- The template's title plate carries the text. An invisible button
+        -- over it takes the click home and the drag, the way the text kind's
+        -- button does; the template's methods are called, never redefined.
+        frame:SetTitle(model.text or BRAND)
+        if spec.offsets and frame.SetTitleOffsets then
+            frame:SetTitleOffsets(spec.offsets.left, spec.offsets.right)
+        end
+        if spec.titleColor and frame.SetTitleColor then
+            frame:SetTitleColor(CreateColor(Chrome.Color(spec.titleColor)))
+        end
+        local btn = CreateFrame("Button", BRAND .. "TitleBtn", frame.TitleContainer)
+        btn:SetAllPoints(frame.TitleContainer)
+        btn:RegisterForClicks("AnyUp")
+        btn:SetScript("OnClick", function()
+            panel:GoHome()
+        end)
+        passDrag(btn)
+        frame._titleText = frame:GetTitleText()
+
+        function handle:SetHome(isHome)
+            btn:EnableMouse(not isHome)
+        end
+        function handle:Reveal() end
+        function handle:Cleanup() end
     elseif kind == "texture" then
         local tex = titleBar:CreateTexture(nil, "ARTWORK")
         tex:SetTexture(model.texture)
@@ -287,7 +314,7 @@ function UIPanel:CreateCloseButton()
     if not frame then return end
 
     local panel = self
-    local closeBtn = Controls:CreateCloseButton({
+    local closeBtn, spec = Controls:CreateCloseButton({
         parent = frame,
         name = BRAND .. "CloseButton",
         onClick = function()
@@ -296,8 +323,12 @@ function UIPanel:CreateCloseButton()
             end
         end,
     })
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", M().closeButton.x, M().closeButton.y)
-    closeBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
+    if not closeBtn then return end
+    -- The window kind's button is the template's own, already anchored
+    if not (spec and spec.kind == "window") then
+        closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", M().closeButton.x, M().closeButton.y)
+        closeBtn:SetFrameLevel(frame:GetOverlayLevel())
+    end
     frame._closeBtn = closeBtn
 end
 

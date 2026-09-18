@@ -24,7 +24,10 @@
 --   template (the caller's own templates, e.g. a secure handler),
 --   secureAction (a table of SecureActionButton attributes),
 --   borderWidth, borderAlpha (flat kind)
--- CreateCloseButton options: parent (required), name, onClick, size
+-- CreateCloseButton options: parent (required), name, onClick, size. It
+-- returns the button and the descriptor it was drawn from. A closeButton
+-- role of kind window adopts the close button the parent's own template
+-- built, adds no method to it, and leaves its anchor to the template.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -405,8 +408,22 @@ function Controls:CreateCloseButton(options)
         return nil
     end
 
+    -- The window kind: the parent's template already has the button. A parent
+    -- without one takes the role's fallback.
+    local spec = Chrome().Spec("closeButton")
+    if spec.kind == "window" then
+        local adopted = options.parent.CloseButton
+        if adopted and adopted.SetScript then
+            adopted:SetScript("OnClick", function(self, mouseButton)
+                if options.onClick then options.onClick(self, mouseButton) end
+            end)
+            return adopted, spec
+        end
+        spec = Chrome().Resolve(spec.fallback, Chrome().FLAT.closeButton)
+    end
+
     local size = options.size or M().closeButton.size
-    local btn, spec = Chrome().CreateFrame("closeButton", "Button", options.name, options.parent)
+    local btn = Chrome().CreateFrame(spec, "Button", options.name, options.parent)
     btn:SetSize(size, size)
     btn:EnableMouse(true)
     btn:RegisterForClicks("AnyUp")
@@ -461,7 +478,7 @@ function Controls:CreateCloseButton(options)
         end
     end
 
-    return btn
+    return btn, spec
 end
 
 --------------------------------------------------------------------------------

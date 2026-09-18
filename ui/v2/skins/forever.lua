@@ -3,11 +3,14 @@
 --
 -- The palette is measured out of the Forever build's art, and the comment
 -- on each value names the atlas it came from. The chrome table takes the
--- retail construction and lets the client's art set do the work: every
--- template and atlas named below exists on retail too, so /camelot draws
--- gray Blizzard chrome on the retail client and bronze chrome on Forever
--- from this one table. None of it has been seen on either, so the numbers
--- that place the title, the toolbar and the close button are proposals.
+-- retail construction and lets the client's art set do the work: the window
+-- is Blizzard's portrait panel, the template Forever's own Legacy pane is
+-- built on, and its parts exist on retail too, so /camelot draws a gray
+-- portrait panel on the retail client and a bronze one on Forever from this
+-- one table. The Legacy pane's own atlases exist only on Forever; each is
+-- declared with a fallback the retail client takes. None of it has been
+-- seen lit, so the numbers that place the toolbar and the panes are
+-- proposals.
 --
 -- Fonts and the row metrics are tui's: a proportional face waits on the
 -- framework's content-fit phase. Metrics cannot be omitted, since
@@ -78,18 +81,39 @@ Skin.Register("forever", {
         NOISE_OVERLAY = ROOT .. "media\\textures\\frosted-noise",
         SCOOT_ICON    = ROOT .. "ScootIcon",
         SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent",
+        -- The window's portrait: the question mark every client has, the
+        -- same placeholder the minimap button draws. Both change together
+        -- when Camelot has an emblem.
+        PLACEHOLDER_ICON = "Interface\\ICONS\\INV_Misc_QuestionMark",
     },
 
     -- The chrome: Blizzard's parts where a part exists, the framework's flat
-    -- draw where the look is a fill. Every name resolves on retail, so
-    -- nothing here needs a fallback; a name the running client lacks would
-    -- fall to the flat default through Chrome.Spec.
+    -- draw where the look is a fill. A name only Forever carries declares
+    -- the fallback the retail client takes; a name the running client lacks
+    -- with no fallback falls to the flat default through Chrome.Spec.
     chrome = {
-        -- Blizzard's own options border, the kit its Edit Mode dialog uses.
-        window = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame", background = "window" },
-        -- The product name in Blizzard's panel title font, top-left of the band.
-        titleBar = { kind = "text", fontObject = "GameFontNormal", point = "TOPLEFT", x = 24, y = -20 },
-        closeButton = { kind = "template", template = "UIPanelCloseButton" },
+        -- Blizzard's portrait panel: the frame is the template, and its
+        -- metal border, title plate, close button and portrait ring come
+        -- with it. The dark page under the title band is the Legacy pane's
+        -- own background, stretched the way Blizzard stretches it; retail
+        -- has no such atlas and fills the rect flat. The options border
+        -- stands in if a client ever lacks the template.
+        window = {
+            kind = "template", template = "PortraitFrameTemplate",
+            portrait = { texture = "PLACEHOLDER_ICON" },
+            contentBackground = {
+                kind = "atlas", atlas = "Legacy-Tree-Frame-background",
+                inset = { left = 2, top = 21, right = 2, bottom = 2 }, sublevel = -5,
+                fallback = { kind = "flat", fill = "window" },
+            },
+            fallback = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame", background = "window" },
+        },
+        -- The title and the close button are the window template's own.
+        titleBar = {
+            kind = "window",
+            fallback = { kind = "text", fontObject = "GameFontNormal", point = "TOPLEFT", x = 24, y = -20 },
+        },
+        closeButton = { kind = "window", fallback = { kind = "template", template = "UIPanelCloseButton" } },
         -- Raw texture files rather than atlases, so whether Forever redraws
         -- this one is the gallery's to answer.
         button = { kind = "template", template = "UIPanelButtonTemplate", font = "template" },
@@ -148,12 +172,13 @@ Skin.Register("forever", {
         borderWidth = 2,
         windowBorderWidth = 3,
 
-        -- Panel chrome. The OptionsFrame nine-slice pieces are 32x32 and
-        -- Blizzard anchors the same kit 16px outside its content, so the
-        -- panes stand 16 in from the frame edge. The title sits top-left in
-        -- the band, the toolbar centered below it, the close button in the
-        -- corner the way Blizzard's panels place theirs.
-        windowInset = 16,
+        -- Panel chrome. The portrait panel's metal border draws outside the
+        -- frame rect and its own background sits 2px inside it, so the
+        -- panes stand a few pixels in. The title band is the template's
+        -- 21px title plate plus the toolbar row under it; the close button
+        -- keeps the template's corner. The closeButton offsets are read only
+        -- if the chain falls past the window kind.
+        windowInset = 6,
         panelWidth = 1125,
         panelHeight = 715,
         panelMinWidth = 800,
@@ -166,7 +191,7 @@ Skin.Register("forever", {
         navWidth = 220,
         closeButton = { size = 24, x = -6, y = -6, fontSize = 16 },
         resizeGrip = { size = 16, x = -8, y = 8, dot = 2, step = 4, alpha = 0.7 },
-        toolbar = { height = 22, spacing = 8, y = -34, fontSize = 11 },
+        toolbar = { height = 22, spacing = 8, y = -38, fontSize = 11 },
         pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
 
         -- The panel's own numbers, per surface. paneInset is the scroll
