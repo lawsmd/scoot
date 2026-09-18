@@ -269,6 +269,36 @@ function UIPanel:UpdateCollapseAllButton()
     else
         collapseBtn:Hide()
     end
+    self:LayoutHeaderActions()
+end
+
+-- The header's action buttons on the title line, right to left: the Defaults
+-- info icon, Defaults, Collapse All, each only while shown. Runs when the
+-- skin's contentHeader metric says actions = "right"; the left layout hangs
+-- Defaults under the title in UpdateDefaultsButton and keeps Collapse All at
+-- the header's bottom-right corner.
+function UIPanel:LayoutHeaderActions()
+    local contentPane = self.frame and self.frame._contentPane
+    if not contentPane or not contentPane._header then return end
+    local hdr = Controls.Metrics().contentHeader
+    if hdr.actions ~= "right" then return end
+    local header = contentPane._header
+    local x = -hdr.padRight
+    local defaultsBtn, icon, collapse = contentPane._defaultsBtn, contentPane._defaultsInfoIcon, contentPane._collapseAllBtn
+    if defaultsBtn and defaultsBtn:IsShown() then
+        if icon and icon:IsShown() then
+            icon:ClearAllPoints()
+            icon:SetPoint("RIGHT", header, "RIGHT", x, 0)
+            x = x - (icon:GetWidth() or 0) - hdr.iconGap
+        end
+        defaultsBtn:ClearAllPoints()
+        defaultsBtn:SetPoint("RIGHT", header, "RIGHT", x, 0)
+        x = x - (defaultsBtn:GetWidth() or 0) - hdr.gap
+    end
+    if collapse and collapse:IsShown() then
+        collapse:ClearAllPoints()
+        collapse:SetPoint("RIGHT", header, "RIGHT", x, 0)
+    end
 end
 
 -- Copy From Dropdown Management
@@ -685,6 +715,14 @@ function UIPanel:UpdateDefaultsButton()
     if not resetInfo then
         defaultsBtn:Hide()
         if defaultsInfoIcon then defaultsInfoIcon:Hide() end
+        self:LayoutHeaderActions()
+        return
+    end
+
+    if Controls.Metrics().contentHeader.actions == "right" then
+        defaultsBtn:Show()
+        if defaultsInfoIcon then defaultsInfoIcon:Show() end
+        self:LayoutHeaderActions()
         return
     end
 

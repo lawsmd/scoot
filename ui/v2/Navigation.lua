@@ -81,28 +81,48 @@ function Navigation:Create(parent)
     navFrame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", inset, inset)
 
     -- The divider on the nav's right edge, the way the navDivider role says:
-    -- an atlas at its own width stretched to the pane's height, or the flat
-    -- accent line at nav.dividerWidth. The content pane clears
-    -- nav.dividerWidth either way.
+    -- an atlas centered on the edge at its own width, cut into a vertical
+    -- three-slice when the role names one so its caps keep their size, or
+    -- the flat accent line at nav.dividerWidth inside the edge. The content
+    -- pane clears nav.dividerGap past the edge either way. The rows draw
+    -- over the divider, so a card's right border meets it the way the
+    -- Legacy pane's cards do.
     local dividerSpec = Chrome.Spec("navDivider")
-    local separator = navFrame:CreateTexture(nil, "BORDER")
     if dividerSpec.kind == "atlas" and dividerSpec.normal then
-        separator:SetAtlas(dividerSpec.normal, true)
-        if dividerSpec.width then separator:SetWidth(dividerSpec.width) end
-        separator:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", dividerSpec.x or 0, dividerSpec.y or 0)
-        separator:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", dividerSpec.x or 0, -(dividerSpec.y or 0))
+        local divider = CreateFrame("Frame", nil, navFrame)
+        divider:SetFrameLevel(navFrame:GetFrameLevel() + 1)
+        local ok, info = pcall(C_Texture.GetAtlasInfo, dividerSpec.normal)
+        divider:SetWidth(dividerSpec.width or (ok and info and info.width) or M().nav.dividerWidth)
+        divider:SetPoint("TOP", navFrame, "TOPRIGHT", dividerSpec.x or 0, dividerSpec.y or 0)
+        divider:SetPoint("BOTTOM", navFrame, "BOTTOMRIGHT", dividerSpec.x or 0, -(dividerSpec.y or 0))
+        local art
+        if dividerSpec.slice then
+            art = Chrome.SlicedAtlas(divider, { atlas = dividerSpec.normal, slice = dividerSpec.slice }, "BORDER")
+        end
+        if not art then
+            local tex = divider:CreateTexture(nil, "BORDER")
+            tex:SetAtlas(dividerSpec.normal)
+            tex:SetAllPoints()
+        end
+        navFrame._separator = divider
     else
+        local separator = navFrame:CreateTexture(nil, "BORDER")
         separator:SetWidth(M().nav.dividerWidth)
         Controls.RegisterThemedFill(separator, M().nav.dividerAlpha)
         separator:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", 0, 0)
         separator:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", 0, 0)
+        navFrame._separator = separator
     end
-    navFrame._separator = separator
 
-    -- Custom scroll frame (no template - built from scratch)
+    -- Custom scroll frame (no template - built from scratch). Under the card
+    -- look the rows run to the nav's edge so the cards meet the divider; the
+    -- scrollbar then lies over their right margin, above them, and shows
+    -- only while the tree overflows.
+    local isCard = self:IsCardNav()
+    local rightReserve = isCard and 0 or (M().scrollBar.margin + M().scrollBar.width + M().scrollBar.gap)
     local scrollFrame = CreateFrame("ScrollFrame", BRAND .. "NavScrollFrame", navFrame)
     scrollFrame:SetPoint("TOPLEFT", navFrame, "TOPLEFT", M().nav.padLeft, -M().nav.padTop)
-    scrollFrame:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -(M().scrollBar.margin + M().scrollBar.width + M().scrollBar.gap), M().nav.padTop)
+    scrollFrame:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -rightReserve, M().nav.padTop)
     scrollFrame:EnableMouseWheel(true)
 
     -- Mouse wheel scrolling
@@ -127,7 +147,7 @@ function Navigation:Create(parent)
 
     -- Content frame that will hold all nav items
     local contentFrame = CreateFrame("Frame", BRAND .. "NavContent", scrollFrame)
-    contentFrame:SetWidth(scrollFrame:GetWidth() or (M().navWidth - M().nav.padLeft - M().scrollBar.margin - M().scrollBar.width - M().scrollBar.gap))
+    contentFrame:SetWidth(scrollFrame:GetWidth() or (M().navWidth - M().nav.padLeft - rightReserve))
     scrollFrame:SetScrollChild(contentFrame)
     navFrame._content = contentFrame
     navFrame._scrollFrame = scrollFrame
@@ -136,6 +156,9 @@ function Navigation:Create(parent)
     local scrollbar = Controls.CreateScrollBar({ parent = navFrame, scrollFrame = scrollFrame })
     scrollbar:SetPoint("TOPRIGHT", navFrame, "TOPRIGHT", -M().scrollBar.margin, -M().nav.padTop)
     scrollbar:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -M().scrollBar.margin, M().nav.padTop)
+    if isCard then
+        scrollbar:SetFrameLevel(navFrame:GetFrameLevel() + 10)
+    end
     navFrame._scrollbar = scrollbar
 
     -- Initialize expanded state (start collapsed)
@@ -283,6 +306,8 @@ function Navigation:BuildRows(contentFrame)
         enabledIndices[#enabledIndices + 1] = idx
     end
 
+    local isCard = self:IsCardNav()
+    local card = M().nav.card
     for _, parentIdx in ipairs(enabledIndices) do
         local parent = self.NavModel[parentIdx]
         rowIndex = rowIndex + 1
@@ -293,36 +318,56 @@ function Navigation:BuildRows(contentFrame)
             self._expandedSections[parent.key] = false
         end
 
-        -- Create parent row
-        local parentRow = self:CreateParentRow(contentFrame, parent, yOffset, isParentModuleDisabled)
-        self._rows[rowIndex] = parentRow
-        yOffset = yOffset - self:ParentRowHeight()
-
-        -- Create child rows if parent is collapsible and has children
+        local visibleChildren = {}
         if parent.collapsible and parent.children then
-            local isExpanded = self._expandedSections[parent.key]
+            visibleChildren = self:GetVisibleChildren(parent)
+        end
+        local isExpanded = (parent.collapsible and self._expandedSections[parent.key]) and true or false
 
-            local visibleChildren = self:GetVisibleChildren(parent)
+        -- A card holds its children: its height is the header band plus,
+        -- while the group is open, the child rows and the bottom border.
+        -- A text row is the header alone, its children rows of their own.
+        local headerHeight = isCard and card.height or M().nav.parentRowHeight
+        local bodyHeight = 0
+        if isCard and isExpanded and #visibleChildren > 0 then
+            bodyHeight = #visibleChildren * M().nav.rowHeight + card.padBottom
+        end
 
-            for childIdx, child in ipairs(visibleChildren) do
-                rowIndex = rowIndex + 1
-                local isLastChild = (childIdx == #visibleChildren)
-                local isModuleDisabled = child.module and not self:IsNavModuleActive(child.module, child.moduleSubId)
-                local childRow = self:CreateChildRow(
-                    contentFrame,
-                    child,
-                    yOffset,
-                    isLastChild,
-                    isExpanded,
-                    #visibleChildren,
-                    childIdx,
-                    isModuleDisabled
-                )
-                self._rows[rowIndex] = childRow
+        local parentRow = self:CreateParentRow(contentFrame, parent, yOffset, isParentModuleDisabled, bodyHeight)
+        self._rows[rowIndex] = parentRow
 
-                if isExpanded then
-                    yOffset = yOffset - M().nav.rowHeight
-                end
+        local childHost = isCard and parentRow or contentFrame
+        local childY = isCard and -headerHeight or (yOffset - headerHeight)
+        local childInset = isCard and card.inner or 0
+
+        for childIdx, child in ipairs(visibleChildren) do
+            rowIndex = rowIndex + 1
+            local isLastChild = (childIdx == #visibleChildren)
+            local isModuleDisabled = child.module and not self:IsNavModuleActive(child.module, child.moduleSubId)
+            local childRow = self:CreateChildRow(
+                childHost,
+                child,
+                childY,
+                isLastChild,
+                isExpanded,
+                #visibleChildren,
+                childIdx,
+                isModuleDisabled,
+                childInset
+            )
+            self._rows[rowIndex] = childRow
+
+            if isExpanded then
+                childY = childY - M().nav.rowHeight
+            end
+        end
+
+        if isCard then
+            yOffset = yOffset - (headerHeight + bodyHeight + card.spacing)
+        else
+            yOffset = yOffset - headerHeight
+            if isExpanded then
+                yOffset = yOffset - #visibleChildren * M().nav.rowHeight
             end
         end
     end
@@ -341,28 +386,24 @@ end
 -- Create Parent Row (Section header - no tree lines)
 --------------------------------------------------------------------------------
 
--- A parent row is a card when the navCard role says so: the label centered
--- on the card's art, no glyph, a glow while the group is open, its height
--- and spacing from nav.card. Otherwise it is the text row navRow draws.
+-- A parent row is a card when the navCard role says so: the group's name
+-- centered on the header band of the card's art, no glyph, a glow while the
+-- group is open, and the child rows inside the same card under the header
+-- (bodyHeight, from BuildRows, is the room they take while open). Its
+-- numbers are nav.card. Otherwise it is the text row navRow draws.
 function Navigation:IsCardNav()
     return Chrome.Spec("navCard").kind == "card"
 end
 
-function Navigation:ParentRowHeight()
-    if self:IsCardNav() then
-        return M().nav.card.height + M().nav.card.spacing
-    end
-    return M().nav.parentRowHeight
-end
-
-function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
+function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled, bodyHeight)
     local isCard = self:IsCardNav()
     local row = CreateFrame("Button", nil, parent)
     if isCard then
         local c = M().nav.card
-        row:SetHeight(c.height)
-        row:SetPoint("TOPLEFT", parent, "TOPLEFT", c.padX, yOffset)
-        row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -c.padX, yOffset)
+        row:SetHeight(c.height + (bodyHeight or 0))
+        row:SetPoint("TOPLEFT", parent, "TOPLEFT", c.padLeft, yOffset)
+        row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -c.padRight, yOffset)
+        row._isCard = true
     else
         row:SetHeight(M().nav.parentRowHeight)
         row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
@@ -385,13 +426,14 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
     if isCard then
         local c = M().nav.card
         Theme:ApplyFont(label, c.labelFontRole, c.labelSize)
-        label:SetPoint("CENTER", row, "CENTER", 0, 0)
+        label:SetPoint("CENTER", row, "TOP", 0, -c.height / 2)
         label:SetJustifyH("CENTER")
         label:SetText(navItem.label)
         row._label = label
 
-        -- The card's art, glow and hover fill, and the label's color by state
-        row._backdrop = Chrome.Backdrop("navCard", row, { label = label })
+        -- The card's art, glow and header hover fill, and the label's color
+        -- by state
+        row._backdrop = Chrome.Backdrop("navCard", row, { label = label, header = c.height })
     else
         -- Expand/collapse indicator (▶/▼) - only for collapsible
         indicator = row:CreateFontString(nil, "OVERLAY")
@@ -476,11 +518,14 @@ end
 -- Create Child Row (with texture-based tree lines)
 --------------------------------------------------------------------------------
 
-function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisible, totalChildren, childIndex, isModuleDisabled)
+-- parent is the nav's content frame, or the card the row sits inside, in
+-- which case xInset keeps the row within the card's border.
+function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisible, totalChildren, childIndex, isModuleDisabled, xInset)
     local row = CreateFrame("Button", nil, parent)
+    local inset = xInset or 0
     row:SetHeight(M().nav.rowHeight)
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, yOffset)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", inset, yOffset)
+    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -inset, yOffset)
     row:EnableMouse(true)
     row:RegisterForClicks("AnyUp")
 

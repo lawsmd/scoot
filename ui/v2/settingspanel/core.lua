@@ -235,6 +235,9 @@ function UIPanel:CreateTitle(titleBar)
         if spec.offsets and frame.SetTitleOffsets then
             frame:SetTitleOffsets(spec.offsets.left, spec.offsets.right)
         end
+        if spec.justify and frame.GetTitleText then
+            frame:GetTitleText():SetJustifyH(spec.justify)
+        end
         if spec.titleColor and frame.SetTitleColor then
             frame:SetTitleColor(CreateColor(Chrome.Color(spec.titleColor)))
         end
@@ -569,9 +572,15 @@ function UIPanel:CreateContentPane()
 
     local contentPane = CreateFrame("Frame", BRAND .. "ContentPane", frame)
     local inset = M().windowInset
-    contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", M().navWidth + inset + M().nav.dividerWidth, -(M().titleBarHeight))
+    contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", M().navWidth + inset + M().nav.dividerGap, -(M().titleBarHeight))
     contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
 
+    -- The page header: title, subtitle, and the action buttons. The skin's
+    -- contentHeader metric says where the actions sit (left, under the title,
+    -- or right, on the title line), whether the separator under the header
+    -- is drawn, and whether the copy-from field exists at all.
+    local hdr = M().contentHeader
+    local ar, ag, ab = Theme:GetAccentColor()
     local header = CreateFrame("Frame", nil, contentPane)
     header:SetHeight(M().contentHeaderHeight)
     header:SetPoint("TOPLEFT", contentPane, "TOPLEFT", 0, 0)
@@ -633,41 +642,46 @@ function UIPanel:CreateContentPane()
             panel:CollapseAllSections()
         end
     })
-    collapseAllBtn:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 8)
+    if hdr.actions ~= "right" then
+        collapseAllBtn:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 8)
+    end
     collapseAllBtn:Hide()  -- Hidden by default, shown when collapsible sections exist
     contentPane._collapseAllBtn = collapseAllBtn
 
-    local copyFromDropdown = Controls:CreateDropdown({
-        parent = header,
-        name = BRAND .. "CopyFromDropdown",
-        values = {},  -- Will be populated dynamically
-        placeholder = "Select...",
-        width = 140,
-        height = 22,
-        fontSize = 11,
-        set = function(sourceKey)
-            panel:HandleCopyFrom(sourceKey)
-        end,
-    })
-    copyFromDropdown:SetPoint("TOPRIGHT", header, "TOPRIGHT", -8, -9)
-    copyFromDropdown:Hide()  -- Hidden by default, shown for Action Bar categories
-    contentPane._copyFromDropdown = copyFromDropdown
+    if hdr.copyFrom then
+        local copyFromDropdown = Controls:CreateDropdown({
+            parent = header,
+            name = BRAND .. "CopyFromDropdown",
+            values = {},  -- Will be populated dynamically
+            placeholder = "Select...",
+            width = 140,
+            height = 22,
+            fontSize = 11,
+            set = function(sourceKey)
+                panel:HandleCopyFrom(sourceKey)
+            end,
+        })
+        copyFromDropdown:SetPoint("TOPRIGHT", header, "TOPRIGHT", -8, -9)
+        copyFromDropdown:Hide()  -- Hidden by default, shown for Action Bar categories
+        contentPane._copyFromDropdown = copyFromDropdown
 
-    local copyFromLabel = header:CreateFontString(nil, "OVERLAY")
-    Theme:ApplyFont(copyFromLabel, "label", 11)
-    copyFromLabel:SetText("Copy from:")
-    local ar, ag, ab = Theme:GetAccentColor()
-    copyFromLabel:SetTextColor(ar, ag, ab, 0.8)
-    copyFromLabel:SetPoint("RIGHT", copyFromDropdown, "LEFT", -8, 0)
-    copyFromLabel:Hide()  -- Hidden by default
-    contentPane._copyFromLabel = copyFromLabel
+        local copyFromLabel = header:CreateFontString(nil, "OVERLAY")
+        Theme:ApplyFont(copyFromLabel, "label", 11)
+        copyFromLabel:SetText("Copy from:")
+        copyFromLabel:SetTextColor(ar, ag, ab, 0.8)
+        copyFromLabel:SetPoint("RIGHT", copyFromDropdown, "LEFT", -8, 0)
+        copyFromLabel:Hide()  -- Hidden by default
+        contentPane._copyFromLabel = copyFromLabel
+    end
 
-    local headerSep = header:CreateTexture(nil, "BORDER")
-    headerSep:SetHeight(1)
-    headerSep:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 8, 0)
-    headerSep:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 0)
-    headerSep:SetColorTexture(ar, ag, ab, 0.3)
-    contentPane._headerSep = headerSep
+    if hdr.separator then
+        local headerSep = header:CreateTexture(nil, "BORDER")
+        headerSep:SetHeight(1)
+        headerSep:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 8, 0)
+        headerSep:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 0)
+        headerSep:SetColorTexture(ar, ag, ab, 0.3)
+        contentPane._headerSep = headerSep
+    end
     contentPane._header = header
     -- A page that grows the header (the Aura List, to fit its wrapped how-to
     -- line) restores this through UIPanel:ResetHeaderSubtitle.
@@ -886,7 +900,7 @@ function UIPanel:CreateContentPane()
 
     -- Home state: header hidden, ASCII logo hidden, home content shown
     headerTitle:Hide()
-    headerSep:Hide()
+    if contentPane._headerSep then contentPane._headerSep:Hide() end
     scrollFrame:SetPoint("TOPLEFT", contentPane, "TOPLEFT", M().paneInset, -M().paneInset)
     homeContent:Show()  -- Show home content by default
 

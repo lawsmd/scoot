@@ -122,7 +122,12 @@ end
 -- contentBackground: the declared descriptor gives the rect (inset) and the
 -- draw sublevel, the resolved one the art, so a missing atlas keeps the
 -- geometry and changes only the fill. The template's own tiled background
--- stays under it in the margins and the title band.
+-- stays under it in the margins and the title band. An atlas with grid =
+-- { cols = { x }, rows = { y1, y2, ... } } is cut at those member pixels and
+-- laid so its column split lands on the nav's right edge (windowInset plus
+-- navWidth) and its last row split on the title bar's bottom edge, the
+-- earlier row splits keeping their own distance above it; a background with
+-- a panel edge baked into it then meets the panes where they meet.
 function Window:BuildTemplateParts(frame, spec)
     local Chrome = addon.UI.Chrome
     local portrait = spec.portrait
@@ -152,11 +157,29 @@ function Window:BuildTemplateParts(frame, spec)
     if declared then
         local cb = Chrome.Resolve(declared, { kind = "flat", fill = "window" })
         local inset = declared.inset or {}
-        local tex = frame:CreateTexture(nil, "BACKGROUND", nil, declared.sublevel or -5)
-        tex:SetPoint("TOPLEFT", frame, "TOPLEFT", inset.left or 0, -(inset.top or 0))
-        tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(inset.right or 0), inset.bottom or 0)
+        local left, top = inset.left or 0, inset.top or 0
+        local host = CreateFrame("Frame", nil, frame)
+        host:SetFrameLevel(frame:GetFrameLevel())
+        host:SetPoint("TOPLEFT", frame, "TOPLEFT", left, -top)
+        host:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(inset.right or 0), inset.bottom or 0)
+        local sublevel = declared.sublevel or -5
+        local tex
+        if cb.kind == "atlas" and cb.atlas and cb.grid then
+            local m = Metrics()
+            local rows = cb.grid.rows or {}
+            local xs = { (m.windowInset or 0) + (m.navWidth or 0) - left }
+            local ys = {}
+            for i, r in ipairs(rows) do
+                ys[i] = (m.titleBarHeight or 0) - (rows[#rows] - r) - top
+            end
+            tex = Chrome.GridAtlas(host, cb, "BACKGROUND", sublevel, xs, ys)
+        end
+        if not tex then
+            tex = host:CreateTexture(nil, "BACKGROUND", nil, sublevel)
+            tex:SetAllPoints()
+        end
         if cb.kind == "atlas" and cb.atlas then
-            tex:SetAtlas(cb.atlas)
+            if tex.SetAtlas then tex:SetAtlas(cb.atlas) end
         else
             local fill = cb.fill or "window"
             local r, g, b, a
@@ -243,7 +266,8 @@ function Window:Destroy(frame)
         frame._chrome:Destroy()
     end
     if frame._contentBackground then
-        frame._contentBackground:Hide()
+        local bg = frame._contentBackground
+        if bg.Destroy then bg:Destroy() else bg:Hide() end
     end
 
     -- Hide and clear. A template frame created again under the same name

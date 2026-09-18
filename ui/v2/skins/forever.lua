@@ -95,22 +95,30 @@ Skin.Register("forever", {
         -- Blizzard's portrait panel: the frame is the template, and its
         -- metal border, title plate, close button and portrait ring come
         -- with it. The dark page under the title band is the Legacy pane's
-        -- own background, stretched the way Blizzard stretches it; retail
-        -- has no such atlas and fills the rect flat. The options border
-        -- stands in if a client ever lacks the template.
+        -- own background. Its art bakes in a lighter column on the left,
+        -- a streak band across the top and a bordered panel filling the
+        -- rest, so it is cut at the panel's edges (column 121; rows 52 and
+        -- 60 bracket the top border) and each cell stretched to its own
+        -- pane, which puts the baked edges on the nav's right edge and the
+        -- title band's bottom whatever the window's size. Retail has no
+        -- such atlas and fills the rect flat. The options border stands in
+        -- if a client ever lacks the template.
         window = {
             kind = "template", template = "PortraitFrameTemplate",
             portrait = { texture = "PLACEHOLDER_ICON" },
             contentBackground = {
                 kind = "atlas", atlas = "Legacy-Tree-Frame-background",
+                grid = { cols = { 121 }, rows = { 52, 60 } },
                 inset = { left = 2, top = 21, right = 2, bottom = 2 }, sublevel = -5,
                 fallback = { kind = "flat", fill = "window" },
             },
             fallback = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame", background = "window" },
         },
         -- The title and the close button are the window template's own.
+        -- The title reads from the left, starting where the portrait ring
+        -- ends; the template centers it by default.
         titleBar = {
-            kind = "window",
+            kind = "window", justify = "LEFT", offsets = { left = 62, right = -24 },
             fallback = { kind = "text", fontObject = "GameFontNormal", point = "TOPLEFT", x = 24, y = -20 },
         },
         closeButton = { kind = "window", fallback = { kind = "template", template = "UIPanelCloseButton" } },
@@ -139,23 +147,30 @@ Skin.Register("forever", {
             parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
             child  = { labelColors = { normal = "primary", hover = "accent", selected = "accent", disabled = { token = "dim", alpha = 0.35 } } },
         },
-        -- The Legacy pane's group cards, the label centered on the card face
-        -- and the gold glow at the right edge while the group is open. The
-        -- face is cut into nine slices by texcoords so the cell can be a
-        -- line of text tall; the slice widths are read off the gallery
-        -- report. Neither atlas exists on retail, where the group is the
-        -- text row navRow draws.
+        -- The Legacy pane's group cards: the group's name centered on the
+        -- header band, the child rows inside the same card while it is
+        -- open, and the gold glow at the right edge while open. The face is
+        -- cut into nine slices by texcoords; the slices hold the corner
+        -- knots, which reach 10 pixels in, and the edge is the margin the
+        -- art keeps outside its border (a clear column or two and the
+        -- knots' tips), so the border's outer edge is the row's edge. The
+        -- glow's arrow sits in rows 17 to 59 of its atlas and keeps its own
+        -- scale on a tall card. Neither atlas exists on retail, where the
+        -- group is the text row navRow draws.
         navCard = {
             kind = "card", atlas = "Legacy-Tree-Frame-Card",
             slice = { left = 12, right = 12, top = 12, bottom = 12 },
-            glow = { kind = "atlas", atlas = "Legacy-Tree-Frame-Card-Glow" },
+            edge = { left = 3, right = 3, top = 3, bottom = 2 },
+            glow = { kind = "atlas", atlas = "Legacy-Tree-Frame-Card-Glow", fixed = { top = 17, bottom = 59 } },
             labelColors = { normal = "primary", hover = "accent", open = "accent", selected = "accent",
                             disabled = { token = "dim", alpha = 0.35 } },
             fallback = { kind = "flat" },
         },
-        -- The Legacy pane's divider between its column and its content.
+        -- The Legacy pane's divider between its column and its content, its
+        -- caps (4 rows at the top, 5 at the bottom) kept at their own size.
         navDivider = {
             kind = "atlas", normal = "Legacy-Tree-Frame-divider-Vertical",
+            slice = { top = 4, bottom = 5 },
             fallback = { kind = "flat" },
         },
         dropdown = { kind = "flat" },
@@ -192,9 +207,10 @@ Skin.Register("forever", {
         -- Panel chrome. The portrait panel's metal border draws outside the
         -- frame rect and its own background sits 2px inside it, so the
         -- panes stand a few pixels in. The title band is the template's
-        -- 21px title plate plus the toolbar row under it; the close button
-        -- keeps the template's corner. The closeButton offsets are read only
-        -- if the chain falls past the window kind.
+        -- 21px title plate, the toolbar row under it, and the page
+        -- background's top border, 8 pixels ending at the band's bottom;
+        -- the close button keeps the template's corner. The closeButton
+        -- offsets are read only if the chain falls past the window kind.
         windowInset = 6,
         panelWidth = 1125,
         panelHeight = 715,
@@ -202,9 +218,13 @@ Skin.Register("forever", {
         panelMinHeight = 550,
         panelMaxWidth = 1600,
         panelMaxHeight = 1000,
-        titleBarHeight = 56,
+        titleBarHeight = 60,
         logoFontSize = 6,
-        contentHeaderHeight = 66,
+        -- The page header is the title line: the action buttons sit at its
+        -- right end, the page background's own border is the divider under
+        -- it, and the copy-from field waits on a dropdown in this chrome.
+        contentHeaderHeight = 48,
+        contentHeader = { actions = "right", separator = false, copyFrom = false, padRight = 8, gap = 8, iconGap = 6 },
         navWidth = 220,
         closeButton = { size = 24, x = -6, y = -6, fontSize = 16 },
         resizeGrip = { size = 16, x = -8, y = 8, dot = 2, step = 4, alpha = 0.7 },
@@ -218,13 +238,19 @@ Skin.Register("forever", {
             rowHeight = 24, parentRowHeight = 28, childIndent = 20,
             padLeft = 8, padTop = 8,
             treeLineWidth = 0, treeLineX = 10, treeLineLength = 10, treeLineAlpha = 0.4,
-            dividerWidth = 1, dividerAlpha = 0.4,
+            -- The divider is 12 wide and centered on the nav's edge; the
+            -- content pane starts past its far half
+            dividerWidth = 1, dividerAlpha = 0.4, dividerGap = 6,
             indicatorSize = 10,
             hoverAlpha = 0.15, selectedAlpha = 0.25,
-            -- The group cards: a line of text tall, the glow scaled to the
-            -- height. Every number here waits on the beta.
-            card = { height = 40, spacing = 4, padX = 4, glowOffset = -6,
-                     hoverAlpha = 0.08, disabledAlpha = 0.75,
+            -- The group cards. height is the header band; inner is the
+            -- border's depth, which the child rows and the hover fill keep
+            -- inside; padBottom closes the card under the last child. The
+            -- card's right edge is the nav's edge, so padRight is 0 and the
+            -- glow's bar hugs the border's inner edge at glowOffset. The
+            -- glow reaches glowOverhang past the card top and bottom.
+            card = { height = 40, spacing = 6, padLeft = 4, padRight = 0, inner = 8, padBottom = 8,
+                     glowOffset = -7, glowOverhang = 4, hoverAlpha = 0.08, disabledAlpha = 0.75,
                      labelFontRole = "label", labelSize = 12 },
         },
         scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4,
