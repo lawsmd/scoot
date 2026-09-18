@@ -14,17 +14,10 @@ local function GetTheme()
     return Theme
 end
 
--- Constants
-
-local TAB_HEIGHT = 26
-local TAB_PADDING = 16  -- Horizontal padding per side of tab text
-local TAB_SPACING = 2   -- Gap between tabs
-local TAB_BAR_PADDING = 8  -- Padding on sides of tab bar
-local TAB_ROW_SPACING = 2  -- Gap between tab rows when multi-row
-local TABBED_BORDER_WIDTH = 1
-local TABBED_BORDER_ALPHA = 0.6
-local TABBED_CONTENT_PADDING = 8
-local MAX_TABS_PER_ROW = 5
+-- Layout numbers come from the active skin's metrics.tab table.
+local function M()
+    return Controls.Metrics()
+end
 
 -- Session storage for selected tab state
 
@@ -61,7 +54,7 @@ function Controls:CreateTabbedSection(options)
     local onHeightChange = options.onHeightChange
     local name = options.name
     -- Per-section row capacity; every existing caller keeps the default
-    local maxTabsPerRow = options.maxTabsPerRow or MAX_TABS_PER_ROW
+    local maxTabsPerRow = options.maxTabsPerRow or M().tab.maxPerRow
 
     -- Get initial selected tab from session storage
     local selectedTabKey = GetTabState(componentId, sectionKey, defaultTab)
@@ -86,7 +79,7 @@ function Controls:CreateTabbedSection(options)
     -- Calculate tab row layout
     local numTabs = #tabs
     local hasSecondRow = numTabs > maxTabsPerRow
-    local tabBarHeight = hasSecondRow and (TAB_HEIGHT * 2 + TAB_ROW_SPACING) or TAB_HEIGHT
+    local tabBarHeight = hasSecondRow and (M().tab.height * 2 + M().tab.rowSpacing) or M().tab.height
 
     -- Main container frame
     local section = CreateFrame("Frame", name, parent)
@@ -114,47 +107,44 @@ function Controls:CreateTabbedSection(options)
 
     -- Content border textures (all 4 sides)
     section._contentBorders = Controls.CreateBorder(contentContainer, {
-        thickness = TABBED_BORDER_WIDTH,
-        alpha = TABBED_BORDER_ALPHA,
+        thickness = M().tab.borderWidth,
+        alpha = M().tab.borderAlpha,
     })
 
     -- Content background
     local contentBg = contentContainer:CreateTexture(nil, "BACKGROUND", nil, -8)
-    contentBg:SetPoint("TOPLEFT", TABBED_BORDER_WIDTH, 0)
-    contentBg:SetPoint("BOTTOMRIGHT", -TABBED_BORDER_WIDTH, TABBED_BORDER_WIDTH)
+    contentBg:SetPoint("TOPLEFT", M().tab.borderWidth, 0)
+    contentBg:SetPoint("BOTTOMRIGHT", -M().tab.borderWidth, M().tab.borderWidth)
     contentBg:SetColorTexture(0, 0, 0, 0.15)
     section._contentBg = contentBg
 
     -- Create tab buttons and content frames
-    local INFO_ICON_SIZE = 12
-    local INFO_ICON_SPACING = 4
 
     local function CreateTabButton(tabData, index)
         local tabBtn = CreateFrame("Button", nil, tabBar)
-        tabBtn:SetHeight(TAB_HEIGHT)
+        tabBtn:SetHeight(M().tab.height)
         tabBtn:EnableMouse(true)
         tabBtn:RegisterForClicks("AnyUp")
 
         -- Check if this tab has an info icon
         local infoSpec = Controls.InfoIconOptions and Controls.InfoIconOptions(tabData.infoIcon) or nil
         local hasInfoIcon = infoSpec ~= nil
-        local infoIconWidth = hasInfoIcon and (INFO_ICON_SIZE + INFO_ICON_SPACING) or 0
+        local infoIconWidth = hasInfoIcon and (M().tab.infoIconSize + M().tab.infoIconGap) or 0
 
         -- Calculate text width for button sizing
-        local labelFont = theme:GetFont("LABEL")
         local tempFS = tabBtn:CreateFontString(nil, "OVERLAY")
-        tempFS:SetFont(labelFont, 12, "")
+        theme:ApplyFont(tempFS, "label", M().tab.fontSize)
         tempFS:SetText(tabData.label)
         local textWidth = tempFS:GetStringWidth()
         tempFS:Hide()
 
         local btnWidth
         if textWidth and textWidth > 0 then
-            btnWidth = textWidth + (TAB_PADDING * 2) + infoIconWidth
+            btnWidth = textWidth + (M().tab.padding * 2) + infoIconWidth
         else
             -- Font not loaded yet (first game launch) - estimate width
             -- ~7px per character at 12pt, plus padding
-            btnWidth = (#tabData.label * 7) + (TAB_PADDING * 2) + infoIconWidth
+            btnWidth = (#tabData.label * 7) + (M().tab.padding * 2) + infoIconWidth
             -- Re-measure after font loads
             C_Timer.After(0, function()
                 if tabBtn and tempFS then
@@ -162,7 +152,7 @@ function Controls:CreateTabbedSection(options)
                     local actualWidth = tempFS:GetStringWidth()
                     tempFS:Hide()
                     if actualWidth and actualWidth > 0 then
-                        tabBtn:SetWidth(actualWidth + (TAB_PADDING * 2) + infoIconWidth)
+                        tabBtn:SetWidth(actualWidth + (M().tab.padding * 2) + infoIconWidth)
                     end
                 end
             end)
@@ -180,11 +170,11 @@ function Controls:CreateTabbedSection(options)
         })
 
         -- Tab border (full box)
-        tabBtn._borders = Controls.CreateBorder(tabBtn, { alpha = TABBED_BORDER_ALPHA })
+        tabBtn._borders = Controls.CreateBorder(tabBtn, { alpha = M().tab.borderAlpha })
 
         -- Label (offset left if info icon present)
         local labelStr = tabBtn:CreateFontString(nil, "OVERLAY")
-        labelStr:SetFont(labelFont, 12, "")
+        theme:ApplyFont(labelStr, "label", M().tab.fontSize)
         if hasInfoIcon then
             -- Center the label + icon combo by offsetting label left
             labelStr:SetPoint("CENTER", -infoIconWidth / 2, 0)
@@ -201,10 +191,10 @@ function Controls:CreateTabbedSection(options)
                 parent = tabBtn,
                 tooltipTitle = infoSpec.tooltipTitle,
                 tooltipText = infoSpec.tooltipText,
-                size = INFO_ICON_SIZE,
+                size = M().tab.infoIconSize,
                 iconType = "info",
             })
-            infoBtn:SetPoint("LEFT", labelStr, "RIGHT", INFO_ICON_SPACING, 0)
+            infoBtn:SetPoint("LEFT", labelStr, "RIGHT", M().tab.infoIconGap, 0)
             tabBtn._infoIcon = infoBtn
         end
 
@@ -234,12 +224,12 @@ function Controls:CreateTabbedSection(options)
 
     -- Total horizontal inset of a tab content frame against the section, read
     -- by the builder to pass the reduced width into the inner builders.
-    section._contentInset = (TABBED_BORDER_WIDTH + TABBED_CONTENT_PADDING) * 2
+    section._contentInset = (M().tab.borderWidth + M().tab.contentPadding) * 2
 
     local function CreateTabContent(tabData, index)
         local content = CreateFrame("Frame", nil, contentContainer)
-        content:SetPoint("TOPLEFT", contentContainer, "TOPLEFT", TABBED_BORDER_WIDTH + TABBED_CONTENT_PADDING, -TABBED_CONTENT_PADDING)
-        content:SetPoint("TOPRIGHT", contentContainer, "TOPRIGHT", -(TABBED_BORDER_WIDTH + TABBED_CONTENT_PADDING), -TABBED_CONTENT_PADDING)
+        content:SetPoint("TOPLEFT", contentContainer, "TOPLEFT", M().tab.borderWidth + M().tab.contentPadding, -M().tab.contentPadding)
+        content:SetPoint("TOPRIGHT", contentContainer, "TOPRIGHT", -(M().tab.borderWidth + M().tab.contentPadding), -M().tab.contentPadding)
         -- Height managed dynamically
         content._tabKey = tabData.key
         content._tabIndex = index
@@ -279,7 +269,7 @@ function Controls:CreateTabbedSection(options)
         -- Recalculate row layout based on visible count
         local visCount = #allTabs
         local needsSecondRow = visCount > maxTabsPerRow
-        local newTabBarHeight = needsSecondRow and (TAB_HEIGHT * 2 + TAB_ROW_SPACING) or TAB_HEIGHT
+        local newTabBarHeight = needsSecondRow and (M().tab.height * 2 + M().tab.rowSpacing) or M().tab.height
         tabBar:SetHeight(newTabBarHeight)
         tabBarHeight = newTabBarHeight  -- update upvalue
 
@@ -298,22 +288,22 @@ function Controls:CreateTabbedSection(options)
         end
 
         -- Position bottom row (left-aligned)
-        local xOffset = TAB_BAR_PADDING
-        local yOffset = needsSecondRow and -(TAB_HEIGHT + TAB_ROW_SPACING) or 0
+        local xOffset = M().tab.barPadding
+        local yOffset = needsSecondRow and -(M().tab.height + M().tab.rowSpacing) or 0
 
         for i, tabBtn in ipairs(bottomRow) do
             tabBtn:ClearAllPoints()
             tabBtn:SetPoint("TOPLEFT", tabBar, "TOPLEFT", xOffset, yOffset)
-            xOffset = xOffset + tabBtn:GetWidth() + TAB_SPACING
+            xOffset = xOffset + tabBtn:GetWidth() + M().tab.spacing
         end
 
         -- Position top row (left-aligned, above bottom row)
         if #topRow > 0 then
-            xOffset = TAB_BAR_PADDING
+            xOffset = M().tab.barPadding
             for i, tabBtn in ipairs(topRow) do
                 tabBtn:ClearAllPoints()
                 tabBtn:SetPoint("TOPLEFT", tabBar, "TOPLEFT", xOffset, 0)
-                xOffset = xOffset + tabBtn:GetWidth() + TAB_SPACING
+                xOffset = xOffset + tabBtn:GetWidth() + M().tab.spacing
             end
         end
     end
@@ -345,7 +335,7 @@ function Controls:CreateTabbedSection(options)
 
     local function UpdateSectionHeight()
         local contentHeight = section._contentHeights[section._selectedTabKey] or 100
-        local totalContentHeight = contentHeight + (TABBED_CONTENT_PADDING * 2) + TABBED_BORDER_WIDTH
+        local totalContentHeight = contentHeight + (M().tab.contentPadding * 2) + M().tab.borderWidth
 
         contentContainer:SetHeight(totalContentHeight)
         local newHeight = tabBarHeight + totalContentHeight
@@ -413,7 +403,7 @@ function Controls:CreateTabbedSection(options)
 
     function section:GetHeight()
         local contentHeight = self._contentHeights[self._selectedTabKey] or 100
-        local totalContentHeight = contentHeight + (TABBED_CONTENT_PADDING * 2) + TABBED_BORDER_WIDTH
+        local totalContentHeight = contentHeight + (M().tab.contentPadding * 2) + M().tab.borderWidth
         return tabBarHeight + totalContentHeight
     end
 

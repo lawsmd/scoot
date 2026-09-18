@@ -19,32 +19,13 @@ local BRAND = addon.Brand or "Scoot"
 local ASCII_LOGO = UIPanel._ASCII_LOGO
 local ASCII_MASCOT = UIPanel._ASCII_MASCOT
 
--- Constants
-
-local PANEL_WIDTH = 1125   -- 25% wider than original 900
-local PANEL_HEIGHT = 715   -- 10% taller than original 650
-local TITLE_BAR_HEIGHT = 80  -- Taller for ASCII art
-local CLOSE_BUTTON_SIZE = 24
-local RESIZE_HANDLE_SIZE = 16
-local HEADER_BUTTON_HEIGHT = 26
-local HEADER_BUTTON_SPACING = 10  -- Gap between header buttons
-local CONTENT_HEADER_HEIGHT = 66  -- Content pane header; a page may grow it (see _headerBaseHeight)
-
--- Resize limits
-local MIN_WIDTH = 800
-local MIN_HEIGHT = 550
-local MAX_WIDTH = 1600
-local MAX_HEIGHT = 1000
-
--- Navigation sidebar width
-local NAV_WIDTH = 220
-
--- Content pane scrollbar
-local CONTENT_SCROLLBAR_WIDTH = 8
-local CONTENT_SCROLLBAR_THUMB_MIN = 30
-local CONTENT_SCROLLBAR_MARGIN = 8
-local CONTENT_PADDING = 8
-local CONTENT_SCROLLBAR_BOTTOM_MARGIN = RESIZE_HANDLE_SIZE + 8  -- Clear the resize grip
+-- Every layout number here comes from the active skin's metrics: the panel
+-- size and bounds, titleBarHeight, closeButton, resizeGrip, toolbar, pulse,
+-- contentHeaderHeight (a page may grow the header, see _headerBaseHeight),
+-- navWidth, scrollBar, paneInset and home.
+local function M()
+    return Controls.Metrics()
+end
 
 -- Panel State
 
@@ -59,11 +40,11 @@ UIPanel._currentBuilder = nil
 function UIPanel:Initialize()
     if self._initialized then return end
 
-    local savedWidth, savedHeight = PANEL_WIDTH, PANEL_HEIGHT
+    local savedWidth, savedHeight = M().panelWidth, M().panelHeight
     if addon.db and addon.db.global and addon.db.global.windowSize then
         local size = addon.db.global.windowSize
-        savedWidth = size.width or PANEL_WIDTH
-        savedHeight = size.height or PANEL_HEIGHT
+        savedWidth = size.width or M().panelWidth
+        savedHeight = size.height or M().panelHeight
     end
 
     local frame = Window:Create(BRAND .. "SettingsFrame", UIParent, savedWidth, savedHeight)
@@ -72,7 +53,7 @@ function UIPanel:Initialize()
     self.frame = frame
 
     frame:SetResizable(true)
-    frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
+    frame:SetResizeBounds(M().panelMinWidth, M().panelMinHeight, M().panelMaxWidth, M().panelMaxHeight)
 
     self:CreateTitleBar()
     self:CreateCloseButton()
@@ -107,7 +88,7 @@ function UIPanel:CreateTitleBar()
     if not frame then return end
 
     local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetHeight(TITLE_BAR_HEIGHT)
+    titleBar:SetHeight(M().titleBarHeight)
     titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
 
@@ -137,8 +118,7 @@ function UIPanel:CreateTitleBar()
     local ar, ag, ab = Theme:GetAccentColor()
 
     local logo = logoBtn:CreateFontString(nil, "OVERLAY")
-    local fontPath = Theme:GetFont("LABEL")
-    logo:SetFont(fontPath, 6, "")
+    Theme:ApplyFont(logo, "label", M().logoFontSize)
     logo:SetPoint("TOPLEFT", 2, -2)
     logo:SetText(ASCII_LOGO)
     logo:SetJustifyH("LEFT")
@@ -239,8 +219,8 @@ function UIPanel:CreateCloseButton()
     if not frame then return end
 
     local closeBtn = CreateFrame("Button", BRAND .. "CloseButton", frame)
-    closeBtn:SetSize(CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE)
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -10)
+    closeBtn:SetSize(M().closeButton.size, M().closeButton.size)
+    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", M().closeButton.x, M().closeButton.y)
     closeBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
     closeBtn:EnableMouse(true)
     closeBtn:RegisterForClicks("AnyUp", "AnyDown")
@@ -253,8 +233,7 @@ function UIPanel:CreateCloseButton()
     closeBtn._bg = bg
 
     local label = closeBtn:CreateFontString(nil, "OVERLAY")
-    local fontPath = Theme:GetFont("BUTTON")
-    label:SetFont(fontPath, 16, "")
+    Theme:ApplyFont(label, "button", M().closeButton.fontSize)
     label:SetPoint("CENTER", 0, -1)
     label:SetText("X")
     label:SetTextColor(ar, ag, ab, 1)
@@ -295,9 +274,6 @@ end
 
 -- Header Buttons (Features, Search, Edit Mode, Cooldown Manager)
 
-local PULSE_PERIOD = 1.5          -- seconds per full glow cycle
-local PULSE_MIN_ALPHA = 0.3       -- dimmest border alpha during pulse
-local PULSE_TICK = 0.016          -- ~60fps
 
 function UIPanel:CreateHeaderButtons()
     local frame = self.frame
@@ -310,7 +286,7 @@ function UIPanel:CreateHeaderButtons()
         parent = frame,
         name = BRAND .. "FeaturesBtn",
         text = "Features",
-        height = HEADER_BUTTON_HEIGHT,
+        height = M().toolbar.height,
         fontSize = 11,
         onClick = function()
             Navigation:SelectItem("startHere")
@@ -322,7 +298,7 @@ function UIPanel:CreateHeaderButtons()
         parent = frame,
         name = BRAND .. "SearchBtn",
         text = "Search",
-        height = HEADER_BUTTON_HEIGHT,
+        height = M().toolbar.height,
         fontSize = 11,
         onClick = function()
             Navigation:SelectItem("search")
@@ -334,7 +310,7 @@ function UIPanel:CreateHeaderButtons()
         parent = frame,
         name = BRAND .. "EditModeBtn",
         text = "Edit Mode",
-        height = HEADER_BUTTON_HEIGHT,
+        height = M().toolbar.height,
         fontSize = 11,
         template = "SecureActionButtonTemplate, SecureHandlerClickTemplate",
         secureAction = {}, -- triggers AnyUp registration in Button.lua
@@ -371,7 +347,7 @@ function UIPanel:CreateHeaderButtons()
         parent = frame,
         name = BRAND .. "CdmBtn",
         text = "Cooldown Manager",
-        height = HEADER_BUTTON_HEIGHT,
+        height = M().toolbar.height,
         fontSize = 11,
         onClick = function(btn, mouseButton)
             if addon and addon.OpenCooldownManagerSettings then
@@ -391,14 +367,14 @@ function UIPanel:CreateHeaderButtons()
         for _, btn in ipairs(headerButtons) do
             totalW = totalW + (btn:GetWidth() or 0)
         end
-        totalW = totalW + (#headerButtons - 1) * HEADER_BUTTON_SPACING
+        totalW = totalW + (#headerButtons - 1) * M().toolbar.spacing
 
         local startX = -(totalW / 2)
         for _, btn in ipairs(headerButtons) do
             btn:ClearAllPoints()
             local btnW = btn:GetWidth() or 0
             btn:SetPoint("CENTER", frame, "TOP", startX + (btnW / 2), 0)
-            startX = startX + btnW + HEADER_BUTTON_SPACING
+            startX = startX + btnW + M().toolbar.spacing
         end
     end
 
@@ -442,10 +418,10 @@ function UIPanel:CreateHeaderButtons()
     local function StartFeaturesPulse()
         if featuresBtn._pulseTicker then return end
         local elapsed = 0
-        featuresBtn._pulseTicker = C_Timer.NewTicker(PULSE_TICK, function()
-            elapsed = elapsed + PULSE_TICK
-            local phase = (elapsed % PULSE_PERIOD) / PULSE_PERIOD
-            local alpha = PULSE_MIN_ALPHA + (1 - PULSE_MIN_ALPHA) * (0.5 + 0.5 * math.cos(phase * 2 * math.pi))
+        featuresBtn._pulseTicker = C_Timer.NewTicker(M().pulse.tick, function()
+            elapsed = elapsed + M().pulse.tick
+            local phase = (elapsed % M().pulse.period) / M().pulse.period
+            local alpha = M().pulse.minAlpha + (1 - M().pulse.minAlpha) * (0.5 + 0.5 * math.cos(phase * 2 * math.pi))
             if featuresBtn._border then
                 for _, tex in pairs(featuresBtn._border) do
                     tex:SetAlpha(alpha)
@@ -488,8 +464,8 @@ function UIPanel:CreateResizeHandle()
     if not frame then return end
 
     local resizeHandle = CreateFrame("Button", BRAND .. "ResizeHandle", frame)
-    resizeHandle:SetSize(RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE)
-    resizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
+    resizeHandle:SetSize(M().resizeGrip.size, M().resizeGrip.size)
+    resizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", M().resizeGrip.x, M().resizeGrip.y)
     resizeHandle:SetFrameLevel(frame:GetFrameLevel() + 10)
     resizeHandle:EnableMouse(true)
 
@@ -589,7 +565,7 @@ local function CreateContentScrollbar(parent, scrollFrame)
     local ar, ag, ab = Theme:GetAccentColor()
 
     local scrollbar = CreateFrame("Frame", nil, parent)
-    scrollbar:SetWidth(CONTENT_SCROLLBAR_WIDTH)
+    scrollbar:SetWidth(M().scrollBar.width)
     -- Anchors set in CreateContentPane after header height is known
 
     -- Track
@@ -600,8 +576,8 @@ local function CreateContentScrollbar(parent, scrollFrame)
 
     -- Thumb
     local thumb = CreateFrame("Button", nil, scrollbar)
-    thumb:SetWidth(CONTENT_SCROLLBAR_WIDTH)
-    thumb:SetHeight(CONTENT_SCROLLBAR_THUMB_MIN)
+    thumb:SetWidth(M().scrollBar.width)
+    thumb:SetHeight(M().scrollBar.thumbMin)
     thumb:SetPoint("TOP", scrollbar, "TOP", 0, 0)
     thumb:EnableMouse(true)
     thumb:RegisterForDrag("LeftButton")
@@ -646,7 +622,7 @@ local function CreateContentScrollbar(parent, scrollFrame)
         scrollbar:Show()
 
         local thumbHeight = math.max(
-            CONTENT_SCROLLBAR_THUMB_MIN,
+            M().scrollBar.thumbMin,
             (visibleHeight / contentHeight) * trackHeight
         )
         thumb:SetHeight(thumbHeight)
@@ -765,11 +741,12 @@ function UIPanel:CreateContentPane()
     if not frame then return end
 
     local contentPane = CreateFrame("Frame", BRAND .. "ContentPane", frame)
-    contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", NAV_WIDTH + Theme.BORDER_WIDTH + 1, -(TITLE_BAR_HEIGHT))
-    contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Theme.BORDER_WIDTH, Theme.BORDER_WIDTH)
+    local inset = M().windowInset
+    contentPane:SetPoint("TOPLEFT", frame, "TOPLEFT", M().navWidth + inset + 1, -(M().titleBarHeight))
+    contentPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
 
     local header = CreateFrame("Frame", nil, contentPane)
-    header:SetHeight(CONTENT_HEADER_HEIGHT)
+    header:SetHeight(M().contentHeaderHeight)
     header:SetPoint("TOPLEFT", contentPane, "TOPLEFT", 0, 0)
     header:SetPoint("TOPRIGHT", contentPane, "TOPRIGHT", 0, 0)
 
@@ -780,8 +757,7 @@ function UIPanel:CreateContentPane()
     contentPane._headerTitle = headerTitle
 
     local headerSubtitle = header:CreateFontString(nil, "OVERLAY")
-    local subtitleFont = Theme:GetFont("LABEL")
-    headerSubtitle:SetFont(subtitleFont, 11, "")
+    Theme:ApplyFont(headerSubtitle, "label", 11)
     local sr, sg, sb = Theme:GetAccentColor()
     headerSubtitle:SetTextColor(sr, sg, sb, 0.5)
     headerSubtitle:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 16, 8)
@@ -851,8 +827,7 @@ function UIPanel:CreateContentPane()
     contentPane._copyFromDropdown = copyFromDropdown
 
     local copyFromLabel = header:CreateFontString(nil, "OVERLAY")
-    local labelFont = Theme:GetFont("LABEL")
-    copyFromLabel:SetFont(labelFont, 11, "")
+    Theme:ApplyFont(copyFromLabel, "label", 11)
     copyFromLabel:SetText("Copy from:")
     local ar, ag, ab = Theme:GetAccentColor()
     copyFromLabel:SetTextColor(ar, ag, ab, 0.8)
@@ -869,11 +844,11 @@ function UIPanel:CreateContentPane()
     contentPane._header = header
     -- A page that grows the header (the Aura List, to fit its wrapped how-to
     -- line) restores this through UIPanel:ResetHeaderSubtitle.
-    contentPane._headerBaseHeight = CONTENT_HEADER_HEIGHT
+    contentPane._headerBaseHeight = M().contentHeaderHeight
 
     local scrollFrame = CreateFrame("ScrollFrame", BRAND .. "ContentScrollFrame", contentPane)
-    scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", CONTENT_PADDING, -CONTENT_PADDING)
-    scrollFrame:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -(CONTENT_SCROLLBAR_MARGIN + CONTENT_SCROLLBAR_WIDTH + CONTENT_PADDING), CONTENT_PADDING)
+    scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", M().paneInset, -M().paneInset)
+    scrollFrame:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -(M().scrollBar.margin + M().scrollBar.width + M().paneInset), M().paneInset)
     scrollFrame:EnableMouseWheel(true)
 
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
@@ -904,8 +879,8 @@ function UIPanel:CreateContentPane()
     local scrollbar = CreateContentScrollbar(contentPane, scrollFrame)
     -- Hung from the header rather than a fixed offset from the pane, so it
     -- follows a header a page has grown.
-    scrollbar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -CONTENT_SCROLLBAR_MARGIN, -CONTENT_PADDING)
-    scrollbar:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -CONTENT_SCROLLBAR_MARGIN, CONTENT_SCROLLBAR_BOTTOM_MARGIN)
+    scrollbar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -M().scrollBar.margin, -M().paneInset)
+    scrollbar:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT", -M().scrollBar.margin, (M().resizeGrip.size + M().scrollBar.margin))
     contentPane._scrollbar = scrollbar
 
     scrollFrame:SetScript("OnScrollRangeChanged", function()
@@ -929,17 +904,15 @@ function UIPanel:CreateContentPane()
     local homeContainer = CreateFrame("Frame", nil, homeContent)
     homeContainer:SetPoint("CENTER", homeContent, "CENTER", 0, 80)  -- Shifted up to make room for Feature Guide
 
-    local labelFont2 = Theme:GetFont("LABEL")
-
     local homeAscii = homeContainer:CreateFontString(nil, "OVERLAY")
-    homeAscii:SetFont(labelFont2, 10, "")  -- Shrunk from 13pt
+    Theme:ApplyFont(homeAscii, "label", M().home.logoFontSize)
     homeAscii:SetText(ASCII_LOGO)
     homeAscii:SetJustifyH("LEFT")
     homeAscii:SetTextColor(ar, ag, ab, 1)
     homeAscii:SetPoint("CENTER", homeContainer, "CENTER", 0, 0)
 
     local versionText = homeContainer:CreateFontString(nil, "OVERLAY")
-    versionText:SetFont(labelFont2, 13, "")
+    Theme:ApplyFont(versionText, "label", M().home.textSize)
     versionText:SetTextColor(ar, ag, ab, 1)
     do
         local ver
@@ -952,12 +925,12 @@ function UIPanel:CreateContentPane()
     versionText:SetPoint("BOTTOMLEFT", homeAscii, "BOTTOMRIGHT", -2, 0)
 
     local homeMascot = homeContainer:CreateFontString(nil, "OVERLAY")
-    homeMascot:SetFont(labelFont2, 6, "")  -- Shrunk from 7.5pt
+    Theme:ApplyFont(homeMascot, "label", M().home.mascotFontSize)
     homeMascot:SetText(ASCII_MASCOT)
     homeMascot:SetJustifyH("LEFT")
     homeMascot:SetTextColor(ar, ag, ab, 1)
     local welcomeText = homeContainer:CreateFontString(nil, "OVERLAY")
-    welcomeText:SetFont(labelFont2, 13, "")  -- Shrunk from 16pt
+    Theme:ApplyFont(welcomeText, "label", M().home.textSize)
     welcomeText:SetText("Welcome to")
     welcomeText:SetTextColor(1, 1, 1, 1)
     homeMascot:SetPoint("BOTTOM", homeAscii, "TOP", 37, 8)
@@ -974,23 +947,15 @@ function UIPanel:CreateContentPane()
     end)
     homeContainer:SetSize(450, 150)  -- Fallback
 
-    -- Feature Guide section
-    local GUIDE_INSET = 40
-    local GUIDE_ICON_SIZE = 24
-    local GUIDE_ROW_SPACING = 11  -- Gap between a row's text bottom and the next row's icon
-    local GUIDE_TEXT_MAX_WIDTH = 304
-    local GUIDE_TEXT_SIZE = 11
-    local GUIDE_ICON_TEXT_GAP = 8
 
     local guideDivider = homeContent:CreateTexture(nil, "BORDER")
     guideDivider:SetHeight(1)
-    guideDivider:SetPoint("TOPLEFT", homeAscii, "BOTTOMLEFT", -GUIDE_INSET, -10)
-    guideDivider:SetPoint("TOPRIGHT", homeAscii, "BOTTOMRIGHT", GUIDE_INSET, -10)
+    guideDivider:SetPoint("TOPLEFT", homeAscii, "BOTTOMLEFT", -M().home.guideInset, -10)
+    guideDivider:SetPoint("TOPRIGHT", homeAscii, "BOTTOMRIGHT", M().home.guideInset, -10)
     guideDivider:SetColorTexture(ar, ag, ab, 0.3)
 
     local guideHeader = homeContent:CreateFontString(nil, "OVERLAY")
-    local headerFont = Theme:GetFont("HEADER")
-    guideHeader:SetFont(headerFont, 20, "")
+    Theme:ApplyFont(guideHeader, "header", 20)
     guideHeader:SetText("Feature Guide:")
     guideHeader:SetTextColor(ar, ag, ab, 1)
     guideHeader:SetPoint("TOP", guideDivider, "BOTTOM", 0, -8)
@@ -1003,7 +968,7 @@ function UIPanel:CreateContentPane()
     for i, entry in ipairs(addon.FEATURE_GUIDE or {}) do
         local icon = Controls:CreateInfoIcon({
             parent = homeContent,
-            size = GUIDE_ICON_SIZE,
+            size = M().home.guideIconSize,
             customText = entry.letter,
             colorOverride = entry.color,
             tooltipTitle = entry.tooltipTitle,
@@ -1012,20 +977,20 @@ function UIPanel:CreateContentPane()
         -- Center the icon under the header for the first row; anchor later rows
         -- below the previous row's text so spacing tracks the wrapped height
         if i == 1 then
-            icon:SetPoint("TOP", guideHeader, "BOTTOM", -(GUIDE_TEXT_MAX_WIDTH / 2) - (GUIDE_ICON_SIZE / 2), -11)
+            icon:SetPoint("TOP", guideHeader, "BOTTOM", -(M().home.guideTextWidth / 2) - (M().home.guideIconSize / 2), -11)
         else
-            icon:SetPoint("TOPLEFT", guideLabels[i - 1], "BOTTOMLEFT", -(GUIDE_ICON_SIZE + GUIDE_ICON_TEXT_GAP), -GUIDE_ROW_SPACING)
+            icon:SetPoint("TOPLEFT", guideLabels[i - 1], "BOTTOMLEFT", -(M().home.guideIconSize + M().home.guideIconTextGap), -M().home.guideRowSpacing)
         end
 
         local summaryText = homeContent:CreateFontString(nil, "OVERLAY")
-        summaryText:SetFont(labelFont2, GUIDE_TEXT_SIZE, "")
+        Theme:ApplyFont(summaryText, "label", M().home.guideTextSize)
         local cr, cg, cb = entry.color[1], entry.color[2], entry.color[3]
         summaryText:SetTextColor(cr, cg, cb, 0.55)
         summaryText:SetText(entry.summary)
         summaryText:SetJustifyH("LEFT")
         summaryText:SetWordWrap(true)
-        summaryText:SetWidth(GUIDE_TEXT_MAX_WIDTH)
-        summaryText:SetPoint("TOPLEFT", icon, "TOPRIGHT", GUIDE_ICON_TEXT_GAP, -2)
+        summaryText:SetWidth(M().home.guideTextWidth)
+        summaryText:SetPoint("TOPLEFT", icon, "TOPRIGHT", M().home.guideIconTextGap, -2)
 
         guideIcons[i] = icon
         guideLabels[i] = summaryText
@@ -1033,7 +998,6 @@ function UIPanel:CreateContentPane()
 
     -- Accent color control, pinned into the bottom-left corner of the home page.
     -- The flyout opens downward, past the panel's bottom edge.
-    local HOME_ACCENT_INSET = 6
     local accentControl = Controls:CreateFlyoutColorPicker({
         parent = homeContent,
         name = BRAND .. "AccentColorPicker",
@@ -1059,7 +1023,7 @@ function UIPanel:CreateContentPane()
     })
     if accentControl then
         accentControl:SetPoint("BOTTOMLEFT", homeContent, "BOTTOMLEFT",
-            HOME_ACCENT_INSET, HOME_ACCENT_INSET)
+            M().home.accentInset, M().home.accentInset)
         homeContent._accentControl = accentControl
     end
 
@@ -1097,7 +1061,7 @@ function UIPanel:CreateContentPane()
     -- Home state: header hidden, ASCII logo hidden, home content shown
     headerTitle:Hide()
     headerSep:Hide()
-    scrollFrame:SetPoint("TOPLEFT", contentPane, "TOPLEFT", CONTENT_PADDING, -CONTENT_PADDING)
+    scrollFrame:SetPoint("TOPLEFT", contentPane, "TOPLEFT", M().paneInset, -M().paneInset)
     homeContent:Show()  -- Show home content by default
 
     if frame._logo then
@@ -1317,6 +1281,3 @@ end
 addon.Events.On("UI:SettingsPanel", "PLAYER_REGEN_DISABLED", onCombatEvent)
 addon.Events.On("UI:SettingsPanel", "PLAYER_REGEN_ENABLED", onCombatEvent)
 
--- Cross-file promotions (consumed by navigation.lua)
-
-UIPanel._CONTENT_PADDING = CONTENT_PADDING

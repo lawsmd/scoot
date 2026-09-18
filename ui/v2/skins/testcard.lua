@@ -225,6 +225,33 @@ Skin.Register("testcard", {
         toolbar = { height = 26, spacing = 10, y = 0, fontSize = 11 },
         pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
 
+        -- The panel's own numbers, per surface. paneInset is the scroll
+        -- frame's inset inside the content pane.
+        paneInset = 8,
+        nav = {
+            rowHeight = 24, parentRowHeight = 28, childIndent = 20,
+            padLeft = 8, padTop = 8,
+            treeLineWidth = 1, treeLineLength = 10, treeLineAlpha = 0.4,
+            indicatorSize = 10,
+        },
+        scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4 },
+        button = { height = 26, padding = 12, borderWidth = 2, fontSize = 12 },
+        tab = {
+            height = 26, padding = 16, spacing = 2, barPadding = 8, rowSpacing = 2,
+            borderWidth = 1, borderAlpha = 0.6, contentPadding = 8, maxPerRow = 5,
+            fontSize = 12, infoIconSize = 12, infoIconGap = 4,
+        },
+        collapsible = {
+            borderWidth = 1, borderAlpha = 0.6, contentPadding = 12,
+            indicatorSize = 14, titleSize = 16,
+        },
+        dropdown = { width = 150, height = 22, borderAlpha = 0.6, padding = 8, fontSize = 11, indicatorSize = 9 },
+        home = {
+            guideInset = 40, guideIconSize = 24, guideRowSpacing = 11, guideTextWidth = 304,
+            guideTextSize = 11, guideIconTextGap = 8, accentInset = 6,
+            logoFontSize = 10, mascotFontSize = 6, textSize = 13,
+        },
+
         slotGap = 16,
         miniLabelHeight = 14,
         miniLabelGap = 3,

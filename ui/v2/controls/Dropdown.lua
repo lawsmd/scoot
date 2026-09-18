@@ -18,10 +18,10 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local DROPDOWN_DEFAULT_WIDTH = 150
-local DROPDOWN_DEFAULT_HEIGHT = 22
-local DROPDOWN_BORDER_ALPHA = 0.6
-local DROPDOWN_PADDING = 8
+-- Layout numbers come from the active skin's metrics.dropdown table.
+local function M()
+    return Controls.Metrics()
+end
 
 --------------------------------------------------------------------------------
 -- Dropdown: Standalone compact dropdown control
@@ -56,8 +56,8 @@ function Controls:CreateDropdown(options)
     local getValue = options.get or function() return nil end
     local setValue = options.set or function() end
     local placeholder = options.placeholder or "Select..."
-    local dropdownWidth = options.width or DROPDOWN_DEFAULT_WIDTH
-    local dropdownHeight = options.height or DROPDOWN_DEFAULT_HEIGHT
+    local dropdownWidth = options.width or M().dropdown.width
+    local dropdownHeight = options.height or M().dropdown.height
     local name = options.name
 
     -- Build ordered key list
@@ -86,8 +86,8 @@ function Controls:CreateDropdown(options)
 
     -- Dropdown border
     dropdown._border = Controls.CreateBorder(dropdown, {
-        alpha = DROPDOWN_BORDER_ALPHA,
-        getAlpha = function(self) return self:IsMouseOver() and 0.9 or DROPDOWN_BORDER_ALPHA end,
+        alpha = M().dropdown.borderAlpha,
+        getAlpha = function(self) return self:IsMouseOver() and 0.9 or M().dropdown.borderAlpha end,
     })
 
     -- Dropdown background
@@ -98,18 +98,17 @@ function Controls:CreateDropdown(options)
 
     -- Value text
     local valueText = dropdown:CreateFontString(nil, "OVERLAY")
-    local valueFont = theme:GetFont("VALUE")
-    valueText:SetFont(valueFont, 11, "")
-    valueText:SetPoint("LEFT", dropdown, "LEFT", DROPDOWN_PADDING, 0)
-    valueText:SetPoint("RIGHT", dropdown, "RIGHT", -DROPDOWN_PADDING - 12, 0)
+    theme:ApplyFont(valueText, "value", M().dropdown.fontSize)
+    valueText:SetPoint("LEFT", dropdown, "LEFT", M().dropdown.padding, 0)
+    valueText:SetPoint("RIGHT", dropdown, "RIGHT", -M().dropdown.padding - 12, 0)
     valueText:SetJustifyH("LEFT")
     valueText:SetTextColor(1, 1, 1, 1)
     dropdown._valueText = valueText
 
     -- Dropdown indicator arrow
     local dropIndicator = dropdown:CreateFontString(nil, "OVERLAY")
-    dropIndicator:SetFont(valueFont, 9, "")
-    dropIndicator:SetPoint("RIGHT", dropdown, "RIGHT", -DROPDOWN_PADDING, 0)
+    theme:ApplyFont(dropIndicator, "value", M().dropdown.indicatorSize)
+    dropIndicator:SetPoint("RIGHT", dropdown, "RIGHT", -M().dropdown.padding, 0)
     dropIndicator:SetText("\226\150\188")
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
     dropdown._dropIndicator = dropIndicator

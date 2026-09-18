@@ -15,24 +15,11 @@ local BRAND = addon.Brand or "Scoot"
 -- Constants
 --------------------------------------------------------------------------------
 
-local NAV_WIDTH = 220  -- Width of the navigation sidebar
-local ROW_HEIGHT = 24  -- Height of each navigation row
-local PARENT_ROW_HEIGHT = 28  -- Slightly taller for section headers
-local CHILD_INDENT = 20  -- Indentation for child items
-local PADDING_LEFT = 8
-local PADDING_TOP = 8
-local PADDING_RIGHT = 8
-
--- Scrollbar dimensions
-local SCROLLBAR_WIDTH = 8
-local SCROLLBAR_THUMB_MIN_HEIGHT = 30
-local SCROLLBAR_TRACK_PADDING = 2
-local SCROLLBAR_RIGHT_MARGIN = 8  -- Gap between scrollbar and right edge/separator
-
--- Tree line dimensions (texture-based, not text)
-local TREE_LINE_WIDTH = 1
-local TREE_LINE_HORIZONTAL_LENGTH = 10
-local TREE_LINE_COLOR_ALPHA = 0.4
+-- Layout numbers come from the active skin: navWidth, windowInset,
+-- titleBarHeight, and the metrics.nav and metrics.scrollBar tables.
+local function M()
+    return Controls.Metrics()
+end
 
 --------------------------------------------------------------------------------
 -- Navigation Model
@@ -87,9 +74,9 @@ local function CreateScrollbar(parent, scrollFrame)
 
     -- Scrollbar container (with margin from right edge)
     local scrollbar = CreateFrame("Frame", nil, parent)
-    scrollbar:SetWidth(SCROLLBAR_WIDTH)
-    scrollbar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SCROLLBAR_RIGHT_MARGIN, -PADDING_TOP)
-    scrollbar:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SCROLLBAR_RIGHT_MARGIN, PADDING_TOP)
+    scrollbar:SetWidth(M().scrollBar.width)
+    scrollbar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -M().scrollBar.margin, -M().nav.padTop)
+    scrollbar:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -M().scrollBar.margin, M().nav.padTop)
 
     -- Track background (subtle)
     local track = scrollbar:CreateTexture(nil, "BACKGROUND")
@@ -99,8 +86,8 @@ local function CreateScrollbar(parent, scrollFrame)
 
     -- Thumb (draggable part)
     local thumb = CreateFrame("Button", nil, scrollbar)
-    thumb:SetWidth(SCROLLBAR_WIDTH)
-    thumb:SetHeight(SCROLLBAR_THUMB_MIN_HEIGHT)
+    thumb:SetWidth(M().scrollBar.width)
+    thumb:SetHeight(M().scrollBar.thumbMin)
     thumb:SetPoint("TOP", scrollbar, "TOP", 0, 0)
     thumb:EnableMouse(true)
     thumb:RegisterForDrag("LeftButton")
@@ -149,7 +136,7 @@ local function CreateScrollbar(parent, scrollFrame)
 
         -- Calculate thumb height proportionally
         local thumbHeight = math.max(
-            SCROLLBAR_THUMB_MIN_HEIGHT,
+            M().scrollBar.thumbMin,
             (visibleHeight / contentHeight) * trackHeight
         )
         thumb:SetHeight(thumbHeight)
@@ -275,9 +262,10 @@ function Navigation:Create(parent)
 
     -- Create main navigation frame (no background - inherits from parent)
     local navFrame = CreateFrame("Frame", BRAND .. "NavFrame", parent)
-    navFrame:SetWidth(NAV_WIDTH)
-    navFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", Theme.BORDER_WIDTH, -(80 + Theme.BORDER_WIDTH))
-    navFrame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", Theme.BORDER_WIDTH, Theme.BORDER_WIDTH)
+    navFrame:SetWidth(M().navWidth)
+    local inset = M().windowInset
+    navFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", inset, -(M().titleBarHeight + inset))
+    navFrame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", inset, inset)
 
     -- Right border separator
     local separator = navFrame:CreateTexture(nil, "BORDER")
@@ -290,8 +278,8 @@ function Navigation:Create(parent)
 
     -- Custom scroll frame (no template - built from scratch)
     local scrollFrame = CreateFrame("ScrollFrame", BRAND .. "NavScrollFrame", navFrame)
-    scrollFrame:SetPoint("TOPLEFT", navFrame, "TOPLEFT", PADDING_LEFT, -PADDING_TOP)
-    scrollFrame:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -(SCROLLBAR_RIGHT_MARGIN + SCROLLBAR_WIDTH + 4), PADDING_TOP)
+    scrollFrame:SetPoint("TOPLEFT", navFrame, "TOPLEFT", M().nav.padLeft, -M().nav.padTop)
+    scrollFrame:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -(M().scrollBar.margin + M().scrollBar.width + M().scrollBar.gap), M().nav.padTop)
     scrollFrame:EnableMouseWheel(true)
 
     -- Mouse wheel scrolling
@@ -302,7 +290,7 @@ function Navigation:Create(parent)
         local visibleHeight = self:GetHeight() or 1
         local maxScroll = math.max(0, contentHeight - visibleHeight)
 
-        local step = ROW_HEIGHT * 3  -- Scroll 3 rows at a time
+        local step = M().nav.rowHeight * 3  -- Scroll 3 rows at a time
         local newScroll = current - (delta * step)
         newScroll = math.max(0, math.min(maxScroll, newScroll))
 
@@ -316,7 +304,7 @@ function Navigation:Create(parent)
 
     -- Content frame that will hold all nav items
     local contentFrame = CreateFrame("Frame", BRAND .. "NavContent", scrollFrame)
-    contentFrame:SetWidth(scrollFrame:GetWidth() or (NAV_WIDTH - PADDING_LEFT - SCROLLBAR_RIGHT_MARGIN - SCROLLBAR_WIDTH - 4))
+    contentFrame:SetWidth(scrollFrame:GetWidth() or (M().navWidth - M().nav.padLeft - M().scrollBar.margin - M().scrollBar.width - M().scrollBar.gap))
     scrollFrame:SetScrollChild(contentFrame)
     navFrame._content = contentFrame
     navFrame._scrollFrame = scrollFrame
@@ -485,7 +473,7 @@ function Navigation:BuildRows(contentFrame)
         -- Create parent row
         local parentRow = self:CreateParentRow(contentFrame, parent, yOffset, isParentModuleDisabled)
         self._rows[rowIndex] = parentRow
-        yOffset = yOffset - PARENT_ROW_HEIGHT
+        yOffset = yOffset - M().nav.parentRowHeight
 
         -- Create child rows if parent is collapsible and has children
         if parent.collapsible and parent.children then
@@ -510,14 +498,14 @@ function Navigation:BuildRows(contentFrame)
                 self._rows[rowIndex] = childRow
 
                 if isExpanded then
-                    yOffset = yOffset - ROW_HEIGHT
+                    yOffset = yOffset - M().nav.rowHeight
                 end
             end
         end
     end
 
     -- Set content frame height
-    local totalHeight = math.abs(yOffset) + PADDING_TOP
+    local totalHeight = math.abs(yOffset) + M().nav.padTop
     contentFrame:SetHeight(math.max(totalHeight, 100))
 
     -- Update scrollbar
@@ -532,7 +520,7 @@ end
 
 function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
     local row = CreateFrame("Button", nil, parent)
-    row:SetHeight(PARENT_ROW_HEIGHT)
+    row:SetHeight(M().nav.parentRowHeight)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
     row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, yOffset)
     row:EnableMouse(true)
@@ -563,8 +551,7 @@ function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled)
 
     -- Expand/collapse indicator (▶/▼) - only for collapsible
     local indicator = row:CreateFontString(nil, "OVERLAY")
-    local fontPath = Theme:GetFont("BUTTON")
-    indicator:SetFont(fontPath, 10, "")
+    Theme:ApplyFont(indicator, "button", M().nav.indicatorSize)
     indicator:SetPoint("LEFT", row, "LEFT", 4, 0)
 
     if navItem.collapsible then
@@ -650,7 +637,7 @@ end
 
 function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisible, totalChildren, childIndex, isModuleDisabled)
     local row = CreateFrame("Button", nil, parent)
-    row:SetHeight(ROW_HEIGHT)
+    row:SetHeight(M().nav.rowHeight)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
     row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, yOffset)
     row:EnableMouse(true)
@@ -684,8 +671,8 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
 
     -- Vertical line (from parent down to this item)
     local vertLine = row:CreateTexture(nil, "ARTWORK")
-    vertLine:SetWidth(TREE_LINE_WIDTH)
-    vertLine:SetColorTexture(ar, ag, ab, TREE_LINE_COLOR_ALPHA)
+    vertLine:SetWidth(M().nav.treeLineWidth)
+    vertLine:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha)
     vertLine:SetPoint("TOPLEFT", row, "TOPLEFT", 10, 0)
 
     if isLastChild then
@@ -699,10 +686,10 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
 
     -- Horizontal line (branch to label)
     local horizLine = row:CreateTexture(nil, "ARTWORK")
-    horizLine:SetHeight(TREE_LINE_WIDTH)
-    horizLine:SetColorTexture(ar, ag, ab, TREE_LINE_COLOR_ALPHA)
-    horizLine:SetPoint("LEFT", row, "LEFT", 10 + TREE_LINE_WIDTH, 0)
-    horizLine:SetWidth(TREE_LINE_HORIZONTAL_LENGTH - TREE_LINE_WIDTH)
+    horizLine:SetHeight(M().nav.treeLineWidth)
+    horizLine:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha)
+    horizLine:SetPoint("LEFT", row, "LEFT", 10 + M().nav.treeLineWidth, 0)
+    horizLine:SetWidth(M().nav.treeLineLength - M().nav.treeLineWidth)
     treeLines.horizontal = horizLine
 
     row._treeLines = treeLines
@@ -710,7 +697,7 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
     -- Label text
     local label = row:CreateFontString(nil, "OVERLAY")
     Theme:ApplyValueFont(label, 11)
-    label:SetPoint("LEFT", row, "LEFT", CHILD_INDENT + 6, 0)
+    label:SetPoint("LEFT", row, "LEFT", M().nav.childIndent + 6, 0)
     label:SetText(navItem.label)
     row._label = label
 
@@ -785,7 +772,7 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
         local dimR, dimG, dimB = Theme:GetDimTextColor()
         label:SetTextColor(dimR, dimG, dimB, 0.35)
         for _, line in pairs(treeLines) do
-            line:SetColorTexture(ar, ag, ab, TREE_LINE_COLOR_ALPHA * 0.3)
+            line:SetColorTexture(ar, ag, ab, M().nav.treeLineAlpha * 0.3)
         end
         if row._versionBadge and row._versionBadge._iconText then
             row._versionBadge._iconText:SetTextColor(dimR, dimG, dimB, 0.35)
@@ -944,7 +931,7 @@ function Navigation:UpdateRowColors()
 
             -- Update tree line colors for child rows
             if row._treeLines then
-                local alpha = row._isModuleDisabled and (TREE_LINE_COLOR_ALPHA * 0.3) or TREE_LINE_COLOR_ALPHA
+                local alpha = row._isModuleDisabled and (M().nav.treeLineAlpha * 0.3) or M().nav.treeLineAlpha
                 for _, line in pairs(row._treeLines) do
                     line:SetColorTexture(ar, ag, ab, alpha)
                 end

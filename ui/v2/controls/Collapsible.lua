@@ -18,12 +18,11 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local COLLAPSIBLE_HEADER_HEIGHT = 32
-local COLLAPSIBLE_BORDER_WIDTH = 1
-local COLLAPSIBLE_CONTENT_PADDING = 12
-local COLLAPSIBLE_BORDER_ALPHA = 0.6  -- Dimmed border
-local COLLAPSIBLE_INDICATOR_WIDTH = 24
-local COLLAPSIBLE_CORNER_INSET = 8  -- Visual space for corner decoration
+-- Layout numbers come from the active skin: sectionHeaderHeight and the
+-- metrics.collapsible table.
+local function M()
+    return Controls.Metrics()
+end
 
 local CHAR_EXPANDED = "▼"
 local CHAR_COLLAPSED = "▶"
@@ -93,7 +92,7 @@ function Controls:CreateCollapsibleSection(options)
     local dimR, dimG, dimB = theme:GetDimTextColor()
 
     -- Calculate total height
-    local totalHeight = expanded and (COLLAPSIBLE_HEADER_HEIGHT + contentHeight + COLLAPSIBLE_BORDER_WIDTH) or COLLAPSIBLE_HEADER_HEIGHT
+    local totalHeight = expanded and (M().sectionHeaderHeight + contentHeight + M().collapsible.borderWidth) or M().sectionHeaderHeight
 
     -- Main container frame
     local section = CreateFrame("Frame", name, parent)
@@ -111,7 +110,7 @@ function Controls:CreateCollapsibleSection(options)
     local header = CreateFrame("Button", nil, section)
     header:SetPoint("TOPLEFT", section, "TOPLEFT", 0, 0)
     header:SetPoint("TOPRIGHT", section, "TOPRIGHT", 0, 0)
-    header:SetHeight(COLLAPSIBLE_HEADER_HEIGHT)
+    header:SetHeight(M().sectionHeaderHeight)
     header:RegisterForClicks("AnyUp")
 
     -- Solid gray background (always visible for visual distinction)
@@ -127,47 +126,45 @@ function Controls:CreateCollapsibleSection(options)
     local topBorder = header:CreateTexture(nil, "BORDER", nil, -1)
     topBorder:SetPoint("TOPLEFT", header, "TOPLEFT", 0, 0)
     topBorder:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, 0)
-    topBorder:SetHeight(COLLAPSIBLE_BORDER_WIDTH)
-    topBorder:SetColorTexture(ar, ag, ab, COLLAPSIBLE_BORDER_ALPHA)
+    topBorder:SetHeight(M().collapsible.borderWidth)
+    topBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
     header._borders.TOP = topBorder
 
     -- LEFT border (extends down when expanded)
     local leftBorder = header:CreateTexture(nil, "BORDER", nil, -1)
-    leftBorder:SetPoint("TOPLEFT", header, "TOPLEFT", 0, -COLLAPSIBLE_BORDER_WIDTH)
+    leftBorder:SetPoint("TOPLEFT", header, "TOPLEFT", 0, -M().collapsible.borderWidth)
     leftBorder:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
-    leftBorder:SetWidth(COLLAPSIBLE_BORDER_WIDTH)
-    leftBorder:SetColorTexture(ar, ag, ab, COLLAPSIBLE_BORDER_ALPHA)
+    leftBorder:SetWidth(M().collapsible.borderWidth)
+    leftBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
     header._borders.LEFT = leftBorder
 
     -- RIGHT border
     local rightBorder = header:CreateTexture(nil, "BORDER", nil, -1)
-    rightBorder:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, -COLLAPSIBLE_BORDER_WIDTH)
+    rightBorder:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, -M().collapsible.borderWidth)
     rightBorder:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
-    rightBorder:SetWidth(COLLAPSIBLE_BORDER_WIDTH)
-    rightBorder:SetColorTexture(ar, ag, ab, COLLAPSIBLE_BORDER_ALPHA)
+    rightBorder:SetWidth(M().collapsible.borderWidth)
+    rightBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
     header._borders.RIGHT = rightBorder
 
     -- BOTTOM border (only shown when collapsed)
     local bottomBorder = header:CreateTexture(nil, "BORDER", nil, -1)
     bottomBorder:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
     bottomBorder:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
-    bottomBorder:SetHeight(COLLAPSIBLE_BORDER_WIDTH)
-    bottomBorder:SetColorTexture(ar, ag, ab, COLLAPSIBLE_BORDER_ALPHA)
+    bottomBorder:SetHeight(M().collapsible.borderWidth)
+    bottomBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
     header._borders.BOTTOM = bottomBorder
 
     -- Indicator (▼/▶)
     local indicator = header:CreateFontString(nil, "OVERLAY")
-    local indicatorFont = theme:GetFont("LABEL")
-    indicator:SetFont(indicatorFont, 14, "")
-    indicator:SetPoint("LEFT", header, "LEFT", COLLAPSIBLE_CONTENT_PADDING, 0)
+    theme:ApplyFont(indicator, "label", M().collapsible.indicatorSize)
+    indicator:SetPoint("LEFT", header, "LEFT", M().collapsible.contentPadding, 0)
     indicator:SetText(expanded and CHAR_EXPANDED or CHAR_COLLAPSED)
     indicator:SetTextColor(ar, ag, ab, 1)
     header._indicator = indicator
 
     -- Title text (white, not accent-colored)
     local titleFS = header:CreateFontString(nil, "OVERLAY")
-    local titleFont = theme:GetFont("HEADER")
-    titleFS:SetFont(titleFont, 16, "")
+    theme:ApplyFont(titleFS, "header", M().collapsible.titleSize)
     titleFS:SetPoint("LEFT", indicator, "RIGHT", 6, 0)
     titleFS:SetText(title)
     titleFS:SetTextColor(1, 1, 1, 1)
@@ -195,27 +192,27 @@ function Controls:CreateCollapsibleSection(options)
     -- Content container (visible when expanded)
     ----------------------------------------------------------------------------
     local content = CreateFrame("Frame", nil, section)
-    content:SetPoint("TOPLEFT", header, "BOTTOMLEFT", COLLAPSIBLE_BORDER_WIDTH, 0)
-    content:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -COLLAPSIBLE_BORDER_WIDTH, 0)
+    content:SetPoint("TOPLEFT", header, "BOTTOMLEFT", M().collapsible.borderWidth, 0)
+    content:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -M().collapsible.borderWidth, 0)
     content:SetHeight(contentHeight)
     -- Total horizontal inset of the content frame against the section, read
     -- by the builder to pass the reduced width into the inner builder.
-    section._contentInset = COLLAPSIBLE_BORDER_WIDTH * 2
+    section._contentInset = M().collapsible.borderWidth * 2
 
     -- Content left border
     local contentLeftBorder = section:CreateTexture(nil, "BORDER", nil, -1)
-    contentLeftBorder:SetPoint("TOPLEFT", content, "TOPLEFT", -COLLAPSIBLE_BORDER_WIDTH, 0)
-    contentLeftBorder:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", -COLLAPSIBLE_BORDER_WIDTH, 0)
-    contentLeftBorder:SetWidth(COLLAPSIBLE_BORDER_WIDTH)
-    contentLeftBorder:SetColorTexture(ar, ag, ab, COLLAPSIBLE_BORDER_ALPHA)
+    contentLeftBorder:SetPoint("TOPLEFT", content, "TOPLEFT", -M().collapsible.borderWidth, 0)
+    contentLeftBorder:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", -M().collapsible.borderWidth, 0)
+    contentLeftBorder:SetWidth(M().collapsible.borderWidth)
+    contentLeftBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
     content._leftBorder = contentLeftBorder
 
     -- Content right border
     local contentRightBorder = section:CreateTexture(nil, "BORDER", nil, -1)
-    contentRightBorder:SetPoint("TOPRIGHT", content, "TOPRIGHT", COLLAPSIBLE_BORDER_WIDTH, 0)
-    contentRightBorder:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", COLLAPSIBLE_BORDER_WIDTH, 0)
-    contentRightBorder:SetWidth(COLLAPSIBLE_BORDER_WIDTH)
-    contentRightBorder:SetColorTexture(ar, ag, ab, COLLAPSIBLE_BORDER_ALPHA)
+    contentRightBorder:SetPoint("TOPRIGHT", content, "TOPRIGHT", M().collapsible.borderWidth, 0)
+    contentRightBorder:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", M().collapsible.borderWidth, 0)
+    contentRightBorder:SetWidth(M().collapsible.borderWidth)
+    contentRightBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
     content._rightBorder = contentRightBorder
 
     -- Content background (matching header gray for visual consistency)
@@ -227,13 +224,13 @@ function Controls:CreateCollapsibleSection(options)
     -- Footer (bottom border when expanded)
     ----------------------------------------------------------------------------
     local footer = CreateFrame("Frame", nil, section)
-    footer:SetPoint("TOPLEFT", content, "BOTTOMLEFT", -COLLAPSIBLE_BORDER_WIDTH, 0)
-    footer:SetPoint("TOPRIGHT", content, "BOTTOMRIGHT", COLLAPSIBLE_BORDER_WIDTH, 0)
-    footer:SetHeight(COLLAPSIBLE_BORDER_WIDTH)
+    footer:SetPoint("TOPLEFT", content, "BOTTOMLEFT", -M().collapsible.borderWidth, 0)
+    footer:SetPoint("TOPRIGHT", content, "BOTTOMRIGHT", M().collapsible.borderWidth, 0)
+    footer:SetHeight(M().collapsible.borderWidth)
 
     local footerBorder = footer:CreateTexture(nil, "BORDER", nil, -1)
     footerBorder:SetAllPoints()
-    footerBorder:SetColorTexture(ar, ag, ab, COLLAPSIBLE_BORDER_ALPHA)
+    footerBorder:SetColorTexture(ar, ag, ab, M().collapsible.borderAlpha)
     footer._border = footerBorder
 
     section._footer = footer
@@ -252,7 +249,7 @@ function Controls:CreateCollapsibleSection(options)
             footer:Show()
             header._borders.BOTTOM:Hide()
             header._indicator:SetText(CHAR_EXPANDED)
-            section:SetHeight(COLLAPSIBLE_HEADER_HEIGHT + section._contentHeight + COLLAPSIBLE_BORDER_WIDTH)
+            section:SetHeight(M().sectionHeaderHeight + section._contentHeight + M().collapsible.borderWidth)
         else
             -- Collapsed: hide content, show header bottom border
             content:Hide()
@@ -261,7 +258,7 @@ function Controls:CreateCollapsibleSection(options)
             footer:Hide()
             header._borders.BOTTOM:Show()
             header._indicator:SetText(CHAR_COLLAPSED)
-            section:SetHeight(COLLAPSIBLE_HEADER_HEIGHT)
+            section:SetHeight(M().sectionHeaderHeight)
         end
     end
     section._updateExpandedState = UpdateExpandedState
@@ -335,9 +332,9 @@ function Controls:CreateCollapsibleSection(options)
 
     function section:GetHeight()
         if self._expanded then
-            return COLLAPSIBLE_HEADER_HEIGHT + self._contentHeight + COLLAPSIBLE_BORDER_WIDTH
+            return M().sectionHeaderHeight + self._contentHeight + M().collapsible.borderWidth
         else
-            return COLLAPSIBLE_HEADER_HEIGHT
+            return M().sectionHeaderHeight
         end
     end
 
@@ -345,7 +342,7 @@ function Controls:CreateCollapsibleSection(options)
         self._contentHeight = height
         self._content:SetHeight(height)
         if self._expanded then
-            self:SetHeight(COLLAPSIBLE_HEADER_HEIGHT + height + COLLAPSIBLE_BORDER_WIDTH)
+            self:SetHeight(M().sectionHeaderHeight + height + M().collapsible.borderWidth)
         end
     end
 

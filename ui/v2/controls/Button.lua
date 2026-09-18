@@ -14,13 +14,10 @@ local function GetTheme()
     return Theme
 end
 
---------------------------------------------------------------------------------
--- Constants
---------------------------------------------------------------------------------
-
-local DEFAULT_BUTTON_HEIGHT = 26
-local DEFAULT_BUTTON_PADDING = 12  -- Horizontal padding on each side of text
-local BORDER_WIDTH = 2
+-- Layout numbers come from the active skin's metrics.button table.
+local function M()
+    return Controls.Metrics()
+end
 
 --------------------------------------------------------------------------------
 -- Button: Reusable button with UI styling
@@ -51,10 +48,10 @@ function Controls:CreateButton(options)
 
     local parent = options.parent
     local text = options.text or ""
-    local height = options.height or DEFAULT_BUTTON_HEIGHT
-    local fontSize = options.fontSize or 12
+    local height = options.height or M().button.height
+    local fontSize = options.fontSize or M().button.fontSize
     local name = options.name
-    local borderWidth = options.borderWidth or BORDER_WIDTH
+    local borderWidth = options.borderWidth or M().button.borderWidth
     local borderAlpha = options.borderAlpha or 1
 
     -- Create the button frame (optionally secure action)
@@ -94,8 +91,7 @@ function Controls:CreateButton(options)
 
     -- Label text
     local label = btn:CreateFontString(nil, "OVERLAY")
-    local fontPath = theme:GetFont("BUTTON")
-    label:SetFont(fontPath, fontSize, "")
+    theme:ApplyFont(label, "button", fontSize)
     label:SetPoint("CENTER", 0, 0)
     label:SetText(text)
     label:SetTextColor(ar, ag, ab, 1)
@@ -108,11 +104,11 @@ function Controls:CreateButton(options)
         -- Set a reasonable initial width immediately (prevents square buttons)
         local textWidth = label:GetStringWidth()
         if textWidth and textWidth > 0 then
-            btn:SetWidth(textWidth + (DEFAULT_BUTTON_PADDING * 2))
+            btn:SetWidth(textWidth + (M().button.padding * 2))
         else
             -- Font not loaded yet (first game launch) - use fallback then re-measure
             -- Estimate: ~7px per character for JetBrains Mono at 12pt
-            local estimatedWidth = (#text * 7) + (DEFAULT_BUTTON_PADDING * 2)
+            local estimatedWidth = (#text * 7) + (M().button.padding * 2)
             btn:SetWidth(math.max(estimatedWidth, 50))
 
             -- Re-measure after font loads
@@ -120,7 +116,7 @@ function Controls:CreateButton(options)
                 if btn and btn._label then
                     local actualWidth = btn._label:GetStringWidth()
                     if actualWidth and actualWidth > 0 then
-                        btn:SetWidth(actualWidth + (DEFAULT_BUTTON_PADDING * 2))
+                        btn:SetWidth(actualWidth + (M().button.padding * 2))
                     end
                 end
             end)
@@ -214,17 +210,17 @@ function Controls:CreateButton(options)
         if not options.width then
             local textWidth = self._label:GetStringWidth()
             if textWidth and textWidth > 0 then
-                self:SetWidth(textWidth + (DEFAULT_BUTTON_PADDING * 2))
+                self:SetWidth(textWidth + (M().button.padding * 2))
             else
                 -- Font not loaded yet - estimate then re-measure
-                local estimatedWidth = (#newText * 7) + (DEFAULT_BUTTON_PADDING * 2)
+                local estimatedWidth = (#newText * 7) + (M().button.padding * 2)
                 self:SetWidth(math.max(estimatedWidth, 50))
                 local selfRef = self
                 C_Timer.After(0, function()
                     if selfRef and selfRef._label then
                         local actualWidth = selfRef._label:GetStringWidth()
                         if actualWidth and actualWidth > 0 then
-                            selfRef:SetWidth(actualWidth + (DEFAULT_BUTTON_PADDING * 2))
+                            selfRef:SetWidth(actualWidth + (M().button.padding * 2))
                         end
                     end
                 end)

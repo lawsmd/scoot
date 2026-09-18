@@ -9,9 +9,8 @@ local Controls = addon.UI.Controls
 local Navigation = addon.UI.Navigation
 local SettingsBuilder = addon.UI.SettingsBuilder
 
--- Import promoted constants from ascii.lua and core.lua
+-- Import the promoted logo from ascii.lua
 local ASCII_LOGO = UIPanel._ASCII_LOGO
-local CONTENT_PADDING = UIPanel._CONTENT_PADDING
 
 -- Edit Mode Back-Sync Handler
 -- Marks affected component for refresh and triggers re-render if visible.
@@ -837,7 +836,7 @@ function UIPanel:OnNavigationSelect(key, previousKey)
         end
 
         if contentPane._scrollFrame then
-            contentPane._scrollFrame:SetPoint("TOPLEFT", contentPane, "TOPLEFT", CONTENT_PADDING, -CONTENT_PADDING)
+            contentPane._scrollFrame:SetPoint("TOPLEFT", contentPane, "TOPLEFT", Controls.Metrics().paneInset, -Controls.Metrics().paneInset)
         end
 
         if contentPane._placeholder then
@@ -893,7 +892,7 @@ function UIPanel:OnNavigationSelect(key, previousKey)
         end
 
         if contentPane._scrollFrame and contentPane._header then
-            contentPane._scrollFrame:SetPoint("TOPLEFT", contentPane._header, "BOTTOMLEFT", CONTENT_PADDING, -CONTENT_PADDING)
+            contentPane._scrollFrame:SetPoint("TOPLEFT", contentPane._header, "BOTTOMLEFT", Controls.Metrics().paneInset, -Controls.Metrics().paneInset)
         end
 
         -- Ensure scrollContent width is up to date (handles first-render timing)
