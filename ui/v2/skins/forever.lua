@@ -1,24 +1,20 @@
--- forever.lua - the Forever skin: Blizzard's WoW Forever palette on the
--- settings panel. Everything but the palette repeats the tui default, so
--- switching between the two changes color and nothing else. That is the
--- point of this first pass: if the panel reads wrong, the seven values below
--- are the only thing that can be responsible.
+-- forever.lua - the Forever skin: Blizzard's WoW Forever palette, and
+-- Blizzard's own panel parts for the chrome.
 --
--- Each value is measured out of the Forever build's own art, not read off
--- footage, and the comment on each one names the atlas it came from. None of
--- it has been seen lit, scaled, or beside another frame, so these are
--- proposals.
+-- The palette is measured out of the Forever build's art, and the comment
+-- on each value names the atlas it came from. The chrome table takes the
+-- retail construction and lets the client's art set do the work: every
+-- template and atlas named below exists on retail too, so /camelot draws
+-- gray Blizzard chrome on the retail client and bronze chrome on Forever
+-- from this one table. None of it has been seen on either, so the numbers
+-- that place the title, the toolbar and the close button are proposals.
 --
--- Fonts, textures and metrics are tui's. Metrics cannot be omitted:
--- Controls.Metrics() returns Skin.Metrics() with no fallback, so a skin
--- without the table makes every row throw. They are also where this skin
--- diverges next, once a nine-slice window needs its own border and corner
--- numbers.
+-- Fonts and the row metrics are tui's: a proportional face waits on the
+-- framework's content-fit phase. Metrics cannot be omitted, since
+-- Controls.Metrics() returns Skin.Metrics() with no fallback.
 --
--- Registration only, no SetActive: tui stays the default, and this skin is
--- reached with /scoot debug skin forever. When the framework moves to
--- shared/, the file becomes forever/skin.lua under the Camelot TOC and the
--- registry name stays.
+-- Registration only, no SetActive here: forever/menu.lua activates it for
+-- Camelot, and /scoot debug skin forever switches Scoot to it for a look.
 local addonName, addon = ...
 
 local Skin = addon.UI.Skin
@@ -84,6 +80,44 @@ Skin.Register("forever", {
         SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent",
     },
 
+    -- The chrome: Blizzard's parts where a part exists, the framework's flat
+    -- draw where the look is a fill. Every name resolves on retail, so
+    -- nothing here needs a fallback; a name the running client lacks would
+    -- fall to the flat default through Chrome.Spec.
+    chrome = {
+        -- Blizzard's own options border, the kit its Edit Mode dialog uses.
+        window = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame", background = "window" },
+        -- The product name in Blizzard's panel title font, top-left of the band.
+        titleBar = { kind = "text", fontObject = "GameFontNormal", point = "TOPLEFT", x = 24, y = -20 },
+        closeButton = { kind = "template", template = "UIPanelCloseButton" },
+        -- Raw texture files rather than atlases, so whether Forever redraws
+        -- this one is the gallery's to answer.
+        button = { kind = "template", template = "UIPanelButtonTemplate", font = "template" },
+        resizeGrip = { kind = "flat" },
+        scrollBar = { kind = "template", template = "MinimalScrollBar", frameType = "EventFrame" },
+        -- The in-panel tab art, stretched to the label; the selected state is
+        -- Forever's gold, so the label goes dark on it.
+        tab = {
+            kind = "atlas", normal = "common-internaltab", hover = "common-internaltab-hover",
+            selected = "common-internaltab-selected",
+            labelColors = { normal = "primary", hover = "primary", selected = "black" },
+        },
+        tabBody = { kind = "flat", fill = { 0, 0, 0, 0.15 } },
+        -- List-row art under section headers and nav rows.
+        sectionHeader = {
+            kind = "atlas", normal = "common-button-list-mid", hover = "common-button-list-mid-hover",
+            open = "common-button-list-mid-selected",
+            glyphs = { expanded = "\226\150\188", collapsed = "\226\150\182" },
+        },
+        sectionBody = { kind = "flat", background = "collapsible" },
+        navRow = {
+            kind = "atlas", hover = "common-button-list-mid-hover", selected = "common-button-list-mid-selected",
+            parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
+            child  = { labelColors = { normal = "primary", hover = "accent", selected = "accent", disabled = { token = "dim", alpha = 0.35 } } },
+        },
+        dropdown = { kind = "flat" },
+    },
+
     metrics = {
         -- Row layout
         rowHeight = 36,
@@ -105,31 +139,32 @@ Skin.Register("forever", {
         sectionHeaderHeight = 32,
         firstItemOffset = 8,
 
-        -- Dividers and borders. The nine-slice window override moves these:
-        -- optionsframe-nineslice pieces are 32x32 against this 3px flat
-        -- border, and the content inset follows whichever frame is picked.
+        -- Dividers and borders. windowBorderWidth is the flat border the
+        -- window falls back to when the nine-slice below is missing.
         dividerThickness = 1,
         dividerAlpha = 0.2,
         borderWidth = 2,
         windowBorderWidth = 3,
 
-        -- Panel chrome. windowInset is the content inset the panes anchor
-        -- from; with a flat border it equals windowBorderWidth, and a
-        -- nine-slice window moves it to wherever that art reaches.
-        windowInset = 3,
+        -- Panel chrome. The OptionsFrame nine-slice pieces are 32x32 and
+        -- Blizzard anchors the same kit 16px outside its content, so the
+        -- panes stand 16 in from the frame edge. The title sits top-left in
+        -- the band, the toolbar centered below it, the close button in the
+        -- corner the way Blizzard's panels place theirs.
+        windowInset = 16,
         panelWidth = 1125,
         panelHeight = 715,
         panelMinWidth = 800,
         panelMinHeight = 550,
         panelMaxWidth = 1600,
         panelMaxHeight = 1000,
-        titleBarHeight = 80,
+        titleBarHeight = 56,
         logoFontSize = 6,
         contentHeaderHeight = 66,
         navWidth = 220,
-        closeButton = { size = 24, x = -10, y = -10, fontSize = 16 },
-        resizeGrip = { size = 16, x = -4, y = 4, dot = 2, step = 4, alpha = 0.7 },
-        toolbar = { height = 26, spacing = 10, y = 0, fontSize = 11 },
+        closeButton = { size = 24, x = -6, y = -6, fontSize = 16 },
+        resizeGrip = { size = 16, x = -8, y = 8, dot = 2, step = 4, alpha = 0.7 },
+        toolbar = { height = 22, spacing = 8, y = -34, fontSize = 11 },
         pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
 
         -- The panel's own numbers, per surface. paneInset is the scroll
@@ -159,7 +194,7 @@ Skin.Register("forever", {
         home = {
             guideInset = 40, guideIconSize = 24, guideRowSpacing = 11, guideTextWidth = 304,
             guideTextSize = 11, guideIconTextGap = 8, accentInset = 6,
-            logoFontSize = 10, mascotFontSize = 6, textSize = 13,
+            logoFontSize = 26, mascotFontSize = 6, textSize = 13,
         },
 
         -- Dual-row slots
