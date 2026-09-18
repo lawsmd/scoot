@@ -7,9 +7,13 @@
 -- Blizzard's scrollbar (MinimalScrollBar) and wires it with ScrollUtil.
 --
 -- The factory owns the scroll frame's OnScrollRangeChanged in both kinds;
--- callers keep their OnMouseWheel and call bar:Update() after a wheel step.
+-- callers keep their OnMouseWheel and call bar:Sync() after a wheel step.
 --
--- Contract: Update(), Cleanup(), and the widget's own GetWidth().
+-- Contract: Sync(), Cleanup(), and the widget's own GetWidth(). The template
+-- kind's frame is Blizzard's ScrollBarMixin instance, so no contract method
+-- may share a name with a mixin method: an Update() here shadowed
+-- ScrollBarMixin:Update, which SetScrollPercentageInternal calls, and the two
+-- called each other until the stack overflowed.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -76,7 +80,7 @@ local function BuildFlat(bar, scrollFrame)
         if not self._isDragging then paintThumb(M().thumbAlpha) end
     end)
 
-    local function Update()
+    local function Sync()
         local contentHeight, visibleHeight = ContentAndVisible(scrollFrame)
         local trackHeight = bar:GetHeight() or 1
 
@@ -97,7 +101,7 @@ local function BuildFlat(bar, scrollFrame)
         thumb:ClearAllPoints()
         thumb:SetPoint("TOP", bar, "TOP", 0, -(scrollPercent * maxThumbOffset))
     end
-    bar.Update = Update
+    bar.Sync = Sync
 
     local dragStartY, dragStartScroll
 
@@ -128,7 +132,7 @@ local function BuildFlat(bar, scrollFrame)
         if maxThumbOffset > 0 and maxScroll > 0 then
             local scrollDelta = (deltaY / maxThumbOffset) * maxScroll
             scrollFrame:SetVerticalScroll(math.max(0, math.min(maxScroll, dragStartScroll + scrollDelta)))
-            Update()
+            Sync()
         end
     end)
 
@@ -144,7 +148,7 @@ local function BuildFlat(bar, scrollFrame)
         local maxScroll = contentHeight - visibleHeight
         if maxScroll > 0 then
             scrollFrame:SetVerticalScroll(math.max(0, math.min(maxScroll, clickPercent * maxScroll)))
-            Update()
+            Sync()
         end
     end)
 
@@ -170,7 +174,7 @@ end
 
 -- ScrollUtil owns the scroll frame's OnVerticalScroll and
 -- OnScrollRangeChanged from here on, and the bar hides itself when the
--- content fits. Update re-fires the range handler for a caller that moved
+-- content fits. Sync re-fires the range handler for a caller that moved
 -- the scroll itself.
 local function BuildTemplate(bar, scrollFrame)
     ScrollUtil.InitScrollFrameWithScrollBar(scrollFrame, bar)
@@ -178,7 +182,7 @@ local function BuildTemplate(bar, scrollFrame)
         bar:SetHideIfUnscrollable(true)
     end
 
-    function bar:Update()
+    function bar:Sync()
         local fn = scrollFrame:GetScript("OnScrollRangeChanged")
         if fn then
             fn(scrollFrame, 0, scrollFrame:GetVerticalScrollRange() or 0)
@@ -208,7 +212,7 @@ function Controls.CreateScrollBar(opts)
         bar:SetWidth(M().width)
         BuildFlat(bar, scrollFrame)
         scrollFrame:SetScript("OnScrollRangeChanged", function()
-            bar:Update()
+            bar:Sync()
         end)
     end
     bar._scrollFrame = scrollFrame

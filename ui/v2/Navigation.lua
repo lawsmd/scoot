@@ -110,8 +110,8 @@ function Navigation:Create(parent)
         self:SetVerticalScroll(newScroll)
 
         -- Update custom scrollbar
-        if navFrame._scrollbar and navFrame._scrollbar.Update then
-            navFrame._scrollbar:Update()
+        if navFrame._scrollbar and navFrame._scrollbar.Sync then
+            navFrame._scrollbar:Sync()
         end
     end)
 
@@ -136,8 +136,8 @@ function Navigation:Create(parent)
 
     -- Initial scrollbar update
     C_Timer.After(0.1, function()
-        if scrollbar and scrollbar.Update then
-            scrollbar:Update()
+        if scrollbar and scrollbar.Sync then
+            scrollbar:Sync()
         end
     end)
 
@@ -317,8 +317,8 @@ function Navigation:BuildRows(contentFrame)
     contentFrame:SetHeight(math.max(totalHeight, 100))
 
     -- Update scrollbar
-    if self._frame and self._frame._scrollbar and self._frame._scrollbar.Update then
-        self._frame._scrollbar:Update()
+    if self._frame and self._frame._scrollbar and self._frame._scrollbar.Sync then
+        self._frame._scrollbar:Sync()
     end
 end
 

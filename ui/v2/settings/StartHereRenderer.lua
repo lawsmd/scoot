@@ -843,8 +843,8 @@ local function EnsureHScrollbar(panel, contentPane)
             thumb:SetPoint("LEFT", bar, "LEFT", pct * (trackW - thumbW), 0)
         end
         -- Viewport height changes with the bar's visibility
-        if contentPane._scrollbar and contentPane._scrollbar.Update then
-            contentPane._scrollbar:Update()
+        if contentPane._scrollbar and contentPane._scrollbar.Sync then
+            contentPane._scrollbar:Sync()
         end
     end
 
@@ -1294,8 +1294,8 @@ function StartHere.Render(panel, scrollContent)
             local sTop, cTop = scrollContent:GetTop(), col1:GetTop()
             if not (sTop and cTop) then return end
             scrollContent:SetHeight((sTop - cTop) + maxColHeight + 8)
-            if contentPane._scrollbar and contentPane._scrollbar.Update then
-                contentPane._scrollbar:Update()
+            if contentPane._scrollbar and contentPane._scrollbar.Sync then
+                contentPane._scrollbar:Sync()
             end
         end)
 
@@ -1303,8 +1303,8 @@ function StartHere.Render(panel, scrollContent)
         UpdateReloadButtonVisual(reloadArea, pageState.dirty)
 
         -- Update scrollbars (the h-bar also re-slots the viewport bottom)
-        if contentPane._scrollbar and contentPane._scrollbar.Update then
-            contentPane._scrollbar:Update()
+        if contentPane._scrollbar and contentPane._scrollbar.Sync then
+            contentPane._scrollbar:Sync()
         end
         if panel._startHereHScroll then
             panel._startHereHScroll.Update()

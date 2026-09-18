@@ -660,8 +660,8 @@ function UIPanel:CreateContentPane()
 
         self:SetVerticalScroll(newScroll)
 
-        if contentPane._scrollbar and contentPane._scrollbar.Update then
-            contentPane._scrollbar:Update()
+        if contentPane._scrollbar and contentPane._scrollbar.Sync then
+            contentPane._scrollbar:Sync()
         end
     end)
 
@@ -915,17 +915,17 @@ function UIPanel:CreateContentPane()
                 end
             end)
         end
-        if scrollbar and scrollbar.Update then
+        if scrollbar and scrollbar.Sync then
             C_Timer.After(0.05, function()
-                scrollbar:Update()
+                scrollbar:Sync()
             end)
         end
     end)
 
     -- Initial scrollbar update
     C_Timer.After(0.1, function()
-        if scrollbar and scrollbar.Update then
-            scrollbar:Update()
+        if scrollbar and scrollbar.Sync then
+            scrollbar:Sync()
         end
     end)
 end

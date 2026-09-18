@@ -448,8 +448,8 @@ function Search:FindAndScrollToControl(entry)
                 offset = math.max(0, offset)
                 scrollFrame:SetVerticalScroll(offset)
 
-                if frame._contentPane._scrollbar and frame._contentPane._scrollbar.Update then
-                    frame._contentPane._scrollbar:Update()
+                if frame._contentPane._scrollbar and frame._contentPane._scrollbar.Sync then
+                    frame._contentPane._scrollbar:Sync()
                 end
             end
 
@@ -640,9 +640,9 @@ function Search:RenderResults(scrollContent)
 
     -- Update scrollbar
     local frame = UIPanel.frame
-    if frame and frame._contentPane and frame._contentPane._scrollbar and frame._contentPane._scrollbar.Update then
+    if frame and frame._contentPane and frame._contentPane._scrollbar and frame._contentPane._scrollbar.Sync then
         C_Timer.After(0.02, function()
-            frame._contentPane._scrollbar:Update()
+            frame._contentPane._scrollbar:Sync()
         end)
     end
 end

@@ -1419,8 +1419,8 @@ RenderList = function(panel, scrollContent, corrective)
     -- the true bottom. The viewport height depends on the header's width and
     -- the how-to line, never on the list, so this cannot loop.
     C_Timer.After(0, function()
-        if contentPane and contentPane._scrollbar and contentPane._scrollbar.Update then
-            contentPane._scrollbar:Update()
+        if contentPane and contentPane._scrollbar and contentPane._scrollbar.Sync then
+            contentPane._scrollbar:Sync()
         end
         if state.active and state.scrollContent == scrollContent then
             local vh = (scrollFrame and scrollFrame:GetHeight()) or 0

@@ -922,9 +922,9 @@ Navigation key: "%s"
         contentPane._scrollFrame:SetVerticalScroll(0)
     end
 
-    if contentPane._scrollbar and contentPane._scrollbar.Update then
+    if contentPane._scrollbar and contentPane._scrollbar.Sync then
         C_Timer.After(0.05, function()
-            contentPane._scrollbar:Update()
+            contentPane._scrollbar:Sync()
         end)
     end
 
