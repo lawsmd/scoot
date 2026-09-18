@@ -1,4 +1,5 @@
--- settingspanel/ascii.lua - ASCII art data, UTF-8 helpers, and animation
+-- settingspanel/ascii.lua - the title bar's ASCII reveal: UTF-8 helpers and
+-- the column animation over the product's logo text
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -52,71 +53,39 @@ local function utf8Len(s)
     return #utf8Chars(s)
 end
 
--- ASCII Art Data
+-- The logo is the product's, HeaderModel.title.ascii, and the column parse
+-- runs once per text.
+local parsed = { text = nil, lines = {}, maxCols = 0 }
 
-local ASCII_LOGO = [[
- ██████╗ █████╗  █████╗  █████╗ ████████╗
-██╔════╝██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝
-╚█████╗ ██║  ╚═╝██║  ██║██║  ██║   ██║
- ╚═══██╗██║  ██╗██║  ██║██║  ██║   ██║
-██████╔╝╚█████╔╝╚█████╔╝╚█████╔╝   ██║
-╚═════╝  ╚════╝  ╚════╝  ╚════╝    ╚═╝ ]]
+local function LogoText()
+    local model = UIPanel.HeaderModel and UIPanel.HeaderModel.title
+    return (model and model.ascii) or ""
+end
 
--- ASCII Art Mascot (54 chars wide) for homepage
-local ASCII_MASCOT = [[
-                             ***
-         .==.              **====*
-         ..==            *==========
-          .==          **======....-==
-          .==-        ***=====...   .==
-          .==:       **=======....   =*
-          .==:     .*******==-....
-          .==:  ***..========-***..
-           ==. .--..@@@@%@@@@*@==..-==
-           ==:    .     -    :@@@=%=..=
-            =:    *%   %%%   #@@===+
-            =:     %%*@@@@@@%@@@==%
-            =:      @@=====@@@@@...
-           %+=##= *@@@@@@@@@@@@.-==-..
-          %%%%===.+@@@@@@@@@@@@..====..
-          %%%%=%===.@@@@@@@@@*....====..
-           %%+.=..=..=@@@@@@.==....*===..
-             :...... ===@..=====...**===.
-             -:-..  ......===..   .#****-
-             -=.    ...............=%%%%*
-             -=.    ***==========..:=====
-              =.   **=============..=
-              =.. ***==============.==
-              =-. *+================-:=*
-              ==..==....=========..==...*
-              .=.=====...........======.-=*]]
-
--- Pre-parse ASCII logo into lines and character arrays
-local ASCII_LINES = {}
-local ASCII_MAX_COLS = 0
-
-do
-    for line in ASCII_LOGO:gmatch("[^\n]+") do
-        local lineData = {
-            text = line,
-            chars = utf8Chars(line),
-        }
+local function Parsed()
+    local text = LogoText()
+    if parsed.text == text then return parsed end
+    parsed.text, parsed.lines, parsed.maxCols = text, {}, 0
+    for line in text:gmatch("[^\n]+") do
+        local lineData = { text = line, chars = utf8Chars(line) }
         lineData.len = #lineData.chars
-        table.insert(ASCII_LINES, lineData)
-        if lineData.len > ASCII_MAX_COLS then
-            ASCII_MAX_COLS = lineData.len
+        table.insert(parsed.lines, lineData)
+        if lineData.len > parsed.maxCols then
+            parsed.maxCols = lineData.len
         end
     end
+    return parsed
 end
 
 -- ASCII Art Column Animation
 -- Reveals one vertical column at a time, left to right.
 local function buildPartialAscii(numCols)
     if numCols <= 0 then return "" end
-    if numCols >= ASCII_MAX_COLS then return ASCII_LOGO end
+    local data = Parsed()
+    if numCols >= data.maxCols then return data.text end
 
     local lines = {}
-    for i, lineData in ipairs(ASCII_LINES) do
+    for i, lineData in ipairs(data.lines) do
         local partial = ""
         for j = 1, math.min(numCols, lineData.len) do
             partial = partial .. lineData.chars[j]
@@ -136,7 +105,7 @@ function UIPanel:AnimateAsciiReveal()
     self:StopAsciiAnimation()
 
     local startTime = GetTime()
-    local totalColumns = ASCII_MAX_COLS
+    local totalColumns = Parsed().maxCols
 
     local ar, ag, ab = Theme:GetAccentColor()
     logo:SetTextColor(ar, ag, ab, 1)
@@ -155,7 +124,7 @@ function UIPanel:AnimateAsciiReveal()
         if progress >= 1.0 then
             ticker:Cancel()
             frame._asciiAnimTicker = nil
-            logo:SetText(ASCII_LOGO)
+            logo:SetText(LogoText())
             if logoBtn and not logoBtn:IsMouseOver() then
                 local r, g, b = Theme:GetAccentColor()
                 logo:SetTextColor(r, g, b, 1)
@@ -176,7 +145,7 @@ function UIPanel:StopAsciiAnimation()
     end
 
     if frame._logo then
-        frame._logo:SetText(ASCII_LOGO)
+        frame._logo:SetText(LogoText())
         if frame._logoBtn and not frame._logoBtn:IsMouseOver() then
             local r, g, b = Theme:GetAccentColor()
             frame._logo:SetTextColor(r, g, b, 1)
@@ -188,8 +157,3 @@ function UIPanel:IsAsciiAnimationRunning()
     local frame = self.frame
     return frame and frame._asciiAnimTicker ~= nil
 end
-
--- Cross-file promotions (consumed by core.lua and navigation.lua)
-
-UIPanel._ASCII_LOGO = ASCII_LOGO
-UIPanel._ASCII_MASCOT = ASCII_MASCOT

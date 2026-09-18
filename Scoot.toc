@@ -314,6 +314,7 @@ ui/v2/reports/GroupAnalysisPanel.lua
 ui/v2/Window.lua
 ui/v2/Navigation.lua
 ui/v2/settings/NavModel.lua
+ui/v2/settings/HeaderModel.lua
 ui/v2/JumpingLetters.lua
 ui/v2/SettingsBuilder.lua
 ui/v2/SettingsBuilderContainers.lua

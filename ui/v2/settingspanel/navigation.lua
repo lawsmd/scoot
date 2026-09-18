@@ -9,8 +9,6 @@ local Controls = addon.UI.Controls
 local Navigation = addon.UI.Navigation
 local SettingsBuilder = addon.UI.SettingsBuilder
 
--- Import the promoted logo from ascii.lua
-local ASCII_LOGO = UIPanel._ASCII_LOGO
 
 -- Edit Mode Back-Sync Handler
 -- Marks affected component for refresh and triggers re-render if visible.
@@ -827,12 +825,8 @@ function UIPanel:OnNavigationSelect(key, previousKey)
             contentPane._defaultsInfoIcon:Hide()
         end
 
-        self:StopAsciiAnimation()
-        if frame._logo then
-            frame._logo:SetText("")
-        end
-        if frame._logoBtn then
-            frame._logoBtn:EnableMouse(false)
+        if frame._title then
+            frame._title:SetHome(true)
         end
 
         if contentPane._scrollFrame then
@@ -856,13 +850,9 @@ function UIPanel:OnNavigationSelect(key, previousKey)
             contentPane._homeContent:Hide()
         end
 
-        if wasHome then
-            self:AnimateAsciiReveal()
-        elseif frame._logo and frame._logo:GetText() == "" then
-            frame._logo:SetText(ASCII_LOGO)
-        end
-        if frame._logoBtn then
-            frame._logoBtn:EnableMouse(true)
+        if frame._title then
+            frame._title:SetHome(false)
+            frame._title:Reveal(wasHome)
         end
         if contentPane._headerTitle then
             contentPane._headerTitle:SetText(self:GetCategoryTitle(key))
@@ -926,10 +916,7 @@ Navigation key: "%s"
         end
     end
 
-    -- Update header button active states (Features / Search)
-    if frame._SetHeaderButtonActive then
-        frame._SetHeaderButtonActive(key)
-    end
+    self:UpdateToolbarActive(key)
 
     if contentPane._scrollFrame then
         contentPane._scrollFrame:SetVerticalScroll(0)
@@ -968,7 +955,15 @@ local _titleCache
 
 local function buildTitleCache()
     if _titleCache then return _titleCache end
-    _titleCache = { home = "Home", startHere = "Features", search = "Search" }
+    _titleCache = { home = "Home" }
+    -- The toolbar's page buttons name their pages
+    local header = UIPanel.HeaderModel or {}
+    for _, entry in ipairs(header.toolbar or {}) do
+        local action = entry.action or {}
+        if action.kind == "page" and action.page then
+            _titleCache[action.page] = entry.label
+        end
+    end
     for _, section in ipairs(Navigation.NavModel) do
         local prefix = TITLE_PREFIX[section.key]
         if section.children then

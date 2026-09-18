@@ -16,9 +16,11 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 -- addon.Brand unset and keeps the names it has always had.
 local BRAND = addon.Brand or "Scoot"
 
--- ASCII data from ascii.lua
-local ASCII_LOGO = UIPanel._ASCII_LOGO
-local ASCII_MASCOT = UIPanel._ASCII_MASCOT
+-- The product's title and toolbar, read at call time; Scoot's is
+-- ui/v2/settings/HeaderModel.lua and Camelot's is forever/menu.lua.
+local function HeaderModel()
+    return UIPanel.HeaderModel or {}
+end
 
 -- Every layout number here comes from the active skin's metrics: the panel
 -- size and bounds, titleBarHeight, closeButton, resizeGrip, toolbar, pulse,
@@ -82,7 +84,20 @@ function UIPanel:Initialize()
     self._initialized = true
 end
 
--- Title Bar (with clickable ASCII art logo)
+-- Title Bar: the drag region across the top, and the product's title drawn
+-- the way the skin's titleBar role says
+
+local function SaveWindowPosition(frame)
+    if addon.db and addon.db.global then
+        local point, _, relPoint, x, y = frame:GetPoint()
+        addon.db.global.windowPosition = {
+            point = point,
+            relPoint = relPoint,
+            x = x,
+            y = y
+        }
+    end
+end
 
 function UIPanel:CreateTitleBar()
     local frame = self.frame
@@ -100,106 +115,158 @@ function UIPanel:CreateTitleBar()
     end)
     titleBar:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
-        if addon.db and addon.db.global then
-            local point, _, relPoint, x, y = frame:GetPoint()
-            addon.db.global.windowPosition = {
-                point = point,
-                relPoint = relPoint,
-                x = x,
-                y = y
-            }
-        end
-    end)
-
-    local logoBtn = CreateFrame("Button", BRAND .. "LogoBtn", titleBar)
-    logoBtn:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 10, -6)
-    logoBtn:EnableMouse(true)
-    logoBtn:RegisterForClicks("AnyUp")
-
-    local ar, ag, ab = Theme:GetAccentColor()
-
-    local logo = logoBtn:CreateFontString(nil, "OVERLAY")
-    Theme:ApplyFont(logo, "label", M().logoFontSize)
-    logo:SetPoint("TOPLEFT", 2, -2)
-    logo:SetText(ASCII_LOGO)
-    logo:SetJustifyH("LEFT")
-    logo:SetTextColor(ar, ag, ab, 1)
-    logoBtn._logo = logo
-
-    -- Measure with full ASCII_LOGO text since current text may be empty (home state)
-    C_Timer.After(0.05, function()
-        if logo and logoBtn then
-            -- Temporarily set full text to measure, then restore
-            local currentText = logo:GetText()
-            logo:SetText(ASCII_LOGO)
-            local w = logo:GetStringWidth() or 400
-            local h = logo:GetStringHeight() or 40
-            logo:SetText(currentText or "")
-            logoBtn:SetSize(w + 4, h + 4)
-            if logoBtn._hoverBg then
-                logoBtn._hoverBg:SetSize(w + 4, h + 4)
-            end
-        end
-    end)
-    logoBtn:SetSize(220, 45)  -- Fallback
-
-    local hoverBg = logoBtn:CreateTexture(nil, "BACKGROUND")
-    hoverBg:SetPoint("TOPLEFT", 0, 0)
-    hoverBg:SetPoint("BOTTOMRIGHT", 0, 0)
-    hoverBg:SetColorTexture(ar, ag, ab, 1)
-    hoverBg:Hide()
-    logoBtn._hoverBg = hoverBg
-
-    local panel = self
-
-    logoBtn:SetScript("OnEnter", function(btn)
-        local r, g, b = Theme:GetAccentColor()
-        btn._hoverBg:SetColorTexture(r, g, b, 1)
-        btn._hoverBg:Show()
-        btn._logo:SetTextColor(0, 0, 0, 1)
-    end)
-
-    logoBtn:SetScript("OnLeave", function(btn)
-        btn._hoverBg:Hide()
-        local r, g, b = Theme:GetAccentColor()
-        btn._logo:SetTextColor(r, g, b, 1)
-    end)
-
-    logoBtn:SetScript("OnClick", function(btn, mouseButton)
-        if panel then
-            panel:GoHome()
-        end
-    end)
-
-    logoBtn:RegisterForDrag("LeftButton")
-    logoBtn:SetScript("OnDragStart", function()
-        frame:StartMoving()
-    end)
-    logoBtn:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        if addon.db and addon.db.global then
-            local point, _, relPoint, x, y = frame:GetPoint()
-            addon.db.global.windowPosition = {
-                point = point,
-                relPoint = relPoint,
-                x = x,
-                y = y
-            }
-        end
+        SaveWindowPosition(frame)
     end)
 
     frame._titleBar = titleBar
-    frame._logoBtn = logoBtn
-    frame._logo = logo
+    frame._title = self:CreateTitle(titleBar)
+end
 
-    Theme:Subscribe("UIPanel_TitleBar", function(r, g, b)
-        if logo and logo.SetTextColor and not logoBtn:IsMouseOver() then
-            logo:SetTextColor(r, g, b, 1)
-        end
-        if hoverBg then
+-- The title handle: SetHome(isHome) while the home page is up, Reveal(animate)
+-- when a page comes up, Cleanup(). ascii is the block-letter logo with its
+-- column reveal and a click home; text is the product name in the header
+-- role or the role's fontObject; texture is the product's own image. A role
+-- the model has no art for falls back to text.
+function UIPanel:CreateTitle(titleBar)
+    local frame = self.frame
+    local model = HeaderModel().title or {}
+    local spec = Chrome.Spec("titleBar")
+    local kind = spec.kind
+    if kind == "ascii" and not model.ascii then kind = "text" end
+    if kind == "texture" and not model.texture then kind = "text" end
+    local panel = self
+    local handle = { kind = kind }
+
+    local function passDrag(btn)
+        btn:RegisterForDrag("LeftButton")
+        btn:SetScript("OnDragStart", function() frame:StartMoving() end)
+        btn:SetScript("OnDragStop", function()
+            frame:StopMovingOrSizing()
+            SaveWindowPosition(frame)
+        end)
+    end
+
+    if kind == "ascii" then
+        local logoBtn = CreateFrame("Button", BRAND .. "LogoBtn", titleBar)
+        logoBtn:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 10, -6)
+        logoBtn:EnableMouse(true)
+        logoBtn:RegisterForClicks("AnyUp")
+
+        local ar, ag, ab = Theme:GetAccentColor()
+        local logo = logoBtn:CreateFontString(nil, "OVERLAY")
+        Theme:ApplyFont(logo, spec.fontRole or "label", M().logoFontSize)
+        logo:SetPoint("TOPLEFT", 2, -2)
+        logo:SetText(model.ascii)
+        logo:SetJustifyH("LEFT")
+        logo:SetTextColor(ar, ag, ab, 1)
+        logoBtn._logo = logo
+
+        -- Measure with the full logo, since the home state empties the text
+        C_Timer.After(0.05, function()
+            if logo and logoBtn then
+                local currentText = logo:GetText()
+                logo:SetText(model.ascii)
+                local w = logo:GetStringWidth() or 400
+                local h = logo:GetStringHeight() or 40
+                logo:SetText(currentText or "")
+                logoBtn:SetSize(w + 4, h + 4)
+            end
+        end)
+        logoBtn:SetSize(220, 45)  -- Fallback
+
+        local hoverBg = logoBtn:CreateTexture(nil, "BACKGROUND")
+        hoverBg:SetAllPoints()
+        hoverBg:SetColorTexture(ar, ag, ab, 1)
+        hoverBg:Hide()
+        logoBtn._hoverBg = hoverBg
+
+        logoBtn:SetScript("OnEnter", function(btn)
+            local r, g, b = Theme:GetAccentColor()
+            btn._hoverBg:SetColorTexture(r, g, b, 1)
+            btn._hoverBg:Show()
+            btn._logo:SetTextColor(0, 0, 0, 1)
+        end)
+        logoBtn:SetScript("OnLeave", function(btn)
+            btn._hoverBg:Hide()
+            local r, g, b = Theme:GetAccentColor()
+            btn._logo:SetTextColor(r, g, b, 1)
+        end)
+        logoBtn:SetScript("OnClick", function()
+            panel:GoHome()
+        end)
+        passDrag(logoBtn)
+
+        frame._logoBtn = logoBtn
+        frame._logo = logo
+
+        Theme:Subscribe("UIPanel_TitleBar", function(r, g, b)
+            if not logoBtn:IsMouseOver() then
+                logo:SetTextColor(r, g, b, 1)
+            end
             hoverBg:SetColorTexture(r, g, b, 1)
+        end)
+
+        function handle:SetHome(isHome)
+            if isHome then
+                panel:StopAsciiAnimation()
+                logo:SetText("")
+                logoBtn:EnableMouse(false)
+            else
+                logoBtn:EnableMouse(true)
+            end
         end
-    end)
+        function handle:Reveal(animate)
+            if animate then
+                panel:AnimateAsciiReveal()
+            elseif logo:GetText() == "" then
+                logo:SetText(model.ascii)
+            end
+        end
+        function handle:Cleanup()
+            Theme:Unsubscribe("UIPanel_TitleBar")
+        end
+    elseif kind == "texture" then
+        local tex = titleBar:CreateTexture(nil, "ARTWORK")
+        tex:SetTexture(model.texture)
+        tex:SetSize(spec.width or 200, spec.height or 40)
+        tex:SetPoint(spec.point or "LEFT", titleBar, spec.point or "LEFT", spec.x or 12, spec.y or 0)
+        frame._titleTexture = tex
+        function handle:SetHome() end
+        function handle:Reveal() end
+        function handle:Cleanup() end
+    else
+        local btn = CreateFrame("Button", BRAND .. "TitleBtn", titleBar)
+        btn:RegisterForClicks("AnyUp")
+        local fs = btn:CreateFontString(nil, "OVERLAY", spec.fontObject)
+        if not spec.fontObject then
+            Theme:ApplyFont(fs, spec.fontRole or "header", spec.fontSize or M().home.textSize)
+            local ar, ag, ab = Theme:GetAccentColor()
+            fs:SetTextColor(ar, ag, ab, 1)
+            Theme:Subscribe("UIPanel_TitleBar", function(r, g, b)
+                fs:SetTextColor(r, g, b, 1)
+            end)
+        end
+        fs:SetText(model.text or BRAND)
+        fs:SetPoint("CENTER")
+        local w, h = fs:GetStringWidth() or 0, fs:GetStringHeight() or 0
+        btn:SetSize(math.max(w + 8, 60), math.max(h + 8, 20))
+        btn:SetPoint(spec.point or "LEFT", titleBar, spec.point or "LEFT", spec.x or 12, spec.y or 0)
+        btn:SetScript("OnClick", function()
+            panel:GoHome()
+        end)
+        passDrag(btn)
+        frame._titleText = fs
+
+        function handle:SetHome(isHome)
+            btn:EnableMouse(not isHome)
+        end
+        function handle:Reveal() end
+        function handle:Cleanup()
+            Theme:Unsubscribe("UIPanel_TitleBar")
+        end
+    end
+
+    return handle
 end
 
 -- Go Home (navigate to home, clear nav selection)
@@ -234,133 +301,124 @@ function UIPanel:CreateCloseButton()
     frame._closeBtn = closeBtn
 end
 
--- Header Buttons (Features, Search, Edit Mode, Cooldown Manager)
+-- The toolbar: the product's HeaderModel.toolbar as buttons across the top
+-- edge. action.kind "page" selects a nav key, "editMode" opens Blizzard's
+-- Edit Mode through a secure click, "call" runs action.fn(panel).
 
+local function WireEditMode(btn)
+    local function setup()
+        if not C_AddOns.IsAddOnLoaded("Blizzard_EditMode") then
+            C_AddOns.LoadAddOn("Blizzard_EditMode")
+        end
+        if EditModeManagerFrame then
+            SecureHandlerSetFrameRef(btn, "em", EditModeManagerFrame)
+            btn:SetAttribute("_onclick", [[ self:GetFrameRef("em"):Show() ]])
+        end
+    end
+    if InCombatLockdown() then
+        -- Queue on the shared regen drain instead of registering events on the
+        -- secure button itself; setup is idempotent.
+        addon.Events.RunOutOfCombat(setup, "SettingsPanel:secureEditMode")
+    else
+        setup()
+    end
+    btn:HookScript("PostClick", function()
+        if addon.EditMode and addon.EditMode.MarkOpeningEditMode then
+            addon.EditMode.MarkOpeningEditMode()
+        end
+    end)
+end
 
 function UIPanel:CreateHeaderButtons()
     local frame = self.frame
     if not frame then return end
 
     local panel = self
+    local buttons, byKey = {}, {}
 
-    -- Features button (replaces former "Start Here" nav entry)
-    local featuresBtn = Controls:CreateButton({
-        parent = frame,
-        name = BRAND .. "FeaturesBtn",
-        text = "Features",
-        height = M().toolbar.height,
-        fontSize = M().toolbar.fontSize,
-        onClick = function()
-            Navigation:SelectItem("startHere")
-        end,
-    })
-
-    -- Search button (replaces former "Search" nav entry)
-    local searchBtn = Controls:CreateButton({
-        parent = frame,
-        name = BRAND .. "SearchBtn",
-        text = "Search",
-        height = M().toolbar.height,
-        fontSize = M().toolbar.fontSize,
-        onClick = function()
-            Navigation:SelectItem("search")
-        end,
-    })
-
-    -- Edit Mode button
-    local editModeBtn = Controls:CreateButton({
-        parent = frame,
-        name = BRAND .. "EditModeBtn",
-        text = "Edit Mode",
-        height = M().toolbar.height,
-        fontSize = M().toolbar.fontSize,
-        template = "SecureActionButtonTemplate, SecureHandlerClickTemplate",
-        secureAction = {}, -- triggers AnyUp registration in Button.lua
-    })
-
-    local function setupSecureEditMode()
-        if not C_AddOns.IsAddOnLoaded("Blizzard_EditMode") then
-             C_AddOns.LoadAddOn("Blizzard_EditMode")
-        end
-        if EditModeManagerFrame then
-             SecureHandlerSetFrameRef(editModeBtn, "em", EditModeManagerFrame)
-             editModeBtn:SetAttribute("_onclick", [[ self:GetFrameRef("em"):Show() ]])
+    for _, entry in ipairs(HeaderModel().toolbar or {}) do
+        if not entry.isVisible or entry.isVisible() then
+            local action = entry.action or {}
+            local key = tostring(entry.key or entry.label)
+            local opts = {
+                parent = frame,
+                name = BRAND .. key:sub(1, 1):upper() .. key:sub(2) .. "Btn",
+                text = entry.label,
+                height = M().toolbar.height,
+                fontSize = M().toolbar.fontSize,
+            }
+            if action.kind == "page" then
+                opts.onClick = function()
+                    Navigation:SelectItem(action.page)
+                end
+            elseif action.kind == "editMode" then
+                opts.template = "SecureActionButtonTemplate, SecureHandlerClickTemplate"
+                opts.secureAction = {}  -- triggers AnyUp registration in Button.lua
+            elseif action.kind == "call" and action.fn then
+                opts.onClick = function()
+                    action.fn(panel)
+                end
+            end
+            local btn = Controls:CreateButton(opts)
+            if action.kind == "editMode" then
+                WireEditMode(btn)
+            end
+            btn._entry = entry
+            buttons[#buttons + 1] = btn
+            byKey[key] = btn
         end
     end
 
-    if InCombatLockdown() then
-        -- Queue on the shared regen drain instead of registering events on the
-        -- secure button itself; setupSecureEditMode is idempotent.
-        addon.Events.RunOutOfCombat(setupSecureEditMode, "SettingsPanel:secureEditMode")
-    else
-        setupSecureEditMode()
-    end
-
-    editModeBtn:HookScript("PostClick", function()
-        if addon and addon.EditMode then
-            if addon.EditMode.MarkOpeningEditMode then
-                addon.EditMode.MarkOpeningEditMode()
-            end
-        end
-    end)
-
-    -- Cooldown Manager button
-    local cdmBtn = Controls:CreateButton({
-        parent = frame,
-        name = BRAND .. "CdmBtn",
-        text = "Cooldown Manager",
-        height = M().toolbar.height,
-        fontSize = M().toolbar.fontSize,
-        onClick = function(btn, mouseButton)
-            if addon and addon.OpenCooldownManagerSettings then
-                addon:OpenCooldownManagerSettings()
-            end
-            if panel and panel.frame and panel.frame:IsShown() then
-                panel.frame:Hide()
-            end
-        end
-    })
-
-    -- Position all 4 buttons centered across the top border
-    local headerButtons = { featuresBtn, searchBtn, editModeBtn, cdmBtn }
-
-    local function PositionHeaderButtons()
+    -- Centered across the top edge, in the skin's spacing and offset
+    local function PositionToolbar()
         local totalW = 0
-        for _, btn in ipairs(headerButtons) do
+        for _, btn in ipairs(buttons) do
             totalW = totalW + (btn:GetWidth() or 0)
         end
-        totalW = totalW + (#headerButtons - 1) * M().toolbar.spacing
+        totalW = totalW + math.max(#buttons - 1, 0) * M().toolbar.spacing
 
         local startX = -(totalW / 2)
-        for _, btn in ipairs(headerButtons) do
+        for _, btn in ipairs(buttons) do
             btn:ClearAllPoints()
             local btnW = btn:GetWidth() or 0
-            btn:SetPoint("CENTER", frame, "TOP", startX + (btnW / 2), 0)
+            btn:SetPoint("CENTER", frame, "TOP", startX + (btnW / 2), M().toolbar.y or 0)
             startX = startX + btnW + M().toolbar.spacing
         end
     end
 
-    PositionHeaderButtons()
-    frame:HookScript("OnSizeChanged", PositionHeaderButtons)
+    PositionToolbar()
+    frame:HookScript("OnSizeChanged", PositionToolbar)
 
     local btnLevel = frame:GetFrameLevel() + 15
-    for _, btn in ipairs(headerButtons) do
+    for _, btn in ipairs(buttons) do
         btn:SetFrameLevel(btnLevel)
     end
 
-    frame._featuresBtn = featuresBtn
-    frame._searchBtn = searchBtn
-    frame._editModeBtn = editModeBtn
-    frame._cdmBtn = cdmBtn
+    frame._toolbarOrder = buttons
+    frame._toolbarButtons = byKey
+    self:RefreshToolbar()
+end
 
-    -- The Features and Search buttons show pressed-in while their page is open
-    frame._SetHeaderButtonActive = function(key)
-        featuresBtn:SetActive(key == "startHere")
-        searchBtn:SetActive(key == "search")
+-- A page button shows pressed-in while its page is open
+function UIPanel:UpdateToolbarActive(pageKey)
+    local frame = self.frame
+    if not frame or not frame._toolbarOrder then return end
+    for _, btn in ipairs(frame._toolbarOrder) do
+        local action = btn._entry and btn._entry.action or {}
+        btn:SetActive(action.kind == "page" and action.page == pageKey)
     end
+end
 
-    -- The Features button pulses while every module is off
-    featuresBtn:SetPulsing((addon.AreAllModulesDisabled and addon:AreAllModulesDisabled()) and true or false)
+-- Re-evaluates each entry's pulseWhen
+function UIPanel:RefreshToolbar()
+    local frame = self.frame
+    if not frame or not frame._toolbarOrder then return end
+    for _, btn in ipairs(frame._toolbarOrder) do
+        local when = btn._entry and btn._entry.pulseWhen
+        if when then
+            btn:SetPulsing(when() and true or false)
+        end
+    end
 end
 
 -- Resize Handle (bottom-right corner grip)
@@ -636,9 +694,10 @@ function UIPanel:CreateContentPane()
     local homeContainer = CreateFrame("Frame", nil, homeContent)
     homeContainer:SetPoint("CENTER", homeContent, "CENTER", 0, 80)  -- Shifted up to make room for Feature Guide
 
+    local title = HeaderModel().title or {}
     local homeAscii = homeContainer:CreateFontString(nil, "OVERLAY")
     Theme:ApplyFont(homeAscii, "label", M().home.logoFontSize)
-    homeAscii:SetText(ASCII_LOGO)
+    homeAscii:SetText(title.ascii or title.text or BRAND)
     homeAscii:SetJustifyH("LEFT")
     homeAscii:SetTextColor(ar, ag, ab, 1)
     homeAscii:SetPoint("CENTER", homeContainer, "CENTER", 0, 0)
@@ -658,7 +717,7 @@ function UIPanel:CreateContentPane()
 
     local homeMascot = homeContainer:CreateFontString(nil, "OVERLAY")
     Theme:ApplyFont(homeMascot, "label", M().home.mascotFontSize)
-    homeMascot:SetText(ASCII_MASCOT)
+    homeMascot:SetText(title.mascot or "")
     homeMascot:SetJustifyH("LEFT")
     homeMascot:SetTextColor(ar, ag, ab, 1)
     local welcomeText = homeContainer:CreateFontString(nil, "OVERLAY")
@@ -667,6 +726,10 @@ function UIPanel:CreateContentPane()
     welcomeText:SetTextColor(1, 1, 1, 1)
     homeMascot:SetPoint("BOTTOM", homeAscii, "TOP", 37, 8)
     welcomeText:SetPoint("BOTTOMRIGHT", homeMascot, "BOTTOMLEFT", 20, 0)
+    if not title.mascot then
+        homeMascot:Hide()
+        welcomeText:Hide()
+    end
 
     C_Timer.After(0.05, function()
         if homeAscii and homeMascot and homeContainer then
@@ -884,9 +947,11 @@ function UIPanel:Teardown()
         Navigation:Cleanup()
     end
 
-    for _, btn in ipairs({ frame._featuresBtn, frame._searchBtn, frame._editModeBtn, frame._cdmBtn, frame._closeBtn }) do
-        if btn and btn.Cleanup then btn:Cleanup() end
+    for _, btn in ipairs(frame._toolbarOrder or {}) do
+        if btn.Cleanup then btn:Cleanup() end
     end
+    if frame._closeBtn and frame._closeBtn.Cleanup then frame._closeBtn:Cleanup() end
+    if frame._title and frame._title.Cleanup then frame._title:Cleanup() end
     local contentPane = frame._contentPane
     if contentPane then
         for _, btn in ipairs({ contentPane._defaultsBtn, contentPane._collapseAllBtn }) do
@@ -896,8 +961,7 @@ function UIPanel:Teardown()
             contentPane._scrollbar:Cleanup()
         end
     end
-    for _, key in ipairs({ "UIPanel_TitleBar", "UIPanel_ResizeHandle",
-                           "UIPanel_HomeContent", "UIPanel_ContentPane" }) do
+    for _, key in ipairs({ "UIPanel_ResizeHandle", "UIPanel_HomeContent", "UIPanel_ContentPane" }) do
         Theme:Unsubscribe(key)
     end
 

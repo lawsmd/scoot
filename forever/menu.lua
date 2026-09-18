@@ -25,6 +25,18 @@ Navigation.NavModel = {
     },
 }
 
+-- The title bar and the toolbar. The skin's titleBar role picks how the
+-- title is presented; Camelot has no ASCII art, so the text stands. Search
+-- and Edit Mode are the toolbar: the Features and Cooldown Manager pages are
+-- Scoot's.
+addon.UI.SettingsPanel.HeaderModel = {
+    title = { text = "Camelot" },
+    toolbar = {
+        { key = "search", label = "Search", action = { kind = "page", page = "search" } },
+        { key = "editMode", label = "Edit Mode", action = { kind = "editMode" } },
+    },
+}
+
 -- The Forever skin is Camelot's default. tui stays registered so
 -- /camelot debug skin tui can show the framework's own look when a difference
 -- has to be told apart from the skin's.
