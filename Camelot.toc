@@ -124,6 +124,8 @@ ui/v2/settingspanel/navigation.lua
 ui/v2/settingspanel/deeplink.lua
 ui/v2/GameMenu.lua
 
-## Camelot's page tree, then the slash entry, which binds the word last.
+## Camelot's page tree and its chrome gallery, then the slash entry, which
+## binds the word last.
 forever/menu.lua
+forever/gallery.lua
 forever/debug.lua

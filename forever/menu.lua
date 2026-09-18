@@ -24,3 +24,8 @@ Navigation.NavModel = {
         },
     },
 }
+
+-- The Forever skin is Camelot's default. tui stays registered so
+-- /camelot debug skin tui can show the framework's own look when a difference
+-- has to be told apart from the skin's.
+addon.UI.Skin.SetActive("forever")

@@ -121,6 +121,11 @@ read_globals = {
     "GetMouseFoci",
     "HUD_EDIT_MODE_RESET_POSITION",
     "NineSliceUtil",
+    -- The chrome gallery (forever/gallery.lua) reads these
+    "NineSliceLayouts",
+    "C_XMLUtil",
+    "GameFontHighlight",
+    "GetBuildInfo",
     "WorldFrame",
     "securecallfunction",
 
