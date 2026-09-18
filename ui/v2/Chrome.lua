@@ -741,6 +741,15 @@ end
 -- Without fixed, one texture stretched to the glow frame. The glow and the
 -- fill read the flags directly, since the glow has to stay while the cursor
 -- is over it.
+--
+-- The glow's width follows its height, which comes from the card's anchors,
+-- and the card's from the nav content frame's. On the panel's first build
+-- that frame has no height until every row is placed, so at creation the
+-- glow reads a height of zero. A zero height is a rect not yet resolved,
+-- never a size to fit: the natural size stands until OnSizeChanged brings
+-- a real one. Fitting to zero set the width to zero, and a frame with no
+-- width has no rect and gets no size event, so the first build's glow
+-- stayed invisible until a click rebuilt the rows against a sized frame.
 local function GlowFrame(frame, glowSpec, m)
     local file, w, gh, L, R, T, B = AtlasSource(glowSpec)
     if not file then return nil end
@@ -765,6 +774,7 @@ local function GlowFrame(frame, glowSpec, m)
     if fixed then
         local top, bottom = band(0, fixed.top), band(fixed.bottom, gh)
         mid = band(fixed.top, fixed.bottom)
+        mid:SetHeight(fixed.bottom - fixed.top)
         mid:SetPoint("LEFT")
         mid:SetPoint("RIGHT")
         top:SetPoint("TOPLEFT")
@@ -780,9 +790,10 @@ local function GlowFrame(frame, glowSpec, m)
     end
 
     -- The width follows the height at the atlas's aspect until the atlas's
-    -- own size, and the fixed band scales with it
+    -- own size, and the fixed band scales with it; no height yet, no fit
     local function fit(f, _, height)
-        local s = math.min(1, (height or gh) / gh)
+        if not height or height <= 0 then return end
+        local s = math.min(1, height / gh)
         local width = w * s
         if math.abs((f:GetWidth() or 0) - width) > 0.5 then f:SetWidth(width) end
         if mid then mid:SetHeight((fixed.bottom - fixed.top) * s) end

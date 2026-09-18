@@ -118,14 +118,20 @@ function Navigation:Create(parent)
     end
 
     -- Custom scroll frame (no template - built from scratch). Under the card
-    -- look the rows run to the nav's edge so the cards meet the divider; the
-    -- scrollbar then lies over their right margin, above them, and shows
-    -- only while the tree overflows.
+    -- look the content runs nav.card.reach past the nav's edge, so a card's
+    -- border stands on the divider's line and its corner knots on the page
+    -- border, as the Legacy pane's cards do; the scroll frame runs the card
+    -- art's edge further on the right and up at the top, so the art hanging
+    -- outside the rows is not clipped; the scrollbar then lies over the
+    -- rows' right margin, above them, and shows only while the tree
+    -- overflows.
     local isCard = self:IsCardNav()
+    local edge = self:CardEdge()
+    local reach = isCard and (M().nav.card.reach or 0) or 0
     local rightReserve = isCard and 0 or (M().scrollBar.margin + M().scrollBar.width + M().scrollBar.gap)
     local scrollFrame = CreateFrame("ScrollFrame", BRAND .. "NavScrollFrame", navFrame)
-    scrollFrame:SetPoint("TOPLEFT", navFrame, "TOPLEFT", M().nav.padLeft, -M().nav.padTop)
-    scrollFrame:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", -rightReserve, M().nav.padTop)
+    scrollFrame:SetPoint("TOPLEFT", navFrame, "TOPLEFT", M().nav.padLeft, -(M().nav.padTop - (edge.top or 0)))
+    scrollFrame:SetPoint("BOTTOMRIGHT", navFrame, "BOTTOMRIGHT", reach + (edge.right or 0) - rightReserve, M().nav.padTop)
     scrollFrame:EnableMouseWheel(true)
 
     -- Mouse wheel scrolling
@@ -148,9 +154,10 @@ function Navigation:Create(parent)
         end
     end)
 
-    -- Content frame that will hold all nav items
+    -- Content frame that will hold all nav items: the nav's width less the
+    -- left pad and the scrollbar's reserve, plus the cards' reach
     local contentFrame = CreateFrame("Frame", BRAND .. "NavContent", scrollFrame)
-    contentFrame:SetWidth(scrollFrame:GetWidth() or (M().navWidth - M().nav.padLeft - rightReserve))
+    contentFrame:SetWidth(M().navWidth - M().nav.padLeft - rightReserve + reach)
     scrollFrame:SetScrollChild(contentFrame)
     navFrame._content = contentFrame
     navFrame._scrollFrame = scrollFrame
@@ -291,7 +298,10 @@ function Navigation:BuildRows(contentFrame)
     end
     self._rows = {}
 
-    local yOffset = 0
+    -- Under the card look the first row starts the card art's top edge down
+    -- from the content's top, and the scroll frame's top stands that far
+    -- above the rows (Create), so the first card's knots draw whole
+    local yOffset = -(self:CardEdge().top or 0)
     local rowIndex = 0
 
     -- Build sorted iteration order: disabled parent groups sink to bottom
@@ -396,6 +406,13 @@ end
 -- numbers are nav.card. Otherwise it is the text row navRow draws.
 function Navigation:IsCardNav()
     return Chrome.Spec("navCard").kind == "card"
+end
+
+-- The margin the card's art keeps outside its row (navCard.edge), which the
+-- scroll frame makes room for; empty under a text nav
+function Navigation:CardEdge()
+    if not self:IsCardNav() then return {} end
+    return Chrome.Spec("navCard").edge or {}
 end
 
 function Navigation:CreateParentRow(parent, navItem, yOffset, isModuleDisabled, bodyHeight)

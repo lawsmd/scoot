@@ -241,7 +241,7 @@ Skin.Register("testcard", {
             hoverAlpha = 0.15, selectedAlpha = 0.25,
             -- The card a parent row becomes under a card navCard role; unused
             -- while the role is flat, carried so every skin has the keys
-            card = { height = 40, spacing = 6, padLeft = 4, padRight = 0, inner = 8, padBottom = 8,
+            card = { height = 40, spacing = 6, padLeft = 4, padRight = 0, reach = 0, inner = 8, padBottom = 8,
                      glowOffset = -7, glowInset = 5, hoverAlpha = 0.08, disabledAlpha = 0.75,
                      labelFontRole = "label", labelSize = 14, labelPadLeft = 16 },
         },

@@ -145,8 +145,13 @@ Skin.Register("forever", {
             glyphs = { expanded = "\226\150\188", collapsed = "\226\150\182" },
         },
         sectionBody = { kind = "flat", background = "collapsible" },
+        -- Nav rows: the list-row hover art and no selected art. Under the
+        -- cards the rows are a card's children, and the selected row's
+        -- fill fought the card's glow; how the nav shows which page the
+        -- content pane holds is an open question, so the selected row
+        -- keeps only its label color.
         navRow = {
-            kind = "atlas", hover = "common-button-list-mid-hover", selected = "common-button-list-mid-selected",
+            kind = "atlas", hover = "common-button-list-mid-hover",
             parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
             child  = { labelColors = { normal = "primary", hover = "accent", selected = "accent", disabled = { token = "dim", alpha = 0.35 } } },
         },
@@ -261,13 +266,17 @@ Skin.Register("forever", {
             -- The group cards. height is the header band; inner is the
             -- border's depth, which the child rows and the hover fill keep
             -- inside; padBottom closes the card under the last child. The
-            -- card's right edge is the nav's edge, so padRight is 0 and the
-            -- glow's bar hugs the border's inner edge at glowOffset. The
-            -- glow ends glowInset inside the card's top and bottom, on the
-            -- border, the 5 of 93 rows Blizzard's does. The name starts
-            -- labelPadLeft in, past the border; the child rows' labels
-            -- start inner + childIndent + 6 in, so they read indented.
-            card = { height = 40, spacing = 6, padLeft = 4, padRight = 0, inner = 8, padBottom = 8,
+            -- card's right edge stands reach past the nav's edge, where the
+            -- divider's line and the page border's baked edge are, so the
+            -- border's bronze band ends over the divider's bright column and
+            -- the corner knots sit on the page border, as Blizzard's card
+            -- does with its right edge 6 past the divider's center; padRight
+            -- is 0 inside that. The glow's bar hugs the border's inner edge
+            -- at glowOffset and ends glowInset inside the card's top and
+            -- bottom, on the border, the 5 of 93 rows Blizzard's does. The
+            -- name starts labelPadLeft in, past the border; the child rows'
+            -- labels start inner + childIndent + 6 in, so they read indented.
+            card = { height = 40, spacing = 6, padLeft = 4, padRight = 0, reach = 3, inner = 8, padBottom = 8,
                      glowOffset = -7, glowInset = 5, hoverAlpha = 0.08, disabledAlpha = 0.75,
                      labelFontRole = "label", labelSize = 14, labelPadLeft = 16 },
         },
