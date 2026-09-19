@@ -12,6 +12,10 @@
 -- isVisible are optional functions.
 local addonName, addon = ...
 
+-- Listed before ui/v2/settingspanel/core.lua on Scoot.toc, so the table is
+-- created here when this file is first to it.
+addon.UI = addon.UI or {}
+addon.UI.SettingsPanel = addon.UI.SettingsPanel or {}
 local UIPanel = addon.UI.SettingsPanel
 
 local ASCII_LOGO = [[

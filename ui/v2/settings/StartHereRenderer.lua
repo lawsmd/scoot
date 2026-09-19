@@ -39,21 +39,36 @@ local HEADER_COL_GAP = 16          -- gap between the title/intro column and the
 local LEGEND_RIGHT_INSET = 14      -- keeps the top legend line clear of the panel close button
 local VARIANT_ICON_SIZE = 10       -- tiny per-variant badges beside labels
 local VARIANT_ICON_FONT_SIZE = 5   -- about half of LABEL_FONT_SIZE
--- This page raises the whole content pane into the title-bar dead space (normally
--- reserved at -80). The header buttons centered on the frame's top edge reach 13px
--- below it; -18 clears them, and the close button band (y -10..-34) only spans the
--- far-right 24px where this page draws nothing that high.
-local PANE_TOP_OFFSET = -18
 
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
 
-local function deepCopy(t)
-    if type(t) ~= "table" then return t end
-    local copy = {}
-    for k, v in pairs(t) do copy[k] = deepCopy(v) end
-    return copy
+-- The numbers that belong to the skin rather than to this page:
+-- featuresPaneTop, which says how far the page may raise its content pane
+-- into the title band, and the toggle font role the ON/OFF pills read.
+local function M()
+    return addon.UI.Controls.Metrics()
+end
+
+-- What the page lists is product data, read at call time like HeaderModel and
+-- NavModel. Scoot fills it in ui/v2/settings/FeaturesModel.lua, Camelot in
+-- forever/features.lua:
+--   pageKey     the renderer key the toolbar's Features entry opens
+--   title, intro
+--   legend      array of { letter, color, summary, tooltipTitle, tooltipText }, or nil
+--   columns     column count
+--   order       array of category ids
+--   categories  id -> { label, subToggles, mutuallyExclusive, variant, hiddenFromFeatures }
+--   isEnabled(catId, subId), setEnabled(catId, subId, value)
+--   snapshot() -> value, restore(value)   for Discard Changes
+local function Model()
+    return addon.UI.SettingsPanel.FeaturesModel
+end
+
+-- About 250 a column: below it the columns crush, so the page pans instead.
+local function MinContentWidth()
+    return math.floor(FEATURES_MIN_CONTENT_WIDTH * (Model().columns or NUM_COLUMNS) / NUM_COLUMNS)
 end
 
 --- Compute the display row count for a category (header + sub-toggle rows).
@@ -74,7 +89,7 @@ local function ComputeColumnSplits(categories, numCols)
     -- Compute heights
     local heights = {}
     for i = 1, n do
-        local catDef = addon.MODULE_CATEGORIES[categories[i]]
+        local catDef = Model().categories[categories[i]]
         heights[i] = catDef and CategoryRowCount(catDef) or 1
     end
     -- Prefix sums
@@ -124,6 +139,22 @@ local pageState = {
 -- ON/OFF Indicator (right-side toggle button)
 --------------------------------------------------------------------------------
 
+-- The pill's ON and OFF. A skin with a toggle font role names the face, the
+-- size and the style there, the same role a settings row's toggle reads
+-- (ui/v2/controls/Toggle.lua), so both pills draw alike.
+--
+-- lit is the state with the fill behind it, where the text is black. An
+-- outline is black too, so on that state it is weight on the glyph rather than
+-- the rim it draws around the dim text of an unlit pill, and the letters close
+-- up. The lit state drops the role's style and keeps its face and size.
+local function ApplyIndicatorFont(theme, fs, lit)
+    if theme._fontRoles and theme._fontRoles.toggle then
+        theme:ApplyFont(fs, "toggle", nil, lit and "NONE" or nil)
+    else
+        fs:SetFont(theme:GetFont("BUTTON"), INDICATOR_FONT_SIZE, "")
+    end
+end
+
 local function CreateIndicator(parent, theme)
     local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB = theme:GetDimTextColor()
@@ -147,9 +178,9 @@ local function CreateIndicator(parent, theme)
     fill:Hide()
     indicator._fill = fill
 
-    -- ON/OFF text
+    -- ON/OFF text. UpdateState re-applies the font with the state's style.
     local text = indicator:CreateFontString(nil, "OVERLAY")
-    text:SetFont(theme:GetFont("BUTTON"), INDICATOR_FONT_SIZE, "")
+    ApplyIndicatorFont(theme, text, false)
     text:SetPoint("CENTER", 0, 0)
     text:SetText("OFF")
     text:SetTextColor(dimR, dimG, dimB, 1)
@@ -168,11 +199,13 @@ local function CreateIndicator(parent, theme)
         if isOn then
             self._fill:SetColorTexture(onR, onG, onB, 1)
             self._fill:Show()
+            ApplyIndicatorFont(theme, self._text, true)
             self._text:SetText(vc and variant or "ON")
             self._text:SetTextColor(0, 0, 0, 1)
             for _, tex in pairs(self._border) do tex:SetColorTexture(onR, onG, onB, 1) end
         else
             self._fill:Hide()
+            ApplyIndicatorFont(theme, self._text, false)
             self._text:SetText("OFF")
             self._text:SetTextColor(dR, dG, dB, 1)
             for _, tex in pairs(self._border) do tex:SetColorTexture(r, g, b, 0.4) end
@@ -211,9 +244,9 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
     fill:Hide()
     selector._fill = fill
 
-    -- Center text
+    -- Center text. UpdateState re-applies the font with the state's style.
     local text = selector:CreateFontString(nil, "OVERLAY")
-    text:SetFont(theme:GetFont("BUTTON"), INDICATOR_FONT_SIZE, "")
+    ApplyIndicatorFont(theme, text, false)
     text:SetPoint("CENTER", 0, 0)
     text:SetText("OFF")
     text:SetTextColor(dimR, dimG, dimB, 1)
@@ -251,6 +284,7 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
             -- OFF state
             self._currentIndex = 0
             self._fill:Hide()
+            ApplyIndicatorFont(theme, self._text, false)
             self._text:SetText("OFF")
             self._text:SetTextColor(dR, dG, dB, 1)
             for _, tex in pairs(self._border) do tex:SetColorTexture(r, g, b, 0.4) end
@@ -265,6 +299,7 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
                 if vc then vr, vg, vb = vc[1], vc[2], vc[3] end
                 self._fill:SetColorTexture(vr, vg, vb, 1)
                 self._fill:Show()
+                ApplyIndicatorFont(theme, self._text, true)
                 self._text:SetText(opt.variant)
                 self._text:SetTextColor(0, 0, 0, 1)
                 for _, tex in pairs(self._border) do tex:SetColorTexture(vr, vg, vb, 1) end
@@ -275,6 +310,7 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
         -- Fallback: unknown sub ID, treat as OFF
         self._currentIndex = 0
         self._fill:Hide()
+        ApplyIndicatorFont(theme, self._text, false)
         self._text:SetText("OFF")
         self._text:SetTextColor(dR, dG, dB, 1)
         for _, tex in pairs(self._border) do tex:SetColorTexture(r, g, b, 0.4) end
@@ -479,19 +515,19 @@ end
 --- Read the enabled state for a sub-toggle (handles grouped members).
 local function IsSubToggleOn(catId, sub)
     if sub.members then
-        return addon:IsModuleEnabled(catId, sub.members[1])
+        return Model().isEnabled(catId, sub.members[1])
     end
-    return addon:IsModuleEnabled(catId, sub.id)
+    return Model().isEnabled(catId, sub.id)
 end
 
 --- Toggle a sub-toggle (handles grouped members).
 local function SetSubToggle(catId, sub, value)
     if sub.members then
         for _, memberId in ipairs(sub.members) do
-            addon:SetModuleEnabled(catId, memberId, value)
+            Model().setEnabled(catId, memberId, value)
         end
     else
-        addon:SetModuleEnabled(catId, sub.id, value)
+        Model().setEnabled(catId, sub.id, value)
     end
 end
 
@@ -530,7 +566,7 @@ end
 --- The mode currently active for a modeCycle sub-toggle, or nil (= OFF).
 local function ActiveModeOption(sub)
     for _, opt in ipairs(sub.modeCycle) do
-        if addon:IsModuleEnabled(opt.category, opt.subId) then return opt end
+        if Model().isEnabled(opt.category, opt.subId) then return opt end
     end
     return nil
 end
@@ -539,7 +575,7 @@ end
 --- the selector cycled to OFF.
 local function ApplyModeSelection(sub, chosenOptId)
     for _, opt in ipairs(sub.modeCycle) do
-        addon:SetModuleEnabled(opt.category, opt.subId, opt.id == chosenOptId)
+        Model().setEnabled(opt.category, opt.subId, opt.id == chosenOptId)
     end
 end
 
@@ -551,7 +587,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
     local yOffset = 0
     for i = startIdx, endIdx do
         local catId = categories[i]
-        local catDef = addon.MODULE_CATEGORIES[catId]
+        local catDef = Model().categories[catId]
         if not catDef then break end
 
         local hasSubToggles = catDef.subToggles and #catDef.subToggles > 0
@@ -631,7 +667,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
                     -- and writes the category it points at, never this one, and
                     -- has no OFF: one of its variants is always in effect.
                     local varCatId = sub.variantCategory
-                    local varCatDef = addon.MODULE_CATEGORIES[varCatId]
+                    local varCatDef = Model().categories[varCatId]
                     local variants = (varCatDef and varCatDef.subToggles) or {}
 
                     local varRow = CreateModuleRow(column, {
@@ -683,14 +719,14 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
             end
         else
             -- Simple category: single row with toggle
-            local isOn = addon:IsModuleEnabled(catId)
+            local isOn = Model().isEnabled(catId)
             local simpleRow = CreateModuleRow(column, {
                 label = catDef.label,
                 isOn = isOn,
                 variant = catDef.variant,
                 theme = theme,
                 onToggle = function()
-                    addon:SetModuleEnabled(catId, nil, not addon:IsModuleEnabled(catId))
+                    Model().setEnabled(catId, nil, not Model().isEnabled(catId))
                     state.dirty = true
                     if state.registerGuard then state.registerGuard() end
                     rebuild()
@@ -985,12 +1021,8 @@ function StartHere.Render(panel, scrollContent)
     -- Reset state for this visit
     pageState.dirty = false
 
-    -- Snapshot moduleEnabled so "Discard Changes" can restore it
-    pageState.snapshot = nil
-    local me = addon.db and addon.db.profile and addon.db.profile.moduleEnabled
-    if me then
-        pageState.snapshot = deepCopy(me)
-    end
+    -- Snapshot the toggles so "Discard Changes" can restore it
+    pageState.snapshot = Model().snapshot()
 
     -- Register navigate-away dialog (idempotent)
     addon.Dialogs:Register("SCOOT_START_HERE_RELOAD", {
@@ -999,13 +1031,17 @@ function StartHere.Render(panel, scrollContent)
         cancelText = "Discard Changes",
     })
 
-    -- Raise the content pane into the title-bar dead space so the module grid fits
-    -- without scrolling (Cleanup restores the original offset)
-    if not pageState.paneAnchor then
+    -- Raise the content pane into the title band so the module grid fits without
+    -- scrolling, as far up as the skin's featuresPaneTop allows (Cleanup restores
+    -- the original offset). Only the skin knows what its band holds, so a skin
+    -- that draws art there leaves the metric out and the page keeps the pane
+    -- where every other page has it.
+    local paneTop = M() and M().featuresPaneTop
+    if paneTop and not pageState.paneAnchor then
         local point, relTo, relPoint, x, y = contentPane:GetPoint(1)
         if point == "TOPLEFT" then
             pageState.paneAnchor = { relTo = relTo, relPoint = relPoint, x = x, y = y }
-            contentPane:SetPoint("TOPLEFT", relTo, relPoint, x, PANE_TOP_OFFSET)
+            contentPane:SetPoint("TOPLEFT", relTo, relPoint, x, paneTop)
         end
     end
 
@@ -1037,10 +1073,10 @@ function StartHere.Render(panel, scrollContent)
     -- Lock the scroll content to a 3-column minimum width; when the window is
     -- narrower the page pans horizontally via the h-scrollbar instead of
     -- crushing the columns
-    contentPane._minContentWidth = FEATURES_MIN_CONTENT_WIDTH
+    contentPane._minContentWidth = MinContentWidth()
     local sfWidth = scrollFrame:GetWidth() or 0
     if sfWidth > 0 then
-        scrollContent:SetWidth(math.max(sfWidth - 16, FEATURES_MIN_CONTENT_WIDTH))
+        scrollContent:SetWidth(math.max(sfWidth - 16, MinContentWidth()))
     end
     EnsureHScrollbar(panel, contentPane)
 
@@ -1064,7 +1100,7 @@ function StartHere.Render(panel, scrollContent)
                 if sf and sc then
                     local w = sf:GetWidth() or 0
                     if w > 0 then
-                        sc:SetWidth(math.max(w - 16, FEATURES_MIN_CONTENT_WIDTH))
+                        sc:SetWidth(math.max(w - 16, MinContentWidth()))
                     end
                 end
                 if pageState.rebuild then pageState.rebuild() end
@@ -1084,11 +1120,7 @@ function StartHere.Render(panel, scrollContent)
                     ReloadUI()
                 end,
                 onCancel = function()
-                    -- Restore original moduleEnabled state
-                    local profile = addon.db and addon.db.profile
-                    if profile and pageState.snapshot then
-                        profile.moduleEnabled = deepCopy(pageState.snapshot)
-                    end
+                    Model().restore(pageState.snapshot)
                     panel._navigationGuard = nil
                     proceed()
                 end,
@@ -1107,10 +1139,7 @@ function StartHere.Render(panel, scrollContent)
             local UIPanel = addon.UI.SettingsPanel
             if UIPanel._closedByCombat or (InCombatLockdown and InCombatLockdown()) then
                 -- Combat: silently discard changes and clean up
-                local profile = addon.db and addon.db.profile
-                if profile and pageState.snapshot then
-                    profile.moduleEnabled = deepCopy(pageState.snapshot)
-                end
+                Model().restore(pageState.snapshot)
                 if panel._startHereCleanup then panel._startHereCleanup() end
                 return
             end
@@ -1126,10 +1155,7 @@ function StartHere.Render(panel, scrollContent)
                     ReloadUI()
                 end,
                 onCancel = function()
-                    local profile = addon.db and addon.db.profile
-                    if profile and pageState.snapshot then
-                        profile.moduleEnabled = deepCopy(pageState.snapshot)
-                    end
+                    Model().restore(pageState.snapshot)
                     if panel._startHereCleanup then panel._startHereCleanup() end
                     pageState._hideGuardActive = true
                     self:Hide()
@@ -1156,12 +1182,14 @@ function StartHere.Render(panel, scrollContent)
         -- Lock the pan range to the width this layout is built for, so live
         -- window shrinks keep the full horizontal reach until the debounced
         -- reflow rebuilds at the new width
-        contentPane._minContentWidth = math.max(scrollContent:GetWidth() or 0, FEATURES_MIN_CONTENT_WIDTH)
+        contentPane._minContentWidth = math.max(scrollContent:GetWidth() or 0, MinContentWidth())
 
         -- Two-column header inside the scroll content: page title + explainer on
         -- the left (~1/4 of the width), X/Y/Z legend rows on the right (~3/4)
         local availWidth = (scrollContent:GetWidth() or 300) - ROW_PADDING * 2
-        local leftColWidth = math.floor(availWidth * 0.25)
+        -- With no legend the title and intro have the whole width
+        local hasLegend = Model().legend and #Model().legend > 0
+        local leftColWidth = hasLegend and math.floor(availWidth * 0.25) or availWidth
         local legendWidth = availWidth - leftColWidth - HEADER_COL_GAP
         local ar, ag, ab = theme:GetAccentColor()
 
@@ -1169,7 +1197,7 @@ function StartHere.Render(panel, scrollContent)
         theme:ApplyHeaderFont(titleFS, 20)
         titleFS:SetTextColor(ar, ag, ab, 1)
         titleFS:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", ROW_PADDING, -HEADER_TOP_PAD)
-        titleFS:SetText("Modules")
+        titleFS:SetText(Model().title or "")
         table.insert(pageState.rows, titleFS)
 
         local introFS = scrollContent:CreateFontString(nil, "OVERLAY")
@@ -1178,7 +1206,7 @@ function StartHere.Render(panel, scrollContent)
         introFS:SetWidth(leftColWidth)
         introFS:SetWordWrap(true)
         introFS:SetJustifyH("LEFT")
-        introFS:SetText("Enable or disable Scoot modules. Disabled modules do not load, freeing them for other addons.")
+        introFS:SetText(Model().intro or "")
         introFS:SetTextColor(theme:GetDimTextColor())
         table.insert(pageState.rows, introFS)
 
@@ -1188,7 +1216,7 @@ function StartHere.Render(panel, scrollContent)
         local legendLabels = {}
         local prevFS
         local legendX = ROW_PADDING + leftColWidth + HEADER_COL_GAP
-        for _, entry in ipairs(addon.FEATURE_GUIDE or {}) do
+        for _, entry in ipairs(Model().legend or {}) do
             local icon = addon.UI.Controls:CreateInfoIcon({
                 parent = scrollContent,
                 size = LEGEND_ICON_SIZE,
@@ -1240,21 +1268,22 @@ function StartHere.Render(panel, scrollContent)
         -- inside another category are skipped here but keep their place in
         -- MODULE_CATEGORY_ORDER, which init.lua walks for the session snapshot.
         local categories = {}
-        for _, catId in ipairs(addon.MODULE_CATEGORY_ORDER) do
-            local catDef = addon.MODULE_CATEGORIES[catId]
+        for _, catId in ipairs(Model().order) do
+            local catDef = Model().categories[catId]
             if not (catDef and catDef.hiddenFromFeatures) then
                 categories[#categories + 1] = catId
             end
         end
-        local splits = ComputeColumnSplits(categories, NUM_COLUMNS)
+        local numCols = Model().columns or NUM_COLUMNS
+        local splits = ComputeColumnSplits(categories, numCols)
 
         -- Compute column width
         local scrollWidth = scrollContent:GetWidth() or 850
-        local colWidth = (scrollWidth - (NUM_COLUMNS - 1) * COLUMN_GAP) / NUM_COLUMNS
+        local colWidth = (scrollWidth - (numCols - 1) * COLUMN_GAP) / numCols
 
         -- Create columns
         local prevCol
-        for c = 1, NUM_COLUMNS do
+        for c = 1, numCols do
             local col = CreateFrame("Frame", nil, scrollContent)
             col:SetWidth(colWidth)
             if c == 1 then
@@ -1319,6 +1348,6 @@ end
 -- Register
 --------------------------------------------------------------------------------
 
-addon.UI.SettingsPanel:RegisterRenderer("startHere", function(panel, scrollContent)
+addon.UI.SettingsPanel:RegisterRenderer(Model().pageKey, function(panel, scrollContent)
     StartHere.Render(panel, scrollContent)
 end)

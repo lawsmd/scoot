@@ -98,6 +98,7 @@ forever/unitframes/art.lua
 forever/unitframes/values.lua
 forever/unitframes/harness.lua
 forever/unitframes/player.lua
+forever/features.lua
 forever/profiles.lua
 
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
@@ -187,6 +188,7 @@ ui/v2/settings/applyall/ApplyAllRenderer.lua
 ## Camelot's page tree, the minimap button's icon and storage, then the
 ## slash entry, which binds the word last.
 forever/menu.lua
+ui/v2/settings/StartHereRenderer.lua
 forever/minimap.lua
 forever/gallery.lua
 forever/debug.lua
