@@ -36,12 +36,13 @@ forever/camelot.lua
 ## Reused from Scoot, listed rather than copied. WoW passes each addon its own
 ## `addon` table, so every file below loads a second, private instance here and
 ## Scoot's copy is untouched. This list is the shared/ promotion list, written
-## by use; docs/camelot/unitframes.md records why each row is on it.
+## by use; docs/unitframesclassic/ufcharness.md records why each row is on it.
 core/secretsafe.lua
 core/debug/core.lua
 core/events.lua
 core/strata.lua
 core/colors.lua
+core/nativeframe.lua
 
 ## What the settings framework stands on. commands before fonts and before
 ## any ui/v2 file, since both register debug commands at file scope; media
@@ -94,12 +95,30 @@ core/debug/export.lua
 
 ## Camelot
 forever/db.lua
-forever/unitframes/art.lua
-forever/unitframes/values.lua
-forever/unitframes/harness.lua
-forever/unitframes/player.lua
 forever/features.lua
 forever/profiles.lua
+## The HUD, the unit frames and the cast bar, is Forever's alone. Retail loads
+## this TOC too, through the AddOns\Camelot junction, for the settings panel,
+## so every HUD line carries [ExcludeLoadGameType standard]: retail's game type
+## is standard and Forever's is camelot. The exclude form is the one that holds
+## on both clients, because 12.1.0 has never heard of camelot and loads a line
+## gated on an unknown token (docs/camelot/probe.md, "Reading the Loading
+## section").
+forever/unitframes/art.lua [ExcludeLoadGameType standard]
+forever/unitframes/artplayer.lua [ExcludeLoadGameType standard]
+forever/unitframes/arttarget.lua [ExcludeLoadGameType standard]
+forever/unitframes/arttot.lua [ExcludeLoadGameType standard]
+forever/unitframes/artpet.lua [ExcludeLoadGameType standard]
+forever/unitframes/values.lua [ExcludeLoadGameType standard]
+forever/unitframes/harness.lua [ExcludeLoadGameType standard]
+forever/unitframes/editmode.lua [ExcludeLoadGameType standard]
+forever/unitframes/suppression.lua [ExcludeLoadGameType standard]
+forever/unitframes/frame.lua [ExcludeLoadGameType standard]
+forever/unitframes/player.lua [ExcludeLoadGameType standard]
+forever/unitframes/target.lua [ExcludeLoadGameType standard]
+forever/unitframes/tot.lua [ExcludeLoadGameType standard]
+forever/unitframes/pet.lua [ExcludeLoadGameType standard]
+
 ## Cast bars. The engine is Cast Bar Z's, shared: engine.lua creates the
 ## namespace, the host fills it from forever/db.lua, the painter draws the
 ## Classic bar, and the engine files after them read both at the moment of

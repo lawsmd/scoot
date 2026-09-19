@@ -35,9 +35,10 @@ local pendingRegen = {}
 local regenActions = {}
 
 -- Drained in this order: a restored position lands before the resize around it,
--- and the watch settles before the visibility pass that trusts it.
+-- the watch settles before the visibility pass that trusts it, and the Edit
+-- Mode stand-in paints last, onto a frame the pass before it has shown.
 local REGEN_ORDER = {
-    "position", "geometry", "click", "clickShown", "watch", "visibility",
+    "position", "geometry", "click", "clickShown", "watch", "visibility", "preview",
 }
 
 local drainInst
@@ -92,13 +93,13 @@ end
 -- RegisterUnitWatch hands show and hide to Blizzard's secure manager, which is
 -- the one channel that stays legal in combat for a frame whose visibility is
 -- protected by the click child. The player unit always exists, so a player
--- frame never registers; the branch is here because the harness is written to
--- carry other units.
+-- frame never registers. Neither does a frame Edit Mode is holding on screen:
+-- the manager would hide a targetless frame out from under the drag.
 function Harness.ApplyUnitWatch(inst)
     local frame = inst.frame
     if not frame then return end
 
-    local wantWatch = inst.enabled and inst.unit ~= "player"
+    local wantWatch = inst.enabled and inst.unit ~= "player" and not inst.previewActive
 
     if InCombatLockdown() then
         -- Steady state needs nothing. Only a real transition queues.
@@ -178,6 +179,23 @@ function Harness.ApplyClickAttributes(inst)
     click:SetAttribute("*type2", "togglemenu")
 end
 regenActions.click = function(inst) Harness.ApplyClickAttributes(inst) end
+
+--- The click child yields the mouse to the Edit Mode selection for as long as
+--- Edit Mode is open, so a drag wins over a target click. Edit Mode opens and
+--- closes in combat, and Hide and Show on the protected button are blocked
+--- there, so this queues like every other protected worker.
+function Harness.ApplyClickShown(inst)
+    local click = inst.clickButton
+    if not click then return end
+    local want = not addon.EditMode.IsEditing()
+    if click:IsShown() == want then return end
+    if InCombatLockdown() then
+        Harness.QueueRegen(inst, "clickShown")
+        return
+    end
+    click:SetShown(want)
+end
+regenActions.clickShown = function(inst) Harness.ApplyClickShown(inst) end
 
 --------------------------------------------------------------------------------
 -- Lifecycle

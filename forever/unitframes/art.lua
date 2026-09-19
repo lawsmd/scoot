@@ -1,31 +1,37 @@
 --------------------------------------------------------------------------------
 -- forever/unitframes/art.lua
--- The Classic player frame's art, as data.
+-- What every Classic unit frame's art shares: the texture paths, the region
+-- format and its reader, and the border style. One spec per frame shape lives
+-- beside this file (artplayer, arttarget, arttot, artpet) and registers into
+-- Art.Frames.
 --
--- Every number here is Blizzard's own, read out of the vanilla PlayerFrame.xml
--- rather than measured off a screenshot, so the rebuild is a transcription. The
--- source is the classic_era branch of the UI source mirror:
+-- Every number in a spec is Blizzard's own, read out of the vanilla XML rather
+-- than measured off a screenshot, so the rebuild is a transcription. The source
+-- is the classic_era branch of the UI source mirror:
 --
---   git show origin/classic_era:Interface/AddOns/Blizzard_UnitFrame/Classic/PlayerFrame.xml
+--   git show origin/classic_era:Interface/AddOns/Blizzard_UnitFrame/Classic/<file>.xml
 --
--- Every path below resolves by name in a 12.x client. Camelot references the
--- art and bundles none of it.
+-- Every stock path below resolves by name in a 12.x client.
 --
 -- Two conventions carried over from the XML:
 --
 --   coords = { left, right, top, bottom } in SetTexCoord order. Where left is
---   GREATER than right the texture is mirrored horizontally. The border and the
---   flash are both authored that way, and the values are kept as written rather
---   than "corrected".
+--   GREATER than right the texture is mirrored horizontally. The player's
+--   border and flash are authored that way, and the values are kept as written
+--   rather than "corrected".
 --
---   Offsets are TOPLEFT-relative with a negative Y running down the frame,
---   which is how the XML anchors them.
+--   A region anchors def.point to def.relPoint (def.point when absent) on its
+--   host, with a negative Y running down the frame, which is how the XML
+--   anchors them.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
 
 local Art = {}
 addon.UnitFrames.Art = Art
+
+-- key -> spec, filled by the art*.lua files.
+Art.Frames = {}
 
 --------------------------------------------------------------------------------
 -- Paths
@@ -36,209 +42,37 @@ local CHARACTER = "Interface\\CharacterFrame\\"
 local GROUP     = "Interface\\GroupFrame\\"
 
 Art.Paths = {
-    border      = TARGETING .. "UI-TargetingFrame",
-    flash       = TARGETING .. "UI-TargetingFrame-Flash",
-    attackBG    = TARGETING .. "UI-TargetingFrame-AttackBackground",
-    statusBar   = TARGETING .. "UI-StatusBar",
+    border       = TARGETING .. "UI-TargetingFrame",
+    borderElite  = TARGETING .. "UI-TargetingFrame-Elite",
+    borderRare   = TARGETING .. "UI-TargetingFrame-Rare",
+    borderMinus  = TARGETING .. "UI-TargetingFrame-Minus",
+    borderToT    = TARGETING .. "UI-TargetofTargetFrame",
+    borderSmall  = TARGETING .. "UI-SmallTargetingFrame",
+    borderSmallNoMana = TARGETING .. "UI-SmallTargetingFrame-NoMana",
+    flash        = TARGETING .. "UI-TargetingFrame-Flash",
+    attackBG     = TARGETING .. "UI-TargetingFrame-AttackBackground",
+    nameBG       = TARGETING .. "UI-TargetingFrame-LevelBackground",
+    skull        = TARGETING .. "UI-TargetingFrame-Skull",
+    raidIcons    = TARGETING .. "UI-RaidTargetingIcons",
+    statusBar    = TARGETING .. "UI-StatusBar",
     playerStatus = CHARACTER .. "UI-Player-Status",
-    stateIcon   = CHARACTER .. "UI-StateIcon",
-    playTime    = CHARACTER .. "UI-Player-PlayTimeTired",
-    leaderIcon  = GROUP .. "UI-Group-LeaderIcon",
+    stateIcon    = CHARACTER .. "UI-StateIcon",
+    playTime     = CHARACTER .. "UI-Player-PlayTimeTired",
+    petAttack    = CHARACTER .. "UI-Player-AttackStatus",
+    petHappiness = "Interface\\PetPaperDollFrame\\UI-PetHappiness",
+    leaderIcon   = GROUP .. "UI-Group-LeaderIcon",
     masterLooter = GROUP .. "UI-Group-MasterLooter",
 }
 
 -- Draw order for the art swatch dump. A path that fails to resolve draws blank,
 -- which is the only way a missing file announces itself.
 Art.ManifestOrder = {
-    "border", "flash", "attackBG", "statusBar",
+    "border", "borderElite", "borderRare", "borderMinus",
+    "borderToT", "borderSmall", "borderSmallNoMana",
+    "flash", "attackBG", "nameBG", "skull", "raidIcons", "statusBar",
     "playerStatus", "stateIcon", "playTime",
+    "petAttack", "petHappiness",
     "leaderIcon", "masterLooter",
-}
-
---------------------------------------------------------------------------------
--- The player frame
---------------------------------------------------------------------------------
-
--- Frame rect and the hit rect the vanilla frame carries. The hit insets matter
--- because the border art is much smaller than the 232x100 button around it.
-Art.Player = {
-    width = 232,
-    height = 100,
-    hitInsets = { left = 21, right = 19, top = 12, bottom = 15 },
-}
-
-Art.Player.Regions = {
-    -- BACKGROUND
-    flash = {
-        layer = "BACKGROUND",
-        path = Art.Paths.flash,
-        w = 242, h = 93,
-        point = "TOPLEFT", x = -3, y = -4,
-        coords = { 0.9453125, 0, 0, 0.181640625 },
-        hidden = true,
-    },
-    background = {
-        layer = "BACKGROUND",
-        w = 119, h = 41,
-        point = "TOPLEFT", x = 89.5, y = -26,
-        color = { 0, 0, 0, 0.5 },
-    },
-
-    -- ARTWORK: the portrait sits under the border so the ring frames it.
-    portrait = {
-        layer = "ARTWORK",
-        w = 64, h = 64,
-        point = "TOPLEFT", x = 24, y = -16,
-    },
-
-    -- BORDER: the frame itself, over the portrait and the bars.
-    border = {
-        layer = "BORDER",
-        path = Art.Paths.border,
-        w = 193, h = 77,
-        point = "CENTER", x = 0, y = 0,
-        coords = { 0.85546875, 0.1015625, 0.0625, 0.6640625 },
-    },
-
-    -- ARTWORK over the bars: rested glow and the attacked backing.
-    playerStatus = {
-        layer = "ARTWORK",
-        path = Art.Paths.playerStatus,
-        w = 190, h = 66,
-        point = "TOPLEFT", x = 19, y = -12,
-        coords = { 0, 0.74609375, 0, 0.53125 },
-        blend = "ADD",
-        hidden = true,
-    },
-    attackBackground = {
-        layer = "ARTWORK",
-        path = Art.Paths.attackBG,
-        w = 32, h = 32,
-        point = "TOPLEFT", x = 19, y = -54,
-        hidden = true,
-    },
-
-    -- OVERLAY: state icons. Rest and combat share one sheet, split left/right,
-    -- with the glow pair on the sheet's lower half.
-    restIcon = {
-        layer = "OVERLAY",
-        path = Art.Paths.stateIcon,
-        w = 31, h = 33,
-        point = "TOPLEFT", x = 19.5, y = -52,
-        coords = { 0, 0.5, 0, 0.421875 },
-        hidden = true,
-    },
-    attackIcon = {
-        layer = "OVERLAY",
-        path = Art.Paths.stateIcon,
-        w = 32, h = 32,
-        point = "TOPLEFT", x = 20.5, y = -52,
-        coords = { 0.5, 1.0, 0, 0.484375 },
-        hidden = true,
-    },
-    restGlow = {
-        layer = "OVERLAY",
-        path = Art.Paths.stateIcon,
-        w = 32, h = 32,
-        point = "TOPLEFT", x = 19.5, y = -52,
-        coords = { 0, 0.5, 0.5, 1.0 },
-        blend = "ADD",
-        hidden = true,
-    },
-    attackGlow = {
-        layer = "OVERLAY",
-        path = Art.Paths.stateIcon,
-        w = 32, h = 32,
-        point = "TOPLEFT", x = 20.5, y = -52,
-        coords = { 0.5, 1.0, 0.5, 1.0 },
-        blend = "ADD",
-        color = { 1.0, 0, 0 },
-        hidden = true,
-    },
-    leaderIcon = {
-        layer = "OVERLAY",
-        path = Art.Paths.leaderIcon,
-        w = 16, h = 16,
-        point = "TOPLEFT", x = 28, y = -14,
-        hidden = true,
-    },
-    masterLooterIcon = {
-        layer = "OVERLAY",
-        path = Art.Paths.masterLooter,
-        w = 16, h = 16,
-        point = "TOPLEFT", x = 64, y = -14,
-        hidden = true,
-    },
-}
-
--- Creation order, which is draw order for two regions sharing a layer. The
--- glows have to be built after the icons they sit on: vanilla gets that by
--- putting them in a frame raised three levels, and a flat rebuild gets it from
--- the order alone. Anything else here is ordered for readability.
-Art.Player.DrawOrder = {
-    "flash", "background", "portrait",
-    "border",
-    "playerStatus", "attackBackground",
-    "restIcon", "attackIcon",
-    "restGlow", "attackGlow",
-    "leaderIcon", "masterLooterIcon",
-}
-
--- The two bars. Both take the same fill texture. The power bar's colour is in
--- the XML; the health bar's is not, because vanilla sets it from Lua in
--- UnitFrame.lua's health update: flat green, and grey while disconnected. There
--- is no class colouring on the vanilla player frame at all, so green is the
--- Classic-accurate default and a class-colour toggle is a Camelot addition.
-Art.Player.Bars = {
-    health = {
-        w = 119, h = 12,
-        point = "TOPLEFT", x = 90, y = -45,
-        texture = Art.Paths.statusBar,
-        color = { 0.0, 1.0, 0.0 },
-    },
-    power = {
-        w = 119, h = 12,
-        point = "TOPLEFT", x = 90, y = -56,
-        texture = Art.Paths.statusBar,
-        color = { 0, 0, 1.0 },
-    },
-}
-
--- Text. Every one of these sits in the BORDER layer in the XML, in the same
--- block as the frame art and after it, so the border draws under them and both
--- the state art (ARTWORK) and the state icons (OVERLAY) draw over them.
---
--- That layering is load-bearing rather than incidental. The level number and
--- the rested zZz icon occupy the same spot by design: level centres at 35.25,
--- 30 up from the bottom, and the rest icon covers y -52 to -85 around it.
--- Vanilla never hides the level; it lets the OVERLAY icon cover the BORDER
--- text. Put the text in OVERLAY and the number draws through the icon instead.
---
--- The XML marks the name and the level "re-anchored in code". Only the vehicle
--- art swap does that, and it moves the name alone, so these anchors stand.
-Art.Player.Text = {
-    name = {
-        layer = "BORDER",
-        font = "GameFontNormalSmall",
-        w = 100, h = 12,
-        point = "CENTER", x = 34, y = 15,
-    },
-    level = {
-        layer = "BORDER",
-        font = "GameNormalNumberFont",
-        justifyH = "RIGHT", justifyV = "MIDDLE",
-        point = "CENTER", relPoint = "BOTTOMLEFT", x = 35.25, y = 30,
-    },
-    healthValue = {
-        layer = "BORDER",
-        font = "TextStatusBarText",
-        point = "CENTER", x = 34, y = -1,
-    },
-    powerValue = {
-        layer = "BORDER",
-        font = "TextStatusBarText",
-        point = "CENTER", x = 34, y = -12,
-    },
 }
 
 --------------------------------------------------------------------------------
@@ -248,10 +82,12 @@ Art.Player.Text = {
 -- This file defines the region format, so it owns the one function that turns a
 -- def into a texture.
 function Art.BuildRegion(host, def)
-    local tex = host:CreateTexture(nil, def.layer)
+    local tex = host:CreateTexture(nil, def.layer, nil, def.sublevel)
     if def.path then tex:SetTexture(def.path) end
     tex:SetSize(def.w, def.h)
-    tex:SetPoint(def.point, host, def.point, def.x or 0, def.y or 0)
+    local nudge = def.nudge
+    tex:SetPoint(def.point, host, def.relPoint or def.point,
+        (def.x or 0) + (nudge and nudge.x or 0), (def.y or 0) + (nudge and nudge.y or 0))
     if def.coords then
         tex:SetTexCoord(def.coords[1], def.coords[2], def.coords[3], def.coords[4])
     end
@@ -259,6 +95,95 @@ function Art.BuildRegion(host, def)
     if def.color then
         tex:SetColorTexture(def.color[1], def.color[2], def.color[3], def.color[4] or 1)
     end
+    if def.vertex then
+        tex:SetVertexColor(def.vertex[1], def.vertex[2], def.vertex[3], def.vertex[4] or 1)
+    end
     if def.hidden then tex:Hide() end
     return tex
+end
+
+--------------------------------------------------------------------------------
+-- The border style
+--------------------------------------------------------------------------------
+-- The vanilla border art is silver with a gold level ring. Three styles:
+--
+--   stock    the file as Blizzard drew it
+--   tint     the stock file desaturated and multiplied by the Forever bronze,
+--            with an additive copy of itself over the top. A multiply can only
+--            darken, so on its own it lands near #4e3c2e and loses the lit edge
+--            that makes metal read as metal; the additive copy puts it back.
+--            The gold ring and the elite dragon go brown with everything else.
+--   bronze   an authored copy under forever/media/unitframes/, recoloured
+--            offline so the silver goes bronze and the gold is left alone
+--            (docs/tools/ufcbronze.py writes them)
+--
+-- A spec marks its border region `border = true`. The painter builds a second,
+-- hidden copy of that region as inst.borderLight for the tint style.
+
+Art.BORDER_STYLES = { stock = true, tint = true, bronze = true }
+
+-- The bronze the metal is multiplied by, and the lit edge laid back over it.
+-- Both layers scale with the gray underneath, so the tint has one hue at every
+-- brightness: TINT + LIGHT * LIGHT_ALPHA, here (1.0, 0.68, 0.40), hue 28.
+-- Forever's own metal runs from hue 20 in the shadows to 37 in the highlights
+-- (measured off the character frame and the gryphons); 28 is its midtone. The
+-- first pair summed to hue 36 and read olive beside the real art. Only the
+-- authored files can follow the ramp.
+local TINT = { 0.70, 0.46, 0.26 }
+local LIGHT = { 1.0, 0.73, 0.47 }
+local LIGHT_ALPHA = 0.30
+
+local BRONZE_ROOT = addon.MediaPath .. "forever\\media\\unitframes\\"
+
+-- Art.Paths key -> file name under BRONZE_ROOT.
+local BRONZE_FILES = {
+    border = "UI-TargetingFrame",
+    borderElite = "UI-TargetingFrame-Elite",
+    borderRare = "UI-TargetingFrame-Rare",
+    borderMinus = "UI-TargetingFrame-Minus",
+    borderToT = "UI-TargetofTargetFrame",
+    borderSmall = "UI-SmallTargetingFrame",
+    borderSmallNoMana = "UI-SmallTargetingFrame-NoMana",
+}
+
+local function currentStyle()
+    local style = addon.DB and addon.DB.Get("unitFrames.borderStyle")
+    return Art.BORDER_STYLES[style] and style or "tint"
+end
+
+--- Point an instance's border at a file by Art.Paths key and dress it in the
+--- current style. The decorator calls this when the file changes (an elite
+--- target, a pet with no power bar); the style switch calls it for every frame.
+function Art.ApplyBorder(inst, pathKey)
+    local border = inst.regions and inst.regions.border
+    if not border then return end
+    pathKey = pathKey or inst.borderKey or (inst.spec and inst.spec.borderKey) or "border"
+    inst.borderKey = pathKey
+
+    local style = currentStyle()
+    local path = Art.Paths[pathKey]
+    if style == "bronze" and BRONZE_FILES[pathKey] then
+        path = BRONZE_ROOT .. BRONZE_FILES[pathKey]
+    end
+    border:SetTexture(path)
+
+    local tinted = style == "tint"
+    border:SetDesaturated(tinted)
+    if tinted then
+        border:SetVertexColor(TINT[1], TINT[2], TINT[3])
+    else
+        border:SetVertexColor(1, 1, 1)
+    end
+
+    local light = inst.borderLight
+    if light then
+        if tinted then
+            light:SetTexture(path)
+            light:SetDesaturated(true)
+            light:SetVertexColor(LIGHT[1], LIGHT[2], LIGHT[3], LIGHT_ALPHA)
+            light:Show()
+        else
+            light:Hide()
+        end
+    end
 end
