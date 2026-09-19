@@ -54,6 +54,7 @@ core/preset_scooterui.lua
 core/preset_scooterdeck.lua
 core/borders.lua
 core/editmode/persist.lua
+core/editmode/session.lua
 core/editmode/core.lua
 core/editmode/positionables.lua
 core/editmode/sync.lua

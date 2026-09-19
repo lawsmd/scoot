@@ -58,8 +58,11 @@ function Tooltip.BuildBrandRow(parent, size)
     local iconSize = size + 2
 
     local theme = GetTheme()
-    local iconPath = (theme and theme.Textures and theme.Textures.SCOOT_ICON)
-        or "Interface\\AddOns\\Scoot\\ScootIcon"
+    -- addon.MinimapIcon is the host's one icon seam (core/minimap.lua): set by a
+    -- host whose emblem is not the bundled one, read here at the moment of use.
+    local iconPath = addon.MinimapIcon
+        or (theme and theme.Textures and theme.Textures.SCOOT_ICON)
+        or ((addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "ScootIcon")
 
     local icon = parent:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(iconPath)
@@ -68,7 +71,7 @@ function Tooltip.BuildBrandRow(parent, size)
     local text = parent:CreateFontString(nil, "OVERLAY")
     pcall(text.SetFont, text, GetBrandFont(), size, "")
     text:SetPoint("LEFT", icon, "RIGHT", ICON_GAP, 0)
-    text:SetText("Scoot")
+    text:SetText(addon.Brand or "Scoot")
     text:SetJustifyH("LEFT")
 
     local r, g, b = addon.GetAccentColorRGB()
@@ -98,7 +101,7 @@ local function EnsureFrame()
         bgR, bgG, bgB = theme:GetBackgroundSolidColor()
     end
 
-    frame = CreateFrame("Frame", "ScootEditModeTooltip", UIParent)
+    frame = CreateFrame("Frame", (addon.Brand or "Scoot") .. "EditModeTooltip", UIParent)
     frame:SetFrameStrata("TOOLTIP")
     frame:SetFrameLevel(100)
     frame:SetClampedToScreen(true)
@@ -172,8 +175,8 @@ end
 --- ShowEditInstructions (the MouseOverHighlight toggle) keeps working untouched
 --- and GameTooltip is never contacted for this frame.
 function Tooltip.Attach(selection)
-    if not selection or selection._scootTooltipAttached then return end
-    selection._scootTooltipAttached = true
+    if not selection or selection._emTooltipAttached then return end
+    selection._emTooltipAttached = true
 
     selection.CheckShowInstructionalTooltip = function(self)
         if not self:IsSelected() then

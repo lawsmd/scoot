@@ -1,4 +1,4 @@
--- Registry.lua - Tracks which Edit Mode frames belong to Scoot
+-- Registry.lua - Tracks which Edit Mode frames belong to this addon
 -- Provides: addon.EditMode.Brand, the per-frame registry the branding modules gate on
 local addonName, addon = ...
 
@@ -15,7 +15,7 @@ local registry = setmetatable({}, { __mode = "k" })
 local order = {}          -- array of frames, for theme re-walks
 local pendingRetry = setmetatable({}, { __mode = "k" })
 
--- Set by SelectionSkin's desaturation probe, or by /scoot debug editmode skin
+-- Set by SelectionSkin's desaturation probe
 Brand.forceFallbackBorder = false
 
 --------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ local function applyBranding(frame, entry)
     if dialog and dialog.EnsureHooked then dialog.EnsureHooked() end
 end
 
---- Register a frame as Scoot-owned. Call AFTER lib:AddFrame - by then
+--- Register a frame as owned by this addon. Call AFTER lib:AddFrame - by then
 --- lib.frameSelections[frame] is populated, so this is a pure table read rather
 --- than a hook on a library method.
 ---
@@ -92,7 +92,7 @@ function Brand:Register(frame, opts)
     applyBranding(frame, entry)
 end
 
-function Brand:IsScootFrame(frame)
+function Brand:IsOwnedFrame(frame)
     return frame ~= nil and registry[frame] ~= nil
 end
 

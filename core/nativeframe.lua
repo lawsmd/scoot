@@ -101,8 +101,15 @@ end
 --- manager rather than just the frame. Every skipped write is picked up by
 --- Reapply() on Edit Mode close. The canonical check covers the opening and
 --- exiting transition windows, which the old IsShown-only probe missed.
+---
+--- Resolved per call. A host that does not load core/editmode/core.lua has no
+--- canonical check, and falls back to LibEditMode's own flag, which lacks the
+--- transition windows; the regen and world-entered Reapply covers those.
 local function EditModeOpen()
-    return addon.EditMode.IsEditModeActiveOrOpening()
+    local em = addon.EditMode
+    local fn = em and (em.IsEditModeActiveOrOpening or em.IsEditing)
+    if type(fn) ~= "function" then return false end
+    return fn() == true
 end
 
 local function Resolve(frame)

@@ -23,6 +23,8 @@ libs/AceEvent-3.0/AceEvent-3.0.xml
 libs/AceDB-3.0/AceDB-3.0.xml
 libs/LibDataBroker-1.1/LibDataBroker-1.1.lua
 libs/LibDBIcon-1.0/lib.xml
+libs/LibEditMode/embed.xml
+libs/LibEditModeOverride/LibEditModeOverride.xml
 
 ## Identity before everything else. A borrowed file that wants a name or a
 ## media root reads addon.Brand and addon.MediaPath, and a file-scope read of
@@ -63,6 +65,16 @@ core/minimap.lua
 ## addon:OpenCooldownManagerSettings, which the toolbar's Cooldown Manager
 ## button and the Game Menu call.
 core/cooldownsettings.lua
+
+## Edit Mode. persist goes first of the core/editmode/ files: it creates
+## addon.EditMode and holds the LibEditModeOverride handle and the SaveLayouts
+## hook for the profile engine below. session holds CloseEditMode and
+## positionables the LibEditMode registration for the addon's own frames; they
+## stand on secretsafe, events, commands and debug/core above. The presentation
+## half is ui/v2/editmode/ below.
+core/editmode/persist.lua
+core/editmode/session.lua
+core/editmode/positionables.lua
 
 ## Camelot
 forever/db.lua
@@ -136,6 +148,11 @@ ui/v2/settingspanel/ascii.lua
 ui/v2/settingspanel/core.lua
 ui/v2/settingspanel/navigation.lua
 ui/v2/settingspanel/deeplink.lua
+ui/v2/editmode/Registry.lua
+ui/v2/editmode/SelectionSkin.lua
+ui/v2/editmode/Tooltip.lua
+ui/v2/editmode/Mirror.lua
+ui/v2/editmode/Dialog.lua
 ui/v2/GameMenu.lua
 
 ## Camelot's page tree, the minimap button's icon and storage, then the

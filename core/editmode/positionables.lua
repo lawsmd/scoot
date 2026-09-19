@@ -41,11 +41,14 @@
 
 local addonName, addon = ...
 
+addon.EditMode = addon.EditMode or {}
 local EM = addon.EditMode
 local SS = addon.SecretSafe
 
+-- Same resolution as Brand.GetLib (ui/v2/editmode/Registry.lua), so the hooks
+-- and the registrations land on one library object.
 local function GetLib()
-    return LibStub and LibStub("LibEditMode", true)
+    return addon._LEM or (LibStub and LibStub("LibEditMode", true))
 end
 
 --------------------------------------------------------------------------------
@@ -231,6 +234,9 @@ local function commitPosition(entry, frame, pos)
 
     local cx, cy = liveCenter(frame)
     if not cx then return end
+    -- NudgeFrame is a local addition to the vendored library; a foreign copy
+    -- that won the LibStub race may lack it.
+    if not lib.NudgeFrame then return end
     lib:NudgeFrame(frame, (tx - cx) / s, (ty - cy) / s)
 end
 
@@ -446,6 +452,6 @@ end
 
 addon:RegisterDebugCommand({
     name = "positionables",
-    help = "Scoot frames in Edit Mode: key, stored and default position per layout, live anchor",
+    help = (addon.Brand or "Scoot") .. " frames in Edit Mode: key, stored and default position per layout, live anchor",
     handler = function() EM.DumpPositionables() end,
 })
