@@ -447,19 +447,25 @@ local function EnsureZoneEventHandler()
 
     local function onZoneEvent()
         MM._UpdateZoneText()
-        MM._UpdateZoneCoordinates()
     end
     addon.Events.On("Minimap:Zone", "ZONE_CHANGED", onZoneEvent)
     addon.Events.On("Minimap:Zone", "ZONE_CHANGED_INDOORS", onZoneEvent)
     addon.Events.On("Minimap:Zone", "ZONE_CHANGED_NEW_AREA", onZoneEvent)
 
     -- Forever's minimap skin re-applies its own circle mask and swaps the
-    -- compass ring whenever Rotate Minimap changes; put the square back.
+    -- compass ring whenever Rotate Minimap changes; put the square back. The
+    -- coordinates' two switches are CVars on a client that has Blizzard's
+    -- readout, and Blizzard's own checkbox may flip them.
+    local coordsCVars = MM._CoordsCVarNames or {}
     addon.Events.On("Minimap:Shape", "CVAR_UPDATE", function(_, cvar)
-        if cvar ~= "rotateMinimap" then return end
         local db = getMinimapDB()
-        if db and db.mapShape == "square" then
-            ApplyMinimapShape(db)
+        if not db then return end
+        if cvar == "rotateMinimap" then
+            if db.mapShape == "square" then
+                ApplyMinimapShape(db)
+            end
+        elseif cvar == coordsCVars.show or cvar == coordsCVars.tenths then
+            MM._ApplyCoordinatesStyle(db)
         end
     end)
 end
@@ -521,8 +527,13 @@ local function ApplyMinimapStyling(self)
     -- Apply zone text
     MM._ApplyZoneTextStyle(db)
 
-    -- Apply zone coordinates
-    MM._ApplyZoneCoordinatesStyle(db)
+    -- Apply coordinates. Before 19 September 2026 they were a toggle on the
+    -- Zone Text tab; a profile that had them on keeps them on, below the map.
+    if db.zoneCoordinatesEnabled then
+        db.coordsEnabled = true
+        db.zoneCoordinatesEnabled = nil
+    end
+    MM._ApplyCoordinatesStyle(db)
 
     -- Apply clock
     MM._ApplyClockStyle(db)
@@ -586,9 +597,22 @@ addon:RegisterComponentInitializer(function(self)
             zoneTextFont = { type = "addon", default = "FRIZQT__" },
             zoneTextFontSize = { type = "addon", default = 12 },
             zoneTextFontStyle = { type = "addon", default = "OUTLINE" },
-            zoneCoordinatesEnabled = { type = "addon", default = false },
             zoneTextOffsetX = { type = "addon", default = 0 },
             zoneTextOffsetY = { type = "addon", default = 0 },
+
+            -- Coordinates. coordsEnabled and coordsTenths are read only on a
+            -- client without Blizzard's readout; where it exists, the two
+            -- switches are its CVars (coordinates.lua).
+            coordsEnabled = { type = "addon", default = false },
+            coordsTenths = { type = "addon", default = true },
+            coordsPosition = { type = "addon", default = "default" },  -- "default" is Blizzard's spot below the map
+            coordsFont = { type = "addon", default = "FRIZQT__" },
+            coordsFontSize = { type = "addon", default = 10 },
+            coordsFontStyle = { type = "addon", default = "SHADOW" },  -- GameFontHighlightSmall's look
+            coordsColorMode = { type = "addon", default = "default" },
+            coordsCustomColor = { type = "addon", default = {1, 1, 1, 1} },
+            coordsOffsetX = { type = "addon", default = 0 },
+            coordsOffsetY = { type = "addon", default = 0 },
 
             -- Clock
             clockHide = { type = "addon", default = false },

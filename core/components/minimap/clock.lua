@@ -102,7 +102,9 @@ local function ApplyFontToBlizzardClock(db)
     -- Apply font settings
     local fontFace = addon.ResolveFontFace(db.clockFont)
     local fontSize = tonumber(db.clockFontSize) or 12
-    local fontStyle = db.clockFontStyle or "OUTLINE"
+    -- Deep Shadow draws a companion string on the parent frame, which here
+    -- would be Blizzard's; the base style stands in.
+    local fontStyle = addon.FontStyles.Unpaired(db.clockFontStyle or "OUTLINE")
 
     addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
 

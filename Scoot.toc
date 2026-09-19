@@ -202,6 +202,7 @@ core/components/unitframes/totscale.lua
 core/components/unitframes/offscreenunlock.lua
 core/components/minimap/core.lua
 core/components/minimap/zonetext.lua
+core/components/minimap/coordinates.lua
 core/components/minimap/clock.lua
 core/components/minimap/buttons.lua
 core/components/minimap/offscreenunlock.lua

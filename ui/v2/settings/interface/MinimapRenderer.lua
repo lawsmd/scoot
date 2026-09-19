@@ -52,6 +52,20 @@ local POSITION = addon.Catalogs.WithLeading(addon.Catalogs.Anchor9, "dock", "Def
 local positionValues = POSITION.values
 local positionOrder = POSITION.order
 
+-- The coordinates' default is Blizzard's own spot under the map, not the dock
+local COORDS_POSITION = addon.Catalogs.WithLeading(addon.Catalogs.Anchor9, "default", "Default (Below Map)")
+
+-- Deep Shadow draws a companion string on the parent frame, so it is offered
+-- only where the text is on an addon-drawn overlay: any position but the
+-- Blizzard one. A Deep Shadow value carried back to the Blizzard position
+-- renders as its base style.
+local function styleOrderFor(position, blizzardPosition)
+    if position == blizzardPosition then
+        return Helpers.fontStyleOrder
+    end
+    return Helpers.fontStyleOrderPaired
+end
+
 --------------------------------------------------------------------------------
 -- Render Function
 --------------------------------------------------------------------------------
@@ -221,6 +235,7 @@ function Minimap.Render(panel, scrollContent)
                 tabs = {
                     { key = "dock", label = "Dock" },
                     { key = "zoneText", label = "Zone Text" },
+                    { key = "coords", label = "Coordinates" },
                     { key = "clock", label = "Clock" },
                     { key = "systemData", label = "System Data" },
                 },
@@ -260,17 +275,6 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        tabBuilder:AddToggle({
-                            label = "Enable Zone Coordinates",
-                            description = "Show your current zone coordinates centered below the zone text.",
-                            get = function()
-                                return getSetting("zoneCoordinatesEnabled") or false
-                            end,
-                            set = function(v)
-                                setSetting("zoneCoordinatesEnabled", v)
-                            end,
-                        })
-
                         tabBuilder:AddSelector({
                             label = "Position",
                             description = "Where to show zone text. 'Default (Dock)' uses Blizzard's dock bar, other options use a custom overlay.",
@@ -305,7 +309,8 @@ function Minimap.Render(panel, scrollContent)
                             get = zoneGet, set = zoneSet, apply = applyStyles,
                             defaults = { size = 12, colorMode = "pvp", color = { 1, 0.82, 0, 1 } },
                             font = { description = "The font used for zone text." },
-                            style = { description = "The outline style for zone text." },
+                            style = { order = styleOrderFor(currentPosition, "dock"),
+                                description = "The outline style for zone text." },
                             size = { min = 8, max = 24, minLabel = "8", maxLabel = "24",
                                 description = "The size of the zone text." },
                             color = {
@@ -321,7 +326,91 @@ function Minimap.Render(panel, scrollContent)
                     end,
 
                     ----------------------------------------------------------------
-                    -- Tab 2: Clock
+                    -- Tab 2: Coordinates
+                    ----------------------------------------------------------------
+                    coords = function(tabContent, tabBuilder)
+                        -- On a client with Blizzard's own readout (12.1.5,
+                        -- Forever) the two switches are its CVars, the same
+                        -- checkboxes as Options > Interface; elsewhere they
+                        -- are profile keys (core/components/minimap/coordinates.lua).
+                        local MM = addon.Minimap
+                        local function switchGet(name, key)
+                            local v = MM.CoordsCVar(name)
+                            if v == nil then v = getSetting(key) end
+                            return v or false
+                        end
+                        local function switchSet(name, key, v)
+                            if MM.CoordsCVar(name) ~= nil then
+                                MM.SetCoordsCVar(name, v)
+                                applyStyles()
+                            else
+                                setSetting(key, v)
+                            end
+                        end
+
+                        tabBuilder:AddToggle({
+                            label = "Show Coordinates",
+                            description = "Show your position on the map as coordinates. Where the game has its own readout, this is its Show Player Coordinates option.",
+                            get = function() return switchGet("show", "coordsEnabled") end,
+                            set = function(v) switchSet("show", "coordsEnabled", v) end,
+                        })
+
+                        tabBuilder:AddToggle({
+                            label = "Tenths",
+                            description = "Show coordinates to one decimal place.",
+                            get = function() return switchGet("tenths", "coordsTenths") end,
+                            set = function(v) switchSet("tenths", "coordsTenths", v) end,
+                        })
+
+                        tabBuilder:AddSelector({
+                            label = "Position",
+                            description = "Where to show the coordinates. 'Default (Below Map)' keeps the game's readout under the map, other options use a custom overlay.",
+                            values = COORDS_POSITION.values,
+                            order = COORDS_POSITION.order,
+                            get = function()
+                                return getSetting("coordsPosition") or "default"
+                            end,
+                            set = function(v)
+                                setSetting("coordsPosition", v)
+                                -- Re-render to update offset visibility
+                                C_Timer.After(0.05, function()
+                                    if panel and Minimap.Render then
+                                        Minimap.Render(panel, scrollContent)
+                                    end
+                                end)
+                            end,
+                        })
+
+                        local coordsGet, coordsSet = Helpers.CreateFlatAccessors(getSetting, h.set, {
+                            fontFace = "coordsFont",
+                            style = "coordsFontStyle",
+                            size = "coordsFontSize",
+                            colorMode = "coordsColorMode",
+                            color = "coordsCustomColor",
+                            offsetX = "coordsOffsetX",
+                            offsetY = "coordsOffsetY",
+                        })
+                        -- Offset applies only to the custom overlay
+                        local currentPosition = getSetting("coordsPosition") or "default"
+                        tabBuilder:AddTextStyleBlock({
+                            get = coordsGet, set = coordsSet, apply = applyStyles,
+                            defaults = { size = 10 },
+                            font = { description = "The font used for the coordinates." },
+                            style = { order = styleOrderFor(currentPosition, "default"),
+                                description = "The outline style for the coordinates." },
+                            size = { min = 8, max = 24, minLabel = "8", maxLabel = "24",
+                                description = "The size of the coordinates text." },
+                            color = { description = "The color of the coordinates text." },
+                            offset = currentPosition ~= "default"
+                                and { range = 50, minLabel = "-50", maxLabel = "+50" }
+                                or false,
+                        })
+
+                        tabBuilder:Finalize()
+                    end,
+
+                    ----------------------------------------------------------------
+                    -- Tab 3: Clock
                     ----------------------------------------------------------------
                     clock = function(tabContent, tabBuilder)
                         tabBuilder:AddToggle({
@@ -393,7 +482,8 @@ function Minimap.Render(panel, scrollContent)
                             get = clockGet, set = clockSet, apply = applyStyles,
                             defaults = { size = 12 },
                             font = { description = "The font used for the clock." },
-                            style = { description = "The outline style for the clock." },
+                            style = { order = styleOrderFor(currentPosition, "dock"),
+                                description = "The outline style for the clock." },
                             size = { min = 8, max = 24, minLabel = "8", maxLabel = "24",
                                 description = "The size of the clock text." },
                             color = { description = "The color of the clock text." },
@@ -406,7 +496,7 @@ function Minimap.Render(panel, scrollContent)
                     end,
 
                     ----------------------------------------------------------------
-                    -- Tab 3: System Data (FPS/Latency)
+                    -- Tab 4: System Data (FPS/Latency)
                     ----------------------------------------------------------------
                     systemData = function(tabContent, tabBuilder)
                         tabBuilder:AddToggle({
