@@ -275,14 +275,14 @@ local pendingAddons = nil -- [name] = { fn, ... }
 local pendingAddonCount = 0
 local addonLoadedHandle = nil
 
+-- The second return, `loaded`. The first is `loadedOrLoading`, which is true
+-- while the addon's own files are still running: a file keyed on its own addon
+-- ran its callback at file scope, before the saved variables were read.
 local function isAddonLoaded(name)
-    if C_AddOns and C_AddOns.IsAddOnLoaded then
-        return C_AddOns.IsAddOnLoaded(name)
-    end
-    if IsAddOnLoaded then
-        return IsAddOnLoaded(name)
-    end
-    return false
+    local query = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+    if not query then return false end
+    local _, loaded = query(name)
+    return loaded and true or false
 end
 
 local function onAddonLoaded(_, loadedName)
