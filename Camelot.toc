@@ -48,6 +48,9 @@ core/colors.lua
 ## before fonts, which reads addon.MediaTokens at file scope; pool before
 ## HighScoreWindow; dialogs before controls/Dialog. lsm asks LibStub quietly,
 ## so no LibSharedMedia is listed and the bundled media answers instead.
+## apply_all holds the Global Font and Bar Texture values behind the media
+## tokens; it registers a debug command at file scope and reads addon.db at
+## call time. forever/db.lua below creates the db.global.media table it writes.
 core/commands.lua
 core/escapekey.lua
 core/media.lua
@@ -57,6 +60,7 @@ core/fontpair.lua
 core/pool.lua
 core/barborders.lua
 core/dialogs.lua
+core/apply_all.lua
 
 ## The minimap button. One file for both addons: it reads its icon and its
 ## storage off addon.MinimapIcon and addon.MinimapButtonStore at login, and
@@ -173,6 +177,12 @@ ui/v2/GameMenu.lua
 ## Scoot.toc. Both register at file scope, after settingspanel/renderers.lua.
 ui/v2/settings/profiles/ManageRenderer.lua
 ui/v2/settings/profiles/ImportExportRenderer.lua
+
+## The Apply All pages, Font and Bar Texture, over core/apply_all.lua above.
+## Registers both at file scope after settingspanel/renderers.lua; the nav in
+## forever/menu.lua lists the Font page only until Camelot has a bar texture
+## field. Reads Controls, Theme, addon.Dialogs and addon.FontDisplayNames.
+ui/v2/settings/applyall/ApplyAllRenderer.lua
 
 ## Camelot's page tree, the minimap button's icon and storage, then the
 ## slash entry, which binds the word last.

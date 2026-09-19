@@ -14,13 +14,36 @@ local function TextureDisplayName(key)
         and addon.Media.GetBarTextureDisplayName(key) or key
 end
 
+-- The info line names the addon, and one sentence belongs only to the host
+-- that has a Scrolling Combat Text page, so each mode builds its text at
+-- render time instead of holding a literal. A product may add a sentence of
+-- its own after the first, through addon.UI.SettingsPanel.ApplyAllModel
+-- (fontsNote), the way HomeModel shapes the home page.
+local function FontsInfoText()
+    local model = addon.UI.SettingsPanel and addon.UI.SettingsPanel.ApplyAllModel or {}
+    local text = ("Any %s font field can hold the Global Header Font or Global Body Font token, picked from its font picker, and follow the values set here."):format(addon.Brand or "Scoot")
+    if type(model.fontsNote) == "string" and model.fontsNote ~= "" then
+        text = text .. " " .. model.fontsNote
+    end
+    text = text .. " Apply commits both values and reloads the UI."
+    local renderers = addon.UI.SettingsPanel and addon.UI.SettingsPanel._renderers
+    if renderers and renderers.sctDamage then
+        text = text .. "\n\nScrolling Combat Text is excluded: its font changes need a full game restart."
+    end
+    return text
+end
+
+local function TexturesInfoText()
+    return ("Any %s bar texture field can hold the Global Bar Texture token, picked from its texture picker, and follow the value set here. Apply commits the value and reloads the UI."):format(addon.Brand or "Scoot")
+end
+
 local MODES = {
     {
         key = "applyAllFonts",
         controlsField = "_applyAllFontsControls",
         containerHeight = 340,
         scrollHeight = 460,
-        infoText = "Any Scoot font field can hold the Global Header Font or Global Body Font token, picked from its font picker, and follow the values set here. Apply commits both values and reloads the UI.\n\nScrolling Combat Text is excluded: its font changes need a full game restart.",
+        infoText = FontsInfoText,
         selectors = {
             { method = "CreateFontSelector", label = "Header Font", offsetY = -130,
               getName = "GetPendingHeaderFont", setName = "SetPendingHeaderFont" },
@@ -40,7 +63,7 @@ local MODES = {
         controlsField = "_applyAllTexturesControls",
         containerHeight = 260,
         scrollHeight = 400,
-        infoText = "Any Scoot bar texture field can hold the Global Bar Texture token, picked from its texture picker, and follow the value set here. Apply commits the value and reloads the UI.",
+        infoText = TexturesInfoText,
         selectors = {
             { method = "CreateBarTextureSelector", label = "Bar Texture", offsetY = -100,
               getName = "GetPendingBarTexture", setName = "SetPendingBarTexture" },
@@ -75,21 +98,21 @@ local function CreateRenderer(mode)
         panel[mode.controlsField] = {}
         local controls = panel[mode.controlsField]
 
-        -- Container frame for layout
+        -- Container frame for layout: a fixed width centered in the page, so
+        -- a row's label sits beside its field instead of at the far edge
         local container = CreateFrame("Frame", nil, scrollContent)
         container:SetSize(500, mode.containerHeight)
         container:SetPoint("TOP", scrollContent, "TOP", 0, -60)
-        container:SetPoint("LEFT", scrollContent, "LEFT", 40, 0)
-        container:SetPoint("RIGHT", scrollContent, "RIGHT", -40, 0)
         table.insert(controls, container)
 
-        -- Info text (centered, dimmed)
+        -- Info text (centered, dimmed), in the skin's desc role so a skin's
+        -- face and style reach it
         local info = container:CreateFontString(nil, "OVERLAY")
-        info:SetFont(Theme:GetFont("LABEL"), 12, "")
+        Theme:ApplyFont(info, "desc", 12)
         info:SetPoint("TOP", container, "TOP", 0, 0)
         info:SetWidth(420)
         info:SetJustifyH("CENTER")
-        info:SetText(mode.infoText)
+        info:SetText(mode.infoText())
         info:SetTextColor(0.6, 0.6, 0.6, 1)
 
         -- Selector rows (larger, minimal labels); pickers opened here must not
@@ -117,6 +140,15 @@ local function CreateRenderer(mode)
             if selector then
                 selector:SetPoint("TOPLEFT", container, "TOPLEFT", 20, sel.offsetY)
                 selector:SetPoint("TOPRIGHT", container, "TOPRIGHT", -20, sel.offsetY)
+                -- The row chrome anchors the label to the row's left edge;
+                -- here it hangs off the field, right-aligned, one row
+                -- padding away
+                local labelFS, field = selector._label, selector._selector
+                if labelFS and field then
+                    labelFS:ClearAllPoints()
+                    labelFS:SetPoint("RIGHT", field, "LEFT", -Controls.Metrics().rowPadding, 0)
+                    labelFS:SetJustifyH("RIGHT")
+                end
                 table.insert(controls, selector)
             end
         end

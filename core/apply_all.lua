@@ -157,6 +157,10 @@ end
 -- from the last swept values (what the user last applied everywhere), then
 -- drop the dead per-profile applyAll tables. The flag is deliberately absent
 -- from the registered defaults so AceDB never dedupes it away.
+--
+-- Scoot-only. Its one caller is core/init.lua, and it reads db.sv.profiles
+-- and profile.applyAll, both ScootDB shapes. A TOC that does not load
+-- core/init.lua never calls it.
 function ApplyAll:RunTokenMigration()
     local db = addon.db
     if not db or not db.global then
@@ -197,13 +201,16 @@ end
 addon:RegisterDebugCommand({
     name = "media", help = "Global Font / Bar Texture values and stored token counts",
     handler = function()
+        local lines, push = addon.DebugLines("=== Global media ===", "")
         local header = ApplyAll:GetGlobalHeaderFont()
         local body = ApplyAll:GetGlobalBodyFont()
         local texture = ApplyAll:GetGlobalBarTexture()
-        addon:Print(("Global Header Font: %s -> %s"):format(header, tostring(addon.ResolveFontFace(header))))
-        addon:Print(("Global Body Font: %s -> %s"):format(body, tostring(addon.ResolveFontFace(body))))
-        addon:Print(("Global Bar Texture: %s -> %s"):format(texture, tostring(addon.Media.ResolveBarTexturePath(texture))))
+        push("Global Header Font: %s -> %s", header, tostring(addon.ResolveFontFace(header)))
+        push("Global Body Font: %s -> %s", body, tostring(addon.ResolveFontFace(body)))
+        push("Global Bar Texture: %s -> %s", texture, tostring(addon.Media.ResolveBarTexturePath(texture)))
 
+        -- The walk is shape-agnostic: it counts token strings anywhere under
+        -- the active profile, whatever containers the host keeps there.
         local counts, visited = {}, {}
         local function walk(tbl)
             if type(tbl) ~= "table" or visited[tbl] then return end
@@ -221,11 +228,13 @@ addon:RegisterDebugCommand({
         for token, n in pairs(counts) do
             parts[#parts + 1] = ("%s x%d"):format(token, n)
         end
+        push("")
         if #parts == 0 then
-            addon:Print("No token values stored in the active profile.")
+            push("No token values stored in the active profile.")
         else
             table.sort(parts)
-            addon:Print("Stored tokens: " .. table.concat(parts, ", "))
+            push("Stored tokens: " .. table.concat(parts, ", "))
         end
+        addon.DebugShowWindow("Media", lines)
     end,
 })
