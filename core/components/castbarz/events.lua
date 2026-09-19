@@ -33,22 +33,18 @@ local CAST_EVENTS = {
 
 -- Chosen, not ported: Blizzard drives its own hold/fade through animation groups
 -- rather than named constants, so there is nothing to copy. These read close to
--- the stock bar in practice.
+-- the stock bar in practice. A painter with its own rhythm sets CBZ.HOLD_COMPLETE,
+-- CBZ.HOLD_FAILED or CBZ.FADE_TIME; they are read when a cast ends.
 local HOLD_COMPLETE = 0.35
 local HOLD_FAILED   = 0.70
 local FADE_TIME     = 0.25
 
--- Interrupt / failure presentation. The glow's peak alpha belongs to the texture,
--- not to this file: it depends on which art the frame ended up with (frames.lua).
--- Blizzard fades InterruptGlow over 1.0s (CastingBarFrame.xml:188); shortened here
--- so the glow is spent before the bar itself starts fading at HOLD_FAILED.
--- Two reds, not one. The name sits directly on the line, so a single red made the
--- word and its backdrop the same value and the text stopped separating. The line
--- goes lighter (toward white) and the text darker, splitting them either side of
--- the original 0.95/0.35/0.30.
-local FAIL_LINE_COLOR = { 0.96, 0.48, 0.44 }
-local FAIL_TEXT_COLOR = { 0.76, 0.28, 0.24 }
-local FLASH_TIME = 0.60
+-- casttime.lua and empowered.lua are optional modules (engine.lua). A call into
+-- one the host did not list is skipped.
+local function Optional(name, ...)
+    local fn = CBZ[name]
+    if fn then return fn(...) end
+end
 
 --------------------------------------------------------------------------------
 -- Reading cast state
@@ -133,11 +129,9 @@ end
 -- Promoted for empowered.lua, which needs exactly this treatment per tier segment.
 CBZ._PickColor = PickColor
 
---- Apply interruptibility to the line and, when tiers are up, to each segment.
----
---- Applied as a color override rather than by selecting a different palette,
---- because selecting anything would require reading the flag. The spell name is
---- deliberately not part of it -- see the band call at the end.
+--- Apply interruptibility. The painter decides what it looks like
+--- (_ApplyInterruptLook); it is handed the flag and digests it with _PickColor,
+--- because selecting anything by reading the flag is not possible.
 function CBZ._ApplyInterruptState(bar, notInterruptible)
     -- UnitCastingInfo returns nothing for this field on some casts. nil is never
     -- secret, and type() is the only test that is safe to run first.
@@ -150,10 +144,7 @@ function CBZ._ApplyInterruptState(bar, notInterruptible)
     -- there either: Soar and the travel/mount-style casts all carry it, and
     -- honouring it strips the class-and-spec palette off ordinary casts and
     -- replaces it with white, which reads as the bar having lost its colors.
-    -- frames.lua's _ResolveLineColor already documents this as the rule (":80-81",
-    -- "the uninterruptible override never fires" on those units) -- it was written
-    -- as a premise and never enforced. Enforced here, once, so the line
-    -- and the bands cannot disagree about it.
+    -- Enforced here, once, so no painter has to remember it.
     if CBZ.OWN_CAST_UNITS[bar.unitKey] then ni = false end
 
     -- Stashed so a settings change mid-cast can repaint at the right
@@ -161,20 +152,9 @@ function CBZ._ApplyInterruptState(bar, notInterruptible)
     -- only a secret KEY poisons a table.
     bar.interruptFlag = ni
 
-    local line = PickColor(ni, CBZ.LINE_COLOR_LOCKED, CBZ._GetLineColor(bar))
-    -- No-op while tier segments are up -- they carry a palette, not one color.
-    CBZ._ApplyLineColor(bar, line[1], line[2], line[3])
-    -- ...and its counterpart, a no-op when they are not.
-    CBZ._ApplyEmpoweredColors(bar, ni)
-
-    -- The NAME takes no interruptibility override -- it keeps its ramp whatever the
-    -- flag says. Interruptibility is the LINE's axis and it owns
-    -- it outright: white for locked, gold for kickable, right behind the word.
-    -- Draining the word to grey-white as well spent the bar's two channels saying
-    -- one thing twice, and on a boss it read as the bar having lost its colors
-    -- rather than as a cast you cannot kick -- the same misreading that took the
-    -- override off player and pet above.
-    CBZ._ApplyBandColors(bar, CBZ._GetRamp(bar))
+    CBZ._ApplyInterruptLook(bar, ni)
+    -- The tier segments' counterpart, a no-op when none are up.
+    Optional("_ApplyEmpoweredColors", bar, ni)
 end
 
 --------------------------------------------------------------------------------
@@ -229,10 +209,7 @@ local function CancelPendingHide(bar)
     -- Without this the bar fades out underneath a cast that just started.
     UIFrameFadeRemoveFrame(bar)
     bar:SetAlpha(1)
-    if bar.flashFrame then
-        UIFrameFadeRemoveFrame(bar.flashFrame)
-        bar.flashFrame:Hide()
-    end
+    CBZ._StopFlash(bar)
     -- Spam-casting starts the next cast while the previous one is still
     -- celebrating. Without this the new bar fills underneath the old bar's
     -- completion effect, which reads as the new cast having already landed.
@@ -273,27 +250,18 @@ function CBZ._StartCast(bar, channelled)
     -- draws hangs off that one guarantee.
     bar.empowered = (channelled and isEmpowered == true) or false
 
-    -- Resolve the palette once, here, and cache it for the life of the cast.
-    -- Every consumer -- bands, spark, completion FX -- reads the cache, so the
-    -- colors cannot shift under a bar mid-cast and the unit is queried once rather
-    -- than once per band. It matters from Phase 2 step 4 on, where the ramp starts
-    -- depending on WHO is casting: a bar that re-resolved per consumer would keep
-    -- drawing the previous target's class colors after a switch.
-    bar.lineColor, bar.ramp = CBZ._ResolveCastRamp(bar)
-
-    -- The spark and the completion effect are colored by the layout pass, which
-    -- runs on settings changes only -- so without this they would keep the palette
-    -- of whoever this bar's unit was when the panel was last touched. Cheap: both
-    -- reuse their existing regions rather than rebuilding.
-    CBZ._RecolorSpark(bar)
-    CBZ._RecolorFinishFX(bar)
+    -- The painter resolves this cast's colors once, here, and caches them for the
+    -- life of the cast, so they cannot shift under a bar mid-cast and the unit is
+    -- queried once. A bar that re-resolved per consumer would keep drawing the
+    -- previous target's colors after a switch.
+    CBZ._BeginCastLook(bar)
 
     CBZ._SetText(bar, name)
 
     -- Before the colors, not after: _ApplyInterruptState routes to the tier
     -- palette or the single line color depending on whether segments are up, so
     -- the segments have to exist by the time it runs.
-    CBZ._ApplyEmpowered(bar, bar.empowered, numEmpowerStages)
+    Optional("_ApplyEmpowered", bar, bar.empowered, numEmpowerStages)
     CBZ._ApplyInterruptState(bar, notInterruptible)
 
     -- An empowered cast forces the spark on, and CancelPendingHide ran before
@@ -315,13 +283,13 @@ function CBZ._StartCast(bar, channelled)
     if applied then
         -- An empowered cast counts UP whatever the readout setting says, matching
         -- its fill; casttime.lua owns that override.
-        CBZ._StartCastTime(bar, dur, bar.empowered)
+        Optional("_StartCastTime", bar, dur, bar.empowered)
     else
         -- Not expected: measured working on plain and secret durations alike.
         -- Show the name on a static bar rather than an animating lie.
         CBZ._SetStaticProgress(bar, (channelled and not bar.empowered) and 1 or 0)
         -- ...and no number, rather than one frozen at whatever the last cast left.
-        CBZ._StopCastTime(bar)
+        Optional("_StopCastTime", bar)
     end
 end
 
@@ -330,7 +298,7 @@ function CBZ._RefreshCast(bar)
     if not bar.casting then return end
     local applied, dur = ApplyDuration(bar, bar.channelled)
     if applied then
-        CBZ._RefreshCastTime(bar, dur)
+        Optional("_RefreshCastTime", bar, dur)
     end
 end
 
@@ -348,25 +316,12 @@ local function ShowFailureState(bar, reason)
 
     -- Tier segments come down FIRST. A failed cast reads as one red bar end to
     -- end, and leaving them up would both stripe that red and silently swallow
-    -- the _ApplyLineColor below, which refuses to write while tiers are active.
-    CBZ._ClearEmpowered(bar)
+    -- the painter's line color, which refuses to write while tiers are active.
+    Optional("_ClearEmpowered", bar)
 
     CBZ._SetStaticProgress(bar, 1)
     CBZ._SetText(bar, reason)
-
-    local flat = {}
-    for i = 1, CBZ.NUM_BANDS do flat[i] = FAIL_TEXT_COLOR end
-    CBZ._ApplyBandColors(bar, flat)
-    CBZ._ApplyLineColor(bar, FAIL_LINE_COLOR[1], FAIL_LINE_COLOR[2], FAIL_LINE_COLOR[3])
-
-    local flash = bar.flashFrame
-    if flash then
-        UIFrameFadeRemoveFrame(flash)
-        local peak = flash.peakAlpha or 1
-        flash:SetAlpha(peak)
-        flash:Show()
-        UIFrameFadeOut(flash, FLASH_TIME, peak, 0)
-    end
+    CBZ._ShowFailureLook(bar, reason)
 end
 
 --- @param reason string|nil  INTERRUPTED / FAILED for a failure, nil for a clean end.
@@ -412,7 +367,7 @@ function CBZ._FinishCast(bar, reason)
     -- frame or two before its STOP arrives, and an expired binding writes its
     -- expired text over whatever the cast finished on. Before the branch below, so
     -- it covers a clean end, a failure and an empowered freeze alike.
-    CBZ._StopCastTime(bar)
+    Optional("_StopCastTime", bar)
 
     -- Take the clock back from the engine. SetTimerDuration hands the sweep to
     -- C++ and nothing else ever stops it: without this the fill keeps advancing
@@ -432,7 +387,8 @@ function CBZ._FinishCast(bar, reason)
 
     bar.hideToken = (bar.hideToken or 0) + 1
     local token = bar.hideToken
-    local hold = reason and HOLD_FAILED or HOLD_COMPLETE
+    local hold = reason and (CBZ.HOLD_FAILED or HOLD_FAILED) or (CBZ.HOLD_COMPLETE or HOLD_COMPLETE)
+    local fadeTime = CBZ.FADE_TIME or FADE_TIME
 
     -- Queued rather than played, and only after the token bump above, so that an
     -- interrupt arriving later in the same frame invalidates it. See
@@ -443,22 +399,19 @@ function CBZ._FinishCast(bar, reason)
 
     C_Timer.After(hold, function()
         if bar.hideToken ~= token then return end
-        UIFrameFadeOut(bar, FADE_TIME, 1, 0)
-        C_Timer.After(FADE_TIME, function()
+        UIFrameFadeOut(bar, fadeTime, 1, 0)
+        C_Timer.After(fadeTime, function()
             if bar.hideToken ~= token then return end
             bar:Hide()
             bar:SetAlpha(1)
             CBZ._ClearText(bar)
-            CBZ._ClearCastPalette(bar)
+            CBZ._ResetCastLook(bar)
             -- After the frame is hidden, so the plain line coming back is never
             -- seen. Before the next cast, so nothing inherits a tier palette.
-            CBZ._ClearEmpowered(bar)
+            Optional("_ClearEmpowered", bar)
             CBZ._SetStaticProgress(bar, 0)
             CBZ._StopFinishFX(bar)
-            if bar.flashFrame then
-                UIFrameFadeRemoveFrame(bar.flashFrame)
-                bar.flashFrame:Hide()
-            end
+            CBZ._StopFlash(bar)
         end)
     end)
 end
@@ -663,15 +616,12 @@ function CBZ._ResetBar(bar)
     UIFrameFadeRemoveFrame(bar)
     bar:SetAlpha(1)
     CBZ._StopFinishFX(bar)
-    if bar.flashFrame then
-        UIFrameFadeRemoveFrame(bar.flashFrame)
-        bar.flashFrame:Hide()
-    end
+    CBZ._StopFlash(bar)
 
     CBZ._ClearText(bar)
-    CBZ._ClearCastPalette(bar)
-    CBZ._ClearEmpowered(bar)
-    CBZ._StopCastTime(bar)
+    CBZ._ResetCastLook(bar)
+    Optional("_ClearEmpowered", bar)
+    Optional("_StopCastTime", bar)
     CBZ._SetStaticProgress(bar, 0)
 
     -- Edit Mode is positioning this frame; taking it away mid-drag would be a bug,
@@ -735,7 +685,7 @@ function CBZ._RegisterBarEvents(bar, row)
     bar.eventFrame = f
 end
 
-function CBZ._InitializeEvents(comp)
+function CBZ._InitializeEvents()
     -- Spec changes re-resolve the ramp; talent swaps do not, but a spec swap is
     -- the only thing that moves SPEC_GRADIENT_COLORS.
     -- Registered once (_Initialize latches), so the file-scoped owner keeps the
@@ -751,8 +701,7 @@ function CBZ._InitializeEvents(comp)
             if CBZ._IsUnitEnabled(bar.unitKey) then
                 -- Drop the cache first, or the repaint reads back the very palette
                 -- the spec change just invalidated.
-                CBZ._ClearCastPalette(bar)
-                CBZ._ApplyBandColors(bar, nil)
+                CBZ._ResetCastLook(bar, true)
                 if event == "PLAYER_ENTERING_WORLD" then
                     CBZ._SyncCastState(barKey)
                 end

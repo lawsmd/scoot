@@ -164,6 +164,11 @@ function CBZ._ApplySnap(bar)
     ox = CBZ._SnapToPixels(ox)
     oy = CBZ._SnapToPixels(oy)
 
+    -- A frame's scale multiplies its own offsets. The bar is addon-owned, so
+    -- the read is plain; a host that never scales its bars divides by 1.
+    local scale = bar:GetScale()
+    ox, oy = ox / scale, oy / scale
+
     bar:ClearAllPoints()
     bar:SetPoint(pair.barPoint, anchor, pair.anchorPoint, ox, oy)
     return true
@@ -207,7 +212,7 @@ function CBZ._EditModeMirror(bar)
     -- in _RestorePosition for every bar, which is what re-anchors this one and
     -- renames it.
     local function apply()
-        if CBZ._comp then CBZ._ApplyStyling(CBZ._comp) end
+        CBZ._Reconcile()
     end
 
     local specs = {

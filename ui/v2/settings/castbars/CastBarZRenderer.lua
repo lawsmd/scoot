@@ -638,7 +638,7 @@ function CBZSettings.Render(panel, scrollContent)
                                 description = "Which end of the bar the number sits beside. Applies to the selected unit only. Boss defaults to the left, so the readout clears the boss frame its bar attaches to.",
                                 values = { right = "Right", left = "Left" },
                                 order = { "right", "left" },
-                                get = function() return CBZ._GetCastTimeSide(selectedUnit) end,
+                                get = function() return CBZ._GetCastTimePosition(selectedUnit) end,
                                 set = function(v) setUnit("castTimeSide", v) end })
                             tab:AddColorPicker({ label = "Color", hasAlpha = true,
                                 get = function()

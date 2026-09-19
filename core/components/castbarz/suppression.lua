@@ -122,7 +122,7 @@ end
 --- and re-issuing nine claims per step would be pure churn for a state that has
 --- not moved.
 function CBZ._ApplySuppression()
-    local moduleOn = addon:IsModuleEnabled("castBars", "castBarZ")
+    local moduleOn = CBZ._IsModuleEnabled()
 
     for _, row in ipairs(CBZ.BARS) do
         local barKey = row.barKey

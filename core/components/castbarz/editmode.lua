@@ -11,54 +11,9 @@
 local addonName, addon = ...
 local CBZ = addon.CastBarZ
 
--- Starting positions, one per BAR, in UIParent space. Keyed by barKey so the five
--- boss bars can stack rather than land on top of each other.
-local DEFAULT_POSITIONS = {
-    Player = { point = "CENTER", x =    0, y = -180 },
-    Target = { point = "CENTER", x =    0, y =  180 },
-    Focus  = { point = "CENTER", x = -320, y =  180 },
-    Pet    = { point = "CENTER", x =    0, y = -224 },
-}
-
--- Boss bars stack downward rather than sharing a point. They are snap-only from
--- step 6 onward, so these are only ever seen in the window before a layout is
--- saved -- but five bars at one position reads as one broken bar, not five.
-for i = 1, CBZ.NUM_BOSS_BARS do
-    DEFAULT_POSITIONS["Boss" .. i] = {
-        point = "CENTER", x = 320, y = 180 - (i - 1) * 44,
-    }
-end
-
-local function DefaultPositionFor(barKey)
-    return DEFAULT_POSITIONS[barKey] or { point = "CENTER", x = 0, y = -180 }
-end
-
---------------------------------------------------------------------------------
--- Persistence
---------------------------------------------------------------------------------
-
-local function EnsurePositionsDB()
-    local profile = addon.db and addon.db.profile
-    if not profile then return nil end
-    if not profile.castBarZPositions then
-        profile.castBarZPositions = {}
-    end
-    return profile.castBarZPositions
-end
-
-function CBZ._SavePosition(barKey, layoutName, point, x, y)
-    local positions = EnsurePositionsDB()
-    if not positions or not layoutName then return end
-    if not positions[layoutName] then
-        positions[layoutName] = {}
-    end
-    positions[layoutName][barKey] = { point = point, x = x, y = y }
-end
-
-local function GetBarPosition(barKey, layoutName)
-    local positions = EnsurePositionsDB()
-    return positions and positions[layoutName] and positions[layoutName][barKey] or nil
-end
+-- The host supplies the starting position on each row (row.defaultPosition) and
+-- the storage (CBZ._PositionStore); see engine.lua.
+local FALLBACK_POSITION = { point = "CENTER", x = 0, y = -180 }
 
 -- A snapped bar discards a drop and springs back. Returning true also skips
 -- the persist, which is required rather than tidy: the persist reads
@@ -90,7 +45,7 @@ end
 --------------------------------------------------------------------------------
 
 --- Register one bar as a positionable (core/editmode/positionables.lua), at the
---- moment it is created. Storage stays castBarZPositions[layoutName][barKey].
+--- moment it is created. Storage is the host's (CBZ._PositionStore).
 ---
 --- Called from _EnsureBar rather than up front, so a disabled unit correctly does
 --- not appear in Edit Mode at all. Registering late is safe: the helper restores
@@ -102,8 +57,8 @@ function CBZ._RegisterBarEditMode(bar, row)
 
     addon.EditMode.RegisterPositionable(bar, {
         key = row.barKey,
-        default = DefaultPositionFor(row.barKey),
-        store = { get = GetBarPosition, set = CBZ._SavePosition },
+        default = row.defaultPosition or FALLBACK_POSITION,
+        store = CBZ._PositionStore,
         apply = ApplyBarPosition,
         restoreDefault = true,
         -- A snapped bar discards drops and its live anchor answers secret, so
@@ -112,8 +67,8 @@ function CBZ._RegisterBarEditMode(bar, row)
             return CBZ._GetPositionMode(b.unitKey) == "free"
         end,
         brand = {
-            navKey    = "castBarZ",
-            pageState = { key = "_castBarZSelectedUnit", value = row.unitKey },
+            navKey    = CBZ.NAV_KEY,
+            pageState = row.pageState,
             mirror    = CBZ._EditModeMirror,
         },
     })

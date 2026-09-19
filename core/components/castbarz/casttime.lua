@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 -- castbarz/casttime.lua
--- The numeric cast time readout beside the bar.
+-- The numeric cast time readout, beside the bar or on it.
 --
 -- Cast Bar Z has no OnUpdate anywhere, on purpose (events.lua:9-12), and every
 -- obvious way to draw a ticking number reintroduces one. This file has none
@@ -182,16 +182,42 @@ function CBZ._GetCastTimeColor()
     return c
 end
 
---- Which side of the bar the readout sits on.
+--- Where the readout sits, as anchor geometry.
+---
+--- `right` and `left` are the two placements this file has always drawn, so a
+--- bar storing either keeps its exact geometry. The other five arrived with the
+--- Classic bar, whose spell name sits above the bar rather than across it and
+--- leaves the interior free; Cast Bar Z offers only the two, because its 12-band
+--- name spans the whole bar.
+---
+--- `gx` and `gy` are which way the gap pushes: the gap is the distance from the
+--- edge the readout hugs, and nothing on insideCenter. justify is load-bearing
+--- rather than cosmetic, here as in the two original placements -- the text has
+--- to grow AWAY from that edge, or a two-digit channel timer creeps back over
+--- the end tick it was placed clear of.
+CBZ.CAST_TIME_POSITIONS = {
+    right        = { point = "LEFT",   relPoint = "RIGHT",  justify = "LEFT",   gx =  1, gy =  0 },
+    left         = { point = "RIGHT",  relPoint = "LEFT",   justify = "RIGHT",  gx = -1, gy =  0 },
+    above        = { point = "BOTTOM", relPoint = "TOP",    justify = "CENTER", gx =  0, gy =  1 },
+    below        = { point = "TOP",    relPoint = "BOTTOM", justify = "CENTER", gx =  0, gy = -1 },
+    insideLeft   = { point = "LEFT",   relPoint = "LEFT",   justify = "LEFT",   gx =  1, gy =  0 },
+    insideCenter = { point = "CENTER", relPoint = "CENTER", justify = "CENTER", gx =  0, gy =  0 },
+    insideRight  = { point = "RIGHT",  relPoint = "RIGHT",  justify = "RIGHT",  gx = -1, gy =  0 },
+}
+
+--- Which of those a bar is set to.
 ---
 --- Per unit, not shared, because it is a property of where that bar SITS rather
 --- than of how it looks. Boss defaults to positionMode "left" -- bar's RIGHT edge
 --- against the boss frame's LEFT edge -- so a right-side readout would land on
 --- top of the boss frame it belongs to.
-function CBZ._GetCastTimeSide(unitKey)
+---
+--- The stored key is still `castTimeSide`, from when the choice was two sides.
+--- Renaming it would need a migration to buy a better word in a table.
+function CBZ._GetCastTimePosition(unitKey)
     local cfg = CBZ._GetUnitConfig(unitKey)
-    local side = cfg and cfg.castTimeSide
-    if side == "left" then return "left" end
+    local stored = cfg and cfg.castTimeSide
+    if type(stored) == "string" and CBZ.CAST_TIME_POSITIONS[stored] then return stored end
     return "right"
 end
 
@@ -341,11 +367,9 @@ end
 --- cap anchors RIGHT to bar RIGHT, frames.lua:448-452), so the gap measures from
 --- past the tick without needing to know how wide one is.
 ---
---- JustifyH is load-bearing rather than cosmetic: the text has to grow AWAY from
---- the bar, or a two-digit channel timer creeps back over the end tick it was
---- placed clear of. SetWidth(0) leaves it unbounded, which is safe here precisely
---- because it sits outside the bar -- unlike the name bands, whose columns ARE
---- the clip.
+--- SetWidth(0) leaves the string unbounded, so an inside placement overruns the
+--- bar rather than being clipped by it: nothing here clips children. The name
+--- bands are the opposite case, where the columns ARE the clip.
 function CBZ._LayoutCastTime(bar)
     local fs = bar.castTimeText
     if not fs then return end
@@ -357,7 +381,12 @@ function CBZ._LayoutCastTime(bar)
 
     local face  = addon.ResolveFontFace(CBZ._GetCastTimeFontFace())
     local size  = tonumber(CBZ._GetSetting("castTimeSize")) or 12
-    local style = tostring(CBZ._GetSetting("fontStyle") or "SHADOWTHICKOUTLINE")
+    -- Unpaired: the binding writes this string engine-side, so a Deep Shadow
+    -- companion is never fed and keeps whatever the Edit Mode placeholder last
+    -- wrote through SetText -- a black ghost behind a live number. The shared
+    -- style still reaches the readout, as its base style.
+    local style = addon.FontStyles.Unpaired(
+        tostring(CBZ._GetSetting("fontStyle") or CBZ.CAST_TIME_FALLBACK_STYLE or "SHADOWTHICKOUTLINE"))
     addon.ApplyFontStyle(fs, face, size, style)
     -- Off for the same reason the bands turn it off: nothing scales this text, and
     -- smooth scaling only costs sharpness under a fractional UI scale.
@@ -369,15 +398,11 @@ function CBZ._LayoutCastTime(bar)
     local gap = CBZ._SnapToPixels(tonumber(CBZ._GetSetting("castTimeGap")) or 10)
     local dy  = CBZ._SnapToPixels(tonumber(CBZ._GetSetting("castTimeOffsetY")) or 0)
 
+    local pos = CBZ.CAST_TIME_POSITIONS[CBZ._GetCastTimePosition(bar.unitKey)]
     fs:ClearAllPoints()
     fs:SetWidth(0)
-    if CBZ._GetCastTimeSide(bar.unitKey) == "left" then
-        fs:SetJustifyH("RIGHT")
-        fs:SetPoint("RIGHT", bar, "LEFT", -gap, dy)
-    else
-        fs:SetJustifyH("LEFT")
-        fs:SetPoint("LEFT", bar, "RIGHT", gap, dy)
-    end
+    fs:SetJustifyH(pos.justify)
+    fs:SetPoint(pos.point, bar, pos.relPoint, gap * pos.gx, dy + gap * pos.gy)
 
     -- A settings change mid-cast has to reach the live binding, or the readout is
     -- stale until the next cast: switching Remaining to Elapsed would keep counting

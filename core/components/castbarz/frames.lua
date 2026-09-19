@@ -66,10 +66,9 @@ CBZ.LINE_COLOR_LOCKED  = { 1.0, 1.00, 1.00 }   -- white, uninterruptible
 CBZ.LINE_COLOR_OWN_FALLBACK = { 1.0, 1.00, 1.00 }  -- class unresolvable
 
 -- Units that render the PLAYER's own palette -- spec gradient for the name, class
--- color for the line -- regardless of what is being cast on them. Shared
--- with text.lua so the two halves of that palette can never disagree about which
--- units they cover.
-CBZ.OWN_CAST_UNITS = { Player = true, Pet = true }
+-- color for the line -- regardless of what is being cast on them. The table is
+-- the engine's (engine.lua); text.lua reads the same one, so the two halves of
+-- that palette can never disagree about which units they cover.
 local OWN_CAST_UNITS = CBZ.OWN_CAST_UNITS
 
 --- Base line color for a unit, before an uninterruptible cast overrides it.
@@ -95,17 +94,9 @@ end
 -- a hairline straight through the spell name. Same mechanism as the row-to-row
 -- outline weight differences: a sub-pixel Y phase, fixed by pixel snapping.
 --
--- Snapped against UIParent, never against the bar: reading the bar's own
--- effective scale would be a geometry read on a frame that may be secret. The bar
--- is parented to UIParent and is never re-parented or scaled, so UIParent's
--- effective scale is exactly the right divisor.
-local function SnapToPixels(value)
-    if not (PixelUtil and PixelUtil.GetNearestPixelSize) then return value end
-    local es = UIParent and UIParent:GetEffectiveScale()
-    if not es or es <= 0 then return value end
-    return PixelUtil.GetNearestPixelSize(value, es)
-end
-CBZ._SnapToPixels = SnapToPixels
+-- The function is the engine's (engine.lua), which snaps against UIParent and
+-- never against the bar.
+local SnapToPixels = CBZ._SnapToPixels
 
 --------------------------------------------------------------------------------
 -- Band construction
@@ -305,8 +296,8 @@ local function BuildBarFrame(name, parent, row)
     return bar
 end
 
-function CBZ._CreateBar(row, comp)
-    local bar = BuildBarFrame("ScootCastBarZ_" .. row.barKey, UIParent, row)
+function CBZ._CreateBar(row)
+    local bar = BuildBarFrame(row.frameName, UIParent, row)
     bar:SetPoint("CENTER", UIParent, "CENTER", 0, -180)
     return bar
 end
@@ -334,7 +325,7 @@ end
 
 -- Position every element from DB numbers. Idempotent: safe to call on any
 -- settings change, and always recomputed from scratch rather than adjusted.
-function CBZ._LayoutBar(bar, comp)
+function CBZ._LayoutBar(bar)
     local cfg = CBZ._GetUnitConfig(bar.unitKey)
 
     local barW      = tonumber(bar.widthOverride) or tonumber(cfg and cfg.barWidth) or 200
@@ -497,7 +488,7 @@ end
 -- Per-unit apply pass
 --------------------------------------------------------------------------------
 
-function CBZ._ApplyBar(barKey, comp)
+function CBZ._ApplyBar(barKey)
     -- A disabled unit has no bar at all (see _EnsureBar), which is not an error --
     -- it is the zero-touch case and the common one.
     local bar = CBZ._bars[barKey]
@@ -509,7 +500,7 @@ function CBZ._ApplyBar(barKey, comp)
         return
     end
 
-    CBZ._LayoutBar(bar, comp)
+    CBZ._LayoutBar(bar)
     CBZ._ApplyBandFonts(bar)
 
     local line = CBZ._GetLineColor(bar)
@@ -527,42 +518,9 @@ function CBZ._ApplyBar(barKey, comp)
 end
 
 --------------------------------------------------------------------------------
--- Progress
+-- Edit Mode stand-in
 --------------------------------------------------------------------------------
-
---- Park the sweep at a fixed fraction. Used for the static Edit Mode preview and
---- for resetting between casts; live casts use SetTimerDuration instead.
-function CBZ._SetStaticProgress(bar, frac)
-    local pb = bar.progressBar
-    pb:SetMinMaxValues(0, 1)
-    pb:SetValue(math.max(0, math.min(1, frac or 0)))
-end
-
---- Stop the sweep exactly where it stands, without knowing where that is.
----
---- SetTimerDuration hands the bar to C++ and nothing in Lua stops it again, so a
---- cast that ends before its duration expires keeps filling through the hold and
---- the fade. That describes EVERY empowered cast -- releasing early is the whole
---- mechanic -- and the Phase 1 alternative of parking at 0 or 1 is a lie either
---- way: release at tier 2 and the bar reports an emptied channel or a completed
---- one, never the tier you got.
----
---- The round trip is legal on a secret-valued bar in both directions and never
---- inspects what it moves: GetValue is SecretReturnsForAspect { BarValue }
---- (SimpleStatusBarAPIDocumentation.lua:149-161) and SetValue is
---- SecretArguments = "AllowedWhenTainted" (:331-341). The value is read and handed
---- straight back -- no comparison, no arithmetic, no type test, so there is
---- nothing for the secret system to object to.
----
---- Writing an explicit value also overrides the running timer, which is the same
---- property _FinishCast already relies on to stop an interrupted cast from
---- finishing its fill.
-function CBZ._FreezeProgress(bar)
-    local pb = bar.progressBar
-    local ok, value = pcall(pb.GetValue, pb)
-    if not ok then return false end
-    return (pcall(pb.SetValue, pb, value))
-end
+-- _SetStaticProgress and _FreezeProgress are the engine's (engine.lua).
 
 --- Show a representative bar so Edit Mode has something to grab and position.
 function CBZ._ShowEditModePreview(bar)

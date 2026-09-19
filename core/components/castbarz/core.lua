@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
 -- castbarz/core.lua
 -- Cast Bar Z: Scoot-owned cast bars with a clipped-column text-fill fill effect.
--- Namespace, per-unit DB, and component registration.
+-- Scoot's host for the cast bar engine (engine.lua): the bar rows, the per-unit
+-- DB, component registration, and the shared setting accessors.
 --
 -- Z owns its frames outright, so unlike Cast Bar X it never fights Blizzard's
 -- StatusBar for a pixel. The trade is that it drives everything itself: events,
@@ -10,7 +11,6 @@
 
 local addonName, addon = ...
 
-addon.CastBarZ = {}
 local CBZ = addon.CastBarZ
 
 -- Three identifiers, deliberately distinct, because Boss is one configuration
@@ -69,26 +69,36 @@ for i = 1, CBZ.NUM_BOSS_BARS do
     }
 end
 
-function CBZ._RowForBarKey(barKey)
-    for _, row in ipairs(CBZ.BARS) do
-        if row.barKey == barKey then return row end
-    end
-    return nil
+-- Starting positions, one per BAR, in UIParent space. Boss bars stack downward
+-- rather than sharing a point: they are snap-only, so these are only ever seen
+-- in the window before a layout is saved -- but five bars at one position reads
+-- as one broken bar, not five.
+local DEFAULT_POSITIONS = {
+    Player = { point = "CENTER", x =    0, y = -180 },
+    Target = { point = "CENTER", x =    0, y =  180 },
+    Focus  = { point = "CENTER", x = -320, y =  180 },
+    Pet    = { point = "CENTER", x =    0, y = -224 },
+}
+for i = 1, CBZ.NUM_BOSS_BARS do
+    DEFAULT_POSITIONS["Boss" .. i] = { point = "CENTER", x = 320, y = 180 - (i - 1) * 44 }
 end
 
---- The first bar belonging to a config. For everything but Boss that is the only
---- one; for Boss it is boss1, which is what the settings preview should model.
-function CBZ._RowForUnitKey(unitKey)
-    for _, row in ipairs(CBZ.BARS) do
-        if row.unitKey == unitKey then return row end
-    end
-    return nil
+for _, row in ipairs(CBZ.BARS) do
+    row.frameName = "ScootCastBarZ_" .. row.barKey
+    row.defaultPosition = DEFAULT_POSITIONS[row.barKey]
+    -- The settings page has one tab per config; the Edit Mode dialog's Configure
+    -- button opens the page on this bar's tab.
+    row.pageState = { key = "_castBarZSelectedUnit", value = row.unitKey }
 end
 
--- Runtime state (not persisted)
-CBZ._bars = {}          -- [barKey] = bar frame, built lazily by _EnsureBar
+CBZ.NAV_KEY = "castBarZ"
+
+-- Runtime state lives in engine.lua; the component object is Scoot's alone.
 CBZ._comp = nil
-CBZ._initialized = false
+
+function CBZ._IsModuleEnabled()
+    return addon:IsModuleEnabled("castBars", "castBarZ")
+end
 
 --------------------------------------------------------------------------------
 -- Per-Unit DB
@@ -188,6 +198,36 @@ function CBZ._IsUnitEnabled(unitKey)
     local cfg = CBZ._GetUnitConfig(unitKey)
     return cfg and cfg.enabled == true
 end
+
+--------------------------------------------------------------------------------
+-- Position store
+--------------------------------------------------------------------------------
+-- castBarZPositions[layoutName][barKey] = { point, x, y }. Read by editmode.lua
+-- through CBZ._PositionStore.
+
+local function EnsurePositionsDB()
+    local profile = addon.db and addon.db.profile
+    if not profile then return nil end
+    if not profile.castBarZPositions then
+        profile.castBarZPositions = {}
+    end
+    return profile.castBarZPositions
+end
+
+CBZ._PositionStore = {
+    get = function(barKey, layoutName)
+        local positions = EnsurePositionsDB()
+        return positions and positions[layoutName] and positions[layoutName][barKey] or nil
+    end,
+    set = function(barKey, layoutName, point, x, y)
+        local positions = EnsurePositionsDB()
+        if not positions or not layoutName then return end
+        if not positions[layoutName] then
+            positions[layoutName] = {}
+        end
+        positions[layoutName][barKey] = { point = point, x = x, y = y }
+    end,
+}
 
 --------------------------------------------------------------------------------
 -- Component Registration
@@ -316,81 +356,7 @@ end, "castBars")
 function CBZ._ApplyStyling(comp)
     comp = comp or CBZ._comp
     if not comp then return end
-
-    -- Guard for profile switches: the component stays registered for the
-    -- session, so this can be reached with Z turned off.
-    if not addon:IsModuleEnabled("castBars", "castBarZ") then
-        if CBZ._initialized then
-            for _, bar in pairs(CBZ._bars) do
-                bar:Hide()
-            end
-        end
-        -- Hand Blizzard's bars back. Safe on a profile that never enabled Z: this
-        -- only ever writes to a frame Z itself suppressed.
-        CBZ._ApplySuppression()
-        return
-    end
-
-    if not CBZ._initialized then
-        CBZ._Initialize(comp)
-    end
-
-    for _, row in ipairs(CBZ.BARS) do
-        if CBZ._IsUnitEnabled(row.unitKey) then
-            CBZ._EnsureBar(row.barKey)
-        end
-        CBZ._ApplyBar(row.barKey, comp)
-    end
-
-    -- Last, and covering every bar in one pass rather than per row: Boss is five
-    -- bars behind one enable, and this is the only place that knows the whole
-    -- picture. Writes only on a change, so a slider drag costs nothing here.
-    CBZ._ApplySuppression()
-end
-
---------------------------------------------------------------------------------
--- Initialization
---------------------------------------------------------------------------------
-
-function CBZ._Initialize(comp)
-    if CBZ._initialized then return end
-    CBZ._initialized = true
-
-    CBZ._EnsureUnitDB()
-
-    -- Bars themselves are built lazily by _EnsureBar; only the machinery that has
-    -- to exist before any of them do is set up here.
-    CBZ._InitializeEvents(comp)
-    CBZ._InitializeEditMode()
-end
-
---- Build a bar the first time its unit is switched on.
----
---- Nine bars x 12 bands x 2 copies is 216 FontStrings, and a profile with only the
---- Player enabled wants none of them. A disabled unit costs nothing and correctly
---- does not appear in Edit Mode; it starts existing the moment it is enabled, and
---- is never torn down again for the session.
-function CBZ._EnsureBar(barKey)
-    local existing = CBZ._bars[barKey]
-    if existing then return existing end
-
-    local row = CBZ._RowForBarKey(barKey)
-    if not row then return nil end
-
-    local bar = CBZ._CreateBar(row, CBZ._comp)
-    CBZ._bars[barKey] = bar
-
-    CBZ._RegisterBarEvents(bar, row)
-    CBZ._RegisterBarEditMode(bar, row)
-
-    -- The unit may already be casting -- enabling a bar mid-cast is the obvious way
-    -- to test one. Deferred so the caller's _ApplyBar has laid the frame out first;
-    -- syncing into an unlaid bar would paint a name across a zero-width band set.
-    C_Timer.After(0, function()
-        CBZ._SyncCastState(row.barKey)
-    end)
-
-    return bar
+    CBZ._Reconcile()
 end
 
 --------------------------------------------------------------------------------

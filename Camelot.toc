@@ -100,6 +100,23 @@ forever/unitframes/harness.lua
 forever/unitframes/player.lua
 forever/features.lua
 forever/profiles.lua
+## Cast bars. The engine is Cast Bar Z's, shared: engine.lua creates the
+## namespace, the host fills it from forever/db.lua, the painter draws the
+## Classic bar, and the engine files after them read both at the moment of
+## use. Stands on events, strata, nativeframe, fonts, editmode/positionables,
+## profiles, forever/db.lua and the region reader in forever/unitframes/art.lua.
+## casttime.lua is an optional module: the painter creates bar.castTimeText and
+## that file owns it. empowered.lua draws on Cast Bar Z's line and caps, so it
+## stays off until the Classic bar has a segment layout of its own.
+core/components/castbarz/engine.lua [ExcludeLoadGameType standard]
+forever/castbars/host.lua [ExcludeLoadGameType standard]
+forever/castbars/art.lua [ExcludeLoadGameType standard]
+forever/castbars/painter.lua [ExcludeLoadGameType standard]
+core/components/castbarz/casttime.lua [ExcludeLoadGameType standard]
+core/components/castbarz/anchoring.lua [ExcludeLoadGameType standard]
+core/components/castbarz/suppression.lua [ExcludeLoadGameType standard]
+core/components/castbarz/events.lua [ExcludeLoadGameType standard]
+core/components/castbarz/editmode.lua [ExcludeLoadGameType standard]
 
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
@@ -189,6 +206,7 @@ ui/v2/settings/applyall/ApplyAllRenderer.lua
 ## slash entry, which binds the word last.
 forever/menu.lua
 ui/v2/settings/StartHereRenderer.lua
+forever/castbars/page.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
 forever/gallery.lua
 forever/debug.lua
