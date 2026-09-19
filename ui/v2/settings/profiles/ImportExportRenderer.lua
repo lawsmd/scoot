@@ -9,6 +9,8 @@ addon.UI.Settings.Profiles.ImportExport = {}
 local ImportExport = addon.UI.Settings.Profiles.ImportExport
 local Theme = addon.UI.Theme
 local Controls = addon.UI.Controls
+-- Listed on both TOCs, so the page names its product through the brand.
+local BRAND = addon.Brand or "Scoot"
 
 -- State management for this renderer
 ImportExport._state = {
@@ -96,7 +98,7 @@ end
 
 local function showOverwriteConfirmDialog(envelope, targetName)
     Controls:ShowDialog(nil, {
-        text = "This will overwrite the Scoot profile for '" .. targetName .. "'.\n\nA UI reload is required.\n\nContinue?",
+        text = "This will overwrite the " .. BRAND .. " profile for '" .. targetName .. "'.\n\nA UI reload is required.\n\nContinue?",
         acceptText = "Import & Reload",
         acceptWidth = 140,
         height = 200,
@@ -217,7 +219,7 @@ function ImportExport.Render(panel, scrollContent)
     infoText:SetFont(fontPath, 13, "")
     infoText:SetPoint("TOPLEFT", infoFrame, "TOPLEFT", 0, 0)
     infoText:SetPoint("TOPRIGHT", infoFrame, "TOPRIGHT", 0, 0)
-    infoText:SetText("Share Scoot profiles with other players, or back up your settings. Export generates a string you can copy, and Import lets you paste one in.")
+    infoText:SetText("Share " .. BRAND .. " profiles with other players, or back up your settings. Export generates a string you can copy, and Import lets you paste one in.")
     infoText:SetTextColor(dimR, dimG, dimB, 1)
     infoText:SetJustifyH("LEFT")
     infoText:SetWordWrap(true)
@@ -254,8 +256,10 @@ function ImportExport.Render(panel, scrollContent)
     local exportY = -INNER_GAP
 
     -- Export Profile Dropdown
+    -- The page draws this row itself, so it names the row label role the
+    -- builder's rows resolve; the dim captions below stay plain.
     local exportDropdownLabel = exportContent:CreateFontString(nil, "OVERLAY")
-    exportDropdownLabel:SetFont(fontPathLabel, 13, "")
+    Theme:ApplyFont(exportDropdownLabel, Controls.RowLabelFontRole(), 13)
     exportDropdownLabel:SetPoint("TOPLEFT", exportContent, "TOPLEFT", 12, exportY)
     exportDropdownLabel:SetText("Export Profile:")
     exportDropdownLabel:SetTextColor(ar, ag, ab, 1)
@@ -283,7 +287,7 @@ function ImportExport.Render(panel, scrollContent)
     local smStringLabel = exportContent:CreateFontString(nil, "OVERLAY")
     smStringLabel:SetFont(fontPathLabel, 12, "")
     smStringLabel:SetPoint("TOPLEFT", exportContent, "TOPLEFT", 12, exportY)
-    smStringLabel:SetText("Scoot Profile String")
+    smStringLabel:SetText(BRAND .. " Profile String")
     smStringLabel:SetTextColor(dimR, dimG, dimB, 1)
     exportY = exportY - 18
 
@@ -405,7 +409,7 @@ function ImportExport.Render(panel, scrollContent)
     local importLabel = importContent:CreateFontString(nil, "OVERLAY")
     importLabel:SetFont(fontPathLabel, 12, "")
     importLabel:SetPoint("TOPLEFT", importContent, "TOPLEFT", 12, importY)
-    importLabel:SetText("Paste Scoot Profile Import String here:")
+    importLabel:SetText("Paste " .. BRAND .. " Profile Import String here:")
     importLabel:SetTextColor(dimR, dimG, dimB, 1)
     importY = importY - 18
 
@@ -461,7 +465,7 @@ function ImportExport.Render(panel, scrollContent)
     warningText:SetFont(fontPath, 11, "")
     warningText:SetPoint("TOPLEFT", importContent, "TOPLEFT", 12, importY)
     warningText:SetPoint("TOPRIGHT", importContent, "TOPRIGHT", -12, importY)
-    warningText:SetText("Imported Scoot profiles can either be attached to an existing Edit Mode profile, or you can use an Edit Mode export string to create a new one in the next step.")
+    warningText:SetText("Imported " .. BRAND .. " profiles can either be attached to an existing Edit Mode profile, or you can use an Edit Mode export string to create a new one in the next step.")
     -- Kept off Theme accent: warning yellow. This is the caution color for the
     -- whole menu, shared with every AddDescription note that passes
     -- { 1, 0.82, 0 }; the accent is the color a user picks, and a caution note

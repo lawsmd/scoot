@@ -25,6 +25,8 @@ libs/LibDataBroker-1.1/LibDataBroker-1.1.lua
 libs/LibDBIcon-1.0/lib.xml
 libs/LibEditMode/embed.xml
 libs/LibEditModeOverride/LibEditModeOverride.xml
+libs/AceSerializer-3.0/AceSerializer-3.0.xml
+libs/LibDeflate/LibDeflate.lua
 
 ## Identity before everything else. A borrowed file that wants a name or a
 ## media root reads addon.Brand and addon.MediaPath, and a file-scope read of
@@ -76,12 +78,23 @@ core/editmode/persist.lua
 core/editmode/session.lua
 core/editmode/positionables.lua
 
+## The profile engine, one AceDB profile per Edit Mode layout. layouts and spec
+## alias what profiles/core assigns at the end of its chunk, and debug/export
+## reads addon.DumpReloadDebugLog off it at file scope. The host side is
+## forever/profiles.lua below (docs/profiles/profiles.md).
+core/profiles/core.lua
+core/profiles/layouts.lua
+core/profiles/spec.lua
+core/importexport.lua
+core/debug/export.lua
+
 ## Camelot
 forever/db.lua
 forever/unitframes/art.lua
 forever/unitframes/values.lua
 forever/unitframes/harness.lua
 forever/unitframes/player.lua
+forever/profiles.lua
 
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
@@ -154,6 +167,12 @@ ui/v2/editmode/Tooltip.lua
 ui/v2/editmode/Mirror.lua
 ui/v2/editmode/Dialog.lua
 ui/v2/GameMenu.lua
+
+## The two profile pages that call only addon.Profiles and addon.ImportExport.
+## Presets and Rules stand on Scoot's preset and rules engines and stay on
+## Scoot.toc. Both register at file scope, after settingspanel/renderers.lua.
+ui/v2/settings/profiles/ManageRenderer.lua
+ui/v2/settings/profiles/ImportExportRenderer.lua
 
 ## Camelot's page tree, the minimap button's icon and storage, then the
 ## slash entry, which binds the word last.

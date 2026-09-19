@@ -274,12 +274,13 @@ end
 
 function Profiles:GetSpecOptions()
     local options = {}
-    if type(GetNumSpecializations) ~= "function" then
+    local getInfo = Profiles._specAPI("GetSpecializationInfo")
+    if type(GetNumSpecializations) ~= "function" or not getInfo then
         return options
     end
     local total = GetNumSpecializations() or 0
     for index = 1, total do
-        local specID, specName, _, specIcon = GetSpecializationInfo(index)
+        local specID, specName, _, specIcon = getInfo(index)
         if specID then
             table.insert(options, {
                 specIndex = index,

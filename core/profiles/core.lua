@@ -157,18 +157,24 @@ local function addLayoutToCache(self, layoutName)
     end)
 end
 
+-- The spec reads live on C_SpecializationInfo. The globals of the same names
+-- are Blizzard's deprecation shims, and Forever ships without them.
+local function specAPI(name)
+    local fn = C_SpecializationInfo and C_SpecializationInfo[name] or _G[name]
+    return type(fn) == "function" and fn or nil
+end
+Profiles._specAPI = specAPI
+
 local function getCurrentSpecID()
-    if type(GetSpecialization) ~= "function" then
+    local getSpec, getInfo = specAPI("GetSpecialization"), specAPI("GetSpecializationInfo")
+    if not getSpec or not getInfo then
         return nil
     end
-    local specIndex = GetSpecialization()
+    local specIndex = getSpec()
     if not specIndex then
         return nil
     end
-    if type(GetSpecializationInfo) ~= "function" then
-        return nil
-    end
-    local specID = select(1, GetSpecializationInfo(specIndex))
+    local specID = select(1, getInfo(specIndex))
     return specID
 end
 

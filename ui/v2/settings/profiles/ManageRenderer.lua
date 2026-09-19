@@ -10,6 +10,8 @@ local Manage = addon.UI.Settings.Profiles.Manage
 local SettingsBuilder = addon.UI.SettingsBuilder
 local Theme = addon.UI.Theme
 local Controls = addon.UI.Controls
+-- Listed on both TOCs, so the page names its product through the brand.
+local BRAND = addon.Brand or "Scoot"
 
 -- State management for this renderer
 Manage._state = {
@@ -40,7 +42,6 @@ function Manage.Render(panel, scrollContent)
     local ar, ag, ab = Theme:GetAccentColor()
     local dimR, dimG, dimB = Theme:GetDimTextColor()
     local fontPath = Theme:GetFont("VALUE")
-    local fontPathMed = Theme:GetFont("LABEL")
 
     -- Constants for this page
     local DROPDOWN_SCALE = 1.2
@@ -88,7 +89,7 @@ function Manage.Render(panel, scrollContent)
     infoText:SetFont(fontPath, 13, "")
     infoText:SetPoint("TOPLEFT", infoFrame, "TOPLEFT", 0, 0)
     infoText:SetPoint("TOPRIGHT", infoFrame, "TOPRIGHT", 0, 0)
-    infoText:SetText("Scoot profiles stay synchronized with Edit Mode layouts. Switch layouts here or via Edit Mode and Scoot will keep them in sync.")
+    infoText:SetText(BRAND .. " profiles stay synchronized with Edit Mode layouts. Switch layouts here or via Edit Mode and " .. BRAND .. " will keep them in sync.")
     infoText:SetTextColor(dimR, dimG, dimB, 1)
     infoText:SetJustifyH("LEFT")
     infoText:SetWordWrap(true)
@@ -108,7 +109,10 @@ function Manage.Render(panel, scrollContent)
     -- Active Layout Dropdown (centered, larger)
     ---------------------------------------------------------------------------
     local activeLayoutLabel = scrollContent:CreateFontString(nil, "OVERLAY")
-    activeLayoutLabel:SetFont(fontPathMed, 18, "")
+    -- The block's heading. blockTitleFontRole is its own role where a skin
+    -- declares one, which is how a font style reaches this heading and no
+    -- other; the label role's face at 18, what it has always drawn, otherwise.
+    Theme:ApplyFont(activeLayoutLabel, Controls.Metrics().blockTitleFontRole or "label", 18)
     activeLayoutLabel:SetPoint("TOP", scrollContent, "TOP", 0, yOffset)
     activeLayoutLabel:SetText("Active Layout")
     activeLayoutLabel:SetTextColor(ar, ag, ab, 1)
@@ -454,7 +458,7 @@ function Manage.Render(panel, scrollContent)
     warningText:SetFont(fontPath, 12, "")
     warningText:SetPoint("TOPLEFT", warningFrame, "TOPLEFT", 0, -12)
     warningText:SetPoint("TOPRIGHT", warningFrame, "TOPRIGHT", 0, -12)
-    warningText:SetText("Creating, deleting, or switching between profiles will require a |cFFFFD100RELOAD|r.\n\nScoot only layers customizations on top of the Blizzard UI and a reload is needed to obtain current defaults for fields which you have customized in one profile but not another.")
+    warningText:SetText("Creating, deleting, or switching between profiles will require a |cFFFFD100RELOAD|r.\n\n" .. BRAND .. " only layers customizations on top of the Blizzard UI and a reload is needed to obtain current defaults for fields which you have customized in one profile but not another.")
     -- Kept off Theme accent: warning yellow, the menu's caution color.
     warningText:SetTextColor(1.0, 0.82, 0.0, 1)
     warningText:SetJustifyH("CENTER")
