@@ -15,14 +15,10 @@ local function resolveMinimapFrame()
 end
 
 local function readAllowOffscreen()
-    -- Zero-touch friendly: avoid creating tables here (use rawget only).
-    local profile = addon and addon.db and addon.db.profile
-    local components = profile and rawget(profile, "components")
-    local minimapStyle = (type(components) == "table") and rawget(components, "minimapStyle") or nil
-    if type(minimapStyle) ~= "table" then
-        return false
-    end
-    return rawget(minimapStyle, "allowOffScreenDragging") == true
+    -- Zero-touch friendly: nil while the minimap is unconfigured, and the read
+    -- creates nothing.
+    local db = addon.Minimap._getMinimapDB()
+    return db ~= nil and db.allowOffScreenDragging == true
 end
 
 local Family = addon.OffscreenUnlock.NewFamily({

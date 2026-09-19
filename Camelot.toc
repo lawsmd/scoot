@@ -44,6 +44,15 @@ core/strata.lua
 core/colors.lua
 core/nativeframe.lua
 
+## Primitives the ported components stand on. framestate first: enforce, the
+## off-screen unlock and the component system read addon.FrameState at file
+## scope. petbattle stands on events; borders on secretsafe and strata above;
+## catalogs on nothing, and ui/v2/settings/Helpers.lua reads it at file scope.
+core/framestate.lua
+core/petbattle.lua
+core/catalogs.lua
+core/borders.lua
+
 ## What the settings framework stands on. commands before fonts and before
 ## any ui/v2 file, since both register debug commands at file scope; media
 ## before fonts, which reads addon.MediaTokens at file scope; pool before
@@ -63,6 +72,10 @@ core/barborders.lua
 core/dialogs.lua
 core/apply_all.lua
 
+## Keeps a region hidden that Blizzard re-shows. After commands.lua, because it
+## registers a debug command at file scope; after framestate and secretsafe.
+core/enforce.lua
+
 ## The minimap button. One file for both addons: it reads its icon and its
 ## storage off addon.MinimapIcon and addon.MinimapButtonStore at login, and
 ## forever/minimap.lua below sets both. commands.lua above it, because it
@@ -78,10 +91,16 @@ core/cooldownsettings.lua
 ## hook for the profile engine below. session holds CloseEditMode and
 ## positionables the LibEditMode registration for the addon's own frames; they
 ## stand on secretsafe, events, commands and debug/core above. The presentation
-## half is ui/v2/editmode/ below.
+## half is ui/v2/editmode/ below. core is the reader and writer for Blizzard's
+## own Edit Mode settings (GetSetting, WriteSetting, IsEditModeActiveOrOpening);
+## forever/profiles.lua calls its Initialize. offscreenunlock is the clamp
+## removal a component describes a family over; it reads addon.FrameState at
+## file scope.
 core/editmode/persist.lua
 core/editmode/session.lua
+core/editmode/core.lua
 core/editmode/positionables.lua
+core/editmode/offscreenunlock.lua
 
 ## The profile engine, one AceDB profile per Edit Mode layout. layouts and spec
 ## alias what profiles/core assigns at the end of its chunk, and debug/export
@@ -98,6 +117,24 @@ forever/db.lua
 forever/features.lua
 forever/profiles.lua
 forever/recolor.lua
+
+## The component system, shared, and its host. base/core holds registration,
+## the settings table behind component.db and the apply pass; the host answers
+## that table from forever/db.lua through addon.ComponentStore and owns the
+## module gate (docs/sharing.md, "The seams"). The host registers Features rows
+## at file scope, so it precedes forever/menu.lua. The components after it
+## register an initializer at file scope and run on both clients. minimap/core
+## creates the namespace its siblings read at file scope, and reads
+## addon.Enforce there; minimap/offscreenunlock reads addon.OffscreenUnlock.
+core/components/base/core.lua
+forever/components.lua
+core/components/minimap/core.lua
+core/components/minimap/zonetext.lua
+core/components/minimap/clock.lua
+core/components/minimap/buttons.lua
+core/components/minimap/offscreenunlock.lua
+core/components/minimap/overlay.lua
+core/components/tooltip.lua
 ## The HUD, the unit frames and the cast bar, is Forever's alone. Retail loads
 ## this TOC too, through the AddOns\Camelot junction, for the settings panel,
 ## so every HUD line carries [ExcludeLoadGameType standard]: retail's game type
@@ -221,6 +258,16 @@ ui/v2/settings/profiles/ImportExportRenderer.lua
 ## forever/menu.lua lists the Font page only until Camelot has a bar texture
 ## field. Reads Controls, Theme, addon.Dialogs and addon.FontDisplayNames.
 ui/v2/settings/applyall/ApplyAllRenderer.lua
+
+## The accessor factories and the builder's composite blocks (AddTextStyleBlock,
+## AddOffsetPair and the rest), then the two Interface pages that use them.
+## Helpers reads addon.FontStyles and addon.Catalogs at file scope,
+## BuilderComposites reads Helpers, and the Minimap page reads both; the pages
+## register at file scope after settingspanel/renderers.lua.
+ui/v2/settings/Helpers.lua
+ui/v2/settings/BuilderComposites.lua
+ui/v2/settings/interface/MinimapRenderer.lua
+ui/v2/settings/interface/TooltipRenderer.lua
 
 ## Camelot's page tree, the minimap button's icon and storage, then the
 ## slash entry, which binds the word last.

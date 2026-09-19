@@ -57,6 +57,17 @@ Navigation.NavModel = {
             { key = "castBarPlayer", label = "Player" },
         },
     },
+    -- `module` is the Features switch in forever/components.lua: the row greys
+    -- out while its feature is off.
+    {
+        key = "interface",
+        label = "Interface",
+        collapsible = true,
+        children = {
+            { key = "minimap", label = "Minimap", module = "minimap" },
+            { key = "tooltip", label = "Tooltip", module = "tooltip" },
+        },
+    },
 }
 
 -- The title bar and the toolbar. The skin's titleBar role picks how the

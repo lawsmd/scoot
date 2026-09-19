@@ -64,6 +64,22 @@ local function attachSettingsDefaults(db, component)
     })
 end
 
+-- Host seam: addon.ComponentStore. A host whose database is not
+-- profile.components sets this table, and every component then reads and
+-- writes through it. Read at the moment of use, so the host file can load
+-- after this one.
+--   store.link(component)     -> the table that becomes component.db
+--   store.sub(component, key) -> the table for one settings group (textTitle)
+-- With no store set, storage is profile.components and the zero-touch proxy
+-- below. The module gate is a second seam by name: the host defines
+-- addon:IsModuleEnabled and addon:GetComponentCategory.
+local function hostStore()
+    local store = addon.ComponentStore
+    if type(store) == "table" and type(store.link) == "function" then
+        return store
+    end
+end
+
 -- Most components persist into profile.components. A component that carries
 -- GetContainer owns its storage instead, keyed by the same component id:
 -- ScootAuras trackers are account-wide, so theirs live in
@@ -235,6 +251,13 @@ function addon:InitializeComponents()
 end
 
 function addon:LinkComponentsToDB()
+    if hostStore() then
+        for _, component in pairs(self.Components) do
+            self:LinkComponent(component)
+        end
+        return
+    end
+
     -- Zero-Touch: only assign pre-existing persisted tables.
     local profile = self.db and self.db.profile
     local components = profile and rawget(profile, "components") or nil
@@ -290,6 +313,11 @@ end
 function addon:LinkComponent(component, profileComponents)
     local id = component and component.id
     if not id then return end
+    local store = hostStore()
+    if store then
+        component.db = store.link(component)
+        return
+    end
     do
         local container
         if component.GetContainer then
@@ -377,6 +405,11 @@ function addon:EnsureComponentDB(componentOrId)
     if not component or not component.id then
         return nil
     end
+    local store = hostStore()
+    if store then
+        component.db = store.link(component)
+        return component.db
+    end
     local components = componentContainer(component, true)
     if type(components) ~= "table" then
         return nil
@@ -403,6 +436,9 @@ end
 -- Allocates only when the stored table really is partial; the common cases
 -- (nothing stored, or a complete table) return an existing table as-is.
 function addon:ResolveComponentSubTable(component, key)
+    local store = hostStore()
+    if store then return store.sub(component, key) end
+
     local def = registeredDefault(component, key)
     local db = component and component.db
     local stored = db and rawget(db, key) or nil
@@ -434,6 +470,15 @@ end
 -- mutated comp.settings[key].default for every other profile in the session
 -- and serialized the result into SavedVariables.
 function addon:EnsureComponentSubTable(componentOrId, key)
+    local store = hostStore()
+    if store then
+        local comp = componentOrId
+        if type(comp) == "string" then
+            comp = self.Components and self.Components[comp]
+        end
+        return comp and store.sub(comp, key) or nil
+    end
+
     local db = self:EnsureComponentDB(componentOrId)
     if not db then return nil end
 
@@ -526,7 +571,10 @@ function addon:ApplyStyles()
         if addon.EnsureAllUnitFrameCastBarHooks then
             addon.EnsureAllUnitFrameCastBarHooks()
         end
-        if not self._pendingApplyStyles then
+        if type(self.RegisterEvent) ~= "function" then
+            -- A host with no AceEvent mixin and no regen orchestration.
+            addon.Events.RunOutOfCombat(function() addon:ApplyStyles() end, "Components:ApplyStyles")
+        elseif not self._pendingApplyStyles then
             self._pendingApplyStyles = true
             -- Kept off addon.Events.RunOutOfCombat: sets the pending flag the regen orchestration in core/init.lua drains.
             self:RegisterEvent("PLAYER_REGEN_ENABLED")

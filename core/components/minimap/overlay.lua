@@ -27,11 +27,10 @@ local SQUARE_MASK = "Interface\\BUTTONS\\WHITE8X8"
 -- Helpers
 --------------------------------------------------------------------------------
 
+-- nil until the player has configured the minimap, from the component's own
+-- database, so the read holds whatever store the host keeps.
 local function getMinimapDB()
-    if not addon.db or not addon.db.profile or not addon.db.profile.components then
-        return nil
-    end
-    return rawget(addon.db.profile.components, "minimapStyle")
+    return addon.Minimap._getMinimapDB()
 end
 
 local function isOverlayCurrentlyActive()
@@ -47,7 +46,7 @@ end
 local function EnsureDarkeningOverlay()
     if darkeningFrame then return darkeningFrame end
 
-    darkeningFrame = CreateFrame("Frame", "ScootMinimapDarkening", UIParent)
+    darkeningFrame = CreateFrame("Frame", (addon.Brand or "Scoot") .. "MinimapDarkening", UIParent)
     darkeningFrame:SetFrameStrata("MEDIUM")
     darkeningFrame:SetFrameLevel(100)
     darkeningFrame:EnableMouse(false)
@@ -302,7 +301,7 @@ end
 local function CreateOverlayButton(db)
     if overlayButtonFrame then return overlayButtonFrame end
 
-    local btn = CreateFrame("Button", "ScootMinimapOverlayButton", UIParent)
+    local btn = CreateFrame("Button", (addon.Brand or "Scoot") .. "MinimapOverlayButton", UIParent)
     btn:SetSize(36, 36)
     -- MEDIUM (core/strata.lua), not HIGH: MinimapCluster is LOW (Minimap.xml:3)
     -- and the darkening overlay is MEDIUM/100, so level 200 keeps the pin on top

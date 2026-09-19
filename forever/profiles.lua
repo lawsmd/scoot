@@ -36,13 +36,19 @@ end, 10)
 -- callbacks run in registration order and db.lua is listed first.
 addon.Events.OnAddonLoaded(addonName, function()
     Profiles:Initialize()
-    addon.EditMode.InstallLayoutHooks()
+    -- Installs the layout hooks, the Enter and Exit callbacks behind
+    -- IsEditModeActiveOrOpening, and the slider conversions the setting
+    -- writer needs (core/editmode/core.lua). Every step is guarded by its own
+    -- flag, so the second call at the world pass picks up what was not there
+    -- at load.
+    addon.EditMode.Initialize()
 end)
 
 -- The three world events the engine asks its host to forward. On Forever the
 -- first OnEnteringWorld is what loads the layout list: the probe showed
 -- LibEditModeOverride reporting AreLayoutsLoaded false until LoadLayouts runs.
 addon.Events.On("Profiles", "PLAYER_ENTERING_WORLD", function(_, isInitialLogin, isReloadingUi)
+    addon.EditMode.Initialize()
     Profiles:OnEnteringWorld(isInitialLogin, isReloadingUi)
 end)
 

@@ -437,7 +437,7 @@ function Minimap.Render(panel, scrollContent)
                             offsetX = "systemDataOffsetX",
                             offsetY = "systemDataOffsetY",
                         })
-                        -- System data always renders on the Scoot-drawn
+                        -- System data always renders on the addon-drawn
                         -- overlay, so the paired Deep Shadow styles are
                         -- offered here (unlike zone text and clock, which can
                         -- style Blizzard's own FontStrings in dock mode).
@@ -514,10 +514,10 @@ function Minimap.Render(panel, scrollContent)
                             end,
                         })
 
-                        -- Keep Scoot Button Separate toggle
+                        -- Keep the addon's own button separate
                         tabBuilder:AddToggle({
-                            label = "Keep Scoot Button Separate",
-                            description = "Keep Scoot's minimap button visible outside the container.",
+                            label = "Keep " .. (addon.Brand or "Scoot") .. " Button Separate",
+                            description = "Keep " .. (addon.Brand or "Scoot") .. "'s minimap button visible outside the container.",
                             get = function()
                                 return getSetting("scootButtonSeparate") or false
                             end,

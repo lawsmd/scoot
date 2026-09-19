@@ -12,6 +12,17 @@ local MM = addon.Minimap
 -- Import shared helpers as locals
 local getMinimapDB = MM._getMinimapDB
 
+-- The addon's own name: the prefix on every frame this file names, and the
+-- match for the addon's own minimap button (core/minimap.lua names its
+-- LibDBIcon object the same way).
+local BRAND = addon.Brand or "Scoot"
+local BRAND_LOWER = BRAND:lower()
+local OWN_BUTTON = "LibDBIcon10_" .. BRAND
+
+local function isOwnButton(name)
+    return name == OWN_BUTTON or name:lower():find(BRAND_LOWER, 1, true) ~= nil
+end
+
 -- Addon button container state
 local buttonContainerFrame = nil
 local buttonContainerMenu = nil
@@ -73,7 +84,7 @@ local function CollectMinimapAddonButtons()
                 if name
                     and w >= 20 and h >= 20
                     and not BLIZZ_MINIMAP_CHILDREN[name]
-                    and not name:find("^Scoot")
+                    and name:sub(1, #BRAND) ~= BRAND
                     and not name:find("Pin%d+$")
                 then
                     buttons[name] = { button = child, name = name }
@@ -169,7 +180,7 @@ local function CreateButtonContainer()
         return buttonContainerFrame
     end
 
-    local container = CreateFrame("Button", "ScootMinimapButtonContainer", UIParent)
+    local container = CreateFrame("Button", BRAND .. "MinimapButtonContainer", UIParent)
     container:SetSize(24, 24)  -- Hitbox matches icon size
     container:SetFrameStrata("MEDIUM")
     container:SetFrameLevel(8)
@@ -299,7 +310,7 @@ local function CreateButtonContainerMenu()
         return buttonContainerMenu
     end
 
-    local menu = CreateFrame("Frame", "ScootMinimapMenu", UIParent, "BackdropTemplate")
+    local menu = CreateFrame("Frame", BRAND .. "MinimapMenu", UIParent, "BackdropTemplate")
     menu:SetFrameStrata("DIALOG")
     menu:SetFrameLevel(100)
     menu:SetClampedToScreen(true)
@@ -474,8 +485,8 @@ local function ApplyButtonContainerStyle(db)
     wipe(managedButtons)
 
     for name, info in pairs(allButtons) do
-        -- Check if this is Scoot's or BugSack's button
-        local isScoot = name:lower():match("scoot") or name == "LibDBIcon10_Scoot"
+        -- Check if this is the addon's own or BugSack's button
+        local isScoot = isOwnButton(name)
         local isBugSack = name:lower():match("bugsack") or name == "LibDBIcon10_BugSack"
 
         if (isScoot and keepScootSeparate) or (isBugSack and keepBugSackSeparate) then
@@ -501,7 +512,7 @@ local function ApplyButtonContainerStyle(db)
                             -- Check if this button should still be hidden
                             local keepScootSeparate = db.scootButtonSeparate
                             local keepBugSackSeparate = addon.db and addon.db.profile and addon.db.profile.bugSackButtonSeparate
-                            local isScoot = name:lower():match("scoot") or name == "LibDBIcon10_Scoot"
+                            local isScoot = isOwnButton(name)
                             local isBugSack = name:lower():match("bugsack") or name == "LibDBIcon10_BugSack"
                             if not ((isScoot and keepScootSeparate) or (isBugSack and keepBugSackSeparate)) then
                                 self:Hide()
@@ -599,7 +610,7 @@ local function CreateTrackingButton()
         return trackingButtonFrame
     end
 
-    local btn = CreateFrame("Button", "ScootTrackingButton", UIParent)
+    local btn = CreateFrame("Button", BRAND .. "TrackingButton", UIParent)
     btn:SetSize(24, 24)
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)
@@ -691,7 +702,7 @@ local function CreateMailButton()
         return mailButtonFrame
     end
 
-    local btn = CreateFrame("Button", "ScootMailButton", UIParent)
+    local btn = CreateFrame("Button", BRAND .. "MailButton", UIParent)
     btn:SetSize(24, 24)
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)

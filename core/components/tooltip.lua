@@ -342,7 +342,7 @@ local ID_LABELS = {
 }
 table.freeze(ID_LABELS)
 
--- Map Blizzard TooltipDataType enums to Scoot kind strings
+-- Map Blizzard TooltipDataType enums to kind strings
 local TOOLTIP_DATA_TYPE_MAP = {}
 local function buildTooltipDataTypeMap()
     if not Enum or not Enum.TooltipDataType then return end

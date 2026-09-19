@@ -811,7 +811,9 @@ function addon.EditMode.Initialize()
     do
         local LEO_ot = LibStub and LibStub("LibEditModeOverride-1.0")
         if LEO_ot then
-            local sys = 12 -- Objective Tracker
+            -- Read off the enum by name: the ids renumber between clients.
+            local sysEnum = _G.Enum and _G.Enum.EditModeSystem
+            local sys = (sysEnum and sysEnum.ObjectiveTracker) or 12
             local displayType = _G.Enum and _G.Enum.EditModeSettingDisplayType
             local mgr = _G.EditModeSettingDisplayInfoManager
             local entries = mgr and mgr.systemSettingDisplayInfo and mgr.systemSettingDisplayInfo[sys]
@@ -1044,15 +1046,15 @@ function addon.EditMode.Initialize()
         do
             local micro = _G["MicroMenuContainer"]
             if micro then
-                local sys = micro.system or 13
+                local sys = micro.system or _G.Enum.EditModeSystem.MicroMenu or 13
                 LEO_local2._forceIndexBased = LEO_local2._forceIndexBased or {}
                 LEO_local2._forceIndexBased[sys] = LEO_local2._forceIndexBased[sys] or {}
                 -- Known setting ids from runtime dumps
                 LEO_local2._forceIndexBased[sys][2] = true -- Menu Size
                 LEO_local2._forceIndexBased[sys][3] = true -- Eye Size
             else
-                -- Fallback: set by known system id for retail
-                local sys = 13
+                -- Fallback: the enum by name, then retail's id
+                local sys = _G.Enum.EditModeSystem.MicroMenu or 13
                 LEO_local2._forceIndexBased = LEO_local2._forceIndexBased or {}
                 LEO_local2._forceIndexBased[sys] = LEO_local2._forceIndexBased[sys] or {}
                 LEO_local2._forceIndexBased[sys][2] = true
