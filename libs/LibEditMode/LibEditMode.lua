@@ -39,20 +39,36 @@ lib.subSystemButtons = lib.subSystemButtons or {}
 
 lib.layoutCache = lib.layoutCache or {}
 
-local layoutNames = setmetatable({'Modern', 'Classic'}, {
-	__index = function(t, key)
-		if key > 2 then
-			-- the first 2 indices are reserved for 'Modern' and 'Classic' layouts, and anything
-			-- else are custom ones, although GetLayouts() doesn't return data for the 'Modern'
-			-- and 'Classic' layouts, so we'll have to substract and check
-			local layouts = lib.layoutCache
-			if (key - 2) <= #layouts then
-				return layouts[key - 2].layoutName
-			end
-		else
-			-- also work for 'Modern' and 'Classic'
-			rawget(t, key)
+-- Local change to the vendored library: the preset count is read from the
+-- client. 12.1.5 (and WoW Forever, which inherits it) ships a third preset,
+-- Gamepad, and with the count fixed at 2 every custom layout resolved one slot
+-- off: the last one to nil, so no position was saved or restored under it.
+local PRESET_COUNT = (Enum.EditModePresetLayoutsMeta and Enum.EditModePresetLayoutsMeta.NumValues) or 2
+
+local function presetName(index)
+	local manager = EditModePresetLayoutManager
+	if manager and manager.GetCopyOfPresetLayouts then
+		local ok, presets = pcall(manager.GetCopyOfPresetLayouts, manager)
+		local preset = ok and type(presets) == 'table' and presets[index]
+		if preset and preset.layoutName then
+			return preset.layoutName
 		end
+	end
+end
+
+local layoutNames = setmetatable({'Modern', 'Classic'}, {
+	__index = function(_, key)
+		if type(key) ~= 'number' then return nil end
+		if key > PRESET_COUNT then
+			-- the first indices are reserved for the preset layouts, and anything
+			-- else are custom ones, although GetLayouts() doesn't return data for
+			-- the presets, so we'll have to substract and check
+			local layouts = lib.layoutCache
+			local layout = layouts[key - PRESET_COUNT]
+			return layout and layout.layoutName
+		end
+		-- a preset past 'Modern' and 'Classic'
+		return presetName(key)
 	end
 })
 
@@ -294,7 +310,7 @@ local function onEditModeLayoutChanged()
 					securecallfunction(callback, lib.layoutCache[index].layoutName, layout.layoutName, index)
 				end
 
-				if index == (lib.activeLayout - 2) then
+				if index == (lib.activeLayout - PRESET_COUNT) then
 					-- the currently active layout was renamed, we trigger a layout update
 					lib.activeLayout = nil
 					onEditModeChanged(nil, layoutInfo)
@@ -745,6 +761,8 @@ function lib:GetFrameDefaultPosition(frame)
 	return lib.frameDefaults[frame]
 end
 
+-- Local addition, not upstream: keep it when re-vendoring. Callers are
+-- core/editmode/nudgearrows.lua and core/editmode/positionables.lua.
 function lib:NudgeFrame(frame, dx, dy)
 	local selection = lib.frameSelections[frame]
 	if selection then
