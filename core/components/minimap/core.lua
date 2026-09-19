@@ -100,9 +100,13 @@ local function ApplyMinimapShape(db)
         hasAppliedSquare = true
         shapeChanged = true
 
-        -- Hide circular compass border art
+        -- Hide circular compass border art. Forever draws a second ring,
+        -- MinimapCompassTextureUnderlay, while Rotate Minimap is on.
         if MinimapCompassTexture then
             MinimapCompassTexture:SetAlpha(0)
+        end
+        if _G.MinimapCompassTextureUnderlay then
+            _G.MinimapCompassTextureUnderlay:SetAlpha(0)
         end
 
         -- Override GetMinimapShape for addon compatibility
@@ -127,6 +131,9 @@ local function ApplyMinimapShape(db)
         -- Restore circular compass border art
         if MinimapCompassTexture then
             MinimapCompassTexture:SetAlpha(1)
+        end
+        if _G.MinimapCompassTextureUnderlay then
+            _G.MinimapCompassTextureUnderlay:SetAlpha(1)
         end
 
         -- Restore GetMinimapShape for addon compatibility
@@ -322,6 +329,46 @@ end
 -- Border Overlay
 --------------------------------------------------------------------------------
 
+-- Host seam: the square border art, read at apply time. Camelot sets
+-- addon.MinimapSquareBorder in forever/minimap.lua to its bronze file; the
+-- fallback is retail's silver ring. Both files come from
+-- docs/tools/minimapsquare.py, which prints `band`: the overhang in pixels
+-- outside the 198 px Minimap that puts the band's inner edge on the map edge.
+local function squareBorderArt()
+    return addon.MinimapSquareBorder or {
+        texture = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\minimap\\square-border",
+        band = 15,
+    }
+end
+
+-- One texture on a UIParent-parented container, anchored around Minimap at
+-- the Minimap's own strata one level up: over the map edge, under the
+-- Minimap's child buttons. Nothing is written to Minimap.
+local function ensureArtBorder(overlays, minimap)
+    local container = overlays.artBorder
+    if not container then
+        container = CreateFrame("Frame", (addon.Brand or "Scoot") .. "MinimapSquareBorder", UIParent)
+        container:EnableMouse(false)
+        container.texture = container:CreateTexture(nil, "OVERLAY")
+        container.texture:SetAllPoints(container)
+        overlays.artBorder = container
+        addon.RegisterPetBattleFrame(container)
+    end
+
+    local art = squareBorderArt()
+    local band = tonumber(art.band) or 15
+    local okStrata, strata = pcall(minimap.GetFrameStrata, minimap)
+    local okLevel, level = pcall(minimap.GetFrameLevel, minimap)
+    container:SetFrameStrata(okStrata and type(strata) == "string" and strata or "MEDIUM")
+    container:SetFrameLevel(((okLevel and type(level) == "number") and level or 4) + 1)
+    container:ClearAllPoints()
+    container:SetPoint("TOPLEFT", minimap, "TOPLEFT", -band, band)
+    container:SetPoint("BOTTOMRIGHT", minimap, "BOTTOMRIGHT", band, -band)
+    container.texture:SetTexture(art.texture)
+    container:Show()
+    return container
+end
+
 local function UpdateBorderOverlay(db, forceShow)
     local overlays = ensureOverlayTable()
     if not overlays then return end
@@ -329,12 +376,23 @@ local function UpdateBorderOverlay(db, forceShow)
     local minimap = _G.Minimap
     if not minimap then return end
 
-    -- Only show border when square shape AND borderEnabled AND overlay not active
-    -- forceShow bypasses overlayActive check (used when overlay is visually stashed but db.overlayActive still true)
+    -- A square map carries the art border unless the player asked for the
+    -- solid custom border or for none. forceShow bypasses the overlayActive
+    -- check (used when the node-hunting overlay is visually stashed but
+    -- db.overlayActive is still true).
     local overlayActive = not forceShow and db and db.overlayEnabled and db.overlayActive
-    local showBorder = db and db.mapShape == "square" and db.borderEnabled and not overlayActive
+    local squareShown = db and db.mapShape == "square" and not overlayActive and not db.borderHidden
+    local showCustom = squareShown and db.borderEnabled
+    local showArt = squareShown and not db.borderEnabled
 
-    if not showBorder then
+    if overlays.artBorder and not showArt then
+        overlays.artBorder:Hide()
+    end
+    if showArt then
+        ensureArtBorder(overlays, minimap)
+    end
+
+    if not showCustom then
         if overlays.border then
             overlays.border:Hide()
         end
@@ -388,6 +446,16 @@ local function EnsureZoneEventHandler()
     addon.Events.On("Minimap:Zone", "ZONE_CHANGED", onZoneEvent)
     addon.Events.On("Minimap:Zone", "ZONE_CHANGED_INDOORS", onZoneEvent)
     addon.Events.On("Minimap:Zone", "ZONE_CHANGED_NEW_AREA", onZoneEvent)
+
+    -- Forever's minimap skin re-applies its own circle mask and swaps the
+    -- compass ring whenever Rotate Minimap changes; put the square back.
+    addon.Events.On("Minimap:Shape", "CVAR_UPDATE", function(_, cvar)
+        if cvar ~= "rotateMinimap" then return end
+        local db = getMinimapDB()
+        if db and db.mapShape == "square" then
+            ApplyMinimapShape(db)
+        end
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -496,6 +564,7 @@ addon:RegisterComponentInitializer(function(self)
             -- Note: Map Size is read/written directly to Edit Mode, not stored in AceDB
             mapShape = { type = "addon", default = "default" },
             borderEnabled = { type = "addon", default = false },
+            borderHidden = { type = "addon", default = false },
             borderTintEnabled = { type = "addon", default = false },
             borderColor = { type = "addon", default = {0, 0, 0, 1} },
             borderThickness = { type = "addon", default = 2 },
@@ -588,6 +657,9 @@ function addon.SetMinimapBorderHidden(hidden)
     if hidden then
         if overlays.border then
             overlays.border:Hide()
+        end
+        if overlays.artBorder then
+            overlays.artBorder:Hide()
         end
     else
         local db = getMinimapDB()

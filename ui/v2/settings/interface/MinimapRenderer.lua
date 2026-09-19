@@ -125,7 +125,7 @@ function Minimap.Render(panel, scrollContent)
             -- Border options (only for square)
             inner:AddToggle({
                 label = "Enable Custom Border",
-                description = "Draw a custom border around the minimap.",
+                description = "Replace the default square border with a solid one you can tint and size.",
                 get = function()
                     return getSetting("borderEnabled") or false
                 end,
@@ -139,7 +139,7 @@ function Minimap.Render(panel, scrollContent)
                     end)
                 end,
                 isDisabled = function()
-                    return getSetting("mapShape") ~= "square"
+                    return getSetting("mapShape") ~= "square" or getSetting("borderHidden")
                 end,
             })
 
@@ -181,6 +181,26 @@ function Minimap.Render(panel, scrollContent)
                 maxLabel = "8",
                 isDisabled = function()
                     return getSetting("mapShape") ~= "square" or not getSetting("borderEnabled")
+                end,
+            })
+
+            inner:AddToggle({
+                label = "Hide Border",
+                description = "Draw no border around a square map.",
+                get = function()
+                    return getSetting("borderHidden") or false
+                end,
+                set = function(v)
+                    setSetting("borderHidden", v)
+                    -- Re-render to update the disabled state of Enable Custom Border
+                    C_Timer.After(0.05, function()
+                        if panel and Minimap.Render then
+                            Minimap.Render(panel, scrollContent)
+                        end
+                    end)
+                end,
+                isDisabled = function()
+                    return getSetting("mapShape") ~= "square"
                 end,
             })
 
