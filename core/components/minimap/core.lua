@@ -337,13 +337,19 @@ end
 local function squareBorderArt()
     return addon.MinimapSquareBorder or {
         texture = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\minimap\\square-border",
-        band = 15,
+        band = 9,
     }
 end
 
+-- The border's inner edge is tucked this far under the map, so the map's
+-- masked edge and the band's soft inner edge never leave a hairline between them.
+local ART_BORDER_TUCK = 1
+
 -- One texture on a UIParent-parented container, anchored around Minimap at
--- the Minimap's own strata one level up: over the map edge, under the
--- Minimap's child buttons. Nothing is written to Minimap.
+-- the Minimap's own strata one level below it, as Blizzard's ring sits below
+-- the map: the map covers the tucked inner edge, and everything Blizzard or
+-- another addon hangs on the Minimap (tracking, the day-night dial, addon
+-- buttons) draws over the band. Nothing is written to Minimap.
 local function ensureArtBorder(overlays, minimap)
     local container = overlays.artBorder
     if not container then
@@ -356,11 +362,11 @@ local function ensureArtBorder(overlays, minimap)
     end
 
     local art = squareBorderArt()
-    local band = tonumber(art.band) or 15
+    local band = (tonumber(art.band) or 9) - ART_BORDER_TUCK
     local okStrata, strata = pcall(minimap.GetFrameStrata, minimap)
     local okLevel, level = pcall(minimap.GetFrameLevel, minimap)
     container:SetFrameStrata(okStrata and type(strata) == "string" and strata or "MEDIUM")
-    container:SetFrameLevel(((okLevel and type(level) == "number") and level or 4) + 1)
+    container:SetFrameLevel(math.max((((okLevel and type(level) == "number") and level or 4) - 1), 0))
     container:ClearAllPoints()
     container:SetPoint("TOPLEFT", minimap, "TOPLEFT", -band, band)
     container:SetPoint("BOTTOMRIGHT", minimap, "BOTTOMRIGHT", band, -band)

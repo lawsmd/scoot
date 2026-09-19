@@ -32,10 +32,10 @@ addon.MinimapIcon = addon.Logo.bronze
 -- into a mitred square by docs/tools/minimapsquare.py and shipped as it came;
 -- Scoot's fallback is the same cut of retail's silver ring. `band` is the
 -- overhang in pixels outside the 198 px Minimap that puts the band's inner
--- edge on the map edge (the file's band is 0.0813 of its opening).
+-- edge on the map edge (the file's band is 0.0488 of its opening).
 addon.MinimapSquareBorder = {
     texture = addon.MediaPath .. "forever\\media\\minimap\\square-border",
-    band = 16,
+    band = 10,
 }
 
 -- Called at login and again on every profile change, so it creates the
