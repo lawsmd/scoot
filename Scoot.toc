@@ -400,6 +400,7 @@ ui/v2/GameMenu.lua
 core/ui_fixes.lua
 core/init.lua
 core/minimap.lua
+core/cooldownsettings.lua
 core/chat.lua
 
 Scoot.lua

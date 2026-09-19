@@ -60,6 +60,10 @@ core/dialogs.lua
 ## registers a slash command at file scope.
 core/minimap.lua
 
+## addon:OpenCooldownManagerSettings, which the toolbar's Cooldown Manager
+## button and the Game Menu call.
+core/cooldownsettings.lua
+
 ## Camelot
 forever/db.lua
 forever/unitframes/art.lua
