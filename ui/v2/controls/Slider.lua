@@ -41,7 +41,6 @@ end
 
 -- Constants
 
-local BORDER_WIDTH = 2
 local SLIDER_HEIGHT = 20
 local SLIDER_ARROW_WIDTH = 20
 local SLIDER_THUMB_WIDTH = 12
@@ -140,7 +139,6 @@ function Controls:CreateSlider(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
@@ -168,7 +166,7 @@ function Controls:CreateSlider(options)
     end
 
     -- Calculate total slider area width
-    local totalSliderAreaWidth = SLIDER_ARROW_WIDTH + sliderWidth + SLIDER_ARROW_WIDTH + 8 + inputWidth
+    local totalSliderAreaWidth = SLIDER_ARROW_WIDTH + sliderWidth + SLIDER_ARROW_WIDTH + 8 + inputWidth + Controls.ValueInputReach()
 
     -- Calculate vertical offset for label positioning (legacy path only)
     local labelYOffset = 0
@@ -220,18 +218,36 @@ function Controls:CreateSlider(options)
         sliderContainer:SetPoint("RIGHT", row, "RIGHT", -SLIDER_PADDING, hasEndLabels and -4 or 0)
     end
 
+    -- The skin's slider role. A template kind is Blizzard's slider with
+    -- steppers, which stands where the two arrows, the track and the thumb do;
+    -- those four stay nil and every later use of them is guarded.
+    local widget
+    local leftArrow, rightArrow, trackFrame, trackFill, thumb
+    local sliderSpec = addon.UI.Chrome.Spec("slider")
+    if sliderSpec.kind == "template" then
+        -- The template insets its Slider 19 each side for the steppers, so
+        -- the two arrow widths make the track the width the caller asked for.
+        widget = addon.UI.Chrome.CreateFrame(sliderSpec, "Frame", nil, sliderContainer)
+        widget:SetSize(sliderWidth + SLIDER_ARROW_WIDTH * 2, SLIDER_HEIGHT)
+        widget:SetPoint("LEFT", sliderContainer, "LEFT", 0, hasEndLabels and 7 or 0)
+        local range = maxVal - minVal
+        local steps = (step > 0 and range > 0) and math.max(1, math.floor(range / step + 0.5)) or 1
+        widget:Init(minVal, minVal, maxVal, steps)
+    else
+
     -- Left arrow button (decrement)
-    local leftArrow = Controls.CreateArrowButton(sliderContainer, {
+    leftArrow = Controls.CreateArrowButton(sliderContainer, {
         width = SLIDER_ARROW_WIDTH,
         height = SLIDER_HEIGHT,
         glyph = "◀",
+        direction = "prev",
         fontSize = 12,
         noHover = true,
     })
     leftArrow:SetPoint("LEFT", sliderContainer, "LEFT", 0, hasEndLabels and 7 or 0)
 
     -- Slider track container
-    local trackFrame = CreateFrame("Frame", nil, sliderContainer)
+    trackFrame = CreateFrame("Frame", nil, sliderContainer)
     trackFrame:SetSize(sliderWidth, SLIDER_HEIGHT)
     trackFrame:SetPoint("LEFT", leftArrow, "RIGHT", 0, 0)
 
@@ -244,7 +260,7 @@ function Controls:CreateSlider(options)
     trackFrame._trackBg = trackBg
 
     -- Track fill (accent color, from left to thumb)
-    local trackFill = trackFrame:CreateTexture(nil, "BACKGROUND", nil, -6)
+    trackFill = trackFrame:CreateTexture(nil, "BACKGROUND", nil, -6)
     trackFill:SetHeight(SLIDER_TRACK_HEIGHT)
     trackFill:SetPoint("LEFT", trackFrame, "LEFT", 0, 0)
     trackFill:SetWidth(0)
@@ -252,7 +268,7 @@ function Controls:CreateSlider(options)
     trackFrame._trackFill = trackFill
 
     -- Thumb (draggable handle)
-    local thumb = CreateFrame("Button", nil, trackFrame)
+    thumb = CreateFrame("Button", nil, trackFrame)
     thumb:SetSize(SLIDER_THUMB_WIDTH, SLIDER_THUMB_HEIGHT)
     thumb:SetPoint("CENTER", trackFrame, "LEFT", 0, 0)
     thumb:EnableMouse(true)
@@ -272,119 +288,57 @@ function Controls:CreateSlider(options)
     trackFrame._thumb = thumb
 
     -- Right arrow button (increment)
-    local rightArrow = Controls.CreateArrowButton(sliderContainer, {
+    rightArrow = Controls.CreateArrowButton(sliderContainer, {
         width = SLIDER_ARROW_WIDTH,
         height = SLIDER_HEIGHT,
         glyph = "▶",
+        direction = "next",
         fontSize = 12,
         noHover = true,
     })
     rightArrow:SetPoint("LEFT", trackFrame, "RIGHT", 0, 0)
 
-    -- Text input field (right of arrows)
-    local inputFrame = CreateFrame("EditBox", nil, sliderContainer, "InputBoxTemplate")
-    inputFrame:SetSize(inputWidth, SLIDER_HEIGHT)
-    inputFrame:SetPoint("LEFT", rightArrow, "RIGHT", 8, 0)
-    inputFrame:SetAutoFocus(false)
-    inputFrame:SetNumeric(false)  -- Allow decimals
-    inputFrame:SetMaxLetters(10)
-    inputFrame:EnableMouse(true)
-
-    -- Hide Blizzard's default InputBoxTemplate textures
-    if inputFrame.Left then inputFrame.Left:Hide() end
-    if inputFrame.Right then inputFrame.Right:Hide() end
-    if inputFrame.Middle then inputFrame.Middle:Hide() end
-    -- Also try legacy texture names
-    local inputName = inputFrame:GetName()
-    if inputName then
-        local leftTex = _G[inputName .. "Left"]
-        local rightTex = _G[inputName .. "Right"]
-        local middleTex = _G[inputName .. "Middle"]
-        if leftTex then leftTex:Hide() end
-        if rightTex then rightTex:Hide() end
-        if middleTex then middleTex:Hide() end
     end
 
-    -- Style the input box for UI look
-    local inputFont = theme:GetFont("VALUE")
-    inputFrame:SetFont(inputFont, 12, "")
-    inputFrame:SetTextColor(1, 1, 1, 1)
-    inputFrame:SetJustifyH("CENTER")
-
-    -- Set text insets and create custom border
-    inputFrame:SetTextInsets(4, 4, 0, 0)
-
-    -- Create custom border for input (replacing default look)
-    local inputBorder = {}
-
-    local inputTop = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    inputTop:SetPoint("TOPLEFT", inputFrame, "TOPLEFT", -2, 2)
-    inputTop:SetPoint("TOPRIGHT", inputFrame, "TOPRIGHT", 2, 2)
-    inputTop:SetHeight(BORDER_WIDTH)
-    inputTop:SetColorTexture(ar, ag, ab, 0.6)
-    inputBorder.TOP = inputTop
-
-    local inputBottom = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    inputBottom:SetPoint("BOTTOMLEFT", inputFrame, "BOTTOMLEFT", -2, -2)
-    inputBottom:SetPoint("BOTTOMRIGHT", inputFrame, "BOTTOMRIGHT", 2, -2)
-    inputBottom:SetHeight(BORDER_WIDTH)
-    inputBottom:SetColorTexture(ar, ag, ab, 0.6)
-    inputBorder.BOTTOM = inputBottom
-
-    local inputLeft = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    inputLeft:SetPoint("TOPLEFT", inputFrame, "TOPLEFT", -2, 2 - BORDER_WIDTH)
-    inputLeft:SetPoint("BOTTOMLEFT", inputFrame, "BOTTOMLEFT", -2, -2 + BORDER_WIDTH)
-    inputLeft:SetWidth(BORDER_WIDTH)
-    inputLeft:SetColorTexture(ar, ag, ab, 0.6)
-    inputBorder.LEFT = inputLeft
-
-    local inputRight = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    inputRight:SetPoint("TOPRIGHT", inputFrame, "TOPRIGHT", 2, 2 - BORDER_WIDTH)
-    inputRight:SetPoint("BOTTOMRIGHT", inputFrame, "BOTTOMRIGHT", 2, -2 + BORDER_WIDTH)
-    inputRight:SetWidth(BORDER_WIDTH)
-    inputRight:SetColorTexture(ar, ag, ab, 0.6)
-    inputBorder.RIGHT = inputRight
-
-    local inputBg = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-    inputBg:SetPoint("TOPLEFT", -2, 2)
-    inputBg:SetPoint("BOTTOMRIGHT", 2, -2)
-    inputBg:SetColorTexture(bgR, bgG, bgB, bgA)
-    inputFrame._customBg = inputBg
-    inputFrame._customBorder = inputBorder
+    -- The typed value box (right of the steppers)
+    local inputFrame = Controls.CreateValueInput(sliderContainer, { width = inputWidth, height = SLIDER_HEIGHT })
+    inputFrame:SetPoint("LEFT", widget or rightArrow, "RIGHT", 8 + inputFrame._artLeft, 0)
 
     sliderContainer._inputFrame = inputFrame
 
     -- Optional end labels (tiny text under left/right of track)
     if hasEndLabels then
+        local labelHost = widget and widget.Slider or trackFrame
         if minLabel and minLabel ~= "" then
-            local minLabelFS = trackFrame:CreateFontString(nil, "OVERLAY")
+            local minLabelFS = labelHost:CreateFontString(nil, "OVERLAY")
             local endLabelFont = theme:GetFont("VALUE")
             minLabelFS:SetFont(endLabelFont, SLIDER_END_LABEL_FONT_SIZE, "")
-            minLabelFS:SetPoint("TOP", trackFrame, "BOTTOMLEFT", 0, -2)
+            minLabelFS:SetPoint("TOP", labelHost, "BOTTOMLEFT", 0, -2)
             minLabelFS:SetText(minLabel)
             minLabelFS:SetTextColor(dimR, dimG, dimB, 0.8)
-            trackFrame._minLabel = minLabelFS
+            labelHost._minLabel = minLabelFS
         end
 
         if maxLabel and maxLabel ~= "" then
-            local maxLabelFS = trackFrame:CreateFontString(nil, "OVERLAY")
+            local maxLabelFS = labelHost:CreateFontString(nil, "OVERLAY")
             local endLabelFont = theme:GetFont("VALUE")
             maxLabelFS:SetFont(endLabelFont, SLIDER_END_LABEL_FONT_SIZE, "")
-            maxLabelFS:SetPoint("TOP", trackFrame, "BOTTOMRIGHT", 0, -2)
+            maxLabelFS:SetPoint("TOP", labelHost, "BOTTOMRIGHT", 0, -2)
             maxLabelFS:SetText(maxLabel)
             maxLabelFS:SetTextColor(dimR, dimG, dimB, 0.8)
-            trackFrame._maxLabel = maxLabelFS
+            labelHost._maxLabel = maxLabelFS
         end
     end
 
     sliderContainer._leftArrow = leftArrow
     sliderContainer._rightArrow = rightArrow
-    sliderContainer._trackFrame = trackFrame
+    sliderContainer._trackFrame = trackFrame or widget
     row._sliderContainer = sliderContainer
     -- Store references for disabled state
     row._leftArrow = leftArrow
     row._rightArrow = rightArrow
-    row._trackFrame = trackFrame
+    row._trackFrame = trackFrame or widget
+    row._sliderWidget = widget
     row._inputFrame = inputFrame
     row._isDisabled = false
     row._isDisabledFn = isDisabledFn
@@ -420,17 +374,24 @@ function Controls:CreateSlider(options)
     -- Update visual display (thumb position, fill, input text)
     local function UpdateDisplay()
         local val = row._currentValue
-        local range = maxVal - minVal
-        local percent = range > 0 and ((val - minVal) / range) or 0
-        local trackWidth = sliderWidth - SLIDER_THUMB_WIDTH
+        if widget then
+            -- Guarded: the widget reports every SetValue, this one included
+            row._settingWidget = true
+            widget.Slider:SetValue(val)
+            row._settingWidget = false
+        else
+            local range = maxVal - minVal
+            local percent = range > 0 and ((val - minVal) / range) or 0
+            local trackWidth = sliderWidth - SLIDER_THUMB_WIDTH
 
-        -- Position thumb
-        local thumbX = percent * trackWidth + (SLIDER_THUMB_WIDTH / 2)
-        thumb:ClearAllPoints()
-        thumb:SetPoint("CENTER", trackFrame, "LEFT", thumbX, 0)
+            -- Position thumb
+            local thumbX = percent * trackWidth + (SLIDER_THUMB_WIDTH / 2)
+            thumb:ClearAllPoints()
+            thumb:SetPoint("CENTER", trackFrame, "LEFT", thumbX, 0)
 
-        -- Update fill width
-        trackFill:SetWidth(math.max(1, thumbX))
+            -- Update fill width
+            trackFill:SetWidth(math.max(1, thumbX))
+        end
 
         -- Update input text
         inputFrame:SetText(FormatValue(val))
@@ -486,6 +447,10 @@ function Controls:CreateSlider(options)
     -- Helper to update visual state when locked/unlocked
     local function UpdateSyncLockVisuals()
         local locked = IsSyncLocked()
+        if widget then
+            widget:SetEnabled(not locked and not row._isDisabled)
+            return
+        end
         local r, g, b = theme:GetAccentColor()
         if locked then
             -- Dim controls when locked
@@ -528,6 +493,39 @@ function Controls:CreateSlider(options)
         end
     end
     row._triggerDebouncedSync = TriggerDebouncedSync
+
+    if widget then
+        -- A stepper click reports on mouse-up and commits at once. A drag or
+        -- a track click reports while the button is down: the display follows
+        -- and the value commits on release, as the flat thumb's drag does.
+        local pendingCommit = false
+        local function Commit()
+            pendingCommit = false
+            setValue(row._currentValue)
+            TriggerDebouncedSync()
+        end
+        widget:RegisterCallback(widget.Event.OnValueChanged, function(_, value)
+            if row._settingWidget then return end
+            if row._isDisabled or IsSyncLocked() then
+                UpdateDisplay()
+                return
+            end
+            local newValue = ClampValue(value)
+            if newValue == row._currentValue then return end
+            row._currentValue = newValue
+            if not inputFrame:HasFocus() then
+                inputFrame:SetText(FormatValue(newValue))
+            end
+            if IsMouseButtonDown("LeftButton") then
+                pendingCommit = true
+            else
+                Commit()
+            end
+        end, row)
+        widget.Slider:HookScript("OnMouseUp", function()
+            if pendingCommit then Commit() end
+        end)
+    else
 
     -- Arrow hover effects
     leftArrow:SetScript("OnEnter", function(btn)
@@ -632,6 +630,8 @@ function Controls:CreateSlider(options)
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
     end)
 
+    end
+
     -- Helper to parse input value (handles displayMultiplier and displaySuffix)
     local function ParseInputValue(text)
         -- Strip suffix if present
@@ -689,18 +689,12 @@ function Controls:CreateSlider(options)
     -- Input focus highlight
     inputFrame:SetScript("OnEditFocusGained", function(self)
         self:HighlightText()
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._customBorder) do
-            tex:SetColorTexture(r, g, b, 1)
-        end
+        self._setFocusLook(true)
     end)
 
     inputFrame:HookScript("OnEditFocusLost", function(self)
         self:HighlightText(0, 0)
-        local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._customBorder) do
-            tex:SetColorTexture(r, g, b, 0.6)
-        end
+        self._setFocusLook(false)
     end)
 
     -- Row hover
@@ -729,29 +723,22 @@ function Controls:CreateSlider(options)
             row._emphBg:SetColorTexture(r, g, b, 0.03)
         end
         -- Update arrows
-        if leftArrow._text then
+        if leftArrow and leftArrow._text then
             leftArrow._text:SetTextColor(r, g, b, 1)
         end
-        if rightArrow._text then
+        if rightArrow and rightArrow._text then
             rightArrow._text:SetTextColor(r, g, b, 1)
         end
         -- Update track
-        if trackFrame._trackBg then
+        if trackFrame and trackFrame._trackBg then
             trackFrame._trackBg:SetColorTexture(r, g, b, 0.2)
         end
-        if trackFrame._trackFill then
+        if trackFrame and trackFrame._trackFill then
             trackFrame._trackFill:SetColorTexture(r, g, b, 0.6)
         end
         -- Update thumb
-        if thumb._bg and not thumb._isDragging then
+        if thumb and thumb._bg and not thumb._isDragging then
             thumb._bg:SetColorTexture(r, g, b, 1)
-        end
-        -- Update input border
-        if inputFrame._customBorder then
-            local alpha = inputFrame:HasFocus() and 1 or 0.6
-            for _, tex in pairs(inputFrame._customBorder) do
-                tex:SetColorTexture(r, g, b, alpha)
-            end
         end
     end)
 
@@ -779,6 +766,9 @@ function Controls:CreateSlider(options)
 
     function row:SetDisabled(disabled)
         self._isDisabled = disabled and true or false
+        if self._sliderWidget then
+            self._sliderWidget:SetEnabled(not self._isDisabled and not IsSyncLocked())
+        end
         local disabledAlpha = 0.35
         local ar, ag, ab = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()

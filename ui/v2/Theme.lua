@@ -266,10 +266,17 @@ function Theme:GetFont(fontType)
     return "Fonts\\FRIZQT__.TTF"
 end
 
--- The active skin supplies { path, size } per font role (label, value, desc,
--- header, button, miniLabel, proportional, proportionalMed). GetFontRole
--- resolves the path through the same existence fallback as GetFont and
--- returns the role's size beside it.
+-- The active skin supplies { path, size, style } per font role (label, value,
+-- desc, header, button, miniLabel, proportional, proportionalMed, plus any
+-- name a skin's own metrics point at -- nav.card.labelFontRole is one).
+-- GetFontRole resolves the path through the same existence fallback as GetFont
+-- and returns the role's size and style beside it.
+--
+-- style is a key from addon.FontStyles (core/fonts.lua), the same catalog the
+-- component pages offer players: an engine flag (OUTLINE, THICKOUTLINE), a
+-- shadow, a crisp SLUG variant, or DEEPSHADOW*, which draws a black copy of
+-- the string behind it. A role that leaves it out reads NONE, so a skin that
+-- names no styles renders exactly as it did before styles existed.
 function Theme:GetFontRole(role)
     local roles = self._fontRoles
     local entry = roles and roles[role]
@@ -282,65 +289,82 @@ function Theme:GetFontRole(role)
             path = "Fonts\\FRIZQT__.TTF"
         end
     end
-    return path, (entry and entry.size) or 12
+    return path, (entry and entry.size) or 12, (entry and entry.style) or "NONE"
 end
 
--- The one place a panel font face and size are applied together. A size
--- argument overrides the role's size; color stays with the caller.
-function Theme:ApplyFont(fontString, role, size)
+-- The one place a panel font face, size and style are applied together. A size
+-- or style argument overrides the role's own; color stays with the caller.
+--
+-- addon.ApplyFontStyle does the applying, so a panel string reaches the same
+-- decoder the component pages use: it walks the face fallbacks when the client
+-- will not load a file, and it builds the companion string DEEPSHADOW* needs.
+-- The DEEPSHADOW* keys are safe here because the panel creates every string it
+-- draws and feeds each one through SetText, which is what the companion's
+-- mirror hooks need (core/fontpair.lua). The one string that must not carry a
+-- companion is the measurement ruler, which asks for MetricStyle instead
+-- (ui/v2/controls/Fit.lua).
+function Theme:ApplyFont(fontString, role, size, style)
     if not fontString or not fontString.SetFont then return end
-    local path, roleSize = self:GetFontRole(role)
-    pcall(fontString.SetFont, fontString, path, size or roleSize, "")
+    local path, roleSize, roleStyle = self:GetFontRole(role)
+    return addon.ApplyFontStyle(fontString, path, size or roleSize, style or roleStyle)
 end
 
--- Apply label font (accent-colored monospace)
-function Theme:ApplyLabelFont(fontString, size)
+-- The colored helpers are ApplyFont plus the color each is named for. They
+-- read their role through the same table, so the face and size are what they
+-- always were and a style the skin puts on the role now reaches them too. The
+-- sizes stay literal rather than falling back to the role's: these defaults
+-- predate the role sizes and callers pass a size in nearly every case.
+--
+-- role is the surface's own role in place of the helper's, for a surface a
+-- skin wants to style by itself: the nav child row reads
+-- metrics.nav.card.childLabelFontRole and the page header
+-- metrics.contentHeader.fontRole, so the Camelot skin can put a style on
+-- either without it reaching every other string of the same color.
+
+-- Apply label font (accent-colored)
+function Theme:ApplyLabelFont(fontString, size, role)
     if not fontString or not fontString.SetFont then return end
-    local font = self:GetFont("LABEL")
-    pcall(fontString.SetFont, fontString, font, size or 12, "")
+    self:ApplyFont(fontString, role or "label", size or 12)
     local r, g, b = self:GetAccentColor()
     if fontString.SetTextColor then
         fontString:SetTextColor(r, g, b, 1)
     end
 end
 
--- Apply header font (bold accent-colored monospace)
-function Theme:ApplyHeaderFont(fontString, size)
+-- Apply header font (accent-colored, larger; Friz ships no bold and the widget
+-- API has no weight, so a skin's header role is a size, not a face)
+function Theme:ApplyHeaderFont(fontString, size, role)
     if not fontString or not fontString.SetFont then return end
-    local font = self:GetFont("HEADER")
-    pcall(fontString.SetFont, fontString, font, size or 16, "")
+    self:ApplyFont(fontString, role or "header", size or 16)
     local r, g, b = self:GetAccentColor()
     if fontString.SetTextColor then
         fontString:SetTextColor(r, g, b, 1)
     end
 end
 
--- Apply value font (white monospace)
-function Theme:ApplyValueFont(fontString, size)
+-- Apply value font (white)
+function Theme:ApplyValueFont(fontString, size, role)
     if not fontString or not fontString.SetFont then return end
-    local font = self:GetFont("VALUE")
-    pcall(fontString.SetFont, fontString, font, size or 12, "")
+    self:ApplyFont(fontString, role or "value", size or 12)
     if fontString.SetTextColor then
         fontString:SetTextColor(1, 1, 1, 1)
     end
 end
 
--- Apply button font (accent-colored monospace)
-function Theme:ApplyButtonFont(fontString, size)
+-- Apply button font (accent-colored)
+function Theme:ApplyButtonFont(fontString, size, role)
     if not fontString or not fontString.SetFont then return end
-    local font = self:GetFont("BUTTON")
-    pcall(fontString.SetFont, fontString, font, size or 13, "")
+    self:ApplyFont(fontString, role or "button", size or 13)
     local r, g, b = self:GetAccentColor()
     if fontString.SetTextColor then
         fontString:SetTextColor(r, g, b, 1)
     end
 end
 
--- Apply dim text (secondary labels)
-function Theme:ApplyDimFont(fontString, size)
+-- Apply dim text (secondary labels; the value role, as before)
+function Theme:ApplyDimFont(fontString, size, role)
     if not fontString or not fontString.SetFont then return end
-    local font = self:GetFont("VALUE")
-    pcall(fontString.SetFont, fontString, font, size or 11, "")
+    self:ApplyFont(fontString, role or "value", size or 11)
     if fontString.SetTextColor then
         fontString:SetTextColor(self.TEXT_DIM.r, self.TEXT_DIM.g, self.TEXT_DIM.b, self.TEXT_DIM.a)
     end
@@ -357,3 +381,80 @@ end
 
 -- Setting patterns (reusable relationships between settings) live in
 -- SettingPatterns.lua on addon.UI.SettingPatterns.
+
+--------------------------------------------------------------------------------
+-- Font style tuning
+--------------------------------------------------------------------------------
+
+-- The font roles tried on the open panel the way 'opacity' tries the art's
+-- alphas: 'font <role> <STYLE>' writes the style into the active skin's fonts
+-- table and rebuilds the panel from the skin, so an outline or a Deep Shadow
+-- can be judged on the surface that will carry it. A reload restores the
+-- skin's own styles. Role names are case-sensitive and a role the active skin
+-- leaves out cannot be set. 'font styles' lists the keys.
+local function DumpFontRoles()
+    local lines, push = addon.DebugLines()
+    local roles = Theme._fontRoles
+    if not roles then
+        push("no skin is active, so the panel has no font roles")
+        addon.DebugShowWindow("Panel fonts", lines)
+        return
+    end
+    -- The fonts table is keyed by name and carries no order of its own.
+    local names = {}
+    for name in pairs(roles) do names[#names + 1] = name end
+    table.sort(names)
+    push(string.format("-- skin %s", tostring(addon.UI.Skin.ActiveName())))
+    push("fonts = {")
+    for _, name in ipairs(names) do
+        local entry = roles[name] or {}
+        local path = tostring(entry.path or "?")
+        push(string.format("    %-15s = { size = %s, style = %q },  -- %s",
+            name, tostring(entry.size), tostring(entry.style or "NONE"),
+            path:match("[^\\/]+$") or path))
+    end
+    push("},")
+    push("")
+    push("The face is a local in the skin file, so the trailing comment names")
+    push("the file rather than the path to paste back.")
+    addon.DebugShowWindow("Panel fonts", lines)
+end
+
+local function DumpFontStyles()
+    local lines, push = addon.DebugLines()
+    local Styles = addon.FontStyles
+    for _, key in ipairs(Styles.orderPaired or {}) do
+        push(string.format("%-24s %s", key, Styles.values[key] or ""))
+    end
+    if not Styles.slugSupported then
+        push("")
+        push("This client rejects the SLUG flag, so the crisp keys are left out:")
+        push("stored on a role they render as their base style.")
+    end
+    addon.DebugShowWindow("Font styles", lines)
+end
+
+local fontCommand = {
+    name = "font",
+    help = "Panel font styles by role; 'font <role> <STYLE>' retunes the open panel",
+    usage = {
+        "font lists every role; role names are case-sensitive (label, value, header, navLabel)",
+        "font styles lists the style keys (NONE, THICKOUTLINE, DEEPSHADOWTHICKOUTLINE)",
+    },
+    handler = function(sub, rest)
+        local role = rest and rest[1]
+        if not role or role == "" then return DumpFontRoles() end
+        if sub == "styles" then return DumpFontStyles() end
+        local style = rest[2] and string.upper(rest[2])
+        local entry = Theme._fontRoles and Theme._fontRoles[role]
+        if not entry or not style or not addon.FontStyles.values[style] then
+            return addon.Commands.USAGE
+        end
+        entry.style = style
+        local Skin = addon.UI.Skin
+        Skin.SetActive(Skin.ActiveName())
+    end,
+}
+-- The same command at the top level and under debug
+addon:RegisterSlashCommand(fontCommand)
+addon:RegisterDebugCommand(fontCommand)

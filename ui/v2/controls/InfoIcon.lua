@@ -1,6 +1,15 @@
--- InfoIcon.lua - Compact info icon with TUI-styled tooltip
+-- InfoIcon.lua - Compact info icon with a themed tooltip
 -- Provides help/info icons for tabs, headers, and other compact UI elements
 -- Default position: LEFT side of labels (matching TUI convention)
+--
+-- Two chrome roles draw it: infoIcon is the icon, tooltip is the box its text
+-- opens in. Flat, the default both roles take, is the bordered square with a
+-- character in it and the accent-bordered box under it. A skin that declares
+-- kind "glyph" on infoIcon draws art alone, no box, at the role's scale times
+-- the size the caller asks for; a skin that declares kind "nineSlice" on
+-- tooltip hands the box to the client's own tooltip art. A badge, the letter
+-- in its own color that marks a component variant, stays flat under every
+-- skin: the letter is the content, not the chrome.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -27,12 +36,66 @@ local TOOLTIP_MAX_WIDTH = 280
 local HOVER_ALPHA = 0.25
 local BORDER_WIDTH = 1
 
--- Custom TUI Tooltip Frame (themed border, dark background, monospace fonts)
+-- The tooltip frame: the panel's own text on the surface the tooltip role
+-- draws. Flat is the accent border over a near-black fill; a nineSlice role
+-- is the client's tooltip art, border and fill together, on a child a level
+-- under the frame so the text keeps the top. _pad is the inset the text
+-- keeps off the edge, and the size math reads it.
+--
+-- One frame, built on the first hover and kept. A skin switch rebuilds the
+-- panel around it and never reaches it, so the surface, the two fonts and the
+-- padding are reapplied here instead: the resolved descriptor is memoized per
+-- role and invalidated with the switch, so a table that is not the one that
+-- drew the box means a new skin.
 
 local ScootTooltip = nil
 
+local function ApplySurface(tooltip, spec)
+    if tooltip._nine then
+        tooltip._nine:Destroy()
+        tooltip._nine = nil
+    end
+    if tooltip._border then
+        tooltip._border:Destroy()
+        tooltip._border = nil
+    end
+    if tooltip._bg then
+        tooltip._bg:Hide()
+        tooltip._bg = nil
+    end
+
+    local pad = TOOLTIP_PADDING + TOOLTIP_BORDER_WIDTH
+    if spec.kind == "nineSlice" then
+        local nine = addon.UI.Chrome.NineSlice(tooltip, spec)
+        nine:SetFrameLevel(math.max(tooltip:GetFrameLevel() - 1, 0))
+        tooltip._nine = nine
+        pad = spec.padding or pad
+    else
+        tooltip._bg = Controls.AddBackground(tooltip, { inset = TOOLTIP_BORDER_WIDTH, alpha = 0.98 })
+        tooltip._border = Controls.CreateBorder(tooltip, {
+            thickness = TOOLTIP_BORDER_WIDTH,
+            corners = "overlap",
+        })
+    end
+    tooltip._pad = pad
+    tooltip._spec = spec
+
+    local theme = GetTheme()
+    local titleText, bodyText = tooltip._titleText, tooltip._bodyText
+    pcall(titleText.SetFont, titleText, theme:GetFont("BUTTON"), TOOLTIP_TITLE_FONT_SIZE, "")
+    pcall(bodyText.SetFont, bodyText, theme:GetFont("VALUE"), TOOLTIP_FONT_SIZE, "")
+    titleText:ClearAllPoints()
+    titleText:SetPoint("TOPLEFT", tooltip, "TOPLEFT", pad, -pad)
+    titleText:SetWidth(TOOLTIP_MAX_WIDTH - pad * 2)
+    bodyText:SetWidth(TOOLTIP_MAX_WIDTH - pad * 2)
+end
+
 local function GetOrCreateTooltip()
-    if ScootTooltip then return ScootTooltip end
+    local spec = addon.UI.Chrome.Spec("tooltip")
+    if ScootTooltip then
+        if ScootTooltip._spec ~= spec then ApplySurface(ScootTooltip, spec) end
+        return ScootTooltip
+    end
 
     local theme = GetTheme()
     local ar, ag, ab = theme:GetAccentColor()
@@ -43,36 +106,22 @@ local function GetOrCreateTooltip()
     tooltip:SetFrameLevel(100)
     tooltip:Hide()
 
-    -- Background
-    tooltip._bg = Controls.AddBackground(tooltip, { inset = TOOLTIP_BORDER_WIDTH, alpha = 0.98 })
-
-    -- Border (four edges)
-    tooltip._border = Controls.CreateBorder(tooltip, {
-        thickness = TOOLTIP_BORDER_WIDTH,
-        corners = "overlap",
-    })
-
     -- Title text (accent colored)
-    local titleFont = theme:GetFont("BUTTON")
     local titleText = tooltip:CreateFontString(nil, "OVERLAY")
-    pcall(titleText.SetFont, titleText, titleFont, TOOLTIP_TITLE_FONT_SIZE, "")
-    titleText:SetPoint("TOPLEFT", tooltip, "TOPLEFT", TOOLTIP_PADDING + TOOLTIP_BORDER_WIDTH, -TOOLTIP_PADDING - TOOLTIP_BORDER_WIDTH)
     titleText:SetTextColor(ar, ag, ab, 1)
     titleText:SetJustifyH("LEFT")
-    titleText:SetWidth(TOOLTIP_MAX_WIDTH - (TOOLTIP_PADDING * 2) - (TOOLTIP_BORDER_WIDTH * 2))
     titleText:SetWordWrap(true)
     tooltip._titleText = titleText
 
     -- Body text (white)
-    local bodyFont = theme:GetFont("VALUE")
     local bodyText = tooltip:CreateFontString(nil, "OVERLAY")
-    pcall(bodyText.SetFont, bodyText, bodyFont, TOOLTIP_FONT_SIZE, "")
     bodyText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
     bodyText:SetTextColor(1, 1, 1, 1)
     bodyText:SetJustifyH("LEFT")
-    bodyText:SetWidth(TOOLTIP_MAX_WIDTH - (TOOLTIP_PADDING * 2) - (TOOLTIP_BORDER_WIDTH * 2))
     bodyText:SetWordWrap(true)
     tooltip._bodyText = bodyText
+
+    ApplySurface(tooltip, spec)
 
     theme:Subscribe("ScootInfoTooltip", function(r, g, b)
         tooltip._titleText:SetTextColor(r, g, b, 1)
@@ -86,19 +135,19 @@ local function GetOrCreateTooltip()
         else
             self._titleText:SetText("")
             self._titleText:Hide()
-            self._bodyText:SetPoint("TOPLEFT", self, "TOPLEFT", TOOLTIP_PADDING + TOOLTIP_BORDER_WIDTH, -TOOLTIP_PADDING - TOOLTIP_BORDER_WIDTH)
+            self._bodyText:SetPoint("TOPLEFT", self, "TOPLEFT", self._pad, -self._pad)
         end
 
         self._bodyText:SetText(body or "")
 
         local titleHeight = (title and title ~= "") and (self._titleText:GetStringHeight() + 4) or 0
         local bodyHeight = self._bodyText:GetStringHeight()
-        local totalHeight = TOOLTIP_PADDING * 2 + TOOLTIP_BORDER_WIDTH * 2 + titleHeight + bodyHeight
+        local totalHeight = self._pad * 2 + titleHeight + bodyHeight
 
         local titleWidth = (title and title ~= "") and self._titleText:GetStringWidth() or 0
         local bodyWidth = self._bodyText:GetStringWidth()
         local contentWidth = math.max(titleWidth, bodyWidth)
-        local totalWidth = math.min(TOOLTIP_MAX_WIDTH, contentWidth + TOOLTIP_PADDING * 2 + TOOLTIP_BORDER_WIDTH * 2)
+        local totalWidth = math.min(TOOLTIP_MAX_WIDTH, contentWidth + self._pad * 2)
 
         self:SetSize(totalWidth, totalHeight)
     end
@@ -149,64 +198,108 @@ function Controls:CreateInfoIcon(options)
     local colorOverride = options.colorOverride
     local width = options.width or size
 
-    local ar, ag, ab
-    if colorOverride then
-        ar, ag, ab = colorOverride[1], colorOverride[2], colorOverride[3]
-    else
-        ar, ag, ab = theme:GetAccentColor()
-    end
-
     local icon = CreateFrame("Button", name, parent)
-    icon:SetSize(width, size)
     icon:EnableMouse(true)
     icon._colorOverride = colorOverride
 
     local parentLevel = parent:GetFrameLevel() or 1
     icon:SetFrameLevel(parentLevel + 10)
 
-    icon._bg = Controls.AddBackground(icon, { alpha = 0.6 })
+    -- A badge carries its own letter in its own color, so it keeps the flat
+    -- box whatever the skin says; only the plain help icon takes the art.
+    local Chrome = addon.UI.Chrome
+    local spec = Chrome.Spec("infoIcon")
+    local glyphs = spec.glyphs or {}
+    local art = spec.kind == "glyph" and not colorOverride and not options.customText
 
-    icon._border = Controls.CreateBorder(icon, {
-        thickness = BORDER_WIDTH,
-        color = colorOverride,
-        alpha = 0.6,
-        getAlpha = function(self) return self:IsMouseOver() and 1 or 0.6 end,
-    })
+    -- The color of the character or the art, by state. A colorOverride is the
+    -- caller's and outranks the skin; a flat skin names no glyph color and
+    -- takes the accent, which is the color the icon has always drawn in.
+    local function GlyphColor(state)
+        if colorOverride then
+            return colorOverride[1], colorOverride[2], colorOverride[3], 1
+        end
+        local colors = spec.glyphColors
+        local token = colors and (colors[state] or colors.normal)
+        if token then return Chrome.Color(token) end
+        local r, g, b = theme:GetAccentColor()
+        return r, g, b, 1
+    end
 
-    -- Hover highlight background
-    icon._hoverBg = Controls.AddHoverFill(icon, { alpha = HOVER_ALPHA, inset = BORDER_WIDTH })
+    if art then
+        -- The art's letter is drawn in the middle of its texture, so the
+        -- button takes the role's scale of the size asked for and every
+        -- layout that measures the icon follows it.
+        local drawn = size * (spec.scale or 1)
+        icon:SetSize(drawn, drawn)
+        icon._glyph = Chrome.Glyph(icon, glyphs[iconType] or glyphs.info, {
+            layer = "OVERLAY", size = drawn,
+        })
+        icon._glyph.region:SetPoint("CENTER")
+    else
+        icon:SetSize(width, size)
+        icon._bg = Controls.AddBackground(icon, { alpha = 0.6 })
 
-    local iconText = icon:CreateFontString(nil, "OVERLAY")
-    local fontPath = theme:GetFont("BUTTON")
-    local fontSize = math.max(size - 4, 8)  -- Scale font with icon size
-    pcall(iconText.SetFont, iconText, fontPath, fontSize, "")
-    iconText:SetPoint("CENTER", 0, -1)
-    local displayText = options.customText or (iconType == "help" and "?" or "i")
-    iconText:SetText(displayText)
-    iconText:SetTextColor(ar, ag, ab, 1)
-    icon._iconText = iconText
+        icon._border = Controls.CreateBorder(icon, {
+            thickness = BORDER_WIDTH,
+            color = colorOverride,
+            alpha = 0.6,
+            getAlpha = function(self) return self:IsMouseOver() and 1 or 0.6 end,
+        })
+
+        -- Hover highlight background
+        icon._hoverBg = Controls.AddHoverFill(icon, { alpha = HOVER_ALPHA, inset = BORDER_WIDTH })
+
+        local iconText = icon:CreateFontString(nil, "OVERLAY")
+        local fontPath = theme:GetFont("BUTTON")
+        local fontSize = math.max(size - 4, 8)  -- Scale font with icon size
+        pcall(iconText.SetFont, iconText, fontPath, fontSize, "")
+        iconText:SetPoint("CENTER", 0, -1)
+        local displayText = options.customText
+            or (type(glyphs[iconType]) == "string" and glyphs[iconType])
+            or (iconType == "help" and "?" or "i")
+        iconText:SetText(displayText)
+        icon._iconText = iconText
+    end
+
+    -- Repaint under the cursor and off it, and whenever the accent moves.
+    local function Repaint(hover)
+        local r, g, b, a = GlyphColor(hover and "hover" or "normal")
+        if icon._glyph then
+            icon._glyph:SetColor(r, g, b, a)
+        elseif icon._iconText then
+            icon._iconText:SetTextColor(r, g, b, a or 1)
+        end
+    end
+    Repaint(false)
 
     icon._tooltipText = tooltipText
     icon._tooltipTitle = tooltipTitle
     icon._tooltipTint = options.tooltipTint
 
     icon:SetScript("OnEnter", function(self)
-        local r, g, b
-        if self._colorOverride then
-            r, g, b = self._colorOverride[1], self._colorOverride[2], self._colorOverride[3]
-        else
-            r, g, b = theme:GetAccentColor()
+        Repaint(true)
+        if self._hoverBg then
+            local r, g, b
+            if self._colorOverride then
+                r, g, b = self._colorOverride[1], self._colorOverride[2], self._colorOverride[3]
+            else
+                r, g, b = theme:GetAccentColor()
+            end
+            self._hoverBg:SetColorTexture(r, g, b, HOVER_ALPHA)
+            self._hoverBg:Show()
         end
-        self._hoverBg:SetColorTexture(r, g, b, HOVER_ALPHA)
-        self._hoverBg:Show()
 
-        self._border:Refresh()
+        if self._border then self._border:Refresh() end
 
         -- Position above icon to avoid cursor blocking
         local tooltip = GetOrCreateTooltip()
         tooltip:SetContent(self._tooltipTitle, self._tooltipText)
         -- The tooltip is shared; always retint it (or reset to accent) so a
-        -- previous caller's variant tint never bleeds into this hover.
+        -- previous caller's variant tint never bleeds into this hover. A
+        -- variant tint reaches the flat border only: the nine-slice carries
+        -- the client's own border and its fill in one set of pieces, and
+        -- tinting them would take the fill with it.
         local tr, tg, tb
         if self._tooltipTint then
             tr, tg, tb = self._tooltipTint[1], self._tooltipTint[2], self._tooltipTint[3]
@@ -225,8 +318,9 @@ function Controls:CreateInfoIcon(options)
     end)
 
     icon:SetScript("OnLeave", function(self)
-        self._hoverBg:Hide()
-        self._border:Refresh()
+        Repaint(false)
+        if self._hoverBg then self._hoverBg:Hide() end
+        if self._border then self._border:Refresh() end
 
         local tooltip = GetOrCreateTooltip()
         tooltip:Hide()
@@ -236,10 +330,8 @@ function Controls:CreateInfoIcon(options)
     icon._subscribeKey = subscribeKey
 
     if not colorOverride then
-        theme:Subscribe(subscribeKey, function(r, g, b)
-            if icon._iconText then
-                icon._iconText:SetTextColor(r, g, b, 1)
-            end
+        theme:Subscribe(subscribeKey, function()
+            Repaint(icon:IsMouseOver())
         end)
     end
 

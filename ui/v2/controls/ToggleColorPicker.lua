@@ -102,8 +102,12 @@ function Controls:CreateToggleColorPicker(options)
 
     -- Indicator text
     local indText = indicator:CreateFontString(nil, "OVERLAY")
-    local btnFont = theme:GetFont("BUTTON")
-    indText:SetFont(btnFont, 11, "")
+    -- A skin with a toggle font role names the face, size and style there.
+    if theme._fontRoles and theme._fontRoles.toggle then
+        theme:ApplyFont(indText, "toggle")
+    else
+        indText:SetFont(theme:GetFont("BUTTON"), 11, "")
+    end
     indText:SetPoint("CENTER", indicator, "CENTER", 0, 0)
     indText:SetText("OFF")
     indText:SetTextColor(dimR, dimG, dimB, 1)

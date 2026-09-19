@@ -955,8 +955,6 @@ Navigation key: "%s"
         end
     end
 
-    self:UpdateToolbarActive(key)
-
     if contentPane._scrollFrame then
         contentPane._scrollFrame:SetVerticalScroll(0)
     end
@@ -974,15 +972,14 @@ end
 
 -- Get Category Display Title (auto-derived from NavModel)
 
--- Sections whose children get a "Prefix: " in the title.
--- Value is the display prefix (allows abbreviation vs NavModel label).
+-- Every child page is titled "<Section>: <Page>". This table names the
+-- sections whose prefix is not their NavModel label, for an abbreviation
+-- ("CDM") or a singular ("Cast Bar"). A section not listed here uses its
+-- own label.
 local TITLE_PREFIX = {
     cdm         = "CDM",
-    scootAuras  = "ScootAuras",
-    unitFrames  = "Unit Frames",
-    prd         = "Personal Resource",
-    applyAll    = "Apply All",
     sct         = "SCT",
+    castBars    = "Cast Bar",
 }
 
 local TITLE_OVERRIDES = {
@@ -1004,15 +1001,18 @@ local function buildTitleCache()
         end
     end
     for _, section in ipairs(Navigation.NavModel) do
-        local prefix = TITLE_PREFIX[section.key]
+        local prefix = TITLE_PREFIX[section.key] or section.label
         if section.children then
             for _, child in ipairs(section.children) do
+                local label = child.label or ""
                 if TITLE_OVERRIDES[child.key] then
                     _titleCache[child.key] = TITLE_OVERRIDES[child.key]
-                elseif prefix then
-                    _titleCache[child.key] = prefix .. ": " .. child.label
+                elseif prefix and label:sub(1, #prefix) ~= prefix then
+                    _titleCache[child.key] = prefix .. ": " .. label
                 else
-                    _titleCache[child.key] = child.label
+                    -- The page already names its section ("Debug Menu" under
+                    -- Debug, "Action Bars 1-8" under Action Bars)
+                    _titleCache[child.key] = label
                 end
             end
         end

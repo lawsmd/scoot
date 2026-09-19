@@ -189,6 +189,19 @@ local function BuildTemplate(bar, scrollFrame)
         end
     end
 
+    -- The thumb is the track's child and would fade with it, so the track's
+    -- piece goes on its textures and the steppers, the thumb's on the thumb
+    local Chrome = addon.UI.Chrome
+    local track = bar.Track
+    if track then
+        for _, key in ipairs({ "Begin", "Middle", "End" }) do
+            Chrome.ApplyOpacity("scrollTrack", track[key])
+        end
+        Chrome.ApplyOpacity("scrollThumb", track.Thumb)
+    end
+    Chrome.ApplyOpacity("scrollTrack", bar.Back)
+    Chrome.ApplyOpacity("scrollTrack", bar.Forward)
+
     function bar:Cleanup() end
 end
 

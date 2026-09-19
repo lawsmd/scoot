@@ -22,11 +22,11 @@ local PICKER_HEIGHT = 420
 local TAB_WIDTH = 90
 local PADDING = 12
 
--- Token band (the global-texture button under the title)
+-- Token band (the global-texture button in the title row)
 local TOKEN_BUTTON_WIDTH = 200
 local TOKEN_BUTTON_HEIGHT = 26
 local TITLE_INSET_PLAIN = 30
-local TITLE_INSET_BAND = 68
+local TITLE_INSET_BAND = 32
 
 -- 3-column grid layout
 local TEXTURES_PER_ROW = 3
@@ -133,17 +133,17 @@ local function CreateBarTexturePicker()
 
     local theme = GetTheme()
 
-    -- Calculate content area width
-    local contentWidth = (TEXTURE_BUTTON_WIDTH * TEXTURES_PER_ROW) + (TEXTURE_BUTTON_SPACING * (TEXTURES_PER_ROW - 1)) + (PADDING * 2)
-    local totalWidth = TAB_WIDTH + contentWidth + 24 -- Extra for scrollbar
+    -- The grid's own width. The shell adds the tab column and the rest of
+    -- the chrome around it to size the dialog.
+    local contentWidth = (TEXTURE_BUTTON_WIDTH * TEXTURES_PER_ROW) + (TEXTURE_BUTTON_SPACING * (TEXTURES_PER_ROW - 1))
 
     local frame = Controls.CreatePickerShell({
         -- Brand-named, and still ending in "Frame": CreatePickerShell derives
         -- the scroll frame and scrollbar names from that suffix.
         name = (addon.Brand or "Scoot") .. "BarTexturePickerFrame",
-        width = totalWidth,
         height = PICKER_HEIGHT,
         contentWidth = contentWidth,
+        tabWidth = TAB_WIDTH,
         title = "Select Bar Texture",
         onClose = CloseBarTexturePicker,
         tabs = TABS,
@@ -154,12 +154,14 @@ local function CreateBarTexturePicker()
     -- Button pool for texture options
     frame.TextureButtons = {}
 
-    -- Token band: one button under the title that writes the global bar
+    -- Token band: one button in the title row that writes the global bar
     -- texture token (global:barTexture) into the field. Hidden when the
     -- caller passes suppressTokens (the Apply All picker).
+    -- 2 down from the frame's top centers the buttons on the title text.
     local band = CreateFrame("Frame", nil, frame)
-    band:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -(TITLE_INSET_PLAIN + 2))
-    band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PADDING, -(TITLE_INSET_PLAIN + 2))
+    local bandInset = frame._padInset or PADDING
+    band:SetPoint("TOPLEFT", frame, "TOPLEFT", bandInset, -2)
+    band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -bandInset, -2)
     band:SetHeight(TOKEN_BUTTON_HEIGHT + 4)
     band:Hide()
     frame.TokenBand = band

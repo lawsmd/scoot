@@ -28,6 +28,15 @@ local function BuildMaps()
     end
 end
 
+local function HasNavKey(key)
+    BuildMaps()
+    if navChildren[key] then return true end
+    for _, parent in ipairs(Navigation.NavModel or {}) do
+        if parent.key == key then return true end
+    end
+    return false
+end
+
 --- True when the page's module (or sub-module) is switched off for this session.
 --- Uses Navigation:IsNavModuleActive rather than a bare addon._activeModules read,
 --- because the latter ignores moduleSubId - which matters for damageMeterV2 under
@@ -66,10 +75,15 @@ function addon.UI:OpenToPage(navKey, opts)
 
     -- A disabled module can't be configured, so send the user where they can
     -- enable it and drop the state seed.
+    -- The landing page is product data: a page tree names its own with
+    -- NavModel.home, and a tree without that page keeps the requested key.
     local targetKey = navKey
     if addon.UI:IsNavKeyDisabled(navKey) then
-        targetKey = "startHere"
-        opts = {}
+        local home = (Navigation.NavModel and Navigation.NavModel.home) or "startHere"
+        if HasNavKey(home) then
+            targetKey = home
+            opts = {}
+        end
     end
 
     -- Navigation._frame only exists after Initialize().

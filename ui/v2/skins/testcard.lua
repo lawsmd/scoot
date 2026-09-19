@@ -187,6 +187,10 @@ Skin.Register("testcard", {
         rowHeightField = 48,
         rowHeightEmphasized = 76,
         dualRowHeight = 61,
+        -- Room under a captioned cluster. The caption band lifts the controls
+        -- toward the row's top, so the row grows by this and the cluster
+        -- stays in the band above it; the divider then clears the fields.
+        dualRowPadBottom = 6,
         controlHeight = 28,
         rowPadding = 14,
         labelTopPad = 12,
@@ -228,6 +232,10 @@ Skin.Register("testcard", {
         resizeGrip = { size = 16, x = -4, y = 4, dot = 2, step = 4, alpha = 0.7 },
         toolbar = { height = 26, spacing = 10, y = 0, fontSize = 11 },
         pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
+
+        -- The Features page's raise into the empty band under the title bar,
+        -- clearing the toolbar row the way tui's does.
+        featuresPaneTop = -18,
 
         -- The panel's own numbers, per surface. paneInset is the scroll
         -- frame's inset inside the content pane.

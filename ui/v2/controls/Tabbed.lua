@@ -152,14 +152,17 @@ function Controls:CreateTabbedSection(options)
         end
         tabBtn:SetWidth(btnWidth)
 
-        -- Label (offset left if info icon present)
+        -- Label (offset left if info icon present). labelOffsetY moves it off
+        -- the button's center for a skin whose tab art wants it lower or
+        -- higher than the geometry puts it.
         local labelStr = tabBtn:CreateFontString(nil, "OVERLAY")
         theme:ApplyFont(labelStr, "label", M().tab.fontSize)
+        local labelDY = M().tab.labelOffsetY or 0
         if hasInfoIcon then
             -- Center the label + icon combo by offsetting label left
-            labelStr:SetPoint("CENTER", -infoIconWidth / 2, 0)
+            labelStr:SetPoint("CENTER", -infoIconWidth / 2, labelDY)
         else
-            labelStr:SetPoint("CENTER", 0, 0)
+            labelStr:SetPoint("CENTER", 0, labelDY)
         end
         labelStr:SetText(tabData.label)
         tabBtn._label = labelStr

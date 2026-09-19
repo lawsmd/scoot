@@ -22,8 +22,8 @@ end
 -- The ruler is parented and anchored only to UIParent, a chain that is never
 -- secret, and a single anchor point leaves the width unbounded.
 local ruler
-local warmedAt = {}   -- face .. size -> GetTime() of its warm-up
-local cache = {}      -- face .. size .. text -> width
+local warmedAt = {}   -- face .. size .. style -> GetTime() of its warm-up
+local cache = {}      -- face .. size .. style .. text -> width
 
 local function EnsureRuler()
     if ruler then return ruler end
@@ -49,15 +49,20 @@ function Controls.MeasureText(role, text, size)
 
     local theme = GetTheme()
     if not theme then return nil end
-    local face, roleSize = theme:GetFontRole(role)
+    local face, roleSize, roleStyle = theme:GetFontRole(role)
     size = size or roleSize
-    local faceKey = face .. "\0" .. size
+    -- An outline dilates the glyphs, so the style belongs in the key. Deep
+    -- Shadow measures as its base style: a companion on the shared ruler would
+    -- be permanent hooks and a mirrored copy per measure, and the metrics are
+    -- the same either way (addon.FontStyles.MetricStyle).
+    local style = addon.FontStyles.MetricStyle(roleStyle)
+    local faceKey = face .. "\0" .. size .. "\0" .. style
     local key = faceKey .. "\0" .. text
     local hit = cache[key]
     if hit then return hit end
 
     local fs = EnsureRuler()
-    theme:ApplyFont(fs, role, size)
+    theme:ApplyFont(fs, role, size, style)
     if not warmedAt[faceKey] then
         fs:SetText("The quick brown fox 0123456789")
         pcall(fs.GetUnboundedStringWidth, fs)
@@ -251,7 +256,7 @@ local function CheckRow(f, report)
         report.zeroRows = report.zeroRows + 1
     end
 
-    local labelW = Controls.MeasureText("label", text, FontSize(label)) or 0
+    local labelW = Controls.MeasureText(Controls.RowLabelFontRole(), text, FontSize(label)) or 0
     local _, _, _, labelX = label:GetPoint(1)
     local labelRight = (labelX or 0) + labelW
     if f._infoIcon then

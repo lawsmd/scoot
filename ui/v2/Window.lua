@@ -117,8 +117,18 @@ end
 
 -- portrait: { texture = <Theme.Textures key or path> } | { atlas = name } |
 -- { unit = "player" } | { class = true } | false, which hides the ring's
--- contents and swaps the border to spec.layout when the skin names one; nil
--- leaves the template's empty ring. Every call is the template's own method.
+-- contents; nil leaves the template's empty ring. Every call is the
+-- template's own method. size, with x and y, redraws the icon at that side
+-- and that offset from the frame's top-left corner, the template's own 62 at
+-- -5, 7 otherwise. mask = false takes the round crop off, for a mark drawn
+-- to its own edge. overlay = true lifts the icon over the border art, which
+-- a portrait sitting in a ring's hole does not want and a mark standing on a
+-- plain corner does.
+-- layout: a NineSliceUtil layout name the border is rebuilt from, whatever
+-- the portrait is. The template's top-left corner is the one that carries
+-- the portrait ring, so a skin whose mark is already round names
+-- ButtonFrameTemplateNoPortrait here: the same metal border with a plain
+-- corner, and the mark left standing in the space the ring held.
 -- contentBackground: the declared descriptor gives the rect (inset) and the
 -- draw sublevel, the resolved one the art, so a missing atlas keeps the
 -- geometry and changes only the fill. The template's own tiled background
@@ -133,10 +143,33 @@ end
 function Window:BuildTemplateParts(frame, spec)
     local Chrome = addon.UI.Chrome
     local portrait = spec.portrait
+    -- The border is named on its own line, not behind portrait = false, so a
+    -- skin can drop the ringed corner and still draw an icon there. A layout
+    -- the client does not carry leaves the template's own border alone.
+    if spec.layout and frame.SetBorder and NineSliceUtil
+        and NineSliceUtil.GetLayout(spec.layout) then
+        frame:SetBorder(spec.layout)
+    end
     if portrait == false then
         if frame.SetPortraitShown then frame:SetPortraitShown(false) end
-        if spec.layout and frame.SetBorder then frame:SetBorder(spec.layout) end
     elseif type(portrait) == "table" then
+        local container = frame.PortraitContainer
+        if portrait.size and frame.SetPortraitTextureSizeAndOffset then
+            frame:SetPortraitTextureSizeAndOffset(portrait.size, portrait.x or 0, portrait.y or 0)
+        end
+        -- The round crop is there for a unit portrait. A mark drawn to its
+        -- own edge asks for it off and keeps every pixel it was drawn with.
+        if portrait.mask == false and container and container.CircleMask
+            and container.portrait and container.portrait.RemoveMaskTexture then
+            container.portrait:RemoveMaskTexture(container.CircleMask)
+        end
+        -- The border is a child frame levels above this one, so a ringless
+        -- corner draws its metal over the icon. The same step GetOverlayLevel
+        -- gives the resize grip, computed here because that method is added
+        -- to the frame after this call.
+        if portrait.overlay and container and frame.NineSlice then
+            container:SetFrameLevel(frame.NineSlice:GetFrameLevel() + 1)
+        end
         if portrait.unit and frame.SetPortraitToUnit then
             frame:SetPortraitToUnit(portrait.unit)
             frame:HookScript("OnShow", function(f) f:SetPortraitToUnit(portrait.unit) end)
@@ -167,12 +200,18 @@ function Window:BuildTemplateParts(frame, spec)
         local sublevel = declared.sublevel or -5
         local tex
         if cb.kind == "atlas" and cb.atlas and cb.grid then
+            -- The leading splits are placed here; the trailing ones the grid
+            -- counts in fromRight and fromBottom place themselves
             local m = Metrics()
-            local rows = cb.grid.rows or {}
-            local xs = { (m.windowInset or 0) + (m.navWidth or 0) - left }
-            local ys = {}
-            for i, r in ipairs(rows) do
-                ys[i] = (m.titleBarHeight or 0) - (rows[#rows] - r) - top
+            local cols, rows = cb.grid.cols or {}, cb.grid.rows or {}
+            local leadCols = #cols - (cb.grid.fromRight or 0)
+            local leadRows = #rows - (cb.grid.fromBottom or 0)
+            local xs, ys = {}, {}
+            for i = 1, leadCols do
+                xs[i] = (m.windowInset or 0) + (m.navWidth or 0) - left + (cols[i] - cols[1])
+            end
+            for i = 1, leadRows do
+                ys[i] = (m.titleBarHeight or 0) - (rows[leadRows] - rows[i]) - top
             end
             tex = Chrome.GridAtlas(host, cb, "BACKGROUND", sublevel, xs, ys)
         end
@@ -192,8 +231,24 @@ function Window:BuildTemplateParts(frame, spec)
             end
             tex:SetColorTexture(r, g, b, a or 1)
         end
+        -- A grid names its own cells; one texture laid whole is the page fill
+        if tex.SetAlpha then Chrome.ApplyOpacity("pageFill", tex) end
         frame._contentBackground = tex
     end
+
+    -- The template's own regions, each on its piece: the border is a child
+    -- frame and the fill a texture behind it, so the two fade apart. The
+    -- portrait ring is drawn by the border's corner and goes with it.
+    --
+    -- spec.pieces renames them, because a surface standing on another one
+    -- cannot take the window's numbers: the panel's fill is translucent
+    -- against the world, and a dialog over that panel at the same value
+    -- shows the world through two of them. The picker role names its own.
+    local pieces = spec.pieces or {}
+    Chrome.ApplyOpacity(pieces.border or "windowBorder", frame.NineSlice)
+    Chrome.ApplyOpacity(pieces.fill or "windowFill", frame.Bg)
+    Chrome.ApplyOpacity(pieces.streaks or "titleStreaks", frame.TopTileStreaks)
+    Chrome.ApplyOpacity(pieces.portrait or "portrait", frame.PortraitContainer)
 end
 
 --------------------------------------------------------------------------------

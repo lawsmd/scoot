@@ -31,6 +31,19 @@ local function Glyph(expanded)
     return glyphs.collapsed or "\226\150\182"
 end
 
+-- The clear margin the header's art keeps outside its drawn border. The body
+-- moves in and up by it so the box's lines meet that border; a flat header
+-- draws to its own edge and has none.
+local function HeaderEdge()
+    local edge = addon.UI.Chrome.Spec("sectionHeader").edge or {}
+    return edge.left or 0, edge.right or 0, edge.bottom or 0
+end
+
+local function ExpandedHeight(contentHeight)
+    local _, _, up = HeaderEdge()
+    return M().sectionHeaderHeight + contentHeight + M().collapsible.borderWidth - up
+end
+
 --------------------------------------------------------------------------------
 -- Session-only state storage
 --------------------------------------------------------------------------------
@@ -99,7 +112,7 @@ function Controls:CreateCollapsibleSection(options)
     local dimR, dimG, dimB = theme:GetDimTextColor()
 
     -- Calculate total height
-    local totalHeight = expanded and (M().sectionHeaderHeight + contentHeight + M().collapsible.borderWidth) or M().sectionHeaderHeight
+    local totalHeight = expanded and (ExpandedHeight(contentHeight)) or M().sectionHeaderHeight
 
     -- Main container frame
     local section = CreateFrame("Frame", name, parent)
@@ -123,18 +136,25 @@ function Controls:CreateCollapsibleSection(options)
     -- Background, hover fill and the box edges come from the sectionHeader role
     header._backdrop = addon.UI.Chrome.Backdrop("sectionHeader", header)
 
-    -- Indicator (▼/▶)
-    local indicator = header:CreateFontString(nil, "OVERLAY")
-    theme:ApplyFont(indicator, "label", M().collapsible.indicatorSize)
-    indicator:SetPoint("LEFT", header, "LEFT", M().collapsible.contentPadding, 0)
-    indicator:SetText(Glyph(expanded))
-    indicator:SetTextColor(ar, ag, ab, 1)
+    -- Indicator: a character in the label font or art, as the skin names it.
+    -- The title hangs off the indicator's region, and a change of glyph kind
+    -- swaps that region, so both are placed again after every SetGlyph.
+    local indicator = addon.UI.Chrome.Glyph(header, Glyph(expanded), {
+        fontRole = "label", fontSize = M().collapsible.indicatorSize,
+    })
+    indicator:SetColor(ar, ag, ab, 1)
     header._indicator = indicator
 
     -- Title text (white, not accent-colored)
     local titleFS = header:CreateFontString(nil, "OVERLAY")
     theme:ApplyFont(titleFS, "header", M().collapsible.titleSize)
-    titleFS:SetPoint("LEFT", indicator, "RIGHT", 6, 0)
+    local function PlaceIndicator()
+        indicator.region:ClearAllPoints()
+        indicator.region:SetPoint("LEFT", header, "LEFT", M().collapsible.contentPadding, 0)
+        titleFS:ClearAllPoints()
+        titleFS:SetPoint("LEFT", indicator.region, "RIGHT", 6, 0)
+    end
+    PlaceIndicator()
     titleFS:SetText(title)
     titleFS:SetTextColor(1, 1, 1, 1)
     header._title = titleFS
@@ -161,8 +181,9 @@ function Controls:CreateCollapsibleSection(options)
     -- Content container (visible when expanded)
     ----------------------------------------------------------------------------
     local content = CreateFrame("Frame", nil, section)
-    content:SetPoint("TOPLEFT", header, "BOTTOMLEFT", M().collapsible.borderWidth, 0)
-    content:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -M().collapsible.borderWidth, 0)
+    local edgeLeft, edgeRight, edgeUp = HeaderEdge()
+    content:SetPoint("TOPLEFT", header, "BOTTOMLEFT", M().collapsible.borderWidth + edgeLeft, edgeUp)
+    content:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -M().collapsible.borderWidth - edgeRight, edgeUp)
     content:SetHeight(contentHeight)
 
     -- Background and the box's remaining edges come from the sectionBody role
@@ -170,7 +191,7 @@ function Controls:CreateCollapsibleSection(options)
     section._content = content
     -- Total horizontal inset of the content frame against the section, read
     -- by the builder to pass the reduced width into the inner builder.
-    section._contentInset = content._backdrop.inset * 2
+    section._contentInset = content._backdrop.inset * 2 + edgeLeft + edgeRight
 
     ----------------------------------------------------------------------------
     -- Update visual state based on expanded/collapsed
@@ -179,10 +200,11 @@ function Controls:CreateCollapsibleSection(options)
         local isExpanded = section._expanded
 
         header._backdrop:SetOpen(isExpanded)
-        header._indicator:SetText(Glyph(isExpanded))
+        header._indicator:SetGlyph(Glyph(isExpanded))
+        PlaceIndicator()
         if isExpanded then
             content:Show()
-            section:SetHeight(M().sectionHeaderHeight + section._contentHeight + M().collapsible.borderWidth)
+            section:SetHeight(ExpandedHeight(section._contentHeight))
         else
             content:Hide()
             section:SetHeight(M().sectionHeaderHeight)
@@ -224,7 +246,7 @@ function Controls:CreateCollapsibleSection(options)
     theme:Subscribe(subscribeKey, function(r, g, b)
         -- The box edges and fills retint through the backdrop handles; the
         -- indicator is the one accent text here and the title stays white.
-        header._indicator:SetTextColor(r, g, b, 1)
+        header._indicator:SetColor(r, g, b, 1)
     end)
 
     ----------------------------------------------------------------------------
@@ -250,7 +272,7 @@ function Controls:CreateCollapsibleSection(options)
 
     function section:GetHeight()
         if self._expanded then
-            return M().sectionHeaderHeight + self._contentHeight + M().collapsible.borderWidth
+            return ExpandedHeight(self._contentHeight)
         else
             return M().sectionHeaderHeight
         end
@@ -260,7 +282,7 @@ function Controls:CreateCollapsibleSection(options)
         self._contentHeight = height
         self._content:SetHeight(height)
         if self._expanded then
-            self:SetHeight(M().sectionHeaderHeight + height + M().collapsible.borderWidth)
+            self:SetHeight(ExpandedHeight(height))
         end
     end
 

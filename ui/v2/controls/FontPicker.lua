@@ -4,6 +4,15 @@ local addonName, addon = ...
 addon.UI = addon.UI or {}
 addon.UI.Controls = addon.UI.Controls or {}
 local Controls = addon.UI.Controls
+local Theme -- Will be set after Theme.lua loads
+
+-- Lazy Theme accessor
+local function GetTheme()
+    if not Theme then
+        Theme = addon.UI.Theme
+    end
+    return Theme
+end
 
 --------------------------------------------------------------------------------
 -- State and layout
@@ -23,17 +32,21 @@ local PICKER_PADDING = 12
 local PICKER_HEIGHT = 420
 local TAB_WIDTH = 90
 
--- Token band (the two global-font buttons under the title)
-local TOKEN_BUTTON_WIDTH = 180
-local TOKEN_BUTTON_HEIGHT = 26
+-- Token band (the two global-font buttons under the title). Each carries two
+-- lines, the token's name over the face it currently points at, so the height
+-- is the pair plus the art's own padding.
+local TOKEN_BUTTON_WIDTH = 230
+local TOKEN_BUTTON_HEIGHT = 40
 local TITLE_INSET_PLAIN = 30
-local TITLE_INSET_BAND = 68
+local TITLE_INSET_BAND = TITLE_INSET_PLAIN + TOKEN_BUTTON_HEIGHT + 10
 
 --------------------------------------------------------------------------------
 -- Font Category Tables
 --------------------------------------------------------------------------------
 
-local DEFAULT_FONTS = { "GAME_DEFAULT", "FRIZQT__", "ARIALN", "MORPHEUS", "SKURRI" }
+-- GAME_DEFAULT has no entry: it draws the same face as FRIZQT__, whose entry
+-- lights for a field still holding it.
+local DEFAULT_FONTS = { "FRIZQT__", "ARIALN", "MORPHEUS", "SKURRI" }
 
 local GOOGLE_FONTS = {
     -- Dosis
@@ -92,6 +105,28 @@ local function GetCategoryForFont(key)
     return fontCategoryMap[key] or "default"
 end
 
+-- What a global font token points at right now: the display name of the key
+-- addon.NormalizeFontKey resolves it to. A host whose Apply All page has
+-- never written one resolves to FRIZQT__, so the band reads "Friz Quadrata
+-- (Default)" rather than saying nothing.
+local function TokenValueName(token)
+    local key = addon.NormalizeFontKey and addon.NormalizeFontKey(token) or "FRIZQT__"
+    if addon.IsLSMKey and addon.IsLSMKey(key) then
+        return addon.LSMKeyToName(key)
+    end
+    return (addon.FontDisplayNames and addon.FontDisplayNames[key]) or key
+end
+
+-- The band button's top line: what clicking it does. The token's own name
+-- sits inside it, so the line reads as the action and the face name below it
+-- reads as the value that action follows.
+local function TokenActionLabel(token)
+    if token == addon.MediaTokens.BODY_FONT then
+        return "Use the Global Body font"
+    end
+    return "Use the Global Header font"
+end
+
 local function CloseFontPicker()
     if fontPickerFrame then
         fontPickerFrame:Hide()
@@ -103,17 +138,17 @@ end
 local function CreateFontPicker()
     if fontPickerFrame then return fontPickerFrame end
 
-    -- Calculate content area width (right of tabs)
-    local contentWidth = (FONT_BUTTON_WIDTH * FONTS_PER_ROW) + (FONT_BUTTON_SPACING * (FONTS_PER_ROW - 1)) + (PICKER_PADDING * 2)
-    local totalWidth = TAB_WIDTH + contentWidth + 24 -- tabs + content + scrollbar
+    -- The grid's own width. The shell adds the tab column and the rest of
+    -- the chrome around it to size the dialog.
+    local contentWidth = (FONT_BUTTON_WIDTH * FONTS_PER_ROW) + (FONT_BUTTON_SPACING * (FONTS_PER_ROW - 1))
 
     local frame = Controls.CreatePickerShell({
         -- Brand-named, and still ending in "Frame": CreatePickerShell derives
         -- the scroll frame and scrollbar names from that suffix.
         name = (addon.Brand or "Scoot") .. "FontPickerFrame",
-        width = totalWidth,
         height = PICKER_HEIGHT,
         contentWidth = contentWidth,
+        tabWidth = TAB_WIDTH,
         title = "Select Font",
         onClose = CloseFontPicker,
         tabs = FONT_TABS,
@@ -126,14 +161,24 @@ local function CreateFontPicker()
 
     -- Token band: two buttons under the title that write the global font
     -- tokens (global:header / global:body) into the field. Hidden when the
-    -- caller passes suppressTokens (the Apply All and SCT pickers).
+    -- caller passes suppressTokens (the Apply All and SCT pickers). Each
+    -- button carries the action on the top line and, under it in parentheses,
+    -- the face that token points at right now, drawn small and dim in that
+    -- face, so the band says what choosing it will draw with.
     local band = CreateFrame("Frame", nil, frame)
-    band:SetPoint("TOPLEFT", frame, "TOPLEFT", PICKER_PADDING, -(TITLE_INSET_PLAIN + 2))
-    band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PICKER_PADDING, -(TITLE_INSET_PLAIN + 2))
-    band:SetHeight(TOKEN_BUTTON_HEIGHT + 4)
+    local bandInset = frame._padInset or PICKER_PADDING
+    band:SetPoint("TOPLEFT", frame, "TOPLEFT", bandInset, -(TITLE_INSET_PLAIN + 2))
+    band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -bandInset, -(TITLE_INSET_PLAIN + 2))
+    band:SetHeight(TOKEN_BUTTON_HEIGHT)
     band:Hide()
     band.Buttons = {}
     frame.TokenBand = band
+
+    -- The button role's art where the skin has some, the framework's fill and
+    -- border where it does not. Controls:CreateButton carries one label and
+    -- these carry two, so the draw is here rather than through it.
+    local buttonKind = addon.UI.Chrome.Spec("button").kind
+    local bandArt = buttonKind ~= "flat" and buttonKind ~= "template"
 
     local bandTokens = { addon.MediaTokens.HEADER_FONT, addon.MediaTokens.BODY_FONT }
     for i, token in ipairs(bandTokens) do
@@ -147,83 +192,118 @@ local function CreateFontPicker()
             btn:SetPoint("LEFT", band, "CENTER", 4, 0)
         end
 
-        local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -6)
-        bg:SetAllPoints()
-        bg:SetColorTexture(0, 0, 0, 0)
-        btn._bg = bg
-        btn._borders = Controls.CreateBorder(btn, { alpha = 0.5 })
+        -- The action, in the panel's label font. Both lines span the button's
+        -- width from a corner pair rather than LEFT plus TOP, which would give
+        -- the string two vertical anchors.
+        local caption = btn:CreateFontString(nil, "OVERLAY")
+        GetTheme():ApplyFont(caption, "label", 12)
+        caption:SetPoint("TOPLEFT", btn, "TOPLEFT", 6, -6)
+        caption:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -6, -6)
+        caption:SetJustifyH("CENTER")
+        caption:SetWordWrap(false)
+        caption:SetText(TokenActionLabel(token))
+        btn.Caption = caption
 
-        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        label:SetPoint("LEFT", btn, "LEFT", 4, 0)
-        label:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
-        label:SetJustifyH("CENTER")
-        label:SetWordWrap(false)
-        btn.Label = label
+        -- The face it points at, in parentheses and drawn in that face
+        local value = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        value:SetPoint("TOPLEFT", caption, "BOTTOMLEFT", 0, -2)
+        value:SetPoint("TOPRIGHT", caption, "BOTTOMRIGHT", 0, -2)
+        value:SetJustifyH("CENTER")
+        value:SetWordWrap(false)
+        btn.Value = value
+
+        if bandArt then
+            btn._backdrop = addon.UI.Chrome.Backdrop("button", btn, { label = caption })
+        else
+            local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -6)
+            bg:SetAllPoints()
+            bg:SetColorTexture(0, 0, 0, 0)
+            btn._bg = bg
+            btn._borders = Controls.CreateBorder(btn, { alpha = 0.5 })
+        end
 
         btn._fontValue = token
 
+        -- One repaint for both draws: the art follows the state flags, the
+        -- flat fill and the two label colors are set here.
+        function btn:Paint()
+            local dr, dg, db = GetTheme():GetDimTextColor()
+            if self._backdrop then
+                self._backdrop:SetHover(self._isHover)
+                self._backdrop:SetSelected(self._isSelected)
+                self.Value:SetTextColor(dr, dg, db, 1)
+                return
+            end
+            local ar, ag, ab = self._accentR or 1, self._accentG or 1, self._accentB or 1
+            local lit = self._isSelected or self._isHover
+            local alpha = (self._isSelected and self._isHover and 0.30)
+                or (self._isSelected and 0.25) or (self._isHover and 0.12) or 0
+            self._bg:SetColorTexture(ar, ag, ab, alpha)
+            if lit then
+                self.Caption:SetTextColor(ar, ag, ab, 1)
+            else
+                self.Caption:SetTextColor(1, 1, 1, 0.9)
+            end
+            self.Value:SetTextColor(dr, dg, db, 1)
+        end
+
         btn:SetScript("OnClick", function(self)
-            local value = self._fontValue
+            local picked = self._fontValue
             if fontPickerSetting and fontPickerSetting.SetValue then
-                fontPickerSetting:SetValue(value)
+                fontPickerSetting:SetValue(picked)
             end
             if fontPickerCallback then
-                fontPickerCallback(value)
+                fontPickerCallback(picked)
             end
             CloseFontPicker()
             PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
         end)
         btn:SetScript("OnEnter", function(self)
-            if self._isSelected then
-                self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.30)
-            else
-                self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.12)
-                self.Label:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
-            end
+            self._isHover = true
+            self:Paint()
         end)
         btn:SetScript("OnLeave", function(self)
-            if self._isSelected then
-                self._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.25)
-                self.Label:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
-            else
-                self._bg:SetColorTexture(0, 0, 0, 0)
-                self.Label:SetTextColor(1, 1, 1, 0.9)
-            end
+            self._isHover = false
+            self:Paint()
         end)
 
         band.Buttons[i] = btn
     end
 
-    -- Repaint the band: label in the token's resolved face, selection
-    -- highlight when the field already holds that token. Runs from
-    -- PopulateContent so accent changes retint it too.
+    -- The help icon left of the pair, carrying the same line the selector
+    -- field shows while it holds one of these tokens (FontSelector.lua).
+    local bandInfo = Controls:CreateInfoIcon({
+        parent = band,
+        tooltipText = "The Global Fonts are set on the Apply All > Font menu.",
+        size = 14,
+    })
+    if bandInfo then
+        bandInfo:SetPoint("RIGHT", band.Buttons[1], "LEFT", -8, 0)
+        band.InfoIcon = bandInfo
+    end
+
+    -- Repaint the band: the parenthesized line in the token's resolved face
+    -- and its current name, selection highlight when the field already holds
+    -- that token. Runs from PopulateContent so accent changes retint it too.
     function frame:UpdateTokenBand()
         if not self.TokenBand:IsShown() then return end
         local currentValue = nil
         if fontPickerSetting and fontPickerSetting.GetValue then
             currentValue = fontPickerSetting:GetValue()
         end
-        local displayNames = addon.FontDisplayNames or {}
         local defaultFont = select(1, _G.GameFontNormal:GetFont()) or "Fonts\\FRIZQT__.TTF"
         for _, btn in ipairs(self.TokenBand.Buttons) do
             local token = btn._fontValue
             local face = addon.ResolveFontFace(token)
-            if not (face and pcall(btn.Label.SetFont, btn.Label, face, 12, "")) then
-                pcall(btn.Label.SetFont, btn.Label, defaultFont, 12, "")
+            if not (face and pcall(btn.Value.SetFont, btn.Value, face, 10, "")) then
+                pcall(btn.Value.SetFont, btn.Value, defaultFont, 10, "")
             end
-            btn.Label:SetText(displayNames[token] or token)
+            btn.Value:SetText(("(%s)"):format(TokenValueName(token)))
             btn._accentR = self._accentR
             btn._accentG = self._accentG
             btn._accentB = self._accentB
-            local isSelected = (currentValue == token)
-            btn._isSelected = isSelected
-            if isSelected then
-                btn._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.25)
-                btn.Label:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
-            else
-                btn._bg:SetColorTexture(0, 0, 0, 0)
-                btn.Label:SetTextColor(1, 1, 1, 0.9)
-            end
+            btn._isSelected = (currentValue == token)
+            btn:Paint()
         end
     end
 
@@ -253,6 +333,7 @@ local function CreateFontPicker()
         if fontPickerSetting and fontPickerSetting.GetValue then
             currentValue = fontPickerSetting:GetValue()
         end
+        if currentValue == "GAME_DEFAULT" then currentValue = "FRIZQT__" end
 
         -- Calculate content height
         local numRows = math.ceil(#fonts / FONTS_PER_ROW)
@@ -288,11 +369,20 @@ local function CreateFontPicker()
                 btn:RegisterForClicks("AnyUp")
 
                 local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                label:SetPoint("LEFT", btn, "LEFT", 4, 0)
-                label:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+                label:SetPoint("LEFT", btn, "LEFT", 8, 0)
+                label:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
                 label:SetJustifyH("LEFT")
                 label:SetWordWrap(false)
                 btn.Label = label
+
+                -- The grid is a list of choices, so each cell takes the
+                -- navRow role: the skin's row art under the cursor and under
+                -- the font the field already holds, and the name colored by
+                -- the same state walk. The name's own face is set below and
+                -- the role never touches it.
+                btn._backdrop = addon.UI.Chrome.Backdrop("navRow", btn, {
+                    variant = "child", label = label,
+                })
 
                 self.Buttons[i] = btn
             end
@@ -331,12 +421,7 @@ local function CreateFontPicker()
             btn._accentR = accentR
             btn._accentG = accentG
             btn._accentB = accentB
-
-            if isSelected then
-                btn.Label:SetTextColor(accentR, accentG, accentB, 1)
-            else
-                btn.Label:SetTextColor(1, 1, 1, 0.9)
-            end
+            btn._backdrop:SetSelected(isSelected)
 
             -- Click handler
             btn:SetScript("OnClick", function(self)
@@ -353,16 +438,10 @@ local function CreateFontPicker()
 
             -- Hover effects
             btn:SetScript("OnEnter", function(self)
-                if not self._isSelected then
-                    self.Label:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
-                end
+                self._backdrop:SetHover(true)
             end)
             btn:SetScript("OnLeave", function(self)
-                if self._isSelected then
-                    self.Label:SetTextColor(self._accentR, self._accentG, self._accentB, 1)
-                else
-                    self.Label:SetTextColor(1, 1, 1, 0.9)
-                end
+                self._backdrop:SetHover(false)
             end)
 
             btn:Show()

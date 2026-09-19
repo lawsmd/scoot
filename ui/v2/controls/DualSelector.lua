@@ -68,17 +68,12 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
     selector:SetHeight(DUAL_SELECTOR_HEIGHT)
     -- Width will be set by the parent after deferred measurement
 
-    -- Selector border
-    selector._border = Controls.CreateBorder(selector, { alpha = DUAL_SELECTOR_BORDER_ALPHA })
-
-    -- Selector background
-    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
-
     -- Arrow buttons and separators
     local leftArrow, leftSep = Controls.CreateArrowButton(selector, {
         width = DUAL_SELECTOR_ARROW_WIDTH,
         height = DUAL_SELECTOR_HEIGHT - 2,
         glyph = "\226\151\128", -- ◀
+        direction = "prev",
         separator = "RIGHT",
     })
     leftArrow:SetPoint("LEFT", selector, "LEFT", 1, 0)
@@ -88,6 +83,7 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
         width = DUAL_SELECTOR_ARROW_WIDTH,
         height = DUAL_SELECTOR_HEIGHT - 2,
         glyph = "\226\150\182", -- ▶
+        direction = "next",
         separator = "LEFT",
     })
     rightArrow:SetPoint("RIGHT", selector, "RIGHT", -1, 0)
@@ -95,11 +91,15 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
 
     -- Value display (center, clickable for dropdown)
     local valueBtn = CreateFrame("Button", nil, selector)
-    valueBtn:SetPoint("LEFT", leftArrow, "RIGHT", 1, 0)
-    valueBtn:SetPoint("RIGHT", rightArrow, "LEFT", -1, 0)
+    local arrowGap = Controls.Metrics().field.arrowGap or 1
+    valueBtn:SetPoint("LEFT", leftArrow, "RIGHT", arrowGap, 0)
+    valueBtn:SetPoint("RIGHT", rightArrow, "LEFT", -arrowGap, 0)
     valueBtn:SetHeight(DUAL_SELECTOR_HEIGHT - 2)
     valueBtn:EnableMouse(true)
     valueBtn:RegisterForClicks("AnyUp")
+    -- The field role draws the shell: around the whole field when flat
+    selector._border, selector._bg, selector._backdrop =
+        Controls.AddFieldChrome(selector, valueBtn, { borderAlpha = DUAL_SELECTOR_BORDER_ALPHA })
 
     local valueBg = valueBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
     valueBg:SetAllPoints()
@@ -119,7 +119,7 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
     dropIndicator:SetPoint("LEFT", valueText, "RIGHT", 4, -1)
     dropIndicator:SetText("\226\150\188")  -- ▼
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
-    valueBtn._dropIndicator = dropIndicator
+    valueBtn._dropIndicator = Controls.AddFieldIndicator(valueBtn, dropIndicator)
 
     selector._leftArrow = leftArrow
     selector._rightArrow = rightArrow
@@ -285,8 +285,12 @@ Controls._CreateMiniSelector = CreateMiniSelector
 --   parent      : Parent frame (required)
 --   disabled    : Function returning disabled state (optional)
 --   name        : Optional global frame name
+--   wideSlots   : true lets the two selectors take the room a description
+--                 would, up to their full slot width (ignored with a
+--                 description)
 --
 -- Selector A/B options:
+--   caption     : Optional mini-label above the selector
 --   values      : Table of { key = "Display Text" }
 --   order       : Optional array of keys for display order
 --   get         : Function returning current key
@@ -331,12 +335,23 @@ function Controls:CreateDualSelector(options)
     -- cluster width, so BuildSlotRow shrinks both to share it: about 200 each
     -- on tui. A plain selector slot (140) clips labels such as "Inside the
     -- Icon" under the arrows.
+    local maxClusterWidth
+    if options.wideSlots and not (description and description ~= "") then
+        local m = Controls.Metrics()
+        local labelWidth = Controls.MeasureText(Controls.RowLabelFontRole(), label or "") or 0
+        maxClusterWidth = math.max(m.maxClusterWidth,
+            rowWidth - m.rowPadding * 2 - math.ceil(labelWidth) - m.slotGap * 2)
+    end
     local dualContainer, slotFrames = Controls.BuildSlotRow(row, {
         rowWidth = rowWidth,
         label = label,
         description = description,
         dimColor = { dimR, dimG, dimB },
-        slots = { { kind = "selectorWide" }, { kind = "selectorWide" } },
+        maxClusterWidth = maxClusterWidth,
+        slots = {
+            { kind = "selectorWide", label = selectorAOpts.caption },
+            { kind = "selectorWide", label = selectorBOpts.caption },
+        },
     })
     row._dualSelectorContainer = dualContainer
 

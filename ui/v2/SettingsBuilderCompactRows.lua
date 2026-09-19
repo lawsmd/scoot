@@ -69,8 +69,10 @@ end
 --   selectorB   : Table with selector B options (see below)
 --   key         : Optional unique key for dynamic updates
 --   disabled    : Function returning disabled state (optional)
+--   wideSlots   : true gives a row with no description wider selectors
 --
 -- Selector A/B options:
+--   caption     : Optional mini-label above the selector
 --   values      : Table of { key = "Display Text" }
 --   order       : Optional array of keys for display order
 --   get         : Function returning current key
@@ -89,6 +91,7 @@ function Builder:AddDualSelector(options)
         description = options.description,
         selectorA = options.selectorA,
         selectorB = options.selectorB,
+        wideSlots = options.wideSlots,
         useLightDim = self._useLightDim,
         disabled = options.disabled,
         isDisabled = options.isDisabled,

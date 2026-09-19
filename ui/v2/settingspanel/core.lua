@@ -22,6 +22,13 @@ local function HeaderModel()
     return UIPanel.HeaderModel or {}
 end
 
+-- Which pieces the home page draws, from the same two files. A key left out
+-- draws its piece, so Scoot declares no HomeModel at all; Camelot sets the
+-- ones it has not designed to false (forever/menu.lua).
+local function HomeModel()
+    return UIPanel.HomeModel or {}
+end
+
 -- Every layout number here comes from the active skin's metrics: the panel
 -- size and bounds, titleBarHeight, closeButton, resizeGrip, toolbar, pulse,
 -- contentHeaderHeight (a page may grow the header, see _headerBaseHeight),
@@ -126,16 +133,22 @@ end
 -- The title handle: SetHome(isHome) while the home page is up, Reveal(animate)
 -- when a page comes up, Cleanup(). ascii is the block-letter logo with its
 -- column reveal and a click home; text is the product name in the header
--- role or the role's fontObject; texture is the product's own image; window
--- is the window template's own title plate. A role the model has no art
--- for, or a window kind on a frame with no title plate, falls back to text.
+-- role or the role's fontObject; texture is the product's own image, with
+-- the same click home; window is the window template's own title plate. An
+-- ascii role the model has no art for, or a window kind on a frame with no
+-- title plate, falls back to text.
 function UIPanel:CreateTitle(titleBar)
     local frame = self.frame
     local model = HeaderModel().title or {}
     local spec = Chrome.Spec("titleBar")
     local kind = spec.kind
+    -- A product with no image declines the texture kind and takes the rest
+    -- of the skin's chain
+    if kind == "texture" and not model.texture then
+        spec = Chrome.Resolve(spec.fallback, { kind = "text" })
+        kind = spec.kind
+    end
     if kind == "ascii" and not model.ascii then kind = "text" end
-    if kind == "texture" and not model.texture then kind = "text" end
     if kind == "window" and not (frame.TitleContainer and frame.SetTitle) then kind = "text" end
     local panel = self
     local handle = { kind = kind }
@@ -257,12 +270,31 @@ function UIPanel:CreateTitle(titleBar)
         function handle:Reveal() end
         function handle:Cleanup() end
     elseif kind == "texture" then
-        local tex = titleBar:CreateTexture(nil, "ARTWORK")
+        -- The image may stand taller than the title band and past the
+        -- window's top edge, so its button is the window's child at the
+        -- overlay level, over the border. model.aspect, width over height,
+        -- sizes it from the skin's height; model.texCoord crops the file.
+        local btn = CreateFrame("Button", BRAND .. "TitleBtn", frame)
+        btn:SetFrameLevel(frame:GetOverlayLevel())
+        btn:RegisterForClicks("AnyUp")
+        local height = spec.height or 40
+        btn:SetSize(spec.width or (model.aspect and height * model.aspect) or 200, height)
+        btn:SetPoint(spec.point or "LEFT", titleBar, spec.point or "LEFT", spec.x or 12, spec.y or 0)
+        local tex = btn:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints()
         tex:SetTexture(model.texture)
-        tex:SetSize(spec.width or 200, spec.height or 40)
-        tex:SetPoint(spec.point or "LEFT", titleBar, spec.point or "LEFT", spec.x or 12, spec.y or 0)
+        if model.texCoord then
+            tex:SetTexCoord(unpack(model.texCoord))
+        end
+        btn:SetScript("OnClick", function()
+            panel:GoHome()
+        end)
+        passDrag(btn)
         frame._titleTexture = tex
-        function handle:SetHome() end
+
+        function handle:SetHome(isHome)
+            btn:EnableMouse(not isHome)
+        end
         function handle:Reveal() end
         function handle:Cleanup() end
     else
@@ -340,23 +372,16 @@ end
 -- edge. action.kind "page" selects a nav key, "editMode" opens Blizzard's
 -- Edit Mode through a secure click, "call" runs action.fn(panel).
 
+-- The secure click runs Blizzard's own /editmode, so ShowUIPanel runs
+-- untainted. A restricted snippet cannot stand in for it: Forever 1.60.1
+-- leaves loadstring_untainted nil inside RestrictedExecution.lua, and every
+-- snippet fails to compile there.
+local function EditModeSecureAction()
+    return { type = "macro", macrotext = "/editmode" }
+end
+UIPanel.EditModeSecureAction = EditModeSecureAction
+
 local function WireEditMode(btn)
-    local function setup()
-        if not C_AddOns.IsAddOnLoaded("Blizzard_EditMode") then
-            C_AddOns.LoadAddOn("Blizzard_EditMode")
-        end
-        if EditModeManagerFrame then
-            SecureHandlerSetFrameRef(btn, "em", EditModeManagerFrame)
-            btn:SetAttribute("_onclick", [[ self:GetFrameRef("em"):Show() ]])
-        end
-    end
-    if InCombatLockdown() then
-        -- Queue on the shared regen drain instead of registering events on the
-        -- secure button itself; setup is idempotent.
-        addon.Events.RunOutOfCombat(setup, "SettingsPanel:secureEditMode")
-    else
-        setup()
-    end
     btn:HookScript("PostClick", function()
         if addon.EditMode and addon.EditMode.MarkOpeningEditMode then
             addon.EditMode.MarkOpeningEditMode()
@@ -387,8 +412,7 @@ function UIPanel:CreateHeaderButtons()
                     Navigation:SelectItem(action.page)
                 end
             elseif action.kind == "editMode" then
-                opts.template = "SecureActionButtonTemplate, SecureHandlerClickTemplate"
-                opts.secureAction = {}  -- triggers AnyUp registration in Button.lua
+                opts.secureAction = EditModeSecureAction()
             elseif action.kind == "call" and action.fn then
                 opts.onClick = function()
                     action.fn(panel)
@@ -404,7 +428,12 @@ function UIPanel:CreateHeaderButtons()
         end
     end
 
-    -- Centered across the top edge, in the skin's spacing and offset
+    -- The row across the top edge, in the skin's spacing and offset.
+    -- toolbar.shift slides it along the space between the window's center and
+    -- the far right it fits in, which is where the close button starts: 0 or
+    -- absent leaves the row centered, 1 stands it against that margin, 0.5 is
+    -- halfway. The travel shrinks as the row grows, so a wider set of buttons
+    -- at the same shift lands nearer the center.
     local function PositionToolbar()
         local totalW = 0
         for _, btn in ipairs(buttons) do
@@ -412,7 +441,17 @@ function UIPanel:CreateHeaderButtons()
         end
         totalW = totalW + math.max(#buttons - 1, 0) * M().toolbar.spacing
 
-        local startX = -(totalW / 2)
+        local centerX = 0
+        local shift = M().toolbar.shift or 0
+        if shift > 0 then
+            local frameW = frame:GetWidth() or 0
+            local close = M().closeButton or {}
+            local margin = math.abs(close.x or 0) + (close.size or 0) + (M().windowInset or 0)
+            local travel = (frameW / 2) - margin - (totalW / 2)
+            if travel > 0 then centerX = travel * shift end
+        end
+
+        local startX = centerX - (totalW / 2)
         for _, btn in ipairs(buttons) do
             btn:ClearAllPoints()
             local btnW = btn:GetWidth() or 0
@@ -424,7 +463,9 @@ function UIPanel:CreateHeaderButtons()
     PositionToolbar()
     frame:HookScript("OnSizeChanged", PositionToolbar)
 
-    local btnLevel = frame:GetFrameLevel() + 15
+    -- toolbar.overlay lifts the row over the window's border, for a skin that
+    -- stands it on the title plate's edge
+    local btnLevel = M().toolbar.overlay and frame:GetOverlayLevel() or (frame:GetFrameLevel() + 15)
     for _, btn in ipairs(buttons) do
         btn:SetFrameLevel(btnLevel)
     end
@@ -432,16 +473,6 @@ function UIPanel:CreateHeaderButtons()
     frame._toolbarOrder = buttons
     frame._toolbarButtons = byKey
     self:RefreshToolbar()
-end
-
--- A page button shows pressed-in while its page is open
-function UIPanel:UpdateToolbarActive(pageKey)
-    local frame = self.frame
-    if not frame or not frame._toolbarOrder then return end
-    for _, btn in ipairs(frame._toolbarOrder) do
-        local action = btn._entry and btn._entry.action or {}
-        btn:SetActive(action.kind == "page" and action.page == pageKey)
-    end
 end
 
 -- Re-evaluates each entry's pulseWhen
@@ -470,12 +501,35 @@ function UIPanel:CreateResizeHandle()
     resizeHandle:SetFrameLevel(frame:GetOverlayLevel())
     resizeHandle:EnableMouse(true)
 
-    -- The atlas kind is one texture with a hover swap; flat is the dotted
-    -- diagonal, accent-tinted, brighter under the cursor.
+    -- The atlas and texture kinds are one image per state, an atlas name or a
+    -- file path by the kind: normal, an optional hover swap, an optional
+    -- pressed swap while the button is held, and an optional glow laid over
+    -- the base under the cursor, which is how Blizzard lights its own grips.
+    -- Flat is the dotted diagonal, accent-tinted, brighter under the cursor.
+    local isArt = (spec.kind == "atlas" or spec.kind == "texture")
+
+    local function setArt(region, name)
+        if spec.kind == "atlas" then
+            region:SetAtlas(name)
+        else
+            region:SetTexture(name)
+        end
+    end
+
     local function paint(handle, hover)
         if handle._art then
-            handle._art:SetAtlas((hover and spec.hover) or spec.normal, true)
-            handle._art:SetAllPoints(handle)
+            local name = (handle._held and spec.pressed)
+                or (hover and spec.hover)
+                or spec.normal
+            setArt(handle._art, name)
+            if spec.tint then
+                local r, g, b, a = Chrome.Color(spec.tint)
+                handle._art:SetVertexColor(r, g, b, a)
+                if handle._glow then handle._glow:SetVertexColor(r, g, b, a) end
+            end
+            if handle._glow then
+                handle._glow:SetShown(hover and not handle._held)
+            end
             return
         end
         local r, g, b = Theme:GetAccentColor()
@@ -485,10 +539,18 @@ function UIPanel:CreateResizeHandle()
         end
     end
 
-    if spec.kind == "atlas" then
+    if isArt then
         local art = resizeHandle:CreateTexture(nil, "OVERLAY")
         art:SetAllPoints()
         resizeHandle._art = art
+        if spec.glow then
+            local glow = resizeHandle:CreateTexture(nil, "OVERLAY", nil, 1)
+            glow:SetAllPoints()
+            setArt(glow, spec.glow)
+            if spec.glowBlend then glow:SetBlendMode(spec.glowBlend) end
+            glow:Hide()
+            resizeHandle._glow = glow
+        end
     else
         local lines = {}
         for i = 1, 3 do
@@ -525,11 +587,15 @@ function UIPanel:CreateResizeHandle()
 
     resizeHandle:SetScript("OnMouseDown", function(handle, button)
         if button == "LeftButton" then
+            handle._held = true
+            paint(handle, handle:IsMouseOver())
             frame:StartSizing("BOTTOMRIGHT")
         end
     end)
 
     resizeHandle:SetScript("OnMouseUp", function(handle, button)
+        handle._held = nil
+        paint(handle, handle:IsMouseOver())
         frame:StopMovingOrSizing()
         if addon.db and addon.db.global then
             local width, height = frame:GetSize()
@@ -611,7 +677,9 @@ function UIPanel:CreateContentPane()
     end
 
     local headerTitle = header:CreateFontString(nil, "OVERLAY")
-    Theme:ApplyHeaderFont(headerTitle, 20)
+    -- hdr.fontRole is the page name's own role where a skin declares one, so a
+    -- font style can sit on this line without reaching every other header.
+    Theme:ApplyHeaderFont(headerTitle, 20, hdr.fontRole)
     if inBand then
         headerTitle:SetPoint("LEFT", header, "LEFT", hdr.padLeft, 0)
     else
@@ -805,6 +873,15 @@ function UIPanel:CreateContentPane()
         welcomeText:Hide()
     end
 
+    -- A product with no home title keeps the four FontStrings and hides them:
+    -- the guide's divider below measures itself against the title's rect.
+    if HomeModel().title == false then
+        homeAscii:Hide()
+        versionText:Hide()
+        homeMascot:Hide()
+        welcomeText:Hide()
+    end
+
     C_Timer.After(0.05, function()
         if homeAscii and homeMascot and homeContainer then
             local titleW = homeAscii:GetStringWidth() or 600
@@ -833,8 +910,17 @@ function UIPanel:CreateContentPane()
     local guideLabels = {}
 
     -- Shared X/Y/Z descriptions live in core/modules.lua (addon.FEATURE_GUIDE);
-    -- the Features page legend renders from the same table.
-    for i, entry in ipairs(addon.FEATURE_GUIDE or {}) do
+    -- the Features page legend renders from the same table. The divider and
+    -- the header belong to the rows under them, so a product with no table
+    -- (Camelot leaves core/modules.lua off its TOC) draws none of the three.
+    local guide = addon.FEATURE_GUIDE or {}
+    if HomeModel().featureGuide == false or #guide == 0 then
+        guideDivider:Hide()
+        guideHeader:Hide()
+        guide = {}
+    end
+
+    for i, entry in ipairs(guide) do
         local icon = Controls:CreateInfoIcon({
             parent = homeContent,
             size = M().home.guideIconSize,
@@ -866,30 +952,35 @@ function UIPanel:CreateContentPane()
     end
 
     -- Accent color control, pinned into the bottom-left corner of the home page.
-    -- The flyout opens downward, past the panel's bottom edge.
-    local accentControl = Controls:CreateFlyoutColorPicker({
-        parent = homeContent,
-        name = BRAND .. "AccentColorPicker",
-        label = "UI Color",
-        direction = "DOWN",
-        width = 280,
-        get = function() return Theme:GetCustomAccentColor() end,
-        set = function(r, g, b) Theme:SetAccentColor(r, g, b, 1) end,
-        preview = function() return Theme:GetAccentColor() end,
-        colorLabel = "Custom Color",
-        colorDisabled = function()
-            return Theme:GetAccentColorMode() == Theme.ACCENT_MODE_CLASS
-        end,
-        toggleLabel = "Class Color",
-        toggleGet = function()
-            return Theme:GetAccentColorMode() == Theme.ACCENT_MODE_CLASS
-        end,
-        toggleSet = function(value)
-            Theme:SetAccentColorMode(value and Theme.ACCENT_MODE_CLASS or Theme.ACCENT_MODE_CUSTOM)
-        end,
-        resetLabel = "Reset to Default",
-        onReset = function() Theme:ResetAccentColor() end,
-    })
+    -- The flyout opens downward, past the panel's bottom edge. A product whose
+    -- model turns the color off builds no control, so no flyout is left behind
+    -- the corner.
+    local accentControl
+    if HomeModel().accentColor ~= false then
+        accentControl = Controls:CreateFlyoutColorPicker({
+            parent = homeContent,
+            name = BRAND .. "AccentColorPicker",
+            label = "UI Color",
+            direction = "DOWN",
+            width = 280,
+            get = function() return Theme:GetCustomAccentColor() end,
+            set = function(r, g, b) Theme:SetAccentColor(r, g, b, 1) end,
+            preview = function() return Theme:GetAccentColor() end,
+            colorLabel = "Custom Color",
+            colorDisabled = function()
+                return Theme:GetAccentColorMode() == Theme.ACCENT_MODE_CLASS
+            end,
+            toggleLabel = "Class Color",
+            toggleGet = function()
+                return Theme:GetAccentColorMode() == Theme.ACCENT_MODE_CLASS
+            end,
+            toggleSet = function(value)
+                Theme:SetAccentColorMode(value and Theme.ACCENT_MODE_CLASS or Theme.ACCENT_MODE_CUSTOM)
+            end,
+            resetLabel = "Reset to Default",
+            onReset = function() Theme:ResetAccentColor() end,
+        })
+    end
     if accentControl then
         accentControl:SetPoint("BOTTOMLEFT", homeContent, "BOTTOMLEFT",
             M().home.accentInset, M().home.accentInset)

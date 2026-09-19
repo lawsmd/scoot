@@ -1294,7 +1294,7 @@ addon.FontDisplayNames = {
     -- GAME_DEFAULT pseudo-key for GameFontNormal's locale face
     [addon.MediaTokens.HEADER_FONT] = "Global Header Font",
     [addon.MediaTokens.BODY_FONT]   = "Global Body Font",
-    GAME_DEFAULT = "Game Default",
+    GAME_DEFAULT = "Friz Quadrata (Default)",
     -- Stock fonts
     FRIZQT__  = "Friz Quadrata (Default)",
     ARIALN    = "Arial Narrow",

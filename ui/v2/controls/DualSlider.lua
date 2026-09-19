@@ -43,7 +43,6 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local BORDER_WIDTH = 2
 local DUAL_SLIDER_TRACK_WIDTH = 70
 local DUAL_SLIDER_INPUT_WIDTH = 36
 local DUAL_SLIDER_ARROW_WIDTH = 16
@@ -113,8 +112,17 @@ function Controls:CreateDualSlider(options)
     local description = options.description
     local sliderAOpts = options.sliderA or {}
     local sliderBOpts = options.sliderB or {}
-    local trackWidth = options.trackWidth or DUAL_SLIDER_TRACK_WIDTH
-    local inputWidth = options.inputWidth or DUAL_SLIDER_INPUT_WIDTH
+    local sliderSpec = addon.UI.Chrome.Spec("slider")
+    local useWidget = sliderSpec.kind == "template"
+    -- A skin whose slider role is a template carries that widget's numbers in
+    -- metrics.dualSlider; the flat draw keeps the constants above.
+    local wm = useWidget and Controls.Metrics().dualSlider or {}
+    local trackWidth = options.trackWidth or wm.trackWidth or DUAL_SLIDER_TRACK_WIDTH
+    local inputWidth = options.inputWidth or wm.inputWidth or DUAL_SLIDER_INPUT_WIDTH
+    local arrowWidth = wm.stepperWidth or DUAL_SLIDER_ARROW_WIDTH
+    local sliderHeight = wm.height or DUAL_SLIDER_SLIDER_HEIGHT
+    local inputGap = (wm.inputGap or DUAL_SLIDER_INPUT_GAP) + Controls.ValueInputReach()
+    local groupGap = wm.groupGap or DUAL_SLIDER_GROUP_GAP
     local name = options.name
     local isDisabledFn = options.disabled or options.isDisabled
 
@@ -142,7 +150,6 @@ function Controls:CreateDualSlider(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
@@ -152,8 +159,8 @@ function Controls:CreateDualSlider(options)
 
     -- Calculate total width for both sliders
     -- Each slider: arrow + track + arrow + gap + input
-    local singleSliderWidth = DUAL_SLIDER_ARROW_WIDTH + DUAL_SLIDER_ARROW_GAP + trackWidth + DUAL_SLIDER_ARROW_GAP + DUAL_SLIDER_ARROW_WIDTH + DUAL_SLIDER_INPUT_GAP + inputWidth
-    local totalDualWidth = singleSliderWidth * 2 + DUAL_SLIDER_GROUP_GAP
+    local singleSliderWidth = arrowWidth + DUAL_SLIDER_ARROW_GAP + trackWidth + DUAL_SLIDER_ARROW_GAP + arrowWidth + inputGap + inputWidth
+    local totalDualWidth = singleSliderWidth * 2 + groupGap
 
     -- Label and description; the cluster width is fixed, so the wrap column
     -- is exact
@@ -169,7 +176,7 @@ function Controls:CreateDualSlider(options)
 
     -- Dual slider container (right side, centered in the top band)
     local dualContainer = CreateFrame("Frame", nil, row)
-    local containerHeight = DUAL_SLIDER_AXIS_LABEL_HEIGHT + DUAL_SLIDER_SLIDER_HEIGHT + (hasEndLabels and 14 or 0)
+    local containerHeight = DUAL_SLIDER_AXIS_LABEL_HEIGHT + sliderHeight + (hasEndLabels and 14 or 0)
     dualContainer:SetSize(totalDualWidth, containerHeight)
     Controls.AnchorCluster(row, dualContainer, {
         x = -DUAL_SLIDER_PADDING,
@@ -204,175 +211,138 @@ function Controls:CreateDualSlider(options)
 
         -- Slider controls container (at bottom of miniSlider, full width)
         local controlsFrame = CreateFrame("Frame", nil, miniSlider)
-        controlsFrame:SetSize(singleSliderWidth, DUAL_SLIDER_SLIDER_HEIGHT)
+        controlsFrame:SetSize(singleSliderWidth, sliderHeight)
         controlsFrame:SetPoint("BOTTOMLEFT", miniSlider, "BOTTOMLEFT", 0, hasLabels and 14 or 0)
 
-        -- Left arrow button (decrement)
-        local leftArrow = Controls.CreateArrowButton(controlsFrame, {
-            width = DUAL_SLIDER_ARROW_WIDTH,
-            height = DUAL_SLIDER_SLIDER_HEIGHT,
-            glyph = "<",
-            fontSize = 10,
-            noHover = true,
-        })
-        leftArrow:SetPoint("LEFT", controlsFrame, "LEFT", 0, 0)
+        -- The skin's slider role, as Slider.lua reads it. A template kind is
+        -- Blizzard's slider with steppers, standing where the two arrows, the
+        -- track and the thumb do; those stay nil and every later use of them
+        -- is guarded.
+        local widget
+        local leftArrow, rightArrow, trackFrame, trackFill, thumb, axisFS
+        if useWidget then
+            widget = addon.UI.Chrome.CreateFrame(sliderSpec, "Frame", nil, controlsFrame)
+            widget:SetSize(trackWidth + arrowWidth * 2, sliderHeight)
+            widget:SetPoint("LEFT", controlsFrame, "LEFT", 0, 0)
+            local range = maxVal - minVal
+            local steps = (step > 0 and range > 0) and math.max(1, math.floor(range / step + 0.5)) or 1
+            widget:Init(minVal, minVal, maxVal, steps)
 
-        miniSlider._leftArrow = leftArrow
+            axisFS = miniSlider:CreateFontString(nil, "OVERLAY")
+            theme:ApplyFont(axisFS, "miniLabel")
+            axisFS:SetPoint("BOTTOM", widget, "TOP", 0, 2)
+            axisFS:SetText(axisLabel)
+            axisFS:SetTextColor(dimR, dimG, dimB, 0.8)
+        else
+            -- Left arrow button (decrement)
+            leftArrow = Controls.CreateArrowButton(controlsFrame, {
+                width = DUAL_SLIDER_ARROW_WIDTH,
+                height = DUAL_SLIDER_SLIDER_HEIGHT,
+                glyph = "<",
+                direction = "prev",
+                fontSize = 10,
+                noHover = true,
+            })
+            leftArrow:SetPoint("LEFT", controlsFrame, "LEFT", 0, 0)
 
-        -- Track container
-        local trackFrame = CreateFrame("Frame", nil, controlsFrame)
-        trackFrame:SetSize(trackWidth, DUAL_SLIDER_SLIDER_HEIGHT)
-        trackFrame:SetPoint("LEFT", leftArrow, "RIGHT", DUAL_SLIDER_ARROW_GAP, 0)
+            miniSlider._leftArrow = leftArrow
 
-        -- Axis label ("X" or "Y") - centered above the track (not the input)
-        local axisFS = miniSlider:CreateFontString(nil, "OVERLAY")
-        local axisFont = theme:GetFont("VALUE")
-        axisFS:SetFont(axisFont, 11, "")
-        axisFS:SetPoint("BOTTOM", trackFrame, "TOP", 0, 2)
-        axisFS:SetText(axisLabel)
-        axisFS:SetTextColor(ar, ag, ab, 0.9)
-        miniSlider._axisLabel = axisFS
+            -- Track container
+            trackFrame = CreateFrame("Frame", nil, controlsFrame)
+            trackFrame:SetSize(trackWidth, DUAL_SLIDER_SLIDER_HEIGHT)
+            trackFrame:SetPoint("LEFT", leftArrow, "RIGHT", DUAL_SLIDER_ARROW_GAP, 0)
 
-        -- Track background
-        local trackBg = trackFrame:CreateTexture(nil, "BACKGROUND", nil, -7)
-        trackBg:SetHeight(DUAL_SLIDER_TRACK_HEIGHT)
-        trackBg:SetPoint("LEFT", trackFrame, "LEFT", 0, 0)
-        trackBg:SetPoint("RIGHT", trackFrame, "RIGHT", 0, 0)
-        trackBg:SetColorTexture(ar, ag, ab, 0.2)
-        trackFrame._trackBg = trackBg
+            -- Axis label ("X" or "Y") - centered above the track (not the input)
+            axisFS = miniSlider:CreateFontString(nil, "OVERLAY")
+            local axisFont = theme:GetFont("VALUE")
+            axisFS:SetFont(axisFont, 11, "")
+            axisFS:SetPoint("BOTTOM", trackFrame, "TOP", 0, 2)
+            axisFS:SetText(axisLabel)
+            axisFS:SetTextColor(ar, ag, ab, 0.9)
 
-        -- Track fill
-        local trackFill = trackFrame:CreateTexture(nil, "BACKGROUND", nil, -6)
-        trackFill:SetHeight(DUAL_SLIDER_TRACK_HEIGHT)
-        trackFill:SetPoint("LEFT", trackFrame, "LEFT", 0, 0)
-        trackFill:SetWidth(0)
-        trackFill:SetColorTexture(ar, ag, ab, 0.6)
-        trackFrame._trackFill = trackFill
+            -- Track background
+            local trackBg = trackFrame:CreateTexture(nil, "BACKGROUND", nil, -7)
+            trackBg:SetHeight(DUAL_SLIDER_TRACK_HEIGHT)
+            trackBg:SetPoint("LEFT", trackFrame, "LEFT", 0, 0)
+            trackBg:SetPoint("RIGHT", trackFrame, "RIGHT", 0, 0)
+            trackBg:SetColorTexture(ar, ag, ab, 0.2)
+            trackFrame._trackBg = trackBg
 
-        -- Thumb
-        local thumb = CreateFrame("Button", nil, trackFrame)
-        thumb:SetSize(DUAL_SLIDER_THUMB_WIDTH, DUAL_SLIDER_THUMB_HEIGHT)
-        thumb:SetPoint("CENTER", trackFrame, "LEFT", 0, 0)
-        thumb:EnableMouse(true)
-        thumb:RegisterForDrag("LeftButton")
+            -- Track fill
+            trackFill = trackFrame:CreateTexture(nil, "BACKGROUND", nil, -6)
+            trackFill:SetHeight(DUAL_SLIDER_TRACK_HEIGHT)
+            trackFill:SetPoint("LEFT", trackFrame, "LEFT", 0, 0)
+            trackFill:SetWidth(0)
+            trackFill:SetColorTexture(ar, ag, ab, 0.6)
+            trackFrame._trackFill = trackFill
 
-        local thumbBg = thumb:CreateTexture(nil, "ARTWORK", nil, 0)
-        thumbBg:SetAllPoints()
-        thumbBg:SetColorTexture(ar, ag, ab, 1)
-        thumb._bg = thumbBg
+            -- Thumb
+            thumb = CreateFrame("Button", nil, trackFrame)
+            thumb:SetSize(DUAL_SLIDER_THUMB_WIDTH, DUAL_SLIDER_THUMB_HEIGHT)
+            thumb:SetPoint("CENTER", trackFrame, "LEFT", 0, 0)
+            thumb:EnableMouse(true)
+            thumb:RegisterForDrag("LeftButton")
 
-        -- Thumb border
-        thumb._border = Controls.CreateBorder(thumb, {
-            layer = "ARTWORK",
-            sublevel = 1,
-            color = { 0, 0, 0, 0.5 },
-        })
-        trackFrame._thumb = thumb
+            local thumbBg = thumb:CreateTexture(nil, "ARTWORK", nil, 0)
+            thumbBg:SetAllPoints()
+            thumbBg:SetColorTexture(ar, ag, ab, 1)
+            thumb._bg = thumbBg
 
-        -- Right arrow button (increment)
-        local rightArrow = Controls.CreateArrowButton(controlsFrame, {
-            width = DUAL_SLIDER_ARROW_WIDTH,
-            height = DUAL_SLIDER_SLIDER_HEIGHT,
-            glyph = ">",
-            fontSize = 10,
-            noHover = true,
-        })
-        rightArrow:SetPoint("LEFT", trackFrame, "RIGHT", DUAL_SLIDER_ARROW_GAP, 0)
+            -- Thumb border
+            thumb._border = Controls.CreateBorder(thumb, {
+                layer = "ARTWORK",
+                sublevel = 1,
+                color = { 0, 0, 0, 0.5 },
+            })
+            trackFrame._thumb = thumb
 
-        miniSlider._rightArrow = rightArrow
+            -- Right arrow button (increment)
+            rightArrow = Controls.CreateArrowButton(controlsFrame, {
+                width = DUAL_SLIDER_ARROW_WIDTH,
+                height = DUAL_SLIDER_SLIDER_HEIGHT,
+                glyph = ">",
+                direction = "next",
+                fontSize = 10,
+                noHover = true,
+            })
+            rightArrow:SetPoint("LEFT", trackFrame, "RIGHT", DUAL_SLIDER_ARROW_GAP, 0)
 
-        -- Text input
-        local inputFrame = CreateFrame("EditBox", nil, controlsFrame, "InputBoxTemplate")
-        inputFrame:SetSize(inputWidth, DUAL_SLIDER_SLIDER_HEIGHT)
-        inputFrame:SetPoint("LEFT", rightArrow, "RIGHT", DUAL_SLIDER_INPUT_GAP, 0)
-        inputFrame:SetAutoFocus(false)
-        inputFrame:SetNumeric(false)
-        inputFrame:SetMaxLetters(8)
-        inputFrame:EnableMouse(true)
-
-        -- Hide Blizzard's default InputBoxTemplate textures
-        if inputFrame.Left then inputFrame.Left:Hide() end
-        if inputFrame.Right then inputFrame.Right:Hide() end
-        if inputFrame.Middle then inputFrame.Middle:Hide() end
-        local inputName = inputFrame:GetName()
-        if inputName then
-            local leftTex = _G[inputName .. "Left"]
-            local rightTex = _G[inputName .. "Right"]
-            local middleTex = _G[inputName .. "Middle"]
-            if leftTex then leftTex:Hide() end
-            if rightTex then rightTex:Hide() end
-            if middleTex then middleTex:Hide() end
+            miniSlider._rightArrow = rightArrow
         end
+        miniSlider._axisLabel = axisFS
+        miniSlider._widget = widget
 
-        -- Style input
-        local inputFont = theme:GetFont("VALUE")
-        inputFrame:SetFont(inputFont, 11, "")
-        inputFrame:SetTextColor(1, 1, 1, 1)
-        inputFrame:SetJustifyH("CENTER")
-        inputFrame:SetTextInsets(2, 2, 0, 0)
-
-        -- Custom input border
-        local inputBorder = {}
-
-        local inputTop = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-        inputTop:SetPoint("TOPLEFT", inputFrame, "TOPLEFT", -1, 1)
-        inputTop:SetPoint("TOPRIGHT", inputFrame, "TOPRIGHT", 1, 1)
-        inputTop:SetHeight(BORDER_WIDTH)
-        inputTop:SetColorTexture(ar, ag, ab, 0.6)
-        inputBorder.TOP = inputTop
-
-        local inputBottom = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-        inputBottom:SetPoint("BOTTOMLEFT", inputFrame, "BOTTOMLEFT", -1, -1)
-        inputBottom:SetPoint("BOTTOMRIGHT", inputFrame, "BOTTOMRIGHT", 1, -1)
-        inputBottom:SetHeight(BORDER_WIDTH)
-        inputBottom:SetColorTexture(ar, ag, ab, 0.6)
-        inputBorder.BOTTOM = inputBottom
-
-        local inputLeft = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-        inputLeft:SetPoint("TOPLEFT", inputFrame, "TOPLEFT", -1, 1 - BORDER_WIDTH)
-        inputLeft:SetPoint("BOTTOMLEFT", inputFrame, "BOTTOMLEFT", -1, -1 + BORDER_WIDTH)
-        inputLeft:SetWidth(BORDER_WIDTH)
-        inputLeft:SetColorTexture(ar, ag, ab, 0.6)
-        inputBorder.LEFT = inputLeft
-
-        local inputRight = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-        inputRight:SetPoint("TOPRIGHT", inputFrame, "TOPRIGHT", 1, 1 - BORDER_WIDTH)
-        inputRight:SetPoint("BOTTOMRIGHT", inputFrame, "BOTTOMRIGHT", 1, -1 + BORDER_WIDTH)
-        inputRight:SetWidth(BORDER_WIDTH)
-        inputRight:SetColorTexture(ar, ag, ab, 0.6)
-        inputBorder.RIGHT = inputRight
-
-        local inputBg = inputFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-        inputBg:SetPoint("TOPLEFT", -1, 1)
-        inputBg:SetPoint("BOTTOMRIGHT", 1, -1)
-        inputBg:SetColorTexture(bgR, bgG, bgB, bgA)
-        inputFrame._customBg = inputBg
-        inputFrame._customBorder = inputBorder
+        -- The typed value box
+        local inputFrame = Controls.CreateValueInput(controlsFrame, {
+            width = inputWidth, height = sliderHeight, fontSize = 11, maxLetters = 8, textInset = 2,
+        })
+        inputFrame:SetPoint("LEFT", widget or rightArrow, "RIGHT", inputGap, 0)
 
         miniSlider._inputFrame = inputFrame
-        miniSlider._trackFrame = trackFrame
+        miniSlider._trackFrame = trackFrame or widget
         miniSlider._controlsFrame = controlsFrame
 
         -- Optional end labels (under the track)
         if hasLabels then
+            local labelHost = widget and widget.Slider or trackFrame
             if minLabel and minLabel ~= "" then
-                local minLabelFS = trackFrame:CreateFontString(nil, "OVERLAY")
+                local minLabelFS = labelHost:CreateFontString(nil, "OVERLAY")
                 local endLabelFont = theme:GetFont("VALUE")
                 minLabelFS:SetFont(endLabelFont, DUAL_SLIDER_END_LABEL_FONT_SIZE, "")
-                minLabelFS:SetPoint("TOP", trackFrame, "BOTTOMLEFT", 0, -2)
+                minLabelFS:SetPoint("TOP", labelHost, "BOTTOMLEFT", 0, -2)
                 minLabelFS:SetText(minLabel)
                 minLabelFS:SetTextColor(dimR, dimG, dimB, 0.8)
-                trackFrame._minLabel = minLabelFS
+                labelHost._minLabel = minLabelFS
             end
 
             if maxLabel and maxLabel ~= "" then
-                local maxLabelFS = trackFrame:CreateFontString(nil, "OVERLAY")
+                local maxLabelFS = labelHost:CreateFontString(nil, "OVERLAY")
                 local endLabelFont = theme:GetFont("VALUE")
                 maxLabelFS:SetFont(endLabelFont, DUAL_SLIDER_END_LABEL_FONT_SIZE, "")
-                maxLabelFS:SetPoint("TOP", trackFrame, "BOTTOMRIGHT", 0, -2)
+                maxLabelFS:SetPoint("TOP", labelHost, "BOTTOMRIGHT", 0, -2)
                 maxLabelFS:SetText(maxLabel)
                 maxLabelFS:SetTextColor(dimR, dimG, dimB, 0.8)
-                trackFrame._maxLabel = maxLabelFS
+                labelHost._maxLabel = maxLabelFS
             end
         end
 
@@ -407,15 +377,22 @@ function Controls:CreateDualSlider(options)
         -- Update display
         local function UpdateDisplay()
             local val = miniSlider._currentValue
-            local range = maxVal - minVal
-            local percent = range > 0 and ((val - minVal) / range) or 0
-            local usableTrackWidth = trackWidth - DUAL_SLIDER_THUMB_WIDTH
+            if widget then
+                -- Guarded: the widget reports every SetValue, this one included
+                miniSlider._settingWidget = true
+                widget.Slider:SetValue(val)
+                miniSlider._settingWidget = false
+            else
+                local range = maxVal - minVal
+                local percent = range > 0 and ((val - minVal) / range) or 0
+                local usableTrackWidth = trackWidth - DUAL_SLIDER_THUMB_WIDTH
 
-            local thumbX = percent * usableTrackWidth + (DUAL_SLIDER_THUMB_WIDTH / 2)
-            thumb:ClearAllPoints()
-            thumb:SetPoint("CENTER", trackFrame, "LEFT", thumbX, 0)
+                local thumbX = percent * usableTrackWidth + (DUAL_SLIDER_THUMB_WIDTH / 2)
+                thumb:ClearAllPoints()
+                thumb:SetPoint("CENTER", trackFrame, "LEFT", thumbX, 0)
 
-            trackFill:SetWidth(math.max(1, thumbX))
+                trackFill:SetWidth(math.max(1, thumbX))
+            end
             inputFrame:SetText(FormatValue(val))
         end
         miniSlider._updateDisplay = UpdateDisplay
@@ -515,109 +492,144 @@ function Controls:CreateDualSlider(options)
         local inputFrame = miniSlider._inputFrame
         local leftArrow = miniSlider._leftArrow
         local rightArrow = miniSlider._rightArrow
+        local widget = miniSlider._widget
 
-        -- Arrow hover effects
-        leftArrow:SetScript("OnEnter", function(btn)
-            if IsSyncLocked() then return end
-            local r, g, b = theme:GetAccentColor()
-            btn._bg:SetColorTexture(r, g, b, 0.2)
-        end)
-        leftArrow:SetScript("OnLeave", function(btn)
-            btn._bg:SetColorTexture(0, 0, 0, 0)
-        end)
-
-        rightArrow:SetScript("OnEnter", function(btn)
-            if IsSyncLocked() then return end
-            local r, g, b = theme:GetAccentColor()
-            btn._bg:SetColorTexture(r, g, b, 0.2)
-        end)
-        rightArrow:SetScript("OnLeave", function(btn)
-            btn._bg:SetColorTexture(0, 0, 0, 0)
-        end)
-
-        -- Left arrow click (decrement)
-        leftArrow:SetScript("OnClick", function(btn)
-            if row._isDisabled or IsSyncLocked() then return end
-            miniSlider._currentValue = miniSlider._clampValue(miniSlider._currentValue - miniSlider._step)
-            miniSlider._setValue(miniSlider._currentValue)
-            miniSlider._updateDisplay()
-            TriggerDebouncedSync()
-            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        end)
-
-        -- Right arrow click (increment)
-        rightArrow:SetScript("OnClick", function(btn)
-            if row._isDisabled or IsSyncLocked() then return end
-            miniSlider._currentValue = miniSlider._clampValue(miniSlider._currentValue + miniSlider._step)
-            miniSlider._setValue(miniSlider._currentValue)
-            miniSlider._updateDisplay()
-            TriggerDebouncedSync()
-            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        end)
-
-        -- Thumb dragging
-        local dragStartX, dragStartValue
-
-        thumb:SetScript("OnDragStart", function(btn)
-            if row._isDisabled or IsSyncLocked() then return end
-            btn._isDragging = true
-            local r, g, b = theme:GetAccentColor()
-            btn._bg:SetColorTexture(r, g, b, 0.6)
-
-            local cursorX = GetCursorPosition()
-            local scale = btn:GetEffectiveScale()
-            dragStartX = cursorX / scale
-            dragStartValue = miniSlider._currentValue
-        end)
-
-        thumb:SetScript("OnDragStop", function(btn)
-            btn._isDragging = false
-            local r, g, b = theme:GetAccentColor()
-            btn._bg:SetColorTexture(r, g, b, 1)
-            miniSlider._setValue(miniSlider._currentValue)
-            TriggerDebouncedSync()
-        end)
-
-        thumb:SetScript("OnUpdate", function(btn)
-            if not btn._isDragging then return end
-
-            local cursorX = GetCursorPosition()
-            local scale = btn:GetEffectiveScale()
-            cursorX = cursorX / scale
-
-            local deltaX = cursorX - dragStartX
-            local usableTrackWidth = miniSlider._trackWidth - DUAL_SLIDER_THUMB_WIDTH
-            local range = miniSlider._maxVal - miniSlider._minVal
-
-            if usableTrackWidth > 0 and range > 0 then
-                local valueDelta = (deltaX / usableTrackWidth) * range
-                miniSlider._currentValue = miniSlider._clampValue(dragStartValue + valueDelta)
-                miniSlider._updateDisplay()
+        if widget then
+            -- A stepper click reports on mouse-up and commits at once. A drag
+            -- or a track click reports while the button is down: the display
+            -- follows and the value commits on release.
+            local pendingCommit = false
+            local function Commit()
+                pendingCommit = false
+                miniSlider._setValue(miniSlider._currentValue)
+                TriggerDebouncedSync()
             end
-        end)
+            widget:RegisterCallback(widget.Event.OnValueChanged, function(_, value)
+                if miniSlider._settingWidget then return end
+                if row._isDisabled or IsSyncLocked() then
+                    miniSlider._updateDisplay()
+                    return
+                end
+                local newValue = miniSlider._clampValue(value)
+                if newValue == miniSlider._currentValue then return end
+                miniSlider._currentValue = newValue
+                if not inputFrame:HasFocus() then
+                    inputFrame:SetText(miniSlider._formatValue(newValue))
+                end
+                if IsMouseButtonDown("LeftButton") then
+                    pendingCommit = true
+                else
+                    Commit()
+                end
+            end, miniSlider)
+            widget.Slider:HookScript("OnMouseUp", function()
+                if pendingCommit then Commit() end
+            end)
+        else
 
-        -- Track click
-        trackFrame:EnableMouse(true)
-        trackFrame:SetScript("OnMouseDown", function(frame, button)
-            if button ~= "LeftButton" then return end
-            if row._isDisabled or IsSyncLocked() then return end
+            -- Arrow hover effects
+            leftArrow:SetScript("OnEnter", function(btn)
+                if IsSyncLocked() then return end
+                local r, g, b = theme:GetAccentColor()
+                btn._bg:SetColorTexture(r, g, b, 0.2)
+            end)
+            leftArrow:SetScript("OnLeave", function(btn)
+                btn._bg:SetColorTexture(0, 0, 0, 0)
+            end)
 
-            local cursorX = GetCursorPosition()
-            local scale = frame:GetEffectiveScale()
-            cursorX = cursorX / scale
+            rightArrow:SetScript("OnEnter", function(btn)
+                if IsSyncLocked() then return end
+                local r, g, b = theme:GetAccentColor()
+                btn._bg:SetColorTexture(r, g, b, 0.2)
+            end)
+            rightArrow:SetScript("OnLeave", function(btn)
+                btn._bg:SetColorTexture(0, 0, 0, 0)
+            end)
 
-            local frameLeft = frame:GetLeft() or 0
-            local clickX = cursorX - frameLeft
-            local usableTrackWidth = miniSlider._trackWidth - DUAL_SLIDER_THUMB_WIDTH
-            local range = miniSlider._maxVal - miniSlider._minVal
+            -- Left arrow click (decrement)
+            leftArrow:SetScript("OnClick", function(btn)
+                if row._isDisabled or IsSyncLocked() then return end
+                miniSlider._currentValue = miniSlider._clampValue(miniSlider._currentValue - miniSlider._step)
+                miniSlider._setValue(miniSlider._currentValue)
+                miniSlider._updateDisplay()
+                TriggerDebouncedSync()
+                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+            end)
 
-            local percent = math.max(0, math.min(1, (clickX - DUAL_SLIDER_THUMB_WIDTH / 2) / usableTrackWidth))
-            miniSlider._currentValue = miniSlider._clampValue(miniSlider._minVal + percent * range)
-            miniSlider._setValue(miniSlider._currentValue)
-            miniSlider._updateDisplay()
-            TriggerDebouncedSync()
-            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        end)
+            -- Right arrow click (increment)
+            rightArrow:SetScript("OnClick", function(btn)
+                if row._isDisabled or IsSyncLocked() then return end
+                miniSlider._currentValue = miniSlider._clampValue(miniSlider._currentValue + miniSlider._step)
+                miniSlider._setValue(miniSlider._currentValue)
+                miniSlider._updateDisplay()
+                TriggerDebouncedSync()
+                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+            end)
+
+            -- Thumb dragging
+            local dragStartX, dragStartValue
+
+            thumb:SetScript("OnDragStart", function(btn)
+                if row._isDisabled or IsSyncLocked() then return end
+                btn._isDragging = true
+                local r, g, b = theme:GetAccentColor()
+                btn._bg:SetColorTexture(r, g, b, 0.6)
+
+                local cursorX = GetCursorPosition()
+                local scale = btn:GetEffectiveScale()
+                dragStartX = cursorX / scale
+                dragStartValue = miniSlider._currentValue
+            end)
+
+            thumb:SetScript("OnDragStop", function(btn)
+                btn._isDragging = false
+                local r, g, b = theme:GetAccentColor()
+                btn._bg:SetColorTexture(r, g, b, 1)
+                miniSlider._setValue(miniSlider._currentValue)
+                TriggerDebouncedSync()
+            end)
+
+            thumb:SetScript("OnUpdate", function(btn)
+                if not btn._isDragging then return end
+
+                local cursorX = GetCursorPosition()
+                local scale = btn:GetEffectiveScale()
+                cursorX = cursorX / scale
+
+                local deltaX = cursorX - dragStartX
+                local usableTrackWidth = miniSlider._trackWidth - DUAL_SLIDER_THUMB_WIDTH
+                local range = miniSlider._maxVal - miniSlider._minVal
+
+                if usableTrackWidth > 0 and range > 0 then
+                    local valueDelta = (deltaX / usableTrackWidth) * range
+                    miniSlider._currentValue = miniSlider._clampValue(dragStartValue + valueDelta)
+                    miniSlider._updateDisplay()
+                end
+            end)
+
+            -- Track click
+            trackFrame:EnableMouse(true)
+            trackFrame:SetScript("OnMouseDown", function(frame, button)
+                if button ~= "LeftButton" then return end
+                if row._isDisabled or IsSyncLocked() then return end
+
+                local cursorX = GetCursorPosition()
+                local scale = frame:GetEffectiveScale()
+                cursorX = cursorX / scale
+
+                local frameLeft = frame:GetLeft() or 0
+                local clickX = cursorX - frameLeft
+                local usableTrackWidth = miniSlider._trackWidth - DUAL_SLIDER_THUMB_WIDTH
+                local range = miniSlider._maxVal - miniSlider._minVal
+
+                local percent = math.max(0, math.min(1, (clickX - DUAL_SLIDER_THUMB_WIDTH / 2) / usableTrackWidth))
+                miniSlider._currentValue = miniSlider._clampValue(miniSlider._minVal + percent * range)
+                miniSlider._setValue(miniSlider._currentValue)
+                miniSlider._updateDisplay()
+                TriggerDebouncedSync()
+                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+            end)
+        end
 
         -- Input handlers
         inputFrame:SetScript("OnEnterPressed", function(self)
@@ -662,18 +674,12 @@ function Controls:CreateDualSlider(options)
 
         inputFrame:SetScript("OnEditFocusGained", function(self)
             self:HighlightText()
-            local r, g, b = theme:GetAccentColor()
-            for _, tex in pairs(self._customBorder) do
-                tex:SetColorTexture(r, g, b, 1)
-            end
+            self._setFocusLook(true)
         end)
 
         inputFrame:HookScript("OnEditFocusLost", function(self)
             self:HighlightText(0, 0)
-            local r, g, b = theme:GetAccentColor()
-            for _, tex in pairs(self._customBorder) do
-                tex:SetColorTexture(r, g, b, 0.6)
-            end
+            self._setFocusLook(false)
         end)
     end
 
@@ -703,10 +709,9 @@ function Controls:CreateDualSlider(options)
         for _, miniSlider in ipairs({row._sliderA, row._sliderB}) do
             if miniSlider then
                 local trackFrame = miniSlider._trackFrame
-                local inputFrame = miniSlider._inputFrame
 
-                -- Update axis label
-                if miniSlider._axisLabel then
+                -- Update axis label; on the widget it is a dim mini-label
+                if miniSlider._axisLabel and not miniSlider._widget then
                     miniSlider._axisLabel:SetTextColor(r, g, b, 0.9)
                 end
 
@@ -727,13 +732,6 @@ function Controls:CreateDualSlider(options)
                     end
                     if trackFrame._thumb and trackFrame._thumb._bg and not trackFrame._thumb._isDragging then
                         trackFrame._thumb._bg:SetColorTexture(r, g, b, 1)
-                    end
-                end
-
-                if inputFrame and inputFrame._customBorder then
-                    local alpha = inputFrame:HasFocus() and 1 or 0.6
-                    for _, tex in pairs(inputFrame._customBorder) do
-                        tex:SetColorTexture(r, g, b, alpha)
                     end
                 end
             end
@@ -778,6 +776,11 @@ function Controls:CreateDualSlider(options)
 
     function row:SetDisabled(disabled)
         self._isDisabled = disabled and true or false
+        for _, miniSlider in ipairs({self._sliderA, self._sliderB}) do
+            if miniSlider and miniSlider._widget then
+                miniSlider._widget:SetEnabled(not self._isDisabled)
+            end
+        end
         local disabledAlpha = 0.35
         local r, g, b = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()

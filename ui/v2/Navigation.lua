@@ -107,6 +107,7 @@ function Navigation:Create(parent)
             tex:SetAtlas(dividerSpec.normal)
             tex:SetAllPoints()
         end
+        Chrome.ApplyOpacity("navDivider", divider)
         navFrame._separator = divider
     else
         local separator = navFrame:CreateTexture(nil, "BORDER")
@@ -351,7 +352,11 @@ function Navigation:BuildRows(contentFrame)
 
         local childHost = isCard and parentRow or contentFrame
         local childY = isCard and -headerHeight or (yOffset - headerHeight)
-        local childInset = isCard and card.inner or 0
+        -- The row's margins are where the art's box starts and how far it may
+        -- run: clear of the card's border on the left, clear of the glow on
+        -- the right
+        local childInset = isCard and { left = card.childPadLeft or card.inner,
+                                        right = card.childPadRight or card.inner } or 0
 
         for childIdx, child in ipairs(visibleChildren) do
             rowIndex = rowIndex + 1
@@ -539,13 +544,14 @@ end
 --------------------------------------------------------------------------------
 
 -- parent is the nav's content frame, or the card the row sits inside, in
--- which case xInset keeps the row within the card's border.
+-- which case xInset is { left, right }, the margins that keep the row, and the
+-- hover art filling it, off the card's border and clear of its glow.
 function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisible, totalChildren, childIndex, isModuleDisabled, xInset)
     local row = CreateFrame("Button", nil, parent)
-    local inset = xInset or 0
+    local insets = type(xInset) == "table" and xInset or { left = xInset or 0, right = xInset or 0 }
     row:SetHeight(M().nav.rowHeight)
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", inset, yOffset)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -inset, yOffset)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", insets.left or 0, yOffset)
+    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(insets.right or 0), yOffset)
     row:EnableMouse(true)
     row:RegisterForClicks("AnyUp")
 
@@ -590,16 +596,59 @@ function Navigation:CreateChildRow(parent, navItem, yOffset, isLastChild, isVisi
         row._treeLines = treeLines
     end
 
-    -- Label text
-    local label = row:CreateFontString(nil, "OVERLAY")
-    Theme:ApplyValueFont(label, 11)
-    label:SetPoint("LEFT", row, "LEFT", M().nav.childIndent + 6, 0)
+    -- Under the card look the row stays the click target and the box the
+    -- hover and selected art fill sits inside it: it starts at the row's left
+    -- edge and ends childBoxPad past the name, so the clear space each side of
+    -- the name is the same whatever the name is. The row's own margins hold
+    -- that box off the card's border and clear of its glow, and the row's
+    -- width is the box's ceiling, so a name longer than the column gives up
+    -- its padding rather than running under the glow. The name and the art
+    -- both sit on the box, which keeps the name over the art it stands on.
+    local isCard = self:IsCardNav()
+    local boxPad = isCard and (M().nav.card.childBoxPad or 10) or 0
+    local host = row
+    if isCard then
+        local box = CreateFrame("Frame", nil, row)
+        box:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        box:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+        box:SetWidth(boxPad * 2)
+        row._box = box
+        host = box
+    end
+
+    -- Label text, indented past the tree line, or boxPad inside the box
+    local label = host:CreateFontString(nil, "OVERLAY")
+    local labelPad = M().nav.childIndent + 6
+    -- The card look may name a font role for this row alone, which is how a
+    -- skin puts a font style on the child's name without it reaching every
+    -- other white string in the panel; the value role draws it otherwise.
+    local labelRole
+    if isCard then
+        labelRole = M().nav.card.childLabelFontRole
+    end
+    Theme:ApplyValueFont(label, 11, labelRole)
+    label:SetPoint("LEFT", host, "LEFT", isCard and boxPad or labelPad, 0)
     label:SetText(navItem.label)
     row._label = label
 
+    -- The name's width is measured, not anchored to, so the box can be capped
+    -- at the row's. A row built before the card has a width measures 0 and is
+    -- corrected on the next frame, the way a description row is.
+    if isCard then
+        local function SizeBox()
+            local width = (label:GetStringWidth() or 0) + boxPad * 2
+            local rowWidth = row:GetWidth() or 0
+            if rowWidth > 1 then width = math.min(width, rowWidth) end
+            row._box:SetWidth(math.max(width, boxPad * 2))
+        end
+        row._sizeBox = SizeBox
+        SizeBox()
+        C_Timer.After(0, SizeBox)
+    end
+
     -- Hover and selection fills, and the label's color by state, come from
     -- the navRow role's child variant
-    row._backdrop = Chrome.Backdrop("navRow", row, { variant = "child", label = label })
+    row._backdrop = Chrome.Backdrop("navRow", host, { variant = "child", label = label })
     row._backdrop:SetDisabled(isModuleDisabled)
 
     -- Version badge info icon (e.g., "X" / "Y" with variant color).
@@ -920,3 +969,66 @@ function Navigation:Cleanup()
     self._rows = {}
     self._frame = nil
 end
+
+--------------------------------------------------------------------------------
+-- Nav geometry tuning
+--------------------------------------------------------------------------------
+
+-- The nav column's numbers, tried on the open panel the way /camelot opacity
+-- tries the art's alphas: 'nav <key> <number>' writes the value into the
+-- active skin's metrics and rebuilds the panel from the skin, and the listing
+-- prints the table to paste back into the skin file. A reload restores the
+-- skin's own numbers. width is metrics.navWidth; every other key is a field of
+-- metrics.nav.card, and a key the active skin leaves out cannot be set.
+local NAV_KEYS = {
+    "width", "height", "spacing", "padLeft", "padRight", "padBottom", "inner",
+    "childPadLeft", "childPadRight", "childBoxPad",
+    "reach", "labelSize", "labelPadLeft", "glowOffset", "glowInset",
+}
+
+local function NavMetric(key)
+    local m = M()
+    if not m then return nil end
+    if key == "width" then return m, "navWidth" end
+    local card = m.nav and m.nav.card
+    if card and card[key] ~= nil then return card, key end
+    return nil
+end
+
+local function DumpNav()
+    local lines, push = addon.DebugLines()
+    local m = M()
+    push(string.format("navWidth = %s,", tostring(m and m.navWidth)))
+    local card = m and m.nav and m.nav.card
+    if card then
+        push("card = {")
+        for _, key in ipairs(NAV_KEYS) do
+            if key ~= "width" and card[key] ~= nil then
+                push(string.format("    %-13s = %s,", key, tostring(card[key])))
+            end
+        end
+        push("},")
+    else
+        push("-- this skin draws the nav as text rows, so it has no card table")
+    end
+    addon.DebugShowWindow("Nav geometry", lines)
+end
+
+local navCommand = {
+    name = "nav",
+    help = "Nav column geometry; 'nav <key> <number>' retunes the open panel",
+    usage = { "nav lists every key; key names are case-sensitive (width, childPadLeft, labelPadLeft)" },
+    handler = function(sub, rest)
+        local key = rest and rest[1]
+        if not key or key == "" then return DumpNav() end
+        local value = tonumber(rest[2])
+        local t, field = NavMetric(key)
+        if not t or not value then return addon.Commands.USAGE end
+        t[field] = value
+        local Skin = addon.UI.Skin
+        Skin.SetActive(Skin.ActiveName())
+    end,
+}
+-- The same command at the top level and under debug
+addon:RegisterSlashCommand(navCommand)
+addon:RegisterDebugCommand(navCommand)

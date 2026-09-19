@@ -84,14 +84,16 @@ function Controls:CreateFontSelector(options)
     selector:EnableMouse(true)
     selector:RegisterForClicks("AnyUp")
 
-    -- Selector border (brightens on hover)
-    selector._border = Controls.CreateBorder(selector, {
-        alpha = FONT_SELECTOR_BORDER_ALPHA,
-        getAlpha = function(self) return self:IsMouseOver() and 0.8 or FONT_SELECTOR_BORDER_ALPHA end,
+    -- The field's border, fill and per-state art come from the field role,
+    -- the same seam the selector and dropdown fields use, so the button that
+    -- opens the picker is drawn like every other field on the page. A flat
+    -- role is the border and background it always was.
+    local fieldBorder, fieldBg, fieldBackdrop = Controls.AddFieldChrome(selector, selector, {
+        borderAlpha = FONT_SELECTOR_BORDER_ALPHA,
     })
-
-    -- Selector background
-    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
+    selector._border = fieldBorder
+    selector._bg = fieldBg
+    selector._backdrop = fieldBackdrop
 
     -- Font value display text (shows font name in that font)
     local valueText = selector:CreateFontString(nil, "OVERLAY")
@@ -104,14 +106,15 @@ function Controls:CreateFontSelector(options)
     valueText:SetTextColor(1, 1, 1, 1)
     selector._text = valueText
 
-    -- Dropdown indicator arrow
+    -- Open indicator: the role's own art where it has some, the character
+    -- otherwise. The handle answers SetTextColor either way.
     local arrowText = selector:CreateFontString(nil, "OVERLAY")
     local arrowFont = theme:GetFont("BUTTON")
     arrowText:SetFont(arrowFont, 10, "")
     arrowText:SetPoint("RIGHT", selector, "RIGHT", -6, 0)
-    arrowText:SetText("▼")
+    arrowText:SetText("\226\150\188")
     arrowText:SetTextColor(ar, ag, ab, 0.8)
-    selector._arrow = arrowText
+    selector._arrow = Controls.AddFieldIndicator(selector, arrowText)
 
     row._selector = selector
 
@@ -169,18 +172,23 @@ function Controls:CreateFontSelector(options)
     -- Initial display update
     UpdateDisplay()
 
-    -- Hover effects
+    -- Hover effects. The field role's own art follows the cursor through the
+    -- hooks AddFieldChrome put on this button; the fill, the border and the
+    -- indicator below are the flat draw's, and are inert under a skin with art.
     selector:SetScript("OnEnter", function(self)
         local r, g, b = theme:GetAccentColor()
         self._bg:SetColorTexture(r, g, b, 0.1)
         self._border:Refresh()
+        self._arrow:SetTextColor(r, g, b, 1)
         row._hoverBg:Show()
     end)
 
     selector:SetScript("OnLeave", function(self)
         local bgRc, bgGc, bgBc, bgAc = theme:GetBackgroundSolidColor()
+        local r, g, b = theme:GetAccentColor()
         self._bg:SetColorTexture(bgRc, bgGc, bgBc, bgAc)
         self._border:Refresh()
+        self._arrow:SetTextColor(r, g, b, 0.8)
         row._hoverBg:Hide()
     end)
 
@@ -223,7 +231,7 @@ function Controls:CreateFontSelector(options)
     local subscribeKey = "FontSelector_" .. tostring(row)
     theme:Subscribe(subscribeKey, function(r, g, b)
         labelFS:SetTextColor(r, g, b, 1)
-        arrowText:SetTextColor(r, g, b, 0.8)
+        selector._arrow:SetTextColor(r, g, b, 0.8)
     end)
     row._subscribeKey = subscribeKey
 

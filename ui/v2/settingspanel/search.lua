@@ -66,6 +66,13 @@ end
 -- Non-builder renderer keys (skip during scan, use manual entries instead)
 --------------------------------------------------------------------------------
 
+-- The Features page is keyed by its model (startHere in Scoot, features in
+-- Camelot), so the scan asks the model rather than naming the key here.
+local function FeaturesPageKey()
+    local model = UIPanel.FeaturesModel
+    return model and model.pageKey
+end
+
 local SKIP_SCAN = {
     startHere = true,
     profilesManage = true,
@@ -207,11 +214,26 @@ local function AttachFields(entry)
     }
 end
 
+-- The set of page keys the sidebar shows right now. Page entries and manual
+-- entries both consult it, so search never offers a page the sidebar is
+-- hiding, and a host whose nav omits a page (Camelot lists no Bar Texture
+-- page yet) gets none of that page's field rows either.
+local function VisiblePageKeys()
+    local keys = {}
+    for _, parent in ipairs(Navigation.NavModel) do
+        if Navigation:IsParentVisible(parent) then
+            for _, child in ipairs(Navigation:GetVisibleChildren(parent)) do
+                keys[child.key] = true
+            end
+        end
+    end
+    return keys
+end
+
 -- Page entries come from the nav model, not from the scan, so a page whose
 -- renderer the scan skips still has one. That is what makes the profile pages,
 -- both Apply All pages and the hand-rolled Aura List findable: a scan can never
--- reach them. Nav visibility is asked of Navigation rather than restated, so
--- search never offers a page the sidebar is hiding.
+-- reach them. Nav visibility is asked of Navigation rather than restated.
 local function BuildPageEntries(out)
     local vocab = addon.SearchVocabulary
     local pages = (vocab and vocab.pages) or {}
@@ -264,38 +286,43 @@ function Search:BuildIndex()
     local savedSearchCleanup = panel._searchCleanup
     panel._searchCleanup = nil
 
+    local featuresKey = FeaturesPageKey()
     for key, renderer in pairs(UIPanel._renderers) do
         -- Skip non-builder renderers, filtered renderers, individual action bar renderers
         if not SKIP_SCAN[key]
+            and key ~= featuresKey
             and not ShouldSkipRenderer(key)
             and not key:match("^actionBar%d$")
         then
             Builder._scanRendererKey = key
             Builder._scanSectionStack = {}
 
-            local ok, err = pcall(renderer, panel, scrollContent)
+            pcall(renderer, panel, scrollContent)
             -- Silently skip renderers that error during scan
 
-            -- Clean up any partial builder state
-            if panel._currentBuilder then
-                panel._currentBuilder:Cleanup()
-                panel._currentBuilder = nil
-            end
+            -- The full teardown, not the builder's alone: a hand-rolled page
+            -- that reaches the scan leaves its rows, its header and its
+            -- scroll anchors behind otherwise, under the search page.
+            panel:ClearContent()
         end
     end
 
     -- Restore search cleanup
     panel._searchCleanup = savedSearchCleanup
 
-    -- Add manual entries for non-builder pages
+    -- Manual entries for the hand-rolled pages, only where the page is in the
+    -- nav: the list is shared, and a host's tree may omit some of its pages.
+    local visiblePages = VisiblePageKeys()
     for _, entry in ipairs(MANUAL_ENTRIES) do
-        table.insert(Builder._scanEntries, {
-            type = entry.type,
-            label = entry.label,
-            description = entry.description,
-            rendererKey = entry.rendererKey,
-            section = nil,
-        })
+        if visiblePages[entry.rendererKey] then
+            table.insert(Builder._scanEntries, {
+                type = entry.type,
+                label = entry.label,
+                description = entry.description,
+                rendererKey = entry.rendererKey,
+                section = nil,
+            })
+        end
     end
 
     -- Augment entries with breadcrumbs and module categories
@@ -515,7 +542,7 @@ function Search:RenderResults(scrollContent)
     local headerFontPath = Theme:GetFont("HEADER")
     local query = Search._query or ""
     local results = Search._results or {}
-    local yOffset = RESULT_START_Y
+    local yOffset = Search._resultTop or RESULT_START_Y
 
     -- Status line (result count / empty / no results)
     local statusFS = scrollContent:CreateFontString(nil, "OVERLAY")
@@ -675,21 +702,35 @@ function Search:RenderSearchPage(panel, scrollContent)
     -- Store cleanup function on panel for ClearContent
     panel._searchCleanup = CleanupSearchControls
 
-    local ar, ag, ab = Theme:GetAccentColor()
-    local fontPath = Theme:GetFont("VALUE")
-
-    -- Search input
-    local searchInput = Controls:CreateSingleLineEditBox({
+    -- Search input: the searchBox chrome role's draw, the framework's box or
+    -- Blizzard's options search bar. The results start under whichever
+    -- height it came back with.
+    local searchInput = Controls:CreateSearchBox({
         parent = scrollContent,
         placeholder = "Search all settings...",
         text = Search._query or "",
         fontSize = 13,
+        height = INPUT_HEIGHT,
     })
+
+    local function ClearQuery()
+        Search._query = ""
+        Search._results = nil
+        Search:RenderResults(scrollContent)
+    end
 
     if searchInput then
         searchInput:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", CONTENT_PADDING, -CONTENT_PADDING)
         searchInput:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", -CONTENT_PADDING, -CONTENT_PADDING)
         Search._searchInput = searchInput
+        Search._resultTop = -(CONTENT_PADDING + (searchInput:GetHeight() or INPUT_HEIGHT) + CONTENT_PADDING)
+
+        -- The template's clear button empties the box without userInput, so
+        -- the OnTextChanged hook below never hears it.
+        searchInput:SetOnClear(function()
+            ClearQuery()
+            searchInput:SetFocus()
+        end)
 
         -- Auto-focus with cursor at end
         C_Timer.After(0, function()
@@ -718,9 +759,7 @@ function Search:RenderSearchPage(panel, scrollContent)
             -- Escape clears input
             searchInput._editBox:SetScript("OnEscapePressed", function(self)
                 self:SetText("")
-                Search._query = ""
-                Search._results = nil
-                Search:RenderResults(scrollContent)
+                ClearQuery()
                 self:SetFocus()
             end)
         end

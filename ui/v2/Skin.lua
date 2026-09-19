@@ -8,7 +8,7 @@
 -- identities never change and file-scope captures of the tables stay valid.
 --
 --   Skin.Register(name, skin)   skin = { palette, fonts, textures, metrics,
---                               chrome, overrides }
+--                               chrome, opacity, overrides }
 --   Skin.SetActive(name)        push the skin into the facades, install its
 --                               overrides, notify, re-render the open panel
 --   Skin.Active()               the active skin table
@@ -22,7 +22,10 @@
 -- Palette roles: background, backgroundSolid, textPrimary, textDim,
 -- textDimLight, collapsibleBg, accentDefault; each { r, g, b, a }.
 -- Font roles: label, value, desc, header, button, miniLabel, proportional,
--- proportionalMed; each { path, size }.
+-- proportionalMed; each { path, size, style }. style is a key from
+-- addon.FontStyles (core/fonts.lua) and defaults to NONE; a skin may declare
+-- roles of its own beside these, for a surface whose metrics name one
+-- (metrics.nav.card.labelFontRole).
 -- Metrics: flat layout and style numbers plus the slots, sublevels, and
 -- alphas sub-tables; the full catalog is the tui skin table.
 -- Chrome: one descriptor per panel surface (window, titleBar, closeButton,
@@ -30,6 +33,8 @@
 -- navRow, dropdown), each a kind (flat, nineSlice, atlas, template) with the
 -- names that kind draws from; ui/v2/Chrome.lua resolves them against the
 -- client and supplies the flat default for a role a skin leaves out.
+-- Opacity: one number per named piece of the panel's art (Chrome.PIECES), the
+-- skin author's and never a player setting; a piece left out draws at 1.
 --
 -- An override replaces a row factory's draw body only:
 -- overrides.<Control> = function(options) must return a frame satisfying the
@@ -134,6 +139,7 @@ function Skin.SetActive(name)
     -- previous resolutions.
     if Theme then
         Theme.Chrome = skin.chrome or {}
+        Theme.Opacity = skin.opacity or {}
     end
     if addon.UI.Chrome and addon.UI.Chrome.Invalidate then
         addon.UI.Chrome.Invalidate()

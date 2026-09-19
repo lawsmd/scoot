@@ -193,17 +193,12 @@ function Controls:CreateSelector(options)
         labelFS:SetJustifyH("RIGHT")
     end
 
-    -- Selector border
-    selector._border = Controls.CreateBorder(selector, { alpha = SELECTOR_BORDER_ALPHA })
-
-    -- Selector background
-    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
-
     -- Arrow buttons and separators
     local leftArrow, leftSep = Controls.CreateArrowButton(selector, {
         width = sc(SELECTOR_ARROW_WIDTH),
         height = sc(SELECTOR_HEIGHT) - 2,
         glyph = "◀",
+        direction = "prev",
         fontSize = sc(14),
         separator = "RIGHT",
     })
@@ -214,6 +209,7 @@ function Controls:CreateSelector(options)
         width = sc(SELECTOR_ARROW_WIDTH),
         height = sc(SELECTOR_HEIGHT) - 2,
         glyph = "▶",
+        direction = "next",
         fontSize = sc(14),
         separator = "LEFT",
     })
@@ -222,20 +218,29 @@ function Controls:CreateSelector(options)
 
     -- Value display (center, clickable for dropdown)
     local valueBtn = CreateFrame("Button", nil, selector)
-    valueBtn:SetPoint("LEFT", leftArrow, "RIGHT", 1, 0)
-    valueBtn:SetPoint("RIGHT", rightArrow, "LEFT", -1, 0)
+    local arrowGap = Controls.Metrics().field.arrowGap or 1
+    valueBtn:SetPoint("LEFT", leftArrow, "RIGHT", arrowGap, 0)
+    valueBtn:SetPoint("RIGHT", rightArrow, "LEFT", -arrowGap, 0)
     valueBtn:SetHeight(sc(SELECTOR_HEIGHT) - 2)
     valueBtn:EnableMouse(true)
     valueBtn:RegisterForClicks("AnyUp")
+    -- The field role draws the shell: around the whole field when flat
+    selector._border, selector._bg, selector._backdrop =
+        Controls.AddFieldChrome(selector, valueBtn, { borderAlpha = SELECTOR_BORDER_ALPHA })
 
     local valueBg = valueBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
     valueBg:SetAllPoints()
     valueBg:SetColorTexture(ar, ag, ab, 0)
     valueBtn._bg = valueBg
 
+    -- The value the field shows. field.fontRole is its own role where a skin
+    -- declares one, which is how a font style reaches a field's value and
+    -- nothing else; the value role otherwise, the face this always drew. The
+    -- arrow below stays on the role's face without the style: under a skin
+    -- that draws art for it, AddFieldIndicator hides this string anyway.
     local valueText = valueBtn:CreateFontString(nil, "OVERLAY")
     local valueFont = theme:GetFont("VALUE")
-    valueText:SetFont(valueFont, sc(12), "")
+    theme:ApplyFont(valueText, Controls.Metrics().field.fontRole or "value", sc(12))
     valueText:SetPoint("CENTER", 0, 0)
     valueText:SetTextColor(1, 1, 1, 1)
     valueBtn._text = valueText
@@ -246,7 +251,7 @@ function Controls:CreateSelector(options)
     dropIndicator:SetPoint("RIGHT", valueBtn, "RIGHT", -sc(8), -1)
     dropIndicator:SetText("▼")
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
-    valueBtn._dropIndicator = dropIndicator
+    valueBtn._dropIndicator = Controls.AddFieldIndicator(valueBtn, dropIndicator)
 
     selector._leftArrow = leftArrow
     selector._rightArrow = rightArrow

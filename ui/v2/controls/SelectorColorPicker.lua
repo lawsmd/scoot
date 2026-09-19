@@ -106,17 +106,12 @@ function Controls:CreateSelectorColorPicker(options)
     selector:SetSize(selectorWidth, SELECTOR_HEIGHT)
     Controls.AnchorCluster(row, selector, { x = -SELECTOR_PADDING })
 
-    -- Selector border
-    selector._border = Controls.CreateBorder(selector, { alpha = SELECTOR_BORDER_ALPHA })
-
-    -- Selector background
-    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
-
     -- Arrow buttons and separators
     local leftArrow, leftSep = Controls.CreateArrowButton(selector, {
         width = SELECTOR_ARROW_WIDTH,
         height = SELECTOR_HEIGHT - 2,
         glyph = "\226\151\128", -- ◀
+        direction = "prev",
         separator = "RIGHT",
     })
     leftArrow:SetPoint("LEFT", selector, "LEFT", 1, 0)
@@ -126,6 +121,7 @@ function Controls:CreateSelectorColorPicker(options)
         width = SELECTOR_ARROW_WIDTH,
         height = SELECTOR_HEIGHT - 2,
         glyph = "\226\150\182", -- ▶
+        direction = "next",
         separator = "LEFT",
     })
     rightArrow:SetPoint("RIGHT", selector, "RIGHT", -1, 0)
@@ -133,11 +129,15 @@ function Controls:CreateSelectorColorPicker(options)
 
     -- Value display (center, clickable for dropdown)
     local valueBtn = CreateFrame("Button", nil, selector)
-    valueBtn:SetPoint("LEFT", leftArrow, "RIGHT", 1, 0)
-    valueBtn:SetPoint("RIGHT", rightArrow, "LEFT", -1, 0)
+    local arrowGap = Controls.Metrics().field.arrowGap or 1
+    valueBtn:SetPoint("LEFT", leftArrow, "RIGHT", arrowGap, 0)
+    valueBtn:SetPoint("RIGHT", rightArrow, "LEFT", -arrowGap, 0)
     valueBtn:SetHeight(SELECTOR_HEIGHT - 2)
     valueBtn:EnableMouse(true)
     valueBtn:RegisterForClicks("AnyUp")
+    -- The field role draws the shell: around the whole field when flat
+    selector._border, selector._bg, selector._backdrop =
+        Controls.AddFieldChrome(selector, valueBtn, { borderAlpha = SELECTOR_BORDER_ALPHA })
 
     local valueBg = valueBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
     valueBg:SetAllPoints()
@@ -158,7 +158,7 @@ function Controls:CreateSelectorColorPicker(options)
     dropIndicator:SetPoint("RIGHT", valueBtn, "RIGHT", -8, -1)
     dropIndicator:SetText("\226\150\188")
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
-    valueBtn._dropIndicator = dropIndicator
+    valueBtn._dropIndicator = Controls.AddFieldIndicator(valueBtn, dropIndicator)
 
     selector._leftArrow = leftArrow
     selector._rightArrow = rightArrow

@@ -90,12 +90,18 @@ function Controls:CreateDropdown(options)
     -- Border, fill and hover fill come from the dropdown role
     dropdown._backdrop = addon.UI.Chrome.Backdrop("dropdown", dropdown)
 
-    -- Value text
+    -- Value text. dropdown.fontRole is the field's own role where a skin
+    -- declares one, so a font style can sit on the value a field shows
+    -- without reaching every other white string; the value role otherwise.
     local valueText = dropdown:CreateFontString(nil, "OVERLAY")
-    theme:ApplyFont(valueText, "value", M().dropdown.fontSize)
+    theme:ApplyFont(valueText, M().dropdown.fontRole or "value", M().dropdown.fontSize)
+    -- A skin that centers the value keeps its arrow off the right edge, so
+    -- the text takes the same padding on both sides.
+    local justify = addon.UI.Chrome.Spec("dropdown").justify or "LEFT"
+    local arrowRoom = justify == "CENTER" and 0 or 12
     valueText:SetPoint("LEFT", dropdown, "LEFT", M().dropdown.padding, 0)
-    valueText:SetPoint("RIGHT", dropdown, "RIGHT", -M().dropdown.padding - 12, 0)
-    valueText:SetJustifyH("LEFT")
+    valueText:SetPoint("RIGHT", dropdown, "RIGHT", -M().dropdown.padding - arrowRoom, 0)
+    valueText:SetJustifyH(justify)
     valueText:SetTextColor(1, 1, 1, 1)
     dropdown._valueText = valueText
 
@@ -105,7 +111,7 @@ function Controls:CreateDropdown(options)
     dropIndicator:SetPoint("RIGHT", dropdown, "RIGHT", -M().dropdown.padding, 0)
     dropIndicator:SetText("\226\150\188")
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
-    dropdown._dropIndicator = dropIndicator
+    dropdown._dropIndicator = Controls.AddFieldIndicator(dropdown, dropIndicator, "dropdown")
 
     -- State tracking
     dropdown._currentKey = nil
@@ -160,6 +166,9 @@ function Controls:CreateDropdown(options)
     })
     dropdown._menu = menu
     dropdown._closeMenu = function() menu:Close() end
+    -- The role's open art follows the list, whichever path shows or hides it
+    menu.frame:HookScript("OnShow", function() dropdown._backdrop:SetOpen(true) end)
+    menu.frame:HookScript("OnHide", function() dropdown._backdrop:SetOpen(false) end)
 
     -- Click to toggle menu
     dropdown:SetScript("OnClick", function(self, mouseButton)

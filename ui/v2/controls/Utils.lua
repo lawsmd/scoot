@@ -85,6 +85,16 @@ function Controls.Metrics()
     return addon.UI.Skin.Metrics()
 end
 
+-- The role a settings row's own name draws in. A skin that wants the row
+-- names styled apart from the rest of its label text names one in
+-- metrics.rowLabelFontRole; the rest keep the label role they always had.
+-- Every row label resolves this, the row chrome's and the measure that sizes
+-- a cluster against it, so a style put on the role reaches the whole page.
+function Controls.RowLabelFontRole()
+    local m = Controls.Metrics()
+    return (m and m.rowLabelFontRole) or "label"
+end
+
 -- Per-border state lives here, keyed by the border object, so pairs(border)
 -- yields only edge textures. External code iterates _border tables directly
 -- (the settings-panel pulse calls tex:SetAlpha on every value), so nothing but
@@ -477,7 +487,7 @@ local function AddRowChromeV2(row, opts)
     row._clusterBand = opts.band or baseHeight
 
     local labelFS = row:CreateFontString(nil, "OVERLAY")
-    theme:ApplyFont(labelFS, "label", opts.labelFontSize)
+    theme:ApplyFont(labelFS, Controls.RowLabelFontRole(), opts.labelFontSize)
     labelFS:SetText(opts.label)
     labelFS:SetTextColor(theme:GetAccentColor())
     row._label = labelFS
@@ -566,7 +576,7 @@ function Controls.AddRowChrome(row, opts)
     local padLeft = opts.padLeft or 12
 
     local labelFS = row:CreateFontString(nil, "OVERLAY")
-    labelFS:SetFont(theme:GetFont("LABEL"), opts.labelFontSize or 13, "")
+    theme:ApplyFont(labelFS, Controls.RowLabelFontRole(), opts.labelFontSize or 13)
     local labelY = opts.labelYOffset
     if labelY == nil then labelY = hasDesc and 6 or 0 end
     labelFS:SetPoint("LEFT", row, "LEFT", padLeft, labelY)
@@ -640,14 +650,66 @@ end
 -- button and owns the click handler; key-list wrap and numeric clamp are
 -- different algorithms and stay with their files.
 --
+-- The arrowButton role decides the draw. Flat is the draw below. Any other
+-- kind draws the role's art per state through Chrome.Backdrop and takes the
+-- arrow from the role's glyphs[direction], colored by its glyphColors; the
+-- separator is left out, since the art has its own rim. On that path _bg is
+-- inert and _text answers SetTextColor the way the callers use it: a full
+-- alpha is the enabled arrow, a reduced one the locked or disabled arrow.
+--
 -- opts:
 --   width, height  button size
---   glyph          the arrow character
+--   glyph          the arrow character of the flat draw
+--   direction      "prev" or "next", the key into the role's glyphs
 --   fontSize       default 14
 --   noHover        skip the hover handlers (the sliders install their own,
 --                  gated on their sync lock)
 --   separator      "LEFT" or "RIGHT": a 1px accent rule on that side of the
 --                  button, drawn on parent and returned second
+local INERT_FILL = { SetColorTexture = function() end, SetShown = function() end, Hide = function() end, Show = function() end }
+
+local function CreateArtArrowButton(arrow, spec, opts)
+    local Chrome = addon.UI.Chrome
+    local backdrop = (not opts.noHover) and Chrome.Backdrop("arrowButton", arrow) or nil
+    local art = spec.glyphs and spec.glyphs[opts.direction or "next"]
+    local glyph = Chrome.Glyph(arrow, art or opts.glyph, { fontSize = opts.fontSize or 14 })
+    glyph.region:SetPoint("CENTER", 0, 0)
+    local offset = spec.pressedOffset
+
+    local function color(state)
+        local colors = spec.glyphColors or {}
+        return Chrome.Color(colors[state] or colors.normal or "accent")
+    end
+    local dimmed = false
+    local function paint()
+        local state = dimmed and "disabled" or (backdrop and backdrop:State()) or "normal"
+        glyph:SetColor(color(state))
+        local down = offset and state == "pressed"
+        glyph.region:SetPoint("CENTER", down and offset[1] or 0, down and offset[2] or 0)
+    end
+    if backdrop then
+        local paintArt = backdrop.paint
+        backdrop.paint = function()
+            paintArt()
+            paint()
+        end
+        arrow:SetScript("OnEnter", function() backdrop:SetHover(true) end)
+        arrow:SetScript("OnLeave", function() backdrop:SetHover(false) end)
+        arrow:HookScript("OnMouseDown", function() if not dimmed then backdrop:SetPressed(true) end end)
+        arrow:HookScript("OnMouseUp", function() backdrop:SetPressed(false) end)
+        arrow:HookScript("OnHide", function() backdrop:SetPressed(false) end)
+    end
+    arrow._backdrop = backdrop
+    arrow._bg = INERT_FILL
+    arrow._text = {
+        SetTextColor = function(_, _, _, _, a)
+            dimmed = (a or 1) < 1
+            if backdrop then backdrop:SetDisabled(dimmed) else paint() end
+        end,
+    }
+    paint()
+end
+
 function Controls.CreateArrowButton(parent, opts)
     local theme = GetTheme()
     local ar, ag, ab = theme:GetAccentColor()
@@ -656,6 +718,12 @@ function Controls.CreateArrowButton(parent, opts)
     arrow:SetSize(opts.width, opts.height)
     arrow:EnableMouse(true)
     arrow:RegisterForClicks("AnyUp")
+
+    local spec = addon.UI.Chrome.Spec("arrowButton")
+    if spec.kind ~= "flat" then
+        CreateArtArrowButton(arrow, spec, opts)
+        return arrow, nil
+    end
 
     local bg = arrow:CreateTexture(nil, "BACKGROUND", nil, -6)
     bg:SetAllPoints()
@@ -695,6 +763,125 @@ function Controls.CreateArrowButton(parent, opts)
     return arrow, sep
 end
 
+-- The shell of a selector field: what is drawn around the arrows and the
+-- value. The field role decides it. Flat is a border and a background around
+-- the whole field. Any other kind draws the role's art per state through
+-- Chrome.Backdrop, on the value button alone when the role says spans =
+-- "value" (the arrows are then buttons of their own beside it), and the
+-- border and background it returns are inert.
+--
+-- Returns border, background, backdrop (nil when flat).
+local INERT_BORDER_MT = { __index = {
+    Refresh = function() end, SetShown = function() end, SetAlpha = function() end, Destroy = function() end,
+} }
+
+function Controls.AddFieldChrome(field, valueBtn, opts)
+    opts = opts or {}
+    local Chrome = addon.UI.Chrome
+    local spec = Chrome.Spec("field")
+    if spec.kind == "flat" then
+        local border = Controls.CreateBorder(field, { alpha = opts.borderAlpha })
+        local bg = Controls.AddBackground(field, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
+        return border, bg, nil
+    end
+    local target = (spec.spans == "value" and valueBtn) or field
+    local backdrop = Chrome.Backdrop("field", target)
+    if valueBtn then
+        valueBtn:HookScript("OnEnter", function() backdrop:SetHover(true) end)
+        valueBtn:HookScript("OnLeave", function() backdrop:SetHover(false) end)
+        valueBtn:HookScript("OnMouseDown", function() backdrop:SetPressed(true) end)
+        valueBtn:HookScript("OnMouseUp", function() backdrop:SetPressed(false) end)
+    end
+    return setmetatable({}, INERT_BORDER_MT), INERT_FILL, backdrop
+end
+
+-- The open indicator on a field's value button. A role with no glyphs.open
+-- keeps the caller's character. Art from the role is centered on the value
+-- button's bottom edge or pinned right, by the role's indicator table, and
+-- indicator.show = "hover" keeps it hidden until the cursor is over the
+-- field. role is "field" unless the caller names another (the header
+-- dropdown passes its own). The handle answers SetTextColor the way the callers use it: a full
+-- alpha is the hover color, a reduced one the resting color.
+function Controls.AddFieldIndicator(valueBtn, fontString, role)
+    local Chrome = addon.UI.Chrome
+    local spec = Chrome.Spec(role or "field")
+    local art = spec.glyphs and spec.glyphs.open
+    if spec.kind == "flat" or not art then return fontString end
+    fontString:Hide()
+    local where = spec.indicator or {}
+    local glyph = Chrome.Glyph(valueBtn, art)
+    glyph.region:SetPoint(where.point or "RIGHT", valueBtn, where.point or "RIGHT", where.x or -8, where.y or 0)
+    local colors = spec.glyphColors or {}
+    local function paint(hover)
+        glyph:SetColor(Chrome.Color(colors[hover and "hover" or "normal"] or colors.normal or "accent"))
+        glyph:SetShown(hover or where.show ~= "hover")
+    end
+    paint(false)
+    return { SetTextColor = function(_, _, _, _, a) paint((a or 1) >= 1) end }
+end
+
+-- The typed value box beside a slider's track. The input role decides the
+-- draw. Flat is a bare EditBox with an accent border around the background
+-- color, brighter while the box has focus. A template kind builds the box on
+-- the skin's template and keeps its Left, Middle and Right art on the
+-- inputField opacity piece; Blizzard's own input box is the one its options
+-- search bar is drawn in. That art starts 5 units left of the EditBox and is
+-- 20 tall, so the text centers in the art and _artLeft tells the caller how
+-- far to stand the box off its neighbour.
+--
+-- opts: width, height, fontSize (default 12), maxLetters (default 10),
+--       inset (flat border's outset from the box, default 2),
+--       textInset (flat text inset, default 4)
+--
+-- Returns the EditBox. box._artLeft is the art's reach past the left edge;
+-- box._setFocusLook(focused) repaints the flat border and is inert otherwise.
+-- How far the input role's art reaches past the box's left edge, for a caller
+-- that sizes its cluster before it builds the box.
+function Controls.ValueInputReach()
+    return addon.UI.Chrome.Spec("input").kind == "template" and 5 or 0
+end
+
+function Controls.CreateValueInput(parent, opts)
+    local theme = GetTheme()
+    local spec = addon.UI.Chrome.Spec("input")
+    local art = spec.kind == "template"
+
+    local box = addon.UI.Chrome.CreateFrame(spec, "EditBox", nil, parent)
+    box:SetSize(opts.width, art and 20 or opts.height)
+    box:SetAutoFocus(false)
+    box:SetNumeric(false)  -- Allow decimals
+    box:SetMaxLetters(opts.maxLetters or 10)
+    box:EnableMouse(true)
+    box:SetFont(theme:GetFont("VALUE"), opts.fontSize or 12, "")
+    box:SetTextColor(1, 1, 1, 1)
+    box:SetJustifyH("CENTER")
+
+    if art then
+        for _, key in ipairs({ "Left", "Middle", "Right" }) do
+            if box[key] then addon.UI.Chrome.ApplyOpacity("inputField", box[key]) end
+        end
+        box:SetTextInsets(0, 5, 0, 0)
+        box._artLeft = Controls.ValueInputReach()
+        box._setFocusLook = function() end
+        return box
+    end
+
+    box:SetTextInsets(opts.textInset or 4, opts.textInset or 4, 0, 0)
+
+    local inset = opts.inset or 2
+    local border = Controls.CreateBorder(box, {
+        corners = "outset", thickness = inset, layer = "BACKGROUND", sublevel = 1, alpha = 0.6,
+    })
+    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
+    local bg = box:CreateTexture(nil, "BACKGROUND", nil, 0)
+    bg:SetPoint("TOPLEFT", -inset, inset)
+    bg:SetPoint("BOTTOMRIGHT", inset, -inset)
+    bg:SetColorTexture(bgR, bgG, bgB, bgA)
+    box._artLeft = 0
+    box._setFocusLook = function(focused) border:SetAlpha(focused and 1 or 0.6) end
+    return box
+end
+
 --------------------------------------------------------------------------------
 -- Click-outside dismissal
 --------------------------------------------------------------------------------
@@ -720,19 +907,30 @@ end
 --------------------------------------------------------------------------------
 
 -- The modal dialog shell shared by the font, bar texture, bar border, and
--- icon pickers: a movable FULLSCREEN_DIALOG singleton with dark background
--- and accent border, title, close button, left tab column with separator,
--- restyled scroll frame with scroll child, ESC and click-outside dismissal,
--- and one theme subscription that keeps every part on the current accent.
--- The picker keeps its item lists, previews, Show and Close globals, and
--- defines frame:PopulateContent() after this returns.
+-- icon pickers: a movable FULLSCREEN_DIALOG singleton, title, close button,
+-- left tab column with separator, scroll frame with scroll child, ESC and
+-- click-outside dismissal, and one theme subscription that keeps every part
+-- on the current accent. The picker keeps its item lists, previews, Show and
+-- Close globals, and defines frame:PopulateContent() after this returns.
+--
+-- Every part comes from the active skin rather than from numbers here: the
+-- surface is the picker role, the tab column the navRow role, the X the
+-- closeButton role, and the bar beside the scroll frame is
+-- Controls.CreateScrollBar. On the forever skin that makes the dialog a
+-- Blizzard panel with the client's own border, title plate and scrollbar,
+-- and each tab a list row; on tui every one of those roles is the
+-- framework's flat draw, which is the look the pickers shipped with.
 --
 -- opts:
 --   name          global frame name; also the theme subscription key, and the
 --                  scroll frame is named with Frame swapped for ScrollFrame
---   width, height  frame size
---   contentWidth   width basis for the scroll child (the shell insets it by
---                  padding)
+--   height         the room the dialog needs inside its art
+--   contentWidth   the room the picker's grid needs inside the scroll frame.
+--                  The shell adds the tab column, the gap beside it, the
+--                  scrollbar gutter and its own padding to get the dialog's
+--                  width, and the scroll child is this wide; a picker that
+--                  adds its own number for that chrome sizes the dialog
+--                  short, and the scroll frame clips its last column
 --   title          title text
 --   onClose        the picker's close routine, wired to the X, ESC, and the
 --                  click-outside poll
@@ -747,20 +945,29 @@ end
 --
 -- Returns the frame carrying Title, CloseButton, TabContainer, TabButtons,
 -- UpdateTabs, UpdateTabVisuals, SetTitleInset, ScrollFrame, _scrollBar,
--- Content, and the _accentR/_accentG/_accentB fields the populate passes read.
+-- _scrollInsetRight, Content, and the _accentR/_accentG/_accentB fields the
+-- populate passes read.
 function Controls.CreatePickerShell(opts)
     local theme = GetTheme()
+    local Chrome = addon.UI.Chrome
     local accentR, accentG, accentB = theme:GetAccentColor()
     local padding = opts.padding or 12
     local titleHeight = opts.titleHeight or 30
     local tabWidth = opts.tabWidth or 90
     local tabHeight = opts.tabHeight or 32
+    -- The gap between the tab column and the scroll frame, and the gutter the
+    -- scrollbar stands in on the far side of it.
+    local tabGap, scrollGutter = 12, 20
     local onClose = opts.onClose
     local getSelectedTab = opts.getSelectedTab
     local onTabSelected = opts.onTabSelected
 
-    local frame = CreateFrame("Frame", opts.name, UIParent)
-    frame:SetSize(opts.width, opts.height)
+    -- The dialog's surface, the way the picker role says. A template kind
+    -- builds the frame on the skin's panel template, whose border, title
+    -- plate and close button come with it; flat is the framework's fill and
+    -- four-edge border, the look the pickers shipped with.
+    local spec = Chrome.Spec("picker")
+    local frame = Chrome.CreateFrame(spec, "Frame", opts.name, UIParent)
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetFrameLevel(100)
     frame:EnableMouse(true)
@@ -770,61 +977,64 @@ function Controls.CreatePickerShell(opts)
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
 
-    -- Background (TUI dark)
-    local bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.04, 0.04, 0.06, 0.96)
-    frame._bg = bg
+    -- How far the panes stand off the frame's edge. Art that draws into the
+    -- rect keeps them at the skin's windowInset; a flat border is its own
+    -- width and the padding already clears it.
+    local edge = 0
+    if spec.kind == "template" then
+        addon.UI.Window:BuildTemplateParts(frame, spec)
+        edge = Controls.Metrics().windowInset or 0
+    elseif spec.kind == "nineSlice" then
+        frame._bg = Controls.AddBackground(frame, { color = spec.background or "window" })
+        frame._chrome = Chrome.NineSlice(frame, spec)
+        edge = Controls.Metrics().windowInset or 0
+    else
+        frame._bg = Controls.AddBackground(frame, { color = spec.background or "window" })
+        frame._borders = Controls.CreateBorder(frame, { alpha = 0.8 })
+    end
+    local pad = padding + edge
+    -- The caller's contentWidth and height are the room it needs inside the
+    -- dialog, so art that reaches into the rect grows the frame by its own
+    -- margin rather than taking that room away: the tab column and the
+    -- scroll frame come out the same size under every skin. The width is the
+    -- grid's room plus everything the shell keeps beside it, which is the
+    -- one place that arithmetic is done.
+    local frameWidth = opts.contentWidth + tabWidth + tabGap + scrollGutter + padding * 2 + edge * 2
+    local frameHeight = opts.height + edge * 2
+    frame:SetSize(frameWidth, frameHeight)
+    -- What a picker anchoring a band of its own keeps off the frame's edge,
+    -- so its row lines up with the tab column under it.
+    frame._padInset = pad
 
-    -- Border (accent color)
-    frame._borders = Controls.CreateBorder(frame, { alpha = 0.8 })
-
-    -- Title
+    -- Title: the template's own plate where the frame has one, a string in
+    -- the header font otherwise.
     local titleFont = theme:GetFont("HEADER")
-    local title = frame:CreateFontString(nil, "OVERLAY")
-    title:SetFont(titleFont, 14, "")
-    title:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -10)
-    title:SetText(opts.title)
-    title:SetTextColor(1, 1, 1, 1)
+    local title
+    if frame.SetTitle and frame.GetTitleText and frame.TitleContainer then
+        frame:SetTitle(opts.title)
+        title = frame:GetTitleText()
+    else
+        title = frame:CreateFontString(nil, "OVERLAY")
+        title:SetFont(titleFont, 14, "")
+        title:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -10)
+        title:SetText(opts.title)
+        title:SetTextColor(1, 1, 1, 1)
+    end
     frame.Title = title
 
-    -- Close button (X)
-    local closeBtn = CreateFrame("Button", nil, frame)
-    closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
-    closeBtn:EnableMouse(true)
-    closeBtn:RegisterForClicks("AnyUp")
-
-    local closeBtnBg = closeBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
-    closeBtnBg:SetAllPoints()
-    closeBtnBg:SetColorTexture(accentR, accentG, accentB, 1)
-    closeBtnBg:Hide()
-    closeBtn._bg = closeBtnBg
-
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY")
-    closeBtnText:SetFont(titleFont, 14, "")
-    closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText("X")
-    closeBtnText:SetTextColor(accentR, accentG, accentB, 1)
-    closeBtn._text = closeBtnText
-
-    closeBtn:SetScript("OnEnter", function(btn)
-        btn._bg:Show()
-        btn._text:SetTextColor(0, 0, 0, 1)
-    end)
-    closeBtn:SetScript("OnLeave", function(btn)
-        btn._bg:Hide()
-        btn._text:SetTextColor(frame._accentR, frame._accentG, frame._accentB, 1)
-    end)
-    closeBtn:SetScript("OnClick", function()
-        onClose()
-    end)
+    -- The X, from the closeButton role: a window kind adopts the one the
+    -- template already built and keeps its corner, so only the rest is placed.
+    local closeBtn, closeSpec = Controls:CreateCloseButton({ parent = frame, onClick = onClose })
+    if not (closeSpec and closeSpec.kind == "window") then
+        closeBtn:ClearAllPoints()
+        closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+    end
     frame.CloseButton = closeBtn
 
     -- Tab container (left side)
     local tabContainer = CreateFrame("Frame", nil, frame)
-    tabContainer:SetSize(tabWidth, opts.height - titleHeight - padding * 2)
-    tabContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -(titleHeight + 4))
+    tabContainer:SetSize(tabWidth, frameHeight - titleHeight - pad - padding)
+    tabContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, -(titleHeight + 4))
     frame.TabContainer = tabContainer
 
     -- A picker with a header band under the title (the global-token buttons)
@@ -835,9 +1045,9 @@ function Controls.CreatePickerShell(opts)
         px = px or titleHeight
         if self._titleInset == px then return end
         self._titleInset = px
-        tabContainer:SetSize(tabWidth, opts.height - px - padding * 2)
+        tabContainer:SetSize(tabWidth, frameHeight - px - pad - padding)
         tabContainer:ClearAllPoints()
-        tabContainer:SetPoint("TOPLEFT", self, "TOPLEFT", padding, -(px + 4))
+        tabContainer:SetPoint("TOPLEFT", self, "TOPLEFT", pad, -(px + 4))
     end
 
     -- Vertical separator between tabs and content
@@ -865,33 +1075,34 @@ function Controls.CreatePickerShell(opts)
                 tabBtn:EnableMouse(true)
                 tabBtn:RegisterForClicks("AnyUp")
 
-                local tabBg = tabBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
-                tabBg:SetAllPoints()
-                tabBg:SetColorTexture(0.06, 0.06, 0.08, 1)
-                tabBtn._bg = tabBg
+                local tabLabel = tabBtn:CreateFontString(nil, "OVERLAY")
+                tabLabel:SetFont(lf, 11, "")
+                tabLabel:SetPoint("CENTER", tabBtn, "CENTER", 2, 0)
+                tabBtn._label = tabLabel
 
+                -- The column is a list of rows, not a row of tabs, so it
+                -- takes the navRow role: the skin's own row art per state,
+                -- and the label colored by the same state walk.
+                tabBtn._backdrop = Chrome.Backdrop("navRow", tabBtn, {
+                    variant = "parent", label = tabLabel,
+                })
+
+                -- A skin whose selected state is art of its own says so
+                -- already; the accent bar is for the flat draw, whose states
+                -- are two fills of the same color.
                 local indicator = tabBtn:CreateTexture(nil, "OVERLAY", nil, 1)
                 indicator:SetSize(2, tabHeight)
                 indicator:SetPoint("LEFT", tabBtn, "LEFT", 0, 0)
                 indicator:SetColorTexture(frame._accentR, frame._accentG, frame._accentB, 1)
                 indicator:Hide()
                 tabBtn._indicator = indicator
-
-                local tabLabel = tabBtn:CreateFontString(nil, "OVERLAY")
-                tabLabel:SetFont(lf, 11, "")
-                tabLabel:SetPoint("CENTER", tabBtn, "CENTER", 2, 0)
-                tabLabel:SetTextColor(0.6, 0.6, 0.6, 1)
-                tabBtn._label = tabLabel
+                tabBtn._indicatorUsed = not Chrome.Spec("navRow").selected
 
                 tabBtn:SetScript("OnEnter", function(btn)
-                    if getSelectedTab() ~= btn._key then
-                        btn._bg:SetColorTexture(frame._accentR, frame._accentG, frame._accentB, 0.15)
-                    end
+                    btn._backdrop:SetHover(true)
                 end)
                 tabBtn:SetScript("OnLeave", function(btn)
-                    if getSelectedTab() ~= btn._key then
-                        btn._bg:SetColorTexture(0.06, 0.06, 0.08, 1)
-                    end
+                    btn._backdrop:SetHover(false)
                 end)
                 tabBtn:SetScript("OnClick", function(btn)
                     if getSelectedTab() ~= btn._key then
@@ -921,64 +1132,47 @@ function Controls.CreatePickerShell(opts)
     function frame:UpdateTabVisuals()
         for _, tabBtn in ipairs(self.TabButtons) do
             local isSelected = (getSelectedTab() == tabBtn._key)
-            if isSelected then
-                tabBtn._indicator:Show()
-                tabBtn._label:SetTextColor(1, 1, 1, 1)
-                tabBtn._bg:SetColorTexture(self._accentR, self._accentG, self._accentB, 0.2)
-            else
-                tabBtn._indicator:Hide()
-                tabBtn._label:SetTextColor(0.6, 0.6, 0.6, 1)
-                tabBtn._bg:SetColorTexture(0.06, 0.06, 0.08, 1)
-            end
+            tabBtn._backdrop:SetSelected(isSelected)
+            tabBtn._indicator:SetShown(isSelected and tabBtn._indicatorUsed)
         end
     end
 
     -- Content area (scroll frame, right of tabs)
-    local scrollFrame = CreateFrame("ScrollFrame", opts.name:gsub("Frame$", "ScrollFrame"), frame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", 12, 0)
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(padding + 20), padding)
+    local scrollFrame = CreateFrame("ScrollFrame", opts.name:gsub("Frame$", "ScrollFrame"), frame)
+    scrollFrame:SetPoint("TOPLEFT", tabContainer, "TOPRIGHT", tabGap, 0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(pad + scrollGutter), pad)
     frame.ScrollFrame = scrollFrame
+    -- What a picker that re-anchors the scroll frame's bottom (the bar
+    -- border picker's edge row) keeps on its right, so the grid stays inside
+    -- it under a skin whose art reaches into the rect.
+    frame._scrollInsetRight = pad + scrollGutter
 
-    -- Style the scrollbar
-    local scrollBar = scrollFrame.ScrollBar or _G[scrollFrame:GetName() .. "ScrollBar"]
+    -- The bar beside it, the way the scrollBar role says. The pickers show
+    -- and hide it themselves from the content height they just laid out.
+    local scrollBar = Controls.CreateScrollBar({ parent = frame, scrollFrame = scrollFrame })
     if scrollBar then
-        scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 6, -16)
-        scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 6, 16)
-
-        -- Hide default textures
-        if scrollBar.Background then scrollBar.Background:Hide() end
-        if scrollBar.Track then
-            if scrollBar.Track.Begin then scrollBar.Track.Begin:Hide() end
-            if scrollBar.Track.End then scrollBar.Track.End:Hide() end
-            if scrollBar.Track.Middle then scrollBar.Track.Middle:Hide() end
-        end
-
-        -- Custom track background
-        local trackBg = scrollBar:CreateTexture(nil, "BACKGROUND", nil, -8)
-        trackBg:SetPoint("TOPLEFT", 4, 0)
-        trackBg:SetPoint("BOTTOMRIGHT", -4, 0)
-        trackBg:SetColorTexture(accentR, accentG, accentB, 0.15)
-        scrollBar._trackBg = trackBg
-
-        -- Style the thumb
-        local thumb = scrollBar.ThumbTexture or scrollBar:GetThumbTexture()
-        if thumb then
-            thumb:SetColorTexture(accentR, accentG, accentB, 0.6)
-            thumb:SetSize(8, 40)
-        end
-
-        -- Hide up/down buttons
-        local upBtn = scrollBar.ScrollUpButton or scrollBar.Back or _G[scrollBar:GetName() .. "ScrollUpButton"]
-        local downBtn = scrollBar.ScrollDownButton or scrollBar.Forward or _G[scrollBar:GetName() .. "ScrollDownButton"]
-        if upBtn then upBtn:SetAlpha(0) upBtn:EnableMouse(false) end
-        if downBtn then downBtn:SetAlpha(0) downBtn:EnableMouse(false) end
-
+        local sb = Controls.Metrics().scrollBar
+        scrollBar:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", sb.margin + sb.width, 0)
+        scrollBar:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", sb.margin + sb.width, 0)
         frame._scrollBar = scrollBar
     end
 
+    -- The factory owns OnScrollRangeChanged in both kinds and leaves the
+    -- wheel to the caller.
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local child = self:GetScrollChild()
+        local maxScroll = math.max(0, (child and child:GetHeight() or 0) - (self:GetHeight() or 1))
+        local target = (self:GetVerticalScroll() or 0) - (delta * 40)
+        self:SetVerticalScroll(math.max(0, math.min(maxScroll, target)))
+        if frame._scrollBar and frame._scrollBar.Sync then
+            frame._scrollBar:Sync()
+        end
+    end)
+
     -- Content frame (scroll child)
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(opts.contentWidth - padding, 100)  -- Height adjusted by the populate pass
+    content:SetSize(opts.contentWidth, 100)  -- Height adjusted by the populate pass
     scrollFrame:SetScrollChild(content)
     frame.Content = content
 
@@ -1013,18 +1207,14 @@ function Controls.CreatePickerShell(opts)
 
     -- One subscription per shell keeps the chrome on the current accent; the
     -- frames are singletons, so the key never needs to be released.
+    -- The parts that come from a role retint themselves: Chrome.Backdrop and
+    -- Controls.CreateScrollBar each hold their own subscription. What is left
+    -- is the shell's own drawing.
     theme:Subscribe(opts.name, function(r, g, b)
         frame._accentR, frame._accentG, frame._accentB = r, g, b
         frame._tabSep:SetColorTexture(r, g, b, 0.4)
-        frame.CloseButton._bg:SetColorTexture(r, g, b, 1)
-        frame.CloseButton._text:SetTextColor(r, g, b, 1)
         for _, tabBtn in ipairs(frame.TabButtons) do
             tabBtn._indicator:SetColorTexture(r, g, b, 1)
-        end
-        if frame._scrollBar then
-            frame._scrollBar._trackBg:SetColorTexture(r, g, b, 0.15)
-            local thumb = frame._scrollBar.ThumbTexture or frame._scrollBar:GetThumbTexture()
-            if thumb then thumb:SetColorTexture(r, g, b, 0.6) end
         end
         frame:UpdateTabVisuals()
         if frame:IsShown() and frame.PopulateContent then

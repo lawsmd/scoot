@@ -144,17 +144,17 @@ local function CreateBarBorderPicker()
 
     local theme = GetTheme()
 
-    -- Calculate content area width
-    local contentWidth = (BORDER_BUTTON_WIDTH * BORDERS_PER_ROW) + (BORDER_BUTTON_SPACING * (BORDERS_PER_ROW - 1)) + (PADDING * 2)
-    local totalWidth = TAB_WIDTH + contentWidth + 24 -- Extra for scrollbar
+    -- The grid's own width. The shell adds the tab column and the rest of
+    -- the chrome around it to size the dialog.
+    local contentWidth = (BORDER_BUTTON_WIDTH * BORDERS_PER_ROW) + (BORDER_BUTTON_SPACING * (BORDERS_PER_ROW - 1))
 
     local frame = Controls.CreatePickerShell({
         -- Brand-named, and still ending in "Frame": CreatePickerShell derives
         -- the scroll frame and scrollbar names from that suffix.
         name = (addon.Brand or "Scoot") .. "BarBorderPickerFrame",
-        width = totalWidth,
         height = PICKER_HEIGHT,
         contentWidth = contentWidth,
+        tabWidth = TAB_WIDTH,
         title = "Select Border Style",
         onClose = CloseBarBorderPicker,
         tabs = TABS,
@@ -162,11 +162,14 @@ local function CreateBarBorderPicker()
         onTabSelected = function(key) selectedTab = key end,
     })
 
-    -- Hidden edges toggle row (below scroll area)
+    -- Hidden edges toggle row (below scroll area). The shell's own inset,
+    -- so the row lines up with the panes above it under a skin whose art
+    -- reaches into the frame's rect.
+    local inset = frame._padInset or PADDING
     local edgeRow = CreateFrame("Frame", nil, frame)
     edgeRow:SetHeight(32)
-    edgeRow:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", TAB_WIDTH + PADDING + 12, PADDING)
-    edgeRow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PADDING, PADDING)
+    edgeRow:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", TAB_WIDTH + inset + 12, inset)
+    edgeRow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
     frame._edgeRow = edgeRow
 
     local edgeLabel = edgeRow:CreateFontString(nil, "OVERLAY")
@@ -235,16 +238,21 @@ local function CreateBarBorderPicker()
         local er = self._edgeRow
         if not er then return end
 
+        -- Both anchors keep the shell's own right inset and bottom padding,
+        -- which carry the margin a skin's art reaches into the frame with.
+        local right = self._scrollInsetRight or (PADDING + 20)
+        local bottom = self._padInset or PADDING
+
         if not pickerHiddenEdgesSetting then
             er:Hide()
             -- Restore scroll area to full height
-            self.ScrollFrame:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -(PADDING + 20), PADDING)
+            self.ScrollFrame:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -right, bottom)
             return
         end
 
         er:Show()
         -- Shrink scroll area to make room for toggle row
-        self.ScrollFrame:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -(PADDING + 20), PADDING + 36)
+        self.ScrollFrame:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -right, bottom + 36)
 
         local hiddenEdges = pickerHiddenEdgesSetting:GetValue() or {}
 

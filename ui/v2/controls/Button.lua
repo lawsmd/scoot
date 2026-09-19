@@ -8,6 +8,9 @@
 -- label in the button font role. A template role builds the frame on a
 -- Blizzard template, whose art and states come with it; the skin's template
 -- goes first in the list and the caller's own (a secure handler) after it.
+-- Any other kind (sliced, atlas, card) draws through Chrome.Backdrop: the
+-- skin's art per state, under a label and an icon the framework owns, so
+-- their colors are the role's labelColors and glyphColors.
 --
 -- Public contract, satisfied by every kind and every override:
 --   SetText(text), GetText()
@@ -15,6 +18,9 @@
 --   SetActive(bool), IsActive()   the pressed-in look while the button's page is open
 --   SetPulsing(bool)              the attention pulse (skin metrics.pulse)
 --   SetLabelColor(r, g, b, a)     a caller-owned label color, until the next SetActive
+--   SetIcon(icon, size)           an atlas name, a file, or a Chrome.Glyph table; nil removes it
+--   SetIconColor(r, g, b, a)      a caller-owned icon color; nil returns it to the role's
+-- The template kind draws no icon; its two icon methods are there and do nothing.
 --   Cleanup()
 -- Fields under an underscore belong to the flat draw and no caller reads them.
 --
@@ -23,6 +29,8 @@
 --   onClick(button, mouseButton), parent (required), name,
 --   template (the caller's own templates, e.g. a secure handler),
 --   secureAction (a table of SecureActionButton attributes),
+--   icon, iconSize, iconColor (a color token or a literal; nil follows the
+--   role's glyphColors, or the label on a flat button),
 --   borderWidth, borderAlpha (flat kind)
 -- CreateCloseButton options: parent (required), name, onClick, size. It
 -- returns the button and the descriptor it was drawn from. A closeButton
@@ -64,19 +72,103 @@ local FLAT_LABEL_COLORS = { normal = "accent", hover = "black", active = "backgr
 local function AutoSize(btn, label, text, padding)
     local textWidth = label:GetStringWidth()
     if textWidth and textWidth > 0 then
-        btn:SetWidth(textWidth + padding * 2)
+        btn:SetWidth(textWidth + (btn._iconExtra or 0) + padding * 2)
         return
     end
-    local estimatedWidth = (#text * 7) + padding * 2
+    if text == "" and btn._iconExtra then
+        btn:SetWidth(btn._iconExtra + padding * 2)
+        return
+    end
+    local estimatedWidth = (#text * 7) + (btn._iconExtra or 0) + padding * 2
     btn:SetWidth(math.max(estimatedWidth, 50))
     C_Timer.After(0, function()
         if btn and label then
             local actualWidth = label:GetStringWidth()
             if actualWidth and actualWidth > 0 then
-                btn:SetWidth(actualWidth + padding * 2)
+                btn:SetWidth(actualWidth + (btn._iconExtra or 0) + padding * 2)
             end
         end
     end)
+end
+
+-- The label's text and the width that follows it, for the draws that own
+-- their label.
+local function InstallText(btn, options, padding)
+    function btn:SetText(newText)
+        self._text = newText
+        self._label:SetText(newText)
+        if self._layoutIcon then self._layoutIcon() end
+        if not options.width then
+            AutoSize(self, self._label, newText, padding)
+        end
+    end
+end
+
+-- The icon beside the label, or alone at the center when there is no text.
+-- repaint is the draw's own paint, which colors the icon through PaintIcon.
+local function InstallIcon(btn, label, options, padding, height, repaint)
+    local gap = M().button.iconGap or 4
+    btn._iconColor = options.iconColor
+
+    local function layout()
+        local icon = btn._icon
+        local hasText = (btn._text or "") ~= ""
+        btn._iconExtra = nil
+        btn._labelX = 0
+        if icon then
+            icon.region:ClearAllPoints()
+            if hasText then
+                btn._iconExtra = btn._iconSize + gap
+                btn._labelX = btn._iconExtra / 2
+                icon.region:SetPoint("RIGHT", label, "LEFT", -gap, 0)
+            else
+                btn._iconExtra = btn._iconSize
+                icon.region:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            end
+        end
+        label:SetPoint("CENTER", btn._labelX, 0)
+    end
+    btn._layoutIcon = layout
+
+    function btn:SetIcon(icon, size)
+        self._iconSize = size or options.iconSize or math.floor(height * 0.6 + 0.5)
+        local glyph = icon
+        if type(icon) == "string" then
+            local isAtlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(icon) ~= nil
+            glyph = isAtlas and { atlas = icon } or { texture = icon }
+        end
+        if type(glyph) == "table" and not glyph.size then
+            glyph = setmetatable({ size = self._iconSize }, { __index = glyph })
+        end
+        if glyph == nil then
+            if self._icon then self._icon:SetShown(false) end
+            self._icon = nil
+        elseif self._iconHandle then
+            self._iconHandle:SetGlyph(glyph)
+            self._icon = self._iconHandle
+        else
+            self._iconHandle = Chrome().Glyph(self, glyph, { fontSize = self._iconSize })
+            self._icon = self._iconHandle
+        end
+        layout()
+        if not options.width then AutoSize(self, label, self._text or "", padding) end
+        repaint()
+    end
+
+    function btn:SetIconColor(r, g, b, a)
+        self._iconColor = r and { r, g, b, a or 1 } or nil
+        repaint()
+    end
+
+    if options.icon then btn:SetIcon(options.icon) end
+end
+
+-- The icon takes the caller's color when there is one, else the one the draw
+-- hands it for the state.
+local function PaintIcon(btn, r, g, b, a)
+    if not btn._icon then return end
+    if btn._iconColor then r, g, b, a = Chrome().Color(btn._iconColor) end
+    btn._icon:SetColor(r, g, b, a)
 end
 
 -- The attention pulse: alpha on a cosine between minAlpha and 1, applied by
@@ -176,8 +268,10 @@ function Controls:CreateButton(options)
 
     if spec.kind == "template" then
         self:_DrawTemplateButton(btn, spec, options, text, fontSize, padding)
+    elseif spec.kind == "flat" or spec.kind == nil then
+        self:_DrawFlatButton(btn, spec, options, text, fontSize, padding, height)
     else
-        self:_DrawFlatButton(btn, spec, options, text, fontSize, padding)
+        self:_DrawBackdropButton(btn, spec, options, text, fontSize, padding, height)
     end
 
     if options.secureAction and type(options.secureAction) == "table" then
@@ -213,7 +307,7 @@ end
 
 -- The flat draw: fill, hover fill, four-edge border, label in the button
 -- role. Label colors come from the role's labelColors tokens.
-function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding)
+function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding, height)
     local theme = GetTheme()
     local colors = spec.labelColors or FLAT_LABEL_COLORS
     local borderWidth = options.borderWidth or M().button.borderWidth
@@ -238,15 +332,20 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding)
     btn._label = label
 
     local function paintLabel(state)
+        btn._labelState = state
+        local r, g, b, a = Chrome().Color(colors[state] or colors.normal)
         if btn._customLabel and state == "normal" then
             local c = btn._customLabel
-            label:SetTextColor(c[1], c[2], c[3], c[4])
-            return
+            r, g, b, a = c[1], c[2], c[3], c[4]
         end
-        label:SetTextColor(Chrome().Color(colors[state] or colors.normal))
+        label:SetTextColor(r, g, b, a)
+        PaintIcon(btn, r, g, b, a)
     end
     btn._paintLabel = paintLabel
     paintLabel("normal")
+    InstallIcon(btn, label, options, padding, height, function()
+        paintLabel(btn._labelState or "normal")
+    end)
 
     if options.width then
         btn:SetWidth(options.width)
@@ -277,13 +376,7 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding)
         paintLabel(btn._isActive and "active" or "normal")
     end)
 
-    function btn:SetText(newText)
-        self._text = newText
-        self._label:SetText(newText)
-        if not options.width then
-            AutoSize(self, self._label, newText, padding)
-        end
-    end
+    InstallText(btn, options, padding)
 
     function btn:SetEnabled(enabled)
         if enabled then
@@ -296,6 +389,7 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding)
             self._border:SetAlpha((self._borderAlpha or 1) * 0.4)
             local r, g, b = Chrome().Color(colors.disabled or colors.normal)
             self._label:SetTextColor(r, g, b, 0.4)
+            PaintIcon(self, r, g, b, 0.4)
         end
     end
 
@@ -335,6 +429,95 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding)
         if self._subscribeKey then
             theme:Unsubscribe(self._subscribeKey)
         end
+    end
+end
+
+-- The backdrop draw: the role's art per state from Chrome.Backdrop, under a
+-- label and an icon drawn here. Label and icon colors come from the role's
+-- labelColors and glyphColors, and the label shifts by the role's
+-- pressedOffset while the button is down or active.
+function Controls:_DrawBackdropButton(btn, spec, options, text, fontSize, padding, height)
+    local theme = GetTheme()
+
+    local label = btn:CreateFontString(nil, "OVERLAY")
+    theme:ApplyFont(label, "button", fontSize)
+    label:SetPoint("CENTER", 0, 0)
+    label:SetText(text)
+    btn._label = label
+
+    local backdrop = Chrome().Backdrop("button", btn)
+    btn._backdrop = backdrop
+    local offset = spec.pressedOffset
+
+    -- The face paints with the art, so every state change and every accent
+    -- change reaches the label and the icon too.
+    local paintArt = backdrop.paint
+    local function paintFace()
+        local state = backdrop:State()
+        if btn._customLabel and state == "normal" then
+            local c = btn._customLabel
+            label:SetTextColor(c[1], c[2], c[3], c[4])
+        else
+            label:SetTextColor(backdrop:LabelColor(state))
+        end
+        PaintIcon(btn, backdrop:GlyphColor(state))
+        local down = offset and (state == "pressed" or state == "selected")
+        label:SetPoint("CENTER", (btn._labelX or 0) + (down and offset[1] or 0), down and offset[2] or 0)
+    end
+    backdrop.paint = function()
+        paintArt()
+        paintFace()
+    end
+
+    InstallIcon(btn, label, options, padding, height, paintFace)
+    backdrop:Refresh()
+
+    if options.width then
+        btn:SetWidth(options.width)
+    else
+        AutoSize(btn, label, text, padding)
+    end
+
+    btn:SetScript("OnEnter", function() backdrop:SetHover(true) end)
+    btn:SetScript("OnLeave", function() backdrop:SetHover(false) end)
+    btn:HookScript("OnMouseDown", function(self)
+        if self:IsEnabled() then backdrop:SetPressed(true) end
+    end)
+    btn:HookScript("OnMouseUp", function() backdrop:SetPressed(false) end)
+    btn:HookScript("OnHide", function() backdrop:SetPressed(false) end)
+
+    InstallText(btn, options, padding)
+
+    function btn:SetEnabled(enabled)
+        if enabled then self:Enable() else self:Disable() end
+        backdrop:SetDisabled(not enabled)
+    end
+
+    function btn:SetActive(active)
+        self._isActive = active and true or false
+        self._customLabel = nil
+        backdrop:SetSelected(self._isActive)
+    end
+
+    function btn:SetLabelColor(r, g, b, a)
+        self._customLabel = { r, g, b, a or 1 }
+        paintFace()
+    end
+
+    -- The art's alpha belongs to its opacity pieces, so the pulse rides on
+    -- the state scale they are applied with
+    InstallPulse(btn, function(self, alpha)
+        backdrop.scale = alpha
+        backdrop:Refresh()
+        label:SetAlpha(alpha)
+    end)
+
+    function btn:Cleanup()
+        if self._pulseTicker then
+            self._pulseTicker:Cancel()
+            self._pulseTicker = nil
+        end
+        backdrop:Destroy()
     end
 end
 
@@ -383,9 +566,18 @@ function Controls:_DrawTemplateButton(btn, spec, options, text, fontSize, paddin
         if self._label then self._label:SetTextColor(r, g, b, a or 1) end
     end
 
+    -- The template owns its art, so there is no icon to draw
+    function btn:SetIcon() end
+    function btn:SetIconColor() end
+
     InstallPulse(btn, function(self, alpha)
         self:SetAlpha(alpha)
     end)
+
+    -- The pulse owns the button's alpha, so the piece goes on the art
+    for _, key in ipairs({ "Left", "Middle", "Right" }) do
+        Chrome().ApplyOpacity("buttonFill", btn[key])
+    end
 
     function btn:Cleanup()
         if self._pulseTicker then
@@ -417,6 +609,7 @@ function Controls:CreateCloseButton(options)
             adopted:SetScript("OnClick", function(self, mouseButton)
                 if options.onClick then options.onClick(self, mouseButton) end
             end)
+            Chrome().ApplyOpacity("closeButton", adopted)
             return adopted, spec
         end
         spec = Chrome().Resolve(spec.fallback, Chrome().FLAT.closeButton)

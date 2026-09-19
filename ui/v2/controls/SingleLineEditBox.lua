@@ -229,3 +229,93 @@ function Controls:CreateSingleLineEditBox(options)
 
     return container
 end
+
+-- SearchBox
+--
+-- The query box on the search page. The searchBox chrome role decides the
+-- draw. Flat is CreateSingleLineEditBox above. A template kind builds the
+-- EditBox on the skin's template, Blizzard's SearchBoxTemplate: the options
+-- search bar, the same three border pieces the slider value box draws, with
+-- the magnifying glass at the left and the clear button at the right, both
+-- shown and colored by the template's own scripts. The skin's searchBox
+-- metric holds the art's geometry: height, and reach, how far the art
+-- stands left of the EditBox, so the container is the art's rect and the
+-- EditBox stands inside it; the caller anchors the container. fontRole is
+-- the typed text's role, value when the metric names none.
+--
+-- Options: parent (required), width (400), placeholder, text, fontSize,
+-- height (flat only). Both draws return a container with the same surface:
+-- _editBox, GetText, SetText, SetFocus, ClearFocus, HasFocus, SetOnClear,
+-- Cleanup. SetOnClear's function runs after the clear button has emptied the
+-- box, which it does without userInput, so a caller hooking OnTextChanged
+-- per keystroke hears the clear through this and nowhere else.
+function Controls:CreateSearchBox(options)
+    if not options or not options.parent then return nil end
+
+    local Chrome = addon.UI.Chrome
+    local spec = Chrome.Spec("searchBox")
+    local metric = Controls.Metrics().searchBox
+    if spec.kind ~= "template" or not metric then
+        local container = Controls:CreateSingleLineEditBox(options)
+        if container then
+            container.SetOnClear = function(c, fn) c._onClear = fn end
+        end
+        return container
+    end
+
+    local theme = GetTheme()
+    local fontRole = metric.fontRole or "value"
+
+    local container = CreateFrame("Frame", nil, options.parent)
+    container:SetSize(options.width or 400, metric.height)
+
+    local editBox = Chrome.CreateFrame(spec, "EditBox", nil, container)
+    editBox:SetPoint("TOPLEFT", container, "TOPLEFT", metric.reach, 0)
+    editBox:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", 0, 0)
+    editBox:SetAutoFocus(false)
+    theme:ApplyFont(editBox, fontRole, options.fontSize)
+    editBox:SetTextColor(1, 1, 1, 1)
+    editBox:SetText(options.text or "")
+    container._editBox = editBox
+
+    for _, key in ipairs({ "Left", "Middle", "Right" }) do
+        if editBox[key] then Chrome.ApplyOpacity("searchField", editBox[key]) end
+    end
+
+    -- The template's placeholder string, in the panel's face and the
+    -- template's own gray. Its OnLoad has already set Blizzard's SEARCH.
+    if editBox.Instructions then
+        theme:ApplyFont(editBox.Instructions, fontRole, options.fontSize)
+        editBox.Instructions:SetText(options.placeholder or "")
+    end
+
+    -- Blizzard's OnClick has emptied the box and dropped focus by the time
+    -- this runs.
+    if editBox.clearButton then
+        editBox.clearButton:HookScript("OnClick", function()
+            if container._onClear then container._onClear() end
+        end)
+    end
+
+    container.GetText = function(c) return c._editBox:GetText() end
+    container.SetText = function(c, text) c._editBox:SetText(text or "") end
+    container.SetFocus = function(c) c._editBox:SetFocus() end
+    container.ClearFocus = function(c) c._editBox:ClearFocus() end
+    container.HasFocus = function(c) return c._editBox:HasFocus() end
+    container.SetOnClear = function(c, fn) c._onClear = fn end
+    container.Cleanup = function() end
+
+    -- The same layout timing as the flat box above: re-assert the text once
+    -- the container has a rect, never while the box has focus.
+    local function RepaintText()
+        if editBox:HasFocus() then return end
+        local text = editBox:GetText() or ""
+        editBox:SetText("")
+        editBox:SetText(text)
+        editBox:SetCursorPosition(0)
+    end
+    C_Timer.After(0, RepaintText)
+    container:SetScript("OnShow", RepaintText)
+
+    return container
+end

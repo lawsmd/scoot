@@ -96,6 +96,10 @@ Skin.Register("tui", {
         rowHeightField = 42,
         rowHeightEmphasized = 72,
         dualRowHeight = 53,
+        -- Room under a captioned cluster. The caption band lifts the controls
+        -- toward the row's top, so the row grows by this and the cluster
+        -- stays in the band above it; the divider then clears the fields.
+        dualRowPadBottom = 6,
         controlHeight = 28,
         rowPadding = 12,
         labelTopPad = 10,
@@ -139,6 +143,15 @@ Skin.Register("tui", {
         resizeGrip = { size = 16, x = -4, y = 4, dot = 2, step = 4, alpha = 0.7 },
         toolbar = { height = 26, spacing = 10, y = 0, fontSize = 11 },
         pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
+
+        -- How far the Features page raises its content pane, which it does to
+        -- fit the module grid without scrolling. The band this skin draws
+        -- under the title bar is empty, so the page takes it: the toolbar
+        -- buttons centered on the frame's top edge reach 13 pixels below it
+        -- and this clears them, and the close button band, y -10 to -34,
+        -- spans only the far-right 24 pixels, where the page draws nothing
+        -- that high. A skin whose band carries art leaves the key out.
+        featuresPaneTop = -18,
 
         -- The panel's own numbers, per surface. paneInset is the scroll
         -- frame's inset inside the content pane.

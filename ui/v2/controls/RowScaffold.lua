@@ -39,6 +39,8 @@ local FLEXIBLE = { slider = true, selector = true, selectorWide = true, input = 
 --                  label puts a mini-label above the slot; a label wider
 --                  than its slot pushes the slots apart and widens the
 --                  cluster, never the slot.
+--   maxClusterWidth: Overrides the metric clamp, for a row with no description
+--                  that gives the room to its slots.
 --
 -- Returns the cluster container and the array of slot frames, left to right.
 -- Each slot frame is control-height, bottom-aligned in the cluster, and
@@ -64,11 +66,12 @@ function Controls.BuildSlotRow(row, opts)
     end
     local gaps = (#slots - 1) * m.slotGap
     local clusterWidth = total + gaps
+    local maxClusterWidth = opts.maxClusterWidth or m.maxClusterWidth
 
     -- Clamp to the maximum cluster width by shrinking the flexible kinds in
     -- proportion.
-    if clusterWidth > m.maxClusterWidth and flexTotal > 0 then
-        local excess = clusterWidth - m.maxClusterWidth
+    if clusterWidth > maxClusterWidth and flexTotal > 0 then
+        local excess = clusterWidth - maxClusterWidth
         local scale = math.max(0, (flexTotal - excess) / flexTotal)
         for i, s in ipairs(slots) do
             if FLEXIBLE[s.kind] then
@@ -119,12 +122,17 @@ function Controls.BuildSlotRow(row, opts)
 
     local clusterHeight = m.controlHeight
         + (hasMiniLabels and (m.miniLabelHeight + m.miniLabelGap) or 0)
-    local baseHeight = hasMiniLabels and m.dualRowHeight or m.rowHeight
+    -- A captioned cluster is centered in the dual-row band and the row runs
+    -- dualRowPadBottom past it, so the fields stand off the divider under
+    -- them by more than the caption stands off the row's top.
+    local band = hasMiniLabels and m.dualRowHeight or m.rowHeight
+    local baseHeight = band + (hasMiniLabels and (m.dualRowPadBottom or 0) or 0)
 
     if opts.label and opts.label ~= "" then
         Controls.AddRowChrome(row, {
             rowWidth = opts.rowWidth,
             baseHeight = baseHeight,
+            band = band,
             label = opts.label,
             padLeft = m.rowPadding,
             description = opts.description,
@@ -137,7 +145,7 @@ function Controls.BuildSlotRow(row, opts)
 
     local container = CreateFrame("Frame", nil, row)
     container:SetSize(clusterWidth, clusterHeight)
-    Controls.AnchorCluster(row, container, { x = -m.rowPadding, band = baseHeight })
+    Controls.AnchorCluster(row, container, { x = -m.rowPadding, band = band })
     row._slotContainer = container
 
     local frames = {}

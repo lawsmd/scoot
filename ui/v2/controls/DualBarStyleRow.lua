@@ -251,6 +251,7 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
         width = ARROW_WIDTH,
         height = CONTROL_HEIGHT - 2,
         glyph = "\226\151\128", -- ◀
+        direction = "prev",
         separator = "RIGHT",
     })
     leftArrow:SetPoint("LEFT", mini, "LEFT", 1, 0)
@@ -260,6 +261,7 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
         width = ARROW_WIDTH,
         height = CONTROL_HEIGHT - 2,
         glyph = "\226\150\182", -- ▶
+        direction = "next",
         separator = "LEFT",
     })
     rightArrow:SetPoint("RIGHT", mini, "RIGHT", -1, 0)

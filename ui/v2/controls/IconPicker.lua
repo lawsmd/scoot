@@ -17,7 +17,6 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local PICKER_WIDTH = 440
 local PICKER_HEIGHT = 340
 local PADDING = 12
 
@@ -143,14 +142,17 @@ end
 local function CreateIconPicker()
     if pickerFrame then return pickerFrame end
 
-    -- Content area width
-    local contentWidth = (ICON_BUTTON_SIZE * ICONS_PER_ROW) + (ICON_BUTTON_SPACING * (ICONS_PER_ROW - 1)) + (PADDING * 2)
+    -- The wider of the two grids, which is the icon tabs'. The shell adds
+    -- the tab column and the rest of the chrome around it to size the dialog.
+    local contentWidth = math.max(
+        (ICON_BUTTON_SIZE * ICONS_PER_ROW) + (ICON_BUTTON_SPACING * (ICONS_PER_ROW - 1)),
+        (ANIM_ICON_BUTTON_SIZE * ANIM_ICONS_PER_ROW) + (ANIM_ICON_BUTTON_SPACING * (ANIM_ICONS_PER_ROW - 1))
+    )
 
     local frame = Controls.CreatePickerShell({
         -- Brand-named, and still ending in "Frame": CreatePickerShell derives
         -- the scroll frame and scrollbar names from that suffix.
         name = (addon.Brand or "Scoot") .. "IconPickerFrame",
-        width = PICKER_WIDTH,
         height = PICKER_HEIGHT,
         contentWidth = contentWidth,
         title = "Select Icon Style",
