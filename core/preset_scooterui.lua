@@ -2595,6 +2595,7 @@ Presets:Register({
       positionY = 0,
     },
     minimapStyle = {
+      addonButtonBorderStyle = "hidden",
       addonButtonBorderTintEnabled = false,
       addonButtonContainerAnchor = "BOTTOMLEFT",
       addonButtonContainerEnabled = true,
@@ -2615,7 +2616,6 @@ Presets:Register({
       clockTimeSource = "local",
       clockUse24Hour = false,
       dockHide = true,
-      hideAddonButtonBorders = true,
       mailButtonAnchor = "LEFT",
       mailButtonEnabled = true,
       mailButtonOffsetX = -15,

@@ -133,6 +133,7 @@ core/components/minimap/zonetext.lua
 core/components/minimap/coordinates.lua
 core/components/minimap/clock.lua
 core/components/minimap/buttons.lua
+core/components/minimap/dial.lua
 core/components/minimap/offscreenunlock.lua
 core/components/minimap/overlay.lua
 core/components/tooltip.lua

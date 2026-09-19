@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 -- forever/minimap.lua
--- Camelot's side of the minimap: the button's two seams and the square
--- border's art.
+-- Camelot's side of the minimap: the button's two seams, the square border's
+-- art, and the ring the addon buttons wear.
 --
 -- The button itself is core/minimap.lua, listed on both TOCs. It reads the
 -- two seams set here at login, and the minimap component reads the border
@@ -36,6 +36,16 @@ addon.MinimapIcon = addon.Logo.bronze
 addon.MinimapSquareBorder = {
     texture = addon.MediaPath .. "forever\\media\\minimap\\square-border",
     band = 10,
+}
+
+-- The ring on every addon's minimap button under the Default border style
+-- (core/components/minimap/buttons.lua). It is the day-night dial's own ring,
+-- UI-HUD-Minimap-Frame-Cycle, drawn straight from Blizzard's atlas and
+-- centred on the button at `size`, which puts its opening where LibDBIcon's
+-- retail ring has its own. Scoot has no seam value and keeps LibDBIcon's ring.
+addon.MinimapButtonRing = {
+    atlas = "UI-HUD-Minimap-Frame-Cycle",
+    size = 32,
 }
 
 -- Called at login and again on every profile change, so it creates the

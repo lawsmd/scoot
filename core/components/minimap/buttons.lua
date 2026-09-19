@@ -538,22 +538,87 @@ local function ApplyButtonContainerStyle(db)
     end
 end
 
--- Apply addon button border styling (hide or tint)
+-- Addon button border style: "default", "retail" or "hidden".
+--
+-- LibDBIcon's ring is Interface\Minimap\MiniMap-TrackingBorder, 50x50 at the
+-- button's TOPLEFT. Where the host names a ring of its own
+-- (addon.MinimapButtonRing, set in forever/minimap.lua: Forever's
+-- UI-HUD-Minimap-Frame-Cycle, the day-night dial's ring), "default" draws that
+-- ring centred on the button and "retail" puts LibDBIcon's back; without the
+-- seam the two styles are the same ring. "hidden" clears the ring, the dark
+-- disc and the hover glow. What a border looked like before its first change
+-- is kept here, keyed by the texture and never stored on the button.
+local originalBorders = setmetatable({}, { __mode = "k" })
+
+local function rememberBorder(border)
+    if originalBorders[border] then return end
+    local point, relativeTo, relativePoint, x, y = border:GetPoint(1)
+    local w, h = border:GetSize()
+    originalBorders[border] = {
+        texture = border:GetTexture(),
+        atlas = border:GetAtlas(),
+        w = w, h = h,
+        point = point, relativeTo = relativeTo, relativePoint = relativePoint, x = x, y = y,
+    }
+end
+
+local function hostRing()
+    local ring = addon.MinimapButtonRing
+    if not (ring and ring.atlas and ring.size) then return nil end
+    if C_Texture and C_Texture.GetAtlasInfo and not C_Texture.GetAtlasInfo(ring.atlas) then return nil end
+    return ring
+end
+
+local function drawHostRing(border, ring)
+    rememberBorder(border)
+    border:SetAtlas(ring.atlas)
+    border:SetSize(ring.size, ring.size)
+    border:ClearAllPoints()
+    border:SetPoint("CENTER", border:GetParent(), "CENTER", 0, 0)
+end
+
+local function restoreBorder(border)
+    local o = originalBorders[border]
+    if not o then return end
+    if o.atlas then
+        border:SetAtlas(o.atlas)
+    else
+        -- SetAtlas left the atlas's sub-rectangle behind; SetTexture does not clear it.
+        border:SetTexture(o.texture)
+        border:SetTexCoord(0, 1, 0, 1)
+    end
+    if o.w and o.h then border:SetSize(o.w, o.h) end
+    border:ClearAllPoints()
+    border:SetPoint(o.point or "TOPLEFT", o.relativeTo or border:GetParent(), o.relativePoint or o.point or "TOPLEFT", o.x or 0, o.y or 0)
+    originalBorders[border] = nil
+end
+
+local function borderStyle(db)
+    local style = db and db.addonButtonBorderStyle
+    if style ~= "retail" and style ~= "hidden" then style = "default" end
+    return style
+end
+
 local function ApplyAddonButtonBorderStyle(db)
     local allButtons = CollectMinimapAddonButtons()
+    local style = borderStyle(db)
+    local ring = style == "default" and hostRing() or nil
 
     for name, info in pairs(allButtons) do
         local button = info.button
         if not button then return end
 
-        -- Find border (OVERLAY ~50x50) and background (BACKGROUND ~24x24)
+        -- Find border (OVERLAY ~50x50, or one already restyled here) and
+        -- background (BACKGROUND ~24x24)
         local border, background
         local regions = { button:GetRegions() }
         for _, region in ipairs(regions) do
             if region:IsObjectType("Texture") then
                 local layer = region:GetDrawLayer()
                 local w, h = region:GetSize()
-                if layer == "OVERLAY" and w and h and math.abs(w - 50) < 5 then
+                if originalBorders[region] then
+                    border = region
+                elseif layer == "OVERLAY" and w and h and math.abs(w - 50) < 5 then
                     border = region
                 elseif layer == "BACKGROUND" and w and h and math.abs(w - 24) < 5 then
                     background = region
@@ -561,42 +626,31 @@ local function ApplyAddonButtonBorderStyle(db)
             end
         end
 
-        if db and db.hideAddonButtonBorders then
-            -- Hide border ring
+        local highlight = button:GetHighlightTexture()
+
+        if style == "hidden" then
             if border then border:SetAlpha(0) end
-            -- Hide background circle mask
             if background then background:SetAlpha(0) end
-            -- Clear hover highlight (get texture directly for reliability)
-            local highlight = button:GetHighlightTexture()
-            if highlight then
-                highlight:SetAlpha(0)
-            end
-        elseif db and db.addonButtonBorderTintEnabled and db.addonButtonBorderTintColor then
-            -- Tint mode (restore visibility, apply tint)
-            if border then
-                border:SetAlpha(1)
-                border:SetDesaturated(true)
-                local c = db.addonButtonBorderTintColor
-                border:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
-            end
-            if background then background:SetAlpha(1) end
-            -- Restore highlight
-            local highlight = button:GetHighlightTexture()
-            if highlight then
-                highlight:SetAlpha(1)
-            end
+            if highlight then highlight:SetAlpha(0) end
         else
-            -- Restore defaults
             if border then
+                if ring then
+                    drawHostRing(border, ring)
+                else
+                    restoreBorder(border)
+                end
                 border:SetAlpha(1)
-                border:SetDesaturated(false)
-                border:SetVertexColor(1, 1, 1, 1)
+                if db and db.addonButtonBorderTintEnabled and db.addonButtonBorderTintColor then
+                    local c = db.addonButtonBorderTintColor
+                    border:SetDesaturated(true)
+                    border:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+                else
+                    border:SetDesaturated(false)
+                    border:SetVertexColor(1, 1, 1, 1)
+                end
             end
             if background then background:SetAlpha(1) end
-            local highlight = button:GetHighlightTexture()
-            if highlight then
-                highlight:SetAlpha(1)
-            end
+            if highlight then highlight:SetAlpha(1) end
         end
     end
 end

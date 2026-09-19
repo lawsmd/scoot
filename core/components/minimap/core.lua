@@ -544,8 +544,18 @@ local function ApplyMinimapStyling(self)
     -- Apply addon button container
     MM._ApplyButtonContainerStyle(db)
 
-    -- Apply addon button border styling
+    -- Apply addon button border styling. Before 19 September 2026 the style
+    -- was a hide toggle; a profile that had it on keeps its borders hidden.
+    if db.hideAddonButtonBorders ~= nil then
+        if db.hideAddonButtonBorders then
+            db.addonButtonBorderStyle = "hidden"
+        end
+        db.hideAddonButtonBorders = nil
+    end
     MM._ApplyAddonButtonBorderStyle(db)
+
+    -- Apply the day-night dial (Forever)
+    MM._ApplyDialStyle(db)
 
     -- Apply custom tracking button
     MM._ApplyTrackingButtonStyle(db)
@@ -646,9 +656,17 @@ addon:RegisterComponentInitializer(function(self)
             addonButtonContainerOffsetX = { type = "addon", default = 0 },
             addonButtonContainerOffsetY = { type = "addon", default = 0 },
             scootButtonSeparate = { type = "addon", default = false },
-            hideAddonButtonBorders = { type = "addon", default = false },
+            addonButtonBorderStyle = { type = "addon", default = "default" },  -- "default" | "retail" | "hidden"; "retail" is offered only where the host names a ring of its own
             addonButtonBorderTintEnabled = { type = "addon", default = false },
             addonButtonBorderTintColor = { type = "addon", default = {1, 1, 1, 1} },
+
+            -- Day-night dial (Forever only; dial.lua does nothing without the frame)
+            dialHide = { type = "addon", default = false },
+            dialBorderHide = { type = "addon", default = false },
+            dialScale = { type = "addon", default = 1.0 },
+            dialMoved = { type = "addon", default = false },  -- false: Blizzard's own spot; true: the offsets, from the Minimap's centre
+            dialOffsetX = { type = "addon", default = 0 },
+            dialOffsetY = { type = "addon", default = 0 },
 
             -- Tracking Button
             trackingButtonEnabled = { type = "addon", default = false },

@@ -33,6 +33,13 @@ local latencySourceValues = {
 }
 local latencySourceOrder = { "home", "world" }
 
+-- Addon button border style; the order is picked per host in the tab
+local borderStyleValues = {
+    ["default"] = "Default",
+    ["retail"] = "Retail",
+    ["hidden"] = "Hidden",
+}
+
 -- Map shape options
 local mapShapeValues = {
     ["default"] = "Default (Circle)",
@@ -593,12 +600,20 @@ function Minimap.Render(panel, scrollContent)
         sectionKey = "buttons",
         defaultExpanded = false,
         buildContent = function(contentFrame, inner)
+            -- The day-night dial is Forever's; its tab shows where the frame exists.
+            local MM = addon.Minimap
+            local hasDial = MM and MM.HasDial and MM.HasDial()
+            local buttonTabs = {
+                { key = "addonButtons", label = "Addon Buttons" },
+                { key = "mail", label = "Mail" },
+                { key = "tracking", label = "Tracking" },
+            }
+            if hasDial then
+                table.insert(buttonTabs, { key = "dial", label = "Day/Night Dial" })
+            end
+
             inner:AddTabbedSection({
-                tabs = {
-                    { key = "addonButtons", label = "Addon Buttons" },
-                    { key = "mail", label = "Mail" },
-                    { key = "tracking", label = "Tracking" },
-                },
+                tabs = buttonTabs,
                 componentId = "minimapStyle",
                 sectionKey = "buttonsTabs",
                 buildContent = {
@@ -664,15 +679,24 @@ function Minimap.Render(panel, scrollContent)
                             disabled = function() return not getSetting("addonButtonContainerEnabled") end,
                         })
 
-                        -- Hide Addon Button Borders toggle
-                        tabBuilder:AddToggle({
-                            label = "Hide Addon Button Borders",
-                            description = "Hide borders, background mask, and hover glow on addon minimap buttons.",
+                        -- Addon Button Border Style. "Retail" is offered only where
+                        -- the host names a ring of its own (addon.MinimapButtonRing);
+                        -- elsewhere Default already is LibDBIcon's retail ring.
+                        local borderStyleOrder = addon.MinimapButtonRing
+                            and { "default", "retail", "hidden" }
+                            or { "default", "hidden" }
+                        tabBuilder:AddSelector({
+                            label = "Addon Button Border Style",
+                            description = "The ring around addon minimap buttons. Hidden also removes the background disc and hover glow.",
+                            values = borderStyleValues,
+                            order = borderStyleOrder,
                             get = function()
-                                return getSetting("hideAddonButtonBorders") or false
+                                local v = getSetting("addonButtonBorderStyle") or "default"
+                                if v == "retail" and not addon.MinimapButtonRing then v = "default" end
+                                return v
                             end,
                             set = function(v)
-                                setSetting("hideAddonButtonBorders", v)
+                                setSetting("addonButtonBorderStyle", v)
                                 -- Re-render to update tint disabled state
                                 C_Timer.After(0.05, function()
                                     if panel and Minimap.Render then
@@ -701,7 +725,7 @@ function Minimap.Render(panel, scrollContent)
                             end,
                             hasAlpha = true,
                             isDisabled = function()
-                                return getSetting("hideAddonButtonBorders")
+                                return getSetting("addonButtonBorderStyle") == "hidden"
                             end,
                         })
 
@@ -797,6 +821,85 @@ function Minimap.Render(panel, scrollContent)
                             get = function(axis) return getSetting(axis == "x" and "trackingButtonOffsetX" or "trackingButtonOffsetY") end,
                             set = function(axis, v) setSetting(axis == "x" and "trackingButtonOffsetX" or "trackingButtonOffsetY", v) end,
                             disabled = function() return not getSetting("trackingButtonEnabled") end,
+                        })
+
+                        tabBuilder:Finalize()
+                    end,
+
+                    ----------------------------------------------------------------
+                    -- Tab: Day/Night Dial (Forever only, see hasDial above)
+                    ----------------------------------------------------------------
+                    dial = function(tabContent, tabBuilder)
+                        tabBuilder:AddToggle({
+                            label = "Hide Dial",
+                            description = "Hide the day and night dial on the map.",
+                            get = function()
+                                return getSetting("dialHide") or false
+                            end,
+                            set = function(v)
+                                setSetting("dialHide", v)
+                                C_Timer.After(0.05, function()
+                                    if panel and Minimap.Render then
+                                        Minimap.Render(panel, scrollContent)
+                                    end
+                                end)
+                            end,
+                        })
+
+                        tabBuilder:AddToggle({
+                            label = "Hide Dial Border",
+                            description = "Hide the ring around the dial and keep the sun or moon.",
+                            get = function()
+                                return getSetting("dialBorderHide") or false
+                            end,
+                            set = function(v)
+                                setSetting("dialBorderHide", v)
+                            end,
+                            isDisabled = function()
+                                return getSetting("dialHide")
+                            end,
+                        })
+
+                        tabBuilder:AddSlider({
+                            label = "Dial Scale",
+                            description = "Size of the dial. The map's own size still applies on top.",
+                            min = 50, max = 200, step = 5,
+                            get = function()
+                                return math.floor((getSetting("dialScale") or 1.0) * 100 + 0.5)
+                            end,
+                            set = function(v)
+                                setSetting("dialScale", v / 100)
+                            end,
+                            minLabel = "50%", maxLabel = "200%",
+                            isDisabled = function()
+                                return getSetting("dialHide")
+                            end,
+                        })
+
+                        tabBuilder:AddToggle({
+                            label = "Custom Position",
+                            description = "Place the dial by the offsets below, from the center of the map. Dragging the dial with the mouse turns this on and sets them.",
+                            get = function()
+                                return getSetting("dialMoved") or false
+                            end,
+                            set = function(v)
+                                setSetting("dialMoved", v)
+                                C_Timer.After(0.05, function()
+                                    if panel and Minimap.Render then
+                                        Minimap.Render(panel, scrollContent)
+                                    end
+                                end)
+                            end,
+                            isDisabled = function()
+                                return getSetting("dialHide")
+                            end,
+                        })
+
+                        tabBuilder:AddOffsetPair({
+                            label = "Dial Offset",
+                            get = function(axis) return getSetting(axis == "x" and "dialOffsetX" or "dialOffsetY") end,
+                            set = function(axis, v) setSetting(axis == "x" and "dialOffsetX" or "dialOffsetY", v) end,
+                            disabled = function() return getSetting("dialHide") or not getSetting("dialMoved") end,
                         })
 
                         tabBuilder:Finalize()
