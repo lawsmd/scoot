@@ -2,8 +2,8 @@
 -- coordinates.lua - The player's map coordinates under or around the Minimap
 --
 -- Blizzard draws a readout of its own from 12.1.5 on, and Forever inherits
--- it: MinimapCluster.PlayerCoords, a 90x10 frame anchored BOTTOM of the
--- Minimap at (0, -18) whose CoordText is refilled every 0.1 s while the
+-- it: MinimapCluster.MinimapContainer.PlayerCoords, a 90x10 frame anchored
+-- BOTTOM of the Minimap at (0, -18) whose CoordText is refilled every 0.1 s while the
 -- minimapShowPlayerCoords CVar is on, to tenths while coordsByTenths is on
 -- (Blizzard_Minimap/Mainline/Minimap.lua, MinimapPlayerCoordsMixin; both
 -- CVars are checkboxes in Options > Interface). Retail 12.1.0 has neither the
@@ -45,7 +45,8 @@ local blizzardTextFreed = false
 
 local function blizzardCoords()
     local cluster = _G.MinimapCluster
-    local frame = cluster and cluster.PlayerCoords
+    local container = cluster and cluster.MinimapContainer
+    local frame = container and container.PlayerCoords
     if frame and frame.CoordText then
         return frame, frame.CoordText
     end
