@@ -127,10 +127,14 @@ end
 local function IsNameplateRelatedFrame(frame)
     if not frame then return false end
 
+    -- NamePlateUnitFrameMixin. The parent walk below cannot be the only test:
+    -- 12.1 pools these frames unnamed, and another addon may have moved one
+    -- off its plate by the time a deferred attach looks at it.
+    if frame.SetNamePlateFrame then return true end
+
     local current = frame
     for _ = 1, 10 do
         if not current then break end
-        if current.isNamePlate then return true end
         if FrameName(current):lower():find("nameplate", 1, true) then return true end
         current = current.GetParent and current:GetParent() or nil
     end
@@ -138,11 +142,23 @@ local function IsNameplateRelatedFrame(frame)
     return false
 end
 
+-- The delegate is a protected child, and a protected child makes an unprotected
+-- parent implicitly protected. Lockdown then blocks SetParent, SetPoint, Show
+-- and Hide on that parent for every addon, and the blocked-action error names
+-- whichever addon made the call. A parent that is explicitly protected already
+-- is unchanged by the delegate, so it is the only kind that may receive one.
+local function IsExplicitlyProtected(frame)
+    if not frame.IsProtected then return false end
+    local isProtected, isExplicit = frame:IsProtected()
+    return (isProtected and isExplicit) and true or false
+end
+
 -- Top-level secure unit buttons only, never their children.
 local function IsAllowedUnitButton(frame)
     if not frame or (frame.IsForbidden and frame:IsForbidden()) then return false end
     if not frame.SetAttribute or not frame.GetAttribute then return false end
     if not frame.IsObjectType or not frame:IsObjectType("Button") then return false end
+    if not IsExplicitlyProtected(frame) then return false end
     if IsNameplateRelatedFrame(frame) then return false end
     if IsAuraOrChromeFrame(frame) then return false end
 
