@@ -19,11 +19,10 @@ local DOCUMENT = "minimapButton"
 
 local DEFAULT_POSITION = 220
 
--- Camelot has no logo, and the question mark is the icon a client always has.
--- When there is art, this is the one line that changes: the file goes beside
--- ScootIcon.tga at the repository root and the path reads through
--- addon.MediaPath, which resolves through whichever junction loaded the addon.
-addon.MinimapIcon = "Interface\\ICONS\\INV_Misc_QuestionMark"
+-- The mark. addon.Logo holds the colourways (forever/camelot.lua), and this is
+-- the one line that picks one; the paths read through addon.MediaPath, which
+-- resolves through whichever junction loaded the addon.
+addon.MinimapIcon = addon.Logo.bronze
 
 -- Called at login and again on every profile change, so it creates the
 -- document for a profile that has never carried one.

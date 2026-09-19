@@ -28,6 +28,19 @@ addon.Brand = "Camelot"
 addon.MediaPath = "Interface\\AddOns\\" .. addonName .. "\\"
 addon.SlashToken = "camelot"
 
+-- The mark, in the colourways drawn so far. One vector master recolours
+-- through three values, so a fourth costs a file and a line here.
+-- Each texture is 512x512 with the mark at 88% of it: LibDBIcon crops 5% off
+-- every edge of a minimap icon while the mouse is off the button, and the
+-- star's points sit inside that margin. The black rim is part of the art and
+-- sits inside the same 88%, so every surface that draws the file gets it and
+-- no drawing code has to add one.
+addon.Logo = {
+    bronze   = addon.MediaPath .. "forever\\media\\CamelotLogoBronze",
+    alliance = addon.MediaPath .. "forever\\media\\CamelotLogoAlliance",
+    horde    = addon.MediaPath .. "forever\\media\\CamelotLogoHorde",
+}
+
 _G.CamelotAddon = addon
 
 -- The settings framework reports a finished action on addon:Print, so Camelot

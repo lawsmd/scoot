@@ -117,9 +117,17 @@ function DB.Initialize()
     addon.db = LibStub("AceDB-3.0"):New("CamelotDB", nil, true)
     ensureContainers(addon.db.profile)
 
+    -- The Global Font and Bar Texture values behind the media tokens. The
+    -- shared resolvers (core/fonts.lua, core/media.lua) and core/apply_all.lua
+    -- read and write this one table on both hosts, under Scoot's key names:
+    -- headerFont, bodyFont, barTexture. Empty means every global answers from
+    -- the getter fallbacks in apply_all.lua, so nil still reads as never set.
+    addon.db.global.media = addon.db.global.media or {}
+
     local watcher = {}
     local function onProfile()
         ensureContainers(addon.db.profile)
+        DB.ClearSession()
         if DB.OnProfileChanged then DB.OnProfileChanged() end
     end
     addon.db.RegisterCallback(watcher, "OnProfileChanged", onProfile)
@@ -191,6 +199,31 @@ function DB.Set(path, value)
         return true
     end
     return false, "unsupported value type " .. t
+end
+
+-- What a feature switch read the first time it was asked, this session. The
+-- Features page writes the stored value and the running session keeps the
+-- old one, so a feature turns on or off at the reload and not under a later
+-- reconcile. A profile change starts over.
+local session = {}
+
+--- DB.Get, held for the session from the first read after the profile loads.
+function DB.SessionGet(path)
+    if session[path] ~= nil then return session[path] end
+    local value = DB.Get(path)
+    if profileTable() and value ~= nil then
+        session[path] = value
+    end
+    return value
+end
+
+--- Drop one held value, or all of them with no path.
+function DB.ClearSession(path)
+    if path then
+        session[path] = nil
+    else
+        wipe(session)
+    end
 end
 
 --- A document is returned exactly as it was written and is never merged
@@ -266,7 +299,18 @@ function DB.Dump()
     push("global")
     for _, k in ipairs(sortedKeys(addon.db.global)) do
         local v = addon.db.global[k]
-        push("  %-22s %s", k, type(v) == "table" and "{table}" or tostring(v))
+        if type(v) == "table" then
+            -- One level down, so media's three values and the window
+            -- geometry read without a second command.
+            local inner = sortedKeys(v)
+            push("  %-22s %s", k, #inner == 0 and "{}" or "")
+            for _, ik in ipairs(inner) do
+                local iv = v[ik]
+                push("    %-20s %s", ik, type(iv) == "table" and "{table}" or tostring(iv))
+            end
+        else
+            push("  %-22s %s", k, tostring(v))
+        end
     end
 
     local p = profileTable()
@@ -298,9 +342,14 @@ function DB.Dump()
     push("")
     push("layout (%d)", #sortedKeys(p.layout))
     for _, key in ipairs(sortedKeys(p.layout)) do
+        -- One position per Edit Mode layout (forever/unitframes/editmode.lua).
         local e = p.layout[key] or {}
-        push("  %-30s %s %.0f, %.0f scale %s",
-            key, tostring(e.point), e.x or 0, e.y or 0, tostring(e.scale))
+        push("  %-30s scale %s", key, tostring(e.scale))
+        for _, layoutName in ipairs(sortedKeys(e.positions or {})) do
+            local pos = e.positions[layoutName]
+            push("    %-28s %s %.0f, %.0f",
+                layoutName, tostring(pos.point), pos.x or 0, pos.y or 0)
+        end
     end
 
     addon.DebugShowWindow("Camelot", lines)

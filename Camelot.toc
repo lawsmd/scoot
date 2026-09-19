@@ -97,6 +97,7 @@ core/debug/export.lua
 forever/db.lua
 forever/features.lua
 forever/profiles.lua
+forever/recolor.lua
 ## The HUD, the unit frames and the cast bar, is Forever's alone. Retail loads
 ## this TOC too, through the AddOns\Camelot junction, for the settings panel,
 ## so every HUD line carries [ExcludeLoadGameType standard]: retail's game type
