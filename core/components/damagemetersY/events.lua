@@ -25,7 +25,14 @@ local function OnEvent(event, ...)
 
     -- Roster changed: refresh the drilldown GUID cache while identities are
     -- readable. In combat do nothing — the next OOC cycle rebuilds anyway.
+    -- Pet GUIDs stay readable in combat, so the owner map records there too.
+    if event == "UNIT_PET" then
+        DMY._RecordPetOwners()
+        return
+    end
+
     if event == "GROUP_ROSTER_UPDATE" then
+        DMY._RecordPetOwners()
         if not DMY._inCombat then
             DMY._RebuildGUIDCache()
             DMY._RebuildRosterNames()
@@ -156,6 +163,7 @@ function DMY._InitializeEvents(comp)
         "PLAYER_REGEN_DISABLED",
         "PLAYER_ENTERING_WORLD",
         "GROUP_ROSTER_UPDATE",
+        "UNIT_PET",
         "UI_SCALE_CHANGED",
         "DISPLAY_SIZE_CHANGED",
     }) do

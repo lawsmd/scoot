@@ -135,25 +135,88 @@ end
 -- plain by construction (row key OOC, _ResolveCombatSourceGUID in combat).
 --------------------------------------------------------------------------------
 
+local function QuerySource(dd, sourceGUID, sourceCreatureID)
+    local ok, result
+    if dd.sessionID then
+        if C_DamageMeter.GetCombatSessionSourceFromID then
+            ok, result = pcall(C_DamageMeter.GetCombatSessionSourceFromID,
+                dd.sessionID, dd.meterType, sourceGUID, sourceCreatureID)
+        end
+    else
+        if C_DamageMeter.GetCombatSessionSourceFromType then
+            ok, result = pcall(C_DamageMeter.GetCombatSessionSourceFromType,
+                dd.sessionType, dd.meterType, sourceGUID, sourceCreatureID)
+        end
+    end
+    return ok and result or nil
+end
+
+-- The row's total includes pets folded in by data.lua (FoldPetSources), so the
+-- breakdown lists their spells beside the owner's. OOC only: every amount here
+-- is summed and compared. Returns ownerResult untouched when a pet query fails
+-- or any amount is not a plain number. ownerResult is nil when only the pet
+-- acted in this meter type.
+local function AppendFoldedPetSpells(dd, ownerResult)
+    local spells, total, maxAmount = {}, 0, 0
+    local function Absorb(list, petName)
+        for _, spell in ipairs(list or {}) do
+            local amount = DMY._PlainNumber(spell.totalAmount)
+            if not amount then return false end
+            local creatureName = spell.creatureName
+            local unnamed = creatureName == nil
+                or (not (issecretvalue and issecretvalue(creatureName)) and creatureName == "")
+            if petName and unnamed then
+                local copy = {}
+                for k, v in pairs(spell) do copy[k] = v end
+                copy.creatureName = petName
+                spell = copy
+            end
+            spells[#spells + 1] = spell
+            total = total + amount
+            if amount > maxAmount then maxAmount = amount end
+        end
+        return true
+    end
+
+    if ownerResult and not Absorb(ownerResult.combatSpells) then return ownerResult end
+    local appended = false
+    for _, pet in ipairs(dd.foldedSources) do
+        local petResult = QuerySource(dd, pet.guid, pet.creatureID)
+        if petResult and petResult.combatSpells and #petResult.combatSpells > 0 then
+            local petName = DMY._PlainValue(pet.name)
+            if type(petName) ~= "string" then petName = nil end
+            if not Absorb(petResult.combatSpells, petName) then return ownerResult end
+            appended = true
+        end
+    end
+    if not appended then return ownerResult end
+
+    local order = {}
+    for i, spell in ipairs(spells) do order[spell] = i end
+    table.sort(spells, function(a, b)
+        if a.totalAmount ~= b.totalAmount then return a.totalAmount > b.totalAmount end
+        return order[a] < order[b]
+    end)
+
+    local combined = {}
+    for k, v in pairs(ownerResult or {}) do combined[k] = v end
+    combined.combatSpells = spells
+    combined.totalAmount = total
+    combined.maxAmount = maxAmount
+    return combined
+end
+
 function DMY._QuerySpellBreakdown()
     local dd = DMY._activeDrilldown
     if not dd or not dd.sourceGUID then return nil end
 
     if not C_DamageMeter then return nil end
-    local ok, result
-    if dd.sessionID then
-        if C_DamageMeter.GetCombatSessionSourceFromID then
-            ok, result = pcall(C_DamageMeter.GetCombatSessionSourceFromID,
-                dd.sessionID, dd.meterType, dd.sourceGUID, dd.sourceCreatureID)
-        end
-    else
-        if C_DamageMeter.GetCombatSessionSourceFromType then
-            ok, result = pcall(C_DamageMeter.GetCombatSessionSourceFromType,
-                dd.sessionType, dd.meterType, dd.sourceGUID, dd.sourceCreatureID)
-        end
+    local result = QuerySource(dd, dd.sourceGUID, dd.sourceCreatureID)
+    if dd.foldedSources and not DMY._inCombat then
+        result = AppendFoldedPetSpells(dd, result)
     end
 
-    if ok and result then
+    if result then
         dd.spellData = result
         dd.spellDataFromCombat = DMY._inCombat and true or false
         dd.isPending = false
@@ -891,6 +954,7 @@ function DMY._OpenDrilldown(row, columnIndex)
         columnIndex = columnIndex,
         sourceGUID = sourceGUID,
         sourceCreatureID = row._sourceCreatureID,
+        foldedSources = row._foldedSources and row._foldedSources[meterType],
         sourceName = row._sourceName,
         classFilename = row._classFilename,
         identityKey = identityKey,

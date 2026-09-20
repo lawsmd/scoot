@@ -124,6 +124,7 @@ function DMY._FullRefreshAllWindows()
     -- the shared cache (the multi-column em-dash bug).
     DMY._RebuildGUIDCache()
     DMY._RebuildRosterNames()
+    DMY._RecordPetOwners()
 
     for i = 1, DMY.MAX_WINDOWS do
         local cfg = DMY._GetWindowConfig(i)
@@ -322,6 +323,8 @@ function DMY._HandleReset()
     -- must likewise never label post-reset deaths.
     wipe(DMY._guidCache)
     wipe(DMY._identityToGUID)
+    wipe(DMY._petOwners)
+    DMY._RecordPetOwners() -- pets alive now will act in the next session
     wipe(DMY._recapSegmentIndex)
     DMY._recapSegmentIndexDirty = true
     for i = 1, DMY.MAX_WINDOWS do

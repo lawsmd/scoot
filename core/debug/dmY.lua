@@ -1014,6 +1014,81 @@ local function DebugDMYNames()
 end
 
 --------------------------------------------------------------------------------
+-- /scoot debug dmY pets — pet owner map + creature sources per session
+-- Run out of combat after a pull where a pet interrupted or dispelled. Shows
+-- whether the meter's GUID for the pet matches the unit token's GUID, which is
+-- the one fact the fold in data.lua depends on.
+--------------------------------------------------------------------------------
+
+local function DebugDMYPets()
+    local DMY = addon.DamageMetersY
+    if not DMY then
+        addon.DebugShowWindow("DMY Pets", "DMY not available.")
+        return
+    end
+
+    local lines, add = addon.DebugLines("== DMY Pet Owner Fold ==", "")
+    add("InCombatLockdown(): %s", tostring(InCombatLockdown()))
+    add("")
+
+    add("[1] Pet owner map (petGUID -> ownerGUID):")
+    local n = 0
+    for petGUID, ownerGUID in pairs(DMY._petOwners or {}) do
+        n = n + 1
+        add("  %s -> %s (%s)", petGUID, ownerGUID,
+            tostring(DMY._rosterNames and DMY._rosterNames[ownerGUID] or "?"))
+    end
+    if n == 0 then add("  (empty: fills on UNIT_PET, roster update, full refresh)") end
+    add("")
+
+    local okPet, livePet = pcall(UnitGUID, "pet")
+    if okPet and livePet ~= nil and not issecretvalue(livePet) then
+        add("UnitGUID(\"pet\") now: %s", livePet)
+    else
+        add("UnitGUID(\"pet\") now: none or secret")
+    end
+    add("")
+
+    add("[2] Overall sessions, sources with no class (creatures):")
+    local probes = { { 5, "Interrupts" }, { 6, "Dispels" } }
+    local E = Enum and Enum.DamageMeterType
+    if E then
+        probes = { { E.Interrupts, "Interrupts" }, { E.Dispels, "Dispels" } }
+    end
+    for _, probe in ipairs(probes) do
+        local mt, label = probe[1], probe[2]
+        add("  %s (meterType %s):", label, tostring(mt))
+        local ok, session = false, nil
+        if mt ~= nil and C_DamageMeter and C_DamageMeter.GetCombatSessionFromType then
+            ok, session = pcall(C_DamageMeter.GetCombatSessionFromType, 0, mt)
+        end
+        if not ok or not session or not session.combatSources then
+            add("    (no session)")
+        else
+            local shown = 0
+            for i, source in ipairs(session.combatSources) do
+                local guid = source.sourceGUID
+                local cls = source.classFilename
+                if guid == nil or issecretvalue(guid) then
+                    add("    #%d GUID secret or nil, class=%s", i, tostring(cls))
+                    shown = shown + 1
+                elseif cls == "" or DMY._petOwners[guid] then
+                    local owner = DMY._petOwners[guid]
+                    add("    #%d %s creatureID=%s class=%q total=%s -> %s", i, guid,
+                        tostring(DMY._PlainValue(source.sourceCreatureID)), tostring(cls),
+                        tostring(DMY._PlainValue(source.totalAmount)),
+                        owner and ("folds into " .. owner) or "NO OWNER MAPPED")
+                    shown = shown + 1
+                end
+            end
+            if shown == 0 then add("    (no creature sources)") end
+        end
+    end
+
+    addon.DebugShowWindow("DMY Pets", lines)
+end
+
+--------------------------------------------------------------------------------
 -- /scoot debug dmY drillstate — In-combat drilldown resolution counters
 -- Passive: reports which link of the combat drilldown chain succeeded or
 -- failed for clicks since login. Not required for the feature; post-hoc
@@ -1361,6 +1436,7 @@ addon:RegisterDebugCommand({
         { word = "abbrev", help = "number abbreviation", fn = DebugDMYAbbrev },
         { word = "colprobe", help = "column probe", fn = DebugDMYColprobe },
         { word = "names", help = "name resolution", fn = DebugDMYNames },
+        { word = "pets", help = "pet owner fold", fn = DebugDMYPets },
         { word = "drillstate", help = "drilldown state", fn = DebugDMYDrillState },
         { word = "deathprobe", help = "death recap probe", fn = DebugDMYDeathProbe },
         { word = "headericons", help = "header icon state", fn = DebugDMYHeaderIcons },

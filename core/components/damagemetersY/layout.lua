@@ -490,6 +490,7 @@ function DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat
     row._identityKey = player.identityKey
     row._isLocalPlayer = player.isLocalPlayer
     row._sourceCreatureID = nil -- not currently captured in merged data; nil OK for player sources
+    row._foldedSources = (not inCombat) and player.foldedSources or nil -- pets folded into this row, per meter type
 
     -- Name display (SetText accepts secrets during combat)
     row.nameText:SetText(displayName or "")

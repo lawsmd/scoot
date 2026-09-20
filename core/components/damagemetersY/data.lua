@@ -344,6 +344,171 @@ function DMY._RebuildRosterNames()
     end
 end
 
+--------------------------------------------------------------------------------
+-- Pet owner map + pet source fold
+--
+-- The engine redirects pet damage and healing to the owner, but not pet
+-- interrupts or dispels: a Felhunter's Spell Lock arrives as its own
+-- combatSource, and DamageMeterCombatSource carries no owner field. The owner
+-- comes from the group's pet unit tokens instead. UnitGUID is restricted by
+-- unit identity, not by combat, so the map also records pets summoned mid-pull.
+-- The map only grows: a resummoned demon gets a new GUID while the Overall
+-- session still holds the old one. _HandleReset wipes it with the sessions.
+--
+-- The fold itself runs out of combat only. In combat a pet row's sourceGUID is
+-- secret and its identity key is the same for every creature, so the row stays
+-- separate until the regen refresh.
+--------------------------------------------------------------------------------
+
+DMY._petOwners = {}  -- { [petGUID] = ownerGUID }, plain strings
+
+local function RecordPetOwner(ownerUnit, petUnit)
+    local okP, petGUID = pcall(UnitGUID, petUnit)
+    petGUID = okP and PlainGUID(petGUID) or nil
+    if not petGUID then return end
+    local okO, ownerGUID = pcall(UnitGUID, ownerUnit)
+    ownerGUID = okO and PlainGUID(ownerGUID) or nil
+    if ownerGUID then
+        DMY._petOwners[petGUID] = ownerGUID
+    end
+end
+
+function DMY._RecordPetOwners()
+    RecordPetOwner("player", "pet")
+
+    local prefix, count
+    if IsInRaid() then
+        prefix, count = "raid", GetNumGroupMembers()
+    elseif IsInGroup() then
+        prefix, count = "party", GetNumGroupMembers() - 1
+    end
+    if prefix then
+        for i = 1, count do
+            RecordPetOwner(prefix .. i, prefix .. "pet" .. i)
+        end
+    end
+end
+
+-- Owner identity for a pet whose owner has no source of their own in the
+-- session being folded (only the pet kicked). Another queried session is the
+-- first choice because it carries the engine's own name for the owner.
+local function FindOwnerIdentity(ownerGUID, sessions)
+    for _, session in pairs(sessions) do
+        for _, source in ipairs(session.combatSources or {}) do
+            if PlainGUID(source.sourceGUID) == ownerGUID then
+                return source.name, source.classFilename, source.specIconID, source.isLocalPlayer
+            end
+        end
+    end
+    local cached = DMY._guidCache[ownerGUID]
+    local name = DMY._rosterNames[ownerGUID]
+    if cached and name then
+        return name, cached.classFilename, cached.specIconID, cached.isLocalPlayer
+    end
+    return nil
+end
+
+-- Returns a replacement session table with every mapped pet source folded into
+-- its owner, or nil when the session holds no mapped pet. Engine tables are
+-- never written: owners that receive an amount are shallow copies.
+local function FoldPetSources(session, sessions)
+    local sources = session.combatSources
+    local petOwners = DMY._petOwners
+
+    local hasPet = false
+    for _, source in ipairs(sources) do
+        local guid = PlainGUID(source.sourceGUID)
+        if guid and petOwners[guid] then hasPet = true break end
+    end
+    if not hasPet then return nil end
+
+    local folded, ownerIndex = {}, {}
+    for _, source in ipairs(sources) do
+        local guid = PlainGUID(source.sourceGUID)
+        if not (guid and petOwners[guid]) then
+            folded[#folded + 1] = source
+            if guid then ownerIndex[guid] = #folded end
+        end
+    end
+
+    local changed = false
+    for _, source in ipairs(sources) do
+        local guid = PlainGUID(source.sourceGUID)
+        local ownerGUID = guid and petOwners[guid]
+        if ownerGUID then
+            local total = DMY._PlainNumber(source.totalAmount)
+            local perSec = DMY._PlainNumber(source.amountPerSecond)
+            local petRecord = {
+                guid = guid,
+                creatureID = DMY._PlainNumber(source.sourceCreatureID),
+                name = source.name,
+            }
+            local done = false
+            local idx = ownerIndex[ownerGUID]
+            if total and perSec and idx then
+                local owner = folded[idx]
+                local ownerTotal = DMY._PlainNumber(owner.totalAmount)
+                local ownerPerSec = DMY._PlainNumber(owner.amountPerSecond)
+                if ownerTotal and ownerPerSec then
+                    if not owner._foldedPets then
+                        local copy = {}
+                        for k, v in pairs(owner) do copy[k] = v end
+                        copy._foldedPets = {}
+                        owner = copy
+                        folded[idx] = owner
+                    end
+                    owner.totalAmount = ownerTotal + total
+                    owner.amountPerSecond = ownerPerSec + perSec
+                    table.insert(owner._foldedPets, petRecord)
+                    done = true
+                end
+            elseif total and perSec then
+                local name, classFilename, specIconID, isLocalPlayer = FindOwnerIdentity(ownerGUID, sessions)
+                if name then
+                    local copy = {}
+                    for k, v in pairs(source) do copy[k] = v end
+                    copy.sourceGUID = ownerGUID
+                    copy.sourceCreatureID = nil
+                    copy.name = name
+                    copy.classFilename = classFilename
+                    copy.specIconID = specIconID
+                    copy.isLocalPlayer = isLocalPlayer
+                    copy._foldedPets = { petRecord }
+                    folded[#folded + 1] = copy
+                    ownerIndex[ownerGUID] = #folded
+                    done = true
+                end
+            end
+            if done then
+                changed = true
+            else
+                folded[#folded + 1] = source -- unresolved: the pet keeps its own row
+            end
+        end
+    end
+    if not changed then return nil end
+
+    -- Owners moved up: restore rank order and the bar scale.
+    local order, maxAmount = {}, 0
+    for i, source in ipairs(folded) do
+        order[source] = i
+        local total = DMY._PlainNumber(source.totalAmount) or 0
+        if total > maxAmount then maxAmount = total end
+    end
+    table.sort(folded, function(a, b)
+        local ta = DMY._PlainNumber(a.totalAmount) or 0
+        local tb = DMY._PlainNumber(b.totalAmount) or 0
+        if ta ~= tb then return ta > tb end
+        return order[a] < order[b]
+    end)
+
+    local replacement = {}
+    for k, v in pairs(session) do replacement[k] = v end
+    replacement.combatSources = folded
+    replacement.maxAmount = maxAmount
+    return replacement
+end
+
 -- Resolve the name painted on a meter row when Hide Realm Names is on.
 -- Tier 0: plain name, stripped directly (player names cannot contain hyphens,
 --         so the hyphen always delimits Name-Realm).
@@ -447,6 +612,27 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
         end
         if ok and result then
             sessions[meterType] = result
+        end
+    end
+
+    -- Fold pet sources into their owners (OOC only; Deaths is per-event and
+    -- stays as the engine reports it). Replacements are collected first so
+    -- the owner-identity search reads only engine sessions.
+    if not inCombat and next(DMY._petOwners) then
+        local replacements
+        for meterType, session in pairs(sessions) do
+            if meterType ~= 9 and session.combatSources then
+                local replacement = FoldPetSources(session, sessions)
+                if replacement then
+                    replacements = replacements or {}
+                    replacements[meterType] = replacement
+                end
+            end
+        end
+        if replacements then
+            for meterType, replacement in pairs(replacements) do
+                sessions[meterType] = replacement
+            end
         end
     end
 
@@ -617,6 +803,9 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
                 totalAmount = source.totalAmount,         -- secret in combat
                 amountPerSecond = source.amountPerSecond,  -- secret in combat
             }
+            if source._foldedPets then
+                player.foldedSources = { [primaryType] = source._foldedPets }
+            end
 
             -- Deaths special case for primary column
             if primaryDef.isDeaths and deathCounts and guid then
@@ -642,6 +831,10 @@ function DMY._QueryMergedData(sessionType, sessionID, columns, inCombat)
                                     totalAmount = s.totalAmount,
                                     amountPerSecond = s.amountPerSecond,
                                 }
+                                if s._foldedPets then
+                                    player.foldedSources = player.foldedSources or {}
+                                    player.foldedSources[meterType] = s._foldedPets
+                                end
                             end
                         end
                     end
