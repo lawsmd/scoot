@@ -250,9 +250,24 @@ end
 -- Zone Snapshot (for export data)
 --------------------------------------------------------------------------------
 
+local MYTHIC_KEYSTONE_DIFFICULTY = 8
+
+local function GetActiveKeystoneLevel()
+    if not (C_ChallengeMode and C_ChallengeMode.GetActiveKeystoneInfo) then return nil end
+    local ok, level = pcall(C_ChallengeMode.GetActiveKeystoneInfo)
+    if ok and type(level) == "number" and not issecretvalue(level) and level > 0 then
+        return level
+    end
+    return nil
+end
+
 local function GetCurrentZoneLabel()
-    local instName, instType, _, diffName = GetInstanceInfo()
+    local instName, instType, diffID, diffName = GetInstanceInfo()
     if instName and instName ~= "" and instType ~= "none" then
+        if diffID == MYTHIC_KEYSTONE_DIFFICULTY then
+            local level = GetActiveKeystoneLevel()
+            if level then return instName .. " +" .. level end
+        end
         return (diffName and diffName ~= "") and (instName .. " (" .. diffName .. ")") or instName
     else
         return (instName and instName ~= "") and instName or "Open World"
@@ -266,6 +281,29 @@ local function SnapshotResetZone()
 end
 
 DMX._GetCurrentZoneLabel = GetCurrentZoneLabel
+
+-- Where the meter last received data. An export reads this, so a player who
+-- finishes a run and travels still exports the run's location. Lost on reload;
+-- the export then falls back to the current zone.
+local dataZoneLatest = nil
+local dataZoneBySession = {}
+
+local function OnDataZoneEvent(event, _, sessionID)
+    if event == "DAMAGE_METER_RESET" then
+        dataZoneLatest = nil
+        wipe(dataZoneBySession)
+        return
+    end
+    local label = GetCurrentZoneLabel()
+    dataZoneLatest = label
+    if type(sessionID) == "number" and not issecretvalue(sessionID) then
+        dataZoneBySession[sessionID] = label
+    end
+end
+
+function DMX._GetDataZoneLabel(sessionID)
+    return (sessionID and dataZoneBySession[sessionID]) or dataZoneLatest or GetCurrentZoneLabel()
+end
 
 --------------------------------------------------------------------------------
 -- Session Window Discovery
@@ -598,6 +636,15 @@ addon:RegisterComponentInitializer(function(self)
     addon.Events.OnWorldEntered(function()
         SnapshotResetZone()
     end)
+
+    -- Data-zone snapshot: track where data last arrived
+    for _, event in ipairs({
+        "DAMAGE_METER_COMBAT_SESSION_UPDATED",
+        "DAMAGE_METER_CURRENT_SESSION_UPDATED",
+        "DAMAGE_METER_RESET",
+    }) do
+        addon.Events.On("DamageMeterDataZone", event, OnDataZoneEvent)
+    end
 
     -- Event-driven restyling (replaces Rule 11-violating hooksecurefunc on system frames)
     -- DamageMeter inherits EditModeDamageMeterSystemTemplate — hooks on its tree cause taint.

@@ -310,8 +310,8 @@ function addon.GatherDamageMeterExportData(sessionType, primaryMeterType, sessio
         end
     end
 
-    -- Instance info
-    local instanceLabel = DMX._GetCurrentZoneLabel()
+    -- Instance info: where this session's data last arrived
+    local instanceLabel = DMX._GetDataZoneLabel(sessionID)
 
     return {
         players = players,
