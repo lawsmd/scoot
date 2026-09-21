@@ -3,7 +3,7 @@
 -- running client.
 --
 -- A skin's chrome table holds one descriptor per role: window, picker,
--- titleBar, closeButton, button, resizeGrip, scrollBar, tab, tabBody,
+-- dialog, dialogTitle, titleBar, closeButton, button, resizeGrip, scrollBar, tab, tabBody,
 -- sectionHeader, sectionBody, navRow, navCard, navDivider, dropdown,
 -- arrowButton, field, infoIcon, tooltip, slider, input. A descriptor names a
 -- kind and what that kind needs:
@@ -87,7 +87,7 @@ addon.UI.Chrome = addon.UI.Chrome or {}
 local Chrome = addon.UI.Chrome
 
 Chrome.ROLES = {
-    "window", "picker", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
+    "window", "picker", "dialog", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
     "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider",
     "dropdown", "arrowButton", "field", "infoIcon", "tooltip", "slider", "input",
     "editSelection", "editDialog",
@@ -108,6 +108,18 @@ Chrome.FLAT = {
     -- page, so a background cut for the panel's geometry would not meet them.
     -- Flat is the panel's fill with a border around it.
     picker        = { kind = "flat", background = "window" },
+    -- The modal Controls:ShowDialog opens (ui/v2/controls/Dialog.lua): a
+    -- confirm, an info box, a name prompt, the layout list. The picker's
+    -- relation, on a role of its own so a skin can draw the two apart. Flat
+    -- is the solid fill inside the framework border, the look the dialog
+    -- shipped with; the dimmer behind it is metrics.dialog.dimmerAlpha times
+    -- the dialogDimmer piece.
+    dialog        = { kind = "flat", background = "solid" },
+    -- How the dialog presents the product's name: text is a string in the
+    -- header role; window is the panel template's own plate; texture is the
+    -- image the product's HeaderModel names, the one the title bar draws,
+    -- at the height the descriptor gives.
+    dialogTitle   = { kind = "text" },
     titleBar      = { kind = "ascii", fontRole = "label" },
     closeButton   = { kind = "flat", glyph = "X" },
     button        = { kind = "flat", labelColors = { normal = "accent", hover = "black", active = "background", disabled = "accent" } },
@@ -501,8 +513,10 @@ end
 -- The art one descriptor names, as a file and the texcoord rect of the
 -- member on it: spec.atlas, or spec.texture with spec.size = { w, h } and an
 -- optional spec.texCoords = { l, r, t, b }. Returns nil when the art is
--- missing, else file, width, height, left, right, top, bottom.
-local function AtlasSource(spec)
+-- missing, else file, width, height, left, right, top, bottom. Public: the
+-- Classic unit frames crop their backdrops through it
+-- (forever/unitframes/art.lua), read at build time since they load first.
+function Chrome.AtlasSource(spec)
     local file, w, h, L, R, T, B
     if spec.atlas then
         if not (C_Texture and C_Texture.GetAtlasInfo) then return nil end
@@ -536,7 +550,7 @@ end
 -- SetDesaturated, SetAlpha, SetVertexColor, SetBorderColor, SetCenterColor,
 -- SetSource, ApplyOpacity, Destroy.
 function Chrome.SlicedAtlas(frame, spec, layer, sublevel)
-    local file, w, h, L, R, T, B = AtlasSource(spec)
+    local file, w, h, L, R, T, B = Chrome.AtlasSource(spec)
     if not file then return nil end
 
     local slice = spec.slice or {}
@@ -616,7 +630,7 @@ function Chrome.SlicedAtlas(frame, spec, layer, sublevel)
     -- Another member of the same cut (a state's art) on the same pieces.
     -- Returns false, and leaves the pieces as they were, when it is missing.
     function handle:SetSource(other)
-        local f, mw, mh, l, r, t, b = AtlasSource(other)
+        local f, mw, mh, l, r, t, b = Chrome.AtlasSource(other)
         if not f then return false end
         local nu, nv = cuts(l, r, t, b, mw, mh)
         for i, tex in ipairs(self.pieces) do
@@ -726,7 +740,7 @@ end
 -- Returns nil when the art is missing, else a handle: pieces, cells,
 -- SetShown, Destroy.
 function Chrome.GridAtlas(frame, spec, layer, sublevel, xs, ys)
-    local file, w, h, L, R, T, B = AtlasSource(spec)
+    local file, w, h, L, R, T, B = Chrome.AtlasSource(spec)
     if not file then return nil end
     local grid = spec.grid or {}
     local du, dv = (R - L) / w, (B - T) / h
@@ -1253,7 +1267,7 @@ end
 -- width has no rect and gets no size event, so the first build's glow
 -- stayed invisible until a click rebuilt the rows against a sized frame.
 local function GlowFrame(frame, glowSpec, m)
-    local file, w, gh, L, R, T, B = AtlasSource(glowSpec)
+    local file, w, gh, L, R, T, B = Chrome.AtlasSource(glowSpec)
     if not file then return nil end
     local inset = m.glowInset or 0
     local x = glowSpec.x or m.glowOffset or 0
@@ -1436,6 +1450,7 @@ end
 Chrome.PIECES = {
     "windowBorder", "windowFill", "titleStreaks", "portrait",
     "pickerBorder", "pickerFill", "pickerStreaks",
+    "dialogBorder", "dialogFill", "dialogStreaks", "dialogDimmer",
     "pageStreaks", "pageTopBorder", "pageBorder", "pageFill",
     "navColumn", "navDivider", "cardBorder", "cardFill", "cardGlow",
     "navRowHover", "navRowSelected",

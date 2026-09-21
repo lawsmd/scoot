@@ -860,6 +860,9 @@ end
 --
 -- Returns the EditBox. box._artLeft is the art's reach past the left edge;
 -- box._setFocusLook(focused) repaints the flat border and is inert otherwise.
+-- opts.justifyH (default CENTER) and opts.textInset reach both kinds: the
+-- dialog's name prompt reads from the left with a margin, a slider's value
+-- box sits centered in its art.
 -- How far the input role's art reaches past the box's left edge, for a caller
 -- that sizes its cluster before it builds the box.
 function Controls.ValueInputReach()
@@ -879,13 +882,13 @@ function Controls.CreateValueInput(parent, opts)
     box:EnableMouse(true)
     box:SetFont(theme:GetFont("VALUE"), opts.fontSize or 12, "")
     box:SetTextColor(1, 1, 1, 1)
-    box:SetJustifyH("CENTER")
+    box:SetJustifyH(opts.justifyH or "CENTER")
 
     if art then
         for _, key in ipairs({ "Left", "Middle", "Right" }) do
             if box[key] then addon.UI.Chrome.ApplyOpacity("inputField", box[key]) end
         end
-        box:SetTextInsets(0, 5, 0, 0)
+        box:SetTextInsets(opts.textInset or 0, 5, 0, 0)
         box._artLeft = Controls.ValueInputReach()
         box._setFocusLook = function() end
         return box

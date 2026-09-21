@@ -291,6 +291,20 @@ Skin.Register("testcard", {
             popupMaxWidth = 380,
         },
 
+        -- The modal dialog (ui/v2/controls/Dialog.lua). width and listHeight
+        -- are the room inside the art; a skin whose dialog art draws into
+        -- the rect grows the frame by windowInset on each side. The height
+        -- is the content's: textTop, the wrapped message, controlGap and the
+        -- input or the list where there is one, buttonTop, the button and
+        -- contentPadding under it.
+        dialog = {
+            width = 400, listHeight = 150, listItemHeight = 28, borderWidth = 3,
+            buttonMinWidth = 100, buttonGap = 12, contentPadding = 24,
+            titleTop = 12, titleFontSize = 14, textTop = 45, textFontSize = 12,
+            controlGap = 12, buttonTop = 16,
+            inputHeight = 28, inputTextInset = 8, listTextInset = 10, dimmerAlpha = 0.80,
+        },
+
         sublevels = { bg = -8, fill = -7, hover = -6 },
         alphas = { hover = 0.1, emphasis = 0.04, selected = 0.15, borderNormal = 0.7, borderFocus = 1.0 },
     },

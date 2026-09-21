@@ -70,6 +70,7 @@ Skin.Register("tui", {
             kind = "flat", corners = "outset", background = "window",
             noise = { texture = "NOISE_OVERLAY", size = 2048, alpha = 0.25, blend = "ADD" },
         },
+        dialog        = { kind = "flat", background = "solid" },
         titleBar      = { kind = "ascii", fontRole = "label" },
         closeButton   = { kind = "flat", glyph = "X" },
         button        = { kind = "flat", labelColors = { normal = "accent", hover = "black", active = "background", disabled = "accent" } },
@@ -216,6 +217,20 @@ Skin.Register("tui", {
         -- Background z-stack and house alphas. The three sublevels are
         -- load-bearing: base fill below, emphasis fill above it, hover fill
         -- on top.
+        -- The modal dialog (ui/v2/controls/Dialog.lua). width and listHeight
+        -- are the room inside the art; a skin whose dialog art draws into
+        -- the rect grows the frame by windowInset on each side. The height
+        -- is the content's: textTop, the wrapped message, controlGap and the
+        -- input or the list where there is one, buttonTop, the button and
+        -- contentPadding under it.
+        dialog = {
+            width = 400, listHeight = 150, listItemHeight = 28, borderWidth = 3,
+            buttonMinWidth = 100, buttonGap = 12, contentPadding = 24,
+            titleTop = 12, titleFontSize = 14, textTop = 45, textFontSize = 12,
+            controlGap = 12, buttonTop = 16,
+            inputHeight = 28, inputTextInset = 8, listTextInset = 10, dimmerAlpha = 0.80,
+        },
+
         sublevels = { bg = -8, fill = -7, hover = -6 },
         alphas = { hover = 0.08, emphasis = 0.03, selected = 0.12, borderNormal = 0.6, borderFocus = 1.0 },
     },

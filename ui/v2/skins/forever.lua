@@ -258,6 +258,32 @@ Skin.Register("forever", {
             pieces = { border = "pickerBorder", fill = "pickerFill", streaks = "pickerStreaks" },
             fallback = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame", background = "window" },
         },
+        -- The modal dialog (a confirm, a name prompt, the layout list), the
+        -- same panel as the pickers: the metal border, the title plate the
+        -- product's name sits on, the template's close button. Its own role
+        -- and its own pieces, so the two can part in one line: Blizzard's
+        -- smaller dialog border is { kind = "nineSlice", layout = "Dialog" },
+        -- the one editSelection.small wears, and which of the two reads
+        -- better under the bronze panel is an eye call for the beta. Solid
+        -- for the picker's reason. No emblem on a box this size.
+        dialog = {
+            kind = "template", template = "PortraitFrameTemplate",
+            layout = "ButtonFrameTemplateNoPortrait",
+            portrait = false,
+            pieces = { border = "dialogBorder", fill = "dialogFill", streaks = "dialogStreaks" },
+            fallback = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame", background = "window" },
+        },
+        -- The dialog's mark is the emblem, centred on the 21px title plate
+        -- in place of its text: a 48 px disc whose centre is the plate's
+        -- centre, 11 down, so it stands 13 above the frame's top edge and
+        -- 16 below the plate, the way the window's emblem hangs on its
+        -- corner. 40 was seen first and asked up a fifth. The banner was
+        -- tried here before that, 19 September, and read out of place. A
+        -- product with no emblem gets the plate's own string.
+        dialogTitle = {
+            kind = "texture", texture = "CAMELOT_EMBLEM", point = "TOP", x = 0, y = 13, height = 48,
+            fallback = { kind = "window", fallback = { kind = "text" } },
+        },
         -- The title is the product's banner image. x 60 was where the
         -- portrait ring ended; the emblem that replaced it ends at 35, and
         -- the banner's own art starts about 3 inside its texture, so the
@@ -580,6 +606,13 @@ Skin.Register("forever", {
         pickerBorder  = 1,
         pickerFill    = 1,
         pickerStreaks = 1,
+        -- The modal dialog stands on the panel too and draws solid for the
+        -- same reason; the dimmer is the black wash over the whole screen
+        -- behind it, metrics.dialog.dimmerAlpha times this
+        dialogBorder  = 1,
+        dialogFill    = 1,
+        dialogStreaks = 1,
+        dialogDimmer  = 1,
         -- The Legacy background's cells: the streak band, the bordered
         -- panel's top edge, its other three edges, the page inside them, and
         -- the wood column behind the nav
@@ -818,6 +851,22 @@ Skin.Register("forever", {
             tokenIconWidth = 10,
             widthStep = 20,
             popupMaxWidth = 360,
+        },
+
+        -- The modal dialog (ui/v2/controls/Dialog.lua). width and the three
+        -- heights are the room inside the art; a skin whose dialog art draws
+        -- into the rect grows the frame by windowInset on each side.
+        -- The height is the content's: textTop, the wrapped message, controlGap
+        -- and the input or the list where the dialog has one, buttonTop, the
+        -- button and contentPadding under it. The message reads at 14 here
+        -- against the value role's 12: the box is small and the words are
+        -- what it is for. textTop clears the banner, which hangs to 36.
+        dialog = {
+            width = 400, listHeight = 150, listItemHeight = 28, borderWidth = 3,
+            buttonMinWidth = 100, buttonGap = 12, contentPadding = 20,
+            titleTop = 12, titleFontSize = 14, textTop = 44, textFontSize = 14,
+            controlGap = 12, buttonTop = 18,
+            inputHeight = 28, inputTextInset = 8, listTextInset = 10, dimmerAlpha = 0.80,
         },
 
         sublevels = { bg = -8, fill = -7, hover = -6 },

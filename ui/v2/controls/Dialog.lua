@@ -1,4 +1,19 @@
--- Dialog.lua - TUI-styled modal dialog system
+-- Dialog.lua - the modal dialog every addon.Dialogs call opens, drawn the
+-- way the active skin says.
+--
+-- The surface is the dialog chrome role: flat is the solid fill inside the
+-- framework border, the look the dialog shipped with; a template kind builds
+-- the frame on the skin's panel template, whose border, title plate and close
+-- button come with it. The X is the closeButton role, the two buttons are
+-- Controls:CreateButton, the name prompt is Controls.CreateValueInput on the
+-- input role, and the layout list is rows on the navRow role inside a tabBody
+-- box with Controls.CreateScrollBar beside them. The name on top is the
+-- dialogTitle role: the template's plate, a string in the header role, or
+-- the product's banner image. The numbers are metrics.dialog; the width and
+-- the list height there are the room inside the art, and art that draws into
+-- the rect grows the frame by windowInset. The height is the content's: the
+-- message is measured after it is set, and the frame closes around it, the
+-- input or the list, and the buttons.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -10,7 +25,6 @@ local Controls = addon.UI.Controls
 local BRAND = addon.Brand or "Scoot"
 local Theme -- Lazy loaded
 
--- Lazy Theme accessor
 local function GetTheme()
     if not Theme then
         Theme = addon.UI.Theme
@@ -18,28 +32,13 @@ local function GetTheme()
     return Theme
 end
 
---------------------------------------------------------------------------------
--- Constants
---------------------------------------------------------------------------------
+local function M()
+    return Controls.Metrics().dialog
+end
 
-local DIALOG_WIDTH = 400
-local DIALOG_HEIGHT = 160
-local DIALOG_HEIGHT_EDITBOX = 200
-local DIALOG_HEIGHT_LIST = 300
-local LIST_HEIGHT_DEFAULT = 150
-local LIST_ITEM_HEIGHT = 28
-local BORDER_WIDTH = 3
-local BUTTON_HEIGHT = 28
-local BUTTON_MIN_WIDTH = 100
-local BUTTON_PADDING = 16
-local BUTTON_GAP = 12
-local CONTENT_PADDING = 24
-local MODAL_OPACITY = 0.80
-
--- Custom scrollbar constants
-local SCROLLBAR_WIDTH = 8
-local SCROLLBAR_THUMB_MIN_HEIGHT = 24
-local SCROLLBAR_MARGIN = 4
+local function GetChrome()
+    return addon.UI.Chrome
+end
 
 --------------------------------------------------------------------------------
 -- Module State
@@ -50,526 +49,172 @@ local modalBackdrop
 local dialogRegistry = {}
 
 --------------------------------------------------------------------------------
--- Helper: Create TUI-Styled Button
---------------------------------------------------------------------------------
-
-local function CreateDialogButton(parent, text, width)
-    local theme = GetTheme()
-    local ar, ag, ab = theme:GetAccentColor()
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
-
-    local btn = CreateFrame("Button", nil, parent)
-    btn:SetSize(width or BUTTON_MIN_WIDTH, BUTTON_HEIGHT)
-    btn:EnableMouse(true)
-    btn:RegisterForClicks("AnyUp", "AnyDown")
-
-    -- Background
-    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetPoint("TOPLEFT", 2, -2)
-    bg:SetPoint("BOTTOMRIGHT", -2, 2)
-    bg:SetColorTexture(bgR, bgG, bgB, bgA)
-    btn._bg = bg
-
-    -- Hover fill (hidden by default)
-    local hoverFill = btn:CreateTexture(nil, "BACKGROUND", nil, -7)
-    hoverFill:SetPoint("TOPLEFT", 2, -2)
-    hoverFill:SetPoint("BOTTOMRIGHT", -2, 2)
-    hoverFill:SetColorTexture(ar, ag, ab, 1)
-    hoverFill:Hide()
-    btn._hoverFill = hoverFill
-
-    -- Border
-    btn._border = Controls.CreateBorder(btn, { thickness = 2, corners = "overlap", sublevel = 1 })
-
-    -- Label
-    local label = btn:CreateFontString(nil, "OVERLAY")
-    local fontPath = theme:GetFont("BUTTON")
-    label:SetFont(fontPath, 13, "")
-    label:SetPoint("CENTER", 0, 0)
-    label:SetText(text or "")
-    label:SetTextColor(ar, ag, ab, 1)
-    btn._label = label
-
-    -- Hover handlers
-    btn:SetScript("OnEnter", function(self)
-        local r, g, b = theme:GetAccentColor()
-        self._hoverFill:SetColorTexture(r, g, b, 1)
-        self._hoverFill:Show()
-        self._label:SetTextColor(0, 0, 0, 1)
-    end)
-
-    btn:SetScript("OnLeave", function(self)
-        self._hoverFill:Hide()
-        local r, g, b = theme:GetAccentColor()
-        self._label:SetTextColor(r, g, b, 1)
-    end)
-
-    function btn:SetText(newText)
-        self._label:SetText(newText)
-    end
-
-    function btn:UpdateTheme()
-        local r, g, b = theme:GetAccentColor()
-        self._hoverFill:SetColorTexture(r, g, b, 1)
-        if not self:IsMouseOver() then
-            self._label:SetTextColor(r, g, b, 1)
-        end
-    end
-
-    return btn
-end
-
---------------------------------------------------------------------------------
--- Helper: Create List Container for selectable options
+-- The list: rows on the navRow role in a tabBody box, the skin's scrollbar
+-- beside them. Rows are reused across shows; the extras past the option
+-- count hide.
 --------------------------------------------------------------------------------
 
 local function CreateListContainer(parent, height)
     local theme = GetTheme()
-    local ar, ag, ab = theme:GetAccentColor()
+    local Chrome = GetChrome()
+    local m = M()
+    local sb = Controls.Metrics().scrollBar
+    local listHeight = height or m.listHeight
+    -- The rows stand one pixel inside the box's line
+    local inset = Controls.Metrics().tab.borderWidth + 1
+    local containerWidth = m.width - m.contentPadding * 2
+    -- The gutter the bar stands in: the bar, its margin off the scroll
+    -- frame, and the skin's gap off the box's edge
+    local gutter = sb.width + sb.margin + sb.gap
+    local contentWidth = containerWidth - inset * 2 - gutter
 
-    -- Calculate dimensions explicitly (don't rely on GetWidth/GetHeight before layout)
-    local listHeight = height or LIST_HEIGHT_DEFAULT
-    local containerWidth = DIALOG_WIDTH - (CONTENT_PADDING * 2)
-    local contentWidth = containerWidth - SCROLLBAR_WIDTH - SCROLLBAR_MARGIN - 8  -- Account for insets
-
-    -- Container frame
     local container = CreateFrame("Frame", nil, parent)
     container:SetSize(containerWidth, listHeight)
     container._listHeight = listHeight
     container._contentWidth = contentWidth
+    container._backdrop = Chrome.Backdrop("tabBody", container)
 
-    -- Background (slightly lighter than dialog background)
-    local bg = container:CreateTexture(nil, "BACKGROUND", nil, -7)
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.06, 0.06, 0.08, 1)
-    container._bg = bg
-
-    -- Border
-    container._border = Controls.CreateBorder(container, { corners = "overlap", sublevel = 1, alpha = 0.6 })
-
-    -- Scroll frame for items (no template - custom scrollbar built below)
     local scrollFrame = CreateFrame("ScrollFrame", nil, container)
-    scrollFrame:SetPoint("TOPLEFT", 2, -2)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -(SCROLLBAR_WIDTH + SCROLLBAR_MARGIN + 4), 2)
+    scrollFrame:SetPoint("TOPLEFT", inset, -inset)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -(inset + gutter), inset)
+    container._scrollFrame = scrollFrame
 
-    -- Content frame (holds the list items) - use explicit width, not GetWidth()
     local content = CreateFrame("Frame", nil, scrollFrame)
     content:SetSize(contentWidth, listHeight)
     scrollFrame:SetScrollChild(content)
     container._content = content
-    container._scrollFrame = scrollFrame
 
-    ----------------------------------------------------------------------------
-    -- Custom TUI Scrollbar
-    ----------------------------------------------------------------------------
-    local scrollbar = CreateFrame("Frame", nil, container)
-    scrollbar:SetWidth(SCROLLBAR_WIDTH)
-    scrollbar:SetPoint("TOPRIGHT", container, "TOPRIGHT", -SCROLLBAR_MARGIN, -2)
-    scrollbar:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -SCROLLBAR_MARGIN, 2)
-    scrollbar:Hide()  -- Hidden until needed
-    container._scrollbar = scrollbar
+    -- The bar, the way the scrollBar role says; anchored as the picker
+    -- shell anchors its own. The factory owns OnScrollRangeChanged and
+    -- leaves the wheel to the caller.
+    local bar = Controls.CreateScrollBar({ parent = container, scrollFrame = scrollFrame })
+    if bar then
+        bar:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", sb.margin + sb.width, 0)
+        bar:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", sb.margin + sb.width, 0)
+    end
+    container._scrollBar = bar
 
-    -- Scrollbar track background
-    local track = scrollbar:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(ar, ag, ab, 0.1)
-    scrollbar._track = track
-
-    -- Scrollbar thumb (draggable)
-    local thumb = CreateFrame("Button", nil, scrollbar)
-    thumb:SetWidth(SCROLLBAR_WIDTH)
-    thumb:SetHeight(SCROLLBAR_THUMB_MIN_HEIGHT)
-    thumb:SetPoint("TOP", scrollbar, "TOP", 0, 0)
-    thumb:EnableMouse(true)
-    thumb:RegisterForDrag("LeftButton")
-    scrollbar._thumb = thumb
-
-    local thumbTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbTex:SetAllPoints()
-    thumbTex:SetColorTexture(ar, ag, ab, 0.5)
-    thumb._tex = thumbTex
-    thumb._isDragging = false
-
-    -- Thumb hover/drag visual states
-    thumb:SetScript("OnEnter", function(self)
-        if not self._isDragging then
-            local r, g, b = theme:GetAccentColor()
-            self._tex:SetColorTexture(r, g, b, 0.8)
-        end
-    end)
-
-    thumb:SetScript("OnLeave", function(self)
-        if not self._isDragging then
-            local r, g, b = theme:GetAccentColor()
-            self._tex:SetColorTexture(r, g, b, 0.5)
-        end
-    end)
-
-    -- Thumb dragging
-    thumb:SetScript("OnDragStart", function(self)
-        self._isDragging = true
-        local r, g, b = theme:GetAccentColor()
-        self._tex:SetColorTexture(r, g, b, 1.0)
-        self._dragStartY = select(2, GetCursorPosition()) / UIParent:GetEffectiveScale()
-        self._dragStartScroll = scrollFrame:GetVerticalScroll() or 0
-    end)
-
-    thumb:SetScript("OnDragStop", function(self)
-        self._isDragging = false
-        local r, g, b = theme:GetAccentColor()
-        if self:IsMouseOver() then
-            self._tex:SetColorTexture(r, g, b, 0.8)
-        else
-            self._tex:SetColorTexture(r, g, b, 0.5)
-        end
-    end)
-
-    thumb:SetScript("OnUpdate", function(self)
-        if not self._isDragging then return end
-
-        local currentY = select(2, GetCursorPosition()) / UIParent:GetEffectiveScale()
-        local deltaY = self._dragStartY - currentY
-
-        local trackHeight = scrollbar:GetHeight()
-        local thumbHeight = self:GetHeight()
-        local maxThumbTravel = trackHeight - thumbHeight
-
-        if maxThumbTravel <= 0 then return end
-
-        local contentHeight = content:GetHeight()
-        local visibleHeight = scrollFrame:GetHeight()
-        local maxScroll = math.max(0, contentHeight - visibleHeight)
-
-        -- Convert pixel drag to scroll amount
-        local scrollPerPixel = maxScroll / maxThumbTravel
-        local newScroll = self._dragStartScroll + (deltaY * scrollPerPixel)
-        newScroll = math.max(0, math.min(maxScroll, newScroll))
-
-        scrollFrame:SetVerticalScroll(newScroll)
-        container:UpdateScrollbar()
-    end)
-
-    -- Click on track to jump
-    scrollbar:EnableMouse(true)
-    scrollbar:SetScript("OnMouseDown", function(self, button)
-        if button ~= "LeftButton" then return end
-
-        local _, cursorY = GetCursorPosition()
-        cursorY = cursorY / UIParent:GetEffectiveScale()
-        local trackTop = self:GetTop()
-        local clickOffset = trackTop - cursorY
-
-        local trackHeight = self:GetHeight()
-        local thumbHeight = thumb:GetHeight()
-        local maxThumbTravel = trackHeight - thumbHeight
-
-        if maxThumbTravel <= 0 then return end
-
-        local contentHeight = content:GetHeight()
-        local visibleHeight = scrollFrame:GetHeight()
-        local maxScroll = math.max(0, contentHeight - visibleHeight)
-
-        -- Calculate target scroll based on click position
-        local targetThumbOffset = clickOffset - (thumbHeight / 2)
-        targetThumbOffset = math.max(0, math.min(maxThumbTravel, targetThumbOffset))
-        local scrollPercent = targetThumbOffset / maxThumbTravel
-        local newScroll = scrollPercent * maxScroll
-
-        scrollFrame:SetVerticalScroll(newScroll)
-        container:UpdateScrollbar()
-    end)
-
-    -- Mouse wheel scrolling
     scrollFrame:EnableMouseWheel(true)
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local contentHeight = content:GetHeight()
-        local visibleHeight = self:GetHeight()
-        local maxScroll = math.max(0, contentHeight - visibleHeight)
-
+        local maxScroll = math.max(0, (content:GetHeight() or 0) - (self:GetHeight() or 1))
         if maxScroll <= 0 then return end
-
-        local current = self:GetVerticalScroll() or 0
-        local step = LIST_ITEM_HEIGHT * 2  -- Scroll 2 items at a time
-        local newScroll = current - (delta * step)
-        newScroll = math.max(0, math.min(maxScroll, newScroll))
-
-        self:SetVerticalScroll(newScroll)
-        container:UpdateScrollbar()
+        local target = (self:GetVerticalScroll() or 0) - delta * m.listItemHeight * 2
+        self:SetVerticalScroll(math.max(0, math.min(maxScroll, target)))
+        if bar then bar:Sync() end
     end)
-
-    -- Also enable mouse wheel on container itself
     container:EnableMouseWheel(true)
-    container:SetScript("OnMouseWheel", function(self, delta)
+    container:SetScript("OnMouseWheel", function(_, delta)
         scrollFrame:GetScript("OnMouseWheel")(scrollFrame, delta)
     end)
 
-    -- Update scrollbar visibility and thumb position
-    function container:UpdateScrollbar()
-        -- Use GetHeight with fallback to stored dimensions (for before layout completes)
-        local contentHeight = content:GetHeight()
-        if contentHeight == 0 then
-            contentHeight = #self._items * LIST_ITEM_HEIGHT
-        end
-
-        local visibleHeight = scrollFrame:GetHeight()
-        if visibleHeight == 0 then
-            visibleHeight = self._listHeight - 4  -- Account for insets
-        end
-
-        if contentHeight <= visibleHeight or contentHeight == 0 then
-            scrollbar:Hide()
-            return
-        end
-
-        scrollbar:Show()
-
-        local trackHeight = scrollbar:GetHeight()
-        if trackHeight == 0 then
-            trackHeight = self._listHeight - 4  -- Account for insets
-        end
-
-        local thumbHeight = math.max(SCROLLBAR_THUMB_MIN_HEIGHT, (visibleHeight / contentHeight) * trackHeight)
-        thumb:SetHeight(thumbHeight)
-
-        local maxScroll = contentHeight - visibleHeight
-        local currentScroll = scrollFrame:GetVerticalScroll() or 0
-        local scrollPercent = maxScroll > 0 and (currentScroll / maxScroll) or 0
-        local maxThumbOffset = trackHeight - thumbHeight
-        local thumbOffset = scrollPercent * maxThumbOffset
-
-        thumb:ClearAllPoints()
-        thumb:SetPoint("TOP", scrollbar, "TOP", 0, -thumbOffset)
-    end
-
-    -- Item storage
     container._items = {}
     container._selectedValue = nil
     container._onSelect = nil
+    -- A skin whose selected row is art of its own says so already; the
+    -- [sel] mark is for the flat draw, whose states are two fills of the
+    -- same color, and the one-pixel separator under each row is the flat
+    -- draw's too.
+    local rowSpec = Chrome.Spec("navRow")
+    container._markUsed = not rowSpec.selected
+    local flatRows = rowSpec.kind == "flat"
 
-    -- Method to populate the list
-    function container:SetListOptions(options, selectedValue, onSelect)
-        self._onSelect = onSelect
-        self._selectedValue = nil
-
-        -- Clear existing items
-        for _, item in ipairs(self._items) do
-            item:Hide()
-            item:SetParent(nil)
-        end
-        wipe(self._items)
-
-        if not options or #options == 0 then
-            C_Timer.After(0, function() self:UpdateScrollbar() end)
-            return
-        end
-
-        -- Calculate content height using stored dimensions (not GetHeight which may return 0)
-        local contentHeight = #options * LIST_ITEM_HEIGHT
-        local visibleHeight = self._listHeight - 4  -- Account for insets
-        self._content:SetHeight(math.max(contentHeight, visibleHeight))
-
-        -- Use stored content width (not GetWidth which may return 0 before layout)
-        self._content:SetWidth(self._contentWidth)
-
-        -- Create list items
-        for i, opt in ipairs(options) do
-            local item = self:CreateListItem(opt.value, opt.label, i)
-            self._items[i] = item
-
-            -- Pre-select if matches
-            if selectedValue and opt.value == selectedValue then
-                self._selectedValue = opt.value
-                item:SetSelected(true)
-            end
-        end
-
-        -- Default to first if none selected
-        if not self._selectedValue and #options > 0 then
-            self._selectedValue = options[1].value
-            if self._items[1] then
-                self._items[1]:SetSelected(true)
-            end
-        end
-
-        -- Reset scroll position and defer scrollbar update until frame is laid out
-        self._scrollFrame:SetVerticalScroll(0)
-        C_Timer.After(0, function() self:UpdateScrollbar() end)
-    end
-
-    -- Method to create a single list item
-    function container:CreateListItem(value, label, index)
-        local item = CreateFrame("Button", nil, self._content)
-        -- Use stored width instead of GetWidth() which may return 0 before layout
-        item:SetSize(self._contentWidth, LIST_ITEM_HEIGHT)
-        item:SetPoint("TOPLEFT", self._content, "TOPLEFT", 0, -((index - 1) * LIST_ITEM_HEIGHT))
-
-        item._value = value
+    local function NewRow(index)
+        local item = CreateFrame("Button", nil, content)
+        item:SetSize(contentWidth, m.listItemHeight)
+        item:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -((index - 1) * m.listItemHeight))
         item._isSelected = false
 
-        -- Background (hidden by default, shown on hover/select)
-        local itemBg = item:CreateTexture(nil, "BACKGROUND", nil, -6)
-        itemBg:SetAllPoints()
-        itemBg:SetColorTexture(ar, ag, ab, 0)
-        item._bg = itemBg
+        local label = item:CreateFontString(nil, "OVERLAY")
+        theme:ApplyFont(label, "value")
+        label:SetPoint("LEFT", item, "LEFT", m.listTextInset, 0)
+        label:SetPoint("RIGHT", item, "RIGHT", -m.listTextInset, 0)
+        label:SetJustifyH("LEFT")
+        item._label = label
 
-        -- Bottom border (dim separator)
-        local separator = item:CreateTexture(nil, "ARTWORK", nil, 1)
-        separator:SetPoint("BOTTOMLEFT", 0, 0)
-        separator:SetPoint("BOTTOMRIGHT", 0, 0)
-        separator:SetHeight(1)
-        separator:SetColorTexture(ar, ag, ab, 0.2)
-        item._separator = separator
+        item._backdrop = Chrome.Backdrop("navRow", item, { variant = "child", label = label })
 
-        -- Label text
-        local labelText = item:CreateFontString(nil, "OVERLAY")
-        local fontPath = theme:GetFont("VALUE")
-        labelText:SetFont(fontPath, 13, "")
-        labelText:SetPoint("LEFT", item, "LEFT", 10, 0)
-        labelText:SetPoint("RIGHT", item, "RIGHT", -10, 0)
-        labelText:SetJustifyH("LEFT")
-        labelText:SetText(label or value)
-        labelText:SetTextColor(1, 1, 1, 1)
-        item._label = labelText
-
-        -- Selection indicator (right side)
-        local selIndicator = item:CreateFontString(nil, "OVERLAY")
-        selIndicator:SetFont(fontPath, 11, "")
-        selIndicator:SetPoint("RIGHT", item, "RIGHT", -10, 0)
-        selIndicator:SetText("[sel]")
-        selIndicator:SetTextColor(ar, ag, ab, 1)
-        selIndicator:Hide()
-        item._selIndicator = selIndicator
-
-        function item:SetSelected(selected)
-            self._isSelected = selected
-            local r, g, b = theme:GetAccentColor()
-            if selected then
-                self._bg:SetColorTexture(r, g, b, 0.25)
-                self._selIndicator:Show()
-            else
-                if self:IsMouseOver() then
-                    self._bg:SetColorTexture(r, g, b, 0.15)
-                else
-                    self._bg:SetColorTexture(r, g, b, 0)
-                end
-                self._selIndicator:Hide()
-            end
+        if flatRows then
+            local separator = item:CreateTexture(nil, "ARTWORK", nil, 1)
+            separator:SetPoint("BOTTOMLEFT", 0, 0)
+            separator:SetPoint("BOTTOMRIGHT", 0, 0)
+            separator:SetHeight(1)
+            Controls.RegisterThemedFill(separator, 0.2)
         end
 
-        -- Hover handlers
-        item:SetScript("OnEnter", function(self)
-            if not self._isSelected then
-                local r, g, b = theme:GetAccentColor()
-                self._bg:SetColorTexture(r, g, b, 0.15)
-            end
-        end)
+        local mark = item:CreateFontString(nil, "OVERLAY")
+        theme:ApplyFont(mark, "value", 11)
+        mark:SetPoint("RIGHT", item, "RIGHT", -m.listTextInset, 0)
+        mark:SetText("[sel]")
+        mark:SetTextColor(theme:GetAccentColor())
+        mark:Hide()
+        item._mark = mark
 
-        item:SetScript("OnLeave", function(self)
-            if not self._isSelected then
-                self._bg:SetColorTexture(0, 0, 0, 0)
-            end
-        end)
+        function item:SetSelected(selected)
+            self._isSelected = selected and true or false
+            self._backdrop:SetSelected(self._isSelected)
+            self._mark:SetShown(self._isSelected and container._markUsed)
+        end
 
-        -- Click handler
+        item:SetScript("OnEnter", function(self) self._backdrop:SetHover(true) end)
+        item:SetScript("OnLeave", function(self) self._backdrop:SetHover(false) end)
         item:SetScript("OnClick", function(self)
-            -- Deselect all others
-            for _, otherItem in ipairs(container._items) do
-                otherItem:SetSelected(false)
+            for _, other in ipairs(container._items) do
+                if other ~= self then other:SetSelected(false) end
             end
-            -- Select this one
             self:SetSelected(true)
             container._selectedValue = self._value
             if container._onSelect then
                 container._onSelect(self._value)
             end
         end)
-
         return item
+    end
+
+    function container:SetListOptions(options, selectedValue, onSelect)
+        self._onSelect = onSelect
+        self._selectedValue = nil
+        local count = options and #options or 0
+
+        -- Sized from the stored numbers: the frame has no rect before layout
+        local visible = self._listHeight - inset * 2
+        content:SetSize(contentWidth, math.max(count * m.listItemHeight, visible))
+
+        for i = 1, count do
+            local opt = options[i]
+            local item = self._items[i]
+            if not item then
+                item = NewRow(i)
+                self._items[i] = item
+            end
+            item._value = opt.value
+            item._label:SetText(opt.label or opt.value)
+            local picked = selectedValue ~= nil and opt.value == selectedValue
+            item:SetSelected(picked)
+            if picked then self._selectedValue = opt.value end
+            item:Show()
+        end
+        for i = count + 1, #self._items do
+            self._items[i]:Hide()
+        end
+
+        -- The first row when nothing matched
+        if self._selectedValue == nil and count > 0 then
+            self._selectedValue = options[1].value
+            self._items[1]:SetSelected(true)
+        end
+
+        scrollFrame:SetVerticalScroll(0)
+        -- The bar reads the scroll range once the frame has been laid out
+        C_Timer.After(0, function()
+            if bar then bar:Sync() end
+        end)
     end
 
     function container:GetSelectedValue()
         return self._selectedValue
     end
 
-    function container:UpdateTheme()
-        local r, g, b = theme:GetAccentColor()
-        -- Update scrollbar
-        if self._scrollbar then
-            self._scrollbar._track:SetColorTexture(r, g, b, 0.1)
-            local thumb = self._scrollbar._thumb
-            if thumb and thumb._tex and not thumb._isDragging then
-                if thumb:IsMouseOver() then
-                    thumb._tex:SetColorTexture(r, g, b, 0.8)
-                else
-                    thumb._tex:SetColorTexture(r, g, b, 0.5)
-                end
-            end
-        end
-        -- Update list items
-        for _, item in ipairs(self._items) do
-            item._separator:SetColorTexture(r, g, b, 0.2)
-            item._selIndicator:SetTextColor(r, g, b, 1)
-            if item._isSelected then
-                item._bg:SetColorTexture(r, g, b, 0.25)
-            end
-        end
-    end
-
     return container
-end
-
---------------------------------------------------------------------------------
--- Helper: Create Close Button (X)
---------------------------------------------------------------------------------
-
-local function CreateCloseButton(parent)
-    local theme = GetTheme()
-    local ar, ag, ab = theme:GetAccentColor()
-
-    local btn = CreateFrame("Button", nil, parent)
-    btn:SetSize(28, 28)
-    btn:EnableMouse(true)
-    btn:RegisterForClicks("AnyUp", "AnyDown")
-
-    -- Hover fill (hidden by default)
-    local hoverFill = btn:CreateTexture(nil, "BACKGROUND", nil, -7)
-    hoverFill:SetAllPoints()
-    hoverFill:SetColorTexture(ar, ag, ab, 1)
-    hoverFill:Hide()
-    btn._hoverFill = hoverFill
-
-    -- X label
-    local label = btn:CreateFontString(nil, "OVERLAY")
-    local fontPath = theme:GetFont("BUTTON")
-    label:SetFont(fontPath, 16, "")
-    label:SetPoint("CENTER", 0, 0)
-    label:SetText("X")
-    label:SetTextColor(ar, ag, ab, 1)
-    btn._label = label
-
-    -- Hover handlers
-    btn:SetScript("OnEnter", function(self)
-        local r, g, b = theme:GetAccentColor()
-        self._hoverFill:SetColorTexture(r, g, b, 1)
-        self._hoverFill:Show()
-        self._label:SetTextColor(0, 0, 0, 1)
-    end)
-
-    btn:SetScript("OnLeave", function(self)
-        self._hoverFill:Hide()
-        local r, g, b = theme:GetAccentColor()
-        self._label:SetTextColor(r, g, b, 1)
-    end)
-
-    function btn:UpdateTheme()
-        local r, g, b = theme:GetAccentColor()
-        self._hoverFill:SetColorTexture(r, g, b, 1)
-        if not self:IsMouseOver() then
-            self._label:SetTextColor(r, g, b, 1)
-        end
-    end
-
-    return btn
 end
 
 --------------------------------------------------------------------------------
@@ -582,25 +227,27 @@ local function CreateDialogFrame()
     end
 
     local theme = GetTheme()
-    local ar, ag, ab = theme:GetAccentColor()
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
+    local Chrome = GetChrome()
+    local m = M()
 
-    -- Modal backdrop (fullscreen dimmer)
+    -- Modal backdrop: the black wash over the whole screen, which also takes
+    -- the clicks that miss the dialog
     modalBackdrop = CreateFrame("Frame", BRAND .. "DialogBackdrop", UIParent)
     modalBackdrop:SetFrameStrata("FULLSCREEN_DIALOG")
     modalBackdrop:SetFrameLevel(0)
     modalBackdrop:SetAllPoints(UIParent)
-    modalBackdrop:EnableMouse(true)  -- Block clicks to content behind
+    modalBackdrop:EnableMouse(true)
     modalBackdrop:Hide()
 
     local dimmer = modalBackdrop:CreateTexture(nil, "BACKGROUND")
     dimmer:SetAllPoints()
-    dimmer:SetColorTexture(0, 0, 0, MODAL_OPACITY)
+    dimmer:SetColorTexture(0, 0, 0, m.dimmerAlpha)
+    Chrome.ApplyOpacity("dialogDimmer", dimmer)
     modalBackdrop._dimmer = dimmer
 
-    -- Dialog frame
-    local f = CreateFrame("Frame", BRAND .. "Dialog", modalBackdrop)
-    f:SetSize(DIALOG_WIDTH, DIALOG_HEIGHT)
+    -- The dialog's surface, the way the dialog role says
+    local spec = Chrome.Spec("dialog")
+    local f = Chrome.CreateFrame(spec, "Frame", BRAND .. "Dialog", modalBackdrop)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetFrameLevel(10)
@@ -611,127 +258,180 @@ local function CreateDialogFrame()
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:SetClampedToScreen(true)
 
-    -- Background
-    local bg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
-    bg:SetPoint("TOPLEFT", BORDER_WIDTH, -BORDER_WIDTH)
-    bg:SetPoint("BOTTOMRIGHT", -BORDER_WIDTH, BORDER_WIDTH)
-    bg:SetColorTexture(bgR, bgG, bgB, 1)  -- Full opacity for dialog
-    f._bg = bg
-
-    -- Border
-    f._border = Controls.CreateBorder(f, { thickness = BORDER_WIDTH, corners = "overlap", sublevel = 1 })
+    -- How far the content stands off the frame's edge. Art that draws into
+    -- the rect keeps it at the skin's windowInset; the flat border is its
+    -- own width and the content padding already clears it.
+    local edge = 0
+    if spec.kind == "template" then
+        addon.UI.Window:BuildTemplateParts(f, spec)
+        edge = Controls.Metrics().windowInset or 0
+    elseif spec.kind == "nineSlice" then
+        f._bg = Controls.AddBackground(f, { color = spec.background or "solid" })
+        f._chrome = Chrome.NineSlice(f, spec)
+        edge = Controls.Metrics().windowInset or 0
+    else
+        f._bg = Controls.AddBackground(f, { color = spec.background or "solid", alpha = 1, inset = m.borderWidth })
+        f._border = Controls.CreateBorder(f, { thickness = m.borderWidth, corners = "overlap", sublevel = 1 })
+    end
+    local pad = m.contentPadding + edge
+    f._edge = edge
+    f._pad = pad
+    -- The height is the content's, set on every show; the width is the skin's
+    f:SetSize(m.width + edge * 2, m.textTop + m.contentPadding + edge * 2)
 
     -- Title bar area (for dragging)
     local titleBar = CreateFrame("Frame", nil, f)
-    titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", BORDER_WIDTH, -BORDER_WIDTH)
-    titleBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -BORDER_WIDTH - 30, -BORDER_WIDTH)
+    titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", edge, -edge)
+    titleBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -(edge + 30), -edge)
     titleBar:SetHeight(30)
     titleBar:EnableMouse(true)
     titleBar:RegisterForDrag("LeftButton")
     titleBar:SetScript("OnDragStart", function() f:StartMoving() end)
     titleBar:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
 
-    -- Title text
-    local title = f:CreateFontString(nil, "OVERLAY")
-    local fontPath = theme:GetFont("HEADER")
-    title:SetFont(fontPath, 14, "")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", CONTENT_PADDING, -12)
-    title:SetText(BRAND)
-    title:SetTextColor(ar, ag, ab, 1)
-    f._title = title
+    -- The name on top, by the dialogTitle role. texture is an image drawn
+    -- over the border art in place of the plate's text: the skin's own
+    -- texture where the descriptor names one (a name in the skin's textures
+    -- table, or a path), else the image the product's HeaderModel names, the
+    -- one the title bar draws, at the model's aspect. A descriptor naming
+    -- nothing on a product with no image takes the fallback, the way the
+    -- title bar does. window is the template's own plate. text is a string
+    -- in the header role.
+    local hasPlate = f.SetTitle and f.GetTitleText and f.TitleContainer
+    local header = addon.UI.SettingsPanel and addon.UI.SettingsPanel.HeaderModel
+    local model = header and header.title or {}
+    local titleSpec = Chrome.Spec("dialogTitle")
+    if titleSpec.kind == "texture" and titleSpec.texture then
+        local key = titleSpec.texture
+        model = { texture = (theme.Textures and theme.Textures[key]) or key, aspect = titleSpec.aspect or 1 }
+    end
+    if titleSpec.kind == "texture" and not model.texture then
+        titleSpec = Chrome.Resolve(titleSpec.fallback, { kind = "text" })
+    end
+    if titleSpec.kind == "window" and not hasPlate then
+        titleSpec = { kind = "text" }
+    end
+    if titleSpec.kind == "texture" then
+        if hasPlate then f:SetTitle("") end
+        -- Over the plate: the template's TitleContainer is a child at a
+        -- fixed level above its NineSlice, the level Window:GetOverlayLevel
+        -- answers. This frame has no such method; a step past the plate
+        -- clears both, and the flat kind has no plate to clear.
+        local art = CreateFrame("Frame", nil, f)
+        local over = f.TitleContainer and f.TitleContainer:GetFrameLevel()
+        if f.NineSlice then
+            over = math.max(over or 0, f.NineSlice:GetFrameLevel())
+        end
+        art:SetFrameLevel((over or f:GetFrameLevel()) + 1)
+        local height = titleSpec.height or 36
+        art:SetSize(titleSpec.width or (model.aspect and height * model.aspect) or 120, height)
+        art:SetPoint(titleSpec.point or "TOP", f, titleSpec.point or "TOP", titleSpec.x or 0, titleSpec.y or 0)
+        local tex = art:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints()
+        tex:SetTexture(model.texture)
+        if model.texCoord then
+            tex:SetTexCoord(unpack(model.texCoord))
+        end
+        f._titleArt = art
+    elseif titleSpec.kind == "window" then
+        f:SetTitle(BRAND)
+        f._title = f:GetTitleText()
+    else
+        local title = f:CreateFontString(nil, "OVERLAY")
+        theme:ApplyFont(title, "header", m.titleFontSize)
+        title:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -(m.titleTop + edge))
+        title:SetText(BRAND)
+        title:SetTextColor(theme:GetAccentColor())
+        f._title = title
+        f._titleThemed = true
+    end
 
-    -- Close button
-    local closeBtn = CreateCloseButton(f)
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -6)
+    local function cancel()
+        f:Hide()
+        modalBackdrop:Hide()
+        if f._onCancel then
+            f._onCancel(f._data)
+        end
+    end
+
+    -- The X, from the closeButton role: a window kind adopts the one the
+    -- template already built and keeps its corner, so only the rest is placed
+    local closeBtn, closeSpec = Controls:CreateCloseButton({ parent = f, onClick = cancel })
+    if not (closeSpec and closeSpec.kind == "window") then
+        closeBtn:ClearAllPoints()
+        closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -6)
+    end
     f._closeBtn = closeBtn
 
-    -- Message text
+    -- Message text. Its width is set, never anchored: a FontString with a
+    -- width answers GetStringHeight for the wrapped text as soon as the text
+    -- is set, and ShowDialog sizes the frame from that answer.
     local text = f:CreateFontString(nil, "ARTWORK")
-    local valueFontPath = theme:GetFont("VALUE")
-    text:SetFont(valueFontPath, 13, "")
-    text:SetPoint("TOP", f, "TOP", 0, -45)
-    text:SetPoint("LEFT", f, "LEFT", CONTENT_PADDING, 0)
-    text:SetPoint("RIGHT", f, "RIGHT", -CONTENT_PADDING, 0)
+    theme:ApplyFont(text, "value", m.textFontSize)
+    text:SetWidth(m.width - m.contentPadding * 2)
+    text:SetPoint("TOP", f, "TOP", 0, -(m.textTop + edge))
     text:SetJustifyH("CENTER")
     text:SetJustifyV("TOP")
     text:SetWordWrap(true)
     text:SetTextColor(1, 1, 1, 1)
     f._text = text
 
-    -- Edit box (hidden by default)
-    local editBox = CreateFrame("EditBox", nil, f)
-    editBox:SetSize(DIALOG_WIDTH - (CONTENT_PADDING * 2), 28)
-    editBox:SetPoint("TOP", f._text, "BOTTOM", 0, -12)
-    editBox:SetAutoFocus(false)
-    editBox:SetMaxLetters(32)
-    editBox:SetFont(valueFontPath, 13, "")
-    editBox:SetTextColor(1, 1, 1, 1)
-    editBox:SetTextInsets(8, 8, 0, 0)
-    editBox:Hide()
-
-    -- Edit box background
-    local editBg = editBox:CreateTexture(nil, "BACKGROUND", nil, -8)
-    editBg:SetAllPoints()
-    editBg:SetColorTexture(0.08, 0.08, 0.10, 1)
-    editBox._bg = editBg
-
-    -- Edit box border; alpha follows focus, including across accent changes
-    editBox._border = Controls.CreateBorder(editBox, {
-        corners = "overlap",
-        sublevel = 1,
-        alpha = Controls.BORDER_ALPHA_NORMAL,
-        getAlpha = function()
-            return editBox:HasFocus() and Controls.BORDER_ALPHA_FOCUS or Controls.BORDER_ALPHA_NORMAL
-        end,
+    -- The name prompt, on the input role: the flat bordered box, or the
+    -- skin's own input art
+    local editBox = Controls.CreateValueInput(f, {
+        width = m.width - m.contentPadding * 2, height = m.inputHeight,
+        maxLetters = 32, justifyH = "LEFT", textInset = m.inputTextInset,
     })
-
-    editBox:SetScript("OnEditFocusGained", function(self)
-        self._border:Refresh()
-    end)
-
-    editBox:SetScript("OnEditFocusLost", function(self)
-        self._border:Refresh()
-    end)
-
+    editBox:SetPoint("TOP", text, "BOTTOM", 0, -m.controlGap)
+    editBox:Hide()
+    editBox:SetScript("OnEditFocusGained", function(self) self._setFocusLook(true) end)
+    editBox:SetScript("OnEditFocusLost", function(self) self._setFocusLook(false) end)
     f._editBox = editBox
 
     -- List container (hidden by default, created lazily)
     f._listContainer = nil
 
-    -- Accept button
-    local acceptBtn = CreateDialogButton(f, "Yes", BUTTON_MIN_WIDTH)
-    f._acceptBtn = acceptBtn
-
-    -- Cancel button
-    local cancelBtn = CreateDialogButton(f, "No", BUTTON_MIN_WIDTH)
-    f._cancelBtn = cancelBtn
+    -- The two buttons, on the button role. The handlers read the show's
+    -- callbacks at click time, so a show sets fields and no scripts.
+    local buttonHeight = Controls.Metrics().button.height
+    f._acceptBtn = Controls:CreateButton({
+        parent = f, text = YES or "Yes", width = m.buttonMinWidth, height = buttonHeight,
+        onClick = function()
+            local editText = f._hasEditBox and f._editBox:GetText() or nil
+            local selectedValue = f._hasList and f._listContainer and f._listContainer:GetSelectedValue() or nil
+            f:Hide()
+            modalBackdrop:Hide()
+            if f._onAccept then
+                f._onAccept(f._data, editText, selectedValue)
+            end
+        end,
+    })
+    f._cancelBtn = Controls:CreateButton({
+        parent = f, text = NO or "No", width = m.buttonMinWidth, height = buttonHeight,
+        onClick = cancel,
+    })
 
     -- ESC to close (via OnKeyDown)
     f:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            self:Hide()
-            modalBackdrop:Hide()
-            if self._onCancel then
-                self._onCancel(self._data)
-            end
+            cancel()
         end
     end)
 
     -- Store defaults for locked dialog restoration
     f._defaultOnKeyDown = f:GetScript("OnKeyDown")
 
-    -- Theme subscription
-    local subscribeKey = "Dialog_Main"
-    theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update title
-        f._title:SetTextColor(r, g, b, 1)
-        -- Update buttons
-        f._acceptBtn:UpdateTheme()
-        f._cancelBtn:UpdateTheme()
-        f._closeBtn:UpdateTheme()
-        -- Update list container if present
-        if f._listContainer and f._listContainer.UpdateTheme then
-            f._listContainer:UpdateTheme()
+    -- What is left to retint by hand: the flat title and the flat rows'
+    -- marks. Buttons, the X, borders, backdrops and the scrollbar each hold
+    -- their own subscription.
+    theme:Subscribe("Dialog_Main", function(r, g, b)
+        if f._titleThemed then
+            f._title:SetTextColor(r, g, b, 1)
+        end
+        if f._listContainer then
+            for _, item in ipairs(f._listContainer._items) do
+                item._mark:SetTextColor(r, g, b, 1)
+            end
         end
     end)
 
@@ -761,8 +461,14 @@ function Controls:ShowDialog(name, options)
     end
 
     local f, backdrop = CreateDialogFrame()
-    local theme = GetTheme()
-    local ar, ag, ab = theme:GetAccentColor()
+    local m = M()
+    local edge, pad = f._edge, f._pad
+    -- The frame closes around its content; the height a definition or a
+    -- show passes is the least room inside the art, and the art adds its
+    -- inset on each side
+    local grow = edge * 2
+    local buttonHeight = Controls.Metrics().button.height
+    local body = m.textTop
 
     local locked = options.locked or def.locked
 
@@ -773,12 +479,10 @@ function Controls:ShowDialog(name, options)
         displayText = string.format(displayText, unpack(formatArgs))
     end
     f._text:SetText(displayText)
-
-    -- Reset text anchors
     f._text:ClearAllPoints()
-    f._text:SetPoint("TOP", f, "TOP", 0, -45)
-    f._text:SetPoint("LEFT", f, "LEFT", CONTENT_PADDING, 0)
-    f._text:SetPoint("RIGHT", f, "RIGHT", -CONTENT_PADDING, 0)
+    f._text:SetWidth(m.width - m.contentPadding * 2)
+    f._text:SetPoint("TOP", f, "TOP", 0, -(m.textTop + edge))
+    body = body + (f._text:GetStringHeight() or 0)
 
     -- Handle edit box
     local hasEditBox = options.hasEditBox or def.hasEditBox
@@ -788,34 +492,36 @@ function Controls:ShowDialog(name, options)
         f._editBox:SetMaxLetters(options.maxLetters or def.maxLetters or 32)
         f._editBox:HighlightText()
         f._editBox:SetFocus()
-        f:SetHeight(options.height or def.height or DIALOG_HEIGHT_EDITBOX)
+        body = body + m.controlGap + m.inputHeight
     else
         f._editBox:Hide()
         f._editBox:SetText("")
-        f:SetHeight(options.height or def.height or DIALOG_HEIGHT)
     end
 
     -- Handle list options
     local listOptions = options.listOptions or def.listOptions
     local hasList = listOptions and #listOptions > 0
     if hasList then
-        local listHeight = options.listHeight or def.listHeight or LIST_HEIGHT_DEFAULT
+        local listHeight = options.listHeight or def.listHeight or m.listHeight
         -- Create list container lazily
         if not f._listContainer then
             f._listContainer = CreateListContainer(f, listHeight)
         end
-        f._listContainer:SetSize(DIALOG_WIDTH - (CONTENT_PADDING * 2), listHeight)
+        f._listContainer:SetSize(m.width - m.contentPadding * 2, listHeight)
         f._listContainer:Show()
 
         local selectedValue = options.selectedValue or def.selectedValue
         f._listContainer:SetListOptions(listOptions, selectedValue, nil)
 
-        f:SetHeight(options.height or def.height or DIALOG_HEIGHT_LIST)
+        body = body + m.controlGap + listHeight
     else
         if f._listContainer then
             f._listContainer:Hide()
         end
     end
+
+    body = body + m.buttonTop + buttonHeight + m.contentPadding
+    f:SetHeight(math.max(body, options.height or def.height or 0) + grow)
 
     -- Determine if info-only (just OK, no cancel)
     local infoOnly = locked and true or (options.infoOnly or def.infoOnly)
@@ -827,10 +533,10 @@ function Controls:ShowDialog(name, options)
     f._cancelBtn:SetText(cancelText)
 
     -- Calculate button widths
-    local acceptWidth = options.acceptWidth or def.acceptWidth or BUTTON_MIN_WIDTH
-    local cancelWidth = options.cancelWidth or def.cancelWidth or BUTTON_MIN_WIDTH
-    f._acceptBtn:SetSize(acceptWidth, BUTTON_HEIGHT)
-    f._cancelBtn:SetSize(cancelWidth, BUTTON_HEIGHT)
+    local acceptWidth = options.acceptWidth or def.acceptWidth or m.buttonMinWidth
+    local cancelWidth = options.cancelWidth or def.cancelWidth or m.buttonMinWidth
+    f._acceptBtn:SetSize(acceptWidth, buttonHeight)
+    f._cancelBtn:SetSize(cancelWidth, buttonHeight)
 
     -- Position buttons
     f._acceptBtn:ClearAllPoints()
@@ -838,88 +544,49 @@ function Controls:ShowDialog(name, options)
 
     if infoOnly then
         -- Single centered button
-        f._acceptBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, CONTENT_PADDING)
+        f._acceptBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, pad)
         f._cancelBtn:Hide()
     else
         -- Two buttons side by side, centered. The affirmative action is always
         -- the left button, across every dialog in the addon.
-        local totalWidth = acceptWidth + cancelWidth + BUTTON_GAP
-        f._acceptBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", -totalWidth/2, CONTENT_PADDING)
-        f._cancelBtn:SetPoint("BOTTOMLEFT", f._acceptBtn, "BOTTOMRIGHT", BUTTON_GAP, 0)
+        local totalWidth = acceptWidth + cancelWidth + m.buttonGap
+        f._acceptBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", -totalWidth/2, pad)
+        f._cancelBtn:SetPoint("BOTTOMLEFT", f._acceptBtn, "BOTTOMRIGHT", m.buttonGap, 0)
         f._cancelBtn:Show()
     end
 
-    -- Layout: text above buttons (or list/editbox above buttons, text above those)
+    -- Layout, top down: the message, then the list or the input under it;
+    -- the buttons stand on the bottom padding and the height above closes
+    -- the gaps
     if hasList then
         f._listContainer:ClearAllPoints()
-        f._listContainer:SetPoint("LEFT", f, "LEFT", CONTENT_PADDING, 0)
-        f._listContainer:SetPoint("RIGHT", f, "RIGHT", -CONTENT_PADDING, 0)
-        f._listContainer:SetPoint("BOTTOM", f._acceptBtn, "TOP", 0, 16)
-        f._text:SetPoint("BOTTOM", f._listContainer, "TOP", 0, 12)
+        f._listContainer:SetPoint("TOP", f._text, "BOTTOM", 0, -m.controlGap)
+        f._listContainer:SetPoint("LEFT", f, "LEFT", pad, 0)
+        f._listContainer:SetPoint("RIGHT", f, "RIGHT", -pad, 0)
     elseif hasEditBox then
         f._editBox:ClearAllPoints()
-        f._editBox:SetPoint("LEFT", f, "LEFT", CONTENT_PADDING, 0)
-        f._editBox:SetPoint("RIGHT", f, "RIGHT", -CONTENT_PADDING, 0)
-        f._editBox:SetPoint("BOTTOM", f._acceptBtn, "TOP", 0, 16)
-        f._text:SetPoint("BOTTOM", f._editBox, "TOP", 0, 12)
-    else
-        f._text:SetPoint("BOTTOM", f._acceptBtn, "TOP", 0, 16)
+        f._editBox:SetPoint("TOP", f._text, "BOTTOM", 0, -m.controlGap)
+        f._editBox:SetPoint("LEFT", f, "LEFT", pad, 0)
+        f._editBox:SetPoint("RIGHT", f, "RIGHT", -pad, 0)
     end
 
     -- Lockdown behavior (cannot dismiss without primary action)
     if locked then
         f._closeBtn:Hide()
-        f:SetScript("OnKeyDown", function(self, key)
-            -- Ignore ESC for locked dialogs
-        end)
+        -- A locked dialog ignores ESC
+        f:SetScript("OnKeyDown", function() end)
     else
         f._closeBtn:Show()
         f:SetScript("OnKeyDown", f._defaultOnKeyDown)
     end
 
-    -- Store callbacks and data
+    -- Store callbacks and data; the buttons and the X read these at click
+    -- time, so nothing is rewired per show
     f._onAccept = options.onAccept
     f._onCancel = options.onCancel
     f._data = options.data
     f._hasEditBox = hasEditBox
     f._hasList = hasList
-
-    -- Helper to get edit box text
-    local function getEditBoxText()
-        return hasEditBox and f._editBox:GetText() or nil
-    end
-
-    -- Helper to get selected list value
-    local function getSelectedValue()
-        return hasList and f._listContainer and f._listContainer:GetSelectedValue() or nil
-    end
-
-    -- Wire up buttons
-    f._acceptBtn:SetScript("OnClick", function()
-        local editText = getEditBoxText()
-        local selectedValue = getSelectedValue()
-        f:Hide()
-        backdrop:Hide()
-        if f._onAccept then
-            f._onAccept(f._data, editText, selectedValue)
-        end
-    end)
-
-    f._cancelBtn:SetScript("OnClick", function()
-        f:Hide()
-        backdrop:Hide()
-        if f._onCancel then
-            f._onCancel(f._data)
-        end
-    end)
-
-    f._closeBtn:SetScript("OnClick", function()
-        f:Hide()
-        backdrop:Hide()
-        if f._onCancel then
-            f._onCancel(f._data)
-        end
-    end)
 
     -- Wire up Enter/Escape in edit box
     if hasEditBox then
@@ -1060,11 +727,6 @@ addon.Events.OnAddonLoaded(addonName, function()
     -- Defer slightly to ensure all modules are loaded
     C_Timer.After(0, function()
         SetupDialogIntegration()
-        -- Copy existing registrations
-        if originalDialogs and type(originalDialogs) == "table" then
-            -- The original dialogs.lua stores registrations in a local table
-            -- Pre-registered dialogs are re-registered automatically when Show is called
-        end
     end)
 end)
 
@@ -1083,7 +745,6 @@ Controls:RegisterDialog("SCOOT_RESET_DEFAULTS", {
     acceptText = "Reset & Reload",
     acceptWidth = 130,
     cancelText = CANCEL or "Cancel",
-    height = 180,
 })
 
 Controls:RegisterDialog("SCOOT_COPY_UF_CONFIRM", {
@@ -1162,14 +823,12 @@ Controls:RegisterDialog("SCOOT_SPEC_PROFILE_RELOAD", {
     text = "Switching profiles for a spec change requires a UI reload so Blizzard can rebuild a clean baseline.\n\nReload now?",
     acceptText = "Reload",
     cancelText = CANCEL or "Cancel",
-    height = 200,
 })
 
 Controls:RegisterDialog("SCOOT_PROFILE_RELOAD", {
     text = "Switching profiles requires a UI reload so Blizzard can rebuild a clean baseline.\n\nReload now?",
     acceptText = "Reload",
     cancelText = CANCEL or "Cancel",
-    height = 200,
 })
 
 Controls:RegisterDialog("SCOOT_APPLY_PRESET", {
@@ -1186,21 +845,18 @@ Controls:RegisterDialog("SCOOT_PRESET_TARGET_CHOICE", {
     cancelText = "Apply to Existing",
     acceptWidth = 180,
     cancelWidth = 180,
-    height = 160,
 })
 
 Controls:RegisterDialog("SCOOT_PRESET_OVERWRITE_CONFIRM", {
     text = "This will overwrite both the Edit Mode layout settings AND the " .. BRAND .. " profile for '%s'.\n\nAll existing customizations will be replaced with %s preset data.\n\nContinue?",
     acceptText = "Overwrite",
     cancelText = CANCEL or "Cancel",
-    height = 200,
 })
 
 Controls:RegisterDialog("SCOOT_IMPORT_CONSOLEPORT", {
     text = "This preset includes a ConsolePort profile.\n\nImport it too?\n\n(If you select Yes, your current ConsolePort profile/settings may be overwritten.)",
     acceptText = YES or "Yes",
     cancelText = NO or "No",
-    height = 210,
 })
 
 Controls:RegisterDialog("SCOOT_DM_RESET_CONFIRM", {
@@ -1213,7 +869,6 @@ Controls:RegisterDialog("SCOOT_EXTERNAL_LAYOUT_DELETED", {
     text = "The Edit Mode layout '%s' was deleted outside of " .. BRAND .. ".\n\nA UI reload is required to properly sync your profile state.",
     acceptText = "Reload UI",
     locked = true,
-    height = 180,
 })
 
 Controls:RegisterDialog("SCOOT_APPLYALL_FONTS", {
@@ -1221,7 +876,6 @@ Controls:RegisterDialog("SCOOT_APPLYALL_FONTS", {
     acceptText = "Apply & Reload",
     acceptWidth = 130,
     cancelText = CANCEL or "Cancel",
-    height = 200,
 })
 
 Controls:RegisterDialog("SCOOT_APPLYALL_TEXTURES", {
@@ -1229,13 +883,11 @@ Controls:RegisterDialog("SCOOT_APPLYALL_TEXTURES", {
     acceptText = "Apply & Reload",
     acceptWidth = 130,
     cancelText = CANCEL or "Cancel",
-    height = 180,
 })
 
 Controls:RegisterDialog("SCOOT_SELECT_EXISTING_LAYOUT", {
     text = "Select an existing layout to apply the %s preset to:",
     acceptText = "Apply",
     cancelText = CANCEL or "Cancel",
-    height = 300,
     listHeight = 150,
 })
