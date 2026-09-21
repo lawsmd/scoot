@@ -166,21 +166,10 @@ function Controls:CreateToggle(options)
     -- Indicator background (shown when ON)
     indicator._bg = Controls.AddHoverFill(indicator, { alpha = 1, inset = BORDER_WIDTH })
 
-    -- Indicator text
+    -- Indicator text. The font carries the state's style, so UpdateVisual
+    -- re-applies it on every state change.
     local indText = indicator:CreateFontString(nil, "OVERLAY")
-    -- A skin with a toggle font role names the face, size and style there. The
-    -- style is the state's: lit, the text is black on the accent fill, where an
-    -- outline is black too and reads as weight on the glyph rather than the rim
-    -- it draws around the dim text of an unlit indicator. UpdateVisual re-applies
-    -- this on every state change.
-    local function ApplyIndicatorFont(lit)
-        if theme._fontRoles and theme._fontRoles.toggle then
-            theme:ApplyFont(indText, "toggle", nil, lit and "NONE" or nil)
-        else
-            indText:SetFont(theme:GetFont("BUTTON"), 11, "")
-        end
-    end
-    ApplyIndicatorFont(false)
+    Controls.ApplyToggleFont(indText, false)
     indText:SetPoint("CENTER", indicator, "CENTER", 0, 0)
     indText:SetText("OFF")
     indText:SetTextColor(dimR, dimG, dimB, 1)
@@ -201,7 +190,7 @@ function Controls:CreateToggle(options)
         local dR, dG, dB = theme:GetDimTextColor()
 
         -- Disabled hides the fill, so only an enabled ON draws black on accent
-        ApplyIndicatorFont(isOn and not isDisabled)
+        Controls.ApplyToggleFont(indText, isOn and not isDisabled)
 
         if isDisabled then
             -- Disabled state: everything grayed out

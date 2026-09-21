@@ -95,6 +95,31 @@ function Controls.RowLabelFontRole()
     return (m and m.rowLabelFontRole) or "label"
 end
 
+-- The ON and OFF on a toggle's pill, wherever one is drawn: a settings row's
+-- indicator, the compact pill in a selector row, the Features page's, and the
+-- pills a renderer builds itself. A skin with a toggle font role names the
+-- face, the size and the style there. size is the fallback's, for a skin that
+-- names no such role.
+--
+-- lit is the state with the accent fill behind it, where the text is black. An
+-- outline is black too, so there it thickens the glyph rather than drawing the
+-- rim it gives the dim text of an unlit pill. The lit pill takes the role's
+-- face and size and drops its style, so a caller applies this on every state
+-- change, not once at creation.
+function Controls.ApplyToggleFont(fs, lit, size)
+    if not fs or not fs.SetFont then return end
+    local theme = GetTheme()
+    if not theme then
+        fs:SetFont("Fonts\\FRIZQT__.TTF", size or 11, "")
+        return
+    end
+    if theme._fontRoles and theme._fontRoles.toggle then
+        theme:ApplyFont(fs, "toggle", nil, lit and "NONE" or nil)
+    else
+        fs:SetFont(theme:GetFont("BUTTON"), size or 11, "")
+    end
+end
+
 -- Per-border state lives here, keyed by the border object, so pairs(border)
 -- yields only edge textures. External code iterates _border tables directly
 -- (the settings-panel pulse calls tex:SetAlpha on every value), so nothing but

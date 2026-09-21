@@ -92,6 +92,8 @@ function Controls:CreateOnOffIndicator(opts)
     fill:SetColorTexture(ar, ag, ab, 1)
 
     local text = btn:CreateFontString(nil, "OVERLAY")
+    -- Kept off Controls.ApplyToggleFont: the toggle role is sized for a
+    -- settings row's pill and this one is 27 by 13.
     text:SetFont(theme:GetFont("BUTTON"), 8, "")
     text:SetPoint("CENTER", 0, 0)
 

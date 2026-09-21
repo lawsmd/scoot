@@ -100,14 +100,10 @@ function Controls:CreateToggleColorPicker(options)
     -- Indicator background (shown when ON)
     indicator._bg = Controls.AddHoverFill(indicator, { alpha = 1, inset = BORDER_WIDTH })
 
-    -- Indicator text
+    -- Indicator text. The font carries the state's style, so UpdateVisual
+    -- re-applies it on every state change.
     local indText = indicator:CreateFontString(nil, "OVERLAY")
-    -- A skin with a toggle font role names the face, size and style there.
-    if theme._fontRoles and theme._fontRoles.toggle then
-        theme:ApplyFont(indText, "toggle")
-    else
-        indText:SetFont(theme:GetFont("BUTTON"), 11, "")
-    end
+    Controls.ApplyToggleFont(indText, false)
     indText:SetPoint("CENTER", indicator, "CENTER", 0, 0)
     indText:SetText("OFF")
     indText:SetTextColor(dimR, dimG, dimB, 1)
@@ -173,6 +169,9 @@ function Controls:CreateToggleColorPicker(options)
         local isDisabled = row._isDisabled
         local r, g, b = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()
+
+        -- Disabled hides the fill, so only an enabled ON draws black on accent
+        Controls.ApplyToggleFont(indText, isOn and not isDisabled)
 
         if isDisabled then
             -- Disabled state: everything grayed out

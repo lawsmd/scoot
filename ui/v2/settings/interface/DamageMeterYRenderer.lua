@@ -434,11 +434,7 @@ local function CreateOnOffIndicator(parent, isOn, onClick)
     fill:SetColorTexture(ar, ag, ab, 1)
 
     local text = indicator:CreateFontString(nil, "OVERLAY")
-    if Theme and Theme.GetFont then
-        text:SetFont(Theme:GetFont("BUTTON"), 10, "")
-    else
-        text:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
-    end
+    addon.UI.Controls.ApplyToggleFont(text, isOn, 10)
     text:SetPoint("CENTER")
 
     if isOn then

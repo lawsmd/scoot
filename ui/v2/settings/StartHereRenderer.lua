@@ -139,20 +139,11 @@ local pageState = {
 -- ON/OFF Indicator (right-side toggle button)
 --------------------------------------------------------------------------------
 
--- The pill's ON and OFF. A skin with a toggle font role names the face, the
--- size and the style there, the same role a settings row's toggle reads
--- (ui/v2/controls/Toggle.lua), so both pills draw alike.
---
--- lit is the state with the fill behind it, where the text is black. An
--- outline is black too, so on that state it is weight on the glyph rather than
--- the rim it draws around the dim text of an unlit pill, and the letters close
--- up. The lit state drops the role's style and keeps its face and size.
-local function ApplyIndicatorFont(theme, fs, lit)
-    if theme._fontRoles and theme._fontRoles.toggle then
-        theme:ApplyFont(fs, "toggle", nil, lit and "NONE" or nil)
-    else
-        fs:SetFont(theme:GetFont("BUTTON"), INDICATOR_FONT_SIZE, "")
-    end
+-- The pill's ON and OFF, through the same applier a settings row's toggle
+-- reads, so both pills draw alike. INDICATOR_FONT_SIZE is the size a skin that
+-- names no toggle role falls back to.
+local function ApplyIndicatorFont(fs, lit)
+    addon.UI.Controls.ApplyToggleFont(fs, lit, INDICATOR_FONT_SIZE)
 end
 
 local function CreateIndicator(parent, theme)
@@ -180,7 +171,7 @@ local function CreateIndicator(parent, theme)
 
     -- ON/OFF text. UpdateState re-applies the font with the state's style.
     local text = indicator:CreateFontString(nil, "OVERLAY")
-    ApplyIndicatorFont(theme, text, false)
+    ApplyIndicatorFont(text, false)
     text:SetPoint("CENTER", 0, 0)
     text:SetText("OFF")
     text:SetTextColor(dimR, dimG, dimB, 1)
@@ -199,13 +190,13 @@ local function CreateIndicator(parent, theme)
         if isOn then
             self._fill:SetColorTexture(onR, onG, onB, 1)
             self._fill:Show()
-            ApplyIndicatorFont(theme, self._text, true)
+            ApplyIndicatorFont(self._text, true)
             self._text:SetText(vc and variant or "ON")
             self._text:SetTextColor(0, 0, 0, 1)
             for _, tex in pairs(self._border) do tex:SetColorTexture(onR, onG, onB, 1) end
         else
             self._fill:Hide()
-            ApplyIndicatorFont(theme, self._text, false)
+            ApplyIndicatorFont(self._text, false)
             self._text:SetText("OFF")
             self._text:SetTextColor(dR, dG, dB, 1)
             for _, tex in pairs(self._border) do tex:SetColorTexture(r, g, b, 0.4) end
@@ -246,7 +237,7 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
 
     -- Center text. UpdateState re-applies the font with the state's style.
     local text = selector:CreateFontString(nil, "OVERLAY")
-    ApplyIndicatorFont(theme, text, false)
+    ApplyIndicatorFont(text, false)
     text:SetPoint("CENTER", 0, 0)
     text:SetText("OFF")
     text:SetTextColor(dimR, dimG, dimB, 1)
@@ -284,7 +275,7 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
             -- OFF state
             self._currentIndex = 0
             self._fill:Hide()
-            ApplyIndicatorFont(theme, self._text, false)
+            ApplyIndicatorFont(self._text, false)
             self._text:SetText("OFF")
             self._text:SetTextColor(dR, dG, dB, 1)
             for _, tex in pairs(self._border) do tex:SetColorTexture(r, g, b, 0.4) end
@@ -299,7 +290,7 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
                 if vc then vr, vg, vb = vc[1], vc[2], vc[3] end
                 self._fill:SetColorTexture(vr, vg, vb, 1)
                 self._fill:Show()
-                ApplyIndicatorFont(theme, self._text, true)
+                ApplyIndicatorFont(self._text, true)
                 self._text:SetText(opt.variant)
                 self._text:SetTextColor(0, 0, 0, 1)
                 for _, tex in pairs(self._border) do tex:SetColorTexture(vr, vg, vb, 1) end
@@ -310,7 +301,7 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
         -- Fallback: unknown sub ID, treat as OFF
         self._currentIndex = 0
         self._fill:Hide()
-        ApplyIndicatorFont(theme, self._text, false)
+        ApplyIndicatorFont(self._text, false)
         self._text:SetText("OFF")
         self._text:SetTextColor(dR, dG, dB, 1)
         for _, tex in pairs(self._border) do tex:SetColorTexture(r, g, b, 0.4) end

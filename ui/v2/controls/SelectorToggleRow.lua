@@ -64,10 +64,10 @@ local function CreateMiniToggle(opts, parentContainer, theme, useLightDim)
         sublevel = Controls.SUBLEVEL_HOVER,
     })
 
-    -- ON/OFF text
+    -- ON/OFF text. The font carries the state's style, so UpdateVisual
+    -- re-applies it on every state change.
     local text = toggle:CreateFontString(nil, "OVERLAY")
-    local btnFont = theme:GetFont("BUTTON")
-    text:SetFont(btnFont, 11, "")
+    Controls.ApplyToggleFont(text, false)
     text:SetPoint("CENTER", 0, 0)
     text:SetText("OFF")
     text:SetTextColor(dimR, dimG, dimB, 1)
@@ -81,6 +81,9 @@ local function CreateMiniToggle(opts, parentContainer, theme, useLightDim)
         local isOn = toggle._value
         local r, g, b = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()
+
+        -- Disabled hides the fill, so only an enabled ON draws black on accent
+        Controls.ApplyToggleFont(text, isOn and not toggle._isDisabled)
 
         if toggle._isDisabled then
             local da = 0.35
