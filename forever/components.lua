@@ -44,8 +44,11 @@ local function switchPath(category)
     return category .. ".enabled"
 end
 
+-- On while the beta reads saved variables too late for ADDON_LOADED: nothing a
+-- player switches there survives the reload, so an off default can never be
+-- turned on. Stand-in; the value that goes back is false.
 for _, row in ipairs(FEATURES) do
-    DB.RegisterDefaults({ [switchPath(row.category)] = false })
+    DB.RegisterDefaults({ [switchPath(row.category)] = true })
     addon.Features.Register({ group = "interface", groupLabel = "Interface",
         id = row.category, label = row.label, path = switchPath(row.category) })
 end
