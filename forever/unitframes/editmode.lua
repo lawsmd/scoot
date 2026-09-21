@@ -15,13 +15,7 @@ local EditMode = {}
 addon.UnitFrames.EditMode = EditMode
 
 -- unit key -> settings page key (forever/menu.lua)
-local NAV_KEYS = {
-    player = "ufPlayer",
-    target = "ufTarget",
-    focus = "ufFocus",
-    targettarget = "ufTargetOfTarget",
-    pet = "ufPet",
-}
+local NAV_KEYS = addon.UnitFrames.Text.NAV_KEYS
 
 local instByFrame = setmetatable({}, { __mode = "k" })
 

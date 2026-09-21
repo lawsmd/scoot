@@ -46,7 +46,9 @@ local function build(hitInsets)
             point = "TOPRIGHT", x = -89.5, y = -26,
             color = { 0, 0, 0, 0.5 },
         },
-        -- The strip behind the name, coloured by reaction (target.lua).
+        -- The strip behind the name, coloured by reaction (target.lua), which
+        -- carries Camelot's alpha on every colour write: thinner than vanilla's
+        -- opaque gray (art.lua, "Backdrops").
         nameBackground = {
             layer = "BORDER",
             path = Paths.nameBG,
@@ -66,6 +68,17 @@ local function build(hitInsets)
             point = "CENTER", x = 18.5, y = -4,
             coords = { 0.1015625, 1.0, 0.0078125, 0.78125 },
             border = true,
+        },
+        -- Camelot: the leather inside the level ring, the player's mirrored
+        -- (artplayer.lua, levelBackdrop). The skull in ARTWORK draws over it.
+        levelBackdrop = {
+            layer = "BACKGROUND", sublevel = 2,
+            atlas = Art.BACKDROP_SOURCE.disc,
+            w = 20, h = 20,
+            point = "TOPRIGHT", x = -25, y = -60,
+            nudge = DISC_NUDGE,
+            mask = Paths.circleMask,
+            vertex = { 1, 1, 1, Art.BACKDROP_ALPHA },
         },
 
         -- ARTWORK, all hidden until target.lua says otherwise. The skull is
@@ -103,7 +116,7 @@ local function build(hitInsets)
 
     spec.DrawOrder = {
         "flash", "background", "nameBackground", "portrait",
-        "border",
+        "border", "levelBackdrop",
         "skull", "leaderIcon", "pvpIcon", "raidTargetIcon",
     }
 
@@ -122,16 +135,20 @@ local function build(hitInsets)
         },
     }
 
-    -- BACKGROUND in the XML, in the border's own block and after it.
+    -- BACKGROUND in the XML, in the border's own block and after it. The name
+    -- and the level sit in ARTWORK for the Deep Shadow style, whose copy draws
+    -- one layer down (artplayer.lua, "Text"); from BACKGROUND it would go under
+    -- the border. The skull and the icons are ARTWORK textures, and a
+    -- FontString draws over the textures of its own layer.
     spec.Text = {
         name = {
-            layer = "BACKGROUND",
+            layer = "ARTWORK",
             font = "GameFontNormalSmall",
             w = 100, h = 12,
             point = "CENTER", x = -34, y = 15,
         },
         level = {
-            layer = "BACKGROUND",
+            layer = "ARTWORK",
             font = "GameNormalNumberFont",
             justifyH = "LEFT", justifyV = "MIDDLE",
             point = "CENTER", relPoint = "BOTTOMRIGHT", x = -35.25, y = 30,

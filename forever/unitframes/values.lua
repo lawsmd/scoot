@@ -91,6 +91,39 @@ end
 -- Identity
 --------------------------------------------------------------------------------
 
+-- The font objects' own yellow, NORMAL_FONT_COLOR, which a string has to be
+-- given back once it has worn a class colour.
+local GOLD_R, GOLD_G, GOLD_B = 1.0, 0.82, 0
+
+-- The colour a unit's name takes: the class colour for a player whose class
+-- resolves, the font's yellow for everyone else. Camelot's addition; vanilla
+-- colours no name. UnitIsPlayer is decided on, so a secret answer counts as
+-- no; GetClassColorRGB screens a secret itself and returns nil.
+function Values.IdentityColor(unit)
+    local ok, isPlayer = pcall(UnitIsPlayer, unit)
+    if ok and not issecretvalue(isPlayer) and isPlayer == true then
+        local r, g, b = addon.GetClassColorRGB(unit)
+        if r then return r, g, b end
+    end
+    return GOLD_R, GOLD_G, GOLD_B
+end
+
+-- The name on every frame; the level on the player frame alone, because the
+-- target's level colour is the difficulty read target.lua applies after this.
+-- Each string's colour mode is its setting (text.lua), with the gold as the
+-- default and IdentityColor as the class answer. SetTextColor rather than
+-- SetVertexColor: it is the call the Deep Shadow copy hooks to shade itself
+-- against.
+local function applyIdentityColor(inst)
+    local Text = addon.UnitFrames.Text
+    if inst.nameText then
+        inst.nameText:SetTextColor(Text.Color(inst, "name", GOLD_R, GOLD_G, GOLD_B))
+    end
+    if inst.levelText and inst.unit == "player" then
+        inst.levelText:SetTextColor(Text.Color(inst, "level", GOLD_R, GOLD_G, GOLD_B))
+    end
+end
+
 -- The player's own name and level are plain reads on retail. Both are screened
 -- anyway: this frame is written to be pointed at another unit later, where they
 -- are not.
@@ -112,6 +145,8 @@ function Values.ApplyIdentity(inst)
             pcall(inst.levelText.SetText, inst.levelText, level)
         end
     end
+
+    applyIdentityColor(inst)
 end
 
 -- SetPortraitTexture renders through a camera the client owns. Lua supplies no

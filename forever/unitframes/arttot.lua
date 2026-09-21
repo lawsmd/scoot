@@ -20,7 +20,7 @@ local spec = {
     -- The Art.Paths key the border starts on. Nothing swaps this frame's file,
     -- so without it Art.ApplyBorder falls back to the large frame's.
     borderKey = "borderToT",
-    onBase = { background = true, portrait = true },
+    onBase = { background = true, nameBackdrop = true, portrait = true },
 }
 Art.Frames.targettarget = spec
 
@@ -30,6 +30,16 @@ spec.Regions = {
         w = 46, h = 15,
         point = "BOTTOMLEFT", x = 42, y = 13,
         color = { 0, 0, 0, 0.5 },
+    },
+    -- Camelot: the leather over the black fill (art.lua, "Backdrops"). The
+    -- dead-unit dimming tot.lua puts on the fill is hidden under it and stays
+    -- as the transcription.
+    nameBackdrop = {
+        layer = "BACKGROUND",
+        atlas = Art.BACKDROP_SOURCE.smallStrip,
+        w = 46, h = 15,
+        point = "BOTTOMLEFT", x = 42, y = 13,
+        vertex = { 1, 1, 1, Art.BACKDROP_ALPHA },
     },
     portrait = {
         layer = "BORDER",
@@ -46,7 +56,7 @@ spec.Regions = {
     },
 }
 
-spec.DrawOrder = { "background", "portrait", "border" }
+spec.DrawOrder = { "background", "nameBackdrop", "portrait", "border" }
 
 spec.Bars = {
     health = {
@@ -63,9 +73,10 @@ spec.Bars = {
     },
 }
 
+-- The name in ARTWORK for the Deep Shadow style (artplayer.lua, "Text").
 spec.Text = {
     name = {
-        layer = "BORDER",
+        layer = "ARTWORK",
         font = "GameFontNormalSmall",
         w = 100, h = 10,
         justifyH = "LEFT",

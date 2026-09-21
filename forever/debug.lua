@@ -58,6 +58,47 @@ local function pushInstance(push, key)
             if on then push("  deferred work:    %s", name) end
         end
     end
+
+    -- The look: what each backdrop and each styled string is drawn as beside
+    -- what its setting says, so two frames can be compared by number rather
+    -- than by eye.
+    local Text = UF.Text
+    push("  backdrop setting: enabled %s, opacity %s; strip opacity %s",
+        tostring(Text.Get(key, "backdrop", "enabled")), tostring(Text.Get(key, "backdrop", "opacity")),
+        tostring(Text.Get(key, "stripOpacity")))
+    for _, name in ipairs({ "nameBackdrop", "levelBackdrop", "nameBackground" }) do
+        local tex = inst.regions[name]
+        if tex then
+            local layer, sublevel = tex:GetDrawLayer()
+            local _, _, _, va = tex:GetVertexColor()
+            local file = tex.GetTextureFileID and tex:GetTextureFileID()
+            push("  %-15s shown %-5s %s %d  alpha %.2f  vertex alpha %.2f  %s",
+                name, tostring(tex:IsShown()), tostring(layer), sublevel or 0,
+                tex:GetAlpha(), va or 1, file and ("file " .. file) or "flat fill")
+        end
+    end
+    for _, name in ipairs({ "name", "level" }) do
+        local fs = inst.texts[name]
+        if fs then
+            local layer, sublevel = fs:GetDrawLayer()
+            local style = Text.Get(key, name, "style")
+            local copy = fs.__scootPair
+            local copyState = "no copy"
+            if copy then
+                local cl, cs = copy:GetDrawLayer()
+                copyState = ("copy %s, %s %d, shown %s"):format(
+                    fs.__scootPairActive and "active" or "idle",
+                    tostring(cl), cs or 0, tostring(copy:IsShown()))
+            end
+            local font, size, fontFlags = fs:GetFont()
+            push("  %-15s %s %d  style %s  %s  %s %s %s",
+                name .. " text", tostring(layer), sublevel or 0, tostring(style), copyState,
+                tostring(font and font:match("[^\\/]+$")), tostring(size), tostring(fontFlags))
+            push("  %-15s face %s, size %s, color %s, hidden %s", "",
+                tostring(Text.Get(key, name, "fontFace")), tostring(Text.Get(key, name, "size")),
+                tostring(Text.Get(key, name, "colorMode")), tostring(inst.textHidden[name]))
+        end
+    end
     push("")
 end
 

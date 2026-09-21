@@ -16,7 +16,7 @@ local spec = {
     height = 100,
     hitInsets = { left = 21, right = 19, top = 12, bottom = 15 },
     -- Built on the base frame, under the bars. Everything else goes on artFrame.
-    onBase = { flash = true, background = true, portrait = true },
+    onBase = { flash = true, background = true, nameBackdrop = true, portrait = true },
 }
 Art.Frames.player = spec
 
@@ -45,6 +45,15 @@ spec.Regions = {
         point = "TOPLEFT", x = 89.5, y = -26,
         color = { 0, 0, 0, 0.5 },
     },
+    -- Camelot: the leather behind the name row, the rect the target's strip
+    -- covers, over the black fill (art.lua, "Backdrops").
+    nameBackdrop = {
+        layer = "BACKGROUND",
+        atlas = Art.BACKDROP_SOURCE.strip,
+        w = 119, h = 19,
+        point = "TOPLEFT", x = 90, y = -26,
+        vertex = { 1, 1, 1, Art.BACKDROP_ALPHA },
+    },
 
     -- ARTWORK: the portrait sits under the border so the ring frames it.
     portrait = {
@@ -61,6 +70,19 @@ spec.Regions = {
         point = "CENTER", x = 0, y = 0,
         coords = { 0.85546875, 0.1015625, 0.0625, 0.6640625 },
         border = true,
+    },
+    -- Camelot: the leather inside the level ring. Over the border (sublevel 2
+    -- clears the border at 0 and its lit copy at 1) because the disc in the
+    -- art is translucent glass, and masked to a circle. Centred on the
+    -- measured disc centre, 37 from the left and 30 up, once the nudge lands.
+    levelBackdrop = {
+        layer = "BORDER", sublevel = 2,
+        atlas = Art.BACKDROP_SOURCE.disc,
+        w = 20, h = 20,
+        point = "TOPLEFT", x = 25, y = -60,
+        nudge = DISC_NUDGE,
+        mask = Paths.circleMask,
+        vertex = { 1, 1, 1, Art.BACKDROP_ALPHA },
     },
 
     -- ARTWORK over the bars: rested glow and the attacked backing.
@@ -147,8 +169,8 @@ spec.Regions = {
 -- putting them in a frame raised three levels, and a flat rebuild gets it from
 -- the order alone. Anything else here is ordered for readability.
 spec.DrawOrder = {
-    "flash", "background", "portrait",
-    "border",
+    "flash", "background", "nameBackdrop", "portrait",
+    "border", "levelBackdrop",
     "playerStatus", "attackBackground",
     "restIcon", "attackIcon",
     "restGlow", "attackGlow",
@@ -185,17 +207,25 @@ spec.Bars = {
 -- Vanilla never hides the level; it lets the OVERLAY icon cover the BORDER
 -- text. Put the text in OVERLAY and the number draws through the icon instead.
 --
+-- The name and the level sit one layer up, in ARTWORK, for the Deep Shadow
+-- style their settings default to (text.lua): its black copy of the string
+-- draws on the layer below the string (core/fontpair.lua), and from BORDER
+-- that is BACKGROUND, under the border art. From ARTWORK it lands in BORDER
+-- over the border and the level backdrop, and the OVERLAY icons still cover
+-- both. The face and the style themselves are the settings', not the spec's.
+-- Vanilla's BORDER stands for the two bar values, which take no style.
+--
 -- The XML marks the name and the level "re-anchored in code". Only the vehicle
 -- art swap does that, and it moves the name alone, so these anchors stand.
 spec.Text = {
     name = {
-        layer = "BORDER",
+        layer = "ARTWORK",
         font = "GameFontNormalSmall",
         w = 100, h = 12,
         point = "CENTER", x = 34, y = 15,
     },
     level = {
-        layer = "BORDER",
+        layer = "ARTWORK",
         font = "GameNormalNumberFont",
         justifyH = "RIGHT", justifyV = "MIDDLE",
         point = "CENTER", relPoint = "BOTTOMLEFT", x = 35.25, y = 30,

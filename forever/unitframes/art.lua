@@ -62,6 +62,9 @@ Art.Paths = {
     petHappiness = "Interface\\PetPaperDollFrame\\UI-PetHappiness",
     leaderIcon   = GROUP .. "UI-Group-LeaderIcon",
     masterLooter = GROUP .. "UI-Group-MasterLooter",
+    -- The disc the portraits and the minimap are cut with; a backdrop that
+    -- names it as `mask` draws as a circle.
+    circleMask   = CHARACTER .. "TempPortraitAlphaMask",
 }
 
 -- Draw order for the art swatch dump. A path that fails to resolve draws blank,
@@ -73,17 +76,65 @@ Art.ManifestOrder = {
     "playerStatus", "stateIcon", "playTime",
     "petAttack", "petHappiness",
     "leaderIcon", "masterLooter",
+    "circleMask",
+}
+
+--------------------------------------------------------------------------------
+-- Backdrops
+--------------------------------------------------------------------------------
+-- The dark brown leather behind the name and the level, cut from the Legacy
+-- pane's page background, so the frames read as Camelot's beside Blizzard's
+-- own panes. A Camelot addition: vanilla draws a black fill at 0.5 behind the
+-- name and nothing behind the level, whose disc is baked into the border art
+-- as black glass at about 55 percent with an opaque sheen across it. That is
+-- why the disc backdrop draws OVER the border, masked to a circle, the way
+-- vanilla's own attack backing covers the ring in combat.
+--
+-- Each crop is a rect in the member's own pixels, taken at 1:1 from the flat
+-- interior (columns 125 to 806, rows 60 to 503). The alpha a region is built
+-- at is the registered default (text.lua); Text.ApplyBackdrop writes the
+-- stored one over it, and the reaction strip's alpha is its own setting there.
+
+Art.BACKDROP_ALPHA = addon.UnitFrames.Text.BACKDROP_OPACITY / 100
+-- The card's leather at #170a02, drawn flat when the atlas does not resolve.
+Art.BACKDROP_FALLBACK = { 0.09, 0.04, 0.01 }
+
+local LEATHER = "Legacy-Tree-Frame-background"
+Art.BACKDROP_SOURCE = {
+    strip      = { name = LEATHER, rect = { 300, 200, 419, 219 } },   -- 119x19
+    disc       = { name = LEATHER, rect = { 300, 240, 320, 260 } },   -- 20x20
+    smallStrip = { name = LEATHER, rect = { 300, 280, 346, 295 } },   -- 46x15
 }
 
 --------------------------------------------------------------------------------
 -- The reader
 --------------------------------------------------------------------------------
 
+-- Point a texture at a sub-rect of an atlas member. rect = { left, top,
+-- right, bottom } in the member's pixels. Chrome.AtlasSource is read at call
+-- time: ui/v2/Chrome.lua loads after this file, and nothing builds a frame
+-- before world entry. Returns false when the atlas does not resolve.
+local function applyAtlasCrop(tex, atlas)
+    local Chrome = addon.UI and addon.UI.Chrome
+    if not (Chrome and Chrome.AtlasSource) then return false end
+    local file, w, h, L, R, T, B = Chrome.AtlasSource({ atlas = atlas.name })
+    if not file then return false end
+    local rect = atlas.rect
+    local su, sv = (R - L) / w, (B - T) / h
+    tex:SetTexture(file)
+    tex:SetTexCoord(L + rect[1] * su, L + rect[3] * su, T + rect[2] * sv, T + rect[4] * sv)
+    return true
+end
+
 -- This file defines the region format, so it owns the one function that turns a
 -- def into a texture.
 function Art.BuildRegion(host, def)
     local tex = host:CreateTexture(nil, def.layer, nil, def.sublevel)
     if def.path then tex:SetTexture(def.path) end
+    if def.atlas and not applyAtlasCrop(tex, def.atlas) then
+        local fb = def.fallback or Art.BACKDROP_FALLBACK
+        tex:SetColorTexture(fb[1], fb[2], fb[3], fb[4] or 1)
+    end
     tex:SetSize(def.w, def.h)
     local nudge = def.nudge
     tex:SetPoint(def.point, host, def.relPoint or def.point,
@@ -97,6 +148,12 @@ function Art.BuildRegion(host, def)
     end
     if def.vertex then
         tex:SetVertexColor(def.vertex[1], def.vertex[2], def.vertex[3], def.vertex[4] or 1)
+    end
+    if def.mask then
+        local mask = host:CreateMaskTexture()
+        mask:SetTexture(def.mask)
+        mask:SetAllPoints(tex)
+        tex:AddMaskTexture(mask)
     end
     if def.hidden then tex:Hide() end
     return tex

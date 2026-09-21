@@ -20,6 +20,7 @@ local addonName, addon = ...
 
 local Art = addon.UnitFrames.Art
 local Frame = addon.UnitFrames.Frame
+local Text = addon.UnitFrames.Text
 
 local PVP_ROOT = "Interface\\TargetingFrame\\UI-PVP-"
 
@@ -69,7 +70,9 @@ end
 
 -- CheckLevel. The skull stands for a level the client will not tell (-1) and
 -- for a corpse. The number takes the difficulty colour against an attackable
--- unit and the font's yellow otherwise.
+-- unit and the font's yellow otherwise, which is the "default" its colour
+-- setting resolves to; a disabled level text hides the number and not the
+-- skull.
 local function applyLevel(inst)
     local levelText, skull = inst.levelText, inst.regions.skull
     if inst.previewStandIn then
@@ -83,7 +86,7 @@ local function applyLevel(inst)
         hidden = type(level) ~= "number" or level <= 0
     end
 
-    levelText:SetShown(not hidden)
+    levelText:SetShown(not hidden and not inst.textHidden.level)
     skull:SetShown(hidden)
     if hidden then return end
 
@@ -95,7 +98,16 @@ local function applyLevel(inst)
             r, g, b = color.r, color.g, color.b
         end
     end
-    levelText:SetVertexColor(r, g, b)
+    -- SetTextColor is the call the Deep Shadow copy hooks (values.lua).
+    levelText:SetTextColor(Text.Color(inst, "level", r, g, b))
+end
+
+-- The strip's colour, always with the stored alpha on it. UnitSelectionColor
+-- returns four values and its fourth, 1, would put the strip back to opaque:
+-- a vertex alpha is the texture's alpha, and a SetAlpha at build did not
+-- survive the first colour write (seen 19 September).
+local function setStripColor(inst, r, g, b)
+    inst.regions.nameBackground:SetVertexColor(r, g, b, Text.StripAlpha(inst))
 end
 
 -- CheckFaction. Grey for a mob someone else tapped, the selection colour
@@ -103,21 +115,24 @@ end
 local function applyFaction(inst)
     local r = inst.regions
     local unit = inst.unit
-    local strip, portrait = r.nameBackground, r.portrait
+    local portrait = r.portrait
 
     if inst.previewStandIn then
-        strip:SetVertexColor(0.5, 0.5, 0.5)
+        setStripColor(inst, 0.5, 0.5, 0.5)
         r.pvpIcon:Hide()
         return
     end
 
     local tapped = plain(UnitPlayerControlled, unit) == false and plain(UnitIsTapDenied, unit) == true
     if tapped then
-        strip:SetVertexColor(0.5, 0.5, 0.5)
+        setStripColor(inst, 0.5, 0.5, 0.5)
         portrait:SetVertexColor(0.5, 0.5, 0.5)
     else
-        if not pcall(strip.SetVertexColor, strip, UnitSelectionColor(unit)) then
-            strip:SetVertexColor(0.5, 0.5, 0.5)
+        -- The three colour values only; they may be secret, and go to the
+        -- setter unread.
+        local ok, cr, cg, cb = pcall(UnitSelectionColor, unit)
+        if not (ok and pcall(setStripColor, inst, cr, cg, cb)) then
+            setStripColor(inst, 0.5, 0.5, 0.5)
         end
         portrait:SetVertexColor(1, 1, 1)
     end

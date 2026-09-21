@@ -26,6 +26,7 @@ local addonName, addon = ...
 
 local UF = addon.UnitFrames
 local Art = UF.Art
+local Text = UF.Text
 local Values = UF.Values
 local Harness = UF.Harness
 local Suppression = UF.Suppression
@@ -34,9 +35,8 @@ local DB = addon.DB
 local Frame = {}
 UF.Frame = Frame
 
--- Build and reconcile order. The target comes before the frame that reads its
--- target.
-UF.ORDER = { "player", "target", "focus", "targettarget", "pet" }
+-- UF.ORDER, the build and reconcile order, is text.lua's: the first unit frame
+-- file, and the one that loads on retail.
 
 -- key -> instance, for every frame built this session.
 UF.Frames = {}
@@ -46,7 +46,8 @@ local defs = {}
 --------------------------------------------------------------------------------
 -- Defaults
 --------------------------------------------------------------------------------
--- There is no settings page yet. These are the values one will write.
+-- The frame-level values. The text settings are text.lua's, and the pages in
+-- page.lua write those; nothing writes these yet.
 
 DB.RegisterModule("unitFrames", true)
 
@@ -123,6 +124,13 @@ local function buildBar(parent, def, level)
     return bar
 end
 
+-- A string on the font object the XML names, at the XML's anchor. The name and
+-- the level are then dressed from their settings by Text.ApplyStyle, which
+-- re-anchors them with the stored offset and lays a font style over the face
+-- (forever/castbars/painter.lua does the same). A Deep Shadow style builds a
+-- black copy of the string behind it, kept in step by hooks on SetText,
+-- ClearText, the show calls and SetTextColor, and the copy takes a secret
+-- string, so the feeds in values.lua stay as they are.
 local function buildText(host, def)
     local fs = host:CreateFontString(nil, def.layer, def.font)
     if def.w then fs:SetSize(def.w, def.h) end
@@ -217,6 +225,7 @@ function Frame.Build(key)
     inst.regions = {}
     inst.pulses = {}
     inst.texts = {}
+    inst.textHidden = {}
 
     -- DrawOrder, not pairs: two regions in one layer are ordered by creation,
     -- and an additive glow has to land on top of the icon it covers.
@@ -266,6 +275,8 @@ function Frame.Build(key)
         inst.texts.dead:SetText(_G.DEAD or "Dead")
         inst.texts.dead:Hide()
     end
+    Text.ApplyStyle(inst)
+    Text.ApplyBackdrop(inst)
 
     if def.build then def.build(inst) end
     Art.ApplyBorder(inst)
@@ -289,14 +300,20 @@ end
 --------------------------------------------------------------------------------
 
 -- What a frame with no unit shows while Edit Mode holds it: the label for a
--- name, the player's own face and level, and two part-full bars. Static values
--- only, so nothing here can be secret.
+-- name, the player's own face and level, the text colours the settings give
+-- them with the player's own class standing in for the unit's, and two
+-- part-full bars. Static values only, so nothing here can be secret.
+local GOLD_R, GOLD_G, GOLD_B = 1.0, 0.82, 0
+
 local function paintStandIn(inst)
-    if inst.nameText then inst.nameText:SetText(inst.def.label) end
+    if inst.nameText then
+        inst.nameText:SetText(inst.def.label)
+        inst.nameText:SetTextColor(Text.Color(inst, "name", GOLD_R, GOLD_G, GOLD_B, "player"))
+    end
     if inst.levelText then
         inst.levelText:SetText(UnitLevel("player"))
-        inst.levelText:SetVertexColor(1.0, 0.82, 0)
-        inst.levelText:Show()
+        inst.levelText:SetTextColor(Text.Color(inst, "level", GOLD_R, GOLD_G, GOLD_B, "player"))
+        inst.levelText:SetShown(not inst.textHidden.level)
     end
     if inst.portrait then
         pcall(SetPortraitTexture, inst.portrait, "player")

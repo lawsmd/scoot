@@ -143,7 +143,11 @@ core/components/tooltip.lua
 ## is standard and Forever's is camelot. The exclude form is the one that holds
 ## on both clients, because 12.1.0 has never heard of camelot and loads a line
 ## gated on an unknown token (docs/camelot/probe.md, "Reading the Loading
-## section").
+## section"). forever/unitframes/text.lua is the exception: it holds the text
+## settings and their defaults, and the pages in forever/unitframes/page.lua
+## below draw on retail too, where a stored value can be checked across a
+## reload while the beta keeps none.
+forever/unitframes/text.lua
 forever/unitframes/art.lua [ExcludeLoadGameType standard]
 forever/unitframes/artplayer.lua [ExcludeLoadGameType standard]
 forever/unitframes/arttarget.lua [ExcludeLoadGameType standard]
@@ -276,6 +280,7 @@ ui/v2/settings/interface/TooltipRenderer.lua
 forever/menu.lua
 ui/v2/settings/StartHereRenderer.lua
 forever/castbars/page.lua [ExcludeLoadGameType standard]
+forever/unitframes/page.lua
 forever/minimap.lua
 forever/gallery.lua
 forever/debug.lua
