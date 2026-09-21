@@ -1,6 +1,7 @@
 -- StartHereRenderer.lua - Module toggles page ("Features")
 -- Three-column flat layout with always-visible sub-toggles.
--- Static RELOAD button below the scrollable area inverts when changes are pending.
+-- Static RELOAD button below the scrollable area, ringed in the accent while
+-- changes are pending.
 local _, addon = ...
 
 addon.UI = addon.UI or {}
@@ -773,6 +774,26 @@ local function EnsureReloadArea(panel, contentPane)
     end)
     area._reloadBtn = btn
 
+    -- The pending-changes ring: accent edges just outside the button, hidden
+    -- until a toggle changes. It sits over the skin's own art rather than
+    -- replacing it, so the button keeps its normal face.
+    local ring = Controls.CreateBorder(btn, {
+        thickness = M().button.borderWidth,
+        corners = "outset",
+        layer = "OVERLAY",
+    })
+    ring:SetShown(false)
+    area._reloadRing = ring
+
+    -- The panel can close with the page still dirty, and the ticker would keep
+    -- painting a hidden ring. The next render starts it again.
+    area:HookScript("OnHide", function(self)
+        if self._reloadRingTicker then
+            self._reloadRingTicker:Cancel()
+            self._reloadRingTicker = nil
+        end
+    end)
+
     -- Explainer text
     local explainer = area:CreateFontString(nil, "OVERLAY")
     explainer:SetFont(theme:GetFont("VALUE"), 10, "")
@@ -785,12 +806,33 @@ local function EnsureReloadArea(panel, contentPane)
     return area
 end
 
+-- Dirty shows the ring and breathes its alpha on the skin's pulse metrics. The
+-- button itself keeps every state it draws for the cursor: held pressed-in, it
+-- read as a stuck button.
 local function UpdateReloadButtonVisual(area, isDirty)
-    local btn = area and area._reloadBtn
-    if not btn then return end
-    -- Dirty reads as pressed-in: the accent fill shown and dark text, held
-    -- through hover by the button itself.
-    btn:SetActive(isDirty and true or false)
+    local ring = area and area._reloadRing
+    if not ring then return end
+
+    if not isDirty then
+        if area._reloadRingTicker then
+            area._reloadRingTicker:Cancel()
+            area._reloadRingTicker = nil
+        end
+        ring:SetShown(false)
+        return
+    end
+
+    ring:SetAlpha(1)
+    ring:SetShown(true)
+    if area._reloadRingTicker then return end
+
+    local pulse = M().pulse
+    local elapsed = 0
+    area._reloadRingTicker = C_Timer.NewTicker(pulse.tick, function()
+        elapsed = elapsed + pulse.tick
+        local phase = (elapsed % pulse.period) / pulse.period
+        ring:SetAlpha(pulse.minAlpha + (1 - pulse.minAlpha) * (0.5 + 0.5 * math.cos(phase * 2 * math.pi)))
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -933,6 +975,7 @@ end
 local function Cleanup(panel)
     -- Hide reload area and horizontal scrollbar
     if panel._startHereReloadArea then
+        UpdateReloadButtonVisual(panel._startHereReloadArea, false)
         panel._startHereReloadArea:Hide()
     end
     if panel._startHereHScroll then
