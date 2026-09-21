@@ -56,8 +56,13 @@ local function UpdateZoneTextColor(fontString, db)
         b = db.zoneTextCustomColor[3] or 0
         a = db.zoneTextCustomColor[4] or 1
     else
-        -- PVP type color
-        local pvpType = C_PvP and C_PvP.GetZonePVPInfo() or GetZonePVPInfo()
+        -- PVP type color. C_PvP.GetZonePVPInfo is the live call and the bare
+        -- global is Blizzard's compatibility alias, which a client loads only
+        -- with the deprecated-script addon. Either returns nothing in a zone
+        -- with no PVP rule of its own, so the call cannot stand in an or-chain
+        -- that ends in the global.
+        local getZonePVPInfo = (C_PvP and C_PvP.GetZonePVPInfo) or _G.GetZonePVPInfo
+        local pvpType = getZonePVPInfo and getZonePVPInfo()
         pvpType = pvpType or "normal"
 
         local color = PVP_COLORS[pvpType] or PVP_COLORS.normal
