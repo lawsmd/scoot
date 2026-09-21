@@ -282,18 +282,16 @@ end
 
 DMX._GetCurrentZoneLabel = GetCurrentZoneLabel
 
--- Where the meter last received data. An export reads this, so a player who
--- finishes a run and travels still exports the run's location. Lost on reload;
--- the export then falls back to the current zone.
+-- Where the meter last received data, which is the location an export names.
+-- Recorded in combat only: a meter fills from a fight, while the data events
+-- also fire on a zone-in carrying nothing new, and one of those on arrival is
+-- what relabelled a finished key with the city the player hearthed to.
+-- Cleared on reset, and lost on reload (the export then falls back to the
+-- current zone).
 local dataZoneLatest = nil
 local dataZoneBySession = {}
 
-local function OnDataZoneEvent(event, _, sessionID)
-    if event == "DAMAGE_METER_RESET" then
-        dataZoneLatest = nil
-        wipe(dataZoneBySession)
-        return
-    end
+local function RecordDataZone(sessionID)
     local label = GetCurrentZoneLabel()
     dataZoneLatest = label
     if type(sessionID) == "number" and not issecretvalue(sessionID) then
@@ -301,8 +299,78 @@ local function OnDataZoneEvent(event, _, sessionID)
     end
 end
 
+local function OnZoneEvent(event, _, sessionID)
+    if event == "DAMAGE_METER_RESET" then
+        dataZoneLatest = nil
+        wipe(dataZoneBySession)
+        return
+    end
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- Combat start: the fight that is about to fill the meter happens here,
+        -- and this reading is the one a data event arriving late cannot move.
+        RecordDataZone(nil)
+        return
+    end
+    if InCombatLockdown() then
+        RecordDataZone(sessionID)
+    end
+end
+
 function DMX._GetDataZoneLabel(sessionID)
     return (sessionID and dataZoneBySession[sessionID]) or dataZoneLatest or GetCurrentZoneLabel()
+end
+
+-- Registered at file scope. GatherDamageMeterExportData serves both meters, so
+-- the recording cannot sit inside the component initializer below, which
+-- returns early whenever the X sub-toggle is off.
+if C_DamageMeter and C_DamageMeter.ResetAllCombatSessions then
+    hooksecurefunc(C_DamageMeter, "ResetAllCombatSessions", SnapshotResetZone)
+end
+
+-- Deferred so GetInstanceInfo() has difficulty info by the time START is taken.
+addon.Events.OnWorldEntered(function()
+    SnapshotResetZone()
+end)
+
+for _, event in ipairs({
+    "DAMAGE_METER_COMBAT_SESSION_UPDATED",
+    "DAMAGE_METER_CURRENT_SESSION_UPDATED",
+    "DAMAGE_METER_RESET",
+    "PLAYER_REGEN_DISABLED",
+}) do
+    addon.Events.On("DamageMeterZone", event, OnZoneEvent)
+end
+
+-- A key that starts after the reset moves START onto the key's own label, so a
+-- run that auto-reset on entry does not read "(Mythic Keystone)" above "+16".
+-- Skipped once data has arrived, because START marks where the data began. The
+-- level is read a frame later, and a read that comes back empty keeps the
+-- existing snapshot.
+addon.Events.On("DamageMeterZone", "CHALLENGE_MODE_START", function()
+    if dataZoneLatest then return end
+    C_Timer.After(0, function()
+        if dataZoneLatest then return end
+        if GetActiveKeystoneLevel() then SnapshotResetZone() end
+    end)
+end)
+
+-- /scoot debug dm zone
+function DMX._DebugZoneLines()
+    local lines, push = addon.DebugLines("Damage Meter Export Location", "")
+    push("Current zone:       %s", GetCurrentZoneLabel())
+    push("Export location:    %s", DMX._GetDataZoneLabel(nil))
+    push("  recorded:         %s", dataZoneLatest or "nothing yet this session")
+    push("START snapshot:     %s", DMX._dmResetZoneSnapshot or "none")
+    push("In combat:          %s", tostring(InCombatLockdown()))
+    push("")
+    push("Per segment:")
+    local any = false
+    for sessionID, label in pairs(dataZoneBySession) do
+        push("  #%d  %s", sessionID, label)
+        any = true
+    end
+    if not any then push("  (none)") end
+    return lines
 end
 
 --------------------------------------------------------------------------------
@@ -626,26 +694,6 @@ addon:RegisterComponentInitializer(function(self)
         addon.Inspect:EnsureStarted()
     end
 
-    -- Zone snapshot: track where data started
-    if C_DamageMeter and C_DamageMeter.ResetAllCombatSessions then
-        hooksecurefunc(C_DamageMeter, "ResetAllCombatSessions", SnapshotResetZone)
-    end
-    SnapshotResetZone()
-
-    -- Re-snapshot after PLAYER_ENTERING_WORLD so GetInstanceInfo() has difficulty info
-    addon.Events.OnWorldEntered(function()
-        SnapshotResetZone()
-    end)
-
-    -- Data-zone snapshot: track where data last arrived
-    for _, event in ipairs({
-        "DAMAGE_METER_COMBAT_SESSION_UPDATED",
-        "DAMAGE_METER_CURRENT_SESSION_UPDATED",
-        "DAMAGE_METER_RESET",
-    }) do
-        addon.Events.On("DamageMeterDataZone", event, OnDataZoneEvent)
-    end
-
     -- Event-driven restyling (replaces Rule 11-violating hooksecurefunc on system frames)
     -- DamageMeter inherits EditModeDamageMeterSystemTemplate — hooks on its tree cause taint.
     -- These events fire when Blizzard refreshes the meter, matching the old hook triggers.
@@ -945,6 +993,9 @@ addon:RegisterDebugCommand({
             if addon.DebugDMState then addon.DebugDMState() else Commands.NotAvailable("Damage Meter") end
         end },
         { word = "export", usage = "export [overall|current|expired]", help = "session export", fn = function(session) addon.DebugExportDamageMeters(session) end },
+        { word = "zone", help = "export location snapshots", fn = function()
+            addon.DebugShowWindow("DM Export Location", DMX._DebugZoneLines())
+        end },
         { word = "frames", help = "window and overlay frames", fn = function()
             if addon.DebugDMFrames then addon.DebugDMFrames() else Commands.NotAvailable("Damage Meter") end
         end },
