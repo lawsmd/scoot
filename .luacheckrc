@@ -427,3 +427,42 @@ files["core/colors.lua"] = {
 files["core/editmode/subgrid.lua"] = {
     read_globals = { "CreateObjectPool" },
 }
+-- Camelot's objective tracker (forever/objectivetracker/). mixins.lua owns
+-- the three globals frames.xml names in mixin= attributes; the Blizzard
+-- tracker names each file reads are declared where they are read.
+files["forever/objectivetracker/mixins.lua"] = {
+    globals = { "CamelotObjectiveTrackerMixin", "CamelotQuestItemSlotMixin", "CamelotQuestItemButtonMixin" },
+    read_globals = {
+        "ObjectiveTrackerContainerMixin",
+        "GetQuestLogSpecialItemInfo", "IsQuestLogSpecialItemInRange", "GetQuestLogSpecialItemCooldown",
+        "SetItemButtonTexture", "SetItemButtonCount", "SetItemButtonTextureVertexColor",
+        "TOOLTIP_UPDATE_TIME",
+    },
+}
+files["forever/objectivetracker/style.lua"] = {
+    read_globals = {
+        "CamelotObjectiveTracker", "ObjectiveTrackerManager", "ObjectiveTrackerFrame",
+        "ObjectiveTrackerLineFont", "ScenarioObjectiveTracker",
+    },
+}
+files["forever/objectivetracker/tracker.lua"] = {
+    -- The containers are Camelot's own frames and tracker.lua writes two of
+    -- their fields (editModeHeight, editModeName), so they are globals, not reads.
+    globals = { "CamelotObjectiveTracker", "CamelotCurrentObjectiveTracker" },
+    read_globals = {
+        "ObjectiveTrackerManager", "ObjectiveTrackerFrame", "QuestObjectiveTracker",
+        "CamelotQuestObjectiveTracker", "CamelotCampaignQuestObjectiveTracker",
+        "CamelotCurrentQuestObjectiveTracker", "ObjectiveTrackerLineFont",
+    },
+}
+files["forever/objectivetracker/itembutton.lua"] = {
+    read_globals = { "GetQuestLogSpecialItemInfo" },
+}
+files["forever/objectivetracker/current.lua"] = {
+    -- current.lua writes ShouldDisplayQuest on the three quest module instances.
+    globals = {
+        "CamelotQuestObjectiveTracker", "CamelotCampaignQuestObjectiveTracker",
+        "CamelotCurrentQuestObjectiveTracker",
+    },
+    read_globals = { "QuestObjectiveTrackerMixin", "CampaignQuestObjectiveTrackerMixin" },
+}

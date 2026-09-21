@@ -1,0 +1,150 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\..\..\FrameXML\UI.xsd">
+	<!--
+	forever/objectivetracker/frames.xml
+	Camelot's objective tracker, declared from Blizzard's own virtual templates
+	and global mixins under Camelot names (docs/objectivetracker/replica.md).
+	Every line below is the line Blizzard_ObjectiveTracker writes for its own
+	frame, renamed, except where a comment says otherwise. The mixins this file
+	names as Camelot's are in mixins.lua, which loads first.
+	-->
+
+	<!-- Blizzard_ObjectiveTracker.xml: ObjectiveTrackerFrame, minus the two
+	templates that make it a right-managed frame and an Edit Mode system. -->
+	<Frame name="CamelotObjectiveTracker" inherits="ObjectiveTrackerContainerTemplate" mixin="CamelotObjectiveTrackerMixin" frameStrata="LOW">
+		<!-- The Modern preset's anchor for Blizzard's tracker, so the frame has
+		a rect from the moment it exists; the Edit Mode restore in tracker.lua
+		replaces it with the stored position. -->
+		<Anchors>
+			<Anchor point="TOPRIGHT" x="-110" y="-275"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="topPadding" value="0" type="number"/>
+			<KeyValue key="topModulePadding" value="38" type="number"/>
+			<KeyValue key="headerText" value="TRACKER_ALL_OBJECTIVES" type="global"/>
+		</KeyValues>
+		<Frames>
+			<Frame parentKey="Header" inherits="ObjectiveTrackerContainerHeaderTemplate">
+				<Anchors>
+					<Anchor point="TOPLEFT"/>
+				</Anchors>
+			</Frame>
+		</Frames>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+			<OnEvent method="OnEvent"/>
+		</Scripts>
+	</Frame>
+
+	<!-- The Current Objectives pane (docs/objectivetracker/current.md): a second
+	container from the same template, holding one module. It has no header of
+	its own; its module's header is the pane's title, so the first module sits
+	at the top. The anchor is a draft the Edit Mode restore replaces. -->
+	<Frame name="CamelotCurrentObjectiveTracker" inherits="ObjectiveTrackerContainerTemplate" mixin="CamelotObjectiveTrackerMixin" frameStrata="LOW">
+		<Anchors>
+			<Anchor point="TOP" x="0" y="-120"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="topPadding" value="0" type="number"/>
+			<KeyValue key="topModulePadding" value="0" type="number"/>
+			<KeyValue key="isCurrentPane" value="true" type="boolean"/>
+		</KeyValues>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+			<OnEvent method="OnEvent"/>
+		</Scripts>
+	</Frame>
+
+	<!-- The modules, one per Blizzard module file. ScenarioObjectiveTracker has
+	no twin: Blizzard's own is re-homed into the container (tracker.lua). -->
+	<Frame name="CamelotUIWidgetObjectiveTracker" mixin="UIWidgetObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate">
+		<Frames>
+			<Frame parentKey="Block" inherits="ResizeLayoutFrame" hidden="true">
+				<KeyValues>
+					<KeyValue key="fixedWidth" value="212" type="number"/>
+				</KeyValues>
+			</Frame>
+		</Frames>
+	</Frame>
+	<Frame name="CamelotCampaignQuestObjectiveTracker" mixin="CampaignQuestObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+	<Frame name="CamelotQuestObjectiveTracker" mixin="QuestObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+	<!-- A third instance of the quest mixin, for the Current Objectives pane;
+	current.lua gives each of the three quest modules its own ShouldDisplayQuest. -->
+	<Frame name="CamelotCurrentQuestObjectiveTracker" mixin="QuestObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+	<Frame name="CamelotAdventureObjectiveTracker" mixin="AdventureObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate, POIButtonOwnerTemplate"/>
+	<Frame name="CamelotAchievementObjectiveTracker" mixin="AchievementObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+	<Frame name="CamelotMonthlyActivitiesObjectiveTracker" mixin="MonthlyActivitiesObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+	<Frame name="CamelotInitiativeTasksObjectiveTracker" mixin="InitiativeTasksObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+	<Frame name="CamelotProfessionsRecipeTracker" mixin="ProfessionsRecipeTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+	<Frame name="CamelotBonusObjectiveTracker" mixin="BonusObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+	<Frame name="CamelotWorldQuestObjectiveTracker" mixin="WorldQuestObjectiveTrackerMixin" inherits="ObjectiveTrackerModuleTemplate"/>
+
+	<!-- The slot a block gets where Blizzard's block gets its item button: the
+	same 26x26 footprint, no mouse, no art. mixins.lua, "The quest item slot". -->
+	<Frame name="CamelotQuestItemSlotTemplate" mixin="CamelotQuestItemSlotMixin" virtual="true">
+		<Size x="26" y="26"/>
+		<Scripts>
+			<OnHide method="OnHide"/>
+		</Scripts>
+	</Frame>
+
+	<!-- QuestObjectiveItemButtonTemplate (Blizzard_ObjectiveTrackerShared.xml)
+	on SecureActionButtonTemplate, whose own OnClick uses the item; the OnClick
+	script is the one line dropped. -->
+	<Button name="CamelotQuestItemButtonTemplate" inherits="SecureActionButtonTemplate" mixin="CamelotQuestItemButtonMixin" virtual="true">
+		<Size x="26" y="26"/>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="Glow" atlas="UI-QuestTrackerButton-QuestItem-Frame-Glow" useAtlasSize="true" hidden="true">
+					<Anchors>
+						<Anchor point="CENTER"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="ARTWORK">
+				<FontString parentKey="HotKey" inherits="NumberFontNormalSmallGray" justifyH="LEFT" text="RANGE_INDICATOR">
+					<Size x="29" y="10"/>
+					<Anchors>
+						<Anchor point="TOPRIGHT" x="16" y="-2"/>
+					</Anchors>
+				</FontString>
+			</Layer>
+			<Layer level="BORDER">
+				<Texture parentKey="icon"/>
+				<FontString parentKey="Count" inherits="NumberFontNormal" justifyH="RIGHT" hidden="true">
+					<Anchors>
+						<Anchor point="BOTTOMRIGHT" x="-3" y="2"/>
+					</Anchors>
+				</FontString>
+			</Layer>
+		</Layers>
+		<Frames>
+			<Cooldown parentKey="Cooldown" inherits="CooldownFrameTemplate"/>
+		</Frames>
+		<NormalTexture parentKey="NormalTexture" atlas="UI-QuestTrackerButton-QuestItem-Frame">
+			<Size x="42" y="42"/>
+			<Anchors>
+				<Anchor point="CENTER"/>
+			</Anchors>
+		</NormalTexture>
+		<PushedTexture atlas="UI-QuestTrackerButton-QuestItem-Frame"/>
+		<HighlightTexture file="Interface\Buttons\ButtonHilight-Square" alphaMode="ADD"/>
+		<Animations>
+			<AnimationGroup parentKey="GlowAnim" looping="BOUNCE" mixin="QuestObjectiveItemGlowAnimMixin">
+				<Alpha childKey="Glow" fromAlpha="0" toAlpha="1" duration="1"/>
+				<Scripts>
+					<OnLoop method="OnLoop"/>
+				</Scripts>
+			</AnimationGroup>
+		</Animations>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+			<OnEvent method="OnEvent"/>
+			<OnUpdate method="OnUpdate"/>
+			<OnShow method="OnShow"/>
+			<OnHide method="OnHide"/>
+			<OnEnter method="OnEnter"/>
+			<OnLeave function="GameTooltip_Hide"/>
+		</Scripts>
+	</Button>
+</Ui>

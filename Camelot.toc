@@ -5,6 +5,7 @@
 ## Version: 0.0.1
 ## SavedVariables: CamelotDB
 ## SlashCmd: /camelot
+## Dependencies: Blizzard_ObjectiveTracker
 
 ## Two interface numbers, one TOC. 120100 is retail 12.1.0 and 16001 is
 ## Forever build 1.60.1; each client takes the number from the list that
@@ -181,6 +182,27 @@ core/components/castbarz/suppression.lua [ExcludeLoadGameType standard]
 core/components/castbarz/events.lua [ExcludeLoadGameType standard]
 core/components/castbarz/editmode.lua [ExcludeLoadGameType standard]
 
+## The objective tracker: Blizzard's modular tracker on Camelot-owned frames
+## (docs/objectivetracker/replica.md). style.lua holds the settings, their
+## defaults and the apply, and loads on retail too for the page below, like
+## forever/unitframes/text.lua; mixins.lua defines the globals the XML names
+## in mixin= attributes, so it precedes the XML; frames.xml declares the
+## container, the module twins and the two item button templates from
+## Blizzard_ObjectiveTracker's virtual templates, which the Dependencies line
+## above guarantees are parsed by then; tracker.lua wires the manager, parks
+## Blizzard's frame and registers the Edit Mode positionables; itembutton.lua
+## stands the secure quest item buttons on the blocks' slots; current.lua keeps
+## the Current Objectives pane's state and routes quests between the panes
+## (docs/objectivetracker/current.md). Stands on nativeframe, events, strata,
+## pool, fonts, colors, editmode/positionables, forever/db.lua,
+## forever/profiles.lua and forever/features.lua.
+forever/objectivetracker/style.lua
+forever/objectivetracker/mixins.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/frames.xml [ExcludeLoadGameType standard]
+forever/objectivetracker/tracker.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/itembutton.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/current.lua [ExcludeLoadGameType standard]
+
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
 ## and a registration error aborts the chunk, so the order is load-bearing.
@@ -281,6 +303,8 @@ forever/menu.lua
 ui/v2/settings/StartHereRenderer.lua
 forever/castbars/page.lua [ExcludeLoadGameType standard]
 forever/unitframes/page.lua
+forever/objectivetracker/page.lua
+forever/objectivetracker/currentpage.lua
 forever/minimap.lua
 forever/gallery.lua
 forever/debug.lua

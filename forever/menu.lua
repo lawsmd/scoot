@@ -66,6 +66,10 @@ Navigation.NavModel = {
         children = {
             { key = "minimap", label = "Minimap", module = "minimap" },
             { key = "tooltip", label = "Tooltip", module = "tooltip" },
+            -- No `module`: the switch is registered by forever/objectivetracker/
+            -- tracker.lua, not by the components host the gate reads.
+            { key = "objectiveTracker", label = "Objective Tracker" },
+            { key = "currentObjectives", label = "Current Objectives" },
         },
     },
 }

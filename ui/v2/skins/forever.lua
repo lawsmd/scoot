@@ -537,23 +537,24 @@ Skin.Register("forever", {
         -- out. Its art draws at searchField, 1, as the options panel draws it.
         searchBox = { kind = "template", template = "SearchBoxTemplate", frameType = "EditBox" },
         -- The Edit Mode selection box on one of the addon's own frames
-        -- (ui/v2/editmode/SelectionSkin.lua): the window's border over the
-        -- window's tiled rock, both fainter than the window draws them. The
-        -- window's corners are 75 units, so a frame shorter than minSize on
-        -- either axis takes `small`, the metal border the Edit Mode dialog
-        -- itself wears. scale multiplies onto the three opacity pieces per
-        -- state. The glow is the border drawn again, additive and a few
-        -- units out, pulsing while the frame is selected.
+        -- (ui/v2/editmode/SelectionSkin.lua): the metal border the Edit Mode
+        -- dialog itself wears, over the window's tiled rock, both fainter
+        -- than the window draws them. The window's own border was the layout
+        -- for frames 170 units or more on both axes until 19 September 2026:
+        -- on the objective tracker, the first frame that size, its title
+        -- plate read as a title bar over the tracker's own header, and the
+        -- box read as a different component from the unit frames' box. One
+        -- border on every size now. scale multiplies onto the three opacity
+        -- pieces per state. The glow is the border drawn again, additive and
+        -- a few units out, pulsing while the frame is selected.
         -- pad.gap is the standoff the box keeps off the element on every side.
         -- A cast bar is around 26 units tall against corner art of 32, so
         -- without it the two corners draw over each other and the border reads
         -- as collapsed; the box grows past the gap until they have the gap
         -- between them.
         editSelection = {
-            kind = "nineSlice", layout = "ButtonFrameTemplateNoPortrait",
-            minSize = 170,
+            kind = "nineSlice", layout = "Dialog",
             pad = { gap = 6 },
-            small = { kind = "nineSlice", layout = "Dialog" },
             fill = { texture = "Interface\\FrameGeneral\\UI-Background-Rock", inset = 4 },
             scale = { highlight = 0.55, selected = 0.9 },
             -- Outset 0: the additive copy lies on the border and lights it. Any
