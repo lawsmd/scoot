@@ -46,7 +46,7 @@ local TITLE_INSET_BAND = TITLE_INSET_PLAIN + TOKEN_BUTTON_HEIGHT + 10
 
 -- GAME_DEFAULT has no entry: it draws the same face as FRIZQT__, whose entry
 -- lights for a field still holding it.
-local DEFAULT_FONTS = { "FRIZQT__", "ARIALN", "MORPHEUS", "SKURRI" }
+local DEFAULT_FONTS = { "FRIZQT__", "FRIZQUAD_BOLD", "ARIALN", "MORPHEUS", "SKURRI" }
 
 local GOOGLE_FONTS = {
     -- Dosis

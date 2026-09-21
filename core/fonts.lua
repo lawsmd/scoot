@@ -1196,6 +1196,11 @@ do
     -- by the entry file, which every TOC listing this one loads first.
     local base = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\fonts\\"
 
+    -- Friz Quad Bold: QualiType's OFL digitization of Friz Quadrata, the one
+    -- free clone that ships a Bold. Only the Bold is bundled; the Regular
+    -- duplicates the stock face. CFF outlines in an .otf container.
+    f.FRIZQUAD_BOLD = base .. "QTFrizQuad-Bold.otf"
+
     -- Fira Sans family
     f.FIRASANS_REG       = base .. "FiraSans-Regular.ttf"
     f.FIRASANS_LIGHT     = base .. "FiraSans-Light.ttf"
@@ -1300,6 +1305,8 @@ addon.FontDisplayNames = {
     ARIALN    = "Arial Narrow",
     MORPHEUS  = "Morpheus",
     SKURRI    = "Skurri",
+    -- Friz Quad (QualiType, OFL)
+    FRIZQUAD_BOLD = "Friz Quad Bold",
     -- Fira Sans
     FIRASANS_REG       = "Fira Sans",
     FIRASANS_LIGHT     = "Fira Sans Light",

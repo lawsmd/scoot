@@ -37,8 +37,10 @@ local FONT_BASE = ROOT .. "media\\fonts\\"
 -- client draws its own buttons and panel titles in. FRIZQT__ stands in if the
 -- object is ever missing. Friz Quadrata ships no bold and the widget API has
 -- no weight, so the header role is the same face at a larger size, which is
--- how Blizzard's own headings are built. Arial Narrow is one line away:
--- addon.Fonts.ARIALN.
+-- how Blizzard's own headings are built. The one bold in the family is Friz
+-- Quad Bold, QualiType's OFL digitization of the same design
+-- (addon.Fonts.FRIZQUAD_BOLD, core/fonts.lua); the toggle role carries it.
+-- Arial Narrow is one line away: addon.Fonts.ARIALN.
 local UI_FACE = (GameFontNormal and select(1, GameFontNormal:GetFont()))
     or addon.Fonts.FRIZQT__
 -- Roboto stays the proportional pair: the role is the known-proportional
@@ -101,15 +103,16 @@ Skin.Register("forever", {
         -- page's pills alike. Roboto Condensed Bold stood here for its weight
         -- and read as another addon's font beside the client face the rest of
         -- the panel draws in, narrow where everything around it is wide. The
-        -- face goes back to the client's and the weight comes from the button
-        -- role's crisp thick outline, which is how every heavy line in this
-        -- skin is built, Friz Quadrata shipping no bold. The style reaches
-        -- only the unlit pill, where the dim text stands on the pane and the
-        -- outline is the rim the rest of the panel's text has. Lit, the text
-        -- is black on this fill and the outline is the glyph's own color:
-        -- 9pt with a thin one closed the letters up, so the lit pill takes
-        -- the face and the size alone (Toggle.lua, StartHereRenderer.lua).
-        toggle    = { path = UI_FACE, size = 12, style = "THICKOUTLINESLUG" },
+        -- face went back to the client's, with the weight from the crisp
+        -- thick outline; now it is Friz Quad Bold, the same design in a real
+        -- bold, so the pill's weight is the glyph's own and reads as one face
+        -- with the panel. The outline stays for the unlit pill, where the dim
+        -- text stands on the pane and the outline is the rim the rest of the
+        -- panel's text has. Lit, the text is black on this fill and the
+        -- outline is the glyph's own color: 9pt with a thin one closed the
+        -- letters up, so the lit pill takes the face and the size alone
+        -- (Toggle.lua, StartHereRenderer.lua).
+        toggle    = { path = addon.Fonts.FRIZQUAD_BOLD or UI_FACE, size = 12, style = "THICKOUTLINESLUG" },
         -- The names that stand on the wood, in Deep Shadow Thick Outline,
         -- which draws a black copy of the string behind it
         -- (core/fontpair.lua): the nav card's group name, the child row under
