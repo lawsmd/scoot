@@ -223,21 +223,27 @@ function CBZ._StartCast(bar, channelled)
     -- seven fields respectively, and without this every one of those discards is a
     -- write to the global `_`.
     local _
-    local name, notInterruptible, isEmpowered, numEmpowerStages
+    local name, displayName, notInterruptible, isEmpowered, numEmpowerStages
 
     if channelled then
         -- Return list: name, displayName, textureID, startTimeMs, endTimeMs,
         -- isTradeskill, notInterruptible, spellID, isEmpowered, numEmpowerStages,
         -- castBarID (UnitDocumentation.lua:869-879).
-        name, _, _, _, _, _, notInterruptible, _, isEmpowered, numEmpowerStages =
+        name, displayName, _, _, _, _, notInterruptible, _, isEmpowered, numEmpowerStages =
             UnitChannelInfo(unit)
     else
-        name, _, _, _, _, _, _, notInterruptible = UnitCastingInfo(unit)
+        name, displayName, _, _, _, _, _, notInterruptible = UnitCastingInfo(unit)
     end
 
     if type(name) == "nil" then
         CBZ._FinishCast(bar, nil)
         return
+    end
+
+    -- The bar shows displayName, as Blizzard's does (CastingBarFrame.lua:405).
+    -- name is the internal spell name: opening a container is "Opening - No Text".
+    if type(displayName) ~= "nil" then
+        name = displayName
     end
 
     CancelPendingHide(bar)
