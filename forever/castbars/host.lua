@@ -77,7 +77,9 @@ function CBZ._IsModuleEnabled()
     return DB.IsModuleEnabled("castBars")
 end
 
-function CBZ._GetSetting(key)
+-- The unitKey the contract allows is ignored: this host has one unit, so its
+-- dotted castBars.* keys are already that unit's own.
+function CBZ._GetSetting(key, _unitKey)
     return DB.Get("castBars." .. key)
 end
 

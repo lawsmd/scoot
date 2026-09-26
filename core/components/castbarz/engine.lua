@@ -12,7 +12,7 @@
 --   CBZ._IsModuleEnabled()          the feature's master switch
 --   CBZ._IsUnitEnabled(unitKey)
 --   CBZ._GetUnitConfig(unitKey)     a table: enabled, barWidth, positionMode, ...
---   CBZ._GetSetting(key)
+--   CBZ._GetSetting(key, unitKey)   unitKey optional; a single-unit host may ignore it
 --   CBZ._PositionStore              { get(barKey, layoutName), set(barKey, layoutName, point, x, y) }
 --   CBZ.NAV_KEY                     the settings page the Edit Mode dialog opens
 --

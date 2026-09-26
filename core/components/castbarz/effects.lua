@@ -52,8 +52,8 @@ CBZ._TintRegion = Tint
 ---
 --- Guarded type()-first for the same reason _GetCastTimeColor is: the value is
 --- whatever the DB holds, and a profile edited by hand can hold anything.
-local function CustomColor(key)
-    local c = CBZ._GetSetting(key)
+local function CustomColor(key, unitKey)
+    local c = CBZ._GetSetting(key, unitKey)
     if type(c) ~= "table" or type(c[1]) ~= "number" then return nil end
     return c[1], c[2], c[3]
 end
@@ -71,8 +71,8 @@ end
 --- unit is now -- and _GetRamp honours bar.rampOverride, which is what keeps the
 --- settings-page preview deterministic without this function knowing it exists.
 local function ResolveFlourishColor(bar, modeKey, colorKey)
-    if CBZ._GetSetting(modeKey) == "custom" then
-        local r, g, b = CustomColor(colorKey)
+    if CBZ._GetSetting(modeKey, bar.unitKey) == "custom" then
+        local r, g, b = CustomColor(colorKey, bar.unitKey)
         if r then return r, g, b end
     end
     local ramp = CBZ._GetRamp(bar)
@@ -334,7 +334,7 @@ function CBZ._BuildSpark(bar, geom)
         end
     end
 
-    local style = tostring(CBZ._GetSetting("sparkStyle") or "caret")
+    local style = tostring(CBZ._GetSetting("sparkStyle", bar.unitKey) or "caret")
     if not SparkBuilders[style] then style = "caret" end
 
     -- Only `blizzard` can fail to build, and only if Blizzard renames the pip
@@ -735,7 +735,7 @@ local FX_PAD = {
 --- only when the style changed matters: Anim.Create allocates a frame
 --- and its textures, and a settings panel emits a layout pass per slider tick.
 function CBZ._LayoutFinishFX(bar, geom)
-    local style = tostring(CBZ._GetSetting("completionFX") or "glow")
+    local style = tostring(CBZ._GetSetting("completionFX", bar.unitKey) or "glow")
     local animId = FX_IDS[style]
 
     if bar._finishFX and bar._finishStyle == style then

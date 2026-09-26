@@ -103,10 +103,11 @@ end
 --------------------------------------------------------------------------------
 -- Per-Unit DB
 --------------------------------------------------------------------------------
--- Split follows the Damage Meters Y precedent: things that genuinely differ per
--- instance live in their own profile table, everything cosmetic lives in the
--- component's `settings` and is shared. A boss bar wants a different width than
--- the player bar; it does not want a different font.
+-- Every user-visible setting is per unit (migration V11). The unit table holds
+-- the base keys below, eagerly filled, plus whatever cosmetic keys the user
+-- changed for that unit. Cosmetic keys are never eagerly filled: a missing key
+-- falls through _GetSetting to the component `settings` default, so a unit that
+-- stored a key pins it and an untouched unit follows a change of default.
 
 local UNIT_DEFAULTS_SHARED = {
     enabled      = false,   -- zero-touch: nothing is created until the user says so
@@ -261,14 +262,15 @@ addon:RegisterComponentInitializer(function(self)
             -- scalar default here must be mirrored in SETTING_FALLBACKS below,
             -- which serves a bar whose component DB is missing.
             --
-            -- Zero-touch survives at the category level -- a fresh profile has no
-            -- moduleEnabled.castBars key, so no bar exists until Z is selected --
-            -- but not at the key level: component defaults are served through a
-            -- metatable (base/core.lua:52-59), so a profile that never touched a
-            -- key follows a change of default. Accepted, deliberately, for the
-            -- four look-defining keys (fontFace, fontStyle, sparkStyle,
-            -- completionFX). Anything that adds an element rather than restyling
-            -- one -- castTime -- still starts off.
+            -- Since the per-unit split (migration V11) nothing writes values to
+            -- this component DB. Each unit stores its overrides in
+            -- profile.castBarZUnits and _GetSetting falls back here, so this
+            -- block is the default registry: a unit that stored a key pins it,
+            -- an untouched unit follows a change of default through the
+            -- metatable (base/core.lua:52-59). Zero-touch survives at the
+            -- category level -- a fresh profile has no moduleEnabled.castBars
+            -- key, so no bar exists until Z is selected. Anything that adds an
+            -- element rather than restyling one -- castTime -- still starts off.
 
             -- Text
             fontFace   = { type = "addon", default = "ROBOTO_SEMICOND_BLACK" },
@@ -314,8 +316,8 @@ addon:RegisterComponentInitializer(function(self)
             -- different weight to the name beside it reads as a mistake.
             --
             -- castTimeFont is declared with NO default, deliberately. nil means
-            -- "whatever Spell Name is using", so a profile that never opens the
-            -- tab tracks the shared font exactly as it did before this setting
+            -- "whatever Spell Name is using", so a unit that never set it tracks
+            -- its own Spell Name face exactly as it did before this setting
             -- existed -- and a default here would be returned by the settings
             -- metatable (base/core.lua:52-59) and pin the face on every profile
             -- at once. It must still be DECLARED or ResetComponentSettings
@@ -380,7 +382,22 @@ local SETTING_FALLBACKS = {
 }
 table.freeze(SETTING_FALLBACKS)
 
-function CBZ._GetSetting(key)
+-- Non-creating read of a unit's config table. The settings search scan runs the
+-- renderer, and _GetUnitConfig would materialize profile tables from it; this
+-- keeps every read path zero-touch.
+function CBZ._PeekUnitConfig(unitKey)
+    local profile = addon.db and addon.db.profile
+    local units = profile and profile.castBarZUnits
+    return units and units[unitKey] or nil
+end
+
+function CBZ._GetSetting(key, unitKey)
+    if unitKey then
+        local cfg = CBZ._PeekUnitConfig(unitKey)
+        local v = cfg and cfg[key]
+        -- ~= nil, so a stored false (gradient off) wins over the default
+        if v ~= nil then return v end
+    end
     local value = addon.GetComponentSetting("castBarZ", key)
     if value == nil then return SETTING_FALLBACKS[key] end
     return value
@@ -394,10 +411,10 @@ CBZ.CAP_SIZES    = { short = 8, medium = 10, tall = 14 }
 table.freeze(CBZ.LINE_HEIGHTS)
 table.freeze(CBZ.CAP_SIZES)
 
-function CBZ._GetLineHeight()
-    return CBZ.LINE_HEIGHTS[CBZ._GetSetting("lineHeight")] or 2
+function CBZ._GetLineHeight(unitKey)
+    return CBZ.LINE_HEIGHTS[CBZ._GetSetting("lineHeight", unitKey)] or 2
 end
 
-function CBZ._GetCapSize()
-    return CBZ.CAP_SIZES[CBZ._GetSetting("capSize")] or 10
+function CBZ._GetCapSize(unitKey)
+    return CBZ.CAP_SIZES[CBZ._GetSetting("capSize", unitKey)] or 10
 end

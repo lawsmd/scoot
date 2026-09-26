@@ -652,22 +652,18 @@ local function DebugCastZFit()
         return
     end
 
-    local face  = addon.ResolveFontFace(CBZ._GetSetting("fontFace"))
-    local size  = tonumber(CBZ._GetSetting("fontSize")) or 14
-    local style = tostring(CBZ._GetSetting("fontStyle") or "OUTLINE")
-
-    local lines = {
-        "== Cast Bar Z shrink-to-fit ==",
-        "",
-        string.format("font: %s  size: %s  style: %s", tostring(face), tostring(size), style),
-    }
+    local lines = { "== Cast Bar Z shrink-to-fit ==", "" }
 
     -- Ruler health, measured here rather than trusted. Same call the fit makes.
+    -- Fonts are per unit since V11, so the probe is pinned to Player's and says so.
+    local probeFace  = addon.ResolveFontFace(CBZ._GetSetting("fontFace", "Player"))
+    local probeSize  = tonumber(CBZ._GetSetting("fontSize", "Player")) or 14
+    local probeStyle = tostring(CBZ._GetSetting("fontStyle", "Player") or "OUTLINE")
     local probe = "Trader's Gilded Brutosaur"
-    local probeW = addon.MeasureTextWidth and addon.MeasureTextWidth(probe, face, size, style)
+    local probeW = addon.MeasureTextWidth and addon.MeasureTextWidth(probe, probeFace, probeSize, probeStyle)
     table.insert(lines, string.format(
-        "ruler: \"%s\" at %spt measures %s",
-        probe, tostring(size), probeW and string.format("%.1fpx", probeW) or "NOTHING (ruler is not answering)"))
+        "ruler (Player font): \"%s\" at %spt measures %s",
+        probe, tostring(probeSize), probeW and string.format("%.1fpx", probeW) or "NOTHING (ruler is not answering)"))
     table.insert(lines, "")
 
     local any = false
@@ -675,8 +671,13 @@ local function DebugCastZFit()
         local bar = CBZ._bars[row.barKey]
         if bar then
             any = true
+            local face  = addon.ResolveFontFace(CBZ._GetSetting("fontFace", row.unitKey))
+            local size  = tonumber(CBZ._GetSetting("fontSize", row.unitKey)) or 14
+            local style = tostring(CBZ._GetSetting("fontStyle", row.unitKey) or "OUTLINE")
             local info = bar.fitInfo
             table.insert(lines, "-- " .. row.barKey .. " (unit " .. row.token .. ")")
+            table.insert(lines, string.format("   font     %s  size: %s  style: %s",
+                tostring(face), tostring(size), style))
             if not info then
                 table.insert(lines, "   no fit recorded yet -- nothing has been cast on this unit.")
             else

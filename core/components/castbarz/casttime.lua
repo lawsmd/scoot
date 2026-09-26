@@ -153,31 +153,33 @@ end
 -- Settings
 --------------------------------------------------------------------------------
 
-function CBZ._IsCastTimeEnabled()
-    return CBZ._GetSetting("castTime") == true
+-- The unitKey on these three is optional (this file is on both TOCs, and
+-- Camelot's single-unit host calls them bare); Scoot's callers pass bar.unitKey.
+function CBZ._IsCastTimeEnabled(unitKey)
+    return CBZ._GetSetting("castTime", unitKey) == true
 end
 
 --- Which typeface the readout uses.
 ---
 --- nil means "follow the spell name", which is what an untouched profile stores,
---- so the readout tracks the shared font until the user picks one for it -- and
---- then stops, permanently. That inheritance is why castTimeFont is declared
+--- so the readout tracks its own bar's name font until the user picks one for it
+--- -- and then stops, permanently. That inheritance is why castTimeFont is declared
 --- without a default (core.lua): a default would be handed back by the settings
 --- metatable and there would be no nil left to mean "inherit".
 ---
 --- Style is deliberately NOT forked the same way. Size and face are what keep a
 --- number from competing with the name beside it; a readout in a different weight
 --- to its own bar's text reads as a bug rather than a choice.
-function CBZ._GetCastTimeFontFace()
-    local face = CBZ._GetSetting("castTimeFont")
+function CBZ._GetCastTimeFontFace(unitKey)
+    local face = CBZ._GetSetting("castTimeFont", unitKey)
     if type(face) ~= "string" or face == "" then
-        face = CBZ._GetSetting("fontFace")
+        face = CBZ._GetSetting("fontFace", unitKey)
     end
     return face
 end
 
-function CBZ._GetCastTimeColor()
-    local c = CBZ._GetSetting("castTimeColor")
+function CBZ._GetCastTimeColor(unitKey)
+    local c = CBZ._GetSetting("castTimeColor", unitKey)
     if type(c) ~= "table" or type(c[1]) ~= "number" then return DEFAULT_TIME_COLOR end
     return c
 end
@@ -278,7 +280,7 @@ end
 --- finding as SetTimerDuration (events.lua:185-192), measured again for this
 --- call specifically by /scoot debug castz time.
 function CBZ._StartCastTime(bar, dur, countUp)
-    if not CBZ._IsCastTimeEnabled() then return end
+    if not CBZ._IsCastTimeEnabled(bar.unitKey) then return end
 
     local fs = bar.castTimeText
     if not fs or not dur then return end
@@ -289,7 +291,7 @@ function CBZ._StartCastTime(bar, dur, countUp)
     -- Re-sent every cast rather than cached: it is one call per cast, not per
     -- frame, and caching it would need invalidating from the settings page, the
     -- empowered override and a profile switch alike.
-    if not ApplyFormat(binding, ResolveMode(CBZ._GetSetting("castTimeReadout"), countUp), GetFormatter()) then
+    if not ApplyFormat(binding, ResolveMode(CBZ._GetSetting("castTimeReadout", bar.unitKey), countUp), GetFormatter()) then
         return
     end
 
@@ -374,29 +376,29 @@ function CBZ._LayoutCastTime(bar)
     local fs = bar.castTimeText
     if not fs then return end
 
-    if not CBZ._IsCastTimeEnabled() then
+    if not CBZ._IsCastTimeEnabled(bar.unitKey) then
         CBZ._StopCastTime(bar)
         return
     end
 
-    local face  = addon.ResolveFontFace(CBZ._GetCastTimeFontFace())
-    local size  = tonumber(CBZ._GetSetting("castTimeSize")) or 12
+    local face  = addon.ResolveFontFace(CBZ._GetCastTimeFontFace(bar.unitKey))
+    local size  = tonumber(CBZ._GetSetting("castTimeSize", bar.unitKey)) or 12
     -- Unpaired: the binding writes this string engine-side, so a Deep Shadow
     -- companion is never fed and keeps whatever the Edit Mode placeholder last
     -- wrote through SetText -- a black ghost behind a live number. The shared
     -- style still reaches the readout, as its base style.
     local style = addon.FontStyles.Unpaired(
-        tostring(CBZ._GetSetting("fontStyle") or CBZ.CAST_TIME_FALLBACK_STYLE or "SHADOWTHICKOUTLINE"))
+        tostring(CBZ._GetSetting("fontStyle", bar.unitKey) or CBZ.CAST_TIME_FALLBACK_STYLE or "SHADOWTHICKOUTLINE"))
     addon.ApplyFontStyle(fs, face, size, style)
     -- Off for the same reason the bands turn it off: nothing scales this text, and
     -- smooth scaling only costs sharpness under a fractional UI scale.
     if fs.SetSmoothScaling then fs:SetSmoothScaling(false) end
 
-    local c = CBZ._GetCastTimeColor()
+    local c = CBZ._GetCastTimeColor(bar.unitKey)
     fs:SetTextColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
 
-    local gap = CBZ._SnapToPixels(tonumber(CBZ._GetSetting("castTimeGap")) or 10)
-    local dy  = CBZ._SnapToPixels(tonumber(CBZ._GetSetting("castTimeOffsetY")) or 0)
+    local gap = CBZ._SnapToPixels(tonumber(CBZ._GetSetting("castTimeGap", bar.unitKey)) or 10)
+    local dy  = CBZ._SnapToPixels(tonumber(CBZ._GetSetting("castTimeOffsetY", bar.unitKey)) or 0)
 
     local pos = CBZ.CAST_TIME_POSITIONS[CBZ._GetCastTimePosition(bar.unitKey)]
     fs:ClearAllPoints()
@@ -426,7 +428,7 @@ function CBZ._ShowCastTimePlaceholder(bar, text)
     local fs = bar.castTimeText
     if not fs then return end
 
-    if not CBZ._IsCastTimeEnabled() then
+    if not CBZ._IsCastTimeEnabled(bar.unitKey) then
         fs:Hide()
         return
     end

@@ -281,8 +281,8 @@ local function LayoutSegments(bar, fracs)
 
     local cfg = CBZ._GetUnitConfig(bar.unitKey)
     local barW = tonumber(bar.widthOverride) or tonumber(cfg and cfg.barWidth) or 200
-    local lineH = CBZ._SnapToPixels(CBZ._GetLineHeight())
-    local capH = CBZ._SnapToPixels(CBZ._GetCapSize())
+    local lineH = CBZ._SnapToPixels(CBZ._GetLineHeight(bar.unitKey))
+    local capH = CBZ._SnapToPixels(CBZ._GetCapSize(bar.unitKey))
     local pipW = math.max(1, CBZ._SnapToPixels(1))
 
     local count = math.min(#fracs, MAX_SEGMENTS)
@@ -375,7 +375,7 @@ end
 --- @param empowered boolean  from UnitChannelInfo's isEmpowered (NeverSecret)
 --- @param numStages number|nil  from numEmpowerStages (NeverSecret), for the log
 function CBZ._ApplyEmpowered(bar, empowered, numStages)
-    if not empowered or CBZ._GetSetting("empoweredTiers") == false then
+    if not empowered or CBZ._GetSetting("empoweredTiers", bar.unitKey) == false then
         CBZ._ClearEmpowered(bar)
         return false
     end

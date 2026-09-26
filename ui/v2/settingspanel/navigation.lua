@@ -696,6 +696,9 @@ local DEFAULTS_RESET_MAP = {
     -- Group Frames
     gfParty             = { strategy = "groupFrame", subKey = "party" },
     gfRaid              = { strategy = "groupFrame", subKey = "raid" },
+    -- Cast Bar Z: settings are per unit, so the reset takes only the unit the
+    -- page is showing (the confirm dialog's title names it).
+    castBarZ            = { strategy = "castBarZUnit" },
 }
 
 -- Update Defaults Button Visibility & Anchoring
@@ -804,6 +807,14 @@ function UIPanel:ExecuteDefaultsReset(key, resetInfo)
     elseif strategy == "groupFrame" then
         if profile.groupFrames then
             profile.groupFrames[resetInfo.subKey] = nil
+        end
+
+    elseif strategy == "castBarZUnit" then
+        -- Only the selected unit's table: every Cast Bar Z setting lives there.
+        -- Stored Edit Mode positions (castBarZPositions) are layout data and stay.
+        local sel = self._castBarZSelectedUnit or "Player"
+        if profile.castBarZUnits then
+            profile.castBarZUnits[sel] = nil
         end
 
     elseif strategy == "profileData" then
@@ -1022,6 +1033,14 @@ end
 
 function UIPanel:GetCategoryTitle(key)
     if not key then return "Home" end
+    -- Cast Bar Z settings are per unit, so the title names the selected unit
+    -- (bypasses the cache, like the custom groups below).
+    if key == "castBarZ" then
+        local CBZ = addon.CastBarZ
+        local sel = self._castBarZSelectedUnit
+        local label = (CBZ and CBZ.UNIT_LABELS and sel and CBZ.UNIT_LABELS[sel]) or sel or "Player"
+        return "Unit Frames: Cast Bar (" .. label .. ")"
+    end
     -- For custom groups, always use dynamic display name (bypasses cache)
     local gi = key and key:match("^customGroup(%d)$")
     if gi then

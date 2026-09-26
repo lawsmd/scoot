@@ -329,8 +329,8 @@ function CBZ._LayoutBar(bar)
     local cfg = CBZ._GetUnitConfig(bar.unitKey)
 
     local barW      = tonumber(bar.widthOverride) or tonumber(cfg and cfg.barWidth) or 200
-    local capSize   = CBZ._GetCapSize()
-    local fontSize  = tonumber(CBZ._GetSetting("fontSize")) or 14
+    local capSize   = CBZ._GetCapSize(bar.unitKey)
+    local fontSize  = tonumber(CBZ._GetSetting("fontSize", bar.unitKey)) or 14
 
     -- Snapped for the same reason band edges are (see _LayoutBands): capSize * 0.3
     -- is fractional for most cap sizes, and a fractional tick has to be rounded by
@@ -338,7 +338,7 @@ function CBZ._LayoutBar(bar)
     -- ones live on the bar, so the two rects round independently and a rounding
     -- disagreement leaves a hairline of the gray showing beside the colored tick --
     -- which reads as a gap between the tick and the line.
-    local lineH = SnapToPixels(CBZ._GetLineHeight())
+    local lineH = SnapToPixels(CBZ._GetLineHeight(bar.unitKey))
 
     -- Tick-style end caps: narrow and tall, as in Cast Bar X's text-fill mode.
     local capW = math.max(2, SnapToPixels(capSize * 0.3))
@@ -414,7 +414,7 @@ end
 --- are about to release at. Hiding it does not simplify the bar, it removes the
 --- only thing on it that answers the question the cast is asking.
 function CBZ._RefreshSparkVisibility(bar)
-    local shown = CBZ._GetSetting("showSpark") ~= false
+    local shown = CBZ._GetSetting("showSpark", bar.unitKey) ~= false
     if bar.empowered then shown = true end
     CBZ._SetSparkShown(bar, shown)
 end

@@ -533,6 +533,68 @@ function addon:OnInitialize()
         end
     end
 
+    -- Migration V11: Cast Bar Z's cosmetic settings become per unit. Every key
+    -- the user changed in components.castBarZ is copied into each of the five
+    -- castBarZUnits tables, then removed from the component table, so every bar
+    -- renders tomorrow exactly as it did yesterday -- including units that were
+    -- never enabled. Only stored keys exist in raw SavedVariables (the defaults
+    -- metatable strips the rest), so an untouched key keeps following defaults.
+    -- Runs on raw SavedVariables, before AceDB wraps them.
+    do
+        local sv = _G["ScootDB"]
+        if sv and not (sv.global and sv.global._castBarZPerUnitV11) then
+            local COSMETIC_KEYS = {
+                "fontFace", "fontSize", "fontStyle", "gradient", "lineHeight",
+                "capSize", "showSpark", "sparkStyle", "sparkColorMode",
+                "sparkColor", "completionFX", "completionColorMode",
+                "completionColor", "empoweredTiers", "castTime",
+                "castTimeReadout", "castTimeFont", "castTimeSize",
+                "castTimeColor", "castTimeGap", "castTimeOffsetY",
+            }
+            local UNITS = { "Player", "Target", "Focus", "Pet", "Boss" }
+
+            -- Table values (the three colors) must be copied per unit: one table
+            -- shared by reference would make a later edit on one unit repaint
+            -- all five.
+            local function copyValue(v)
+                if type(v) ~= "table" then return v end
+                local t = {}
+                for k, x in pairs(v) do t[k] = copyValue(x) end
+                return t
+            end
+
+            for _, profileData in pairs(sv.profiles or {}) do
+                if type(profileData) == "table" then
+                    local components = profileData.components
+                    local cfg = type(components) == "table" and components.castBarZ or nil
+                    if type(cfg) == "table" then
+                        for _, key in ipairs(COSMETIC_KEYS) do
+                            local value = cfg[key]
+                            if value ~= nil then
+                                if type(profileData.castBarZUnits) ~= "table" then
+                                    profileData.castBarZUnits = {}
+                                end
+                                local units = profileData.castBarZUnits
+                                for _, unitKey in ipairs(UNITS) do
+                                    if type(units[unitKey]) ~= "table" then
+                                        units[unitKey] = {}
+                                    end
+                                    if units[unitKey][key] == nil then
+                                        units[unitKey][key] = copyValue(value)
+                                    end
+                                end
+                                cfg[key] = nil
+                            end
+                        end
+                    end
+                end
+            end
+
+            if not sv.global then sv.global = {} end
+            sv.global._castBarZPerUnitV11 = true
+        end
+    end
+
     -- 1. Create the database first so moduleEnabled is available for component gating.
     --    GetDefaults() does not reference self.Components — safe to call before init.
     self.db = LibStub("AceDB-3.0"):New("ScootDB", self:GetDefaults(), true)

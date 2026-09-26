@@ -64,13 +64,13 @@ CBZ.RED_RAMP_BASE = { 0.65, 0.20, 0.16 }
 ---
 --- "Flat" is expressed as a ramp with equal endpoints, so there is exactly one code
 --- path and callers never branch on whether a gradient is in play.
-local function BuildRamp(r1, g1, b1, r2, g2, b2)
+local function BuildRamp(unitKey, r1, g1, b1, r2, g2, b2)
     r1, g1, b1 = r1 or 1, g1 or 1, b1 or 1
     r2, g2, b2 = r2 or r1, g2 or g1, b2 or b1
 
     -- Gradient off: every band takes the ramp's endpoint -- the curated, brighter
     -- stop. Legibility beats the darker base color when there is only one.
-    if CBZ._GetSetting("gradient") == false then
+    if CBZ._GetSetting("gradient", unitKey) == false then
         r1, g1, b1 = r2, g2, b2
     end
 
@@ -112,15 +112,15 @@ function CBZ._ResolveCastRamp(bar)
     if CBZ.OWN_CAST_UNITS[bar.unitKey] then
         local CB = addon.CastBars
         if CB and CB._resolveGradientColors then
-            return Note("spec gradient", BuildRamp(CB._resolveGradientColors("specGradient", {})))
+            return Note("spec gradient", BuildRamp(bar.unitKey, CB._resolveGradientColors("specGradient", {})))
         end
-        return Note("white (CastBars unavailable)", BuildRamp(1, 1, 1))
+        return Note("white (CastBars unavailable)", BuildRamp(bar.unitKey, 1, 1, 1))
     end
 
     -- No unit read at all, which is the point: a preview and a live bar resolve
     -- identically, and neither repaints when the target changes.
     local base, hot = CBZ.RED_RAMP_BASE, CBZ.RED_RAMP_END
-    return Note("red ramp", BuildRamp(base[1], base[2], base[3], hot[1], hot[2], hot[3]))
+    return Note("red ramp", BuildRamp(bar.unitKey, base[1], base[2], base[3], hot[1], hot[2], hot[3]))
 end
 
 --- The palette to draw with right now.
@@ -162,9 +162,9 @@ CBZ._ForEachBand = ForEachBand
 --- Apply the configured font and the resolved ramp to all 2N FontStrings.
 --- Idempotent; call it on any settings change.
 function CBZ._ApplyBandFonts(bar)
-    local face  = addon.ResolveFontFace(CBZ._GetSetting("fontFace"))
-    local size  = tonumber(CBZ._GetSetting("fontSize")) or 14
-    local style = tostring(CBZ._GetSetting("fontStyle") or "SHADOWTHICKOUTLINE")
+    local face  = addon.ResolveFontFace(CBZ._GetSetting("fontFace", bar.unitKey))
+    local size  = tonumber(CBZ._GetSetting("fontSize", bar.unitKey)) or 14
+    local style = tostring(CBZ._GetSetting("fontStyle", bar.unitKey) or "SHADOWTHICKOUTLINE")
 
     local ramp = CBZ._GetRamp(bar)
 
@@ -199,7 +199,7 @@ end
 local function AvailableWidth(bar)
     local cfg = CBZ._GetUnitConfig(bar.unitKey)
     local barW = tonumber(bar.widthOverride) or tonumber(cfg and cfg.barWidth) or 200
-    local capW = math.max(2, CBZ._GetCapSize() * 0.3)
+    local capW = math.max(2, CBZ._GetCapSize(bar.unitKey) * 0.3)
     local avail = barW - (2 * capW + CAP_CLEARANCE)
     if avail <= 0 then return nil end
     return avail
@@ -237,9 +237,9 @@ end
 --- Engine truncation is safe here even though it wrecked Cast Bar X, for the same
 --- reason re-rasterising is: no escape codes, so all 2N copies truncate alike.
 local function FitText(bar, text)
-    local face  = addon.ResolveFontFace(CBZ._GetSetting("fontFace"))
-    local size  = tonumber(CBZ._GetSetting("fontSize")) or 14
-    local style = tostring(CBZ._GetSetting("fontStyle") or "SHADOWTHICKOUTLINE")
+    local face  = addon.ResolveFontFace(CBZ._GetSetting("fontFace", bar.unitKey))
+    local size  = tonumber(CBZ._GetSetting("fontSize", bar.unitKey)) or 14
+    local style = tostring(CBZ._GetSetting("fontStyle", bar.unitKey) or "SHADOWTHICKOUTLINE")
     local avail = AvailableWidth(bar)
 
     if not avail then
@@ -283,7 +283,8 @@ end
 CBZ._FitText = FitText
 -- Exported alongside FitText for the same reason: anything that paints a bar
 -- without a cast (previews, the local showcase) must build its ramp with the
--- same lerp and the same gradient-off collapse the live bar uses.
+-- same lerp and the same gradient-off collapse the live bar uses. unitKey comes
+-- first: the gradient toggle is per unit.
 CBZ._BuildRamp = BuildRamp
 
 --- Set the same bytes on every copy, then size them.

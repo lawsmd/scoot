@@ -44,7 +44,7 @@ local PREVIEW_PAD = 14
 --- deviates from the HUD's; the breakpoints deliberately match casttime.lua's, so
 --- what it shows is still what the bar will show.
 local function PreviewCastTimeText(elapsed, total)
-    local mode = CBZ._GetSetting("castTimeReadout") or "remaining"
+    local mode = CBZ._GetSetting("castTimeReadout", selectedUnit) or "remaining"
     -- Empowered fills rather than drains, so it counts up whatever the setting is.
     if previewEmpowered and mode == "remaining" then mode = "elapsed" end
 
@@ -77,7 +77,8 @@ local function CreatePreviewPane(parentFrame, builder)
     -- Bar height is driven by cap size and font size, so the pane grows with them
     -- rather than clipping a large font against a fixed box.
     local barWidth = 260
-    local barHeight = math.max(CBZ._GetCapSize(), (tonumber(CBZ._GetSetting("fontSize")) or 14) + 2)
+    local barHeight = math.max(CBZ._GetCapSize(selectedUnit),
+        (tonumber(CBZ._GetSetting("fontSize", selectedUnit)) or 14) + 2)
     local paneHeight = math.max(72, barHeight + 2 * PREVIEW_PAD + 24)
 
     -- nil only if the selected unit has no bar row, which means CBZ.UNITS and
@@ -108,7 +109,7 @@ local function CreatePreviewPane(parentFrame, builder)
     -- bar.empowered is set as well as the preview flag so the spark override
     -- applies here too; the preview is meant to look like the real thing, and the
     -- spark riding across the dividers is most of what an empowered bar IS.
-    if previewEmpowered and CBZ._GetSetting("empoweredTiers") ~= false then
+    if previewEmpowered and CBZ._GetSetting("empoweredTiers", selectedUnit) ~= false then
         bar.empowerPreview = true
         bar.empowered = true
         CBZ._ApplyEmpowered(bar, true)
@@ -118,7 +119,7 @@ local function CreatePreviewPane(parentFrame, builder)
 
     -- _LayoutBar has already placed and styled the readout; it starts hidden, and
     -- only the preview's own ticker ever fills it.
-    local castTimeFS = CBZ._IsCastTimeEnabled() and bar.castTimeText or nil
+    local castTimeFS = CBZ._IsCastTimeEnabled(selectedUnit) and bar.castTimeText or nil
     if castTimeFS then
         castTimeFS:SetText(PreviewCastTimeText(0, PREVIEW_LOOP_SECONDS))
         castTimeFS:Show()
@@ -280,8 +281,11 @@ local function CreateUnitSelector(parentFrame, builder)
         end)
     end
 
-    local cfg = CBZ._GetUnitConfig(selectedUnit)
-    local indicator = CreateOnOffIndicator(row, cfg and cfg.enabled, function()
+    -- Peek for the initial state; the click handler resolves the config table
+    -- fresh, so it never writes through a table captured before a unit switch.
+    local peek = CBZ._PeekUnitConfig(selectedUnit)
+    local indicator = CreateOnOffIndicator(row, peek and peek.enabled, function()
+        local cfg = CBZ._GetUnitConfig(selectedUnit)
         if cfg then
             cfg.enabled = not cfg.enabled
             if CBZ._comp then CBZ._ApplyStyling(CBZ._comp) end
@@ -307,10 +311,15 @@ end
 --------------------------------------------------------------------------------
 
 function CBZSettings.Render(panel, scrollContent)
+    -- The search scan runs this renderer too; nothing in scan mode may create
+    -- profile tables or panel chrome, so the selected unit is validated against
+    -- the label table rather than through _GetUnitConfig.
+    local scanning = SettingsBuilder._scanMode
     selectedUnit = panel._castBarZSelectedUnit or selectedUnit
-    if not CBZ._GetUnitConfig(selectedUnit) then
+    if not CBZ.UNIT_LABELS[selectedUnit] then
         selectedUnit = CBZ.UNITS[1]
     end
+    panel._castBarZSelectedUnit = selectedUnit
 
     panel:ClearContent()
     local builder = SettingsBuilder:CreateFor(scrollContent)
@@ -318,8 +327,6 @@ function CBZSettings.Render(panel, scrollContent)
     builder:SetOnRefresh(function() CBZSettings.Render(panel, scrollContent) end)
 
     local Helpers = addon.UI.Settings.Helpers
-    local h = Helpers.CreateComponentHelpers("castBarZ")
-    local getSetting = h.get
 
     -- Every visual setter refreshes the panel, which rebuilds the preview with
     -- the new value: setters call DeferredRefreshAll after the write.
@@ -328,8 +335,18 @@ function CBZSettings.Render(panel, scrollContent)
         if CBZ._comp then CBZ._ApplyStyling(CBZ._comp) end
         builder:DeferredRefreshAll()
     end
+    -- Cosmetic settings are per unit: reads resolve through the selected unit's
+    -- overrides, writes land on its table. Nothing on this page writes the
+    -- component DB any more; it only serves defaults.
+    local function getSetting(key)
+        return CBZ._GetSetting(key, selectedUnit)
+    end
+    local function setUnitRaw(key, value)
+        local cfg = CBZ._GetUnitConfig(selectedUnit)
+        if cfg then cfg[key] = value end
+    end
     local function setSetting(key, value)
-        h.set(key, value)
+        setUnitRaw(key, value)
         applyAll()
     end
 
@@ -349,16 +366,27 @@ function CBZSettings.Render(panel, scrollContent)
     ----------------------------------------------------------------------------
     -- Unit selector
     ----------------------------------------------------------------------------
-    local sel = CreateUnitSelector(scrollContent, builder)
-    builder:PlaceCustom(sel, { inset = 12, gapAfter = 8 })
+    -- Skipped in scan mode: the selector and preview are chrome, not settings
+    -- rows, and building them would create frames and unit tables from a scan.
+    if not scanning then
+        -- Unit switches re-run Render without a navigation select, so the header
+        -- is re-titled here (StartHereRenderer does the same).
+        local contentPane = panel.frame and panel.frame._contentPane
+        if panel._currentCategoryKey == "castBarZ" and contentPane and contentPane._headerTitle then
+            contentPane._headerTitle:SetText(panel:GetCategoryTitle("castBarZ"))
+        end
 
-    ----------------------------------------------------------------------------
-    -- Preview
-    ----------------------------------------------------------------------------
-    if CBZ._comp then
-        local pane = CreatePreviewPane(scrollContent, builder)
-        if pane then
-            builder:PlaceCustom(pane, { gapBefore = 0, inset = 12, gapAfter = 8 })
+        local sel = CreateUnitSelector(scrollContent, builder)
+        builder:PlaceCustom(sel, { inset = 12, gapAfter = 8 })
+
+        ------------------------------------------------------------------------
+        -- Preview
+        ------------------------------------------------------------------------
+        if CBZ._comp then
+            local pane = CreatePreviewPane(scrollContent, builder)
+            if pane then
+                builder:PlaceCustom(pane, { gapBefore = 0, inset = 12, gapAfter = 8 })
+            end
         end
     end
 
@@ -372,11 +400,9 @@ function CBZSettings.Render(panel, scrollContent)
     builder:AddDescription(
         "Blizzard's own cast bar is hidden for every unit switched on above, in Edit Mode as well as in play, and comes back the moment one is switched off.")
 
+    -- No per-unit badges anywhere on this page: since the per-unit split every
+    -- setting applies to the selected unit alone, and the header names it.
     builder:AddCollapsibleSection({ title = "Bar", componentId = "castBarZ", sectionKey = "bar", defaultExpanded = true,
-        infoIcon = {
-            tooltipTitle = "Per-Unit Setting",
-            tooltipText = "Width applies only to the selected unit. Everything below the Bar section applies to every cast bar.",
-        },
         buildContent = function(_, inner)
             inner:AddSlider({ label = "Bar Width", min = 100, max = 500, step = 5,
                 get = function() return getUnit("barWidth", 260) end,
@@ -404,10 +430,6 @@ function CBZSettings.Render(panel, scrollContent)
     local snapOnly = CBZ._IsSnapOnly(selectedUnit)
 
     builder:AddCollapsibleSection({ title = "Position", componentId = "castBarZ", sectionKey = "position", defaultExpanded = false,
-        infoIcon = {
-            tooltipTitle = "Per-Unit Setting",
-            tooltipText = "Position applies only to the selected unit.",
-        },
         buildContent = function(_, inner)
             local values = {
                 above = "Above Frame", below = "Below Frame",
@@ -431,7 +453,9 @@ function CBZSettings.Render(panel, scrollContent)
             -- dragging. Each (direction, X/Z frame variant) combination keeps
             -- its own remembered pair -- these sliders read and write the pair
             -- currently in effect (CBZ._GetSnapOffsets resolves it).
-            if CBZ._GetPositionMode(selectedUnit) ~= "free" then
+            -- The scan always indexes them: _GetPositionMode would create unit
+            -- tables, and a snapped bar has the rows anyway.
+            if scanning or CBZ._GetPositionMode(selectedUnit) ~= "free" then
                 local function setOffset(axis, v)
                     CBZ._SetSnapOffset(selectedUnit, axis, v)
                     if CBZ._comp then CBZ._ApplyStyling(CBZ._comp) end
@@ -578,9 +602,9 @@ function CBZSettings.Render(panel, scrollContent)
                 sectionKey = "textTabs",
                 buildContent = {
                     spellName = function(_, tab)
-                        -- CBZ._GetSetting resolves the registered fallbacks, so the
+                        -- getSetting resolves the registered fallbacks, so the
                         -- block needs no panel-local defaults.
-                        local get, set = TextHelpers.CreateFlatAccessors(CBZ._GetSetting, h.set, {
+                        local get, set = TextHelpers.CreateFlatAccessors(getSetting, setUnitRaw, {
                             fontFace = "fontFace", style = "fontStyle", size = "fontSize",
                         })
                         tab:AddTextStyleBlock({
@@ -611,7 +635,7 @@ function CBZSettings.Render(panel, scrollContent)
                             get = function() return getSetting("castTime") == true end,
                             set = function(v) setSetting("castTime", v) end })
 
-                        if CBZ._IsCastTimeEnabled() then
+                        if CBZ._IsCastTimeEnabled(selectedUnit) then
                             tab:AddSelector({ label = "Readout",
                                 description = "Remaining counts down to zero. Elapsed counts up from zero. Both shows elapsed and total together.",
                                 values = { remaining = "Remaining", elapsed = "Elapsed", both = "Both" },
@@ -625,20 +649,20 @@ function CBZSettings.Render(panel, scrollContent)
                             -- control never reads as empty.
                             tab:AddFontSelector({ label = "Font",
                                 description = "Matches the spell name font until you choose one here.",
-                                get = function() return CBZ._GetCastTimeFontFace() or "ROBOTO_SEMICOND_BLACK" end,
+                                get = function() return CBZ._GetCastTimeFontFace(selectedUnit) or "ROBOTO_SEMICOND_BLACK" end,
                                 set = function(v) setSetting("castTimeFont", v) end })
                             tab:AddSlider({ label = "Font Size", min = 8, max = 24, step = 1,
                                 get = function() return tonumber(getSetting("castTimeSize")) or 12 end,
                                 set = function(v) setSetting("castTimeSize", v) end })
                             tab:AddSelector({ label = "Side",
-                                description = "Which end of the bar the number sits beside. Applies to the selected unit only. Boss defaults to the left, so the readout clears the boss frame its bar attaches to.",
+                                description = "Which end of the bar the number sits beside. Boss defaults to the left, so the readout clears the boss frame its bar attaches to.",
                                 values = { right = "Right", left = "Left" },
                                 order = { "right", "left" },
                                 get = function() return CBZ._GetCastTimePosition(selectedUnit) end,
                                 set = function(v) setUnit("castTimeSide", v) end })
                             tab:AddColorPicker({ label = "Color", hasAlpha = true,
                                 get = function()
-                                    local c = CBZ._GetCastTimeColor()
+                                    local c = CBZ._GetCastTimeColor(selectedUnit)
                                     return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
                                 end,
                                 set = function(r, g, b, a) setSetting("castTimeColor", { r, g, b, a }) end })
