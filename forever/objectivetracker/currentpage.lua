@@ -57,6 +57,7 @@ local function Render(panel, scrollContent)
                     DB.Set(Style.Path("current", "holdSeconds"), tonumber(v) or Style.HOLD.default)
                     apply()
                 end })
+            addToggle(inner, "Flash Progress", nil, "flashProgress")
             inner:Finalize()
         end })
 

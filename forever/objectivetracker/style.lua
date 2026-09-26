@@ -126,6 +126,7 @@ do
     map[Style.Path("current", "onEnterArea")] = true
     map[Style.Path("current", "onProgress")] = true
     map[Style.Path("current", "holdSeconds")] = Style.HOLD.default
+    map[Style.Path("current", "flashProgress")] = true
     DB.RegisterDefaults(map)
 end
 

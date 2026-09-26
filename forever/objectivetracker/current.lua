@@ -44,8 +44,8 @@ local QUEST_MODULES = {
 local CURRENT_MODULE = "CamelotCurrentQuestObjectiveTracker"
 
 local entries = {}     -- questID -> { inside, progressAt, token, objective, before, after, pinned }
-local snapshots = {}   -- questID -> { [objectiveIndex] = { fulfilled, finished, text } }
-local changes = {}     -- questID -> { index, before, after, t }: the last objective change read
+local snapshots = {}   -- questID -> { [objectiveIndex] = { fulfilled, required, finished, text } }
+local changes = {}     -- questID -> { index, before, after, fulfilled, required, rose, t }: the last objective change read
 local pendingRead = {} -- questID -> true: progress reported, no change read yet
 local log = {}
 
@@ -106,14 +106,14 @@ local function eachWatch(fn)
     return n
 end
 
--- The objectives read fresh, the three fields a diff needs.
+-- The objectives read fresh, the fields a diff and the progress flash need.
 local function readObjectives(questID)
     local ok, list = pcall(C_QuestLog.GetQuestObjectives, questID)
     if not ok or type(list) ~= "table" then return nil end
     local snap = {}
     for index, o in ipairs(list) do
         if type(o) == "table" then
-            snap[index] = { fulfilled = o.numFulfilled, finished = o.finished, text = o.text }
+            snap[index] = { fulfilled = o.numFulfilled, required = o.numRequired, finished = o.finished, text = o.text }
         end
     end
     return snap
@@ -130,7 +130,11 @@ local function updateSnapshot(questID)
         local b = before[index]
         if b and isPlain(o.fulfilled) and isPlain(b.fulfilled) and isPlain(o.finished) and isPlain(b.finished)
             and (o.fulfilled ~= b.fulfilled or o.finished ~= b.finished) then
-            local change = { index = index, before = b.text, after = o.text, t = now() }
+            local change = {
+                index = index, before = b.text, after = o.text, t = now(),
+                fulfilled = o.fulfilled, required = o.required,
+                rose = type(o.fulfilled) == "number" and type(b.fulfilled) == "number" and o.fulfilled > b.fulfilled,
+            }
             changes[questID] = change
             return change
         end
@@ -191,6 +195,9 @@ end
 local function recordChange(questID, e, change)
     e.objective, e.before, e.after = change.index, change.before, change.after
     pendingRead[questID] = nil
+    if change.rose and isPlain(change.required) and OT.Flash then
+        OT.Flash.Request(questID, change.index, change.fulfilled, change.required)
+    end
 end
 
 --- Marks the three quest modules dirty: a setting changed.
@@ -369,5 +376,6 @@ function Current.Dump(push)
     if n == 0 then push("  no entries") end
     push("pane log (%d):", #log)
     for _, line in ipairs(log) do push("  %s", line) end
+    if OT.Flash then OT.Flash.Dump(push) end
     push("")
 end

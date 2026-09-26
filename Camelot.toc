@@ -193,7 +193,8 @@ core/components/castbarz/editmode.lua [ExcludeLoadGameType standard]
 ## Blizzard's frame and registers the Edit Mode positionables; itembutton.lua
 ## stands the secure quest item buttons on the blocks' slots; current.lua keeps
 ## the Current Objectives pane's state and routes quests between the panes
-## (docs/objectivetracker/current.md). Stands on nativeframe, events, strata,
+## (docs/objectivetracker/current.md); flash.lua flashes a count that rises in
+## that pane. Stands on nativeframe, events, strata,
 ## pool, fonts, colors, editmode/positionables, forever/db.lua,
 ## forever/profiles.lua and forever/features.lua.
 forever/objectivetracker/style.lua
@@ -202,6 +203,7 @@ forever/objectivetracker/frames.xml [ExcludeLoadGameType standard]
 forever/objectivetracker/tracker.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/itembutton.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/current.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/flash.lua [ExcludeLoadGameType standard]
 
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
