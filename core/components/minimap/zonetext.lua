@@ -163,8 +163,7 @@ local function ApplyZoneTextStyle(db)
     local offsetX = tonumber(db.zoneTextOffsetX) or 0
     local offsetY = tonumber(db.zoneTextOffsetY) or 0
 
-    frame:ClearAllPoints()
-    frame:SetPoint(position, minimap, position, offsetX, offsetY)
+    MM._PlaceMapText(frame, minimap, position, offsetX, offsetY)
     frame:SetWidth(minimap:GetWidth() - 10)
 
     -- Update text and color

@@ -181,8 +181,7 @@ local function ApplyClockStyle(db)
     local offsetX = tonumber(db.clockOffsetX) or 0
     local offsetY = tonumber(db.clockOffsetY) or 0
 
-    frame:ClearAllPoints()
-    frame:SetPoint(position, minimap, position, offsetX, offsetY)
+    MM._PlaceMapText(frame, minimap, position, offsetX, offsetY)
     frame:SetWidth(minimap:GetWidth())
 
     frame:Show()

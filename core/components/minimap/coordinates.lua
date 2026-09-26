@@ -232,13 +232,12 @@ local function ApplyCoordinatesStyle(db)
     addon.ApplyFontStyle(fontString, fontFace, fontSize, fontStyle)
     fontString:SetTextColor(r, g, b, a)
 
-    frame:ClearAllPoints()
     if position == "default" then
-        frame:SetPoint(DEFAULT_POINT, minimap, DEFAULT_POINT, DEFAULT_OFFSET_X, DEFAULT_OFFSET_Y)
+        MM._PlaceMapText(frame, minimap, DEFAULT_POINT, DEFAULT_OFFSET_X, DEFAULT_OFFSET_Y)
     else
         local offsetX = tonumber(db.coordsOffsetX) or 0
         local offsetY = tonumber(db.coordsOffsetY) or 0
-        frame:SetPoint(position, minimap, position, offsetX, offsetY)
+        MM._PlaceMapText(frame, minimap, position, offsetX, offsetY)
     end
     frame:SetWidth(minimap:GetWidth())
     frame.tenths = coordsByTenths(db)

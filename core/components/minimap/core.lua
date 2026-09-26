@@ -59,7 +59,31 @@ local function ensureOverlayTable()
     return minimapOverlays[minimap]
 end
 
+-- Places a map-wide text overlay (zone text, clock, coordinates) at one of the
+-- nine anchor points. The frame spans the map, so the string is pinned to the
+-- side the point names, inset from the edge; a top position drops below the
+-- border band, which covers the first pixels of the map.
+local MAP_TEXT_INSET_X = 6
+local MAP_TEXT_TOP_DROP = 6
+
+local function PlaceMapText(frame, minimap, position, offsetX, offsetY)
+    local fs = frame.fontString
+    local inset, justify = 0, "CENTER"
+    if position:find("LEFT") then
+        inset, justify = MAP_TEXT_INSET_X, "LEFT"
+    elseif position:find("RIGHT") then
+        inset, justify = -MAP_TEXT_INSET_X, "RIGHT"
+    end
+    local drop = position:find("TOP") and -MAP_TEXT_TOP_DROP or 0
+    frame:ClearAllPoints()
+    frame:SetPoint(position, minimap, position, offsetX, offsetY + drop)
+    fs:ClearAllPoints()
+    fs:SetPoint(justify, frame, justify, inset, 0)
+    fs:SetJustifyH(justify)
+end
+
 -- Promote shared helpers to namespace for sub-files
+MM._PlaceMapText = PlaceMapText
 MM._getMinimapDB = getMinimapDB
 MM._ensureOverlayTable = ensureOverlayTable
 MM._minimapOverlays = minimapOverlays
@@ -345,11 +369,18 @@ end
 -- masked edge and the band's soft inner edge never leave a hairline between them.
 local ART_BORDER_TUCK = 1
 
--- One texture on a UIParent-parented container, anchored around Minimap at
--- the Minimap's own strata one level below it, as Blizzard's ring sits below
--- the map: the map covers the tucked inner edge, and everything Blizzard or
--- another addon hangs on the Minimap (tracking, the day-night dial, addon
--- buttons) draws over the band. Nothing is written to Minimap.
+-- One texture on a UIParent-parented container, anchored around Minimap one
+-- strata below the Minimap's, as Blizzard's ring sits below the map: the map
+-- covers the tucked inner edge, and everything Blizzard or another addon hangs
+-- on the Minimap (tracking, the day-night dial, addon buttons) draws over the
+-- band. It takes the strata below rather than a level below: MinimapCluster
+-- is toplevel, and a click re-levels everything in it but not this border.
+-- Nothing is written to Minimap.
+local STRATA_BELOW = {
+    LOW = "BACKGROUND", MEDIUM = "LOW", HIGH = "MEDIUM", DIALOG = "HIGH",
+    FULLSCREEN = "DIALOG", FULLSCREEN_DIALOG = "FULLSCREEN", TOOLTIP = "FULLSCREEN_DIALOG",
+}
+
 local function ensureArtBorder(overlays, minimap)
     local container = overlays.artBorder
     if not container then
@@ -365,8 +396,15 @@ local function ensureArtBorder(overlays, minimap)
     local band = (tonumber(art.band) or 9) - ART_BORDER_TUCK
     local okStrata, strata = pcall(minimap.GetFrameStrata, minimap)
     local okLevel, level = pcall(minimap.GetFrameLevel, minimap)
-    container:SetFrameStrata(okStrata and type(strata) == "string" and strata or "MEDIUM")
-    container:SetFrameLevel(math.max((((okLevel and type(level) == "number") and level or 4) - 1), 0))
+    local below = okStrata and STRATA_BELOW[strata]
+    if below then
+        container:SetFrameStrata(below)
+        container:SetFrameLevel(50)
+    else
+        -- The Minimap is already in BACKGROUND: one level below it there.
+        container:SetFrameStrata("BACKGROUND")
+        container:SetFrameLevel(math.max((((okLevel and type(level) == "number") and level or 1) - 1), 0))
+    end
     container:ClearAllPoints()
     container:SetPoint("TOPLEFT", minimap, "TOPLEFT", -band, band)
     container:SetPoint("BOTTOMRIGHT", minimap, "BOTTOMRIGHT", band, -band)
