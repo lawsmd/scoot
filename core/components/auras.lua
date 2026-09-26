@@ -506,9 +506,17 @@ function addon.ApplyAuraFrameVisualsFor(component, forceRestyle)
                     -- Independent so a failure here doesn't block borders, overlays, or text.
                     ok1 = pcall(function()
                     if icon and icon.SetSize and width and height then
-                        icon:SetSize(width, height)
+                        -- The non-square debuff border is the 40x40 atlas stretched on one
+                        -- axis, which flattens its rounded inner corners on the short axis
+                        -- and lets the icon's corners show. Inset the icon 1 unit per side
+                        -- under that overlay; the border still sizes from width/height.
+                        local iconW, iconH = width, height
+                        if componentId == "debuffs" and ratio ~= 0 and not borderEnabled then
+                            iconW, iconH = width - 2, height - 2
+                        end
+                        icon:SetSize(iconW, iconH)
                         -- Calculate texture coordinates to crop instead of stretch
-                        local aspectRatio = width / height
+                        local aspectRatio = iconW / iconH
                         local left, right, top, bottom = 0, 1, 0, 1
                         if aspectRatio > 1.0 then
                             -- Wider than tall - crop top/bottom
