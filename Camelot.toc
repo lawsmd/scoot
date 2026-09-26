@@ -121,6 +121,11 @@ forever/features.lua
 forever/profiles.lua
 forever/recolor.lua
 
+## The Dynamic Layouts resolver: the base-or-dynamic answer, published as
+## edges. Stands on events, commands, debug/core and editmode/positionables
+## above. No game-type gate: the trigger dispatch verifies on retail too.
+core/dynamiclayouts/resolver.lua
+
 ## The component system, shared, and its host. base/core holds registration,
 ## the settings table behind component.db and the apply pass; the host answers
 ## that table from forever/db.lua through addon.ComponentStore and owns the
