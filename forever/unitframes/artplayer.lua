@@ -46,13 +46,16 @@ spec.Regions = {
         color = { 0, 0, 0, 0.5 },
     },
     -- Camelot: the leather behind the name row, the rect the target's strip
-    -- covers, over the black fill (art.lua, "Backdrops").
+    -- covers, over the black fill (art.lua, "Backdrops"). Sublevel 1, because
+    -- at the fill's own sublevel creation order is no promise, and the first
+    -- look drew the fill on top.
     nameBackdrop = {
-        layer = "BACKGROUND",
+        layer = "BACKGROUND", sublevel = 1,
         atlas = Art.BACKDROP_SOURCE.strip,
         w = 119, h = 19,
         point = "TOPLEFT", x = 90, y = -26,
         vertex = { 1, 1, 1, Art.BACKDROP_ALPHA },
+        lift = true,
     },
 
     -- ARTWORK: the portrait sits under the border so the ring frames it.
@@ -83,6 +86,7 @@ spec.Regions = {
         nudge = DISC_NUDGE,
         mask = Paths.circleMask,
         vertex = { 1, 1, 1, Art.BACKDROP_ALPHA },
+        lift = true,
     },
 
     -- ARTWORK over the bars: rested glow and the attacked backing.

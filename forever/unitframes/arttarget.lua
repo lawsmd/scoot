@@ -79,6 +79,7 @@ local function build(hitInsets)
             nudge = DISC_NUDGE,
             mask = Paths.circleMask,
             vertex = { 1, 1, 1, Art.BACKDROP_ALPHA },
+            lift = true,
         },
 
         -- ARTWORK, all hidden until target.lua says otherwise. The skull is

@@ -14,6 +14,9 @@
 --     poolKey  = string  (REQUIRED. One ruler pool per caller; fits on
 --                         different poolKeys are fully independent.)
 --     face     = string  (font registry KEY; resolved once at entry)
+--     facePath = string  (a font FILE, taken as-is in place of face; for a
+--                         caller drawing in a font object's own face, which
+--                         no registry key names)
 --     style    = string  (default "")
 --     width    = number  (REQUIRED, > 0 -- the fit box width in px)
 --     height   = number  (REQUIRED, > 0 -- only feeds the line budget)
@@ -354,7 +357,7 @@ function addon.RunBlindFit(value, opts, onDone)
 
     -- Snapshot: the pass spans three frames; a caller editing its config mid-pass
     -- must not change the question being measured. Face resolved once, here.
-    local facePath = addon.ResolveFontFace(opts.face)
+    local facePath = opts.facePath or addon.ResolveFontFace(opts.face)
     local style    = opts.style or ""
     local width    = opts.width
     local height   = opts.height

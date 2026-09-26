@@ -62,12 +62,14 @@ core/borders.lua
 ## apply_all holds the Global Font and Bar Texture values behind the media
 ## tokens; it registers a debug command at file scope and reads addon.db at
 ## call time. forever/db.lua below creates the db.global.media table it writes.
+## blindfit sizes the unit frame names and reads fonts.lua at call time.
 core/commands.lua
 core/escapekey.lua
 core/media.lua
 core/lsm.lua
 core/fonts.lua
 core/fontpair.lua
+core/blindfit.lua
 core/pool.lua
 core/barborders.lua
 core/dialogs.lua

@@ -94,6 +94,10 @@ Art.ManifestOrder = {
 -- interior (columns 125 to 806, rows 60 to 503). The alpha a region is built
 -- at is the registered default (text.lua); Text.ApplyBackdrop writes the
 -- stored one over it, and the reaction strip's alpha is its own setting there.
+--
+-- The crops measure about #1c120c, which reads as black at 20 pixels tall. A
+-- region marked `lift` gets an additive copy of itself one sublevel up, tinted
+-- by Text.BACKDROP_LIFT, so the leather keeps its grain and reads brown.
 
 Art.BACKDROP_ALPHA = addon.UnitFrames.Text.BACKDROP_OPACITY / 100
 -- The card's leather at #170a02, drawn flat when the atlas does not resolve.
@@ -156,6 +160,16 @@ function Art.BuildRegion(host, def)
         tex:AddMaskTexture(mask)
     end
     if def.hidden then tex:Hide() end
+    if def.lift then
+        local copy = {}
+        for k, v in pairs(def) do copy[k] = v end
+        copy.lift = nil
+        copy.sublevel = (def.sublevel or 0) + 1
+        copy.blend = "ADD"
+        local lift = addon.UnitFrames.Text.BACKDROP_LIFT
+        copy.vertex = { lift[1], lift[2], lift[3], def.vertex and def.vertex[4] or 1 }
+        tex.lift = Art.BuildRegion(host, copy)
+    end
     return tex
 end
 

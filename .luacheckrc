@@ -109,6 +109,7 @@ read_globals = {
     "SetRaidTargetIconTexture",
     "GetPetHappiness",
     "UnitName",
+    "RegionalUniqueNamesEnabled",
     "UnitLevel",
     "UnitEffectiveLevel",
     "GameRulesUtil",

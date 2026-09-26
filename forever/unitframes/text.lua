@@ -41,13 +41,15 @@ Text.NAV_KEYS = {
 }
 
 -- What each frame has for its page to draw: a level string, a leather
--- backdrop, the reaction strip, and a name box with a width. Static rather
--- than read off the art spec, which retail does not load; the specs agree.
+-- backdrop, the reaction strip, a name box with a width, the Forever surname
+-- after the first name (values.lua, DisplayName), and a name shrunk to fit its
+-- box (values.lua, FitName). Static rather than read off the art spec, which
+-- retail does not load; the specs agree.
 Text.SURFACE = {
-    player       = { level = true, backdrop = true, width = true },
-    target       = { level = true, backdrop = true, strip = true, width = true },
-    focus        = { level = true, backdrop = true, strip = true, width = true },
-    targettarget = { backdrop = true, width = true },
+    player       = { level = true, backdrop = true, width = true, surname = true, fit = true },
+    target       = { level = true, backdrop = true, strip = true, width = true, surname = true, fit = true },
+    focus        = { level = true, backdrop = true, strip = true, width = true, surname = true, fit = true },
+    targettarget = { backdrop = true, width = true, surname = true, fit = true },
     pet          = {},
 }
 
@@ -55,12 +57,19 @@ Text.SURFACE = {
 local GOLD = { 1.0, 0.82, 0, 1 }
 
 -- The leather, as a percentage. Vanilla's black fill behind the name is 0.5;
--- this started at 0.85 and came down after the first look.
-Text.BACKDROP_OPACITY = 75
+-- this started at 0.85, went to 0.75 after the first look, and to 0.6 on 25
+-- September when the leather read as an opaque black slab.
+Text.BACKDROP_OPACITY = 60
+-- The tint of the additive copy over each backdrop (art.lua, "Backdrops"),
+-- drawn at the backdrop's own alpha. White doubles the leather; less blue and
+-- green warms it toward the Legacy pane's brown.
+Text.BACKDROP_LIFT = { 1, 0.85, 0.65 }
 -- The target's reaction strip, drawn well under vanilla's opaque gray so the
 -- black fill shows through it: at 0.75 the blue on a player target read as a
 -- slab (seen 19 September).
 Text.STRIP_OPACITY = 45
+-- The smallest point size a long name shrinks to before the engine cuts it.
+Text.FIT_MIN = 7
 
 --------------------------------------------------------------------------------
 -- Paths and defaults
@@ -101,6 +110,12 @@ do
         -- The name box as the XML has it: 100 wide, centred, left on the small frame.
         map[Text.Path(key, "name", "alignment")] = key == "targettarget" and "LEFT" or "CENTER"
         map[Text.Path(key, "name", "width")] = 100
+        -- Read only where the surface has `surname`. Vanilla had no surnames.
+        map[Text.Path(key, "name", "hideSurname")] = false
+        -- Read only where the surface has `fit`. Vanilla truncates a long
+        -- name at the font object's size.
+        map[Text.Path(key, "name", "fit")] = true
+        map[Text.Path(key, "name", "fitMin")] = Text.FIT_MIN
         -- Vanilla draws nothing where the leather goes.
         map[Text.Path(key, "backdrop", "enabled")] = true
         map[Text.Path(key, "backdrop", "opacity")] = Text.BACKDROP_OPACITY
@@ -141,6 +156,32 @@ local function fontObjectFont(def)
     if fontObject then return fontObject:GetFont() end
 end
 
+--- The font a string is drawn in from its settings: face path, point size,
+--- the font object's flags, and the style key. The size is the name fit's
+--- ceiling (values.lua, FitName).
+function Text.ResolveFont(inst, slot)
+    local def = inst.spec.Text[slot]
+    local face, size, flags = fontObjectFont(def)
+    local storedFace = Text.Get(inst.key, slot, "fontFace")
+    if storedFace then face = addon.ResolveFontFace(storedFace) end
+    size = tonumber(Text.Get(inst.key, slot, "size")) or size
+    return face, size, flags, Text.Get(inst.key, slot, "style")
+end
+
+--- Whether a frame's name is shrunk to fit its box.
+function Text.FitsName(key)
+    return Text.SURFACE[key].fit and Text.Get(key, "name", "fit") ~= false
+end
+
+--- Draw a string in its font at a given size.
+function Text.ApplyFont(fs, face, size, flags, style)
+    if face and style then
+        addon.ApplyFontStyle(fs, face, size, style)
+    elseif face then
+        fs:SetFont(face, size, flags)
+    end
+end
+
 -- Geometry before the font: the Deep Shadow copy takes the string's box and
 -- justify when the style is applied, and re-anchors to the string itself, so
 -- a later move needs nothing. The colour is not written here; it belongs to
@@ -162,16 +203,13 @@ local function applyString(inst, slot, fs, def)
         (def.x or 0) + (nudge and nudge.x or 0) + (tonumber(Text.Get(key, slot, "offsetX")) or 0),
         (def.y or 0) + (nudge and nudge.y or 0) + (tonumber(Text.Get(key, slot, "offsetY")) or 0))
 
-    local face, size, flags = fontObjectFont(def)
-    local storedFace = Text.Get(key, slot, "fontFace")
-    if storedFace then face = addon.ResolveFontFace(storedFace) end
-    size = tonumber(Text.Get(key, slot, "size")) or size
-    local style = Text.Get(key, slot, "style")
-    if face and style then
-        addon.ApplyFontStyle(fs, face, size, style)
-    elseif face then
-        fs:SetFont(face, size, flags)
+    local face, size, flags, style = Text.ResolveFont(inst, slot)
+    -- A fitted name keeps its fitted size until the refit the paint launches
+    -- lands, so a settings change swaps the name once instead of twice.
+    if slot == "name" and Text.FitsName(key) and inst.nameFitSize then
+        size = inst.nameFitSize
     end
+    Text.ApplyFont(fs, face, size, flags, style)
 
     local hidden = Text.Get(key, slot, "hidden") and true or false
     inst.textHidden[slot] = hidden
@@ -199,6 +237,11 @@ function Text.ApplyBackdrop(inst)
         if tex then
             tex:SetShown(enabled)
             tex:SetVertexColor(1, 1, 1, alpha)
+            if tex.lift then
+                local lift = Text.BACKDROP_LIFT
+                tex.lift:SetShown(enabled)
+                tex.lift:SetVertexColor(lift[1], lift[2], lift[3], alpha)
+            end
         end
     end
 end

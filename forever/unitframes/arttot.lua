@@ -35,11 +35,12 @@ spec.Regions = {
     -- dead-unit dimming tot.lua puts on the fill is hidden under it and stays
     -- as the transcription.
     nameBackdrop = {
-        layer = "BACKGROUND",
+        layer = "BACKGROUND", sublevel = 1,
         atlas = Art.BACKDROP_SOURCE.smallStrip,
         w = 46, h = 15,
         point = "BOTTOMLEFT", x = 42, y = 13,
         vertex = { 1, 1, 1, Art.BACKDROP_ALPHA },
+        lift = true,
     },
     portrait = {
         layer = "BORDER",

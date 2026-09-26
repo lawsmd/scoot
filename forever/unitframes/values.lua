@@ -124,17 +124,126 @@ local function applyIdentityColor(inst)
     end
 end
 
+-- Forever's UnitName returns the first name and the surname, where retail's
+-- second return is the realm (nil for your own character). Forever's NameUtil
+-- override (Blizzard_FrameXMLUtil/Camelot/NameUtil.lua) joins them with
+-- CHARACTERNAME_SURNAME_SEPARATOR; with regional unique names on, the first
+-- return can already hold both, and Blizzard splits it on the last separator.
+-- Only a frame whose surface has `surname` asks. Concatenation is legal on a
+-- secret, so a secret surname is joined without the empty test: an empty one
+-- leaves a trailing separator. A secret joined first return cannot be split,
+-- so hiding the surname shows both there.
+local function surnameSeparator()
+    local consts = Constants and Constants.CharacterNameSeparatorConsts
+    return consts and consts.CHARACTERNAME_SURNAME_SEPARATOR or " "
+end
+
+function Values.DisplayName(unit, showSurname)
+    local first, surname = UnitName(unit)
+    if type(first) ~= "string" then return first end
+    local sep = surnameSeparator()
+    if not showSurname then
+        if not issecretvalue(first) and RegionalUniqueNamesEnabled and RegionalUniqueNamesEnabled() then
+            return first:match("^([^-]+)" .. sep:gsub("%p", "%%%0") .. ".*") or first
+        end
+        return first
+    end
+    if issecretvalue(surname) or (type(surname) == "string" and surname ~= "") then
+        return first .. sep .. surname
+    end
+    return first
+end
+
+-- A long name shrinks until it fits its box on one line, through the blind
+-- fit Unit Frames Z sizes its names with (core/blindfit.lua). The fit reads
+-- only SetAlphaGradient, so a secret name fits as a plain one does. It lands
+-- two frames later, and the name is never drawn at a size it has not decided:
+-- a new subject blanks the name by alpha until then, and a hold keeps the
+-- current picture up and swaps it in one step. The Deep Shadow copy follows
+-- the alpha (core/fontpair.lua). The callback paints the string it measured
+-- and never reads the unit again.
+--
+-- Floor with nothing fitting: the name draws at the floor and the engine
+-- ellipsizes it. Oracle failure: the ceiling, which is the unfitted look.
+function Values.FitName(inst, name, hold)
+    local fs = inst.nameText
+    local Text = addon.UnitFrames.Text
+    local face, ceiling, flags, style = Text.ResolveFont(inst, "name")
+    inst.nameFitSeq = (inst.nameFitSeq or 0) + 1
+    local seq = inst.nameFitSeq
+    if not hold then fs:SetAlpha(0) end
+
+    local def = inst.spec.Text.name
+    local minSize = tonumber(Text.Get(inst.key, "name", "fitMin")) or Text.FIT_MIN
+    addon.RunBlindFit(name, {
+        poolKey  = "camelotName:" .. inst.key,
+        facePath = face,
+        style    = style,
+        width    = tonumber(Text.Get(inst.key, "name", "width")) or def.w,
+        height   = def.h,
+        maxLines = 1,
+        minSize  = math.min(minSize, ceiling),
+        maxSize  = ceiling,
+        margin   = "auto",
+    }, function(st)
+        if seq ~= inst.nameFitSeq then return end
+        local size
+        if st.size then
+            size = st.size
+        elseif st.F and st.spaces then
+            size = st.lo
+        else
+            size = ceiling
+        end
+        inst.nameFitSize, inst.lastNameFit = size, st
+        Text.ApplyFont(fs, face, size, flags, style)
+        fs:ClearText()
+        pcall(fs.SetText, fs, name)
+        fs:SetAlpha(1)
+    end)
+end
+
+-- Drop a fit in flight and the size it left, for a name drawn unfitted.
+local function unfitName(inst)
+    inst.nameFitSeq = (inst.nameFitSeq or 0) + 1
+    inst.nameText:SetAlpha(1)
+    if inst.nameFitSize then
+        inst.nameFitSize = nil
+        local Text = addon.UnitFrames.Text
+        Text.ApplyFont(inst.nameText, Text.ResolveFont(inst, "name"))
+    end
+end
+
+--- Put a name string on the frame: fitted where the setting asks, direct
+--- otherwise. hold keeps the current picture up while a fit runs. The nil
+--- tests go through type(), which a secret name answers.
+function Values.SetName(inst, name, hold)
+    local present = type(name) ~= "nil"
+    if present and addon.UnitFrames.Text.FitsName(inst.key) then
+        Values.FitName(inst, name, hold)
+        return
+    end
+    unfitName(inst)
+    if present then
+        pcall(inst.nameText.SetText, inst.nameText, name)
+    else
+        inst.nameText:ClearText()
+    end
+end
+
 -- The player's own name and level are plain reads on retail. Both are screened
 -- anyway: this frame is written to be pointed at another unit later, where they
 -- are not.
-function Values.ApplyIdentity(inst)
+function Values.ApplyIdentity(inst, hold)
     if inst.nameText then
-        local name = UnitName(inst.unit)
-        if name ~= nil then
-            pcall(inst.nameText.SetText, inst.nameText, name)
+        local Text = addon.UnitFrames.Text
+        local name
+        if Text.SURFACE[inst.key].surname then
+            name = Values.DisplayName(inst.unit, not Text.Get(inst.key, "name", "hideSurname"))
         else
-            inst.nameText:ClearText()
+            name = UnitName(inst.unit)
         end
+        Values.SetName(inst, name, hold)
     end
 
     if inst.levelText then

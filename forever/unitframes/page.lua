@@ -105,6 +105,28 @@ local function Render(panel, scrollContent, key, navKey)
                 kind = "align", default = key == "targettarget" and "LEFT" or "CENTER",
             } or nil,
         })
+        if surface.surname then
+            local surnamePath = Text.Path(key, "name", "hideSurname")
+            tab:AddToggle({ label = "Hide Last Name",
+                get = function() return DB.Get(surnamePath) and true or false end,
+                set = function(v) DB.Set(surnamePath, v and true or false); apply() end })
+        end
+        if surface.fit then
+            local fitPath = Text.Path(key, "name", "fit")
+            local fitMinPath = Text.Path(key, "name", "fitMin")
+            tab:AddToggle({ label = "Shrink Long Names",
+                get = function() return DB.Get(fitPath) ~= false end,
+                set = function(v)
+                    DB.Set(fitPath, v and true or false)
+                    apply()
+                    tab:RefreshControls()
+                end })
+            tab:AddSlider({ label = "Smallest Name Size", min = 6, max = 12, step = 1,
+                minLabel = "6", maxLabel = "12",
+                disabled = function() return DB.Get(fitPath) == false end,
+                get = function() return getNumber(fitMinPath, Text.FIT_MIN) end,
+                set = function(v) DB.Set(fitMinPath, tonumber(v) or Text.FIT_MIN); apply() end })
+        end
         if surface.width then
             local widthPath = Text.Path(key, "name", "width")
             tab:AddSlider({ label = "Name Width", min = 60, max = 160, step = 1,

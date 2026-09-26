@@ -75,6 +75,12 @@ local function pushInstance(push, key)
             push("  %-15s shown %-5s %s %d  alpha %.2f  vertex alpha %.2f  %s",
                 name, tostring(tex:IsShown()), tostring(layer), sublevel or 0,
                 tex:GetAlpha(), va or 1, file and ("file " .. file) or "flat fill")
+            if tex.lift then
+                local _, liftSublevel = tex.lift:GetDrawLayer()
+                local lr, lg, lb, la = tex.lift:GetVertexColor()
+                push("  %-15s shown %-5s sublevel %d  tint %.2f %.2f %.2f  alpha %.2f", "  lift",
+                    tostring(tex.lift:IsShown()), liftSublevel or 0, lr, lg, lb, la)
+            end
         end
     end
     for _, name in ipairs({ "name", "level" }) do
@@ -97,6 +103,26 @@ local function pushInstance(push, key)
             push("  %-15s face %s, size %s, color %s, hidden %s", "",
                 tostring(Text.Get(key, name, "fontFace")), tostring(Text.Get(key, name, "size")),
                 tostring(Text.Get(key, name, "colorMode")), tostring(inst.textHidden[name]))
+        end
+    end
+    if Text.SURFACE[key].surname then
+        local first, surname = UnitName(inst.unit)
+        local function show(v) return issecretvalue(v) and "<secret>" or tostring(v) end
+        push("  %-15s UnitName %s | %s, regional unique %s, hide surname %s", "",
+            show(first), show(surname),
+            tostring(RegionalUniqueNamesEnabled and RegionalUniqueNamesEnabled()),
+            tostring(Text.Get(key, "name", "hideSurname")))
+    end
+    if Text.SURFACE[key].fit then
+        local st = inst.lastNameFit
+        if not Text.FitsName(key) then
+            push("  %-15s fit off", "")
+        elseif not st then
+            push("  %-15s fit not run", "")
+        else
+            push("  %-15s fit %s, size %s of %s..%s, %s characters%s", "",
+                tostring(st.tier or "none"), tostring(inst.nameFitSize), tostring(st.lo), tostring(st.hi),
+                tostring(st.F), st.reason and (", " .. st.reason) or "")
         end
     end
     push("")
@@ -209,6 +235,27 @@ addon:RegisterSlashCommand({
     name = "border", help = "stock|tint|bronze: the frame border's colour",
     handler = function(sub)
         if not addon.UnitFrames.SetBorderStyle(sub) then return addon.Commands.USAGE end
+    end,
+})
+
+-- A tuning aid for the leather: the opacity is the stored setting on every
+-- frame, the lift tint lasts the session. The values found go into text.lua.
+addon:RegisterSlashCommand({
+    name = "backdrop", help = "<opacity 0-100> [lift r g b 0-1]: retune every leather backdrop",
+    handler = function(sub)
+        local UF = addon.UnitFrames
+        local opacity, r, g, b = sub:match("^(%d+)%s*([%d.]*)%s*([%d.]*)%s*([%d.]*)$")
+        opacity = tonumber(opacity)
+        if not opacity then return addon.Commands.USAGE end
+        for _, key in ipairs(UF.ORDER) do
+            if UF.Text.SURFACE[key].backdrop then
+                addon.DB.Set(UF.Text.Path(key, "backdrop", "opacity"), math.min(opacity, 100))
+            end
+        end
+        if tonumber(b) then
+            UF.Text.BACKDROP_LIFT = { tonumber(r), tonumber(g), tonumber(b) }
+        end
+        UF.RefreshText()
     end,
 })
 

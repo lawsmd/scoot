@@ -305,9 +305,9 @@ end
 -- part-full bars. Static values only, so nothing here can be secret.
 local GOLD_R, GOLD_G, GOLD_B = 1.0, 0.82, 0
 
-local function paintStandIn(inst)
+local function paintStandIn(inst, hold)
     if inst.nameText then
-        inst.nameText:SetText(inst.def.label)
+        Values.SetName(inst, inst.def.label, hold)
         inst.nameText:SetTextColor(Text.Color(inst, "name", GOLD_R, GOLD_G, GOLD_B, "player"))
     end
     if inst.levelText then
@@ -336,15 +336,19 @@ function Frame.Paint(inst)
     Values.ApplyBarText(inst)
 end
 
-function Frame.PaintAll(inst)
+-- newSubject: the frame may now show a different unit, so the name blanks
+-- until its fit lands (values.lua, FitName). Without it the paint is a
+-- settings change on the same unit, and the name holds.
+function Frame.PaintAll(inst, newSubject)
     if not inst.frame:IsShown() then return end
+    local hold = not newSubject
     if inst.previewStandIn then
         if inst.def.paintState then inst.def.paintState(inst) end
-        paintStandIn(inst)
+        paintStandIn(inst, hold)
         return
     end
     Values.ApplyPowerColor(inst)
-    Values.ApplyIdentity(inst)
+    Values.ApplyIdentity(inst, hold)
     Values.ApplyPortrait(inst)
     if inst.def.paintState then inst.def.paintState(inst) end
     Frame.Paint(inst)
@@ -384,7 +388,7 @@ function Frame.WireEvents(inst)
             Values.ApplyPowerColor(inst)
             Values.ApplyPower(inst)
         elseif event == "UNIT_NAME_UPDATE" or event == "UNIT_LEVEL" then
-            Values.ApplyIdentity(inst)
+            Values.ApplyIdentity(inst, true)
             if def.paintState then def.paintState(inst) end
         elseif event == "UNIT_PORTRAIT_UPDATE" then
             Values.ApplyPortrait(inst)
@@ -398,7 +402,7 @@ function Frame.WireEvents(inst)
     for event, filter in pairs(def.changeEvents or {}) do
         addon.Events.On(owner, event, function(_, unit)
             if filter ~= true and unit ~= filter then return end
-            Frame.PaintAll(inst)
+            Frame.PaintAll(inst, true)
         end)
     end
 
@@ -414,7 +418,7 @@ function Frame.WireEvents(inst)
     end)
 
     -- The paint gates on IsShown, so the manager's show has to trigger one.
-    frame:SetScript("OnShow", function() Frame.PaintAll(inst) end)
+    frame:SetScript("OnShow", function() Frame.PaintAll(inst, true) end)
 end
 
 --------------------------------------------------------------------------------
@@ -442,7 +446,7 @@ function Frame.ShowPreview(inst)
     local ok, exists = pcall(UnitExists, inst.unit)
     local noUnit = not ok or (not issecretvalue(exists) and exists == false)
     inst.previewStandIn = noUnit or nil
-    Frame.PaintAll(inst)
+    Frame.PaintAll(inst, true)
 end
 
 function Frame.EndPreview(inst)
@@ -450,7 +454,7 @@ function Frame.EndPreview(inst)
     inst.previewActive = nil
     inst.previewStandIn = nil
     -- Repaint from the unit while still shown, then let the watch decide.
-    Frame.PaintAll(inst)
+    Frame.PaintAll(inst, true)
     Harness.UpdateVisibility(inst)
 end
 
@@ -506,7 +510,7 @@ function UF.ApplyAll()
                 Frame.ShowPreview(inst)
             end
             Art.ApplyBorder(inst)
-            Frame.PaintAll(inst)
+            Frame.PaintAll(inst, true)
         end
     end
 
