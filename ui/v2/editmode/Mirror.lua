@@ -69,10 +69,11 @@ local STATUS_BTN_W  = 64   -- the compact status-row button
 
 -- Kept off addon.UI.Skin.Metrics: dialog-only squeeze values, sized to the
 -- 232px box like every other constant in this file. The label has its own line,
--- so the boxes get the full width: 12 pad + tag + 4 + 80 box + 16 gap + tag +
--- 4 + 80 box + 12 pad.
-local POS_BOX_W       = 80   -- each coordinate box; 62px of text after the control's padding
-local POS_BOX_H       = 22
+-- so the boxes get the full width: 12 pad + tag + 4 + reach + 80 box + 16 gap +
+-- tag + 4 + reach + 80 box + 12 pad, where reach is the input role's art past
+-- the box's left edge (5 on a template skin, 0 on flat).
+local POS_BOX_W       = 80   -- each coordinate box
+local POS_BOX_H       = 22   -- flat draw only; a template box takes its art's 20
 local POS_HALF_GAP    = 16   -- between the X half and the Y half
 local POS_PAD_BOTTOM  = 4
 local POS_ROW_H       = 46   -- label line + box line
@@ -133,8 +134,16 @@ local BUILDERS = {
 
         local theme = addon.UI and addon.UI.Theme
 
+        -- The label and the X/Y tags wear the slider and selector row label:
+        -- Controls.AddRowChrome's role, size and accent color.
+        local function styleLabel(fs)
+            if not theme then return end
+            theme:ApplyFont(fs, Controls.RowLabelFontRole(), 13)
+            fs:SetTextColor(theme:GetAccentColor())
+        end
+
         local label = row:CreateFontString(nil, "OVERLAY")
-        if theme and theme.ApplyLabelFont then theme:ApplyLabelFont(label, 11) end
+        styleLabel(label)
         label:SetJustifyH("CENTER")
         label:SetPoint("TOP", row, "TOP", 0, -2)
         label:SetText(spec.label or "")
@@ -143,40 +152,53 @@ local BUILDERS = {
         -- coordinate and this supplies the other.
         local lastX, lastY
 
+        -- The slider's value box, so the pair wears the input role's draw:
+        -- the skin's template art on Camelot, the flat accent border on tui.
+        -- Free text validated on commit: SetNumeric rejects the minus sign.
         local function makeBox()
-            -- Free text validated on commit: SetNumeric rejects the minus sign.
-            return Controls:CreateSingleLineEditBox({
-                parent     = row,
+            return Controls.CreateValueInput(row, {
                 width      = POS_BOX_W,
                 height     = POS_BOX_H,
                 fontSize   = 11,
-                justifyH   = "CENTER",
                 maxLetters = POS_MAX_LETTERS,
             })
         end
 
         local function makeTag(text)
             local tag = row:CreateFontString(nil, "OVERLAY")
-            if theme and theme.ApplyLabelFont then theme:ApplyLabelFont(tag, 10) end
+            styleLabel(tag)
             tag:SetText(text)
             return tag
         end
 
         -- Each half is tag + box, one on each side of the row's center line, so
-        -- the pair sits centered under the label.
+        -- the pair sits centered under the label. A template box's art reaches
+        -- _artLeft past its left edge, so the tag stands off the art, not the box.
         local xBox = makeBox()
+        local reach = xBox._artLeft or 0
+        local boxH = xBox:GetHeight()
         xBox:SetPoint("BOTTOMRIGHT", row, "BOTTOM", -POS_HALF_GAP / 2, POS_PAD_BOTTOM)
-        makeTag("X"):SetPoint("RIGHT", xBox, "LEFT", -4, 0)
+        makeTag("X"):SetPoint("RIGHT", xBox, "LEFT", -(4 + reach), 0)
         local yTag = makeTag("Y")
-        yTag:SetPoint("LEFT", row, "BOTTOM", POS_HALF_GAP / 2, POS_PAD_BOTTOM + POS_BOX_H / 2)
+        yTag:SetPoint("LEFT", row, "BOTTOM", POS_HALF_GAP / 2, POS_PAD_BOTTOM + boxH / 2)
         local yBox = makeBox()
-        yBox:SetPoint("LEFT", yTag, "RIGHT", 4, 0)
+        yBox:SetPoint("LEFT", yTag, "RIGHT", 4 + reach, 0)
 
         local function paint(box, v)
-            if box.HasFocus and box.HasFocus() then return end
+            if box:HasFocus() then return end
             local text = (v ~= nil) and ("%d"):format(math.floor(v + 0.5)) or "-"
             box._painted = text
             box:SetText(text)
+        end
+
+        -- An EditBox lays its text out at SetText, so a box painted before
+        -- the dialog has a rect shows nothing: re-assert once laid out and on
+        -- every show, as the slider's value box does.
+        local function repaint(box)
+            if box:HasFocus() or box._painted == nil then return end
+            box:SetText("")
+            box:SetText(box._painted)
+            box:SetCursorPosition(0)
         end
 
         local function commit(box, which, text)
@@ -198,8 +220,26 @@ local BUILDERS = {
             row:Refresh()
         end
 
-        xBox:SetOnChange(function(text) commit(xBox, "x", text) end)
-        yBox:SetOnChange(function(text) commit(yBox, "y", text) end)
+        -- Enter and focus loss commit; Escape restores the painted text
+        -- first, so the focus loss it causes finds nothing to commit.
+        local function wire(box, which)
+            box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+            box:SetScript("OnEscapePressed", function(self)
+                self:SetText(self._painted or "")
+                self:ClearFocus()
+            end)
+            box:SetScript("OnEditFocusGained", function(self)
+                self:HighlightText()
+                self._setFocusLook(true)
+            end)
+            box:SetScript("OnEditFocusLost", function(self)
+                self:HighlightText(0, 0)
+                self._setFocusLook(false)
+                commit(self, which, self:GetText())
+            end)
+        end
+        wire(xBox, "x")
+        wire(yBox, "y")
 
         function row:Refresh()
             local cx, cy = spec.get()
@@ -207,16 +247,18 @@ local BUILDERS = {
             paint(xBox, cx)
             paint(yBox, cy)
             local enabled = (cx ~= nil) and not InCombatLockdown()
-            xBox._editBox:SetEnabled(enabled)
-            yBox._editBox:SetEnabled(enabled)
+            xBox:SetEnabled(enabled)
+            yBox:SetEnabled(enabled)
         end
 
-        function row:Cleanup()
-            if xBox.Cleanup then xBox:Cleanup() end
-            if yBox.Cleanup then yBox:Cleanup() end
+        local function repaintBoth()
+            repaint(xBox)
+            repaint(yBox)
         end
 
         row:Refresh()
+        C_Timer.After(0, repaintBoth)
+        row:SetScript("OnShow", repaintBoth)
         return row
     end,
 
