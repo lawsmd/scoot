@@ -179,12 +179,13 @@ end
 --- Stored record -> center pair. Offsets are in the frame's own scale (what
 --- GetPoint reports and SetPoint takes); sizes convert through it. Today's
 --- positionables all run at scale 1; s keeps the math right if one ever
---- does not.
-local function centerFromRecord(frame, point, x, y)
+--- does not. `scale` overrides the frame's own, for a caller computing the
+--- center the frame will have at another scale (the Dynamic Layouts tween).
+local function centerFromRecord(frame, point, x, y, scale)
     local f = ANCHOR_FRACTIONS[point]
     if not f then return nil end
     local w, h = frameSize(frame)
-    local s = frameScale(frame)
+    local s = (scale and scale > 0) and scale or frameScale(frame)
     if not (w and s) then return nil end
     local W, H = UIParent:GetSize()
     return x * s + (f[1] - 0.5) * (W - w * s),
@@ -395,6 +396,11 @@ function EM.GetActiveLayoutName()
     local lib = GetLib()
     return lib and lib:GetActiveLayoutName() or nil
 end
+
+--- The center-pair conversion above, for a caller tweening a frame between
+--- two stored records: (point, x, y) at `scale` -> center offset from the
+--- screen center in UI units, or nil when the frame's rect cannot be read.
+EM.CenterFromRecord = centerFromRecord
 
 --------------------------------------------------------------------------------
 -- Introspection: /scoot debug positionables, or /run ScootAddon.EditMode.DumpPositionables()

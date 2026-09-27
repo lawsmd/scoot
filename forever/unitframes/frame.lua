@@ -291,6 +291,10 @@ function Frame.Build(key)
         label = def.label,
         default = def.default,
     })
+    -- After the positionable, so the adapter's snap lands last.
+    if UF.Dynamic then
+        UF.Dynamic.Register(inst)
+    end
 
     return inst
 end

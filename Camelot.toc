@@ -121,10 +121,17 @@ forever/features.lua
 forever/profiles.lua
 forever/recolor.lua
 
-## The Dynamic Layouts resolver: the base-or-dynamic answer, published as
-## edges. Stands on events, commands, debug/core and editmode/positionables
-## above. No game-type gate: the trigger dispatch verifies on retail too.
+## Dynamic Layouts: resolver publishes base-or-dynamic edges; tween is the
+## OnUpdate driver; engine holds the adapter registry and reads the store seam
+## at call time; the host sets addon.DynamicLayoutsStore, registers the trigger
+## and speed defaults, and feeds the resolver's mask on every profile pass.
+## Stands on events, commands, debug/core, editmode/positionables,
+## profiles/core and forever/db.lua above. No game-type gate: retail runs the
+## engine with zero adapters.
 core/dynamiclayouts/resolver.lua
+core/dynamiclayouts/tween.lua
+core/dynamiclayouts/engine.lua
+forever/dynamiclayouts.lua
 
 ## The component system, shared, and its host. base/core holds registration,
 ## the settings table behind component.db and the apply pass; the host answers
@@ -164,6 +171,7 @@ forever/unitframes/artpet.lua [ExcludeLoadGameType standard]
 forever/unitframes/values.lua [ExcludeLoadGameType standard]
 forever/unitframes/harness.lua [ExcludeLoadGameType standard]
 forever/unitframes/editmode.lua [ExcludeLoadGameType standard]
+forever/unitframes/dynamic.lua [ExcludeLoadGameType standard]
 forever/unitframes/suppression.lua [ExcludeLoadGameType standard]
 forever/unitframes/frame.lua [ExcludeLoadGameType standard]
 forever/unitframes/player.lua [ExcludeLoadGameType standard]

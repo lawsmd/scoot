@@ -47,13 +47,22 @@ local store = {
 -- restore can, on a reload or a layout switch. That one queues the harness's
 -- position slot, whose worker re-reads the store when combat drops.
 
-local function ApplyPosition(frame, point, x, y)
+local function ApplyPosition(frame, point, x, y, reason)
     if InCombatLockdown() then
         Harness.QueueRegen(instByFrame[frame], "position")
         return true
     end
     frame:ClearAllPoints()
     frame:SetPoint(point, x, y)
+    -- A restore lands the base position; if Dynamic Layouts holds the
+    -- dynamic state, it puts its own position and scale back on top.
+    if reason == "restore" then
+        local DL = addon.DynamicLayouts
+        local inst = instByFrame[frame]
+        if DL and DL.Reassert and inst then
+            DL.Reassert(inst.key)
+        end
+    end
     return false
 end
 

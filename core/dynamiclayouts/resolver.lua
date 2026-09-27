@@ -15,6 +15,10 @@
 -- Edit Mode outranks the triggers: while it is open the base state holds and
 -- resolutions return early. Listed on Camelot.toc; written against shared
 -- primitives only, so adoption by the other addon is a TOC listing.
+--
+-- The engine (engine.lua) feeds the enabled mask from the per-profile store,
+-- persists a trigger toggle through DL.PersistTrigger, and extends the debug
+-- command through DL.DebugVerbs and DL.DebugSections, both read live.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -346,14 +350,38 @@ function Resolver.Subscribe(owner, fn)
     sub.fn = fn
 end
 
--- Session-local; the per-layout record is the engine's schema work.
+--- Flip one trigger for the session. Returns the canonical name, or nil for
+--- an unknown one. Persistence is the engine's: triggerVerb below hands the
+--- canonical name to DL.PersistTrigger when the engine has set it.
 function Resolver.SetTriggerEnabled(name, on)
     local canonical = triggerByLower[string.lower(tostring(name or ""))]
-    if not canonical then return false end
+    if not canonical then return nil end
     enabled[canonical] = on and true or false
     armed[#armed + 1] = { event = "TRIGGER_TOGGLE", at = GetTime() }
     armDeferred()
-    return true
+    return canonical
+end
+
+--- Write the whole mask, from the per-profile store on every profile pass. A
+--- resolution is armed only once something has resolved: at the initial pass
+--- nothing has, and arming there would resolve pre-world against a stale
+--- IsInInstance and play a visible transition at the world entry.
+function Resolver.SetEnabledMask(mask)
+    if type(mask) ~= "table" then return end
+    for _, trigger in ipairs(TRIGGERS) do
+        local on = mask[trigger.name]
+        if on ~= nil then
+            enabled[trigger.name] = on and true or false
+        end
+    end
+    if answer ~= nil then
+        armed[#armed + 1] = { event = "MASK_SET", at = GetTime() }
+        armDeferred()
+    end
+end
+
+function Resolver.IsTriggerEnabled(name)
+    return enabled[name] and true or false
 end
 
 --------------------------------------------------------------------------------
@@ -420,6 +448,10 @@ local function showWindow()
             stats and stats.quiet or 0,
             (stats and stats.lastAt) and string.format("t=%.3f", stats.lastAt) or "-")
     end
+    for _, section in ipairs(DL.DebugSections) do
+        push("")
+        securecallfunction(section, push)
+    end
     push("")
     push("edges and flips (newest first, %d kept; arm offsets are seconds before the resolution)",
         EDGE_LOG_MAX)
@@ -451,24 +483,33 @@ local function triggerVerb(name, state)
     else
         return addon.Commands.USAGE
     end
-    if not Resolver.SetTriggerEnabled(name, on) then
+    local canonical = Resolver.SetTriggerEnabled(name, on)
+    if not canonical then
         return addon.Commands.USAGE
+    end
+    if DL.PersistTrigger then
+        DL.PersistTrigger(canonical, on)
     end
 end
 
+-- Both tables are read live: the engine appends its verbs to the first and
+-- its window section to the second when it loads, after this registration.
+DL.DebugVerbs = {
+    { word = "show", help = "open the Dynamic Layouts window", fn = showWindow },
+    { word = "trigger", usage = "trigger <inCombat|targetAcquired|insideInstance> <on|off>",
+      help = "flip a trigger; persists per profile once the engine is loaded", fn = triggerVerb },
+    { word = "clear", help = "empty the edge log and the event tallies",
+      fn = function()
+          edgeLog = {}
+          armStats = {}
+          suspendedResolves = 0
+      end },
+}
+DL.DebugSections = {}
+
 addon:RegisterDebugCommand({
     name = "dynamic",
-    help = "the Dynamic Layouts resolver: answer, triggers, edge log",
+    help = "Dynamic Layouts: the resolver's answer, triggers, adapters, edge log",
     default = "show",
-    verbs = {
-        { word = "show", help = "open the resolver window", fn = showWindow },
-        { word = "trigger", usage = "trigger <inCombat|targetAcquired|insideInstance> <on|off>",
-          help = "flip a trigger for this session", fn = triggerVerb },
-        { word = "clear", help = "empty the edge log and the event tallies",
-          fn = function()
-              edgeLog = {}
-              armStats = {}
-              suspendedResolves = 0
-          end },
-    },
+    verbs = DL.DebugVerbs,
 })
