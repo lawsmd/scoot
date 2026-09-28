@@ -146,7 +146,7 @@ function Tween.Start(id, spec)
     end
     active[id] = {
         frame = spec.frame,
-        duration = (spec.duration and spec.duration > 0) and spec.duration or 0.35,
+        duration = (spec.duration and spec.duration > 0) and spec.duration or 0.5,
         scale = spec.scale or 1,
         legal = spec.legal,
         write = spec.write,

@@ -162,10 +162,41 @@ end
 
 local chromeParts = setmetatable({}, { __mode = "k" })
 
+-- A role's variant: the descriptor with the fields of spec[name] laid over
+-- it, one merged table per descriptor so a caller comparing identities (the
+-- rebuild test below) sees one object for as long as the resolution holds.
+-- A descriptor with no such variant is returned as it is.
+local variants = setmetatable({}, { __mode = "k" })
+
+function SelectionSkin.WithVariant(spec, name)
+    local over = spec and spec[name]
+    if type(over) ~= "table" then return spec end
+    local byName = variants[spec]
+    if not byName then
+        byName = {}
+        variants[spec] = byName
+    end
+    local merged = byName[name]
+    if not merged then
+        merged = {}
+        for k, v in pairs(spec) do merged[k] = v end
+        for k, v in pairs(over) do merged[k] = v end
+        byName[name] = merged
+    end
+    return merged
+end
+
+-- The dynamic view of Edit Mode wears the role's "dynamic" variant.
 local function SelectionSpec()
     local Chrome = addon.UI and addon.UI.Chrome
     local spec = Chrome and Chrome.Spec and Chrome.Spec("editSelection")
-    if spec and spec.kind == "nineSlice" then return spec, Chrome end
+    if spec and spec.kind == "nineSlice" then
+        local EM = addon.EditMode
+        if EM.IsDynamicView and EM.IsDynamicView() then
+            spec = SelectionSkin.WithVariant(spec, "dynamic")
+        end
+        return spec, Chrome
+    end
     return nil
 end
 

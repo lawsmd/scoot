@@ -123,15 +123,16 @@ forever/recolor.lua
 
 ## Dynamic Layouts: resolver publishes base-or-dynamic edges; tween is the
 ## OnUpdate driver; engine holds the adapter registry and reads the store seam
-## at call time; the host sets addon.DynamicLayoutsStore, registers the trigger
-## and speed defaults, and feeds the resolver's mask on every profile pass.
-## Stands on events, commands, debug/core, editmode/positionables,
-## profiles/core and forever/db.lua above. No game-type gate: retail runs the
-## engine with zero adapters.
+## at call time; view is the state behind the dynamic view of Edit Mode, which
+## ui/v2/editmode/DynamicView.lua draws. The host, forever/dynamiclayouts/
+## host.lua, follows forever/components.lua below so its Features row lists
+## after Minimap and Tooltip. Stands on events, commands, debug/core,
+## editmode/positionables, profiles/core and forever/db.lua above. No
+## game-type gate: retail runs the engine with zero adapters.
 core/dynamiclayouts/resolver.lua
 core/dynamiclayouts/tween.lua
 core/dynamiclayouts/engine.lua
-forever/dynamiclayouts.lua
+core/dynamiclayouts/view.lua
 
 ## The component system, shared, and its host. base/core holds registration,
 ## the settings table behind component.db and the apply pass; the host answers
@@ -143,6 +144,9 @@ forever/dynamiclayouts.lua
 ## addon.Enforce there; minimap/offscreenunlock reads addon.OffscreenUnlock.
 core/components/base/core.lua
 forever/components.lua
+## The Dynamic Layouts host: the store seam, the defaults, the Features row
+## and the profile step (docs above the engine's block).
+forever/dynamiclayouts/host.lua
 core/components/minimap/core.lua
 core/components/minimap/zonetext.lua
 core/components/minimap/coordinates.lua
@@ -295,6 +299,10 @@ ui/v2/editmode/SelectionSkin.lua
 ui/v2/editmode/Tooltip.lua
 ui/v2/editmode/Mirror.lua
 ui/v2/editmode/Dialog.lua
+## The Dynamic Layouts strip on the Edit Mode box and the dynamic view's
+## panel, shield and border, over core/dynamiclayouts/view.lua. Camelot only
+## until Scoot adopts the feature.
+ui/v2/editmode/DynamicView.lua
 ui/v2/GameMenu.lua
 
 ## The two profile pages that call only addon.Profiles and addon.ImportExport.

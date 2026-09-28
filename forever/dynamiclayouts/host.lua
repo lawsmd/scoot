@@ -1,18 +1,24 @@
 --------------------------------------------------------------------------------
--- forever/dynamiclayouts.lua
--- The host side of Dynamic Layouts on Camelot: where the dynamic records and
--- the per-profile trigger set and speed live in CamelotDB, and the profile
--- pass that feeds the resolver's mask. The engine (core/dynamiclayouts/)
--- reads addon.DynamicLayoutsStore at call time and never touches the
--- database itself, so the other addon sets a store of its own.
+-- forever/dynamiclayouts/host.lua
+-- The host side of Dynamic Layouts on Camelot: the Features row, where the
+-- dynamic records and the per-profile trigger set and speed live in
+-- CamelotDB, and the profile pass that feeds the resolver's mask. The engine
+-- (core/dynamiclayouts/) reads addon.DynamicLayoutsStore at call time and
+-- never touches the database itself, so the other addon sets a store of its
+-- own.
 --
 -- A frame's record sits beside its Edit Mode positions:
 --   layout[key] = { positions = { [layoutName] = { point, x, y } },
---                   dynamic = { enabled, point, x, y, scale, opacity } }
+--                   dynamic = { enabled, point, x, y, scale, opacity, offscreen } }
 -- A profile is one Edit Mode layout, so the record needs no layout key. x and
 -- y are in the frame's own scale, what SetPoint takes; an editor writing them
 -- at the dynamic scale stores what GetPoint reports there. A missing field
--- leaves that channel at base.
+-- leaves that channel at base; offscreen names the screen edge the frame
+-- leaves by, or is absent.
+--
+-- The feature switch is read once per session, as every Features row is.
+-- Off, the store answers no record, so every adapter stays at base and the
+-- Edit Mode strip never builds.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -21,6 +27,7 @@ local DB = addon.DB
 local DL = addon.DynamicLayouts
 local Resolver = DL.Resolver
 
+local FEATURE_PATH = "dynamicLayouts.enabled"
 local TRIGGERS = { "inCombat", "targetAcquired", "insideInstance" }
 local SPEED_PATH = "dynamicLayouts.speed"
 
@@ -29,14 +36,26 @@ local function triggerPath(name)
 end
 
 DB.RegisterDefaults({
+    [FEATURE_PATH] = true,
     [triggerPath("inCombat")] = true,
     [triggerPath("targetAcquired")] = true,
     [triggerPath("insideInstance")] = true,
     [SPEED_PATH] = DL.SPEED_DEFAULT,
 })
 
+-- Listed after components.lua in the TOC, so the row follows Minimap and
+-- Tooltip under Interface.
+addon.Features.Register({ group = "interface", groupLabel = "Interface",
+    id = "dynamicLayouts", label = "Dynamic Layouts", path = FEATURE_PATH })
+
+local function enabled()
+    return DB.SessionGet(FEATURE_PATH) == true
+end
+
 addon.DynamicLayoutsStore = {
+    IsEnabled = enabled,
     GetRecord = function(id)
+        if not enabled() then return nil end
         local entry = DB.GetLayout(id)
         return entry and entry.dynamic or nil
     end,

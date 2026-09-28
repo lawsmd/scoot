@@ -36,7 +36,9 @@ local CHANNELS = { "opacity", "scale", "position" }
 local CHANNEL_SET = { opacity = true, scale = true, position = true }
 local TIERS = { plain = true, protected = true }
 
-local SPEED_MIN, SPEED_MAX, SPEED_DEFAULT = 0.1, 1.5, 0.35
+-- The player's slider runs this range in quarter-second steps; the read
+-- clamps a stored value into it.
+local SPEED_MIN, SPEED_MAX, SPEED_DEFAULT = 0.25, 2.0, 0.5
 DL.SPEED_MIN, DL.SPEED_MAX, DL.SPEED_DEFAULT = SPEED_MIN, SPEED_MAX, SPEED_DEFAULT
 
 local ANCHORS = {
@@ -52,6 +54,8 @@ local ANCHORS = {
 local adapters = {}   -- id -> state record
 local registered = {} -- ids in registration order
 local forced = nil    -- "base" | "dynamic" | nil, session only
+local view = nil      -- true while the dynamic view of Edit Mode holds
+local viewEnd = nil   -- the view's callback when the engine ends it at combat entry
 
 -- The host seam, read at call time so the host file can load after this one.
 local function Store()
@@ -98,10 +102,15 @@ local DEFAULT_APPLY = {
 -- Decisions and values
 --------------------------------------------------------------------------------
 
---- What this adapter should be in: the forced override, then the resolver's
---- answer, with dynamic only for a record that says enabled. nil before the
---- first resolution.
+--- What this adapter should be in: the dynamic view (every enabled record is
+--- dynamic while it holds; the resolver's answer is base under Edit Mode),
+--- then the forced override, then the resolver's answer, with dynamic only
+--- for a record that says enabled. nil before the first resolution.
 local function decide(id)
+    if view then
+        local rec = record(id)
+        return (rec and rec.enabled) and "dynamic" or "base"
+    end
     if forced then return forced end
     local answer = Resolver.Answer()
     if answer ~= "dynamic" then return answer end
@@ -485,6 +494,48 @@ function DL.Ids()
     return registered
 end
 
+--- The adapter registered on a frame, for the Edit Mode seams that know the
+--- frame and not the id (core/editmode/positionables.lua).
+function DL.IdForFrame(frame)
+    if not frame then return nil end
+    for _, id in ipairs(registered) do
+        local st = adapters[id]
+        if not st.inert and frameOf(st) == frame then return id end
+    end
+    return nil
+end
+
+--- The live adapters as { id, label, tier } in registration order, for a
+--- surface that lists them (the dynamic view's frame checkboxes).
+function DL.Definitions()
+    local out = {}
+    for _, id in ipairs(registered) do
+        local st = adapters[id]
+        if not st.inert then
+            out[#out + 1] = { id = id, label = st.def.label or id, tier = st.def.tier }
+        end
+    end
+    return out
+end
+
+--- One channel's base value from the adapter's getter (position as a
+--- record), or nil; and the record's own value for it, or nil.
+function DL.BaseValue(id, channel)
+    local st = adapters[id]
+    if not st or st.inert then return nil end
+    return baseValue(st, channel)
+end
+
+function DL.DynamicValue(id, channel)
+    if not adapters[id] then return nil end
+    return dynamicValue(id, channel)
+end
+
+--- The transition duration the next tween takes, clamped.
+function DL.Speed()
+    return speed()
+end
+
 --- Re-run the decision for one adapter. mode: "snap" or "tween".
 function DL.Refresh(id, mode)
     local st = adapters[id]
@@ -541,6 +592,35 @@ function DL.SetForced(state)
     if state ~= "base" and state ~= "dynamic" then state = nil end
     forced = state
     DL.RefreshAll("tween")
+end
+
+--- The dynamic view of Edit Mode. On, every enabled record
+--- holds its dynamic state whatever the resolver says, and the pass plays
+--- the transition. Off, mode says how the base comes back: "tween" plays it
+--- (the view's Done button); "defer" arms one refresh for the next frame,
+--- after the resolver's own exit resolution, so a view ended by Edit Mode
+--- closing makes one motion to whatever the triggers say. The engine ends
+--- the view itself at combat entry, inside the regen-disabled window, and
+--- calls onEnd("combat") so the surface tears down there.
+function DL.SetView(on, mode, onEnd)
+    if on then
+        view = true
+        viewEnd = onEnd
+        forced = nil
+        DL.RefreshAll("tween")
+        return
+    end
+    view = nil
+    viewEnd = nil
+    if mode == "defer" then
+        C_Timer.After(0, function() DL.RefreshAll("tween") end)
+    else
+        DL.RefreshAll(mode or "tween")
+    end
+end
+
+function DL.IsView()
+    return view == true
 end
 
 --- Set by the resolver's trigger verb; the host's store persists it.
@@ -604,16 +684,30 @@ end)
 addon.EditMode.OnEditMode(OWNER, {
     enter = function()
         forced = nil
+        view = nil
         landAll()
     end,
 })
 
 -- Registered after the resolver's own handler, so it runs second inside the
--- pre-lockdown window: a protected frame's position and scale still in
--- flight land now, while the writes are legal. This is the case no edge
--- covers, a base tween still running when combat starts, or the inCombat
+-- pre-lockdown window. First the dynamic view, if one holds: no dynamic
+-- value stands in combat from a player-facing surface (the owner's rule),
+-- so the view ends here and every frame lands at base on the
+-- sync edge while the protected writes are still legal. Then a protected
+-- frame's position and scale still in flight land, for the case no edge
+-- covers: a base tween still running when combat starts, or the inCombat
 -- trigger switched off.
 addon.Events.On(OWNER, "PLAYER_REGEN_DISABLED", function()
+    if view then
+        view = nil
+        local onEnd = viewEnd
+        viewEnd = nil
+        DL.RefreshAll("sync")
+        if onEnd then
+            local ok, err = pcall(onEnd, "combat")
+            if not ok then geterrorhandler()(err) end
+        end
+    end
     for _, id in ipairs(registered) do
         local st = adapters[id]
         if st.def.tier == "protected" then
@@ -639,8 +733,8 @@ end
 
 local function section(push)
     local store = Store()
-    push("adapters (%d registered, speed %.2fs, force %s, store %s)",
-        #registered, speed(), forced or "off", store and "set" or "MISSING")
+    push("adapters (%d registered, speed %.2fs, force %s, view %s, store %s)",
+        #registered, speed(), forced or "off", view and "on" or "off", store and "set" or "MISSING")
     if #registered == 0 then
         push("  (none)")
         return
@@ -781,7 +875,7 @@ verbs[#verbs + 1] = { word = "enable", usage = "enable <id> <on|off>",
     help = "let a frame take its dynamic state; ids are the window's adapter rows", fn = enableVerb }
 verbs[#verbs + 1] = { word = "value", usage = "value <id> <opacity|scale|x|y|point> <value|off>",
     help = "set one field of a frame's dynamic record (opacity 0..1, scale 0.25..4); off clears it", fn = valueVerb }
-verbs[#verbs + 1] = { word = "speed", usage = "speed <0.1..1.5>",
+verbs[#verbs + 1] = { word = "speed", usage = "speed <0.25..2>",
     help = "the transition duration in seconds, per profile", fn = speedVerb }
 verbs[#verbs + 1] = { word = "force", usage = "force <base|dynamic|off>",
     help = "hold a state regardless of the triggers, this session; Edit Mode clears it", fn = forceVerb }

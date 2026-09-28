@@ -35,9 +35,10 @@ local OWNER = "camelotDynamicLayouts"
 -- Probes
 --------------------------------------------------------------------------------
 
--- Instance types the insideInstance trigger counts. Whether pvp and arena
--- belong here is an open product question; the answer is one table edit.
-local INSTANCE_TYPES = { party = true, raid = true }
+-- Instance types the insideInstance trigger counts: every one, decided with
+-- the owner 28 September 2026, since the requirement reads "Not in an
+-- instance".
+local INSTANCE_TYPES = { party = true, raid = true, pvp = true, arena = true, scenario = true }
 
 -- A probe result counts only as a readable plain true: a throw or a secret
 -- value reads as false, the guard the opacity resolver applies to its own.

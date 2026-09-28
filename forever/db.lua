@@ -350,7 +350,7 @@ function DB.Dump()
             push("    %-28s %s %.0f, %.0f",
                 layoutName, tostring(pos.point), pos.x or 0, pos.y or 0)
         end
-        -- The Dynamic Layouts record (forever/dynamiclayouts.lua).
+        -- The Dynamic Layouts record (forever/dynamiclayouts/host.lua).
         local dyn = e.dynamic
         if type(dyn) == "table" then
             push("    %-28s enabled %s, point %s %s,%s, scale %s, opacity %s",

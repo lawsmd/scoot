@@ -191,7 +191,7 @@ end
 
 -- A resync pass keeps the profile it had; re-landing the base scale and
 -- position there would cut short the Dynamic Layouts tween that leaving
--- Edit Mode starts (forever/dynamiclayouts.lua).
+-- Edit Mode starts (forever/dynamiclayouts/host.lua).
 addon.Profiles.RegisterApplyStep("camelotCastBars", function(_, ctx)
     if ctx.initial or ctx.resync then return end
     CBZ._Reconcile()

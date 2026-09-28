@@ -48,6 +48,12 @@ local UI_FACE = (GameFontNormal and select(1, GameFontNormal:GetFont()))
 local PROP_REG  = addon.Fonts.ROBOTO_REG or (FONT_BASE .. "Roboto-Regular.ttf")
 local PROP_MED  = addon.Fonts.ROBOTO_MED or (FONT_BASE .. "Roboto-Medium.ttf")
 
+-- The dynamic view of Edit Mode (ui/v2/editmode/DynamicView.lua) wears this
+-- in place of the bronze: a cool blue, so a glance says which layout a drag
+-- will change. One literal, read by the two Edit Mode roles' "dynamic"
+-- variants and by the strip, the shield's border and the edge tabs.
+local DYNAMIC = { 0.42, 0.68, 1.0 }
+
 Skin.Register("forever", {
     -- Kept off Theme accent: contrast floor. The near black and the warm
     -- grays are what the accent is read against; they cannot move with it.
@@ -562,6 +568,13 @@ Skin.Register("forever", {
             glow = { outset = 0, tint = { 1, 0.82, 0.45 },
                      highlight = 0.25, pulse = { from = 0.3, to = 0.7, duration = 1.4 } },
             labelColor = "primary",
+            -- The dynamic view: the same box with its metal and its glow in
+            -- the view's blue (SelectionSkin.WithVariant lays these over).
+            dynamic = {
+                tint = DYNAMIC,
+                glow = { outset = 0, tint = DYNAMIC,
+                         highlight = 0.25, pulse = { from = 0.3, to = 0.7, duration = 1.4 } },
+            },
             fallback = { kind = "flat" },
         },
         -- The box that opens on a click in Edit Mode (ui/v2/editmode/Dialog.lua).
@@ -582,6 +595,26 @@ Skin.Register("forever", {
             -- overhang on the box's left edge; Dialog.lua adds the selection
             -- box's own standoff on top of it.
             attach = { gap = 14 },
+            -- The dynamic view: the title and the library's border pieces in
+            -- the view's blue.
+            dynamic = { titleColor = DYNAMIC, borderTint = DYNAMIC },
+        },
+        -- The Dynamic Layouts strip on the top edge of Blizzard's Edit Mode
+        -- box, and the panel it grows into while the dynamic view holds
+        -- (ui/v2/editmode/DynamicView.lua): the box's own translucent dialog
+        -- border, the same nine-slice, over the black fill the box draws at
+        -- 0.8, so the strip reads as the box's own header. The emblem hangs
+        -- on its top-left corner as it hangs on the Edit Mode dialog's.
+        -- accent is the view's color, for the button's glow, the border the
+        -- view draws around the screen, and the edge tabs.
+        editStrip = {
+            kind = "nineSlice", layout = "Dialog",
+            fill = { color = { 0, 0, 0, 0.8 }, inset = 7 },
+            portrait = { texture = "CAMELOT_EMBLEM", ring = false, mask = false,
+                         size = 32, x = -8, y = 8 },
+            titleColor = "primary",
+            accent = DYNAMIC,
+            fallback = { kind = "flat", accent = DYNAMIC },
         },
     },
 

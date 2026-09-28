@@ -64,6 +64,19 @@ local listeners = {}          -- array of { owner, enter, exit }, first-registra
 local listenerByOwner = {}
 local hooked = {}             -- event name -> true once registered with the library
 
+-- The Dynamic Layouts view of Edit Mode (core/dynamiclayouts/view.lua). While
+-- it holds, a drop on a frame with an adapter writes the frame's dynamic
+-- record in place of its position, the X/Y row reads the live center, and
+-- the dialog lists the dynamic rows in place of the component's own. Inert
+-- on a host without the engine.
+local dynamicView = false
+
+local function dynamicIdFor(frame)
+    local DL = addon.DynamicLayouts
+    if not (dynamicView and DL and DL.IdForFrame) then return nil end
+    return DL.IdForFrame(frame)
+end
+
 --------------------------------------------------------------------------------
 -- Positions
 --------------------------------------------------------------------------------
@@ -107,6 +120,22 @@ local function onDrop(frame, layoutName, point, x, y)
     if not entry then return end
     if not (point and x and y) then return end
     if applyPosition(entry, frame, point, x, y, "drop") then return end
+
+    -- The dynamic view: the resolved anchor is the frame's dynamic position,
+    -- in its own scale at the dynamic scale, which is the record's
+    -- convention. The snap that follows puts the engine's hold on it.
+    local dynamicId = dynamicIdFor(frame)
+    if dynamicId then
+        local store = addon.DynamicLayoutsStore
+        local ok, dPoint, _, _, dx, dy = pcall(frame.GetPoint, frame, 1)
+        dPoint = ok and SS.plainString(dPoint) or nil
+        dx, dy = SS.safeNumber(dx), SS.safeNumber(dy)
+        if store and dPoint and dx and dy then
+            store.SetRecord(dynamicId, { point = dPoint, x = dx, y = dy })
+            addon.DynamicLayouts.Refresh(dynamicId, "snap")
+        end
+        return
+    end
 
     local key = resolveKey(entry, frame)
     if not layoutName or key == nil then return end
@@ -196,6 +225,7 @@ end
 --- with nothing stored yet (a Note before its first drag, a ScootAuras shell
 --- whose key resolves nil).
 local function positionCurrent(entry, frame)
+    if dynamicView then return liveCenter(frame) end
     if not entry.dragging then
         local lib = GetLib()
         local layoutName = lib and lib:GetActiveLayoutName()
@@ -241,11 +271,85 @@ local function commitPosition(entry, frame, pos)
     lib:NudgeFrame(frame, (tx - cx) / s, (ty - cy) / s)
 end
 
+local function positionEditable(entry, frame)
+    if type(entry.positionEditable) ~= "function" then return true end
+    local ok, allowed = pcall(entry.positionEditable, frame)
+    return (ok and allowed) and true or false
+end
+
+--- The dialog's rows while the dynamic view holds: the position row over the
+--- live center, then Opacity and Scale over the frame's dynamic record, each
+--- only for a channel the adapter carries. A slider write snaps, so the
+--- frame follows the thumb. A scale write re-expresses a stored position at
+--- the new scale, since offsets are in the frame's own scale and the anchor
+--- point would otherwise drift.
+local function dynamicRows(entry, frame)
+    local DL = addon.DynamicLayouts
+    local store = addon.DynamicLayoutsStore
+    local id = dynamicIdFor(frame)
+    local st = id and DL.Get(id)
+    if not (st and store and not st.inert) then return {} end
+    local channels = st.channelSet or {}
+
+    local function rec()
+        return store.GetRecord(id) or {}
+    end
+    local function write(fields)
+        store.SetRecord(id, fields)
+        DL.Refresh(id, "snap")
+    end
+    local function percent(v)
+        return math.floor(v * 100 + 0.5)
+    end
+
+    local specs = {}
+    if channels.position and positionEditable(entry, frame) then
+        specs[#specs + 1] = {
+            kind  = "position",
+            label = "Position",
+            get   = function() return liveCenter(frame) end,
+            set   = function(p) commitPosition(entry, frame, p) end,
+        }
+    end
+    if channels.opacity then
+        specs[#specs + 1] = {
+            kind = "slider", label = "Opacity", min = 0, max = 100, step = 1, precision = 0,
+            get = function()
+                local v = rec().opacity
+                return percent(type(v) == "number" and v or 1)
+            end,
+            set = function(v) write({ opacity = v / 100 }) end,
+        }
+    end
+    if channels.scale then
+        specs[#specs + 1] = {
+            kind = "slider", label = "Scale", min = 25, max = 200, step = 1, precision = 0,
+            get = function()
+                local v = rec().scale
+                if type(v) ~= "number" then v = DL.BaseValue(id, "scale") or 1 end
+                return percent(v)
+            end,
+            set = function(v)
+                local r = rec()
+                local new = v / 100
+                local old = type(r.scale) == "number" and r.scale or DL.BaseValue(id, "scale") or 1
+                local fields = { scale = new }
+                if r.point and type(r.x) == "number" and type(r.y) == "number" and old > 0 and new > 0 then
+                    fields.x, fields.y = r.x * old / new, r.y * old / new
+                end
+                write(fields)
+            end,
+        }
+    end
+    return specs
+end
+
 --- The provider Brand:Register gets: the shared position row first, then the
 --- component's own mirror entries. The component provider runs under pcall so
 --- one bad list cannot take the row down with it.
 local function composeMirror(entry, componentMirror)
     return function(frame)
+        if dynamicView then return dynamicRows(entry, frame) end
         local specs
         if type(componentMirror) == "function" then
             local ok, list = pcall(componentMirror, frame)
@@ -253,12 +357,7 @@ local function composeMirror(entry, componentMirror)
         end
         specs = specs or {}
 
-        local show = true
-        if type(entry.positionEditable) == "function" then
-            local ok, allowed = pcall(entry.positionEditable, frame)
-            show = (ok and allowed) and true or false
-        end
-        if show then
+        if positionEditable(entry, frame) then
             table.insert(specs, 1, {
                 kind  = "position",
                 label = "Position",
@@ -401,6 +500,38 @@ end
 --- two stored records: (point, x, y) at `scale` -> center offset from the
 --- screen center in UI units, or nil when the frame's rect cannot be read.
 EM.CenterFromRecord = centerFromRecord
+
+--------------------------------------------------------------------------------
+-- The dynamic view
+--------------------------------------------------------------------------------
+
+--- Set by the view's state (core/dynamiclayouts/view.lua) on entry and exit.
+function EM.SetDynamicView(on)
+    dynamicView = on and true or false
+end
+
+function EM.IsDynamicView()
+    return dynamicView
+end
+
+--- Every registered frame with its selection box, in registration order:
+--- fn(frame, selection).
+function EM.ForEachPositionable(fn)
+    for _, frame in ipairs(order) do
+        local entry = registry[frame]
+        if entry then fn(frame, entry.selection) end
+    end
+end
+
+--- The dialog's "Match Base" in the dynamic view: the frame's record keeps
+--- its participation and loses every value, and the frame tweens home.
+function EM.MatchBase(frame)
+    local id = dynamicIdFor(frame)
+    local store = addon.DynamicLayoutsStore
+    if not (id and store) then return end
+    store.SetRecord(id, { opacity = false, scale = false, point = false, x = false, y = false, offscreen = false })
+    addon.DynamicLayouts.Refresh(id, "tween")
+end
 
 --------------------------------------------------------------------------------
 -- Introspection: /scoot debug positionables, or /run ScootAddon.EditMode.DumpPositionables()

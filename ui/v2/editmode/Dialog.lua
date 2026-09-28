@@ -57,10 +57,42 @@ end
 -- The editDialog chrome role. Flat is the accent-bordered box with the brand
 -- row; "blizzard" keeps LibEditMode's own dialog border, black fill and close
 -- button, and marks the box with the skin's icon.
+local function InDynamicView()
+    local EM = addon.EditMode
+    return (EM.IsDynamicView and EM.IsDynamicView()) and true or false
+end
+
+-- In the dynamic view of Edit Mode the role's "dynamic" variant colors the
+-- box; the kind, and so the skin, never changes with it.
 local function DialogSpec()
     local Chrome = addon.UI and addon.UI.Chrome
     local spec = Chrome and Chrome.Spec and Chrome.Spec("editDialog")
+    if spec and InDynamicView() then
+        local skinner = addon.EditMode.SelectionSkin
+        if skinner and skinner.WithVariant then spec = skinner.WithVariant(spec, "dynamic") end
+    end
     return spec or { kind = "flat" }, Chrome
+end
+
+-- The library's dialog border is a nine-slice panel; the dynamic view tints
+-- its pieces and the base view puts them back.
+local BORDER_PIECES = {
+    "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner",
+    "TopEdge", "BottomEdge", "LeftEdge", "RightEdge",
+}
+
+local function TintLibraryBorder(dialog, token)
+    local border = dialog and dialog.Border
+    if not border then return end
+    local r, g, b = 1, 1, 1
+    if token then
+        local Chrome = addon.UI and addon.UI.Chrome
+        if Chrome and Chrome.Color then r, g, b = Chrome.Color(token) end
+    end
+    for _, name in ipairs(BORDER_PIECES) do
+        local piece = border[name]
+        if piece and piece.SetVertexColor then pcall(piece.SetVertexColor, piece, r, g, b, 1) end
+    end
 end
 
 local function TitleColor()
@@ -225,6 +257,15 @@ local function EnsureSkin(dialog)
         onClick  = function()
             if InCombatLockdown() then return end
             local d = Dialog._dialog
+            -- The dynamic view: the record loses its values and the frame
+            -- tweens home; the library's reset would write its default
+            -- position into the record instead.
+            if InDynamicView() then
+                local EM = addon.EditMode
+                local sel = d and d.selection
+                if EM.MatchBase and sel and sel.parent then EM.MatchBase(sel.parent) end
+                return
+            end
             if d and d.ResetPosition then d:ResetPosition() end
             if skin._resetBtn.SetEnabled then skin._resetBtn:SetEnabled(false) end
         end,
@@ -473,8 +514,21 @@ local function EnterOwnedMode(dialog, selection, info)
         local ok, v = pcall(lemBtn.IsEnabled, lemBtn)
         enabled = (ok and v == true)
     end
-    if skin._resetBtn and skin._resetBtn.SetEnabled then
-        skin._resetBtn:SetEnabled(enabled)
+    -- The dynamic view relabels the reset button for the record and keeps it
+    -- live, and tints the library's border the view's color.
+    local dynamic = InDynamicView()
+    local spec = DialogSpec()
+    if skin._resetBtn then
+        if skin._resetBtn.SetText then
+            skin._resetBtn:SetText(dynamic and "Match Base"
+                or (HUD_EDIT_MODE_RESET_POSITION or "Reset To Default Position"))
+        end
+        if skin._resetBtn.SetEnabled then
+            skin._resetBtn:SetEnabled(dynamic or enabled)
+        end
+    end
+    if skin._native then
+        TintLibraryBorder(dialog, dynamic and spec.borderTint or nil)
     end
 
     -- Before ComputeHeight: the slot's height is an input to it.
@@ -520,6 +574,7 @@ local function ExitOwnedMode(dialog)
     -- of its frames, restoring here would undo what it arranged.
     if dialog._ownedBy ~= nil and dialog._ownedBy ~= addonName then return end
     dialog._ownedBy = nil
+    if skin and skin._native then TintLibraryBorder(dialog, nil) end
     SetDialogDraggable(dialog, true)
     SetLEMChromeShown(dialog, true)
     if dialog.ClearFixedSize then dialog:ClearFixedSize() end
