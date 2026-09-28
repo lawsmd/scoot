@@ -523,8 +523,9 @@ function EM.ForEachPositionable(fn)
     end
 end
 
---- The dialog's "Match Base" in the dynamic view: the frame's record keeps
---- its participation and loses every value, and the frame tweens home.
+--- The dialog's "Match Regular Layout" in the dynamic view: the frame's
+--- record keeps its participation and loses every value, and the frame
+--- tweens home.
 function EM.MatchBase(frame)
     local id = dynamicIdFor(frame)
     local store = addon.DynamicLayoutsStore

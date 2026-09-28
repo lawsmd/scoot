@@ -520,7 +520,7 @@ local function EnterOwnedMode(dialog, selection, info)
     local spec = DialogSpec()
     if skin._resetBtn then
         if skin._resetBtn.SetText then
-            skin._resetBtn:SetText(dynamic and "Match Base"
+            skin._resetBtn:SetText(dynamic and "Match Regular Layout"
                 or (HUD_EDIT_MODE_RESET_POSITION or "Reset To Default Position"))
         end
         if skin._resetBtn.SetEnabled then

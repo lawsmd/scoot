@@ -9,8 +9,11 @@
 -- down to meet the box's, and its fill ends where the box's fill begins.
 -- Nothing on the box is written: it is anchored to, its regions take an
 -- alpha, its OnShow and OnHide are hooked, the touches Dialog.lua already
--- makes, and one of its methods takes a post-hook. The strip's one button
--- opens the view (core/dynamiclayouts/view.lua).
+-- makes, one of its methods takes a post-hook, and a drag on the strip moves
+-- it through its own StartMoving, so the two stay one box. The collapsed
+-- strip stands a strata under the box, so the box's help plate and close
+-- button, which sit on the corners the strip's art runs over, draw over it.
+-- The strip's one button opens the view (core/dynamiclayouts/view.lua).
 --
 -- While the view holds, Blizzard's Edit Mode goes out of sight: the box, with
 -- its grid and its magnetism lines under it, and its settings dialog take
@@ -60,17 +63,21 @@ local ROW_H        = 36    -- Controls:CreateToggle's row
 local SLIDER_ROW_H = 40    -- Controls:CreateSlider's row
 local GLOW_IN      = 4     -- the halo's inset from the button's edge, inside its border
 local PANEL_OUTSET = 45    -- the panel's reach past each side of the box
+local NOTE_W       = 300   -- the requirements sentence's wrap width, two lines over the checkboxes
 local BORDER_W     = 4
 local FADE         = 0.3
 
 -- Draw order, in the DIALOG strata unless said. Blizzard's box stands at the
 -- bottom of it with its buttons at 2, its layout dialogs at 100 and its
 -- settings dialog at 200, where the library's dialog stands too. The
--- collapsed strip sits over the box and under the dialogs. In the view the
--- holds stand over the box and Blizzard's dialog; the participating boxes
--- keep their template's 1000 over them (core/dynamiclayouts/view.lua), the
--- library's dialog rises a strata (Dialog.SetRaised), the strip goes over
--- the boxes, and for the transition the shield rises over all of it.
+-- collapsed strip stands in the HIGH strata, over every selection box and
+-- under the box itself, whose help plate and close button sit on the corners
+-- the strip's art runs over. In the view the holds stand over the box and
+-- Blizzard's dialog; the participating boxes keep their template's 1000 over
+-- them (core/dynamiclayouts/view.lua), the library's dialog rises a strata
+-- (Dialog.SetRaised), the strip goes over the boxes, and for the transition
+-- the shield rises over all of it.
+local STRIP_STRATA     = "HIGH"
 local STRIP_LEVEL      = 50
 local STRIP_LEVEL_VIEW = 2000
 local HOLD_LEVEL       = 250
@@ -311,10 +318,24 @@ local function BuildStrip()
     local spec = Spec()
 
     strip = CreateFrame("Frame", nil, UIParent)
-    strip:SetFrameStrata("DIALOG")
+    strip:SetFrameStrata(STRIP_STRATA)
     strip:SetFrameLevel(STRIP_LEVEL)
     strip:EnableMouse(true)
     strip:Hide()
+
+    -- A drag on the strip, collapsed or grown into the panel, moves the box
+    -- through the box's own movable flag and screen clamp, and the strip
+    -- follows on its anchors. The box's own drag does the same from its own
+    -- rect, which in the view is invisible under a hold.
+    strip:RegisterForDrag("LeftButton")
+    strip:SetScript("OnDragStart", function()
+        local box = Manager()
+        if box and box.StartMoving then pcall(box.StartMoving, box) end
+    end)
+    strip:SetScript("OnDragStop", function()
+        local box = Manager()
+        if box and box.StopMovingOrSizing then pcall(box.StopMovingOrSizing, box) end
+    end)
 
     -- The art on a child of its own, so it can run past the strip's rect into
     -- the box while the strip's mouse area stays the strip: the box's own
@@ -406,8 +427,8 @@ local LayoutPanel
 -- top of the box's fill. Expanded: the panel's height from the box's top edge
 -- down and its width plus the outset each side, all nine pieces, the fill
 -- inside them. TOPLEFT and TOPRIGHT are two horizontal constraints, so
--- SetHeight stands. The strip's level moves with the state and its children
--- move with it.
+-- SetHeight stands. The strip's strata and level move with the state and its
+-- children move with them.
 local function AnchorStrip(expanded)
     local mgr = Manager()
     if not (strip and mgr) then return end
@@ -420,12 +441,14 @@ local function AnchorStrip(expanded)
     strip:SetPoint("TOPRIGHT", mgr, "TOPRIGHT", outset, STRIP_H)
     fill:SetPoint("TOPLEFT", art, "TOPLEFT", inset, -inset)
     if expanded then
+        strip:SetFrameStrata("DIALOG")
         strip:SetFrameLevel(STRIP_LEVEL_VIEW)
         strip:SetHeight(LayoutPanel())
         art:SetAllPoints(strip)
         fill:SetPoint("BOTTOMRIGHT", art, "BOTTOMRIGHT", -inset, inset)
         SetPiecesAlpha(strip._border, BOTTOM_PIECES, 1)
     else
+        strip:SetFrameStrata(STRIP_STRATA)
         strip:SetFrameLevel(STRIP_LEVEL)
         strip:SetHeight(STRIP_H)
         art:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
@@ -470,18 +493,25 @@ local function BuildPanel()
     title:SetText("Dynamic Layout")
     panel.title = title
 
+    -- The sentence over the checkboxes, wrapped and centered so it reads as
+    -- theirs: at the third run it ran the panel's width on one line and read
+    -- as the title's.
     local req = content:CreateFontString(nil, "OVERLAY")
     ApplyFont(req, "label", TEXT_SIZE)
     req:SetTextColor(PrimaryColor())
-    req:SetJustifyH("LEFT")
+    req:SetJustifyH("CENTER")
     req:SetWordWrap(true)
+    req:SetWidth(NOTE_W)
     req:SetText("Switch to the dynamic layout when every checked requirement is met")
     panel.requirements = req
 
+    -- The three rows' labels hang off their checkboxes, right-aligned, in
+    -- place of the row's own left-anchored label, which at the third run
+    -- stood a panel's width from its checkbox.
     panel.triggers = {}
     for _, t in ipairs(TRIGGER_ROWS) do
         local name = t.name
-        panel.triggers[#panel.triggers + 1] = Ctl:CreateToggle({
+        local row = Ctl:CreateToggle({
             parent = content, label = t.label,
             get = function()
                 local V = View()
@@ -492,6 +522,14 @@ local function BuildPanel()
                 if V then V.SetTrigger(name, v) end
             end,
         })
+        local label, box = row._label, row._indicator
+        if label and box then
+            label:ClearAllPoints()
+            label:SetWidth(0)
+            label:SetJustifyH("RIGHT")
+            label:SetPoint("RIGHT", box, "LEFT", -GAP, 0)
+        end
+        panel.triggers[#panel.triggers + 1] = row
     end
 
     panel.speed = Ctl:CreateSlider({
@@ -553,11 +591,44 @@ local function BuildFrameRows()
     end
 end
 
+-- The three requirement rows as one block: the widest label, the checkbox
+-- and the row's own padding each side set the block's width, and each row is
+-- that wide and centered, so the labels, right-aligned against their
+-- checkboxes, and the checkboxes stand as one centered column pair. The
+-- padding is read off the checkbox's anchor, the row's own number.
+local function LayoutRequirementRows(content, W, y)
+    local labelW, boxW, pad = 0, 0, PAD
+    for _, row in ipairs(panel.triggers) do
+        local label, box = row._label, row._indicator
+        if label and label.GetStringWidth then
+            local ok, w = pcall(label.GetStringWidth, label)
+            if ok and type(w) == "number" and w > labelW then labelW = w end
+        end
+        if box then
+            boxW = box:GetWidth()
+            local _, _, _, x = box:GetPoint(1)
+            if type(x) == "number" then pad = -x end
+        end
+    end
+    local rowW = pad + math.ceil(labelW) + GAP + boxW + pad
+    local left = (W - rowW) / 2
+    for _, row in ipairs(panel.triggers) do
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
+        row:SetWidth(rowW)
+        y = y - ROW_H
+    end
+    return y
+end
+
 --- Lay the panel out from the strip's top edge down; returns the height it
 --- needs. The width is the box's own plus the outset each side, read off the
 --- box rather than off the strip, whose rect follows its anchors a frame
---- later. The title is centered; the frames run in two columns, each wide
---- enough for the longest label and its checkbox.
+--- later. The title is centered; the requirements sentence and its rows are
+--- a centered block under it; the frames run in two columns, each wide
+--- enough for the longest label and its checkbox. Idempotent, and run again a
+--- frame after the entry: the sentence's wrapped height reads as one line
+--- until it has drawn once.
 LayoutPanel = function()
     if not panel then return STRIP_H end
     local mgr, content = Manager(), strip._content
@@ -568,19 +639,19 @@ LayoutPanel = function()
 
     panel.title:ClearAllPoints()
     panel.title:SetPoint("TOP", content, "TOP", 0, y)
-    y = y - TITLE_SIZE - 6 - GAP
+    y = y - TITLE_SIZE - 6 - GAP * 2
 
-    panel.requirements:ClearAllPoints()
-    panel.requirements:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
-    panel.requirements:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, y)
-    y = y - TEXT_SIZE - 8
+    -- The sentence, at least its two lines tall, close over its rows.
+    local req = panel.requirements
+    req:ClearAllPoints()
+    req:SetPoint("TOP", content, "TOP", 0, y)
+    local lineH = TEXT_SIZE + 4
+    local noteH = 2 * lineH
+    local okH, h = pcall(req.GetStringHeight, req)
+    if okH and type(h) == "number" and h > noteH then noteH = h end
+    y = y - noteH - 4
 
-    for _, row in ipairs(panel.triggers) do
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
-        row:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, y)
-        y = y - ROW_H
-    end
+    y = LayoutRequirementRows(content, W, y)
     y = y - GAP
 
     panel.speed:ClearAllPoints()
@@ -725,6 +796,10 @@ local function OnEnter()
     RefreshPanel()
     strip:Show()
     ShowBorder()
+    -- The second pass, once the sentence has drawn (LayoutPanel).
+    C_Timer.After(0, function()
+        if alphaHeld and strip and strip._content:IsShown() then AnchorStrip(true) end
+    end)
 end
 
 local function OnExit(reason)

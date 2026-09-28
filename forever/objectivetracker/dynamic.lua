@@ -21,6 +21,12 @@ OT.Dynamic = Dynamic
 
 local paneByFrame = setmetatable({}, { __mode = "k" })
 
+-- What the dynamic view's panel calls a pane. The Current Objectives pane is
+-- the classic style of Current Objectives and the cards (cards.lua) the
+-- Camelot style, and the panel lists both, so each names its style; the
+-- pane's own name stays on its Edit Mode box and its page.
+local PANEL_LABELS = { currentObjectives = "Current Objectives (Classic)" }
+
 -- The stored position for the active layout, else the pane's default: what
 -- the positionable restore applies (tracker.lua).
 local function basePosition(pane)
@@ -48,7 +54,7 @@ function Dynamic.Register(pane, frame)
     local Style = OT.Style
     DL.Register({
         id = pane.key,
-        label = pane.name,
+        label = PANEL_LABELS[pane.key] or pane.name,
         frame = frame,
         tier = "protected",
         channels = { "opacity", "scale", "position" },
