@@ -51,7 +51,7 @@ local OWNER = "dynamicLayoutsView"
 -- Kept off addon.UI.Skin.Metrics: strip-only sizes, cut to the 510-unit Edit
 -- Mode box the strip stands on, as Dialog.lua's and Mirror.lua's are cut to
 -- their boxes.
-local STRIP_H      = 44
+local STRIP_H      = 52    -- 44 until the fourth run, which pressed the centered button to the top border
 local PAD          = 14
 local GAP          = 8
 local TITLE_SIZE   = 19    -- the panel's title
@@ -430,7 +430,7 @@ local function AnchorPortrait(beside)
     portrait:SetPoint("RIGHT", beside, "LEFT", -GAP, 0)
 end
 
--- The strip's rect and its art. Collapsed: 44 units on the box's top edge,
+-- The strip's rect and its art. Collapsed: 52 units on the box's top edge,
 -- the box's width, the art two corners longer than the strip so its side
 -- edges, which end at its hidden bottom corners, reach the top of the box's
 -- own side edges where the box's hidden top corners sat; the fill runs to
