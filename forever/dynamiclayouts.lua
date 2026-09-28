@@ -75,9 +75,11 @@ end
 
 -- After the unit frames' own refresh (10) and before the components (30).
 -- The initial pass feeds the mask and nothing else: no frame exists yet, and
--- the resolver's first resolution lands after the world entry.
+-- the resolver's first resolution lands after the world entry. A resync pass
+-- keeps the profile it had, so a snap there would only cut short the tween
+-- that leaving Edit Mode starts.
 addon.Profiles.RegisterApplyStep("camelotDynamicLayouts", function(_, ctx)
     Resolver.SetEnabledMask(mask())
-    if ctx.initial then return end
+    if ctx.initial or ctx.resync then return end
     DL.RefreshAll("snap")
 end, 20)

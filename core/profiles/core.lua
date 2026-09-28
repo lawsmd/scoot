@@ -92,7 +92,9 @@ end
 -- suppressed and runs them directly), the deferred SwitchToProfile branch,
 -- and once from Initialize with ctx.initial set. Each path runs them exactly
 -- once. fn(reason, ctx): reason names the caller; ctx.initial marks the
--- Initialize pass, ctx.switch a pass that just changed the active profile.
+-- Initialize pass, ctx.switch a pass from _setActiveProfile, and ctx.resync
+-- the subset of those whose profile was already active: Edit Mode's exit and
+-- SaveLayouts resync passes land here three times each, with nothing changed.
 local applySteps = {}
 
 function Profiles.RegisterApplyStep(name, fn, order)
@@ -678,7 +680,7 @@ function Profiles:_setActiveProfile(profileKey, opts)
     else
     end
 
-    onProfileContentsChanged("_setActiveProfile", { switch = true })
+    onProfileContentsChanged("_setActiveProfile", { switch = true, resync = current == profileKey })
 
     -- Clear the suppression flag after profile switch completes
     addon._profileSwitchInProgress = false

@@ -449,16 +449,20 @@ function Frame.ShowPreview(inst)
 
     local ok, exists = pcall(UnitExists, inst.unit)
     local noUnit = not ok or (not issecretvalue(exists) and exists == false)
+    -- The subject changes only when the paint swaps between the unit and the
+    -- stand-in; a frame that keeps its unit holds its name.
+    local swapped = (inst.previewStandIn and true or false) ~= noUnit
     inst.previewStandIn = noUnit or nil
-    Frame.PaintAll(inst, true)
+    Frame.PaintAll(inst, swapped)
 end
 
 function Frame.EndPreview(inst)
     if not inst.previewActive then return end
     inst.previewActive = nil
+    local wasStandIn = inst.previewStandIn and true or false
     inst.previewStandIn = nil
     -- Repaint from the unit while still shown, then let the watch decide.
-    Frame.PaintAll(inst, true)
+    Frame.PaintAll(inst, wasStandIn)
     Harness.UpdateVisibility(inst)
 end
 
@@ -514,7 +518,9 @@ function UF.ApplyAll()
                 Frame.ShowPreview(inst)
             end
             Art.ApplyBorder(inst)
-            Frame.PaintAll(inst, true)
+            -- A settings pass on the same unit: the name holds. A frame this
+            -- pass showed was already painted fresh by its OnShow.
+            Frame.PaintAll(inst, false)
         end
     end
 
