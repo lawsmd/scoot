@@ -123,12 +123,43 @@ function Display.RefreshCost()
     end
 end
 
+-- The percent strings, through the shared chain (core/percent.lua): the
+-- secret string into SetText, and ClearText when the chain gives none, so a
+-- failed read shows a blank rather than a stale number. The verdicts are
+-- what /camelot prd prints.
+local lastPercent = { health = "not run", power = "not run" }
+
+local function feedPercent(fs, kind)
+    if not fs then
+        lastPercent[kind] = "off"
+        return
+    end
+    local Percent = addon.Percent
+    if not Percent then
+        lastPercent[kind] = "addon.Percent missing"
+        fs:ClearText()
+        return
+    end
+    local str, verdict
+    if kind == "health" then
+        str, verdict = Percent.Health("player", true, nil)
+    else
+        str, verdict = Percent.Power("player", nil, nil)
+    end
+    lastPercent[kind] = verdict
+    if not (str and pcall(fs.SetText, fs, str)) then
+        fs:ClearText()
+        if str then lastPercent[kind] = "SetText failed" end
+    end
+end
+
 function Display.RefreshHealth()
     if not built then return end
     local Values = values()
     if not Values then return end
     Values.ApplyHealth(inst)
     Values.ApplyBarText(inst)
+    feedPercent(inst.healthPercentText, "health")
     local HP = addon.UnitFrames.HealPrediction
     if HP and inst.healPrediction then HP.Update(inst) end
     refreshMaxHealthLoss()
@@ -144,6 +175,7 @@ function Display.RefreshPower()
     -- tint goes back on after it.
     if inst.powerState ~= state then Style.ApplyPowerColor() end
     Values.ApplyBarText(inst)
+    feedPercent(inst.powerPercentText, "power")
     Display.RefreshCost()
 end
 
@@ -274,7 +306,8 @@ function Display.Build()
 
     -- The instance table the unit frames' feeds and heal prediction take.
     -- spec.Bars.health.color is what ApplyHealth restores each tick; the
-    -- style writes it. healHost is healprediction.lua's seam.
+    -- style writes it. healHost is healprediction.lua's seam. The four text
+    -- fields are the style's to set or clear (Style.ApplyText).
     inst = {
         unit = "player",
         frame = frame,
@@ -282,6 +315,8 @@ function Display.Build()
         powerBar = powerBar,
         healthText = healthBar.RightText,
         powerText = powerBar.RightText,
+        healthPercentText = healthBar.LeftText,
+        powerPercentText = powerBar.LeftText,
         spec = { Bars = { health = {} } },
     }
     inst.healHost = {
@@ -401,10 +436,12 @@ function Display.Dump()
     push("  settings: visibility %s, scale %s, bar width %s%%, spacing %s, opacity %s",
         Style.Visibility(), Style.Scale(), Style.BarWidthPercent(), Style.Padding(), Style.Opacity())
     for _, key in ipairs(Style.BARS) do
-        push("  %s: height %s, hide %s, texture %s, color %s, border %s, text %s",
+        push("  %s: height %s, hide %s, texture %s, color %s, border %s, value text %s, percent text %s",
             key, Style.Height(key), tostring(Style.Get(key, "hide")), tostring(Style.Get(key, "foregroundTexture")),
-            tostring(Style.Get(key, "foregroundColorMode")), tostring(Style.Get(key, "borderStyle")), Style.TextShow(key))
+            tostring(Style.Get(key, "foregroundColorMode")), tostring(Style.Get(key, "borderStyle")),
+            Style.TextShow(key, "value"), Style.TextShow(key, "percent"))
     end
+    push("  percent chain: health %s, power %s", tostring(lastPercent.health), tostring(lastPercent.power))
     local HP = addon.UnitFrames and addon.UnitFrames.HealPrediction
     push("  heal prediction: %s", (HP and HP.HostSeam and inst) and HP.Describe(inst) or "seam not present")
     push("  last mana cost read: %s; hide %s", tostring(lastCost), tostring(Style.Get("power", "hideManaCostPrediction")))

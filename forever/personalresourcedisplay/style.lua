@@ -12,8 +12,10 @@
 --
 -- The defaults are Forever's shipped PRD, retail's Modern preset (vanilla had
 -- no PRD): both bars 15 high, the full 200 width, no spacing, full opacity,
--- always shown, bar text off. The text keys register no face, size or style:
--- nil leaves the string on the TextStatusBarText font object.
+-- always shown, and both texts on, the percent at the left and the value at
+-- the right, as Blizzard's bars draw with Show Bar Text on. The text keys
+-- register no face, size or style: nil leaves the string on the
+-- TextStatusBarText font object.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -83,6 +85,13 @@ Style.DEFAULT_BAR_WIDTH = 200
 Style.DEFAULT_POSITION = { point = "BOTTOM", x = -410, y = 380 }
 
 Style.BARS = { "health", "power" }
+
+-- The two texts per bar, on Blizzard's two FontStrings, and the side each
+-- starts on: the percent at LeftText, the value at RightText.
+Style.TEXTS = { "value", "percent" }
+Style.TEXT_STRING = { value = "RightText", percent = "LeftText" }
+Style.TEXT_ALIGN = { value = "RIGHT", percent = "LEFT" }
+
 Style.BAR_ATLAS = "UI-HUD-CoolDownManager-Bar"
 Style.BACKGROUND_ATLAS = "UI-HUD-CoolDownManager-Bar-BG"
 Style.FONT_OBJECT = "TextStatusBarText"
@@ -130,13 +139,15 @@ do
         set(Style.THICKNESS.default, "borderThickness")
         set(false, "hideTextureOnly")
         set(false, "hideBackground")
-        -- The value text. Blizzard's Show Bar Text is off in the preset, and
-        -- text is an added element. No fontFace, size or style: nil keeps
-        -- the font object's own face, size and outline.
-        set("never", "text", "value", "show")
-        set("default", "text", "value", "colorMode")
-        set({ 1, 1, 1, 1 }, "text", "value", "color")
-        set("RIGHT", "text", "value", "alignment")
+        -- The two texts, on, as Blizzard's Show Bar Text draws them: the
+        -- percent at the left, the value at the right. No fontFace, size or
+        -- style: nil keeps the font object's own face, size and outline.
+        for _, slot in ipairs(Style.TEXTS) do
+            set("always", "text", slot, "show")
+            set("default", "text", slot, "colorMode")
+            set({ 1, 1, 1, 1 }, "text", slot, "color")
+            set(Style.TEXT_ALIGN[slot], "text", slot, "alignment")
+        end
     end
     map[Style.Path("power", "hideManaCostPrediction")] = false
     -- The Classic unit frames' four switches, on the PRD's health bar.
@@ -178,9 +189,10 @@ function Style.Visibility()
     return "always"
 end
 
---- "always", "hover" or "never" for a bar's value text.
-function Style.TextShow(bar)
-    local v = Style.Get(bar, "text", "value", "show")
+--- "always", "hover" or "never" for one of a bar's texts, "value" or
+--- "percent".
+function Style.TextShow(bar, slot)
+    local v = Style.Get(bar, "text", slot, "show")
     if v == "always" or v == "hover" then return v end
     return "never"
 end
@@ -379,9 +391,9 @@ end
 --------------------------------------------------------------------------------
 -- Text
 --------------------------------------------------------------------------------
--- Each bar's RightText, the value. Blizzard's XML anchors it RIGHT at -5 and
--- the LeftText LEFT at 5; the alignment setting moves the one string between
--- those points.
+-- Each bar's two strings: RightText the value, LeftText the percent.
+-- Blizzard's XML anchors them RIGHT at -5 and LEFT at 5; the alignment
+-- setting moves a string between those points.
 
 local ALIGN = {
     LEFT = { "LEFT", 5 },
@@ -389,23 +401,31 @@ local ALIGN = {
     RIGHT = { "RIGHT", -5 },
 }
 
-local function applyTextStyle(bar, fs, key)
+-- The instance field the feeds read for a bar's text: healthText and
+-- powerText for the values (values.lua), healthPercentText and
+-- powerPercentText for the percents (display.lua).
+local function textField(key, slot)
+    return key .. (slot == "value" and "Text" or "PercentText")
+end
+Style.TextField = textField
+
+local function applyTextStyle(bar, fs, key, slot)
     local face, size, flags = Style.FontObjectFont()
-    local storedFace = Style.Get(key, "text", "value", "fontFace")
+    local storedFace = Style.Get(key, "text", slot, "fontFace")
     if storedFace then face = addon.ResolveFontFace(storedFace) or face end
-    size = tonumber(Style.Get(key, "text", "value", "size")) or size
-    local style = Style.Get(key, "text", "value", "style")
+    size = tonumber(Style.Get(key, "text", slot, "size")) or size
+    local style = Style.Get(key, "text", slot, "style")
     if face and style then
         addon.ApplyFontStyle(fs, face, size, style)
     elseif face then
         fs:SetFont(face, size, flags)
     end
 
-    local r, g, b, a = addon.ResolveColorRGBA(Style.Get(key, "text", "value", "colorMode"),
-        Style.Get(key, "text", "value", "color"), { unitForClass = "player" })
+    local r, g, b, a = addon.ResolveColorRGBA(Style.Get(key, "text", slot, "colorMode"),
+        Style.Get(key, "text", slot, "color"), { unitForClass = "player" })
     fs:SetTextColor(r, g, b, a)
 
-    local align = ALIGN[Style.Get(key, "text", "value", "alignment")] or ALIGN.RIGHT
+    local align = ALIGN[Style.Get(key, "text", slot, "alignment")] or ALIGN[Style.TEXT_ALIGN[slot]]
     fs:SetJustifyH(align[1])
     fs:ClearAllPoints()
     fs:SetPoint(align[1], bar, align[1], align[2], 0)
@@ -416,16 +436,18 @@ function Style.ApplyHover(hovering)
     local f = Style.Frame()
     if not f then return end
     for _, key in ipairs(Style.BARS) do
-        if Style.TextShow(key) == "hover" then
-            Style.Bar(f, key).RightText:SetAlpha(hovering and 1 or 0)
+        for _, slot in ipairs(Style.TEXTS) do
+            if Style.TextShow(key, slot) == "hover" then
+                Style.Bar(f, key)[Style.TEXT_STRING[slot]]:SetAlpha(hovering and 1 or 0)
+            end
         end
     end
 end
 
---- Font, color, alignment and show mode of both value texts. A string set
---- to Never leaves the feed's table (values.lua feeds only the strings it
---- finds there) and is cleared, which releases the secret it held. Mouse
---- motion is on only while a string is On Hover; clicks never.
+--- Font, color, alignment and show mode of the four texts. A string set to
+--- Never leaves the feeds' table (each feed writes only the strings it finds
+--- there) and is cleared, which releases the secret it held. Mouse motion is
+--- on only while a string is On Hover; clicks never.
 function Style.ApplyText()
     local f = Style.Frame()
     if not f then return end
@@ -433,18 +455,20 @@ function Style.ApplyText()
     local hoverAny = false
     for _, key in ipairs(Style.BARS) do
         local bar = Style.Bar(f, key)
-        local fs = bar.RightText
-        applyTextStyle(bar, fs, key)
-        local mode = Style.TextShow(key)
-        if mode == "never" then
-            fs:ClearText()
-            fs:Hide()
-            if inst then inst[key .. "Text"] = nil end
-        else
-            fs:Show()
-            fs:SetAlpha((mode == "hover" and not PRD.hovering) and 0 or 1)
-            if inst then inst[key .. "Text"] = fs end
-            if mode == "hover" then hoverAny = true end
+        for _, slot in ipairs(Style.TEXTS) do
+            local fs = bar[Style.TEXT_STRING[slot]]
+            applyTextStyle(bar, fs, key, slot)
+            local mode = Style.TextShow(key, slot)
+            if mode == "never" then
+                fs:ClearText()
+                fs:Hide()
+                if inst then inst[textField(key, slot)] = nil end
+            else
+                fs:Show()
+                fs:SetAlpha((mode == "hover" and not PRD.hovering) and 0 or 1)
+                if inst then inst[textField(key, slot)] = fs end
+                if mode == "hover" then hoverAny = true end
+            end
         end
     end
     pcall(f.SetMouseMotionEnabled, f, hoverAny)

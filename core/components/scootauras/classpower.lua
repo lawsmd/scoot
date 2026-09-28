@@ -266,24 +266,6 @@ local function AbbrevOptions()
     return abbrevOpts
 end
 
--- The 0-1 fraction UnitPowerPercent evaluates against the curve, mapped to
--- 0-100 so the string formatter sees a percent.
-local pctCurve
-
-local function PercentCurve()
-    if pctCurve then return pctCurve end
-    if not (C_CurveUtil and C_CurveUtil.CreateCurve) then return nil end
-    local ok, curve = pcall(C_CurveUtil.CreateCurve)
-    if not ok or not curve then return nil end
-    if curve.SetType and Enum and Enum.LuaCurveType then
-        pcall(curve.SetType, curve, Enum.LuaCurveType.Linear)
-    end
-    pcall(curve.AddPoint, curve, 0, 0)
-    pcall(curve.AddPoint, curve, 1, 100)
-    pctCurve = curve
-    return curve
-end
-
 -- The value chain: ClearText has already run. Returns the verdict string.
 local function PaintValue(fs)
     local okV, value = pcall(UnitPower, "player")
@@ -307,23 +289,11 @@ local function PaintValue(fs)
     return opts and "ok" or "ok (engine default breakpoints)"
 end
 
--- The percent chain: the number alone, since the sign is its own smaller
--- string (StyleSign).
+-- The percent chain, addon.Percent (core/percent.lua): the number alone,
+-- since the sign is its own smaller string (StyleSign).
 local function PaintPercent(fs)
-    local curve = PercentCurve()
-    if not (curve and UnitPowerPercent and C_StringUtil and C_StringUtil.FloorToNearestString) then
-        return "percent API missing"
-    end
-    local okP, num = pcall(UnitPowerPercent, "player", nil, false, curve)
-    if not okP or type(num) ~= "number" then
-        return okP and ("UnitPowerPercent returned " .. type(num))
-            or ("UnitPowerPercent error: " .. tostring(num))
-    end
-    local okF, str = pcall(C_StringUtil.FloorToNearestString, num)
-    if not okF or type(str) ~= "string" then
-        return okF and ("formatter returned " .. type(str))
-            or ("formatter error: " .. tostring(str))
-    end
+    local str, verdict = addon.Percent.Power("player", nil, nil)
+    if not str then return verdict end
     if not pcall(fs.SetText, fs, str) then return "SetText failed" end
     return "ok (percent)"
 end
@@ -608,7 +578,7 @@ function ClassPower.DebugInfo(trackerId)
     local okM, pmax = pcall(UnitPowerMax, "player")
     add("UnitPower=%s UnitPowerMax=%s", okV and Describe(value) or ("error: " .. tostring(value)),
         okM and Describe(pmax) or ("error: " .. tostring(pmax)))
-    local curve = PercentCurve()
+    local curve = addon.Percent.Curve()
     if curve and UnitPowerPercent then
         local okP, pct = pcall(UnitPowerPercent, "player", nil, false, curve)
         add("UnitPowerPercent(curve)=%s", okP and Describe(pct) or ("error: " .. tostring(pct)))

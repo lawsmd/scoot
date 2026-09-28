@@ -162,18 +162,24 @@ function SECTIONS.border(inner, key)
         inset = false })
 end
 
--- The value text. The percent arrives with the percent chain.
-function SECTIONS.text(inner, key)
-    inner:AddSelector({ label = "Show Text",
+-- One text's tab: its show mode and its style block. The alignment order
+-- leads with the side the text starts on.
+local ALIGN_ORDER = {
+    value = { "RIGHT", "LEFT", "CENTER" },
+    percent = { "LEFT", "RIGHT", "CENTER" },
+}
+
+local function addTextTab(tab, key, slot)
+    tab:AddSelector({ label = "Show Text",
         values = Style.SHOW_TEXT.values, order = Style.SHOW_TEXT.order,
-        get = function() return Style.TextShow(key) end,
+        get = function() return Style.TextShow(key, slot) end,
         set = function(v)
-            DB.Set(Style.Path(key, "text", "value", "show"), v)
+            DB.Set(Style.Path(key, "text", slot, "show"), v)
             apply()
         end })
-    local get, set = accessors(Style.Path(key, "text", "value"), TEXT_MAP)
+    local get, set = accessors(Style.Path(key, "text", slot), TEXT_MAP)
     local _, fontSize = Style.FontObjectFont()
-    inner:AddTextStyleBlock({ get = get, set = set, apply = apply,
+    tab:AddTextStyleBlock({ get = get, set = set, apply = apply,
         -- What the selectors show while nothing is stored: the
         -- TextStatusBarText font object's face, size and outline.
         defaults = { fontFace = "FRIZQT__", size = fontSize, style = "OUTLINE" },
@@ -183,9 +189,26 @@ function SECTIONS.text(inner, key)
         size = { min = Style.TEXT_SIZE.min, max = Style.TEXT_SIZE.max,
                  minLabel = tostring(Style.TEXT_SIZE.min), maxLabel = tostring(Style.TEXT_SIZE.max) },
         color = { values = Catalogs.ColorMode.Text.values, order = Catalogs.ColorMode.Text.order },
-        alignment = { kind = "align", label = "Text Alignment", default = "RIGHT",
-                      order = { "RIGHT", "LEFT", "CENTER" } },
+        alignment = { kind = "align", label = "Text Alignment", default = Style.TEXT_ALIGN[slot],
+                      order = ALIGN_ORDER[slot] },
         offset = false })
+    tab:Finalize()
+end
+
+-- Value Text and % Text, Scoot's two tabs.
+function SECTIONS.text(inner, key)
+    inner:AddTabbedSection({
+        tabs = {
+            { key = "value", label = "Value Text" },
+            { key = "percent", label = "% Text" },
+        },
+        componentId = NAV_KEYS[key],
+        sectionKey = "textTabs",
+        buildContent = {
+            value = function(_, tab) addTextTab(tab, key, "value") end,
+            percent = function(_, tab) addTextTab(tab, key, "percent") end,
+        },
+    })
 end
 
 function SECTIONS.visibility(inner, key, opts)

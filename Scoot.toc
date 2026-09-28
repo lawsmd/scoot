@@ -26,6 +26,7 @@ core/framestate.lua
 core/escapekey.lua
 core/strata.lua
 core/secretsafe.lua
+core/percent.lua
 core/debug/core.lua
 core/frames.lua
 core/nativeframe.lua

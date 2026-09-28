@@ -93,27 +93,9 @@ local function rebuildAbbrevConfig()
 end
 
 --------------------------------------------------------------------------------
--- Percent chain: the numeric curve (shared -- curves are stateless evaluators)
+-- Percent chain: addon.Percent (core/percent.lua), the curve, the two getters
+-- and the formatter behind one call, shared with Camelot's frames
 --------------------------------------------------------------------------------
-
-local pctCurve = nil
-
-local function ensurePctCurve()
-    if pctCurve then return pctCurve end
-    if not (_G.C_CurveUtil and _G.C_CurveUtil.CreateCurve) then return nil end
-    local ok, c = pcall(C_CurveUtil.CreateCurve)
-    if not ok or not c then return nil end
-    if c.SetType and _G.Enum and _G.Enum.LuaCurveType then
-        pcall(c.SetType, c, Enum.LuaCurveType.Linear)
-    end
-    -- UnitHealthPercent feeds the curve the normalized 0-1 percentage (established by
-    -- the color curves in unitframes/bars/textures.lua); map it to 0-100 so the string
-    -- formatter sees a percent. 'probe' P13 cross-checks this domain on screen.
-    pcall(c.AddPoint, c, 0, 0)
-    pcall(c.AddPoint, c, 1, 100)
-    pctCurve = c
-    return c
-end
 
 --------------------------------------------------------------------------------
 -- Color curves (local copies of the bars/textures.lua builds; that module keeps
@@ -1432,23 +1414,8 @@ end
 -- ClearText'd both; returns the verdict for last[lastKey].
 local function paintPowerPercent(inst, fs, symFS, powerType)
     local cfg = inst.cfg
-    local curve = ensurePctCurve()
-    if not (curve and _G.UnitPowerPercent and _G.C_StringUtil) then
-        return "percent API missing (C_CurveUtil / UnitPowerPercent / C_StringUtil)"
-    end
-    local okP, num = pcall(UnitPowerPercent, inst.unit, powerType, false, curve)
-    if not okP or type(num) ~= "number" then
-        return okP and ("UnitPowerPercent returned " .. type(num))
-            or ("UnitPowerPercent error: " .. tostring(num))
-    end
-    local fmt = (cfg.round == "round") and C_StringUtil.RoundToNearestString
-        or C_StringUtil.FloorToNearestString
-    if not fmt then return "C_StringUtil formatter missing" end
-    local okF, str = pcall(fmt, num)
-    if not (okF and type(str) == "string") then
-        return okF and ("formatter returned " .. type(str))
-            or ("formatter error: " .. tostring(str))
-    end
+    local str, verdict = addon.Percent.Power(inst.unit, powerType, cfg.round)
+    if not str then return verdict end
     if not pcall(fs.SetText, fs, str) then return "SetText failed" end
     if cfg.powerSymbol and symFS then
         pcall(symFS.SetText, symFS, "%")
@@ -2500,31 +2467,13 @@ local function update(inst)
     if pctFS.ClearText then pctFS:ClearText() end
     last.pct = "?"
     local pctStr = nil  -- the secret string, held only to feed the digit ruler
-    local curve = ensurePctCurve()
-    if curve and _G.UnitHealthPercent and _G.C_StringUtil then
-        local ok, num = pcall(UnitHealthPercent, inst.unit, cfg.usePredicted, curve)
-        if ok and type(num) == "number" then
-            local fmt = (cfg.round == "round") and C_StringUtil.RoundToNearestString
-                or C_StringUtil.FloorToNearestString
-            if fmt then
-                local ok2, str = pcall(fmt, num)
-                if ok2 and type(str) == "string" then
-                    local ok3 = pcall(pctFS.SetText, pctFS, str)
-                    last.pct = ok3 and "ok" or "SetText failed"
-                    if ok3 then pctStr = str end
-                else
-                    last.pct = ok2 and ("formatter returned " .. type(str))
-                        or ("formatter error: " .. tostring(str))
-                end
-            else
-                last.pct = "C_StringUtil formatter missing"
-            end
-        else
-            last.pct = ok and ("UnitHealthPercent returned " .. type(num))
-                or ("UnitHealthPercent error: " .. tostring(num))
-        end
+    local pctText, pctVerdict = addon.Percent.Health(inst.unit, cfg.usePredicted, cfg.round)
+    if pctText then
+        local ok3 = pcall(pctFS.SetText, pctFS, pctText)
+        last.pct = ok3 and "ok" or "SetText failed"
+        if ok3 then pctStr = pctText end
     else
-        last.pct = "API missing (C_CurveUtil / UnitHealthPercent / C_StringUtil)"
+        last.pct = pctVerdict
     end
 
     -- Feed the digit ruler only from a successful chain. The blank no-unit path and

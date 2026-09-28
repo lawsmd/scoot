@@ -39,6 +39,7 @@ forever/camelot.lua
 ## Scoot's copy is untouched. This list is the shared/ promotion list, written
 ## by use; docs/unitframesclassic/ufcharness.md records why each row is on it.
 core/secretsafe.lua
+core/percent.lua
 core/debug/core.lua
 core/events.lua
 core/strata.lua
