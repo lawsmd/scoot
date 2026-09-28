@@ -36,6 +36,14 @@
 -- button on the right. Both action kinds share one row height so a provider can
 -- swap one for the other without the dialog resizing.
 --
+-- A header takes `label` alone; it has no value and no handler:
+--
+--     { kind = "header", label = "Health Bar" }
+--
+-- It groups the rows under it the way a page section does, so a long list can
+-- carry short labels ("Height" under "Health Bar" rather than "Health Bar
+-- Height", which the slider's label band cannot hold).
+--
 -- `rebuild = true` means writing this value changes the SHAPE of the list, so the
 -- whole slot is rebuilt afterwards rather than just re-read.
 --
@@ -66,6 +74,13 @@ local SLIDER_INPUT_W = 38
 local ACTION_BTN_H  = 26   -- matches Dialog.lua's BTN_H
 local ACTION_ROW_H  = 34   -- button + top gap; both action kinds share it
 local STATUS_BTN_W  = 64   -- the compact status-row button
+
+-- Kept off addon.UI.Skin.Metrics: the header is a dialog-only row, sized to
+-- the 232px box like the rest of this file. Its text sits at the foot of its
+-- row, so the row's slack is the gap above it, off the group before.
+local HEADER_ROW_H      = 24
+local HEADER_SIZE       = 12
+local HEADER_PAD_BOTTOM = 3
 
 -- Kept off addon.UI.Skin.Metrics: dialog-only squeeze values, sized to the
 -- 232px box like every other constant in this file. The label has its own line,
@@ -328,10 +343,31 @@ local BUILDERS = {
         end
         return row
     end,
+
+    -- The settings page's section title, a size down and in the accent color.
+    header = function(Controls, parent, spec)
+        local row = CreateFrame("Frame", nil, parent)
+        row:SetHeight(HEADER_ROW_H)
+        local fs = row:CreateFontString(nil, "OVERLAY")
+        local theme = addon.UI and addon.UI.Theme
+        if theme then
+            theme:ApplyFont(fs, "header", HEADER_SIZE)
+            fs:SetTextColor(theme:GetAccentColor())
+        end
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(false)
+        fs:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, HEADER_PAD_BOTTOM)
+        fs:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        fs:SetText(spec.label or "")
+        return row
+    end,
 }
 
 -- Action kinds carry no readable value; `set` alone is their contract.
 local NO_GET_KINDS = { button = true, status = true }
+
+-- Label kinds carry neither; a header is a caption over the rows below it.
+local LABEL_KINDS = { header = true }
 
 --- Wrap the spec's setter so a shape-changing write rebuilds the slot.
 ---
@@ -393,9 +429,10 @@ function Mirror.Build(slot, frame, provider, onRebuild)
     local y = 0
     for _, spec in ipairs(specs) do
         local build = type(spec) == "table" and BUILDERS[spec.kind]
+        local labelOnly = build and LABEL_KINDS[spec.kind]
         local getOk = type(spec.get) == "function" or NO_GET_KINDS[spec.kind]
-        if build and getOk and type(spec.set) == "function" then
-            local row = build(Controls, slot, spec, WrapSet(spec, onRebuild))
+        if build and (labelOnly or (getOk and type(spec.set) == "function")) then
+            local row = build(Controls, slot, spec, (not labelOnly) and WrapSet(spec, onRebuild) or nil)
             if row then
                 -- The control set its own height at creation; read it before
                 -- anchoring so nothing about the read can depend on the anchors.

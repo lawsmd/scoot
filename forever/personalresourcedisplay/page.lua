@@ -5,8 +5,9 @@
 --
 -- Laid out after Scoot's pages (ui/v2/settings/prd/), so a setting both
 -- products have sits on the same page in the same section under the same
--- label: the Global page holds what Scoot's General page holds, and each bar
--- page runs Sizing, Style, Border, Text and Visibility under its Hide toggle.
+-- label: the Global page holds what Scoot's General page holds, plus
+-- Blizzard's Show Bar Text as one switch, and each bar page runs Sizing,
+-- Style, Border, Text and Visibility under its Hide toggle.
 -- Loads on retail too, where no display is built: the controls still draw
 -- and write, and a stored value can be checked across a reload there while
 -- the beta keeps none.
@@ -102,6 +103,14 @@ local function RenderGlobal(panel, scrollContent)
             addSlider(inner, "Bar Width", Style.BAR_WIDTH, Style.Path("barWidth"), "50%", "150%")
             addSlider(inner, "Bar Spacing", Style.PADDING, Style.Path("padding"), "0", "10")
             addSlider(inner, "Opacity", Style.OPACITY, Style.Path("opacity"), "50%", "100%")
+            -- Blizzard's one switch over the four texts; each text's own
+            -- show mode is on its bar page.
+            inner:AddToggle({ label = "Show Bar Text",
+                get = Style.BarTextShown,
+                set = function(v)
+                    Style.SetBarTextShown(v and true or false)
+                    apply()
+                end })
             inner:Finalize()
         end })
 

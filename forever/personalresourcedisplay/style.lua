@@ -519,29 +519,106 @@ addon.Profiles.RegisterApplyStep("camelotPersonalResourceDisplay", function(_, c
 end, 30)
 
 --------------------------------------------------------------------------------
+-- Blizzard's two switches
+--------------------------------------------------------------------------------
+-- Show Class Color and Show Bar Text are checkboxes in Blizzard's Edit Mode
+-- and finer settings here: the health bar's color mode, and a show mode per
+-- string. Each switch reads the finer settings back and writes them as a
+-- whole, for the dialog and the Global page.
+
+-- On is the class mode; off puts the default back and leaves a custom tint
+-- alone. The color itself is the resolver's (ApplyBars).
+local CLASS_MODE = "class"
+
+function Style.ClassColorShown()
+    return Style.Get("health", "foregroundColorMode") == CLASS_MODE
+end
+
+function Style.SetClassColorShown(on)
+    if on then
+        DB.Set(Style.Path("health", "foregroundColorMode"), CLASS_MODE)
+    elseif Style.ClassColorShown() then
+        DB.Set(Style.Path("health", "foregroundColorMode"), "default")
+    end
+end
+
+-- On while any of the four strings is shown. On puts Always on the strings
+-- set to Never and keeps On Hover; off puts Never on all four.
+function Style.BarTextShown()
+    for _, bar in ipairs(Style.BARS) do
+        for _, slot in ipairs(Style.TEXTS) do
+            if Style.TextShow(bar, slot) ~= "never" then return true end
+        end
+    end
+    return false
+end
+
+function Style.SetBarTextShown(on)
+    for _, bar in ipairs(Style.BARS) do
+        for _, slot in ipairs(Style.TEXTS) do
+            local path = Style.Path(bar, "text", slot, "show")
+            if not on then
+                DB.Set(path, "never")
+            elseif Style.TextShow(bar, slot) == "never" then
+                DB.Set(path, "always")
+            end
+        end
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Edit Mode dialog
 --------------------------------------------------------------------------------
--- The three of Blizzard's fifteen a player reaches for in Edit Mode; the rest
--- are page settings. Labels only: the dialog has no room for descriptions.
+-- Blizzard's Edit Mode settings for the system, each under the header of
+-- the page it lives on: Display, Health Bar, Power Bar. Three of Blizzard's
+-- fourteen have no part here and are absent rather than greyed: Hide
+-- Alternate Power and the two Hide Class Info rows, which Blizzard's own
+-- dialog greys on this client, whose PRD loads no class frame. Labels only:
+-- the dialog has no room for descriptions.
 
-local function sliderSpec(label, range, key)
+local function header(label)
+    return { kind = "header", label = label }
+end
+
+local function sliderSpec(label, range, ...)
+    local path = Style.Path(...)
     return {
         kind = "slider", label = label,
         min = range.min, max = range.max, step = range.step, precision = 0,
-        get = function() return clamp(Style.Get(key), range) end,
+        get = function() return clamp(DB.Get(path), range) end,
         set = function(v)
-            DB.Set(Style.Path(key), clamp(v, range))
+            DB.Set(path, clamp(v, range))
             Style.Apply()
         end,
     }
 end
 
+local function toggleSpec(label, get, set)
+    return {
+        kind = "toggle", label = label,
+        get = get,
+        set = function(v)
+            set(v and true or false)
+            Style.Apply()
+        end,
+    }
+end
+
+local function hideSpec(label, bar)
+    local path = Style.Path(bar, "hide")
+    return toggleSpec(label,
+        function() return DB.Get(path) == true end,
+        function(v) DB.Set(path, v) end)
+end
+
 --- The mirror for the branded Edit Mode dialog. Returns a function, the
---- shape the positionable's brand.mirror takes.
+--- shape the positionable's brand.mirror takes. The engine puts the
+--- position row in front of the list.
 function Style.EditModeMirror()
     return function()
         local Visibility = addon.Catalogs.Visibility
         return {
+            header("Display"),
             {
                 kind = "selector", label = "Visibility",
                 values = Visibility.values, order = Visibility.order,
@@ -552,7 +629,17 @@ function Style.EditModeMirror()
                 end,
             },
             sliderSpec("Scale", Style.SCALE, "scale"),
+            sliderSpec("Bar Width", Style.BAR_WIDTH, "barWidth"),
+            sliderSpec("Bar Spacing", Style.PADDING, "padding"),
             sliderSpec("Opacity", Style.OPACITY, "opacity"),
+            toggleSpec("Show Bar Text", Style.BarTextShown, Style.SetBarTextShown),
+            header("Health Bar"),
+            hideSpec("Hide Health Bar", "health"),
+            sliderSpec("Height", Style.HEIGHT, "health", "height"),
+            toggleSpec("Show Class Color", Style.ClassColorShown, Style.SetClassColorShown),
+            header("Power Bar"),
+            hideSpec("Hide Power Bar", "power"),
+            sliderSpec("Height", Style.HEIGHT, "power", "height"),
         }
     end
 end
