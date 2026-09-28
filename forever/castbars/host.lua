@@ -189,8 +189,11 @@ end
 -- CBZ._Reconcile is the one entry point: login, a profile switch, and every
 -- setter on the settings page.
 
+-- A resync pass keeps the profile it had; re-landing the base scale and
+-- position there would cut short the Dynamic Layouts tween that leaving
+-- Edit Mode starts (forever/dynamiclayouts.lua).
 addon.Profiles.RegisterApplyStep("camelotCastBars", function(_, ctx)
-    if ctx.initial then return end
+    if ctx.initial or ctx.resync then return end
     CBZ._Reconcile()
 end, 20)
 

@@ -268,10 +268,15 @@ local store = {
     end,
 }
 
-local function ApplyPosition(frame, point, x, y)
+local function ApplyPosition(frame, point, x, y, reason)
     frame:ClearAllPoints()
     frame:SetPoint(point, UIParent, point, x, y)
     if OT.Items then OT.Items.Reposition() end
+    -- A restore lands the base; if Dynamic Layouts holds the dynamic state,
+    -- it puts its own position and scale back on top (dynamic.lua).
+    if reason == "restore" and OT.Dynamic then
+        OT.Dynamic.Reassert(frame)
+    end
     return false
 end
 
@@ -307,6 +312,9 @@ local function RegisterEditMode()
             selection:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
             OT.WatchDrags(selection, frame)
         end
+        -- After the positionable, so its restore has landed before the
+        -- adapter's snap.
+        if OT.Dynamic then OT.Dynamic.Register(pane, frame) end
     end)
 
     addon.EditMode.OnEditMode(OWNER, {
@@ -395,7 +403,7 @@ function OT.EnsurePlaced(reason, force, container)
     end
     if not HasRect(container) then
         local d = paneOf(container).default
-        ApplyPosition(container, d.point, d.x, d.y)
+        ApplyPosition(container, d.point, d.x, d.y, "restore")
     end
     before.after = snapshot(reason, container).rect
     pushLog(healLog, HEAL_LOG_MAX, before)

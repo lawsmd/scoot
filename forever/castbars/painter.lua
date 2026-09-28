@@ -207,6 +207,9 @@ function CBZ._ApplyBar(barKey)
     CBZ._LayoutCastTime(bar)
     CBZ._RefreshSparkVisibility(bar)
     CBZ._RestorePosition(bar)
+    -- The base layout and position are down; the Dynamic Layouts adapter puts
+    -- its state back on top (forever/castbars/dynamic.lua).
+    if CBZ.Dynamic then CBZ.Dynamic.Sync(bar) end
 
     -- Edit Mode needs the frame visible to drag; otherwise the bar is shown only
     -- while a cast is in flight, which events.lua owns.

@@ -187,6 +187,8 @@ forever/unitframes/pet.lua [ExcludeLoadGameType standard]
 ## casttime.lua is an optional module: the painter creates bar.castTimeText and
 ## that file owns it. empowered.lua draws on Cast Bar Z's line and caps, so it
 ## stays off until the Classic bar has a segment layout of its own.
+## forever/castbars/dynamic.lua is the Dynamic Layouts adapter, last: it
+## fills seams the engine files above it read at the moment of use.
 core/components/castbarz/engine.lua [ExcludeLoadGameType standard]
 forever/castbars/host.lua [ExcludeLoadGameType standard]
 forever/castbars/art.lua [ExcludeLoadGameType standard]
@@ -196,6 +198,7 @@ core/components/castbarz/anchoring.lua [ExcludeLoadGameType standard]
 core/components/castbarz/suppression.lua [ExcludeLoadGameType standard]
 core/components/castbarz/events.lua [ExcludeLoadGameType standard]
 core/components/castbarz/editmode.lua [ExcludeLoadGameType standard]
+forever/castbars/dynamic.lua [ExcludeLoadGameType standard]
 
 ## The objective tracker: Blizzard's modular tracker on Camelot-owned frames
 ## (docs/objectivetracker/replica.md). style.lua holds the settings, their
@@ -209,7 +212,8 @@ core/components/castbarz/editmode.lua [ExcludeLoadGameType standard]
 ## stands the secure quest item buttons on the blocks' slots; current.lua keeps
 ## the Current Objectives pane's state and routes quests between the panes
 ## (docs/objectivetracker/current.md); flash.lua flashes a count that rises in
-## that pane. Stands on nativeframe, events, strata,
+## that pane; dynamic.lua is the Dynamic Layouts adapter for both panes.
+## Stands on nativeframe, events, strata,
 ## pool, fonts, colors, editmode/positionables, forever/db.lua,
 ## forever/profiles.lua and forever/features.lua.
 forever/objectivetracker/style.lua
@@ -219,6 +223,7 @@ forever/objectivetracker/tracker.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/itembutton.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/current.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/flash.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,

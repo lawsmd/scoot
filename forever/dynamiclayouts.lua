@@ -73,13 +73,15 @@ local function mask()
     return out
 end
 
--- After the unit frames' own refresh (10) and before the components (30).
--- The initial pass feeds the mask and nothing else: no frame exists yet, and
--- the resolver's first resolution lands after the world entry. A resync pass
+-- Last, after every step that re-lands a base: the unit frames (10), the
+-- cast bar and the objective tracker (20), the components (30). A profile
+-- switch then lands the dynamic state on top of whatever those wrote. The
+-- initial pass feeds the mask and nothing else: no frame exists yet, and the
+-- resolver's first resolution lands after the world entry. A resync pass
 -- keeps the profile it had, so a snap there would only cut short the tween
--- that leaving Edit Mode starts.
+-- that leaving Edit Mode starts; the two component steps skip it too.
 addon.Profiles.RegisterApplyStep("camelotDynamicLayouts", function(_, ctx)
     Resolver.SetEnabledMask(mask())
     if ctx.initial or ctx.resync then return end
     DL.RefreshAll("snap")
-end, 20)
+end, 40)

@@ -21,11 +21,18 @@ local FALLBACK_POSITION = { point = "CENTER", x = 0, y = -180 }
 -- with a secret. On a restore the same check keeps a snapped bar on its
 -- anchor: it has no stored position and never consults one, so it follows its
 -- unit frame across layout switches for free.
-local function ApplyBarPosition(bar, point, x, y)
+local function ApplyBarPosition(bar, point, x, y, reason)
     if CBZ._ApplySnap(bar) then return true end
     bar:ClearAllPoints()
     bar:SetPoint(point, UIParent, point, CBZ._SnapToPixels(x), CBZ._SnapToPixels(y))
+    -- A restore lands the base; a host holding a dynamic state puts its
+    -- geometry back on top (Camelot's Dynamic Layouts adapter).
+    if reason == "restore" and CBZ._OnPositionRestored then
+        CBZ._OnPositionRestored(bar)
+    end
 end
+-- The same pixel-snapped anchor, for a host writing a position of its own.
+CBZ._ApplyBarPosition = ApplyBarPosition
 
 --- Re-apply the stored position, or the default, for the active layout.
 --- A no-op before the first "layout" callback, except for a snapped bar.

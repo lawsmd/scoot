@@ -147,9 +147,17 @@ function Items.Unbind(slot)
     schedulePass()
 end
 
---- After every container layout (tracker.lua, OT.OnContainerUpdated) and
---- after an Edit Mode drop.
-function Items.Reposition()
+--- After every container layout (tracker.lua, OT.OnContainerUpdated), after
+--- an Edit Mode drop, and from the Dynamic Layouts adapter's final writes
+--- (dynamic.lua). `now` runs the pass at once while the buttons are
+--- writable, which is how a write inside the regen-disabled window lands
+--- them before lockdown. Isolated: that caller runs inside the engine's own
+--- protected call, and a throw here must not fail its write.
+function Items.Reposition(now)
+    if now and not InCombatLockdown() then
+        securecallfunction(runPass)
+        return
+    end
     schedulePass()
 end
 

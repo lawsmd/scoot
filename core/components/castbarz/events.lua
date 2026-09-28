@@ -202,13 +202,20 @@ end
 -- Lifecycle
 --------------------------------------------------------------------------------
 
+-- The alpha a shown bar rests at: 1, unless the host holds another for it
+-- (Camelot's Dynamic Layouts adapter, forever/castbars/dynamic.lua).
+local function restingAlpha(bar)
+    local fn = CBZ._RestingAlpha
+    return fn and fn(bar) or 1
+end
+
 local function CancelPendingHide(bar)
     bar.hideToken = (bar.hideToken or 0) + 1
     -- Bumping the token stops Scoot's own timers, but UIFrameFadeOut handed the frame
     -- to Blizzard's fade manager, which keeps driving alpha down regardless.
     -- Without this the bar fades out underneath a cast that just started.
     UIFrameFadeRemoveFrame(bar)
-    bar:SetAlpha(1)
+    bar:SetAlpha(restingAlpha(bar))
     CBZ._StopFlash(bar)
     -- Spam-casting starts the next cast while the previous one is still
     -- celebrating. Without this the new bar fills underneath the old bar's
@@ -405,11 +412,13 @@ function CBZ._FinishCast(bar, reason)
 
     C_Timer.After(hold, function()
         if bar.hideToken ~= token then return end
-        UIFrameFadeOut(bar, fadeTime, 1, 0)
+        -- From the live alpha: a Dynamic Layouts tween in flight has the bar
+        -- between its resting values, and the fade writes its start at once.
+        UIFrameFadeOut(bar, fadeTime, bar:GetAlpha(), 0)
         C_Timer.After(fadeTime, function()
             if bar.hideToken ~= token then return end
             bar:Hide()
-            bar:SetAlpha(1)
+            bar:SetAlpha(restingAlpha(bar))
             CBZ._ClearText(bar)
             CBZ._ResetCastLook(bar)
             -- After the frame is hidden, so the plain line coming back is never
@@ -620,7 +629,7 @@ function CBZ._ResetBar(bar)
     bar.pendingReason = nil
 
     UIFrameFadeRemoveFrame(bar)
-    bar:SetAlpha(1)
+    bar:SetAlpha(restingAlpha(bar))
     CBZ._StopFinishFX(bar)
     CBZ._StopFlash(bar)
 

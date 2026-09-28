@@ -209,6 +209,9 @@ function Style.ApplyScale()
     eachPane(function(pane, c)
         c:SetScale(Style.Scale(pane))
     end)
+    -- The base scale is down; Dynamic Layouts puts a held dynamic scale and
+    -- position back on top (dynamic.lua) before the buttons read the rects.
+    if OT.Dynamic then OT.Dynamic.Reassert() end
     -- The quest item buttons stand on the blocks by screen coordinate.
     if OT.Items then OT.Items.Reposition() end
 end
@@ -484,9 +487,11 @@ function Style.Install()
     Style.Apply()
 end
 
--- After a profile switch, the frames re-read the new profile.
+-- After a profile switch, the frames re-read the new profile. A resync pass
+-- keeps the profile it had; re-landing the base scale there would cut short
+-- the Dynamic Layouts tween that leaving Edit Mode starts.
 addon.Profiles.RegisterApplyStep("camelotObjectiveTracker", function(_, ctx)
-    if ctx.initial then return end
+    if ctx.initial or ctx.resync then return end
     Style.Apply()
 end, 20)
 

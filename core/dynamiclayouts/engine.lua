@@ -424,6 +424,23 @@ function DL.Register(def)
         adapters[id] = st
         registered[#registered + 1] = id
     else
+        -- A channel the new definition drops is released: its tween dropped
+        -- and its hold cleared, since the component re-landed that channel's
+        -- base itself before re-registering (the cast bar switching to a
+        -- snap mode). The snap below then lands every channel still in
+        -- flight, which is right for the same reason; a keyed regen closure
+        -- filed for the cleared channel fires later and finds nothing owed.
+        local keep = {}
+        if type(def.channels) == "table" then
+            for _, ch in ipairs(def.channels) do keep[ch] = true end
+        end
+        for ch in pairs(st.channelSet or {}) do
+            if not keep[ch] then
+                Tween.Drop(id, ch)
+                st.holds[ch], st.applied[ch], st.deferred[ch] = nil, nil, nil
+                if ch == "position" then st.centered = nil end
+            end
+        end
         st.def = def
     end
     st.lastError = nil
