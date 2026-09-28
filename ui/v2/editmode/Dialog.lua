@@ -650,6 +650,16 @@ function Dialog.EnsureHooked()
     return true
 end
 
+--- The dynamic view (ui/v2/editmode/DynamicView.lua) holds its shield in the
+--- DIALOG strata over Blizzard's box, where the library's dialog stands too,
+--- so the dialog rises a strata for the view and comes back down after it.
+function Dialog.SetRaised(on)
+    Dialog.EnsureHooked()
+    local dialog = Dialog._dialog
+    if not (dialog and dialog.SetFrameStrata) then return end
+    dialog:SetFrameStrata(on and "FULLSCREEN_DIALOG" or "DIALOG")
+end
+
 function Dialog.Cleanup()
     ClearMirror()
     if skin then

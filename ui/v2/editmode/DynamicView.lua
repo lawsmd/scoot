@@ -2,20 +2,29 @@
 -- panel it grows into, and the shield and screen border of the dynamic view
 --
 -- The strip is a frame of this addon's own on the top edge of
--- EditModeManagerFrame, anchored to it and drawn with the same Dialog
--- nine-slice, so it reads as the box's own header while nothing on the box is
--- written: the box is anchored to and its OnShow and OnHide are hooked, the
--- touches Dialog.lua already makes. Its one button opens the view
--- (core/dynamiclayouts/view.lua). While the view holds, the strip grows down
--- over the box, which keeps the layout dropdown out of reach mid-view, and
--- shows the global controls: the requirements, the transition speed, the
--- frames that take part, and Done.
+-- EditModeManagerFrame, drawn as one box with it: the box's top corners and
+-- top edge go to alpha 0 while the strip stands on it, the strip's art (the
+-- same Dialog nine-slice) drops its bottom pieces and runs its side edges
+-- down to meet the box's, and its fill ends where the box's fill begins.
+-- Nothing on the box is written: it is anchored to, its regions take an
+-- alpha, and its OnShow and OnHide are hooked, the touches Dialog.lua already
+-- makes. The strip's one button opens the view (core/dynamiclayouts/view.lua).
+--
+-- While the view holds, Blizzard's Edit Mode goes out of sight: the box, with
+-- its grid and its magnetism lines under it, and its settings dialog take
+-- alpha 0, and its selection boxes hide (a widget call; that template has no
+-- script behind Hide or Show). The strip grows down from the box's top edge
+-- into the panel: the requirements, the transition speed, the frames that
+-- take part, and Done. Done puts every Blizzard piece back at once. The other
+-- ends of the view put the alphas back and re-show the selections only if
+-- Edit Mode still holds a frame later, since Blizzard's own exit has hidden
+-- them for good by then.
 --
 -- The shield is a transparent full-screen frame that takes the mouse: over
--- everything for the transition window, then under the raised selection
--- boxes, the branded dialog and the strip, so Blizzard's own selections and
--- the world are out of reach while the view holds. The border is four lines
--- in the view's color around the screen.
+-- everything for the transition window, then in the DIALOG strata over the
+-- box and Blizzard's dialog and under the view's boxes, the branded dialog
+-- (raised a strata for the view) and the strip. The border is four lines in
+-- the view's color around the screen.
 local addonName, addon = ...
 
 addon.EditMode = addon.EditMode or {}
@@ -32,7 +41,6 @@ local OWNER = "dynamicLayoutsView"
 -- Mode box the strip stands on, as Dialog.lua's and Mirror.lua's are cut to
 -- their boxes.
 local STRIP_H      = 44
-local STRIP_LEVEL  = 600   -- over the box's own children; its help plate is 510
 local PAD          = 14
 local GAP          = 8
 local TITLE_SIZE   = 15
@@ -46,17 +54,29 @@ local GLOW_OUT     = 4
 local BORDER_W     = 4
 local FADE         = 0.3
 
--- FULLSCREEN_DIALOG for the transition, over everything; DIALOG after it,
--- under the raised boxes (FULLSCREEN_DIALOG), the library's dialog (200) and
--- the strip.
-local SHIELD_LEVEL_LOCK = 900
-local SHIELD_LEVEL_HOLD = 50
+-- Draw order, in the DIALOG strata unless said. Blizzard's box stands at the
+-- bottom of it with its buttons at 2, its layout dialogs at 100 and its
+-- settings dialog at 200, where the library's dialog stands too. The
+-- collapsed strip sits over the box and under the dialogs. In the view the
+-- shield holds over the box and Blizzard's dialog; the participating boxes
+-- keep their template's 1000 over it (core/dynamiclayouts/view.lua), the
+-- library's dialog rises a strata (Dialog.SetRaised), the strip goes over
+-- the boxes, and for the transition the shield rises over all of it.
+local STRIP_LEVEL       = 50
+local STRIP_LEVEL_VIEW  = 2000
+local SHIELD_LEVEL_HOLD = 250
+local BORDER_LEVEL      = 255
+local SHIELD_LEVEL_LOCK = 900   -- FULLSCREEN_DIALOG
 
 local TRIGGER_ROWS = {
     { name = "inCombat",       label = "Not in combat" },
     { name = "targetAcquired", label = "Do not have a target" },
     { name = "insideInstance", label = "Not in an instance" },
 }
+
+-- The nine-slice pieces the strip shares with the box's border.
+local TOP_PIECES    = { "TopLeftCorner", "TopRightCorner", "TopEdge" }
+local BOTTOM_PIECES = { "BottomLeftCorner", "BottomRightCorner", "BottomEdge" }
 
 --------------------------------------------------------------------------------
 -- State
@@ -65,6 +85,11 @@ local TRIGGER_ROWS = {
 local strip, shield, border
 local panel = nil       -- the panel's fixed controls, built once
 local frameRows = {}    -- one checkbox row per adapter, rebuilt on every entry
+
+local topPiecesHeld = false      -- the box's top pieces at alpha 0 under the strip
+local alphaHeld = false          -- the box and Blizzard's dialog at alpha 0 for the view
+local hiddenSelections = {}      -- Blizzard's selection boxes the view hid, to show again
+local reshowOwed = false         -- a re-show that waited for lockdown to end
 
 local function Chrome() return addon.UI and addon.UI.Chrome end
 local function Controls() return addon.UI and addon.UI.Controls end
@@ -79,6 +104,10 @@ local function Manager()
     return _G.EditModeManagerFrame
 end
 
+local function BlizzardDialog()
+    return _G.EditModeSystemSettingsDialog
+end
+
 local function Spec()
     local C = Chrome()
     return (C and C.Spec and C.Spec("editStrip")) or { kind = "flat" }
@@ -87,7 +116,7 @@ end
 local function Accent()
     local spec, C = Spec(), Chrome()
     if spec.accent and C and C.Color then return C.Color(spec.accent) end
-    return 0.42, 0.68, 1.0, 1
+    return 1, 0.4, 0.12, 1
 end
 
 local function ApplyFont(fs, role, size)
@@ -99,6 +128,96 @@ local function PrimaryColor()
     local theme = Theme()
     if theme and theme.GetPrimaryTextColor then return theme:GetPrimaryTextColor() end
     return 1, 1, 1, 1
+end
+
+local function SetPiecesAlpha(container, names, alpha)
+    if type(container) ~= "table" then return end
+    for _, name in ipairs(names) do
+        local piece = container[name]
+        if piece and piece.SetAlpha then pcall(piece.SetAlpha, piece, alpha) end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Blizzard's pieces
+--------------------------------------------------------------------------------
+
+-- The box's top corners and top edge, under the strip's own while it stands
+-- on the box, and back when the strip leaves.
+local function HoldTopPieces(on)
+    local mgr = Manager()
+    if not (mgr and mgr.Border) then return end
+    if on == topPiecesHeld then return end
+    topPiecesHeld = on
+    SetPiecesAlpha(mgr.Border, TOP_PIECES, on and 0 or 1)
+end
+
+-- The view: the box and Blizzard's settings dialog at alpha 0, and every
+-- Blizzard selection box that is shown hidden, remembered for the re-show.
+local function HoldBlizzardPieces()
+    local mgr = Manager()
+    if mgr then pcall(mgr.SetAlpha, mgr, 0) end
+    local dlg = BlizzardDialog()
+    if dlg and dlg.SetAlpha then pcall(dlg.SetAlpha, dlg, 0) end
+    alphaHeld = true
+
+    wipe(hiddenSelections)
+    local systems = mgr and mgr.registeredSystemFrames
+    if type(systems) ~= "table" then return end
+    for _, system in ipairs(systems) do
+        local sel = type(system) == "table" and system.Selection
+        if sel and sel.IsShown then
+            local ok, shown = pcall(sel.IsShown, sel)
+            if ok and shown == true then
+                if pcall(sel.Hide, sel) then
+                    hiddenSelections[#hiddenSelections + 1] = sel
+                end
+            end
+        end
+    end
+end
+
+local function ReleaseBlizzardAlpha()
+    if not alphaHeld then return end
+    alphaHeld = false
+    local mgr = Manager()
+    if mgr then pcall(mgr.SetAlpha, mgr, 1) end
+    local dlg = BlizzardDialog()
+    if dlg and dlg.SetAlpha then pcall(dlg.SetAlpha, dlg, 1) end
+end
+
+local function ReshowSelections()
+    reshowOwed = false
+    for i = #hiddenSelections, 1, -1 do
+        local sel = hiddenSelections[i]
+        hiddenSelections[i] = nil
+        pcall(sel.Show, sel)
+    end
+end
+
+-- After an end that was not Done: Blizzard's own exit hides every selection
+-- for good, so the re-show runs only while Edit Mode still holds, and out of
+-- lockdown, where it waits for regen.
+local function ReshowSelectionsIfEditing()
+    if #hiddenSelections == 0 then return end
+    local EM = addon.EditMode
+    if not (EM and EM.IsEditing and EM.IsEditing()) then
+        wipe(hiddenSelections)
+        reshowOwed = false
+        return
+    end
+    if InCombatLockdown() then
+        reshowOwed = true
+        return
+    end
+    ReshowSelections()
+end
+
+-- The library's dialog shares the DIALOG strata with the shield's hold, so
+-- it rises a strata for the view (ui/v2/editmode/Dialog.lua).
+local function RaiseLibraryDialog(on)
+    local D = addon.EditMode.Dialog
+    if D and D.SetRaised then D.SetRaised(on) end
 end
 
 --------------------------------------------------------------------------------
@@ -117,18 +236,29 @@ local function BuildStrip()
     strip:EnableMouse(true)
     strip:Hide()
 
-    -- The box's own nine-slice over its black fill, or the flat border where
-    -- the layout is missing.
+    -- The art on a child of its own, so it can run past the strip's rect into
+    -- the box while the strip's mouse area stays the strip: the box's own
+    -- nine-slice over its black fill, or the flat border where the layout is
+    -- missing.
+    local art = CreateFrame("Frame", nil, strip)
+    art:SetFrameLevel(strip:GetFrameLevel() + 1)
+    strip._art = art
     if spec.kind == "nineSlice" and C.NineSlice then
-        strip._border = C.NineSlice(strip, spec)
+        strip._border = C.NineSlice(art, spec)
     elseif Ctl.CreateBorder then
-        strip._border = Ctl.CreateBorder(strip, { thickness = 2 })
+        strip._border = Ctl.CreateBorder(art, { thickness = 2 })
     end
+    local cornerH = 0
+    local corner = strip._border and strip._border.TopLeftCorner
+    if corner and corner.GetHeight then
+        local ok, h = pcall(corner.GetHeight, corner)
+        if ok and type(h) == "number" then cornerH = h end
+    end
+    strip._cornerH = cornerH
+
     local fill = spec.fill or {}
-    local inset = fill.inset or 4
-    local fillTex = strip:CreateTexture(nil, "BACKGROUND", nil, -6)
-    fillTex:SetPoint("TOPLEFT", inset, -inset)
-    fillTex:SetPoint("BOTTOMRIGHT", -inset, inset)
+    strip._inset = fill.inset or 4
+    local fillTex = art:CreateTexture(nil, "BACKGROUND", nil, -6)
     local fr, fg, fb, fa = 0, 0, 0, 0.8
     if type(fill.color) == "table" and C.Color then fr, fg, fb, fa = C.Color(fill.color) end
     fillTex:SetColorTexture(fr, fg, fb, fa)
@@ -145,22 +275,15 @@ local function BuildStrip()
     strip._reach = reach
 
     -- The button, with an additive halo in the view's color that breathes
-    -- while the view can open.
-    local btn = Ctl:CreateButton({
-        parent = strip, text = "Edit Dynamic Layout", width = BUTTON_W, height = BTN_H, fontSize = 12,
-        onClick = function()
-            local V = View()
-            if V then V.Enter() end
-        end,
-    })
-    btn:ClearAllPoints()
-    btn:SetPoint("CENTER", strip, "CENTER", 0, 0)
-    strip._button = btn
-
+    -- while the view can open. The halo sits on a frame of its own at the
+    -- art's level, made after the art and before the button, so it draws over
+    -- the fill and under the button; on the strip itself the fill would cover
+    -- it.
     local r, g, b = Accent()
-    local glow = strip:CreateTexture(nil, "BACKGROUND", nil, -5)
-    glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -GLOW_OUT, GLOW_OUT)
-    glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", GLOW_OUT, -GLOW_OUT)
+    local glowHolder = CreateFrame("Frame", nil, strip)
+    glowHolder:SetFrameLevel(art:GetFrameLevel())
+    local glow = glowHolder:CreateTexture(nil, "BACKGROUND")
+    glow:SetAllPoints(glowHolder)
     glow:SetColorTexture(r, g, b, 1)
     glow:SetBlendMode("ADD")
     glow:SetAlpha(0.15)
@@ -171,31 +294,63 @@ local function BuildStrip()
     alpha:SetToAlpha(0.5)
     alpha:SetDuration(1.4)
     alpha:SetSmoothing("IN_OUT")
-    strip._glow, strip._pulse = glow, pulse
+    strip._glowHolder, strip._glow, strip._pulse = glowHolder, glow, pulse
+
+    local btn = Ctl:CreateButton({
+        parent = strip, text = "Edit Dynamic Layout", width = BUTTON_W, height = BTN_H, fontSize = 12,
+        onClick = function()
+            local V = View()
+            if V then V.Enter() end
+        end,
+    })
+    btn:ClearAllPoints()
+    btn:SetPoint("CENTER", strip, "CENTER", 0, 0)
+    strip._button = btn
+    glowHolder:SetPoint("TOPLEFT", btn, "TOPLEFT", -GLOW_OUT, GLOW_OUT)
+    glowHolder:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", GLOW_OUT, -GLOW_OUT)
 
     return strip
 end
 
--- The strip's height and where it hangs: on the box's top edge, or over the
--- box from that edge down while the view holds. TOPLEFT and TOPRIGHT are two
--- horizontal constraints, so SetHeight stands.
 local LayoutPanel
 
+-- The strip's rect and its art. Collapsed: 44 units on the box's top edge,
+-- the art two corners longer than the strip so its side edges, which end at
+-- its hidden bottom corners, reach the top of the box's own side edges where
+-- the box's hidden top corners sat; the fill ends at the top of the box's
+-- fill. Expanded: the panel's height from the box's top edge down, all nine
+-- pieces, the fill inside them. TOPLEFT and TOPRIGHT are two horizontal
+-- constraints, so SetHeight stands. The strip's level moves with the state
+-- and its children move with it.
 local function AnchorStrip(expanded)
     local mgr = Manager()
     if not (strip and mgr) then return end
+    local art, fill, inset = strip._art, strip._fill, strip._inset
     strip:ClearAllPoints()
+    art:ClearAllPoints()
+    fill:ClearAllPoints()
+    strip:SetPoint("TOPLEFT", mgr, "TOPLEFT", 0, STRIP_H)
+    strip:SetPoint("TOPRIGHT", mgr, "TOPRIGHT", 0, STRIP_H)
+    fill:SetPoint("TOPLEFT", art, "TOPLEFT", inset, -inset)
     if expanded then
-        local ok, mgrH = pcall(mgr.GetHeight, mgr)
-        mgrH = (ok and type(mgrH) == "number") and mgrH or 0
-        local contentH = LayoutPanel()
-        strip:SetPoint("TOPLEFT", mgr, "TOPLEFT", 0, STRIP_H)
-        strip:SetPoint("TOPRIGHT", mgr, "TOPRIGHT", 0, STRIP_H)
-        strip:SetHeight(math.max(STRIP_H + mgrH, contentH))
+        strip:SetFrameLevel(STRIP_LEVEL_VIEW)
+        strip:SetHeight(LayoutPanel())
+        art:SetAllPoints(strip)
+        fill:SetPoint("BOTTOMRIGHT", art, "BOTTOMRIGHT", -inset, inset)
+        SetPiecesAlpha(strip._border, BOTTOM_PIECES, 1)
     else
-        strip:SetPoint("BOTTOMLEFT", mgr, "TOPLEFT", 0, 0)
-        strip:SetPoint("BOTTOMRIGHT", mgr, "TOPRIGHT", 0, 0)
+        strip:SetFrameLevel(STRIP_LEVEL)
         strip:SetHeight(STRIP_H)
+        art:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
+        art:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
+        art:SetHeight(STRIP_H + 2 * (strip._cornerH or 0))
+        local bg = mgr.Border and mgr.Border.Bg
+        if bg then
+            fill:SetPoint("BOTTOMRIGHT", bg, "TOPRIGHT", 0, 0)
+        else
+            fill:SetPoint("BOTTOMRIGHT", mgr, "TOPRIGHT", -inset, -inset)
+        end
+        SetPiecesAlpha(strip._border, BOTTOM_PIECES, 0)
     end
 end
 
@@ -223,7 +378,7 @@ local function BuildPanel()
 
     local title = strip:CreateFontString(nil, "OVERLAY")
     ApplyFont(title, "header", TITLE_SIZE)
-    title:SetTextColor(PrimaryColor())
+    title:SetTextColor(Accent())
     title:SetJustifyH("LEFT")
     title:SetText("Dynamic Layout")
     panel.title = title
@@ -367,7 +522,7 @@ end
 local function SetPanelShown(on)
     if strip then
         strip._button:SetShown(not on)
-        strip._glow:SetShown(not on)
+        strip._glowHolder:SetShown(not on)
     end
     if not panel then return end
     panel.title:SetShown(on)
@@ -406,7 +561,7 @@ local function BuildShield()
     border = CreateFrame("Frame", nil, UIParent)
     border:SetAllPoints(UIParent)
     border:SetFrameStrata("DIALOG")
-    border:SetFrameLevel(SHIELD_LEVEL_HOLD + 5)
+    border:SetFrameLevel(BORDER_LEVEL)
     border:Hide()
     local r, g, b = Accent()
     local function line()
@@ -485,6 +640,8 @@ local function OnLock(on)
     else
         shield:Hide()
     end
+    -- The release after Done is what lets the button open the view again.
+    UpdateButton()
 end
 
 local function OnEnter()
@@ -492,6 +649,8 @@ local function OnEnter()
     BuildShield()
     BuildPanel()
     BuildFrameRows()
+    HoldBlizzardPieces()
+    RaiseLibraryDialog(true)
     AnchorStrip(true)
     SetPanelShown(true)
     RefreshPanel()
@@ -500,6 +659,13 @@ local function OnEnter()
 end
 
 local function OnExit(reason)
+    RaiseLibraryDialog(false)
+    ReleaseBlizzardAlpha()
+    if reason == "done" then
+        ReshowSelections()
+    else
+        C_Timer.After(0, ReshowSelectionsIfEditing)
+    end
     if strip then
         AnchorStrip(false)
         SetPanelShown(false)
@@ -520,16 +686,16 @@ local function ShowStrip()
     local ok, shown = pcall(mgr.IsShown, mgr)
     if not (ok and shown == true) then return end
     if not BuildStrip() then return end
-    if not V.IsActive() then
-        AnchorStrip(false)
-        SetPanelShown(false)
-    end
+    HoldTopPieces(true)
+    AnchorStrip(false)
+    SetPanelShown(false)
     strip:Show()
     UpdateButton()
 end
 
 local function HideStrip()
     if strip then strip:Hide() end
+    HoldTopPieces(false)
 end
 
 function DynamicView.Refresh()
@@ -550,7 +716,10 @@ addon.Events.OnWorldEntered(function()
 end)
 
 addon.Events.On(OWNER, "PLAYER_REGEN_DISABLED", DynamicView.Refresh)
-addon.Events.On(OWNER, "PLAYER_REGEN_ENABLED", DynamicView.Refresh)
+addon.Events.On(OWNER, "PLAYER_REGEN_ENABLED", function()
+    if reshowOwed then ReshowSelectionsIfEditing() end
+    DynamicView.Refresh()
+end)
 
 do
     local V = View()

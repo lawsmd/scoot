@@ -11,10 +11,12 @@
 -- regen-disabled handler, where the base snap is still legal, and the
 -- engine calls back here to tear the surface down.
 --
--- The boxes: a participating frame's selection box is raised over the
--- shield the drawing side holds, so it can be dragged; another frame's box
--- goes to alpha 0, since the library re-shows every box whenever its dialog
--- hides and a Hide would not hold. Both are undone on exit.
+-- The boxes: a participating frame's selection box is raised into the
+-- shield's strata over the shield the drawing side holds, at its template's
+-- level and with its top-level raise off, so it can be dragged and stays
+-- under the panel; another frame's box goes to alpha 0, since the library
+-- re-shows every box whenever its dialog hides and a Hide would not hold.
+-- Both are undone on exit.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -27,14 +29,18 @@ local View = {}
 DL.View = View
 
 local OWNER = "dynamicLayoutsView"
-local RAISED_STRATA = "FULLSCREEN_DIALOG"
+-- The shield's strata (ui/v2/editmode/DynamicView.lua holds its levels): the
+-- box goes there at no less than its template's level, which stands over the
+-- shield's hold and under the panel.
+local RAISED_STRATA = "DIALOG"
+local RAISED_LEVEL = 1000
 local LOCK_PAD = 0.1   -- past the tween's duration, so its finish lands first
 
 local active = false
 local locked = false
 local lockToken = 0
 local host = nil       -- the drawing side's handlers: onEnter, onExit, onLock, onParticipation
-local raised = setmetatable({}, { __mode = "k" })  -- selection -> strata before the raise
+local raised = setmetatable({}, { __mode = "k" })  -- selection -> { strata, level, toplevel } before the raise
 local faded = setmetatable({}, { __mode = "k" })   -- selection -> true while at alpha 0
 
 local function Store()
@@ -132,6 +138,31 @@ end
 -- Boxes
 --------------------------------------------------------------------------------
 
+-- The box's own strata, level and top-level raise are kept for the exit. The
+-- raise goes off so a click never lifts the box over the panel or the dialog.
+local function raiseBox(selection)
+    if raised[selection] then return end
+    local level = selection:GetFrameLevel() or 0
+    local top = (selection.IsToplevel and selection:IsToplevel()) and true or false
+    raised[selection] = {
+        strata = selection:GetFrameStrata() or "MEDIUM",
+        level = level,
+        toplevel = top,
+    }
+    selection:SetFrameStrata(RAISED_STRATA)
+    if level < RAISED_LEVEL then selection:SetFrameLevel(RAISED_LEVEL) end
+    if top and selection.SetToplevel then selection:SetToplevel(false) end
+end
+
+local function lowerBox(selection)
+    local kept = raised[selection]
+    if not kept then return end
+    raised[selection] = nil
+    selection:SetFrameStrata(kept.strata)
+    selection:SetFrameLevel(kept.level)
+    if kept.toplevel and selection.SetToplevel then selection:SetToplevel(true) end
+end
+
 local function arrangeBoxes()
     if not EM.ForEachPositionable then return end
     EM.ForEachPositionable(function(frame, selection)
@@ -142,15 +173,9 @@ local function arrangeBoxes()
                 faded[selection] = nil
                 selection:SetAlpha(1)
             end
-            if not raised[selection] then
-                raised[selection] = selection:GetFrameStrata() or "MEDIUM"
-                selection:SetFrameStrata(RAISED_STRATA)
-            end
+            raiseBox(selection)
         else
-            if raised[selection] then
-                selection:SetFrameStrata(raised[selection])
-                raised[selection] = nil
-            end
+            lowerBox(selection)
             if not faded[selection] then
                 faded[selection] = true
                 selection:SetAlpha(0)
@@ -163,10 +188,7 @@ local function restoreBoxes()
     if not EM.ForEachPositionable then return end
     EM.ForEachPositionable(function(_, selection)
         if not selection then return end
-        if raised[selection] then
-            selection:SetFrameStrata(raised[selection])
-            raised[selection] = nil
-        end
+        lowerBox(selection)
         if faded[selection] then
             faded[selection] = nil
             selection:SetAlpha(1)

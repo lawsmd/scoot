@@ -48,11 +48,17 @@ local UI_FACE = (GameFontNormal and select(1, GameFontNormal:GetFont()))
 local PROP_REG  = addon.Fonts.ROBOTO_REG or (FONT_BASE .. "Roboto-Regular.ttf")
 local PROP_MED  = addon.Fonts.ROBOTO_MED or (FONT_BASE .. "Roboto-Medium.ttf")
 
--- The dynamic view of Edit Mode (ui/v2/editmode/DynamicView.lua) wears this
--- in place of the bronze: a cool blue, so a glance says which layout a drag
--- will change. One literal, read by the two Edit Mode roles' "dynamic"
--- variants and by the strip, the shield's border and the edge tabs.
-local DYNAMIC = { 0.42, 0.68, 1.0 }
+-- The dynamic view of Edit Mode (ui/v2/editmode/DynamicView.lua) wears
+-- these over the bronze, so a glance says which layout a drag will change,
+-- and wears them bright: the owner asked for the view to read as its own
+-- mode, redder than the base view and as lit as the client's own blue. A
+-- vertex color can only darken the metal, so the light comes from the
+-- additive glow, the screen border and the button's halo, all in DYNAMIC,
+-- an ember; the metal pieces under the glow take DYNAMIC_METAL, a copper
+-- light enough that the glow lifts it past the bronze. Two literals, read
+-- by the two Edit Mode roles' "dynamic" variants and by the strip.
+local DYNAMIC       = { 1.0, 0.40, 0.12 }
+local DYNAMIC_METAL = { 1.0, 0.58, 0.42 }
 
 Skin.Register("forever", {
     -- Kept off Theme accent: contrast floor. The near black and the warm
@@ -568,12 +574,15 @@ Skin.Register("forever", {
             glow = { outset = 0, tint = { 1, 0.82, 0.45 },
                      highlight = 0.25, pulse = { from = 0.3, to = 0.7, duration = 1.4 } },
             labelColor = "primary",
-            -- The dynamic view: the same box with its metal and its glow in
-            -- the view's blue (SelectionSkin.WithVariant lays these over).
+            -- The dynamic view: the same box, its metal in the copper and
+            -- its glow in the ember, resting brighter and pulsing higher and
+            -- faster than the base box (SelectionSkin.WithVariant lays these
+            -- over).
             dynamic = {
-                tint = DYNAMIC,
+                tint = DYNAMIC_METAL,
+                scale = { highlight = 0.75, selected = 1 },
                 glow = { outset = 0, tint = DYNAMIC,
-                         highlight = 0.25, pulse = { from = 0.3, to = 0.7, duration = 1.4 } },
+                         highlight = 0.55, pulse = { from = 0.55, to = 1, duration = 1.0 } },
             },
             fallback = { kind = "flat" },
         },
@@ -595,17 +604,17 @@ Skin.Register("forever", {
             -- overhang on the box's left edge; Dialog.lua adds the selection
             -- box's own standoff on top of it.
             attach = { gap = 14 },
-            -- The dynamic view: the title and the library's border pieces in
-            -- the view's blue.
-            dynamic = { titleColor = DYNAMIC, borderTint = DYNAMIC },
+            -- The dynamic view: the title in the ember, the library's border
+            -- pieces in the copper.
+            dynamic = { titleColor = DYNAMIC, borderTint = DYNAMIC_METAL },
         },
         -- The Dynamic Layouts strip on the top edge of Blizzard's Edit Mode
         -- box, and the panel it grows into while the dynamic view holds
         -- (ui/v2/editmode/DynamicView.lua): the box's own translucent dialog
         -- border, the same nine-slice, over the black fill the box draws at
-        -- 0.8, so the strip reads as the box's own header. The emblem hangs
-        -- on its top-left corner as it hangs on the Edit Mode dialog's.
-        -- accent is the view's color, for the button's glow, the border the
+        -- 0.8, drawn as one box with it. The emblem hangs on its top-left
+        -- corner as it hangs on the Edit Mode dialog's. accent is the view's
+        -- ember, for the button's halo, the panel's title, the border the
         -- view draws around the screen, and the edge tabs.
         editStrip = {
             kind = "nineSlice", layout = "Dialog",
