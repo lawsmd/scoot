@@ -1,21 +1,38 @@
 --------------------------------------------------------------------------------
 -- forever/unitframes/dynamic.lua
 -- The Dynamic Layouts adapter for the Classic unit frames: each built frame
--- registers once, from Frame.Build, as a protected-tier adapter whose base
--- state is re-derived from the same sources the frame is built from.
---
--- Stage 2 exercises opacity alone, the one channel legal in every state.
--- The scale and position getters are written for stage 3, which adds those
--- channels to the list and hands the engine the harness's regen slot.
+-- registers once, from Frame.Build, as a protected-tier adapter on all three
+-- channels, whose base state is re-derived from the same sources the frame
+-- is built from. Opacity is legal in every state; a position or scale that
+-- misses the regen-disabled window pays at regen through the harness's
+-- `dynamic` slot, which runs the engine's re-derive closures in channel order.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
 
 local UF = addon.UnitFrames
 local DB = addon.DB
+local Harness = UF.Harness
 
 local Dynamic = {}
 UF.Dynamic = Dynamic
+
+local GEOMETRY = { "scale", "position" }
+
+-- The engine's re-derive closures owed per instance, by channel. The harness
+-- keeps flags only; a closure re-reads everything at drain time, which is the
+-- same rule. Each runs isolated, so a throw reaches the error handler and the
+-- drain's later slots still run.
+local pending = {}
+
+Harness.RegisterAction("dynamic", function(inst)
+    local fns = pending[inst]
+    if not fns then return end
+    pending[inst] = nil
+    for _, ch in ipairs(GEOMETRY) do
+        if fns[ch] then securecallfunction(fns[ch]) end
+    end
+end)
 
 --- Register one built unit frame. Called after the positionable exists, so
 --- the engine's Reassert finds a stored position to stand on.
@@ -30,7 +47,7 @@ function Dynamic.Register(inst)
         label = inst.def and inst.def.label or key,
         frame = inst.frame,
         tier = "protected",
-        channels = { "opacity" },
+        channels = { "opacity", "scale", "position" },
         base = {
             opacity = function() return 1 end,
             scale = function()
@@ -50,5 +67,14 @@ function Dynamic.Register(inst)
                 return d.point, d.x or 0, d.y or 0
             end,
         },
+        queue = function(channel, reapply)
+            local fns = pending[inst]
+            if not fns then
+                fns = {}
+                pending[inst] = fns
+            end
+            fns[channel] = reapply
+            Harness.QueueRegen(inst, "dynamic")
+        end,
     })
 end

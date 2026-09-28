@@ -150,11 +150,21 @@ local function dynamicValue(id, channel)
 end
 
 --- Target value and whether it is the base. A dynamic state whose record is
---- silent on a channel targets the base for that channel.
+--- silent on a channel targets the base for that channel, with one
+--- re-expression: a silent position under a dynamic scale keeps the anchor
+--- point on its screen spot, so the frame scales in place. Offsets are in the
+--- frame's own scale, so the base pair is multiplied by base over dynamic.
 local function valueFor(st, channel, state)
     if state == "dynamic" then
         local value = dynamicValue(st.def.id, channel)
         if value ~= nil then return value, false end
+        if channel == "position" and st.channelSet.scale then
+            local b = baseValue(st, "position")
+            local bs, ds = baseValue(st, "scale"), dynamicValue(st.def.id, "scale")
+            if b and bs and ds and bs ~= ds and bs > 0 and ds > 0 then
+                return { point = b.point, x = b.x * bs / ds, y = b.y * bs / ds }, false
+            end
+        end
     end
     return baseValue(st, channel), true
 end
@@ -350,6 +360,9 @@ applyState = function(st, state, mode, only)
             positionP.to, fromScale, toScale)
         if from then
             spec.channels.position = { from = from, to = to, base = positionP.base, record = positionP.to }
+            -- A fresh slide clears the anchors on its first tick, whatever
+            -- wrote them since the last one.
+            st.centered = nil
         else
             -- No readable rect: land it without the slide.
             Tween.Drop(id, "position")
@@ -436,6 +449,8 @@ function DL.Register(def)
         st.lastError = st.inert
         return st
     end
+    st.channelSet = {}
+    for _, ch in ipairs(def.channels) do st.channelSet[ch] = true end
 
     -- A frame registered after the first resolution lands in its state at
     -- once, as a snap; before it, the initial edge does the same.
@@ -466,23 +481,37 @@ function DL.RefreshAll(mode)
     end
 end
 
---- The deferred closure's entry: the flag clears and the channel re-derives
---- from whatever is true now, tweening from the still-applied values.
+--- The deferred closure's entry. One call pays every channel still owed, in
+--- one pass, so a position that missed its window slides to endpoints
+--- computed at the scale it travels with; the other channel's closure then
+--- finds nothing owed and returns.
 function DL.Reapply(id, channel)
     local st = adapters[id]
     if not st or st.inert then return end
-    st.deferred[channel] = nil
-    applyState(st, decide(id), "tween", { [channel] = true })
+    if channel and not st.deferred[channel] then return end
+    local only = {}
+    for ch in pairs(st.deferred) do only[ch] = true end
+    if next(only) == nil then return end
+    for ch in pairs(only) do st.deferred[ch] = nil end
+    applyState(st, decide(id), "tween", only)
 end
 
 --- For a component that has just re-applied its own base geometry (a
---- positionable restore on a layout switch): put the dynamic position and
---- scale back if the engine holds dynamic. A no-op on an adapter without
+--- positionable restore on a layout switch). The restore replaced every
+--- anchor, so a slide in flight clears them again on its next tick. Then the
+--- two geometry channels snap to the current target: both when it is dynamic,
+--- and whichever is in flight when it is base, so a base-ward slide does not
+--- finish on the position it was started from. A no-op on an adapter without
 --- those channels.
 function DL.Reassert(id)
     local st = adapters[id]
-    if not st or st.inert or st.target ~= "dynamic" then return end
-    applyState(st, "dynamic", "snap", { position = true, scale = true })
+    if not st or st.inert or st.target == nil then return end
+    st.centered = nil
+    local only = {}
+    for _, ch in ipairs({ "scale", "position" }) do
+        if st.target == "dynamic" or Tween.IsActive(id, ch) then only[ch] = true end
+    end
+    if next(only) then applyState(st, st.target, "snap", only) end
 end
 
 function DL.IsDynamic(id)
@@ -509,6 +538,21 @@ end
 -- Edges
 --------------------------------------------------------------------------------
 
+--- Snap every adapter to its decided state, then cancel whatever the snap did
+--- not take. Snap first: a channel tweening away from base is unheld, and
+--- once cancelled it is no longer in flight either, so the snap would skip it
+--- and leave the frame partway.
+local function landAll(edge)
+    for _, id in ipairs(registered) do
+        local st = adapters[id]
+        if not st.inert then
+            if edge then st.lastEdge = edge end
+            applyState(st, decide(id), "snap")
+            Tween.Cancel(id)
+        end
+    end
+end
+
 Resolver.Subscribe(OWNER, function(_, info)
     local mode
     if info.initial or info.origin == "editmode" then
@@ -521,15 +565,31 @@ Resolver.Subscribe(OWNER, function(_, info)
     if info.origin == "editmode" then
         forced = nil
     end
+    local edge = { wall = info.wall, origin = info.origin, answer = info.answer, mode = mode }
+    if mode == "snap" then
+        landAll(edge)
+        return
+    end
     for _, id in ipairs(registered) do
         local st = adapters[id]
         if not st.inert then
-            if mode == "snap" then Tween.Cancel(id) end
-            st.lastEdge = { wall = info.wall, origin = info.origin, answer = info.answer, mode = mode }
+            st.lastEdge = edge
             applyState(st, decide(id), mode)
         end
     end
 end)
+
+-- Edit Mode outranks everything, the forced state included. The resolver's
+-- own enter hook publishes the base edge only when its answer changes, so a
+-- forced dynamic held against a base answer would survive entry without this
+-- hook, which runs second (first-registration order) and clears it. After a
+-- published edge the pass finds nothing held or moving and writes nothing.
+addon.EditMode.OnEditMode(OWNER, {
+    enter = function()
+        forced = nil
+        landAll()
+    end,
+})
 
 -- Registered after the resolver's own handler, so it runs second inside the
 -- pre-lockdown window: a protected frame's position and scale still in
@@ -649,7 +709,14 @@ local function valueVerb(id, field, raw)
     if not (id and store) then return addon.Commands.USAGE end
     field = string.lower(tostring(field or ""))
     local fields
-    if field == "opacity" then
+    if string.lower(tostring(raw or "")) == "off" then
+        -- The store merges, so false is how a field clears; the readers
+        -- type-check and read it as absent.
+        if not (field == "opacity" or field == "scale" or field == "x" or field == "y" or field == "point") then
+            return addon.Commands.USAGE
+        end
+        fields = { [field] = false }
+    elseif field == "opacity" then
         local v = tonumber(raw)
         if not v or v < 0 or v > 1 then return addon.Commands.USAGE end
         fields = { opacity = v }
@@ -695,8 +762,8 @@ end
 local verbs = DL.DebugVerbs
 verbs[#verbs + 1] = { word = "enable", usage = "enable <id> <on|off>",
     help = "let a frame take its dynamic state; ids are the window's adapter rows", fn = enableVerb }
-verbs[#verbs + 1] = { word = "value", usage = "value <id> <opacity|scale|x|y|point> <value>",
-    help = "set one field of a frame's dynamic record (opacity 0..1, scale 0.25..4)", fn = valueVerb }
+verbs[#verbs + 1] = { word = "value", usage = "value <id> <opacity|scale|x|y|point> <value|off>",
+    help = "set one field of a frame's dynamic record (opacity 0..1, scale 0.25..4); off clears it", fn = valueVerb }
 verbs[#verbs + 1] = { word = "speed", usage = "speed <0.1..1.5>",
     help = "the transition duration in seconds, per profile", fn = speedVerb }
 verbs[#verbs + 1] = { word = "force", usage = "force <base|dynamic|off>",

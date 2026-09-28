@@ -35,10 +35,11 @@ local pendingRegen = {}
 local regenActions = {}
 
 -- Drained in this order: a restored position lands before the resize around it,
--- the watch settles before the visibility pass that trusts it, and the Edit
--- Mode stand-in paints last, onto a frame the pass before it has shown.
+-- the Dynamic Layouts re-derive lands on both (its endpoints read the final
+-- size), the watch settles before the visibility pass that trusts it, and the
+-- Edit Mode stand-in paints last, onto a frame the pass before it has shown.
 local REGEN_ORDER = {
-    "position", "geometry", "click", "clickShown", "watch", "visibility", "preview",
+    "position", "geometry", "dynamic", "click", "clickShown", "watch", "visibility", "preview",
 }
 
 local drainInst
