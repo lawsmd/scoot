@@ -3,11 +3,11 @@
 -- dynamic view
 --
 -- The strip is a frame of this addon's own on the top edge of
--- EditModeManagerFrame, drawn as one box with it: the box's top corners and
--- top edge go to alpha 0 while the strip stands on it, the strip's art (the
--- same Dialog nine-slice) drops its bottom pieces and runs its side edges
--- down to meet the box's, and its fill ends where the box's fill begins.
--- Nothing on the box is written: it is anchored to, its regions take an
+-- EditModeManagerFrame, drawn as one box with it: the box's top corners, top
+-- edge and fill go to alpha 0 while the strip stands on it, the strip's art
+-- (the same Dialog nine-slice) drops its bottom pieces and runs its side
+-- edges down to meet the box's, and its fill runs the whole box, under the
+-- box's own pieces. Nothing on the box is written: it is anchored to, its regions take an
 -- alpha, its OnShow and OnHide are hooked, the touches Dialog.lua already
 -- makes, one of its methods takes a post-hook, and a drag on the strip moves
 -- it through its own StartMoving, so the two stay one box. The collapsed
@@ -54,7 +54,8 @@ local OWNER = "dynamicLayoutsView"
 local STRIP_H      = 44
 local PAD          = 14
 local GAP          = 8
-local TITLE_SIZE   = 15
+local TITLE_SIZE   = 19    -- the panel's title
+local SECTION_SIZE = 15    -- the panel's section headers
 local TEXT_SIZE    = 13
 local BTN_H        = 26
 local BUTTON_W     = 200
@@ -90,8 +91,12 @@ local TRIGGER_ROWS = {
     { name = "insideInstance", label = "Not in an instance" },
 }
 
--- The nine-slice pieces the strip shares with the box's border.
-local TOP_PIECES    = { "TopLeftCorner", "TopRightCorner", "TopEdge" }
+-- The pieces of the box's border the strip stands in for while it stands on
+-- the box: the three top pieces, and the fill, since the strip draws under
+-- the box and the box's fill would cover the inner half of the strip's side
+-- edges in the band the box's hidden corners left. The strip's own bottom
+-- pieces hide while it is collapsed.
+local HELD_PIECES   = { "TopLeftCorner", "TopRightCorner", "TopEdge", "Bg" }
 local BOTTOM_PIECES = { "BottomLeftCorner", "BottomRightCorner", "BottomEdge" }
 
 --------------------------------------------------------------------------------
@@ -172,14 +177,14 @@ end
 -- Blizzard's pieces
 --------------------------------------------------------------------------------
 
--- The box's top corners and top edge, under the strip's own while it stands
--- on the box, and back when the strip leaves.
+-- The box's top corners, top edge and fill, under the strip's own while it
+-- stands on the box, and back when the strip leaves.
 local function HoldTopPieces(on)
     local mgr = Manager()
     if not (mgr and mgr.Border) then return end
     if on == topPiecesHeld then return end
     topPiecesHeld = on
-    SetPiecesAlpha(mgr.Border, TOP_PIECES, on and 0 or 1)
+    SetPiecesAlpha(mgr.Border, HELD_PIECES, on and 0 or 1)
 end
 
 -- Every shown Blizzard selection box hidden and remembered, with whether it
@@ -374,16 +379,6 @@ local function BuildStrip()
     content:Hide()
     strip._content = content
 
-    local reach = 0
-    if spec.portrait and C.Portrait then
-        local p = spec.portrait
-        local portrait = C.Portrait(strip, p)
-        portrait:SetPoint("TOPLEFT", strip, "TOPLEFT", p.x or 0, p.y or 0)
-        strip._portrait = portrait
-        reach = math.max(0, (p.size or 32) + (p.x or 0))
-    end
-    strip._reach = reach
-
     local btn = Ctl:CreateButton({
         parent = strip, text = "Edit Dynamic Layout", width = BUTTON_W, height = BTN_H, fontSize = 12,
         onClick = function()
@@ -394,6 +389,14 @@ local function BuildStrip()
     btn:ClearAllPoints()
     btn:SetPoint("CENTER", strip, "CENTER", 0, 0)
     strip._button = btn
+
+    -- The emblem beside the button, and beside the panel's title in the
+    -- view: the owner moved it off the strip's corner at the third run, so
+    -- it marks the button as the addon's and not the box. The role's corner
+    -- offsets go unused here.
+    if spec.portrait and C.Portrait then
+        strip._portrait = C.Portrait(strip, spec.portrait)
+    end
 
     -- The halo: an additive wash in the view's color inside the button's
     -- border, over its art and under its label, that breathes while the view
@@ -420,13 +423,21 @@ end
 
 local LayoutPanel
 
+local function AnchorPortrait(beside)
+    local portrait = strip and strip._portrait
+    if not (portrait and beside) then return end
+    portrait:ClearAllPoints()
+    portrait:SetPoint("RIGHT", beside, "LEFT", -GAP, 0)
+end
+
 -- The strip's rect and its art. Collapsed: 44 units on the box's top edge,
 -- the box's width, the art two corners longer than the strip so its side
 -- edges, which end at its hidden bottom corners, reach the top of the box's
--- own side edges where the box's hidden top corners sat; the fill ends at the
--- top of the box's fill. Expanded: the panel's height from the box's top edge
--- down and its width plus the outset each side, all nine pieces, the fill
--- inside them. TOPLEFT and TOPRIGHT are two horizontal constraints, so
+-- own side edges where the box's hidden top corners sat; the fill runs to
+-- the bottom corner of the box's own fill, which is at alpha 0, since the
+-- strip draws under the box. Expanded: the panel's height from the box's top
+-- edge down and its width plus the outset each side, all nine pieces, the
+-- fill inside them. TOPLEFT and TOPRIGHT are two horizontal constraints, so
 -- SetHeight stands. The strip's strata and level move with the state and its
 -- children move with them.
 local function AnchorStrip(expanded)
@@ -456,11 +467,12 @@ local function AnchorStrip(expanded)
         art:SetHeight(STRIP_H + 2 * (strip._cornerH or 0))
         local bg = mgr.Border and mgr.Border.Bg
         if bg then
-            fill:SetPoint("BOTTOMRIGHT", bg, "TOPRIGHT", 0, 0)
+            fill:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
         else
-            fill:SetPoint("BOTTOMRIGHT", mgr, "TOPRIGHT", -inset, -inset)
+            fill:SetPoint("BOTTOMRIGHT", mgr, "BOTTOMRIGHT", -inset, inset)
         end
         SetPiecesAlpha(strip._border, BOTTOM_PIECES, 0)
+        AnchorPortrait(strip._button)
     end
 end
 
@@ -547,7 +559,7 @@ local function BuildPanel()
     })
 
     local frames = content:CreateFontString(nil, "OVERLAY")
-    ApplyFont(frames, "header", TITLE_SIZE)
+    ApplyFont(frames, "header", SECTION_SIZE)
     frames:SetTextColor(PrimaryColor())
     frames:SetJustifyH("LEFT")
     frames:SetText("Frames")
@@ -639,6 +651,7 @@ LayoutPanel = function()
 
     panel.title:ClearAllPoints()
     panel.title:SetPoint("TOP", content, "TOP", 0, y)
+    AnchorPortrait(panel.title)
     y = y - TITLE_SIZE - 6 - GAP * 2
 
     -- The sentence, at least its two lines tall, close over its rows.
@@ -661,7 +674,7 @@ LayoutPanel = function()
 
     panel.framesTitle:ClearAllPoints()
     panel.framesTitle:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
-    y = y - TITLE_SIZE - 6 - 2
+    y = y - SECTION_SIZE - 6 - 2
 
     local colW = (W - PAD * 3) / 2
     for i, row in ipairs(frameRows) do
