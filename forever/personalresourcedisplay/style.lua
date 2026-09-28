@@ -23,10 +23,19 @@ local DB = addon.DB
 addon.PersonalResourceDisplay = addon.PersonalResourceDisplay or {}
 local PRD = addon.PersonalResourceDisplay
 
--- The owner string every claim, event and Edit Mode registration carries,
--- the settings page key, and the global frames.xml declares.
+-- The owner string every claim, event and Edit Mode registration carries;
+-- the key of the layout store and the Dynamic Layouts adapter; the three
+-- pages' nav keys, their own Resource Display section (forever/menu.lua),
+-- with the Global page the one the Edit Mode dialog's Configure button
+-- opens; and the global frames.xml declares.
 PRD.OWNER = "camelotPersonalResourceDisplay"
-PRD.NAV_KEY = "personalResourceDisplay"
+PRD.KEY = "personalResourceDisplay"
+PRD.NAV_KEYS = {
+    global = "resourceDisplayGlobal",
+    health = "resourceDisplayHealth",
+    power = "resourceDisplayPower",
+}
+PRD.NAV_KEY = PRD.NAV_KEYS.global
 PRD.FRAME_NAME = "CamelotPersonalResourceDisplay"
 
 local Style = {}
@@ -39,7 +48,7 @@ PRD.Style = Style
 DB.RegisterModule("personalResourceDisplay", true)
 
 addon.Features.Register({
-    group = "interface", groupLabel = "Interface",
+    group = "resourceDisplay", groupLabel = "Resource Display",
     id = "personalResourceDisplay", label = "Personal Resource Display",
     path = "personalResourceDisplay.enabled",
 })

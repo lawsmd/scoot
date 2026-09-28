@@ -68,7 +68,7 @@ function EditMode.Register(frame)
 
     frame.editModeName = "Personal Resource Display"
     addon.EditMode.RegisterPositionable(frame, {
-        key = PRD.NAV_KEY,
+        key = PRD.KEY,
         default = Style.DEFAULT_POSITION,
         restoreDefault = true,
         store = store,

@@ -19,7 +19,7 @@ local DL = addon.DynamicLayouts
 local Dynamic = {}
 PRD.Dynamic = Dynamic
 
-local ID = PRD.NAV_KEY
+local ID = PRD.KEY
 
 local registered = false
 

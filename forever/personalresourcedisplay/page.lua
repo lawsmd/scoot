@@ -1,13 +1,15 @@
 --------------------------------------------------------------------------------
 -- forever/personalresourcedisplay/page.lua
--- The Personal Resource Display settings page, under Interface.
+-- The Resource Display pages, Global, Health Bar and Power Bar, their own
+-- section of the nav (forever/menu.lua).
 --
--- Laid out after Scoot's five pages (ui/v2/settings/prd/), folded into three
--- sections, so a setting both products have sits under the same label:
--- General, then one section per bar with its height, style, border, text
--- and visibility rows. Loads on retail too, where no display is built: the
--- controls still draw and write, and a stored value can be checked across a
--- reload there while the beta keeps none.
+-- Laid out after Scoot's pages (ui/v2/settings/prd/), so a setting both
+-- products have sits on the same page in the same section under the same
+-- label: the Global page holds what Scoot's General page holds, and each bar
+-- page runs Sizing, Style, Border, Text and Visibility under its Hide toggle.
+-- Loads on retail too, where no display is built: the controls still draw
+-- and write, and a stored value can be checked across a reload there while
+-- the beta keeps none.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -19,7 +21,7 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 local Helpers = addon.UI.Settings.Helpers
 local Catalogs = addon.Catalogs
 
-local NAV_KEY = PRD.NAV_KEY
+local NAV_KEYS = PRD.NAV_KEYS
 
 local function apply()
     Style.Apply()
@@ -70,13 +72,24 @@ local function addToggle(inner, label, path, opts)
         end })
 end
 
+local function beginPage(panel, scrollContent, render)
+    panel:ClearContent()
+    local builder = SettingsBuilder:CreateFor(scrollContent)
+    panel._currentBuilder = builder
+    builder:SetOnRefresh(function() render(panel, scrollContent) end)
+    return builder
+end
+
 --------------------------------------------------------------------------------
--- General
+-- Global
 --------------------------------------------------------------------------------
 
-local function buildGeneral(builder)
-    builder:AddCollapsibleSection({ title = "General", componentId = NAV_KEY,
-        sectionKey = "general", defaultExpanded = true,
+local function RenderGlobal(panel, scrollContent)
+    local builder = beginPage(panel, scrollContent, RenderGlobal)
+    local navKey = NAV_KEYS.global
+
+    builder:AddCollapsibleSection({ title = "Display", componentId = navKey,
+        sectionKey = "display", defaultExpanded = true,
         buildContent = function(_, inner)
             inner:AddSelector({ label = "Visibility",
                 values = Catalogs.Visibility.values, order = Catalogs.Visibility.order,
@@ -89,8 +102,13 @@ local function buildGeneral(builder)
             addSlider(inner, "Bar Width", Style.BAR_WIDTH, Style.Path("barWidth"), "50%", "150%")
             addSlider(inner, "Bar Spacing", Style.PADDING, Style.Path("padding"), "0", "10")
             addSlider(inner, "Opacity", Style.OPACITY, Style.Path("opacity"), "50%", "100%")
-            inner:AddSpacer(8)
-            -- The Classic unit frames' four switches, on the health bar.
+            inner:Finalize()
+        end })
+
+    -- The Classic unit frames' four switches, on the health bar.
+    builder:AddCollapsibleSection({ title = "Heal Prediction", componentId = navKey,
+        sectionKey = "healPrediction", defaultExpanded = true,
+        buildContent = function(_, inner)
             local function healthToggle(label, field, disabledBy)
                 addToggle(inner, label, Style.Path("health", field), {
                     refresh = true,
@@ -103,92 +121,115 @@ local function buildGeneral(builder)
             healthToggle("Show Heal Absorbs", "healAbsorb")
             inner:Finalize()
         end })
-end
-
---------------------------------------------------------------------------------
--- A bar
---------------------------------------------------------------------------------
-
-local function buildBar(builder, key, title, opts)
-    local base = Style.Path(key)
-    builder:AddCollapsibleSection({ title = title, componentId = NAV_KEY,
-        sectionKey = key, defaultExpanded = false,
-        buildContent = function(_, inner)
-            addToggle(inner, "Hide " .. title, Style.Path(key, "hide"), { emphasized = true })
-            addSlider(inner, "Bar Height", Style.HEIGHT, Style.Path(key, "height"), "10", "30")
-
-            -- Style
-            inner:AddSpacer(8)
-            local sget, sset = accessors(base, STYLE_MAP)
-            inner:AddBarStyleBlock({ get = sget, set = sset, apply = apply,
-                foreground = { values = opts.foreground.values, order = opts.foreground.order, infoIcons = false },
-                background = { values = Catalogs.ColorMode.DefaultCustom.values,
-                               order = Catalogs.ColorMode.DefaultCustom.order },
-                opacity = { default = Style.BACKGROUND_OPACITY.default, minLabel = "0%", maxLabel = "100%" } })
-
-            -- Border. Off is the picker's own "none".
-            inner:AddSpacer(8)
-            local bget, bset = accessors(base, BORDER_MAP)
-            inner:AddBarBorderBlock({ get = bget, set = bset, apply = apply,
-                style = { default = "none", hiddenEdges = false },
-                thickness = { minLabel = "1", maxLabel = "8" },
-                inset = false })
-
-            -- Text: the value. The percent arrives with the percent chain.
-            inner:AddSpacer(8)
-            inner:AddSelector({ label = "Show Text",
-                values = Style.SHOW_TEXT.values, order = Style.SHOW_TEXT.order,
-                get = function() return Style.TextShow(key) end,
-                set = function(v)
-                    DB.Set(Style.Path(key, "text", "value", "show"), v)
-                    apply()
-                end })
-            local tget, tset = accessors(Style.Path(key, "text", "value"), TEXT_MAP)
-            local _, fontSize = Style.FontObjectFont()
-            inner:AddTextStyleBlock({ get = tget, set = tset, apply = apply,
-                -- What the selectors show while nothing is stored: the
-                -- TextStatusBarText font object's face, size and outline.
-                defaults = { fontFace = "FRIZQT__", size = fontSize, style = "OUTLINE" },
-                -- The paired order offers Deep Shadow: these strings are
-                -- Camelot's own and fed through SetText, which the copy hooks.
-                style = { order = Helpers.fontStyleOrderOutlineFirstPaired },
-                size = { min = Style.TEXT_SIZE.min, max = Style.TEXT_SIZE.max,
-                         minLabel = tostring(Style.TEXT_SIZE.min), maxLabel = tostring(Style.TEXT_SIZE.max) },
-                color = { values = Catalogs.ColorMode.Text.values, order = Catalogs.ColorMode.Text.order },
-                alignment = { kind = "align", label = "Text Alignment", default = "RIGHT",
-                              order = { "RIGHT", "LEFT", "CENTER" } },
-                offset = false })
-
-            -- Visibility
-            inner:AddSpacer(8)
-            addToggle(inner, "Hide the Bar but not its Text", Style.Path(key, "hideTextureOnly"))
-            addToggle(inner, "Hide Bar Background", Style.Path(key, "hideBackground"))
-            if opts.manaCost then
-                addToggle(inner, "Hide Mana Cost Prediction", Style.Path(key, "hideManaCostPrediction"), {
-                    description = "The cost of the spell being cast, drawn over the end of the fill.",
-                })
-            end
-            inner:Finalize()
-        end })
-end
-
---------------------------------------------------------------------------------
--- Render
---------------------------------------------------------------------------------
-
-local function Render(panel, scrollContent)
-    panel:ClearContent()
-    local builder = SettingsBuilder:CreateFor(scrollContent)
-    panel._currentBuilder = builder
-    builder:SetOnRefresh(function() Render(panel, scrollContent) end)
-
-    buildGeneral(builder)
-    buildBar(builder, "health", "Health Bar", { foreground = Catalogs.ColorMode.Text })
-    buildBar(builder, "power", "Power Bar", { foreground = Catalogs.ColorMode.DefaultCustom, manaCost = true })
 
     builder:Finalize()
 end
 
-addon.UI.SettingsPanel:RegisterRenderer(NAV_KEY, function(panel, scrollContent)
-    Render(panel, scrollContent)
-end)
+--------------------------------------------------------------------------------
+-- The bar pages
+--------------------------------------------------------------------------------
+-- Scoot's section order per bar: the health page draws Border before Style,
+-- the power page Style before Border.
+
+local SECTION_ORDER = {
+    health = { "sizing", "border", "style", "text", "visibility" },
+    power = { "sizing", "style", "border", "text", "visibility" },
+}
+
+local TITLES = { sizing = "Sizing", style = "Style", border = "Border", text = "Text", visibility = "Visibility" }
+
+local SECTIONS = {}
+
+function SECTIONS.sizing(inner, key)
+    addSlider(inner, "Bar Height", Style.HEIGHT, Style.Path(key, "height"), "10", "30")
+end
+
+function SECTIONS.style(inner, key, opts)
+    local get, set = accessors(Style.Path(key), STYLE_MAP)
+    inner:AddBarStyleBlock({ get = get, set = set, apply = apply,
+        foreground = { values = opts.foreground.values, order = opts.foreground.order, infoIcons = false },
+        background = { values = Catalogs.ColorMode.DefaultCustom.values,
+                       order = Catalogs.ColorMode.DefaultCustom.order },
+        opacity = { default = Style.BACKGROUND_OPACITY.default, minLabel = "0%", maxLabel = "100%" } })
+end
+
+-- Off is the picker's own "none".
+function SECTIONS.border(inner, key)
+    local get, set = accessors(Style.Path(key), BORDER_MAP)
+    inner:AddBarBorderBlock({ get = get, set = set, apply = apply,
+        style = { default = "none", hiddenEdges = false },
+        thickness = { minLabel = "1", maxLabel = "8" },
+        inset = false })
+end
+
+-- The value text. The percent arrives with the percent chain.
+function SECTIONS.text(inner, key)
+    inner:AddSelector({ label = "Show Text",
+        values = Style.SHOW_TEXT.values, order = Style.SHOW_TEXT.order,
+        get = function() return Style.TextShow(key) end,
+        set = function(v)
+            DB.Set(Style.Path(key, "text", "value", "show"), v)
+            apply()
+        end })
+    local get, set = accessors(Style.Path(key, "text", "value"), TEXT_MAP)
+    local _, fontSize = Style.FontObjectFont()
+    inner:AddTextStyleBlock({ get = get, set = set, apply = apply,
+        -- What the selectors show while nothing is stored: the
+        -- TextStatusBarText font object's face, size and outline.
+        defaults = { fontFace = "FRIZQT__", size = fontSize, style = "OUTLINE" },
+        -- The paired order offers Deep Shadow: these strings are Camelot's
+        -- own and fed through SetText, which the copy hooks.
+        style = { order = Helpers.fontStyleOrderOutlineFirstPaired },
+        size = { min = Style.TEXT_SIZE.min, max = Style.TEXT_SIZE.max,
+                 minLabel = tostring(Style.TEXT_SIZE.min), maxLabel = tostring(Style.TEXT_SIZE.max) },
+        color = { values = Catalogs.ColorMode.Text.values, order = Catalogs.ColorMode.Text.order },
+        alignment = { kind = "align", label = "Text Alignment", default = "RIGHT",
+                      order = { "RIGHT", "LEFT", "CENTER" } },
+        offset = false })
+end
+
+function SECTIONS.visibility(inner, key, opts)
+    addToggle(inner, "Hide the Bar but not its Text", Style.Path(key, "hideTextureOnly"))
+    addToggle(inner, "Hide Bar Background", Style.Path(key, "hideBackground"))
+    if opts.manaCost then
+        addToggle(inner, "Hide Mana Cost Prediction", Style.Path(key, "hideManaCostPrediction"), {
+            description = "The cost of the spell being cast, drawn over the end of the fill.",
+        })
+    end
+end
+
+local function RenderBar(panel, scrollContent, key, title, opts, render)
+    local builder = beginPage(panel, scrollContent, render)
+    local navKey = NAV_KEYS[key]
+
+    addToggle(builder, "Hide " .. title, Style.Path(key, "hide"), { emphasized = true })
+
+    for _, section in ipairs(SECTION_ORDER[key]) do
+        builder:AddCollapsibleSection({ title = TITLES[section], componentId = navKey,
+            sectionKey = section, defaultExpanded = false,
+            buildContent = function(_, inner)
+                SECTIONS[section](inner, key, opts)
+                inner:Finalize()
+            end })
+    end
+
+    builder:Finalize()
+end
+
+local function RenderHealth(panel, scrollContent)
+    RenderBar(panel, scrollContent, "health", "Health Bar",
+        { foreground = Catalogs.ColorMode.Text }, RenderHealth)
+end
+
+local function RenderPower(panel, scrollContent)
+    RenderBar(panel, scrollContent, "power", "Power Bar",
+        { foreground = Catalogs.ColorMode.DefaultCustom, manaCost = true }, RenderPower)
+end
+
+--------------------------------------------------------------------------------
+-- Registration
+--------------------------------------------------------------------------------
+
+addon.UI.SettingsPanel:RegisterRenderer(NAV_KEYS.global, RenderGlobal)
+addon.UI.SettingsPanel:RegisterRenderer(NAV_KEYS.health, RenderHealth)
+addon.UI.SettingsPanel:RegisterRenderer(NAV_KEYS.power, RenderPower)

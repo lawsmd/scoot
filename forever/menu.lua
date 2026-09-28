@@ -57,6 +57,19 @@ Navigation.NavModel = {
             { key = "castBarPlayer", label = "Player" },
         },
     },
+    -- The Personal Resource Display, named short for the width. No `module`:
+    -- forever/personalresourcedisplay/style.lua registers the switch, not the
+    -- components host the gate reads.
+    {
+        key = "resourceDisplay",
+        label = "Resource Display",
+        collapsible = true,
+        children = {
+            { key = "resourceDisplayGlobal", label = "Global" },
+            { key = "resourceDisplayHealth", label = "Health Bar" },
+            { key = "resourceDisplayPower", label = "Power Bar" },
+        },
+    },
     -- `module` is the Features switch in forever/components.lua: the row greys
     -- out while its feature is off.
     {
@@ -70,9 +83,6 @@ Navigation.NavModel = {
             -- tracker.lua, not by the components host the gate reads.
             { key = "objectiveTracker", label = "Objective Tracker" },
             { key = "currentObjectives", label = "Current Objectives" },
-            -- No `module` for the same reason: forever/personalresourcedisplay/
-            -- style.lua registers the switch.
-            { key = "personalResourceDisplay", label = "Personal Resource Display" },
         },
     },
 }
