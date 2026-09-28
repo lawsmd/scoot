@@ -68,6 +68,10 @@ function CBZ._RegisterBarEditMode(bar, row)
         store = CBZ._PositionStore,
         apply = ApplyBarPosition,
         restoreDefault = true,
+        -- Optional painter seam: the art past the bar's rect, so the box
+        -- covers a border drawn larger than the bar. Absent on a painter
+        -- whose art stays inside it.
+        reach = CBZ._SelectionReach and CBZ._SelectionReach(bar) or nil,
         -- A snapped bar discards drops and its live anchor answers secret, so
         -- the dialog's position row renders only in free mode.
         positionEditable = function(b)

@@ -19,7 +19,9 @@ local Brand = addon.EditMode.Brand
 -- Constants
 --------------------------------------------------------------------------------
 
-local DIALOG_W    = 260
+-- Blizzard's own system settings dialog: a 300 box plus its 40 of padding.
+-- Narrower, the mirror's slider labels ran under their arrows.
+local DIALOG_W    = 340
 local PAD         = 14
 local BORDER      = 3
 local TITLE_SIZE  = 14
@@ -407,8 +409,10 @@ local function PositionForSelection(dialog, selection, height)
     -- Prefer up-and-right; flip to whichever corner keeps the box on screen.
     local horizontal, vertical = "RIGHT", "TOP"
 
+    -- Off the selection rather than the element: a registration's reach
+    -- sizes the selection past the element's rect (core/editmode/positionables.lua).
     local ok, right, top = pcall(function()
-        return frame:GetRight(), frame:GetTop()
+        return selection:GetRight(), selection:GetTop()
     end)
     if ok and type(right) == "number" and type(top) == "number" then
         local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
@@ -428,7 +432,7 @@ local function PositionForSelection(dialog, selection, height)
     local framePoint = vertical .. horizontal   -- TOPRIGHT / TOPLEFT / BOTTOMRIGHT / BOTTOMLEFT
 
     dialog:ClearAllPoints()
-    dialog:SetPoint(selfPoint, frame, framePoint, dx, dy)
+    dialog:SetPoint(selfPoint, selection, framePoint, dx, dy)
 end
 
 -- The role's `attach` table: the box sits beside the element, top edges level,
@@ -442,25 +446,27 @@ local function AttachToSelection(dialog, selection, attach, onlyOnFlip)
     if not frame then return end
 
     local side = "RIGHT"
-    local ok, centerX = pcall(frame.GetCenter, frame)
+    local ok, centerX = pcall(selection.GetCenter, selection)
     if ok and type(centerX) == "number" then
-        local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        local ratio = selection:GetEffectiveScale() / UIParent:GetEffectiveScale()
         if centerX * ratio > UIParent:GetWidth() / 2 then side = "LEFT" end
     end
     if onlyOnFlip and side == attachedSide then return end
     attachedSide = side
 
     -- The selection box stands off small elements, so the gap is measured from
-    -- the border the player sees rather than from the element's own edge.
+    -- the border the player sees rather than from the element's own edge; the
+    -- selection, not the element, since a registration's reach sizes it past
+    -- the element's rect.
     local skinner = addon.EditMode.SelectionSkin
     local outX = 0
     if skinner and skinner.Outset then outX = (skinner.Outset(selection)) end
     local gap = (attach.gap or 8) + outX
     dialog:ClearAllPoints()
     if side == "RIGHT" then
-        dialog:SetPoint("TOPLEFT", frame, "TOPRIGHT", gap, 0)
+        dialog:SetPoint("TOPLEFT", selection, "TOPRIGHT", gap, 0)
     else
-        dialog:SetPoint("TOPRIGHT", frame, "TOPLEFT", -gap, 0)
+        dialog:SetPoint("TOPRIGHT", selection, "TOPLEFT", -gap, 0)
     end
 end
 

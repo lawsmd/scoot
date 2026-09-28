@@ -72,6 +72,11 @@ Art.Looks.CLASSIC = {
     flash  = { layer = "OVERLAY", path = Art.Paths.flash, blend = "ADD",
                w = 256, h = 64, point = "TOP", x = 0, y = 28, hidden = true, slice = { 40, 30, 40, 25 } },
 
+    -- The border's drawn edge past the bar: each side, then above and below.
+    -- Read off the screen at the stock size, since the file's transparent
+    -- margins are not in the anchor numbers; the box's ends are the check.
+    reach  = { left = 3, right = 3, top = 13, bottom = 15 },
+
     spark  = { layer = "OVERLAY", sublevel = 1, path = Art.Paths.spark, blend = "ADD",
                w = 32, h = 32, y = 2 },
 

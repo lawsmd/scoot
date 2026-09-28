@@ -167,6 +167,13 @@ local function LayoutBar(bar)
     bar.spark:SetPoint("CENTER", bar.progressBar:GetStatusBarTexture(), "RIGHT", 0, look.spark.y * sparkRatio)
 end
 
+-- The look's `reach`: how far the border's drawn edge stands past the bar,
+-- which the Edit Mode selection box covers (core/components/castbarz/editmode.lua).
+-- The sliced border grows by the bar's own growth, so it holds at any size.
+function CBZ._SelectionReach(bar)
+    return bar.look and bar.look.reach
+end
+
 -- Frame Color. "forever" dresses the border in the Forever bronze; "classic"
 -- leaves the file's own silver.
 local function ApplyFrameColor(bar)

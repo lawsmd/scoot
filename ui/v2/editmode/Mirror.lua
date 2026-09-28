@@ -3,7 +3,7 @@
 -- The branded dialog (Dialog.lua) has always reserved `skin.MirrorSlot` for this.
 -- What lands in it comes from the component, but only as a DESCRIPTION: a component
 -- returns a spec list saying "a selector called Snap To over these values", and this
--- file decides what a selector looks like in a 232px box. Components therefore never
+-- file decides what a selector looks like in a 312px box. Components therefore never
 -- reach into addon.UI.Controls, and the box can be re-laid-out in one place.
 --
 -- A provider is registered alongside the frame:
@@ -61,14 +61,15 @@ local Mirror = addon.EditMode.Mirror
 --------------------------------------------------------------------------------
 -- Sizing
 --------------------------------------------------------------------------------
--- Every control is squeezed to fit the dialog's 232px content width beside its
--- label. Selector: 12 pad + ~76 label + 132 control + 12 pad. Slider: 12 pad +
--- ~62 label + (20 arrow + 60 track + 20 arrow + 8 gap + 38 input) + 12 pad.
--- The narrow track is why the arrows and the typed input matter more here than on
--- the settings page: they are how an exact value gets entered.
+-- Every control is sized to the dialog's 312px content width beside its
+-- label. Selector: 12 pad + ~128 label + 160 control + 12 pad. Slider: 12 pad +
+-- ~102 label + (20 arrow + 100 track + 20 arrow + 8 gap + 38 input) + 12 pad.
+-- The label band is the number to protect: at 62 the longer labels ran under
+-- their arrows. The arrows and the typed input are still how an exact value
+-- gets entered on a short track.
 
-local SELECTOR_W    = 132
-local SLIDER_TRACK_W = 60
+local SELECTOR_W    = 160
+local SLIDER_TRACK_W = 100
 local SLIDER_INPUT_W = 38
 
 local ACTION_BTN_H  = 26   -- matches Dialog.lua's BTN_H
@@ -76,17 +77,17 @@ local ACTION_ROW_H  = 34   -- button + top gap; both action kinds share it
 local STATUS_BTN_W  = 64   -- the compact status-row button
 
 -- Kept off addon.UI.Skin.Metrics: the header is a dialog-only row, sized to
--- the 232px box like the rest of this file. Its text sits at the foot of its
+-- the 312px box like the rest of this file. Its text sits at the foot of its
 -- row, so the row's slack is the gap above it, off the group before.
 local HEADER_ROW_H      = 24
 local HEADER_SIZE       = 12
 local HEADER_PAD_BOTTOM = 3
 
--- Kept off addon.UI.Skin.Metrics: dialog-only squeeze values, sized to the
--- 232px box like every other constant in this file. The label has its own line,
--- so the boxes get the full width: 12 pad + tag + 4 + reach + 80 box + 16 gap +
--- tag + 4 + reach + 80 box + 12 pad, where reach is the input role's art past
--- the box's left edge (5 on a template skin, 0 on flat).
+-- Kept off addon.UI.Skin.Metrics: dialog-only values, sized to the 312px box
+-- like every other constant in this file. The label has its own line and the
+-- pair sits centered under it: tag + 4 + reach + 80 box + 16 gap + tag + 4 +
+-- reach + 80 box, where reach is the input role's art past the box's left
+-- edge (5 on a template skin, 0 on flat), with the row's slack either side.
 local POS_BOX_W       = 80   -- each coordinate box
 local POS_BOX_H       = 22   -- flat draw only; a template box takes its art's 20
 local POS_HALF_GAP    = 16   -- between the X half and the Y half
@@ -349,13 +350,16 @@ local BUILDERS = {
         local row = CreateFrame("Frame", nil, parent)
         row:SetHeight(HEADER_ROW_H)
         local fs = row:CreateFontString(nil, "OVERLAY")
+        -- Justified before the font goes on: a Deep Shadow header role gives
+        -- the string a copy that takes its justification at that moment, and
+        -- a copy left centered draws the title a second time mid-row.
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(false)
         local theme = addon.UI and addon.UI.Theme
         if theme then
             theme:ApplyFont(fs, "header", HEADER_SIZE)
             fs:SetTextColor(theme:GetAccentColor())
         end
-        fs:SetJustifyH("LEFT")
-        fs:SetWordWrap(false)
         fs:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, HEADER_PAD_BOTTOM)
         fs:SetPoint("RIGHT", row, "RIGHT", 0, 0)
         fs:SetText(spec.label or "")

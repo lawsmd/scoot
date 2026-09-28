@@ -16,6 +16,10 @@ local DB = addon.DB
 local EditMode = {}
 PRD.EditMode = EditMode
 
+-- The bar background's anchors past its bar (frames.xml), the shadow side of
+-- the atlas, which the frame's own rect leaves out on every side.
+local ART_REACH = { left = 2, right = 6, top = 3, bottom = 7 }
+
 --------------------------------------------------------------------------------
 -- Store
 --------------------------------------------------------------------------------
@@ -71,6 +75,7 @@ function EditMode.Register(frame)
         key = PRD.KEY,
         default = Style.DEFAULT_POSITION,
         restoreDefault = true,
+        reach = ART_REACH,
         store = store,
         apply = ApplyPosition,
         brand = { navKey = PRD.NAV_KEY, componentId = PRD.NAV_KEY, mirror = Style.EditModeMirror() },

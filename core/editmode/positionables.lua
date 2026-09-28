@@ -20,6 +20,12 @@
 --     positionEditable = function(frame) -> boolean
 --                      optional; the dialog's X/Y position row renders only
 --                      while this returns true (a snapped Cast Bar Z bar)
+--     reach          = { left, right, top, bottom }
+--                      optional; how far the element's art reaches past the
+--                      frame's rect on each side, in the frame's units. The
+--                      selection box and its hit area cover the art, so a
+--                      border or shadow drawn larger than the frame sits
+--                      inside the box rather than under its edge
 --     brand          = table                 Brand:Register(frame, brand) options
 -- })
 -- Returns the LibEditMode selection frame, nil without the library. A repeat
@@ -396,6 +402,18 @@ end
 -- API
 --------------------------------------------------------------------------------
 
+-- The library anchors the selection over the frame's rect alone. A
+-- registration whose art reaches past that rect re-anchors it over the art;
+-- the library still reads the frame itself for a drop, so the stored position
+-- is the same either way.
+local function coverReach(selection, frame, reach)
+    local l, r = tonumber(reach.left) or 0, tonumber(reach.right) or 0
+    local t, b = tonumber(reach.top) or 0, tonumber(reach.bottom) or 0
+    selection:ClearAllPoints()
+    selection:SetPoint("TOPLEFT", frame, "TOPLEFT", -l, t)
+    selection:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", r, -b)
+end
+
 function EM.RegisterPositionable(frame, opts)
     if not frame or type(opts) ~= "table" then return nil end
     local existing = registry[frame]
@@ -419,6 +437,9 @@ function EM.RegisterPositionable(frame, opts)
 
     lib:AddFrame(frame, onDrop, entry.default, nil)
     entry.selection = lib.frameSelections and lib.frameSelections[frame] or nil
+    if entry.selection and type(opts.reach) == "table" then
+        coverReach(entry.selection, frame, opts.reach)
+    end
 
     -- The library's drag scripts live on the selection overlay; hooking the
     -- instance marks the window where the position row reads live geometry.
