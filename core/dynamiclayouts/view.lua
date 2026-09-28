@@ -14,9 +14,11 @@
 -- The boxes: a participating frame's selection box is raised into the
 -- shield's strata over the shield the drawing side holds, at its template's
 -- level and with its top-level raise off, so it can be dragged and stays
--- under the panel; another frame's box goes to alpha 0, since the library
--- re-shows every box whenever its dialog hides and a Hide would not hold.
--- Both are undone on exit.
+-- under the panel; another frame's box goes to alpha 0 with its mouse off,
+-- since the library re-shows every box whenever its dialog hides and a Hide
+-- would not hold, and an invisible box must not take a click. Both are
+-- undone on exit. The drawing side asks for the faded boxes to hold their
+-- rects against the mouse.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -41,7 +43,7 @@ local locked = false
 local lockToken = 0
 local host = nil       -- the drawing side's handlers: onEnter, onExit, onLock, onParticipation
 local raised = setmetatable({}, { __mode = "k" })  -- selection -> { strata, level, toplevel } before the raise
-local faded = setmetatable({}, { __mode = "k" })   -- selection -> true while at alpha 0
+local faded = setmetatable({}, { __mode = "k" })   -- selection -> { mouse } while at alpha 0
 
 local function Store()
     local store = addon.DynamicLayoutsStore
@@ -163,23 +165,34 @@ local function lowerBox(selection)
     if kept.toplevel and selection.SetToplevel then selection:SetToplevel(true) end
 end
 
+-- The mouse setting is kept with the fade, as the template enables it.
+local function fadeBox(selection)
+    if faded[selection] then return end
+    local mouse = (selection.IsMouseEnabled and selection:IsMouseEnabled()) and true or false
+    faded[selection] = { mouse = mouse }
+    selection:SetAlpha(0)
+    if selection.EnableMouse then selection:EnableMouse(false) end
+end
+
+local function unfadeBox(selection)
+    local kept = faded[selection]
+    if not kept then return end
+    faded[selection] = nil
+    selection:SetAlpha(1)
+    if selection.EnableMouse then selection:EnableMouse(kept.mouse) end
+end
+
 local function arrangeBoxes()
     if not EM.ForEachPositionable then return end
     EM.ForEachPositionable(function(frame, selection)
         if not selection then return end
         local id = DL.IdForFrame(frame)
         if id and View.IsParticipating(id) then
-            if faded[selection] then
-                faded[selection] = nil
-                selection:SetAlpha(1)
-            end
+            unfadeBox(selection)
             raiseBox(selection)
         else
             lowerBox(selection)
-            if not faded[selection] then
-                faded[selection] = true
-                selection:SetAlpha(0)
-            end
+            fadeBox(selection)
         end
     end)
 end
@@ -189,11 +202,15 @@ local function restoreBoxes()
     EM.ForEachPositionable(function(_, selection)
         if not selection then return end
         lowerBox(selection)
-        if faded[selection] then
-            faded[selection] = nil
-            selection:SetAlpha(1)
-        end
+        unfadeBox(selection)
     end)
+end
+
+--- The boxes at alpha 0 in the view, for the drawing side's holds.
+function View.ForEachFadedBox(fn)
+    for selection in pairs(faded) do
+        fn(selection)
+    end
 end
 
 --------------------------------------------------------------------------------

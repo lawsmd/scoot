@@ -1,5 +1,6 @@
 -- DynamicView.lua - The Dynamic Layouts strip on Blizzard's Edit Mode box, the
--- panel it grows into, and the shield and screen border of the dynamic view
+-- panel it grows into, and the holds, the shield and the screen border of the
+-- dynamic view
 --
 -- The strip is a frame of this addon's own on the top edge of
 -- EditModeManagerFrame, drawn as one box with it: the box's top corners and
@@ -7,24 +8,31 @@
 -- same Dialog nine-slice) drops its bottom pieces and runs its side edges
 -- down to meet the box's, and its fill ends where the box's fill begins.
 -- Nothing on the box is written: it is anchored to, its regions take an
--- alpha, and its OnShow and OnHide are hooked, the touches Dialog.lua already
--- makes. The strip's one button opens the view (core/dynamiclayouts/view.lua).
+-- alpha, its OnShow and OnHide are hooked, the touches Dialog.lua already
+-- makes, and one of its methods takes a post-hook. The strip's one button
+-- opens the view (core/dynamiclayouts/view.lua).
 --
 -- While the view holds, Blizzard's Edit Mode goes out of sight: the box, with
 -- its grid and its magnetism lines under it, and its settings dialog take
 -- alpha 0, and its selection boxes hide (a widget call; that template has no
--- script behind Hide or Show). The strip grows down from the box's top edge
--- into the panel: the requirements, the transition speed, the frames that
--- take part, and Done. Done puts every Blizzard piece back at once. The other
--- ends of the view put the alphas back and re-show the selections only if
--- Edit Mode still holds a frame later, since Blizzard's own exit has hidden
--- them for good by then.
+-- script behind Hide or Show). Blizzard shows them again from
+-- ClearSelectedSystem, which the library calls on every click of an
+-- addon-owned box, so a post-hook on it runs the hide again at once. The strip grows
+-- down from the box's top edge into the panel, wider than the box by an
+-- outset each side for the two columns of frames: the requirements, the
+-- transition speed, the frames that take part, and Done. Done puts every
+-- Blizzard piece back at once. The other ends of the view put the alphas back
+-- and re-show the selections only if Edit Mode still holds a frame later,
+-- since Blizzard's own exit has hidden them for good by then.
 --
--- The shield is a transparent full-screen frame that takes the mouse: over
--- everything for the transition window, then in the DIALOG strata over the
--- box and Blizzard's dialog and under the view's boxes, the branded dialog
--- (raised a strata for the view) and the strip. The border is four lines in
--- the view's color around the screen.
+-- The holds are transparent frames that take the mouse over the rects the
+-- view has taken off the screen and nowhere else, so the world stays free
+-- for the camera: the invisible box and Blizzard's invisible dialog, every
+-- Blizzard selection box the view hid that was visible, and every addon-owned
+-- box it faded. They stand in the DIALOG strata under the view's boxes, the
+-- branded dialog (raised a strata for the view) and the strip. The shield is
+-- one full-screen frame over everything, up for the transition window only.
+-- The border is four lines in the view's color around the screen.
 local addonName, addon = ...
 
 addon.EditMode = addon.EditMode or {}
@@ -50,7 +58,8 @@ local BUTTON_W     = 200
 local DONE_W       = 120
 local ROW_H        = 36    -- Controls:CreateToggle's row
 local SLIDER_ROW_H = 40    -- Controls:CreateSlider's row
-local GLOW_OUT     = 4
+local GLOW_IN      = 4     -- the halo's inset from the button's edge, inside its border
+local PANEL_OUTSET = 45    -- the panel's reach past each side of the box
 local BORDER_W     = 4
 local FADE         = 0.3
 
@@ -58,15 +67,15 @@ local FADE         = 0.3
 -- bottom of it with its buttons at 2, its layout dialogs at 100 and its
 -- settings dialog at 200, where the library's dialog stands too. The
 -- collapsed strip sits over the box and under the dialogs. In the view the
--- shield holds over the box and Blizzard's dialog; the participating boxes
--- keep their template's 1000 over it (core/dynamiclayouts/view.lua), the
+-- holds stand over the box and Blizzard's dialog; the participating boxes
+-- keep their template's 1000 over them (core/dynamiclayouts/view.lua), the
 -- library's dialog rises a strata (Dialog.SetRaised), the strip goes over
 -- the boxes, and for the transition the shield rises over all of it.
-local STRIP_LEVEL       = 50
-local STRIP_LEVEL_VIEW  = 2000
-local SHIELD_LEVEL_HOLD = 250
-local BORDER_LEVEL      = 255
-local SHIELD_LEVEL_LOCK = 900   -- FULLSCREEN_DIALOG
+local STRIP_LEVEL      = 50
+local STRIP_LEVEL_VIEW = 2000
+local HOLD_LEVEL       = 250
+local BORDER_LEVEL     = 255
+local SHIELD_LEVEL     = 900   -- FULLSCREEN_DIALOG
 
 local TRIGGER_ROWS = {
     { name = "inCombat",       label = "Not in combat" },
@@ -85,10 +94,12 @@ local BOTTOM_PIECES = { "BottomLeftCorner", "BottomRightCorner", "BottomEdge" }
 local strip, shield, border
 local panel = nil       -- the panel's fixed controls, built once
 local frameRows = {}    -- one checkbox row per adapter, rebuilt on every entry
+local holds = nil       -- the mouse holds, an indexed pool
+local holdCount = 0
 
 local topPiecesHeld = false      -- the box's top pieces at alpha 0 under the strip
 local alphaHeld = false          -- the box and Blizzard's dialog at alpha 0 for the view
-local hiddenSelections = {}      -- Blizzard's selection boxes the view hid, to show again
+local heldSelections = {}        -- Blizzard selection box -> whether it was visible when hidden
 local reshowOwed = false         -- a re-show that waited for lockdown to end
 
 local function Chrome() return addon.UI and addon.UI.Chrome end
@@ -138,6 +149,18 @@ local function SetPiecesAlpha(container, names, alpha)
     end
 end
 
+local function IsShown(frame)
+    if not (frame and frame.IsShown) then return false end
+    local ok, shown = pcall(frame.IsShown, frame)
+    return ok and shown == true
+end
+
+local function IsVisible(frame)
+    if not (frame and frame.IsVisible) then return false end
+    local ok, visible = pcall(frame.IsVisible, frame)
+    return ok and visible == true
+end
+
 --------------------------------------------------------------------------------
 -- Blizzard's pieces
 --------------------------------------------------------------------------------
@@ -152,29 +175,35 @@ local function HoldTopPieces(on)
     SetPiecesAlpha(mgr.Border, TOP_PIECES, on and 0 or 1)
 end
 
--- The view: the box and Blizzard's settings dialog at alpha 0, and every
--- Blizzard selection box that is shown hidden, remembered for the re-show.
+-- Every shown Blizzard selection box hidden and remembered, with whether it
+-- was visible: a parked system's box is shown on a hidden parent, and gets
+-- no hold. The pass runs again whenever Blizzard shows them back under the
+-- view, and a box already remembered keeps its first answer.
+local function HoldSelections()
+    local mgr = Manager()
+    local systems = mgr and mgr.registeredSystemFrames
+    if type(systems) ~= "table" then return end
+    for _, system in ipairs(systems) do
+        local sel = type(system) == "table" and system.Selection
+        if sel and IsShown(sel) then
+            local visible = IsVisible(sel)
+            if pcall(sel.Hide, sel) and heldSelections[sel] == nil then
+                heldSelections[sel] = visible
+            end
+        end
+    end
+end
+
+-- The view: the box and Blizzard's settings dialog at alpha 0, and the
+-- selection boxes hidden.
 local function HoldBlizzardPieces()
     local mgr = Manager()
     if mgr then pcall(mgr.SetAlpha, mgr, 0) end
     local dlg = BlizzardDialog()
     if dlg and dlg.SetAlpha then pcall(dlg.SetAlpha, dlg, 0) end
     alphaHeld = true
-
-    wipe(hiddenSelections)
-    local systems = mgr and mgr.registeredSystemFrames
-    if type(systems) ~= "table" then return end
-    for _, system in ipairs(systems) do
-        local sel = type(system) == "table" and system.Selection
-        if sel and sel.IsShown then
-            local ok, shown = pcall(sel.IsShown, sel)
-            if ok and shown == true then
-                if pcall(sel.Hide, sel) then
-                    hiddenSelections[#hiddenSelections + 1] = sel
-                end
-            end
-        end
-    end
+    wipe(heldSelections)
+    HoldSelections()
 end
 
 local function ReleaseBlizzardAlpha()
@@ -188,21 +217,20 @@ end
 
 local function ReshowSelections()
     reshowOwed = false
-    for i = #hiddenSelections, 1, -1 do
-        local sel = hiddenSelections[i]
-        hiddenSelections[i] = nil
+    for sel in pairs(heldSelections) do
         pcall(sel.Show, sel)
     end
+    wipe(heldSelections)
 end
 
 -- After an end that was not Done: Blizzard's own exit hides every selection
 -- for good, so the re-show runs only while Edit Mode still holds, and out of
 -- lockdown, where it waits for regen.
 local function ReshowSelectionsIfEditing()
-    if #hiddenSelections == 0 then return end
+    if next(heldSelections) == nil then return end
     local EM = addon.EditMode
     if not (EM and EM.IsEditing and EM.IsEditing()) then
-        wipe(hiddenSelections)
+        wipe(heldSelections)
         reshowOwed = false
         return
     end
@@ -213,11 +241,63 @@ local function ReshowSelectionsIfEditing()
     ReshowSelections()
 end
 
--- The library's dialog shares the DIALOG strata with the shield's hold, so
--- it rises a strata for the view (ui/v2/editmode/Dialog.lua).
+-- The library's dialog shares the DIALOG strata with the holds, so it rises
+-- a strata for the view (ui/v2/editmode/Dialog.lua).
 local function RaiseLibraryDialog(on)
     local D = addon.EditMode.Dialog
     if D and D.SetRaised then D.SetRaised(on) end
+end
+
+--------------------------------------------------------------------------------
+-- The holds
+--------------------------------------------------------------------------------
+
+local function BuildHolds()
+    if holds then return end
+    holds = addon.Pool.NewIndexed(function()
+        local hold = CreateFrame("Frame", nil, UIParent)
+        hold:SetFrameStrata("DIALOG")
+        hold:SetFrameLevel(HOLD_LEVEL)
+        hold:EnableMouse(true)
+        hold:Hide()
+        return hold
+    end, function(hold)
+        hold:Hide()
+        hold:ClearAllPoints()
+    end)
+end
+
+local function Cover(target)
+    holdCount = holdCount + 1
+    local hold = holds:Get(holdCount)
+    hold:ClearAllPoints()
+    hold:SetAllPoints(target)
+    hold:Show()
+end
+
+local function ReleaseHolds()
+    if holds then holds:HideFrom(1) end
+    holdCount = 0
+end
+
+-- One hold per rect the view has taken off the screen: the box, Blizzard's
+-- dialog while it is shown, the Blizzard selection boxes that were visible,
+-- and the faded addon-owned boxes whose frames are on screen. Anchors only.
+local function SyncHolds()
+    ReleaseHolds()
+    if not (alphaHeld and holds) then return end
+    local mgr, dlg = Manager(), BlizzardDialog()
+    if mgr then Cover(mgr) end
+    if IsShown(dlg) then Cover(dlg) end
+    for sel, visible in pairs(heldSelections) do
+        if visible then Cover(sel) end
+    end
+    local V = View()
+    if V and V.ForEachFadedBox then
+        V.ForEachFadedBox(function(sel)
+            if IsVisible(sel) then Cover(sel) end
+        end)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -264,6 +344,15 @@ local function BuildStrip()
     fillTex:SetColorTexture(fr, fg, fb, fa)
     strip._fill = fillTex
 
+    -- The panel's frame, a level over the art: its strings and its rows draw
+    -- on it, so the art's fill never covers them, which it did at the first
+    -- run when the strings sat on the strip itself.
+    local content = CreateFrame("Frame", nil, strip)
+    content:SetFrameLevel(art:GetFrameLevel() + 1)
+    content:SetAllPoints(strip)
+    content:Hide()
+    strip._content = content
+
     local reach = 0
     if spec.portrait and C.Portrait then
         local p = spec.portrait
@@ -273,28 +362,6 @@ local function BuildStrip()
         reach = math.max(0, (p.size or 32) + (p.x or 0))
     end
     strip._reach = reach
-
-    -- The button, with an additive halo in the view's color that breathes
-    -- while the view can open. The halo sits on a frame of its own at the
-    -- art's level, made after the art and before the button, so it draws over
-    -- the fill and under the button; on the strip itself the fill would cover
-    -- it.
-    local r, g, b = Accent()
-    local glowHolder = CreateFrame("Frame", nil, strip)
-    glowHolder:SetFrameLevel(art:GetFrameLevel())
-    local glow = glowHolder:CreateTexture(nil, "BACKGROUND")
-    glow:SetAllPoints(glowHolder)
-    glow:SetColorTexture(r, g, b, 1)
-    glow:SetBlendMode("ADD")
-    glow:SetAlpha(0.15)
-    local pulse = glow:CreateAnimationGroup()
-    pulse:SetLooping("BOUNCE")
-    local alpha = pulse:CreateAnimation("Alpha")
-    alpha:SetFromAlpha(0.15)
-    alpha:SetToAlpha(0.5)
-    alpha:SetDuration(1.4)
-    alpha:SetSmoothing("IN_OUT")
-    strip._glowHolder, strip._glow, strip._pulse = glowHolder, glow, pulse
 
     local btn = Ctl:CreateButton({
         parent = strip, text = "Edit Dynamic Layout", width = BUTTON_W, height = BTN_H, fontSize = 12,
@@ -306,8 +373,26 @@ local function BuildStrip()
     btn:ClearAllPoints()
     btn:SetPoint("CENTER", strip, "CENTER", 0, 0)
     strip._button = btn
-    glowHolder:SetPoint("TOPLEFT", btn, "TOPLEFT", -GLOW_OUT, GLOW_OUT)
-    glowHolder:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", GLOW_OUT, -GLOW_OUT)
+
+    -- The halo: an additive wash in the view's color inside the button's
+    -- border, over its art and under its label, that breathes while the view
+    -- can open. Inside, since the owner found the first run's halo, which
+    -- stood outside the button, spilling onto the strip.
+    local r, g, b = Accent()
+    local glow = btn:CreateTexture(nil, "ARTWORK")
+    glow:SetPoint("TOPLEFT", btn, "TOPLEFT", GLOW_IN, -GLOW_IN)
+    glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -GLOW_IN, GLOW_IN)
+    glow:SetColorTexture(r, g, b, 1)
+    glow:SetBlendMode("ADD")
+    glow:SetAlpha(0.15)
+    local pulse = glow:CreateAnimationGroup()
+    pulse:SetLooping("BOUNCE")
+    local alpha = pulse:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(0.15)
+    alpha:SetToAlpha(0.5)
+    alpha:SetDuration(1.4)
+    alpha:SetSmoothing("IN_OUT")
+    strip._glow, strip._pulse = glow, pulse
 
     return strip
 end
@@ -315,22 +400,24 @@ end
 local LayoutPanel
 
 -- The strip's rect and its art. Collapsed: 44 units on the box's top edge,
--- the art two corners longer than the strip so its side edges, which end at
--- its hidden bottom corners, reach the top of the box's own side edges where
--- the box's hidden top corners sat; the fill ends at the top of the box's
--- fill. Expanded: the panel's height from the box's top edge down, all nine
--- pieces, the fill inside them. TOPLEFT and TOPRIGHT are two horizontal
--- constraints, so SetHeight stands. The strip's level moves with the state
--- and its children move with it.
+-- the box's width, the art two corners longer than the strip so its side
+-- edges, which end at its hidden bottom corners, reach the top of the box's
+-- own side edges where the box's hidden top corners sat; the fill ends at the
+-- top of the box's fill. Expanded: the panel's height from the box's top edge
+-- down and its width plus the outset each side, all nine pieces, the fill
+-- inside them. TOPLEFT and TOPRIGHT are two horizontal constraints, so
+-- SetHeight stands. The strip's level moves with the state and its children
+-- move with it.
 local function AnchorStrip(expanded)
     local mgr = Manager()
     if not (strip and mgr) then return end
     local art, fill, inset = strip._art, strip._fill, strip._inset
+    local outset = expanded and PANEL_OUTSET or 0
     strip:ClearAllPoints()
     art:ClearAllPoints()
     fill:ClearAllPoints()
-    strip:SetPoint("TOPLEFT", mgr, "TOPLEFT", 0, STRIP_H)
-    strip:SetPoint("TOPRIGHT", mgr, "TOPRIGHT", 0, STRIP_H)
+    strip:SetPoint("TOPLEFT", mgr, "TOPLEFT", -outset, STRIP_H)
+    strip:SetPoint("TOPRIGHT", mgr, "TOPRIGHT", outset, STRIP_H)
     fill:SetPoint("TOPLEFT", art, "TOPLEFT", inset, -inset)
     if expanded then
         strip:SetFrameLevel(STRIP_LEVEL_VIEW)
@@ -363,7 +450,7 @@ local function UpdateButton()
         if not strip._pulse:IsPlaying() then strip._pulse:Play() end
     else
         strip._pulse:Stop()
-        strip._glow:SetAlpha(0.1)
+        strip._glow:SetAlpha(0)
     end
 end
 
@@ -373,17 +460,17 @@ end
 
 local function BuildPanel()
     if panel then return panel end
-    local Ctl = Controls()
+    local Ctl, content = Controls(), strip._content
     panel = {}
 
-    local title = strip:CreateFontString(nil, "OVERLAY")
+    local title = content:CreateFontString(nil, "OVERLAY")
     ApplyFont(title, "header", TITLE_SIZE)
     title:SetTextColor(Accent())
-    title:SetJustifyH("LEFT")
+    title:SetJustifyH("CENTER")
     title:SetText("Dynamic Layout")
     panel.title = title
 
-    local req = strip:CreateFontString(nil, "OVERLAY")
+    local req = content:CreateFontString(nil, "OVERLAY")
     ApplyFont(req, "label", TEXT_SIZE)
     req:SetTextColor(PrimaryColor())
     req:SetJustifyH("LEFT")
@@ -395,7 +482,7 @@ local function BuildPanel()
     for _, t in ipairs(TRIGGER_ROWS) do
         local name = t.name
         panel.triggers[#panel.triggers + 1] = Ctl:CreateToggle({
-            parent = strip, label = t.label,
+            parent = content, label = t.label,
             get = function()
                 local V = View()
                 return (V and V.GetTrigger(name)) and true or false
@@ -408,7 +495,7 @@ local function BuildPanel()
     end
 
     panel.speed = Ctl:CreateSlider({
-        parent = strip, label = "Transition speed",
+        parent = content, label = "Transition speed",
         min = 0.25, max = 2, step = 0.25, precision = 2, displaySuffix = "s",
         width = 180, inputWidth = 48,
         get = function()
@@ -421,7 +508,7 @@ local function BuildPanel()
         end,
     })
 
-    local frames = strip:CreateFontString(nil, "OVERLAY")
+    local frames = content:CreateFontString(nil, "OVERLAY")
     ApplyFont(frames, "header", TITLE_SIZE)
     frames:SetTextColor(PrimaryColor())
     frames:SetJustifyH("LEFT")
@@ -429,7 +516,7 @@ local function BuildPanel()
     panel.framesTitle = frames
 
     panel.done = Ctl:CreateButton({
-        parent = strip, text = "Done", width = DONE_W, height = BTN_H, fontSize = 12,
+        parent = content, text = "Done", width = DONE_W, height = BTN_H, fontSize = 12,
         onClick = function()
             local V = View()
             if V then V.Exit() end
@@ -453,7 +540,7 @@ local function BuildFrameRows()
     for _, def in ipairs(DL.Definitions()) do
         local id = def.id
         frameRows[#frameRows + 1] = Ctl:CreateToggle({
-            parent = strip, label = def.label,
+            parent = strip._content, label = def.label,
             get = function()
                 local V = View()
                 return (V and V.IsParticipating(id)) and true or false
@@ -467,40 +554,42 @@ local function BuildFrameRows()
 end
 
 --- Lay the panel out from the strip's top edge down; returns the height it
---- needs. The width is the box's own, read off the box rather than off the
---- strip, whose rect follows its anchors a frame later.
+--- needs. The width is the box's own plus the outset each side, read off the
+--- box rather than off the strip, whose rect follows its anchors a frame
+--- later. The title is centered; the frames run in two columns, each wide
+--- enough for the longest label and its checkbox.
 LayoutPanel = function()
     if not panel then return STRIP_H end
-    local mgr = Manager()
+    local mgr, content = Manager(), strip._content
     local ok, W = pcall(mgr.GetWidth, mgr)
-    W = (ok and type(W) == "number" and W > 0) and W or 510
+    W = ((ok and type(W) == "number" and W > 0) and W or 510) + 2 * PANEL_OUTSET
     local left = PAD
     local y = -PAD
 
     panel.title:ClearAllPoints()
-    panel.title:SetPoint("TOPLEFT", strip, "TOPLEFT", math.max(PAD, (strip._reach or 0) + 6), y)
+    panel.title:SetPoint("TOP", content, "TOP", 0, y)
     y = y - TITLE_SIZE - 6 - GAP
 
     panel.requirements:ClearAllPoints()
-    panel.requirements:SetPoint("TOPLEFT", strip, "TOPLEFT", left, y)
-    panel.requirements:SetPoint("TOPRIGHT", strip, "TOPRIGHT", -PAD, y)
+    panel.requirements:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
+    panel.requirements:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, y)
     y = y - TEXT_SIZE - 8
 
     for _, row in ipairs(panel.triggers) do
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", strip, "TOPLEFT", left, y)
-        row:SetPoint("TOPRIGHT", strip, "TOPRIGHT", -PAD, y)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
+        row:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, y)
         y = y - ROW_H
     end
     y = y - GAP
 
     panel.speed:ClearAllPoints()
-    panel.speed:SetPoint("TOPLEFT", strip, "TOPLEFT", left, y)
-    panel.speed:SetPoint("TOPRIGHT", strip, "TOPRIGHT", -PAD, y)
+    panel.speed:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
+    panel.speed:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, y)
     y = y - SLIDER_ROW_H - GAP
 
     panel.framesTitle:ClearAllPoints()
-    panel.framesTitle:SetPoint("TOPLEFT", strip, "TOPLEFT", left, y)
+    panel.framesTitle:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
     y = y - TITLE_SIZE - 6 - 2
 
     local colW = (W - PAD * 3) / 2
@@ -508,30 +597,21 @@ LayoutPanel = function()
         local col = (i - 1) % 2
         local line = math.floor((i - 1) / 2)
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", strip, "TOPLEFT", left + col * (colW + PAD), y - line * ROW_H)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", left + col * (colW + PAD), y - line * ROW_H)
         row:SetWidth(colW)
     end
     y = y - math.ceil(#frameRows / 2) * ROW_H - GAP
 
     panel.done:ClearAllPoints()
-    panel.done:SetPoint("TOPRIGHT", strip, "TOPRIGHT", -PAD, y)
+    panel.done:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, y)
     y = y - BTN_H - PAD
     return -y
 end
 
 local function SetPanelShown(on)
-    if strip then
-        strip._button:SetShown(not on)
-        strip._glowHolder:SetShown(not on)
-    end
-    if not panel then return end
-    panel.title:SetShown(on)
-    panel.requirements:SetShown(on)
-    for _, row in ipairs(panel.triggers) do row:SetShown(on) end
-    panel.speed:SetShown(on)
-    panel.framesTitle:SetShown(on)
-    for _, row in ipairs(frameRows) do row:SetShown(on) end
-    panel.done:SetShown(on)
+    if not strip then return end
+    strip._button:SetShown(not on)
+    strip._content:SetShown(on)
 end
 
 local function RefreshPanel()
@@ -554,8 +634,8 @@ local function BuildShield()
     shield = CreateFrame("Frame", nil, UIParent)
     shield:SetAllPoints(UIParent)
     shield:EnableMouse(true)
-    shield:SetFrameStrata("DIALOG")
-    shield:SetFrameLevel(SHIELD_LEVEL_HOLD)
+    shield:SetFrameStrata("FULLSCREEN_DIALOG")
+    shield:SetFrameLevel(SHIELD_LEVEL)
     shield:Hide()
 
     border = CreateFrame("Frame", nil, UIParent)
@@ -626,30 +706,19 @@ end
 --------------------------------------------------------------------------------
 
 local function OnLock(on)
-    if not shield then return end
-    if on then
-        shield:SetFrameStrata("FULLSCREEN_DIALOG")
-        shield:SetFrameLevel(SHIELD_LEVEL_LOCK)
-        shield:Show()
-        return
-    end
-    local V = View()
-    if V and V.IsActive() then
-        shield:SetFrameStrata("DIALOG")
-        shield:SetFrameLevel(SHIELD_LEVEL_HOLD)
-    else
-        shield:Hide()
-    end
+    if shield then shield:SetShown(on and true or false) end
     -- The release after Done is what lets the button open the view again.
-    UpdateButton()
+    if not on then UpdateButton() end
 end
 
 local function OnEnter()
     if not BuildStrip() then return end
     BuildShield()
+    BuildHolds()
     BuildPanel()
     BuildFrameRows()
     HoldBlizzardPieces()
+    SyncHolds()
     RaiseLibraryDialog(true)
     AnchorStrip(true)
     SetPanelShown(true)
@@ -661,6 +730,7 @@ end
 local function OnExit(reason)
     RaiseLibraryDialog(false)
     ReleaseBlizzardAlpha()
+    ReleaseHolds()
     if reason == "done" then
         ReshowSelections()
     else
@@ -676,6 +746,11 @@ local function OnExit(reason)
     if reason ~= "done" and shield then shield:Hide() end
 end
 
+-- A frame joined or left: its box faded or came back, so the holds follow.
+local function OnParticipation()
+    SyncHolds()
+end
+
 --------------------------------------------------------------------------------
 -- Show and hide with the box
 --------------------------------------------------------------------------------
@@ -683,8 +758,7 @@ end
 local function ShowStrip()
     local V, mgr = View(), Manager()
     if not (V and V.IsFeatureOn() and mgr) then return end
-    local ok, shown = pcall(mgr.IsShown, mgr)
-    if not (ok and shown == true) then return end
+    if not IsShown(mgr) then return end
     if not BuildStrip() then return end
     HoldTopPieces(true)
     AnchorStrip(false)
@@ -702,6 +776,16 @@ function DynamicView.Refresh()
     if strip and strip:IsShown() then UpdateButton() end
 end
 
+-- Blizzard's ClearSelectedSystem highlights every system that was highlighted
+-- at Edit Mode's enter, which shows their selection boxes, and the library
+-- calls it on every click of an addon-owned box. Under the view the hide
+-- runs again at once, before the frame draws.
+local function OnClearSelectedSystem()
+    if not alphaHeld then return end
+    HoldSelections()
+    SyncHolds()
+end
+
 -- One shot on the first world entry, as Dialog.lua installs its own hook:
 -- the box exists at login and is shown and hidden around every Edit Mode
 -- session, and around the panels that hide it in between.
@@ -712,6 +796,9 @@ addon.Events.OnWorldEntered(function()
     DynamicView._hooked = true
     mgr:HookScript("OnShow", ShowStrip)
     mgr:HookScript("OnHide", HideStrip)
+    if hooksecurefunc and type(mgr.ClearSelectedSystem) == "function" then
+        hooksecurefunc(mgr, "ClearSelectedSystem", OnClearSelectedSystem)
+    end
     ShowStrip()
 end)
 
@@ -724,6 +811,6 @@ end)
 do
     local V = View()
     if V and V.SetHost then
-        V.SetHost({ onEnter = OnEnter, onExit = OnExit, onLock = OnLock })
+        V.SetHost({ onEnter = OnEnter, onExit = OnExit, onLock = OnLock, onParticipation = OnParticipation })
     end
 end
