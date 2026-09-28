@@ -40,9 +40,12 @@
 --
 --     { kind = "header", label = "Health Bar" }
 --
--- It groups the rows under it the way a page section does, so a long list can
--- carry short labels ("Height" under "Health Bar" rather than "Health Bar
--- Height", which the slider's label band cannot hold).
+-- It opens a section: one box around it and the rows under it, to the next
+-- header, drawn by the editDialog role's `section` descriptor. A section
+-- groups its rows the way a page section does, so a long list can carry
+-- short labels ("Height" under "Health Bar" rather than "Health Bar Height",
+-- which the slider's label band cannot hold). Rows before the first header
+-- stand in the slot with no box.
 --
 -- `rebuild = true` means writing this value changes the SHAPE of the list, so the
 -- whole slot is rebuilt afterwards rather than just re-read.
@@ -65,7 +68,8 @@ local Mirror = addon.EditMode.Mirror
 -- label. Selector: 12 pad + ~128 label + 160 control + 12 pad. Slider: 12 pad +
 -- ~102 label + (20 arrow + 100 track + 20 arrow + 8 gap + 38 input) + 12 pad.
 -- The label band is the number to protect: at 62 the longer labels ran under
--- their arrows. The arrows and the typed input are still how an exact value
+-- their arrows. A row inside a section box gives up SECTION_PAD_X on each
+-- side of it. The arrows and the typed input are still how an exact value
 -- gets entered on a short track.
 
 local SELECTOR_W    = 160
@@ -76,12 +80,19 @@ local ACTION_BTN_H  = 26   -- matches Dialog.lua's BTN_H
 local ACTION_ROW_H  = 34   -- button + top gap; both action kinds share it
 local STATUS_BTN_W  = 64   -- the compact status-row button
 
--- Kept off addon.UI.Skin.Metrics: the header is a dialog-only row, sized to
--- the 312px box like the rest of this file. Its text sits at the foot of its
--- row, so the row's slack is the gap above it, off the group before.
-local HEADER_ROW_H      = 24
-local HEADER_SIZE       = 12
-local HEADER_PAD_BOTTOM = 3
+-- Kept off addon.UI.Skin.Metrics: the header and its section box are
+-- dialog-only, sized to the 312px box like the rest of this file. The
+-- header's text sits at the foot of its row, so the row's slack is the gap
+-- under the box's top edge, and stands SECTION_TEXT_INSET in, level with the
+-- row labels below it: their rows sit SECTION_PAD_X inside the box and their
+-- labels 12 inside their rows. The face and size are the header font role's
+-- own, the page's section title.
+local HEADER_ROW_H       = 30
+local HEADER_PAD_BOTTOM  = 4
+local SECTION_PAD_X      = 4
+local SECTION_PAD_BOTTOM = 8
+local SECTION_GAP        = 8    -- between one box and the next, and under the last
+local SECTION_TEXT_INSET = 16
 
 -- Kept off addon.UI.Skin.Metrics: dialog-only values, sized to the 312px box
 -- like every other constant in this file. The label has its own line and the
@@ -345,7 +356,9 @@ local BUILDERS = {
         return row
     end,
 
-    -- The settings page's section title, a size down and in the accent color.
+    -- The settings page's section title, in the header role at its own size
+    -- and in the primary text color, a step up from the accent the row labels
+    -- wear. Its row is the top of the section box, which Build draws.
     header = function(Controls, parent, spec)
         local row = CreateFrame("Frame", nil, parent)
         row:SetHeight(HEADER_ROW_H)
@@ -356,12 +369,13 @@ local BUILDERS = {
         fs:SetJustifyH("LEFT")
         fs:SetWordWrap(false)
         local theme = addon.UI and addon.UI.Theme
-        if theme then
-            theme:ApplyFont(fs, "header", HEADER_SIZE)
-            fs:SetTextColor(theme:GetAccentColor())
-        end
-        fs:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, HEADER_PAD_BOTTOM)
-        fs:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        if theme then theme:ApplyFont(fs, "header") end
+        local Chrome = addon.UI and addon.UI.Chrome
+        local r, g, b = 1, 1, 1
+        if Chrome and Chrome.Color then r, g, b = Chrome.Color("primary") end
+        fs:SetTextColor(r, g, b, 1)
+        fs:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", SECTION_TEXT_INSET, HEADER_PAD_BOTTOM)
+        fs:SetPoint("RIGHT", row, "RIGHT", -SECTION_TEXT_INSET, 0)
         fs:SetText(spec.label or "")
         return row
     end,
@@ -372,6 +386,26 @@ local NO_GET_KINDS = { button = true, status = true }
 
 -- Label kinds carry neither; a header is a caption over the rows below it.
 local LABEL_KINDS = { header = true }
+
+-- The box a header opens, on the editDialog role's `section` descriptor: a
+-- nine-slice where the skin declares one, the flat accent border otherwise.
+local function SectionSpec()
+    local Chrome = addon.UI and addon.UI.Chrome
+    local dialog = Chrome and Chrome.Spec and Chrome.Spec("editDialog")
+    if not dialog then return { kind = "flat" } end
+    return Chrome.Resolve(dialog.section, nil)
+end
+
+local function CreateSection(Controls, slot)
+    local box = CreateFrame("Frame", nil, slot)
+    local spec = SectionSpec()
+    if spec.kind == "nineSlice" then
+        box._art = addon.UI.Chrome.NineSlice(box, spec)
+    else
+        box._border = Controls.CreateBorder(box, { thickness = 1 })
+    end
+    return box
+end
 
 --- Wrap the spec's setter so a shape-changing write rebuilds the slot.
 ---
@@ -431,12 +465,35 @@ function Mirror.Build(slot, frame, provider, onRebuild)
     if not ok or type(specs) ~= "table" then return 0 end
 
     local y = 0
+    -- The open section box and the height filled inside it. A header closes
+    -- the one before it and opens the next; a row lands in the open box, or
+    -- in the slot while none is open.
+    local section, sy
+
+    local function closeSection()
+        if not section then return end
+        local h = sy + SECTION_PAD_BOTTOM
+        section:SetHeight(h)
+        y = y + h
+        section, sy = nil, nil
+    end
+
     for _, spec in ipairs(specs) do
         local build = type(spec) == "table" and BUILDERS[spec.kind]
         local labelOnly = build and LABEL_KINDS[spec.kind]
         local getOk = type(spec.get) == "function" or NO_GET_KINDS[spec.kind]
         if build and (labelOnly or (getOk and type(spec.set) == "function")) then
-            local row = build(Controls, slot, spec, (not labelOnly) and WrapSet(spec, onRebuild) or nil)
+            if labelOnly then
+                closeSection()
+                if y > 0 then y = y + SECTION_GAP end
+                section = CreateSection(Controls, slot)
+                section:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, -y)
+                section:SetPoint("TOPRIGHT", slot, "TOPRIGHT", 0, -y)
+                sy = 0
+                active[#active + 1] = section
+            end
+            local parent = section or slot
+            local row = build(Controls, parent, spec, (not labelOnly) and WrapSet(spec, onRebuild) or nil)
             if row then
                 -- The control set its own height at creation; read it before
                 -- anchoring so nothing about the read can depend on the anchors.
@@ -446,13 +503,27 @@ function Mirror.Build(slot, frame, provider, onRebuild)
                 local h = row:GetHeight() or 0
 
                 row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, -y)
-                row:SetPoint("TOPRIGHT", slot, "TOPRIGHT", 0, -y)
-
-                y = y + h
+                if section then
+                    -- The header spans the box; the rows stand in from its edge.
+                    local inset = labelOnly and 0 or SECTION_PAD_X
+                    row:SetPoint("TOPLEFT", section, "TOPLEFT", inset, -sy)
+                    row:SetPoint("TOPRIGHT", section, "TOPRIGHT", -inset, -sy)
+                    sy = sy + h
+                else
+                    row:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, -y)
+                    row:SetPoint("TOPRIGHT", slot, "TOPRIGHT", 0, -y)
+                    y = y + h
+                end
                 active[#active + 1] = row
             end
         end
+    end
+
+    -- A list that ends in a box keeps the box's gap under it, off the
+    -- dialog's buttons.
+    if section then
+        closeSection()
+        y = y + SECTION_GAP
     end
 
     return y

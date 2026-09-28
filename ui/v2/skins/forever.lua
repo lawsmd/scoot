@@ -604,6 +604,12 @@ Skin.Register("forever", {
             -- overhang on the box's left edge; Dialog.lua adds the selection
             -- box's own standoff on top of it.
             attach = { gap = 14 },
+            -- The box around each header and its rows in the mirror
+            -- (ui/v2/editmode/Mirror.lua): the thin line the client's Edit
+            -- Mode window draws around its option groups, the OptionsFrame
+            -- kit on the unique-corners layout, bronze on Forever behind the
+            -- retail names. Flat is the accent border at one unit.
+            section = { kind = "nineSlice", layout = "UniqueCornersLayout", textureKit = "OptionsFrame" },
             -- The dynamic view: the title in the ember, the library's border
             -- pieces in the copper.
             dynamic = { titleColor = DYNAMIC, borderTint = DYNAMIC_METAL },

@@ -24,7 +24,10 @@ local Brand = addon.EditMode.Brand
 local DIALOG_W    = 340
 local PAD         = 14
 local BORDER      = 3
-local TITLE_SIZE  = 14
+-- The element's name, centered over the box in the header role's face and
+-- style at a size past the mirror's section headers, which take the role's
+-- own, so the name reads as the frame the box is open on.
+local TITLE_SIZE  = 20
 local BRAND_SIZE  = 8
 local TITLE_GAP   = 6
 local BLOCK_GAP   = 14   -- title to mirror slot, when the slot has content
@@ -201,28 +204,30 @@ local function EnsureSkin(dialog)
         skin._brand = brand
     end
 
-    -- Anchor TOPLEFT only, with an explicit width. A TOPLEFT + RIGHT pair would
+    -- Anchored at TOP alone, with an explicit width. A TOP + RIGHT pair would
     -- be two *vertical* constraints (top edge and vertical centre), and WoW
     -- derives height from that pair - which silently overrides SetHeight.
+    -- Justified before the font goes on: a Deep Shadow header role gives the
+    -- string a copy that takes its justification at that moment.
     local title = skin:CreateFontString(nil, "OVERLAY")
-    local face = (theme and theme.GetFont) and theme:GetFont("HEADER") or "Fonts\\FRIZQT__.TTF"
-    pcall(title.SetFont, title, face, TITLE_SIZE, "")
-    -- What the mirror slot anchors back by. The title is pushed right by the
-    -- mark in the corner; the slot below it is not, or its controls sit off the
-    -- box's centre line and its right edge hangs over the border.
-    skin._mirrorIndent = 0
-    if skin._brand then
-        title:SetPoint("TOPLEFT", skin._brand.icon, "BOTTOMLEFT", 0, -TITLE_GAP)
-        title:SetWidth(DIALOG_W - (PAD * 2))
-    else
-        -- Beside the mark and short of the library's close button.
-        local left = math.max(PAD, (skin._portraitReach or 0) + 6)
-        title:SetPoint("TOPLEFT", skin, "TOPLEFT", left, -PAD)
-        title:SetWidth(DIALOG_W - left - PAD - CLOSE_SIZE)
-        skin._mirrorIndent = PAD - left
-    end
-    title:SetJustifyH("LEFT")
+    title:SetJustifyH("CENTER")
     title:SetWordWrap(false)
+    if theme then theme:ApplyFont(title, "header", TITLE_SIZE) end
+    -- Centered on the box inside a margin that clears the mark in one top
+    -- corner and the close button in the other (the library's is a 32 box
+    -- whose disc is inset), so a name too long for the band is cut the same
+    -- at both ends. The mirror slot anchors back off the title's left edge
+    -- by what the margin exceeds the padding, or its controls sit off the
+    -- box's centre line and its right edge hangs over the border.
+    local margin = PAD
+    if skin._brand then
+        title:SetPoint("TOP", skin, "TOP", 0, -(PAD + skin._brand.height + TITLE_GAP))
+    else
+        margin = math.max((skin._portraitReach or 0) + 6, CLOSE_SIZE + 6)
+        title:SetPoint("TOP", skin, "TOP", 0, -PAD)
+    end
+    title:SetWidth(DIALOG_W - margin * 2)
+    skin._mirrorIndent = PAD - margin
     skin._title = title
 
     if not native then
