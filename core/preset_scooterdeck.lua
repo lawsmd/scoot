@@ -3282,7 +3282,6 @@ Presets:Register({
       },
       borderTintEnable = false,
       hideBar = true,
-      hideHealthLossAnimation = false,
       hideTextureOnly = false,
       opacityInCombat = 100,
       opacityOutOfCombat = 100,

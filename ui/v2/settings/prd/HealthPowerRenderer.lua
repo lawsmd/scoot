@@ -20,11 +20,7 @@ local BARS = {
         syncForegroundColorMode = true,
         textColor = { values = Helpers.textColorHealthValues, order = Helpers.textColorHealthOrder },
         textureOnlyNoun = "health",
-        visibilityToggles = {
-            { key = "hideHealthLossAnimation", label = "Hide Health Loss Animation",
-              tooltipTitle = "Health Loss Animation",
-              tooltipText = "The dark red bar that appears briefly when you take damage, showing the amount of health lost. Hide this to remove the damage flash effect." },
-        },
+        visibilityToggles = {},
     },
     {
         key = "prdPowerBar",
@@ -33,11 +29,10 @@ local BARS = {
         noun = "power",
         sections = { "sizing", "style", "border", "text", "visibility" },
         sizingTooltipExtra = "Also sets the Alternate Power Bar height. ",
-        styleForeground = {
-            values = { default = "Default", power = "Power Color", custom = "Custom" },
-            order = { "default", "power", "custom" },
-            infoIcons = false,
-        },
+        -- Default already resolves to the power color (the default branch of
+        -- addon.ResolveColorRGBA), so the list is the shared Default / Custom
+        -- pair; the style getter reads a stored "power" as Default.
+        styleForeground = { values = addon.Catalogs.ColorMode.DefaultCustom.values, order = addon.Catalogs.ColorMode.DefaultCustom.order, infoIcons = false },
         textColor = { values = Helpers.textColorPowerValues, order = Helpers.textColorPowerOrder, dkPair = true },
         hasDruidFormsFlyout = true,
         textureOnlyNoun = "power resource",
@@ -173,6 +168,13 @@ local function CreateRenderer(bar)
                         bgTexture = "styleBackgroundTexture", bgColorMode = "styleBackgroundColorMode", bgColor = "styleBackgroundTint",
                         bgOpacity = "styleBackgroundOpacity",
                     })
+                    -- "power" was a foreground mode of its own before it was found to
+                    -- resolve as the default branch; an old profile's value reads as Default.
+                    local getForStyle = function(field)
+                        local value = styleGet(field)
+                        if field == "colorMode" and value == "power" then return "default" end
+                        return value
+                    end
                     local setForStyle = styleSet
                     if bar.syncForegroundColorMode then
                         -- "Class Color" is also pushed as Blizzard's Edit Mode "Show Class Color" for
@@ -183,7 +185,7 @@ local function CreateRenderer(bar)
                         end
                     end
                     inner:AddBarStyleBlock({
-                        get = styleGet, set = setForStyle, apply = applyComponent,
+                        get = getForStyle, set = setForStyle, apply = applyComponent,
                         foreground = bar.styleForeground,
                         background = { values = addon.Catalogs.ColorMode.DefaultCustom.values, order = addon.Catalogs.ColorMode.DefaultCustom.order },
                         opacity = { minLabel = "0%", maxLabel = "100%" },
@@ -276,9 +278,19 @@ local function CreateRenderer(bar)
                             percentText = function(cf, tabInner)
                                 tabInner:AddToggle({
                                     label = "Show % Text",
+                                    key = bar.hasDruidFormsFlyout and "percentTextShowToggle" or nil,
                                     get = function() return getSetting("percentTextShow") or false end,
                                     set = function(v) setSetting("percentTextShow", v) end,
                                 })
+
+                                if bar.hasDruidFormsFlyout then
+                                    Helpers.AddDruidFormsFlyout(tabInner, {
+                                        toggleKey = "percentTextShowToggle",
+                                        settingKey = "percentTextDruidForms",
+                                        getSetting = getSetting,
+                                        setSetting = setSetting,
+                                    })
+                                end
 
                                 local map = {
                                     fontFace = "percentTextFont",

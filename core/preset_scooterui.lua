@@ -2786,7 +2786,6 @@ Presets:Register({
       borderThickness = 1,
       borderTintEnable = false,
       hideBar = true,
-      hideHealthLossAnimation = false,
       hideTextureOnly = false,
       opacityInCombat = 100,
       opacityOutOfCombat = 100,

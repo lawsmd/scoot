@@ -247,6 +247,19 @@ local function resolveColorModeRGBA(colorMode, rawColor, overlayType)
     return addon.ResolveColorRGBA(colorMode, rawColor, prdTextColorOpts)
 end
 
+-- "Color by Value" is live-update machinery, never a static color (see
+-- addon.IsValueColorMode): the health overlay borrows the unit frames' curve
+-- helper, which reads the player's health percent through a color curve, so
+-- it runs at style time and again on every mirrored SetText. Health only,
+-- because the curve is a health curve.
+local function applyValueTextColor(fs, overlayType, colorMode)
+    if overlayType ~= "health" or not addon.IsValueColorMode(colorMode) then return false end
+    local Textures = addon.BarsTextures
+    if not (Textures and Textures.applyHealthTextColor) then return false end
+    Textures.applyHealthTextColor(fs, "player", colorMode == "valueDark")
+    return true
+end
+
 local function applyTextStyle(leftText, rightText, component, overlayType)
     if not component or not component.db then return end
 
@@ -266,7 +279,9 @@ local function applyTextStyle(leftText, rightText, component, overlayType)
         local align = db.percentTextAlignment or "LEFT"
         local path = resolveFontPath(font)
         addon.ApplyFontStyle(leftText, path, size, flags)
-        pcall(leftText.SetTextColor, leftText, cr, cg, cb, ca)
+        if not applyValueTextColor(leftText, overlayType, effectivePercentMode) then
+            pcall(leftText.SetTextColor, leftText, cr, cg, cb, ca)
+        end
         pcall(leftText.SetJustifyH, leftText, align)
         if storage then
             applyTextAlignment(leftText, storage.overlay, align)
@@ -286,7 +301,9 @@ local function applyTextStyle(leftText, rightText, component, overlayType)
         local align = db.valueTextAlignment or "RIGHT"
         local path = resolveFontPath(font)
         addon.ApplyFontStyle(rightText, path, size, flags)
-        pcall(rightText.SetTextColor, rightText, cr, cg, cb, ca)
+        if not applyValueTextColor(rightText, overlayType, effectiveValueMode) then
+            pcall(rightText.SetTextColor, rightText, cr, cg, cb, ca)
+        end
         pcall(rightText.SetJustifyH, rightText, align)
         if storage then
             applyTextAlignment(rightText, storage.overlay, align)
@@ -353,6 +370,7 @@ local function onSourceTextChanged(overlayType, side, text)
         if comp.db.percentTextShow and isDruidTextVisible(comp.db, "percent") then
             pcall(fs.Show, fs)
             pcall(fs.SetText, fs, text)
+            applyValueTextColor(fs, overlayType, comp.db.percentTextColorMode)
         else
             pcall(fs.Hide, fs)
         end
@@ -360,6 +378,7 @@ local function onSourceTextChanged(overlayType, side, text)
         if comp.db.valueTextShow and isDruidTextVisible(comp.db, "value") then
             pcall(fs.Show, fs)
             pcall(fs.SetText, fs, text)
+            applyValueTextColor(fs, overlayType, comp.db.valueTextColorMode)
         else
             pcall(fs.Hide, fs)
         end

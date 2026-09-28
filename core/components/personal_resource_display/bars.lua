@@ -545,32 +545,6 @@ local function setNativeBarBackgroundHidden(bar, barType, hidden)
 end
 
 --------------------------------------------------------------------------------
--- Health Loss Animation
---------------------------------------------------------------------------------
-
--- Helper to get the animated loss bar frame from PlayerFrame
-local function getPRDAnimatedLossBar()
-    local container = addon.Frames.resolveHealthContainer(nil, "Player")
-    return container and container.PlayerFrameHealthBarAnimatedLoss
-end
-
--- The loss animation is hidden with Hide, not alpha, and Blizzard controls
--- its visibility again once the toggle clears: no forced Show on restore.
-local function hidePRDLossAnim(bar)
-    local hide = bar.HideBase or bar.Hide
-    hide(bar)
-end
-local PRD_LOSS_ANIM_OPTS = { methods = { "Show" }, apply = hidePRDLossAnim, restore = false }
-
--- Hide/show the health loss animation (the dark red bar that appears when taking damage)
-local function applyPRDHealthLossAnimationVisibility(component)
-    local hideAnim = ensureSettingValue(component, "hideHealthLossAnimation") and true or false
-    local animatedLossBar = getPRDAnimatedLossBar()
-    if not animatedLossBar then return end
-    Enforce.Set(animatedLossBar, "prdLossAnim", hideAnim, PRD_LOSS_ANIM_OPTS)
-end
-
---------------------------------------------------------------------------------
 -- Visuals Orchestrators
 --------------------------------------------------------------------------------
 
@@ -606,7 +580,6 @@ local function applyPRDHealthVisuals(component, container)
     applyPRDBackgroundStyle(statusBar, "health", component)
     applyPRDBarBorder(component, statusBar)
     PRD._applyHealthTextOverlay(component)
-    applyPRDHealthLossAnimationVisibility(component)
 end
 
 local function applyPRDPowerVisuals(component, frame)

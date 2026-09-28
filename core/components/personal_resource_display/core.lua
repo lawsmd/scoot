@@ -471,9 +471,6 @@ addon:RegisterComponentInitializer(function(self)
             -- Hides Blizzard's 12.0.7 bar backdrop art (UI-HUD-CoolDownManager-Bar-BG)
             -- while keeping the bar fill visible. Rendered manually by HealthBarRenderer.
             hideBarBackground = { type = "addon", default = false, ui = { hidden = true }},
-            hideHealthLossAnimation = { type = "addon", default = false, ui = {
-                label = "Hide Health Loss Animation", widget = "checkbox", section = "Misc", order = 3,
-            }},
             -- Opacity settings (addon-only, 1-100 percentage)
             opacityInCombat = { type = "addon", default = 100, ui = { hidden = true }},
             opacityWithTarget = { type = "addon", default = 100, ui = { hidden = true }},
