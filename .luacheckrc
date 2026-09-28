@@ -467,3 +467,9 @@ files["forever/objectivetracker/current.lua"] = {
     },
     read_globals = { "QuestObjectiveTrackerMixin", "CampaignQuestObjectiveTrackerMixin" },
 }
+-- The Personal Resource Display (forever/personalresourcedisplay/). mixins.lua
+-- owns the one global frames.xml names in a mixin= attribute; the other
+-- files reach the frame through _G by name.
+files["forever/personalresourcedisplay/mixins.lua"] = {
+    globals = { "CamelotPersonalResourceDisplayMixin" },
+}

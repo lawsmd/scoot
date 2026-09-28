@@ -70,6 +70,9 @@ Navigation.NavModel = {
             -- tracker.lua, not by the components host the gate reads.
             { key = "objectiveTracker", label = "Objective Tracker" },
             { key = "currentObjectives", label = "Current Objectives" },
+            -- No `module` for the same reason: forever/personalresourcedisplay/
+            -- style.lua registers the switch.
+            { key = "personalResourceDisplay", label = "Personal Resource Display" },
         },
     },
 }

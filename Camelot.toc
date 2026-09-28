@@ -229,6 +229,26 @@ forever/objectivetracker/current.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/flash.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 
+## The Personal Resource Display: Forever's PRD on a Camelot-owned frame
+## (docs/personalresourcedisplay/replica.md). style.lua holds the module, its
+## switch, its settings and the apply, and loads on retail too for the page
+## below, like forever/objectivetracker/style.lua; mixins.lua defines the
+## global frames.xml names in a mixin= attribute, so it precedes the XML;
+## frames.xml declares the frame from Blizzard's XML under Camelot names, with
+## no Blizzard template inherited; display.lua feeds the bars from the player
+## unit, parks Blizzard's frame and registers /camelot prd; editmode.lua the
+## positionable and the dialog mirror; dynamic.lua the Dynamic Layouts
+## adapter. Stands on nativeframe, events, strata, colors, fonts, borders,
+## barborders, editmode/positionables, dynamiclayouts/engine, forever/db.lua,
+## forever/features.lua, forever/profiles.lua and the unit frames' values.lua
+## and healprediction.lua above.
+forever/personalresourcedisplay/style.lua
+forever/personalresourcedisplay/mixins.lua [ExcludeLoadGameType standard]
+forever/personalresourcedisplay/frames.xml [ExcludeLoadGameType standard]
+forever/personalresourcedisplay/display.lua [ExcludeLoadGameType standard]
+forever/personalresourcedisplay/editmode.lua [ExcludeLoadGameType standard]
+forever/personalresourcedisplay/dynamic.lua [ExcludeLoadGameType standard]
+
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
 ## and a registration error aborts the chunk, so the order is load-bearing.
@@ -335,6 +355,7 @@ forever/castbars/page.lua [ExcludeLoadGameType standard]
 forever/unitframes/page.lua
 forever/objectivetracker/page.lua
 forever/objectivetracker/currentpage.lua
+forever/personalresourcedisplay/page.lua
 forever/minimap.lua
 forever/gallery.lua
 forever/debug.lua

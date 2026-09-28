@@ -1,0 +1,99 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\..\..\FrameXML\UI.xsd">
+	<!--
+	forever/personalresourcedisplay/frames.xml
+	Camelot's Personal Resource Display: Blizzard_PersonalResourceDisplay.xml
+	under Camelot names. Every line below is the line Blizzard writes for its
+	own frame, renamed, except where a comment says otherwise. The mixin this
+	file names as Camelot's is in mixins.lua, which loads first; the feeds are
+	display.lua.
+	-->
+
+	<!-- PersonalResourceStatusBar, minus TextStatusBar (its OnValueChanged
+	compares the bar's value, a secret here) and its KeyValues. The background
+	gains a parentKey so style.lua can reach it. -->
+	<StatusBar name="CamelotPersonalResourceStatusBar" virtual="true">
+		<BarTexture atlas="UI-HUD-CoolDownManager-Bar" texelSnappingBias="0" snapToPixelGrid="false"/>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="Background" atlas="UI-HUD-CoolDownManager-Bar-BG" texelSnappingBias="0" snapToPixelGrid="false">
+					<Anchors>
+						<Anchor point="TOPLEFT" x="-2" y="3"/>
+						<Anchor point="BOTTOMRIGHT" x="6" y="-7"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY">
+				<FontString parentKey="TextString" inherits="TextStatusBarText">
+					<Anchors>
+						<Anchor point="RIGHT" x="-5" y="0"/>
+					</Anchors>
+				</FontString>
+				<FontString parentKey="RightText" inherits="TextStatusBarText">
+					<Anchors>
+						<Anchor point="RIGHT" x="-5" y="0"/>
+					</Anchors>
+				</FontString>
+				<FontString parentKey="LeftText" inherits="TextStatusBarText">
+					<Anchors>
+						<Anchor point="LEFT" x="5" y="0"/>
+					</Anchors>
+				</FontString>
+			</Layer>
+		</Layers>
+	</StatusBar>
+
+	<!-- PersonalResourceDisplayFrame, minus the Edit Mode system template and
+	the scripts that run Blizzard's Lua. The health bar's heal prediction
+	textures, the power bar's ManaCostPredictionBar, FeedbackFrame and
+	FullPowerFrame, the AlternatePowerBar and the ClassFrameContainer are
+	left out: the segments are Lua, and the rest compares secrets or has no
+	Forever content. The PowerBarContainer is Camelot's: the plain frame the
+	power bar fills, sized by the mixin as the health container is. -->
+	<Frame name="CamelotPersonalResourceDisplay" parent="UIParent" hidden="true" mixin="CamelotPersonalResourceDisplayMixin">
+		<Size x="200" y="75"/>
+		<Frames>
+			<!-- Health -->
+			<Frame parentKey="HealthBarsContainer">
+				<Size x="200" y="15"/>
+				<Anchors>
+					<Anchor point="TOP"/>
+				</Anchors>
+				<Frames>
+					<StatusBar parentKey="TempMaxHealthLoss" hidden="true" drawLayer="BACKGROUND" mixin="TempMaxHealthLossMixin" frameLevel="100">
+						<BarTexture parentKey="TempMaxHealthLossTexture" atlas="UI-HUD-UnitFrame-Target-PortraitOn-Bar-TempHPLoss"/>
+						<Anchors>
+							<Anchor point="TOPLEFT" relativePoint="TOPLEFT"/>
+							<Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT"/>
+						</Anchors>
+					</StatusBar>
+					<StatusBar parentKey="healthBar" inherits="CamelotPersonalResourceStatusBar">
+						<Anchors>
+							<Anchor point="TOPLEFT" relativePoint="TOPLEFT"/>
+							<Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT"/>
+						</Anchors>
+					</StatusBar>
+				</Frames>
+			</Frame>
+
+			<!-- Power (Mana, Rage, etc.) -->
+			<Frame parentKey="PowerBarContainer">
+				<Size x="200" y="15"/>
+				<Anchors>
+					<Anchor point="TOP" relativeKey="$parent.HealthBarsContainer" relativePoint="BOTTOM"/>
+				</Anchors>
+				<Frames>
+					<StatusBar parentKey="PowerBar" inherits="CamelotPersonalResourceStatusBar">
+						<Anchors>
+							<Anchor point="TOPLEFT" relativePoint="TOPLEFT"/>
+							<Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT"/>
+						</Anchors>
+					</StatusBar>
+				</Frames>
+			</Frame>
+		</Frames>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+		</Scripts>
+	</Frame>
+</Ui>
