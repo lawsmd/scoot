@@ -5,12 +5,14 @@
 -- A skin's chrome table holds one descriptor per role: window, picker,
 -- dialog, dialogTitle, titleBar, closeButton, button, resizeGrip, scrollBar, tab, tabBody,
 -- sectionHeader, sectionBody, navRow, navCard, navDivider, dropdown,
--- arrowButton, field, infoIcon, tooltip, slider, input, toggle. A descriptor
--- names a kind and what that kind needs:
+-- arrowButton, field, popupList, infoIcon, tooltip, slider, input, toggle. A
+-- descriptor names a kind and what that kind needs:
 --   flat       the framework's own draw (CreateBorder, AddBackground,
 --              AddHoverFill) with numbers from the skin metrics
 --   nineSlice  NineSliceUtil.ApplyLayout on a child frame: layout, textureKit
---   atlas      one atlas per state: normal, hover, selected, disabled, pressed
+--   atlas      one atlas per state: normal, hover, selected, disabled, pressed,
+--              or one atlas alone; reach = { left, right, top, bottom } draws
+--              it that far past the frame, for art with a margin baked in
 --   sliced     one atlas per state, each cut into nine by texcoords so the
 --              art takes any width and height: the state names of atlas, plus
 --              slice, edge, desaturate, tint = { border, center } (color
@@ -89,7 +91,7 @@ local Chrome = addon.UI.Chrome
 Chrome.ROLES = {
     "window", "picker", "dialog", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
     "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider",
-    "dropdown", "arrowButton", "field", "infoIcon", "tooltip", "slider", "input", "toggle",
+    "dropdown", "arrowButton", "field", "popupList", "infoIcon", "tooltip", "slider", "input", "toggle",
     "editSelection", "editDialog",
 }
 
@@ -145,6 +147,11 @@ Chrome.FLAT = {
     -- background around the whole field.
     arrowButton   = { kind = "flat" },
     field         = { kind = "flat" },
+    -- The list a field opens (Controls.CreatePopupList). Flat is the solid
+    -- fill inside the accent border with the chosen row on an accent wash;
+    -- an atlas kind is a skin's box over rows of colored text, with a
+    -- highlight laid over the row under the cursor.
+    popupList     = { kind = "flat" },
     -- The help icon a label, a tab or a header button carries, and the box
     -- its text opens in (ui/v2/controls/InfoIcon.lua). Flat draws the
     -- bordered square with the character centered in it, and a bordered box
@@ -1123,7 +1130,8 @@ local function AtlasParts(h, frame, spec)
     h.textures = {}
     h.parts = {}
     for _, state in ipairs(ATLAS_STATES) do
-        local name = spec[state]
+        -- A role with one atlas alone draws it as its normal state
+        local name = spec[state] or (state == "normal" and spec.atlas) or nil
         if name then
             local tex = frame:CreateTexture(nil, spec.layer or "BACKGROUND", nil, spec.sublevel)
             if spec.sizing == "native" then
@@ -1131,7 +1139,14 @@ local function AtlasParts(h, frame, spec)
                 tex:SetPoint(spec.point or "CENTER")
             else
                 tex:SetAtlas(name)
-                tex:SetAllPoints()
+                local reach = spec.reach
+                if type(reach) == "table" then
+                    -- Art with a margin baked in reaches past the frame by it
+                    tex:SetPoint("TOPLEFT", -(reach.left or 0), reach.top or 0)
+                    tex:SetPoint("BOTTOMRIGHT", reach.right or 0, -(reach.bottom or 0))
+                else
+                    tex:SetAllPoints()
+                end
             end
             tex:Hide()
             Chrome.ApplyOpacity(AtlasPiece(h.role, state), tex)
@@ -1462,7 +1477,7 @@ Chrome.PIECES = {
     "navColumn", "navDivider", "cardBorder", "cardFill", "cardGlow",
     "navRowHover", "navRowSelected",
     "sectionHeader", "tab", "buttonBorder", "buttonFill", "closeButton", "scrollTrack", "scrollThumb",
-    "inputField", "searchField",
+    "inputField", "searchField", "popupList",
     "editSelectionBorder", "editSelectionFill", "editSelectionGlow",
 }
 

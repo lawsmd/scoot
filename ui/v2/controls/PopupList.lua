@@ -18,7 +18,20 @@ end
 -- UIParent above everything, rebuilt from the caller's keys on every open,
 -- dismissed by ESC or any click outside. The caller owns the current value
 -- and the field that displays it; the list reads state through the callbacks
--- and reports a choice through onSelect.
+-- and reports a choice through onSelect. The list opens under the field, and
+-- above it when the screen has no room below.
+--
+-- The popupList chrome role decides the draw. Flat is the framework's own:
+-- a solid fill inside the accent border, the chosen row on an accent wash
+-- with its text in the accent, the row under the cursor on a fainter wash.
+-- An atlas kind is a skin's box stretched over the rows, reaching past the
+-- frame by spec.reach where the art carries a margin, with the rows kept off
+-- the edge by spec.padding; the rows are then text alone, colored by
+-- spec.labelColors (normal, hover, selected, disabled), and spec.highlight,
+-- an atlas at an alpha, lies over the row under the cursor. A skin that
+-- names metrics.popupList (optionHeight, fontSize, textInset, fontRole, gap)
+-- puts every list on those numbers over the caller's, so the rows read the
+-- same under every field.
 --
 -- opts:
 --   anchor          the field frame the list opens against; also the width
@@ -43,10 +56,17 @@ end
 -- Returns a handle: Open, Close, Toggle, IsShown, Destroy, frame.
 function Controls.CreatePopupList(opts)
     local theme = GetTheme()
+    local Chrome = addon.UI.Chrome
+    local spec = Chrome.Spec("popupList")
+    local art = spec.kind ~= "flat"
+    local pm = Controls.Metrics().popupList or {}
     local anchor = opts.anchor
-    local optionHeight = opts.optionHeight or 26
-    local fontSize = opts.fontSize or 12
-    local textInset = opts.textInset or 12
+    local optionHeight = pm.optionHeight or opts.optionHeight or 26
+    local fontSize = pm.fontSize or opts.fontSize or 12
+    local textInset = pm.textInset or opts.textInset or 12
+    local fontRole = pm.fontRole or "value"
+    -- The room between the field's edge and the list's
+    local gap = pm.gap or 2
     local getKeys = opts.getKeys
     local getValues = opts.getValues
     local getSelectedKey = opts.getSelectedKey
@@ -60,9 +80,26 @@ function Controls.CreatePopupList(opts)
     popup:SetClampedToScreen(true)
     popup:Hide()
 
-    -- Popup chrome: solid fill plus a 1px accent border
-    Controls.AddBackground(popup, { alpha = 0.98 })
-    popup._border = Controls.CreateBorder(popup, { alpha = 0.8 })
+    -- What the rows keep off the frame's edge: the role's padding, else the
+    -- flat draw's one unit inside the border across and four above and below
+    local padding = spec.padding
+    if type(padding) == "number" then
+        padding = { left = padding, right = padding, top = padding, bottom = padding }
+    elseif type(padding) ~= "table" then
+        padding = { left = 1, right = 1, top = 4, bottom = 4 }
+    end
+    local padL, padR = padding.left or 0, padding.right or 0
+    local padT, padB = padding.top or 0, padding.bottom or 0
+
+    if art then
+        popup._backdrop = Chrome.Backdrop("popupList", popup)
+    else
+        -- Popup chrome: solid fill plus a 1px accent border
+        Controls.AddBackground(popup, { alpha = 0.98 })
+        popup._border = Controls.CreateBorder(popup, { alpha = 0.8 })
+    end
+    local colors = art and spec.labelColors or nil
+    local highlight = art and spec.highlight or nil
 
     popup._optionButtons = {}
 
@@ -90,6 +127,30 @@ function Controls.CreatePopupList(opts)
         PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
     end)
 
+    -- A row's text and wash for its state. Under the role's colors the
+    -- chosen row keeps its color under the cursor and only the wash comes
+    -- up, as Blizzard's own list does; flat lifts both.
+    local function Paint(btn, hover)
+        local selected = btn._key == getSelectedKey()
+        if colors then
+            local state = btn._inert and "disabled" or (selected and "selected") or (hover and "hover") or "normal"
+            btn._text:SetTextColor(Chrome.Color(colors[state] or colors.normal or "white"))
+            btn._bg:SetShown(hover and not btn._inert)
+            return
+        end
+        local accentR, accentG, accentB = theme:GetAccentColor()
+        if btn._inert then
+            local dr, dg, dbl = theme:GetDimTextColor()
+            btn._text:SetTextColor(dr, dg, dbl, 0.6)
+        elseif selected then
+            btn._bg:SetColorTexture(accentR, accentG, accentB, hover and 0.35 or 0.3)
+            btn._text:SetTextColor(accentR, accentG, accentB, 1)
+        else
+            btn._bg:SetColorTexture(accentR, accentG, accentB, hover and 0.15 or 0)
+            btn._text:SetTextColor(1, 1, 1, 1)
+        end
+    end
+
     function list:Open()
         if opts.levelFrom then
             popup:SetFrameLevel(math.max(100, opts.levelFrom:GetFrameLevel() + 10))
@@ -98,9 +159,7 @@ function Controls.CreatePopupList(opts)
 
         local kList = getKeys()
         local vMap = getValues()
-        local selectedKey = getSelectedKey()
-        local optionPadding = 4
-        local totalHeight = (#kList * optionHeight) + (optionPadding * 2)
+        local totalHeight = (#kList * optionHeight) + padT + padB
         local width = opts.width
         if not width then
             width = anchor:GetWidth()
@@ -115,9 +174,9 @@ function Controls.CreatePopupList(opts)
         local spaceBelow = anchorBottom * scale
 
         if spaceBelow > totalHeight + 10 then
-            popup:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+            popup:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
         else
-            popup:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 2)
+            popup:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, gap)
         end
 
         -- Clear existing option buttons
@@ -130,32 +189,37 @@ function Controls.CreatePopupList(opts)
         end
         wipe(popup._optionButtons)
 
-        local accentR, accentG, accentB = theme:GetAccentColor()
-
         -- Text moves right when any option carries an info icon
         local hasAnyInfoIcons = infoIcons and next(infoIcons)
         local textLeftOffset = hasAnyInfoIcons and 28 or textInset
 
         for i, key in ipairs(kList) do
             local optBtn = CreateFrame("Button", nil, popup)
-            optBtn:SetSize(width - 2, optionHeight)
-            optBtn:SetPoint("TOPLEFT", popup, "TOPLEFT", 1, -optionPadding - ((i - 1) * optionHeight))
+            optBtn:SetSize(width - padL - padR, optionHeight)
+            optBtn:SetPoint("TOPLEFT", popup, "TOPLEFT", padL, -padT - ((i - 1) * optionHeight))
             optBtn:EnableMouse(true)
             optBtn:RegisterForClicks("AnyUp")
 
             local optBg = optBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
             optBg:SetAllPoints()
-            optBg:SetColorTexture(0, 0, 0, 0)
+            if highlight then
+                optBg:SetAtlas(highlight.atlas)
+                optBg:SetAlpha(highlight.alpha or 1)
+                optBg:Hide()
+            else
+                optBg:SetColorTexture(0, 0, 0, 0)
+            end
             optBtn._bg = optBg
 
             local optText = optBtn:CreateFontString(nil, "OVERLAY")
-            optText:SetFont(theme:GetFont("VALUE"), fontSize, "")
+            theme:ApplyFont(optText, fontRole, fontSize)
             optText:SetPoint("LEFT", optBtn, "LEFT", textLeftOffset, 0)
             optText:SetPoint("RIGHT", optBtn, "RIGHT", -textInset, 0)
             optText:SetJustifyH("LEFT")
             optText:SetText(vMap[key] or key)
             optBtn._text = optText
             optBtn._key = key
+            optBtn._inert = (isInert and isInert(key)) and true or false
 
             if infoIcons and infoIcons[key] then
                 local iconData = infoIcons[key]
@@ -171,37 +235,14 @@ function Controls.CreatePopupList(opts)
                 end
             end
 
-            local isSelected = (key == selectedKey)
-            local inert = isInert and isInert(key)
-            if inert then
-                local dr, dg, dbl = theme:GetDimTextColor()
-                optText:SetTextColor(dr, dg, dbl, 0.6)
-            elseif isSelected then
-                optBg:SetColorTexture(accentR, accentG, accentB, 0.3)
-                optText:SetTextColor(accentR, accentG, accentB, 1)
-            else
-                optText:SetTextColor(1, 1, 1, 1)
-            end
+            Paint(optBtn, false)
 
-            if inert then
-                -- Listed, not selectable: no hover fill, click ignored.
+            if optBtn._inert then
+                -- Listed, not selectable: no hover, click ignored.
                 optBtn:SetScript("OnClick", function() end)
             else
-                optBtn:SetScript("OnEnter", function(btn)
-                    if btn._key ~= getSelectedKey() then
-                        btn._bg:SetColorTexture(accentR, accentG, accentB, 0.15)
-                    else
-                        btn._bg:SetColorTexture(accentR, accentG, accentB, 0.35)
-                    end
-                end)
-                optBtn:SetScript("OnLeave", function(btn)
-                    if btn._key == getSelectedKey() then
-                        btn._bg:SetColorTexture(accentR, accentG, accentB, 0.3)
-                    else
-                        btn._bg:SetColorTexture(0, 0, 0, 0)
-                    end
-                end)
-
+                optBtn:SetScript("OnEnter", function(btn) Paint(btn, true) end)
+                optBtn:SetScript("OnLeave", function(btn) Paint(btn, false) end)
                 optBtn:SetScript("OnClick", function(btn)
                     onSelect(btn._key)
                     list:Close()

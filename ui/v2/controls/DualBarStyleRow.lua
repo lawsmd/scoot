@@ -68,17 +68,6 @@ local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
     local mini = CreateFrame("Frame", nil, parentContainer)
     mini:SetHeight(CONTROL_HEIGHT)
 
-    -- Border (brightens while the value button is hovered)
-    mini._border = Controls.CreateBorder(mini, {
-        alpha = BORDER_ALPHA,
-        getAlpha = function(f)
-            return (f._valueBtn and f._valueBtn:IsMouseOver()) and 0.8 or BORDER_ALPHA
-        end,
-    })
-
-    -- Background
-    mini._bg = Controls.AddBackground(mini, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
-
     -- Value button (full width, shows texture name + dropdown arrow)
     local valueBtn = CreateFrame("Button", nil, mini)
     valueBtn:SetPoint("TOPLEFT", mini, "TOPLEFT", 1, -1)
@@ -86,14 +75,24 @@ local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
     valueBtn:EnableMouse(true)
     valueBtn:RegisterForClicks("AnyUp")
 
+    -- The field role draws the shell, the seam every field on the page is
+    -- drawn through: flat is the border (brighter while the value button
+    -- is hovered) and the background this always drew.
+    mini._border, mini._bg, mini._backdrop = Controls.AddFieldChrome(mini, valueBtn, {
+        borderAlpha = BORDER_ALPHA,
+        getAlpha = function(f)
+            return (f._valueBtn and f._valueBtn:IsMouseOver()) and 0.8 or BORDER_ALPHA
+        end,
+    })
+
     local valueBg = valueBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
     valueBg:SetAllPoints()
     valueBg:SetColorTexture(ar, ag, ab, 0)
     valueBtn._bg = valueBg
 
-    local valueFont = theme:GetFont("VALUE")
+    -- The value reads in the field's own role where the skin names one
     local valueText = valueBtn:CreateFontString(nil, "OVERLAY")
-    valueText:SetFont(valueFont, 12, "")
+    theme:ApplyFont(valueText, Controls.Metrics().field.fontRole or "value", 12)
     valueText:SetPoint("LEFT", valueBtn, "LEFT", 8, 0)
     valueText:SetPoint("RIGHT", valueBtn, "RIGHT", -20, 0)
     valueText:SetJustifyH("LEFT")
@@ -108,7 +107,8 @@ local function CreateTextureMini(opts, parentContainer, theme, useLightDim)
     dropArrow:SetPoint("RIGHT", valueBtn, "RIGHT", -4, 0)
     dropArrow:SetText("\226\150\188")  -- ▼
     dropArrow:SetTextColor(dimR, dimG, dimB, 0.7)
-    valueBtn._dropArrow = dropArrow
+    -- The role's own art where it has some; the handle answers SetTextColor
+    valueBtn._dropArrow = Controls.AddFieldIndicator(valueBtn, dropArrow)
 
     mini._valueBtn = valueBtn
 
@@ -240,12 +240,6 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     local mini = CreateFrame("Frame", nil, parentContainer)
     mini:SetHeight(CONTROL_HEIGHT)
 
-    -- Border
-    mini._border = Controls.CreateBorder(mini, { alpha = BORDER_ALPHA })
-
-    -- Background
-    mini._bg = Controls.AddBackground(mini, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
-
     -- Arrow buttons and separators
     local leftArrow, leftSep = Controls.CreateArrowButton(mini, {
         width = ARROW_WIDTH,
@@ -274,6 +268,9 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     valueBtn:SetHeight(CONTROL_HEIGHT - 2)
     valueBtn:EnableMouse(true)
     valueBtn:RegisterForClicks("AnyUp")
+    -- The field role draws the shell around the value, as the selector's
+    mini._border, mini._bg, mini._backdrop =
+        Controls.AddFieldChrome(mini, valueBtn, { borderAlpha = BORDER_ALPHA })
 
     local valueBg = valueBtn:CreateTexture(nil, "BACKGROUND", nil, -6)
     valueBg:SetAllPoints()
@@ -282,7 +279,7 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
 
     local valueFont = theme:GetFont("VALUE")
     local valueText = valueBtn:CreateFontString(nil, "OVERLAY")
-    valueText:SetFont(valueFont, 12, "")
+    theme:ApplyFont(valueText, Controls.Metrics().field.fontRole or "value", 12)
     valueText:SetPoint("CENTER", 0, 0)
     valueText:SetTextColor(1, 1, 1, 1)
     valueBtn._text = valueText
@@ -294,7 +291,7 @@ local function CreateColorMini(opts, parentContainer, theme, useLightDim)
     dropIndicator:SetPoint("RIGHT", valueBtn, "RIGHT", -8, -1)
     dropIndicator:SetText("\226\150\188")  -- ▼
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
-    valueBtn._dropIndicator = dropIndicator
+    valueBtn._dropIndicator = Controls.AddFieldIndicator(valueBtn, dropIndicator)
 
     mini._leftArrow = leftArrow
     mini._rightArrow = rightArrow

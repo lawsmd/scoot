@@ -593,19 +593,18 @@ function Controls:CreateBarTextureSelector(options)
     selector:EnableMouse(true)
     selector:RegisterForClicks("AnyUp")
 
-    -- Selector border (brightens on hover)
-    selector._border = Controls.CreateBorder(selector, {
-        alpha = BAR_TEXTURE_SELECTOR_BORDER_ALPHA,
-        getAlpha = function(self) return self:IsMouseOver() and 0.8 or BAR_TEXTURE_SELECTOR_BORDER_ALPHA end,
+    -- The field role draws the shell, the seam the font selector's field
+    -- and every selector take: flat is the border (brighter on hover) and
+    -- the background this always drew.
+    selector._border, selector._bg, selector._backdrop = Controls.AddFieldChrome(selector, selector, {
+        borderAlpha = BAR_TEXTURE_SELECTOR_BORDER_ALPHA,
+        getAlpha = function(f) return f:IsMouseOver() and 0.8 or BAR_TEXTURE_SELECTOR_BORDER_ALPHA end,
     })
 
-    -- Selector background
-    selector._bg = Controls.AddBackground(selector, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
-
-    -- Value text (shows texture NAME only, no inline preview)
+    -- Value text (shows texture NAME only, no inline preview), in the
+    -- field's own role where the skin names one
     local valueText = selector:CreateFontString(nil, "OVERLAY")
-    local valueFont = theme:GetFont("VALUE")
-    valueText:SetFont(valueFont, 12, "")
+    theme:ApplyFont(valueText, Controls.Metrics().field.fontRole or "value", 12)
     valueText:SetPoint("LEFT", selector, "LEFT", 8, 0)
     valueText:SetPoint("RIGHT", selector, "RIGHT", -24, 0)
     valueText:SetJustifyH("LEFT")
@@ -620,7 +619,8 @@ function Controls:CreateBarTextureSelector(options)
     arrowText:SetPoint("RIGHT", selector, "RIGHT", -6, 0)
     arrowText:SetText("▼")
     arrowText:SetTextColor(ar, ag, ab, 0.8)
-    selector._arrow = arrowText
+    -- The role's own art where it has some; the handle answers SetTextColor
+    selector._arrow = Controls.AddFieldIndicator(selector, arrowText)
 
     row._selector = selector
 
@@ -666,18 +666,23 @@ function Controls:CreateBarTextureSelector(options)
     -- Initial display update
     UpdateDisplay()
 
-    -- Hover effects
+    -- Hover effects. The field role's own art follows the cursor through
+    -- the hooks AddFieldChrome put on this button; the fill, the border and
+    -- the indicator are the flat draw's, and inert under a skin with art.
     selector:SetScript("OnEnter", function(self)
         local r, g, b = theme:GetAccentColor()
         self._bg:SetColorTexture(r, g, b, 0.1)
         self._border:Refresh()
+        self._arrow:SetTextColor(r, g, b, 1)
         row._hoverBg:Show()
     end)
 
     selector:SetScript("OnLeave", function(self)
         local bgRc, bgGc, bgBc, bgAc = theme:GetBackgroundSolidColor()
+        local r, g, b = theme:GetAccentColor()
         self._bg:SetColorTexture(bgRc, bgGc, bgBc, bgAc)
         self._border:Refresh()
+        self._arrow:SetTextColor(r, g, b, 0.8)
         row._hoverBg:Hide()
     end)
 

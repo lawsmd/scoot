@@ -616,7 +616,6 @@ function Controls:CreateBarBorderSelector(options)
     else
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
-    local bgR, bgG, bgB, bgA = theme:GetBackgroundSolidColor()
 
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
@@ -659,50 +658,18 @@ function Controls:CreateBarBorderSelector(options)
     selector:EnableMouse(true)
     selector:RegisterForClicks("AnyUp")
 
-    -- Selector border
-    local selBorder = {}
+    -- The field role draws the shell, the seam the font selector's field
+    -- and every selector take: flat is the border (brighter on hover) and
+    -- a background.
+    selector._border, selector._bg, selector._backdrop = Controls.AddFieldChrome(selector, selector, {
+        borderAlpha = BAR_BORDER_SELECTOR_BORDER_ALPHA,
+        getAlpha = function(f) return f:IsMouseOver() and 0.8 or BAR_BORDER_SELECTOR_BORDER_ALPHA end,
+    })
 
-    local selTop = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selTop:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, 0)
-    selTop:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, 0)
-    selTop:SetHeight(1)
-    selTop:SetColorTexture(ar, ag, ab, BAR_BORDER_SELECTOR_BORDER_ALPHA)
-    selBorder.TOP = selTop
-
-    local selBottom = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selBottom:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 0)
-    selBottom:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 0)
-    selBottom:SetHeight(1)
-    selBottom:SetColorTexture(ar, ag, ab, BAR_BORDER_SELECTOR_BORDER_ALPHA)
-    selBorder.BOTTOM = selBottom
-
-    local selLeft = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selLeft:SetPoint("TOPLEFT", selector, "TOPLEFT", 0, -1)
-    selLeft:SetPoint("BOTTOMLEFT", selector, "BOTTOMLEFT", 0, 1)
-    selLeft:SetWidth(1)
-    selLeft:SetColorTexture(ar, ag, ab, BAR_BORDER_SELECTOR_BORDER_ALPHA)
-    selBorder.LEFT = selLeft
-
-    local selRight = selector:CreateTexture(nil, "BORDER", nil, -1)
-    selRight:SetPoint("TOPRIGHT", selector, "TOPRIGHT", 0, -1)
-    selRight:SetPoint("BOTTOMRIGHT", selector, "BOTTOMRIGHT", 0, 1)
-    selRight:SetWidth(1)
-    selRight:SetColorTexture(ar, ag, ab, BAR_BORDER_SELECTOR_BORDER_ALPHA)
-    selBorder.RIGHT = selRight
-
-    selector._border = selBorder
-
-    -- Selector background
-    local selBg = selector:CreateTexture(nil, "BACKGROUND", nil, -7)
-    selBg:SetPoint("TOPLEFT", 1, -1)
-    selBg:SetPoint("BOTTOMRIGHT", -1, 1)
-    selBg:SetColorTexture(bgR, bgG, bgB, bgA)
-    selector._bg = selBg
-
-    -- Value text (shows border NAME only)
+    -- Value text (shows border NAME only), in the field's own role where
+    -- the skin names one
     local valueText = selector:CreateFontString(nil, "OVERLAY")
-    local valueFont = theme:GetFont("VALUE")
-    valueText:SetFont(valueFont, 12, "")
+    theme:ApplyFont(valueText, Controls.Metrics().field.fontRole or "value", 12)
     valueText:SetPoint("LEFT", selector, "LEFT", 8, 0)
     valueText:SetPoint("RIGHT", selector, "RIGHT", -24, 0)
     valueText:SetJustifyH("LEFT")
@@ -717,7 +684,8 @@ function Controls:CreateBarBorderSelector(options)
     arrowText:SetPoint("RIGHT", selector, "RIGHT", -6, 0)
     arrowText:SetText("▼")
     arrowText:SetTextColor(ar, ag, ab, 0.8)
-    selector._arrow = arrowText
+    -- The role's own art where it has some; the handle answers SetTextColor
+    selector._arrow = Controls.AddFieldIndicator(selector, arrowText)
 
     row._selector = selector
 
@@ -743,23 +711,23 @@ function Controls:CreateBarBorderSelector(options)
     -- Initial display update
     UpdateDisplay()
 
-    -- Hover effects
+    -- Hover effects. The field role's own art follows the cursor through
+    -- the hooks AddFieldChrome put on this button; the fill, the border and
+    -- the indicator are the flat draw's, and inert under a skin with art.
     selector:SetScript("OnEnter", function(self)
         local r, g, b = theme:GetAccentColor()
         self._bg:SetColorTexture(r, g, b, 0.1)
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, 0.8)
-        end
+        self._border:Refresh()
+        self._arrow:SetTextColor(r, g, b, 1)
         row._hoverBg:Show()
     end)
 
     selector:SetScript("OnLeave", function(self)
         local bgRc, bgGc, bgBc, bgAc = theme:GetBackgroundSolidColor()
-        self._bg:SetColorTexture(bgRc, bgGc, bgBc, bgAc)
         local r, g, b = theme:GetAccentColor()
-        for _, tex in pairs(self._border) do
-            tex:SetColorTexture(r, g, b, BAR_BORDER_SELECTOR_BORDER_ALPHA)
-        end
+        self._bg:SetColorTexture(bgRc, bgGc, bgBc, bgAc)
+        self._border:Refresh()
+        self._arrow:SetTextColor(r, g, b, 0.8)
         row._hoverBg:Hide()
     end)
 
@@ -812,9 +780,6 @@ function Controls:CreateBarBorderSelector(options)
         labelFS:SetTextColor(r, g, b, 1)
         hoverBg:SetColorTexture(r, g, b, 0.08)
         arrowText:SetTextColor(r, g, b, 0.8)
-        for _, tex in pairs(selBorder) do
-            tex:SetColorTexture(r, g, b, BAR_BORDER_SELECTOR_BORDER_ALPHA)
-        end
     end)
     row._subscribeKey = subscribeKey
 

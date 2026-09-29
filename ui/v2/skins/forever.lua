@@ -486,6 +486,29 @@ Skin.Register("forever", {
             glyphColors = { normal = "accent", hover = "primary", pressed = "primary", disabled = { token = "dim", alpha = 0.5 } },
             fallback = { kind = "flat" },
         },
+        -- The list a field opens: the box Blizzard's own options dropdown
+        -- opens under its field, common-dropdown-c-bg stretched over the
+        -- rows and reaching past the frame by the margins the menu anchors
+        -- it at (17 each side, 12 above, 22 below), bronze on Forever behind
+        -- the retail name. padding is the menu's own inset. The rows are
+        -- text alone, 20 tall in the value role (metrics.popupList): the
+        -- chosen one in the gold of GameFontNormal, the rest in Blizzard's
+        -- very light gray, a refused one in its disabled gray, and the
+        -- cursor lays common-dropdown-customize-mouseover over a row at 0.15
+        -- and lifts an unchosen row's text to white. The list opens above
+        -- the field when the screen has no room below, which Blizzard's own
+        -- also does.
+        popupList = {
+            kind = "atlas", atlas = "common-dropdown-c-bg",
+            reach = { left = 17, right = 17, top = 12, bottom = 22 },
+            padding = { left = 3, top = 6, right = 3, bottom = 7 },
+            highlight = { atlas = "common-dropdown-customize-mouseover", alpha = 0.15 },
+            labelColors = {
+                normal = { 0.8, 0.8, 0.8 }, hover = "white",
+                selected = { 1, 0.82, 0 }, disabled = { 0.5, 0.5, 0.5 },
+            },
+            fallback = { kind = "flat" },
+        },
         -- The help icon, so far the one beside the page header's Defaults
         -- button. Blizzard hangs the same pair in its own options list, a
         -- DefaultsButton with a help button beside it, and the art under that
@@ -862,8 +885,18 @@ Skin.Register("forever", {
             borderWidth = 1, borderAlpha = 0.6, contentPadding = 12,
             indicatorSize = 14, titleSize = 16,
         },
+        -- The bare dropdown is the selector's field with the same steppers
+        -- and no label: a stepper each side, Blizzard's 26 wide with its 4
+        -- of room, inside the caller's width, and the value at the field's
+        -- 12 rather than the header bar's 11.
         dropdown = { width = 150, height = 22, borderAlpha = 0.6, borderHoverAlpha = 0.9, hoverAlpha = 0.15,
-                     padding = 8, fontSize = 11, indicatorSize = 9, fontRole = "fieldValue" },
+                     padding = 8, fontSize = 12, indicatorSize = 9, fontRole = "fieldValue",
+                     steppers = { width = 26, gap = 4 } },
+        -- The rows of the list a field opens: Blizzard's 20 tall with the
+        -- text 14 in, in the value role at 12, over what each control asks
+        -- for; gap 0 sets the list against the field's edge, as the menu
+        -- sits under its dropdown.
+        popupList = { optionHeight = 20, fontSize = 12, textInset = 14, fontRole = "value", gap = 0 },
         home = {
             guideInset = 40, guideIconSize = 24, guideRowSpacing = 11, guideTextWidth = 304,
             guideTextSize = 11, guideIconTextGap = 8, accentInset = 6,

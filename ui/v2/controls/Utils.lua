@@ -795,6 +795,8 @@ end
 -- "value" (the arrows are then buttons of their own beside it), and the
 -- border and background it returns are inert.
 --
+-- opts: borderAlpha, and getAlpha, the flat border's own hover function.
+--
 -- Returns border, background, backdrop (nil when flat).
 local INERT_BORDER_MT = { __index = {
     Refresh = function() end, SetShown = function() end, SetAlpha = function() end, Destroy = function() end,
@@ -805,17 +807,23 @@ function Controls.AddFieldChrome(field, valueBtn, opts)
     local Chrome = addon.UI.Chrome
     local spec = Chrome.Spec("field")
     if spec.kind == "flat" then
-        local border = Controls.CreateBorder(field, { alpha = opts.borderAlpha })
+        local border = Controls.CreateBorder(field, { alpha = opts.borderAlpha, getAlpha = opts.getAlpha })
         local bg = Controls.AddBackground(field, { inset = 1, sublevel = Controls.SUBLEVEL_FILL })
         return border, bg, nil
     end
     local target = (spec.spans == "value" and valueBtn) or field
     local backdrop = Chrome.Backdrop("field", target)
     if valueBtn then
-        valueBtn:HookScript("OnEnter", function() backdrop:SetHover(true) end)
-        valueBtn:HookScript("OnLeave", function() backdrop:SetHover(false) end)
-        valueBtn:HookScript("OnMouseDown", function() backdrop:SetPressed(true) end)
-        valueBtn:HookScript("OnMouseUp", function() backdrop:SetPressed(false) end)
+        -- Every caller sets the button's own OnEnter and OnLeave after this
+        -- returns, and SetScript replaces the handler with whatever was
+        -- hooked onto it, so the hooks go on a frame later, once the
+        -- caller's scripts are in place.
+        C_Timer.After(0, function()
+            valueBtn:HookScript("OnEnter", function() backdrop:SetHover(true) end)
+            valueBtn:HookScript("OnLeave", function() backdrop:SetHover(false) end)
+            valueBtn:HookScript("OnMouseDown", function() backdrop:SetPressed(true) end)
+            valueBtn:HookScript("OnMouseUp", function() backdrop:SetPressed(false) end)
+        end)
     end
     return setmetatable({}, INERT_BORDER_MT), INERT_FILL, backdrop
 end
