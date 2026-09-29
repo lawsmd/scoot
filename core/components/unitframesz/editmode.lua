@@ -448,9 +448,10 @@ function UFZ._InitializeEditMode()
             end
         end,
         exit = function()
-            -- Where the deferred claim gets paid: re-parenting is skipped while the
-            -- Edit Mode manager is on screen, so every suppression that entered
-            -- Edit Mode unapplied lands here on the way out.
+            -- Runs inside the exiting window, so no re-parent is written here: the
+            -- call schedules NativeFrame's retry, which pays every claim Blizzard's
+            -- exit pass displaced once the window closes (nativeframe.lua, THE EDIT
+            -- MODE EXIT).
             UFZ._ReassertAllSuppression()
 
             -- Same worker as the enter side, and it matters more here: an exit that

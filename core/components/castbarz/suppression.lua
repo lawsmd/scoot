@@ -106,10 +106,12 @@ end
 
 --- Re-assert every claim Z currently holds.
 ---
---- Called on Edit Mode enter and exit. Both matter: Blizzard skips the re-parent
---- while the Edit Mode manager is open (writing there taints the manager, not just
---- the frame -- see nativeframe.lua), so entering Edit Mode is where a claim gets
---- deferred and leaving it is where the deferred claim gets paid.
+--- Called on Edit Mode enter and exit. Both callbacks run inside the window in
+--- which NativeFrame refuses to re-parent (writing there taints the manager, not
+--- just the frame -- see nativeframe.lua), so the park itself is not written
+--- here: the call schedules NativeFrame's retry, which pays it once the window
+--- closes. What lands at once is the selection box, which Blizzard's own enter
+--- pass re-shows.
 function CBZ._ReassertAllSuppression()
     if not next(suppressed) then return end
     addon.NativeFrame:Reapply()

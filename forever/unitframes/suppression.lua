@@ -49,9 +49,9 @@ function Suppression.IsSuppressed(key)
     return frame and addon.NativeFrame:IsSuppressed(frame) or false
 end
 
---- Re-assert every claim held. Called on Edit Mode enter and exit: NativeFrame
---- skips the re-parent while the Edit Mode manager is open, so entering is where
---- a claim gets deferred and leaving is where it gets paid.
+--- Re-assert every claim held. Called on Edit Mode enter and exit, both inside
+--- the window in which NativeFrame refuses to re-parent: the call schedules its
+--- retry, which pays the park once the window closes.
 function Suppression.ReassertAll()
     if not next(suppressed) then return end
     addon.NativeFrame:Reapply()

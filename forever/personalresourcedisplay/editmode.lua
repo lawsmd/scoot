@@ -81,9 +81,10 @@ function EditMode.Register(frame)
         brand = { navKey = PRD.NAV_KEY, componentId = PRD.NAV_KEY, mirror = Style.EditModeMirror() },
     })
 
-    -- NativeFrame skips the re-parent while the manager is open, so entering
-    -- defers the park of Blizzard's frame and leaving pays it. Edit Mode
-    -- shows the display in every visibility mode.
+    -- Both callbacks run inside the window in which NativeFrame refuses to
+    -- re-parent, so neither writes the park of Blizzard's frame: the call
+    -- schedules NativeFrame's retry, which pays it once the window closes.
+    -- Edit Mode shows the display in every visibility mode.
     addon.EditMode.OnEditMode(PRD.OWNER, {
         enter = function()
             addon.NativeFrame:Reapply()

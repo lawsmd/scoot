@@ -60,6 +60,18 @@
 -- included, and Unpark registers each one again exactly as captured. A frame
 -- with no events left to show itself stays hidden wherever Blizzard puts it.
 -- The caller owns the list and cites where Blizzard registers each event.
+--
+-- THE EDIT MODE EXIT. ExitEditMode runs a full layout pass (RevertAllChanges ->
+-- UpdateLayoutInfo -> UpdateSystems) before it hides the systems, and a managed
+-- frame that Edit Mode force-showed is still IsShown() there, so
+-- AddManagedFrame -> UpdateFrame re-parents it out of the holder
+-- (ManagedFrameSystem.lua:47); BreakFromFrameManager does the same to UIParent
+-- for one off its default spot. The SetParent hook and the components' exit
+-- callbacks then run inside the one-second exiting window that EditModeOpen
+-- covers, so no re-park can be written there. The quiet list keeps the frame
+-- hidden meanwhile, and the next Edit Mode entry force-shows it on a visible
+-- parent (the player cast bar, seen 28 September 2026). The retry ticker
+-- (ScheduleRetry) pays every claim skipped for that gate once the gate clears.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -98,9 +110,11 @@ end
 --- Re-parenting is banned in that window. SetParent runs Blizzard's layout
 --- handlers synchronously, in addon execution, and the Edit Mode manager carries
 --- state into its next pass -- so a re-parent from addon context there taints the
---- manager rather than just the frame. Every skipped write is picked up by
---- Reapply() on Edit Mode close. The canonical check covers the opening and
---- exiting transition windows, which the old IsShown-only probe missed.
+--- manager rather than just the frame. A write skipped for this gate is
+--- retried by ScheduleRetry once the gate clears; the Edit Mode callbacks the
+--- components run all sit inside it, so none of them can pay a claim
+--- directly. The canonical check covers the opening and exiting transition
+--- windows, which the old IsShown-only probe missed.
 ---
 --- Resolved per call. A host that does not load core/editmode/core.lua has no
 --- canonical check, and falls back to LibEditMode's own flag, which lacks the
@@ -118,6 +132,25 @@ local function Resolve(frame)
     end
     if frame.IsForbidden and frame:IsForbidden() then return nil end
     return frame
+end
+
+--- Re-run every claim once the Edit Mode gate clears.
+---
+--- One ticker at a time, polling the gate rather than waiting a fixed delay: a
+--- skip can land at any point of an open session, and the window after the
+--- exit is a second long. Combat is checked too, so the Reapply it fires never
+--- meets the lockdown skip; a skip that is combat's alone is the regen
+--- handler's, not this one's.
+local retryTicker
+
+local function ScheduleRetry()
+    if retryTicker then return end
+    retryTicker = C_Timer.NewTicker(0.25, function()
+        if EditModeOpen() or InCombatLockdown() then return end
+        retryTicker:Cancel()
+        retryTicker = nil
+        NativeFrame:Reapply()
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -282,6 +315,7 @@ end
 local function Park(frame)
     local d = State(frame)
     local hidden = Holder()
+    local gated = EditModeOpen()
 
     if frame:GetParent() ~= hidden then
         -- Captured once, before the first move, so a second Suppress() while
@@ -289,7 +323,7 @@ local function Park(frame)
         if d.origParent == nil then
             d.origParent = frame:GetParent()
         end
-        if not InCombatLockdown() and not EditModeOpen() then
+        if not InCombatLockdown() and not gated then
             frame:SetParent(hidden)
         end
     end
@@ -305,8 +339,10 @@ local function Park(frame)
             if newParent == holder then return end
             C_Timer.After(0, function()
                 local cur = data[self]
-                if cur and cur.parked and not InCombatLockdown() and not EditModeOpen()
-                    and self:GetParent() ~= holder then
+                if not (cur and cur.parked) or self:GetParent() == holder then return end
+                if EditModeOpen() then
+                    ScheduleRetry()
+                elseif not InCombatLockdown() then
                     self:SetParent(holder)
                 end
             end)
@@ -316,6 +352,12 @@ local function Park(frame)
     d.parked = true
     ApplySelection(frame, true)
     Quiet(d)
+
+    -- A combat skip is paid by the PLAYER_REGEN_ENABLED Reapply. The Edit Mode
+    -- gate has no event of its own, so it gets the ticker. Scheduled whenever
+    -- the gate was up, not only when the parent moved: Quiet skips under the
+    -- same gate, and Blizzard's exit pass runs after the enter callback.
+    if gated then ScheduleRetry() end
 end
 
 local function Unpark(frame)
@@ -323,7 +365,11 @@ local function Unpark(frame)
     d.parked = false
     ApplySelection(frame, false)
 
-    if InCombatLockdown() or EditModeOpen() then return end
+    if EditModeOpen() then
+        ScheduleRetry()
+        return
+    end
+    if InCombatLockdown() then return end
 
     -- Before the ownership check below: the silenced events are Scoot's own
     -- write, and they go back whoever holds the frame now.

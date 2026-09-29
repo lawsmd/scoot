@@ -106,10 +106,10 @@ function CBZ._InitializeEditMode()
             end
         end,
         exit = function()
-            -- Where the deferred claim gets paid. Re-parenting is skipped while the
-            -- Edit Mode manager is on screen (writing there taints the manager itself,
-            -- not just the frame), so every suppression that entered Edit Mode unapplied
-            -- lands here on the way out.
+            -- Blizzard's exit pass re-parents its cast bar out of the holder before
+            -- this runs, and this runs inside the exiting window, so the re-park
+            -- cannot be written here. The call schedules NativeFrame's retry, which
+            -- pays it once the window closes (nativeframe.lua, THE EDIT MODE EXIT).
             CBZ._ReassertAllSuppression()
 
             for _, bar in pairs(CBZ._bars) do

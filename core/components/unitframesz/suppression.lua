@@ -114,10 +114,11 @@ end
 
 --- Re-assert every claim Z currently holds.
 ---
---- Called on Edit Mode enter and exit. Both matter: NativeFrame skips the
---- re-parent while the Edit Mode manager is open (writing there taints the
---- manager, not just the frame -- see nativeframe.lua), so entering Edit Mode
---- is where a claim gets deferred and leaving it is where it gets paid.
+--- Called on Edit Mode enter and exit. Both callbacks run inside the window in
+--- which NativeFrame refuses to re-parent (writing there taints the manager,
+--- not just the frame -- see nativeframe.lua), so the park itself is not
+--- written here: the call schedules NativeFrame's retry, which pays it once the
+--- window closes. What lands at once is the selection box.
 function UFZ._ReassertAllSuppression()
     if not next(suppressed) then return end
     addon.NativeFrame:Reapply()
