@@ -77,6 +77,43 @@ function Percent.Health(unit, usePredicted, round)
     return format(num, round)
 end
 
+-- The color-by-value curves: red at 0, yellow at half, green at full; the
+-- dark one turns dark gray at exactly full. Unit Frames X (bars/textures.lua)
+-- and Z (engine.lua) each still build a private copy of these points.
+local colorCurves = {}
+
+local function colorCurve(dark)
+    local key = dark and "dark" or "plain"
+    if colorCurves[key] then return colorCurves[key] end
+    if not (C_CurveUtil and C_CurveUtil.CreateColorCurve and CreateColor) then return nil end
+    local ok, c = pcall(C_CurveUtil.CreateColorCurve)
+    if not ok or not c then return nil end
+    if c.SetType and Enum and Enum.LuaCurveType then
+        pcall(c.SetType, c, Enum.LuaCurveType.Linear)
+    end
+    pcall(c.AddPoint, c, 0.0, CreateColor(1, 0, 0, 1))
+    pcall(c.AddPoint, c, 0.5, CreateColor(1, 1, 0, 1))
+    if dark then
+        pcall(c.AddPoint, c, 0.9999, CreateColor(0, 1, 0, 1))
+        pcall(c.AddPoint, c, 1.0, CreateColor(0.23, 0.23, 0.23, 1))
+    else
+        pcall(c.AddPoint, c, 1.0, CreateColor(0, 1, 0, 1))
+    end
+    colorCurves[key] = c
+    return c
+end
+
+--- A unit's color-by-value health color as r, g, b, or nil when the client
+--- cannot evaluate it. The engine returns a Color object whose channels can
+--- go straight to a color setter.
+function Percent.HealthColor(unit, dark)
+    local c = colorCurve(dark)
+    if not (c and UnitHealthPercent) then return nil end
+    local ok, color = pcall(UnitHealthPercent, unit, true, c)
+    if not ok or type(color) ~= "table" or not color.GetRGB then return nil end
+    return color:GetRGB()
+end
+
 --- The power percentage of a unit as a secret string. powerType nil is the
 --- displayed power; the maximum is the modified one, what a bar shows.
 function Percent.Power(unit, powerType, round)

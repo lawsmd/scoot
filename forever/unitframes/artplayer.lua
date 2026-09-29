@@ -239,10 +239,20 @@ spec.Text = {
         layer = "BORDER",
         font = "TextStatusBarText",
         point = "CENTER", x = 34, y = -1,
+        sides = { left = { point = "LEFT", x = 94, y = -1 }, right = { point = "RIGHT", x = -24, y = -1 } },
     },
     powerValue = {
         layer = "BORDER",
         font = "TextStatusBarText",
         point = "CENTER", x = 34, y = -12,
+        sides = { left = { point = "LEFT", x = 94, y = -12 }, right = { point = "RIGHT", x = -24, y = -12 } },
     },
+}
+
+-- The aura rows, off by default: vanilla shows the player's auras in BuffFrame.
+-- A Camelot addition laid out as the target's mirror (arttarget.lua): the
+-- first icon 2 left of the health bar's left edge.
+spec.Auras = {
+    x = 88, y = 28, mirrorY = -19,
+    spacing = 3, lineSpacing = 2, blockGap = 3,
 }

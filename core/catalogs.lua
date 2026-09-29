@@ -188,6 +188,13 @@ ColorMode.PortraitBorder = make(
     { "texture", "class", "custom" }
 )
 
+-- When a bar's text shows: at all times, while the mouse is over the frame,
+-- or never.
+Catalogs.ShowText = make(
+    { always = "Always", hover = "On Mouseover", never = "Never" },
+    { "always", "hover", "never" }
+)
+
 ColorMode.DefaultCustom = make(
     { default = "Default", custom = "Custom" },
     { "default", "custom" }

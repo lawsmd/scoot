@@ -17,18 +17,23 @@
 local addonName, addon = ...
 
 local Frame = addon.UnitFrames.Frame
+local Values = addon.UnitFrames.Values
 
 local POLL_SECONDS = 0.2
 
--- TargetOfTargetMixin:CheckDead, which also darkens the backing.
+-- TargetOfTargetMixin:CheckDead, which also darkens the backing, and
+-- TargetofTargetHealthCheck's dead and ghost portrait tints.
 local function applyDead(inst)
     local dead = false
+    local r, g, b
     if not inst.previewStandIn then
         local ok, value = pcall(UnitIsDeadOrGhost, inst.unit)
         dead = ok and not issecretvalue(value) and value == true
+        r, g, b = Values.DeadTint(inst.unit)
     end
     inst.texts.dead:SetShown(dead)
     inst.regions.background:SetAlpha(dead and 0.9 or 1)
+    inst.regions.portrait:SetVertexColor(r or 1, g or 1, b or 1)
 end
 
 Frame.Define({
@@ -41,6 +46,11 @@ Frame.Define({
     default = { point = "CENTER", relPoint = "CENTER", x = 505, y = -300 },
     -- Over the target frame, whose corner it covers.
     strataLevel = 20,
+    -- TargetOfTargetMixin:Update hides the frame while the target is dead. Its
+    -- other rule, a target that is the player, has no macro conditional, and
+    -- the restricted environment has no UnitIsUnit, so the frame shows the
+    -- player there.
+    visibilityDriver = "[@target,dead] hide; [@targettarget,exists] show; hide",
 
     changeEvents = {
         PLAYER_TARGET_CHANGED = true,
@@ -53,6 +63,8 @@ Frame.Define({
             if inst.frame:IsShown() and not inst.previewStandIn then
                 Frame.Paint(inst)
                 applyDead(inst)
+                -- No UNIT_AURA reaches the container for this unit either.
+                addon.UnitFrames.Auras.Kick(inst)
             end
         end)
     end,

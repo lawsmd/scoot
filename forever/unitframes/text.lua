@@ -227,6 +227,90 @@ function Text.ApplyStyle(inst)
     end
 end
 
+--------------------------------------------------------------------------------
+-- Bar texts
+--------------------------------------------------------------------------------
+-- Each bar has a value string and a percent string, both built from the art
+-- spec's healthValue or powerValue entry (frame.lua). Vanilla places them as
+-- TextStatusBar does: a lone string centred on the XML's anchor, and with both
+-- up (the BOTH display) the percent on the left and the value on the right, at
+-- the XML's Left and Right anchors, which the spec carries as `sides`.
+-- Placement reads the Show settings and not the mouse, so a string never moves
+-- when the pointer arrives.
+
+Text.BAR_TEXT_STRINGS = {
+    health = { def = "healthValue", value = "healthValue", percent = "healthPercent" },
+    power = { def = "powerValue", value = "powerValue", percent = "powerPercent" },
+}
+
+--- "always", "hover" or "never" for one of a bar's strings.
+function Text.BarTextShow(key, bar, slot)
+    local v = Text.Get(key, bar, "text", slot, "show")
+    if v == "always" or v == "hover" then return v end
+    return "never"
+end
+
+--- The colour a bar string takes: white by default, the class colour for a
+--- player in class mode (white for anyone else), or the stored custom colour.
+function Text.BarTextColor(inst, bar, slot, unit)
+    local colorMode = Text.Get(inst.key, bar, "text", slot, "colorMode")
+    -- Kept off addon.ResolveColorRGBA: class on a non-player is white, which classMiss cannot express.
+    if colorMode == "class" then
+        local ok, isPlayer = pcall(UnitIsPlayer, unit or inst.unit)
+        if ok and not issecretvalue(isPlayer) and isPlayer == true then
+            local r, g, b = addon.GetClassColorRGB(unit or inst.unit)
+            if r then return r, g, b end
+        end
+        return 1, 1, 1
+    end
+    local r, g, b = addon.ResolveColorRGBA(colorMode, Text.Get(inst.key, bar, "text", slot, "color"),
+        { fbR = 1, fbG = 1, fbB = 1, fbA = 1 })
+    return r, g, b
+end
+
+local function applyBarString(inst, bar, slot, fs, anchor, def)
+    local key = inst.key
+    fs:ClearAllPoints()
+    fs:SetPoint(anchor.point, inst.artFrame, anchor.relPoint or anchor.point,
+        (anchor.x or 0) + (tonumber(Text.Get(key, bar, "text", slot, "offsetX")) or 0),
+        (anchor.y or 0) + (tonumber(Text.Get(key, bar, "text", slot, "offsetY")) or 0))
+
+    local face, size, flags = fontObjectFont(def)
+    local storedFace = Text.Get(key, bar, "text", slot, "fontFace")
+    if storedFace then face = addon.ResolveFontFace(storedFace) end
+    size = tonumber(Text.Get(key, bar, "text", slot, "size")) or size
+    Text.ApplyFont(fs, face, size, flags, Text.Get(key, bar, "text", slot, "style"))
+end
+
+--- Colour the frame's bar strings for the unit it shows. The paint calls
+--- this, because a class colour changes with the target.
+function Text.ApplyBarTextColors(inst)
+    local unit = inst.previewStandIn and "player" or nil
+    for bar, names in pairs(Text.BAR_TEXT_STRINGS) do
+        for _, slot in ipairs({ "value", "percent" }) do
+            local fs = inst.texts[names[slot]]
+            if fs then fs:SetTextColor(Text.BarTextColor(inst, bar, slot, unit)) end
+        end
+    end
+end
+
+--- Place, dress and colour the frame's bar strings from the database. What
+--- each one shows, and whether it is up, is values.lua's.
+function Text.ApplyBarTexts(inst)
+    for bar, names in pairs(Text.BAR_TEXT_STRINGS) do
+        local def = inst.spec.Text[names.def]
+        local valueFS, percentFS = inst.texts[names.value], inst.texts[names.percent]
+        if def and valueFS and percentFS then
+            local both = def.sides
+                and Text.BarTextShow(inst.key, bar, "value") ~= "never"
+                and Text.BarTextShow(inst.key, bar, "percent") ~= "never"
+            applyBarString(inst, bar, "value", valueFS, both and def.sides.right or def, def)
+            applyBarString(inst, bar, "percent", percentFS, both and def.sides.left or def, def)
+        end
+    end
+    Text.ApplyBarTextColors(inst)
+end
+
 --- The leather behind the name and inside the level ring, where the frame
 --- has either.
 function Text.ApplyBackdrop(inst)

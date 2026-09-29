@@ -13,7 +13,7 @@
 -- unread.
 --
 -- Left out on purpose: vanilla tints the portrait red under 20 percent health,
--- which is a compare on a secret.
+-- which is a compare on a secret. Its dead and ghost tints are here.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -21,6 +21,7 @@ local addonName, addon = ...
 local Art = addon.UnitFrames.Art
 local Frame = addon.UnitFrames.Frame
 local Text = addon.UnitFrames.Text
+local Values = addon.UnitFrames.Values
 
 local PVP_ROOT = "Interface\\TargetingFrame\\UI-PVP-"
 
@@ -53,9 +54,10 @@ local function applyClassification(inst)
     Art.ApplyBorder(inst, BORDER_BY_CLASSIFICATION[classification] or "border")
 
     local minus = classification == "minus"
+    inst.minus = minus
     r.nameBackground:SetShown(not minus)
     inst.powerBar:SetShown(not minus)
-    if inst.powerText then inst.powerText:SetShown(not minus) end
+    -- The power value's shown state is applyDead's, which runs after this.
 
     local bg = r.background
     bg:ClearAllPoints()
@@ -110,12 +112,26 @@ local function setStripColor(inst, r, g, b)
     inst.regions.nameBackground:SetVertexColor(r, g, b, Text.StripAlpha(inst))
 end
 
+-- The portrait's one colour: TargetHealthCheck's dead grey or ghost blue on a
+-- player, else CheckFaction's tapped grey, else white.
+local function applyPortraitTint(inst)
+    local unit = inst.unit
+    local portrait = inst.regions.portrait
+    local r, g, b = Values.DeadTint(unit)
+    if r then
+        portrait:SetVertexColor(r, g, b)
+    elseif plain(UnitPlayerControlled, unit) == false and plain(UnitIsTapDenied, unit) == true then
+        portrait:SetVertexColor(0.5, 0.5, 0.5)
+    else
+        portrait:SetVertexColor(1, 1, 1)
+    end
+end
+
 -- CheckFaction. Grey for a mob someone else tapped, the selection colour
 -- otherwise.
 local function applyFaction(inst)
     local r = inst.regions
     local unit = inst.unit
-    local portrait = r.portrait
 
     if inst.previewStandIn then
         setStripColor(inst, 0.5, 0.5, 0.5)
@@ -126,7 +142,6 @@ local function applyFaction(inst)
     local tapped = plain(UnitPlayerControlled, unit) == false and plain(UnitIsTapDenied, unit) == true
     if tapped then
         setStripColor(inst, 0.5, 0.5, 0.5)
-        portrait:SetVertexColor(0.5, 0.5, 0.5)
     else
         -- The three colour values only; they may be secret, and go to the
         -- setter unread.
@@ -134,8 +149,8 @@ local function applyFaction(inst)
         if not (ok and pcall(setStripColor, inst, cr, cg, cb)) then
             setStripColor(inst, 0.5, 0.5, 0.5)
         end
-        portrait:SetVertexColor(1, 1, 1)
     end
+    applyPortraitTint(inst)
 
     local icon = r.pvpIcon
     local faction = plain(UnitFactionGroup, unit)
@@ -152,10 +167,14 @@ end
 
 -- CheckDead. The dead text shares the health value's spot, so one hides the
 -- other. UnitIsDeadOrGhost is a plain read; vanilla's UnitHealth <= 0 is not.
+-- Camelot also hides the power value on a dead unit, where it only ever read
+-- 0; a minus mob has no power bar to label.
 local function applyDead(inst)
     local dead = not inst.previewStandIn and plain(UnitIsDeadOrGhost, inst.unit) == true
     inst.texts.dead:SetShown(dead)
-    if inst.healthText then inst.healthText:SetShown(not dead) end
+    inst.barTextDead = dead
+    inst.noPowerText = inst.minus
+    Values.ApplyBarTextShown(inst)
 end
 
 local function applyIcons(inst)
@@ -188,9 +207,12 @@ end
 local function onUnitEvent(inst, event)
     if event == "UNIT_FACTION" or event == "UNIT_CLASSIFICATION_CHANGED" then
         paintState(inst)
+        -- A reaction change swaps which aura block comes first.
+        addon.UnitFrames.Auras.Refresh(inst)
         return true
     elseif event == "UNIT_HEALTH" then
         applyDead(inst)
+        applyPortraitTint(inst)
     end
     return false
 end

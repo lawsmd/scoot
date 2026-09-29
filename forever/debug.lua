@@ -38,6 +38,28 @@ local function pushInstance(push, key)
     push("  enabled:          %s", tostring(inst.enabled))
     push("  frame shown:      %s", tostring(inst.frame:IsShown()))
     push("  click shown:      %s", tostring(inst.clickButton:IsShown()))
+    -- Who holds the mouse: the click child, the tooltip frame over it, and the
+    -- art frame over both. Clicks reach the child only through the two above.
+    local click = inst.clickButton
+    push("  click attributes: type1 %s, *type1 %s, *type2 %s, unit %s, enabled %s",
+        tostring(click:GetAttribute("type1")), tostring(click:GetAttribute("*type1")),
+        tostring(click:GetAttribute("*type2")), tostring(click:GetAttribute("unit")),
+        tostring(click:IsEnabled()))
+    for _, part in ipairs({ { "click", click }, { "hover", inst.hoverFrame }, { "art", inst.artFrame } }) do
+        local f = part[2]
+        if f then
+            push("  mouse %-6s      level %d, visible %s, mouse %s, clicks %s, motion %s",
+                part[1], f:GetFrameLevel(), tostring(f:IsVisible()), tostring(f:IsMouseEnabled()),
+                tostring(f:IsMouseClickEnabled()), tostring(f:IsMouseMotionEnabled()))
+        end
+    end
+    if key == "player" and GetMouseFoci then
+        local names = {}
+        for _, focus in ipairs(GetMouseFoci()) do
+            names[#names + 1] = (focus.GetDebugName and focus:GetDebugName()) or tostring(focus)
+        end
+        push("  mouse focus now:  %s", #names > 0 and table.concat(names, ", ") or "none")
+    end
     push("  watch registered: %s", tostring(inst.watchRegistered))
     push("  preview:          %s, stand-in %s",
         tostring(inst.previewActive), tostring(inst.previewStandIn))
@@ -125,6 +147,8 @@ local function pushInstance(push, key)
                 tostring(st.F), st.reason and (", " .. st.reason) or "")
         end
     end
+    push("  auras:            %s", UF.Auras.Describe(inst))
+    push("  heal prediction:  %s", UF.HealPrediction.Describe(inst))
     push("")
 end
 
@@ -134,6 +158,8 @@ local function dumpState(sub)
 
     push("in combat:    %s", tostring(InCombatLockdown()))
     push("border style: %s", tostring(addon.DB.Get("unitFrames.borderStyle")))
+    push("aura restrictions: %s; aura work queued: %d",
+        tostring(addon.AurasSecretNow()), addon.AuraRow.PendingCount())
     push("")
 
     for _, key in ipairs(UF.ORDER) do

@@ -91,10 +91,21 @@ spec.Text = {
         layer = "BORDER",
         font = "TextStatusBarText",
         point = "CENTER", relPoint = "TOPLEFT", x = 82, y = -26,
+        sides = { left = { point = "LEFT", relPoint = "TOPLEFT", x = 46, y = -26 },
+                  right = { point = "RIGHT", relPoint = "TOPLEFT", x = 113, y = -26 } },
     },
     powerValue = {
         layer = "BORDER",
         font = "TextStatusBarText",
         point = "CENTER", relPoint = "TOPLEFT", x = 82, y = -38,
+        sides = { left = { point = "LEFT", relPoint = "TOPLEFT", x = 46, y = -38 },
+                  right = { point = "RIGHT", relPoint = "TOPLEFT", x = 113, y = -38 } },
     },
+}
+
+-- Four debuffs in a row, from the AuraFrameContainer in PetFrame.xml: a
+-- HorizontalLayoutFrame at TOPLEFT 48, -42 with a spacing of 2.
+spec.Auras = {
+    point = "TOPLEFT", relPoint = "TOPLEFT", x = 48, y = -42,
+    spacing = 2, lineSpacing = 2, perLine = 4,
 }

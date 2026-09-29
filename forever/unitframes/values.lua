@@ -27,39 +27,147 @@ addon.UnitFrames.Values = Values
 local UnitHealth, UnitHealthMax = UnitHealth, UnitHealthMax
 local UnitPower, UnitPowerMax = UnitPower, UnitPowerMax
 
+-- For the reads that decide a colour: nil for a secret or a missing API, so an
+-- unreadable state leaves the bar in its normal look.
+local function plain(fn, ...)
+    if not fn then return nil end
+    local ok, value = pcall(fn, ...)
+    if not ok or issecretvalue(value) then return nil end
+    return value
+end
+
 --------------------------------------------------------------------------------
 -- Bars
 --------------------------------------------------------------------------------
 
--- Max first, then value. A bar whose range is still (0, 1) when a large value
--- arrives clamps to full for one frame, which reads as a flash on login.
+-- The health bar's colour from its setting (settings.lua). A caller with no
+-- unit frame key (the personal resource display) sets inst.spec's colour
+-- itself, and "default" is that colour too: vanilla's green on these frames.
+-- Class colours a player only, as the name does; anyone else keeps the
+-- default. Colour by value is the engine's curve over the health fraction
+-- (core/percent.lua), evaluated at every update. unit stands in for inst.unit
+-- when the Edit Mode stand-in paints.
+function Values.HealthColor(inst, unit)
+    unit = unit or inst.unit
+    local c = inst.spec.Bars.health.color or { 0, 1, 0 }
+    if not inst.key then return c[1], c[2], c[3] end
+    local Settings = addon.UnitFrames.Settings
+    local mode = Settings.Bar(inst.key, "health", "colorMode")
+    if mode == "value" or mode == "valueDark" then
+        local r, g, b = addon.Percent.HealthColor(unit, mode == "valueDark")
+        if type(r) ~= "nil" then return r, g, b end
+    elseif mode == "class" then
+        if plain(UnitIsPlayer, unit) == true then
+            local r, g, b = addon.GetClassColorRGB(unit)
+            if r then return r, g, b end
+        end
+    elseif mode == "texture" or mode == "custom" then
+        -- Kept off addon.ResolveColorRGBA for the two modes above: value is a curve and class skips non-players.
+        local r, g, b = addon.ResolveColorRGBA(mode, Settings.Bar(inst.key, "health", "color"))
+        return r, g, b
+    end
+    return c[1], c[2], c[3]
+end
+
+-- The bar's texture from its setting, and the Hide the Bar but not its Text
+-- switch. The texture goes onto the fill texture object rather than through
+-- SetStatusBarTexture, so the heal prediction anchored to that object
+-- (healprediction.lua) keeps its anchor. The alpha is the texture's own: the
+-- vertex alpha is what the colour writes.
+function Values.ApplyHealthStyle(inst)
+    local bar = inst.healthBar
+    if not (bar and inst.key) then return end
+    local Settings = addon.UnitFrames.Settings
+    local path
+    local textureKey = Settings.Bar(inst.key, "health", "texture")
+    if textureKey and textureKey ~= "default" and addon.Media and addon.Media.ResolveBarTexturePath then
+        path = addon.Media.ResolveBarTexturePath(textureKey)
+    end
+    local fill = bar:GetStatusBarTexture()
+    fill:SetTexture(path or inst.spec.Bars.health.texture)
+    fill:SetAlpha(Settings.Bar(inst.key, "health", "hideTextureOnly") == true and 0 or 1)
+end
+
+-- UnitFrameHealthBar_Update: a disconnected unit's bar is grey and full, and
+-- the colour goes back on at every update, as vanilla's does. Max first, then
+-- value. A bar whose range is still (0, 1) when a large value arrives clamps
+-- to full for one frame, which reads as a flash on login.
 function Values.ApplyHealth(inst)
     local bar = inst.healthBar
     if not bar then return end
-    bar:SetMinMaxValues(0, UnitHealthMax(inst.unit))
-    bar:SetValue(UnitHealth(inst.unit))
+    local unit = inst.unit
+    local max = UnitHealthMax(unit)
+    bar:SetMinMaxValues(0, max)
+    if plain(UnitIsConnected, unit) == false then
+        bar:SetStatusBarColor(0.5, 0.5, 0.5)
+        bar:SetValue(max)
+    else
+        bar:SetValue(UnitHealth(unit))
+        bar:SetStatusBarColor(Values.HealthColor(inst))
+    end
+end
+
+-- "offline" for a disconnected unit, "dead" for the player dead or a ghost
+-- and not feigning (UnitFrameManaBar_UpdateType), nil otherwise.
+local function powerState(unit)
+    if plain(UnitIsConnected, unit) == false then return "offline" end
+    if unit == "player" and plain(UnitIsDeadOrGhost, unit) == true
+        and plain(UnitIsFeignDeath, unit) ~= true then
+        return "dead"
+    end
+    return nil
 end
 
 function Values.ApplyPower(inst)
     local bar = inst.powerBar
     if not bar then return end
-    bar:SetMinMaxValues(0, UnitPowerMax(inst.unit))
-    bar:SetValue(UnitPower(inst.unit))
+    local unit = inst.unit
+    local state = powerState(unit)
+    if state ~= inst.powerState then
+        inst.powerState = state
+        Values.ApplyPowerColor(inst)
+    end
+    local max = UnitPowerMax(unit)
+    bar:SetMinMaxValues(0, max)
+    if state == "offline" then
+        bar:SetValue(max)
+    else
+        bar:SetValue(UnitPower(unit))
+    end
 end
 
 -- The resolver handles the unit-to-token step and both lookup tables, and it is
 -- the one place the colour tables are read. It returns white when it cannot
 -- resolve, which on this frame would read as a bug, so an unresolved power
--- falls back to the XML's own mana blue instead.
+-- falls back to the XML's own mana blue instead. The two greys are vanilla's.
 function Values.ApplyPowerColor(inst)
     local bar = inst.powerBar
     if not bar then return end
+
+    local state = powerState(inst.unit)
+    inst.powerState = state
+    if state == "offline" then
+        bar:SetStatusBarColor(0.5, 0.5, 0.5, 1)
+        return
+    elseif state == "dead" then
+        bar:SetStatusBarColor(0.6, 0.6, 0.6, 0.5)
+        return
+    end
 
     local r, g, b = addon.GetPowerColorRGB(inst.unit)
     if r == 1 and g == 1 and b == 1 then
         r, g, b = 0, 0, 1.0
     end
-    bar:SetStatusBarColor(r, g, b)
+    bar:SetStatusBarColor(r, g, b, 1)
+end
+
+-- TargetHealthCheck's portrait tint for a dead or ghost player, or nil. A
+-- secret read gives nil, which leaves the portrait untinted.
+function Values.DeadTint(unit)
+    if plain(UnitIsPlayer, unit) ~= true then return nil end
+    if plain(UnitIsDead, unit) == true then return 0.35, 0.35, 0.35 end
+    if plain(UnitIsGhost, unit) == true then return 0.2, 0.2, 0.75 end
+    return nil
 end
 
 --------------------------------------------------------------------------------
@@ -82,9 +190,105 @@ local function feedNumber(fs, value)
     end
 end
 
+-- TextStatusBar's "current / max". Concatenation is legal on a secret string,
+-- and the result stays secret, so the join runs inside the pcall too.
+local function feedPair(fs, value, max)
+    if not fs then return end
+    local ok, text = pcall(function()
+        return AbbreviateNumbers(value) .. " / " .. AbbreviateNumbers(max)
+    end)
+    if ok and type(text) ~= "nil" then
+        pcall(fs.SetText, fs, text)
+    else
+        fs:ClearText()
+    end
+end
+
+-- TextStatusBar's percent: the engine's fraction as a secret string, and the
+-- sign joined on, which concatenation allows.
+local function feedPercent(fs, text)
+    if type(text) == "string" then
+        local ok, joined = pcall(function() return text .. "%" end)
+        if ok and pcall(fs.SetText, fs, joined) then return end
+    end
+    fs:ClearText()
+end
+
+-- Each bar's value string and percent string, and what feeds them. A caller
+-- with no unit frame key (the personal resource display feeds its bars
+-- through this file and its percents itself) has the current value at all
+-- times and no percent here.
+local BARS = {
+    health = { value = "healthText", percent = "healthPercentText", cur = UnitHealth, max = UnitHealthMax },
+    power = { value = "powerText", percent = "powerPercentText", cur = UnitPower, max = UnitPowerMax },
+}
+
+local function textShow(inst, bar, slot)
+    if not inst.key then return slot == "value" and "always" or "never" end
+    return addon.UnitFrames.Text.BarTextShow(inst.key, bar, slot)
+end
+
+--- Whether any of the frame's bar strings waits for the mouse, which is when
+--- the hover (frame.lua, setHovered) has to repaint them.
+function Values.BarTextOnHover(inst)
+    if not inst.key then return false end
+    for bar in pairs(BARS) do
+        if textShow(inst, bar, "value") == "hover" or textShow(inst, bar, "percent") == "hover" then
+            return true
+        end
+    end
+    return false
+end
+
+local function stringUp(inst, bar, slot)
+    local mode = textShow(inst, bar, slot)
+    return mode == "always" or (mode == "hover" and inst.hovered == true)
+end
+
+--- Whether each bar string shows. target.lua sets inst.barTextDead, and
+--- target.lua and pet.lua set inst.noPowerText where there is no power bar
+--- to label.
+function Values.ApplyBarTextShown(inst)
+    for bar, fields in pairs(BARS) do
+        local blocked = inst.barTextDead or (bar == "power" and inst.noPowerText)
+        for _, slot in ipairs({ "value", "percent" }) do
+            local fs = (inst.key or slot == "value") and inst[fields[slot]]
+            if fs then fs:SetShown(not blocked and stringUp(inst, bar, slot)) end
+        end
+    end
+end
+
+-- The value reads "current" or "current / max" by its format setting; the
+-- personal resource display's reads "current".
+local function valueFormat(inst, bar)
+    if not inst.key then return "current" end
+    return addon.UnitFrames.Settings.Bar(inst.key, bar, "text", "value", "format")
+end
+
 function Values.ApplyBarText(inst)
-    feedNumber(inst.healthText, UnitHealth(inst.unit))
-    feedNumber(inst.powerText, UnitPower(inst.unit))
+    local unit = inst.unit
+    for bar, fields in pairs(BARS) do
+        local valueFS = inst[fields.value]
+        if valueFS then
+            if not stringUp(inst, bar, "value") then
+                valueFS:ClearText()
+            elseif valueFormat(inst, bar) == "currentMax" then
+                feedPair(valueFS, fields.cur(unit), fields.max(unit))
+            else
+                feedNumber(valueFS, fields.cur(unit))
+            end
+        end
+        local percentFS = inst.key and inst[fields.percent]
+        if percentFS then
+            if not stringUp(inst, bar, "percent") then
+                percentFS:ClearText()
+            elseif bar == "health" then
+                feedPercent(percentFS, (addon.Percent.Health(unit, false)))
+            else
+                feedPercent(percentFS, (addon.Percent.Power(unit)))
+            end
+        end
+    end
 end
 
 --------------------------------------------------------------------------------

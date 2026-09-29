@@ -72,6 +72,8 @@ core/fonts.lua
 core/fontpair.lua
 core/blindfit.lua
 core/pool.lua
+core/aurarow.lua
+core/iconratio.lua
 core/barborders.lua
 core/dialogs.lua
 core/apply_all.lua
@@ -168,6 +170,7 @@ core/components/tooltip.lua
 ## below draw on retail too, where a stored value can be checked across a
 ## reload while the beta keeps none.
 forever/unitframes/text.lua
+forever/unitframes/settings.lua
 forever/unitframes/art.lua [ExcludeLoadGameType standard]
 forever/unitframes/artplayer.lua [ExcludeLoadGameType standard]
 forever/unitframes/arttarget.lua [ExcludeLoadGameType standard]
@@ -178,6 +181,8 @@ forever/unitframes/harness.lua [ExcludeLoadGameType standard]
 forever/unitframes/editmode.lua [ExcludeLoadGameType standard]
 forever/unitframes/dynamic.lua [ExcludeLoadGameType standard]
 forever/unitframes/suppression.lua [ExcludeLoadGameType standard]
+forever/unitframes/auras.lua [ExcludeLoadGameType standard]
+forever/unitframes/healprediction.lua [ExcludeLoadGameType standard]
 forever/unitframes/frame.lua [ExcludeLoadGameType standard]
 forever/unitframes/player.lua [ExcludeLoadGameType standard]
 forever/unitframes/target.lua [ExcludeLoadGameType standard]

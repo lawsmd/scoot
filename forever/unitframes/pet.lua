@@ -25,7 +25,8 @@ local function applyPowerSlot(inst)
     end
     Art.ApplyBorder(inst, noPower and "borderSmallNoMana" or "borderSmall")
     inst.powerBar:SetShown(not noPower)
-    if inst.powerText then inst.powerText:SetShown(not noPower) end
+    inst.noPowerText = noPower
+    addon.UnitFrames.Values.ApplyBarTextShown(inst)
 end
 
 -- The face is built only where the client still has the mechanic. It shows for

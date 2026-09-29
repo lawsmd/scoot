@@ -89,3 +89,11 @@ spec.Text = {
         point = "LEFT", x = 48, y = 1,
     },
 }
+
+-- Four debuffs in a 2 by 2 grid off the right edge, from the Debuff1 to
+-- Debuff4 anchors of TargetofTargetFrameTemplate: the first TOPLEFT to the
+-- frame's TOPRIGHT at 4, -10, each next 1 to the right or 1 below.
+spec.Auras = {
+    point = "TOPLEFT", relPoint = "TOPRIGHT", x = 4, y = -10,
+    spacing = 1, lineSpacing = 1, perLine = 2,
+}

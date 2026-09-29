@@ -159,11 +159,13 @@ local function build(hitInsets)
             layer = "BACKGROUND",
             font = "TextStatusBarText",
             point = "CENTER", x = -33, y = -1,
+            sides = { left = { point = "LEFT", x = 25, y = -1 }, right = { point = "RIGHT", x = -93, y = -1 } },
         },
         powerValue = {
             layer = "BACKGROUND",
             font = "TextStatusBarText",
             point = "CENTER", x = -33, y = -12,
+            sides = { left = { point = "LEFT", x = 25, y = -12 }, right = { point = "RIGHT", x = -93, y = -12 } },
         },
         -- Shares the health value's spot, as the XML has it. target.lua shows
         -- one or the other.
@@ -171,7 +173,18 @@ local function build(hitInsets)
             layer = "BACKGROUND",
             font = "GameFontNormalSmall",
             point = "CENTER", x = -33, y = -1,
+            sides = { left = { point = "LEFT", x = 25, y = -1 }, right = { point = "RIGHT", x = -93, y = -1 } },
         },
+    }
+
+    -- The aura rows (auras.lua), from TargetFrame.lua's UpdateAuraPositions:
+    -- the first icon TOPLEFT to the frame's BOTTOMLEFT at AURA_START_X,
+    -- AURA_START_Y, or BOTTOMLEFT to TOPLEFT at AURA_START_Y_MIRROR with
+    -- buffsOnTop. Icons 3 apart; a line of large icons 2 below the last, and
+    -- the second block 3 below the first, the helper frame's own 1 on top.
+    spec.Auras = {
+        x = 21, y = 28, mirrorY = -19,
+        spacing = 3, lineSpacing = 2, blockGap = 3,
     }
 
     return spec

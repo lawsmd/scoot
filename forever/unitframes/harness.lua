@@ -96,6 +96,22 @@ end
 -- protected by the click child. The player unit always exists, so a player
 -- frame never registers. Neither does a frame Edit Mode is holding on screen:
 -- the manager would hide a targetless frame out from under the drag.
+--
+-- A frame whose show rule is more than "the unit exists" carries a macro
+-- conditional in inst.visibilityDriver, and a state driver takes the watch's
+-- place. The state driver is the same secure manager's other channel, equally
+-- legal in combat.
+local function unregister(inst)
+    if inst.watchDriver then
+        UnregisterStateDriver(inst.frame, "visibility")
+    else
+        UnregisterUnitWatch(inst.frame)
+    end
+    inst.watchRegistered = nil
+    inst.watchUnit = nil
+    inst.watchDriver = nil
+end
+
 function Harness.ApplyUnitWatch(inst)
     local frame = inst.frame
     if not frame then return end
@@ -116,13 +132,20 @@ function Harness.ApplyUnitWatch(inst)
         -- The manager resolves the unit from the watched frame itself, so the
         -- attribute has to be on the frame and not only on the click child.
         frame:SetAttribute("unit", inst.unit)
-        RegisterUnitWatch(frame)
+        local driver = inst.visibilityDriver
+        if inst.watchRegistered and inst.watchDriver ~= driver then
+            unregister(inst)
+        end
+        if driver then
+            RegisterStateDriver(frame, "visibility", driver)
+        else
+            RegisterUnitWatch(frame)
+        end
         inst.watchRegistered = true
         inst.watchUnit = inst.unit
+        inst.watchDriver = driver
     elseif inst.watchRegistered then
-        UnregisterUnitWatch(frame)
-        inst.watchRegistered = nil
-        inst.watchUnit = nil
+        unregister(inst)
     end
 end
 regenActions.watch = Harness.ApplyUnitWatch
@@ -202,12 +225,14 @@ regenActions.clickShown = function(inst) Harness.ApplyClickShown(inst) end
 -- Lifecycle
 --------------------------------------------------------------------------------
 
---- def = { unit, frameName, width, height, hitInsets, strataLevel }
+--- def = { unit, frameName, width, height, hitInsets, strataLevel,
+---         visibilityDriver }
 --- Returns the instance. The painter fills inst.frame and sets inst.enabled.
 function Harness.New(def)
     local inst = {
         unit = def.unit,
         frameName = def.frameName,
+        visibilityDriver = def.visibilityDriver,
         enabled = false,
     }
 

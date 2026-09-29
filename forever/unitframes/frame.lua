@@ -186,6 +186,60 @@ function Frame.SetPulsed(inst, key, shown)
 end
 
 -- The additive copy of the border the tint style lights (art.lua).
+-- UnitFrame_OnEnter. The secure click child takes clicks and no motion
+-- (harness.lua), so the tooltip is on a frame of its own that takes motion and
+-- no clicks: a click passes through it to the child.
+local function showTooltip(hover)
+    local inst = hover.inst
+    if inst.previewStandIn or addon.EditMode.IsEditing() then return end
+    GameTooltip_SetDefaultAnchor(GameTooltip, hover)
+    if pcall(GameTooltip.SetUnit, GameTooltip, inst.unit) then
+        hover.UpdateTooltip = showTooltip
+    else
+        hover.UpdateTooltip = nil
+    end
+end
+
+local function hideTooltip(hover)
+    hover.UpdateTooltip = nil
+    if GameTooltip:IsOwned(hover) then
+        if GameTooltip.FadeOut then GameTooltip:FadeOut() else GameTooltip:Hide() end
+    end
+end
+
+-- The mouseover bar numbers (values.lua) follow the same frame. Vanilla's
+-- follow each bar's own rect; here the whole frame shows both.
+local function setHovered(inst, hovered)
+    inst.hovered = hovered or nil
+    if inst.previewStandIn or not Values.BarTextOnHover(inst) then return end
+    Values.ApplyBarTextShown(inst)
+    Values.ApplyBarText(inst)
+end
+
+local function buildHover(inst, spec)
+    local hover = CreateFrame("Frame", nil, inst.frame)
+    hover:SetAllPoints(inst.frame)
+    hover:SetFrameLevel(inst.clickButton:GetFrameLevel())
+    local h = spec.hitInsets
+    if h then hover:SetHitRectInsets(h.left, h.right, h.top, h.bottom) end
+    hover.inst = inst
+    hover:SetScript("OnEnter", function(self)
+        setHovered(inst, true)
+        showTooltip(self)
+    end)
+    hover:SetScript("OnLeave", function(self)
+        setHovered(inst, false)
+        hideTooltip(self)
+    end)
+    -- After the scripts: setting OnEnter turns the whole mouse on, clicks
+    -- included. A hover frame that takes clicks eats them whenever it sorts
+    -- above the click child at their shared level, which Edit Mode's hide and
+    -- show of the child brings about.
+    hover:SetMouseClickEnabled(false)
+    hover:SetMouseMotionEnabled(true)
+    return hover
+end
+
 local function buildBorderLight(host, def)
     local copy = {}
     for k, v in pairs(def) do copy[k] = v end
@@ -212,6 +266,7 @@ function Frame.Build(key)
         x = def.default.x,
         y = def.default.y,
         strataLevel = def.strataLevel or 10,
+        visibilityDriver = def.visibilityDriver,
     })
     inst.key = key
     inst.def = def
@@ -221,6 +276,8 @@ function Frame.Build(key)
     local base = inst.frame
     local level = base:GetFrameLevel()
     local onBase = spec.onBase or {}
+    -- Before the aura rows, which share its level and so draw over it.
+    inst.hoverFrame = buildHover(inst, spec)
 
     inst.regions = {}
     inst.pulses = {}
@@ -266,20 +323,35 @@ function Frame.Build(key)
             inst.texts[name] = buildText(artFrame, textDef)
         end
     end
+    -- Each bar's percent string, on its value string's def (text.lua, "Bar
+    -- texts"). The target's dead text shares the health value's spot.
+    for _, names in pairs(Text.BAR_TEXT_STRINGS) do
+        if inst.texts[names.value] then
+            inst.texts[names.percent] = buildText(artFrame, spec.Text[names.def])
+        end
+    end
     inst.portrait = inst.regions.portrait
     inst.nameText = inst.texts.name
     inst.levelText = inst.texts.level
     inst.healthText = inst.texts.healthValue
     inst.powerText = inst.texts.powerValue
+    inst.healthPercentText = inst.texts.healthPercent
+    inst.powerPercentText = inst.texts.powerPercent
     if inst.texts.dead then
         inst.texts.dead:SetText(_G.DEAD or "Dead")
         inst.texts.dead:Hide()
     end
     Text.ApplyStyle(inst)
+    Text.ApplyBarTexts(inst)
     Text.ApplyBackdrop(inst)
+    Values.ApplyHealthStyle(inst)
 
     if def.build then def.build(inst) end
     Art.ApplyBorder(inst)
+    -- Both build what the frame's settings ask for and nothing more
+    -- (auras.lua, healprediction.lua).
+    UF.Auras.Apply(inst)
+    UF.HealPrediction.Apply(inst)
 
     UF.Frames[key] = inst
     Frame.WireEvents(inst)
@@ -323,14 +395,18 @@ local function paintStandIn(inst, hold)
         pcall(SetPortraitTexture, inst.portrait, "player")
         inst.portrait:SetVertexColor(1, 1, 1)
     end
+    inst.healthBar:SetStatusBarColor(Values.HealthColor(inst, "player"))
     inst.healthBar:SetMinMaxValues(0, 1)
     inst.healthBar:SetValue(0.72)
     inst.powerBar:SetMinMaxValues(0, 1)
     inst.powerBar:SetValue(0.45)
-    inst.powerBar:SetStatusBarColor(0, 0, 1.0)
+    inst.powerBar:SetStatusBarColor(0, 0, 1.0, 1)
+    inst.powerState = nil
     inst.powerBar:Show()
-    if inst.healthText then inst.healthText:ClearText() end
-    if inst.powerText then inst.powerText:ClearText() end
+    Text.ApplyBarTextColors(inst)
+    for _, field in ipairs({ "healthText", "powerText", "healthPercentText", "powerPercentText" }) do
+        if inst[field] then inst[field]:ClearText() end
+    end
 end
 
 function Frame.Paint(inst)
@@ -338,23 +414,51 @@ function Frame.Paint(inst)
     Values.ApplyHealth(inst)
     Values.ApplyPower(inst)
     Values.ApplyBarText(inst)
+    UF.HealPrediction.Update(inst)
+end
+
+-- Whether the unit under the token is the one whose name is up. A change
+-- event says only that the token may point somewhere new, and the same unit
+-- arrives twice on a self-target: PLAYER_TARGET_CHANGED at once, then the
+-- target's UNIT_TARGET a server round trip later. Blanking the name for the
+-- second was a blink on the target-of-target frame. UnitGUID is secret only
+-- where the unit's identity is restricted; a secret one counts as a new unit,
+-- so the name blanks there as before.
+local function sameSubject(inst)
+    local ok, guid = pcall(UnitGUID, inst.unit)
+    if not ok or type(guid) ~= "string" or issecretvalue(guid) then
+        inst.paintedGUID = nil
+        return false
+    end
+    local same = guid == inst.paintedGUID
+    inst.paintedGUID = guid
+    return same
 end
 
 -- newSubject: the frame may now show a different unit, so the name blanks
--- until its fit lands (values.lua, FitName). Without it the paint is a
--- settings change on the same unit, and the name holds.
+-- until its fit lands (values.lua, FitName), unless the unit is the one whose
+-- name is already up. Without it the paint is a settings change on the same
+-- unit, and the name holds.
 function Frame.PaintAll(inst, newSubject)
     if not inst.frame:IsShown() then return end
-    local hold = not newSubject
+    -- The aura rows re-show and re-read for the new subject, or hide for the
+    -- stand-in, which has no auras to show.
+    UF.Auras.Refresh(inst)
     if inst.previewStandIn then
+        -- The label goes up, so the next unit is new whoever it is.
+        inst.paintedGUID = nil
         if inst.def.paintState then inst.def.paintState(inst) end
-        paintStandIn(inst, hold)
+        paintStandIn(inst, not newSubject)
+        UF.HealPrediction.Hide(inst)
         return
     end
+    local hold = sameSubject(inst) or not newSubject
     Values.ApplyPowerColor(inst)
     Values.ApplyIdentity(inst, hold)
     Values.ApplyPortrait(inst)
     if inst.def.paintState then inst.def.paintState(inst) end
+    Text.ApplyBarTextColors(inst)
+    Values.ApplyBarTextShown(inst)
     Frame.Paint(inst)
 end
 
@@ -369,6 +473,13 @@ local UNIT_EVENTS = {
     "UNIT_HEALTH", "UNIT_MAXHEALTH",
     "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
     "UNIT_LEVEL", "UNIT_NAME_UPDATE", "UNIT_PORTRAIT_UPDATE",
+    "UNIT_CONNECTION",
+}
+
+-- The heal prediction's own, which fall through to Frame.Paint. Guarded: a
+-- client without one of them rejects the registration.
+local PREDICTION_EVENTS = {
+    "UNIT_HEAL_PREDICTION", "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_HEAL_ABSORB_AMOUNT_CHANGED",
 }
 
 function Frame.WireEvents(inst)
@@ -381,6 +492,11 @@ function Frame.WireEvents(inst)
     end
     for _, event in ipairs(def.unitEvents or {}) do
         frame:RegisterUnitEvent(event, inst.unit)
+    end
+    if inst.healPrediction then
+        for _, event in ipairs(PREDICTION_EVENTS) do
+            pcall(frame.RegisterUnitEvent, frame, event, inst.unit)
+        end
     end
 
     -- Kept off addon.Events: RegisterUnitEvent filters in C to this unit, which
@@ -518,6 +634,8 @@ function UF.ApplyAll()
                 Frame.ShowPreview(inst)
             end
             Art.ApplyBorder(inst)
+            UF.Auras.Apply(inst)
+            UF.HealPrediction.Apply(inst)
             -- A settings pass on the same unit: the name holds. A frame this
             -- pass showed was already painted fresh by its OnShow.
             Frame.PaintAll(inst, false)
