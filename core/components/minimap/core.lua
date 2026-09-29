@@ -100,6 +100,18 @@ local hasAppliedSquare = false
 local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local SQUARE_MASK = "Interface\\BUTTONS\\WHITE8X8"
 
+-- The engine draws a circular ring at the map's edge while the player stands in
+-- a quest, bonus objective or dig site area wider than the view. It cannot be
+-- reshaped, so a square map hides it. Blizzard's Lua never sets these alphas;
+-- 1 is the restore value.
+local function SetBlobRingAlpha(minimap, alpha)
+    for _, method in ipairs({ "SetQuestBlobRingAlpha", "SetTaskBlobRingAlpha", "SetArchBlobRingAlpha" }) do
+        if minimap[method] then
+            pcall(minimap[method], minimap, alpha)
+        end
+    end
+end
+
 -- Refresh all LibDBIcon minimap button positions
 local function RefreshMinimapButtonPositions()
     local LibDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
@@ -121,6 +133,7 @@ local function ApplyMinimapShape(db)
     if newShape == "square" then
         -- Apply square mask
         minimap:SetMaskTexture(SQUARE_MASK)
+        SetBlobRingAlpha(minimap, 0)
         hasAppliedSquare = true
         shapeChanged = true
 
@@ -150,6 +163,7 @@ local function ApplyMinimapShape(db)
         -- Only restore if square mode was previously applied
         -- This maintains Zero-Touch for users who never changed the shape
         minimap:SetMaskTexture(CIRCLE_MASK)
+        SetBlobRingAlpha(minimap, 1)
         shapeChanged = true
 
         -- Restore circular compass border art
