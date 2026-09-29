@@ -140,68 +140,33 @@ local pageState = {
 -- ON/OFF Indicator (right-side toggle button)
 --------------------------------------------------------------------------------
 
--- The pill's ON and OFF, through the same applier a settings row's toggle
--- reads, so both pills draw alike. INDICATOR_FONT_SIZE is the size a skin that
--- names no toggle role falls back to.
+-- The variant selector's ON and OFF, through the same applier a settings
+-- row's pill reads. INDICATOR_FONT_SIZE is the size a skin that names no
+-- toggle role falls back to.
 local function ApplyIndicatorFont(fs, lit)
     addon.UI.Controls.ApplyToggleFont(fs, lit, INDICATOR_FONT_SIZE)
 end
 
-local function CreateIndicator(parent, theme)
-    local ar, ag, ab = theme:GetAccentColor()
-    local dimR, dimG, dimB = theme:GetDimTextColor()
-
-    local indicator = CreateFrame("Button", nil, parent)
-    indicator:SetSize(INDICATOR_WIDTH, INDICATOR_HEIGHT)
-    indicator:RegisterForClicks("AnyUp")
-
-    -- Border: static color; UpdateState owns the tinting (accent, variant
-    -- colors, dim) via the pairs(self._border) repaint loops below.
-    indicator._border = addon.UI.Controls.CreateBorder(indicator, {
-        thickness = INDICATOR_BORDER,
-        color = { ar, ag, ab },
+-- The row's state box: the pill at this page's size, or the skin's checkbox
+-- scaled into the row, through Controls.CreateToggleIndicator. The frame
+-- carries UpdateState and the handle for the row builder's width math.
+local function CreateIndicator(parent)
+    local handle = addon.UI.Controls.CreateToggleIndicator(parent, {
+        width = INDICATOR_WIDTH,
+        height = INDICATOR_HEIGHT,
+        fit = ROW_HEIGHT - 4,
+        clickable = true,
+        fontSize = INDICATOR_FONT_SIZE,
     })
-
-    -- Fill background (visible when ON)
-    local fill = indicator:CreateTexture(nil, "BACKGROUND", nil, -7)
-    fill:SetPoint("TOPLEFT", INDICATOR_BORDER, -INDICATOR_BORDER)
-    fill:SetPoint("BOTTOMRIGHT", -INDICATOR_BORDER, INDICATOR_BORDER)
-    fill:SetColorTexture(ar, ag, ab, 1)
-    fill:Hide()
-    indicator._fill = fill
-
-    -- ON/OFF text. UpdateState re-applies the font with the state's style.
-    local text = indicator:CreateFontString(nil, "OVERLAY")
-    ApplyIndicatorFont(text, false)
-    text:SetPoint("CENTER", 0, 0)
-    text:SetText("OFF")
-    text:SetTextColor(dimR, dimG, dimB, 1)
-    indicator._text = text
+    local indicator = handle.frame
+    indicator._handle = handle
 
     function indicator:UpdateState(isOn, variant)
-        local r, g, b = theme:GetAccentColor()
-        local dR, dG, dB = theme:GetDimTextColor()
         -- Blizzard-owned features show their variant letter (green "X") when ON;
         -- addon-original features keep the plain accent "ON".
         local vc = variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[variant]
-        local onR, onG, onB = r, g, b
-        if vc then
-            onR, onG, onB = vc[1], vc[2], vc[3]
-        end
-        if isOn then
-            self._fill:SetColorTexture(onR, onG, onB, 1)
-            self._fill:Show()
-            ApplyIndicatorFont(self._text, true)
-            self._text:SetText(vc and variant or "ON")
-            self._text:SetTextColor(0, 0, 0, 1)
-            for _, tex in pairs(self._border) do tex:SetColorTexture(onR, onG, onB, 1) end
-        else
-            self._fill:Hide()
-            ApplyIndicatorFont(self._text, false)
-            self._text:SetText("OFF")
-            self._text:SetTextColor(dR, dG, dB, 1)
-            for _, tex in pairs(self._border) do tex:SetColorTexture(r, g, b, 0.4) end
-        end
+        handle:SetText(vc and variant or "ON")
+        handle:SetState(isOn, false, vc)
     end
 
     return indicator
@@ -409,6 +374,19 @@ local function CreateModuleRow(parent, options)
         hoverBg:Hide()
     end
 
+    -- ON/OFF indicator (right side), hidden for header and variantSelector
+    -- rows; built before the label so the label stops at the width it draws
+    local indicator
+    if not options.isHeader and not options.variantSelector then
+        indicator = CreateIndicator(row)
+        indicator:SetPoint("RIGHT", row, "RIGHT", -ROW_PADDING, 0)
+        indicator:UpdateState(options.isOn, options.variant)
+
+        indicator:SetScript("OnClick", function()
+            if options.onToggle then options.onToggle() end
+        end)
+    end
+
     -- Label button (covers left portion of row)
     local labelBtn = CreateFrame("Button", nil, row)
     labelBtn:SetPoint("TOPLEFT", row, "TOPLEFT", indent, 0)
@@ -416,7 +394,8 @@ local function CreateModuleRow(parent, options)
     if options.isHeader then
         labelBtn:SetPoint("RIGHT", row, "RIGHT", -ROW_PADDING, 0)
     else
-        labelBtn:SetPoint("RIGHT", row, "RIGHT", -(INDICATOR_WIDTH + ROW_PADDING * 2), 0)
+        local reserve = indicator and indicator._handle.width or INDICATOR_WIDTH
+        labelBtn:SetPoint("RIGHT", row, "RIGHT", -(reserve + ROW_PADDING * 2), 0)
     end
     labelBtn:RegisterForClicks("AnyUp")
 
@@ -466,18 +445,6 @@ local function CreateModuleRow(parent, options)
                 end
             end
         end
-    end
-
-    -- ON/OFF indicator (right side) — hidden for header and variantSelector rows
-    local indicator
-    if not options.isHeader and not options.variantSelector then
-        indicator = CreateIndicator(row, theme)
-        indicator:SetPoint("RIGHT", row, "RIGHT", -ROW_PADDING, 0)
-        indicator:UpdateState(options.isOn, options.variant)
-
-        indicator:SetScript("OnClick", function()
-            if options.onToggle then options.onToggle() end
-        end)
     end
 
     -- Click: label toggles (for non-header, non-variantSelector rows)

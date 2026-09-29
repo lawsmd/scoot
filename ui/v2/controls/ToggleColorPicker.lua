@@ -16,11 +16,6 @@ end
 
 -- Constants
 
-local BORDER_WIDTH = 2
-local TOGGLE_HEIGHT = 36
-local TOGGLE_HEIGHT_WITH_DESC = 60
-local TOGGLE_INDICATOR_WIDTH = 60
-local TOGGLE_INDICATOR_HEIGHT = 22
 local TOGGLE_PADDING = 12
 
 local TOGGLE_COLOR_SWATCH_WIDTH = 42
@@ -57,7 +52,6 @@ function Controls:CreateToggleColorPicker(options)
     local height = Controls.Metrics().rowHeight
 
     -- Get theme colors
-    local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB
     if options.useLightDim then
         dimR, dimG, dimB = theme:GetDimTextLightColor()
@@ -74,6 +68,37 @@ function Controls:CreateToggleColorPicker(options)
     -- Row hover background
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
+    -- State tracking
+    row._value = false
+    row._isDisabled = false
+    row._isDisabledFn = isDisabledFn
+
+    local UpdateVisual  -- defined once the label and the swatch exist
+
+    -- The row's own flip, reached from a click on the row and from the state
+    -- box, which takes the mouse itself when it is a checkbox
+    local function Toggle()
+        if row._isDisabled then
+            return
+        end
+        row._value = not row._value
+        setValue(row._value)
+        UpdateVisual()
+        PlaySound(row._value and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+    end
+
+    -- State indicator (right side), built before the label so the chrome
+    -- keeps the width it draws at free
+    local indicator = Controls.CreateToggleIndicator(row, {
+        onClick = Toggle,
+        onEnter = function() row._hoverBg:Show() end,
+        onLeave = function()
+            if not row:IsMouseOver() then row._hoverBg:Hide() end
+        end,
+        useLightDim = options.useLightDim,
+    })
+    row._indicator = indicator.frame
+
     -- Label and description
     local labelFS = Controls.AddRowChrome(row, {
         rowWidth = rowWidth,
@@ -81,40 +106,17 @@ function Controls:CreateToggleColorPicker(options)
         label = label,
         padLeft = TOGGLE_PADDING,
         description = description,
-        controlReserve = TOGGLE_INDICATOR_WIDTH + swatchWidth + TOGGLE_COLOR_SWATCH_GAP + TOGGLE_PADDING * 2 + 8,
+        controlReserve = indicator.width + swatchWidth + TOGGLE_COLOR_SWATCH_GAP + TOGGLE_PADDING * 2 + 8,
         dimColor = { dimR, dimG, dimB },
     })
 
-    -- State indicator (right side, centered in the top band)
-    local indicator = CreateFrame("Frame", nil, row)
-    indicator:SetSize(TOGGLE_INDICATOR_WIDTH, TOGGLE_INDICATOR_HEIGHT)
-    Controls.AnchorCluster(row, indicator, { x = -TOGGLE_PADDING })
-
-    -- Indicator border. Static color: UpdateVisual owns all indicator tinting
-    -- (state-dependent color and alpha).
-    indicator._border = Controls.CreateBorder(indicator, {
-        thickness = BORDER_WIDTH,
-        color = { ar, ag, ab },
-    })
-
-    -- Indicator background (shown when ON)
-    indicator._bg = Controls.AddHoverFill(indicator, { alpha = 1, inset = BORDER_WIDTH })
-
-    -- Indicator text. The font carries the state's style, so UpdateVisual
-    -- re-applies it on every state change.
-    local indText = indicator:CreateFontString(nil, "OVERLAY")
-    Controls.ApplyToggleFont(indText, false)
-    indText:SetPoint("CENTER", indicator, "CENTER", 0, 0)
-    indText:SetText("OFF")
-    indText:SetTextColor(dimR, dimG, dimB, 1)
-    indicator._text = indText
-
-    row._indicator = indicator
+    -- Centered in the top band
+    Controls.AnchorCluster(row, indicator.frame, { x = -TOGGLE_PADDING })
 
     -- Color swatch (between indicator and content, hidden when OFF)
     local swatch = CreateFrame("Button", nil, row)
     swatch:SetSize(swatchWidth, swatchHeight)
-    swatch:SetPoint("RIGHT", indicator, "LEFT", -TOGGLE_COLOR_SWATCH_GAP, 0)
+    swatch:SetPoint("RIGHT", indicator.frame, "LEFT", -TOGGLE_COLOR_SWATCH_GAP, 0)
     swatch:EnableMouse(true)
     swatch:RegisterForClicks("AnyUp")
     swatch:Hide()
@@ -158,20 +160,12 @@ function Controls:CreateToggleColorPicker(options)
     end
     row._updateSwatchColor = UpdateSwatchColor
 
-    -- State tracking
-    row._value = false
-    row._isDisabled = false
-    row._isDisabledFn = isDisabledFn
-
     -- Update visual state for toggle and swatch visibility
-    local function UpdateVisual()
+    UpdateVisual = function()
         local isOn = row._value
         local isDisabled = row._isDisabled
         local r, g, b = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()
-
-        -- Disabled hides the fill, so only an enabled ON draws black on accent
-        Controls.ApplyToggleFont(indText, isOn and not isDisabled)
 
         if isDisabled then
             -- Disabled state: everything grayed out
@@ -179,12 +173,6 @@ function Controls:CreateToggleColorPicker(options)
             labelFS:SetTextColor(dR, dG, dB, disabledAlpha)
             if row._description then
                 row._description:SetAlpha(disabledAlpha)
-            end
-            indicator._bg:Hide()
-            indicator._text:SetText(isOn and "ON" or "OFF")
-            indicator._text:SetTextColor(dR, dG, dB, disabledAlpha)
-            for _, tex in pairs(indicator._border) do
-                tex:SetColorTexture(dR, dG, dB, disabledAlpha * 0.5)
             end
             swatch:Hide()
         else
@@ -196,28 +184,15 @@ function Controls:CreateToggleColorPicker(options)
             labelFS:SetTextColor(r, g, b, 1)
 
             if isOn then
-                -- ON state
-                indicator._bg:Show()
-                indicator._text:SetText("ON")
-                indicator._text:SetTextColor(0, 0, 0, 1)
-                for _, tex in pairs(indicator._border) do
-                    tex:SetColorTexture(r, g, b, 1)
-                end
                 -- Show color swatch
                 swatch:Show()
                 UpdateSwatchColor()
             else
-                -- OFF state
-                indicator._bg:Hide()
-                indicator._text:SetText("OFF")
-                indicator._text:SetTextColor(dR, dG, dB, 1)
-                for _, tex in pairs(indicator._border) do
-                    tex:SetColorTexture(r, g, b, 0.4)
-                end
                 -- Hide color swatch
                 swatch:Hide()
             end
         end
+        indicator:SetState(isOn, isDisabled)
     end
     row._updateVisual = UpdateVisual
 
@@ -234,22 +209,13 @@ function Controls:CreateToggleColorPicker(options)
         self._hoverBg:Show()
     end)
     row:SetScript("OnLeave", function(self)
-        if not swatch:IsMouseOver() then
+        if not swatch:IsMouseOver() and not self._indicator:IsMouseOver() then
             self._hoverBg:Hide()
         end
     end)
 
     -- Row click toggles state (but not if clicking swatch or disabled)
-    row:SetScript("OnClick", function(self, mouseButton)
-        -- Don't respond to clicks when disabled
-        if self._isDisabled then
-            return
-        end
-        self._value = not self._value
-        setValue(self._value)
-        UpdateVisual()
-        PlaySound(self._value and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
-    end)
+    row:SetScript("OnClick", Toggle)
 
     -- Swatch hover handlers
     swatch:SetScript("OnEnter", function(self)
@@ -291,7 +257,7 @@ function Controls:CreateToggleColorPicker(options)
 
     -- Theme subscription
     local subscribeKey = "ToggleColorPicker_" .. (name or tostring(row))
-    theme:Subscribe(subscribeKey, function(r, g, b)
+    theme:Subscribe(subscribeKey, function()
         UpdateVisual()
     end)
     row._subscribeKey = subscribeKey
@@ -319,7 +285,6 @@ function Controls:CreateToggleColorPicker(options)
         self._value = getValue() or false
         -- Check disabled state from function
         if self._isDisabledFn then
-            local wasDisabled = self._isDisabled
             self._isDisabled = self._isDisabledFn() and true or false
         end
         self._updateVisual()

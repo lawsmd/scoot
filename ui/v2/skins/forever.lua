@@ -39,8 +39,10 @@ local FONT_BASE = ROOT .. "media\\fonts\\"
 -- no weight, so the header role is the same face at a larger size, which is
 -- how Blizzard's own headings are built. The one bold in the family is Friz
 -- Quad Bold, QualiType's OFL digitization of the same design
--- (addon.Fonts.FRIZQUAD_BOLD, core/fonts.lua); the toggle role carries it.
--- Arial Narrow is one line away: addon.Fonts.ARIALN.
+-- (addon.Fonts.FRIZQUAD_BOLD, core/fonts.lua); the Classic unit frames' name
+-- and level text carry it, and no panel role does since the toggle's pill
+-- gave way to Blizzard's checkbox. Arial Narrow is one line away:
+-- addon.Fonts.ARIALN.
 local UI_FACE = (GameFontNormal and select(1, GameFontNormal:GetFont()))
     or addon.Fonts.FRIZQT__
 -- Roboto stays the proportional pair: the role is the known-proportional
@@ -111,20 +113,9 @@ Skin.Register("forever", {
         -- reports what the client answered).
         button    = { path = UI_FACE, size = 13, style = "THICKOUTLINESLUG" },
         miniLabel = { path = UI_FACE, size = 11 },
-        -- The toggle's ON and OFF, on a settings row and on the Features
-        -- page's pills alike. Roboto Condensed Bold stood here for its weight
-        -- and read as another addon's font beside the client face the rest of
-        -- the panel draws in, narrow where everything around it is wide. The
-        -- face went back to the client's, with the weight from the crisp
-        -- thick outline; now it is Friz Quad Bold, the same design in a real
-        -- bold, so the pill's weight is the glyph's own and reads as one face
-        -- with the panel. The outline stays for the unlit pill, where the dim
-        -- text stands on the pane and the outline is the rim the rest of the
-        -- panel's text has. Lit, the text is black on this fill and the
-        -- outline is the glyph's own color: 9pt with a thin one closed the
-        -- letters up, so the lit pill takes the face and the size alone
-        -- (Toggle.lua, StartHereRenderer.lua).
-        toggle    = { path = addon.Fonts.FRIZQUAD_BOLD or UI_FACE, size = 12, style = "THICKOUTLINESLUG" },
+        -- No toggle role: the ON/OFF pill left this skin for Blizzard's
+        -- checkbox (chrome.toggle below), which draws no text. A pill that
+        -- ever draws flat here takes the button face at the caller's size.
         -- The names that stand on the wood, in Deep Shadow Thick Outline,
         -- which draws a black copy of the string behind it
         -- (core/fontpair.lua): the nav card's group name, the child row under
@@ -538,6 +529,17 @@ Skin.Register("forever", {
         -- The slider Blizzard's own options panel draws: the track, the thumb
         -- and the two steppers, bronze on Forever behind the retail names.
         slider = { kind = "template", template = "MinimalSliderWithSteppersTemplate" },
+        -- The checkbox Blizzard's own options panel draws, in place of the
+        -- ON/OFF pill on every settings row and on the Features page: a
+        -- 30x29 CheckButton on checkbox-minimal, with checkmark-minimal for
+        -- the check, bronze on Forever behind the retail names. Its tooltip
+        -- scripts go and the row's own hover stands in. The same art with an
+        -- additive highlight and no mixin is the fallback; the flat pill is
+        -- the fallback's fallback, through Chrome.Spec.
+        toggle = {
+            kind = "template", template = "SettingsCheckboxTemplate", frameType = "CheckButton",
+            fallback = { kind = "template", template = "MinimalCheckboxTemplate", frameType = "CheckButton" },
+        },
         -- The typed value box beside it: the three common-search-border
         -- pieces of InputBoxTemplate, the box the options search bar is drawn
         -- in. The fill is baked into the art, so the inputField opacity piece

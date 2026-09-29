@@ -19,108 +19,39 @@ end
 
 local CONTROL_HEIGHT = 28
 local MINI_TOGGLE_WIDTH = 70
-local TOGGLE_BORDER = 2
 
 --------------------------------------------------------------------------------
 -- Helper: CreateMiniToggle
 --------------------------------------------------------------------------------
--- Creates a compact toggle button with border, accent background when ON,
--- and ON/OFF text. Matches the height of a mini-selector (28px).
+-- The compact state box in a slot row: the pill with its hover fill, or the
+-- skin's checkbox, through Controls.CreateToggleIndicator. Matches the height
+-- of a mini-selector (28px). The frame carries _value, _isDisabled and
+-- _updateVisual for the rows that drive it.
 --------------------------------------------------------------------------------
 
-local function CreateMiniToggle(opts, parentContainer, theme, useLightDim)
+local function CreateMiniToggle(opts, parentContainer, _, useLightDim)
     local getValue = opts.get or function() return false end
     local setValue = opts.set or function() end
 
-    local ar, ag, ab = theme:GetAccentColor()
-    local dimR, dimG, dimB
-    if useLightDim then
-        dimR, dimG, dimB = theme:GetDimTextLightColor()
-    else
-        dimR, dimG, dimB = theme:GetDimTextColor()
-    end
-
-    local toggle = CreateFrame("Button", nil, parentContainer)
-    toggle:SetSize(MINI_TOGGLE_WIDTH, CONTROL_HEIGHT)
-    toggle:EnableMouse(true)
-    toggle:RegisterForClicks("AnyUp")
-
-    -- Border (2px, matching Toggle.lua indicator style). Static color:
-    -- UpdateVisual owns all tinting (state-dependent color and alpha).
-    local border = Controls.CreateBorder(toggle, {
-        thickness = TOGGLE_BORDER,
-        color = { ar, ag, ab },
-        alpha = 0.4,
+    local indicator = Controls.CreateToggleIndicator(parentContainer, {
+        width = MINI_TOGGLE_WIDTH,
+        height = CONTROL_HEIGHT,
+        fit = CONTROL_HEIGHT,
+        clickable = true,
+        hover = true,
+        useLightDim = useLightDim,
     })
-    toggle._border = border
-
-    -- Background fill (accent color, shown when ON)
-    toggle._bg = Controls.AddHoverFill(toggle, { alpha = 1, inset = TOGGLE_BORDER })
-
-    -- Hover background
-    toggle._hoverBg = Controls.AddHoverFill(toggle, {
-        alpha = 0.15,
-        inset = TOGGLE_BORDER,
-        sublevel = Controls.SUBLEVEL_HOVER,
-    })
-
-    -- ON/OFF text. The font carries the state's style, so UpdateVisual
-    -- re-applies it on every state change.
-    local text = toggle:CreateFontString(nil, "OVERLAY")
-    Controls.ApplyToggleFont(text, false)
-    text:SetPoint("CENTER", 0, 0)
-    text:SetText("OFF")
-    text:SetTextColor(dimR, dimG, dimB, 1)
-    toggle._text = text
+    local toggle = indicator.frame
 
     -- State
     toggle._value = getValue() or false
     toggle._isDisabled = false
 
     local function UpdateVisual()
-        local isOn = toggle._value
-        local r, g, b = theme:GetAccentColor()
-        local dR, dG, dB = theme:GetDimTextColor()
-
-        -- Disabled hides the fill, so only an enabled ON draws black on accent
-        Controls.ApplyToggleFont(text, isOn and not toggle._isDisabled)
-
-        if toggle._isDisabled then
-            local da = 0.35
-            toggle._bg:Hide()
-            text:SetText(isOn and "ON" or "OFF")
-            text:SetTextColor(dR, dG, dB, da)
-            for _, tex in pairs(border) do
-                tex:SetColorTexture(dR, dG, dB, da * 0.5)
-            end
-        elseif isOn then
-            toggle._bg:Show()
-            text:SetText("ON")
-            text:SetTextColor(0, 0, 0, 1)
-            for _, tex in pairs(border) do
-                tex:SetColorTexture(r, g, b, 1)
-            end
-        else
-            toggle._bg:Hide()
-            text:SetText("OFF")
-            text:SetTextColor(dR, dG, dB, 1)
-            for _, tex in pairs(border) do
-                tex:SetColorTexture(r, g, b, 0.4)
-            end
-        end
+        indicator:SetState(toggle._value, toggle._isDisabled)
     end
     toggle._updateVisual = UpdateVisual
     UpdateVisual()
-
-    -- Hover effects
-    toggle:SetScript("OnEnter", function(self)
-        if not self._isDisabled and not self._value then
-            self._hoverBg:Show()
-        end
-    end)
-    toggle:SetScript("OnLeave", function(self)
-        self._hoverBg:Hide()
-    end)
 
     -- Click to toggle
     toggle:SetScript("OnClick", function(self)

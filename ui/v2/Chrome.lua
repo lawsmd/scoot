@@ -5,8 +5,8 @@
 -- A skin's chrome table holds one descriptor per role: window, picker,
 -- dialog, dialogTitle, titleBar, closeButton, button, resizeGrip, scrollBar, tab, tabBody,
 -- sectionHeader, sectionBody, navRow, navCard, navDivider, dropdown,
--- arrowButton, field, infoIcon, tooltip, slider, input. A descriptor names a
--- kind and what that kind needs:
+-- arrowButton, field, infoIcon, tooltip, slider, input, toggle. A descriptor
+-- names a kind and what that kind needs:
 --   flat       the framework's own draw (CreateBorder, AddBackground,
 --              AddHoverFill) with numbers from the skin metrics
 --   nineSlice  NineSliceUtil.ApplyLayout on a child frame: layout, textureKit
@@ -89,7 +89,7 @@ local Chrome = addon.UI.Chrome
 Chrome.ROLES = {
     "window", "picker", "dialog", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
     "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider",
-    "dropdown", "arrowButton", "field", "infoIcon", "tooltip", "slider", "input",
+    "dropdown", "arrowButton", "field", "infoIcon", "tooltip", "slider", "input", "toggle",
     "editSelection", "editDialog",
 }
 
@@ -159,6 +159,13 @@ Chrome.FLAT = {
     -- an accent border around the background color; a template kind keeps the
     -- art of Blizzard's InputBoxTemplate, which the flat draw hides.
     input         = { kind = "flat" },
+    -- The box that shows a toggle's state, wherever one is drawn
+    -- (Controls.CreateToggleIndicator in ui/v2/controls/Toggle.lua). Flat is
+    -- the ON/OFF pill: an accent border, a fill while on, the word in the
+    -- toggle font role. A template kind builds a Blizzard CheckButton on the
+    -- skin's template in its place, with the caller's hover for the
+    -- template's tooltip scripts.
+    toggle        = { kind = "flat" },
     -- The search page's query box (Controls:CreateSearchBox). Flat is the
     -- framework's bordered edit box; a template kind builds Blizzard's
     -- SearchBoxTemplate, the options search bar with its magnifying glass
