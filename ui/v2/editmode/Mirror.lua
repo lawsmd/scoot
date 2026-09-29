@@ -41,11 +41,21 @@
 --     { kind = "header", label = "Health Bar" }
 --
 -- It opens a section: one box around it and the rows under it, to the next
--- header, drawn by the editDialog role's `section` descriptor. A section
--- groups its rows the way a page section does, so a long list can carry
--- short labels ("Height" under "Health Bar" rather than "Health Bar Height",
--- which the slider's label band cannot hold). Rows before the first header
--- stand in the slot with no box.
+-- header or to an `end` entry, drawn by the editDialog role's `section`
+-- descriptor. A section groups its rows the way a page section does, so a
+-- long list can carry short labels ("Height" under "Health Bar" rather than
+-- "Health Bar Height", which the slider's label band cannot hold). Rows
+-- before the first header stand in the slot with no box.
+--
+-- A header given `values` and `order`, with `get` and `set`, is the bare
+-- dropdown control in the title's place: the section's subject is picked
+-- where its name would stand, and the rows under it follow the pick.
+--
+--     { kind = "header", values = {k=label}, order = {k}, get = ..., set = ... }
+--
+-- `{ kind = "end" }` closes the open section, so the rows after it stand in
+-- the slot with no box: buttons that act on the whole, under a box that
+-- edits one part of it.
 --
 -- `rebuild = true` means writing this value changes the SHAPE of the list, so the
 -- whole slot is rebuilt afterwards rather than just re-read.
@@ -89,6 +99,11 @@ local STATUS_BTN_W  = 64   -- the compact status-row button
 -- own, the page's section title.
 local HEADER_ROW_H       = 30
 local HEADER_PAD_BOTTOM  = 4
+-- A header that is a dropdown stands the control at the title's inset and
+-- foot, in the action row's height so the box's edge clears it, at the
+-- skin's dropdown height and this width: room for a name between the
+-- skin's steppers, which the metric's own width has not.
+local HEADER_PICK_W      = 210
 local SECTION_PAD_X      = 4
 local SECTION_PAD_BOTTOM = 8
 local SECTION_GAP        = 8    -- between one box and the next, and under the last
@@ -358,9 +373,30 @@ local BUILDERS = {
 
     -- The settings page's section title, in the header role at its own size
     -- and in the primary text color, a step up from the accent the row labels
-    -- wear. Its row is the top of the section box, which Build draws.
-    header = function(Controls, parent, spec)
+    -- wear. Its row is the top of the section box, which Build draws. Given
+    -- `values`, the title's place holds the bare dropdown control instead,
+    -- and the section's subject is picked there.
+    header = function(Controls, parent, spec, set)
         local row = CreateFrame("Frame", nil, parent)
+        if spec.values then
+            row:SetHeight(ACTION_ROW_H)
+            local pick = Controls:CreateDropdown({
+                parent = row,
+                width  = HEADER_PICK_W,
+                values = spec.values,
+                order  = spec.order,
+                get    = spec.get,
+                set    = set or spec.set,
+            })
+            if pick then
+                pick:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", SECTION_TEXT_INSET, HEADER_PAD_BOTTOM)
+                function row:Refresh() pick:Refresh() end
+                function row:Cleanup()
+                    if pick.Cleanup then pick:Cleanup() end
+                end
+            end
+            return row
+        end
         row:SetHeight(HEADER_ROW_H)
         local fs = row:CreateFontString(nil, "OVERLAY")
         -- Justified before the font goes on: a Deep Shadow header role gives
@@ -384,8 +420,12 @@ local BUILDERS = {
 -- Action kinds carry no readable value; `set` alone is their contract.
 local NO_GET_KINDS = { button = true, status = true }
 
--- Label kinds carry neither; a header is a caption over the rows below it.
+-- Label kinds need neither; a header is a caption over the rows below it,
+-- or, given values, the dropdown that picks what they show.
 local LABEL_KINDS = { header = true }
+
+-- The entry that closes a section without opening the next.
+local END_KIND = "end"
 
 -- The box a header opens, on the editDialog role's `section` descriptor: a
 -- nine-slice where the skin declares one, the flat accent border otherwise.
@@ -466,26 +506,35 @@ function Mirror.Build(slot, frame, provider, onRebuild)
 
     local y = 0
     -- The open section box and the height filled inside it. A header closes
-    -- the one before it and opens the next; a row lands in the open box, or
-    -- in the slot while none is open.
+    -- the one before it and opens the next, an end entry closes it alone; a
+    -- row lands in the open box, or in the slot while none is open. A box
+    -- keeps SECTION_GAP under it, off the next row, the next box or the
+    -- dialog's buttons; `gapped` says the last thing laid was that gap, so
+    -- a box after a box takes one gap, not two.
     local section, sy
+    local gapped = false
 
     local function closeSection()
         if not section then return end
         local h = sy + SECTION_PAD_BOTTOM
         section:SetHeight(h)
-        y = y + h
+        y = y + h + SECTION_GAP
         section, sy = nil, nil
+        gapped = true
     end
 
     for _, spec in ipairs(specs) do
-        local build = type(spec) == "table" and BUILDERS[spec.kind]
-        local labelOnly = build and LABEL_KINDS[spec.kind]
-        local getOk = type(spec.get) == "function" or NO_GET_KINDS[spec.kind]
-        if build and (labelOnly or (getOk and type(spec.set) == "function")) then
+        local kind = type(spec) == "table" and spec.kind or nil
+        local build = kind and BUILDERS[kind]
+        local labelOnly = build and LABEL_KINDS[kind]
+        local getOk = type(spec.get) == "function" or NO_GET_KINDS[kind]
+        local setOk = type(spec.set) == "function"
+        if kind == END_KIND then
+            closeSection()
+        elseif build and (labelOnly or (getOk and setOk)) then
             if labelOnly then
                 closeSection()
-                if y > 0 then y = y + SECTION_GAP end
+                if y > 0 and not gapped then y = y + SECTION_GAP end
                 section = CreateSection(Controls, slot)
                 section:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, -y)
                 section:SetPoint("TOPRIGHT", slot, "TOPRIGHT", 0, -y)
@@ -493,7 +542,7 @@ function Mirror.Build(slot, frame, provider, onRebuild)
                 active[#active + 1] = section
             end
             local parent = section or slot
-            local row = build(Controls, parent, spec, (not labelOnly) and WrapSet(spec, onRebuild) or nil)
+            local row = build(Controls, parent, spec, setOk and WrapSet(spec, onRebuild) or nil)
             if row then
                 -- The control set its own height at creation; read it before
                 -- anchoring so nothing about the read can depend on the anchors.
@@ -513,18 +562,13 @@ function Mirror.Build(slot, frame, provider, onRebuild)
                     row:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, -y)
                     row:SetPoint("TOPRIGHT", slot, "TOPRIGHT", 0, -y)
                     y = y + h
+                    gapped = false
                 end
                 active[#active + 1] = row
             end
         end
     end
 
-    -- A list that ends in a box keeps the box's gap under it, off the
-    -- dialog's buttons.
-    if section then
-        closeSection()
-        y = y + SECTION_GAP
-    end
-
+    closeSection()
     return y
 end
