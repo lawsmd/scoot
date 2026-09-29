@@ -1,0 +1,181 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\..\..\FrameXML\UI.xsd">
+	<!--
+	forever/actionbars/frames.xml
+	Camelot's action bars, declared from Blizzard_ActionBar's virtual templates
+	under Camelot names. A bar is ActionBarTemplate with the KeyValues
+	Blizzard's own bars carry, so ActionBar_OnLoad builds the containers and
+	the buttons and lays them out. A button is Blizzard's button template with
+	SecureActionButtonTemplate listed last, so its click handler is the secure
+	template's own function and never a method key written under this load.
+	The two Camelot mixins are in mixins.lua, which loads first. Nothing here
+	carries an Edit Mode system: the clusters in clusters.lua are what Edit
+	Mode moves.
+	-->
+
+	<!-- Every bar starts under this hidden frame. A cluster adopts the bars
+	assigned to it; an unassigned bar stays here and draws nowhere. It has a
+	rect so a parked bar can still lay itself out. -->
+	<Frame name="CamelotActionBarsParked" parent="UIParent" hidden="true">
+		<Size x="1" y="1"/>
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+	</Frame>
+
+	<!-- The button templates. Bar 1 takes the main bar's template (button art
+	on); bars 2 to 8 take the seven multibar templates, whose buttonType
+	KeyValue names the binding command the hotkey text reads. The page
+	attribute is written from bars.lua after the load, never here, so its
+	OnAttributeChanged runs with the bar wired. -->
+	<CheckButton name="CamelotActionBar1ButtonTemplate" inherits="MainBarActionBarButtonTemplate, SecureActionButtonTemplate" mixin="CamelotActionButtonMixin" virtual="true"/>
+	<CheckButton name="CamelotActionBar2ButtonTemplate" inherits="MultiBar1ButtonTemplate, SecureActionButtonTemplate" mixin="CamelotActionButtonMixin" virtual="true"/>
+	<CheckButton name="CamelotActionBar3ButtonTemplate" inherits="MultiBar2ButtonTemplate, SecureActionButtonTemplate" mixin="CamelotActionButtonMixin" virtual="true"/>
+	<CheckButton name="CamelotActionBar4ButtonTemplate" inherits="MultiBar3ButtonTemplate, SecureActionButtonTemplate" mixin="CamelotActionButtonMixin" virtual="true"/>
+	<CheckButton name="CamelotActionBar5ButtonTemplate" inherits="MultiBar4ButtonTemplate, SecureActionButtonTemplate" mixin="CamelotActionButtonMixin" virtual="true"/>
+	<CheckButton name="CamelotActionBar6ButtonTemplate" inherits="MultiBar5ButtonTemplate, SecureActionButtonTemplate" mixin="CamelotActionButtonMixin" virtual="true"/>
+	<CheckButton name="CamelotActionBar7ButtonTemplate" inherits="MultiBar6ButtonTemplate, SecureActionButtonTemplate" mixin="CamelotActionButtonMixin" virtual="true"/>
+	<CheckButton name="CamelotActionBar8ButtonTemplate" inherits="MultiBar7ButtonTemplate, SecureActionButtonTemplate" mixin="CamelotActionButtonMixin" virtual="true"/>
+
+	<!-- The bars: Mainline/MainActionBar.xml and Shared/MultiActionBars.xml
+	minus the Edit Mode template and its KeyValues, the main bar's art regions
+	and the multibars' static page attribute. ActionBar_OnLoad names the
+	buttons CamelotActionBar<n>Button<i> and gives each the id i, which is
+	what CalculateAction pages from. -->
+	<Frame name="CamelotActionBar1" inherits="ActionBarTemplate" mixin="CamelotActionBarMixin" parent="CamelotActionBarsParked">
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="buttonTemplate" value="CamelotActionBar1ButtonTemplate" type="string"/>
+			<KeyValue key="commandNamePrefix" value="ACTION" type="string"/>
+			<KeyValue key="isHorizontal" value="true" type="boolean"/>
+			<KeyValue key="numRows" value="1" type="number"/>
+			<KeyValue key="numButtons" value="12" type="number"/>
+			<KeyValue key="addButtonsToRight" value="true" type="boolean"/>
+			<KeyValue key="addButtonsToTop" value="true" type="boolean"/>
+			<KeyValue key="showGridEventName" value="ACTIONBAR_SHOWGRID" type="string"/>
+			<KeyValue key="hideGridEventName" value="ACTIONBAR_HIDEGRID" type="string"/>
+			<KeyValue key="isNormalBar" value="true" type="boolean"/>
+		</KeyValues>
+	</Frame>
+	<Frame name="CamelotActionBar2" inherits="ActionBarTemplate" mixin="CamelotActionBarMixin" parent="CamelotActionBarsParked">
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="buttonTemplate" value="CamelotActionBar2ButtonTemplate" type="string"/>
+			<KeyValue key="commandNamePrefix" value="MULTIACTIONBAR1" type="string"/>
+			<KeyValue key="isHorizontal" value="true" type="boolean"/>
+			<KeyValue key="numRows" value="1" type="number"/>
+			<KeyValue key="numButtons" value="12" type="number"/>
+			<KeyValue key="addButtonsToRight" value="true" type="boolean"/>
+			<KeyValue key="addButtonsToTop" value="true" type="boolean"/>
+			<KeyValue key="showGridEventName" value="ACTIONBAR_SHOWGRID" type="string"/>
+			<KeyValue key="hideGridEventName" value="ACTIONBAR_HIDEGRID" type="string"/>
+			<KeyValue key="isNormalBar" value="true" type="boolean"/>
+		</KeyValues>
+	</Frame>
+	<Frame name="CamelotActionBar3" inherits="ActionBarTemplate" mixin="CamelotActionBarMixin" parent="CamelotActionBarsParked">
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="buttonTemplate" value="CamelotActionBar3ButtonTemplate" type="string"/>
+			<KeyValue key="commandNamePrefix" value="MULTIACTIONBAR2" type="string"/>
+			<KeyValue key="isHorizontal" value="true" type="boolean"/>
+			<KeyValue key="numRows" value="1" type="number"/>
+			<KeyValue key="numButtons" value="12" type="number"/>
+			<KeyValue key="addButtonsToRight" value="true" type="boolean"/>
+			<KeyValue key="addButtonsToTop" value="true" type="boolean"/>
+			<KeyValue key="showGridEventName" value="ACTIONBAR_SHOWGRID" type="string"/>
+			<KeyValue key="hideGridEventName" value="ACTIONBAR_HIDEGRID" type="string"/>
+			<KeyValue key="isNormalBar" value="true" type="boolean"/>
+		</KeyValues>
+	</Frame>
+	<Frame name="CamelotActionBar4" inherits="ActionBarTemplate" mixin="CamelotActionBarMixin" parent="CamelotActionBarsParked">
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="buttonTemplate" value="CamelotActionBar4ButtonTemplate" type="string"/>
+			<KeyValue key="commandNamePrefix" value="MULTIACTIONBAR3" type="string"/>
+			<KeyValue key="isHorizontal" value="true" type="boolean"/>
+			<KeyValue key="numRows" value="1" type="number"/>
+			<KeyValue key="numButtons" value="12" type="number"/>
+			<KeyValue key="addButtonsToRight" value="true" type="boolean"/>
+			<KeyValue key="addButtonsToTop" value="true" type="boolean"/>
+			<KeyValue key="showGridEventName" value="ACTIONBAR_SHOWGRID" type="string"/>
+			<KeyValue key="hideGridEventName" value="ACTIONBAR_HIDEGRID" type="string"/>
+			<KeyValue key="isNormalBar" value="true" type="boolean"/>
+		</KeyValues>
+	</Frame>
+	<Frame name="CamelotActionBar5" inherits="ActionBarTemplate" mixin="CamelotActionBarMixin" parent="CamelotActionBarsParked">
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="buttonTemplate" value="CamelotActionBar5ButtonTemplate" type="string"/>
+			<KeyValue key="commandNamePrefix" value="MULTIACTIONBAR4" type="string"/>
+			<KeyValue key="isHorizontal" value="true" type="boolean"/>
+			<KeyValue key="numRows" value="1" type="number"/>
+			<KeyValue key="numButtons" value="12" type="number"/>
+			<KeyValue key="addButtonsToRight" value="true" type="boolean"/>
+			<KeyValue key="addButtonsToTop" value="true" type="boolean"/>
+			<KeyValue key="showGridEventName" value="ACTIONBAR_SHOWGRID" type="string"/>
+			<KeyValue key="hideGridEventName" value="ACTIONBAR_HIDEGRID" type="string"/>
+			<KeyValue key="isNormalBar" value="true" type="boolean"/>
+		</KeyValues>
+	</Frame>
+	<Frame name="CamelotActionBar6" inherits="ActionBarTemplate" mixin="CamelotActionBarMixin" parent="CamelotActionBarsParked">
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="buttonTemplate" value="CamelotActionBar6ButtonTemplate" type="string"/>
+			<KeyValue key="commandNamePrefix" value="MULTIACTIONBAR5" type="string"/>
+			<KeyValue key="isHorizontal" value="true" type="boolean"/>
+			<KeyValue key="numRows" value="1" type="number"/>
+			<KeyValue key="numButtons" value="12" type="number"/>
+			<KeyValue key="addButtonsToRight" value="true" type="boolean"/>
+			<KeyValue key="addButtonsToTop" value="true" type="boolean"/>
+			<KeyValue key="showGridEventName" value="ACTIONBAR_SHOWGRID" type="string"/>
+			<KeyValue key="hideGridEventName" value="ACTIONBAR_HIDEGRID" type="string"/>
+			<KeyValue key="isNormalBar" value="true" type="boolean"/>
+		</KeyValues>
+	</Frame>
+	<Frame name="CamelotActionBar7" inherits="ActionBarTemplate" mixin="CamelotActionBarMixin" parent="CamelotActionBarsParked">
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="buttonTemplate" value="CamelotActionBar7ButtonTemplate" type="string"/>
+			<KeyValue key="commandNamePrefix" value="MULTIACTIONBAR6" type="string"/>
+			<KeyValue key="isHorizontal" value="true" type="boolean"/>
+			<KeyValue key="numRows" value="1" type="number"/>
+			<KeyValue key="numButtons" value="12" type="number"/>
+			<KeyValue key="addButtonsToRight" value="true" type="boolean"/>
+			<KeyValue key="addButtonsToTop" value="true" type="boolean"/>
+			<KeyValue key="showGridEventName" value="ACTIONBAR_SHOWGRID" type="string"/>
+			<KeyValue key="hideGridEventName" value="ACTIONBAR_HIDEGRID" type="string"/>
+			<KeyValue key="isNormalBar" value="true" type="boolean"/>
+		</KeyValues>
+	</Frame>
+	<Frame name="CamelotActionBar8" inherits="ActionBarTemplate" mixin="CamelotActionBarMixin" parent="CamelotActionBarsParked">
+		<Anchors>
+			<Anchor point="CENTER"/>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="buttonTemplate" value="CamelotActionBar8ButtonTemplate" type="string"/>
+			<KeyValue key="commandNamePrefix" value="MULTIACTIONBAR7" type="string"/>
+			<KeyValue key="isHorizontal" value="true" type="boolean"/>
+			<KeyValue key="numRows" value="1" type="number"/>
+			<KeyValue key="numButtons" value="12" type="number"/>
+			<KeyValue key="addButtonsToRight" value="true" type="boolean"/>
+			<KeyValue key="addButtonsToTop" value="true" type="boolean"/>
+			<KeyValue key="showGridEventName" value="ACTIONBAR_SHOWGRID" type="string"/>
+			<KeyValue key="hideGridEventName" value="ACTIONBAR_HIDEGRID" type="string"/>
+			<KeyValue key="isNormalBar" value="true" type="boolean"/>
+		</KeyValues>
+	</Frame>
+</Ui>

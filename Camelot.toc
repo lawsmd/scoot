@@ -5,7 +5,7 @@
 ## Version: 0.0.1
 ## SavedVariables: CamelotDB
 ## SlashCmd: /camelot
-## Dependencies: Blizzard_ObjectiveTracker
+## Dependencies: Blizzard_ObjectiveTracker, Blizzard_ActionBar
 
 ## Two interface numbers, one TOC. 120100 is retail 12.1.0 and 16001 is
 ## Forever build 1.60.1; each client takes the number from the list that
@@ -243,6 +243,37 @@ forever/objectivetracker/card.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/cards.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 
+## Action bars: Forever's bars on Camelot-owned frames (docs/actionbars/
+## replica.md and clusters.md). style.lua holds the module, its switch and
+## its defaults; events.lua forwards the button events, runs the tick the
+## buttons register with from their own load, and keeps the blocked-action
+## log, so it precedes the XML; mixins.lua defines the two globals the XML
+## names in mixin= attributes, so it precedes the XML too; frames.xml
+## declares the eight bars and their button templates from
+## Blizzard_ActionBar's virtual templates, which the Dependencies line above
+## guarantees are parsed by then; paging.lua puts the page driver on Action
+## Bar 1; clusters.lua adopts the bars into their clusters, lays them out
+## and holds the cluster edits; editmode.lua registers each cluster in Edit
+## Mode with the dialog's rows, overlays.lua draws the member strips on a
+## selected cluster, and dynamic.lua gives it its Dynamic Layouts adapter,
+## all after clusters.lua, which they hang off; suppression.lua parks
+## Blizzard's bars; bars.lua builds on world entry and registers /camelot
+## actionbars. page.lua, the Clusters page, sits in the page block below.
+## Stands on nativeframe, events, strata, editmode/positionables,
+## dynamiclayouts, forever/db.lua and forever/features.lua. Every line is
+## Forever's alone, style.lua included.
+forever/actionbars/style.lua [ExcludeLoadGameType standard]
+forever/actionbars/events.lua [ExcludeLoadGameType standard]
+forever/actionbars/mixins.lua [ExcludeLoadGameType standard]
+forever/actionbars/frames.xml [ExcludeLoadGameType standard]
+forever/actionbars/paging.lua [ExcludeLoadGameType standard]
+forever/actionbars/clusters.lua [ExcludeLoadGameType standard]
+forever/actionbars/editmode.lua [ExcludeLoadGameType standard]
+forever/actionbars/overlays.lua [ExcludeLoadGameType standard]
+forever/actionbars/dynamic.lua [ExcludeLoadGameType standard]
+forever/actionbars/suppression.lua [ExcludeLoadGameType standard]
+forever/actionbars/bars.lua [ExcludeLoadGameType standard]
+
 ## The Personal Resource Display: Forever's PRD on a Camelot-owned frame
 ## (docs/personalresourcedisplay/replica.md). style.lua holds the module, its
 ## switch, its settings and the apply, and loads on retail too for the page
@@ -370,6 +401,7 @@ forever/unitframes/page.lua
 forever/objectivetracker/page.lua
 forever/objectivetracker/currentpage.lua
 forever/personalresourcedisplay/page.lua
+forever/actionbars/page.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
 forever/gallery.lua
 forever/debug.lua

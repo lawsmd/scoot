@@ -476,6 +476,33 @@ files["forever/objectivetracker/current.lua"] = {
     },
     read_globals = { "QuestObjectiveTrackerMixin", "CampaignQuestObjectiveTrackerMixin" },
 }
+-- Camelot's action bars (forever/actionbars/). mixins.lua owns the two
+-- globals frames.xml names in mixin= attributes; the Blizzard action bar
+-- names each file reads are declared where they are read.
+files["forever/actionbars/mixins.lua"] = {
+    globals = { "CamelotActionBarMixin", "CamelotActionButtonMixin" },
+    read_globals = {
+        "BaseActionButtonMixin", "ActionBarActionButtonMixin", "ActionBarMixin",
+        "QuickKeybindButtonTemplateMixin", "ActionButton_UpdateCooldownNumberHidden",
+        "ClearActionButtonCooldowns", "ClearNewActionHighlight", "C_ActionBar",
+        "RANGE_INDICATOR", "ACTIONBAR_HOTKEY_FONT_COLOR",
+    },
+}
+files["forever/actionbars/paging.lua"] = {
+    read_globals = {
+        "C_ActionBar", "MainActionBar", "RegisterAttributeDriver", "SecureCmdOptionParse",
+        "NUM_ACTIONBAR_PAGES", "IsStealthed",
+    },
+}
+files["forever/actionbars/clusters.lua"] = {
+    read_globals = { "ACTION_BUTTON_SHOW_GRID_REASON_CVAR", "bit", "CamelotActionBarsParked" },
+}
+files["forever/actionbars/suppression.lua"] = {
+    read_globals = { "MainActionBar" },
+}
+files["forever/actionbars/bars.lua"] = {
+    read_globals = { "C_ActionBar", "MicroMenuContainer", "issecurevariable" },
+}
 -- The Personal Resource Display (forever/personalresourcedisplay/). mixins.lua
 -- owns the one global frames.xml names in a mixin= attribute; the other
 -- files reach the frame through _G by name.
