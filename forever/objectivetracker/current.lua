@@ -18,7 +18,14 @@
 -- and assigning it on an instance shadows the mixin's copy, so the Quest and
 -- Campaign twins refuse a current quest and the Current twin takes only
 -- those. Every change marks the three modules dirty; the pane's container
--- hides itself when its one module has no content, outside Edit Mode.
+-- hides itself when its one module has no content, outside Edit Mode. The
+-- settled answer goes through fade.lua, which keeps both sides drawing a
+-- quest for the fade's length as it moves.
+--
+-- The Camelot style (cards.lua) reads the same set through List and redraws
+-- on OnChanged; with it on, the Current twin draws nothing and the pane
+-- stays empty, while the Quest and Campaign twins still refuse a current
+-- quest.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -48,6 +55,7 @@ local snapshots = {}   -- questID -> { [objectiveIndex] = { fulfilled, required,
 local changes = {}     -- questID -> { index, before, after, fulfilled, required, rose, t }: the last objective change read
 local pendingRead = {} -- questID -> true: progress reported, no change read yet
 local log = {}
+local subscribers = {}
 
 --------------------------------------------------------------------------------
 -- Reads
@@ -89,11 +97,18 @@ local function entryFor(questID)
     return e
 end
 
+-- Every change to the set: the three modules re-route, and the cards redraw.
 local function modulesDirty()
     for _, name in ipairs(QUEST_MODULES) do
         local module = _G[name]
         if module then module:MarkDirty() end
     end
+    for _, fn in ipairs(subscribers) do fn() end
+end
+
+--- fn() after every change to the current set, a setting's included.
+function Current.OnChanged(fn)
+    subscribers[#subscribers + 1] = fn
 end
 
 local function eachWatch(fn)
@@ -163,6 +178,27 @@ function Current.IsCurrent(questID)
         return true
     end
     return false
+end
+
+--- The current quests in watch-list order.
+function Current.List()
+    local list = {}
+    eachWatch(function(questID)
+        if Current.IsCurrent(questID) then list[#list + 1] = questID end
+    end)
+    return list
+end
+
+-- Where a quest draws now, for the three predicates: the settled answer
+-- through the fade between the panes. Returns inPane, inTracker.
+local function route(questID)
+    local current = Current.IsCurrent(questID)
+    if OT.Fade then return OT.Fade.Route(questID, current) end
+    return current, not current
+end
+
+local function dropFade(questID)
+    if OT.Fade then OT.Fade.Drop(questID) end
 end
 
 -- Why a quest is in the pane, for the dump.
@@ -244,6 +280,7 @@ local function seed(reason)
         if not watched[questID] then
             entries[questID] = nil
             snapshots[questID] = nil
+            dropFade(questID)
         end
     end
     push("seed (%s): %d watched, %d inside an area", reason, n, inside)
@@ -300,6 +337,7 @@ local function onWatchListChanged(_, questID, added)
         snapshots[questID] = nil
         changes[questID] = nil
         pendingRead[questID] = nil
+        dropFade(questID)
     end
     modulesDirty()
 end
@@ -310,6 +348,8 @@ local function onQuestGone(_, questID)
     snapshots[questID] = nil
     changes[questID] = nil
     pendingRead[questID] = nil
+    dropFade(questID)
+    modulesDirty()
 end
 
 --------------------------------------------------------------------------------
@@ -334,7 +374,8 @@ function Current.Install()
     -- keeps deciding tasks, bounties and the campaign split.
     local function excluding(base)
         return function(self, quest)
-            if Current.IsCurrent(quest:GetID()) then return false end
+            local _, inTracker = route(quest:GetID())
+            if not inTracker then return false end
             return base(self, quest)
         end
     end
@@ -342,7 +383,9 @@ function Current.Install()
     campaignTwin.ShouldDisplayQuest = excluding(CampaignQuestObjectiveTrackerMixin.ShouldDisplayQuest)
     currentTwin.ShouldDisplayQuest = function(_, quest)
         if quest.isTask or quest:IsDisabledForSession() then return false end
-        return Current.IsCurrent(quest:GetID())
+        local inPane = route(quest:GetID())
+        -- The cards draw the pane's quests in the Camelot style.
+        return inPane and Style.CurrentStyle() ~= "camelot"
     end
 
     -- The pane has no container header; this module's header is its title.
@@ -357,6 +400,10 @@ function Current.Install()
     addon.Events.On(OWNER, "PLAYER_ENTERING_WORLD", function() seed("world") end)
 
     seed("install")
+
+    if OT.Fade then OT.Fade.Install() end
+    if OT.Overflow then OT.Overflow.Install() end
+    if OT.Cards then OT.Cards.Install() end
 end
 
 --------------------------------------------------------------------------------
@@ -376,6 +423,9 @@ function Current.Dump(push)
     if n == 0 then push("  no entries") end
     push("pane log (%d):", #log)
     for _, line in ipairs(log) do push("  %s", line) end
+    if OT.Fade then OT.Fade.Dump(push) end
     if OT.Flash then OT.Flash.Dump(push) end
+    if OT.Overflow then OT.Overflow.Dump(push) end
+    if OT.Cards then OT.Cards.Dump(push) end
     push("")
 end

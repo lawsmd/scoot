@@ -222,7 +222,11 @@ forever/castbars/dynamic.lua [ExcludeLoadGameType standard]
 ## stands the secure quest item buttons on the blocks' slots; current.lua keeps
 ## the Current Objectives pane's state and routes quests between the panes
 ## (docs/objectivetracker/current.md); flash.lua flashes a count that rises in
-## that pane; dynamic.lua is the Dynamic Layouts adapter for both panes.
+## that pane; fade.lua cross-fades a quest's blocks as it moves between the
+## panes; overflow.lua fades the pane's last lines when it truncates;
+## card.lua and cards.lua draw the Camelot style of the pane, a row of quest
+## cards (docs/objectivetracker/cards.md);
+## dynamic.lua is the Dynamic Layouts adapter for both panes.
 ## Stands on nativeframe, events, strata,
 ## pool, fonts, colors, editmode/positionables, forever/db.lua,
 ## forever/profiles.lua and forever/features.lua.
@@ -233,6 +237,10 @@ forever/objectivetracker/tracker.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/itembutton.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/current.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/flash.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/fade.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/overflow.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/card.lua [ExcludeLoadGameType standard]
+forever/objectivetracker/cards.lua [ExcludeLoadGameType standard]
 forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 
 ## The Personal Resource Display: Forever's PRD on a Camelot-owned frame

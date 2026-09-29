@@ -413,6 +413,14 @@ end
 --- Every container layout: heal, re-dress what the layout rewrote, then
 --- re-place the item buttons.
 function OT.OnContainerUpdated(container)
+    -- The Camelot style draws the pane as cards (cards.lua). The empty pane
+    -- shows itself in Edit Mode, and its selection box with it; hidden, the
+    -- box goes too.
+    if container == CamelotCurrentObjectiveTracker and OT.Style
+        and OT.Style.CurrentStyle() == "camelot" then
+        container:Hide()
+        return
+    end
     OT.EnsurePlaced("update", false, container)
     if OT.Style then OT.Style.OnUpdate() end
     if OT.Items then OT.Items.Reposition() end

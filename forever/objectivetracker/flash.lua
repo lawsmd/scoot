@@ -18,6 +18,13 @@
 -- quest out a frame or more later, so a request waits until the pane's line
 -- shows the new count, and is dropped if it never does: the quest did not
 -- come to the pane.
+--
+-- The Camelot style draws the pane as cards (cards.lua). A card row carries
+-- the fields a tracker line has (objectiveKey, parentBlock.id, Text), so the
+-- flash runs on it unchanged; only where it finds the line and what the
+-- burst stands on differ, and resolve() below picks by the style. A card's
+-- bar row sets noBurst: the bar lights its own risen step (card.lua), and
+-- the band and star, sized for a line of text, would spill past it.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -108,6 +115,21 @@ local function paneLine(questID, index)
     return block:GetExistingLine(index)
 end
 
+-- The line showing an objective, the frame the burst stands on, and the
+-- level the burst takes: under the line's text, over its background.
+local function resolve(questID, index)
+    if Style.CurrentStyle() == "camelot" then
+        if not OT.Cards then return nil end
+        local row, card = OT.Cards.Row(questID, index)
+        if not row then return nil end
+        return row, card, card:GetFrameLevel() + 1
+    end
+    local line = paneLine(questID, index)
+    local container = _G.CamelotCurrentObjectiveTracker
+    if not (line and container) then return nil end
+    return line, container, math.max(line:GetFrameLevel() - 1, container:GetFrameLevel() + 1)
+end
+
 local function lineStillOurs(f, questID)
     local line = f.line
     return line.objectiveKey == f.index and line.parentBlock and line.parentBlock.id == questID
@@ -191,9 +213,8 @@ end
 -- The band behind the whole line, the star on the count. The count's place is
 -- measured from the prefix; when the prefix and count overrun the line's width
 -- the text has wrapped, and the star sits on the line's center instead.
-local function playBurst(line, prefix, count)
+local function playBurst(line, container, level, prefix, count)
     local fs = line.Text
-    local container = _G.CamelotCurrentObjectiveTracker
     if not (fs and container) then return end
     local face, size = fs:GetFont()
     if type(size) ~= "number" or size <= 0 then return end
@@ -201,8 +222,7 @@ local function playBurst(line, prefix, count)
     local f = burstPool:Acquire()
     f:SetParent(container)
     f:SetFrameStrata(container:GetFrameStrata())
-    -- One below the line: under its text, above the block and the background.
-    f:SetFrameLevel(math.max(line:GetFrameLevel() - 1, container:GetFrameLevel() + 1))
+    f:SetFrameLevel(level)
     f:SetAllPoints(container)
 
     f.wash:SetPoint("TOPLEFT", fs, "TOPLEFT", -WASH_PAD_X, WASH_PAD_Y)
@@ -225,7 +245,7 @@ end
 -- count nowhere in the text (a percentage objective, another format), the
 -- whole line flashes.
 local function tryStart(questID, req, t)
-    local line = paneLine(questID, req.index)
+    local line, container, level = resolve(questID, req.index)
     local text = lineText(line)
     if not text then return false end
     text = addon.FontPair.StripEscapes(text)
@@ -240,7 +260,7 @@ local function tryStart(questID, req, t)
         prefix = text:sub(1, s - 1), count = text:sub(s, e), suffix = text:sub(e + 1),
     }
     running[questID] = f
-    playBurst(line, f.prefix, f.count)
+    if not line.noBurst then playBurst(line, container, level, f.prefix, f.count) end
     return true
 end
 

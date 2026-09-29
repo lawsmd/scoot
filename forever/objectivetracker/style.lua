@@ -61,7 +61,9 @@ Style.PANE_HEIGHT = { min = 100, max = 600, step = 10, default = 300 }
 Style.OPACITY = { min = 0, max = 100, step = 1, default = 0 }
 Style.TEXT_SIZE = { min = 12, max = 20, step = 1, default = 12 }
 Style.SCALE = { min = 0.5, max = 1.5, step = 0.05, default = 1 }
-Style.HOLD = { min = 5, max = 300, step = 5, default = 30 }
+Style.HOLD = { min = 5, max = 300, step = 5, default = 90 }
+-- The cross-fade of a quest moving between the panes (fade.lua). 0 is a cut.
+Style.FADE = { min = 0, max = 2, step = 0.1, default = 0.5 }
 Style.HEADER_EXTRA_SIZE = 2
 
 -- The three styled texts and where each is read from: the container and
@@ -76,6 +78,24 @@ Style.MAIN = { key = "main", prefix = nil, frameName = "CamelotObjectiveTracker"
 Style.CURRENT = { key = "current", prefix = "current", frameName = "CamelotCurrentObjectiveTracker",
                   heightRange = Style.PANE_HEIGHT, label = "Current Objectives" }
 Style.PANES = { Style.MAIN, Style.CURRENT }
+
+-- The Camelot style of the Current Objectives pane (cards.lua): a row or a
+-- column of quest cards with its own look under
+-- objectiveTracker.current.cards.*. Not a pane: every pane loop calls
+-- container methods the cards' frame has none of. The
+-- behaviour keys (enabled, the triggers, hold, fade, flash) are the pane's
+-- and serve both styles.
+Style.CARDS = { key = "cards", prefix = "current.cards", label = "Current Objective Cards" }
+Style.STYLES = { classic = "Classic", camelot = "Camelot" }
+Style.STYLE_ORDER = { "classic", "camelot" }
+Style.CARD_WIDTH = { min = 120, max = 220, step = 5, default = 150 }
+Style.CARD_SPACING = { min = 0, max = 40, step = 1, default = 8 }
+Style.CARD_MAX = { min = 1, max = 8, step = 1, default = 5 }
+Style.CARD_TITLE_SIZE = { min = 9, max = 18, step = 1, default = 12 }
+Style.CARD_OBJECTIVE_SIZE = { min = 8, max = 16, step = 1, default = 10 }
+Style.CARD_TEXT_KEYS = { "textTitle", "textObjective" }
+Style.CARD_LAYOUTS = { row = "Row", column = "Column" }
+Style.CARD_LAYOUT_ORDER = { "row", "column" }
 
 --- The dotted path of a tracker setting: Style.Path("height"), or
 --- Style.Path("textHeader", "fontFace"). A pane's keys are prefixed:
@@ -126,7 +146,25 @@ do
     map[Style.Path("current", "onEnterArea")] = true
     map[Style.Path("current", "onProgress")] = true
     map[Style.Path("current", "holdSeconds")] = Style.HOLD.default
+    map[Style.Path("current", "fadeSeconds")] = Style.FADE.default
     map[Style.Path("current", "flashProgress")] = true
+    -- The pane's style, and the cards' look.
+    map[Style.Path("current", "style")] = "classic"
+    local cards = Style.CARDS
+    map[Style.PanePath(cards, "layout")] = "row"
+    map[Style.PanePath(cards, "width")] = Style.CARD_WIDTH.default
+    map[Style.PanePath(cards, "spacing")] = Style.CARD_SPACING.default
+    map[Style.PanePath(cards, "maxCards")] = Style.CARD_MAX.default
+    map[Style.PanePath(cards, "scale")] = Style.SCALE.default
+    map[Style.PanePath(cards, "opacity")] = 100
+    map[Style.PanePath(cards, "titleSize")] = Style.CARD_TITLE_SIZE.default
+    map[Style.PanePath(cards, "objectiveSize")] = Style.CARD_OBJECTIVE_SIZE.default
+    for _, key in ipairs(Style.CARD_TEXT_KEYS) do
+        -- No backdrop behind the cards: the outline carries the contrast.
+        map[Style.PanePath(cards, key, "style")] = "THICKOUTLINESLUG"
+        map[Style.PanePath(cards, key, "colorMode")] = "default"
+        map[Style.PanePath(cards, key, "color")] = { 1, 1, 1, 1 }
+    end
     DB.RegisterDefaults(map)
 end
 
@@ -162,6 +200,37 @@ end
 --- The seconds a quest stays in the current pane after progress on it.
 function Style.HoldSeconds()
     return clamp(Style.Get("current", "holdSeconds"), Style.HOLD)
+end
+
+--- The seconds a quest takes to cross-fade between the panes; 0 is a cut.
+function Style.FadeSeconds()
+    return clamp(Style.Get("current", "fadeSeconds"), Style.FADE)
+end
+
+--- "classic" or "camelot": which style the Current Objectives pane draws in.
+function Style.CurrentStyle()
+    return Style.Get("current", "style") == "camelot" and "camelot" or "classic"
+end
+
+local function cardNumber(key, range)
+    return clamp(Style.PaneGet(Style.CARDS, key), range)
+end
+
+function Style.CardWidth() return math.floor(cardNumber("width", Style.CARD_WIDTH) + 0.5) end
+function Style.CardSpacing() return cardNumber("spacing", Style.CARD_SPACING) end
+function Style.CardMax() return math.floor(cardNumber("maxCards", Style.CARD_MAX) + 0.5) end
+function Style.CardScale() return cardNumber("scale", Style.SCALE) end
+function Style.CardOpacity() return cardNumber("opacity", Style.OPACITY) / 100 end
+
+--- "row" or "column": the cards side by side, or one under another.
+function Style.CardLayout()
+    return Style.PaneGet(Style.CARDS, "layout") == "column" and "column" or "row"
+end
+
+--- A card text's point size: "titleSize" or "objectiveSize".
+function Style.CardTextSize(key)
+    local range = key == "titleSize" and Style.CARD_TITLE_SIZE or Style.CARD_OBJECTIVE_SIZE
+    return math.floor(cardNumber(key, range) + 0.5)
 end
 
 local function frameOf(pane)
@@ -421,14 +490,19 @@ local function inDungeonOrRaid()
 end
 
 -- Kept off addon.Opacity.Resolve: one override with a compound gate (combat in a dungeon or raid), else 1, and core/opacity.lua is not on this TOC.
+--- The alpha the instance-combat fade holds the headers and modules at now.
+function Style.CombatAlpha()
+    if UnitAffectingCombat("player") and inDungeonOrRaid() then
+        return clamp(Style.Get("opacityInInstanceCombat"), Style.OPACITY) / 100
+    end
+    return 1
+end
+
 --- The fade in instance combat, on the header and on each module but the
 --- Scenario module, so the dungeon's own progress stays readable. Never the
 --- container itself: alpha multiplies down the tree. One setting, both panes.
 function Style.ApplyCombatOpacity()
-    local alpha = 1
-    if UnitAffectingCombat("player") and inDungeonOrRaid() then
-        alpha = clamp(Style.Get("opacityInInstanceCombat"), Style.OPACITY) / 100
-    end
+    local alpha = Style.CombatAlpha()
     eachPane(function(_, c)
         if c.Header then c.Header:SetAlpha(alpha) end
         c:ForEachModule(function(module)
@@ -456,6 +530,7 @@ function Style.Apply()
     Style.ApplyHeaders()
     Style.ApplyText()
     Style.ApplyCombatOpacity()
+    if OT.Cards then OT.Cards.Apply() end
     if OT.Current then OT.Current.Refresh() end
 end
 
