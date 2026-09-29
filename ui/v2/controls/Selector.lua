@@ -72,17 +72,31 @@ function Controls:CreateSelector(options)
     -- height). Field width stays the caller's `width`. Not supported together
     -- with description or emphasized rows.
     local S = options.sizeScale or 1
-    local function sc(v) return math.floor(v * S + 0.5) end
 
     local hasDesc = description and description ~= ""
     local rowWidth = options.rowWidth
+
+    -- An emphasized row on a skin that draws the emphasis role as art stands
+    -- on that art instead of the accent bar, and metrics.emphasis scales its
+    -- contents, the field's width included. Width-driven rows only: the
+    -- legacy height table has no room for a larger label.
+    local emphSpec = emphasized and addon.UI.Chrome.Spec("emphasis") or nil
+    local emphArt = emphSpec ~= nil and emphSpec.kind ~= "flat"
+    local emphM = (emphArt and Controls.Metrics().emphasis) or {}
+    if emphArt and rowWidth and emphM.scale then
+        S = emphM.scale
+        selectorWidth = math.floor(selectorWidth * S + 0.5)
+    end
+    local function sc(v) return math.floor(v * S + 0.5) end
+    local emphPadY = (emphArt and rowWidth and emphM.padY) or 0
+    local fieldInset = (emphArt and emphM.padX) or sc(SELECTOR_PADDING)
 
     -- Width-driven rows take the base height from the metrics; the chrome
     -- measure grows description rows synchronously. Direct callers without a
     -- rowWidth keep the fixed height table until they convert.
     local rowHeight
     if rowWidth then
-        rowHeight = emphasized and sc(EMPHASIZED_ROW_HEIGHT) or sc(Controls.Metrics().rowHeight)
+        rowHeight = emphasized and (sc(EMPHASIZED_ROW_HEIGHT) + emphPadY * 2) or sc(Controls.Metrics().rowHeight)
     elseif emphasized then
         rowHeight = hasDesc and EMPHASIZED_ROW_HEIGHT_WITH_DESC or sc(EMPHASIZED_ROW_HEIGHT)
     else
@@ -91,7 +105,7 @@ function Controls:CreateSelector(options)
 
     -- Use appropriate sizes for emphasized vs normal
     local labelFontSize = sc(emphasized and EMPHASIZED_LABEL_SIZE or 13)
-    local leftBorderWidth = emphasized and EMPHASIZED_BORDER_WIDTH or 0
+    local leftBorderWidth = (emphasized and not emphArt) and EMPHASIZED_BORDER_WIDTH or 0
 
     -- Build ordered key list
     local keyList = {}
@@ -121,8 +135,10 @@ function Controls:CreateSelector(options)
     local row = CreateFrame("Frame", name, parent)
     row:SetHeight(rowHeight)
 
-    -- Row hover background
-    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
+    -- Row hover background, inside the emphasis art's border where there is one
+    row._hoverBg = Controls.AddHoverFill(row, {
+        sublevel = emphArt and Controls.SUBLEVEL_HOVER or Controls.SUBLEVEL_BG,
+        inset = emphArt and emphM.inner or nil })
 
     -- The divider under a row is builder-drawn; the row keeps only the
     -- emphasized left accent bar.
@@ -145,8 +161,47 @@ function Controls:CreateSelector(options)
         row._emphBg = emphBg
     end
 
+    if emphArt then
+        local art = addon.UI.Chrome.SlicedAtlas(row, emphSpec, "BACKGROUND", -8)
+        if art then
+            local pieces = emphSpec.pieces or {}
+            art:ApplyOpacity(pieces.border or "cardBorder", pieces.fill or "cardFill")
+            row._emphArt = art
+            -- A fill replaces the art's own face, laid over the art's inner
+            -- margin up to the border band: a color token, or a rect of an
+            -- atlas member (in its own pixels) with a token to fall back on
+            local fillSpec = emphSpec.fill
+            if fillSpec then
+                for _, t in ipairs(art.center) do t:Hide() end
+                local fill = row:CreateTexture(nil, "BACKGROUND", nil, -7)
+                local inset = emphM.fillInset or 0
+                fill:SetPoint("TOPLEFT", inset, -inset)
+                fill:SetPoint("BOTTOMRIGHT", -inset, inset)
+                local Chrome = addon.UI.Chrome
+                local file, w, h, L, R, T, B
+                if type(fillSpec) == "table" and fillSpec.atlas then
+                    file, w, h, L, R, T, B = Chrome.AtlasSource(fillSpec)
+                end
+                if file then
+                    local rect = fillSpec.rect or {}
+                    local du, dv = (R - L) / w, (B - T) / h
+                    fill:SetTexture(file)
+                    fill:SetTexCoord(L + (rect.left or 0) * du, L + (rect.right or w) * du,
+                        T + (rect.top or 0) * dv, T + (rect.bottom or h) * dv)
+                    if fillSpec.piece then Chrome.ApplyOpacity(fillSpec.piece, fill) end
+                else
+                    local token = type(fillSpec) == "table" and fillSpec.fallback or fillSpec
+                    fill:SetColorTexture(Chrome.Color(token))
+                end
+                row._emphFill = fill
+            end
+        end
+        -- The art closes the row, so the builder's divider under it goes
+        row._noDividerAfter = true
+    end
+
     -- Calculate label padding (account for left border on emphasized)
-    local labelLeftPad = sc(SELECTOR_PADDING) + leftBorderWidth
+    local labelLeftPad = (emphArt and emphM.padX) or (sc(SELECTOR_PADDING) + leftBorderWidth)
 
     -- Label and description
     local chromeOpts
@@ -156,10 +211,13 @@ function Controls:CreateSelector(options)
             baseHeight = rowHeight,
             label = label,
             labelFontSize = (emphasized or S ~= 1) and labelFontSize or nil,
+            labelFontRole = emphArt and emphM.labelFontRole or nil,
+            scale = S,
+            padY = emphPadY,
             padLeft = labelLeftPad,
             description = description,
-            descFontSize = emphasized and 12 or nil,
-            controlReserve = selectorWidth + sc(SELECTOR_PADDING) * 2,
+            descFontSize = emphasized and sc(12) or nil,
+            controlReserve = selectorWidth + sc(SELECTOR_PADDING) + fieldInset,
             dimColor = { dimR, dimG, dimB },
         }
     else
@@ -182,7 +240,7 @@ function Controls:CreateSelector(options)
     local selector = CreateFrame("Frame", nil, row)
     selector:SetSize(selectorWidth, sc(SELECTOR_HEIGHT))
     if rowWidth then
-        Controls.AnchorCluster(row, selector, { x = -sc(SELECTOR_PADDING) })
+        Controls.AnchorCluster(row, selector, { x = -fieldInset })
     else
         selector:SetPoint("RIGHT", row, "RIGHT", -sc(SELECTOR_PADDING), 0)
     end

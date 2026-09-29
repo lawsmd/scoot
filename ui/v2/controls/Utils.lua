@@ -510,9 +510,13 @@ local function AddRowChromeV2(row, opts)
     local padLeft = opts.padLeft or m.rowPadding
     local baseHeight = opts.baseHeight or m.rowHeight
     row._clusterBand = opts.band or baseHeight
+    -- A scaled row's name is taller, so the band it stands in grows with it
+    local scale = opts.scale or 1
+    local padY = opts.padY or 0
+    local labelTopPad = math.floor(m.labelTopPad * scale + 0.5) + padY
 
     local labelFS = row:CreateFontString(nil, "OVERLAY")
-    theme:ApplyFont(labelFS, Controls.RowLabelFontRole(), opts.labelFontSize)
+    theme:ApplyFont(labelFS, opts.labelFontRole or Controls.RowLabelFontRole(), opts.labelFontSize)
     labelFS:SetText(opts.label)
     labelFS:SetTextColor(theme:GetAccentColor())
     row._label = labelFS
@@ -523,10 +527,10 @@ local function AddRowChromeV2(row, opts)
         return labelFS, nil
     end
 
-    labelFS:SetPoint("TOPLEFT", row, "TOPLEFT", padLeft, -m.labelTopPad)
+    labelFS:SetPoint("TOPLEFT", row, "TOPLEFT", padLeft, -labelTopPad)
 
     local controlReserve = opts.controlReserve or 0
-    local descTop = m.labelTopPad + m.labelLineHeight + m.descGap
+    local descTop = labelTopPad + math.floor((m.labelLineHeight + m.descGap) * scale + 0.5)
     local descFS = row:CreateFontString(nil, "OVERLAY")
     theme:ApplyFont(descFS, "desc", opts.descFontSize)
     descFS:SetPoint("TOPLEFT", row, "TOPLEFT", padLeft, -descTop)
@@ -544,7 +548,7 @@ local function AddRowChromeV2(row, opts)
         if wrapWidth <= 0 then return false end
         descFS:SetWidth(wrapWidth)
         local textHeight = descFS:GetStringHeight() or 0
-        local required = descTop + textHeight + m.descPadBottom
+        local required = descTop + textHeight + m.descPadBottom + padY
         local newHeight = math.min(math.max(baseHeight, required), m.maxRowHeight)
         local current = row:GetHeight() or 0
         if math.abs(newHeight - current) > 0.5 then
@@ -573,6 +577,11 @@ end
 --                   cluster, one number for both the wrap and the anchor
 --   baseHeight      minimum row height (default metrics rowHeight)
 --   band            cluster band for AnchorCluster (default baseHeight)
+--   scale           multiplies the label's top pad and line height, for a
+--                   row whose fonts the caller scaled (default 1)
+--   padY            extra room above the label and under the description,
+--                   which the caller also adds to baseHeight (default 0)
+--   labelFontRole   the name's font role (default Controls.RowLabelFontRole)
 --   label, labelFontSize, padLeft, description, descFontSize, dimColor as below
 --
 -- Without rowWidth the legacy path runs, deferred measure and all; it phases

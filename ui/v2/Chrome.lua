@@ -5,8 +5,8 @@
 -- A skin's chrome table holds one descriptor per role: window, picker,
 -- dialog, dialogTitle, titleBar, closeButton, button, resizeGrip, scrollBar, tab, tabBody,
 -- sectionHeader, sectionBody, navRow, navCard, navDivider, dropdown,
--- arrowButton, field, popupList, infoIcon, tooltip, slider, input, toggle. A
--- descriptor names a kind and what that kind needs:
+-- arrowButton, field, popupList, infoIcon, tooltip, slider, input, toggle,
+-- emphasis. A descriptor names a kind and what that kind needs:
 --   flat       the framework's own draw (CreateBorder, AddBackground,
 --              AddHoverFill) with numbers from the skin metrics
 --   nineSlice  NineSliceUtil.ApplyLayout on a child frame: layout, textureKit
@@ -92,6 +92,7 @@ Chrome.ROLES = {
     "window", "picker", "dialog", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
     "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider",
     "dropdown", "arrowButton", "field", "popupList", "infoIcon", "tooltip", "slider", "input", "toggle",
+    "emphasis",
     "editSelection", "editDialog",
 }
 
@@ -152,6 +153,11 @@ Chrome.FLAT = {
     -- an atlas kind is a skin's box over rows of colored text, with a
     -- highlight laid over the row under the cursor.
     popupList     = { kind = "flat" },
+    -- The backdrop of an emphasized (hero) row, so far the selector's
+    -- (ui/v2/controls/Selector.lua). Flat is the accent bar down the row's
+    -- left edge over a faint accent wash; a sliced kind is a skin's art
+    -- around the whole row, and metrics.emphasis scales what the row holds.
+    emphasis      = { kind = "flat" },
     -- The help icon a label, a tab or a header button carries, and the box
     -- its text opens in (ui/v2/controls/InfoIcon.lua). Flat draws the
     -- bordered square with the character centered in it, and a bordered box

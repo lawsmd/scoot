@@ -509,6 +509,31 @@ Skin.Register("forever", {
             },
             fallback = { kind = "flat" },
         },
+        -- An emphasized row, the page's master control at its top: the nav
+        -- column's group card, Legacy-Tree-Frame-Card cut the same way,
+        -- around the whole row. The row then reads as a sibling of the cards
+        -- in the column beside it rather than as a settings row with a bar
+        -- on its edge. No glow: the card's glow marks the open group, and the
+        -- row's field stands where it would hang. The border draws at the nav
+        -- card's opacity piece. The card's own face is darker than the page
+        -- around it and read as a hole in it, so the face goes and the
+        -- title band's streaks fill inside the border instead: the
+        -- page background's top band, rows 0 to 52 between the column
+        -- splits the window's grid cuts at, on the pageStreaks piece. The
+        -- open section's body color was the first fill and read too plain
+        -- beside the band; it stays as the fallback. Retail has no such
+        -- atlas and keeps the flat accent bar.
+        emphasis = {
+            kind = "sliced", atlas = "Legacy-Tree-Frame-Card",
+            slice = { left = 12, right = 12, top = 12, bottom = 12 },
+            edge = { left = 3, right = 3, top = 3, bottom = 2 },
+            pieces = { border = "cardBorder", fill = "cardFill" },
+            fill = {
+                atlas = "Legacy-Tree-Frame-background", rect = { left = 125, right = 806, top = 0, bottom = 52 },
+                piece = "pageStreaks", fallback = "collapsible",
+            },
+            fallback = { kind = "flat" },
+        },
         -- The help icon, so far the one beside the page header's Defaults
         -- button. Blizzard hangs the same pair in its own options list, a
         -- DefaultsButton with a help button beside it, and the art under that
@@ -897,6 +922,17 @@ Skin.Register("forever", {
         -- for; gap 0 sets the list against the field's edge, as the menu
         -- sits under its dropdown.
         popupList = { optionHeight = 20, fontSize = 12, textInset = 14, fontRole = "value", gap = 0 },
+        -- An emphasized row on its card (chrome.emphasis). scale multiplies
+        -- the row's name, its description, the field and the row's height,
+        -- the field's width with them. The name takes the nav card's own
+        -- role, Deep Shadow on the same art. padX is the room between the
+        -- border and the name on the left and the field on the right; padY
+        -- is added above the name and under the description, and the row
+        -- grows by both. 16 and 0 read cramped on the beta. inner is the
+        -- border's depth, which the hover fill keeps inside; fillInset is
+        -- where the bronze band ends, 6 inside the row, and the fill starts.
+        emphasis = { scale = 1.2, labelFontRole = "navLabel", padX = 28, padY = 10,
+                     inner = 8, fillInset = 6 },
         home = {
             guideInset = 40, guideIconSize = 24, guideRowSpacing = 11, guideTextWidth = 304,
             guideTextSize = 11, guideIconTextGap = 8, accentInset = 6,
