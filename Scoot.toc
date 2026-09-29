@@ -41,6 +41,7 @@ core/fontpair.lua
 core/abbrev.lua
 core/catalogs.lua
 core/pool.lua
+core/aurarow.lua
 core/refresh.lua
 core/opacity.lua
 core/enforce.lua
