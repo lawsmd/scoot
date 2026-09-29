@@ -156,6 +156,15 @@ local function blankCompanion(companion)
     pcall(companion.SetText, companion, "")
 end
 
+-- Three counters on the real string, read by /scoot debug fontpair capture:
+-- how many times the mirror ran, how many of those wrote a secret into the
+-- copy, and how many ended with the copy blanked. A row the damage meter
+-- writes every combat refresh whose mirror count stands still is a hook that
+-- did not fire; a blank count that climbs is a copy SetText that failed.
+local function count(fs, key)
+    fs[key] = (fs[key] or 0) + 1
+end
+
 -- Every branch leaves the copy either right or blank. The plain branch is
 -- protected as well: this runs inside a hooksecurefunc post-hook on the caller's
 -- SetText, so a raise here lands in the caller, and damagemetersY/layout.lua
@@ -164,13 +173,21 @@ end
 local function mirrorValue(fs, text)
     local companion = fs.__scootPair
     if not companion or not fs.__scootPairActive then return end
+    count(fs, "__scootPairMirrors")
     if text == nil then
+        count(fs, "__scootPairBlanks")
         blankCompanion(companion)
     elseif type(issecretvalue) == "function" and issecretvalue(text) then
-        if not pcall(companion.SetText, companion, text) then blankCompanion(companion) end
+        if pcall(companion.SetText, companion, text) then
+            count(fs, "__scootPairSecretWrites")
+        else
+            count(fs, "__scootPairBlanks")
+            blankCompanion(companion)
+        end
     else
         local ok, stripped = pcall(addon.FontPair.StripEscapes, tostring(text))
         if not ok or not pcall(companion.SetText, companion, stripped) then
+            count(fs, "__scootPairBlanks")
             blankCompanion(companion)
         end
     end
@@ -186,6 +203,7 @@ local function mirrorFromGetText(fs)
     if ok then
         mirrorValue(fs, text)
     else
+        count(fs, "__scootPairBlanks")
         blankCompanion(companion)
     end
 end
