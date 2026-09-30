@@ -396,26 +396,9 @@ end
 -- resolution and fallback behavior as the string it mirrors.
 addon.ApplyFontFile = applyFontFile
 
--- Apply font settings to a FontString. Style keys are pseudo-styles decoded
--- here, not raw engine flags. NONE, OUTLINE, and THICKOUTLINE pass through;
--- the rest compose:
---   SHADOW*: drop shadow, SetShadowColor(0,0,0,0.8) + SetShadowOffset(1,-1).
---   HEAVY*: upper-right shadow, SetShadowColor(0,0,0,0.9) + SetShadowOffset(1,1);
---     thickens the glyph opposite the drop-shadow direction.
---   *SLUG: appends the SLUG engine flag (vector text renderer) when the client
---     accepts it (addon.FontStyles.slugSupported); dropped silently otherwise,
---     so a stored crisp value renders its base style on incapable clients.
---   DEEPSHADOW*: draws a black offset copy of the string behind it via
---     addon.FontPair (core/fontpair.lua); the built-in shadow stays zeroed.
---
--- Returns true when the REQUESTED face was applied, false when the
--- client would not load it (the string is left with whatever readable font it
--- had, or given a fallback if it had none). Callers that care can surface the
--- "this face needs a full client restart" case -- see verifyAppliedFace in
--- unitframesz/engine.lua.
-function addon.ApplyFontStyle(fs, font, size, style)
-    if not fs then return end
-    local applied = true
+-- A pseudo-style key decoded into the engine flag string and what rides beside
+-- it: heavy or drop shadow, and the paired copy.
+local function decodeStyle(style)
     style = style or ""
 
     -- Suffix first: the crisp variants wrap a base key.
@@ -454,6 +437,69 @@ function addon.ApplyFontStyle(fs, font, size, style)
         style = (style == "") and "SLUG"
             or (style .. addon.FontStyles.slugSeparator .. "SLUG")
     end
+
+    return style, heavy, shadow, paired
+end
+
+local function outlineClass(flags)
+    if flags:find("THICKOUTLINE", 1, true) then return 2 end
+    if flags:find("OUTLINE", 1, true) then return 1 end
+    return 0
+end
+
+local function fileNameOf(path)
+    return string.lower(path:match("[^\\/]+$") or path)
+end
+
+local function readable(v, kind)
+    return type(v) == kind and not (type(issecretvalue) == "function" and issecretvalue(v))
+end
+
+-- Does the string hold the font a style asks for? SetFont can report success
+-- and leave the string on the font it had, so the one proof is what GetFont
+-- reads back: the face by file name, the size to a tenth of a point, the
+-- outline by class. SLUG is left out of the compare, since the client drops it
+-- where it does not apply. Returns nil when the string will not say.
+--
+-- Read a frame or more after the SetFont being checked: GetFont reports the
+-- old face for about a frame after SetFont touches a freshly loaded file.
+function addon.FontReadsAs(fs, font, size, style)
+    if not fs or not fs.GetFont then return nil end
+    local ok, face, height, flags = pcall(fs.GetFont, fs)
+    if not ok or not readable(face, "string") or not readable(height, "number") then
+        return nil
+    end
+    if flags ~= nil and not readable(flags, "string") then return nil end
+
+    local wanted = decodeStyle(style)
+    if outlineClass(flags or "") ~= outlineClass(wanted) then return false end
+    if type(size) == "number" and math.abs(height - size) > 0.1 then return false end
+    if type(font) == "string" and fileNameOf(face) ~= fileNameOf(font) then return false end
+    return true
+end
+
+-- Apply font settings to a FontString. Style keys are pseudo-styles decoded
+-- here, not raw engine flags. NONE, OUTLINE, and THICKOUTLINE pass through;
+-- the rest compose:
+--   SHADOW*: drop shadow, SetShadowColor(0,0,0,0.8) + SetShadowOffset(1,-1).
+--   HEAVY*: upper-right shadow, SetShadowColor(0,0,0,0.9) + SetShadowOffset(1,1);
+--     thickens the glyph opposite the drop-shadow direction.
+--   *SLUG: appends the SLUG engine flag (vector text renderer) when the client
+--     accepts it (addon.FontStyles.slugSupported); dropped silently otherwise,
+--     so a stored crisp value renders its base style on incapable clients.
+--   DEEPSHADOW*: draws a black offset copy of the string behind it via
+--     addon.FontPair (core/fontpair.lua); the built-in shadow stays zeroed.
+--
+-- Returns true when the REQUESTED face was applied, false when the
+-- client would not load it (the string is left with whatever readable font it
+-- had, or given a fallback if it had none). Callers that care can surface the
+-- "this face needs a full client restart" case -- see verifyAppliedFace in
+-- unitframesz/engine.lua.
+function addon.ApplyFontStyle(fs, font, size, style)
+    if not fs then return end
+    local applied = true
+    local heavy, shadow, paired
+    style, heavy, shadow, paired = decodeStyle(style)
 
     -- Apply the font.
     --
