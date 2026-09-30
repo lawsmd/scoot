@@ -427,6 +427,7 @@ function DMY._RefreshBarRows(windowIndex, comp)
 
                 DMY._PopulateBarRow(row, player, key, cfg, merged, numColumns, inCombat)
                 row:Show()
+                DMY._EnsureRowFonts(win, row)
             else
                 row:Hide()
             end
@@ -453,6 +454,7 @@ function DMY._RefreshBarRows(windowIndex, comp)
         if player then
             DMY._PopulateBarRow(win.pinnedRow, player, localPlayerKey, cfg, merged, numColumns, inCombat)
             win.pinnedRow:Show()
+            DMY._EnsureRowFonts(win, win.pinnedRow)
             win.pinnedSeparator:Show()
         else
             win.pinnedRow:Hide()

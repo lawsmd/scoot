@@ -536,6 +536,21 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     local nameFace = addon.ResolveFontFace(textNames.fontFace)
     local nameStyle = textNames.fontStyle or "OUTLINE"
     local rankSize = math.max(6, (textNames.fontSize or 12) - 1)
+
+    -- What a row's three kinds of string are meant to carry, kept for
+    -- _EnsureRowFonts. The generation lets each string start its retries over
+    -- after a pass, and the pass time keeps the check off this frame, where
+    -- GetFont can still read the font the pass replaced.
+    local valueFace, valueSize, valueStyle = addon.ResolveTextFont(textValues, dmyTextFontOpts)
+    local _, nameSize = addon.ResolveTextFont(textNames, dmyTextFontOpts)
+    win._rowFonts = {
+        name = { nameFace, nameSize, nameStyle },
+        rank = { nameFace, rankSize, nameStyle },
+        value = { valueFace, valueSize, valueStyle },
+    }
+    win._rowFontGen = (win._rowFontGen or 0) + 1
+    win._rowFontsAt = GetTime()
+
     for r = 1, DMY.MAX_POOL do
         local row = win.barRows[r]
         ApplyTextStyle(row.nameText, textNames)
@@ -572,6 +587,47 @@ function DMY._ApplyFullStyling(windowIndex, comp)
     DMY._CalculateColumnWidths(windowIndex, comp)
     DMY._LayoutBarRows(windowIndex, comp)
     DMY._RefreshBarRows(windowIndex, comp)
+end
+
+--------------------------------------------------------------------------------
+-- Row fonts, held at the moment a row is shown
+--------------------------------------------------------------------------------
+
+-- A styling pass reaches every row in the pool, and most of them are empty and
+-- hidden when it runs. A row styled only in that state has been seen in a
+-- fight with its three strings still on the fonts they were created with,
+-- while the Deep Shadow copies behind them carried the styled font: a light
+-- string with a thin outline over a heavier copy. SetFont reported nothing.
+-- So the fonts are checked against what GetFont reads back each time a row is
+-- shown, and set again on the row that does not match.
+local MAX_FONT_TRIES = 3
+
+local function holdFont(fs, want, gen)
+    if not fs or not want then return end
+    if fs._dmyFontGen ~= gen then
+        fs._dmyFontGen = gen
+        fs._dmyFontTries = 0
+    end
+    if addon.FontReadsAs(fs, want[1], want[2], want[3]) then
+        fs._dmyFontTries = 0
+        return
+    end
+    -- A face the client will not load never reads back, so the retries stop
+    -- until the next styling pass.
+    if fs._dmyFontTries >= MAX_FONT_TRIES then return end
+    fs._dmyFontTries = fs._dmyFontTries + 1
+    addon.ApplyFontStyle(fs, want[1], want[2], want[3])
+end
+
+function DMY._EnsureRowFonts(win, row)
+    local fonts = win and win._rowFonts
+    if not fonts or not row or win._rowFontsAt == GetTime() then return end
+    local gen = win._rowFontGen
+    holdFont(row.nameText, fonts.name, gen)
+    holdFont(row.rankText, fonts.rank, gen)
+    for c = 1, win._numColumns or 1 do
+        holdFont(row.valueTexts and row.valueTexts[c], fonts.value, gen)
+    end
 end
 
 --------------------------------------------------------------------------------
