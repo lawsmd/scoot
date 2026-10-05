@@ -298,6 +298,7 @@ ui/v2/controls/ScrollList.lua
 ui/v2/controls/ColumnHeader.lua
 ui/v2/controls/Tag.lua
 ui/v2/controls/RoleMarks.lua
+ui/v2/controls/Roster.lua
 ui/v2/controls/NumericInput.lua
 ui/v2/controls/EmptyState.lua
 ui/v2/controls/Sweep.lua
