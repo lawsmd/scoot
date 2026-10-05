@@ -65,6 +65,8 @@ end
 --   filter          true for the box above the rows; filterLetters caps it
 --                   (default 32)
 --   maxRows         the most rows drawn
+--   silent          true opens without the open sound, for a list rebuilt
+--                   on every keystroke
 --
 -- Returns a handle: Open, OpenAt(x, y), OpenAtCursor, Close, Toggle,
 -- IsShown, Destroy, frame.
@@ -384,7 +386,7 @@ function Controls.CreatePopupList(opts)
 
         popup:Show()
         if withFilter then filterBox:SetFocus() end
-        PlaySound(SOUNDKIT.IG_MAINMENU_OPEN)
+        if not opts.silent then PlaySound(SOUNDKIT.IG_MAINMENU_OPEN) end
     end
 
     function list:Open()

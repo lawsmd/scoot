@@ -30,6 +30,12 @@ local SEARCH_COOLDOWN = 3
 -- Blizzard's cap on concurrent applications, a local in its own file
 local MAX_APPLICATIONS = 5
 
+-- Two more numbers Blizzard keeps local to its own file: the Dungeons
+-- category, which takes the advanced filter and the recommended-only
+-- search, and the most auto-complete rows shown
+GF.DUNGEONS_CATEGORY = 2
+GF.MAX_AUTOCOMPLETE = 6
+
 GF.state = {
     results = {},        -- the sorted search result ids, Scoot's own copy
     totalResults = 0,
@@ -142,6 +148,18 @@ function GF.ActivityName(info)
     local ok, name = pcall(C_LFGList.GetActivityFullName, activityID, nil, plainBool(info.isWarMode))
     if ok and type(name) == "string" then return name end
     return nil
+end
+
+-- The row's playstyle line, from the enum's own strings; the protected
+-- GetPlaystyleString is never called
+function GF.GeneralPlaystyleString(value)
+    local P = Enum and Enum.LFGEntryGeneralPlaystyle
+    if not P or value == nil then return "" end
+    if value == P.Learning then return Str("GROUP_FINDER_GENERAL_PLAYSTYLE1", "") end
+    if value == P.FunRelaxed then return Str("GROUP_FINDER_GENERAL_PLAYSTYLE2", "") end
+    if value == P.FunSerious then return Str("GROUP_FINDER_GENERAL_PLAYSTYLE3", "") end
+    if value == P.Expert then return Str("GROUP_FINDER_GENERAL_PLAYSTYLE4", "") end
+    return ""
 end
 
 function GF.IsDeclined(status)

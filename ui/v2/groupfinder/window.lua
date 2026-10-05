@@ -53,6 +53,15 @@ local LAYOUT = {
         noteY = 36,
         buttonX = 4, buttonY = 6,
     },
+    -- The search panel's row of box, refresh and filter, and the column the
+    -- rows keep on the right for the composition or the status
+    search = {
+        rowY = 36, rowHeight = 26, gap = 4,
+        boxTop = 70,
+        filterWidth = 84,
+        rightColumn = 112,
+        nameTop = 5,
+    },
 }
 UI.LAYOUT = LAYOUT
 
@@ -305,8 +314,8 @@ function UI.MakeHeading(panel, text)
 end
 
 -- The box under the heading: the collapsible section's fill inside a closed
--- border, where Blizzard draws its inset
-function UI.MakeBox(panel)
+-- border, where Blizzard draws its inset; top overrides the panel's
+function UI.MakeBox(panel, top)
     local C = Controls()
     local m = M().collapsible or {}
     local box = CreateFrame("Frame", nil, panel)
@@ -316,7 +325,7 @@ function UI.MakeBox(panel)
         alpha = m.borderAlpha or 0.6,
         corners = "overlap",
     })
-    box:SetPoint("TOPLEFT", panel, "TOPLEFT", LAYOUT.panel.boxX, -LAYOUT.panel.boxTop)
+    box:SetPoint("TOPLEFT", panel, "TOPLEFT", LAYOUT.panel.boxX, -(top or LAYOUT.panel.boxTop))
     box:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -LAYOUT.panel.boxX, LAYOUT.panel.boxBottom)
     return box
 end

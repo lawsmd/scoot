@@ -344,6 +344,8 @@ ui/v2/WindowShell.lua
 ## their builders on it. Reads addon.GroupFinder from the component above.
 ui/v2/groupfinder/window.lua
 ui/v2/groupfinder/categories.lua
+ui/v2/groupfinder/search.lua
+ui/v2/groupfinder/signup.lua
 ui/v2/Navigation.lua
 ui/v2/settings/NavModel.lua
 ui/v2/settings/HeaderModel.lua

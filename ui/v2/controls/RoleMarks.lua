@@ -20,8 +20,10 @@
 --   onChange(tank, healer, damage)
 --               a toggle tile clicked
 --
--- Display: SetSlots({ { role, filled }, ... }) in order; SetRoles(tank,
--- healer, damage) draws T H D with the given ones lit. Toggle: SetRoles,
+-- Display: SetSlots({ { role, filled, color }, ... }) in order, where color,
+-- an { r, g, b }, paints a filled slot in place of the accent (a class
+-- color); SetRoles(tank, healer, damage) draws T H D with the given ones
+-- lit. Toggle: SetRoles,
 -- GetRoles() -> tank, healer, damage, SetRoleEnabled(role, enabled). Both
 -- size the frame to their content.
 local addonName, addon = ...
@@ -75,7 +77,9 @@ local function BuildDisplay(frame, opts)
         local dr, dg, db = Theme:GetDimTextColor()
         for i, slot in ipairs(self._slots) do
             local fs = pool:Get(i)
-            if slot.filled then
+            if slot.filled and type(slot.color) == "table" then
+                fs:SetTextColor(slot.color[1] or ar, slot.color[2] or ag, slot.color[3] or ab, 1)
+            elseif slot.filled then
                 fs:SetTextColor(ar, ag, ab, 1)
             else
                 fs:SetTextColor(dr, dg, db, 0.5)

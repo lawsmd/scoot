@@ -524,8 +524,12 @@ files["core/components/groupfinder/"] = {
 files["ui/v2/groupfinder/"] = {
     read_globals = {
         "C_LFGList", "C_LFGInfo", "C_SocialRestrictions", "IsRestrictedAccount", "bit",
-        "LFGListFrame",
-        "LFGListUtil_GetDecoratedCategoryName",
+        "GetLFGRoles", "SetLFGRoles", "GameRulesUtil", "PlayerUtil", "ChatFrameUtil", "SecondsToTime",
+        "LFGListFrame", "LFGListApplicationDialog",
+        "LFGListUtil_GetDecoratedCategoryName", "LFGListUtil_IsAppEmpowered",
+        "LFGListUtil_SortActivitiesByRelevancy", "LFGListCanChangeLanguages",
         "LFGListCategorySelection_SelectCategory", "LFGListCategorySelection_StartFindGroup",
+        "LFGListSearchPanel_DoSearch", "LFGListFrame_SetActivePanel",
+        "LFGList_ReportListing", "LFGList_ReportAdvertisement",
     },
 }
