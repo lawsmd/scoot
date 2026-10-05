@@ -428,9 +428,9 @@ local function Build(parent)
         if word then
             Theme():ApplyFont(row._status, "miniLabel")
             row._status:SetText(word)
-            local sr, sg, sb
-            if lit then sr, sg, sb = Theme():GetAccentColor() else sr, sg, sb = Theme():GetDimTextColor() end
-            row._status:SetTextColor(sr, sg, sb, 1)
+            local wr, wg, wb
+            if lit then wr, wg, wb = Theme():GetAccentColor() else wr, wg, wb = Theme():GetDimTextColor() end
+            row._status:SetTextColor(wr, wg, wb, 1)
             row._status:ClearAllPoints()
             row._status:SetPoint("RIGHT", row, "RIGHT", right, 0)
             row._status:Show()
