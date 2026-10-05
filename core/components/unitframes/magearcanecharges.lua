@@ -22,7 +22,7 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local TEXTURE_PATH = "Interface\\AddOns\\Scoot\\media\\textures\\pixel-arcane-charge"
+local TEXTURE_PATH = "Interface\\AddOns\\Scoot\\media\\textures\\pixel-arcane-charge.png"
 local CHARGE_ICON_SIZE = 30
 local BLIZZARD_ORB_ATLAS = "UF-Arcane-Orb"
 

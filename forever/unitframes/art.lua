@@ -206,15 +206,17 @@ local LIGHT_ALPHA = 0.30
 
 local BRONZE_ROOT = addon.MediaPath .. "forever\\media\\unitframes\\"
 
--- Art.Paths key -> file name under BRONZE_ROOT.
+-- Art.Paths key -> file name under BRONZE_ROOT. These are PNGs and carry the
+-- extension: an extension-less path resolves to .blp, then .tga, never .png.
+-- Art.Paths above names Blizzard's BLPs and stays extension-less.
 local BRONZE_FILES = {
-    border = "UI-TargetingFrame",
-    borderElite = "UI-TargetingFrame-Elite",
-    borderRare = "UI-TargetingFrame-Rare",
-    borderMinus = "UI-TargetingFrame-Minus",
-    borderToT = "UI-TargetofTargetFrame",
-    borderSmall = "UI-SmallTargetingFrame",
-    borderSmallNoMana = "UI-SmallTargetingFrame-NoMana",
+    border = "UI-TargetingFrame.png",
+    borderElite = "UI-TargetingFrame-Elite.png",
+    borderRare = "UI-TargetingFrame-Rare.png",
+    borderMinus = "UI-TargetingFrame-Minus.png",
+    borderToT = "UI-TargetofTargetFrame.png",
+    borderSmall = "UI-SmallTargetingFrame.png",
+    borderSmallNoMana = "UI-SmallTargetingFrame-NoMana.png",
 }
 
 local function currentStyle()

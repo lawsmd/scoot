@@ -192,7 +192,7 @@ end
 -- point to full width at 55% of its length, then even out to the edge: a
 -- wide icon's top and bottom sit near halfway along it. The Cooldown turns
 -- it with the swipe and tints it.
-local SWIPE_LINE_TEXTURE = "Interface\\AddOns\\" .. addonName .. "\\media\\scootauras\\swipe-line"
+local SWIPE_LINE_TEXTURE = "Interface\\AddOns\\" .. addonName .. "\\media\\scootauras\\swipe-line.png"
 
 SAU.SWIPE_LINE_TEXTURE = SWIPE_LINE_TEXTURE
 

@@ -4,9 +4,9 @@ local addonName, addon = ...
 
 local CG = addon.CustomGroups
 
-local SCOOT_ICON = "Interface\\AddOns\\Scoot\\ScootIcon"
+local SCOOT_ICON = "Interface\\AddOns\\Scoot\\ScootIcon.png"
 -- Backdrop keyed out, so the logo sits on the tab graphic instead of on a black square.
-local SCOOT_ICON_TRANSPARENT = "Interface\\AddOns\\Scoot\\ScootIconTransparent"
+local SCOOT_ICON_TRANSPARENT = "Interface\\AddOns\\Scoot\\ScootIconTransparent.png"
 local DISPLAY_MODE = "scoot"
 local ICON_SIZE = 38
 local ICON_PADDING = 8

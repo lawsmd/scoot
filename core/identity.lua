@@ -19,4 +19,6 @@ local addonName, addon = ...
 addon.Brand = "Scoot"
 addon.MediaPath = "Interface\\AddOns\\" .. addonName .. "\\"
 addon.SlashToken = "scoot"
-addon.MinimapIcon = addon.MediaPath .. "ScootIcon"
+-- A PNG is named with its extension: an extension-less texture path resolves
+-- to .blp, then .tga, and never to .png.
+addon.MinimapIcon = addon.MediaPath .. "ScootIcon.png"

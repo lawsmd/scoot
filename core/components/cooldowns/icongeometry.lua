@@ -202,7 +202,7 @@ end
 -- Square Cooldown Swipe
 --------------------------------------------------------------------------------
 
-local SQUARE_SWIPE_PATH = "Interface\\AddOns\\Scoot\\media\\masks\\squareswipe"
+local SQUARE_SWIPE_PATH = "Interface\\AddOns\\Scoot\\media\\masks\\squareswipe.png"
 
 function Overlays.ApplySquareSwipe(cdmIcon)
     if not cdmIcon then return end

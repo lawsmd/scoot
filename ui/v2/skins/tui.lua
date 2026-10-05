@@ -53,11 +53,11 @@ Skin.Register("tui", {
     },
 
     textures = {
-        NOISE_OVERLAY = ROOT .. "media\\textures\\frosted-noise",
-        SCOOT_ICON    = ROOT .. "ScootIcon",
+        NOISE_OVERLAY = ROOT .. "media\\textures\\frosted-noise.png",
+        SCOOT_ICON    = ROOT .. "ScootIcon.png",
         -- The logo with the black backdrop keyed out, for surfaces that are
         -- not black.
-        SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent",
+        SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent.png",
     },
 
     -- How each surface is drawn. Every role here is the framework's own flat

@@ -374,7 +374,7 @@ end
 -- outside the 198 px Minimap that puts the band's inner edge on the map edge.
 local function squareBorderArt()
     return addon.MinimapSquareBorder or {
-        texture = addon.MediaPath .. "media\\minimap\\square-border",
+        texture = addon.MediaPath .. "media\\minimap\\square-border.png",
         band = 9,
     }
 end

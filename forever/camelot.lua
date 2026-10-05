@@ -35,10 +35,12 @@ addon.SlashToken = "camelot"
 -- star's points sit inside that margin. The black rim is part of the art and
 -- sits inside the same 88%, so every surface that draws the file gets it and
 -- no drawing code has to add one.
+-- A PNG is named with its extension: an extension-less texture path resolves
+-- to .blp, then .tga, and never to .png.
 addon.Logo = {
-    bronze   = addon.MediaPath .. "forever\\media\\CamelotLogoBronze",
-    alliance = addon.MediaPath .. "forever\\media\\CamelotLogoAlliance",
-    horde    = addon.MediaPath .. "forever\\media\\CamelotLogoHorde",
+    bronze   = addon.MediaPath .. "forever\\media\\CamelotLogoBronze.png",
+    alliance = addon.MediaPath .. "forever\\media\\CamelotLogoAlliance.png",
+    horde    = addon.MediaPath .. "forever\\media\\CamelotLogoHorde.png",
 }
 
 -- The minimap button's icon, the bronze mark, read by core/minimap.lua at login

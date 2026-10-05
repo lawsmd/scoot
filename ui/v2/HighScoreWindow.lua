@@ -227,7 +227,7 @@ local function CreateHighScoreFrame()
     local banner = frame:CreateTexture(nil, "ARTWORK")
     banner:SetSize(400, BANNER_HEIGHT)
     banner:SetPoint("TOP", frame, "TOP", 0, 30)
-    banner:SetTexture(ROOT .. "media\\ScootBanner")
+    banner:SetTexture(ROOT .. "media\\ScootBanner.png")
     frame._banner = banner
 
     -- "HIGH SCORES" title

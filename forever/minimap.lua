@@ -30,7 +30,7 @@ local DEFAULT_POSITION = 220
 -- overhang in pixels outside the 198 px Minimap that puts the band's inner
 -- edge on the map edge (the file's band is 0.0488 of its opening).
 addon.MinimapSquareBorder = {
-    texture = addon.MediaPath .. "forever\\media\\minimap\\square-border",
+    texture = addon.MediaPath .. "forever\\media\\minimap\\square-border.png",
     band = 10,
 }
 

@@ -267,7 +267,7 @@ end
 Anim.Register({
 	id = "exclamationBlink",
 	category = "loop",
-	texture = "Interface\\AddOns\\Scoot\\media\\animations\\Exclamation",
+	texture = "Interface\\AddOns\\Scoot\\media\\animations\\Exclamation.png",
 	defaultSize = { 16, 16 },
 	buildAnimGroup = function(tex)
 		local ag = tex:CreateAnimationGroup()
@@ -284,7 +284,7 @@ Anim.Register({
 Anim.Register({
 	id = "oneUp",
 	category = "alert",
-	texture = "Interface\\AddOns\\Scoot\\media\\animations\\1UP",
+	texture = "Interface\\AddOns\\Scoot\\media\\animations\\1UP.png",
 	defaultSize = { 64, 64 },
 	buildAnimGroup = function(tex)
 		local ag = tex:CreateAnimationGroup()

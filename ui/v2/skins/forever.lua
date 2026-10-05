@@ -154,9 +154,9 @@ Skin.Register("forever", {
     -- The two SCOOT_ICON keys still name the other addon's art because
     -- nothing in Camelot draws them yet. Both resolve through the junction.
     textures = {
-        NOISE_OVERLAY = ROOT .. "media\\textures\\frosted-noise",
-        SCOOT_ICON    = ROOT .. "ScootIcon",
-        SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent",
+        NOISE_OVERLAY = ROOT .. "media\\textures\\frosted-noise.png",
+        SCOOT_ICON    = ROOT .. "ScootIcon.png",
+        SCOOT_ICON_TRANSPARENT = ROOT .. "ScootIconTransparent.png",
         -- The window's portrait and the Edit Mode dialog's mark: Camelot's
         -- emblem, the file the minimap button draws, named once in
         -- forever/camelot.lua. Scoot can wear this skin through

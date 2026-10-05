@@ -107,7 +107,7 @@ Navigation.NavModel = {
 addon.UI.SettingsPanel.HeaderModel = {
     title = {
         text = "Camelot",
-        texture = addon.MediaPath .. "forever\\media\\CamelotBanner",
+        texture = addon.MediaPath .. "forever\\media\\CamelotBanner.png",
         texCoord = { 4/1024, 1020/1024, 113/512, 399/512 },
         aspect = 1016 / 286,
     },
