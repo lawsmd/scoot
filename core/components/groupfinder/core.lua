@@ -142,12 +142,26 @@ function GF.ActivityInfo(activityID)
     return nil
 end
 
+-- The activity's full name, with a Mythic+ activity's group name, the
+-- "Mythic Keystone" in its parentheses, shortened to M+. The group name is
+-- read from the client, so the cut holds in any language, and a name that
+-- does not carry it is returned whole.
 function GF.ActivityName(info)
     local activityID = GF.ActivityID(info)
     if not activityID then return nil end
     local ok, name = pcall(C_LFGList.GetActivityFullName, activityID, nil, plainBool(info.isWarMode))
-    if ok and type(name) == "string" then return name end
-    return nil
+    if not ok or type(name) ~= "string" then return nil end
+    if plain(name) == nil then return name end
+    local activity = GF.ActivityInfo(activityID)
+    if not activity or plainBool(activity.isMythicPlusActivity) ~= true then return name end
+    local groupID = plainNumber(activity.groupFinderActivityGroupID)
+    if not groupID then return name end
+    local okGroup, groupName = pcall(C_LFGList.GetActivityGroupInfo, groupID)
+    groupName = okGroup and plain(groupName) or nil
+    if type(groupName) ~= "string" or groupName == "" then return name end
+    local from, to = string.find(name, groupName, 1, true)
+    if not from then return name end
+    return string.sub(name, 1, from - 1) .. "M+" .. string.sub(name, to + 1)
 end
 
 -- The row's playstyle line, from the enum's own strings; the protected

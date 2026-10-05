@@ -114,12 +114,12 @@ local function CreateRow(row)
     row._name:SetPoint("RIGHT", row, "RIGHT", -(padX + L.rightColumn), 0)
     row._name:SetWordWrap(false)
 
-    row._activity = UI.DimText(row, "desc")
-    row._activity:SetPoint("TOPLEFT", row._name, "BOTTOMLEFT", 0, -1)
+    row._activity = UI.DimText(row, "desc", L.subSize)
+    row._activity:SetPoint("TOPLEFT", row._name, "BOTTOMLEFT", L.subIndent, -1)
     row._activity:SetPoint("RIGHT", row._name, "RIGHT", 0, 0)
     row._activity:SetWordWrap(false)
 
-    row._playstyle = UI.DimText(row, "desc")
+    row._playstyle = UI.DimText(row, "desc", L.subSize)
     row._playstyle:SetPoint("TOPLEFT", row._activity, "BOTTOMLEFT", 0, -1)
     row._playstyle:SetPoint("RIGHT", row._name, "RIGHT", 0, 0)
     row._playstyle:SetWordWrap(false)
@@ -220,8 +220,8 @@ local function RenderRow(panel, row, item)
 
     -- The fonts first: a string styled while empty keeps its creation font
     theme:ApplyFont(row._name, "label")
-    theme:ApplyFont(row._activity, "desc")
-    theme:ApplyFont(row._playstyle, "desc")
+    theme:ApplyFont(row._activity, "desc", LAYOUT.search.subSize)
+    theme:ApplyFont(row._playstyle, "desc", LAYOUT.search.subSize)
     theme:ApplyFont(row._count, "miniLabel")
     theme:ApplyFont(row._timer, "miniLabel")
 

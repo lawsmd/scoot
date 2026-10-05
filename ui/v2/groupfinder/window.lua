@@ -56,14 +56,17 @@ local LAYOUT = {
         boxTop = 40, boxBottom = 44, boxX = 4,
         buttonX = 4, buttonY = 6,
     },
-    -- The search panel's row of box, refresh and filter, and the column the
-    -- rows keep on the right for the composition or the status
+    -- The search panel's row of box, refresh and filter, the column the
+    -- rows keep on the right for the composition or the status, and the
+    -- lines under a row's name: a size smaller and stepped in, so the name
+    -- stands out
     search = {
         rowY = 36, rowHeight = 26, gap = 4,
         boxTop = 70,
         filterWidth = 84,
         rightColumn = 112,
         nameTop = 5,
+        subIndent = 10, subSize = 10,
     },
 }
 UI.LAYOUT = LAYOUT
