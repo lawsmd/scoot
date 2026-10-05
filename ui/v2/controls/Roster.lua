@@ -4,12 +4,12 @@
 -- height, so a row of two members stands as tall as a row of five; a line
 -- with no member is blank, or a hollow shape for a slot still open.
 --
--- The role column is dim: an icon per role when the caller names a set,
--- else a font shape (a filled square, a circled plus and a filled diamond
--- for tank, healer and damage, with a hollow pair for an open slot; an
--- open slot's icon is the same icon faded). The leader's mark is whatever
--- texture the caller names, tinted the line's color; the control names no
--- art of its own.
+-- The role column is an icon per role when the caller names a set,
+-- desaturated and tinted the line's color, else a dim font shape (a filled
+-- square, a circled plus and a filled diamond for tank, healer and
+-- damage). A slot with no member is a blank line. The leader's mark is
+-- whatever texture the caller names, tinted the line's color; the control
+-- names no art of its own.
 --
 -- opts:
 --   lines       the grid's line count; default 5
@@ -21,8 +21,7 @@
 --               trailing text; default 4
 --   icons       { TANK, HEALER, DAMAGER } atlas names for the role column
 --   iconSize    default 12
---   glyphs      { TANK, HEALER, DAMAGER } filled shapes, without icons
---   hollow      the same three for an open slot
+--   glyphs      { TANK, HEALER, DAMAGER } shapes, without icons
 --   leaderMark  { atlas } or { file, coords } for the leader's mark; none
 --               draws no mark
 --   markWidth, markHeight
@@ -30,10 +29,10 @@
 --
 -- SetLines(list): entry i fills line i and a missing one blanks it. An
 -- entry is { role, filled, color = { r, g, b }, text, leader, trailing }:
--- filled false draws the open slot's icon or shape alone; filled true
--- draws the role, the text in color (the primary text color without one),
--- the mark after the text when leader is set, and trailing after the mark
--- in the same color. No role draws no icon and starts the text at the
+-- filled false blanks the line as a missing entry does; filled true draws
+-- the role, the text in color (the primary text color without one), the
+-- mark after the text when leader is set, and trailing after the mark in
+-- the same color. No role draws no icon and starts the text at the
 -- column's left. The text gives way to the mark and the trailing text when
 -- the line is short. SetDimmed(on) halves the alpha; Repaint() re-reads
 -- the skin's colors, and every roster repaints together on a skin change.
@@ -47,12 +46,11 @@ local DEFAULTS = {
     lines = 5, lineHeight = 13, width = 150,
     glyphWidth = 14, gap = 4, iconSize = 12,
     markWidth = 14, markHeight = 9,
-    hollowAlpha = 0.7, openAlpha = 0.35, dimmedAlpha = 0.5,
+    dimmedAlpha = 0.5,
 }
 
--- A square, a circled plus and a diamond, filled, then their hollow pair
+-- A filled square, a circled plus and a filled diamond
 local GLYPHS = { TANK = "\226\150\160", HEALER = "\226\138\149", DAMAGER = "\226\151\134" }
-local HOLLOW = { TANK = "\226\150\161", HEALER = "\226\151\139", DAMAGER = "\226\151\135" }
 
 -- Every control, repainted together on a skin change
 local live = setmetatable({}, { __mode = "k" })
@@ -80,7 +78,6 @@ function Controls.CreateRoster(parent, opts)
     local glyphWidth = opts.glyphWidth or DEFAULTS.glyphWidth
     local gap = opts.gap or DEFAULTS.gap
     local glyphs = opts.glyphs or GLYPHS
-    local hollow = opts.hollow or HOLLOW
     local icons = type(opts.icons) == "table" and opts.icons or nil
     local iconSize = opts.iconSize or DEFAULTS.iconSize
     local leaderMark = type(opts.leaderMark) == "table" and opts.leaderMark or nil
@@ -149,10 +146,11 @@ function Controls.CreateRoster(parent, opts)
         line.trailing:Hide()
     end
 
+    -- The shape is dim; the icon, the text, the mark and the trailing text
+    -- take the line's color
     local function Paint(line, entry)
         local dr, dg, db = Theme:GetDimTextColor()
-        line.glyph:SetTextColor(dr, dg, db, entry.filled and 1 or DEFAULTS.hollowAlpha)
-        line.icon:SetVertexColor(dr, dg, db, entry.filled and 1 or DEFAULTS.openAlpha)
+        line.glyph:SetTextColor(dr, dg, db, 1)
         local c = entry.color
         local r, g, b
         if type(c) == "table" then
@@ -160,6 +158,7 @@ function Controls.CreateRoster(parent, opts)
         else
             r, g, b = Theme:GetPrimaryTextColor()
         end
+        line.icon:SetVertexColor(r, g, b, 1)
         line.text:SetTextColor(r, g, b, 1)
         line.trailing:SetTextColor(r, g, b, 1)
         line.mark:SetVertexColor(r, g, b, 1)
@@ -168,11 +167,11 @@ function Controls.CreateRoster(parent, opts)
     -- An empty string has no rect, so what follows it hangs off the frame
     local function Fill(line, entry)
         local role = entry.role
-        local filled = entry.filled and true or false
         local atlas = role and icons and icons[role] or nil
-        local shape = role and not atlas and (filled and glyphs[role] or hollow[role]) or nil
+        local shape = role and not atlas and glyphs[role] or nil
         if atlas then
             line.icon:SetAtlas(atlas)
+            line.icon:SetDesaturated(true)
             line.icon:Show()
             line.glyph:Hide()
         elseif shape then
@@ -186,7 +185,7 @@ function Controls.CreateRoster(parent, opts)
         end
 
         local left = role and (glyphWidth + gap) or 0
-        local text = filled and entry.text or nil
+        local text = entry.text
         local hasText = type(text) == "string" and text ~= ""
         line.text:ClearAllPoints()
         line.text:SetPoint("LEFT", frame, "TOPLEFT", left, line.y)
@@ -200,8 +199,8 @@ function Controls.CreateRoster(parent, opts)
             line.text:Hide()
         end
 
-        local showMark = filled and entry.leader and leaderMark and true or false
-        local trailingText = filled and entry.trailing or nil
+        local showMark = entry.leader and leaderMark and true or false
+        local trailingText = entry.trailing
         local hasTrailing = type(trailingText) == "string" and trailingText ~= ""
         local room = width - left
 
@@ -240,7 +239,7 @@ function Controls.CreateRoster(parent, opts)
         self._entries = list or {}
         for i = 1, lines do
             local entry = self._entries[i]
-            if entry then
+            if entry and entry.filled then
                 Fill(self._lines[i], entry)
             else
                 Blank(self._lines[i])
@@ -251,7 +250,7 @@ function Controls.CreateRoster(parent, opts)
     function frame:Repaint()
         for i = 1, lines do
             local entry = self._entries[i]
-            if entry then Paint(self._lines[i], entry) end
+            if entry and entry.filled then Paint(self._lines[i], entry) end
         end
     end
 
