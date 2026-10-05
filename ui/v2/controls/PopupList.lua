@@ -44,15 +44,22 @@ end
 --
 -- A list may come in sections, each of one or more columns: getSections
 -- names them, and the rows then stand in their sections from the top, a
--- rule between sections, a caption over a section or over each of its
--- columns, and each section's keys down its columns in turn. The filter
--- box and maxRows do not apply to a sectioned list.
+-- rule or a space between sections, a caption over a section or over each
+-- of its columns, a row of buttons under the caption, and each section's
+-- keys down its columns in turn. The filter box and maxRows do not apply
+-- to a sectioned list.
+--
+-- A list may also stand inside a host instead of floating: embed names the
+-- frame, and the list then draws no surface, takes no click outside and no
+-- Escape, and Open builds the rows at the host's top-left and returns
+-- their height, for a drawer or a pane that holds a check list.
 --
 -- opts:
 --   anchor          the field frame the list opens against; also the width
 --                   source when width is nil
 --   align           "right" stands the list's right edge on the anchor's,
 --                   for a list wider than its field
+--   embed           the frame the list stands in, in place of floating
 --   width           fixed width; nil measures anchor:GetWidth() at open and
 --                   falls back to 150 while the anchor has no layout yet
 --   optionHeight    default 26
@@ -63,9 +70,13 @@ end
 --                   itself); nil keeps the fixed base level
 --   getKeys         function() -> ordered key list
 --   getValues       function() -> key-to-label map
---   getSections     function() -> { { label, labels, keys, columns }, ... }
---                   or nil for the flat list; label is one caption, labels
---                   one per column, columns the count (default 1)
+--   getSections     function() -> { { label, labels, keys, columns,
+--                   buttons, separator }, ... } or nil for the flat list;
+--                   label is one caption, labels one per column, columns
+--                   the count (default 1), buttons { { label, onClick } }
+--                   a row of small buttons under the caption, separator
+--                   "rule" (default), "space" or "none" above a section
+--                   after the first
 --   getSelectedKey  function() -> the current key, for the highlight
 --   isInert         function(key) -> true lists the option dimmed, with hover
 --                   and click ignored
@@ -80,8 +91,9 @@ end
 --   silent          true opens without the open sound, for a list rebuilt
 --                   on every keystroke
 --
--- Returns a handle: Open, OpenAt(x, y), OpenAtCursor, Close, Toggle,
--- IsShown, Destroy, frame.
+-- Returns a handle: Open (the rows' height), OpenAt(x, y), OpenAtCursor,
+-- Close, Toggle, IsShown, Refresh (the rows rebuilt in place while shown,
+-- the height), Destroy, frame.
 function Controls.CreatePopupList(opts)
     local theme = GetTheme()
     local Chrome = addon.UI.Chrome
@@ -99,6 +111,7 @@ function Controls.CreatePopupList(opts)
     local getValues = opts.getValues
     local getSections = opts.getSections
     local align = opts.align
+    local embed = opts.embed
     local getSelectedKey = opts.getSelectedKey
     local isInert = opts.isInert
     local infoIcons = opts.infoIcons
@@ -109,16 +122,22 @@ function Controls.CreatePopupList(opts)
     local withFilter = opts.filter and true or false
     local maxRows = opts.maxRows
     local filterHeight = pm.filterHeight or 22
-    -- A sectioned list's caption row, the room around a rule, and the rule's
-    -- alpha on the dim text color
+    -- A sectioned list's caption row, the room around a rule, the rule's
+    -- alpha on the dim text color, and a section's buttons
     local captionHeight = pm.captionHeight or 18
     local sectionGap = pm.sectionGap or 4
     local ruleAlpha = pm.ruleAlpha or 0.25
+    local buttonHeight = pm.buttonHeight or 22
+    local buttonGap = pm.buttonGap or 6
 
-    local popup = CreateFrame("Frame", nil, UIParent)
-    popup:SetFrameStrata("FULLSCREEN_DIALOG")
-    popup:SetFrameLevel(100)
-    popup:SetClampedToScreen(true)
+    local popup = CreateFrame("Frame", nil, embed or UIParent)
+    if embed then
+        popup:SetPoint("TOPLEFT", embed, "TOPLEFT", 0, 0)
+    else
+        popup:SetFrameStrata("FULLSCREEN_DIALOG")
+        popup:SetFrameLevel(100)
+        popup:SetClampedToScreen(true)
+    end
     popup:Hide()
 
     -- What the rows keep off the frame's edge: the role's padding, else the
@@ -132,7 +151,10 @@ function Controls.CreatePopupList(opts)
     local padL, padR = padding.left or 0, padding.right or 0
     local padT, padB = padding.top or 0, padding.bottom or 0
 
-    if art then
+    -- An embedded list stands on its host's surface
+    if embed then
+        popup._backdrop = nil
+    elseif art then
         popup._backdrop = Chrome.Backdrop("popupList", popup)
     else
         -- Popup chrome: solid fill plus a 1px accent border
@@ -161,15 +183,17 @@ function Controls.CreatePopupList(opts)
         end
     end
 
-    dismiss = Controls.AttachDismissOnClickOutside(function()
-        list:Close()
-    end)
-
-    -- ESC key handling
-    addon.EscapeKey.Attach(popup, function()
-        list:Close()
-        PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
-    end)
+    -- A floating list goes on a click outside or Escape; an embedded one
+    -- goes with its host
+    if not embed then
+        dismiss = Controls.AttachDismissOnClickOutside(function()
+            list:Close()
+        end)
+        addon.EscapeKey.Attach(popup, function()
+            list:Close()
+            PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
+        end)
+    end
 
     local function RowOn(btn)
         if multi then
@@ -204,7 +228,13 @@ function Controls.CreatePopupList(opts)
             local dr, dg, dbl = theme:GetDimTextColor()
             Tint(btn, dr, dg, dbl, 0.6)
         elseif selected then
-            btn._bg:SetColorTexture(accentR, accentG, accentB, hover and 0.35 or 0.3)
+            -- A checked row of a check list shows it by its box and its
+            -- text; the wash marks the one chosen row of a single choice
+            if multi then
+                btn._bg:SetColorTexture(accentR, accentG, accentB, hover and 0.15 or 0)
+            else
+                btn._bg:SetColorTexture(accentR, accentG, accentB, hover and 0.35 or 0.3)
+            end
             Tint(btn, accentR, accentG, accentB, 1)
         else
             btn._bg:SetColorTexture(accentR, accentG, accentB, hover and 0.15 or 0)
@@ -212,9 +242,9 @@ function Controls.CreatePopupList(opts)
         end
     end
 
-    -- The captions and rules of a sectioned list, kept and reused across
-    -- builds since a region cannot be released
-    popup._captions, popup._rules = {}, {}
+    -- The captions, rules and buttons of a sectioned list, kept and reused
+    -- across builds since a region cannot be released
+    popup._captions, popup._rules, popup._buttons = {}, {}, {}
 
     local function ClearRows()
         for _, btn in ipairs(popup._optionButtons) do
@@ -227,6 +257,28 @@ function Controls.CreatePopupList(opts)
         wipe(popup._optionButtons)
         for _, fs in ipairs(popup._captions) do fs:Hide() end
         for _, tex in ipairs(popup._rules) do tex:Hide() end
+        for _, btn in ipairs(popup._buttons) do btn:Hide() end
+    end
+
+    -- A section's button, the subtle look of a button inside content; the
+    -- click runs whatever the last build put on it
+    local function SectionButton(index)
+        local btn = popup._buttons[index]
+        if not btn then
+            btn = Controls:CreateButton({
+                parent = popup,
+                text = "",
+                height = buttonHeight,
+                fontSize = fontSize,
+                borderWidth = 1,
+                borderAlpha = 0.6,
+                onClick = function(b, mouseButton)
+                    if b._run then b._run(b, mouseButton) end
+                end,
+            })
+            popup._buttons[index] = btn
+        end
+        return btn
     end
 
     local function Caption(index)
@@ -377,17 +429,22 @@ function Controls.CreatePopupList(opts)
             return totalHeight
         end
 
-        local captions, rules = 0, 0
+        local captions, rules, buttons = 0, 0, 0
         for s, section in ipairs(sections) do
             local cols = math.max(1, section.columns or 1)
             local colW = inner / cols
             if s > 1 then
-                top = top + sectionGap
-                rules = rules + 1
-                local rule = Rule(rules)
-                rule:SetPoint("TOPLEFT", popup, "TOPLEFT", padL + textInset, -top)
-                rule:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -(padR + textInset), -top)
-                top = top + 1 + sectionGap
+                local separator = section.separator or "rule"
+                if separator == "rule" then
+                    top = top + sectionGap
+                    rules = rules + 1
+                    local rule = Rule(rules)
+                    rule:SetPoint("TOPLEFT", popup, "TOPLEFT", padL + textInset, -top)
+                    rule:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -(padR + textInset), -top)
+                    top = top + 1 + sectionGap
+                elseif separator == "space" then
+                    top = top + sectionGap * 3
+                end
             end
             local labels = section.labels or (section.label and { section.label }) or nil
             if labels then
@@ -401,6 +458,20 @@ function Controls.CreatePopupList(opts)
                     end
                 end
                 top = top + captionHeight
+            end
+            if section.buttons and #section.buttons > 0 then
+                local x = padL + textInset
+                for _, def in ipairs(section.buttons) do
+                    buttons = buttons + 1
+                    local btn = SectionButton(buttons)
+                    btn:SetText(def.label or "")
+                    btn._run = def.onClick
+                    btn:ClearAllPoints()
+                    btn:SetPoint("TOPLEFT", popup, "TOPLEFT", x, -top)
+                    btn:Show()
+                    x = x + (btn:GetWidth() or 0) + buttonGap
+                end
+                top = top + buttonHeight + sectionGap
             end
             -- Down each column in turn
             local keys = section.keys or {}
@@ -482,7 +553,8 @@ function Controls.CreatePopupList(opts)
         end
         local width = opts.width
         if not width then
-            width = anchor and anchor:GetWidth() or 0
+            local source = embed or anchor
+            width = source and source:GetWidth() or 0
             if width < 60 then width = 150 end
         end
         popup:SetWidth(width)
@@ -492,6 +564,10 @@ function Controls.CreatePopupList(opts)
             filterBox:SetText("")
         end
         local totalHeight = BuildRows(width)
+        if embed then
+            popup:Show()
+            return totalHeight
+        end
         Place(totalHeight, at)
 
         dismiss:Show()
@@ -500,10 +576,18 @@ function Controls.CreatePopupList(opts)
         popup:Show()
         if withFilter then filterBox:SetFocus() end
         if not opts.silent then PlaySound(SOUNDKIT.IG_MAINMENU_OPEN) end
+        return totalHeight
     end
 
     function list:Open()
-        OpenWith(nil)
+        return OpenWith(nil)
+    end
+
+    -- The rows built again in place, for a change that moves more than the
+    -- clicked row; nothing while the list is closed
+    function list:Refresh()
+        if not popup:IsShown() then return nil end
+        return BuildRows(popup:GetWidth())
     end
 
     -- x and y in UIParent's space, from its bottom-left corner
@@ -528,7 +612,7 @@ function Controls.CreatePopupList(opts)
     -- Eager teardown for owners that rebuild on re-render
     function list:Destroy()
         list:Close()
-        dismiss:SetParent(nil)
+        if dismiss then dismiss:SetParent(nil) end
         ClearRows()
         if filterBox then
             filterBox:Hide()

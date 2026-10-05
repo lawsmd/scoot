@@ -302,6 +302,7 @@ ui/v2/controls/NumericInput.lua
 ui/v2/controls/EmptyState.lua
 ui/v2/controls/Sweep.lua
 ui/v2/controls/CheckBox.lua
+ui/v2/controls/Drawer.lua
 ui/v2/controls/Fit.lua
 ui/v2/controls/RowScaffold.lua
 ui/v2/controls/PopupList.lua
