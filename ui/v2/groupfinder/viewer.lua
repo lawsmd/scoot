@@ -86,17 +86,39 @@ local function Build(parent)
     local pad = (M().collapsible or {}).contentPadding or 12
     local padX = (M().listRow or {}).padX or 8
 
-    -- The heading is the listing's name; the tags stand at its right
+    -- The heading is the listing's name; the tags stand at its right, off
+    -- the panel's corner, and the heading ends at the leftmost shown one
     panel._heading = UI.MakeHeading(panel, "")
     panel._heading:SetWordWrap(false)
     panel._private = C.CreateTag(panel, { text = "PRIVATE", tone = "dim" })
-    panel._private:SetPoint("RIGHT", panel, "RIGHT", -boxX, 0)
-    panel._private:SetPoint("TOP", panel._heading, "TOP", 0, 0)
     panel._private:Hide()
     panel._voice = C.CreateTag(panel, { text = "VOICE", tone = "dim" })
-    panel._voice:SetPoint("RIGHT", panel._private, "LEFT", -V.tagGap, 0)
     panel._voice:Hide()
-    panel._heading:SetPoint("RIGHT", panel._voice, "LEFT", -V.tagGap, 0)
+
+    -- The shown tags from the corner leftward, then the heading's right
+    -- edge; the heading depends on the tags and never the other way
+    function panel:PlaceTags()
+        local last
+        for _, tag in ipairs({ self._private, self._voice }) do
+            if tag:IsShown() then
+                tag:ClearAllPoints()
+                if last then
+                    tag:SetPoint("RIGHT", last, "LEFT", -V.tagGap, 0)
+                else
+                    tag:SetPoint("TOPRIGHT", self, "TOPRIGHT", -boxX, -(LAYOUT.panel.headingY + V.tagTop))
+                end
+                last = tag
+            end
+        end
+        self._heading:ClearAllPoints()
+        self._heading:SetPoint("TOPLEFT", self, "TOPLEFT", LAYOUT.panel.headingX, -LAYOUT.panel.headingY)
+        if last then
+            self._heading:SetPoint("RIGHT", last, "LEFT", -V.tagGap, 0)
+        else
+            self._heading:SetPoint("RIGHT", self, "RIGHT", -boxX, 0)
+        end
+    end
+    panel:PlaceTags()
 
     local box = UI.MakeBox(panel)
     panel._box = box
@@ -704,6 +726,7 @@ local function Build(parent)
             self._ilvl:SetText("")
             self._private:Hide()
             self._voice:Hide()
+            self:PlaceTags()
             self._roster:SetLines({})
             self._counts:SetLines({})
             self._auto:Hide()
@@ -722,6 +745,7 @@ local function Build(parent)
         SetTextSafe(self._heading, entry.name)
         self._private:SetShown(GF.plainBool(entry.privateGroup) == true)
         self._voice:SetShown(NonEmpty(entry.voiceChat))
+        self:PlaceTags()
         SetTextSafe(self._activity, GF.ActivityName(entry))
         local questID = GF.plainNumber(entry.questID)
         if NonEmpty(entry.comment) then

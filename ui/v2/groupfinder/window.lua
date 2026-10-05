@@ -124,7 +124,7 @@ local LAYOUT = {
     -- columns from the right, the name taking the rest; the actions column
     -- holds the status word, Invite and Decline
     viewer = {
-        infoHeight = 80, subSize = 10, subIndent = 10, lineGap = 1, tagGap = 4,
+        infoHeight = 80, subSize = 10, subIndent = 10, lineGap = 1, tagGap = 4, tagTop = 2,
         columns = { role = 56, ilvl = 36, rating = 46, actions = 86 },
         memberLine = 20, rowPad = 6, roleIcon = 14, roleGap = 2, nameSize = 11,
         inviteWidth = 60, declineWidth = 22, actionGap = 4, buttonHeight = 22,
