@@ -342,9 +342,9 @@ local function Build(parent)
     panel._filter:SetHeight(L.rowHeight)
     panel._filter:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -boxX, -L.rowY)
 
-    -- The circled asterisk is the one refresh-like mark the mono face carries;
-    -- the circle arrows are not in its tables
-    panel._refresh = UI.MakeButton(panel, "\226\138\155", function() panel:Search() end, L.rowHeight)
+    -- The heavy arrow: the mono face has no circle arrow and no magnifier,
+    -- and the arrow reads as "go" beside a search box
+    panel._refresh = UI.MakeButton(panel, "\226\158\156", function() panel:Search() end, L.rowHeight)
     panel._refresh:SetHeight(L.rowHeight)
     panel._refresh:HookScript("OnEnter", function(btn)
         GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")

@@ -29,8 +29,14 @@ GF.Host = Host
 local taken = {}          -- key -> the record of a hosted box
 local focusHooked = {}    -- box -> true once its focus scripts are hooked
 local parked = false
+local parkedStrata        -- PVEFrame's own strata, put back on unpark
 local hooksInstalled = false
 local shield
+
+-- The strata the window draws in; the parked panel is lifted to it so a
+-- hosted box and every ancestor share one strata, as they did in the probe
+local WINDOW_STRATA = "DIALOG"
+local SHIELD_LEVEL = 50
 
 local function Theme()
     return addon.UI.Theme
@@ -52,16 +58,20 @@ local function EnsureShield()
     return shield
 end
 
+-- Alpha 0, mouse off, and the window's strata, so a box hosted out of the
+-- panel and its ancestors stay in one strata; the shield sits above the
+-- panel's own buttons and below the window
 function Host.Park()
     if not PVEFrame or parked then return end
     parked = true
+    local ok, strata = pcall(PVEFrame.GetFrameStrata, PVEFrame)
+    parkedStrata = (ok and SS.plainString(strata)) or "MEDIUM"
     PVEFrame:SetAlpha(0)
     PVEFrame:EnableMouse(false)
+    PVEFrame:SetFrameStrata(WINDOW_STRATA)
     local s = EnsureShield()
-    local ok, strata = pcall(PVEFrame.GetFrameStrata, PVEFrame)
-    local okL, level = pcall(PVEFrame.GetFrameLevel, PVEFrame)
-    s:SetFrameStrata(ok and type(strata) == "string" and strata or "MEDIUM")
-    s:SetFrameLevel(((okL and type(level) == "number") and level or 0) + 500)
+    s:SetFrameStrata(WINDOW_STRATA)
+    s:SetFrameLevel(SHIELD_LEVEL)
     s:ClearAllPoints()
     s:SetAllPoints(PVEFrame)
     s:Show()
@@ -73,6 +83,7 @@ function Host.Unpark()
     if shield then shield:Hide() end
     PVEFrame:SetAlpha(1)
     PVEFrame:EnableMouse(true)
+    PVEFrame:SetFrameStrata(parkedStrata or "MEDIUM")
 end
 
 -- Opens Blizzard's panel on the Premade Groups page by the call its own
@@ -282,8 +293,27 @@ function Host.Take(key, box, holder, opts)
     box:SetPoint("TOPLEFT", holder, "TOPLEFT", left, -top)
     box:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -right, bottom)
     box:SetIgnoreParentAlpha(true)
-    box:SetFrameStrata(holder:GetFrameStrata())
+    -- The parked panel is already in the window's strata; a box whose chain
+    -- is not (the dialog's) takes it here
+    local okS, boxStrata = pcall(box.GetFrameStrata, box)
+    if not (okS and boxStrata == holder:GetFrameStrata()) then
+        box:SetFrameStrata(holder:GetFrameStrata())
+    end
     box:SetFrameLevel(holder:GetFrameLevel() + 1)
+    -- An ancestor that clips its children to its own rect would clip the box
+    -- out of the window; none is known, and one found is opened for the stay
+    rec.unclipped = rec.unclipped or {}
+    local f = box
+    for _ = 1, 10 do
+        local okP, parent = pcall(f.GetParent, f)
+        f = okP and parent or nil
+        if not f or f == UIParent then break end
+        local okC, clips = pcall(f.DoesClipChildren, f)
+        if okC and clips == true then
+            f:SetClipsChildren(false)
+            rec.unclipped[#rec.unclipped + 1] = f
+        end
+    end
     SetHolderFocus(holder, box.HasFocus and box:HasFocus() or (rec.editBox.HasFocus and rec.editBox:HasFocus()))
     return true
 end
@@ -311,6 +341,9 @@ function Host.Release(key)
     if rec.font and rec.editBox and rec.editBox.SetFont then
         pcall(rec.editBox.SetFont, rec.editBox, rec.font[1], rec.font[2] or 12, rec.font[3] or "")
     end
+    for _, f in ipairs(rec.unclipped or {}) do
+        if f.SetClipsChildren then f:SetClipsChildren(true) end
+    end
     SetHolderFocus(rec.holder, false)
 end
 
@@ -336,9 +369,10 @@ local function Describe(push, label, frame)
         if b ~= nil then return tostring(a) .. "," .. tostring(b) .. "," .. tostring(c) .. "," .. tostring(d) end
         return tostring(a)
     end
-    push("%s: %s shown=%s visible=%s alpha=%s eff=%s ignoreParent=%s strata=%s level=%s mouse=%s",
+    push("%s: %s shown=%s visible=%s alpha=%s eff=%s ignoreParent=%s strata=%s level=%s mouse=%s clips=%s scale=%s",
         label, get("GetName"), get("IsShown"), get("IsVisible"), get("GetAlpha"), get("GetEffectiveAlpha"),
-        get("IsIgnoringParentAlpha"), get("GetFrameStrata"), get("GetFrameLevel"), get("IsMouseEnabled"))
+        get("IsIgnoringParentAlpha"), get("GetFrameStrata"), get("GetFrameLevel"), get("IsMouseEnabled"),
+        get("DoesClipChildren"), get("GetEffectiveScale"))
     push("    rect left=%s bottom=%s w=%s h=%s points=%s",
         get("GetLeft"), get("GetBottom"), get("GetWidth"), get("GetHeight"), get("GetNumPoints"))
 end
@@ -384,7 +418,14 @@ addon:RegisterDebugCommand({
                     okF and tostring(path) or "err", tostring(size), tostring(flags),
                     eb.HasFocus and tostring(eb:HasFocus()) or "-",
                     eb.GetTextInsets and table.concat({ eb:GetTextInsets() }, ",") or "-")
-                if eb.Instructions then Describe(push, "    instructions", eb.Instructions) end
+                if eb.Instructions then
+                    Describe(push, "    instructions", eb.Instructions)
+                    local okT, text = pcall(eb.Instructions.GetText, eb.Instructions)
+                    push("    instructions text=%s", okT and tostring(text) or "err")
+                end
+                local okText, boxText = pcall(eb.GetText, eb)
+                push("    editBox text=%s textColor=%s", okText and tostring(boxText) or "err",
+                    eb.GetTextColor and table.concat({ eb:GetTextColor() }, ",") or "-")
             end
         end
         if not next(taken) then
