@@ -9,8 +9,8 @@
 -- Blizzard's own SelectCategory, so its hidden panel holds the selection,
 -- and Find Group runs its StartFindGroup, which sets the search panel's
 -- category, runs the search and makes the search panel active; the window
--- follows that switch. Start Group is drawn off until the listing panel
--- exists.
+-- follows that switch. Start Group opens the listing form on the category
+-- (create.lua), off for the reason its tooltip gives.
 local addonName, addon = ...
 
 local GF = addon.GroupFinder
@@ -161,9 +161,14 @@ local function Build(parent)
     end)
     panel._find:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
 
-    panel._start = UI.MakeButton(panel, Str("START_A_GROUP", "Start a Group"), nil, LAYOUT.buttonWidth)
+    panel._start = UI.MakeButton(panel, Str("START_A_GROUP", "Start a Group"), function()
+        local cs = CategoryPanel()
+        local category = cs and GF.plainNumber(cs.selectedCategory)
+        if not (category and UI.Create) or GF.StartGroupBlock() then return end
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        UI.Create:Open(category, GF.plainNumber(cs.selectedFilters) or 0)
+    end, LAYOUT.buttonWidth, function() return panel._startReason end)
     panel._start:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
-    panel._start:SetEnabled(false)
 
     -- The selection Blizzard's panel holds, found among the rows
     function panel:RefreshItems()
@@ -190,7 +195,7 @@ local function Build(parent)
 
     -- Find Group follows Blizzard's nav rules: a category, and an account
     -- that may speak. A missing category is plain to see; a silenced account
-    -- is the tooltip's. Start Group takes its rules with the listing panel.
+    -- is the tooltip's. Start Group adds the leader and queue rules.
     function panel:RefreshButtons()
         local cs = CategoryPanel()
         local selected = cs and GF.plainNumber(cs.selectedCategory)
@@ -206,7 +211,9 @@ local function Build(parent)
         end
         self._findReason = reason
         self._find:SetEnabled(findOn)
-        self._start:SetEnabled(false)
+        local startReason = GF.StartGroupBlock()
+        self._startReason = startReason
+        self._start:SetEnabled(selected ~= nil and startReason == nil)
     end
 
     function panel:Refresh()

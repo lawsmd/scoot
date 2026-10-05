@@ -311,6 +311,70 @@ function GF.SignUpBlock(skipSelection)
     return nil
 end
 
+-- The reasons Start a Group is off, in the order Blizzard's category panel
+-- and its search panel test them, past the category itself, which the
+-- caller sees: a member who does not lead, a queue the player is in, a
+-- silenced or squelched account, and a listing already up
+function GF.StartGroupBlock()
+    local home = LE_PARTY_CATEGORY_HOME
+    if IsInGroup(home) and not UnitIsGroupLeader("player", home) then
+        return Str("LFG_LIST_NOT_LEADER", "Only the leader can start a group")
+    end
+    local message = LFGListUtil_GetActiveQueueMessage and LFGListUtil_GetActiveQueueMessage(false)
+    if message then return message end
+    if C_SocialRestrictions then
+        if C_SocialRestrictions.IsSilenced and C_SocialRestrictions.IsSilenced() then
+            return Str("ERR_ACCOUNT_SILENCED", "This account is silenced")
+        elseif C_SocialRestrictions.IsSquelched and C_SocialRestrictions.IsSquelched() then
+            return Str("ERR_USER_SQUELCHED", "This account is squelched")
+        end
+    end
+    if GF.HasEntry() and UnitIsGroupLeader("player", home) then
+        return Str("CANNOT_DO_THIS_WHILE_LFGLIST_LISTED", "Not while a group is listed")
+    end
+    return nil
+end
+
+function GF.HasEntry()
+    return (C_LFGList.HasActiveEntryInfo and C_LFGList.HasActiveEntryInfo()) == true
+end
+
+-- The player's own listing, or nil; under chat lockdown its text fields
+-- are secret and pass through the plain guards at the reads
+function GF.ActiveEntry()
+    local ok, entry = pcall(C_LFGList.GetActiveEntryInfo)
+    if ok and type(entry) == "table" then return entry end
+    return nil
+end
+
+-- Whether the player may act on the listing: the leader, or an assistant
+function GF.CanManageEntry()
+    return (LFGListUtil_IsEntryEmpowered and LFGListUtil_IsEntryEmpowered()) and true or false
+end
+
+-- The keystone the player holds as an activity and its group, the regular
+-- one first and the timewalking one after, as Blizzard's form picks them
+function GF.OwnedKeystoneActivity()
+    local read = C_LFGList.GetOwnedKeystoneActivityAndGroupAndLevel
+    if not read then return nil end
+    for _, timewalking in ipairs({ false, true }) do
+        local ok, activityID, groupID = pcall(read, timewalking)
+        activityID = ok and plainNumber(activityID) or nil
+        if activityID then return activityID, plainNumber(groupID) end
+    end
+    return nil
+end
+
+-- Dungeons search and list the current expansion's activities only, as
+-- Blizzard's own filter resolution does
+function GF.ResolveCategoryFilters(categoryID, filters)
+    local F = Enum.LFGListFilter
+    if categoryID == GF.DUNGEONS_CATEGORY and F then
+        return bit.band(bit.bnot(F.NotRecommended), bit.bor(filters or 0, F.Recommended))
+    end
+    return filters or 0
+end
+
 -- The leaver badge beside Sign Up: the player is flagged and the result is a
 -- Mythic+ activity
 function GF.IsLeaverFlagged(id)
@@ -579,6 +643,7 @@ addon:RegisterComponentInitializer(function(self)
     component:On("LFG_LIST_SEARCH_FAILED", OnSearchFailed)
     component:On("LFG_LIST_APPLICATION_STATUS_UPDATED", OnApplicationStatus)
     component:On("LFG_LIST_ACTIVE_ENTRY_UPDATE", function() GF.Notify("entry") end)
+    component:On("LFG_LIST_ENTRY_CREATION_FAILED", function() GF.Notify("creationFailed") end)
     component:On("LFG_ROLE_CHECK_UPDATE", function()
         GF.RebuildResults()
         GF.Notify("results")

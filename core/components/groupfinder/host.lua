@@ -41,6 +41,13 @@ local shield
 local WINDOW_STRATA = "DIALOG"
 local SHIELD_LEVEL = 50
 
+-- The border pieces of a scrolling text box's template, put at alpha 0
+-- while the box is hosted: the sign-up note and the listing's details
+Host.SCROLL_BOX_ART = {
+    "TopLeftTex", "TopRightTex", "TopTex", "BottomLeftTex", "BottomRightTex",
+    "BottomTex", "LeftTex", "RightTex", "MiddleTex",
+}
+
 local function Theme()
     return addon.UI.Theme
 end
@@ -292,6 +299,9 @@ end
 -- opts.artKeys      region keys on box to put at alpha 0
 -- opts.artFrames    child frame keys whose textures go to alpha 0
 -- opts.textInsets   { left, right, top, bottom } for SetTextInsets
+-- opts.editBoxWidth the width for the text region inside a ScrollFrame box,
+--                   which takes its width once at load and not from its
+--                   frame; its own width comes back on release
 -- opts.fallbackPoints  the points to restore when none could be read
 function Host.Take(key, box, holder, opts)
     opts = opts or {}
@@ -324,6 +334,17 @@ function Host.Take(key, box, holder, opts)
         box:SetFrameStrata(holder:GetFrameStrata())
     end
     box:SetFrameLevel(holder:GetFrameLevel() + 1)
+    local editBox = rec.editBox
+    if opts.editBoxWidth and editBox ~= box and editBox.SetWidth then
+        if not rec.editBoxWidth then
+            local okW, w = pcall(editBox.GetWidth, editBox)
+            rec.editBoxWidth = (okW and SS.safeNumber(w)) or 0
+        end
+        editBox:SetWidth(math.max(1, opts.editBoxWidth))
+        if editBox.Instructions and editBox.Instructions.SetWidth then
+            editBox.Instructions:SetWidth(math.max(1, opts.editBoxWidth))
+        end
+    end
     -- An ancestor that clips its children to its own rect would clip the box
     -- out of the window; none is known, and one found is opened for the stay
     rec.unclipped = rec.unclipped or {}
@@ -364,6 +385,12 @@ function Host.Release(key)
     end
     if rec.font and rec.editBox and rec.editBox.SetFont then
         pcall(rec.editBox.SetFont, rec.editBox, rec.font[1], rec.font[2] or 12, rec.font[3] or "")
+    end
+    if rec.editBoxWidth and rec.editBoxWidth > 0 and rec.editBox and rec.editBox.SetWidth then
+        rec.editBox:SetWidth(rec.editBoxWidth)
+        if rec.editBox.Instructions and rec.editBox.Instructions.SetWidth then
+            rec.editBox.Instructions:SetWidth(rec.editBoxWidth)
+        end
     end
     for _, f in ipairs(rec.unclipped or {}) do
         if f.SetClipsChildren then f:SetClipsChildren(true) end

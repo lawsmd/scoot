@@ -517,8 +517,9 @@ files["core/components/groupfinder/"] = {
     read_globals = {
         "C_LFGList", "C_InstanceLeaver", "GetSpecializationRoleEnum",
         "GroupHasOfflineMember", "LE_PARTY_CATEGORY_HOME", "MAX_PARTY_MEMBERS",
-        "LFGListUtil_GetActiveQueueMessage", "LFGListUtil_IsAppEmpowered",
+        "LFGListUtil_GetActiveQueueMessage", "LFGListUtil_IsAppEmpowered", "LFGListUtil_IsEntryEmpowered",
         "PVEFrame", "PVEFrame_ShowFrame", "LFGListApplicationDialog", "LFGListFrame",
+        "C_SocialRestrictions", "UnitIsGroupLeader", "bit",
     },
 }
 files["ui/v2/groupfinder/"] = {
@@ -532,5 +533,12 @@ files["ui/v2/groupfinder/"] = {
         "LFGListCategorySelection_SelectCategory", "LFGListCategorySelection_StartFindGroup",
         "LFGListSearchPanel_DoSearch", "LFGListFrame_SetActivePanel",
         "LFGList_ReportListing", "LFGList_ReportAdvertisement",
+        -- The listing panel: Blizzard's creation panel's own steps and the
+        -- reads behind its valid state
+        "LFGListEntryCreation_SetBaseFilters", "LFGListEntryCreation_Clear", "LFGListEntryCreation_SetEditMode",
+        "LFGListEntryCreation_Select", "LFGListEntryCreation_OnPlayStyleSelectedInternal",
+        "LFGListEntryCreation_ClearFocus", "LFGListEntryCreationCancelButton_OnClick",
+        "LFGListUtil_GetActiveQueueMessage", "MAX_LFG_LIST_GROUP_DROPDOWN_ENTRIES",
+        "C_InstanceLeaver", "UnitFactionGroup", "LE_PARTY_CATEGORY_HOME", "GetAverageItemLevel", "GetNumGroupMembers",
     },
 }

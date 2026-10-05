@@ -25,12 +25,6 @@ local function Controls()
     return addon.UI.Controls
 end
 
--- The border pieces of the note box's template, put at alpha 0 while hosted
-local NOTE_ART = {
-    "TopLeftTex", "TopRightTex", "TopTex", "BottomLeftTex", "BottomRightTex",
-    "BottomTex", "LeftTex", "RightTex", "MiddleTex",
-}
-
 local dialog
 local parts = {}
 local lastActivityID
@@ -168,7 +162,7 @@ function SignUp:Show(resultID)
     if Host.ShowDialogFrame() and blizzard and blizzard.Description then
         Host.Take("note", blizzard.Description, parts.holder, {
             editBox = blizzard.Description.EditBox,
-            artKeys = NOTE_ART,
+            artKeys = Host.SCROLL_BOX_ART,
         })
     end
 end

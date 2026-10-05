@@ -105,9 +105,36 @@ local LAYOUT = {
         -- The drawer is wide for the Dungeons filter's two columns and
         -- narrow for the language rows
         filterDrawerWidth = 500, languageDrawerWidth = 220, filterListFont = 11,
+        -- Start a Group under the no-results message
+        startGroupY = 16,
+    },
+    -- The listing form: the dropdowns' row, the captioned title and details
+    -- boxes, the playstyle, the requirement rows with an input or the voice
+    -- box at their right, and the two options on one line, stacked with a
+    -- gap; the details box's text region is narrower than its frame by
+    -- Blizzard's own margin plus the holder's inset
+    create = {
+        rowHeight = 22, detailsHeight = 46, captionHeight = 12, captionGap = 3,
+        gap = 8, rowGap = 4,
+        inputWidth = 80, voiceWidth = 125, checkGap = 6, optionColumn = 200,
+        inputMax = 9999, detailsInset = 20, finderRows = 12, coverAlpha = 0.85,
     },
 }
 UI.LAYOUT = LAYOUT
+
+-- The leader's crown and the role column's icons, drawn on a result row and
+-- on the listing's own grid: the addon's flat crown tinted the class color,
+-- cut to its edges out of a 64 square; the Raid Manager set the group
+-- frames offer, the one Blizzard art in the window
+UI.LEADER_MARK = {
+    file = addon.MediaPath .. "media\\textures\\crown.png",
+    coords = { 0.0625, 0.9375, 0.140625, 0.796875 },
+}
+
+function UI.RoleIcons()
+    local sets = addon.BarsUtils and addon.BarsUtils.ROLE_ICON_ATLASES
+    return type(sets) == "table" and sets.gm or nil
+end
 
 -- A template's measure at run time, else the table's
 function LAYOUT.Template(name, key, field)
@@ -140,11 +167,21 @@ local function ActivePanelKey()
     if active == lf.CategorySelection then return "categories" end
     if active == lf.SearchPanel then return "search" end
     if active == lf.NothingAvailable then return "nothing" end
+    if active == lf.EntryCreation then return "create" end
+    -- An edit of the listing is this window's own view over the viewer
+    if active == lf.ApplicationViewer then return UI.editing and "create" or "viewer" end
     return "placeholder"
 end
 
 function UI:SyncPanel()
     if not frame or not frame:IsShown() then return end
+    -- Blizzard moving off the viewer ends an edit
+    if UI.editing and UI.Create then
+        local lf = LFGListFrame
+        if not (lf and SS.plainFrame(lf.activePanel) == lf.ApplicationViewer) then
+            UI.Create:EndEdit()
+        end
+    end
     local key = ActivePanelKey()
     if not panels[key] then key = "placeholder" end
     for k, panel in pairs(panels) do
@@ -305,6 +342,7 @@ function UI:Close(reason)
     if self.closing then return end
     self.closing = true
     if UI.SignUp and UI.SignUp.Hide then UI.SignUp:Hide() end
+    if UI.Create and UI.Create.EndEdit then UI.Create:EndEdit() end
     GF.Host.Close(reason ~= "pveframe" and reason ~= "handback")
     if frame and frame:IsShown() then frame:Hide() end
     self.closing = false
@@ -349,6 +387,13 @@ function UI.PrimaryText(parent, role, size)
     local pr, pg, pb = Theme():GetPrimaryTextColor()
     fs:SetTextColor(pr, pg, pb, 1)
     fs:SetJustifyH("LEFT")
+    return fs
+end
+
+-- A caption over a field, dim and small
+function UI.MakeCaption(parent, text)
+    local fs = UI.DimText(parent, "miniLabel")
+    fs:SetText(text or "")
     return fs
 end
 

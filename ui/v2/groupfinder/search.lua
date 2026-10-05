@@ -39,20 +39,6 @@ end
 
 local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER" }
 
--- The leader's crown: the addon's own flat crown, tinted the leader's class
--- color. The file is a 64 square; the coordinates cut to the crown's own
--- edges so the mark carries no clear margin.
-local LEADER_MARK = {
-    file = addon.MediaPath .. "media\\textures\\crown.png",
-    coords = { 0.0625, 0.9375, 0.140625, 0.796875 },
-}
-
--- The role column's icons: the Raid Manager set the group frames offer
-local function RoleIcons()
-    local sets = addon.BarsUtils and addon.BarsUtils.ROLE_ICON_ATLASES
-    return type(sets) == "table" and sets.gm or nil
-end
-
 -- The search box template's own art, put at alpha 0 while hosted; the
 -- clear button keeps its handler and loses its textures
 local SEARCH_ART = { "Left", "Middle", "Right", "searchIcon" }
@@ -75,15 +61,6 @@ end
 local function SelectedCategory()
     local cs = LFGListFrame and LFGListFrame.CategorySelection
     return cs and GF.plainNumber(cs.selectedCategory)
-end
-
--- Dungeons search the current expansion's activities only
-local function ResolveFilters(categoryID, filters)
-    local F = Enum.LFGListFilter
-    if categoryID == GF.DUNGEONS_CATEGORY and F then
-        return bit.band(bit.bnot(F.NotRecommended), bit.bor(filters, F.Recommended))
-    end
-    return filters
 end
 
 local function SetTextSafe(fs, value)
@@ -160,7 +137,7 @@ local function CreateRow(row)
     row._roster = C.CreateRoster(row, {
         lines = R.lines, lineHeight = R.lineHeight, width = L.rightColumn, fontSize = R.fontSize,
         glyphWidth = R.glyphWidth, gap = R.gap, markWidth = R.markWidth, markHeight = R.markHeight,
-        markY = R.markY, iconSize = R.iconSize, icons = RoleIcons(), leaderMark = LEADER_MARK,
+        markY = R.markY, iconSize = R.iconSize, icons = UI.RoleIcons(), leaderMark = UI.LEADER_MARK,
     })
     row._roster:SetPoint("TOPRIGHT", row, "TOPRIGHT", -padX, -R.top)
 
@@ -168,7 +145,7 @@ local function CreateRow(row)
     local Cn = L.counts
     row._counts = C.CreateRoster(row, {
         lines = Cn.lines, lineHeight = Cn.lineHeight, width = Cn.width, fontSize = Cn.fontSize,
-        glyphWidth = Cn.glyphWidth, gap = Cn.gap, iconSize = Cn.iconSize, icons = RoleIcons(),
+        glyphWidth = Cn.glyphWidth, gap = Cn.gap, iconSize = Cn.iconSize, icons = UI.RoleIcons(),
     })
     row._counts:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
 
@@ -479,6 +456,13 @@ local function Build(parent)
     panel._empty:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
     panel._empty:Hide()
 
+    -- Start a Group under the no-results message, as Blizzard's pane offers
+    -- it; off for the reason its tooltip gives
+    panel._start = UI.MakeButton(box, Str("START_A_GROUP", "Start a Group"), function() panel:StartGroup() end,
+        LAYOUT.buttonWidth, function() return GF.StartGroupBlock() end)
+    panel._start:SetPoint("TOP", panel._empty, "CENTER", 0, -L.startGroupY)
+    panel._start:Hide()
+
     -- The redraw over the rows and the message alike
     panel._sweep = C.CreateSweep({ parent = box })
     panel._sweep:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
@@ -608,7 +592,7 @@ local function Build(parent)
         end
         local categoryID = GF.plainNumber(sp.categoryID)
         if not categoryID then self._auto:Close() return end
-        local filters = ResolveFilters(categoryID, GF.plainNumber(sp.filters) or 0)
+        local filters = GF.ResolveCategoryFilters(categoryID, GF.plainNumber(sp.filters) or 0)
         local ids = C_LFGList.GetAvailableActivities(categoryID, nil, filters, text)
         if type(ids) ~= "table" or #ids == 0 then
             self._auto:Close()
@@ -681,6 +665,15 @@ local function Build(parent)
         if not id or GF.SignUpBlock() then return end
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
         UI.SignUp:Show(id)
+    end
+
+    -- The listing form for this search's category, with the panel's
+    -- preferred filters as its base, as Blizzard's own button passes them
+    function panel:StartGroup()
+        local sp = SearchPanel()
+        if not (sp and UI.Create) or GF.StartGroupBlock() then return end
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        UI.Create:Open(GF.plainNumber(sp.categoryID), GF.plainNumber(sp.filters) or 0, GF.plainNumber(sp.preferredFilters))
     end
 
     -- A click selects a result that can take an application; any other
@@ -1095,6 +1088,7 @@ local function Build(parent)
     -- the last answer are not re-read, since the client has let them go
     function panel:RefreshList()
         local state = GF.state
+        self._start:Hide()
         if state.searching then
             if not (self._list.frame:IsShown() and #self._list._items > 0) then
                 self._empty:SetBusy(true, Str("SEARCHING", "Searching"))
@@ -1132,6 +1126,8 @@ local function Build(parent)
             self._empty:SetBusy(false, Str("LFG_LIST_NO_RESULTS_FOUND", "No groups found"))
             self._empty:Show()
             self._list.frame:Hide()
+            self._start:SetEnabled(GF.StartGroupBlock() == nil)
+            self._start:Show()
         else
             self._empty:SetBusy(false)
             self._empty:Hide()
@@ -1151,6 +1147,7 @@ local function Build(parent)
 
     function panel:RefreshButtons()
         self._signUp:SetEnabled(GF.SignUpBlock() == nil)
+        self._start:SetEnabled(GF.StartGroupBlock() == nil)
         local allowed = GF.SearchAllowed()
         self._refresh:SetEnabled(allowed)
         if not allowed then
