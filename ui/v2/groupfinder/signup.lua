@@ -59,7 +59,7 @@ local function Build()
         onEscape = function() SignUp:Hide() end,
         onClose = function() SignUp:Hide() end,
         strata = "DIALOG",
-        level = 200,
+        level = LAYOUT.dialogLevel,
     })
     dialog:Hide()
 

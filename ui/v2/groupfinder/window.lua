@@ -49,6 +49,11 @@ local LAYOUT = {
     dialogWidth = 306,
     dialogHeight = 203,
     buttonWidth = 135,
+    -- The parked panel shares the window's strata, and its frame border
+    -- stands at level 500 with the mouse on, so the window and its dialog
+    -- stand above that
+    windowLevel = 600,
+    dialogLevel = 700,
     -- boxBottom leaves the button's height and a clear gap under the box
     panel = {
         headingX = 8, headingY = 10,
@@ -210,6 +215,7 @@ local function Build()
         escape = "special",
         onClose = function() UI:Close("button") end,
         positionKey = "groupFinderPosition",
+        level = LAYOUT.windowLevel,
     })
     frame:Hide()
     frame._skinName = addon.UI.Skin.ActiveName()
