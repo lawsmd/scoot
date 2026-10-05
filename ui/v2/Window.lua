@@ -271,15 +271,19 @@ end
 function Window:CreateNoiseOverlay(frame, noiseSpec)
     local path = Theme.Textures and Theme.Textures[noiseSpec.texture or "NOISE_OVERLAY"]
     if not path then return nil end
-    local textureSize = noiseSpec.size or 2048
+    local textureSize = noiseSpec.size or 512
 
     local noise = frame:CreateTexture(nil, "BACKGROUND", nil, -7)  -- Above bg (-8)
     noise:SetAllPoints()
-    noise:SetTexture(path)
+    -- REPEAT wrap: the tile is far smaller than the window, and the texcoords
+    -- below run past 1.0 so the grain repeats at native pixel size.
+    noise:SetTexture(path, "REPEAT", "REPEAT")
     noise:SetAlpha(noiseSpec.alpha or 0.25)
     noise:SetBlendMode(noiseSpec.blend or "ADD")
 
-    -- Manual tex-coord tiling (bypasses unreliable SetHorizTile/SetVertTile)
+    -- Tiling by texcoord. SetHorizTile/SetVertTile without the REPEAT wrap on
+    -- SetTexture drew the tile once in the top-left quadrant; the wrap is what
+    -- makes either method repeat.
     local function UpdateNoiseCoords()
         local width, height = frame:GetSize()
         if width and height and width > 0 and height > 0 then

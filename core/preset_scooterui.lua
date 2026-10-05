@@ -16,7 +16,6 @@ Presets:Register({
     recommendedInput = "Mouse + Keyboard",
     tags = { "Desktop", "Mythic+", "Raiding" },
     previewTexture = "Interface\\AddOns\\Scoot\\media\\presets\\ScooterUI",
-    previewThumbnail = "Interface\\AddOns\\Scoot\\media\\presets\\ScooterUI",
     designedFor = { "Optimized for 4k 16:9 monitors", "Competitive PvE content, M+ and Raid" },
     recommends = { "Baganator", "Chattynator", "Platynator" },
     lastUpdated = "2026-03-20",

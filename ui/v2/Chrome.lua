@@ -102,7 +102,7 @@ Chrome.ROLES = {
 Chrome.FLAT = {
     window = {
         kind = "flat", corners = "outset", background = "window",
-        noise = { texture = "NOISE_OVERLAY", size = 2048, alpha = 0.25, blend = "ADD" },
+        noise = { texture = "NOISE_OVERLAY", size = 512, alpha = 0.25, blend = "ADD" },
     },
     -- The floating dialog the font, bar texture, bar border and icon pickers
     -- open in (Controls.CreatePickerShell). It is the window role's small

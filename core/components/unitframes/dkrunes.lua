@@ -4,10 +4,6 @@ local addonName, addon = ...
 
 local FS = addon.FrameState
 
-local function getState(frame)
-	return FS.Get(frame)
-end
-
 local function getProp(frame, key)
 	local st = FS.Get(frame)
 	return st and st[key] or nil
@@ -26,7 +22,7 @@ end
 
 local RUNE_MEDIA_PREFIX = "Interface\\AddOns\\Scoot\\media\\textures\\runes\\pixel-skull-"
 
-local RUNE_MEDIA_EXT = ".tga"
+local RUNE_MEDIA_EXT = ".png"
 
 local SPEC_TEXTURES = {
 	[1] = RUNE_MEDIA_PREFIX .. "blood" .. RUNE_MEDIA_EXT,

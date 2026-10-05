@@ -17,7 +17,6 @@ Presets:Register({
     requiresConsolePort = true,
     tags = { "Handheld", "Steam Deck", "Controller" },
     previewTexture = "Interface\\AddOns\\Scoot\\media\\presets\\ScooterDeck",
-    previewThumbnail = "Interface\\AddOns\\Scoot\\media\\presets\\ScooterDeck",
     designedFor = { "Steam Deck and 7-8 inch handhelds", "Controller gameplay" },
     recommends = { "ConsolePort" },
     lastUpdated = "2026-02-22",

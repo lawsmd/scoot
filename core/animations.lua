@@ -263,7 +263,7 @@ end
 -- Built-in animation registrations
 --------------------------------------------------------------------------------
 
--- 1. exclamationBlink: looping alpha bounce on the Exclamation.tga texture
+-- 1. exclamationBlink: looping alpha bounce on the Exclamation.png texture
 Anim.Register({
 	id = "exclamationBlink",
 	category = "loop",
@@ -280,7 +280,7 @@ Anim.Register({
 	end,
 })
 
--- 2. oneUp: alert FlipBook sprite sheet + upward Translation using 1UP.tga
+-- 2. oneUp: alert FlipBook sprite sheet + upward Translation using 1UP.png
 Anim.Register({
 	id = "oneUp",
 	category = "alert",

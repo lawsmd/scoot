@@ -68,7 +68,7 @@ Skin.Register("tui", {
     chrome = {
         window = {
             kind = "flat", corners = "outset", background = "window",
-            noise = { texture = "NOISE_OVERLAY", size = 2048, alpha = 0.25, blend = "ADD" },
+            noise = { texture = "NOISE_OVERLAY", size = 512, alpha = 0.25, blend = "ADD" },
         },
         dialog        = { kind = "flat", background = "solid" },
         titleBar      = { kind = "ascii", fontRole = "label" },

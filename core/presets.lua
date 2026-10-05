@@ -36,8 +36,7 @@ function Presets:Register(data)
     entry.version = data.version or "PENDING"
     entry.wowBuild = tostring(data.wowBuild or "")
     entry.description = data.description or ""
-    entry.previewTexture = data.previewTexture or "Interface\\AddOns\\Scoot\\media\\presets\\Scoot"
-    entry.previewThumbnail = data.previewThumbnail or entry.previewTexture
+    entry.previewTexture = data.previewTexture
     entry.tags = data.tags or {}
     entry.comingSoon = not not data.comingSoon
     entry.requiresConsolePort = not not data.requiresConsolePort

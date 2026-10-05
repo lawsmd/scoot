@@ -69,7 +69,7 @@ Skin.Register("forever", {
     -- so the dark roles sit lower than tui's greens do and the accent has to
     -- carry the bronze on its own.
     palette = {
-        -- #f2e2c2, the lit highlight of CamelotLogoBronze.tga and the
+        -- #f2e2c2, the lit highlight of CamelotLogoBronze.png and the
         -- brightest of the emblem's three tones (#745436 shadow, #c8a055
         -- body, this). The accent colors the panel's text as well as its
         -- glyphs and fills, and the bronze it held before, #a78151 off
