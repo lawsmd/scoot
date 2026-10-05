@@ -10,6 +10,8 @@
 --   onChange(value) runs on commit (Enter or the focus leaving) when the
 --                   value changed
 --   fontSize, maxLetters (default 8), justifyH (default "CENTER")
+--   inset           the flat border's reach past the box, default 2; a 1
+--                   stands the box beside a single-line field's holder
 --
 -- Returns the EditBox carrying SetValue(n), GetValue(), SetRange(min, max),
 -- SetInputEnabled(bool). Text that is not a number reverts to the last
@@ -31,7 +33,7 @@ function Controls.CreateNumericInput(parent, opts)
     local box = Controls.CreateValueInput(parent, {
         width = opts.width or 60, height = opts.height or m.controlHeight or 24,
         fontSize = opts.fontSize, maxLetters = opts.maxLetters or 8,
-        justifyH = opts.justifyH or "CENTER", textInset = opts.textInset,
+        justifyH = opts.justifyH or "CENTER", textInset = opts.textInset, inset = opts.inset,
     })
     box._min, box._max = opts.min, opts.max
     box._step = opts.step or 1

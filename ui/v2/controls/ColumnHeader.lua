@@ -16,6 +16,9 @@
 --               and the caller re-sorts
 --   open        true drops the strip's bottom edge so a sectionBody under it
 --               closes the box, as a section's header and body draw one box
+--   plain       true draws no box: the names alone over a rule in the dim
+--               color, for a table whose rows carry their own bands;
+--               ruleAlpha sets the rule's alpha, default 0.5
 --
 -- The frame carries _cells (key to { frame, text, mark }) and the methods
 -- SetColumns(columns), SetSort(key, ascending), GetSort(), Cleanup().
@@ -36,8 +39,16 @@ function Controls.CreateColumnHeader(opts)
 
     local frame = CreateFrame("Frame", opts.name, opts.parent)
     frame:SetHeight(opts.height or lm.height or 24)
-    frame._backdrop = Chrome.Backdrop("sectionHeader", frame)
-    frame._backdrop:SetOpen(opts.open and true or false)
+    if opts.plain then
+        local dr, dg, db = Theme:GetDimTextColor()
+        frame._rule = Controls.CreateBorder(frame, {
+            sides = { "BOTTOM" }, thickness = 1, layer = "ARTWORK",
+            color = { dr, dg, db }, alpha = opts.ruleAlpha or 0.5,
+        })
+    else
+        frame._backdrop = Chrome.Backdrop("sectionHeader", frame)
+        frame._backdrop:SetOpen(opts.open and true or false)
+    end
     frame._cells = {}
     frame._order = {}
     frame._sortKey = opts.sortKey
