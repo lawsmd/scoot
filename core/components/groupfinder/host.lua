@@ -6,10 +6,11 @@
 -- The C side reads the search text and the sign-up note from Blizzard's own
 -- edit boxes and from nowhere else, so the window shows those boxes in place
 -- of drawing its own. A box renders only while every ancestor is shown, so
--- PVEFrame stays a shown, managed panel at alpha 0 with the mouse off while
--- the window is up, a shield over its rect takes the clicks its invisible
--- buttons would, and each box is anchored into a Scoot holder with
--- SetIgnoreParentAlpha, lifted to the holder's strata, its template art at
+-- PVEFrame stays a shown, managed panel while the window is up: at alpha 0
+-- with the mouse off, scaled to a dot so none of its invisible buttons
+-- stands under the window, a shield over what is left of its rect, and
+-- each box anchored into a Scoot holder with SetIgnoreParentAlpha and
+-- SetIgnoreParentScale, lifted to the holder's strata, its template art at
 -- alpha 0 and its text in the skin's face. Every call here is a method on a
 -- Blizzard frame outside the Edit Mode system set; nothing writes a field on
 -- one. On release the box goes back to the points it was taken from.
@@ -45,10 +46,16 @@ local invitePark = false  -- Blizzard's invite dialog parked while shown
 -- panel is toplevel in Blizzard's hands, so the client raises it to the
 -- top of its strata as it shows or takes a click, above the window
 -- whenever another frame of the strata stands high (an error window,
--- say), and its invisible buttons and border then take the window's
--- clicks wherever the two overlap; parked, it is neither toplevel nor
--- above this level
+-- say); parked, it is neither toplevel nor above this level
 local PANEL_LEVEL = 1
+
+-- The parked panel's scale: a dot. Its invisible buttons, dropdowns and
+-- border took the window's clicks wherever the two overlapped, and the
+-- client's own account of which frame holds the mouse did not say why;
+-- at this scale every child of the panel collapses to a point at its
+-- corner, and nothing of Blizzard's stands under the window. A hosted box
+-- ignores its parents' scale, so it renders as before.
+local PARK_SCALE = 0.01
 local hooksInstalled = false
 local shield
 
@@ -106,6 +113,7 @@ function Host.Park()
     parkedLevel = (okL and SS.safeNumber(level)) or nil
     PVEFrame:SetToplevel(false)
     PVEFrame:SetFrameLevel(PANEL_LEVEL)
+    PVEFrame:SetScale(PARK_SCALE)
     local s = EnsureShield()
     s:SetFrameStrata(WINDOW_STRATA)
     s:SetFrameLevel(SHIELD_LEVEL)
@@ -123,6 +131,7 @@ function Host.Unpark()
     PVEFrame:SetFrameStrata(parkedStrata or "MEDIUM")
     if parkedLevel then PVEFrame:SetFrameLevel(parkedLevel) end
     PVEFrame:SetToplevel(parkedToplevel)
+    PVEFrame:SetScale(1)
 end
 
 -- Opens Blizzard's panel on the Premade Groups page by the call its own
@@ -424,6 +433,8 @@ function Host.Take(key, box, holder, opts)
     box:SetPoint("TOPLEFT", holder, "TOPLEFT", left, -top)
     box:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -right, bottom)
     box:SetIgnoreParentAlpha(true)
+    -- The parked panel is a dot; the box keeps its own size
+    if box.SetIgnoreParentScale then box:SetIgnoreParentScale(true) end
     -- The parked panel is already in the window's strata; a box whose chain
     -- is not (the dialog's) takes it here
     local okS, boxStrata = pcall(box.GetFrameStrata, box)
@@ -475,6 +486,7 @@ function Host.Release(key)
         box:SetPoint(p[1], p[2], p[3], p[4] or 0, p[5] or 0)
     end
     box:SetIgnoreParentAlpha(false)
+    if box.SetIgnoreParentScale then box:SetIgnoreParentScale(false) end
     if rec.strata then box:SetFrameStrata(rec.strata) end
     if rec.level then box:SetFrameLevel(rec.level) end
     for _, entry in ipairs(rec.regions) do
