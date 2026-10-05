@@ -521,3 +521,11 @@ files["core/components/groupfinder/"] = {
         "PVEFrame", "PVEFrame_ShowFrame", "LFGListApplicationDialog",
     },
 }
+files["ui/v2/groupfinder/"] = {
+    read_globals = {
+        "C_LFGList", "C_LFGInfo", "C_SocialRestrictions", "IsRestrictedAccount", "bit",
+        "LFGListFrame",
+        "LFGListUtil_GetDecoratedCategoryName",
+        "LFGListCategorySelection_SelectCategory", "LFGListCategorySelection_StartFindGroup",
+    },
+}
