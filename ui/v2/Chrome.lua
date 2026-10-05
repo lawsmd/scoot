@@ -1128,6 +1128,11 @@ Flat.navRow = function(h, frame, spec)
     end
 end
 
+-- A list row is a band: the two accent washes of the nav row, a neutral
+-- rule under the row that the eye follows from one edge to the other, and
+-- an accent bar on the chosen row's left edge, so the choice reads without
+-- more wash. The rule is the dim text color at metrics.listRow.ruleAlpha
+-- and the bar is metrics.listRow.barWidth wide.
 Flat.listRow = function(h, frame, spec)
     local m = Metrics().listRow or Metrics().nav
     local hoverBg = frame:CreateTexture(nil, "BACKGROUND")
@@ -1136,11 +1141,24 @@ Flat.listRow = function(h, frame, spec)
     local selectBg = frame:CreateTexture(nil, "BACKGROUND", nil, -1)
     selectBg:SetAllPoints()
     Ctl().RegisterThemedFill(selectBg, m.selectedAlpha)
+    local rule = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+    rule:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    rule:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    rule:SetHeight(1)
+    local dr, dg, dbl = Chrome.Color("dim")
+    rule:SetColorTexture(dr, dg, dbl, m.ruleAlpha or 0.18)
+    local bar = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+    bar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    bar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    bar:SetWidth(m.barWidth or 3)
+    Ctl().RegisterThemedFill(bar, 1)
     h.hoverWins = true
-    h.parts = { hoverBg, selectBg }
+    h.parts = { hoverBg, selectBg, rule, bar }
     h.paint = function()
         hoverBg:SetShown(h.hover and not h.disabled)
         selectBg:SetShown(h.selected and not h.disabled)
+        bar:SetShown(h.selected and not h.disabled)
+        rule:Show()
     end
 end
 

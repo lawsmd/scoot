@@ -3,7 +3,9 @@
 --
 -- The rows are built as Blizzard builds its buttons: one per category, or
 -- two for a category that separates the current expansion's activities from
--- the rest, each kept only when it has activities. A row click runs
+-- the rest, each kept only when it has activities. Each row is a band of
+-- the list (the listRow role's rule and bar) with a chevron at its right
+-- edge, so the band reads as the place to click. A row click runs
 -- Blizzard's own SelectCategory, so its hidden panel holds the selection,
 -- and Find Group runs its StartFindGroup, which sets the search panel's
 -- category, runs the search and makes the search panel active; the window
@@ -27,6 +29,10 @@ end
 local function CategoryPanel()
     return LFGListFrame and LFGListFrame.CategorySelection
 end
+
+-- The heavy angle at a row's right edge, the sign that the row goes
+-- somewhere
+local CHEVRON = "\226\157\175"
 
 --------------------------------------------------------------------------------
 -- The rows
@@ -67,17 +73,34 @@ local function Items()
     return items
 end
 
+-- The label in the row's state color; the chevron dim until the row is
+-- under the cursor or chosen, when it takes the label's color
 local function PaintRow(row)
+    local Theme = addon.UI.Theme
     local r, g, b, a = row._backdrop:LabelColor()
     row._label:SetTextColor(r, g, b, a or 1)
+    local h = row._backdrop
+    if h.selected or h.hover then
+        row._chevron:SetTextColor(r, g, b, a or 1)
+    else
+        local dr, dg, db = Theme:GetDimTextColor()
+        row._chevron:SetTextColor(dr, dg, db, 0.6)
+    end
 end
 
 local function CreateRow(row)
+    local Theme = addon.UI.Theme
     local padX = (M().listRow or {}).padX or 8
+    local chevron = row:CreateFontString(nil, "OVERLAY")
+    Theme:ApplyFont(chevron, "label")
+    chevron:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
+    chevron:SetText(CHEVRON)
+    row._chevron = chevron
+
     local label = row:CreateFontString(nil, "OVERLAY")
-    addon.UI.Theme:ApplyFont(label, "label")
-    label:SetPoint("LEFT", row, "LEFT", padX, 0)
-    label:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
+    Theme:ApplyFont(label, "label")
+    label:SetPoint("LEFT", row, "LEFT", padX + LAYOUT.categories.labelX, 0)
+    label:SetPoint("RIGHT", chevron, "LEFT", -padX, 0)
     label:SetJustifyH("LEFT")
     label:SetWordWrap(false)
     row._label = label
@@ -85,6 +108,7 @@ end
 
 local function RenderRow(row, item)
     addon.UI.Theme:ApplyFont(row._label, "label")
+    addon.UI.Theme:ApplyFont(row._chevron, "label")
     row._label:SetText(item.label or "")
     PaintRow(row)
 end
@@ -105,7 +129,6 @@ local function Build(parent)
     local list = C.CreateScrollList({
         parent = box,
         rowHeight = LAYOUT.Template("LFGListCategoryTemplate", "categoryRow"),
-        rowGap = 3,
         createRow = CreateRow,
         render = RenderRow,
         onSelect = function(item)

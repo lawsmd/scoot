@@ -179,8 +179,10 @@ Skin.Register("tui", {
                       trackAlpha = 0.1, thumbAlpha = 0.5, thumbHoverAlpha = 0.8, thumbDragAlpha = 1 },
         -- A scroll list's rows (Controls.CreateScrollList, the listRow
         -- role): the row's height, what its text keeps off the edges, the
-        -- two accent washes, and the wash a row's own status draws at
-        listRow = { height = 24, padX = 8, hoverAlpha = 0.15, selectedAlpha = 0.25, statusAlpha = 0.12 },
+        -- two accent washes, the wash a row's own status draws at, the
+        -- neutral rule under each row and the accent bar on the chosen one
+        listRow = { height = 24, padX = 8, hoverAlpha = 0.15, selectedAlpha = 0.25, statusAlpha = 0.12,
+                    ruleAlpha = 0.18, barWidth = 3 },
         button = { height = 26, padding = 12, borderWidth = 2, fontSize = 12 },
         tab = {
             height = 26, padding = 16, spacing = 2, barPadding = 8, rowSpacing = 2,

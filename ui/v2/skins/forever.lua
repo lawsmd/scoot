@@ -840,8 +840,10 @@ Skin.Register("forever", {
                     shift = 0.5 },
         pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
         -- A scroll list's rows (Controls.CreateScrollList, the listRow
-        -- role). The washes are read where the atlases are missing.
-        listRow = { height = 24, padX = 8, hoverAlpha = 0.15, selectedAlpha = 0.25, statusAlpha = 0.12 },
+        -- role). The washes, the rule and the bar are read where the
+        -- atlases are missing.
+        listRow = { height = 24, padX = 8, hoverAlpha = 0.15, selectedAlpha = 0.25, statusAlpha = 0.12,
+                    ruleAlpha = 0.18, barWidth = 3 },
 
         -- featuresPaneTop is left out on purpose. The Features page raises its
         -- content pane into the band under the title bar where the band is
