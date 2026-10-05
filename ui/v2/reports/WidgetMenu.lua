@@ -7,8 +7,9 @@
 -- reserved for persistent surfaces (report panels, future notifications), so
 -- the menu never disturbs that chain.
 --
--- A report's row reads its menuLabel, else its label; an action's row its
--- label. The rows sort by order, then label, reports and actions together.
+-- The actions come first, then the reports, each set sorted by order and
+-- then label: a tool stands above what it produces. A report's row reads
+-- its menuLabel, else its label; an action's row its label.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -122,23 +123,24 @@ local function buildContent(padTop, padLeft)
     hideAllRows()
 
     local rows = {}
-    local Reports = addon.Reports
-    for _, def in ipairs(Reports and Reports:GetEnabled() or {}) do
-        rows[#rows + 1] = {
-            order = def.order or 100,
-            label = def.menuLabel or def.label,
-            run = function() Reports:Run(def.id, { source = "widgetMenu" }) end,
-        }
-    end
     local W = addon.Widget
     for _, def in ipairs((W and W.GetActions) and W:GetActions() or {}) do
         rows[#rows + 1] = {
-            order = def.order or 100,
+            group = 1, order = def.order or 100,
             label = def.label,
             run = function() W:RunAction(def.id) end,
         }
     end
+    local Reports = addon.Reports
+    for _, def in ipairs(Reports and Reports:GetEnabled() or {}) do
+        rows[#rows + 1] = {
+            group = 2, order = def.order or 100,
+            label = def.menuLabel or def.label,
+            run = function() Reports:Run(def.id, { source = "widgetMenu" }) end,
+        }
+    end
     table.sort(rows, function(a, b)
+        if a.group ~= b.group then return a.group < b.group end
         if a.order ~= b.order then return a.order < b.order end
         return a.label < b.label
     end)
