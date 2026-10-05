@@ -58,22 +58,25 @@ function UIPanel:Initialize()
         savedHeight = size.height or M().panelHeight
     end
 
-    local frame = Window:Create(BRAND .. "SettingsFrame", UIParent, savedWidth, savedHeight, { template = true })
-    frame:SetPoint("CENTER")
+    -- The shell builds the bar, the X, the Escape entry and the saved
+    -- position; the title is the panel's own, drawn into the shell's bar
+    -- once self.frame is set, because CreateTitle reads it.
+    local frame = addon.UI.WindowShell.Create({
+        name = BRAND .. "SettingsFrame", width = savedWidth, height = savedHeight,
+        template = true, positionKey = "windowPosition",
+        closeName = BRAND .. "CloseButton",
+    })
     frame:Hide()
     self.frame = frame
+    frame._title = self:CreateTitle(frame._titleBar)
 
     frame:SetResizable(true)
     frame:SetResizeBounds(M().panelMinWidth, M().panelMinHeight, M().panelMaxWidth, M().panelMaxHeight)
 
-    self:CreateTitleBar()
-    self:CreateCloseButton()
     self:CreateHeaderButtons()
     self:CreateResizeHandle()
     self:CreateNavigation()
     self:CreateContentPane()
-
-    tinsert(UISpecialFrames, BRAND .. "SettingsFrame")
 
     frame:SetScript("OnHide", function()
         if addon.CloseFontPicker then addon.CloseFontPicker() end
@@ -87,49 +90,12 @@ function UIPanel:Initialize()
         end
     end)
 
-    Window:RestorePosition(frame)
-
     self._initialized = true
 end
 
--- Title Bar: the drag region across the top, and the product's title drawn
--- the way the skin's titleBar role says
-
-local function SaveWindowPosition(frame)
-    if addon.db and addon.db.global then
-        local point, _, relPoint, x, y = frame:GetPoint()
-        addon.db.global.windowPosition = {
-            point = point,
-            relPoint = relPoint,
-            x = x,
-            y = y
-        }
-    end
-end
-
-function UIPanel:CreateTitleBar()
-    local frame = self.frame
-    if not frame then return end
-
-    local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetHeight(M().titleBarHeight)
-    titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-
-    titleBar:EnableMouse(true)
-    titleBar:RegisterForDrag("LeftButton")
-    titleBar:SetScript("OnDragStart", function()
-        frame:StartMoving()
-    end)
-    titleBar:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        SaveWindowPosition(frame)
-    end)
-
-    frame._titleBar = titleBar
-    frame._title = self:CreateTitle(titleBar)
-end
-
+-- The product's title, drawn into the shell's title bar the way the skin's
+-- titleBar role says.
+--
 -- The title handle: SetHome(isHome) while the home page is up, Reveal(animate)
 -- when a page comes up, Cleanup(). ascii is the block-letter logo with its
 -- column reveal and a click home; text is the product name in the header
@@ -158,7 +124,7 @@ function UIPanel:CreateTitle(titleBar)
         btn:SetScript("OnDragStart", function() frame:StartMoving() end)
         btn:SetScript("OnDragStop", function()
             frame:StopMovingOrSizing()
-            SaveWindowPosition(frame)
+            frame:SaveShellPosition()
         end)
     end
 
@@ -341,31 +307,6 @@ function UIPanel:GoHome()
     end
 
     self:OnNavigationSelect("home", Navigation and Navigation._selectedKey)
-end
-
--- Close Button
-
-function UIPanel:CreateCloseButton()
-    local frame = self.frame
-    if not frame then return end
-
-    local panel = self
-    local closeBtn, spec = Controls:CreateCloseButton({
-        parent = frame,
-        name = BRAND .. "CloseButton",
-        onClick = function()
-            if panel and panel.frame then
-                panel.frame:Hide()
-            end
-        end,
-    })
-    if not closeBtn then return end
-    -- The window kind's button is the template's own, already anchored
-    if not (spec and spec.kind == "window") then
-        closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", M().closeButton.x, M().closeButton.y)
-        closeBtn:SetFrameLevel(frame:GetOverlayLevel())
-    end
-    frame._closeBtn = closeBtn
 end
 
 -- The toolbar: the product's HeaderModel.toolbar as buttons across the top
@@ -1115,7 +1056,7 @@ function UIPanel:Teardown()
     for _, btn in ipairs(frame._toolbarOrder or {}) do
         if btn.Cleanup then btn:Cleanup() end
     end
-    if frame._closeBtn and frame._closeBtn.Cleanup then frame._closeBtn:Cleanup() end
+    if frame.CleanupShell then frame:CleanupShell() end
     if frame._title and frame._title.Cleanup then frame._title:Cleanup() end
     local contentPane = frame._contentPane
     if contentPane then

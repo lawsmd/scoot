@@ -345,6 +345,7 @@ ui/v2/controls/SelectorGear.lua
 ui/v2/controls/FlyoutColorPicker.lua
 ui/v2/HighScoreWindow.lua
 ui/v2/Window.lua
+ui/v2/WindowShell.lua
 ui/v2/Navigation.lua
 ui/v2/JumpingLetters.lua
 ui/v2/SettingsBuilder.lua

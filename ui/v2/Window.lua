@@ -36,14 +36,17 @@ end
 -- @param parent: Parent frame (default UIParent)
 -- @param width: Window width (default 900)
 -- @param height: Window height (default 650)
--- @param opts: template = true takes the window role's template kind; the
---               default declines it and draws the role's fallback
+-- @param opts: template = true takes the role's template kind; the default
+--               declines it and draws the role's fallback. role names the
+--               chrome role the surface is drawn from, "window" by default;
+--               "dialog" is the small relation a floating window takes
 -- @return: The created frame
 function Window:Create(name, parent, width, height, opts)
     local Chrome = addon.UI.Chrome
-    local spec = Chrome.Spec("window")
+    local role = (opts and opts.role) or "window"
+    local spec = Chrome.Spec(role)
     if spec.kind == "template" and not (opts and opts.template) then
-        spec = Chrome.Resolve(spec.fallback, Chrome.FLAT.window)
+        spec = Chrome.Resolve(spec.fallback, Chrome.FLAT[role] or Chrome.FLAT.window)
     end
     local frame = Chrome.CreateFrame(spec, "Frame", name, parent or UIParent)
     frame:SetSize(width or 900, height or 650)
@@ -94,13 +97,9 @@ function Window:Create(name, parent, width, height, opts)
         return self:GetFrameLevel() + 10
     end
 
-    -- NOTE: Dragging is NOT registered on the main frame.
-    -- The SettingsPanel creates a title bar that handles dragging instead,
-    -- so users can only drag the window by the title bar area (not the entire window).
-    -- Position saving is handled by the title bar's OnDragStop in SettingsPanel.lua.
-
-    -- Mark as UI window
-    frame._isSettingsWindow = true
+    -- Dragging is not registered on the frame itself. WindowShell builds the
+    -- title bar that drags it and saves its position, so a window moves by
+    -- its bar and not by its whole surface.
 
     return frame
 end
@@ -336,22 +335,4 @@ function Window:Destroy(frame)
     -- which only the runtime skin switch does.
     frame:Hide()
     frame:SetParent(nil)
-end
-
---------------------------------------------------------------------------------
--- Position Restoration
---------------------------------------------------------------------------------
-
-function Window:RestorePosition(frame)
-    if not frame or not addon.db or not addon.db.global then return end
-
-    local pos = addon.db.global.windowPosition
-    if pos and pos.point and pos.x and pos.y then
-        frame:ClearAllPoints()
-        frame:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x, pos.y)
-    else
-        -- Default to center
-        frame:ClearAllPoints()
-        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    end
 end
