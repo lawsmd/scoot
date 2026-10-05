@@ -120,12 +120,13 @@ local function PaintRow(row)
     end
 end
 
--- The name's right edge stands off the row's right column: the roster's
--- width for a group on the grid, the counts column with its margin for a
--- larger group, so a raid's longer name takes the room the grid leaves
+-- The name's right edge stands a gap off the row's right column: the
+-- roster's width for a group on the grid, the counts column for a larger
+-- group, so a raid's longer name takes the room the grid leaves and a
+-- long name ends short of the icons
 local function SetNameColumn(row, column)
     local padX = (M().listRow or {}).padX or 8
-    row._name:SetPoint("RIGHT", row, "RIGHT", -(padX + column), 0)
+    row._name:SetPoint("RIGHT", row, "RIGHT", -(padX + column + LAYOUT.search.columnGap), 0)
 end
 
 local function ClearRosters(row)
@@ -295,7 +296,7 @@ local function RenderRoster(row, id, info, counts, dimmed)
     if onCounts then
         row._roster:SetLines({})
         row._counts:SetLines(entries)
-        SetNameColumn(row, L.counts.width + L.counts.margin)
+        SetNameColumn(row, L.counts.width)
     else
         row._counts:SetLines({})
         row._roster:SetLines(entries)

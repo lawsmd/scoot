@@ -76,6 +76,9 @@ local LAYOUT = {
         boxTop = 70,
         filterWidth = 84,
         rightColumn = 160,
+        -- Clear room between the name's right edge and either column, so
+        -- a long name ends short of the icons
+        columnGap = 12,
         nameTop = 14,
         subIndent = 10, subSize = 10,
         -- The roster's text is a size under the sublines, so the longest
@@ -92,12 +95,12 @@ local LAYOUT = {
         },
         -- The counts per role of a raid or another group past the grid:
         -- three lines, larger than the roster's and centred on the row,
-        -- in a column as wide as an n/m line with margin to the name, so
-        -- a raid's longer name keeps the room the five-line grid takes
+        -- in a column as wide as an n/m line, so a raid's longer name
+        -- keeps the room the five-line grid takes
         counts = {
             lines = 3, lineHeight = 16, fontSize = 11,
             glyphWidth = 16, gap = 4, iconSize = 13,
-            width = 56, margin = 12,
+            width = 56,
         },
         -- The drawer is wide for the Dungeons filter's two columns and
         -- narrow for the language rows
