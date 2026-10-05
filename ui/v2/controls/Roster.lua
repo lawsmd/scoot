@@ -4,35 +4,39 @@
 -- height, so a row of two members stands as tall as a row of five; a line
 -- with no member is blank, or a hollow shape for a slot still open.
 --
--- The shapes are font characters, dim, in one column: a filled square, a
--- circled plus and a filled diamond for tank, healer and damage, and their
--- hollow pair for an open slot. The leader's mark is whatever texture the
--- caller names, desaturated and tinted the line's color; the control draws
--- no art of its own.
+-- The role column is dim: an icon per role when the caller names a set,
+-- else a font shape (a filled square, a circled plus and a filled diamond
+-- for tank, healer and damage, with a hollow pair for an open slot; an
+-- open slot's icon is the same icon faded). The leader's mark is whatever
+-- texture the caller names, tinted the line's color; the control names no
+-- art of its own.
 --
 -- opts:
 --   lines       the grid's line count; default 5
 --   lineHeight  default 13
 --   width       default 150
 --   fontSize    the text's size; default the desc role's
---   glyphWidth  the shape column; default 14
---   gap         between the shape, the text, the mark and the trailing
---               text; default 4
---   glyphs      { TANK, HEALER, DAMAGER } filled shapes
+--   glyphWidth  the role column; default 14
+--   gap         between the role column, the text, the mark and the
+--               trailing text; default 4
+--   icons       { TANK, HEALER, DAMAGER } atlas names for the role column
+--   iconSize    default 12
+--   glyphs      { TANK, HEALER, DAMAGER } filled shapes, without icons
 --   hollow      the same three for an open slot
---   leaderAtlas an atlas for the leader's mark; none draws no mark
+--   leaderMark  { atlas } or { file, coords } for the leader's mark; none
+--               draws no mark
 --   markWidth, markHeight
 --               the mark's size; default 14 and 9
 --
 -- SetLines(list): entry i fills line i and a missing one blanks it. An
 -- entry is { role, filled, color = { r, g, b }, text, leader, trailing }:
--- filled false draws the hollow shape alone; filled true draws the shape,
--- the text in color (the primary text color without one), the mark after
--- the text when leader is set, and trailing after the mark in the same
--- color. No role draws no shape and starts the text at the column's left.
--- The text gives way to the mark and the trailing text when the line is
--- short. SetDimmed(on) halves the alpha; Repaint() re-reads the skin's
--- colors, and every roster repaints together on a skin change.
+-- filled false draws the open slot's icon or shape alone; filled true
+-- draws the role, the text in color (the primary text color without one),
+-- the mark after the text when leader is set, and trailing after the mark
+-- in the same color. No role draws no icon and starts the text at the
+-- column's left. The text gives way to the mark and the trailing text when
+-- the line is short. SetDimmed(on) halves the alpha; Repaint() re-reads
+-- the skin's colors, and every roster repaints together on a skin change.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -41,9 +45,9 @@ local Controls = addon.UI.Controls
 
 local DEFAULTS = {
     lines = 5, lineHeight = 13, width = 150,
-    glyphWidth = 14, gap = 4,
+    glyphWidth = 14, gap = 4, iconSize = 12,
     markWidth = 14, markHeight = 9,
-    hollowAlpha = 0.7, dimmedAlpha = 0.5,
+    hollowAlpha = 0.7, openAlpha = 0.35, dimmedAlpha = 0.5,
 }
 
 -- A square, a circled plus and a diamond, filled, then their hollow pair
@@ -77,7 +81,9 @@ function Controls.CreateRoster(parent, opts)
     local gap = opts.gap or DEFAULTS.gap
     local glyphs = opts.glyphs or GLYPHS
     local hollow = opts.hollow or HOLLOW
-    local leaderAtlas = opts.leaderAtlas
+    local icons = type(opts.icons) == "table" and opts.icons or nil
+    local iconSize = opts.iconSize or DEFAULTS.iconSize
+    local leaderMark = type(opts.leaderMark) == "table" and opts.leaderMark or nil
     local markWidth = opts.markWidth or DEFAULTS.markWidth
     local markHeight = opts.markHeight or DEFAULTS.markHeight
 
@@ -90,26 +96,41 @@ function Controls.CreateRoster(parent, opts)
         Theme:ApplyFont(fs, "desc", fontSize)
     end
 
+    -- Each line's regions hang off the frame's top left at the line's
+    -- middle, so the grid reads from the top down
     for i = 1, lines do
         local y = -((i - 1) * lineHeight) - lineHeight / 2
         local glyph = frame:CreateFontString(nil, "OVERLAY")
         Font(glyph)
-        glyph:SetPoint("LEFT", frame, "LEFT", 0, y)
+        glyph:SetPoint("LEFT", frame, "TOPLEFT", 0, y)
         glyph:SetWidth(glyphWidth)
         glyph:SetJustifyH("CENTER")
         glyph:Hide()
 
+        local icon = frame:CreateTexture(nil, "OVERLAY")
+        icon:SetSize(iconSize, iconSize)
+        icon:SetPoint("CENTER", frame, "TOPLEFT", glyphWidth / 2, y)
+        icon:Hide()
+
         local text = frame:CreateFontString(nil, "OVERLAY")
         Font(text)
-        text:SetPoint("LEFT", frame, "LEFT", glyphWidth + gap, y)
+        text:SetPoint("LEFT", frame, "TOPLEFT", glyphWidth + gap, y)
         text:SetJustifyH("LEFT")
         text:SetWordWrap(false)
         text:Hide()
 
         local mark = frame:CreateTexture(nil, "OVERLAY")
         mark:SetSize(markWidth, markHeight)
-        if leaderAtlas then mark:SetAtlas(leaderAtlas) end
-        mark:SetDesaturated(true)
+        if leaderMark then
+            if leaderMark.atlas then
+                mark:SetAtlas(leaderMark.atlas)
+                mark:SetDesaturated(true)
+            elseif leaderMark.file then
+                mark:SetTexture(leaderMark.file)
+                local c = leaderMark.coords
+                if type(c) == "table" then mark:SetTexCoord(c[1], c[2], c[3], c[4]) end
+            end
+        end
         mark:Hide()
 
         local trailing = frame:CreateFontString(nil, "OVERLAY")
@@ -117,11 +138,12 @@ function Controls.CreateRoster(parent, opts)
         trailing:SetJustifyH("LEFT")
         trailing:Hide()
 
-        frame._lines[i] = { y = y, glyph = glyph, text = text, mark = mark, trailing = trailing }
+        frame._lines[i] = { y = y, glyph = glyph, icon = icon, text = text, mark = mark, trailing = trailing }
     end
 
     local function Blank(line)
         line.glyph:Hide()
+        line.icon:Hide()
         line.text:Hide()
         line.mark:Hide()
         line.trailing:Hide()
@@ -130,6 +152,7 @@ function Controls.CreateRoster(parent, opts)
     local function Paint(line, entry)
         local dr, dg, db = Theme:GetDimTextColor()
         line.glyph:SetTextColor(dr, dg, db, entry.filled and 1 or DEFAULTS.hollowAlpha)
+        line.icon:SetVertexColor(dr, dg, db, entry.filled and 1 or DEFAULTS.openAlpha)
         local c = entry.color
         local r, g, b
         if type(c) == "table" then
@@ -146,20 +169,27 @@ function Controls.CreateRoster(parent, opts)
     local function Fill(line, entry)
         local role = entry.role
         local filled = entry.filled and true or false
-        local shape = role and (filled and glyphs[role] or hollow[role]) or nil
-        if shape then
+        local atlas = role and icons and icons[role] or nil
+        local shape = role and not atlas and (filled and glyphs[role] or hollow[role]) or nil
+        if atlas then
+            line.icon:SetAtlas(atlas)
+            line.icon:Show()
+            line.glyph:Hide()
+        elseif shape then
             Font(line.glyph)
             line.glyph:SetText(shape)
             line.glyph:Show()
+            line.icon:Hide()
         else
             line.glyph:Hide()
+            line.icon:Hide()
         end
 
         local left = role and (glyphWidth + gap) or 0
         local text = filled and entry.text or nil
         local hasText = type(text) == "string" and text ~= ""
         line.text:ClearAllPoints()
-        line.text:SetPoint("LEFT", frame, "LEFT", left, line.y)
+        line.text:SetPoint("LEFT", frame, "TOPLEFT", left, line.y)
         line.text:SetWidth(0)
         if hasText then
             Font(line.text)
@@ -170,12 +200,12 @@ function Controls.CreateRoster(parent, opts)
             line.text:Hide()
         end
 
-        local showMark = filled and entry.leader and leaderAtlas and true or false
+        local showMark = filled and entry.leader and leaderMark and true or false
         local trailingText = filled and entry.trailing or nil
         local hasTrailing = type(trailingText) == "string" and trailingText ~= ""
         local room = width - left
 
-        local after, afterPoint, offset = frame, "LEFT", left
+        local after, afterPoint, offset = frame, "TOPLEFT", left
         if hasText then after, afterPoint, offset = line.text, "RIGHT", gap end
 
         line.mark:ClearAllPoints()
