@@ -38,9 +38,18 @@ end
 
 local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER" }
 
--- The leader's crown is Blizzard's own atlas, the window's one piece of
--- Blizzard art, drawn desaturated in the leader's class color
-local LEADER_ATLAS = "groupfinder-icon-leader"
+-- The leader's crown: the addon's own flat crown, tinted the leader's class
+-- color. The file is a 64 square with the crown across its middle band.
+local LEADER_MARK = {
+    file = addon.MediaPath .. "media\\textures\\crown.png",
+    coords = { 0, 1, 0.1875, 0.8125 },
+}
+
+-- The role column's icons: the Raid Manager set the group frames offer
+local function RoleIcons()
+    local sets = addon.BarsUtils and addon.BarsUtils.ROLE_ICON_ATLASES
+    return type(sets) == "table" and sets.gm or nil
+end
 
 -- The search box template's own art, put at alpha 0 while hosted; the
 -- clear button keeps its handler and loses its textures
@@ -135,7 +144,7 @@ local function CreateRow(row)
     row._roster = C.CreateRoster(row, {
         lines = R.lines, lineHeight = R.lineHeight, width = L.rightColumn, fontSize = R.fontSize,
         glyphWidth = R.glyphWidth, gap = R.gap, markWidth = R.markWidth, markHeight = R.markHeight,
-        leaderAtlas = LEADER_ATLAS,
+        iconSize = R.iconSize, icons = RoleIcons(), leaderMark = LEADER_MARK,
     })
     row._roster:SetPoint("TOPRIGHT", row, "TOPRIGHT", -padX, -R.top)
 
@@ -197,13 +206,13 @@ local function RenderRoster(row, id, info, counts, dimmed)
                     bucket[#bucket + 1] = m
                 end
             end
-            local leaderName = SS.plainString(info.leaderName)
+            -- The leader's line reads as the others, spec and class color;
+            -- the name is in the tooltip
             local rating = GF.LeaderRating(info, activity)
             local function Add(m)
                 local cr, cg, cb
                 if m.class then cr, cg, cb = addon.GetClassColorRGB(m.class) end
                 local text = m.spec or m.className
-                if m.leader and leaderName then text = Ambiguate(leaderName, "short") end
                 entries[#entries + 1] = {
                     role = byRole[m.role] and m.role or nil, filled = true,
                     color = cr and { cr, cg, cb } or nil, text = text,

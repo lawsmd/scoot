@@ -42,7 +42,7 @@ end
 -- numbers, the fallbacks when the client's template table does not answer,
 -- and the panel's own positions are where Blizzard's XML puts them
 local LAYOUT = {
-    panelWidth = 460,
+    panelWidth = 400,
     panelHeight = 440,
     titleHeight = 36,
     categoryRow = 46,
@@ -75,13 +75,13 @@ local LAYOUT = {
         rowY = 36, rowHeight = 26, gap = 4,
         boxTop = 70,
         filterWidth = 84,
-        rightColumn = 150,
+        rightColumn = 130,
         nameTop = 5,
         subIndent = 10, subSize = 10,
         roster = {
             lines = 5, lineHeight = 13, fontSize = 11,
-            glyphWidth = 14, gap = 4, markWidth = 14, markHeight = 9,
-            top = 5, bottom = 4,
+            glyphWidth = 14, gap = 4, iconSize = 12, markWidth = 14, markHeight = 9,
+            top = 6, bottom = 3,
         },
         filterDrawerWidth = 500, filterListFont = 11,
     },
