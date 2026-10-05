@@ -525,7 +525,7 @@ files["ui/v2/groupfinder/"] = {
     read_globals = {
         "C_LFGList", "C_LFGInfo", "C_SocialRestrictions", "IsRestrictedAccount", "bit",
         "GetLFGRoles", "SetLFGRoles", "GameRulesUtil", "PlayerUtil", "ChatFrameUtil", "SecondsToTime",
-        "PlayerIsTimerunning",
+        "PlayerIsTimerunning", "LOCALIZED_CLASS_NAMES_MALE",
         "LFGListFrame", "LFGListApplicationDialog",
         "LFGListUtil_GetDecoratedCategoryName", "LFGListUtil_IsAppEmpowered",
         "LFGListUtil_SortActivitiesByRelevancy", "LFGListCanChangeLanguages",

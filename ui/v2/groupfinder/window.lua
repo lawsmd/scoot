@@ -38,14 +38,13 @@ local function M()
 end
 
 -- The window's measures. The panel is wider than Blizzard's 338, so the
--- activity names and the composition fit on a row; the rest are Blizzard's
+-- activity names and the roster fit on a row; the rest are Blizzard's
 -- numbers, the fallbacks when the client's template table does not answer,
 -- and the panel's own positions are where Blizzard's XML puts them
 local LAYOUT = {
     panelWidth = 460,
     panelHeight = 440,
     titleHeight = 36,
-    resultRow = 54,
     categoryRow = 46,
     dialogWidth = 306,
     dialogHeight = 203,
@@ -61,17 +60,24 @@ local LAYOUT = {
         labelX = 6,
     },
     -- The search panel's row of box, refresh and filter, the column the
-    -- rows keep on the right for the composition or the status, the lines
+    -- rows keep on the right for the roster or the status, the lines
     -- under a row's name (a size smaller and stepped in, so the name stands
-    -- out), and the advanced filter's drawer width and text size, two
-    -- columns of rows out of the window's right edge
+    -- out), the roster's grid (its line count sets every row's height, so
+    -- a group of two stands as tall as a group of five), and the advanced
+    -- filter's drawer width and text size, two columns of rows out of the
+    -- window's right edge
     search = {
         rowY = 36, rowHeight = 26, gap = 4,
         boxTop = 70,
         filterWidth = 84,
-        rightColumn = 112,
+        rightColumn = 150,
         nameTop = 5,
         subIndent = 10, subSize = 10,
+        roster = {
+            lines = 5, lineHeight = 13, fontSize = 11,
+            glyphWidth = 14, gap = 4, markWidth = 14, markHeight = 9,
+            top = 5, bottom = 4,
+        },
         filterDrawerWidth = 500, filterListFont = 11,
     },
 }

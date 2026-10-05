@@ -129,6 +129,52 @@ function GF.MemberCounts(id)
     return nil
 end
 
+-- The members one by one, as Blizzard's row tooltip reads them: the list,
+-- and whether every member answered with a role, which is Blizzard's own
+-- test before it lists them. Under chat lockdown the call answers secrets
+-- and every member reads as absent.
+function GF.Members(id, numMembers)
+    local list = {}
+    if not id then return list, false end
+    for i = 1, numMembers or 0 do
+        local ok, m = pcall(C_LFGList.GetSearchResultPlayerInfo, id, i)
+        if ok and type(m) == "table" then
+            local role = plain(m.assignedRole)
+            if type(role) == "string" then
+                list[#list + 1] = {
+                    role = role,
+                    class = plain(m.classFilename),
+                    className = plain(m.className),
+                    spec = plain(m.specName),
+                    name = plain(m.name),
+                    leader = plainBool(m.isLeader) == true,
+                    leaver = plainBool(m.isLeaver) == true,
+                }
+            end
+        end
+    end
+    return list, #list == (numMembers or 0) and #list > 0
+end
+
+-- The leader's rating as text: the dungeon score for a Mythic+ activity,
+-- the rated PvP rating for a rated one, else nothing. Members other than
+-- the leader carry no score on a search result.
+function GF.LeaderRating(info, activity)
+    if not info or not activity then return nil end
+    if plainBool(activity.isMythicPlusActivity) == true then
+        local score = plainNumber(info.leaderOverallDungeonScore)
+        if score and score > 0 then return tostring(score) end
+        return nil
+    end
+    if plainBool(activity.isRatedPvpActivity) == true then
+        local ratings = plain(info.leaderPvpRatingInfo)
+        local first = type(ratings) == "table" and plain(ratings[1])
+        local rating = type(first) == "table" and plainNumber(first.rating)
+        if rating and rating > 0 then return tostring(rating) end
+    end
+    return nil
+end
+
 function GF.ActivityID(info)
     local ids = info and plain(info.activityIDs)
     if type(ids) ~= "table" then return nil end

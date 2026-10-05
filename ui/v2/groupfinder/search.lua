@@ -38,6 +38,10 @@ end
 
 local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER" }
 
+-- The leader's crown is Blizzard's own atlas, the window's one piece of
+-- Blizzard art, drawn desaturated in the leader's class color
+local LEADER_ATLAS = "groupfinder-icon-leader"
+
 -- The search box template's own art, put at alpha 0 while hosted; the
 -- clear button keeps its handler and loses its textures
 local SEARCH_ART = { "Left", "Middle", "Right", "searchIcon" }
@@ -127,14 +131,16 @@ local function CreateRow(row)
     local lr, lg, lb = Theme():GetDimTextLightColor()
     row._playstyle:SetTextColor(lr, lg, lb, 1)
 
-    row._marks = C.CreateRoleMarks(row, { size = 11 })
-    row._marks:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
-
-    row._count = UI.DimText(row, "miniLabel")
-    row._count:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
-    row._count:SetJustifyH("RIGHT")
+    local R = L.roster
+    row._roster = C.CreateRoster(row, {
+        lines = R.lines, lineHeight = R.lineHeight, width = L.rightColumn, fontSize = R.fontSize,
+        glyphWidth = R.glyphWidth, gap = R.gap, markWidth = R.markWidth, markHeight = R.markHeight,
+        leaderAtlas = LEADER_ATLAS,
+    })
+    row._roster:SetPoint("TOPRIGHT", row, "TOPRIGHT", -padX, -R.top)
 
     row._voice = C.CreateTag(row, { text = "VOICE", tone = "dim" })
+    row._voice:SetPoint("TOPLEFT", row._playstyle, "BOTTOMLEFT", 0, -2)
     row._voice:Hide()
 
     row._status = C.CreateTag(row, { text = "", tone = "accent" })
@@ -154,62 +160,104 @@ local function CreateRow(row)
     row._cancel:Hide()
 end
 
--- The group's composition, by the activity's display type: marks for a
--- small group, a count line for a large one
-local function RenderComposition(row, info, counts, dimmed)
+-- The right column by the activity's display type: a line per member for
+-- a group the grid holds, in role order with the leader first in their
+-- role, the leader by name with the crown and the rating, the open slots
+-- hollow after them; the counts per role for a larger group; n/m for a
+-- player count. The members come one by one from the client, and when
+-- any is missing its role the counts stand in, class colored and named
+-- where the client gives the classes.
+local function RenderRoster(row, id, info, counts, dimmed)
+    local R = LAYOUT.search.roster
     local activity = GF.ActivityInfo(GF.ActivityID(info))
-    row._marks:Hide()
-    row._count:Hide()
-    if not activity or not counts then return end
+    row._roster:SetDimmed(dimmed)
+    if not activity or not counts then
+        row._roster:SetLines({})
+        return
+    end
     local D = Enum.LFGListDisplayType
     local kind = activity.displayType
-    local tank = GF.plainNumber(counts.TANK) or 0
-    local healer = GF.plainNumber(counts.HEALER) or 0
-    local damage = GF.plainNumber(counts.DAMAGER) or 0
+    local maxPlayers = GF.plainNumber(activity.maxNumPlayers)
+    local dr, dg, db = Theme():GetDimTextColor()
+    local dim = { dr, dg, db }
+    local entries = {}
+    local enumerate = D and (kind == D.RoleEnumerate or kind == D.ClassEnumerate)
 
-    if D and (kind == D.RoleEnumerate or kind == D.ClassEnumerate) then
-        local max = GF.plainNumber(activity.maxNumPlayers) or 5
-        if max > 8 then
-            row._count:SetText(string.format("%d T  %d H  %d D", tank, healer, damage))
-            row._count:Show()
-            return
-        end
-        local byClass = SelectedCategory() == GF.DUNGEONS_CATEGORY and type(counts.classesByRole) == "table"
-        local slots = {}
-        for _, role in ipairs(ROLE_ORDER) do
-            local classes = byClass and counts.classesByRole[role]
-            if type(classes) == "table" then
-                for class, num in pairs(classes) do
-                    local cr, cg, cb = addon.GetClassColorRGB(class)
-                    for _ = 1, (GF.plainNumber(num) or 0) do
-                        slots[#slots + 1] = { role = role, filled = true, color = cr and { cr, cg, cb } or nil }
-                    end
+    if enumerate and (maxPlayers or R.lines) <= R.lines then
+        local max = maxPlayers or R.lines
+        local members, complete = GF.Members(id, GF.plainNumber(info.numMembers) or 0)
+        if complete then
+            local byRole = { TANK = {}, HEALER = {}, DAMAGER = {} }
+            local rest = {}
+            for _, m in ipairs(members) do
+                local bucket = byRole[m.role] or rest
+                if m.leader then
+                    table.insert(bucket, 1, m)
+                else
+                    bucket[#bucket + 1] = m
                 end
-            else
-                for _ = 1, (GF.plainNumber(counts[role]) or 0) do
-                    slots[#slots + 1] = { role = role, filled = true }
+            end
+            local leaderName = SS.plainString(info.leaderName)
+            local rating = GF.LeaderRating(info, activity)
+            local function Add(m)
+                local cr, cg, cb
+                if m.class then cr, cg, cb = addon.GetClassColorRGB(m.class) end
+                local text = m.spec or m.className
+                if m.leader and leaderName then text = Ambiguate(leaderName, "short") end
+                entries[#entries + 1] = {
+                    role = byRole[m.role] and m.role or nil, filled = true,
+                    color = cr and { cr, cg, cb } or nil, text = text,
+                    leader = m.leader, trailing = m.leader and rating or nil,
+                }
+            end
+            for _, role in ipairs(ROLE_ORDER) do
+                for _, m in ipairs(byRole[role]) do Add(m) end
+            end
+            for _, m in ipairs(rest) do Add(m) end
+        else
+            local names = LOCALIZED_CLASS_NAMES_MALE
+            local byClass = type(counts.classesByRole) == "table"
+            for _, role in ipairs(ROLE_ORDER) do
+                local classes = byClass and counts.classesByRole[role]
+                if type(classes) == "table" then
+                    for class, num in pairs(classes) do
+                        local cr, cg, cb = addon.GetClassColorRGB(class)
+                        for _ = 1, (GF.plainNumber(num) or 0) do
+                            entries[#entries + 1] = {
+                                role = role, filled = true,
+                                color = cr and { cr, cg, cb } or nil,
+                                text = type(names) == "table" and names[class] or nil,
+                            }
+                        end
+                    end
+                else
+                    for _ = 1, (GF.plainNumber(counts[role]) or 0) do
+                        entries[#entries + 1] = { role = role, filled = true }
+                    end
                 end
             end
         end
         -- The open slots, by the role still wanted
         for _, role in ipairs(ROLE_ORDER) do
             for _ = 1, (GF.plainNumber(counts[role .. "_REMAINING"]) or 0) do
-                if #slots >= max then break end
-                slots[#slots + 1] = { role = role, filled = false }
+                if #entries >= max then break end
+                entries[#entries + 1] = { role = role, filled = false }
             end
         end
-        while #slots > max do table.remove(slots) end
-        row._marks:SetSlots(slots)
-        row._marks:SetAlpha(dimmed and 0.5 or 1)
-        row._marks:Show()
-    elseif D and kind == D.RoleCount then
-        row._count:SetText(string.format("%d T  %d H  %d D", tank, healer, damage))
-        row._count:Show()
+        while #entries > max do table.remove(entries) end
+    elseif enumerate or (D and kind == D.RoleCount) then
+        for _, role in ipairs(ROLE_ORDER) do
+            entries[#entries + 1] = {
+                role = role, filled = true, color = dim,
+                text = tostring(GF.plainNumber(counts[role]) or 0),
+            }
+        end
     elseif D and kind == D.PlayerCount then
-        local total = tank + healer + damage + (GF.plainNumber(counts.NOROLE) or 0)
-        row._count:SetText(string.format("%d/%d", total, GF.plainNumber(activity.maxNumPlayers) or total))
-        row._count:Show()
+        local total = (GF.plainNumber(counts.TANK) or 0) + (GF.plainNumber(counts.HEALER) or 0)
+            + (GF.plainNumber(counts.DAMAGER) or 0) + (GF.plainNumber(counts.NOROLE) or 0)
+        entries[1] = { filled = true, color = dim, text = string.format("%d/%d", total, maxPlayers or total) }
     end
+    row._roster:SetLines(entries)
 end
 
 local function RenderRow(panel, row, item)
@@ -223,7 +271,6 @@ local function RenderRow(panel, row, item)
     theme:ApplyFont(row._name, "label")
     theme:ApplyFont(row._activity, "desc", LAYOUT.search.subSize)
     theme:ApplyFont(row._playstyle, "desc", LAYOUT.search.subSize)
-    theme:ApplyFont(row._count, "miniLabel")
     theme:ApplyFont(row._timer, "miniLabel")
 
     local info = GF.ResultInfo(id)
@@ -231,8 +278,7 @@ local function RenderRow(panel, row, item)
         row._name:SetText("")
         row._activity:SetText("")
         row._playstyle:SetText("")
-        row._marks:Hide()
-        row._count:Hide()
+        row._roster:SetLines({})
         row._voice:Hide()
         row._status:Hide()
         row._timer:Hide()
@@ -272,8 +318,7 @@ local function RenderRow(panel, row, item)
     local text, lit, pending = GF.StatusLine(appStatus, pendingStatus)
     local right = -padX
     if text then
-        row._marks:Hide()
-        row._count:Hide()
+        row._roster:SetLines({})
         local showCancel = pendingStatus ~= "applied"
         row._cancel:SetShown(showCancel)
         if showCancel then
@@ -298,25 +343,14 @@ local function RenderRow(panel, row, item)
         row._status:ClearAllPoints()
         row._status:SetPoint("RIGHT", row, "RIGHT", right, 0)
         row._status:Show()
-        right = right - (row._status:GetWidth() or 40) - 4
     else
         row._status:Hide()
         row._timer:Hide()
         row._cancel:Hide()
-        RenderComposition(row, info, counts, dimmed)
-        local shown = row._marks:IsShown() and row._marks or (row._count:IsShown() and row._count) or nil
-        if shown then
-            right = right - (shown:GetWidth() or 0) - 6
-        end
+        RenderRoster(row, id, info, counts, dimmed)
     end
 
-    if NonEmpty(info.voiceChat) then
-        row._voice:ClearAllPoints()
-        row._voice:SetPoint("RIGHT", row, "RIGHT", right, 0)
-        row._voice:Show()
-    else
-        row._voice:Hide()
-    end
+    row._voice:SetShown(NonEmpty(info.voiceChat))
 
     local wash
     if isApplication and not isAppFinished then
@@ -336,6 +370,7 @@ local function Build(parent)
     local panel = UI.MakePanel(parent)
     local C = Controls()
     local L = LAYOUT.search
+    local R = L.roster
     local boxX = LAYOUT.panel.boxX
     local pad = (M().collapsible or {}).contentPadding or 12
 
@@ -376,7 +411,7 @@ local function Build(parent)
     panel._box = box
     local list = C.CreateScrollList({
         parent = box,
-        rowHeight = LAYOUT.Template("LFGListSearchEntryTemplate", "resultRow"),
+        rowHeight = R.top + R.lines * R.lineHeight + R.bottom,
         createRow = CreateRow,
         render = function(row, item) RenderRow(panel, row, item) end,
         onSelect = function(item, index) panel:SelectResult(item.resultID, index) end,
@@ -931,8 +966,26 @@ local function Build(parent)
             if NonEmpty(info.voiceChat) then
                 GameTooltip:AddLine(string.format(Str("LFG_LIST_TOOLTIP_VOICE_CHAT", "Voice: %s"), info.voiceChat), nil, nil, nil, true)
             end
+            -- The leader by name, spec and class in the class color, with the
+            -- rating: the spec the row's leader line stands in for
             local leader = SS.plainString(info.leaderName)
-            if leader then GameTooltip:AddLine(leader) end
+            if leader then
+                local lr, lg, lb = 1, 1, 1
+                local members = GF.Members(id, GF.plainNumber(info.numMembers) or 0)
+                for _, m in ipairs(members) do
+                    if m.leader then
+                        local who = (m.spec and m.className and (m.spec .. " " .. m.className)) or m.className
+                        if who then leader = leader .. ", " .. who end
+                        local cr, cg, cb
+                        if m.class then cr, cg, cb = addon.GetClassColorRGB(m.class) end
+                        if cr then lr, lg, lb = cr, cg, cb end
+                        break
+                    end
+                end
+                local rating = GF.LeaderRating(info, GF.ActivityInfo(GF.ActivityID(info)))
+                if rating then leader = leader .. "  " .. rating end
+                GameTooltip:AddLine(leader, lr, lg, lb)
+            end
             local counts = GF.MemberCounts(id)
             if counts then
                 GameTooltip:AddLine(string.format("%d T  %d H  %d D", GF.plainNumber(counts.TANK) or 0,
