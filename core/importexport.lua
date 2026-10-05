@@ -212,19 +212,6 @@ end
 -- Validate Import String (no side effects)
 --------------------------------------------------------------------------------
 
-function IE:ValidateImportString(importStr)
-    if not importStr or importStr == "" then
-        return false, "No import string provided."
-    end
-
-    if importStr:sub(1, #PREFIX) ~= PREFIX then
-        return false, "Invalid format. Expected string starting with '" .. PREFIX .. "'."
-    end
-
-    -- Full decode to verify integrity
-    return self:ImportProfile(importStr)
-end
-
 --------------------------------------------------------------------------------
 -- Export Edit Mode String
 --------------------------------------------------------------------------------

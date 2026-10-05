@@ -34,18 +34,6 @@ local function GetEntryTexture(entry)
     return nil
 end
 
-local function GetEntryName(entry)
-    if not entry then return "Unknown" end
-    if entry.type == "spell" then
-        local info = C_Spell.GetSpellInfo(entry.id)
-        return info and info.name or ("Spell #" .. entry.id)
-    elseif entry.type == "item" then
-        local name = C_Item.GetItemNameByID(entry.id)
-        return name or ("Item #" .. entry.id)
-    end
-    return "Unknown"
-end
-
 --------------------------------------------------------------------------------
 -- Drag System State
 --------------------------------------------------------------------------------

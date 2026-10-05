@@ -163,11 +163,6 @@ function Controls:CreateRankSelector(options)
     labelFS:SetTextColor(ar, ag, ab, 1)
     row._label = labelFS
 
-    -- Boxes anchor relative to label
-    local function boxLeftOffset(i)
-        return labelFS:GetStringWidth() + LABEL_RIGHT_GAP + (i - 1) * BOX_STEP
-    end
-
     row._boxes = {}
 
     local function HandleClick(i)

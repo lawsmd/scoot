@@ -305,7 +305,6 @@ ui/v2/Theme.lua
 ui/v2/Chrome.lua
 ui/v2/SettingPatterns.lua
 ui/v2/skins/tui.lua
-ui/v2/skins/testcard.lua
 ui/v2/skins/forever.lua
 ui/v2/controls/Utils.lua
 ui/v2/controls/ScrollBar.lua
@@ -339,7 +338,6 @@ ui/v2/controls/FontPicker.lua
 ui/v2/controls/DualBarStyleRow.lua
 ui/v2/controls/Dialog.lua
 ui/v2/controls/Preview.lua
-ui/v2/controls/ThreeColumnChecklist.lua
 ui/v2/controls/MultiLineEditBox.lua
 ui/v2/controls/SingleLineEditBox.lua
 ui/v2/controls/Flyout.lua

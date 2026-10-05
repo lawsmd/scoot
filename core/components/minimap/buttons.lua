@@ -97,35 +97,6 @@ local function CollectMinimapAddonButtons()
     return buttons
 end
 
--- Find the border texture on an addon button (typically 50x50 OVERLAY texture)
-local function FindButtonBorderTexture(button)
-    if not button then return nil end
-
-    local regions = { button:GetRegions() }
-    for _, region in ipairs(regions) do
-        if region:IsObjectType("Texture") and region:GetDrawLayer() == "OVERLAY" then
-            local w, h = region:GetSize()
-            if w and h and math.abs(w - 50) < 5 and math.abs(h - 50) < 5 then
-                return region
-            end
-        end
-    end
-
-    -- Also check for border in children (some buttons nest the border)
-    local children = { button:GetChildren() }
-    for _, child in ipairs(children) do
-        local childRegions = { child:GetRegions() }
-        for _, region in ipairs(childRegions) do
-            if region:IsObjectType("Texture") and region:GetDrawLayer() == "OVERLAY" then
-                local w, h = region:GetSize()
-                if w and h and math.abs(w - 50) < 5 and math.abs(h - 50) < 5 then
-                    return region
-                end
-            end
-        end
-    end
-end
-
 -- Texture paths used as the dark/blank minimap-button backdrop disc — must be
 -- rejected when sniffing for the real icon.
 local BACKDROP_TEXTURE_PATTERNS = {

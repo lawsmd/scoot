@@ -1,6 +1,5 @@
 -- sync.lua - Bidirectional sync between addon DB and Edit Mode settings
 local _, addon = ...
-local LEO = LibStub("LibEditModeOverride-1.0")
 
 -- Aliases for internals promoted by core.lua
 local ResolveSettingId = addon.EditMode._ResolveSettingId
@@ -467,82 +466,6 @@ function addon.EditMode.SyncComponentSettingToEditMode(component, settingId, opt
     end
     return false
 end
-
--- Main function for pushing the addon's state to Edit Mode.
-function addon.EditMode.SyncComponentToEditMode(component, opts)
-    opts = opts or {}
-    local frame = _G[component.frameName]
-    if not frame or not addon.EditMode.HasEditModeSettings(frame) then return end
-
-    if addon.EditMode._syncingEM then return end
-    addon.EditMode._syncingEM = true
-
-    -- Ensure layouts are loaded before trying to write
-    addon.EditMode.LoadLayouts()
-
-    -- 1. Sync Position
-    local x = component.db.positionX or 0
-    local y = component.db.positionY or 0
-    addon.EditMode.ReanchorFrame(frame, "CENTER", "UIParent", "CENTER", x, y)
-
-    -- 2. Sync all other Edit Mode settings (pass skipApply to avoid taint)
-    for settingId, setting in pairs(component.settings) do
-        if type(setting) == "table" and setting.type == "editmode" then
-            addon.EditMode.SyncComponentSettingToEditMode(component, settingId, { skipApply = true })
-        end
-    end
-
-    -- 3. Save settings
-    if addon.EditMode and addon.EditMode.SaveOnly then addon.EditMode.SaveOnly() end
-
-    -- Hold the syncing guard briefly to avoid back-sync races from SaveLayouts callbacks
-    local function clearGuard()
-        addon.EditMode._syncingEM = false
-    end
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0.35, clearGuard)
-    else
-        clearGuard()
-    end
-end
-
--- Position-only sync: Use this when ONLY position (X/Y) changed.
--- Avoids the cascade of syncing all Edit Mode settings (orientation, columns, etc.)
--- which would trigger many ResolveSettingId calls and LoadLayouts() invocations.
--- NOTE: This function handles SaveOnly internally - callers should NOT
--- call SaveOnly again after calling this function.
-function addon.EditMode.SyncComponentPositionToEditMode(component)
-    if not component then return end
-    local frame = _G[component.frameName]
-    if not frame then return end
-
-    -- Guard against re-entry during sync
-    if addon.EditMode._syncingPosition then return end
-    addon.EditMode._syncingPosition = true
-
-    -- Only load layouts if not already loaded (avoid cascade)
-    if LEO and LEO.AreLayoutsLoaded and not LEO:AreLayoutsLoaded() then
-        addon.EditMode.LoadLayouts()
-    end
-
-    -- Sync Position only
-    local x = component.db.positionX or 0
-    local y = component.db.positionY or 0
-    addon.EditMode.ReanchorFrame(frame, "CENTER", "UIParent", "CENTER", x, y)
-
-    if addon.EditMode and addon.EditMode.SaveOnly then addon.EditMode.SaveOnly() end
-
-    -- Clear guard after a brief delay to avoid back-sync races
-    local function clearGuard()
-        addon.EditMode._syncingPosition = false
-    end
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0.35, clearGuard)
-    else
-        clearGuard()
-    end
-end
-
 
 --[[----------------------------------------------------------------------------
     Aura Frame Icon Size Late Backfill

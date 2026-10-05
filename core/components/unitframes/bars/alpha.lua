@@ -124,39 +124,8 @@ end
 -- Vehicle Frame Texture Visibility Enforcement
 --------------------------------------------------------------------------------
 
--- Enforce visibility for vehicle-related textures
-function Alpha.EnforceVehicleFrameTextureVisibility()
-    -- PlayerFrame's VehicleTexture overlay. This sits above the custom border layer and
-    -- normally shows a vehicle-specific atlas when mounted. If useCustomBorders is true,
-    -- it is hidden so the user's custom border art is visible instead.
-    local vehicleTex = _G.PlayerFrame
-        and _G.PlayerFrame.PlayerFrameContainer
-        and _G.PlayerFrame.PlayerFrameContainer.VehicleTexture
-    if vehicleTex then
-        local computeVehicleAlpha = Alpha.customBordersAlpha("Player", false)
-        Alpha.applyAlpha(vehicleTex, computeVehicleAlpha())
-        Alpha.hookAlphaEnforcer(vehicleTex, computeVehicleAlpha)
-    end
-end
-
 --------------------------------------------------------------------------------
 -- Alternate Power Frame Texture Visibility Enforcement
 --------------------------------------------------------------------------------
-
--- Enforce visibility for alternate power bar textures
-function Alpha.EnforceAlternatePowerFrameTextureVisibility()
-    -- PlayerFrameAlternatePowerBarFrame (Alternate Power/Stagger bar below Player frame).
-    -- When useCustomBorders is true for Player frame, hide this overlay so the custom
-    -- border appears cleanly.
-    local altBar = _G.PlayerFrameAlternatePowerBarFrame
-    if altBar then
-        local altTex = altBar.TextureBorder or altBar.BorderTexture
-        if altTex then
-            local computeAltAlpha = Alpha.customBordersAlpha("Player", false)
-            Alpha.applyAlpha(altTex, computeAltAlpha())
-            Alpha.hookAlphaEnforcer(altTex, computeAltAlpha)
-        end
-    end
-end
 
 return Alpha

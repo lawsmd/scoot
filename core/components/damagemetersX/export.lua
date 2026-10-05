@@ -337,20 +337,10 @@ end
 -- Active export menu (only one open at a time)
 local activeExportMenu = nil
 
--- Active chat export state (for abort)
-local activeChatExport = nil
-
 local function CloseExportMenu()
     if activeExportMenu then
         activeExportMenu:Hide()
         activeExportMenu = nil
-    end
-end
-
-local function AbortChatExport()
-    if activeChatExport then
-        activeChatExport._active = false
-        activeChatExport = nil
     end
 end
 

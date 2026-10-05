@@ -36,23 +36,6 @@ local function utf8Chars(s)
     return chars
 end
 
--- Get first N UTF-8 characters as a string
-local function utf8Sub(s, n)
-    if not s or n <= 0 then return "" end
-    local chars = utf8Chars(s)
-    local result = {}
-    for i = 1, math.min(n, #chars) do
-        table.insert(result, chars[i])
-    end
-    return table.concat(result)
-end
-
--- Count UTF-8 characters in a string
-local function utf8Len(s)
-    if not s then return 0 end
-    return #utf8Chars(s)
-end
-
 -- The logo is the product's, HeaderModel.title.ascii, and the column parse
 -- runs once per text.
 local parsed = { text = nil, lines = {}, maxCols = 0 }

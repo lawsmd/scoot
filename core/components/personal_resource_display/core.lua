@@ -94,19 +94,6 @@ end
 local prdEventFrame = nil
 local prdRegisteredComponents = {}
 
-local function scheduleComponentApply(component)
-    if not component or not component.ApplyStyling then
-        return
-    end
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            if component and component.ApplyStyling then
-                component:ApplyStyling()
-            end
-        end)
-    end
-end
-
 local function onPRDEvent(event)
     if not (C_Timer and C_Timer.After) then return end
     local function doApply()

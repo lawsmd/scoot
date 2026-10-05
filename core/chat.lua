@@ -16,11 +16,6 @@ local function SafeCall(obj, method, ...)
     pcall(fn, obj, ...)
 end
 
-local function SafePCall(fn, ...)
-    if type(fn) ~= "function" then return end
-    pcall(fn, ...)
-end
-
 local function getProfileSetting()
     local profile = addon and addon.db and addon.db.profile
     local chat = profile and rawget(profile, "chat") or nil

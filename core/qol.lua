@@ -10,12 +10,6 @@ local function getQoL()
     return profile and profile.qol
 end
 
-local function ensureQoL()
-    if not (addon and addon.db and addon.db.profile) then return nil end
-    addon.db.profile.qol = addon.db.profile.qol or {}
-    return addon.db.profile.qol
-end
-
 --------------------------------------------------------------------------------
 -- Merchant Handler (Auto Repair + Sell Grey Items)
 --------------------------------------------------------------------------------

@@ -236,19 +236,6 @@ function addon.IsValueColorMode(mode)
 	return mode == "value" or mode == "valueDark"
 end
 
-local NON_DEFAULT_COLOR_MODES = {
-	custom = true, class = true, texture = true,
-	value = true, valueDark = true,
-	power = true, classPower = true, dkSpec = true,
-	classGradient = true, specGradient = true, customGradient = true,
-	rainbow = true,
-}
-
--- True for any mode that asks for something other than the stock default.
-function addon.IsNonDefaultColorMode(mode)
-	return NON_DEFAULT_COLOR_MODES[mode] == true
-end
-
 local function legacyNonWhite(tint)
 	return type(tint) == "table"
 		and (tint[1] ~= 1 or tint[2] ~= 1 or tint[3] ~= 1 or (tint[4] or 1) ~= 1)
@@ -353,9 +340,4 @@ function addon.ResolveColorRGBA(colorMode, tint, opts)
 		return opts.fbR, opts.fbG, opts.fbB, opts.fbA, "fallback"
 	end
 	return 1, 1, 1, 1, "default"
-end
-
--- Convenience wrapper for cfg tables using exactly the colorMode/color keys.
-function addon.ResolveColor(cfg, opts)
-	return addon.ResolveColorRGBA(cfg and cfg.colorMode, cfg and cfg.color, opts)
 end

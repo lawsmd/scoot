@@ -72,15 +72,6 @@ local function LayoutTypeName(layoutType)
     return layoutTypeLabels[layoutType] or ("Type" .. tostring(layoutType))
 end
 
-local function ensureEditModeFrame()
-    if not EditModeManagerFrame or not EditModeManagerFrame.MakeNewLayout then
-        if C_AddOns and C_AddOns.LoadAddOn then
-            pcall(C_AddOns.LoadAddOn, "Blizzard_EditMode")
-        end
-    end
-    return EditModeManagerFrame
-end
-
 -- prepareManager() REMOVED — calling methods on EditModeManagerFrame from addon context
 -- taints ALL registered system frames at once (via UpdateSystems → secureexecuterange).
 -- All callers replaced with direct C_EditMode API reads (GetLayouts/SaveLayouts).
@@ -307,25 +298,6 @@ local function persistEditModeActiveLayoutByName(layoutName)
         end
     end
     pcall(C_EditMode.SaveLayouts, li)
-end
-
-function Profiles:RequestReloadToProfile(layoutName, meta)
-    -- IMPORTANT:
-    -- ReloadUI() is a protected action and is not safe from arbitrary event handlers
-    -- (e.g. spec-change, edit mode callbacks). Calling it directly can produce:
-    --   [ADDON_ACTION_BLOCKED] AddOn 'Scoot' tried to call the protected function 'Reload()'.
-    --
-    -- All reloads MUST be initiated from a hardware event (typically a click).
-    -- Therefore this API now delegates to PromptReloadToProfile().
-    if not (self.db and self.db.global) then
-        return false
-    end
-    if InCombatLockdown and InCombatLockdown() then
-        -- Queue a safe prompt for when combat ends (handled by init.lua regen handler or callers).
-        self._pendingReloadToProfile = { layoutName = layoutName, meta = meta }
-        return true
-    end
-    return self:PromptReloadToProfile(layoutName, meta)
 end
 
 function Profiles:PromptReloadToProfile(layoutName, meta)

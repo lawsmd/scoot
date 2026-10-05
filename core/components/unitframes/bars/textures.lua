@@ -16,10 +16,6 @@ local function trace(...)
     if addon._dbgBarTextures then addon.DebugPrint("[BarTextures]", ...) end
 end
 
-local function getState(frame)
-    return FS.Get(frame)
-end
-
 local function getProp(frame, key)
     local st = FS.Get(frame)
     return st and st[key] or nil

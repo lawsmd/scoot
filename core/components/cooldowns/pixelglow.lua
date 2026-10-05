@@ -378,19 +378,6 @@ end)
 -- Public API
 --------------------------------------------------------------------------------
 
-function PG.AcquireForIcon(cdmIcon, style, colorMode, customColor, speed)
-    if not cdmIcon then return nil end
-    -- Release existing glow for this icon
-    local existing = activeGlows[cdmIcon]
-    if existing then
-        glowPool:Release(existing)
-    end
-
-    local ctrl = acquireController()
-    ctrl:Configure(style, colorMode, customColor, speed)
-    return ctrl
-end
-
 function PG.ReleaseForIcon(cdmIcon)
     if not cdmIcon then return end
     local ctrl = activeGlows[cdmIcon]

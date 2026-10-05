@@ -357,9 +357,3 @@ function addon.ApplyAllFocusTargetSettings()
     applyFocusTargetScale()
     applyFocusTargetPosition()
 end
-
--- Reset original anchors (useful if Blizzard layout changes)
-function addon.ResetToTOriginalAnchors()
-    originalAnchors = {}
-    debugPrint("Reset original anchors for ToT/FocusTarget")
-end

@@ -604,18 +604,6 @@ function PS.StopForIcon(cdmIcon)
     end
 end
 
-function PS.StopAll()
-    for cdmIcon, ctrl in pairs(activeOverlays) do
-        local animId = ctrl._procStartAnimId
-        if animId then
-            poolFor(animId):Release(ctrl)
-        else
-            ctrl:Stop()
-        end
-    end
-    wipe(activeOverlays)
-end
-
 function PS.GetForIcon(cdmIcon)
     return activeOverlays[cdmIcon]
 end

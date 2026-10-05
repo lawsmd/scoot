@@ -527,21 +527,6 @@ function Rules:GetRuleById(ruleId)
     end
 end
 
--- Check if a specific rule is currently active (trigger conditions match)
--- Used by the UI to show visual feedback on which rules are matching
-function Rules:IsRuleActive(ruleId)
-    if not self:IsInitialized() then
-        return false
-    end
-    local rule = self:GetRuleById(ruleId)
-    if not rule then
-        return false
-    end
-    local specID = currentSpecID()
-    local playerLevel = currentPlayerLevel()
-    return ruleMatches(rule, specID, playerLevel)
-end
-
 function Rules:CreateRule(opts)
     local rule = {
         id = nextRuleId(),
@@ -638,23 +623,6 @@ function Rules:SetRuleEnabled(ruleId, enabled)
     self:ApplyAll("ToggleRule")
 end
 
-function Rules:SetRuleTriggerSpecs(ruleId, specIdList)
-    local rule = self:GetRuleById(ruleId)
-    if not rule or rule.trigger.type ~= "specialization" then
-        return
-    end
-    local unique = {}
-    local ordered = {}
-    for _, specID in ipairs(specIdList or {}) do
-        if specID and not unique[specID] then
-            unique[specID] = true
-            table.insert(ordered, specID)
-        end
-    end
-    rule.trigger.specIds = ordered
-    self:ApplyAll("UpdateSpecs")
-end
-
 function Rules:ToggleRuleSpec(ruleId, specID)
     local rule = self:GetRuleById(ruleId)
     if not rule or rule.trigger.type ~= "specialization" or not specID then
@@ -747,72 +715,9 @@ function Rules:GetAllActions()
     return ACTIONS
 end
 
-function Rules:GetActionPathLabel(actionId)
-    local action = ACTIONS[actionId]
-    if not action or not action.path then
-        return "Select Target"
-    end
-    return table.concat(action.path, " › ")
-end
-
 function Rules:GetSpecBuckets()
     local buckets, specById = buildSpecCache()
     return buckets, specById
-end
-
-function Rules:GetSpecSummary(rule)
-    rule = rule or {}
-    local specIds = rule.trigger and rule.trigger.specIds
-    if not specIds or #specIds == 0 then
-        return "No specs selected"
-    end
-    local specs = {}
-    buildSpecCache()
-    for _, specID in ipairs(specIds) do
-        local entry = SPEC_BY_ID and SPEC_BY_ID[specID]
-        if entry then
-            table.insert(specs, entry.name)
-        else
-            table.insert(specs, tostring(specID))
-        end
-    end
-    table.sort(specs)
-    return table.concat(specs, ", ")
-end
-
-local function gatherActionMenu()
-    local tree = {}
-    local function findChild(list, label)
-        for _, node in ipairs(list) do
-            if node.text == label then
-                return node
-            end
-        end
-    end
-
-    for _, action in pairs(ACTIONS) do
-        local cursor = tree
-        for index, label in ipairs(action.path or { action.id }) do
-            local node = findChild(cursor, label)
-            if not node then
-                node = { text = label, children = {} }
-                table.insert(cursor, node)
-            end
-            if index == #action.path then
-                node.actionId = action.id
-            end
-            cursor = node.children
-        end
-    end
-
-    return tree
-end
-
-function Rules:GetActionMenuTree()
-    if not self._actionMenuCache then
-        self._actionMenuCache = gatherActionMenu()
-    end
-    return self._actionMenuCache
 end
 
 -- Get available options at a given path depth for breadcrumb navigation
@@ -893,23 +798,6 @@ function Rules:GetActionPath(actionId)
         return action.path
     end
     return {}
-end
-
--- Clear all stored baselines. Use this to reset the "normal" values for all actions.
--- After clearing, the next time a rule activates, it will capture fresh baselines.
-function Rules:ClearAllBaselines()
-    local profile = addon.db and addon.db.profile
-    if profile then
-        profile.ruleBaselines = {}
-    end
-    ACTIVE_OVERRIDES = {}
-end
-
--- Clear the baseline for a specific action.
-function Rules:ClearBaseline(actionId)
-    if actionId then
-        clearBaseline(actionId)
-    end
 end
 
 -- Check if a baseline exists for an action (useful for debugging)

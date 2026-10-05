@@ -259,18 +259,6 @@ local CDM_VIEWER_NAMES = {
     ["BuffIconCooldownViewer"] = "trackedBuffs",
 }
 
--- Find the FlipBook animation within an AnimationGroup (duck-type check)
-local function GetFlipBook(animGroup)
-    if not animGroup then return nil end
-    for i = 1, animGroup:GetNumAnimations() do
-        local anim = select(i, animGroup:GetAnimations())
-        if anim and anim.SetFlipBookRows then
-            return anim
-        end
-    end
-    return nil
-end
-
 -- Find the cooldown text FontString inside a Cooldown frame
 local function getCooldownFontString(cooldownFrame)
     -- Above the cache read, not just the writes: the lookup below is already

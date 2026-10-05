@@ -31,16 +31,6 @@ function Utils.uiUnitsToPixels(u)
     return math.floor(((tonumber(u) or 0) * Utils.getUiScale()) + 0.5)
 end
 
-function Utils.clampScreenCoordinate(value)
-    local v = tonumber(value) or 0
-    if v > 2000 then
-        v = 2000
-    elseif v < -2000 then
-        v = -2000
-    end
-    return math.floor(v + (v >= 0 and 0.5 or -0.5))
-end
-
 function Utils.getFrameScreenOffsets(frame)
     if not (frame and frame.GetCenter and UIParent and UIParent.GetCenter) then
         return 0, 0
@@ -96,15 +86,6 @@ end
 -- Configuration Detection Utilities
 --------------------------------------------------------------------------------
 
--- Zero-Touch helper: check if table has any of the specified keys
-function Utils.hasAnyKey(tbl, keys)
-    if not tbl then return false end
-    for i = 1, #keys do
-        if tbl[keys[i]] ~= nil then return true end
-    end
-    return false
-end
-
 -- Check if text settings have any customization (used for Zero-Touch).
 -- VALUE-COMPARE semantics: a stored value counts only when it differs from
 -- the structural defaults below; gates overlay existence. The NIL-COMPARE
@@ -127,23 +108,6 @@ function Utils.hasCustomTextSettings(cfg)
     end
     if cfg.hideRealm then return true end
     return false
-end
-
--- Check if bar styling has any customization (used for Zero-Touch)
-function Utils.hasCustomBarSettings(cfg)
-    if not cfg then return false end
-    local hasCustom = (not addon.Media.IsDefaultBarTexture(cfg.healthBarTexture)) or
-                      (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default") or
-                      (not addon.Media.IsDefaultBarTexture(cfg.healthBarBackgroundTexture)) or
-                      (cfg.healthBarBackgroundColorMode and cfg.healthBarBackgroundColorMode ~= "default")
-    return hasCustom
-end
-
--- Check if health bar overlay should be active
-function Utils.hasCustomHealthBarOverlay(cfg)
-    if not cfg then return false end
-    return (not addon.Media.IsDefaultBarTexture(cfg.healthBarTexture)) or
-           (cfg.healthBarColorMode and cfg.healthBarColorMode ~= "default")
 end
 
 --------------------------------------------------------------------------------
