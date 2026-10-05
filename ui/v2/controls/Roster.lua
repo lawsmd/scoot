@@ -26,6 +26,9 @@
 --               draws no mark
 --   markWidth, markHeight
 --               the mark's size; default 14 and 9
+--   markY       the mark's lift above the line's middle, for a mark that
+--               should centre on the text's letters rather than its line
+--               box; default 0
 --
 -- SetLines(list): entry i fills line i and a missing one blanks it. An
 -- entry is { role, filled, color = { r, g, b }, text, leader, trailing }:
@@ -83,6 +86,7 @@ function Controls.CreateRoster(parent, opts)
     local leaderMark = type(opts.leaderMark) == "table" and opts.leaderMark or nil
     local markWidth = opts.markWidth or DEFAULTS.markWidth
     local markHeight = opts.markHeight or DEFAULTS.markHeight
+    local markY = opts.markY or 0
 
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(width, lines * lineHeight)
@@ -209,7 +213,7 @@ function Controls.CreateRoster(parent, opts)
 
         line.mark:ClearAllPoints()
         if showMark then
-            line.mark:SetPoint("LEFT", after, afterPoint, offset, hasText and 0 or line.y)
+            line.mark:SetPoint("LEFT", after, afterPoint, offset, (hasText and 0 or line.y) + markY)
             line.mark:Show()
             room = room - markWidth - gap
             after, afterPoint, offset = line.mark, "RIGHT", gap
