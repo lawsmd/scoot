@@ -2,6 +2,8 @@
 -- forever/gallery.lua
 -- /camelot gallery: one of each Blizzard chrome part in a lab window, with a
 -- readout of what the running client resolves.
+-- Development tooling: a Camelot release strips this file the way Scoot's
+-- export script strips the SCOOT-DEV-ONLY block (docs/camelot/repo.md).
 --
 -- The settings framework takes a skin's word for how each surface is drawn,
 -- and on Forever a retail template or atlas name draws that client's own art.

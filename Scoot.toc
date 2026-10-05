@@ -139,7 +139,6 @@ core/components/unitframes/bars/textoverlay.lua
 core/components/unitframes/bars/textures.lua
 core/components/unitframes/bars/alpha.lua
 core/components/unitframes/bars/preemptive.lua
-core/components/unitframes/bars/debug.lua
 core/components/unitframes/bars/overlays.lua
 core/components/unitframes/bars/groupcore.lua
 core/components/unitframes/bars/groupicons.lua
@@ -244,9 +243,16 @@ core/components/damagemetersY/export.lua
 core/components/damagemetersY/drilldown.lua
 core/components/damagemetersY/events.lua
 core/components/bosswarnings/core.lua
+core/debug/export.lua
+# >>> SCOOT-DEV-ONLY
+# Development tooling. The export script (docs/scripts/export-curseforge.ps1)
+# drops this block from the release TOC and deletes the files it names, so a
+# CurseForge install has core/debug/core.lua (the debug window, DebugLines and
+# the command registry) and core/debug/export.lua and nothing else from here.
+# A shipped file reads a name defined in this block only behind a bare test
+# (the gate's release-read check). A junctioned repo install keeps everything.
 core/debug/editmode.lua
 core/debug/offscreen.lua
-core/debug/export.lua
 core/debug/inspector.lua
 core/debug/misc.lua
 core/debug/cdmlayers.lua
@@ -271,6 +277,8 @@ core/debug/fontpair.lua
 core/debug/accent.lua
 core/debug/prdclass.lua
 core/taintdebug.lua
+core/components/unitframes/bars/debug.lua
+# <<< SCOOT-DEV-ONLY
 core/dialogs.lua
 core/importexport.lua
 

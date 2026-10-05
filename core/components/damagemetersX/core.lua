@@ -992,7 +992,9 @@ addon:RegisterDebugCommand({
         { word = "state", help = "zero-touch diagnostic", fn = function()
             if addon.DebugDMState then addon.DebugDMState() else Commands.NotAvailable("Damage Meter") end
         end },
-        { word = "export", usage = "export [overall|current|expired]", help = "session export", fn = function(session) addon.DebugExportDamageMeters(session) end },
+        { word = "export", usage = "export [overall|current|expired]", help = "session export", fn = function(session)
+            if addon.DebugExportDamageMeters then addon.DebugExportDamageMeters(session) else Commands.NotAvailable("Damage Meter export") end
+        end },
         { word = "zone", help = "export location snapshots", fn = function()
             addon.DebugShowWindow("DM Export Location", DMX._DebugZoneLines())
         end },

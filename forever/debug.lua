@@ -1,6 +1,8 @@
 --------------------------------------------------------------------------------
 -- forever/debug.lua
 -- The /camelot verbs that drive the unit frames without a settings page.
+-- Development tooling: a Camelot release strips this file the way Scoot's
+-- export script strips the SCOOT-DEV-ONLY block (docs/camelot/repo.md).
 --
 -- Each verb registers with the command registry in core/commands.lua, which
 -- reads the brand and the slash word from the entry file, so `/camelot` lists
