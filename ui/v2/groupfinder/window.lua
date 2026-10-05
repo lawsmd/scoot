@@ -68,9 +68,9 @@ local LAYOUT = {
     -- rows keep on the right for the roster or the status, the lines
     -- under a row's name (a size smaller and stepped in, so the name stands
     -- out), the roster's grid (its line count sets every row's height, so
-    -- a group of two stands as tall as a group of five), and the advanced
-    -- filter's drawer width and text size, two columns of rows out of the
-    -- window's right edge
+    -- a group of two stands as tall as a group of five), the counts grid a
+    -- larger group shows in its place, and the filter drawer's widths and
+    -- text size out of the window's right edge
     search = {
         rowY = 36, rowHeight = 26, gap = 4,
         boxTop = 70,
@@ -90,7 +90,18 @@ local LAYOUT = {
             markWidth = 7, markHeight = 5, markY = 1,
             top = 15, bottom = 3,
         },
-        filterDrawerWidth = 500, filterListFont = 11,
+        -- The counts per role of a raid or another group past the grid:
+        -- three lines, larger than the roster's and centred on the row,
+        -- in a column as wide as an n/m line with margin to the name, so
+        -- a raid's longer name keeps the room the five-line grid takes
+        counts = {
+            lines = 3, lineHeight = 16, fontSize = 11,
+            glyphWidth = 16, gap = 4, iconSize = 13,
+            width = 56, margin = 12,
+        },
+        -- The drawer is wide for the Dungeons filter's two columns and
+        -- narrow for the language rows
+        filterDrawerWidth = 500, languageDrawerWidth = 220, filterListFont = 11,
     },
 }
 UI.LAYOUT = LAYOUT

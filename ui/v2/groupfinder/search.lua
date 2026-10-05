@@ -9,7 +9,8 @@
 -- way. The results are the component's copy, one row per id, each row read
 -- afresh from the API on render as Blizzard's row is. The filter list
 -- writes the client's advanced or language filter and redraws the rows;
--- the advanced one stands in a drawer out of the window's right edge.
+-- it stands in a drawer out of the window's right edge, wide for the
+-- Dungeons filter's columns and narrow for the language rows.
 --
 -- A search shows on the results pane as a sweep: the rows there dim under
 -- a veil and a line scans them while the answer is on its way, and when it
@@ -119,6 +120,19 @@ local function PaintRow(row)
     end
 end
 
+-- The name's right edge stands off the row's right column: the roster's
+-- width for a group on the grid, the counts column with its margin for a
+-- larger group, so a raid's longer name takes the room the grid leaves
+local function SetNameColumn(row, column)
+    local padX = (M().listRow or {}).padX or 8
+    row._name:SetPoint("RIGHT", row, "RIGHT", -(padX + column), 0)
+end
+
+local function ClearRosters(row)
+    row._roster:SetLines({})
+    row._counts:SetLines({})
+end
+
 local function CreateRow(row)
     local C = Controls()
     local L = LAYOUT.search
@@ -126,7 +140,7 @@ local function CreateRow(row)
 
     row._name = UI.PrimaryText(row, "label")
     row._name:SetPoint("TOPLEFT", row, "TOPLEFT", padX, -L.nameTop)
-    row._name:SetPoint("RIGHT", row, "RIGHT", -(padX + L.rightColumn), 0)
+    SetNameColumn(row, L.rightColumn)
     row._name:SetWordWrap(false)
 
     row._activity = UI.DimText(row, "desc", L.subSize)
@@ -148,6 +162,14 @@ local function CreateRow(row)
         markY = R.markY, iconSize = R.iconSize, icons = RoleIcons(), leaderMark = LEADER_MARK,
     })
     row._roster:SetPoint("TOPRIGHT", row, "TOPRIGHT", -padX, -R.top)
+
+    -- The counts grid for a group past the roster's lines, centred on the row
+    local Cn = L.counts
+    row._counts = C.CreateRoster(row, {
+        lines = Cn.lines, lineHeight = Cn.lineHeight, width = Cn.width, fontSize = Cn.fontSize,
+        glyphWidth = Cn.glyphWidth, gap = Cn.gap, iconSize = Cn.iconSize, icons = RoleIcons(),
+    })
+    row._counts:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
 
     row._voice = C.CreateTag(row, { text = "VOICE", tone = "dim" })
     row._voice:SetPoint("TOPLEFT", row._playstyle, "BOTTOMLEFT", 0, -2)
@@ -173,24 +195,30 @@ end
 -- The right column by the activity's display type: a line per member for
 -- a group the grid holds, in role order with the leader first in their
 -- role and the crown and the rating on the leader's line, the open slots
--- blank; the counts per role for a larger group; n/m for a player count.
--- The members come one by one from the client, and when any is missing
--- its role the counts stand in, class colored and named where the client
--- gives the classes.
+-- blank; for a larger group the counts per role on the counts grid, which
+-- stands larger and centred on the row in the lighter dim, since the
+-- lines stand for many classes; n/m for a player count on that grid's
+-- middle line. The members come one by one from the client, and when any
+-- is missing its role the counts stand in on the roster, class colored
+-- and named where the client gives the classes.
 local function RenderRoster(row, id, info, counts, dimmed)
-    local R = LAYOUT.search.roster
+    local L = LAYOUT.search
+    local R = L.roster
     local activity = GF.ActivityInfo(GF.ActivityID(info))
     row._roster:SetDimmed(dimmed)
+    row._counts:SetDimmed(dimmed)
     if not activity or not counts then
-        row._roster:SetLines({})
+        ClearRosters(row)
+        SetNameColumn(row, L.rightColumn)
         return
     end
     local D = Enum.LFGListDisplayType
     local kind = activity.displayType
     local maxPlayers = GF.plainNumber(activity.maxNumPlayers)
-    local dr, dg, db = Theme():GetDimTextColor()
-    local dim = { dr, dg, db }
+    local lr, lg, lb = Theme():GetDimTextLightColor()
+    local light = { lr, lg, lb }
     local entries = {}
+    local onCounts = false
     local enumerate = D and (kind == D.RoleEnumerate or kind == D.ClassEnumerate)
 
     if enumerate and (maxPlayers or R.lines) <= R.lines then
@@ -250,18 +278,29 @@ local function RenderRoster(row, id, info, counts, dimmed)
         -- An open slot is a blank line
         while #entries > max do table.remove(entries) end
     elseif enumerate or (D and kind == D.RoleCount) then
+        onCounts = true
         for _, role in ipairs(ROLE_ORDER) do
             entries[#entries + 1] = {
-                role = role, filled = true, color = dim,
+                role = role, filled = true, color = light,
                 text = tostring(GF.plainNumber(counts[role]) or 0),
             }
         end
     elseif D and kind == D.PlayerCount then
+        onCounts = true
         local total = (GF.plainNumber(counts.TANK) or 0) + (GF.plainNumber(counts.HEALER) or 0)
             + (GF.plainNumber(counts.DAMAGER) or 0) + (GF.plainNumber(counts.NOROLE) or 0)
-        entries[1] = { filled = true, color = dim, text = string.format("%d/%d", total, maxPlayers or total) }
+        entries[2] = { filled = true, color = light, text = string.format("%d/%d", total, maxPlayers or total) }
     end
-    row._roster:SetLines(entries)
+
+    if onCounts then
+        row._roster:SetLines({})
+        row._counts:SetLines(entries)
+        SetNameColumn(row, L.counts.width + L.counts.margin)
+    else
+        row._counts:SetLines({})
+        row._roster:SetLines(entries)
+        SetNameColumn(row, L.rightColumn)
+    end
 end
 
 local function RenderRow(panel, row, item)
@@ -282,7 +321,7 @@ local function RenderRow(panel, row, item)
         row._name:SetText("")
         row._activity:SetText("")
         row._playstyle:SetText("")
-        row._roster:SetLines({})
+        ClearRosters(row)
         row._voice:Hide()
         row._status:Hide()
         row._timer:Hide()
@@ -322,7 +361,8 @@ local function RenderRow(panel, row, item)
     local text, lit, pending = GF.StatusLine(appStatus, pendingStatus)
     local right = -padX
     if text then
-        row._roster:SetLines({})
+        ClearRosters(row)
+        SetNameColumn(row, LAYOUT.search.rightColumn)
         local showCancel = pendingStatus ~= "applied"
         row._cancel:SetShown(showCancel)
         if showCancel then
@@ -457,42 +497,35 @@ local function Build(parent)
     panel._leaver:SetPoint("RIGHT", panel._signUp, "LEFT", -6, 0)
     panel._leaver:Hide()
 
-    -- The lists: the language filter floating under its button, the
-    -- advanced filter in its sections in the drawer, the auto-complete,
-    -- the row menu. A list reads the labels before the keys, so every
-    -- getter builds the whole set; it is a few dozen strings
+    -- The lists: the filter in its drawer, the auto-complete, the row
+    -- menu. A list reads the labels before the keys, so every getter
+    -- builds the whole set; it is a few dozen strings
     panel._filterMode = "languages"
-    local function FilterList(extra)
-        local o = {
-            anchor = panel._filter,
-            multiSelect = true,
-            getKeys = function() return (panel:FilterItems()) end,
-            getValues = function() return select(2, panel:FilterItems()) end,
-            isChecked = function(key) return panel:FilterChecked(key) end,
-            isInert = function(key) return panel:FilterInert(key) end,
-            onToggle = function(key, checked) panel:FilterToggle(key, checked) end,
-        }
-        for k, v in pairs(extra) do o[k] = v end
-        return C.CreatePopupList(o)
-    end
-    panel._filterList = FilterList({ width = 220 })
 
-    -- The advanced filter's drawer out of the window's right edge, its
-    -- list embedded and built as the drawer opens
+    -- The filter's drawer out of the window's right edge, its list
+    -- embedded and built as the drawer opens: the Dungeons filter in its
+    -- sections across the wide drawer, the languages down the narrow one.
+    -- The list names no width, so it measures the drawer's content at each
+    -- open, after OpenFilter has sized the drawer for the mode
     panel._drawer = C.CreateDrawer({
         parent = UI:GetFrame(),
         width = L.filterDrawerWidth,
         onOpen = function(drawer)
             panel._dungeonsCleared = false
-            drawer:SetContentHeight(panel._advancedList:Open())
+            drawer:SetContentHeight(panel._filterList:Open())
         end,
-        onClose = function() panel._advancedList:Close() end,
+        onClose = function() panel._filterList:Close() end,
     })
-    panel._advancedList = FilterList({
+    panel._filterList = C.CreatePopupList({
         embed = panel._drawer.content,
-        width = panel._drawer.contentWidth,
+        multiSelect = true,
         fontSize = L.filterListFont,
+        getKeys = function() return (panel:FilterItems()) end,
+        getValues = function() return select(2, panel:FilterItems()) end,
         getSections = function() return select(3, panel:FilterItems()) end,
+        isChecked = function(key) return panel:FilterChecked(key) end,
+        isInert = function(key) return panel:FilterInert(key) end,
+        onToggle = function(key, checked) panel:FilterToggle(key, checked) end,
     })
 
     panel._autoKeys, panel._autoLabels = {}, {}
@@ -909,20 +942,15 @@ local function Build(parent)
         self._dungeonsCleared = not on
         C_LFGList.SaveAdvancedFilter(enabled)
         self._list:Refresh()
-        self._advancedList:Refresh()
+        self._filterList:Refresh()
     end
 
-    -- The mode is settled by the items, so they are read first: the
-    -- advanced filter opens its drawer, the languages their floating list
+    -- The mode is settled by the items, so they are read first, and the
+    -- drawer takes the mode's width before it comes out
     function panel:OpenFilter()
         self:FilterItems()
-        if self._filterMode == "advanced" then
-            self._filterList:Close()
-            self._drawer:Toggle()
-            return
-        end
-        self._drawer:Close(true)
-        self._filterList:Toggle()
+        self._drawer:Resize(self._filterMode == "advanced" and L.filterDrawerWidth or L.languageDrawerWidth)
+        self._drawer:Toggle()
     end
 
     ----------------------------------------------------------------------------
@@ -1145,7 +1173,6 @@ local function Build(parent)
         self:StopTicker()
         self._list:Cleanup()
         self._filterList:Destroy()
-        self._advancedList:Destroy()
         self._drawer:Cleanup()
         self._auto:Destroy()
         self._menu:Destroy()
@@ -1153,7 +1180,6 @@ local function Build(parent)
 
     panel:HookScript("OnHide", function()
         panel._auto:Close()
-        panel._filterList:Close()
         panel._drawer:Close(true)
         panel._menu:Close()
         panel:StopTicker()
