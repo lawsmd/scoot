@@ -376,7 +376,6 @@ local function Build(parent)
     local list = C.CreateScrollList({
         parent = box,
         rowHeight = LAYOUT.Template("LFGListSearchEntryTemplate", "resultRow"),
-        rowGap = 2,
         createRow = CreateRow,
         render = function(row, item) RenderRow(panel, row, item) end,
         onSelect = function(item, index) panel:SelectResult(item.resultID, index) end,
@@ -418,19 +417,30 @@ local function Build(parent)
     panel._leaver:SetPoint("RIGHT", panel._signUp, "LEFT", -6, 0)
     panel._leaver:Hide()
 
-    -- The lists that float: the filter, the auto-complete, the row menu
-    -- The list reads the labels before the keys, so both getters build the
-    -- pair; it is a dozen strings
+    -- The lists that float: the language filter, the advanced filter in
+    -- its sections under the Filter button's right edge, the auto-complete,
+    -- the row menu. A list reads the labels before the keys, so every
+    -- getter builds the whole set; it is a few dozen strings
     panel._filterMode = "languages"
-    panel._filterList = C.CreatePopupList({
-        anchor = panel._filter,
-        width = 220,
-        multiSelect = true,
-        getKeys = function() return (panel:FilterItems()) end,
-        getValues = function() return select(2, panel:FilterItems()) end,
-        isChecked = function(key) return panel:FilterChecked(key) end,
-        isInert = function(key) return panel:FilterInert(key) end,
-        onToggle = function(key, checked) panel:FilterToggle(key, checked) end,
+    local function FilterList(extra)
+        local o = {
+            anchor = panel._filter,
+            multiSelect = true,
+            getKeys = function() return (panel:FilterItems()) end,
+            getValues = function() return select(2, panel:FilterItems()) end,
+            isChecked = function(key) return panel:FilterChecked(key) end,
+            isInert = function(key) return panel:FilterInert(key) end,
+            onToggle = function(key, checked) panel:FilterToggle(key, checked) end,
+        }
+        for k, v in pairs(extra) do o[k] = v end
+        return C.CreatePopupList(o)
+    end
+    panel._filterList = FilterList({ width = 220 })
+    panel._advancedList = FilterList({
+        width = L.filterListWidth,
+        fontSize = L.filterListFont,
+        align = "right",
+        getSections = function() return select(3, panel:FilterItems()) end,
     })
 
     panel._autoKeys, panel._autoLabels = {}, {}
@@ -610,22 +620,34 @@ local function Build(parent)
     -- The filter list
     ----------------------------------------------------------------------------
 
-    local ADVANCED = {
+    -- The advanced filter in three sections, as the owner laid them out:
+    -- the role rows, the dungeons, then the difficulties beside the
+    -- playstyles. The keys are the AdvancedFilterOptions fields, and a
+    -- dungeon row's key carries the dungeon's group id, since the filter's
+    -- activities list holds group ids despite its name.
+    local ROLES = {
         { key = "needsTank", label = "LFG_LIST_NEEDS_TANK", role = 1 },
         { key = "needsHealer", label = "LFG_LIST_NEEDS_HEALER", role = 2 },
         { key = "needsDamage", label = "LFG_LIST_NEEDS_DAMAGE", role = 3 },
         { key = "needsMyClass", label = "LFG_LIST_CLASS_AVAILABLE", class = true },
         { key = "hasTank", label = "LFG_LIST_HAS_TANK" },
         { key = "hasHealer", label = "LFG_LIST_HAS_HEALER" },
-        { key = "difficultyNormal", label = "PLAYER_DIFFICULTY1" },
-        { key = "difficultyHeroic", label = "PLAYER_DIFFICULTY2" },
-        { key = "difficultyMythic", label = "PLAYER_DIFFICULTY6" },
-        { key = "difficultyMythicPlus", label = "PLAYER_DIFFICULTY_MYTHIC_PLUS" },
-        { key = "generalPlaystyle1", label = "GROUP_FINDER_GENERAL_PLAYSTYLE1" },
-        { key = "generalPlaystyle2", label = "GROUP_FINDER_GENERAL_PLAYSTYLE2" },
-        { key = "generalPlaystyle3", label = "GROUP_FINDER_GENERAL_PLAYSTYLE3" },
-        { key = "generalPlaystyle4", label = "GROUP_FINDER_GENERAL_PLAYSTYLE4" },
     }
+    local DIFFICULTY = { "difficultyNormal", "difficultyHeroic", "difficultyMythic", "difficultyMythicPlus" }
+    local PLAYSTYLE = { "generalPlaystyle1", "generalPlaystyle2", "generalPlaystyle3", "generalPlaystyle4" }
+    local LABELS = {
+        difficultyNormal = "PLAYER_DIFFICULTY1", difficultyHeroic = "PLAYER_DIFFICULTY2",
+        difficultyMythic = "PLAYER_DIFFICULTY6", difficultyMythicPlus = "PLAYER_DIFFICULTY_MYTHIC_PLUS",
+        generalPlaystyle1 = "GROUP_FINDER_GENERAL_PLAYSTYLE1", generalPlaystyle2 = "GROUP_FINDER_GENERAL_PLAYSTYLE2",
+        generalPlaystyle3 = "GROUP_FINDER_GENERAL_PLAYSTYLE3", generalPlaystyle4 = "GROUP_FINDER_GENERAL_PLAYSTYLE4",
+    }
+    -- A key's family: no difficulty checked reads as every difficulty
+    -- checked, and the same for the playstyles, as Blizzard's menu reads it
+    local FAMILY = {}
+    for _, key in ipairs(DIFFICULTY) do FAMILY[key] = DIFFICULTY end
+    for _, key in ipairs(PLAYSTYLE) do FAMILY[key] = PLAYSTYLE end
+    local GROUP_PREFIX = "group:"
+    local ALL_GROUPS = GROUP_PREFIX .. "all"
 
     local function AtMaxLevel()
         return GameRulesUtil and GameRulesUtil.IsPlayerAtEffectiveMaxLevel and GameRulesUtil.IsPlayerAtEffectiveMaxLevel()
@@ -635,57 +657,166 @@ local function Build(parent)
         return LFGListCanChangeLanguages and LFGListCanChangeLanguages() or false
     end
 
+    -- The dungeons the filter lists, as Blizzard's menu lists them: this
+    -- season's, the expansion's others, and the Timerunning set when the
+    -- character is one; group ids in that order
+    local function DungeonGroups()
+        local F = Enum and Enum.LFGListFilter
+        if not (F and C_LFGList.GetAvailableActivityGroups) then return {} end
+        local ids = {}
+        local function add(filters)
+            local groups = C_LFGList.GetAvailableActivityGroups(GF.DUNGEONS_CATEGORY, filters)
+            for _, id in ipairs(type(groups) == "table" and groups or {}) do ids[#ids + 1] = id end
+        end
+        local pve = F.PvE or 0
+        add(bit.bor(F.CurrentSeason or 0, pve))
+        add(bit.bor(F.CurrentExpansion or 0, F.NotCurrentSeason or 0, pve))
+        if F.Timerunning and PlayerIsTimerunning and PlayerIsTimerunning() then
+            add(bit.bor(F.Timerunning, pve))
+        end
+        return ids
+    end
+
+    local function IsGroupKey(key)
+        return string.sub(key, 1, #GROUP_PREFIX) == GROUP_PREFIX
+    end
+
+    local function GroupID(key)
+        return tonumber(string.sub(key, #GROUP_PREFIX + 1))
+    end
+
+    -- The filter's dungeon set and its size; an empty set reads as every
+    -- dungeon checked
+    local function GroupSet(enabled)
+        local set, n = {}, 0
+        for _, id in ipairs(type(enabled.activities) == "table" and enabled.activities or {}) do
+            set[id] = true
+            n = n + 1
+        end
+        return set, n
+    end
+
+    local function NoneOf(enabled, keys)
+        for _, k in ipairs(keys) do
+            if enabled[k] then return false end
+        end
+        return true
+    end
+
     -- Dungeons at max level take the advanced filter; every other category
     -- the languages, as Blizzard's button decides. Returns the keys in
-    -- order and the label per key.
+    -- order, the label per key, and the sections of the advanced filter.
     function panel:FilterItems()
         local keys, labels = {}, {}
         if SelectedCategory() == GF.DUNGEONS_CATEGORY and AtMaxLevel() then
             self._filterMode = "advanced"
+            local sections = {}
+            local function Section(label, columnLabels)
+                local s = { label = label, labels = columnLabels, columns = 2, keys = {} }
+                sections[#sections + 1] = s
+                return s
+            end
+            local function Put(s, key, label)
+                keys[#keys + 1] = key
+                labels[key] = label
+                s.keys[#s.keys + 1] = key
+            end
+
+            local roles = Section(Str("LFG_LIST_REQUIRE", "Roles"))
             local tank, healer, dps = C_LFGList.GetAvailableRoles()
             local avail = { tank, healer, dps }
-            for _, entry in ipairs(ADVANCED) do
+            for _, entry in ipairs(ROLES) do
                 if not entry.role or avail[entry.role] then
-                    keys[#keys + 1] = entry.key
                     local label = Str(entry.label, entry.key)
                     if entry.class and PlayerUtil and PlayerUtil.GetClassName then
                         label = string.format(label, PlayerUtil.GetClassName())
                     end
-                    labels[entry.key] = label
+                    Put(roles, entry.key, label)
                 end
             end
-        else
-            self._filterMode = "languages"
-            local languages = C_LFGList.GetAvailableLanguageSearchFilter and C_LFGList.GetAvailableLanguageSearchFilter() or {}
-            for _, lang in ipairs(languages) do
-                keys[#keys + 1] = lang
-                labels[lang] = Str("LFG_LIST_LANGUAGE_" .. string.upper(lang), lang)
+
+            local dungeons = Section(Str("DUNGEONS", "Dungeons"))
+            Put(dungeons, ALL_GROUPS, Str("CHECK_ALL", "Check all"))
+            for _, id in ipairs(DungeonGroups()) do
+                local ok, name = pcall(C_LFGList.GetActivityGroupInfo, id)
+                if ok and type(name) == "string" and name ~= "" then
+                    Put(dungeons, GROUP_PREFIX .. id, name)
+                end
             end
+
+            local styles = Section(nil, {
+                Str("LFG_LIST_DIFFICULTY", "Difficulty"),
+                Str("GROUP_FINDER_FILTER_PLAYSTYLE", "Playstyle"),
+            })
+            for _, key in ipairs(DIFFICULTY) do Put(styles, key, Str(LABELS[key], key)) end
+            for _, key in ipairs(PLAYSTYLE) do Put(styles, key, Str(LABELS[key], key)) end
+            return keys, labels, sections
         end
-        return keys, labels
+        self._filterMode = "languages"
+        local languages = C_LFGList.GetAvailableLanguageSearchFilter and C_LFGList.GetAvailableLanguageSearchFilter() or {}
+        for _, lang in ipairs(languages) do
+            keys[#keys + 1] = lang
+            labels[lang] = Str("LFG_LIST_LANGUAGE_" .. string.upper(lang), lang)
+        end
+        return keys, labels, nil
     end
 
     function panel:FilterChecked(key)
         if self._filterMode == "advanced" then
             local enabled = C_LFGList.GetAdvancedFilter()
-            return type(enabled) == "table" and enabled[key] == true
+            if type(enabled) ~= "table" then return false end
+            if IsGroupKey(key) then
+                local set, n = GroupSet(enabled)
+                if n == 0 then return true end
+                if key == ALL_GROUPS then return n >= #DungeonGroups() end
+                return set[GroupID(key)] == true
+            end
+            local family = FAMILY[key]
+            if family and NoneOf(enabled, family) then return true end
+            return enabled[key] == true
         end
         local enabled = C_LFGList.GetLanguageSearchFilter and C_LFGList.GetLanguageSearchFilter() or {}
         return enabled[key] == true
     end
 
-    -- A default language stays on, as Blizzard's list has it
+    -- Check all is spent once every dungeon is on; a default language
+    -- stays on, as Blizzard's list has it
     function panel:FilterInert(key)
-        if self._filterMode ~= "languages" then return false end
+        if self._filterMode == "advanced" then
+            return key == ALL_GROUPS and self:FilterChecked(key)
+        end
         local defaults = C_LFGList.GetDefaultLanguageSearchFilter and C_LFGList.GetDefaultLanguageSearchFilter() or {}
         return defaults[key] == true
     end
 
+    -- A toggle on a family that reads as all checked first writes the
+    -- family on, so the one row comes off alone, as Blizzard's menu does
     function panel:FilterToggle(key, checked)
         if self._filterMode == "advanced" then
             local enabled = C_LFGList.GetAdvancedFilter()
             if type(enabled) ~= "table" then return end
-            enabled[key] = checked and true or false
+            if IsGroupKey(key) then
+                local ids = DungeonGroups()
+                local set, n = GroupSet(enabled)
+                if n == 0 or key == ALL_GROUPS then
+                    set = {}
+                    for _, id in ipairs(ids) do set[id] = true end
+                end
+                if key ~= ALL_GROUPS then
+                    set[GroupID(key)] = checked or nil
+                end
+                local kept = {}
+                for _, id in ipairs(ids) do
+                    if set[id] then kept[#kept + 1] = id end
+                end
+                enabled.activities = kept
+            else
+                local family = FAMILY[key]
+                if family and NoneOf(enabled, family) then
+                    for _, k in ipairs(family) do enabled[k] = true end
+                end
+                enabled[key] = checked and true or false
+            end
             C_LFGList.SaveAdvancedFilter(enabled)
             self._list:Refresh()
             return
@@ -696,8 +827,14 @@ local function Build(parent)
         C_LFGList.SaveLanguageSearchFilter(enabled)
     end
 
+    -- The mode is settled by the items, so they are read before the list
+    -- for the mode opens
     function panel:OpenFilter()
-        self._filterList:Toggle()
+        self:FilterItems()
+        local open = self._filterMode == "advanced" and self._advancedList or self._filterList
+        local other = open == self._advancedList and self._filterList or self._advancedList
+        if other:IsShown() then other:Close() end
+        open:Toggle()
     end
 
     ----------------------------------------------------------------------------

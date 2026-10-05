@@ -56,10 +56,15 @@ local LAYOUT = {
         boxTop = 40, boxBottom = 44, boxX = 4,
         buttonX = 4, buttonY = 6,
     },
+    -- The category rows: the label stands in from the row's bar
+    categories = {
+        labelX = 6,
+    },
     -- The search panel's row of box, refresh and filter, the column the
-    -- rows keep on the right for the composition or the status, and the
-    -- lines under a row's name: a size smaller and stepped in, so the name
-    -- stands out
+    -- rows keep on the right for the composition or the status, the lines
+    -- under a row's name (a size smaller and stepped in, so the name stands
+    -- out), and the advanced filter list's width and text size, two
+    -- columns of rows under the Filter button
     search = {
         rowY = 36, rowHeight = 26, gap = 4,
         boxTop = 70,
@@ -67,6 +72,7 @@ local LAYOUT = {
         rightColumn = 112,
         nameTop = 5,
         subIndent = 10, subSize = 10,
+        filterListWidth = 460, filterListFont = 11,
     },
 }
 UI.LAYOUT = LAYOUT
