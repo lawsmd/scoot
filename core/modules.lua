@@ -214,6 +214,10 @@ addon.MODULE_CATEGORIES = {
     },
     groupfinder = {
         label = "Group Finder",
+        info = {
+            title = "Group Finder",
+            text = "Opens from the widget's click menu, so the Reports/Widget module may need turning on as well. /lfg opens it too. Both ways in are set on the Group Finder page under Interface.",
+        },
     },
     groupFrames = {
         label = "Group Frames",

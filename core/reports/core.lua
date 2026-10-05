@@ -221,7 +221,9 @@ end
 -- Registry
 --------------------------------------------------------------------------------
 
--- def = { id, label, description, order?, Run(def, ctx) }
+-- def = { id, label, menuLabel?, description, order?, Run(def, ctx) }
+-- The widget's menu shows menuLabel when set, else label; the Config page
+-- always shows label.
 function Reports:Register(def)
     if type(def) ~= "table" or type(def.id) ~= "string" or def.id == "" then return end
     if type(def.label) ~= "string" or type(def.Run) ~= "function" then return end

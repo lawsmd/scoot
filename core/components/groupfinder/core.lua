@@ -474,16 +474,53 @@ local function OnRestriction(_, kind, newState)
     GF.Notify("lockdown")
 end
 
+-- A setting of the page, with its default while nothing is stored
+function GF.Setting(key)
+    return addon.GetComponentSetting("groupfinder", key)
+end
+
+-- The two ways in beside /scoot lfg, each behind a switch on the page: the
+-- /lfg word and a row in the widget's click menu. Both are put in place
+-- from the initializer, so they exist only while the module is on. The
+-- word's handler reads its switch on each call and the menu reads the
+-- action's on each open, so a change takes without a reload.
+local function InstallOpenPaths()
+    if addon.Commands and addon.Commands.InstallWord then
+        addon.Commands.InstallWord("lfg", "/lfg", function()
+            if not GF.Setting("slashCommand") then
+                addon:Print("Enable /lfg in " .. addon.Brand .. " \226\134\146 Interface \226\134\146 Group Finder.")
+                return
+            end
+            if GF.UI then GF.UI:Toggle() end
+        end)
+    end
+    if addon.Widget and addon.Widget.RegisterAction then
+        addon.Widget:RegisterAction({
+            id = "groupFinder",
+            label = "Group Finder",
+            order = 20,
+            isEnabled = function() return GF.Setting("widgetLaunch") and true or false end,
+            Run = function()
+                if GF.UI then GF.UI:Toggle() end
+            end,
+        })
+    end
+end
+
 addon:RegisterComponentInitializer(function(self)
     local Component = addon.ComponentPrototype
     local component = Component:New({
         id = "groupfinder",
         name = "Group Finder",
-        settings = {},
+        settings = {
+            slashCommand = { type = "addon", default = true },
+            widgetLaunch = { type = "addon", default = true },
+        },
     })
     self:RegisterComponent(component)
     GF.component = component
     GF.state.lockdown = ReadLockdown()
+    InstallOpenPaths()
 
     component:On("LFG_LIST_AVAILABILITY_UPDATE", function() GF.Notify("categories") end)
     component:On("LFG_LIST_SEARCH_RESULTS_RECEIVED", OnResultsReceived)

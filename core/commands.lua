@@ -294,10 +294,14 @@ addon:RegisterSlashCommand({
 -- opens the settings panel, and an addon without one shows its help.
 -- Kept off addon.Commands: this is the registry. The slash word has to reach
 -- the globals WoW reads somewhere, and one guarded place beats one per addon.
+-- The one write to the client's slash table: a token, its word, its handler
+local function installWord(token, word, handler)
+    _G["SLASH_" .. token .. "1"] = word
+    SlashCmdList[token] = handler
+end
+
 function Commands.InstallSlash(fallback)
-    local token = string.upper(BRAND)
-    _G["SLASH_" .. token .. "1"] = SLASH
-    SlashCmdList[token] = function(msg)
+    installWord(string.upper(BRAND), SLASH, function(msg)
         local args = Commands.Parse(msg)
         if #args > 0 and Commands.Dispatch("slash", args) then return end
         if fallback then
@@ -305,5 +309,15 @@ function Commands.InstallSlash(fallback)
         else
             Commands.ShowHelp("slash", BRAND .. " commands")
         end
-    end
+    end)
+end
+
+-- A second word of the addon's own beside /<brand>, such as /lfg, on a
+-- token of the brand and the suffix. A feature installs it from its
+-- initializer, so the word exists only while the feature is on, and reads
+-- its own setting inside the handler. The client re-reads the slash
+-- globals as a line is parsed, so a word installed after login answers;
+-- installing again repoints the handler.
+function Commands.InstallWord(suffix, word, handler)
+    installWord(string.upper(BRAND) .. string.upper(suffix), word, handler)
 end

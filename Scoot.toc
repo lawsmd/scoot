@@ -392,6 +392,7 @@ ui/v2/settings/interface/NotesRenderer.lua
 ui/v2/settings/interface/DamageMeterXRenderer.lua
 ui/v2/settings/interface/DamageMeterYRenderer.lua
 ui/v2/settings/interface/ObjectiveTrackerRenderer.lua
+ui/v2/settings/interface/GroupFinderRenderer.lua
 ui/v2/settings/castbars/CastBarZRenderer.lua
 ui/v2/settings/bosswarnings/BossWarningsRenderer.lua
 ui/v2/settings/bosswarnings/BossTimelineRenderer.lua

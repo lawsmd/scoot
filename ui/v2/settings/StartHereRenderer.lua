@@ -414,8 +414,8 @@ local function CreateModuleRow(parent, options)
     -- Tiny per-variant letter badges (multi-variant rows: X/Y or X/Z). Each
     -- badge hover-shows that variant's versionBadge tooltip, so a user can read
     -- every variant without clicking the selector through its cycle.
+    local prevIcon
     if options.variantOptions and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
-        local prevIcon
         for _, opt in ipairs(options.variantOptions) do
             local vb = opt.versionBadge
             local vc = opt.variant and addon.VARIANT_COLORS and addon.VARIANT_COLORS[opt.variant]
@@ -444,6 +444,21 @@ local function CreateModuleRow(parent, options)
                     prevIcon = badge
                 end
             end
+        end
+    end
+
+    -- A category's note (modules.lua, `info = { title, text }`): an info
+    -- icon after the label and its badges, for what the row cannot say on
+    -- its own, such as a second module the feature leans on
+    if options.info and addon.UI and addon.UI.Controls and addon.UI.Controls.CreateInfoIcon then
+        local icon = addon.UI.Controls:CreateInfoIcon({
+            parent = row,
+            size = LEGEND_ICON_SIZE,
+            tooltipTitle = options.info.title or options.label,
+            tooltipText = options.info.text,
+        })
+        if icon then
+            icon:SetPoint("LEFT", prevIcon or labelFS, "RIGHT", 4, 0)
         end
     end
 
@@ -555,6 +570,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
             -- Mutually exclusive: single row with compact variant selector
             local variantRow = CreateModuleRow(column, {
                 label = catDef.label,
+                info = catDef.info,
                 theme = theme,
                 variantSelector = true,
                 variantOptions = catDef.subToggles,
@@ -581,6 +597,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
             -- Header row (no toggle indicator)
             local headerRow = CreateModuleRow(column, {
                 label = catDef.label,
+                info = catDef.info,
                 isHeader = true,
                 theme = theme,
             })
@@ -681,6 +698,7 @@ local function BuildColumnContent(column, categories, startIdx, endIdx, state, t
             local isOn = Model().isEnabled(catId)
             local simpleRow = CreateModuleRow(column, {
                 label = catDef.label,
+                info = catDef.info,
                 isOn = isOn,
                 variant = catDef.variant,
                 theme = theme,

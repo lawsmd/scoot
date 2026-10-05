@@ -229,6 +229,9 @@ end
 Reports:Register({
     id = "groupAnalysis",
     label = "Group Analysis",
+    -- The widget's menu lists features beside the reports, so the row says
+    -- which this is
+    menuLabel = "Group Analysis Report",
     description = "Lists every player in your party or raid with class-colored name, spec, and item level. Details for other players fill in as Scoot's background scan completes.",
     order = 10,
     Run = function()

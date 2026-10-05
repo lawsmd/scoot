@@ -44,6 +44,7 @@ Navigation.NavModel = {
             { key = "damageMeterV2", label = "Damage Meters", module = "damageMeter", moduleSubId = "damageMeterV2",
                 variant = "Y",
                 versionBadge = { label = "Y", title = "Damage Meters Y", text = "Custom frames that replace Blizzard's meter entirely. Multi-column and multi-window support." } },
+            { key = "groupFinder", label = "Group Finder", module = "groupfinder" },
             { key = "tooltip", label = "Tooltip", module = "tooltip" },
             { key = "objectiveTracker", label = "Objective Tracker", module = "objectiveTracker" },
             { key = "minimap", label = "Minimap", module = "minimap" },

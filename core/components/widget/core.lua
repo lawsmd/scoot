@@ -440,6 +440,62 @@ function W:SetClickHandler(fn)
 end
 
 --------------------------------------------------------------------------------
+-- Actions: what the click menu lists beside the reports
+--------------------------------------------------------------------------------
+-- A feature that opens from the widget registers one:
+--   def = { id, label, order?, isEnabled() -> boolean, Run() }
+-- The menu lists the enabled actions in order beside the enabled reports
+-- and runs one on a click. The table lives on addon.Widget from file load,
+-- so a component's initializer registers before this module's own runs,
+-- and registering an id again replaces its entry, since initializers run
+-- again on a profile change. While the widget module is off nothing reads
+-- the table.
+
+W._actions = W._actions or {}
+
+function W:RegisterAction(def)
+    if type(def) ~= "table" or type(def.id) ~= "string" or def.id == "" then return end
+    if type(def.label) ~= "string" or type(def.Run) ~= "function" then return end
+    for i, existing in ipairs(self._actions) do
+        if existing.id == def.id then
+            self._actions[i] = def
+            return
+        end
+    end
+    table.insert(self._actions, def)
+end
+
+-- The actions whose isEnabled answers true, by order then label
+function W:GetActions()
+    local out = {}
+    for _, def in ipairs(self._actions) do
+        if type(def.isEnabled) ~= "function" or def.isEnabled() then
+            out[#out + 1] = def
+        end
+    end
+    table.sort(out, function(a, b)
+        local ao, bo = a.order or 100, b.order or 100
+        if ao ~= bo then return ao < bo end
+        return a.label < b.label
+    end)
+    return out
+end
+
+-- As Reports:Run: one broken action must not take the menu down with it,
+-- and the error goes to the copy window rather than vanishing
+function W:RunAction(id)
+    local def
+    for _, existing in ipairs(self._actions) do
+        if existing.id == id then def = existing end
+    end
+    if not def then return end
+    local ok, err = pcall(def.Run, def)
+    if not ok and addon.DebugShowWindow then
+        addon.DebugShowWindow("Action failed: " .. def.label, tostring(err))
+    end
+end
+
+--------------------------------------------------------------------------------
 -- ApplyStyling
 --------------------------------------------------------------------------------
 

@@ -1,10 +1,14 @@
--- WidgetMenu.lua - Click menu for the widget diamond: lists enabled reports
+-- WidgetMenu.lua - Click menu for the widget diamond: lists the enabled
+-- reports and the actions features registered with the widget
 --
 -- Transient surface: a themed flyout anchored to the diamond, rebuilt on
 -- every open so it always reflects the current enabled set (no reload
 -- needed). Deliberately NOT a widget flyout child — RegisterFlyoutChild is
 -- reserved for persistent surfaces (report panels, future notifications), so
 -- the menu never disturbs that chain.
+--
+-- A report's row reads its menuLabel, else its label; an action's row its
+-- label. The rows sort by order, then label, reports and actions together.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -117,21 +121,41 @@ local function buildContent(padTop, padLeft)
     local content = flyout:GetContent()
     hideAllRows()
 
-    local enabled = addon.Reports and addon.Reports:GetEnabled() or {}
+    local rows = {}
+    local Reports = addon.Reports
+    for _, def in ipairs(Reports and Reports:GetEnabled() or {}) do
+        rows[#rows + 1] = {
+            order = def.order or 100,
+            label = def.menuLabel or def.label,
+            run = function() Reports:Run(def.id, { source = "widgetMenu" }) end,
+        }
+    end
+    local W = addon.Widget
+    for _, def in ipairs((W and W.GetActions) and W:GetActions() or {}) do
+        rows[#rows + 1] = {
+            order = def.order or 100,
+            label = def.label,
+            run = function() W:RunAction(def.id) end,
+        }
+    end
+    table.sort(rows, function(a, b)
+        if a.order ~= b.order then return a.order < b.order end
+        return a.label < b.label
+    end)
 
-    if #enabled > 0 then
-        for i, def in ipairs(enabled) do
+    if #rows > 0 then
+        for i, row in ipairs(rows) do
             local btn = acquireRow(content, i, padTop, padLeft)
-            btn._text:SetText(def.label)
+            btn._text:SetText(row.label)
             btn:SetScript("OnClick", function()
                 flyout:Close()
-                addon.Reports:Run(def.id, { source = "widgetMenu" })
+                row.run()
             end)
         end
-        return padTop + #enabled * ROW_HEIGHT
+        return padTop + #rows * ROW_HEIGHT
     end
 
-    -- Empty state: the widget is on but no report is — explain the diamond.
+    -- Empty state: the widget is on but nothing lists on it — explain the diamond.
     if not explanationText then
         explanationText = content:CreateFontString(nil, "OVERLAY")
         explanationText:SetFont(getFont(), EXPLANATION_FONT_SIZE, "")
