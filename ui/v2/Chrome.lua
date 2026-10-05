@@ -90,7 +90,7 @@ local Chrome = addon.UI.Chrome
 
 Chrome.ROLES = {
     "window", "picker", "dialog", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
-    "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider",
+    "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider", "listRow",
     "dropdown", "arrowButton", "field", "popupList", "infoIcon", "tooltip", "slider", "input", "toggle",
     "emphasis",
     "editSelection", "editDialog",
@@ -142,6 +142,12 @@ Chrome.FLAT = {
     -- the one-pixel accent line on the nav's right edge.
     navCard       = { kind = "flat" },
     navDivider    = { kind = "flat" },
+    -- A row in a list of things (Controls.CreateScrollList): a search
+    -- result, an applicant, a category. navRow is navigation and reads its
+    -- two color maps; this role reads one, plus a status wash the handle's
+    -- SetStatus tints, for a row that is applied, declined or the player's
+    -- own. Flat is the nav row's two accent washes on metrics.listRow.
+    listRow       = { kind = "flat" },
     dropdown      = { kind = "flat" },
     -- Flat arrowButton and field are the selector family's own draws: the
     -- caller's arrow character over an accent hover fill, and a border with a
@@ -957,6 +963,19 @@ end
 
 function BackdropMT:Refresh()
     if self.paint then self.paint() end
+    if self.statusFill then
+        local status = self.status
+        if status and not self.disabled then
+            local r, g, b, a = Chrome.Color(status)
+            -- A literal with an alpha keeps it; a token takes the metric
+            local own = type(status) == "table" and (status[4] or status.a or status.alpha)
+            local m = Metrics().listRow
+            self.statusFill:SetColorTexture(r, g, b, own and a or (m and m.statusAlpha) or 0.12)
+            self.statusFill:Show()
+        else
+            self.statusFill:Hide()
+        end
+    end
     if self.label and self.labelColors then
         self.label:SetTextColor(self:LabelColor())
     end
@@ -967,6 +986,10 @@ function BackdropMT:SetSelected(v) self.selected = v and true or false; self:Ref
 function BackdropMT:SetDisabled(v) self.disabled = v and true or false; self:Refresh() end
 function BackdropMT:SetOpen(v) self.open = v and true or false; self:Refresh() end
 function BackdropMT:SetPressed(v) self.pressed = v and true or false; self:Refresh() end
+-- The wash under a list row that carries a state of its own: a color token
+-- ("accent", "dim") or a literal; nil clears it. Only the listRow role has
+-- the fill, so the call is inert elsewhere.
+function BackdropMT:SetStatus(color) self.status = color; self:Refresh() end
 
 function BackdropMT:SetShown(shown)
     if shown then
@@ -1105,6 +1128,22 @@ Flat.navRow = function(h, frame, spec)
     end
 end
 
+Flat.listRow = function(h, frame, spec)
+    local m = Metrics().listRow or Metrics().nav
+    local hoverBg = frame:CreateTexture(nil, "BACKGROUND")
+    hoverBg:SetAllPoints()
+    Ctl().RegisterThemedFill(hoverBg, m.hoverAlpha)
+    local selectBg = frame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    selectBg:SetAllPoints()
+    Ctl().RegisterThemedFill(selectBg, m.selectedAlpha)
+    h.hoverWins = true
+    h.parts = { hoverBg, selectBg }
+    h.paint = function()
+        hoverBg:SetShown(h.hover and not h.disabled)
+        selectBg:SetShown(h.selected and not h.disabled)
+    end
+end
+
 Flat.dropdown = function(h, frame, spec)
     local m = Metrics().dropdown
     h.border = Ctl().CreateBorder(frame, {
@@ -1124,7 +1163,12 @@ end
 -- role's own name. A table gives one piece per state, for a role whose states
 -- are different art standing in different company: a nav row's selected gold
 -- sits beside the card's glow and gives up light the hover wash does not.
-local ATLAS_PIECE = { navRow = { hover = "navRowHover", selected = "navRowSelected" } }
+local ATLAS_PIECE = {
+    navRow  = { hover = "navRowHover", selected = "navRowSelected" },
+    -- A list row's art is the nav row's on every skin so far, and its light
+    -- is tuned with the same two pieces
+    listRow = { hover = "navRowHover", selected = "navRowSelected" },
+}
 
 local function AtlasPiece(role, state)
     local piece = ATLAS_PIECE[role]
@@ -1412,6 +1456,14 @@ function Chrome.Backdrop(role, frame, opts)
     if spec.hoverOverSelected ~= nil then h.hoverWins = spec.hoverOverSelected and true or false end
     if spec.hoverOverOpen ~= nil then h.hoverOverOpen = spec.hoverOverOpen and true or false end
     if opts.inset then h.inset = opts.inset end
+    -- The status wash, under the state art of whatever kind the role took
+    if role == "listRow" then
+        local fill = frame:CreateTexture(nil, "BACKGROUND", nil, -3)
+        fill:SetAllPoints()
+        fill:Hide()
+        h.statusFill = fill
+        h.parts[#h.parts + 1] = fill
+    end
 
     handles[h] = true
     EnsureHandleSubscription()

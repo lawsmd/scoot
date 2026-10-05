@@ -88,6 +88,11 @@ Skin.Register("tui", {
         },
         navCard       = { kind = "flat" },
         navDivider    = { kind = "flat" },
+        -- A row in a scroll list: white text, the accent on the chosen row
+        listRow       = {
+            kind = "flat",
+            labelColors = { normal = "primary", hover = "primary", selected = "accent", disabled = { token = "dim", alpha = 0.35 } },
+        },
         dropdown      = { kind = "flat" },
     },
 
@@ -172,6 +177,10 @@ Skin.Register("tui", {
         },
         scrollBar = { width = 8, thumbMin = 30, margin = 8, gap = 4,
                       trackAlpha = 0.1, thumbAlpha = 0.5, thumbHoverAlpha = 0.8, thumbDragAlpha = 1 },
+        -- A scroll list's rows (Controls.CreateScrollList, the listRow
+        -- role): the row's height, what its text keeps off the edges, the
+        -- two accent washes, and the wash a row's own status draws at
+        listRow = { height = 24, padX = 8, hoverAlpha = 0.15, selectedAlpha = 0.25, statusAlpha = 0.12 },
         button = { height = 26, padding = 12, borderWidth = 2, fontSize = 12 },
         tab = {
             height = 26, padding = 16, spacing = 2, barPadding = 8, rowSpacing = 2,

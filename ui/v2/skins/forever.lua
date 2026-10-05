@@ -406,6 +406,15 @@ Skin.Register("forever", {
             parent = { labelColors = { normal = "accent", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
             child  = { labelColors = { normal = "dimLight", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } } },
         },
+        -- A scroll list's rows, on the same two list-row atlases as the nav
+        -- rows and tuned by the same two pieces; the text reads as a child
+        -- row's. Retail has neither atlas and draws the flat washes.
+        listRow = {
+            kind = "atlas", hover = "common-button-list-mid-hover",
+            selected = "common-button-list-mid-selected",
+            labelColors = { normal = "dimLight", hover = "primary", selected = "primary", disabled = { token = "dim", alpha = 0.35 } },
+            fallback = { kind = "flat" },
+        },
         -- The Legacy pane's group cards: the group's name at the left of
         -- the header band, the child rows indented inside the same card
         -- while it is open, and the gold glow at the right edge while open,
@@ -830,6 +839,9 @@ Skin.Register("forever", {
         toolbar = { height = 22, spacing = 12, y = -21, fontSize = 11, overlay = true,
                     shift = 0.5 },
         pulse = { period = 1.5, minAlpha = 0.3, tick = 0.016 },
+        -- A scroll list's rows (Controls.CreateScrollList, the listRow
+        -- role). The washes are read where the atlases are missing.
+        listRow = { height = 24, padX = 8, hoverAlpha = 0.15, selectedAlpha = 0.25, statusAlpha = 0.12 },
 
         -- featuresPaneTop is left out on purpose. The Features page raises its
         -- content pane into the band under the title bar where the band is
