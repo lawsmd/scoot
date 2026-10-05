@@ -142,10 +142,12 @@ function GF.ActivityInfo(activityID)
     return nil
 end
 
--- The activity's full name, with a Mythic+ activity's group name, the
--- "Mythic Keystone" in its parentheses, shortened to M+. The group name is
--- read from the client, so the cut holds in any language, and a name that
--- does not carry it is returned whole.
+-- The activity's full name, "Den of Nalorakk (Mythic Keystone)", with a
+-- Mythic+ activity's difficulty, the part in the parentheses, shortened to
+-- M+. A Dungeons activity is the difficulty and its group is the dungeon,
+-- so the cut takes the activity's own short name when it closes the
+-- parentheses, else whatever the parentheses hold, and a name with
+-- neither is returned whole.
 function GF.ActivityName(info)
     local activityID = GF.ActivityID(info)
     if not activityID then return nil end
@@ -154,14 +156,16 @@ function GF.ActivityName(info)
     if plain(name) == nil then return name end
     local activity = GF.ActivityInfo(activityID)
     if not activity or plainBool(activity.isMythicPlusActivity) ~= true then return name end
-    local groupID = plainNumber(activity.groupFinderActivityGroupID)
-    if not groupID then return name end
-    local okGroup, groupName = pcall(C_LFGList.GetActivityGroupInfo, groupID)
-    groupName = okGroup and plain(groupName) or nil
-    if type(groupName) ~= "string" or groupName == "" then return name end
-    local from, to = string.find(name, groupName, 1, true)
-    if not from then return name end
-    return string.sub(name, 1, from - 1) .. "M+" .. string.sub(name, to + 1)
+    local short = plain(activity.shortName)
+    if type(short) == "string" and short ~= "" then
+        local from, to = string.find(name, short, 1, true)
+        if from and string.sub(name, to + 1) == ")" then
+            return string.sub(name, 1, from - 1) .. "M+)"
+        end
+    end
+    local open = string.find(name, "%s*%([^()]*%)%s*$")
+    if not open then return name end
+    return string.sub(name, 1, open - 1) .. " (M+)"
 end
 
 -- The row's playstyle line, from the enum's own strings; the protected
