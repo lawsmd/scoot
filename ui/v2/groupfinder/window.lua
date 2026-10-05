@@ -113,21 +113,26 @@ local LAYOUT = {
     -- box at their right, and the two options on one line, stacked with a
     -- gap; the details box's text region is narrower than its frame by
     -- Blizzard's own margin plus the holder's inset
+    -- The requirement inputs stand under the row's height, on the holder's
+    -- one-point border, with clear room between the rows
     create = {
         rowHeight = 22, detailsHeight = 46, captionHeight = 12, captionGap = 3,
-        gap = 8, rowGap = 4,
-        inputWidth = 80, voiceWidth = 125, checkGap = 6, optionColumn = 200,
+        gap = 8, rowGap = 6,
+        inputWidth = 64, inputHeight = 18, inputInset = 1, inputFont = 11,
+        voiceWidth = 110, checkGap = 6, optionColumn = 200,
         inputMax = 9999, detailsInset = 20, finderRows = 12, coverAlpha = 0.85,
     },
-    -- Your listing: the info block with the party's grid at its right, the
-    -- column strip, and a band per applicant with a line per member; the
-    -- columns from the right, the name taking the rest; the actions column
-    -- holds the status word, Invite and Decline
+    -- Your listing: the info block, as tall as its lines or the party's
+    -- grid at its right, the column names over a rule, and a band per
+    -- applicant with a line per member; the columns from the right, the
+    -- name taking the rest; the actions column holds the status word,
+    -- Invite and the x, small so they do not crowd the line
     viewer = {
-        infoHeight = 80, subSize = 10, subIndent = 10, lineGap = 1, tagGap = 4, tagTop = 2,
-        columns = { role = 56, ilvl = 36, rating = 46, actions = 86 },
+        subSize = 10, lineHeight = 12, lineGap = 1, autoGap = 6, headerGap = 8,
+        tagGap = 4, tagTop = 2,
+        columns = { role = 56, ilvl = 36, rating = 46, actions = 70 },
         memberLine = 20, rowPad = 6, roleIcon = 14, roleGap = 2, nameSize = 11,
-        inviteWidth = 60, declineWidth = 22, actionGap = 4, buttonHeight = 22,
+        inviteWidth = 48, declineWidth = 18, actionGap = 4, buttonHeight = 18, actionFont = 10,
     },
     -- The invite dialog: Blizzard's size, taller with the offline notice
     invite = {

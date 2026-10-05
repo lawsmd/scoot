@@ -123,12 +123,13 @@ local function Build(parent)
     local box = UI.MakeBox(panel)
     panel._box = box
 
-    -- The info block: the activity, the details and the requirement at the
-    -- left, the party's grid at the right, auto-accept at the bottom
+    -- The info block: the activity, the details, the requirement and
+    -- auto-accept stacked at the left, the party's grid at the right; as
+    -- tall as the taller of the two, placed on each refresh
     local info = CreateFrame("Frame", nil, box)
     info:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
     info:SetPoint("TOPRIGHT", box, "TOPRIGHT", -pad, -pad)
-    info:SetHeight(V.infoHeight)
+    info:SetHeight(V.lineHeight)
     panel._info = info
 
     panel._roster = C.CreateRoster(info, {
@@ -143,31 +144,33 @@ local function Build(parent)
     })
     panel._counts:SetPoint("TOPRIGHT", info, "TOPRIGHT", 0, 0)
 
-    panel._activity = UI.DimText(info, "desc", V.subSize)
-    panel._activity:SetPoint("TOPLEFT", info, "TOPLEFT", 0, 0)
-    panel._activity:SetPoint("RIGHT", panel._roster, "LEFT", -LAYOUT.search.columnGap, 0)
-    panel._activity:SetWordWrap(false)
-    panel._comment = UI.DimText(info, "desc", V.subSize)
-    panel._comment:SetPoint("TOPLEFT", panel._activity, "BOTTOMLEFT", 0, -V.lineGap)
-    panel._comment:SetPoint("RIGHT", panel._activity, "RIGHT", 0, 0)
-    panel._comment:SetWordWrap(false)
+    -- The lines at the left end short of the grid; each is placed on
+    -- refresh, since a line that is empty leaves no room
+    local function Line()
+        local fs = UI.DimText(info, "desc", V.subSize)
+        fs:SetPoint("RIGHT", panel._roster, "LEFT", -LAYOUT.search.columnGap, 0)
+        fs:SetWordWrap(false)
+        return fs
+    end
+    panel._activity = Line()
+    panel._comment = Line()
     local lr, lg, lb = Theme():GetDimTextLightColor()
     panel._comment:SetTextColor(lr, lg, lb, 1)
-    panel._ilvl = UI.DimText(info, "desc", V.subSize)
-    panel._ilvl:SetPoint("TOPLEFT", panel._comment, "BOTTOMLEFT", 0, -V.lineGap)
-    panel._ilvl:SetPoint("RIGHT", panel._activity, "RIGHT", 0, 0)
-    panel._ilvl:SetWordWrap(false)
+    panel._ilvl = Line()
 
     panel._auto = C.CreateCheckBox(info, { clickable = true, onClick = function() panel:ToggleAutoAccept() end })
-    panel._auto:SetPoint("BOTTOMLEFT", info, "BOTTOMLEFT", 0, 0)
-    panel._autoLabel = UI.PrimaryText(info, "desc")
+    panel._autoLabel = UI.PrimaryText(info, "desc", V.subSize)
     panel._autoLabel:SetPoint("LEFT", panel._auto, "RIGHT", LAYOUT.create.checkGap, 0)
     panel._autoLabel:SetText(Str("LFG_LIST_AUTO_ACCEPT", "Auto accept"))
     panel._autoLabel:SetWordWrap(false)
 
-    -- The column strip, with the refresh arrow over the actions column
+    -- The column names over a rule, kept off the scroll bar's gutter so
+    -- the names stand over the rows' cells
+    local sb = M().scrollBar or {}
+    local gutter = (sb.width or 0) + (sb.margin or 0) + (sb.gap or 0)
     panel._header = C.CreateColumnHeader({
         parent = box,
+        plain = true,
         columns = {
             { key = "name", label = Str("NAME", "Name") },
             { key = "role", label = Str("ROLE", "Role"), width = V.columns.role },
@@ -176,14 +179,8 @@ local function Build(parent)
             { key = "actions", label = "", width = V.columns.actions },
         },
     })
-    panel._header:SetPoint("TOPLEFT", info, "BOTTOMLEFT", 0, -pad)
-    panel._header:SetPoint("TOPRIGHT", info, "BOTTOMRIGHT", 0, -pad)
-    panel._refresh = UI.MakeButton(box, "\226\158\156", function()
-        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        if C_LFGList.RefreshApplicants then C_LFGList.RefreshApplicants() end
-    end, V.buttonHeight, Str("LFG_LIST_REFRESH", "Refresh"))
-    panel._refresh:SetHeight(V.buttonHeight)
-    panel._refresh:SetPoint("RIGHT", panel._header, "RIGHT", -padX, 0)
+    panel._header:SetPoint("TOPLEFT", info, "BOTTOMLEFT", 0, -V.headerGap)
+    panel._header:SetPoint("TOPRIGHT", info, "BOTTOMRIGHT", -gutter, -V.headerGap)
 
     -- A line per member on an applicant's band, built as the band needs it
     local function MemberLine(row, i)
@@ -247,12 +244,16 @@ local function Build(parent)
         row._members = {}
         row._status = C.CreateTag(row, { text = "", tone = "dim" })
         row._status:Hide()
-        row._invite = UI.MakeButton(row, Str("INVITE", "Invite"), function() panel:Invite(row) end,
-            V.inviteWidth, function() return row._inviteReason end)
-        row._invite:SetHeight(V.buttonHeight)
+        row._invite = C:CreateButton({
+            parent = row, text = Str("INVITE", "Invite"), width = V.inviteWidth, height = V.buttonHeight,
+            fontSize = V.actionFont, onClick = function() panel:Invite(row) end,
+            tooltip = function() return row._inviteReason end,
+        })
         row._invite:Hide()
-        row._decline = UI.MakeButton(row, "x", function() panel:Decline(row) end, V.declineWidth)
-        row._decline:SetHeight(V.buttonHeight)
+        row._decline = C:CreateButton({
+            parent = row, text = "x", width = V.declineWidth, height = V.buttonHeight,
+            fontSize = V.actionFont, onClick = function() panel:Decline(row) end,
+        })
         row._decline:Hide()
     end
 
@@ -656,7 +657,8 @@ local function Build(parent)
 
     -- The party's own grid: a line per member from the client's unit reads
     -- for an activity the grid holds, the class name as the text and the
-    -- player's own spec; the counts grid past it
+    -- player's own spec; the counts grid past it. Returns the grid's filled
+    -- height, for the block to size to.
     function panel:RenderParty(activity)
         local max = activity and GF.plainNumber(activity.maxNumPlayers) or 0
         if max > 0 and max <= R.lines then
@@ -695,7 +697,7 @@ local function Build(parent)
             self._roster:SetLines(entries)
             self._roster:Show()
             self._counts:Hide()
-            return
+            return math.max(1, #entries) * R.lineHeight
         end
         local counts = GetGroupMemberCountsForDisplay and GetGroupMemberCountsForDisplay() or {}
         local lr2, lg2, lb2 = Theme():GetDimTextLightColor()
@@ -711,6 +713,26 @@ local function Build(parent)
         self._counts:SetLines(entries)
         self._roster:Hide()
         self._counts:Show()
+        return Cn.lines * Cn.lineHeight
+    end
+
+    -- The shown lines one under the other at the block's left, auto-accept
+    -- last, and the block as tall as the lines or the grid
+    function panel:PlaceInfo(gridHeight)
+        local y = 0
+        for _, fs in ipairs({ self._activity, self._comment, self._ilvl }) do
+            fs:ClearAllPoints()
+            fs:SetPoint("TOPLEFT", info, "TOPLEFT", 0, -y)
+            fs:SetPoint("RIGHT", self._roster, "LEFT", -LAYOUT.search.columnGap, 0)
+            if fs:IsShown() then y = y + V.lineHeight + V.lineGap end
+        end
+        if self._auto:IsShown() then
+            if y > 0 then y = y + V.autoGap - V.lineGap end
+            self._auto:ClearAllPoints()
+            self._auto:SetPoint("TOPLEFT", info, "TOPLEFT", 0, -y)
+            y = y + V.lineHeight
+        end
+        info:SetHeight(math.max(y, gridHeight or 0, V.lineHeight))
     end
 
     function panel:RefreshInfo()
@@ -723,7 +745,9 @@ local function Build(parent)
             self._heading:SetText("")
             self._activity:SetText("")
             self._comment:SetText("")
+            self._comment:Hide()
             self._ilvl:SetText("")
+            self._ilvl:Hide()
             self._private:Hide()
             self._voice:Hide()
             self:PlaceTags()
@@ -731,6 +755,7 @@ local function Build(parent)
             self._counts:SetLines({})
             self._auto:Hide()
             self._autoLabel:Hide()
+            self:PlaceInfo(0)
             return
         end
         local ids = GF.plain(entry.activityIDs)
@@ -747,22 +772,29 @@ local function Build(parent)
         self._voice:SetShown(NonEmpty(entry.voiceChat))
         self:PlaceTags()
         SetTextSafe(self._activity, GF.ActivityName(entry))
+        self._activity:Show()
         local questID = GF.plainNumber(entry.questID)
+        local quest = questID and LFGListUtil_GetQuestDescription and LFGListUtil_GetQuestDescription(questID)
         if NonEmpty(entry.comment) then
             self._comment:SetText(entry.comment)
-        elseif questID and LFGListUtil_GetQuestDescription then
-            SetTextSafe(self._comment, LFGListUtil_GetQuestDescription(questID))
+            self._comment:Show()
+        elseif type(quest) == "string" and quest ~= "" then
+            self._comment:SetText(quest)
+            self._comment:Show()
         else
             self._comment:SetText("")
+            self._comment:Hide()
         end
         local ilvl = GF.plainNumber(entry.requiredItemLevel) or 0
         if ilvl > 0 then
             local key = pvp and "LFG_LIST_ITEM_LEVEL_CURRENT_PVP" or "LFG_LIST_ITEM_LEVEL_CURRENT"
             self._ilvl:SetText(string.format(Str(key, "Item level %d"), ilvl))
+            self._ilvl:Show()
         else
             self._ilvl:SetText("")
+            self._ilvl:Hide()
         end
-        self:RenderParty(activity)
+        local gridHeight = self:RenderParty(activity)
 
         -- Auto-accept as Blizzard shows it: the leader may set it, an
         -- assistant sees it, anyone else sees it only while it is on
@@ -789,6 +821,7 @@ local function Build(parent)
         local lr3, lg3, lb3
         if inert then lr3, lg3, lb3 = theme:GetDimTextColor() else lr3, lg3, lb3 = theme:GetPrimaryTextColor() end
         self._autoLabel:SetTextColor(lr3, lg3, lb3, 1)
+        self:PlaceInfo(gridHeight)
     end
 
     -- The rating column comes and goes with the activity

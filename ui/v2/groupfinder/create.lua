@@ -267,7 +267,8 @@ local function Build(parent)
         row._label:SetWordWrap(false)
         if withInput then
             row._input = C.CreateNumericInput(row, {
-                width = L.inputWidth, height = L.rowHeight, min = 0, max = L.inputMax,
+                width = L.inputWidth, height = L.inputHeight, inset = L.inputInset, fontSize = L.inputFont,
+                min = 0, max = L.inputMax,
                 onChange = function() panel:OnRequirementChanged(row) end,
             })
             row._input:SetPoint("RIGHT", row, "RIGHT", 0, 0)
@@ -281,7 +282,7 @@ local function Build(parent)
         else
             local holder = CreateFrame("Frame", nil, row)
             Host.DressHolder(holder)
-            holder:SetSize(L.voiceWidth, L.rowHeight)
+            holder:SetSize(L.voiceWidth, L.inputHeight)
             holder:SetPoint("RIGHT", row, "RIGHT", 0, 0)
             row._holder = holder
             row._label:SetPoint("RIGHT", holder, "LEFT", -L.gap, 0)
