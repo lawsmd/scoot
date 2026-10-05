@@ -9,6 +9,11 @@
 -- way. The results are the component's copy, one row per id, each row read
 -- afresh from the API on render as Blizzard's row is. The filter list
 -- writes the client's advanced or language filter and redraws the rows.
+--
+-- A search shows on the results pane as a sweep: the rows there dim under
+-- a veil and a line scans them while the answer is on its way, and when it
+-- lands the line runs once from the top with the new rows coming up behind
+-- it. Sign Up and Refresh say why they are off in their tooltips.
 local addonName, addon = ...
 
 local GF = addon.GroupFinder
@@ -343,15 +348,15 @@ local function Build(parent)
     panel._filter:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -boxX, -L.rowY)
 
     -- The heavy arrow: the mono face has no circle arrow and no magnifier,
-    -- and the arrow reads as "go" beside a search box
-    panel._refresh = UI.MakeButton(panel, "\226\158\156", function() panel:Search() end, L.rowHeight)
-    panel._refresh:SetHeight(L.rowHeight)
-    panel._refresh:HookScript("OnEnter", function(btn)
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        GameTooltip:SetText(Str("LFG_LIST_SEARCH_AGAIN", "Search again"))
-        GameTooltip:Show()
+    -- and the arrow reads as "go" beside a search box. Off for the cooldown
+    -- after a search, which its tooltip counts down.
+    panel._refresh = UI.MakeButton(panel, "\226\158\156", function() panel:Search() end, L.rowHeight, function()
+        if not GF.SearchAllowed() then
+            return string.format("Searching again in %d s", math.ceil(GF.SearchCooldownLeft()))
+        end
+        return Str("LFG_LIST_SEARCH_AGAIN", "Search again")
     end)
-    panel._refresh:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    panel._refresh:SetHeight(L.rowHeight)
 
     -- The hosted box's holder, and the x over Blizzard's clear button
     local holder = CreateFrame("Frame", nil, panel)
@@ -362,6 +367,7 @@ local function Build(parent)
     panel._holder = holder
     panel._clear = UI.AccentText(holder, "label")
     panel._clear:SetText("x")
+    panel._clear:SetAlpha(0.75)
     panel._clear:Hide()
 
     -- The results
@@ -393,13 +399,19 @@ local function Build(parent)
     panel._empty:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
     panel._empty:Hide()
 
-    -- The bottom edge
-    panel._note = UI.MakeNote(panel)
+    -- The redraw over the rows and the message alike
+    panel._sweep = C.CreateSweep({ parent = box })
+    panel._sweep:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
+    panel._sweep:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
+    panel._sweep:SetFrameLevel(list.frame:GetFrameLevel() + 10)
 
+    -- The bottom edge. Sign Up is off for the reason Blizzard's button
+    -- gives, in its tooltip; an empty selection is left unsaid.
     panel._back = UI.MakeButton(panel, Str("BACK", "Back"), function() panel:Back() end, LAYOUT.buttonWidth)
     panel._back:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
 
-    panel._signUp = UI.MakeButton(panel, Str("SIGN_UP", "Sign Up"), function() panel:SignUp() end, LAYOUT.buttonWidth)
+    panel._signUp = UI.MakeButton(panel, Str("SIGN_UP", "Sign Up"), function() panel:SignUp() end,
+        LAYOUT.buttonWidth, function() return GF.SignUpBlock(true) end)
     panel._signUp:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
 
     panel._leaver = C.CreateTag(panel, { text = "LEAVER", tone = "dim" })
@@ -407,13 +419,15 @@ local function Build(parent)
     panel._leaver:Hide()
 
     -- The lists that float: the filter, the auto-complete, the row menu
+    -- The list reads the labels before the keys, so both getters build the
+    -- pair; it is a dozen strings
     panel._filterMode = "languages"
     panel._filterList = C.CreatePopupList({
         anchor = panel._filter,
         width = 220,
         multiSelect = true,
-        getKeys = function() return panel:FilterKeys() end,
-        getValues = function() return panel._filterLabels or {} end,
+        getKeys = function() return (panel:FilterItems()) end,
+        getValues = function() return select(2, panel:FilterItems()) end,
         isChecked = function(key) return panel:FilterChecked(key) end,
         isInert = function(key) return panel:FilterInert(key) end,
         onToggle = function(key, checked) panel:FilterToggle(key, checked) end,
@@ -462,17 +476,23 @@ local function Build(parent)
             textInsets = { textInset, 22, 0, 0 },
             fallbackPoints = SearchBoxFallbackPoints(),
         })
-        if editBox.clearButton then
+        local clearButton = editBox.clearButton
+        if clearButton then
             self._clear:ClearAllPoints()
-            self._clear:SetPoint("CENTER", editBox.clearButton, "CENTER", 0, 0)
-            self._clear:SetShown(editBox.clearButton:IsShown())
+            self._clear:SetPoint("CENTER", clearButton, "CENTER", 0, 0)
+            self._clear:SetShown(clearButton:IsShown())
         end
         if self._boxHooked then return end
         self._boxHooked = true
         editBox:HookScript("OnTextChanged", function()
-            if editBox.clearButton then self._clear:SetShown(editBox.clearButton:IsShown()) end
+            if clearButton then self._clear:SetShown(clearButton:IsShown()) end
             self:RefreshAuto()
         end)
+        if clearButton then
+            -- The x comes up under the cursor, as the button's own icon would
+            clearButton:HookScript("OnEnter", function() self._clear:SetAlpha(1) end)
+            clearButton:HookScript("OnLeave", function() self._clear:SetAlpha(0.75) end)
+        end
         editBox:HookScript("OnEditFocusGained", function() self:RefreshAuto() end)
         editBox:HookScript("OnEditFocusLost", function() self._auto:Close() end)
         editBox:HookScript("OnTabPressed", function() self:RefreshAuto() end)
@@ -528,13 +548,12 @@ local function Build(parent)
             return
         end
         C_LFGList.SetSearchToActivity(key)
-        GF.NoteSearch()
         LFGListSearchPanel_DoSearch(sp)
         if sp.SearchBox then sp.SearchBox:ClearFocus() end
     end
 
     ----------------------------------------------------------------------------
-    -- Searching
+    -- Searching: Blizzard's DoSearch, which the host's hook notes
     ----------------------------------------------------------------------------
 
     function panel:Search()
@@ -545,14 +564,18 @@ local function Build(parent)
             return
         end
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        GF.NoteSearch()
         LFGListSearchPanel_DoSearch(sp)
     end
 
+    -- Back drops the rows, as Blizzard's Clear does, so the next Find Group
+    -- starts from an empty pane and not another category's rows
     function panel:Back()
         if not (LFGListFrame and LFGListFrame_SetActivePanel) then return end
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
         GF.state.selectedResult = nil
+        GF.state.results = {}
+        self._list:SetItems({})
+        self._sweep:Stop()
         LFGListFrame_SetActivePanel(LFGListFrame, LFGListFrame.CategorySelection)
     end
 
@@ -613,8 +636,9 @@ local function Build(parent)
     end
 
     -- Dungeons at max level take the advanced filter; every other category
-    -- the languages, as Blizzard's button decides
-    function panel:FilterKeys()
+    -- the languages, as Blizzard's button decides. Returns the keys in
+    -- order and the label per key.
+    function panel:FilterItems()
         local keys, labels = {}, {}
         if SelectedCategory() == GF.DUNGEONS_CATEGORY and AtMaxLevel() then
             self._filterMode = "advanced"
@@ -638,8 +662,7 @@ local function Build(parent)
                 labels[lang] = Str("LFG_LIST_LANGUAGE_" .. string.upper(lang), lang)
             end
         end
-        self._filterLabels = labels
-        return keys
+        return keys, labels
     end
 
     function panel:FilterChecked(key)
@@ -795,8 +818,21 @@ local function Build(parent)
         end
     end
 
+    -- While a search is out the rows on the pane stay as they are, dimmed
+    -- under the sweep, and an empty pane says it is searching; the ids of
+    -- the last answer are not re-read, since the client has let them go
     function panel:RefreshList()
         local state = GF.state
+        if state.searching then
+            if not (self._list.frame:IsShown() and #self._list._items > 0) then
+                self._empty:SetBusy(true, Str("SEARCHING", "Searching"))
+                self._empty:Show()
+                self._list.frame:Hide()
+            end
+            self._sweep:Scan()
+            return
+        end
+
         local items = {}
         for i, id in ipairs(state.results) do items[i] = { resultID = id } end
         self._list:SetItems(items)
@@ -814,11 +850,7 @@ local function Build(parent)
         self._list:SetSelected(index)
         self:PaintRows()
 
-        if state.searching then
-            self._empty:SetBusy(true, Str("SEARCHING", "Searching"))
-            self._empty:Show()
-            self._list.frame:Hide()
-        elseif state.searchFailed then
+        if state.searchFailed then
             local text = Str("LFG_LIST_SEARCH_FAILED", "Search failed")
             if state.failReason then text = text .. " (" .. tostring(state.failReason) .. ")" end
             self._empty:SetBusy(false, text)
@@ -846,18 +878,14 @@ local function Build(parent)
     end
 
     function panel:RefreshButtons()
-        local block = GF.SignUpBlock()
-        self._signUp:SetEnabled(block == nil)
+        self._signUp:SetEnabled(GF.SignUpBlock() == nil)
         local allowed = GF.SearchAllowed()
         self._refresh:SetEnabled(allowed)
         if not allowed then
-            local left = GF.SearchCooldownLeft()
-            block = block or string.format("Searching again in %d s", math.ceil(left))
-            C_Timer.After(left + 0.05, function()
+            C_Timer.After(GF.SearchCooldownLeft() + 0.05, function()
                 if self:IsShown() then self:RefreshButtons() end
             end)
         end
-        self._note:SetText(block or "")
         local selected = GF.state.selectedResult
         self._leaver:SetShown(selected ~= nil and GF.IsLeaverFlagged(selected))
     end
@@ -883,6 +911,7 @@ local function Build(parent)
         panel._filterList:Close()
         panel._menu:Close()
         panel:StopTicker()
+        panel._sweep:Stop()
     end)
 
     GF.Listen("searching", function()
@@ -891,16 +920,20 @@ local function Build(parent)
             panel:RefreshButtons()
         end
     end)
-    GF.Listen("results", function()
+    -- The answer to a search comes up under the reveal pass; an update the
+    -- client sends on its own is drawn in place
+    GF.Listen("results", function(wasSearching)
         if panel:IsShown() then
             panel:RefreshList()
             panel:RefreshButtons()
+            if wasSearching then panel._sweep:Reveal() end
         end
     end)
     GF.Listen("failed", function()
         if panel:IsShown() then
             panel:RefreshList()
             panel:RefreshButtons()
+            panel._sweep:Reveal()
         end
     end)
     GF.Listen("result", function(id)

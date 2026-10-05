@@ -12,8 +12,9 @@
 -- Each panel file registers a builder in UI.panelBuilders; the window
 -- builds them on first open, under a content frame the size of Blizzard's
 -- panel, and SyncPanel shows the one LFGListFrame.activePanel names. The
--- parts every panel draws, a heading, a bordered box, a button and a note
--- line, are the helpers at the end.
+-- parts every panel draws, a heading, a bordered box and a button, are the
+-- helpers at the end. A button that is off says why in its tooltip, as
+-- Blizzard's do; no panel carries a line of text under its box.
 local addonName, addon = ...
 
 local GF = addon.GroupFinder
@@ -49,10 +50,10 @@ local LAYOUT = {
     dialogWidth = 306,
     dialogHeight = 203,
     buttonWidth = 135,
+    -- boxBottom leaves the button's height and a clear gap under the box
     panel = {
         headingX = 8, headingY = 10,
-        boxTop = 40, boxBottom = 54, boxX = 4,
-        noteY = 36,
+        boxTop = 40, boxBottom = 44, boxX = 4,
         buttonX = 4, buttonY = 6,
     },
     -- The search panel's row of box, refresh and filter, and the column the
@@ -334,22 +335,16 @@ function UI.MakeBox(panel, top)
     return box
 end
 
-function UI.MakeButton(parent, text, onClick, width)
+-- tooltip: a string or a function returning one, shown while the button is
+-- off as well, which is where a button says why it is off
+function UI.MakeButton(parent, text, onClick, width, tooltip)
     return Controls():CreateButton({
         parent = parent,
         text = text,
         width = width,
         onClick = onClick,
+        tooltip = tooltip,
     })
-end
-
--- The line under a box that says why a button is off
-function UI.MakeNote(panel)
-    local fs = UI.DimText(panel, "desc")
-    fs:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", LAYOUT.panel.buttonX + 2, LAYOUT.panel.noteY)
-    fs:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -(LAYOUT.panel.buttonX + 2), LAYOUT.panel.noteY)
-    fs:SetWordWrap(false)
-    return fs
 end
 
 -- A panel frame the size of the content, hidden until SyncPanel names it

@@ -14,8 +14,10 @@
 -- Blizzard frame outside the Edit Mode system set; nothing writes a field on
 -- one. On release the box goes back to the points it was taken from.
 --
--- Two hooks keep the two windows in step: PVEFrame's OnHide closes the Scoot
--- window, and LFGListFrame_SetActivePanel shows the matching Scoot panel.
+-- Three hooks keep the two windows in step: PVEFrame's OnHide closes the
+-- Scoot window, LFGListFrame_SetActivePanel shows the matching Scoot panel,
+-- and LFGListSearchPanel_DoSearch notes every search, whichever button, key
+-- or Blizzard path ran it.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -28,6 +30,7 @@ GF.Host = Host
 
 local taken = {}          -- key -> the record of a hosted box
 local focusHooked = {}    -- box -> true once its focus scripts are hooked
+local hoverHooked = {}    -- art child -> true once its hover scripts are hooked
 local parked = false
 local parkedStrata        -- PVEFrame's own strata, put back on unpark
 local hooksInstalled = false
@@ -143,6 +146,9 @@ function Host.InstallHooks()
     hooksecurefunc("LFGListFrame_SetActivePanel", function()
         if GF.UI and GF.UI.SyncPanel then GF.UI:SyncPanel() end
     end)
+    if type(_G.LFGListSearchPanel_DoSearch) == "function" then
+        hooksecurefunc("LFGListSearchPanel_DoSearch", function() GF.NoteSearch() end)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -201,6 +207,23 @@ local function BlankRegion(rec, region)
     region:SetAlpha(0)
 end
 
+-- A child's own hover scripts put its art back (the clear button's icon
+-- comes up at half alpha on leave), so while the box is hosted the art goes
+-- back down after each
+local function HookChildHover(key, child)
+    if hoverHooked[child] or not child.HookScript then return end
+    hoverHooked[child] = true
+    local function reblank()
+        local live = taken[key]
+        if not live then return end
+        for _, entry in ipairs(live.regions) do
+            entry.region:SetAlpha(0)
+        end
+    end
+    child:HookScript("OnEnter", reblank)
+    child:HookScript("OnLeave", reblank)
+end
+
 -- The template's own art: the named regions of the box, and every texture of
 -- the child frames named (the clear button)
 local function BlankArt(rec, box, opts)
@@ -215,6 +238,7 @@ local function BlankArt(rec, box, opts)
                     BlankRegion(rec, region)
                 end
             end
+            HookChildHover(rec.key, child)
         end
     end
 end

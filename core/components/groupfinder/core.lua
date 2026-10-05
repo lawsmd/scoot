@@ -215,7 +215,9 @@ end
 
 -- The reason Sign Up is off, in the order Blizzard's button tests them, or
 -- nil when it is on
-function GF.SignUpBlock()
+-- skipSelection true leaves out the last check, for the button's tooltip:
+-- an empty selection is plain to see and says nothing worth a line
+function GF.SignUpBlock(skipSelection)
     local home = LE_PARTY_CATEGORY_HOME
     local message = LFGListUtil_GetActiveQueueMessage and LFGListUtil_GetActiveQueueMessage(true)
     if message then return message end
@@ -239,7 +241,7 @@ function GF.SignUpBlock()
     if GroupHasOfflineMember and GroupHasOfflineMember(home) then
         return Str("LFG_LIST_OFFLINE_MEMBER", "A member is offline")
     end
-    if not GF.state.selectedResult then
+    if not skipSelection and not GF.state.selectedResult then
         return Str("LFG_LIST_SELECT_A_SEARCH_RESULT", "Select a group")
     end
     return nil
@@ -368,7 +370,8 @@ function GF.SearchCooldownLeft()
     return math.max(0, SEARCH_COOLDOWN - (GetTime() - GF.state.lastSearchAt))
 end
 
--- The window calls this beside the Blizzard handler that runs the search
+-- The host's hook on Blizzard's DoSearch calls this, so a search from any
+-- button, from Enter in the box or from the clear button is noted once
 function GF.NoteSearch()
     local state = GF.state
     state.lastSearchAt = GetTime()
@@ -409,13 +412,16 @@ local BUTTON_EVENTS = {
     "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED", "PLAYER_SPECIALIZATION_CHANGED", "UNIT_CONNECTION",
 }
 
+-- The topic carries whether a search was waiting on these results, which
+-- is what the panel's redraw plays on; an update outside a search is quiet
 local function OnResultsReceived()
     local state = GF.state
+    local wasSearching = state.searching
     state.searching = false
     state.searchFailed = false
     state.failReason = nil
     GF.RebuildResults()
-    GF.Notify("results")
+    GF.Notify("results", wasSearching)
 end
 
 local function OnSearchFailed(_, reason)

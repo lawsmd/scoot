@@ -314,6 +314,7 @@ ui/v2/controls/Tag.lua
 ui/v2/controls/RoleMarks.lua
 ui/v2/controls/NumericInput.lua
 ui/v2/controls/EmptyState.lua
+ui/v2/controls/Sweep.lua
 ui/v2/controls/Fit.lua
 ui/v2/controls/RowScaffold.lua
 ui/v2/controls/PopupList.lua

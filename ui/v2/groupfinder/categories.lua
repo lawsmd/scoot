@@ -122,18 +122,20 @@ local function Build(parent)
     list.frame:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
     panel._list = list
 
-    panel._note = UI.MakeNote(panel)
-
+    -- Find Group runs Blizzard's StartFindGroup, whose search the host's
+    -- hook notes; inside the cooldown the click waits and the tooltip says
+    -- for how long
     panel._find = UI.MakeButton(panel, Str("LFG_LIST_FIND_A_GROUP", "Find a Group"), function()
         local cs = CategoryPanel()
         if not (cs and LFGListCategorySelection_StartFindGroup) then return end
-        if not GF.SearchAllowed() then
-            panel._note:SetText(string.format("Searching again in %d s", math.ceil(GF.SearchCooldownLeft())))
-            return
-        end
-        GF.NoteSearch()
+        if not GF.SearchAllowed() then return end
         LFGListCategorySelection_StartFindGroup(cs)
-    end, LAYOUT.buttonWidth)
+    end, LAYOUT.buttonWidth, function()
+        if not GF.SearchAllowed() then
+            return string.format("Searching again in %d s", math.ceil(GF.SearchCooldownLeft()))
+        end
+        return panel._findReason
+    end)
     panel._find:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
 
     panel._start = UI.MakeButton(panel, Str("START_A_GROUP", "Start a Group"), nil, LAYOUT.buttonWidth)
@@ -164,27 +166,24 @@ local function Build(parent)
     end
 
     -- Find Group follows Blizzard's nav rules: a category, and an account
-    -- that may speak. Start Group takes its rules with the listing panel.
+    -- that may speak. A missing category is plain to see; a silenced account
+    -- is the tooltip's. Start Group takes its rules with the listing panel.
     function panel:RefreshButtons()
         local cs = CategoryPanel()
         local selected = cs and GF.plainNumber(cs.selectedCategory)
-        local findOn, note = true, nil
-        if not selected then
-            findOn = false
-            note = Str("LFG_LIST_SELECT_A_CATEGORY", "Select a category")
-        end
+        local findOn, reason = selected ~= nil, nil
         if C_SocialRestrictions then
             if C_SocialRestrictions.IsSilenced and C_SocialRestrictions.IsSilenced() then
                 findOn = false
-                note = Str("ERR_ACCOUNT_SILENCED", "This account is silenced")
+                reason = Str("ERR_ACCOUNT_SILENCED", "This account is silenced")
             elseif C_SocialRestrictions.IsSquelched and C_SocialRestrictions.IsSquelched() then
                 findOn = false
-                note = Str("ERR_USER_SQUELCHED", "This account is squelched")
+                reason = Str("ERR_USER_SQUELCHED", "This account is squelched")
             end
         end
+        self._findReason = reason
         self._find:SetEnabled(findOn)
         self._start:SetEnabled(false)
-        self._note:SetText(note or "")
     end
 
     function panel:Refresh()

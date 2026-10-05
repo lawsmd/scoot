@@ -31,7 +31,10 @@
 --   secureAction (a table of SecureActionButton attributes),
 --   icon, iconSize, iconColor (a color token or a literal; nil follows the
 --   role's glyphColors, or the label on a flat button),
---   borderWidth, borderAlpha (flat kind)
+--   borderWidth, borderAlpha (flat kind),
+--   tooltip (a string, or a function(button) returning the text or nil),
+--   shown on hover while the button is disabled too, so a button that is
+--   off can say why; the hover look stays off while it is disabled
 -- CreateCloseButton options: parent (required), name, onClick, size. It
 -- returns the button and the descriptor it was drawn from. A closeButton
 -- role of kind window adopts the close button the parent's own template
@@ -294,6 +297,21 @@ function Controls:CreateButton(options)
         end
     end
 
+    if options.tooltip then
+        btn:SetMotionScriptsWhileDisabled(true)
+        btn:HookScript("OnEnter", function(b)
+            local tip = options.tooltip
+            if type(tip) == "function" then tip = tip(b) end
+            if type(tip) ~= "string" or tip == "" then return end
+            GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+            GameTooltip:SetText(tip, nil, nil, nil, nil, true)
+            GameTooltip:Show()
+        end)
+        btn:HookScript("OnLeave", function(b)
+            if GameTooltip:GetOwner() == b then GameTooltip:Hide() end
+        end)
+    end
+
     function btn:GetText()
         return self._text
     end
@@ -355,12 +373,18 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding, h
         AutoSize(btn, label, text, padding)
     end
 
+    -- A disabled button with a tooltip still gets these; its look stays dim
     btn:SetScript("OnEnter", function(self)
+        if not self:IsEnabled() then return end
         self._hoverFill:Show()
         paintLabel("hover")
     end)
 
     btn:SetScript("OnLeave", function(self)
+        if not self:IsEnabled() then
+            self._hoverFill:Hide()
+            return
+        end
         if self._isActive then
             paintLabel("active")
         else
@@ -387,6 +411,7 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding, h
             paintLabel(self._isActive and "active" or "normal")
         else
             self:Disable()
+            self._hoverFill:Hide()
             -- Dim the button when disabled (relative to base alpha)
             self._border:SetAlpha((self._borderAlpha or 1) * 0.4)
             local r, g, b = Chrome().Color(colors.disabled or colors.normal)
@@ -480,7 +505,9 @@ function Controls:_DrawBackdropButton(btn, spec, options, text, fontSize, paddin
         AutoSize(btn, label, text, padding)
     end
 
-    btn:SetScript("OnEnter", function() backdrop:SetHover(true) end)
+    btn:SetScript("OnEnter", function(b)
+        if b:IsEnabled() then backdrop:SetHover(true) end
+    end)
     btn:SetScript("OnLeave", function() backdrop:SetHover(false) end)
     btn:HookScript("OnMouseDown", function(self)
         if self:IsEnabled() then backdrop:SetPressed(true) end
