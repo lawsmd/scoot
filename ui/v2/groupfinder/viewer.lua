@@ -178,6 +178,18 @@ local function Build(parent)
     panel._header:SetPoint("TOPLEFT", info, "BOTTOMLEFT", 0, -V.headerGap)
     panel._header:SetPoint("TOPRIGHT", info, "BOTTOMRIGHT", -gutter, -V.headerGap)
 
+    -- A header cell's place and width inside a member line, read off the
+    -- header's own layout, so the rows' cells stand under the names
+    -- whatever the widths come to; nil before the header has a rect
+    local function CellSpan(key)
+        local header = panel._header
+        local cell = header._cells and header._cells[key]
+        if not (cell and cell:IsShown()) then return nil end
+        local left, base = cell:GetLeft(), header:GetLeft()
+        if not (left and base) then return nil end
+        return left - base - padX, cell:GetWidth() or 0
+    end
+
     -- A line per member on an applicant's band, built as the band needs it
     local function MemberLine(row, i)
         local line = row._members[i]
@@ -238,17 +250,20 @@ local function Build(parent)
 
     local function CreateRow(row)
         row._members = {}
-        row._status = C.CreateTag(row, { text = "", tone = "dim" })
+        row._status = UI.DimText(row, "miniLabel")
+        row._status:SetJustifyH("RIGHT")
         row._status:Hide()
         row._invite = C:CreateButton({
             parent = row, text = Str("INVITE", "Invite"), width = V.inviteWidth, height = V.buttonHeight,
-            fontSize = V.actionFont, onClick = function() panel:Invite(row) end,
+            fontSize = V.actionFont, borderWidth = V.actionBorder, borderAlpha = V.actionBorderAlpha,
+            onClick = function() panel:Invite(row) end,
             tooltip = function() return row._inviteReason end,
         })
         row._invite:Hide()
         row._decline = C:CreateButton({
             parent = row, text = "x", width = V.declineWidth, height = V.buttonHeight,
-            fontSize = V.actionFont, onClick = function() panel:Decline(row) end,
+            fontSize = V.actionFont, borderWidth = V.actionBorder, borderAlpha = V.actionBorderAlpha,
+            onClick = function() panel:Decline(row) end,
         })
         row._decline:Hide()
     end
@@ -261,6 +276,26 @@ local function Build(parent)
         theme:ApplyFont(line._name, "label", V.nameSize)
         theme:ApplyFont(line._ilvl, "desc", V.subSize)
         theme:ApplyFont(line._rating, "desc", V.subSize)
+
+        -- The cells under the header's, once it has a rect
+        local rx, rw = CellSpan("rating")
+        if rx then
+            line._rating:ClearAllPoints()
+            line._rating:SetPoint("LEFT", line, "LEFT", rx, 0)
+            line._rating:SetWidth(math.max(1, rw))
+        end
+        local ix, iw = CellSpan("ilvl")
+        if ix then
+            line._ilvl:ClearAllPoints()
+            line._ilvl:SetPoint("LEFT", line, "LEFT", ix, 0)
+            line._ilvl:SetWidth(math.max(1, iw))
+        end
+        local ox, ow = CellSpan("role")
+        if ox then
+            line._roles:ClearAllPoints()
+            line._roles:SetPoint("LEFT", line, "LEFT", ox, 0)
+            line._roles:SetWidth(math.max(1, ow))
+        end
         local text = ""
         if m and type(m.rawName) == "string" then text = Ambiguate(m.rawName, "short") end
         line._name:SetText(text)
@@ -391,8 +426,11 @@ local function Build(parent)
         end
         local word, lit = StatusWord(status)
         if word then
-            row._status:SetTone(lit and "accent" or "dim")
+            Theme():ApplyFont(row._status, "miniLabel")
             row._status:SetText(word)
+            local sr, sg, sb
+            if lit then sr, sg, sb = Theme():GetAccentColor() else sr, sg, sb = Theme():GetDimTextColor() end
+            row._status:SetTextColor(sr, sg, sb, 1)
             row._status:ClearAllPoints()
             row._status:SetPoint("RIGHT", row, "RIGHT", right, 0)
             row._status:Show()

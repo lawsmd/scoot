@@ -37,7 +37,18 @@ local focusHooked = {}    -- box -> true once its focus scripts are hooked
 local hoverHooked = {}    -- art child -> true once its hover scripts are hooked
 local parked = false
 local parkedStrata        -- PVEFrame's own strata, put back on unpark
+local parkedLevel         -- its own frame level, put back on unpark
+local parkedToplevel = false
 local invitePark = false  -- Blizzard's invite dialog parked while shown
+
+-- The parked panel's level: low, under the shield and the window. The
+-- panel is toplevel in Blizzard's hands, so the client raises it to the
+-- top of its strata as it shows or takes a click, above the window
+-- whenever another frame of the strata stands high (an error window,
+-- say), and its invisible buttons and border then take the window's
+-- clicks wherever the two overlap; parked, it is neither toplevel nor
+-- above this level
+local PANEL_LEVEL = 1
 local hooksInstalled = false
 local shield
 
@@ -89,6 +100,12 @@ function Host.Park()
     PVEFrame:SetAlpha(0)
     PVEFrame:EnableMouse(false)
     PVEFrame:SetFrameStrata(WINDOW_STRATA)
+    local okT, top = pcall(PVEFrame.IsToplevel, PVEFrame)
+    parkedToplevel = okT and top == true
+    local okL, level = pcall(PVEFrame.GetFrameLevel, PVEFrame)
+    parkedLevel = (okL and SS.safeNumber(level)) or nil
+    PVEFrame:SetToplevel(false)
+    PVEFrame:SetFrameLevel(PANEL_LEVEL)
     local s = EnsureShield()
     s:SetFrameStrata(WINDOW_STRATA)
     s:SetFrameLevel(SHIELD_LEVEL)
@@ -104,6 +121,8 @@ function Host.Unpark()
     PVEFrame:SetAlpha(1)
     PVEFrame:EnableMouse(true)
     PVEFrame:SetFrameStrata(parkedStrata or "MEDIUM")
+    if parkedLevel then PVEFrame:SetFrameLevel(parkedLevel) end
+    PVEFrame:SetToplevel(parkedToplevel)
 end
 
 -- Opens Blizzard's panel on the Premade Groups page by the call its own
@@ -303,17 +322,41 @@ local function BlankArt(rec, box, opts)
     end
 end
 
+-- A region's font and text color as they stand, for the release to put
+-- back; a value that reads secret is dropped and that part stays
+local function CaptureText(region)
+    local font, color
+    local okF, path, size, flags = pcall(region.GetFont, region)
+    if okF and SS.plainString(path) then
+        font = { path, SS.safeNumber(size), SS.plainString(flags) }
+    end
+    local okC, r, g, b, a = pcall(region.GetTextColor, region)
+    if okC and SS.safeNumber(r) then
+        color = { SS.safeNumber(r), SS.safeNumber(g) or 1, SS.safeNumber(b) or 1, SS.safeNumber(a) or 1 }
+    end
+    return font, color
+end
+
+local function RestoreText(region, font, color)
+    if not region then return end
+    if font and region.SetFont then
+        pcall(region.SetFont, region, font[1], font[2] or 12, font[3] or "")
+    end
+    if color and region.SetTextColor then
+        region:SetTextColor(color[1], color[2], color[3], color[4])
+    end
+end
+
 -- The skin's value face on the text, primary color, and the instructions
 -- line dim. The style is named so no companion string is attached to a box
--- the player types into.
+-- the player types into. The box's and the instructions' own font and
+-- color are kept for the release, so Blizzard's window reads as its own
+-- again.
 local function Style(rec, opts)
     local theme = Theme()
     local editBox = rec.editBox
     if not editBox then return end
-    local okF, path, size, flags = pcall(editBox.GetFont, editBox)
-    if okF and SS.plainString(path) then
-        rec.font = { path, SS.safeNumber(size), SS.plainString(flags) }
-    end
+    rec.font, rec.textColor = CaptureText(editBox)
     theme:ApplyFont(editBox, "value", nil, "NONE")
     local pr, pg, pb = theme:GetPrimaryTextColor()
     editBox:SetTextColor(pr, pg, pb, 1)
@@ -322,6 +365,7 @@ local function Style(rec, opts)
     end
     local instructions = editBox.Instructions
     if instructions and instructions.SetFont then
+        rec.instructionsFont, rec.instructionsColor = CaptureText(instructions)
         theme:ApplyFont(instructions, "value", nil, "NONE")
         local dr, dg, db = theme:GetDimTextColor()
         instructions:SetTextColor(dr, dg, db, 0.7)
@@ -436,8 +480,9 @@ function Host.Release(key)
     for _, entry in ipairs(rec.regions) do
         entry.region:SetAlpha(entry.alpha)
     end
-    if rec.font and rec.editBox and rec.editBox.SetFont then
-        pcall(rec.editBox.SetFont, rec.editBox, rec.font[1], rec.font[2] or 12, rec.font[3] or "")
+    RestoreText(rec.editBox, rec.font, rec.textColor)
+    if rec.editBox then
+        RestoreText(rec.editBox.Instructions, rec.instructionsFont, rec.instructionsColor)
     end
     if rec.editBoxWidth and rec.editBoxWidth > 0 and rec.editBox and rec.editBox.SetWidth then
         rec.editBox:SetWidth(rec.editBoxWidth)

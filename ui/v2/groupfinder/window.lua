@@ -137,9 +137,12 @@ local LAYOUT = {
     viewer = {
         subSize = 10, lineHeight = 12, lineGap = 1, autoGap = 6, headerGap = 8,
         tagGap = 4, tagTop = 2,
-        columns = { role = 56, ilvl = 36, rating = 46, actions = 70 },
+        columns = { role = 56, ilvl = 44, rating = 56, actions = 70 },
         memberLine = 20, rowPad = 6, roleIcon = 14, roleGap = 2, nameSize = 11,
         inviteWidth = 48, declineWidth = 18, actionGap = 4, buttonHeight = 18, actionFont = 10,
+        -- The two buttons on a thin, quiet border, so a column of them
+        -- does not glare against the band
+        actionBorder = 1, actionBorderAlpha = 0.45,
     },
     -- The invite dialog: Blizzard's size, taller with the offline notice
     invite = {
