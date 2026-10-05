@@ -11,7 +11,11 @@
 --   parent          required
 --   name            a global name for the frame
 --   width, height   the frame's size; a caller may anchor the frame instead
---   rowHeight       default metrics.listRow.height
+--   rowHeight       default metrics.listRow.height; a number, or a
+--                   function(item, index) -> height for rows of their own
+--                   height, laid out one under the other as they come
+--   wheelStep       the points one wheel row scrolls; default the row
+--                   height, or the metric when rowHeight is a function
 --   rowGap          the room between rows, default 0
 --   padding         a number or { left, right, top, bottom } the rows keep
 --                   off the frame's edge, default 0
@@ -60,9 +64,10 @@ function Controls.CreateScrollList(opts)
     local m = Controls.Metrics()
     local lm = m.listRow or {}
     local sb = m.scrollBar
-    local rowHeight = opts.rowHeight or lm.height or 24
+    local heightOf = type(opts.rowHeight) == "function" and opts.rowHeight or nil
+    local rowHeight = (not heightOf and opts.rowHeight) or lm.height or 24
     local rowGap = opts.rowGap or 0
-    local pitch = rowHeight + rowGap
+    local pitch = (opts.wheelStep or rowHeight) + rowGap
     local pad = Pad(opts.padding)
     local withBar = opts.scrollBar ~= false
     local gutter = (withBar and opts.gutter ~= false) and (sb.width + sb.margin + sb.gap) or 0
@@ -96,7 +101,10 @@ function Controls.CreateScrollList(opts)
         end
     end
 
-    local list = { frame = frame, scrollFrame = scrollFrame, content = content, _items = {}, _selected = nil }
+    local list = {
+        frame = frame, scrollFrame = scrollFrame, content = content,
+        _items = {}, _offsets = {}, _selected = nil,
+    }
 
     local function Scroll(target)
         local maxScroll = math.max(0, (content:GetHeight() or 0) - (scrollFrame:GetHeight() or 1))
@@ -147,25 +155,33 @@ function Controls.CreateScrollList(opts)
     end)
     list._pool = pool
 
+    -- The rows one under the other from a running top, each as tall as
+    -- the caller says for its item, so a list of unlike rows lays out the
+    -- same way as a list of like ones
     function list:SetItems(items)
         self._items = items or {}
         local n = #self._items
         if self._selected and self._selected > n then self._selected = nil end
+        local y = 0
+        self._offsets = {}
         for i = 1, n do
             local row = pool:Get(i)
-            local y = -((i - 1) * pitch)
+            local item = self._items[i]
+            local h = heightOf and (heightOf(item, i) or rowHeight) or rowHeight
+            self._offsets[i] = y
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
-            row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
-            row:SetHeight(rowHeight)
+            row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+            row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y)
+            row:SetHeight(h)
             row._backdrop:SetSelected(selectable and i == self._selected)
             -- Shown before it is filled: a FontString styled while hidden
             -- keeps its creation font
             row:Show()
-            if opts.render then opts.render(row, self._items[i], i) end
+            if opts.render then opts.render(row, item, i) end
+            y = y + h + rowGap
         end
         pool:HideFrom(n + 1)
-        local height = n > 0 and (n * pitch - rowGap) or 0
+        local height = n > 0 and (y - rowGap) or 0
         content:SetHeight(math.max(height, 1))
         Scroll(scrollFrame:GetVerticalScroll() or 0)
     end
@@ -199,7 +215,7 @@ function Controls.CreateScrollList(opts)
     end
 
     function list:ScrollToIndex(index)
-        Scroll(((index or 1) - 1) * pitch)
+        Scroll(self._offsets[index or 1] or 0)
     end
 
     function list:Cleanup()
