@@ -45,7 +45,6 @@ Search.Limits = Limits
 Search._index = nil
 Search._query = ""
 Search._results = nil
-Search._resultRows = {}
 Search._statusText = nil
 Search._searchInput = nil
 Search._debounceTimer = nil
@@ -517,12 +516,53 @@ end
 -- Results Rendering
 --------------------------------------------------------------------------------
 
+-- The result rows, pooled across renders on the listRow role: the
+-- breadcrumb at the left, the label and its type badge at the right, a
+-- rule between them. A row's entry and disabled flag are set per render.
+local rowPool = addon.Pool.NewIndexed(function()
+    local row = CreateFrame("Button", nil, UIParent)
+    row:SetHeight(ROW_HEIGHT)
+    row:RegisterForClicks("AnyUp")
+    row._backdrop = addon.UI.Chrome.Backdrop("listRow", row)
+
+    row._breadcrumb = row:CreateFontString(nil, "OVERLAY")
+    row._breadcrumb:SetPoint("LEFT", row, "LEFT", CONTENT_PADDING, 0)
+    row._breadcrumb:SetJustifyH("LEFT")
+
+    row._badge = row:CreateFontString(nil, "OVERLAY")
+    row._badge:SetPoint("RIGHT", row, "RIGHT", -CONTENT_PADDING, 0)
+    row._badge:SetJustifyH("RIGHT")
+
+    row._label = row:CreateFontString(nil, "OVERLAY")
+    row._label:SetPoint("RIGHT", row._badge, "LEFT", -8, 0)
+    row._label:SetJustifyH("RIGHT")
+
+    row._fillLine = row:CreateTexture(nil, "ARTWORK")
+    row._fillLine:SetHeight(1)
+    row._fillLine:SetPoint("LEFT", row._breadcrumb, "RIGHT", 8, 0)
+    row._fillLine:SetPoint("RIGHT", row._label, "LEFT", -8, 0)
+
+    row:SetScript("OnEnter", function(self)
+        if self._disabled then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Enable this module on the 'Features' page.", 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        else
+            self._backdrop:SetHover(true)
+        end
+    end)
+    row:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
+        self._backdrop:SetHover(false)
+    end)
+    row:SetScript("OnClick", function(self)
+        if self._entry then Search:NavigateToResult(self._entry) end
+    end)
+    return row
+end)
+
 local function ClearResultRows()
-    for _, row in ipairs(Search._resultRows) do
-        if row.Hide then row:Hide() end
-        if row.SetParent then row:SetParent(nil) end
-    end
-    Search._resultRows = {}
+    rowPool:HideFrom(1)
 end
 
 local function ClearStatusText()
@@ -585,81 +625,39 @@ function Search:RenderResults(scrollContent)
     statusFS:SetTextColor(0.5, 0.5, 0.5, 0.8)
     yOffset = yOffset - 20
 
-    -- Result rows
+    -- Result rows, from the pool, under the status line in the pane's own
+    -- scroll. Shown before they are styled: a FontString styled while
+    -- hidden keeps its creation font.
     for i = 1, shown do
         local entry = results[i].entry
         local isDisabled = IsModuleDisabled(entry)
         local alphaMultiplier = isDisabled and 0.4 or 1.0
 
-        local row = CreateFrame("Button", nil, scrollContent)
-        row:SetHeight(ROW_HEIGHT)
+        local row = rowPool:Get(i)
+        row:SetParent(scrollContent)
+        row:ClearAllPoints()
         row:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 0, yOffset)
         row:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", 0, yOffset)
-        row:EnableMouse(true)
-        row:RegisterForClicks("AnyUp")
+        row:Show()
+        row._entry = entry
+        row._disabled = isDisabled
+        row._backdrop:SetHover(false)
+        row._backdrop:SetDisabled(isDisabled)
 
-        -- Hover background
-        local hoverBg = row:CreateTexture(nil, "BACKGROUND")
-        hoverBg:SetAllPoints()
-        hoverBg:SetColorTexture(ar, ag, ab, 0.08)
-        hoverBg:Hide()
-        row._hoverBg = hoverBg
+        row._breadcrumb:SetFont(fontPath, 11, "")
+        row._breadcrumb:SetTextColor(ar * 0.7, ag * 0.7, ab * 0.7, 0.7 * alphaMultiplier)
+        row._breadcrumb:SetText(entry.breadcrumb)
 
-        -- Breadcrumb text (left side)
-        local breadcrumbFS = row:CreateFontString(nil, "OVERLAY")
-        breadcrumbFS:SetFont(fontPath, 11, "")
-        breadcrumbFS:SetPoint("LEFT", row, "LEFT", CONTENT_PADDING, 0)
-        breadcrumbFS:SetTextColor(ar * 0.7, ag * 0.7, ab * 0.7, 0.7 * alphaMultiplier)
-        breadcrumbFS:SetText(entry.breadcrumb)
-        breadcrumbFS:SetJustifyH("LEFT")
+        row._badge:SetFont(fontPath, 10, "")
+        row._badge:SetTextColor(0.5, 0.5, 0.5, 0.5 * alphaMultiplier)
+        row._badge:SetText("[" .. entry.type .. "]")
 
-        -- Type badge (right side)
-        local badgeFS = row:CreateFontString(nil, "OVERLAY")
-        badgeFS:SetFont(fontPath, 10, "")
-        badgeFS:SetPoint("RIGHT", row, "RIGHT", -CONTENT_PADDING, 0)
-        badgeFS:SetTextColor(0.5, 0.5, 0.5, 0.5 * alphaMultiplier)
-        badgeFS:SetText("[" .. entry.type .. "]")
-        badgeFS:SetJustifyH("RIGHT")
+        row._label:SetFont(fontPath, 12, "")
+        row._label:SetTextColor(1, 1, 1, alphaMultiplier)
+        row._label:SetText(entry.label)
 
-        -- Setting label (before badge)
-        local labelFS = row:CreateFontString(nil, "OVERLAY")
-        labelFS:SetFont(fontPath, 12, "")
-        labelFS:SetPoint("RIGHT", badgeFS, "LEFT", -8, 0)
-        labelFS:SetTextColor(1, 1, 1, alphaMultiplier)
-        labelFS:SetText(entry.label)
-        labelFS:SetJustifyH("RIGHT")
+        row._fillLine:SetColorTexture(ar, ag, ab, 0.15 * alphaMultiplier)
 
-        -- Fill line between breadcrumb and label
-        local fillLine = row:CreateTexture(nil, "ARTWORK")
-        fillLine:SetHeight(1)
-        fillLine:SetPoint("LEFT", breadcrumbFS, "RIGHT", 8, 0)
-        fillLine:SetPoint("RIGHT", labelFS, "LEFT", -8, 0)
-        fillLine:SetColorTexture(ar, ag, ab, 0.15 * alphaMultiplier)
-
-        -- Hover / click behavior
-        if not isDisabled then
-            row:SetScript("OnEnter", function(self)
-                self._hoverBg:Show()
-            end)
-            row:SetScript("OnLeave", function(self)
-                self._hoverBg:Hide()
-            end)
-        else
-            row:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText("Enable this module on the 'Features' page.", 1, 1, 1, 1, true)
-                GameTooltip:Show()
-            end)
-            row:SetScript("OnLeave", function(self)
-                GameTooltip:Hide()
-            end)
-        end
-
-        row:SetScript("OnClick", function()
-            Search:NavigateToResult(entry)
-        end)
-
-        table.insert(Search._resultRows, row)
         yOffset = yOffset - ROW_HEIGHT
     end
 

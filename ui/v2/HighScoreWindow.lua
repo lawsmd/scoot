@@ -47,10 +47,8 @@ local function TruncateToWidth(fontString, text, maxWidth)
     fontString:SetText("...")
 end
 
-local function CreateRow(parent, index)
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(ROW_HEIGHT)
-
+-- The row's content, built once on the Button the scroll list made
+local function BuildRow(row)
     local xStart = SIDE_PADDING
 
     -- Rank
@@ -81,14 +79,6 @@ local function CreateRow(parent, index)
         col:SetJustifyH("RIGHT")
         row.cols[i] = col
     end
-
-    -- Local player highlight (subtle bg)
-    row.highlight = row:CreateTexture(nil, "BACKGROUND", nil, -4)
-    row.highlight:SetAllPoints()
-    row.highlight:SetColorTexture(1, 1, 1, 0.04)
-    row.highlight:Hide()
-
-    return row
 end
 
 local function SetRowFont(row, font, size)
@@ -102,9 +92,44 @@ local function SetRowFont(row, font, size)
     end
 end
 
-local rowPool = addon.Pool.NewIndexed(function(index, parent)
-    return CreateRow(parent, index)
-end)
+-- A row for the player at a rank: the fonts first, because a FontString
+-- styled while empty keeps its creation font
+local function RenderRow(row, p, rank, data)
+    SetRowFont(row, GetArcadeFont(), 12)
+
+    row.rank:SetText(tostring(rank) .. ".")
+    row.rank:SetTextColor(1, 1, 1, 0.6)
+
+    local name = p.name or "Unknown"
+    row.name:SetText(string.upper(name))
+    local cr, cg, cb = GetClassColor(p.classFilename)
+    row.name:SetTextColor(cr, cg, cb, 1)
+
+    if row.specInfo then
+        -- The formatter belongs to the damage meter, which not every
+        -- addon loading this file carries.
+        local info = addon.FormatPlayerSpecInfo and addon.FormatPlayerSpecInfo(p)
+        if info then
+            row.specInfo:SetText(string.upper(info))
+            row.specInfo:SetTextColor(0.5, 0.5, 0.5, 0.8)
+        else
+            row.specInfo:SetText("")
+        end
+    end
+
+    for i = 1, NUM_DATA_COLS do
+        local mt = data.columns[i]
+        if mt then
+            row.cols[i]:SetText(data.GetDisplayValue(p.guid, mt))
+            row.cols[i]:SetTextColor(1, 1, 1, 0.9)
+        else
+            row.cols[i]:SetText("")
+        end
+    end
+
+    -- The local player's row carries a faint white wash
+    row._backdrop:SetStatus(p.isLocalPlayer and { 1, 1, 1, 0.04 } or nil)
+end
 
 local function CreateHighScoreFrame()
     if highScoreFrame then return highScoreFrame end
@@ -299,37 +324,23 @@ local function CreateHighScoreFrame()
     frame._zoneValue2:SetTextColor(1, 1, 1, 0.5)
     frame._zoneValue2:SetJustifyH("LEFT")
 
-    -- Scroll area
-    local scrollFrame = CreateFrame("ScrollFrame", nil, frame)
-    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -CONTENT_TOP_OFFSET)
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 36)
-
-    local scrollContent = CreateFrame("Frame", nil, scrollFrame)
-    scrollContent:SetSize(FRAME_WIDTH - 20, 100)
-    scrollFrame:SetScrollChild(scrollContent)
-
-    -- Mouse wheel scrolling
-    scrollFrame:EnableMouseWheel(true)
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local contentHeight = scrollContent:GetHeight()
-        local visibleHeight = self:GetHeight()
-        local maxScroll = math.max(0, contentHeight - visibleHeight)
-        if maxScroll <= 0 then return end
-        local current = self:GetVerticalScroll() or 0
-        local step = ROW_HEIGHT * 3
-        local newScroll = current - (delta * step)
-        newScroll = math.max(0, math.min(maxScroll, newScroll))
-        self:SetVerticalScroll(newScroll)
-    end)
-
-    frame._scrollFrame = scrollFrame
-    frame._scrollContent = scrollContent
+    -- The rows: a scroll list with the skin's bar in the right margin. The
+    -- rows take no hover and no selection; a row is a line of a table.
+    local list = addon.UI.Controls.CreateScrollList({
+        parent = frame, rowHeight = ROW_HEIGHT, rowGap = ROW_GAP, hover = false,
+        createRow = BuildRow,
+        render = function(row, entry, rank)
+            RenderRow(row, entry.player, rank, frame._data)
+        end,
+    })
+    list.frame:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -CONTENT_TOP_OFFSET)
+    list.frame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 36)
+    frame._list = list
 
     -- Populate method
     function frame:Populate(data)
         if not data then return end
-
-        local arcadeFontPath = GetArcadeFont()
+        frame._data = data
 
         -- Update column headers
         for i = 1, NUM_DATA_COLS do
@@ -337,71 +348,15 @@ local function CreateHighScoreFrame()
             frame._colHeaders[i]:SetText(string.upper(headerText))
         end
 
-        -- Hide old rows
-        rowPool:HideFrom(1)
-
-        local contentHeight = 0
-        for rank, guid in ipairs(data.playerOrder) do
+        local items = {}
+        for _, guid in ipairs(data.playerOrder) do
             local p = data.players[guid]
             if not p then break end
-
-            local row = rowPool:Get(rank, frame._scrollContent)
-            row:SetParent(frame._scrollContent)
-            row:SetSize(FRAME_WIDTH - 20, ROW_HEIGHT)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", frame._scrollContent, "TOPLEFT", 0, -((rank - 1) * (ROW_HEIGHT + ROW_GAP)))
-
-            SetRowFont(row, arcadeFontPath, 12)
-
-            -- Rank
-            row.rank:SetText(tostring(rank) .. ".")
-            row.rank:SetTextColor(1, 1, 1, 0.6)
-
-            -- Name with class color
-            local name = p.name or "Unknown"
-            row.name:SetText(string.upper(name))
-            local cr, cg, cb = GetClassColor(p.classFilename)
-            row.name:SetTextColor(cr, cg, cb, 1)
-
-            -- Spec/ilvl annotation
-            if row.specInfo then
-                -- The formatter belongs to the damage meter, which not every
-                -- addon loading this file carries.
-                local info = addon.FormatPlayerSpecInfo and addon.FormatPlayerSpecInfo(p)
-                if info then
-                    row.specInfo:SetText(string.upper(info))
-                    row.specInfo:SetTextColor(0.5, 0.5, 0.5, 0.8)
-                else
-                    row.specInfo:SetText("")
-                end
-            end
-
-            -- Data columns
-            for i = 1, NUM_DATA_COLS do
-                local mt = data.columns[i]
-                if mt then
-                    row.cols[i]:SetText(data.GetDisplayValue(guid, mt))
-                    row.cols[i]:SetTextColor(1, 1, 1, 0.9)
-                else
-                    row.cols[i]:SetText("")
-                end
-            end
-
-            -- Local player highlight
-            if p.isLocalPlayer then
-                row.highlight:Show()
-            else
-                row.highlight:Hide()
-            end
-
-            row:Show()
-            contentHeight = contentHeight + ROW_HEIGHT + ROW_GAP
+            p.guid = p.guid or guid
+            items[#items + 1] = { player = p }
         end
-
-        frame._scrollContent:SetHeight(math.max(contentHeight, 100))
-
-        -- Reset scroll position
-        frame._scrollFrame:SetVerticalScroll(0)
+        list:SetItems(items)
+        list:ScrollToTop()
 
         -- Update footer with session label and duration
         if frame._footer then
