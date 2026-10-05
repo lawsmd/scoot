@@ -145,7 +145,7 @@ local function CreateRow(row)
     row._roster = C.CreateRoster(row, {
         lines = R.lines, lineHeight = R.lineHeight, width = L.rightColumn, fontSize = R.fontSize,
         glyphWidth = R.glyphWidth, gap = R.gap, markWidth = R.markWidth, markHeight = R.markHeight,
-        iconSize = R.iconSize, icons = RoleIcons(), leaderMark = LEADER_MARK,
+        markY = R.markY, iconSize = R.iconSize, icons = RoleIcons(), leaderMark = LEADER_MARK,
     })
     row._roster:SetPoint("TOPRIGHT", row, "TOPRIGHT", -padX, -R.top)
 

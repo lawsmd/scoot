@@ -76,15 +76,19 @@ local LAYOUT = {
         boxTop = 70,
         filterWidth = 84,
         rightColumn = 160,
-        nameTop = 5,
+        nameTop = 14,
         subIndent = 10, subSize = 10,
         -- The roster's text is a size under the sublines, so the longest
         -- spec name with the crown and the rating fits the column; the
-        -- crown stands under the rating's height
+        -- crown stands under the rating's height, lifted onto the letters.
+        -- The top pad is a line plus the bottom pad, so a row with one slot
+        -- open has the same room above its content as below it, and the
+        -- name's top sits a point above the first line
         roster = {
             lines = 5, lineHeight = 12, fontSize = 9,
-            glyphWidth = 12, gap = 4, iconSize = 10, markWidth = 8, markHeight = 6,
-            top = 6, bottom = 3,
+            glyphWidth = 12, gap = 4, iconSize = 10,
+            markWidth = 7, markHeight = 5, markY = 1,
+            top = 15, bottom = 3,
         },
         filterDrawerWidth = 500, filterListFont = 11,
     },
