@@ -531,7 +531,8 @@ files["ui/v2/groupfinder/"] = {
         "LFGListUtil_GetDecoratedCategoryName", "LFGListUtil_IsAppEmpowered",
         "LFGListUtil_SortActivitiesByRelevancy", "LFGListCanChangeLanguages",
         "LFGListCategorySelection_SelectCategory", "LFGListCategorySelection_StartFindGroup",
-        "LFGListSearchPanel_DoSearch", "LFGListFrame_SetActivePanel",
+        "LFGListSearchPanel_DoSearch", "LFGListSearchPanel_Clear", "LFGListSearchPanel_SetCategory",
+        "LFGListFrame_SetActivePanel",
         "LFGList_ReportListing", "LFGList_ReportAdvertisement",
         -- The listing panel: Blizzard's creation panel's own steps and the
         -- reads behind its valid state

@@ -30,10 +30,6 @@ local function M()
     return addon.UI.Controls.Metrics()
 end
 
-local function Viewer()
-    return LFGListFrame and LFGListFrame.ApplicationViewer
-end
-
 local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER" }
 
 -- The statuses a member draws grayed, as Blizzard's row grays them
@@ -555,17 +551,19 @@ local function Build(parent)
         })
     end
 
-    -- Browse Groups runs Blizzard's own handler with its button, which
-    -- searches the listing's category; the host's hook notes the search
+    -- Browse Groups opens the search view on the listing's category, as
+    -- Blizzard's own button does; the viewer stays Blizzard's active panel
     function panel:Browse()
-        local viewer = Viewer()
-        local mixin = LFGApplicationBrowseGroupsButtonMixin
-        if not (viewer and viewer.BrowseGroupsButton and mixin and mixin.OnClick) then return end
+        local lf = LFGListFrame
+        local activity = GF.ActivityInfo(self._activityID)
+        if not (lf and activity and UI.Search) then return end
         if not GF.SearchAllowed() then
             self:RefreshButtons()
             return
         end
-        mixin.OnClick(viewer.BrowseGroupsButton)
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        UI.Search:Open(GF.plainNumber(activity.categoryID), GF.plainNumber(activity.filters) or 0,
+            GF.plainNumber(lf.baseFilters) or 0)
     end
 
     ----------------------------------------------------------------------------

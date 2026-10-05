@@ -15,9 +15,10 @@
 -- one. On release the box goes back to the points it was taken from.
 --
 -- Three hooks keep the two windows in step: PVEFrame's OnHide closes the
--- Scoot window, LFGListFrame_SetActivePanel shows the matching Scoot panel,
--- and LFGListSearchPanel_DoSearch notes every search, whichever button, key
--- or Blizzard path ran it. Two more stand on Blizzard's invite dialog,
+-- Scoot window, LFGListFrame_SetActivePanel ends the window's own view
+-- when Blizzard moves its panel and shows the matching Scoot panel, and
+-- LFGListSearchPanel_DoSearch notes every search, whichever button, key or
+-- Blizzard path ran it. Two more stand on Blizzard's invite dialog,
 -- which its own events show whether or not the window is up: as it shows
 -- it is parked and the window's own dialog stands in for it, and as it
 -- hides it is put back.
@@ -187,8 +188,9 @@ function Host.InstallHooks()
     PVEFrame:HookScript("OnHide", function()
         if GF.UI and GF.UI.Close then GF.UI:Close("pveframe") end
     end)
+    -- Blizzard's own switches alone reach this: the window never calls it
     hooksecurefunc("LFGListFrame_SetActivePanel", function()
-        if GF.UI and GF.UI.SyncPanel then GF.UI:SyncPanel() end
+        if GF.UI and GF.UI.OnPanelSwitch then GF.UI:OnPanelSwitch() end
     end)
     if type(_G.LFGListSearchPanel_DoSearch) == "function" then
         hooksecurefunc("LFGListSearchPanel_DoSearch", function() GF.NoteSearch() end)

@@ -4,13 +4,16 @@
 --
 -- The search box is Blizzard's own, hosted in a Scoot holder, so its Enter
 -- and its clear button run Blizzard's handlers and the C side reads its
--- text. Refresh runs Blizzard's DoSearch from its click; an auto-complete
--- row sets the box to that activity through the API and searches the same
--- way. The results are the component's copy, one row per id, each row read
--- afresh from the API on render as Blizzard's row is. The filter list
--- writes the client's advanced or language filter and redraws the rows;
--- it stands in a drawer out of the window's right edge, wide for the
--- Dungeons filter's columns and narrow for the language rows.
+-- text. The way in (UI.Search:Open) is Blizzard's StartFindGroup without
+-- its panel switch: Blizzard's search panel is shown so its box renders
+-- and never made the active panel, so its own row handlers never run on
+-- the window's searches. Refresh runs Blizzard's DoSearch from its click;
+-- an auto-complete row sets the box to that activity through the API and
+-- searches the same way. The results are the component's copy, one row
+-- per id, each row read afresh from the API on render as Blizzard's row
+-- is. The filter list writes the client's advanced or language filter and
+-- redraws the rows; it stands in a drawer out of the window's right edge,
+-- wide for the Dungeons filter's columns and narrow for the language rows.
 --
 -- A search shows on the results pane as a sweep: the rows there dim under
 -- a veil and a line scans them while the answer is on its way, and when it
@@ -76,6 +79,40 @@ end
 local function NonEmpty(value)
     local ok, result = pcall(function() return type(value) == "string" and value ~= "" end)
     return ok and result == true
+end
+
+--------------------------------------------------------------------------------
+-- The way in: the search view over Blizzard's search panel
+--------------------------------------------------------------------------------
+
+local Search = {}
+UI.Search = Search
+
+-- Blizzard's StartFindGroup without its panel switch: the last results
+-- cleared, the category set, the panel shown for its box, the view up,
+-- and the one search, which the host's hook notes. The search panel's own
+-- show builds rows only from results, and there are none after the clear.
+function Search:Open(categoryID, filters, baseFilters)
+    local lf, sp = LFGListFrame, SearchPanel()
+    if not (lf and sp and categoryID) then return false end
+    if not (LFGListSearchPanel_Clear and LFGListSearchPanel_SetCategory and LFGListSearchPanel_DoSearch) then
+        return false
+    end
+    if not GF.SearchAllowed() then return false end
+    LFGListSearchPanel_Clear(sp)
+    LFGListSearchPanel_SetCategory(sp, categoryID, filters or 0, baseFilters or GF.plainNumber(lf.baseFilters) or 0)
+    sp:Show()
+    UI:SetView("search")
+    LFGListSearchPanel_DoSearch(sp)
+    return true
+end
+
+-- The panel out of sight again, unless Blizzard has it active; the caller
+-- syncs the window
+function Search:Close()
+    local lf, sp = LFGListFrame, SearchPanel()
+    if sp and lf and SS.plainFrame(lf.activePanel) ~= sp then sp:Hide() end
+    if UI.view == "search" then UI.view = nil end
 end
 
 local function Timer(row)
@@ -662,18 +699,16 @@ local function Build(parent)
     end
 
     function panel:Back()
-        if not (LFGListFrame and LFGListFrame_SetActivePanel) then return end
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        if self._toGroup then
-            LFGListFrame_SetActivePanel(LFGListFrame, LFGListFrame.ApplicationViewer)
-            return
+        if not self._toGroup then
+            GF.state.selectedResult = nil
+            GF.state.results = {}
+            self._list:SetItems({})
+            self._sweep:Stop()
+            self._drawer:Close(true)
         end
-        GF.state.selectedResult = nil
-        GF.state.results = {}
-        self._list:SetItems({})
-        self._sweep:Stop()
-        self._drawer:Close(true)
-        LFGListFrame_SetActivePanel(LFGListFrame, LFGListFrame.CategorySelection)
+        Search:Close()
+        UI:SetView(nil)
     end
 
     function panel:SignUp()

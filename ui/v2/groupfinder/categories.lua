@@ -7,10 +7,11 @@
 -- the list (the listRow role's rule and bar) with a chevron at its right
 -- edge, so the band reads as the place to click. A row click runs
 -- Blizzard's own SelectCategory, so its hidden panel holds the selection,
--- and Find Group runs its StartFindGroup, which sets the search panel's
--- category, runs the search and makes the search panel active; the window
--- follows that switch. Start Group opens the listing form on the category
--- (create.lua), off for the reason its tooltip gives.
+-- and Find Group opens the window's search view on the category
+-- (search.lua), which sets Blizzard's search panel's category and runs
+-- the search without making that panel active. Start Group opens the
+-- listing form on the category (create.lua), off for the reason its
+-- tooltip gives.
 local addonName, addon = ...
 
 local GF = addon.GroupFinder
@@ -145,14 +146,14 @@ local function Build(parent)
     list.frame:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
     panel._list = list
 
-    -- Find Group runs Blizzard's StartFindGroup, whose search the host's
-    -- hook notes; inside the cooldown the click waits and the tooltip says
-    -- for how long
+    -- Find Group opens the search view, whose search the host's hook notes;
+    -- inside the cooldown the click waits and the tooltip says for how long
     panel._find = UI.MakeButton(panel, Str("LFG_LIST_FIND_A_GROUP", "Find a Group"), function()
         local cs = CategoryPanel()
-        if not (cs and LFGListCategorySelection_StartFindGroup) then return end
+        local category = cs and GF.plainNumber(cs.selectedCategory)
+        if not (category and UI.Search) then return end
         if not GF.SearchAllowed() then return end
-        LFGListCategorySelection_StartFindGroup(cs)
+        UI.Search:Open(category, GF.plainNumber(cs.selectedFilters) or 0)
     end, LAYOUT.buttonWidth, function()
         if not GF.SearchAllowed() then
             return string.format("Searching again in %d s", math.ceil(GF.SearchCooldownLeft()))

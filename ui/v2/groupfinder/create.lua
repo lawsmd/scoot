@@ -68,18 +68,19 @@ local BLIZZARD = { fewEntries = 5, dropdownCap = 17 }
 -- hidden panel and the text boxes; the one Select then takes the
 -- keystone's activity for Dungeons, else the category's best, and writes a
 -- Mythic+ title (Blizzard's SetEditMode false would pick the keystone a
--- second time, after Select); the panel switch brings this panel up, and
--- the focus lands in the title. Blizzard's CheckAutoCreate is left out, so
--- a stale quest auto-create never lists a group from the window's own
--- button.
+-- second time, after Select); the hidden panel is shown so the boxes
+-- render, never made Blizzard's active panel, the window's view comes up,
+-- and the focus lands in the title. Blizzard's CheckAutoCreate is left
+-- out, so a stale quest auto-create never lists a group from the window's
+-- own button.
 function Create:Open(categoryID, filters, baseFilters)
     local lf, ec = LFGListFrame, EC()
     if not (lf and ec and categoryID) then return end
     if not (LFGListEntryCreation_SetBaseFilters and LFGListEntryCreation_Clear
-        and LFGListEntryCreation_SetEditMode and LFGListEntryCreation_Select and LFGListFrame_SetActivePanel) then
+        and LFGListEntryCreation_SetEditMode and LFGListEntryCreation_Select) then
         return
     end
-    self:EndEdit()
+    self:Close()
     self._fresh = true
     LFGListEntryCreation_SetBaseFilters(ec, baseFilters or GF.plainNumber(lf.baseFilters) or 0)
     if GF.plainBool(ec.editMode) == true then
@@ -95,7 +96,8 @@ function Create:Open(categoryID, filters, baseFilters)
     else
         LFGListEntryCreation_Select(ec, filters or 0, categoryID)
     end
-    LFGListFrame_SetActivePanel(lf, ec)
+    ec:Show()
+    UI:SetView("create")
     if ec.Name and ec.Name.SetFocus then ec.Name:SetFocus() end
 end
 
@@ -111,15 +113,16 @@ function Create:Edit()
     ec:Show()
     UI.editing = true
     self._fresh = true
-    UI:SyncPanel()
+    UI:SetView("create")
 end
 
--- The hidden panel goes back out of sight unless Blizzard has it active
-function Create:EndEdit()
-    if not UI.editing then return end
+-- The view ends: the hidden panel goes back out of sight unless Blizzard
+-- has it active; the caller syncs the window
+function Create:Close()
     UI.editing = false
     local lf, ec = LFGListFrame, EC()
     if ec and lf and SS.plainFrame(lf.activePanel) ~= ec then ec:Hide() end
+    if UI.view == "create" then UI.view = nil end
 end
 
 --------------------------------------------------------------------------------
@@ -1016,18 +1019,12 @@ local function Build(parent)
         self:RefreshValid()
     end
 
-    -- Back ends an edit, else runs Blizzard's own Cancel
+    -- Back ends the view, and the window shows Blizzard's active panel
+    -- again: the categories, or the viewer after an edit
     function panel:Back()
-        if self:IsEditing() then
-            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-            Create:EndEdit()
-            UI:SyncPanel()
-            return
-        end
-        local ec = EC()
-        if ec and ec.CancelButton and LFGListEntryCreationCancelButton_OnClick then
-            LFGListEntryCreationCancelButton_OnClick(ec.CancelButton)
-        end
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        Create:Close()
+        UI:SetView(nil)
     end
 
     ----------------------------------------------------------------------------
@@ -1069,11 +1066,12 @@ local function Build(parent)
         panel._listing = false
     end)
 
-    -- The listing's update ends an edit; a listing going up, or failing
-    -- to, lifts the cover
+    -- The listing's update ends an edit (a listing going up switches
+    -- Blizzard's panel, which ends the view on its own); a listing going
+    -- up, or failing to, lifts the cover
     GF.Listen("entry", function()
         if UI.editing then
-            Create:EndEdit()
+            Create:Close()
             UI:SyncPanel()
         end
         if panel:IsShown() then panel:SetBusy(false) end

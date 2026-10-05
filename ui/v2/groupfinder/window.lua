@@ -11,9 +11,16 @@
 --
 -- Each panel file registers a builder in UI.panelBuilders; the window
 -- builds them on first open, under a content frame the size of Blizzard's
--- panel, and SyncPanel shows the one LFGListFrame.activePanel names. The
--- parts every panel draws, a heading, a bordered box and a button, are the
--- helpers at the end. A button that is off says why in its tooltip, as
+-- panel, and SyncPanel shows the one the window's own view names, else the
+-- one LFGListFrame.activePanel names. Blizzard's active panel is never
+-- switched from here: a field a click of this window writes through a
+-- Blizzard handler is tainted, and Blizzard's event dispatch, which reads
+-- the active panel, would run tainted from then on, so that under the
+-- chat lockdown its hidden panels could not index the secrets the API
+-- hands them. The window shows the Blizzard panel whose boxes it hosts,
+-- keeps its view, and ends the view when Blizzard moves its own panel.
+-- The parts every panel draws, a heading, a bordered box and a button, are
+-- the helpers at the end. A button that is off says why in its tooltip, as
 -- Blizzard's do; no panel carries a line of text under its box.
 local addonName, addon = ...
 
@@ -180,29 +187,24 @@ local accentStrings = setmetatable({}, { __mode = "k" })
 -- Which Scoot panel Blizzard's active panel names
 --------------------------------------------------------------------------------
 
+-- The window's own view first: "search" while it searches, "create" while
+-- it lists or edits; else Blizzard's active panel
 local function ActivePanelKey()
     local lf = LFGListFrame
     if not lf then return "nothing" end
     local active = SS.plainFrame(lf.activePanel)
-    if not active then return "nothing" end
+    if active == lf.NothingAvailable then return "nothing" end
+    if UI.view == "create" then return "create" end
+    if UI.view == "search" then return "search" end
+    if active == lf.ApplicationViewer then return "viewer" end
     if active == lf.CategorySelection then return "categories" end
     if active == lf.SearchPanel then return "search" end
-    if active == lf.NothingAvailable then return "nothing" end
     if active == lf.EntryCreation then return "create" end
-    -- An edit of the listing is this window's own view over the viewer
-    if active == lf.ApplicationViewer then return UI.editing and "create" or "viewer" end
     return "nothing"
 end
 
 function UI:SyncPanel()
     if not frame or not frame:IsShown() then return end
-    -- Blizzard moving off the viewer ends an edit
-    if UI.editing and UI.Create then
-        local lf = LFGListFrame
-        if not (lf and SS.plainFrame(lf.activePanel) == lf.ApplicationViewer) then
-            UI.Create:EndEdit()
-        end
-    end
     local key = ActivePanelKey()
     if not panels[key] then key = "nothing" end
     for k, panel in pairs(panels) do
@@ -211,6 +213,21 @@ function UI:SyncPanel()
     self.activeKey = key
     local panel = panels[key]
     if panel and panel.Refresh then panel:Refresh() end
+end
+
+function UI:SetView(view)
+    UI.view = view
+    self:SyncPanel()
+end
+
+-- Blizzard moved its own active panel (the listing up, the listing gone,
+-- the check on show): the window's view ends with it, and the Blizzard
+-- panels the window showed go back out of sight
+function UI:OnPanelSwitch()
+    if UI.Create and UI.Create.Close then UI.Create:Close() end
+    if UI.Search and UI.Search.Close then UI.Search:Close() end
+    UI.view = nil
+    self:SyncPanel()
 end
 
 function UI:GetPanel(key)
@@ -341,7 +358,9 @@ function UI:Close(reason)
     if self.closing then return end
     self.closing = true
     if UI.SignUp and UI.SignUp.Hide then UI.SignUp:Hide() end
-    if UI.Create and UI.Create.EndEdit then UI.Create:EndEdit() end
+    if UI.Create and UI.Create.Close then UI.Create:Close() end
+    if UI.Search and UI.Search.Close then UI.Search:Close() end
+    UI.view = nil
     GF.Host.Close(reason ~= "pveframe")
     if frame and frame:IsShown() then frame:Hide() end
     self.closing = false
