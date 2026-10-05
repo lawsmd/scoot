@@ -647,11 +647,27 @@ local function Build(parent)
         LFGListSearchPanel_DoSearch(sp)
     end
 
-    -- Back drops the rows, as Blizzard's Clear does, so the next Find Group
-    -- starts from an empty pane and not another category's rows
+    -- Back to Group while the leader's listing is up, as Blizzard's panel
+    -- swaps the button; the plain Back drops the rows, as Blizzard's Clear
+    -- does, so the next Find Group starts from an empty pane and not
+    -- another category's rows
+    function panel:RefreshBack()
+        local listed = GF.HasEntry() and UnitIsGroupLeader("player", LE_PARTY_CATEGORY_HOME)
+        self._toGroup = listed and true or false
+        if self._toGroup then
+            self._back:SetText(Str("GROUP_FINDER_BACK_TO_GROUP", "Back to Group"))
+        else
+            self._back:SetText(Str("BACK", "Back"))
+        end
+    end
+
     function panel:Back()
         if not (LFGListFrame and LFGListFrame_SetActivePanel) then return end
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        if self._toGroup then
+            LFGListFrame_SetActivePanel(LFGListFrame, LFGListFrame.ApplicationViewer)
+            return
+        end
         GF.state.selectedResult = nil
         GF.state.results = {}
         self._list:SetItems({})
@@ -1148,6 +1164,7 @@ local function Build(parent)
     function panel:RefreshButtons()
         self._signUp:SetEnabled(GF.SignUpBlock() == nil)
         self._start:SetEnabled(GF.StartGroupBlock() == nil)
+        self:RefreshBack()
         local allowed = GF.SearchAllowed()
         self._refresh:SetEnabled(allowed)
         if not allowed then
@@ -1219,6 +1236,9 @@ local function Build(parent)
         end
     end)
     GF.Listen("buttons", function()
+        if panel:IsShown() then panel:RefreshButtons() end
+    end)
+    GF.Listen("entry", function()
         if panel:IsShown() then panel:RefreshButtons() end
     end)
     GF.Listen("lockdown", function()

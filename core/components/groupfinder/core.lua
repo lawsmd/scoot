@@ -38,6 +38,7 @@ GF.MAX_AUTOCOMPLETE = 6
 
 GF.state = {
     results = {},        -- the sorted search result ids, Scoot's own copy
+    applicants = {},     -- the sorted applicants of the player's listing, { id, numMembers }
     totalResults = 0,
     declines = {},       -- partyGUID -> the declined status, as LFGListFrame keeps it
     searching = false,
@@ -365,6 +366,67 @@ function GF.OwnedKeystoneActivity()
     return nil
 end
 
+--------------------------------------------------------------------------------
+-- The applicants of the player's listing: the client's list copied and
+-- sorted as Blizzard sorts it, each record read once so no secret reaches
+-- the comparison
+--------------------------------------------------------------------------------
+
+function GF.ApplicantInfo(id)
+    if not id then return nil end
+    local ok, info = pcall(C_LFGList.GetApplicantInfo, id)
+    if ok and type(info) == "table" then return info end
+    return nil
+end
+
+-- A member of an applicant as a named table through the plain guards. The
+-- name is kept raw as well, for Ambiguate and SetText alone, since under
+-- chat lockdown it is secret and those two take one.
+function GF.ApplicantMember(id, i)
+    if not id then return nil end
+    local ok, name, class, className, level, itemLevel, honorLevel, tank, healer, damage, assignedRole,
+        relationship, dungeonScore, pvpItemLevel, factionGroup, _, specID, isLeaver =
+        pcall(C_LFGList.GetApplicantMemberInfo, id, i)
+    if not ok then return nil end
+    return {
+        name = plain(name), rawName = name,
+        class = plain(class), className = plain(className),
+        level = plainNumber(level), itemLevel = plainNumber(itemLevel), pvpItemLevel = plainNumber(pvpItemLevel),
+        honorLevel = plainNumber(honorLevel),
+        tank = plainBool(tank) == true, healer = plainBool(healer) == true, damage = plainBool(damage) == true,
+        assignedRole = plain(assignedRole), relationship = plain(relationship),
+        dungeonScore = plainNumber(dungeonScore), factionGroup = plain(factionGroup),
+        specID = plainNumber(specID), leaver = plainBool(isLeaver) == true,
+    }
+end
+
+-- New applicants last, then the client's display order, as Blizzard's
+-- viewer sorts; a field that reads as absent falls back to the id
+function GF.RebuildApplicants()
+    local ok, ids = pcall(C_LFGList.GetApplicants)
+    if not (ok and type(ids) == "table") then ids = {} end
+    local records = {}
+    for _, id in ipairs(ids) do
+        local plainID = plainNumber(id)
+        if plainID then
+            local info = GF.ApplicantInfo(plainID)
+            records[#records + 1] = {
+                id = plainID,
+                isNew = (info and plainBool(info.isNew)) == true,
+                order = info and plainNumber(info.displayOrderID) or 0,
+                numMembers = info and plainNumber(info.numMembers) or 1,
+            }
+        end
+    end
+    table.sort(records, function(a, b)
+        if a.isNew ~= b.isNew then return b.isNew end
+        if a.order ~= b.order then return a.order < b.order end
+        return a.id < b.id
+    end)
+    GF.state.applicants = records
+    return records
+end
+
 -- Dungeons search and list the current expansion's activities only, as
 -- Blizzard's own filter resolution does
 function GF.ResolveCategoryFilters(categoryID, filters)
@@ -538,6 +600,7 @@ local QUEUE_MESSAGE_EVENTS = {
 
 local BUTTON_EVENTS = {
     "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED", "PLAYER_SPECIALIZATION_CHANGED", "UNIT_CONNECTION",
+    "PLAYER_ROLES_ASSIGNED",
 }
 
 -- The topic carries whether a search was waiting on these results, which
@@ -644,6 +707,11 @@ addon:RegisterComponentInitializer(function(self)
     component:On("LFG_LIST_APPLICATION_STATUS_UPDATED", OnApplicationStatus)
     component:On("LFG_LIST_ACTIVE_ENTRY_UPDATE", function() GF.Notify("entry") end)
     component:On("LFG_LIST_ENTRY_CREATION_FAILED", function() GF.Notify("creationFailed") end)
+    component:On("LFG_LIST_APPLICANT_LIST_UPDATED", function()
+        GF.RebuildApplicants()
+        GF.Notify("applicants")
+    end)
+    component:On("LFG_LIST_APPLICANT_UPDATED", function(_, id) GF.Notify("applicant", plainNumber(id)) end)
     component:On("LFG_ROLE_CHECK_UPDATE", function()
         GF.RebuildResults()
         GF.Notify("results")

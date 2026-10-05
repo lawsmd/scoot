@@ -540,5 +540,12 @@ files["ui/v2/groupfinder/"] = {
         "LFGListEntryCreation_ClearFocus", "LFGListEntryCreationCancelButton_OnClick",
         "LFGListUtil_GetActiveQueueMessage", "MAX_LFG_LIST_GROUP_DROPDOWN_ENTRIES",
         "C_InstanceLeaver", "UnitFactionGroup", "LE_PARTY_CATEGORY_HOME", "GetAverageItemLevel", "GetNumGroupMembers",
+        -- The viewer: the applicant actions, the party's own reads, Blizzard's
+        -- convert-to-raid popup and its Browse handler
+        "LFGApplicationBrowseGroupsButtonMixin", "LFGList_ReportApplicant", "LFGListUtil_GetQuestDescription",
+        "GetGroupMemberCountsForDisplay", "C_ChallengeMode", "C_FriendList", "StaticPopup_Show",
+        "MAX_PARTY_MEMBERS", "MAX_RAID_MEMBERS", "Ambiguate", "IsInRaid", "IsInGroup", "IsRestrictedAccount",
+        "UnitIsGroupLeader", "UnitIsGroupAssistant", "UnitClass", "UnitGroupRolesAssigned", "UnitExists",
+        "GetSpecialization", "GetSpecializationInfo",
     },
 }

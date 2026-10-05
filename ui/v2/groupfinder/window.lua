@@ -119,6 +119,16 @@ local LAYOUT = {
         inputWidth = 80, voiceWidth = 125, checkGap = 6, optionColumn = 200,
         inputMax = 9999, detailsInset = 20, finderRows = 12, coverAlpha = 0.85,
     },
+    -- Your listing: the info block with the party's grid at its right, the
+    -- column strip, and a band per applicant with a line per member; the
+    -- columns from the right, the name taking the rest; the actions column
+    -- holds the status word, Invite and Decline
+    viewer = {
+        infoHeight = 80, subSize = 10, subIndent = 10, lineGap = 1, tagGap = 4,
+        columns = { role = 56, ilvl = 36, rating = 46, actions = 86 },
+        memberLine = 20, rowPad = 6, roleIcon = 14, roleGap = 2, nameSize = 11,
+        inviteWidth = 60, declineWidth = 22, actionGap = 4, buttonHeight = 22,
+    },
 }
 UI.LAYOUT = LAYOUT
 
@@ -170,7 +180,7 @@ local function ActivePanelKey()
     if active == lf.EntryCreation then return "create" end
     -- An edit of the listing is this window's own view over the viewer
     if active == lf.ApplicationViewer then return UI.editing and "create" or "viewer" end
-    return "placeholder"
+    return "nothing"
 end
 
 function UI:SyncPanel()
@@ -183,7 +193,7 @@ function UI:SyncPanel()
         end
     end
     local key = ActivePanelKey()
-    if not panels[key] then key = "placeholder" end
+    if not panels[key] then key = "nothing" end
     for k, panel in pairs(panels) do
         panel:SetShown(k == key)
     end
@@ -205,8 +215,7 @@ function UI:GetFrame()
 end
 
 --------------------------------------------------------------------------------
--- The two panels this file owns: nothing available, and the stand-in for the
--- listing and creation panels
+-- The one panel this file owns: nothing available
 --------------------------------------------------------------------------------
 
 local function BuildNothing(parent)
@@ -227,26 +236,6 @@ local function BuildNothing(parent)
         end
         empty:SetMessage(text)
     end
-    return panel
-end
-
--- The listing and creation panels are drawn by Blizzard's window until the
--- window draws them; this hands the player over and back
-local function BuildPlaceholder(parent)
-    local panel = CreateFrame("Frame", nil, parent)
-    panel:SetAllPoints(parent)
-    panel:Hide()
-    local empty = Controls().CreateEmptyState({
-        parent = panel,
-        text = "Your listing is shown in the game's own window.",
-    })
-    empty:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -LAYOUT.panel.boxTop)
-    empty:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, LAYOUT.panel.boxBottom)
-    local button = UI.MakeButton(panel, "Open the game's window", function()
-        UI:Close("handback")
-    end)
-    button:SetPoint("BOTTOM", panel, "BOTTOM", 0, LAYOUT.panel.buttonY)
-    function panel:Refresh() end
     return panel
 end
 
@@ -287,7 +276,6 @@ local function Build()
 
     panels = {}
     panels.nothing = BuildNothing(content)
-    panels.placeholder = BuildPlaceholder(content)
     for key, builder in pairs(UI.panelBuilders) do
         panels[key] = builder(content)
     end
@@ -336,14 +324,14 @@ function UI:Open()
 end
 
 -- reason: "button", "hide" (the frame went away, the game's Escape among
--- the ways), "pveframe" (Blizzard's panel went away first), "handback"
--- (Blizzard's panel stays up and visible), "skin", "toggle"
+-- the ways), "pveframe" (Blizzard's panel went away first), "skin",
+-- "toggle"
 function UI:Close(reason)
     if self.closing then return end
     self.closing = true
     if UI.SignUp and UI.SignUp.Hide then UI.SignUp:Hide() end
     if UI.Create and UI.Create.EndEdit then UI.Create:EndEdit() end
-    GF.Host.Close(reason ~= "pveframe" and reason ~= "handback")
+    GF.Host.Close(reason ~= "pveframe")
     if frame and frame:IsShown() then frame:Hide() end
     self.closing = false
 end
