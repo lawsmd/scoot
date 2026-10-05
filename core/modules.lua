@@ -64,6 +64,8 @@ local COMPONENT_TO_CATEGORY = {
     damageMeterV2 = "damageMeter",
     -- Extra Abilities
     extraAbilities = "extraAbilities",
+    -- Group Finder
+    groupfinder = "groupfinder",
     -- Minimap
     minimapStyle = "minimap",
     -- Notes
@@ -107,6 +109,7 @@ addon.MODULE_CATEGORY_ORDER = {
     "cooldownManager",
     "damageMeter",
     "extraAbilities",
+    "groupfinder",
     "groupFrames",
     "minimap",
     "notes",
@@ -208,6 +211,9 @@ addon.MODULE_CATEGORIES = {
     extraAbilities = {
         label = "Extra Abilities",
         variant = "X",
+    },
+    groupfinder = {
+        label = "Group Finder",
     },
     groupFrames = {
         label = "Group Frames",

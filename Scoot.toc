@@ -243,6 +243,10 @@ core/components/damagemetersY/export.lua
 core/components/damagemetersY/drilldown.lua
 core/components/damagemetersY/events.lua
 core/components/bosswarnings/core.lua
+## Group Finder: the data layer and the box host. The window is under
+## ui/v2/groupfinder/ and loads with the framework.
+core/components/groupfinder/core.lua
+core/components/groupfinder/host.lua
 core/debug/export.lua
 # >>> SCOOT-DEV-ONLY
 # Development tooling. The export script (docs/scripts/export-curseforge.ps1)

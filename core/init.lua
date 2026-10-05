@@ -739,6 +739,7 @@ function addon:GetDefaults()
                 cooldownManager = false,
                 damageMeter = false,
                 extraAbilities = false,
+                groupfinder = false,
                 groupFrames = false,
                 minimap = false,
                 notes = false,

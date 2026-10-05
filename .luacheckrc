@@ -509,3 +509,15 @@ files["forever/actionbars/bars.lua"] = {
 files["forever/personalresourcedisplay/mixins.lua"] = {
     globals = { "CamelotPersonalResourceDisplayMixin" },
 }
+-- The Group Finder (core/components/groupfinder/, ui/v2/groupfinder/): the
+-- Premade Groups API, Blizzard's frames the host stands on, and the handler
+-- and util functions the window's buttons run. Scoot-only files; the keys are
+-- path prefixes.
+files["core/components/groupfinder/"] = {
+    read_globals = {
+        "C_LFGList", "C_InstanceLeaver", "GetSpecializationRoleEnum",
+        "GroupHasOfflineMember", "LE_PARTY_CATEGORY_HOME", "MAX_PARTY_MEMBERS",
+        "LFGListUtil_GetActiveQueueMessage", "LFGListUtil_IsAppEmpowered",
+        "PVEFrame", "PVEFrame_ShowFrame", "LFGListApplicationDialog",
+    },
+}
