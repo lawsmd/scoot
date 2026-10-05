@@ -36,12 +36,14 @@ local function M()
     return addon.UI.Controls.Metrics()
 end
 
--- Blizzard's layout, the fallbacks when the client's template table does
--- not answer; the panel's own positions are where Blizzard's XML puts them
+-- The window's measures. The panel is wider than Blizzard's 338, so the
+-- activity names and the composition fit on a row; the rest are Blizzard's
+-- numbers, the fallbacks when the client's template table does not answer,
+-- and the panel's own positions are where Blizzard's XML puts them
 local LAYOUT = {
-    panelWidth = 338,
-    panelHeight = 428,
-    titleHeight = 34,
+    panelWidth = 460,
+    panelHeight = 440,
+    titleHeight = 36,
     resultRow = 54,
     categoryRow = 46,
     dialogWidth = 306,
@@ -185,7 +187,9 @@ local function Build()
         height = height,
         role = "window",
         title = "GROUP FINDER",
-        titleFontRole = "label",
+        titleFontRole = "header",
+        titleSize = 15,
+        titleAlign = "center",
         titleHeight = LAYOUT.titleHeight,
         escape = "special",
         onClose = function() UI:Close("button") end,

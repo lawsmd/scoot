@@ -23,6 +23,7 @@
 --                 font role when that role is text and the header role
 --                 otherwise; on a template frame with a title plate, the
 --                 plate's text. titleFontRole and titleSize override the font
+--   titleAlign    "left" (default), at the role's x inset, or "center"
 --   titleHeight   the bar's height; default metrics.titleBarHeight
 --   closeButton   false omits the X; closeName names its frame
 --   onClose       runs on the X and on a capture Escape; default Hide
@@ -118,8 +119,13 @@ local function BuildTitle(frame, titleBar, opts)
             fs:SetTextColor(r, g, b, 1)
         end)
     end
-    fs:SetPoint("LEFT", titleBar, "LEFT", spec.x or 12, spec.y or 0)
-    fs:SetJustifyH("LEFT")
+    if opts.titleAlign == "center" then
+        fs:SetPoint("CENTER", titleBar, "CENTER", 0, spec.y or 0)
+        fs:SetJustifyH("CENTER")
+    else
+        fs:SetPoint("LEFT", titleBar, "LEFT", spec.x or 12, spec.y or 0)
+        fs:SetJustifyH("LEFT")
+    end
     fs:SetText(opts.title)
     frame._title = fs
 end

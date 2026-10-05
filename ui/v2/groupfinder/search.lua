@@ -342,8 +342,16 @@ local function Build(parent)
     panel._filter:SetHeight(L.rowHeight)
     panel._filter:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -boxX, -L.rowY)
 
-    panel._refresh = UI.MakeButton(panel, "\226\134\187", function() panel:Search() end, L.rowHeight)
+    -- The circled asterisk is the one refresh-like mark the mono face carries;
+    -- the circle arrows are not in its tables
+    panel._refresh = UI.MakeButton(panel, "\226\138\155", function() panel:Search() end, L.rowHeight)
     panel._refresh:SetHeight(L.rowHeight)
+    panel._refresh:HookScript("OnEnter", function(btn)
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        GameTooltip:SetText(Str("LFG_LIST_SEARCH_AGAIN", "Search again"))
+        GameTooltip:Show()
+    end)
+    panel._refresh:HookScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- The hosted box's holder, and the x over Blizzard's clear button
     local holder = CreateFrame("Frame", nil, panel)

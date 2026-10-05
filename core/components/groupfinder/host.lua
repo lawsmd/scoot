@@ -319,3 +319,82 @@ function Host.ReleaseAll()
         Host.Release(key)
     end
 end
+
+--------------------------------------------------------------------------------
+-- Debug: the state of every hosted box and the frames it stands on
+--------------------------------------------------------------------------------
+
+local function Describe(push, label, frame)
+    if not frame then
+        push("%s: nil", label)
+        return
+    end
+    local function get(method, ...)
+        if not frame[method] then return "-" end
+        local ok, a, b, c, d = pcall(frame[method], frame, ...)
+        if not ok then return "err" end
+        if b ~= nil then return tostring(a) .. "," .. tostring(b) .. "," .. tostring(c) .. "," .. tostring(d) end
+        return tostring(a)
+    end
+    push("%s: %s shown=%s visible=%s alpha=%s eff=%s ignoreParent=%s strata=%s level=%s mouse=%s",
+        label, get("GetName"), get("IsShown"), get("IsVisible"), get("GetAlpha"), get("GetEffectiveAlpha"),
+        get("IsIgnoringParentAlpha"), get("GetFrameStrata"), get("GetFrameLevel"), get("IsMouseEnabled"))
+    push("    rect left=%s bottom=%s w=%s h=%s points=%s",
+        get("GetLeft"), get("GetBottom"), get("GetWidth"), get("GetHeight"), get("GetNumPoints"))
+end
+
+local function DumpChain(push, label, frame)
+    local depth = 0
+    local f = frame
+    while f and depth < 10 do
+        Describe(push, string.format("%s[%d]", label, depth), f)
+        local ok, parent = pcall(f.GetParent, f)
+        f = ok and parent or nil
+        depth = depth + 1
+    end
+end
+
+addon:RegisterDebugCommand({
+    name = "lfg",
+    help = "the hosted Group Finder boxes and the frames they stand on",
+    handler = function()
+        local lines, push = addon.DebugLines()
+        push("parked=%s hooks=%s taken=%s", tostring(parked), tostring(hooksInstalled), tostring(next(taken) ~= nil))
+        Describe(push, "PVEFrame", PVEFrame)
+        Describe(push, "shield", shield)
+        Describe(push, "LFGListFrame", LFGListFrame)
+        if LFGListFrame then
+            local active = LFGListFrame.activePanel
+            push("activePanel=%s", active and active.GetDebugName and active:GetDebugName() or tostring(active))
+        end
+        Describe(push, "window", GF.UI and GF.UI.GetFrame and GF.UI:GetFrame())
+        for key, rec in pairs(taken) do
+            push("")
+            push("hosted %s: points captured=%d regions blanked=%d font=%s",
+                key, #rec.points, #rec.regions, rec.font and (tostring(rec.font[1]) .. " " .. tostring(rec.font[2])) or "-")
+            Describe(push, "holder", rec.holder)
+            DumpChain(push, "box", rec.box)
+            if rec.editBox and rec.editBox ~= rec.box then
+                Describe(push, "editBox", rec.editBox)
+            end
+            local eb = rec.editBox
+            if eb then
+                local okF, path, size, flags = pcall(eb.GetFont, eb)
+                push("    editBox font=%s %s %s focus=%s insets=%s",
+                    okF and tostring(path) or "err", tostring(size), tostring(flags),
+                    eb.HasFocus and tostring(eb:HasFocus()) or "-",
+                    eb.GetTextInsets and table.concat({ eb:GetTextInsets() }, ",") or "-")
+                if eb.Instructions then Describe(push, "    instructions", eb.Instructions) end
+            end
+        end
+        if not next(taken) then
+            local sp = LFGListFrame and LFGListFrame.SearchPanel
+            if sp and sp.SearchBox then
+                push("")
+                push("search box, not hosted:")
+                DumpChain(push, "box", sp.SearchBox)
+            end
+        end
+        addon.DebugShowWindow("Group Finder host", lines)
+    end,
+})

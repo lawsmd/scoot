@@ -518,7 +518,7 @@ files["core/components/groupfinder/"] = {
         "C_LFGList", "C_InstanceLeaver", "GetSpecializationRoleEnum",
         "GroupHasOfflineMember", "LE_PARTY_CATEGORY_HOME", "MAX_PARTY_MEMBERS",
         "LFGListUtil_GetActiveQueueMessage", "LFGListUtil_IsAppEmpowered",
-        "PVEFrame", "PVEFrame_ShowFrame", "LFGListApplicationDialog",
+        "PVEFrame", "PVEFrame_ShowFrame", "LFGListApplicationDialog", "LFGListFrame",
     },
 }
 files["ui/v2/groupfinder/"] = {

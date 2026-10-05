@@ -319,9 +319,11 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding, h
 
     btn._bg = Controls.AddBackground(btn, { inset = borderWidth })
     btn._hoverFill = Controls.AddHoverFill(btn, { alpha = 1, inset = borderWidth })
+    -- Single-draw corners: an overlapped corner is drawn twice and shows as a
+    -- darker square once the border is dimmed for the disabled state
     btn._border = Controls.CreateBorder(btn, {
         thickness = borderWidth,
-        corners = "overlap",
+        corners = "inset",
         alpha = borderAlpha,
     })
 
