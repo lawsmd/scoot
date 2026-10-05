@@ -75,12 +75,15 @@ local LAYOUT = {
         rowY = 36, rowHeight = 26, gap = 4,
         boxTop = 70,
         filterWidth = 84,
-        rightColumn = 130,
+        rightColumn = 160,
         nameTop = 5,
         subIndent = 10, subSize = 10,
+        -- The roster's text is a size under the sublines, so the longest
+        -- spec name with the crown and the rating fits the column; the
+        -- crown stands under the rating's height
         roster = {
-            lines = 5, lineHeight = 13, fontSize = 11,
-            glyphWidth = 14, gap = 4, iconSize = 12, markWidth = 14, markHeight = 9,
+            lines = 5, lineHeight = 12, fontSize = 9,
+            glyphWidth = 12, gap = 4, iconSize = 10, markWidth = 8, markHeight = 6,
             top = 6, bottom = 3,
         },
         filterDrawerWidth = 500, filterListFont = 11,

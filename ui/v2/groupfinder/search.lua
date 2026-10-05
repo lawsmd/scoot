@@ -39,10 +39,11 @@ end
 local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER" }
 
 -- The leader's crown: the addon's own flat crown, tinted the leader's class
--- color. The file is a 64 square with the crown across its middle band.
+-- color. The file is a 64 square; the coordinates cut to the crown's own
+-- edges so the mark carries no clear margin.
 local LEADER_MARK = {
     file = addon.MediaPath .. "media\\textures\\crown.png",
-    coords = { 0, 1, 0.1875, 0.8125 },
+    coords = { 0.0625, 0.9375, 0.140625, 0.796875 },
 }
 
 -- The role column's icons: the Raid Manager set the group frames offer
@@ -171,11 +172,11 @@ end
 
 -- The right column by the activity's display type: a line per member for
 -- a group the grid holds, in role order with the leader first in their
--- role, the leader by name with the crown and the rating, the open slots
--- hollow after them; the counts per role for a larger group; n/m for a
--- player count. The members come one by one from the client, and when
--- any is missing its role the counts stand in, class colored and named
--- where the client gives the classes.
+-- role and the crown and the rating on the leader's line, the open slots
+-- blank; the counts per role for a larger group; n/m for a player count.
+-- The members come one by one from the client, and when any is missing
+-- its role the counts stand in, class colored and named where the client
+-- gives the classes.
 local function RenderRoster(row, id, info, counts, dimmed)
     local R = LAYOUT.search.roster
     local activity = GF.ActivityInfo(GF.ActivityID(info))
@@ -246,13 +247,7 @@ local function RenderRoster(row, id, info, counts, dimmed)
                 end
             end
         end
-        -- The open slots, by the role still wanted
-        for _, role in ipairs(ROLE_ORDER) do
-            for _ = 1, (GF.plainNumber(counts[role .. "_REMAINING"]) or 0) do
-                if #entries >= max then break end
-                entries[#entries + 1] = { role = role, filled = false }
-            end
-        end
+        -- An open slot is a blank line
         while #entries > max do table.remove(entries) end
     elseif enumerate or (D and kind == D.RoleCount) then
         for _, role in ipairs(ROLE_ORDER) do
