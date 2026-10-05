@@ -8,7 +8,8 @@
 -- row sets the box to that activity through the API and searches the same
 -- way. The results are the component's copy, one row per id, each row read
 -- afresh from the API on render as Blizzard's row is. The filter list
--- writes the client's advanced or language filter and redraws the rows.
+-- writes the client's advanced or language filter and redraws the rows;
+-- the advanced one stands in a drawer out of the window's right edge.
 --
 -- A search shows on the results pane as a sweep: the rows there dim under
 -- a veil and a line scans them while the answer is on its way, and when it
@@ -417,8 +418,8 @@ local function Build(parent)
     panel._leaver:SetPoint("RIGHT", panel._signUp, "LEFT", -6, 0)
     panel._leaver:Hide()
 
-    -- The lists that float: the language filter, the advanced filter in
-    -- its sections under the Filter button's right edge, the auto-complete,
+    -- The lists: the language filter floating under its button, the
+    -- advanced filter in its sections in the drawer, the auto-complete,
     -- the row menu. A list reads the labels before the keys, so every
     -- getter builds the whole set; it is a few dozen strings
     panel._filterMode = "languages"
@@ -436,10 +437,22 @@ local function Build(parent)
         return C.CreatePopupList(o)
     end
     panel._filterList = FilterList({ width = 220 })
+
+    -- The advanced filter's drawer out of the window's right edge, its
+    -- list embedded and built as the drawer opens
+    panel._drawer = C.CreateDrawer({
+        parent = UI:GetFrame(),
+        width = L.filterDrawerWidth,
+        onOpen = function(drawer)
+            panel._dungeonsCleared = false
+            drawer:SetContentHeight(panel._advancedList:Open())
+        end,
+        onClose = function() panel._advancedList:Close() end,
+    })
     panel._advancedList = FilterList({
-        width = L.filterListWidth,
+        embed = panel._drawer.content,
+        width = panel._drawer.contentWidth,
         fontSize = L.filterListFont,
-        align = "right",
         getSections = function() return select(3, panel:FilterItems()) end,
     })
 
@@ -586,6 +599,7 @@ local function Build(parent)
         GF.state.results = {}
         self._list:SetItems({})
         self._sweep:Stop()
+        self._drawer:Close(true)
         LFGListFrame_SetActivePanel(LFGListFrame, LFGListFrame.CategorySelection)
     end
 
@@ -647,7 +661,6 @@ local function Build(parent)
     for _, key in ipairs(DIFFICULTY) do FAMILY[key] = DIFFICULTY end
     for _, key in ipairs(PLAYSTYLE) do FAMILY[key] = PLAYSTYLE end
     local GROUP_PREFIX = "group:"
-    local ALL_GROUPS = GROUP_PREFIX .. "all"
 
     local function AtMaxLevel()
         return GameRulesUtil and GameRulesUtil.IsPlayerAtEffectiveMaxLevel and GameRulesUtil.IsPlayerAtEffectiveMaxLevel()
@@ -659,22 +672,28 @@ local function Build(parent)
 
     -- The dungeons the filter lists, as Blizzard's menu lists them: this
     -- season's, the expansion's others, and the Timerunning set when the
-    -- character is one; group ids in that order
+    -- character is one; three lists of group ids, and all of them in one
     local function DungeonGroups()
         local F = Enum and Enum.LFGListFilter
-        if not (F and C_LFGList.GetAvailableActivityGroups) then return {} end
-        local ids = {}
-        local function add(filters)
+        local season, expansion, timerunning = {}, {}, {}
+        if not (F and C_LFGList.GetAvailableActivityGroups) then
+            return season, expansion, timerunning, {}
+        end
+        local function fill(into, filters)
             local groups = C_LFGList.GetAvailableActivityGroups(GF.DUNGEONS_CATEGORY, filters)
-            for _, id in ipairs(type(groups) == "table" and groups or {}) do ids[#ids + 1] = id end
+            for _, id in ipairs(type(groups) == "table" and groups or {}) do into[#into + 1] = id end
         end
         local pve = F.PvE or 0
-        add(bit.bor(F.CurrentSeason or 0, pve))
-        add(bit.bor(F.CurrentExpansion or 0, F.NotCurrentSeason or 0, pve))
+        fill(season, bit.bor(F.CurrentSeason or 0, pve))
+        fill(expansion, bit.bor(F.CurrentExpansion or 0, F.NotCurrentSeason or 0, pve))
         if F.Timerunning and PlayerIsTimerunning and PlayerIsTimerunning() then
-            add(bit.bor(F.Timerunning, pve))
+            fill(timerunning, bit.bor(F.Timerunning, pve))
         end
-        return ids
+        local all = {}
+        for _, part in ipairs({ season, expansion, timerunning }) do
+            for _, id in ipairs(part) do all[#all + 1] = id end
+        end
+        return season, expansion, timerunning, all
     end
 
     local function IsGroupKey(key)
@@ -735,12 +754,29 @@ local function Build(parent)
                 end
             end
 
+            -- The dungeons: the two buttons, this season's in two columns,
+            -- then the expansion's others and any Timerunning set, each a
+            -- block of its own after a line of space
+            local season, expansion, timerunning = DungeonGroups()
             local dungeons = Section(Str("DUNGEONS", "Dungeons"))
-            Put(dungeons, ALL_GROUPS, Str("CHECK_ALL", "Check all"))
-            for _, id in ipairs(DungeonGroups()) do
-                local ok, name = pcall(C_LFGList.GetActivityGroupInfo, id)
-                if ok and type(name) == "string" and name ~= "" then
-                    Put(dungeons, GROUP_PREFIX .. id, name)
+            dungeons.buttons = {
+                { label = Str("CHECK_ALL", "Select all"), onClick = function() panel:SetAllDungeons(true) end },
+                { label = Str("UNCHECK_ALL", "Unselect all"), onClick = function() panel:SetAllDungeons(false) end },
+            }
+            local function PutGroups(s, ids)
+                for _, id in ipairs(ids) do
+                    local ok, name = pcall(C_LFGList.GetActivityGroupInfo, id)
+                    if ok and type(name) == "string" and name ~= "" then
+                        Put(s, GROUP_PREFIX .. id, name)
+                    end
+                end
+            end
+            PutGroups(dungeons, season)
+            for _, more in ipairs({ expansion, timerunning }) do
+                if #more > 0 then
+                    local block = Section(nil)
+                    block.separator = "space"
+                    PutGroups(block, more)
                 end
             end
 
@@ -767,8 +803,9 @@ local function Build(parent)
             if type(enabled) ~= "table" then return false end
             if IsGroupKey(key) then
                 local set, n = GroupSet(enabled)
-                if n == 0 then return true end
-                if key == ALL_GROUPS then return n >= #DungeonGroups() end
+                -- An empty list reads as all checked, except right after
+                -- Unselect all, when it reads as the player left it
+                if n == 0 then return not self._dungeonsCleared end
                 return set[GroupID(key)] == true
             end
             local family = FAMILY[key]
@@ -779,12 +816,9 @@ local function Build(parent)
         return enabled[key] == true
     end
 
-    -- Check all is spent once every dungeon is on; a default language
-    -- stays on, as Blizzard's list has it
+    -- A default language stays on, as Blizzard's list has it
     function panel:FilterInert(key)
-        if self._filterMode == "advanced" then
-            return key == ALL_GROUPS and self:FilterChecked(key)
-        end
+        if self._filterMode == "advanced" then return false end
         local defaults = C_LFGList.GetDefaultLanguageSearchFilter and C_LFGList.GetDefaultLanguageSearchFilter() or {}
         return defaults[key] == true
     end
@@ -796,20 +830,18 @@ local function Build(parent)
             local enabled = C_LFGList.GetAdvancedFilter()
             if type(enabled) ~= "table" then return end
             if IsGroupKey(key) then
-                local ids = DungeonGroups()
+                local _, _, _, ids = DungeonGroups()
                 local set, n = GroupSet(enabled)
-                if n == 0 or key == ALL_GROUPS then
-                    set = {}
+                if n == 0 and not self._dungeonsCleared then
                     for _, id in ipairs(ids) do set[id] = true end
                 end
-                if key ~= ALL_GROUPS then
-                    set[GroupID(key)] = checked or nil
-                end
+                set[GroupID(key)] = checked or nil
                 local kept = {}
                 for _, id in ipairs(ids) do
                     if set[id] then kept[#kept + 1] = id end
                 end
                 enabled.activities = kept
+                self._dungeonsCleared = #kept == 0
             else
                 local family = FAMILY[key]
                 if family and NoneOf(enabled, family) then
@@ -827,14 +859,31 @@ local function Build(parent)
         C_LFGList.SaveLanguageSearchFilter(enabled)
     end
 
-    -- The mode is settled by the items, so they are read before the list
-    -- for the mode opens
+    -- Select all writes every dungeon; Unselect all writes none, which the
+    -- search reads as no dungeon filter, and the rows show it as the
+    -- player left it until a dungeon is checked or the drawer opens again
+    function panel:SetAllDungeons(on)
+        local enabled = C_LFGList.GetAdvancedFilter()
+        if type(enabled) ~= "table" then return end
+        local _, _, _, ids = DungeonGroups()
+        enabled.activities = on and ids or {}
+        self._dungeonsCleared = not on
+        C_LFGList.SaveAdvancedFilter(enabled)
+        self._list:Refresh()
+        self._advancedList:Refresh()
+    end
+
+    -- The mode is settled by the items, so they are read first: the
+    -- advanced filter opens its drawer, the languages their floating list
     function panel:OpenFilter()
         self:FilterItems()
-        local open = self._filterMode == "advanced" and self._advancedList or self._filterList
-        local other = open == self._advancedList and self._filterList or self._advancedList
-        if other:IsShown() then other:Close() end
-        open:Toggle()
+        if self._filterMode == "advanced" then
+            self._filterList:Close()
+            self._drawer:Toggle()
+            return
+        end
+        self._drawer:Close(true)
+        self._filterList:Toggle()
     end
 
     ----------------------------------------------------------------------------
@@ -1039,6 +1088,8 @@ local function Build(parent)
         self:StopTicker()
         self._list:Cleanup()
         self._filterList:Destroy()
+        self._advancedList:Destroy()
+        self._drawer:Cleanup()
         self._auto:Destroy()
         self._menu:Destroy()
     end
@@ -1046,6 +1097,7 @@ local function Build(parent)
     panel:HookScript("OnHide", function()
         panel._auto:Close()
         panel._filterList:Close()
+        panel._drawer:Close(true)
         panel._menu:Close()
         panel:StopTicker()
         panel._sweep:Stop()
