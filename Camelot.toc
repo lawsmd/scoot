@@ -309,6 +309,11 @@ ui/v2/skins/forever.lua
 ui/v2/controls/Utils.lua
 ui/v2/controls/ScrollBar.lua
 ui/v2/controls/ScrollList.lua
+ui/v2/controls/ColumnHeader.lua
+ui/v2/controls/Tag.lua
+ui/v2/controls/RoleMarks.lua
+ui/v2/controls/NumericInput.lua
+ui/v2/controls/EmptyState.lua
 ui/v2/controls/Fit.lua
 ui/v2/controls/RowScaffold.lua
 ui/v2/controls/PopupList.lua

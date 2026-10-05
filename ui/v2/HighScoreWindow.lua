@@ -134,6 +134,9 @@ end
 local function CreateHighScoreFrame()
     if highScoreFrame then return highScoreFrame end
 
+    -- Kept off addon.UI.WindowShell: the export look is solid black with a
+    -- grey border, apart from the skin's window role, so a screenshot reads
+    -- the same under every skin.
     local frame = CreateFrame("Frame", BRAND .. "HighScoreFrame", UIParent)
     frame:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
     frame:SetPoint("CENTER")
