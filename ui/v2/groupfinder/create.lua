@@ -197,18 +197,20 @@ local function Build(parent)
     end
 
     -- The group and the activity side by side, or the listed activity's
-    -- name in their place while editing
+    -- name in their place while editing. A dropdown reads its value as it
+    -- is made, before the panel's readers below exist, so each getter
+    -- tests for its reader first.
     local pick = Row(L.rowHeight)
     panel._pick = pick
     pick._group = C:CreateDropdown({
         parent = pick, width = half, height = L.rowHeight, values = {}, order = {}, placeholder = "",
-        get = function() return panel:GroupKey() end,
+        get = function() return panel.GroupKey and panel:GroupKey() or nil end,
         set = function(key) panel:PickGroup(key) end,
     })
     pick._group:SetPoint("TOPLEFT", pick, "TOPLEFT", 0, 0)
     pick._activity = C:CreateDropdown({
         parent = pick, width = half, height = L.rowHeight, values = {}, order = {}, placeholder = "",
-        get = function() return panel:ActivityKey() end,
+        get = function() return panel.ActivityKey and panel:ActivityKey() or nil end,
         set = function(key) panel:PickActivity(key) end,
     })
     pick._activity:SetPoint("TOPRIGHT", pick, "TOPRIGHT", 0, 0)
@@ -242,7 +244,7 @@ local function Build(parent)
     style._dropdown = C:CreateDropdown({
         parent = style, width = formWidth, height = L.rowHeight, values = styleValues, order = styleOrder,
         placeholder = Str("GROUP_FINDER_PLAYSTYLE_REQUIRED", "Playstyle"),
-        get = function() return panel:Playstyle() end,
+        get = function() return panel.Playstyle and panel:Playstyle() or nil end,
         set = function(v) panel:PickPlaystyle(v) end,
     })
     style._dropdown:SetPoint("TOPLEFT", style, "TOPLEFT", 0, 0)
