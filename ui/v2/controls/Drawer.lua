@@ -25,7 +25,9 @@
 -- Returns the drawer frame: content (the frame a caller fills), contentWidth
 -- (what the content is given across, the pad and the bar's column taken),
 -- Open(), Close(instant), Toggle(), IsOpen(), SetContentHeight(h),
--- Cleanup().
+-- Resize(width), Cleanup(). Resize sets the drawer's width for the next
+-- open, or at once while it is out, and sets the content's width with it,
+-- so a list that measures its host at open reads the new width.
 local addonName, addon = ...
 
 addon.UI = addon.UI or {}
@@ -178,6 +180,18 @@ function Controls.CreateDrawer(opts)
     function drawer:SetContentHeight(h)
         content:SetHeight(math.max(1, h or 1))
         if self._bar then self._bar:Sync() end
+    end
+
+    -- The band, the drawer's place and the content's width follow at once;
+    -- the scroll frame's own size change writes the same content width
+    -- again when the layout runs
+    function drawer:Resize(w)
+        width = math.max(1, w or width)
+        clip:SetWidth(width + border)
+        self.contentWidth = width - pad * 2 - gutter
+        content:SetWidth(math.max(1, self.contentWidth))
+        Place(Ease(progress))
+        return self.contentWidth
     end
 
     function drawer:Cleanup()
