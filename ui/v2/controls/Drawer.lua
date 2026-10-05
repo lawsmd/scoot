@@ -182,12 +182,14 @@ function Controls.CreateDrawer(opts)
         if self._bar then self._bar:Sync() end
     end
 
-    -- The band, the drawer's place and the content's width follow at once;
-    -- the scroll frame's own size change writes the same content width
-    -- again when the layout runs
+    -- The band, the drawer's own width, its place and the content's width
+    -- follow at once; the scroll frame's own size change writes the same
+    -- content width again when the layout runs. The drawer's width is its
+    -- own, set at creation, so the band alone resized would clip it
     function drawer:Resize(w)
         width = math.max(1, w or width)
         clip:SetWidth(width + border)
+        self:SetWidth(width)
         self.contentWidth = width - pad * 2 - gutter
         content:SetWidth(math.max(1, self.contentWidth))
         Place(Ease(progress))
