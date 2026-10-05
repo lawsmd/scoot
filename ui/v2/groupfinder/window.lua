@@ -129,6 +129,12 @@ local LAYOUT = {
         memberLine = 20, rowPad = 6, roleIcon = 14, roleGap = 2, nameSize = 11,
         inviteWidth = 60, declineWidth = 22, actionGap = 4, buttonHeight = 22,
     },
+    -- The invite dialog: Blizzard's size, taller with the offline notice
+    invite = {
+        width = 314, height = 210, tallHeight = 250,
+        padX = 16, padTop = 10, gap = 10, lineGap = 2,
+        roleSize = 16, roleGap = 4, offlineY = 48, buttonWidth = 100, buttonY = 10,
+    },
 }
 UI.LAYOUT = LAYOUT
 

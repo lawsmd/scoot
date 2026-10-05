@@ -115,12 +115,13 @@ function GF.ResultInfo(id)
     return nil
 end
 
--- id, appStatus, pendingStatus, appDuration; a stale id reads as no application
+-- id, appStatus, pendingStatus, appDuration, the role applied as; a stale
+-- id reads as no application
 function GF.Application(id)
-    if not id then return nil, "none", nil, nil end
-    local ok, appID, status, pending, duration = pcall(C_LFGList.GetApplicationInfo, id)
-    if not ok then return nil, "none", nil, nil end
-    return appID, plain(status) or "none", plain(pending), plainNumber(duration)
+    if not id then return nil, "none", nil, nil, nil end
+    local ok, appID, status, pending, duration, role = pcall(C_LFGList.GetApplicationInfo, id)
+    if not ok then return nil, "none", nil, nil, nil end
+    return appID, plain(status) or "none", plain(pending), plainNumber(duration), plain(role)
 end
 
 function GF.MemberCounts(id)

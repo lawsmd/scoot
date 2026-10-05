@@ -17,7 +17,10 @@
 -- Three hooks keep the two windows in step: PVEFrame's OnHide closes the
 -- Scoot window, LFGListFrame_SetActivePanel shows the matching Scoot panel,
 -- and LFGListSearchPanel_DoSearch notes every search, whichever button, key
--- or Blizzard path ran it.
+-- or Blizzard path ran it. Two more stand on Blizzard's invite dialog,
+-- which its own events show whether or not the window is up: as it shows
+-- it is parked and the window's own dialog stands in for it, and as it
+-- hides it is put back.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -33,8 +36,14 @@ local focusHooked = {}    -- box -> true once its focus scripts are hooked
 local hoverHooked = {}    -- art child -> true once its hover scripts are hooked
 local parked = false
 local parkedStrata        -- PVEFrame's own strata, put back on unpark
+local invitePark = false  -- Blizzard's invite dialog parked while shown
 local hooksInstalled = false
 local shield
+
+-- The buttons of Blizzard's invite dialog, whose clicks go off while it
+-- is parked: its mouse off does not reach them, and the popup stack may
+-- anchor the frame again after its points are cleared
+local INVITE_BUTTONS = { "AcceptButton", "DeclineButton", "AcknowledgeButton" }
 
 -- The strata the window draws in; the parked panel is lifted to it so a
 -- hosted box and every ancestor share one strata, as they did in the probe
@@ -137,6 +146,34 @@ function Host.HideDialogFrame()
     dialog:EnableMouse(true)
 end
 
+-- Blizzard's invite dialog out of sight while shown: alpha 0, its mouse
+-- off and its buttons' clicks off; its points are left to the popup
+-- stack, which places every shown dialog on each show
+local function SetInviteClicks(dialog, on)
+    for _, key in ipairs(INVITE_BUTTONS) do
+        local button = dialog[key]
+        if button and button.SetMouseClickEnabled then button:SetMouseClickEnabled(on) end
+    end
+end
+
+function Host.ParkInviteDialog()
+    local dialog = LFGListInviteDialog
+    if not dialog or invitePark then return end
+    invitePark = true
+    dialog:SetAlpha(0)
+    dialog:EnableMouse(false)
+    SetInviteClicks(dialog, false)
+end
+
+function Host.UnparkInviteDialog()
+    local dialog = LFGListInviteDialog
+    if not (dialog and invitePark) then return end
+    invitePark = false
+    dialog:SetAlpha(1)
+    dialog:EnableMouse(true)
+    SetInviteClicks(dialog, true)
+end
+
 --------------------------------------------------------------------------------
 -- The hooks
 --------------------------------------------------------------------------------
@@ -155,6 +192,20 @@ function Host.InstallHooks()
     end)
     if type(_G.LFGListSearchPanel_DoSearch) == "function" then
         hooksecurefunc("LFGListSearchPanel_DoSearch", function() GF.NoteSearch() end)
+    end
+    -- The invite dialog's park, while the module is on; the window's own
+    -- dialog opens and closes on the topics
+    local invite = LFGListInviteDialog
+    if invite and invite.HookScript then
+        invite:HookScript("OnShow", function()
+            if not addon:IsModuleEnabled("groupfinder") then return end
+            Host.ParkInviteDialog()
+            GF.Notify("inviteShown")
+        end)
+        invite:HookScript("OnHide", function()
+            Host.UnparkInviteDialog()
+            GF.Notify("inviteHidden")
+        end)
     end
 end
 

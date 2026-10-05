@@ -518,7 +518,7 @@ files["core/components/groupfinder/"] = {
         "C_LFGList", "C_InstanceLeaver", "GetSpecializationRoleEnum",
         "GroupHasOfflineMember", "LE_PARTY_CATEGORY_HOME", "MAX_PARTY_MEMBERS",
         "LFGListUtil_GetActiveQueueMessage", "LFGListUtil_IsAppEmpowered", "LFGListUtil_IsEntryEmpowered",
-        "PVEFrame", "PVEFrame_ShowFrame", "LFGListApplicationDialog", "LFGListFrame",
+        "PVEFrame", "PVEFrame_ShowFrame", "LFGListApplicationDialog", "LFGListInviteDialog", "LFGListFrame",
         "C_SocialRestrictions", "UnitIsGroupLeader", "bit",
     },
 }
@@ -547,5 +547,8 @@ files["ui/v2/groupfinder/"] = {
         "MAX_PARTY_MEMBERS", "MAX_RAID_MEMBERS", "Ambiguate", "IsInRaid", "IsInGroup", "IsRestrictedAccount",
         "UnitIsGroupLeader", "UnitIsGroupAssistant", "UnitClass", "UnitGroupRolesAssigned", "UnitExists",
         "GetSpecialization", "GetSpecializationInfo",
+        -- The invite dialog: Blizzard's own, parked, and its three handlers
+        "LFGListInviteDialog", "LFGListInviteDialog_Accept", "LFGListInviteDialog_Decline",
+        "LFGListInviteDialog_Acknowledge", "GroupHasOfflineMember",
     },
 }
