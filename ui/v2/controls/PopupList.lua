@@ -34,9 +34,10 @@ end
 -- puts every list on those numbers over the caller's, so the rows read the
 -- same under every field.
 --
--- Three modes beyond the single choice. multiSelect draws a check mark
--- before each row and keeps the list open: a click flips the row and
--- reports it through onToggle, and isChecked says which rows are on.
+-- Three modes beyond the single choice. multiSelect draws a check box
+-- (CheckBox.lua) before each row, in the row's own text color, and keeps
+-- the list open: a click flips the row and reports it through onToggle,
+-- and isChecked says which rows are on.
 -- filter puts a box above the rows that narrows them to the labels holding
 -- the typed text; Enter takes the one row left, Escape closes. maxRows caps
 -- the rows drawn, for a list long enough to need the filter.
@@ -162,32 +163,34 @@ function Controls.CreatePopupList(opts)
     -- A row's text and wash for its state. Under the role's colors the
     -- chosen row keeps its color under the cursor and only the wash comes
     -- up, as Blizzard's own list does; flat lifts both.
+    -- The row's text and its check box take one color
+    local function Tint(btn, r, g, b, a)
+        btn._text:SetTextColor(r, g, b, a)
+        if btn._check then btn._check:SetColor(r, g, b, a) end
+    end
+
     local function Paint(btn, hover)
         local selected = RowOn(btn)
         if btn._check then
-            btn._check:SetText(selected and "[x]" or "[ ]")
+            btn._check:SetChecked(selected)
         end
         if colors then
             local state = btn._inert and "disabled" or (selected and "selected") or (hover and "hover") or "normal"
             local r, g, b, a = Chrome.Color(colors[state] or colors.normal or "white")
-            btn._text:SetTextColor(r, g, b, a)
-            if btn._check then btn._check:SetTextColor(r, g, b, a) end
+            Tint(btn, r, g, b, a)
             btn._bg:SetShown(hover and not btn._inert)
             return
         end
         local accentR, accentG, accentB = theme:GetAccentColor()
         if btn._inert then
             local dr, dg, dbl = theme:GetDimTextColor()
-            btn._text:SetTextColor(dr, dg, dbl, 0.6)
-            if btn._check then btn._check:SetTextColor(dr, dg, dbl, 0.6) end
+            Tint(btn, dr, dg, dbl, 0.6)
         elseif selected then
             btn._bg:SetColorTexture(accentR, accentG, accentB, hover and 0.35 or 0.3)
-            btn._text:SetTextColor(accentR, accentG, accentB, 1)
-            if btn._check then btn._check:SetTextColor(accentR, accentG, accentB, 1) end
+            Tint(btn, accentR, accentG, accentB, 1)
         else
             btn._bg:SetColorTexture(accentR, accentG, accentB, hover and 0.15 or 0)
-            btn._text:SetTextColor(1, 1, 1, 1)
-            if btn._check then btn._check:SetTextColor(1, 1, 1, 1) end
+            Tint(btn, 1, 1, 1, 1)
         end
     end
 
@@ -224,7 +227,10 @@ function Controls.CreatePopupList(opts)
         -- Text moves right when any option carries an info icon
         local hasAnyInfoIcons = infoIcons and next(infoIcons)
         local textLeftOffset = hasAnyInfoIcons and 28 or textInset
-        local checkWidth = multi and (fontSize * 2 + 6) or 0
+        -- The check box stands a point short of the text's size, with the
+        -- text inset again after it
+        local checkSize = fontSize - 1
+        local checkWidth = multi and (checkSize + textInset) or 0
 
         for i, key in ipairs(keys) do
             local optBtn = CreateFrame("Button", nil, popup)
@@ -245,10 +251,8 @@ function Controls.CreatePopupList(opts)
             optBtn._bg = optBg
 
             if multi then
-                local check = optBtn:CreateFontString(nil, "OVERLAY")
-                theme:ApplyFont(check, fontRole, fontSize)
+                local check = Controls.CreateCheckBox(optBtn, { size = checkSize })
                 check:SetPoint("LEFT", optBtn, "LEFT", textLeftOffset, 0)
-                check:SetJustifyH("LEFT")
                 optBtn._check = check
             end
 
