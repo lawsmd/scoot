@@ -10,9 +10,9 @@
 -- them alone. The requirements and the options are Scoot's, and List Group
 -- assembles the listing from them as Blizzard's button does.
 --
--- Start a Group runs the steps of Blizzard's Show in an order that makes
--- one restricted call: Blizzard's order writes the title twice on Dungeons
--- with a keystone, and a second such call in one click is blocked. Editing
+-- Start a Group runs the steps of Blizzard's Show with one restricted
+-- call: Blizzard's order writes the title twice on Dungeons with a
+-- keystone, and a second such call in one click is blocked. Editing
 -- is this panel's own view: the client copies the listing's text into the
 -- boxes, the hidden panel is shown so they render, and Done Editing updates
 -- the listing. Blizzard's edit mode is never entered, since its entry
@@ -61,14 +61,17 @@ local BLIZZARD = { fewEntries = 5, dropdownCap = 17 }
 -- The ways in
 --------------------------------------------------------------------------------
 
--- Blizzard's Show step by step, its one restricted call last: Clear empties
--- the hidden panel and the text boxes; SetEditMode false with no category
--- chosen resets the mode without the keystone pick Blizzard's makes there;
--- the one Select then takes the keystone's activity for Dungeons, else the
--- category's best, and writes a Mythic+ title; the panel switch brings this
--- panel up, and the focus lands in the title. Blizzard's CheckAutoCreate is
--- left out, so a stale quest auto-create never lists a group from the
--- window's own button.
+-- Blizzard's Show step by step, its one restricted call last. Its edit
+-- mode is reset only when still on, from Blizzard's own window, and before
+-- the clear, since SetEditMode reads the chosen activity and the clear
+-- takes it away; this window never turns the mode on. Clear empties the
+-- hidden panel and the text boxes; the one Select then takes the
+-- keystone's activity for Dungeons, else the category's best, and writes a
+-- Mythic+ title (Blizzard's SetEditMode false would pick the keystone a
+-- second time, after Select); the panel switch brings this panel up, and
+-- the focus lands in the title. Blizzard's CheckAutoCreate is left out, so
+-- a stale quest auto-create never lists a group from the window's own
+-- button.
 function Create:Open(categoryID, filters, baseFilters)
     local lf, ec = LFGListFrame, EC()
     if not (lf and ec and categoryID) then return end
@@ -79,8 +82,10 @@ function Create:Open(categoryID, filters, baseFilters)
     self:EndEdit()
     self._fresh = true
     LFGListEntryCreation_SetBaseFilters(ec, baseFilters or GF.plainNumber(lf.baseFilters) or 0)
+    if GF.plainBool(ec.editMode) == true then
+        LFGListEntryCreation_SetEditMode(ec, false)
+    end
     LFGListEntryCreation_Clear(ec)
-    LFGListEntryCreation_SetEditMode(ec, false)
     local keystone, keystoneGroup
     if categoryID == GF.DUNGEONS_CATEGORY then
         keystone, keystoneGroup = GF.OwnedKeystoneActivity()
