@@ -285,7 +285,7 @@ function addon.FontStyles.DebugSlugProbe()
     if not f then
         -- Named from the brand: this file loads under both addons, and one
         -- global cannot hold two frames.
-        f = CreateFrame("Frame", (addon.Brand or "Scoot") .. "SlugProbe", UIParent)
+        f = CreateFrame("Frame", addon.Brand .. "SlugProbe", UIParent)
         f:SetSize(460, 30 + #candidates * 36)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
@@ -1240,7 +1240,7 @@ do
 
     -- The addon that loaded this file, not a literal. addon.MediaPath is set
     -- by the entry file, which every TOC listing this one loads first.
-    local base = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\fonts\\"
+    local base = addon.MediaPath .. "media\\fonts\\"
 
     -- Friz Quad Bold: QualiType's OFL digitization of Friz Quadrata, the one
     -- free clone that ships a Bold. Only the Bold is bundled; the Regular

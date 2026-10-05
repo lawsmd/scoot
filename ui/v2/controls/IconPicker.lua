@@ -152,7 +152,7 @@ local function CreateIconPicker()
     local frame = Controls.CreatePickerShell({
         -- Brand-named, and still ending in "Frame": CreatePickerShell derives
         -- the scroll frame and scrollbar names from that suffix.
-        name = (addon.Brand or "Scoot") .. "IconPickerFrame",
+        name = addon.Brand .. "IconPickerFrame",
         height = PICKER_HEIGHT,
         contentWidth = contentWidth,
         title = "Select Icon Style",

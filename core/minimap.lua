@@ -33,7 +33,7 @@ end
 
 -- LibDataBroker keys every object by one string across all addons in the
 -- session, so the two buttons are told apart by the brand and nothing else.
-local OBJECT = addon.Brand or "Scoot"
+local OBJECT = addon.Brand
 
 local DEFAULT_POSITION = 220
 
@@ -42,7 +42,7 @@ local DEFAULT_POSITION = 220
 --------------------------------------------------------------------------------
 
 local function icon()
-    return addon.MinimapIcon or ((addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "ScootIcon")
+    return addon.MinimapIcon
 end
 
 -- The live table out of the active profile, returned by reference: LibDBIcon

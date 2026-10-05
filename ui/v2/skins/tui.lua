@@ -9,7 +9,7 @@ local Skin = addon.UI.Skin
 -- The loading addon's folder, not a literal: the Forever client has no Scoot
 -- folder to resolve against. The JetBrains registrations below are what the
 -- other two skins read back, so this root serves all three.
-local ROOT = addon.MediaPath or "Interface\\AddOns\\Scoot\\"
+local ROOT = addon.MediaPath
 local FONT_BASE = ROOT .. "media\\fonts\\"
 
 -- JetBrains Mono registration alongside the faces core/fonts.lua registers.

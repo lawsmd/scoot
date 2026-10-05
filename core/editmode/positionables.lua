@@ -611,6 +611,6 @@ end
 
 addon:RegisterDebugCommand({
     name = "positionables",
-    help = (addon.Brand or "Scoot") .. " frames in Edit Mode: key, stored and default position per layout, live anchor",
+    help = addon.Brand .. " frames in Edit Mode: key, stored and default position per layout, live anchor",
     handler = function() EM.DumpPositionables() end,
 })

@@ -79,6 +79,8 @@ function addon.EditMode.CopyUnitFrameFrameSize(sourceUnit, destUnit)
     local UFSetting = _G.Enum and _G.Enum.EditModeUnitFrameSetting
     if not (mgr and EM and EMSys and UFSetting and mgr.GetRegisteredSystemFrame) then return false, "env_unavailable" end
 
+    -- The resolver is core/frames.lua, which only one addon lists.
+    if not addon.GetEditModeUnitFrame then return false, "env_unavailable" end
     local srcFrame = addon.GetEditModeUnitFrame(src)
     local dstFrame = addon.GetEditModeUnitFrame(dst)
     if not srcFrame or not dstFrame then return false, "frame_missing" end

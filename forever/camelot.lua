@@ -21,9 +21,9 @@
 
 local addonName, addon = ...
 
--- Identity resolves through the table rather than a literal, so a file that
--- later moves to the shared tree carries no brand of its own. Nothing under
--- forever/ reads the other addon's global.
+-- Identity resolves through the table rather than a literal, so a file both
+-- TOCs list carries no brand of its own. Nothing under forever/ reads the
+-- other addon's global.
 addon.Brand = "Camelot"
 addon.MediaPath = "Interface\\AddOns\\" .. addonName .. "\\"
 addon.SlashToken = "camelot"
@@ -40,6 +40,10 @@ addon.Logo = {
     alliance = addon.MediaPath .. "forever\\media\\CamelotLogoAlliance",
     horde    = addon.MediaPath .. "forever\\media\\CamelotLogoHorde",
 }
+
+-- The minimap button's icon, the bronze mark, read by core/minimap.lua at login
+-- and by the Edit Mode brand row at the moment of use.
+addon.MinimapIcon = addon.Logo.bronze
 
 _G.CamelotAddon = addon
 

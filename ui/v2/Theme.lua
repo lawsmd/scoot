@@ -244,7 +244,7 @@ local function FontExists(path)
     if cached ~= nil then return cached end
 
     -- Brand-named: both addons load this file in the retail client.
-    probeFont = probeFont or CreateFont((addon.Brand or "Scoot") .. "FontProbe")
+    probeFont = probeFont or CreateFont(addon.Brand .. "FontProbe")
     if not probeFont then return false end
     local ok, applied = pcall(probeFont.SetFont, probeFont, path, 12, "")
     local exists = ok and applied ~= false

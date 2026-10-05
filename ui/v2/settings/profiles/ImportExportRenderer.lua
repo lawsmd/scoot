@@ -10,7 +10,7 @@ local ImportExport = addon.UI.Settings.Profiles.ImportExport
 local Theme = addon.UI.Theme
 local Controls = addon.UI.Controls
 -- Listed on both TOCs, so the page names its product through the brand.
-local BRAND = addon.Brand or "Scoot"
+local BRAND = addon.Brand
 
 -- State management for this renderer
 ImportExport._state = {

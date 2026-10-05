@@ -29,9 +29,10 @@ libs/LibEditModeOverride/LibEditModeOverride.xml
 libs/AceSerializer-3.0/AceSerializer-3.0.xml
 libs/LibDeflate/LibDeflate.lua
 
-## Identity before everything else. A borrowed file that wants a name or a
-## media root reads addon.Brand and addon.MediaPath, and a file-scope read of
-## either has to find them already set, so the entry file goes first.
+## Identity before everything else. A file both TOCs list reads addon.Brand,
+## addon.MediaPath, addon.SlashToken and addon.MinimapIcon, several at file
+## scope, so the entry file goes first; core/identity.lua is its twin on
+## Scoot.toc.
 forever/camelot.lua
 
 ## Reused from Scoot, listed rather than copied. WoW passes each addon its own
@@ -82,10 +83,10 @@ core/apply_all.lua
 ## registers a debug command at file scope; after framestate and secretsafe.
 core/enforce.lua
 
-## The minimap button. One file for both addons: it reads its icon and its
-## storage off addon.MinimapIcon and addon.MinimapButtonStore at login, and
-## forever/minimap.lua below sets both. commands.lua above it, because it
-## registers a slash command at file scope.
+## The minimap button. One file for both addons: it reads its icon off
+## addon.MinimapIcon, set above, and its storage off addon.MinimapButtonStore,
+## which forever/minimap.lua below sets, both at login. commands.lua above
+## it, because it registers a slash command at file scope.
 core/minimap.lua
 
 ## addon:OpenCooldownManagerSettings, which the toolbar's Cooldown Manager

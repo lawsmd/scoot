@@ -22,7 +22,7 @@ local Controls = addon.UI.Controls
 
 -- The dialog title and its frame names carry the brand: both addons load this
 -- file in the retail client, and one global cannot hold two frames.
-local BRAND = addon.Brand or "Scoot"
+local BRAND = addon.Brand
 local Theme -- Lazy loaded
 
 local function GetTheme()

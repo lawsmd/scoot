@@ -374,7 +374,7 @@ end
 -- outside the 198 px Minimap that puts the band's inner edge on the map edge.
 local function squareBorderArt()
     return addon.MinimapSquareBorder or {
-        texture = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\minimap\\square-border",
+        texture = addon.MediaPath .. "media\\minimap\\square-border",
         band = 9,
     }
 end
@@ -398,7 +398,7 @@ local STRATA_BELOW = {
 local function ensureArtBorder(overlays, minimap)
     local container = overlays.artBorder
     if not container then
-        container = CreateFrame("Frame", (addon.Brand or "Scoot") .. "MinimapSquareBorder", UIParent)
+        container = CreateFrame("Frame", addon.Brand .. "MinimapSquareBorder", UIParent)
         container:EnableMouse(false)
         container.texture = container:CreateTexture(nil, "OVERLAY")
         container.texture:SetAllPoints(container)

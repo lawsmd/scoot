@@ -17,7 +17,7 @@ local function Debug(...)
     -- counterpart, so the accent is free to recolor it. Built here rather than
     -- at file scope; Debug only runs once the user sets _dbgProfiles. The tag
     -- carries the brand because both addons load this file.
-    local tag = (addon.Brand or "Scoot") .. "Profiles"
+    local tag = addon.Brand .. "Profiles"
     local hex = addon.GetAccentHex and addon.GetAccentHex()
     local prefix = hex and ("|cff" .. hex .. tag .. "|r") or tag
     addon:Print(prefix .. " " .. msg)

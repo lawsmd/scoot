@@ -46,7 +46,7 @@ end
 local function EnsureDarkeningOverlay()
     if darkeningFrame then return darkeningFrame end
 
-    darkeningFrame = CreateFrame("Frame", (addon.Brand or "Scoot") .. "MinimapDarkening", UIParent)
+    darkeningFrame = CreateFrame("Frame", addon.Brand .. "MinimapDarkening", UIParent)
     darkeningFrame:SetFrameStrata("MEDIUM")
     darkeningFrame:SetFrameLevel(100)
     darkeningFrame:EnableMouse(false)
@@ -301,7 +301,7 @@ end
 local function CreateOverlayButton(db)
     if overlayButtonFrame then return overlayButtonFrame end
 
-    local btn = CreateFrame("Button", (addon.Brand or "Scoot") .. "MinimapOverlayButton", UIParent)
+    local btn = CreateFrame("Button", addon.Brand .. "MinimapOverlayButton", UIParent)
     btn:SetSize(36, 36)
     -- MEDIUM (core/strata.lua), not HIGH: MinimapCluster is LOW (Minimap.xml:3)
     -- and the darkening overlay is MEDIUM/100, so level 200 keeps the pin on top

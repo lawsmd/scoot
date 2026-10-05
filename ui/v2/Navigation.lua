@@ -10,7 +10,7 @@ local Chrome = addon.UI.Chrome
 
 -- Frame names and the one tooltip that names the addon carry the brand: both
 -- addons load this file in the retail client.
-local BRAND = addon.Brand or "Scoot"
+local BRAND = addon.Brand
 
 --------------------------------------------------------------------------------
 -- Constants

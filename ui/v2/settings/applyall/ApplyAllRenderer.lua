@@ -21,7 +21,7 @@ end
 -- (fontsNote), the way HomeModel shapes the home page.
 local function FontsInfoText()
     local model = addon.UI.SettingsPanel and addon.UI.SettingsPanel.ApplyAllModel or {}
-    local text = ("Any %s font field can hold the Global Header Font or Global Body Font token, picked from its font picker, and follow the values set here."):format(addon.Brand or "Scoot")
+    local text = ("Any %s font field can hold the Global Header Font or Global Body Font token, picked from its font picker, and follow the values set here."):format(addon.Brand)
     if type(model.fontsNote) == "string" and model.fontsNote ~= "" then
         text = text .. " " .. model.fontsNote
     end
@@ -34,7 +34,7 @@ local function FontsInfoText()
 end
 
 local function TexturesInfoText()
-    return ("Any %s bar texture field can hold the Global Bar Texture token, picked from its texture picker, and follow the value set here. Apply commits the value and reloads the UI."):format(addon.Brand or "Scoot")
+    return ("Any %s bar texture field can hold the Global Bar Texture token, picked from its texture picker, and follow the value set here. Apply commits the value and reloads the UI."):format(addon.Brand)
 end
 
 local MODES = {

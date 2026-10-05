@@ -49,7 +49,7 @@ local function GetBrandFont()
 end
 
 --------------------------------------------------------------------------------
--- Shared brand row (icon + "Scoot"), reused by the Edit Mode dialog
+-- Shared brand row (icon + brand name), reused by the Edit Mode dialog
 --------------------------------------------------------------------------------
 
 --- Returns { icon, text, height }. Anchor the icon yourself.
@@ -57,12 +57,11 @@ function Tooltip.BuildBrandRow(parent, size)
     size = size or BRAND_SIZE
     local iconSize = size + 2
 
-    local theme = GetTheme()
-    -- addon.MinimapIcon is the host's one icon seam (core/minimap.lua): set by a
-    -- host whose emblem is not the bundled one, read here at the moment of use.
+    -- addon.MinimapIcon is the identity file's icon, the one the minimap button
+    -- draws (core/minimap.lua), read here at the moment of use. The skins'
+    -- SCOOT_ICON texture role is Scoot's art under every skin, so it is not
+    -- consulted here.
     local iconPath = addon.MinimapIcon
-        or (theme and theme.Textures and theme.Textures.SCOOT_ICON)
-        or ((addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "ScootIcon")
 
     local icon = parent:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(iconPath)
@@ -71,7 +70,7 @@ function Tooltip.BuildBrandRow(parent, size)
     local text = parent:CreateFontString(nil, "OVERLAY")
     pcall(text.SetFont, text, GetBrandFont(), size, "")
     text:SetPoint("LEFT", icon, "RIGHT", ICON_GAP, 0)
-    text:SetText(addon.Brand or "Scoot")
+    text:SetText(addon.Brand)
     text:SetJustifyH("LEFT")
 
     local r, g, b = addon.GetAccentColorRGB()
@@ -101,7 +100,7 @@ local function EnsureFrame()
         bgR, bgG, bgB = theme:GetBackgroundSolidColor()
     end
 
-    frame = CreateFrame("Frame", (addon.Brand or "Scoot") .. "EditModeTooltip", UIParent)
+    frame = CreateFrame("Frame", addon.Brand .. "EditModeTooltip", UIParent)
     frame:SetFrameStrata("TOOLTIP")
     frame:SetFrameLevel(100)
     frame:SetClampedToScreen(true)

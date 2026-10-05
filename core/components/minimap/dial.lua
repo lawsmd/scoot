@@ -22,7 +22,7 @@ local MM = addon.Minimap
 
 local getMinimapDB = MM._getMinimapDB
 
-local BRAND = addon.Brand or "Scoot"
+local BRAND = addon.Brand
 
 local handle = nil        -- the addon's drag frame over the dial
 local hooked = false

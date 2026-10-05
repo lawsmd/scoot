@@ -641,8 +641,8 @@ function Minimap.Render(panel, scrollContent)
 
                         -- Keep the addon's own button separate
                         tabBuilder:AddToggle({
-                            label = "Keep " .. (addon.Brand or "Scoot") .. " Button Separate",
-                            description = "Keep " .. (addon.Brand or "Scoot") .. "'s minimap button visible outside the container.",
+                            label = "Keep " .. addon.Brand .. " Button Separate",
+                            description = "Keep " .. addon.Brand .. "'s minimap button visible outside the container.",
                             get = function()
                                 return getSetting("scootButtonSeparate") or false
                             end,

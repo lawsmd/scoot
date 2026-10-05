@@ -17,7 +17,7 @@ IE.PREFIX_AURA = "!SA1!"
 -- the profile importer refuses the other's. A string written before the field
 -- existed came from Scoot.
 local function brand()
-    return addon.Brand or "Scoot"
+    return addon.Brand
 end
 
 --------------------------------------------------------------------------------
@@ -186,6 +186,7 @@ function IE:ImportProfile(importStr)
         return false, envelope
     end
 
+    -- Kept off addon.Brand: an envelope with no writer field predates the field, and every one of those was written by Scoot.
     local writer = envelope.addon or "Scoot"
     if writer ~= brand() then
         return false, "That is a " .. tostring(writer) .. " profile string. " .. brand()

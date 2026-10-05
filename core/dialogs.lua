@@ -6,7 +6,7 @@ addon.Dialogs._registry = {}
 
 -- StaticPopupDialogs is one global table, and both addons load this file in
 -- the retail client, so the fallback popup is keyed by brand.
-local FALLBACK = (addon.Brand or "Scoot") .. "_FALLBACK"
+local FALLBACK = addon.Brand .. "_FALLBACK"
 
 function addon.Dialogs:Register(name, definition)
     if name and definition then

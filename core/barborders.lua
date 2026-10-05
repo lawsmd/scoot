@@ -6,7 +6,7 @@ local BarBorders = addon.BarBorders
 
 -- The addon that loaded this file, not a literal: the Forever client has no
 -- Scoot folder to resolve against. core/fonts.lua takes the same fallback.
-local MEDIA_PATH_PREFIX = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\barborder\\"
+local MEDIA_PATH_PREFIX = addon.MediaPath .. "media\\barborder\\"
 
 -- Track border state per barFrame using weak keys to avoid tainting Blizzard system frames.
 -- Writing properties directly to CDM StatusBar frames causes taint that propagates to

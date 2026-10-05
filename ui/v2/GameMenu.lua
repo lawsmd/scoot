@@ -11,7 +11,7 @@ local Controls = addon.UI.Controls
 
 -- The button label, the tooltip and the frame name carry the brand: both
 -- addons load this file in the retail client.
-local BRAND = addon.Brand or "Scoot"
+local BRAND = addon.Brand
 
 --------------------------------------------------------------------------------
 -- Constants

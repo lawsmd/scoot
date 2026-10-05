@@ -307,7 +307,7 @@ local function CreateVariantSelector(parent, theme, subToggles, allowOff)
             local tip = C:GetOrCreateTooltip()
             local names = {}
             for _, o in ipairs(self._options) do names[#names + 1] = o.variant end
-            tip:SetContent("Off", "Scoot leaves this alone. Click to cycle through the available variants ("
+            tip:SetContent("Off", addon.Brand .. " leaves this alone. Click to cycle through the available variants ("
                 .. table.concat(names, ", ") .. ") and hover one to see what it does.")
             local r, g, b = theme:GetAccentColor()
             if tip._titleText then tip._titleText:SetTextColor(r, g, b, 1) end

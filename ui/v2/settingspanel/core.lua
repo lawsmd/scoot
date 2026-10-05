@@ -14,7 +14,7 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 -- Frame names carry the brand because both addons load this file in the
 -- retail client and one global cannot hold two frames. Scoot leaves
 -- addon.Brand unset and keeps the names it has always had.
-local BRAND = addon.Brand or "Scoot"
+local BRAND = addon.Brand
 
 -- The product's title and toolbar, read at call time; Scoot's is
 -- ui/v2/settings/HeaderModel.lua and Camelot's is forever/menu.lua.

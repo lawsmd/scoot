@@ -282,7 +282,7 @@ local function EnsureSkin(dialog)
 
     skin._configureBtn = Controls:CreateButton({
         parent   = skin,
-        text     = "Configure in " .. (addon.Brand or "Scoot"),
+        text     = "Configure in " .. addon.Brand,
         width    = btnWidth,
         height   = BTN_H,
         fontSize = 11,

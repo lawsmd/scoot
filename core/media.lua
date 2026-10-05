@@ -30,7 +30,7 @@ end
 
 -- The addon that loaded this file, not a literal: the Forever client has no
 -- Scoot folder to resolve against. core/fonts.lua takes the same fallback.
-local BAR_MEDIA_PREFIX = (addon.MediaPath or "Interface\\AddOns\\Scoot\\") .. "media\\bar\\"
+local BAR_MEDIA_PREFIX = addon.MediaPath .. "media\\bar\\"
 
 -- Per-bar state (weak keys). Local table avoids tainting Blizzard frames.
 local barFrameState = setmetatable({}, { __mode = "k" })

@@ -134,7 +134,7 @@ local function _SerializeLuaValue(value, indent, visited, depth)
 end
 
 local function DebugExportProfile(profileName)
-    local title = (addon.Brand or "Scoot") .. " Profile Export"
+    local title = addon.Brand .. " Profile Export"
     if not addon or not addon.db then
         addon.DebugShowWindow(title, "AceDB not initialized.")
         return
@@ -166,7 +166,7 @@ local function DebugExportProfile(profileName)
 
     local snapshot = CopyTable(profile)
     local header = table.concat({
-        "-- " .. (addon.Brand or "Scoot") .. " profile export",
+        "-- " .. addon.Brand .. " profile export",
         "-- Profile: " .. tostring(key),
         "-- Captured: " .. (date and date("%Y-%m-%d %H:%M:%S") or "unknown"),
         "",

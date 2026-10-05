@@ -815,7 +815,7 @@ function Builder:AddIconBorderBlock(opts)
         })
     end
 
-    if thickness and (not gated or addon.IconBorders.SupportsThickness(get("style") or styleDefault)) then
+    if thickness and (not gated or (addon.IconBorders and addon.IconBorders.SupportsThickness(get("style") or styleDefault))) then
         local minV, maxV = thickness.min or 1, thickness.max or 8
         local step = thickness.step or 0.5
         local default = thickness.default or 1

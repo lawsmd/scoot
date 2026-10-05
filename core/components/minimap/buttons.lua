@@ -15,7 +15,7 @@ local getMinimapDB = MM._getMinimapDB
 -- The addon's own name: the prefix on every frame this file names, and the
 -- match for the addon's own minimap button (core/minimap.lua names its
 -- LibDBIcon object the same way).
-local BRAND = addon.Brand or "Scoot"
+local BRAND = addon.Brand
 local BRAND_LOWER = BRAND:lower()
 local OWN_BUTTON = "LibDBIcon10_" .. BRAND
 

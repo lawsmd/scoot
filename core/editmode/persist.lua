@@ -119,7 +119,7 @@ function EditMode.RefreshSyncAndNotify(origin)
     -- flicker.
 
     if addon._dbgSync and origin then
-        addon.DebugPrint((addon.Brand or "Scoot") .. " RefreshSyncAndNotify origin=" .. tostring(origin))
+        addon.DebugPrint(addon.Brand .. " RefreshSyncAndNotify origin=" .. tostring(origin))
     end
 end
 

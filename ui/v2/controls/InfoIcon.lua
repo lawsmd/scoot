@@ -101,7 +101,7 @@ local function GetOrCreateTooltip()
     local ar, ag, ab = theme:GetAccentColor()
 
     -- Brand-named: both addons load this file in the retail client.
-    local tooltip = CreateFrame("Frame", (addon.Brand or "Scoot") .. "InfoTooltip", UIParent)
+    local tooltip = CreateFrame("Frame", addon.Brand .. "InfoTooltip", UIParent)
     tooltip:SetFrameStrata("TOOLTIP")
     tooltip:SetFrameLevel(100)
     tooltip:Hide()

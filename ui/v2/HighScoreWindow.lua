@@ -4,8 +4,8 @@ local addonName, addon = ...
 -- The frame name carries the brand because both addons load this file in the
 -- retail client; the media root is the loading addon's folder because the
 -- Forever client has no Scoot folder to resolve against.
-local BRAND = addon.Brand or "Scoot"
-local ROOT = addon.MediaPath or "Interface\\AddOns\\Scoot\\"
+local BRAND = addon.Brand
+local ROOT = addon.MediaPath
 
 local FRAME_WIDTH = 920
 local FRAME_HEIGHT = 780
@@ -195,7 +195,7 @@ local function CreateHighScoreFrame()
     -- ESC-close
     tinsert(UISpecialFrames, BRAND .. "HighScoreFrame")
 
-    -- Banner (ScootBanner.png at top center)
+    -- Banner (ScootBanner.png, top centre)
     local banner = frame:CreateTexture(nil, "ARTWORK")
     banner:SetSize(400, BANNER_HEIGHT)
     banner:SetPoint("TOP", frame, "TOP", 0, 30)

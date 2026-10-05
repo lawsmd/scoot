@@ -377,6 +377,11 @@ end
 -- Zero-Touch predicate: true while nothing is persisted for the component and
 -- its db is still the defaults proxy above. Guards must not write through the
 -- proxy, which would materialize the real table and activate styling.
+--
+-- Host seam by construction: a host that sets addon.ComponentStore never
+-- installs the proxy, so every component under it reads as configured and
+-- its defaults apply on load. That is the host saying it has no zero-touch
+-- state, and a host that wants one installs a proxy of its own.
 function addon.IsComponentUnconfigured(component)
     return component ~= nil
         and component._ScootDBProxy ~= nil
@@ -591,16 +596,18 @@ function addon:ApplyStyles()
             component:ApplyStyling()
         end
     end
-    -- The rest of the pass is the catalog in core/refresh.lua; the module
-    -- gates stay here.
-    if self:IsModuleEnabled("unitFrames") then
-        addon.Refresh.Run("unitFrames")
-    end
-    if addon:IsModuleEnabled("groupFrames", "raid") then
-        addon.Refresh.Run("raid")
-    end
-    if addon:IsModuleEnabled("groupFrames", "party") then
-        addon.Refresh.Run("party")
+    -- The rest of the pass is the catalog in core/refresh.lua, which only one
+    -- addon lists; the module gates stay here.
+    if addon.Refresh then
+        if self:IsModuleEnabled("unitFrames") then
+            addon.Refresh.Run("unitFrames")
+        end
+        if addon:IsModuleEnabled("groupFrames", "raid") then
+            addon.Refresh.Run("raid")
+        end
+        if addon:IsModuleEnabled("groupFrames", "party") then
+            addon.Refresh.Run("party")
+        end
     end
 end
 

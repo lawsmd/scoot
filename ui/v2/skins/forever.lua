@@ -28,7 +28,7 @@ local Skin = addon.UI.Skin
 -- The addon that loaded this file, not a literal: the Forever client has no
 -- Scoot folder to resolve against, only whichever junction points at this one.
 -- core/fonts.lua takes the same fallback.
-local ROOT = addon.MediaPath or "Interface\\AddOns\\Scoot\\"
+local ROOT = addon.MediaPath
 local FONT_BASE = ROOT .. "media\\fonts\\"
 
 -- One face for the whole panel, read off GameFontNormal rather than named:

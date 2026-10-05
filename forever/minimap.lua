@@ -1,10 +1,11 @@
 --------------------------------------------------------------------------------
 -- forever/minimap.lua
--- Camelot's side of the minimap: the button's two seams, the square border's
--- art, and the ring the addon buttons wear.
+-- Camelot's side of the minimap: the button's store seam, the square border's
+-- art, and the ring the addon buttons wear. The icon is the identity file's,
+-- forever/camelot.lua.
 --
 -- The button itself is core/minimap.lua, listed on both TOCs. It reads the
--- two seams set here at login, and the minimap component reads the border
+-- store seam set here at login, and the minimap component reads the border
 -- seam at apply time, so this file's place in the load order does not
 -- matter.
 --
@@ -20,11 +21,6 @@ local addonName, addon = ...
 local DOCUMENT = "minimapButton"
 
 local DEFAULT_POSITION = 220
-
--- The mark. addon.Logo holds the colourways (forever/camelot.lua), and this is
--- the one line that picks one; the paths read through addon.MediaPath, which
--- resolves through whichever junction loaded the addon.
-addon.MinimapIcon = addon.Logo.bronze
 
 -- The square border. core/components/minimap/core.lua draws this file around
 -- a square map unless the player picks the custom border or none. It is

@@ -355,7 +355,7 @@ function Controls:CreatePreview(options)
 
         -- TexCoord cropping (only for default icons — custom pixel art uses full texture).
         -- Shares the HUD's cropping math so the Icon Zoom slider reads the same here.
-        if iconMode == "default" and not options.shapeAtlas then
+        if iconMode == "default" and not options.shapeAtlas and addon.CalculateIconTexCoords then
             local l, r, t, b = addon.CalculateIconTexCoords(
                 iconW / iconH, readSetting("iconZoom", 0), ICON_TEXCOORD_INSET)
             iconTex:SetTexCoord(l, r, t, b)
@@ -425,7 +425,7 @@ function Controls:CreatePreview(options)
             if useCG then
                 CG.EnsureIconBorderTextures(previewIcon)
                 reachX, reachY = CG.ApplyBorderToIcon(previewIcon, CG.BuildBorderOpts(cgDb))
-            else
+            elseif addon.ApplyIconBorderStyle then
                 local _, ex, ey = addon.ApplyIconBorderStyle(borderHost, borderStyle, {
                     tintEnabled = readSetting("borderTintEnable", false),
                     color = readSetting("borderTintColor", nil),

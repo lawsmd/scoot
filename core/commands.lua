@@ -42,10 +42,9 @@ addon.Commands = Commands
 -- Sentinel a handler or verb returns to request its usage block.
 Commands.USAGE = {}
 
-local BRAND = addon.Brand or "Scoot"
--- addon.SlashToken where an entry file names the word itself; the brand
--- lowercased otherwise, which is what Scoot has always typed.
-local SLASH = "/" .. (addon.SlashToken or string.lower(BRAND))
+local BRAND = addon.Brand
+-- The word the identity file names: core/identity.lua or forever/camelot.lua.
+local SLASH = "/" .. addon.SlashToken
 
 local scopes = {
     slash = { list = {}, byName = {}, prefix = SLASH .. " " },
