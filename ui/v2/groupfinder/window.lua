@@ -45,12 +45,15 @@ local function M()
 end
 
 -- The window's measures. The panel is wider than Blizzard's 338, so the
--- activity names and the roster fit on a row; the rest are Blizzard's
--- numbers, the fallbacks when the client's template table does not answer,
--- and the panel's own positions are where Blizzard's XML puts them
+-- activity names and the roster fit on a row, and taller than its 440, so
+-- the Dungeons filter's drawer, which stands the window's height, holds
+-- its sections with room over for a season's extra one and never scrolls;
+-- the rest are Blizzard's numbers, the fallbacks when the client's
+-- template table does not answer, and the panel's own positions are where
+-- Blizzard's XML puts them
 local LAYOUT = {
     panelWidth = 400,
-    panelHeight = 440,
+    panelHeight = 480,
     titleHeight = 36,
     categoryRow = 46,
     dialogWidth = 306,
