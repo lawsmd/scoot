@@ -733,17 +733,34 @@ local function Build(parent)
         self._auto:Open()
     end
 
+    -- An auto-complete row: the box filled from the activity now, as
+    -- Blizzard's row fills it, and the search as soon as the cooldown
+    -- allows it. A pick inside the three seconds after a search is kept:
+    -- the arrow's tooltip counts the wait down, and the search runs as it
+    -- ends unless another ran first. The twelfth look found the pick
+    -- dropped inside the cooldown, the list closing on nothing.
     function panel:PickActivity(key)
         if key == "more" then return end
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
-        if not GF.SearchAllowed() then
-            self:RefreshButtons()
+        C_LFGList.SetSearchToActivity(key)
+        if sp.SearchBox then sp.SearchBox:ClearFocus() end
+        self:SearchWhenAllowed()
+    end
+
+    function panel:SearchWhenAllowed()
+        local sp = SearchPanel()
+        if not (sp and LFGListSearchPanel_DoSearch) then return end
+        if GF.SearchAllowed() then
+            LFGListSearchPanel_DoSearch(sp)
             return
         end
-        C_LFGList.SetSearchToActivity(key)
-        LFGListSearchPanel_DoSearch(sp)
-        if sp.SearchBox then sp.SearchBox:ClearFocus() end
+        local last = GF.state.lastSearchAt
+        C_Timer.After(GF.SearchCooldownLeft() + 0.05, function()
+            if self:IsShown() and GF.state.lastSearchAt == last then
+                LFGListSearchPanel_DoSearch(sp)
+            end
+        end)
     end
 
     ----------------------------------------------------------------------------
