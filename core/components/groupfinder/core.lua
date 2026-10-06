@@ -273,6 +273,61 @@ function GF.StatusLine(appStatus, pendingStatus)
     return Word("LFG_LIST_PENDING", "Pending"), true, true
 end
 
+-- Whether a result still satisfies the advanced filter, the test
+-- Blizzard's row runs on each update: a group that filled the role the
+-- filter wants open, or whose leader's rating fell under the floor, no
+-- longer does. The Dungeons category alone carries the filter, which the
+-- caller tests. A count that does not read plain is taken as zero
+function GF.MatchesFilter(info, counts)
+    local enabled = C_LFGList.GetAdvancedFilter and C_LFGList.GetAdvancedFilter()
+    if type(enabled) ~= "table" or type(info) ~= "table" or type(counts) ~= "table" then return true end
+    local function Count(key) return plainNumber(counts[key]) or 0 end
+    local _, class = UnitClass("player")
+    if enabled.needsTank and Count("TANK") ~= 0 then return false end
+    if enabled.needsHealer and Count("HEALER") ~= 0 then return false end
+    if enabled.needsDamage and Count("DAMAGER") >= 3 then return false end
+    if enabled.needsMyClass and class and Count(class) > 0 then return false end
+    if enabled.hasTank and Count("TANK") == 0 then return false end
+    if enabled.hasHealer and Count("HEALER") == 0 then return false end
+    if (plainNumber(enabled.minimumRating) or 0) > (plainNumber(info.leaderOverallDungeonScore) or 0) then
+        return false
+    end
+    local activity = GF.ActivityInfo(GF.ActivityID(info))
+    local wanted = enabled.activities
+    if type(wanted) == "table" and #wanted > 0 then
+        local group = activity and plainNumber(activity.groupFinderActivityGroupID)
+        local found = false
+        for _, id in ipairs(wanted) do
+            if id == group then
+                found = true
+                break
+            end
+        end
+        if not found then return false end
+    end
+    if activity and (enabled.difficultyNormal or enabled.difficultyHeroic
+        or enabled.difficultyMythic or enabled.difficultyMythicPlus) then
+        if (activity.isNormalActivity and not enabled.difficultyNormal)
+            or (activity.isHeroicActivity and not enabled.difficultyHeroic)
+            or (activity.isMythicActivity and not enabled.difficultyMythic)
+            or (activity.isMythicPlusActivity and not enabled.difficultyMythicPlus) then
+            return false
+        end
+    end
+    local P = Enum.LFGEntryGeneralPlaystyle
+    if P and (enabled.generalPlaystyle1 or enabled.generalPlaystyle2
+        or enabled.generalPlaystyle3 or enabled.generalPlaystyle4) then
+        local style = plainNumber(info.generalPlaystyle)
+        if (style == P.Learning and not enabled.generalPlaystyle1)
+            or (style == P.FunRelaxed and not enabled.generalPlaystyle2)
+            or (style == P.FunSerious and not enabled.generalPlaystyle3)
+            or (style == P.Expert and not enabled.generalPlaystyle4) then
+            return false
+        end
+    end
+    return true
+end
+
 -- The four conditions of Blizzard's own CanSelectResult
 function GF.CanSelect(id)
     local _, status, pending = GF.Application(id)

@@ -45,6 +45,12 @@ end
 
 local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER" }
 
+-- The one color the palette does not name: the red Blizzard's row goes
+-- under a group that no longer satisfies the filter, as the wash under
+-- the row and the delisted line in the tooltip
+local RED = { 0.85, 0.2, 0.2 }
+local OFF_FILTER_WASH = { RED[1], RED[2], RED[3], 0.18 }
+
 -- The search box template's own art, put at alpha 0 while hosted; the
 -- clear button keeps its handler and loses its textures
 local SEARCH_ART = { "Left", "Middle", "Right", "searchIcon" }
@@ -404,10 +410,14 @@ local function RenderRow(panel, row, item)
     local friends = (GF.plainNumber(info.numBNetFriends) or 0) + (GF.plainNumber(info.numCharFriends) or 0)
         + (GF.plainNumber(info.numGuildMates) or 0)
 
+    -- A delisted group or a finished application grays the whole row, as
+    -- Blizzard's does; a declined one dims the name alone
+    local dimmed = isDelisted or isAppFinished
+    local stale = dimmed and LAYOUT.search.staleAlpha or 1
     SetTextSafe(row._name, info.name)
-    if isDeclined or isDelisted or isAppFinished then
+    if isDeclined or dimmed then
         local dr, dg, db = theme:GetDimTextColor()
-        row._nameColor = { dr, dg, db, 1 }
+        row._nameColor = { dr, dg, db, stale }
     elseif friends > 0 then
         local ar, ag, ab = theme:GetAccentColor()
         row._nameColor = { ar, ag, ab, 0.85 }
@@ -417,9 +427,14 @@ local function RenderRow(panel, row, item)
 
     SetTextSafe(row._activity, GF.ActivityName(info))
     row._playstyle:SetText(GF.GeneralPlaystyleString(GF.plainNumber(info.generalPlaystyle)))
+    row._activity:SetAlpha(stale)
+    row._playstyle:SetAlpha(stale)
+    row._voice:SetAlpha(stale)
 
     local counts = GF.MemberCounts(id)
-    local dimmed = isDelisted or isAppFinished
+    -- Off the filter while sitting on the pane, as Blizzard's row reads it
+    -- on each update; the Dungeons category alone carries the filter
+    local offFilter = SelectedCategory() == GF.DUNGEONS_CATEGORY and not GF.MatchesFilter(info, counts)
 
     -- The right column: the status, countdown and cancel of an application,
     -- else the composition with the sign-up button past it
@@ -471,8 +486,12 @@ local function RenderRow(panel, row, item)
 
     row._voice:SetShown(NonEmpty(info.voiceChat))
 
+    -- The wash in Blizzard's order: red for a group off the filter, the
+    -- accent under a live application, dim under a declined one
     local wash
-    if isApplication and not isAppFinished then
+    if offFilter then
+        wash = OFF_FILTER_WASH
+    elseif isApplication and not isAppFinished then
         wash = "accent"
     elseif isDeclined then
         wash = "dim"
@@ -1095,6 +1114,10 @@ local function Build(parent)
             if type(info.name) == "string" then GameTooltip:AddLine(info.name) end
             local activity = GF.ActivityName(info)
             if activity then GameTooltip:AddLine(activity, dr, dg, db) end
+            if GF.plainBool(info.isDelisted) then
+                GameTooltip:AddLine(Str("LFG_LIST_ENTRY_DELISTED", "This group is no longer listed"),
+                    RED[1], RED[2], RED[3], true)
+            end
             if NonEmpty(info.comment) then GameTooltip:AddLine(info.comment, 1, 1, 1, true) end
             local ilvl = GF.plainNumber(info.requiredItemLevel) or 0
             if ilvl > 0 then

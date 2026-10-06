@@ -100,6 +100,8 @@ local LAYOUT = {
         -- The clear line between an application's word and the countdown
         -- under it
         statusGap = 2,
+        -- A delisted group's text, at the roster's own dim
+        staleAlpha = 0.5,
         nameTop = 14,
         subIndent = 10, subSize = 10,
         -- The roster's text is a size under the sublines, so the longest
