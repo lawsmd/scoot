@@ -682,10 +682,13 @@ local function Build(parent)
         end
         if self._boxHooked then return end
         self._boxHooked = true
-        editBox:HookScript("OnTextChanged", function()
+        editBox:HookScript("OnTextChanged", function(_, userInput)
             if clearButton then self._clear:SetShown(clearButton:IsShown()) end
-            -- The pick stands while the text it was picked from stands
-            if self._activity and SS.plainString(editBox:GetText()) ~= self._activityText then
+            -- The pick stands until the player types or the box empties:
+            -- a change from code is not the player's, and one fired
+            -- between a pick and its search dropped the pick while the box
+            -- still read the typed text
+            if self._activity and (userInput or SS.plainString(editBox:GetText()) == "") then
                 self:ClearPick()
             end
             self:RefreshAuto()
@@ -741,30 +744,30 @@ local function Build(parent)
         self._auto:Open()
     end
 
-    -- An auto-complete row: the activity kept as the pane's cut, the
-    -- typed text searched, and the search as soon as the cooldown allows
-    -- it. Blizzard's row puts the activity's name in the box through
-    -- SetSearchToActivity, which fills the secure box from a secure call
-    -- alone: from the window's click the box kept its text (the twelfth
-    -- look), so the pick is the window's own, the rows of other activities
-    -- cut from the pane until the text moves, and the typed text, which
-    -- matched the activity's name, is what the server searches. The call
-    -- stays for a secure open to come. A pick inside the three seconds
-    -- after a search is kept: the arrow's tooltip counts the wait down,
-    -- and the search runs as it ends unless another ran first.
+    -- An auto-complete row: the activity kept as the window's pick, and
+    -- the search as soon as the cooldown allows it. Blizzard's row puts
+    -- the activity's name in the box through SetSearchToActivity, which
+    -- fills the secure box from a secure call alone: from the window the
+    -- box kept its text and the server searched that text (the twelfth
+    -- look), and the call still raised a text change that ended the pick
+    -- (the readout), so the call is gone. The pick is the window's own:
+    -- the typed text, which matched the activity's name, is what the
+    -- server searches, with the activity as the search's filter
+    -- (DoSearch), and the pane cut to it besides, until the player types
+    -- or the box empties. A pick inside the three seconds after a search
+    -- is kept: the arrow's tooltip counts the wait down, and the search
+    -- runs as it ends unless another ran first.
     function panel:PickActivity(key)
         if key == "more" then return end
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
-        self._activity = key
-        self._activityText = sp.SearchBox and SS.plainString(sp.SearchBox:GetText()) or nil
-        C_LFGList.SetSearchToActivity(key)
         if sp.SearchBox then sp.SearchBox:ClearFocus() end
+        self._activity = key
         self:SearchWhenAllowed()
     end
 
     function panel:ClearPick()
-        self._activity, self._activityText = nil, nil
+        self._activity = nil
     end
 
     -- A row stays on the pane under a pick when its group lists the picked

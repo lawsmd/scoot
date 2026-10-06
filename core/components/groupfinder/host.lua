@@ -679,8 +679,8 @@ addon:RegisterDebugCommand({
         if search then
             local state = GF.state
             push("")
-            push("search view shown=%s pick=%s pickText=%s lastSearch=%s at=%.1f activity=%s cooldownLeft=%.1f",
-                tostring(search:IsShown()), tostring(search._activity), tostring(search._activityText),
+            push("search view shown=%s pick=%s lastSearch=%s at=%.1f activity=%s cooldownLeft=%.1f",
+                tostring(search:IsShown()), tostring(search._activity),
                 tostring(state.lastSearchKind), state.lastSearchAt or 0, tostring(state.lastSearchActivity),
                 GF.SearchCooldownLeft())
             push("results=%d searching=%s failed=%s", #state.results, tostring(state.searching), tostring(state.searchFailed))
