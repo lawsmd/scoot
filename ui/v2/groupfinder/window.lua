@@ -120,14 +120,16 @@ local LAYOUT = {
         filterDrawerWidth = 500, languageDrawerWidth = 220, filterListFont = 11,
         -- Start a Group under the no-results message
         startGroupY = 16,
-        -- The role column at the pane's right: the icons in a row at its
-        -- top, enlarged from the roster's, and the note's holder under
-        -- them, inset from the column's edges; the text region inside the
-        -- note box is narrower than the holder by Blizzard's own margin
-        -- plus the holder's inset
+        -- The role column at the pane's right: the icons stacked down the
+        -- top two-thirds of the column (noteSplit), enlarged from the
+        -- roster's, and the note's holder across the bottom third, inset
+        -- from the column's edges. The text region inside the note box is
+        -- narrower than the holder by Blizzard's own margin plus the
+        -- holder's inset; its text is a size under the value face and its
+        -- bar is scaled down, since both are drawn for a dialog's wide box
         roles = {
-            width = 150, top = 12, iconSize = 32, iconGap = 14,
-            noteGap = 10, noteHeight = 28, noteInset = 12, noteTextInset = 20,
+            width = 150, iconSize = 52, iconGap = 22, noteSplit = 2 / 3,
+            noteInset = 12, noteTextInset = 20, noteFont = 11, noteBarScale = 0.75,
         },
     },
     -- The listing form: the dropdowns' row, the captioned title and details

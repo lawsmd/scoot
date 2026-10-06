@@ -6,11 +6,12 @@
 -- SetLFGRoles from an icon's click as Blizzard's role buttons do, so the
 -- choice holds across sessions and matches Blizzard's own dialog and the
 -- Dungeon Finder; a role the class cannot fill is locked. The icons are
--- the Raid Manager set the rows draw, uncolored: a chosen role on the
--- accent, an open one dim, a locked one dimmer and taking no click. The
--- note is Blizzard's own box, hosted for the panel's life: its dialog
--- frame is held shown out of sight (core/components/groupfinder/host.lua)
--- and the C side reads the text on ApplyToGroup. A row's sign-up button
+-- the Raid Manager set the rows draw, uncolored and stacked down the
+-- column: a chosen role on the accent, an open one dim, a locked one
+-- dimmer and taking no click. The note is Blizzard's own box across the
+-- column's bottom third, hosted for the panel's life: its dialog frame is
+-- held shown out of sight (core/components/groupfinder/host.lua) and the
+-- C side reads the text on ApplyToGroup. A row's sign-up button
 -- is off while no role is chosen, and says so in its tooltip; the column
 -- carries no text of its own.
 local addonName, addon = ...
@@ -79,7 +80,7 @@ local function MakeIcon(tray, role, index)
     local L = LAYOUT.search.roles
     local button = CreateFrame("Button", nil, tray)
     button:SetSize(L.iconSize, L.iconSize)
-    button:SetPoint("LEFT", tray, "LEFT", (index - 1) * (L.iconSize + L.iconGap), 0)
+    button:SetPoint("TOP", tray, "TOP", 0, -(index - 1) * (L.iconSize + L.iconGap))
     button:SetMotionScriptsWhileDisabled(true)
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(button)
@@ -105,7 +106,9 @@ local function MakeIcon(tray, role, index)
 end
 
 -- The column down the box's right edge, inside its border: a rule on its
--- left, the icons in a row at its top, the note's holder under them
+-- left, the icons stacked and centred in its top two-thirds, the note's
+-- holder across the bottom third. The split is taken from the window's
+-- measures, since the column's own height resolves after the build
 -- opts.onChange  called after a click changed the choice
 function Roles.Build(box, opts)
     opts = opts or {}
@@ -121,17 +124,20 @@ function Roles.Build(box, opts)
     column:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -bw, bw)
     column._rule = C.CreateBorder(column, { sides = { "LEFT" }, thickness = bw, alpha = m.borderAlpha or 0.6 })
 
+    local boxHeight = LAYOUT.panelHeight - LAYOUT.search.boxTop - LAYOUT.panel.boxBottom
+    local noteTop = math.floor(boxHeight * L.noteSplit + 0.5)
+
     local tray = CreateFrame("Frame", nil, column)
-    tray:SetSize(#ROLE_ORDER * L.iconSize + (#ROLE_ORDER - 1) * L.iconGap, L.iconSize)
-    tray:SetPoint("TOP", column, "TOP", 0, -L.top)
+    tray:SetSize(L.iconSize, #ROLE_ORDER * L.iconSize + (#ROLE_ORDER - 1) * L.iconGap)
+    tray:SetPoint("CENTER", column, "TOP", 0, -noteTop / 2)
     for i, role in ipairs(ROLE_ORDER) do
         MakeIcon(tray, role, i)
     end
 
     holder = CreateFrame("Frame", nil, column)
     Host.DressHolder(holder)
-    holder:SetSize(L.width - 2 * L.noteInset, L.noteHeight)
-    holder:SetPoint("TOP", tray, "BOTTOM", 0, -L.noteGap)
+    holder:SetPoint("TOPLEFT", column, "TOPLEFT", L.noteInset, -noteTop)
+    holder:SetPoint("BOTTOMRIGHT", column, "BOTTOMRIGHT", -L.noteInset, L.noteInset)
 
     PaintAll()
     return column
@@ -180,16 +186,19 @@ end
 
 -- Blizzard's note box into the holder, its dialog frame shown first so the
 -- box renders; the text region takes its width here, since it took its
--- own once at load
+-- own once at load, and its text and bar come down to the holder's size
 function Roles:TakeNote()
     if not holder then return end
     local dialog = LFGListApplicationDialog
     if not (dialog and dialog.Description) then return end
     if not Host.ShowDialogFrame() then return end
+    local L = LAYOUT.search.roles
     Host.Take("note", dialog.Description, holder, {
         editBox = dialog.Description.EditBox,
         artKeys = Host.SCROLL_BOX_ART,
-        editBoxWidth = holder:GetWidth() - LAYOUT.search.roles.noteTextInset,
+        editBoxWidth = L.width - 2 * L.noteInset - L.noteTextInset,
+        fontSize = L.noteFont,
+        scrollBarScale = L.noteBarScale,
     })
 end
 

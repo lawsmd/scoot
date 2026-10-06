@@ -412,17 +412,17 @@ local function RestoreText(region, font, color)
     end
 end
 
--- The skin's value face on the text, primary color, and the instructions
--- line dim. The style is named so no companion string is attached to a box
--- the player types into. The box's and the instructions' own font and
--- color are kept for the release, so Blizzard's window reads as its own
--- again.
+-- The skin's value face on the text, at the caller's size when it names
+-- one, primary color, and the instructions line dim. The style is named
+-- so no companion string is attached to a box the player types into. The
+-- box's and the instructions' own font and color are kept for the
+-- release, so Blizzard's window reads as its own again.
 local function Style(rec, opts)
     local theme = Theme()
     local editBox = rec.editBox
     if not editBox then return end
     rec.font, rec.textColor = CaptureText(editBox)
-    theme:ApplyFont(editBox, "value", nil, "NONE")
+    theme:ApplyFont(editBox, "value", opts.fontSize, "NONE")
     local pr, pg, pb = theme:GetPrimaryTextColor()
     editBox:SetTextColor(pr, pg, pb, 1)
     if opts.textInsets then
@@ -431,7 +431,7 @@ local function Style(rec, opts)
     local instructions = editBox.Instructions
     if instructions and instructions.SetFont then
         rec.instructionsFont, rec.instructionsColor = CaptureText(instructions)
-        theme:ApplyFont(instructions, "value", nil, "NONE")
+        theme:ApplyFont(instructions, "value", opts.fontSize, "NONE")
         local dr, dg, db = theme:GetDimTextColor()
         instructions:SetTextColor(dr, dg, db, 0.7)
     end
@@ -461,9 +461,12 @@ end
 -- opts.artKeys      region keys on box to put at alpha 0
 -- opts.artFrames    child frame keys whose textures go to alpha 0
 -- opts.textInsets   { left, right, top, bottom } for SetTextInsets
+-- opts.fontSize     the text's size in the value face, in place of the role's
 -- opts.editBoxWidth the width for the text region inside a ScrollFrame box,
 --                   which takes its width once at load and not from its
 --                   frame; its own width comes back on release
+-- opts.scrollBarScale  the scale of a ScrollFrame box's bar, for a holder
+--                   smaller than the box's own window; 1 again on release
 -- opts.fallbackPoints  the points to restore when none could be read
 function Host.Take(key, box, holder, opts)
     opts = opts or {}
@@ -509,6 +512,11 @@ function Host.Take(key, box, holder, opts)
         if editBox.Instructions and editBox.Instructions.SetWidth then
             editBox.Instructions:SetWidth(math.max(1, opts.editBoxWidth))
         end
+    end
+    local bar = box.ScrollBar
+    if opts.scrollBarScale and bar and bar.SetScale then
+        bar:SetScale(opts.scrollBarScale)
+        rec.scrollBar = bar
     end
     -- An ancestor that clips its children to its own rect would clip the box
     -- out of the window; none is known, and one found is opened for the stay
@@ -560,6 +568,7 @@ function Host.Release(key)
             rec.editBox.Instructions:SetWidth(rec.editBoxWidth)
         end
     end
+    if rec.scrollBar then rec.scrollBar:SetScale(1) end
     for _, f in ipairs(rec.unclipped or {}) do
         if f.SetClipsChildren then f:SetClipsChildren(true) end
     end
