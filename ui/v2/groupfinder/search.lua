@@ -116,11 +116,13 @@ function Search:Open(categoryID, filters, baseFilters)
     return true
 end
 
--- The panel out of sight again, unless Blizzard has it active; the caller
--- syncs the window
+-- The panel out of sight again, unless Blizzard has it active, and its box
+-- back in it either way, since a panel Blizzard keeps up would show the
+-- box in the window's holder on the next view; the caller syncs the window
 function Search:Close()
     local lf, sp = LFGListFrame, SearchPanel()
     if sp and lf and SS.plainFrame(lf.activePanel) ~= sp then sp:Hide() end
+    Host.Release("search")
     if UI.view == "search" then UI.view = nil end
 end
 

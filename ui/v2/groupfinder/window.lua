@@ -18,7 +18,8 @@
 -- the active panel, would run tainted from then on, so that under the
 -- chat lockdown its hidden panels could not index the secrets the API
 -- hands them. The window shows the Blizzard panel whose boxes it hosts,
--- keeps its view, and ends the view when Blizzard moves its own panel.
+-- keeps its view, and ends the view when Blizzard moves its own panel,
+-- or opens the search view when Blizzard moves to its search panel.
 -- The parts every panel draws, a heading, a bordered box and a button, are
 -- the helpers at the end. A button that is off says why in its tooltip, as
 -- Blizzard's do; no panel carries a line of text under its box.
@@ -222,7 +223,13 @@ local accentStrings = setmetatable({}, { __mode = "k" })
 --------------------------------------------------------------------------------
 
 -- The window's own view first: "search" while it searches, "create" while
--- it lists or edits; else Blizzard's active panel
+-- it lists or edits; else Blizzard's active panel. Blizzard's search panel
+-- names the categories: the window's search view is its own, entered by
+-- its Find Group and Browse Groups, or by a Blizzard path into the search
+-- panel (OnPanelSwitch), and left by its Back, which moves no Blizzard
+-- panel; so Blizzard's panel may stay on its search panel after Back,
+-- and the twelfth look found Back stuck there while the search panel
+-- answered for it
 local function ActivePanelKey()
     local lf = LFGListFrame
     if not lf then return "nothing" end
@@ -231,8 +238,7 @@ local function ActivePanelKey()
     if UI.view == "create" then return "create" end
     if UI.view == "search" then return "search" end
     if active == lf.ApplicationViewer then return "viewer" end
-    if active == lf.CategorySelection then return "categories" end
-    if active == lf.SearchPanel then return "search" end
+    if active == lf.CategorySelection or active == lf.SearchPanel then return "categories" end
     if active == lf.EntryCreation then return "create" end
     return "nothing"
 end
@@ -256,11 +262,15 @@ end
 
 -- Blizzard moved its own active panel (the listing up, the listing gone,
 -- the check on show): the window's view ends with it, and the Blizzard
--- panels the window showed go back out of sight
+-- panels the window showed go back out of sight. Blizzard's own ways into
+-- its search panel (the quest log's Find Group, the scenario tracker's)
+-- run a search the player asked for, so the search view opens on them
 function UI:OnPanelSwitch()
     if UI.Create and UI.Create.Close then UI.Create:Close() end
     if UI.Search and UI.Search.Close then UI.Search:Close() end
     UI.view = nil
+    local lf = LFGListFrame
+    if lf and SS.plainFrame(lf.activePanel) == lf.SearchPanel then UI.view = "search" end
     self:SyncPanel()
 end
 
