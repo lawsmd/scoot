@@ -639,7 +639,10 @@ local function Build(parent)
         getValues = function() return panel._autoLabels end,
         getSelectedKey = function() return panel._autoSelected end,
         isInert = function(key) return key == "more" end,
-        onSelect = function(key) panel:PickActivity(key) end,
+        onSelect = function(key)
+            GF.Trace("auto row selected key=%s", tostring(key))
+            panel:PickActivity(key)
+        end,
     })
 
     panel._menu = C.CreatePopupList({
@@ -683,6 +686,8 @@ local function Build(parent)
         if self._boxHooked then return end
         self._boxHooked = true
         editBox:HookScript("OnTextChanged", function(_, userInput)
+            GF.Trace("textChanged userInput=%s text=%s pick=%s", tostring(userInput),
+                tostring(SS.plainString(editBox:GetText())), tostring(self._activity))
             if clearButton then self._clear:SetShown(clearButton:IsShown()) end
             -- The pick stands until the player types or the box empties:
             -- a change from code is not the player's, and one fired
@@ -698,8 +703,14 @@ local function Build(parent)
             clearButton:HookScript("OnEnter", function() self._clear:SetAlpha(1) end)
             clearButton:HookScript("OnLeave", function() self._clear:SetAlpha(0.75) end)
         end
-        editBox:HookScript("OnEditFocusGained", function() self:RefreshAuto() end)
-        editBox:HookScript("OnEditFocusLost", function() self._auto:Close() end)
+        editBox:HookScript("OnEditFocusGained", function()
+            GF.Trace("focus gained pick=%s", tostring(self._activity))
+            self:RefreshAuto()
+        end)
+        editBox:HookScript("OnEditFocusLost", function()
+            GF.Trace("focus lost pick=%s", tostring(self._activity))
+            self._auto:Close()
+        end)
         editBox:HookScript("OnTabPressed", function() self:RefreshAuto() end)
         editBox:HookScript("OnArrowPressed", function() self:RefreshAuto() end)
     end
@@ -760,13 +771,19 @@ local function Build(parent)
     function panel:PickActivity(key)
         if key == "more" then return end
         local sp = SearchPanel()
-        if not (sp and LFGListSearchPanel_DoSearch) then return end
+        if not (sp and LFGListSearchPanel_DoSearch) then
+            GF.Trace("pick refused: panel=%s doSearch=%s", tostring(sp), tostring(LFGListSearchPanel_DoSearch))
+            return
+        end
         if sp.SearchBox then sp.SearchBox:ClearFocus() end
         self._activity = key
+        GF.Trace("pick set %s on %s", tostring(key), tostring(self))
         self:SearchWhenAllowed()
     end
 
     function panel:ClearPick()
+        local from = debugstack and debugstack(2, 1, 0) or ""
+        GF.Trace("pick cleared (was %s) from %s", tostring(self._activity), (from:match("[^\n]*") or "?"))
         self._activity = nil
     end
 
@@ -786,7 +803,10 @@ local function Build(parent)
             return
         end
         local last = GF.state.lastSearchAt
+        GF.Trace("search deferred %.1f", GF.SearchCooldownLeft())
         C_Timer.After(GF.SearchCooldownLeft() + 0.05, function()
+            GF.Trace("deferred search runs shown=%s same=%s pick=%s", tostring(self:IsShown()),
+                tostring(GF.state.lastSearchAt == last), tostring(self._activity))
             if self:IsShown() and GF.state.lastSearchAt == last then
                 self:DoSearch()
             end
@@ -807,6 +827,7 @@ local function Build(parent)
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
         local categoryID = self._activity and GF.plainNumber(sp.categoryID)
+        GF.Trace("doSearch pick=%s category=%s on %s", tostring(self._activity), tostring(categoryID), tostring(self))
         if not categoryID then
             LFGListSearchPanel_DoSearch(sp)
             return
@@ -823,6 +844,7 @@ local function Build(parent)
     end
 
     function panel:Search()
+        GF.Trace("arrow allowed=%s pick=%s", tostring(GF.SearchAllowed()), tostring(self._activity))
         if not GF.SearchAllowed() then
             self:RefreshButtons()
             return
@@ -1309,6 +1331,7 @@ local function Build(parent)
         for _, id in ipairs(state.results) do
             if self:ShowsResult(id) then items[#items + 1] = { resultID = id } end
         end
+        GF.Trace("refreshList pick=%s results=%d shown=%d on %s", tostring(self._activity), #state.results, #items, tostring(self))
         self._list:SetItems(items)
         local index
         if state.selectedResult then
