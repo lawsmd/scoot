@@ -707,8 +707,15 @@ local function Build(parent)
             GF.Trace("focus gained pick=%s", tostring(self._activity))
             self:RefreshAuto()
         end)
+        -- The box loses focus on the press of a click on the list, before
+        -- the release a row's click needs, and a list closed here went
+        -- out from under the cursor with the row unclicked (the trace of
+        -- the twelfth look). The list stays while the cursor is over it;
+        -- the row's click closes it, and so does a click outside
         editBox:HookScript("OnEditFocusLost", function()
-            GF.Trace("focus lost pick=%s", tostring(self._activity))
+            local overList = self._auto:IsShown() and self._auto.frame:IsMouseOver()
+            GF.Trace("focus lost pick=%s overList=%s", tostring(self._activity), tostring(overList))
+            if overList then return end
             self._auto:Close()
         end)
         editBox:HookScript("OnTabPressed", function() self:RefreshAuto() end)
