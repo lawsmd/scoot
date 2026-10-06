@@ -158,10 +158,23 @@ end
 
 -- The sign-up dialog's frame holds the note box. Shown with no points, so it
 -- has no rect and its own buttons take no click; the hosted box has points
--- of its own.
+-- of its own. The show runs every addon's OnShow hook on the frame and its
+-- children as a real sign-up would, and one addon clicks the Sign Up
+-- button from its OnShow to sign up on sight: Blizzard's handler would
+-- then apply with a result id Blizzard never set. The button is disabled
+-- before the show, since Click() does nothing on a disabled button, and
+-- enabled again on hide when it was enabled before.
+local dialogSignUpEnabled = false
+
 function Host.ShowDialogFrame()
     local dialog = LFGListApplicationDialog
     if not dialog then return false end
+    local signUp = dialog.SignUpButton
+    if signUp and signUp.Disable then
+        local ok, enabled = pcall(signUp.IsEnabled, signUp)
+        dialogSignUpEnabled = ok and enabled == true
+        signUp:Disable()
+    end
     dialog:ClearAllPoints()
     dialog:SetAlpha(0)
     dialog:EnableMouse(false)
@@ -175,6 +188,9 @@ function Host.HideDialogFrame()
     dialog:Hide()
     dialog:SetAlpha(1)
     dialog:EnableMouse(true)
+    local signUp = dialog.SignUpButton
+    if dialogSignUpEnabled and signUp and signUp.Enable then signUp:Enable() end
+    dialogSignUpEnabled = false
 end
 
 -- Blizzard's invite dialog out of sight while shown: alpha 0, its mouse
