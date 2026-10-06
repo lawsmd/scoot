@@ -240,13 +240,17 @@ end
 -- The tails a status string may end in, cut in turn until none is left:
 -- whitespace, the no-break space, the ASCII hyphen, the Unicode hyphens
 -- and dashes (U+2010 to U+2015) and the minus sign. The client's string
--- ends in a dash for the countdown Blizzard's row puts after it, and the
--- twelfth look saw the dash survive a cut of the ASCII hyphen alone
+-- ends in a dash for the countdown Blizzard's row puts after it
 local STATUS_TAILS = { "%s+$", "\194\160$", "%-$", "\226\128[\144-\149]$", "\226\136\146$" }
 
--- A status word without the dash
+-- A status word without the dash. The color escapes go first: the enUS
+-- string colors its dash ("Pending |cff40bf40-|r"), so a cut of the bare
+-- hyphen left it standing on the twelfth look, and the word takes the
+-- row's own color in any case
 local function Word(key, fallback)
     local s = Str(key, fallback)
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", "")
+    s = s:gsub("|r", "")
     local cut = true
     while cut do
         cut = false
