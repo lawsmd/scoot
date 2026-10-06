@@ -10,8 +10,9 @@
 -- with the mouse off, scaled to a dot so none of its invisible buttons
 -- stands under the window, a shield over what is left of its rect, and
 -- each box anchored into a Scoot holder with SetIgnoreParentAlpha and
--- SetIgnoreParentScale, lifted to the holder's strata, its template art at
--- alpha 0 and its text in the skin's face. Every call here is a method on a
+-- SetIgnoreParentScale, at the holder's effective scale, lifted to the
+-- holder's strata, its template art at alpha 0 and its text in the skin's
+-- face. Every call here is a method on a
 -- Blizzard frame outside the Edit Mode system set; nothing writes a field on
 -- one. On release the box goes back to the points it was taken from.
 --
@@ -54,7 +55,8 @@ local PANEL_LEVEL = 1
 -- client's own account of which frame holds the mouse did not say why;
 -- at this scale every child of the panel collapses to a point at its
 -- corner, and nothing of Blizzard's stands under the window. A hosted box
--- ignores its parents' scale, so it renders as before.
+-- ignores its parents' scale and takes its holder's effective scale as its
+-- own, so it renders as before.
 local PARK_SCALE = 0.01
 local hooksInstalled = false
 local shield
@@ -285,7 +287,21 @@ local function Capture(box)
     if okS then rec.strata = SS.plainString(strata) end
     local okL, level = pcall(box.GetFrameLevel, box)
     if okL then rec.level = SS.safeNumber(level) end
+    local okC, scale = pcall(box.GetScale, box)
+    if okC then rec.scale = SS.safeNumber(scale) end
     return rec
+end
+
+-- A hosted box ignores its parents' scale, since the parked panel is a dot;
+-- on its own it would render at scale 1 while the window renders at the UI
+-- scale, so it takes the holder's effective scale as its own
+local function MatchScale(rec)
+    local holder = rec.holder
+    if not (holder and rec.box and rec.box.SetScale) then return end
+    local scale = holder:GetEffectiveScale()
+    if type(scale) == "number" and scale > 0 then
+        rec.box:SetScale(scale)
+    end
 end
 
 local function BlankRegion(rec, region)
@@ -433,8 +449,9 @@ function Host.Take(key, box, holder, opts)
     box:SetPoint("TOPLEFT", holder, "TOPLEFT", left, -top)
     box:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -right, bottom)
     box:SetIgnoreParentAlpha(true)
-    -- The parked panel is a dot; the box keeps its own size
+    -- The parked panel is a dot; the box renders at the window's scale
     if box.SetIgnoreParentScale then box:SetIgnoreParentScale(true) end
+    MatchScale(rec)
     -- The parked panel is already in the window's strata; a box whose chain
     -- is not (the dialog's) takes it here
     local okS, boxStrata = pcall(box.GetFrameStrata, box)
@@ -486,6 +503,7 @@ function Host.Release(key)
         box:SetPoint(p[1], p[2], p[3], p[4] or 0, p[5] or 0)
     end
     box:SetIgnoreParentAlpha(false)
+    if box.SetScale then box:SetScale(rec.scale or 1) end
     if box.SetIgnoreParentScale then box:SetIgnoreParentScale(false) end
     if rec.strata then box:SetFrameStrata(rec.strata) end
     if rec.level then box:SetFrameLevel(rec.level) end
@@ -511,6 +529,14 @@ end
 function Host.ReleaseAll()
     for key in pairs(taken) do
         Host.Release(key)
+    end
+end
+
+-- Every hosted box back to its holder's scale, after the UI scale or the
+-- display size changes under an open window
+function Host.SyncScale()
+    for _, rec in pairs(taken) do
+        MatchScale(rec)
     end
 end
 

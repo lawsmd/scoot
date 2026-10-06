@@ -725,6 +725,11 @@ addon:RegisterComponentInitializer(function(self)
         component:On(event, function() GF.Notify("buttons") end)
     end
     component:On("ADDON_RESTRICTION_STATE_CHANGED", OnRestriction)
+    for _, event in ipairs({ "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do
+        component:On(event, function()
+            if GF.Host and GF.Host.SyncScale then GF.Host.SyncScale() end
+        end)
+    end
 
     -- The hooks on Blizzard's frames, once those frames exist
     addon.Events.OnAddonLoaded("Blizzard_GroupFinder", function()
