@@ -23,7 +23,10 @@
 -- Blizzard path ran it. Two more stand on Blizzard's invite dialog,
 -- which its own events show whether or not the window is up: as it shows
 -- it is parked and the window's own dialog stands in for it, and as it
--- hides it is put back.
+-- hides it is put back. One stands on Blizzard's sign-up dialog, whose
+-- frame is held shown out of sight while the window hosts its note box:
+-- Blizzard hides that frame as each search's results land, and the hook
+-- shows it again.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -150,6 +153,7 @@ end
 -- OnHide hook's call
 function Host.Close(hidePanel)
     Host.ReleaseAll()
+    Host.HideDialogFrame()
     Host.Unpark()
     if hidePanel ~= false and PVEFrame and PVEFrame:IsShown() then
         HideUIPanel(PVEFrame)
@@ -162,19 +166,27 @@ end
 -- children as a real sign-up would, and one addon clicks the Sign Up
 -- button from its OnShow to sign up on sight: Blizzard's handler would
 -- then apply with a result id Blizzard never set. The button is disabled
--- before the show, since Click() does nothing on a disabled button, and
--- enabled again on hide when it was enabled before.
+-- before every show, since Click() does nothing on a disabled button and
+-- Blizzard's own role update enables it again in between, and enabled
+-- again on hide when it was enabled before the hosting began. The frame
+-- stays shown while the note is hosted: Blizzard hides it as each search's
+-- results land, and the hook on its OnHide shows it again a frame later,
+-- while the hosting is still on.
 local dialogSignUpEnabled = false
+local dialogHosting = false
 
 function Host.ShowDialogFrame()
     local dialog = LFGListApplicationDialog
     if not dialog then return false end
     local signUp = dialog.SignUpButton
     if signUp and signUp.Disable then
-        local ok, enabled = pcall(signUp.IsEnabled, signUp)
-        dialogSignUpEnabled = ok and enabled == true
+        if not dialogHosting then
+            local ok, enabled = pcall(signUp.IsEnabled, signUp)
+            dialogSignUpEnabled = ok and enabled == true
+        end
         signUp:Disable()
     end
+    dialogHosting = true
     dialog:ClearAllPoints()
     dialog:SetAlpha(0)
     dialog:EnableMouse(false)
@@ -184,7 +196,8 @@ end
 
 function Host.HideDialogFrame()
     local dialog = LFGListApplicationDialog
-    if not dialog then return end
+    if not (dialog and dialogHosting) then return end
+    dialogHosting = false
     dialog:Hide()
     dialog:SetAlpha(1)
     dialog:EnableMouse(true)
@@ -253,6 +266,17 @@ function Host.InstallHooks()
         invite:HookScript("OnHide", function()
             Host.UnparkInviteDialog()
             GF.Notify("inviteHidden")
+        end)
+    end
+    -- The sign-up dialog's frame back up after Blizzard hides it under a
+    -- hosted note; the window's own hide clears the flag first
+    local application = LFGListApplicationDialog
+    if application and application.HookScript then
+        application:HookScript("OnHide", function()
+            if not dialogHosting then return end
+            C_Timer.After(0, function()
+                if dialogHosting and not application:IsShown() then Host.ShowDialogFrame() end
+            end)
         end)
     end
 end
@@ -596,7 +620,8 @@ addon:RegisterDebugCommand({
     help = "the hosted Group Finder boxes and the frames they stand on",
     handler = function()
         local lines, push = addon.DebugLines()
-        push("parked=%s hooks=%s taken=%s", tostring(parked), tostring(hooksInstalled), tostring(next(taken) ~= nil))
+        push("parked=%s hooks=%s taken=%s dialogHosting=%s", tostring(parked), tostring(hooksInstalled),
+            tostring(next(taken) ~= nil), tostring(dialogHosting))
         Describe(push, "PVEFrame", PVEFrame)
         Describe(push, "shield", shield)
         Describe(push, "LFGListFrame", LFGListFrame)
