@@ -673,6 +673,31 @@ addon:RegisterDebugCommand({
                 DumpChain(push, "box", sp.SearchBox)
             end
         end
+        -- The search view's pick and the last search, and each result's
+        -- activities against the pick's cut
+        local search = GF.UI and GF.UI.GetPanel and GF.UI:GetPanel("search")
+        if search then
+            local state = GF.state
+            push("")
+            push("search view shown=%s pick=%s pickText=%s lastSearch=%s at=%.1f activity=%s cooldownLeft=%.1f",
+                tostring(search:IsShown()), tostring(search._activity), tostring(search._activityText),
+                tostring(state.lastSearchKind), state.lastSearchAt or 0, tostring(state.lastSearchActivity),
+                GF.SearchCooldownLeft())
+            push("results=%d searching=%s failed=%s", #state.results, tostring(state.searching), tostring(state.searchFailed))
+            for i, id in ipairs(state.results) do
+                if i > 12 then push("    ...") break end
+                local info = GF.ResultInfo(id)
+                local ids = info and GF.plain(info.activityIDs)
+                local parts = {}
+                if type(ids) == "table" then
+                    for _, a in ipairs(ids) do parts[#parts + 1] = tostring(a) end
+                end
+                local list = type(ids) == "table" and table.concat(parts, ",") or tostring(ids)
+                local _, status = GF.Application(id)
+                push("    %d: activities=%s name=%s status=%s shown=%s", id, list,
+                    tostring(info and GF.ActivityName(info)), tostring(status), tostring(search:ShowsResult(id)))
+            end
+        end
         addon.DebugShowWindow("Group Finder host", lines)
     end,
 })

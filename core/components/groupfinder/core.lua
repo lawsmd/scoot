@@ -654,9 +654,14 @@ end
 
 -- The host's hook on Blizzard's DoSearch calls this, so a search from any
 -- button, from Enter in the box or from the clear button is noted once
-function GF.NoteSearch()
+-- kind names the caller for the debug readout: nil for Blizzard's DoSearch
+-- through the hook, "window" for the window's own Search call, with the
+-- activity it filtered by
+function GF.NoteSearch(kind, activity)
     local state = GF.state
     state.lastSearchAt = GetTime()
+    state.lastSearchKind = kind or "blizzard"
+    state.lastSearchActivity = activity
     state.searching = true
     state.searchFailed = false
     state.failReason = nil

@@ -816,7 +816,7 @@ local function Build(parent)
             advanced = C_LFGList.GetAdvancedFilter()
         end
         C_LFGList.Search(categoryID, filters, preferred, languages, nil, advanced, { self._activity })
-        GF.NoteSearch()
+        GF.NoteSearch("window", self._activity)
     end
 
     function panel:Search()
