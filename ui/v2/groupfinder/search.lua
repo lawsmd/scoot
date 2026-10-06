@@ -9,8 +9,9 @@
 -- its panel switch: Blizzard's search panel is shown so its box renders
 -- and never made the active panel, so its own row handlers never run on
 -- the window's searches. Refresh runs Blizzard's DoSearch from its click;
--- an auto-complete row sets the box to that activity through the API and
--- searches the same way. The results are the component's copy, one row
+-- an auto-complete row searches the same way and cuts the pane to that
+-- activity on the window's side, since the box takes the activity's name
+-- from a secure call alone. The results are the component's copy, one row
 -- per id, each row read afresh from the API on render as Blizzard's row
 -- is. The filter list writes the client's advanced or language filter and
 -- redraws the rows; it stands in a drawer out of the window's right edge,
@@ -110,6 +111,8 @@ function Search:Open(categoryID, filters, baseFilters)
     if not GF.SearchAllowed() then return false end
     LFGListSearchPanel_Clear(sp)
     LFGListSearchPanel_SetCategory(sp, categoryID, filters or 0, baseFilters or GF.plainNumber(lf.baseFilters) or 0)
+    local panel = UI:GetPanel("search")
+    if panel then panel:ClearPick() end
     sp:Show()
     UI:SetView("search")
     LFGListSearchPanel_DoSearch(sp)
@@ -680,6 +683,10 @@ local function Build(parent)
         self._boxHooked = true
         editBox:HookScript("OnTextChanged", function()
             if clearButton then self._clear:SetShown(clearButton:IsShown()) end
+            -- The pick stands while the text it was picked from stands
+            if self._activity and SS.plainString(editBox:GetText()) ~= self._activityText then
+                self:ClearPick()
+            end
             self:RefreshAuto()
         end)
         if clearButton then
@@ -733,19 +740,40 @@ local function Build(parent)
         self._auto:Open()
     end
 
-    -- An auto-complete row: the box filled from the activity now, as
-    -- Blizzard's row fills it, and the search as soon as the cooldown
-    -- allows it. A pick inside the three seconds after a search is kept:
-    -- the arrow's tooltip counts the wait down, and the search runs as it
-    -- ends unless another ran first. The twelfth look found the pick
-    -- dropped inside the cooldown, the list closing on nothing.
+    -- An auto-complete row: the activity kept as the pane's cut, the
+    -- typed text searched, and the search as soon as the cooldown allows
+    -- it. Blizzard's row puts the activity's name in the box through
+    -- SetSearchToActivity, which fills the secure box from a secure call
+    -- alone: from the window's click the box kept its text (the twelfth
+    -- look), so the pick is the window's own, the rows of other activities
+    -- cut from the pane until the text moves, and the typed text, which
+    -- matched the activity's name, is what the server searches. The call
+    -- stays for a secure open to come. A pick inside the three seconds
+    -- after a search is kept: the arrow's tooltip counts the wait down,
+    -- and the search runs as it ends unless another ran first.
     function panel:PickActivity(key)
         if key == "more" then return end
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
+        self._activity = key
+        self._activityText = sp.SearchBox and SS.plainString(sp.SearchBox:GetText()) or nil
         C_LFGList.SetSearchToActivity(key)
         if sp.SearchBox then sp.SearchBox:ClearFocus() end
         self:SearchWhenAllowed()
+    end
+
+    function panel:ClearPick()
+        self._activity, self._activityText = nil, nil
+    end
+
+    -- A row stays on the pane under a pick when its group lists the picked
+    -- activity, or when the player has applied to it, as Blizzard's panel
+    -- keeps every application on the pane
+    function panel:ShowsResult(id)
+        if not self._activity then return true end
+        local _, status = GF.Application(id)
+        if status ~= "none" then return true end
+        return GF.ResultHasActivity(GF.ResultInfo(id), self._activity)
     end
 
     function panel:SearchWhenAllowed()
@@ -1253,7 +1281,9 @@ local function Build(parent)
         end
 
         local items = {}
-        for i, id in ipairs(state.results) do items[i] = { resultID = id } end
+        for _, id in ipairs(state.results) do
+            if self:ShowsResult(id) then items[#items + 1] = { resultID = id } end
+        end
         self._list:SetItems(items)
         local index
         if state.selectedResult then

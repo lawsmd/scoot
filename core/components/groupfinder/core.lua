@@ -183,6 +183,20 @@ function GF.ActivityID(info)
     return plainNumber(ids[1])
 end
 
+-- Whether the result lists the activity. A list that does not read plain
+-- (the chat lockdown) answers true, so a cut by activity leaves such rows
+-- on the pane instead of dropping every one
+function GF.ResultHasActivity(info, activityID)
+    local ids = info and plain(info.activityIDs)
+    if type(ids) ~= "table" or not activityID then return true end
+    for _, id in ipairs(ids) do
+        local n = plainNumber(id)
+        if n == nil then return true end
+        if n == activityID then return true end
+    end
+    return false
+end
+
 function GF.ActivityInfo(activityID)
     if not activityID then return nil end
     local ok, t = pcall(C_LFGList.GetActivityInfoTable, activityID)
