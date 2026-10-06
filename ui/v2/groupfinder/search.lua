@@ -9,9 +9,10 @@
 -- its panel switch: Blizzard's search panel is shown so its box renders
 -- and never made the active panel, so its own row handlers never run on
 -- the window's searches. Refresh runs Blizzard's DoSearch from its click;
--- an auto-complete row searches the same way and cuts the pane to that
--- activity on the window's side, since the box takes the activity's name
--- from a secure call alone. The results are the component's copy, one row
+-- an auto-complete row keeps its activity, and while it stands the window
+-- calls C_LFGList.Search itself with the activity as the search's filter,
+-- since the box takes the activity's name from a secure call alone, and
+-- cuts the pane to it besides. The results are the component's copy, one row
 -- per id, each row read afresh from the API on render as Blizzard's row
 -- is. The filter list writes the client's advanced or language filter and
 -- redraws the rows; it stands in a drawer out of the window's right edge,
@@ -777,33 +778,54 @@ local function Build(parent)
     end
 
     function panel:SearchWhenAllowed()
-        local sp = SearchPanel()
-        if not (sp and LFGListSearchPanel_DoSearch) then return end
         if GF.SearchAllowed() then
-            LFGListSearchPanel_DoSearch(sp)
+            self:DoSearch()
             return
         end
         local last = GF.state.lastSearchAt
         C_Timer.After(GF.SearchCooldownLeft() + 0.05, function()
             if self:IsShown() and GF.state.lastSearchAt == last then
-                LFGListSearchPanel_DoSearch(sp)
+                self:DoSearch()
             end
         end)
     end
 
     ----------------------------------------------------------------------------
-    -- Searching: Blizzard's DoSearch, which the host's hook notes
+    -- Searching: Blizzard's DoSearch, which the host's hook notes; under a
+    -- pick, the window's own call to C_LFGList.Search with the activity as
+    -- its activityIDsFilter, the argument Blizzard's own panel leaves nil,
+    -- from the arguments DoSearch assembles from the panel's state, and the
+    -- search noted by hand since the hook does not see it. The box cannot
+    -- take the activity's name from the window, and the typed text alone
+    -- brought every difficulty back (the twelfth look).
     ----------------------------------------------------------------------------
 
-    function panel:Search()
+    function panel:DoSearch()
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
+        local categoryID = self._activity and GF.plainNumber(sp.categoryID)
+        if not categoryID then
+            LFGListSearchPanel_DoSearch(sp)
+            return
+        end
+        local filters = GF.ResolveCategoryFilters(categoryID, GF.plainNumber(sp.filters) or 0)
+        local preferred = GF.plainNumber(sp.preferredFilters) or 0
+        local languages = C_LFGList.GetLanguageSearchFilter()
+        local advanced
+        if categoryID == GF.DUNGEONS_CATEGORY and C_LFGList.GetAdvancedFilter then
+            advanced = C_LFGList.GetAdvancedFilter()
+        end
+        C_LFGList.Search(categoryID, filters, preferred, languages, nil, advanced, { self._activity })
+        GF.NoteSearch()
+    end
+
+    function panel:Search()
         if not GF.SearchAllowed() then
             self:RefreshButtons()
             return
         end
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        LFGListSearchPanel_DoSearch(sp)
+        self:DoSearch()
     end
 
     -- Back to Group while the leader's listing is up, as Blizzard's panel
