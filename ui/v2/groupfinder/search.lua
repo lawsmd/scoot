@@ -231,11 +231,11 @@ local function CreateRow(panel, row)
     row._voice:SetPoint("TOPLEFT", row._playstyle, "BOTTOMLEFT", 0, -2)
     row._voice:Hide()
 
-    row._status = C.CreateTag(row, { text = "", tone = "accent" })
+    -- An application's word, and the countdown centred under it
+    row._status = UI.DimText(row, "miniLabel")
     row._status:Hide()
 
     row._timer = UI.DimText(row, "miniLabel")
-    row._timer:SetJustifyH("RIGHT")
     row._timer:Hide()
 
     row._cancel = UI.MakeButton(row, "x", function()
@@ -370,6 +370,7 @@ local function RenderRow(panel, row, item)
     theme:ApplyFont(row._name, "label")
     theme:ApplyFont(row._activity, "desc", LAYOUT.search.subSize)
     theme:ApplyFont(row._playstyle, "desc", LAYOUT.search.subSize)
+    theme:ApplyFont(row._status, "miniLabel")
     theme:ApplyFont(row._timer, "miniLabel")
 
     local info = GF.ResultInfo(id)
@@ -432,21 +433,26 @@ local function RenderRow(panel, row, item)
             row._cancel:SetPoint("RIGHT", row, "RIGHT", right, 0)
             right = right - 22 - 4
         end
-        if pending and appDuration then
-            row._expiration = GetTime() + appDuration
-            Timer(row)
-            row._timer:ClearAllPoints()
-            row._timer:SetPoint("RIGHT", row, "RIGHT", right, 0)
-            row._timer:Show()
-            right = right - (row._timer:GetStringWidth() or 30) - 4
-            panel:StartTicker()
-        else
-            row._timer:Hide()
-        end
-        row._status:SetTone(lit and "accent" or "dim")
+        -- The word on the accent while the application is live, else dim;
+        -- with a countdown the two stack on the row's middle
+        local sr, sg, sb
+        if lit then sr, sg, sb = theme:GetAccentColor() else sr, sg, sb = theme:GetDimTextColor() end
+        row._status:SetTextColor(sr, sg, sb, 1)
         row._status:SetText(text)
         row._status:ClearAllPoints()
-        row._status:SetPoint("RIGHT", row, "RIGHT", right, 0)
+        if pending and appDuration then
+            local gap = LAYOUT.search.statusGap
+            row._expiration = GetTime() + appDuration
+            Timer(row)
+            row._status:SetPoint("BOTTOMRIGHT", row, "RIGHT", right, gap / 2)
+            row._timer:ClearAllPoints()
+            row._timer:SetPoint("TOP", row._status, "BOTTOM", 0, -gap)
+            row._timer:Show()
+            panel:StartTicker()
+        else
+            row._status:SetPoint("RIGHT", row, "RIGHT", right, 0)
+            row._timer:Hide()
+        end
         row._status:Show()
     else
         row._status:Hide()

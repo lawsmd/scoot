@@ -92,6 +92,9 @@ local LAYOUT = {
         -- Clear room between the name's right edge and either column, so
         -- a long name ends short of the icons
         columnGap = 12,
+        -- The clear line between an application's word and the countdown
+        -- under it
+        statusGap = 2,
         nameTop = 14,
         subIndent = 10, subSize = 10,
         -- The roster's text is a size under the sublines, so the longest

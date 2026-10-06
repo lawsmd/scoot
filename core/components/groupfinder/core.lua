@@ -237,34 +237,40 @@ function GF.IsStatusInactive(status)
         or status == "invitedeclined" or GF.IsDeclined(status)
 end
 
+-- A status word without the hyphen the client's string ends in for the
+-- countdown Blizzard's row puts after it
+local function Word(key, fallback)
+    return (Str(key, fallback):gsub("%s*%-%s*$", ""))
+end
+
 -- What a row says for an application: the word, whether it is lit, and
 -- whether the countdown and the cancel show, decided in the order Blizzard's
 -- row decides them. nil when the result carries no application.
 function GF.StatusLine(appStatus, pendingStatus)
     if appStatus == "none" and pendingStatus == nil then return nil end
     if pendingStatus == "applied" and C_LFGList.GetRoleCheckInfo and C_LFGList.GetRoleCheckInfo() then
-        return Str("LFG_LIST_ROLE_CHECK", "Role check"), false, false
+        return Word("LFG_LIST_ROLE_CHECK", "Role check"), false, false
     end
     if pendingStatus == "cancelled" or appStatus == "cancelled" or appStatus == "failed" then
-        return Str("LFG_LIST_APP_CANCELLED", "Cancelled"), false, false
+        return Word("LFG_LIST_APP_CANCELLED", "Cancelled"), false, false
     end
     if GF.IsDeclined(appStatus) then
         local key = appStatus == "declined_full" and "LFG_LIST_APP_FULL" or "LFG_LIST_APP_DECLINED"
-        return Str(key, "Declined"), false, false
+        return Word(key, "Declined"), false, false
     end
     if appStatus == "timedout" then
-        return Str("LFG_LIST_APP_TIMED_OUT", "Timed out"), false, false
+        return Word("LFG_LIST_APP_TIMED_OUT", "Timed out"), false, false
     end
     if appStatus == "invited" then
-        return Str("LFG_LIST_APP_INVITED", "Invited"), true, false
+        return Word("LFG_LIST_APP_INVITED", "Invited"), true, false
     end
     if appStatus == "inviteaccepted" then
-        return Str("LFG_LIST_APP_INVITE_ACCEPTED", "Accepted"), true, false
+        return Word("LFG_LIST_APP_INVITE_ACCEPTED", "Accepted"), true, false
     end
     if appStatus == "invitedeclined" then
-        return Str("LFG_LIST_APP_INVITE_DECLINED", "Invite declined"), false, false
+        return Word("LFG_LIST_APP_INVITE_DECLINED", "Invite declined"), false, false
     end
-    return Str("LFG_LIST_PENDING", "Pending"), true, true
+    return Word("LFG_LIST_PENDING", "Pending"), true, true
 end
 
 -- The four conditions of Blizzard's own CanSelectResult
