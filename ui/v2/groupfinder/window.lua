@@ -97,9 +97,9 @@ local LAYOUT = {
         -- Clear room between the name's right edge and either column, so
         -- a long name ends short of the icons
         columnGap = 12,
-        -- The clear line between an application's word and the countdown
-        -- under it
-        statusGap = 2,
+        -- The clear room between an application's word and the countdown
+        -- under it; the row is tall, so the two stand apart
+        statusGap = 6,
         -- A delisted group's text, at the roster's own dim
         staleAlpha = 0.5,
         nameTop = 14,

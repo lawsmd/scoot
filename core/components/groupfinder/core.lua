@@ -237,10 +237,25 @@ function GF.IsStatusInactive(status)
         or status == "invitedeclined" or GF.IsDeclined(status)
 end
 
--- A status word without the hyphen the client's string ends in for the
--- countdown Blizzard's row puts after it
+-- The tails a status string may end in, cut in turn until none is left:
+-- whitespace, the no-break space, the ASCII hyphen, the Unicode hyphens
+-- and dashes (U+2010 to U+2015) and the minus sign. The client's string
+-- ends in a dash for the countdown Blizzard's row puts after it, and the
+-- twelfth look saw the dash survive a cut of the ASCII hyphen alone
+local STATUS_TAILS = { "%s+$", "\194\160$", "%-$", "\226\128[\144-\149]$", "\226\136\146$" }
+
+-- A status word without the dash
 local function Word(key, fallback)
-    return (Str(key, fallback):gsub("%s*%-%s*$", ""))
+    local s = Str(key, fallback)
+    local cut = true
+    while cut do
+        cut = false
+        for _, tail in ipairs(STATUS_TAILS) do
+            local trimmed, n = s:gsub(tail, "")
+            if n > 0 then s, cut = trimmed, true end
+        end
+    end
+    return s
 end
 
 -- What a row says for an application: the word, whether it is lit, and
