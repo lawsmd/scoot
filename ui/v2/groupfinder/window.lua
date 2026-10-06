@@ -86,6 +86,9 @@ local LAYOUT = {
         boxTop = 70,
         filterWidth = 84,
         rightColumn = 160,
+        -- The row's sign-up button at its right end, past the roster: the
+        -- button's 22 and a gap
+        quickColumn = 28,
         -- Clear room between the name's right edge and either column, so
         -- a long name ends short of the icons
         columnGap = 12,

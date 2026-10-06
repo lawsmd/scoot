@@ -1,7 +1,7 @@
 -- search.lua - the Search panel: the category's name, the filter list, the
 -- hosted search box with its auto-complete, the refresh, the results with
--- the role column at their right (roles.lua), and Back and Sign Up under
--- them.
+-- a sign-up button on each row and the role column at their right
+-- (roles.lua), and Back under them.
 --
 -- The search box is Blizzard's own, hosted in a Scoot holder, so its Enter
 -- and its clear button run Blizzard's handlers and the C side reads its
@@ -19,8 +19,9 @@
 -- A search shows on the results pane as a sweep: the rows there dim under
 -- a veil and a line scans them while the answer is on its way, and when it
 -- lands the line runs once from the top with the new rows coming up behind
--- it. Sign Up applies to the selected row with the roles and the note the
--- column holds; it and Refresh say why they are off in their tooltips.
+-- it. A row's + applies to that group from its click, with the roles and
+-- the note the column holds; it and Refresh say why they are off in their
+-- tooltips.
 local addonName, addon = ...
 
 local GF = addon.GroupFinder
@@ -139,10 +140,12 @@ end
 -- The name's right edge stands a gap off the row's right column: the
 -- roster's width for a group on the grid, the counts column for a larger
 -- group, so a raid's longer name takes the room the grid leaves and a
--- long name ends short of the icons
+-- long name ends short of the icons; the sign-up button's column lies
+-- past either
 local function SetNameColumn(row, column)
+    local L = LAYOUT.search
     local padX = (M().listRow or {}).padX or 8
-    row._name:SetPoint("RIGHT", row, "RIGHT", -(padX + column + LAYOUT.search.columnGap), 0)
+    row._name:SetPoint("RIGHT", row, "RIGHT", -(padX + column + L.quickColumn + L.columnGap), 0)
 end
 
 local function ClearRosters(row)
@@ -150,10 +153,38 @@ local function ClearRosters(row)
     row._counts:SetLines({})
 end
 
-local function CreateRow(row)
+-- The row's sign-up button: hidden for a delisted group and under an
+-- application's status, else on when Blizzard's chain allows an
+-- application, a role is chosen and the group has not declined the
+-- player; the tooltip names the reason, or Sign Up, with the deserter
+-- line for a Mythic+ group while the player is flagged
+local function SetQuick(row)
+    if row._quickHidden then
+        row._quick:Hide()
+        return
+    end
+    row._quick:SetEnabled(not row._declined and GF.SignUpBlock() == nil and UI.Roles:HasRole())
+    row._quick:Show()
+end
+
+local function QuickTip(row)
+    local text
+    if row._declined then
+        text = Str("LFG_LIST_APP_DECLINED", "Declined")
+    else
+        text = GF.SignUpBlock() or UI.Roles:Block() or Str("SIGN_UP", "Sign Up")
+    end
+    if row._resultID and GF.IsLeaverFlagged(row._resultID) then
+        text = text .. "\n" .. Str("MYTHIC_PLUS_DESERTER_FLAGGED_SHORT", "You are flagged as a leaver")
+    end
+    return text
+end
+
+local function CreateRow(panel, row)
     local C = Controls()
     local L = LAYOUT.search
     local padX = (M().listRow or {}).padX or 8
+    local columnRight = padX + L.quickColumn
 
     row._name = UI.PrimaryText(row, "label")
     row._name:SetPoint("TOPLEFT", row, "TOPLEFT", padX, -L.nameTop)
@@ -178,7 +209,7 @@ local function CreateRow(row)
         glyphWidth = R.glyphWidth, gap = R.gap, markWidth = R.markWidth, markHeight = R.markHeight,
         markY = R.markY, iconSize = R.iconSize, icons = UI.RoleIcons(), leaderMark = UI.LEADER_MARK,
     })
-    row._roster:SetPoint("TOPRIGHT", row, "TOPRIGHT", -padX, -R.top)
+    row._roster:SetPoint("TOPRIGHT", row, "TOPRIGHT", -columnRight, -R.top)
 
     -- The counts grid for a group past the roster's lines, centred on the row
     local Cn = L.counts
@@ -186,7 +217,15 @@ local function CreateRow(row)
         lines = Cn.lines, lineHeight = Cn.lineHeight, width = Cn.width, fontSize = Cn.fontSize,
         glyphWidth = Cn.glyphWidth, gap = Cn.gap, iconSize = Cn.iconSize, icons = UI.RoleIcons(),
     })
-    row._counts:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
+    row._counts:SetPoint("RIGHT", row, "RIGHT", -columnRight, 0)
+
+    -- The sign-up button past the grid, centred on the row's right end
+    row._quick = UI.MakeButton(row, "+", function()
+        panel:Apply(row._resultID)
+    end, 22, function() return QuickTip(row) end)
+    row._quick:SetHeight(22)
+    row._quick:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
+    row._quick:Hide()
 
     row._voice = C.CreateTag(row, { text = "VOICE", tone = "dim" })
     row._voice:SetPoint("TOPLEFT", row._playstyle, "BOTTOMLEFT", 0, -2)
@@ -343,6 +382,8 @@ local function RenderRow(panel, row, item)
         row._status:Hide()
         row._timer:Hide()
         row._cancel:Hide()
+        row._quickHidden = true
+        row._quick:Hide()
         row._backdrop:SetStatus(nil)
         return
     end
@@ -374,12 +415,15 @@ local function RenderRow(panel, row, item)
     local dimmed = isDelisted or isAppFinished
 
     -- The right column: the status, countdown and cancel of an application,
-    -- else the composition
+    -- else the composition with the sign-up button past it
     local text, lit, pending = GF.StatusLine(appStatus, pendingStatus)
     local right = -padX
+    row._declined = isDeclined
     if text then
         ClearRosters(row)
         SetNameColumn(row, LAYOUT.search.rightColumn)
+        row._quickHidden = true
+        row._quick:Hide()
         local showCancel = pendingStatus ~= "applied"
         row._cancel:SetShown(showCancel)
         if showCancel then
@@ -409,6 +453,8 @@ local function RenderRow(panel, row, item)
         row._timer:Hide()
         row._cancel:Hide()
         RenderRoster(row, id, info, counts, dimmed)
+        row._quickHidden = isDelisted
+        SetQuick(row)
     end
 
     row._voice:SetShown(NonEmpty(info.voiceChat))
@@ -473,7 +519,7 @@ local function Build(parent)
     local list = C.CreateScrollList({
         parent = box,
         rowHeight = R.top + R.lines * R.lineHeight + R.bottom,
-        createRow = CreateRow,
+        createRow = function(row) CreateRow(panel, row) end,
         render = function(row, item) RenderRow(panel, row, item) end,
         onSelect = function(item, index) panel:SelectResult(item.resultID, index) end,
         onRightClick = function(item) panel:OpenRowMenu(item.resultID) end,
@@ -513,19 +559,9 @@ local function Build(parent)
     -- The role column: the roles and the note every application carries
     panel._roles = UI.Roles.Build(box, { onChange = function() panel:RefreshButtons() end })
 
-    -- The bottom edge. Sign Up is off for the reason Blizzard's button
-    -- gives, or for no role chosen, in its tooltip; an empty selection is
-    -- left unsaid.
+    -- The bottom edge: Back, or Back to Group
     panel._back = UI.MakeButton(panel, Str("BACK", "Back"), function() panel:Back() end, LAYOUT.buttonWidth)
     panel._back:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
-
-    panel._signUp = UI.MakeButton(panel, Str("SIGN_UP", "Sign Up"), function() panel:SignUp() end,
-        LAYOUT.buttonWidth, function() return GF.SignUpBlock() or UI.Roles:Block() end)
-    panel._signUp:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
-
-    panel._leaver = C.CreateTag(panel, { text = "LEAVER", tone = "dim" })
-    panel._leaver:SetPoint("RIGHT", panel._signUp, "LEFT", -6, 0)
-    panel._leaver:Hide()
 
     -- The lists: the filter in its drawer, the auto-complete, the row
     -- menu. A list reads the labels before the keys, so every getter
@@ -719,19 +755,15 @@ local function Build(parent)
         UI:SetView(nil)
     end
 
-    -- The one protected call, from the click that asked for it: the roles
-    -- the column holds, and the note the C side reads from the hosted box.
-    -- The row redraws as the application's status lands.
+    -- The one protected call, from the row's click: the roles the column
+    -- holds, and the note the C side reads from the hosted box. The row
+    -- redraws as the application's status lands.
     function panel:Apply(id)
         if not id or not GF.CanSelect(id) then return end
         if GF.SignUpBlock() or not UI.Roles:HasRole() then return end
         local tank, healer, damage = UI.Roles:GetRoles()
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
         C_LFGList.ApplyToGroup(id, tank, healer, damage)
-    end
-
-    function panel:SignUp()
-        self:Apply(GF.state.selectedResult)
     end
 
     -- The listing form for this search's category, with the panel's
@@ -1212,9 +1244,16 @@ local function Build(parent)
         end
     end
 
+    -- The rows' sign-up buttons follow the chain and the roles without a
+    -- redraw of the rows
+    function panel:RefreshQuick()
+        for i = 1, #self._list._items do
+            local row = self._list:GetRow(i)
+            if row and row:IsShown() and row._resultID then SetQuick(row) end
+        end
+    end
+
     function panel:RefreshButtons()
-        local selected = GF.state.selectedResult
-        self._signUp:SetEnabled(selected ~= nil and GF.SignUpBlock() == nil and UI.Roles:HasRole())
         self._start:SetEnabled(GF.StartGroupBlock() == nil)
         self:RefreshBack()
         local allowed = GF.SearchAllowed()
@@ -1224,7 +1263,7 @@ local function Build(parent)
                 if self:IsShown() then self:RefreshButtons() end
             end)
         end
-        self._leaver:SetShown(selected ~= nil and GF.IsLeaverFlagged(selected))
+        self:RefreshQuick()
     end
 
     function panel:Refresh()
