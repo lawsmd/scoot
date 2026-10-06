@@ -1,6 +1,7 @@
 -- search.lua - the Search panel: the category's name, the filter list, the
--- hosted search box with its auto-complete, the refresh, the results, and
--- Back and Sign Up under them.
+-- hosted search box with its auto-complete, the refresh, the results with
+-- the role column at their right (roles.lua), and Back and Sign Up under
+-- them.
 --
 -- The search box is Blizzard's own, hosted in a Scoot holder, so its Enter
 -- and its clear button run Blizzard's handlers and the C side reads its
@@ -18,7 +19,8 @@
 -- A search shows on the results pane as a sweep: the rows there dim under
 -- a veil and a line scans them while the answer is on its way, and when it
 -- lands the line runs once from the top with the new rows coming up behind
--- it. Sign Up and Refresh say why they are off in their tooltips.
+-- it. Sign Up applies to the selected row with the roles and the note the
+-- column holds; it and Refresh say why they are off in their tooltips.
 local addonName, addon = ...
 
 local GF = addon.GroupFinder
@@ -484,13 +486,15 @@ local function Build(parent)
             PaintRow(row)
         end,
     })
+    -- The rows end short of the role column at the box's right
+    local rightPad = pad + L.roles.width
     list.frame:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
-    list.frame:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
+    list.frame:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -rightPad, pad)
     panel._list = list
 
     panel._empty = C.CreateEmptyState({ parent = box, text = "" })
     panel._empty:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
-    panel._empty:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
+    panel._empty:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -rightPad, pad)
     panel._empty:Hide()
 
     -- Start a Group under the no-results message, as Blizzard's pane offers
@@ -503,16 +507,20 @@ local function Build(parent)
     -- The redraw over the rows and the message alike
     panel._sweep = C.CreateSweep({ parent = box })
     panel._sweep:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
-    panel._sweep:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
+    panel._sweep:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -rightPad, pad)
     panel._sweep:SetFrameLevel(list.frame:GetFrameLevel() + 10)
 
+    -- The role column: the roles and the note every application carries
+    panel._roles = UI.Roles.Build(box, { onChange = function() panel:RefreshButtons() end })
+
     -- The bottom edge. Sign Up is off for the reason Blizzard's button
-    -- gives, in its tooltip; an empty selection is left unsaid.
+    -- gives, or for no role chosen, in its tooltip; an empty selection is
+    -- left unsaid.
     panel._back = UI.MakeButton(panel, Str("BACK", "Back"), function() panel:Back() end, LAYOUT.buttonWidth)
     panel._back:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
 
     panel._signUp = UI.MakeButton(panel, Str("SIGN_UP", "Sign Up"), function() panel:SignUp() end,
-        LAYOUT.buttonWidth, function() return GF.SignUpBlock(true) end)
+        LAYOUT.buttonWidth, function() return GF.SignUpBlock() or UI.Roles:Block() end)
     panel._signUp:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
 
     panel._leaver = C.CreateTag(panel, { text = "LEAVER", tone = "dim" })
@@ -711,11 +719,19 @@ local function Build(parent)
         UI:SetView(nil)
     end
 
-    function panel:SignUp()
-        local id = GF.state.selectedResult
-        if not id or GF.SignUpBlock() then return end
+    -- The one protected call, from the click that asked for it: the roles
+    -- the column holds, and the note the C side reads from the hosted box.
+    -- The row redraws as the application's status lands.
+    function panel:Apply(id)
+        if not id or not GF.CanSelect(id) then return end
+        if GF.SignUpBlock() or not UI.Roles:HasRole() then return end
+        local tank, healer, damage = UI.Roles:GetRoles()
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        UI.SignUp:Show(id)
+        C_LFGList.ApplyToGroup(id, tank, healer, damage)
+    end
+
+    function panel:SignUp()
+        self:Apply(GF.state.selectedResult)
     end
 
     -- The listing form for this search's category, with the panel's
@@ -1197,7 +1213,8 @@ local function Build(parent)
     end
 
     function panel:RefreshButtons()
-        self._signUp:SetEnabled(GF.SignUpBlock() == nil)
+        local selected = GF.state.selectedResult
+        self._signUp:SetEnabled(selected ~= nil and GF.SignUpBlock() == nil and UI.Roles:HasRole())
         self._start:SetEnabled(GF.StartGroupBlock() == nil)
         self:RefreshBack()
         local allowed = GF.SearchAllowed()
@@ -1207,7 +1224,6 @@ local function Build(parent)
                 if self:IsShown() then self:RefreshButtons() end
             end)
         end
-        local selected = GF.state.selectedResult
         self._leaver:SetShown(selected ~= nil and GF.IsLeaverFlagged(selected))
     end
 
@@ -1215,6 +1231,8 @@ local function Build(parent)
         self:RefreshHeading()
         self:RefreshLayout()
         self:TakeBox()
+        UI.Roles:Refresh()
+        UI.Roles:TakeNote()
         self:RefreshList()
         self:RefreshButtons()
     end
@@ -1234,6 +1252,7 @@ local function Build(parent)
         panel._menu:Close()
         panel:StopTicker()
         panel._sweep:Stop()
+        UI.Roles:ReleaseNote()
     end)
 
     GF.Listen("searching", function()
@@ -1271,6 +1290,11 @@ local function Build(parent)
         end
     end)
     GF.Listen("buttons", function()
+        if panel:IsShown() then panel:RefreshButtons() end
+    end)
+    -- The client's role update, after the column wrote a choice or another
+    -- of Blizzard's role buttons did
+    GF.Listen("roles", function()
         if panel:IsShown() then panel:RefreshButtons() end
     end)
     GF.Listen("entry", function()

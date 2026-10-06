@@ -279,11 +279,11 @@ function GF.CanSelect(id)
     return true
 end
 
--- The reason Sign Up is off, in the order Blizzard's button tests them, or
--- nil when it is on
--- skipSelection true leaves out the last check, for the button's tooltip:
--- an empty selection is plain to see and says nothing worth a line
-function GF.SignUpBlock(skipSelection)
+-- The reason an application is off, in the order Blizzard's Sign Up tests
+-- them, or nil when it is on; the chain ends at the offline member, since
+-- the window's buttons each name their result, and the roles are the
+-- column's own test
+function GF.SignUpBlock()
     local home = LE_PARTY_CATEGORY_HOME
     local message = LFGListUtil_GetActiveQueueMessage and LFGListUtil_GetActiveQueueMessage(true)
     if message then return message end
@@ -306,9 +306,6 @@ function GF.SignUpBlock(skipSelection)
     end
     if GroupHasOfflineMember and GroupHasOfflineMember(home) then
         return Str("LFG_LIST_OFFLINE_MEMBER", "A member is offline")
-    end
-    if not skipSelection and not GF.state.selectedResult then
-        return Str("LFG_LIST_SELECT_A_SEARCH_RESULT", "Select a group")
     end
     return nil
 end

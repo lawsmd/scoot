@@ -52,12 +52,12 @@ end
 -- template table does not answer, and the panel's own positions are where
 -- Blizzard's XML puts them
 local LAYOUT = {
-    panelWidth = 400,
+    -- The list's 400, 28 for the row's sign-up button, and the role
+    -- column's 150 (search.roles.width)
+    panelWidth = 578,
     panelHeight = 480,
     titleHeight = 36,
     categoryRow = 46,
-    dialogWidth = 306,
-    dialogHeight = 203,
     buttonWidth = 135,
     -- The parked panel shares the window's strata, and its frame border
     -- stands at level 500 with the mouse on, so the window and its dialog
@@ -117,6 +117,15 @@ local LAYOUT = {
         filterDrawerWidth = 500, languageDrawerWidth = 220, filterListFont = 11,
         -- Start a Group under the no-results message
         startGroupY = 16,
+        -- The role column at the pane's right: the icons in a row at its
+        -- top, enlarged from the roster's, and the note's holder under
+        -- them, inset from the column's edges; the text region inside the
+        -- note box is narrower than the holder by Blizzard's own margin
+        -- plus the holder's inset
+        roles = {
+            width = 150, top = 12, iconSize = 32, iconGap = 14,
+            noteGap = 10, noteHeight = 28, noteInset = 12, noteTextInset = 20,
+        },
     },
     -- The listing form: the dropdowns' row, the captioned title and details
     -- boxes, the playstyle, the requirement rows with an input or the voice
@@ -363,7 +372,6 @@ end
 function UI:Close(reason)
     if self.closing then return end
     self.closing = true
-    if UI.SignUp and UI.SignUp.Hide then UI.SignUp:Hide() end
     if UI.Create and UI.Create.Close then UI.Create:Close() end
     if UI.Search and UI.Search.Close then UI.Search:Close() end
     UI.view = nil
