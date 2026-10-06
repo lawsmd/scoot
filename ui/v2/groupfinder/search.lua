@@ -220,10 +220,13 @@ local function CreateRow(panel, row)
     row._counts:SetPoint("RIGHT", row, "RIGHT", -columnRight, 0)
 
     -- The sign-up button past the grid, centred on the row's right end
-    row._quick = UI.MakeButton(row, "+", function()
-        panel:Apply(row._resultID)
-    end, 22, function() return QuickTip(row) end)
-    row._quick:SetHeight(22)
+    local A = L.action
+    row._quick = C:CreateButton({
+        parent = row, text = "+", width = A.size, height = A.size, fontSize = A.font,
+        borderWidth = A.border, borderAlpha = A.borderAlpha, labelAlpha = A.labelAlpha,
+        onClick = function() panel:Apply(row._resultID) end,
+        tooltip = function() return QuickTip(row) end,
+    })
     row._quick:SetPoint("RIGHT", row, "RIGHT", -padX, 0)
     row._quick:Hide()
 
@@ -238,13 +241,16 @@ local function CreateRow(panel, row)
     row._timer = UI.DimText(row, "miniLabel")
     row._timer:Hide()
 
-    row._cancel = UI.MakeButton(row, "x", function()
-        if row._resultID then
-            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-            C_LFGList.CancelApplication(row._resultID)
-        end
-    end, 22)
-    row._cancel:SetHeight(22)
+    row._cancel = C:CreateButton({
+        parent = row, text = "x", width = A.size, height = A.size, fontSize = A.font,
+        borderWidth = A.border, borderAlpha = A.borderAlpha, labelAlpha = A.labelAlpha,
+        onClick = function()
+            if row._resultID then
+                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+                C_LFGList.CancelApplication(row._resultID)
+            end
+        end,
+    })
     row._cancel:Hide()
 end
 
@@ -431,7 +437,7 @@ local function RenderRow(panel, row, item)
             row._cancel:SetEnabled((LFGListUtil_IsAppEmpowered and LFGListUtil_IsAppEmpowered()) and true or false)
             row._cancel:ClearAllPoints()
             row._cancel:SetPoint("RIGHT", row, "RIGHT", right, 0)
-            right = right - 22 - 4
+            right = right - LAYOUT.search.action.size - LAYOUT.search.action.gap
         end
         -- The word on the accent while the application is live, else dim;
         -- with a countdown the two stack on the row's middle

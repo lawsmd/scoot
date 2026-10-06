@@ -87,8 +87,13 @@ local LAYOUT = {
         filterWidth = 84,
         rightColumn = 160,
         -- The row's sign-up button at its right end, past the roster: the
-        -- button's 22 and a gap
+        -- button's size and a gap
         quickColumn = 28,
+        -- The row's + and x: small squares on the thin, quiet border the
+        -- listing's applicant actions take, the glyph a size under the
+        -- button face and eased at rest, so a column of them does not
+        -- glare against the bands
+        action = { size = 22, gap = 4, border = 1, borderAlpha = 0.45, font = 10, labelAlpha = 0.75 },
         -- Clear room between the name's right edge and either column, so
         -- a long name ends short of the icons
         columnGap = 12,

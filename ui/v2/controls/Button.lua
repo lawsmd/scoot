@@ -32,6 +32,9 @@
 --   icon, iconSize, iconColor (a color token or a literal; nil follows the
 --   role's glyphColors, or the label on a flat button),
 --   borderWidth, borderAlpha (flat kind),
+--   labelAlpha (flat kind): the label's and the icon's alpha at rest, for a
+--   glyph that would glare on a band; the hover and the disabled looks
+--   keep their own,
 --   tooltip (a string, or a function(button) returning the text or nil),
 --   shown on hover while the button is disabled too, so a button that is
 --   off can say why; the hover look stays off while it is disabled
@@ -357,6 +360,9 @@ function Controls:_DrawFlatButton(btn, spec, options, text, fontSize, padding, h
         if btn._customLabel and state == "normal" then
             local c = btn._customLabel
             r, g, b, a = c[1], c[2], c[3], c[4]
+        end
+        if state == "normal" and options.labelAlpha then
+            a = (a or 1) * options.labelAlpha
         end
         label:SetTextColor(r, g, b, a)
         PaintIcon(btn, r, g, b, a)
