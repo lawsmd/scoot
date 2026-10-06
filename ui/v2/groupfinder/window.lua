@@ -133,13 +133,15 @@ local LAYOUT = {
         -- The role column at the pane's right: the icons stacked down the
         -- top two-thirds of the column (noteSplit), enlarged from the
         -- roster's, and the note's holder across the bottom third, inset
-        -- from the column's edges. The text region inside the note box is
-        -- narrower than the holder by Blizzard's own margin plus the
-        -- holder's inset; its text is a size under the value face and its
-        -- bar is scaled down, since both are drawn for a dialog's wide box
+        -- from the column's edges. The note box stands in from the holder's
+        -- border by notePad on every side, so typed text clears the border;
+        -- the text region inside the box is narrower than the box by
+        -- Blizzard's own margin (noteTextInset); its text is a size under
+        -- the value face and its bar is scaled down, since both are drawn
+        -- for a dialog's wide box
         roles = {
             width = 150, iconSize = 52, iconGap = 22, noteSplit = 2 / 3,
-            noteInset = 12, noteTextInset = 20, noteFont = 11, noteBarScale = 0.75,
+            noteInset = 12, notePad = 6, noteTextInset = 18, noteFont = 11, noteBarScale = 0.75,
         },
     },
     -- The listing form: the dropdowns' row, the captioned title and details

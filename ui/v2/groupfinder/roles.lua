@@ -185,18 +185,22 @@ function Roles:Block()
 end
 
 -- Blizzard's note box into the holder, its dialog frame shown first so the
--- box renders; the text region takes its width here, since it took its
--- own once at load, and its text and bar come down to the holder's size
+-- box renders; the box stands in from the holder's border by a pad, so the
+-- text and its instructions clear it; the text region takes its width
+-- here, since it took its own once at load, and its text and bar come down
+-- to the holder's size
 function Roles:TakeNote()
     if not holder then return end
     local dialog = LFGListApplicationDialog
     if not (dialog and dialog.Description) then return end
     if not Host.ShowDialogFrame() then return end
     local L = LAYOUT.search.roles
+    local pad = L.notePad
     Host.Take("note", dialog.Description, holder, {
         editBox = dialog.Description.EditBox,
         artKeys = Host.SCROLL_BOX_ART,
-        editBoxWidth = L.width - 2 * L.noteInset - L.noteTextInset,
+        inset = { left = pad, right = pad, top = pad, bottom = pad },
+        editBoxWidth = L.width - 2 * (L.noteInset + pad) - L.noteTextInset,
         fontSize = L.noteFont,
         scrollBarScale = L.noteBarScale,
     })
