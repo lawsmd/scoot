@@ -183,20 +183,6 @@ function GF.ActivityID(info)
     return plainNumber(ids[1])
 end
 
--- Whether the result lists the activity. A list that does not read plain
--- (the chat lockdown) answers true, so a cut by activity leaves such rows
--- on the pane instead of dropping every one
-function GF.ResultHasActivity(info, activityID)
-    local ids = info and plain(info.activityIDs)
-    if type(ids) ~= "table" or not activityID then return true end
-    for _, id in ipairs(ids) do
-        local n = plainNumber(id)
-        if n == nil then return true end
-        if n == activityID then return true end
-    end
-    return false
-end
-
 function GF.ActivityInfo(activityID)
     if not activityID then return nil end
     local ok, t = pcall(C_LFGList.GetActivityInfoTable, activityID)
@@ -653,15 +639,11 @@ function GF.SearchCooldownLeft()
 end
 
 -- The host's hook on Blizzard's DoSearch calls this, so a search from any
--- button, from Enter in the box or from the clear button is noted once;
--- the window's own Search call notes itself. kind names the caller for
--- the debug readout: nil for Blizzard's DoSearch through the hook,
--- "window" for the window's own call, with the activity it filtered by
-function GF.NoteSearch(kind, activity)
+-- button, from Enter in the box, from an auto-complete row or from the
+-- clear button is noted once
+function GF.NoteSearch()
     local state = GF.state
     state.lastSearchAt = GetTime()
-    state.lastSearchKind = kind or "blizzard"
-    state.lastSearchActivity = activity
     state.searching = true
     state.searchFailed = false
     state.failReason = nil

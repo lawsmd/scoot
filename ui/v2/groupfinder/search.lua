@@ -9,10 +9,10 @@
 -- its panel switch: Blizzard's search panel is shown so its box renders
 -- and never made the active panel, so its own row handlers never run on
 -- the window's searches. Refresh runs Blizzard's DoSearch from its click;
--- an auto-complete row keeps its activity as the window's pick, and while
--- it stands the window calls C_LFGList.Search itself with the activity as
--- the server's filter, and cuts the pane to it for a search that runs
--- without the filter. The results are the component's copy, one row
+-- an auto-complete row runs Blizzard's own fill, which puts the activity's
+-- full name in the box, and the search once the cooldown allows it, so
+-- text typed after the name narrows the search as it does in Blizzard's
+-- own box. The results are the component's copy, one row
 -- per id, each row read afresh from the API on render as Blizzard's row
 -- is. The filter list writes the client's advanced or language filter and
 -- redraws the rows; it stands in a drawer out of the window's right edge,
@@ -112,8 +112,6 @@ function Search:Open(categoryID, filters, baseFilters)
     if not GF.SearchAllowed() then return false end
     LFGListSearchPanel_Clear(sp)
     LFGListSearchPanel_SetCategory(sp, categoryID, filters or 0, baseFilters or GF.plainNumber(lf.baseFilters) or 0)
-    local panel = UI:GetPanel("search")
-    if panel then panel:ClearPick() end
     sp:Show()
     UI:SetView("search")
     LFGListSearchPanel_DoSearch(sp)
@@ -682,13 +680,8 @@ local function Build(parent)
         end
         if self._boxHooked then return end
         self._boxHooked = true
-        editBox:HookScript("OnTextChanged", function(_, userInput)
+        editBox:HookScript("OnTextChanged", function()
             if clearButton then self._clear:SetShown(clearButton:IsShown()) end
-            -- The pick stands until the player types or the box empties; a
-            -- change from code keeps it
-            if self._activity and (userInput or SS.plainString(editBox:GetText()) == "") then
-                self:ClearPick()
-            end
             self:RefreshAuto()
         end)
         if clearButton then
@@ -752,38 +745,21 @@ local function Build(parent)
 
     -- An auto-complete row: Blizzard's own fill, SetSearchToActivity,
     -- which puts the activity's full name in the box as Blizzard's row
-    -- does (LFGListSearchAutoCompleteButton_OnClick), the activity kept as
-    -- the window's pick, and the search as soon as the cooldown allows it.
-    -- The focus goes first, so the text change the fill raises closes the
-    -- list in place of reopening it under the cursor. The box's text is
-    -- what the server searches, with the activity as the search's filter
-    -- (DoSearch) and the pane cut to it besides, until the player types
-    -- or the box empties; a fill the box refuses leaves the typed text,
-    -- which the filter covers. A pick inside the three seconds after a
-    -- search is kept: the arrow's tooltip counts the wait down, and the
-    -- search runs as it ends unless another ran first.
+    -- does (LFGListSearchAutoCompleteButton_OnClick), and the search as
+    -- soon as the cooldown allows it. The focus goes first, so the text
+    -- change the fill raises closes the list in place of reopening it
+    -- under the cursor. The box's text is what the server searches, so
+    -- text typed after the name narrows the search, as Blizzard's key
+    -- range tip says. A pick inside the three seconds after a search is
+    -- kept: the arrow's tooltip counts the wait down, and the search runs
+    -- as it ends unless another ran first.
     function panel:PickActivity(key)
         if key == "more" then return end
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
         if sp.SearchBox then sp.SearchBox:ClearFocus() end
         C_LFGList.SetSearchToActivity(key)
-        self._activity = key
         self:SearchWhenAllowed()
-    end
-
-    function panel:ClearPick()
-        self._activity = nil
-    end
-
-    -- A row stays on the pane under a pick when its group lists the picked
-    -- activity, or when the player has applied to it, as Blizzard's panel
-    -- keeps every application on the pane
-    function panel:ShowsResult(id)
-        if not self._activity then return true end
-        local _, status = GF.Application(id)
-        if status ~= "none" then return true end
-        return GF.ResultHasActivity(GF.ResultInfo(id), self._activity)
     end
 
     function panel:SearchWhenAllowed()
@@ -800,32 +776,14 @@ local function Build(parent)
     end
 
     ----------------------------------------------------------------------------
-    -- Searching: Blizzard's DoSearch, which the host's hook notes; under a
-    -- pick, the window's own call to C_LFGList.Search with the activity as
-    -- its activityIDsFilter, the argument Blizzard's own panel leaves nil,
-    -- from the arguments DoSearch assembles from the panel's state, and the
-    -- search noted by hand since the hook does not see it. Enter in the box
-    -- runs Blizzard's DoSearch without the filter; the pane's cut
-    -- (ShowsResult) keeps that search on the pick.
+    -- Searching: Blizzard's DoSearch from the panel's state and the box's
+    -- text, which the host's hook notes, from the arrow, from a pick, and
+    -- from Enter in the box through Blizzard's own handler
     ----------------------------------------------------------------------------
 
     function panel:DoSearch()
         local sp = SearchPanel()
-        if not (sp and LFGListSearchPanel_DoSearch) then return end
-        local categoryID = self._activity and GF.plainNumber(sp.categoryID)
-        if not categoryID then
-            LFGListSearchPanel_DoSearch(sp)
-            return
-        end
-        local filters = GF.ResolveCategoryFilters(categoryID, GF.plainNumber(sp.filters) or 0)
-        local preferred = GF.plainNumber(sp.preferredFilters) or 0
-        local languages = C_LFGList.GetLanguageSearchFilter()
-        local advanced
-        if categoryID == GF.DUNGEONS_CATEGORY and C_LFGList.GetAdvancedFilter then
-            advanced = C_LFGList.GetAdvancedFilter()
-        end
-        C_LFGList.Search(categoryID, filters, preferred, languages, nil, advanced, { self._activity })
-        GF.NoteSearch("window", self._activity)
+        if sp and LFGListSearchPanel_DoSearch then LFGListSearchPanel_DoSearch(sp) end
     end
 
     function panel:Search()
@@ -1313,7 +1271,7 @@ local function Build(parent)
 
         local items = {}
         for _, id in ipairs(state.results) do
-            if self:ShowsResult(id) then items[#items + 1] = { resultID = id } end
+            items[#items + 1] = { resultID = id }
         end
         self._list:SetItems(items)
         local index

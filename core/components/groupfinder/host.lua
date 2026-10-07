@@ -689,18 +689,14 @@ addon:RegisterDebugCommand({
                 DumpChain(push, "box", sp.SearchBox)
             end
         end
-        -- The search view's pick and the last search, and each result's
-        -- activities against the pick's cut
+        -- The search view and the last search, and each result's activities
         local search = GF.UI and GF.UI.GetPanel and GF.UI:GetPanel("search")
         if search then
             local state = GF.state
             push("")
-            push("search view shown=%s pick=%s lastSearch=%s at=%.1f activity=%s cooldownLeft=%.1f",
-                tostring(search:IsShown()), tostring(search._activity),
-                tostring(state.lastSearchKind), state.lastSearchAt or 0, tostring(state.lastSearchActivity),
-                GF.SearchCooldownLeft())
-            push("results=%d searching=%s failed=%s", #state.results, tostring(state.searching),
-                tostring(state.searchFailed))
+            push("search view shown=%s lastSearchAt=%.1f cooldownLeft=%.1f results=%d searching=%s failed=%s",
+                tostring(search:IsShown()), state.lastSearchAt or 0, GF.SearchCooldownLeft(),
+                #state.results, tostring(state.searching), tostring(state.searchFailed))
             for i, id in ipairs(state.results) do
                 if i > 12 then push("    ...") break end
                 local info = GF.ResultInfo(id)
@@ -711,8 +707,8 @@ addon:RegisterDebugCommand({
                 end
                 local list = type(ids) == "table" and table.concat(parts, ",") or tostring(ids)
                 local _, status = GF.Application(id)
-                push("    %d: activities=%s name=%s status=%s shown=%s", id, list,
-                    tostring(info and GF.ActivityName(info)), tostring(status), tostring(search:ShowsResult(id)))
+                push("    %d: activities=%s name=%s status=%s", id, list,
+                    tostring(info and GF.ActivityName(info)), tostring(status))
             end
         end
         addon.DebugShowWindow("Group Finder host", lines)
