@@ -412,11 +412,23 @@ local function RestoreText(region, font, color)
     end
 end
 
+-- The box's text insets as they stand, for the release to put back; a
+-- value that reads secret is dropped and the insets stay
+local function CaptureInsets(editBox)
+    if not editBox.GetTextInsets then return nil end
+    local ok, left, right, top, bottom = pcall(editBox.GetTextInsets, editBox)
+    if not ok then return nil end
+    left, right, top, bottom = SS.safeNumber(left), SS.safeNumber(right), SS.safeNumber(top), SS.safeNumber(bottom)
+    if not (left and right and top and bottom) then return nil end
+    return { left, right, top, bottom }
+end
+
 -- The skin's value face on the text, at the caller's size when it names
 -- one, primary color, and the instructions line dim. The style is named
 -- so no companion string is attached to a box the player types into. The
--- box's and the instructions' own font and color are kept for the
--- release, so Blizzard's window reads as its own again.
+-- box's and the instructions' own font and color, and the box's text
+-- insets, are kept for the release, so Blizzard's window reads as its own
+-- again: the search box's template keeps its text clear of the glass.
 local function Style(rec, opts)
     local theme = Theme()
     local editBox = rec.editBox
@@ -426,6 +438,7 @@ local function Style(rec, opts)
     local pr, pg, pb = theme:GetPrimaryTextColor()
     editBox:SetTextColor(pr, pg, pb, 1)
     if opts.textInsets then
+        rec.textInsets = CaptureInsets(editBox)
         editBox:SetTextInsets(unpack(opts.textInsets))
     end
     local instructions = editBox.Instructions
@@ -561,6 +574,9 @@ function Host.Release(key)
     RestoreText(rec.editBox, rec.font, rec.textColor)
     if rec.editBox then
         RestoreText(rec.editBox.Instructions, rec.instructionsFont, rec.instructionsColor)
+        if rec.textInsets and rec.editBox.SetTextInsets then
+            rec.editBox:SetTextInsets(unpack(rec.textInsets))
+        end
     end
     if rec.editBoxWidth and rec.editBoxWidth > 0 and rec.editBox and rec.editBox.SetWidth then
         rec.editBox:SetWidth(rec.editBoxWidth)
