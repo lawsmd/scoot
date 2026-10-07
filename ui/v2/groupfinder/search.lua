@@ -750,18 +750,24 @@ local function Build(parent)
         self._auto:Open()
     end
 
-    -- An auto-complete row: the activity kept as the window's pick, and
-    -- the search as soon as the cooldown allows it. The typed text stays
-    -- in the box and is what the server searches, with the activity as the
-    -- search's filter (DoSearch) and the pane cut to it besides, until the
-    -- player types or the box empties. A pick inside the three seconds
-    -- after a search is kept: the arrow's tooltip counts the wait down,
-    -- and the search runs as it ends unless another ran first.
+    -- An auto-complete row: Blizzard's own fill, SetSearchToActivity,
+    -- which puts the activity's full name in the box as Blizzard's row
+    -- does (LFGListSearchAutoCompleteButton_OnClick), the activity kept as
+    -- the window's pick, and the search as soon as the cooldown allows it.
+    -- The focus goes first, so the text change the fill raises closes the
+    -- list in place of reopening it under the cursor. The box's text is
+    -- what the server searches, with the activity as the search's filter
+    -- (DoSearch) and the pane cut to it besides, until the player types
+    -- or the box empties; a fill the box refuses leaves the typed text,
+    -- which the filter covers. A pick inside the three seconds after a
+    -- search is kept: the arrow's tooltip counts the wait down, and the
+    -- search runs as it ends unless another ran first.
     function panel:PickActivity(key)
         if key == "more" then return end
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
         if sp.SearchBox then sp.SearchBox:ClearFocus() end
+        C_LFGList.SetSearchToActivity(key)
         self._activity = key
         self:SearchWhenAllowed()
     end
