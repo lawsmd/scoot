@@ -683,10 +683,8 @@ addon:RegisterDebugCommand({
                 tostring(search:IsShown()), tostring(search._activity),
                 tostring(state.lastSearchKind), state.lastSearchAt or 0, tostring(state.lastSearchActivity),
                 GF.SearchCooldownLeft())
-            push("results=%d searching=%s failed=%s panel=%s", #state.results, tostring(state.searching),
-                tostring(state.searchFailed), tostring(search))
-            push("trace (%d lines, now %.2f):", #(state.trace or {}), GetTime())
-            for _, line in ipairs(state.trace or {}) do push("    %s", line) end
+            push("results=%d searching=%s failed=%s", #state.results, tostring(state.searching),
+                tostring(state.searchFailed))
             for i, id in ipairs(state.results) do
                 if i > 12 then push("    ...") break end
                 local info = GF.ResultInfo(id)

@@ -9,10 +9,10 @@
 -- its panel switch: Blizzard's search panel is shown so its box renders
 -- and never made the active panel, so its own row handlers never run on
 -- the window's searches. Refresh runs Blizzard's DoSearch from its click;
--- an auto-complete row keeps its activity, and while it stands the window
--- calls C_LFGList.Search itself with the activity as the search's filter,
--- since the box takes the activity's name from a secure call alone, and
--- cuts the pane to it besides. The results are the component's copy, one row
+-- an auto-complete row keeps its activity as the window's pick, and while
+-- it stands the window calls C_LFGList.Search itself with the activity as
+-- the server's filter, and cuts the pane to it for a search that runs
+-- without the filter. The results are the component's copy, one row
 -- per id, each row read afresh from the API on render as Blizzard's row
 -- is. The filter list writes the client's advanced or language filter and
 -- redraws the rows; it stands in a drawer out of the window's right edge,
@@ -639,10 +639,7 @@ local function Build(parent)
         getValues = function() return panel._autoLabels end,
         getSelectedKey = function() return panel._autoSelected end,
         isInert = function(key) return key == "more" end,
-        onSelect = function(key)
-            GF.Trace("auto row selected key=%s", tostring(key))
-            panel:PickActivity(key)
-        end,
+        onSelect = function(key) panel:PickActivity(key) end,
     })
 
     panel._menu = C.CreatePopupList({
@@ -686,13 +683,9 @@ local function Build(parent)
         if self._boxHooked then return end
         self._boxHooked = true
         editBox:HookScript("OnTextChanged", function(_, userInput)
-            GF.Trace("textChanged userInput=%s text=%s pick=%s", tostring(userInput),
-                tostring(SS.plainString(editBox:GetText())), tostring(self._activity))
             if clearButton then self._clear:SetShown(clearButton:IsShown()) end
-            -- The pick stands until the player types or the box empties:
-            -- a change from code is not the player's, and one fired
-            -- between a pick and its search dropped the pick while the box
-            -- still read the typed text
+            -- The pick stands until the player types or the box empties; a
+            -- change from code keeps it
             if self._activity and (userInput or SS.plainString(editBox:GetText()) == "") then
                 self:ClearPick()
             end
@@ -703,19 +696,14 @@ local function Build(parent)
             clearButton:HookScript("OnEnter", function() self._clear:SetAlpha(1) end)
             clearButton:HookScript("OnLeave", function() self._clear:SetAlpha(0.75) end)
         end
-        editBox:HookScript("OnEditFocusGained", function()
-            GF.Trace("focus gained pick=%s", tostring(self._activity))
-            self:RefreshAuto()
-        end)
+        editBox:HookScript("OnEditFocusGained", function() self:RefreshAuto() end)
         -- The box loses focus on the press of a click on the list, before
-        -- the release a row's click needs, and a list closed here went
-        -- out from under the cursor with the row unclicked (the trace of
-        -- the twelfth look). The list stays while the cursor is over it;
-        -- the row's click closes it, and so does a click outside
+        -- the release a row's click needs, so a list closed here would go
+        -- out from under the cursor with the row unclicked. The list stays
+        -- while the cursor is over it; the row's click closes it, and so
+        -- does a click outside
         editBox:HookScript("OnEditFocusLost", function()
-            local overList = self._auto:IsShown() and self._auto.frame:IsMouseOver()
-            GF.Trace("focus lost pick=%s overList=%s", tostring(self._activity), tostring(overList))
-            if overList then return end
+            if self._auto:IsShown() and self._auto.frame:IsMouseOver() then return end
             self._auto:Close()
         end)
         editBox:HookScript("OnTabPressed", function() self:RefreshAuto() end)
@@ -763,34 +751,22 @@ local function Build(parent)
     end
 
     -- An auto-complete row: the activity kept as the window's pick, and
-    -- the search as soon as the cooldown allows it. Blizzard's row puts
-    -- the activity's name in the box through SetSearchToActivity, which
-    -- fills the secure box from a secure call alone: from the window the
-    -- box kept its text and the server searched that text (the twelfth
-    -- look), and the call still raised a text change that ended the pick
-    -- (the readout), so the call is gone. The pick is the window's own:
-    -- the typed text, which matched the activity's name, is what the
-    -- server searches, with the activity as the search's filter
-    -- (DoSearch), and the pane cut to it besides, until the player types
-    -- or the box empties. A pick inside the three seconds after a search
-    -- is kept: the arrow's tooltip counts the wait down, and the search
-    -- runs as it ends unless another ran first.
+    -- the search as soon as the cooldown allows it. The typed text stays
+    -- in the box and is what the server searches, with the activity as the
+    -- search's filter (DoSearch) and the pane cut to it besides, until the
+    -- player types or the box empties. A pick inside the three seconds
+    -- after a search is kept: the arrow's tooltip counts the wait down,
+    -- and the search runs as it ends unless another ran first.
     function panel:PickActivity(key)
         if key == "more" then return end
         local sp = SearchPanel()
-        if not (sp and LFGListSearchPanel_DoSearch) then
-            GF.Trace("pick refused: panel=%s doSearch=%s", tostring(sp), tostring(LFGListSearchPanel_DoSearch))
-            return
-        end
+        if not (sp and LFGListSearchPanel_DoSearch) then return end
         if sp.SearchBox then sp.SearchBox:ClearFocus() end
         self._activity = key
-        GF.Trace("pick set %s on %s", tostring(key), tostring(self))
         self:SearchWhenAllowed()
     end
 
     function panel:ClearPick()
-        local from = debugstack and debugstack(2, 1, 0) or ""
-        GF.Trace("pick cleared (was %s) from %s", tostring(self._activity), (from:match("[^\n]*") or "?"))
         self._activity = nil
     end
 
@@ -810,10 +786,7 @@ local function Build(parent)
             return
         end
         local last = GF.state.lastSearchAt
-        GF.Trace("search deferred %.1f", GF.SearchCooldownLeft())
         C_Timer.After(GF.SearchCooldownLeft() + 0.05, function()
-            GF.Trace("deferred search runs shown=%s same=%s pick=%s", tostring(self:IsShown()),
-                tostring(GF.state.lastSearchAt == last), tostring(self._activity))
             if self:IsShown() and GF.state.lastSearchAt == last then
                 self:DoSearch()
             end
@@ -825,16 +798,15 @@ local function Build(parent)
     -- pick, the window's own call to C_LFGList.Search with the activity as
     -- its activityIDsFilter, the argument Blizzard's own panel leaves nil,
     -- from the arguments DoSearch assembles from the panel's state, and the
-    -- search noted by hand since the hook does not see it. The box cannot
-    -- take the activity's name from the window, and the typed text alone
-    -- brought every difficulty back (the twelfth look).
+    -- search noted by hand since the hook does not see it. Enter in the box
+    -- runs Blizzard's DoSearch without the filter; the pane's cut
+    -- (ShowsResult) keeps that search on the pick.
     ----------------------------------------------------------------------------
 
     function panel:DoSearch()
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
         local categoryID = self._activity and GF.plainNumber(sp.categoryID)
-        GF.Trace("doSearch pick=%s category=%s on %s", tostring(self._activity), tostring(categoryID), tostring(self))
         if not categoryID then
             LFGListSearchPanel_DoSearch(sp)
             return
@@ -851,7 +823,6 @@ local function Build(parent)
     end
 
     function panel:Search()
-        GF.Trace("arrow allowed=%s pick=%s", tostring(GF.SearchAllowed()), tostring(self._activity))
         if not GF.SearchAllowed() then
             self:RefreshButtons()
             return
@@ -1338,7 +1309,6 @@ local function Build(parent)
         for _, id in ipairs(state.results) do
             if self:ShowsResult(id) then items[#items + 1] = { resultID = id } end
         end
-        GF.Trace("refreshList pick=%s results=%d shown=%d on %s", tostring(self._activity), #state.results, #items, tostring(self))
         self._list:SetItems(items)
         local index
         if state.selectedResult then

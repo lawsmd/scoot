@@ -653,24 +653,11 @@ function GF.SearchCooldownLeft()
 end
 
 -- The host's hook on Blizzard's DoSearch calls this, so a search from any
--- button, from Enter in the box or from the clear button is noted once
--- A short trace of the search view's steps for the lfg readout: the last
--- TRACE_KEEP lines, each with the time it was written. The arguments are
--- strings the caller made plain.
-local TRACE_KEEP = 40
-GF.state.trace = {}
-
-function GF.Trace(fmt, ...)
-    local trace = GF.state.trace
-    trace[#trace + 1] = string.format("%.2f " .. fmt, GetTime(), ...)
-    if #trace > TRACE_KEEP then table.remove(trace, 1) end
-end
-
--- kind names the caller for the debug readout: nil for Blizzard's DoSearch
--- through the hook, "window" for the window's own Search call, with the
--- activity it filtered by
+-- button, from Enter in the box or from the clear button is noted once;
+-- the window's own Search call notes itself. kind names the caller for
+-- the debug readout: nil for Blizzard's DoSearch through the hook,
+-- "window" for the window's own call, with the activity it filtered by
 function GF.NoteSearch(kind, activity)
-    GF.Trace("noteSearch kind=%s activity=%s", tostring(kind or "blizzard"), tostring(activity))
     local state = GF.state
     state.lastSearchAt = GetTime()
     state.lastSearchKind = kind or "blizzard"
