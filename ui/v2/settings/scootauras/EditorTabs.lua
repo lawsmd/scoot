@@ -15,7 +15,8 @@
 --                                          value edits, so the tab body is
 --                                          not rebuilt under the cursor)
 --   shape()               -> "icon"|"bar"|"shape"|"text"|"icontext"|"icons"
---   kind()                -> "buff"|"debuff"|"missingbuff"|"classpower"|"classresource"
+--   kind()                -> "buff"|"debuff"|"buffstacks"|"debuffstacks"|"missingbuff"|
+--                            "classpower"|"classresource"
 --   missingVisual()       -> resolved missing-state token, "none" when unset
 -- }
 local addonName, addon = ...
@@ -98,21 +99,22 @@ function Tabs.BuildIconTab(tabBuilder, ctx)
             dimR, dimG, dimB = theme:GetDimTextColor()
         end
         local row = CreateFrame("Frame", nil, content)
+        local sideOpts = {
+            values = { LEFT = "Left of Bar", RIGHT = "Right of Bar" },
+            order = { "LEFT", "RIGHT" },
+            get = function() return ctx.get("barIconSide") or "LEFT" end,
+            set = function(v) ctx.setAndApply("barIconSide", v) ctx.refreshPreview() end,
+        }
         local _, slotFrames = Controls.BuildSlotRow(row, {
             rowWidth = (tabBuilder._rowWidth and tabBuilder._rowWidth > 0)
                 and tabBuilder._rowWidth or (content:GetWidth() or 0),
             dimColor = { dimR, dimG, dimB },
             slots = {
-                { kind = "selector", label = "Icon Position" },
+                { kind = "selector", label = "Icon Position", need = Controls.MiniSelectorNeed(sideOpts) },
                 { kind = "slider", label = "Bar/Icon Gap" },
             },
         })
-        local sideSel = Controls._CreateMiniSelector({
-            values = { LEFT = "Left of Bar", RIGHT = "Right of Bar" },
-            order = { "LEFT", "RIGHT" },
-            get = function() return ctx.get("barIconSide") or "LEFT" end,
-            set = function(v) ctx.setAndApply("barIconSide", v) ctx.refreshPreview() end,
-        }, slotFrames[1], theme, tabBuilder._useLightDim)
+        local sideSel = Controls._CreateMiniSelector(sideOpts, slotFrames[1], theme, tabBuilder._useLightDim)
         sideSel:SetAllPoints(slotFrames[1])
         local gapSlider = Controls._CreateMiniSlider({
             min = 0, max = 30, step = 1,
@@ -502,6 +504,9 @@ end
 
 function Tabs.BuildStacksTab(tabBuilder, ctx)
     local Helpers = addon.UI.Settings.Helpers
+    -- The Floating Number is the count alone: it cannot be hidden, has no
+    -- host to sit inside or outside of, and may run larger.
+    local floating = ctx.shape() == "text"
 
     -- Scoot Aura text is Scoot-drawn, so the paired Deep Shadow styles are
     -- offered here.
@@ -515,21 +520,29 @@ function Tabs.BuildStacksTab(tabBuilder, ctx)
     tabBuilder:AddTextStyleBlock({
         get = get, set = set, apply = ctx.refreshPreview,
         defaults = { fontFace = "ROBOTO_SEMICOND_BLACK", size = 14 },
-        hideToggle = {
+        hideToggle = (not floating) and {
             label = "Hide Stacks Text",
             description = "Hide the stack counter.",
-        },
+        } or nil,
         font = { description = "The font used for the stack counter." },
         -- Engine-written text: no Deep Shadow (see the aura name block).
         style = { order = Helpers.fontStyleOrder },
-        size = { min = 6, max = 48, minLabel = "6pt", maxLabel = "48pt",
+        size = { min = 6, max = floating and 96 or 48, minLabel = "6pt",
+            maxLabel = floating and "96pt" or "48pt",
             description = "Size of the stack counter in points." },
         color = { kind = "plain" },
         offset = false,
     })
 
+    if floating then
+        AddCtxOffsetPair(tabBuilder, ctx, "stackTextOffsetX", "stackTextOffsetY")
+        tabBuilder:Finalize()
+        return
+    end
+
     local shape = ctx.shape()
-    local host = (shape == "bar") and "Bar" or (shape == "shape") and "Shape" or "Icon"
+    local host = (shape == "bar") and "Bar" or (shape == "shape") and "Shape"
+        or (shape == "icons") and "Shapes" or "Icon"
     local currentPos = ctx.get("stackTextPosition") or "inside"
     local bValues = currentPos == "outside" and OUTSIDE_8.values or INSIDE.values
     local bOrder = currentPos == "outside" and OUTSIDE_8.order or INSIDE.order
@@ -607,16 +620,22 @@ local function CreateShapeStyleRow(parent, ctx, opts)
     preview:SetSize(26, 26)
     preview:SetPoint("LEFT", row, "LEFT", 120, 0)
 
+    local name = row:CreateFontString(nil, "OVERLAY")
+    theme:ApplyValueFont(name, 12)
+    name:SetPoint("LEFT", preview, "RIGHT", 10, 0)
+
     local function UpdatePreview()
-        local atlas = addon.ScootAuras._AtlasFromShapeKey(ctx.get(key) or default) or "SquareMask"
+        local shapeKey = ctx.get(key) or default
+        local atlas = addon.ScootAuras._AtlasFromShapeKey(shapeKey) or "SquareMask"
         local ok = pcall(preview.SetAtlas, preview, atlas)
         preview:SetShown(ok)
+        name:SetText(addon.IconPickerLabel and addon.IconPickerLabel(shapeKey) or shapeKey)
     end
     UpdatePreview()
 
     local btn = CreateFrame("Button", nil, row)
     btn:SetSize(160, 24)
-    btn:SetPoint("LEFT", preview, "RIGHT", 12, 0)
+    btn:SetPoint("LEFT", name, "RIGHT", 12, 0)
     local btnBg = btn:CreateTexture(nil, "BACKGROUND")
     btnBg:SetAllPoints()
     local ar, ag, ab = theme:GetAccentColor()
@@ -866,6 +885,34 @@ function Tabs.BuildClassResourceBarTab(tabBuilder, ctx)
     tabBuilder:Finalize()
 end
 
+--------------------------------------------------------------------------------
+-- Stacks tabs (scootauras/stacks.lua): the segmented bar, the shape row
+--------------------------------------------------------------------------------
+
+-- The stacks kinds fill in the class color or a tint. Any other stored mode
+-- (a duration bar's Texture Original after a kind flip) reads as Class Color,
+-- the rule stacks.lua and the shared bar fill apply.
+local STACK_COLOR_VALUES = { class = "Class Color", custom = "Custom" }
+local STACK_COLOR_ORDER = { "class", "custom" }
+
+local function StackColorOptions()
+    return STACK_COLOR_VALUES, STACK_COLOR_ORDER, ClassOrCustom, nil
+end
+
+function Tabs.BuildStacksBarTab(tabBuilder, ctx)
+    AddBarSizeRow(tabBuilder, ctx)
+
+    -- No Fill Direction and no cadence lock: the engine fills this bar from
+    -- the count, which has no direction of time.
+    AddBarStyleAndBorderBlocks(tabBuilder, ctx, {
+        values = STACK_COLOR_VALUES,
+        order = STACK_COLOR_ORDER,
+        infoIcons = false, textureDefault = "bevelled", colorModeDefault = "class",
+    }, ClassOrCustom)
+
+    tabBuilder:Finalize()
+end
+
 function Tabs.BuildClassResourceTicksTab(tabBuilder, ctx)
     tabBuilder:AddSlider({
         label = "Tick Thickness",
@@ -887,14 +934,18 @@ function Tabs.BuildClassResourceTicksTab(tabBuilder, ctx)
     tabBuilder:Finalize()
 end
 
-function Tabs.BuildClassResourceIconsTab(tabBuilder, ctx)
+-- The row of shapes, one per point or per stack: the glyph, its size and
+-- spacing, its color. "Shapes" on screen, since an icon in this editor is
+-- the aura's own art. The stacks kinds floor spacing at 0: their row is
+-- revealed by one fill, and a negative gap would cut a shape in half.
+local function BuildShapesTab(tabBuilder, ctx, colorOptions, minSpacing)
     SpliceRow(tabBuilder, CreateShapeStyleRow(tabBuilder._scrollContent, ctx, {
-        key = "pipStyle", label = "Icon", button = "Change Icon", default = "border:SquareMask",
+        key = "pipStyle", label = "Shape", button = "Change Shape", default = "border:SquareMask",
     }))
 
     tabBuilder:AddSlider({
-        label = "Icon Size",
-        description = "Size of each icon in pixels.",
+        label = "Shape Size",
+        description = "Size of each shape in pixels.",
         min = 8, max = 48, step = 1,
         get = function() return ctx.get("pipSize") or 16 end,
         set = function(v) ctx.setAndApply("pipSize", v); ctx.refreshPreview() end,
@@ -902,15 +953,17 @@ function Tabs.BuildClassResourceIconsTab(tabBuilder, ctx)
     })
 
     tabBuilder:AddSlider({
-        label = "Icon Spacing",
-        description = "Gap between icons in pixels. Negative values overlap them.",
-        min = -4, max = 20, step = 1,
-        get = function() return ctx.get("pipSpacing") or 2 end,
+        label = "Shape Spacing",
+        description = (minSpacing < 0)
+            and "Gap between shapes in pixels. Negative values overlap them."
+            or "Gap between shapes in pixels.",
+        min = minSpacing, max = 20, step = 1,
+        get = function() return math.max(minSpacing, tonumber(ctx.get("pipSpacing")) or 2) end,
         set = function(v) ctx.setAndApply("pipSpacing", v); ctx.refreshPreview() end,
-        minLabel = "-4", maxLabel = "20",
+        minLabel = tostring(minSpacing), maxLabel = "20",
     })
 
-    local values, order, coerce, gear = ResourceColorOptions(ctx)
+    local values, order, coerce, gear = colorOptions(ctx)
     tabBuilder:AddSelectorColorPicker({
         label = "Color",
         values = values,
@@ -926,10 +979,18 @@ function Tabs.BuildClassResourceIconsTab(tabBuilder, ctx)
     tabBuilder:Finalize()
 end
 
+function Tabs.BuildClassResourceIconsTab(tabBuilder, ctx)
+    BuildShapesTab(tabBuilder, ctx, ResourceColorOptions, -4)
+end
+
+function Tabs.BuildStacksShapesTab(tabBuilder, ctx)
+    BuildShapesTab(tabBuilder, ctx, StackColorOptions, 0)
+end
+
 function Tabs.BuildClassResourceBackdropTab(tabBuilder, ctx)
     tabBuilder:AddColorPicker({
         label = "Backdrop Color",
-        description = "Drawn beneath every icon; an empty point shows it alone.",
+        description = "Drawn beneath every shape; an empty point shows it alone.",
         hasAlpha = false,
         get = ColorGet(ctx, "pipBackdropTint", { 0, 0, 0, 1 }),
         set = ColorSet(ctx, "pipBackdropTint"),
@@ -937,7 +998,7 @@ function Tabs.BuildClassResourceBackdropTab(tabBuilder, ctx)
 
     tabBuilder:AddSlider({
         label = "Backdrop Opacity",
-        description = "Opacity of the backdrop beneath the icons.",
+        description = "Opacity of the backdrop beneath the shapes.",
         min = 0, max = 100, step = 1,
         get = function() return ctx.get("pipBackdropOpacity") or 100 end,
         set = function(v) ctx.setAndApply("pipBackdropOpacity", v); ctx.refreshPreview() end,
@@ -1100,13 +1161,36 @@ function Tabs.BuildTabSet(ctx)
         -- row over its backdrop; then Visibility, since the frame is up
         -- regardless.
         if shape == "icons" then
-            add("icons", "Icons", Tabs.BuildClassResourceIconsTab)
+            add("icons", "Shapes", Tabs.BuildClassResourceIconsTab)
             add("backdrop", "Backdrop", Tabs.BuildClassResourceBackdropTab)
         else
             add("bar", "Bar", Tabs.BuildClassResourceBarTab)
             add("ticks", "Ticks", Tabs.BuildClassResourceTicksTab)
         end
         add("visibility", "Visibility", Tabs.BuildVisibilityTab)
+        return tabs, buildContent
+    end
+
+    if addon.ScootAuras.KindTracksStacks(kind) then
+        -- The count: the number on the icon, the engine-fed segments with
+        -- their ticks, the shape row over its backdrop, or the number alone.
+        -- No duration, swipe or pandemic; the Stacks tab styles the number on
+        -- every shape.
+        if shape == "bar" then
+            add("bar", "Bar", Tabs.BuildStacksBarTab)
+            add("ticks", "Ticks", Tabs.BuildClassResourceTicksTab)
+            add("icon", "Icon", Tabs.BuildIconTab)
+            add("auraName", "Aura Name", Tabs.BuildAuraNameTab)
+        elseif shape == "icons" then
+            add("icons", "Shapes", Tabs.BuildStacksShapesTab)
+            add("backdrop", "Backdrop", Tabs.BuildClassResourceBackdropTab)
+        elseif shape == "text" then
+            add("stacks", "Stacks", Tabs.BuildStacksTab)
+            return tabs, buildContent
+        else
+            add("icon", "Icon", Tabs.BuildIconTab)
+        end
+        add("stacks", "Stacks", Tabs.BuildStacksTab)
         return tabs, buildContent
     end
 

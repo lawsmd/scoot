@@ -485,19 +485,28 @@ end
 -- Content validation
 --------------------------------------------------------------------------------
 
+-- buff/debuff: the aura's duration (the drain, the swipe, the timer text).
+-- buffstacks/debuffstacks: the aura's application count (stacks.lua).
 -- missingbuff: the visual shows while the player LACKS the buff (missing.lua).
 -- classpower: the player's display power as a bar or a number (classpower.lua).
 -- classresource: the player's point resource as pips (classresource.lua).
-SAU.VALID_KINDS = { buff = true, debuff = true, missingbuff = true, classpower = true, classresource = true }
+SAU.VALID_KINDS = {
+    buff = true, debuff = true, buffstacks = true, debuffstacks = true,
+    missingbuff = true, classpower = true, classresource = true,
+}
 
 -- Shapes per kind. Buff/debuff trackers display the aura; a missing-buff
 -- tracker is a reminder, so it offers icon, text, or both and no bar/shape.
 -- A Class Power tracker is the bar, or the number alone (the same "text"
 -- token the reminder uses). A Class Resource tracker is the segmented bar,
--- or one icon per point (the "icons" token).
+-- or one shape per point (the "icons" token). A stacks tracker is the icon
+-- with the count on it, the segmented bar, one shape per stack, or the count
+-- alone (the Floating Number, on the "text" token).
 SAU.VALID_SHAPES_BY_KIND = {
     buff        = { icon = true, bar = true, shape = true },
     debuff      = { icon = true, bar = true, shape = true },
+    buffstacks  = { icon = true, bar = true, icons = true, text = true },
+    debuffstacks = { icon = true, bar = true, icons = true, text = true },
     missingbuff = { icon = true, text = true, icontext = true },
     classpower  = { bar = true, text = true },
     classresource = { bar = true, icons = true },
@@ -513,6 +522,8 @@ SAU.VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontex
 SAU.VALID_UNITS = {
     buff        = { player = true, target = true, focus = true },
     debuff      = { target = true, focus = true },
+    buffstacks  = { player = true, target = true, focus = true },
+    debuffstacks = { target = true, focus = true },
     missingbuff = { player = true, group = true },
     classpower  = { player = true },
     classresource = { player = true },
@@ -523,11 +534,16 @@ SAU.VALID_UNITS = {
 -- spellId and the editor validates one. `container`: the engine builds an
 -- AuraContainer for it; a kind without one is Scoot-owned art fed by plain
 -- setters and never waits on the structural gate. `gated`: a new tracker
--- starts with Only in Combat on.
+-- starts with Only in Combat on. `polarity`: the aura slot's filter, HELPFUL
+-- or HARMFUL. `measure`: what the display is about, the aura's duration or
+-- its application count; nil for the kinds that are not about one aura's
+-- state (the reminder, the two resource kinds).
 local KIND_TRAITS = {
-    buff        = { spell = true,  container = true,  gated = true },
-    debuff      = { spell = true,  container = true,  gated = true },
-    missingbuff = { spell = true,  container = true,  gated = true },
+    buff        = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL", measure = "duration" },
+    debuff      = { spell = true,  container = true,  gated = true,  polarity = "HARMFUL", measure = "duration" },
+    buffstacks  = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL", measure = "stacks" },
+    debuffstacks = { spell = true, container = true,  gated = true,  polarity = "HARMFUL", measure = "stacks" },
+    missingbuff = { spell = true,  container = true,  gated = true,  polarity = "HELPFUL" },
     classpower  = { spell = false, container = false, gated = false },
     classresource = { spell = false, container = false, gated = false },
 }
@@ -564,6 +580,25 @@ function SAU.KindStartsGated(kind)
     return traits == nil or traits.gated ~= false
 end
 
+--- "HELPFUL" or "HARMFUL" for a kind that watches one aura slot, nil for
+-- the kinds that own no slot.
+function SAU.KindPolarity(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits and traits.polarity or nil
+end
+
+--- "duration" or "stacks" for the kinds that display one aura's state, nil
+-- for the reminder and the resource kinds.
+function SAU.KindMeasure(kind)
+    local traits = KIND_TRAITS[kind]
+    return traits and traits.measure or nil
+end
+
+--- The kinds whose display is the application count (stacks.lua).
+function SAU.KindTracksStacks(kind)
+    return SAU.KindMeasure(kind) == "stacks"
+end
+
 --- The one unit a kind offers, or nil when it offers a choice. The editor
 -- skips the "On..." row for such a kind and seeds this unit instead.
 function SAU.SoleUnitForKind(kind)
@@ -577,9 +612,11 @@ function SAU.SoleUnitForKind(kind)
     return (count == 1) and only or nil
 end
 
---- The unit a kind falls back to when the chosen one is invalid for it.
+--- The unit a kind falls back to when the chosen one is invalid for it: the
+-- target for a harmful aura, since the player cannot carry one that is
+-- trackable, the player otherwise.
 function SAU.DefaultUnitForKind(kind)
-    return (kind == "debuff") and "target" or "player"
+    return (SAU.KindPolarity(kind) == "HARMFUL") and "target" or "player"
 end
 
 -- Kinds whose fallback shape is not "icon" and not the table's first entry.
@@ -597,7 +634,9 @@ function SAU.DefaultShapeForKind(kind)
 end
 
 function SAU.ValidateContent(spellId, kind, unit, shape)
-    if not SAU.VALID_KINDS[kind] then return nil, "kind must be buff, debuff, missingbuff, classpower, or classresource" end
+    if not SAU.VALID_KINDS[kind] then
+        return nil, "kind must be buff, debuff, buffstacks, debuffstacks, missingbuff, classpower, or classresource"
+    end
     if SAU.KindNeedsSpell(kind) and (type(spellId) ~= "number" or spellId <= 0) then
         return nil, "invalid spell ID"
     end
@@ -622,11 +661,26 @@ SAU.VALID_MISSING_VISUALS_BY_SHAPE = {
     shape = { desat = true, blink = true, blinkdesat = true },
 }
 
+-- "When stacks are 0, show..." on the stacks kinds: Nothing, or one option
+-- per shape, which is the default: the empty frame of a segmented bar or a
+-- shape row is the 0 reading, the way a Class Resource shows 0 points.
+-- Stored explicitly, "none" included, since nil on these kinds reads as the
+-- shape's default rather than as Nothing.
+local STACK_MISSING_VISUALS_BY_SHAPE = {
+    icon  = { desat = true },
+    bar   = { emptybar = true },
+    icons = { desatpips = true },
+    text  = { zero = true },
+}
+local STACK_MISSING_VISUAL_DEFAULTS = { icon = "desat", bar = "emptybar", icons = "desatpips", text = "zero" }
+
 -- Token traits, so no caller string-matches tokens. art "self" reuses the
 -- shape's own art; "emptybar" shows the bar frame with no fill; "baricon"
--- centers an icon on the bar rect. `opacity` marks the tokens that carry the
--- Opacity sub-option: the editor puts a gear in the selector field for exactly
--- those, and underlay.lua reads missingVisualOpacity for exactly those.
+-- centers an icon on the bar rect; "pips" shows the shape row's backdrops
+-- with no stack revealed (stacks.lua); "zero" writes a gray 0 where the
+-- Floating Number stands. `opacity` marks the tokens that carry
+-- the Opacity sub-option: the editor puts a gear in the selector field for
+-- exactly those, and underlay.lua reads missingVisualOpacity for exactly those.
 local MISSING_VISUAL_TRAITS = {
     desat          = { desat = true,  blink = false, art = "self", opacity = true },
     blink          = { desat = false, blink = true,  art = "self" },
@@ -635,31 +689,69 @@ local MISSING_VISUAL_TRAITS = {
     blinkemptybar  = { desat = false, blink = true,  art = "emptybar" },
     blinkicon      = { desat = false, blink = true,  art = "baricon" },
     blinkdesaticon = { desat = true,  blink = true,  art = "baricon" },
+    desatpips      = { desat = true,  blink = false, art = "pips" },
+    zero           = { desat = true,  blink = false, art = "zero" },
 }
 
---- The one scope switch for missing-state visuals: buff and debuff trackers
--- (buff since 2026-09-13). The Missing Buff kind shows only while the aura is
--- absent; a buff tracker with a visual shows its live art while the aura is up
--- and the reveal while it is not, so the two do not overlap.
+--- The one scope switch for missing-state visuals: the kinds that display one
+-- aura's state, by duration or by stacks. The Missing Buff kind shows only
+-- while the aura is absent; a tracker with a visual shows its live art while
+-- the aura is up and the reveal while it is not, so the two do not overlap.
 function SAU.KindSupportsMissingVisual(kind)
-    return kind == "buff" or kind == "debuff"
+    return SAU.KindMeasure(kind) ~= nil
 end
 
 --- The kinds whose icon carries the pandemic border: an aura the player can
--- refresh. The engine computes the window; this only says who asks for it.
+-- refresh, shown by its duration. The engine computes the window; this only
+-- says who asks for it.
 function SAU.KindSupportsPandemic(kind)
-    return kind == "buff" or kind == "debuff"
+    return SAU.KindMeasure(kind) == "duration"
+end
+
+--- The tokens a kind offers on a shape, as [token] = true, or nil when the
+-- kind carries no missing-state visual on that shape.
+function SAU.MissingVisualTokensFor(kind, shape)
+    if not SAU.KindSupportsMissingVisual(kind) then return nil end
+    if SAU.KindTracksStacks(kind) then
+        return STACK_MISSING_VISUALS_BY_SHAPE[shape]
+    end
+    return SAU.VALID_MISSING_VISUALS_BY_SHAPE[shape]
+end
+
+--- The token a kind and shape start on, nil where Nothing is the default
+-- (every duration kind).
+function SAU.DefaultMissingVisualFor(kind, shape)
+    if SAU.KindTracksStacks(kind) then
+        return STACK_MISSING_VISUAL_DEFAULTS[shape]
+    end
+    return nil
+end
+
+--- The stored value for a chosen or carried-over token on a kind and shape:
+-- the token when the pair offers it; otherwise nil on a duration kind (the
+-- absence idiom for Nothing, so trackers saved before the field existed need
+-- no migration), and on a stacks kind "none" when Nothing was chosen or the
+-- shape's default when the token is nil or stranded. Every write path runs
+-- its token through this.
+function SAU.CoerceMissingVisual(kind, shape, token)
+    local tokens = SAU.MissingVisualTokensFor(kind, shape)
+    if not tokens then return nil end
+    if tokens[token] then return token end
+    if SAU.KindTracksStacks(kind) then
+        if token == "none" then return "none" end
+        return SAU.DefaultMissingVisualFor(kind, shape)
+    end
+    return nil
 end
 
 --- Resolves a tracker's missing-state visual to a token, or "none". nil, a
--- token the shape does not offer, and an unsupported kind all read as none.
+-- token the shape does not offer, and an unsupported kind all read as none
+-- on a duration kind; on a stacks kind they read as the shape's default and
+-- only a stored "none" reads as none.
 function SAU.MissingVisualFor(tracker)
     if not tracker then return "none" end
-    local token = tracker.missingVisual
-    if not token then return "none" end
-    if not SAU.KindSupportsMissingVisual(tracker.kind) then return "none" end
-    local valid = SAU.VALID_MISSING_VISUALS_BY_SHAPE[tracker.shape]
-    if not valid or not valid[token] then return "none" end
+    local token = SAU.CoerceMissingVisual(tracker.kind, tracker.shape, tracker.missingVisual)
+    if not token or token == "none" then return "none" end
     return token
 end
 
@@ -671,10 +763,77 @@ end
 -- Own-cast filtering: a debuff tracker watches the player's own aura on the
 -- enemy; buffs accept any source (external buffs on the player are the point).
 -- A missing-buff tracker matches the same HELPFUL slot; only its rendering
--- differs (the engine's presence hides the visual instead of showing it).
+-- differs (the engine's presence hides the visual instead of showing it). The
+-- stacks kinds take their duration sibling's filter.
 function SAU.FilterForKind(kind)
-    if kind == "debuff" then return "HARMFUL|PLAYER" end
+    if SAU.KindPolarity(kind) == "HARMFUL" then return "HARMFUL|PLAYER" end
     return "HELPFUL"
+end
+
+--------------------------------------------------------------------------------
+-- Max stacks (the stacks kinds)
+--------------------------------------------------------------------------------
+
+-- The engine's stack bar takes its maximum from the addon
+-- (SetApplicationBar's required maxApplications option,
+-- Blizzard_CustomAuraButton.lua), so the segment count is Scoot's to find.
+-- The spell's static value is C_Spell.GetSpellMaxCumulativeAuraApplications,
+-- the DB2 cumulative-aura field Blizzard's own soul-fragment bar reads for
+-- its max. It is SecretWhenUnitAuraRestricted, so it is read where the
+-- structural gate is open and never cached while it reads secret.
+SAU.DEFAULT_MAX_STACKS = 5
+SAU.MAX_STACK_PIPS = 20
+
+-- [spellId] = { version = AuraIds epoch, value = n or false }
+local maxStacksCache = {}
+
+--- The largest plain cumulative-aura value over the spell's include set (the
+-- CDM identity is often a base or talent spell that answers 0 while the
+-- linked aura answers the real count), or nil when none reads at least 1.
+-- Second return: true when some read came back secret, so the nil is a
+-- "not now" rather than a "never".
+function SAU.DetectMaxStacks(spellId)
+    if type(spellId) ~= "number" then return nil, false end
+    local AuraIds = addon.AuraIds
+    local version = AuraIds and AuraIds.GetVersion and AuraIds.GetVersion() or 0
+    local cached = maxStacksCache[spellId]
+    if cached and cached.version == version then
+        return cached.value or nil, false
+    end
+    local getter = C_Spell and C_Spell.GetSpellMaxCumulativeAuraApplications
+    if not getter then return nil, false end
+    local set = AuraIds and AuraIds.GetExpansion and AuraIds.GetExpansion(spellId) or { [spellId] = true }
+    local best, sawSecret = nil, false
+    for id in pairs(set) do
+        local ok, n = pcall(getter, id)
+        if ok and type(n) == "number" then
+            if issecretvalue and issecretvalue(n) then
+                sawSecret = true
+            elseif n >= 1 and (not best or n > best) then
+                best = math.floor(n)
+            end
+        end
+    end
+    if not sawSecret then
+        maxStacksCache[spellId] = { version = version, value = best or false }
+    end
+    return best, sawSecret
+end
+
+--- The segment count a stacks tracker renders with, and where it came from:
+-- "set by hand" (tracker.maxStacks), "detected" (the spell), or "default".
+-- Clamped to 1..MAX_STACK_PIPS; a count past the max still fills the bar.
+function SAU.ResolveMaxStacks(tracker)
+    local function clamp(n)
+        n = math.floor(n)
+        if n < 1 then n = 1 elseif n > SAU.MAX_STACK_PIPS then n = SAU.MAX_STACK_PIPS end
+        return n
+    end
+    local override = tracker and tonumber(tracker.maxStacks)
+    if override and override >= 1 then return clamp(override), "set by hand" end
+    local detected = SAU.DetectMaxStacks(tracker and tracker.spellId)
+    if detected then return clamp(detected), "detected" end
+    return SAU.DEFAULT_MAX_STACKS, "default"
 end
 
 --- The unit an AuraContainer binds to for a tracker. "group" is not a unit
@@ -907,6 +1066,30 @@ SAU.ClassResourceStartingValues = {
     barForegroundColorMode = "power",
 }
 
+-- Stacks kinds, Icon shape: the count is the whole display, so it starts
+-- centered on the icon at the duration text's size instead of small in a
+-- corner. Same stamp/unstamp rules as the bar values.
+SAU.StackIconStartingValues = {
+    stackTextInnerAnchor = "CENTER",
+    stackTextSize        = 24,
+}
+
+-- Stacks kinds, Bar and Group of Shapes: the segments are the count, so the
+-- number starts hidden (the Stacks tab brings it back), and the shapes start
+-- in the class color, the only non-custom mode these kinds offer.
+SAU.StackSegmentStartingValues = {
+    hideStackText = true,
+    pipColorMode  = "class",
+}
+
+-- Stacks kinds, Floating Number: the count alone, centered at the duration
+-- text's size. The number always shows on this shape (layout.lua), so the
+-- hide flag is cleared for a flip back to a shape that honors it.
+SAU.StackNumberStartingValues = {
+    hideStackText = false,
+    stackTextSize = 24,
+}
+
 -- The stamps a tracker of this kind and shape carries, in the order they are
 -- read: the bar shape's, then the kind's, then the kind's for the shape. The
 -- editor walks the same list for a draft, so its controls and preview show
@@ -925,6 +1108,14 @@ function SAU.StartingValueStamps(kind, shape)
         end
     elseif kind == "classresource" then
         stamps[#stamps + 1] = SAU.ClassResourceStartingValues
+    elseif SAU.KindTracksStacks(kind) then
+        if shape == "icon" then
+            stamps[#stamps + 1] = SAU.StackIconStartingValues
+        elseif shape == "text" then
+            stamps[#stamps + 1] = SAU.StackNumberStartingValues
+        else
+            stamps[#stamps + 1] = SAU.StackSegmentStartingValues
+        end
     end
     return stamps
 end
@@ -1294,10 +1485,13 @@ function SAU.CreateTracker(spec)
     if kind == "missingbuff" then
         store.trackers[trackerId].onlyInInstances = (spec.onlyInInstances == true)
     end
-    local missingValid = SAU.KindSupportsMissingVisual(kind)
-        and SAU.VALID_MISSING_VISUALS_BY_SHAPE[shape]
-    if missingValid and missingValid[spec.missingVisual] then
-        store.trackers[trackerId].missingVisual = spec.missingVisual
+    -- nil on a duration kind, the shape's default on a stacks kind when the
+    -- editor passed nothing.
+    store.trackers[trackerId].missingVisual = SAU.CoerceMissingVisual(kind, shape, spec.missingVisual)
+    -- Content, not styling: the segment count binds into the engine's stack
+    -- bar, and it belongs to the spell (SetTrackerContent clears it with one).
+    if SAU.KindTracksStacks(kind) and tonumber(spec.maxStacks) then
+        store.trackers[trackerId].maxStacks = math.floor(tonumber(spec.maxStacks))
     end
 
     SAU.RegisterTrackerComponent(trackerId)
@@ -1412,18 +1606,24 @@ function SAU.SetTrackerContent(trackerId, changes)
         tracker.onlyInInstances = nil
     end
     if changes.missingVisual ~= nil then
-        -- Explicit write: "none" clears, and the `changes.X or tracker.X`
-        -- idiom cannot clear a field.
-        tracker.missingVisual = (changes.missingVisual ~= "none") and changes.missingVisual or nil
+        -- Explicit write, since the `changes.X or tracker.X` idiom cannot
+        -- clear a field. "none" stores as nil on a duration kind and as the
+        -- literal on a stacks kind, where nil would read as the default.
+        tracker.missingVisual = changes.missingVisual
     end
-    -- One coercion covers every flip: a kind that does not carry the field and
-    -- a token the new shape does not offer both clear it.
-    if tracker.missingVisual ~= nil then
-        local missingValid = SAU.KindSupportsMissingVisual(kind)
-            and SAU.VALID_MISSING_VISUALS_BY_SHAPE[shape]
-        if not missingValid or not missingValid[tracker.missingVisual] then
-            tracker.missingVisual = nil
-        end
+    -- One coercion covers every flip: a kind that does not carry the field
+    -- and a token the new shape does not offer both clear it on a duration
+    -- kind, and fall to the shape's default on a stacks kind.
+    tracker.missingVisual = SAU.CoerceMissingVisual(kind, shape, tracker.missingVisual)
+    -- The segment count override belongs to the spell it was set for; a new
+    -- spell starts from detection again. `false` clears it by hand.
+    if changes.maxStacks ~= nil then
+        tracker.maxStacks = tonumber(changes.maxStacks) and math.floor(tonumber(changes.maxStacks)) or nil
+    elseif spellId ~= oldSpellId then
+        tracker.maxStacks = nil
+    end
+    if not SAU.KindTracksStacks(kind) then
+        tracker.maxStacks = nil
     end
     if type(changes.name) == "string" and changes.name ~= "" then
         tracker.name = changes.name
@@ -1487,6 +1687,7 @@ function SAU.DuplicateTracker(trackerId, exact)
         onlyInCombat = source.onlyInCombat,
         onlyInInstances = source.onlyInInstances,
         missingVisual = source.missingVisual,
+        maxStacks = source.maxStacks,
         specs = specs,
         homeSpec = homeSpec,
     }

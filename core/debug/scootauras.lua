@@ -830,7 +830,10 @@ end
 
 local VALID_UNITS = { player = true, group = true, target = true, focus = true }
 local VALID_SHAPES = { icon = true, bar = true, shape = true, text = true, icontext = true, icons = true }
-local VALID_KINDS = { buff = true, debuff = true, missingbuff = true, classpower = true, classresource = true }
+local VALID_KINDS = {
+    buff = true, debuff = true, buffstacks = true, debuffstacks = true,
+    missingbuff = true, classpower = true, classresource = true,
+}
 
 local Commands = addon.Commands
 
@@ -1001,7 +1004,7 @@ addon:RegisterDebugCommand({
         { word = "specs", help = "per record: stored specs, current spec, gate verdict", fn = SpecsDump },
         { word = "catalog", help = "every picker cell: shown name, stored base", fn = CatalogDump },
         { word = "log", help = "probe log", fn = DumpLog },
-        { word = "add", usage = "add <spellId|classpower|classresource> [player|group|target|focus] [buff|debuff|missingbuff] [icon|bar|shape|text|icontext|icons]",
+        { word = "add", usage = "add <spellId|classpower|classresource> [player|group|target|focus] [buff|debuff|buffstacks|debuffstacks|missingbuff] [icon|bar|shape|text|icontext|icons]",
           help = "create a tracker; the arguments after the first are order-free", fn = function(a1, a2, a3, a4)
             local spellId = tonumber(a1)
             local unit, shape, kind = nil, nil, "buff"
@@ -1109,6 +1112,12 @@ addon:RegisterDebugCommand({
             local trackerId = tonumber(a1)
             if not trackerId or not SAU.ClassPower then return Commands.USAGE end
             addon.DebugShowWindow("ScootAuras Class Power t" .. trackerId, SAU.ClassPower.DebugInfo(trackerId))
+        end },
+        { word = "stacks", usage = "stacks <id>", help = "stacks tracker: max stacks and its source, the per-id reads, the pieces, the bind results", fn = function(a1)
+            local trackerId = tonumber(a1)
+            local SAU = addon.ScootAuras
+            if not trackerId or not SAU.Stacks then return Commands.USAGE end
+            addon.DebugShowWindow("ScootAuras Stacks t" .. trackerId, SAU.Stacks.DebugInfo(trackerId))
         end },
         { word = "resource", usage = "resource <id>", help = "class resource tracker: resolved resource, secrecy, reads, pip count, rune order, last paint", fn = function(a1)
             local SAU = addon.ScootAuras

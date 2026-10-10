@@ -173,6 +173,8 @@ end
 --   pipCount        number   "pips" mode: points drawn (default 5)
 --   pipFilled       number   "pips" mode: points drawn full (default 3)
 --   pipAtlas        string   "pips" icons: the resolved atlas name
+--   pipBorderWidth  number   "pips" icons: a black ring of this width under
+--                            each shape, the shape inset inside it (0 or nil: none)
 --   pipColor        table    "pips" icons: {r,g,b,a} for a full glyph, resolved by the caller
 --   pipColors       table/nil "pips" mode: {r,g,b,a} per point, overriding pipColor on a
 --                            glyph and painting each full bar segment its own color
@@ -716,8 +718,21 @@ function Controls:CreatePreview(options)
         local atlas = options.pipAtlas or "SquareMask"
         local fgColor = options.pipColor or { 1, 1, 1, 1 }
         local bdColor = options.pipBackdropColor or { 0, 0, 0, 1 }
+        local bw = math.max(0, tonumber(options.pipBorderWidth) or 0)
+        local inner = math.max(1, size - 2 * bw)
         for i = 1, pipCount do
             local x = (i - 1) * (size + gap)
+            if bw > 0 then
+                local ring = previewPips:CreateTexture(nil, "BACKGROUND", nil, -2)
+                if pcall(ring.SetAtlas, ring, atlas) then
+                    ring:SetDesaturated(true)
+                else
+                    ring:SetColorTexture(1, 1, 1, 1)
+                end
+                ring:SetVertexColor(0, 0, 0, 1)
+                ring:SetSize(size, size)
+                ring:SetPoint("LEFT", previewPips, "LEFT", x, 0)
+            end
             local backdrop = previewPips:CreateTexture(nil, "BACKGROUND", nil, -1)
             if pcall(backdrop.SetAtlas, backdrop, atlas) then
                 backdrop:SetDesaturated(true)
@@ -725,8 +740,8 @@ function Controls:CreatePreview(options)
                 backdrop:SetColorTexture(1, 1, 1, 1)
             end
             backdrop:SetVertexColor(bdColor[1] or 0, bdColor[2] or 0, bdColor[3] or 0, bdColor[4] or 1)
-            backdrop:SetSize(size, size)
-            backdrop:SetPoint("LEFT", previewPips, "LEFT", x, 0)
+            backdrop:SetSize(inner, inner)
+            backdrop:SetPoint("LEFT", previewPips, "LEFT", x + bw, 0)
             if i <= pipFilled then
                 local c = (options.pipColors and options.pipColors[i]) or fgColor
                 local fg = previewPips:CreateTexture(nil, "ARTWORK")
@@ -736,8 +751,8 @@ function Controls:CreatePreview(options)
                     fg:SetColorTexture(1, 1, 1, 1)
                 end
                 fg:SetVertexColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
-                fg:SetSize(size, size)
-                fg:SetPoint("LEFT", previewPips, "LEFT", x, 0)
+                fg:SetSize(inner, inner)
+                fg:SetPoint("LEFT", previewPips, "LEFT", x + bw, 0)
             end
         end
     end
@@ -957,8 +972,13 @@ function Controls:CreatePreview(options)
         caTextFS:SetPoint("CENTER", container, "CENTER", SuffixShift("CENTER", caSuffixW), 0)
         local textW = caTextFS:GetStringWidth() or 20
         local textH = caTextFS:GetStringHeight() or 16
-        totalWidth = textW + caSuffixW + 8
-        containerHeight = math.max(containerHeight, textH + 4)
+        -- String metrics stop at the glyph advance; a thick outline and its
+        -- shadow draw past it by an amount that grows with the point size,
+        -- and the container clips. A fifth of the size per side covers it.
+        local _, fontHeight = caTextFS:GetFont()
+        local slack = math.ceil((tonumber(fontHeight) or 12) * 0.2)
+        totalWidth = textW + caSuffixW + 8 + 2 * slack
+        containerHeight = math.max(containerHeight, textH + 4 + 2 * slack)
     end
 
     -- Grow to fit what was measured, then clamp. Dead space around the icon is fine; clipping

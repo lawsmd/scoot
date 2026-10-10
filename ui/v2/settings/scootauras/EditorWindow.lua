@@ -113,7 +113,9 @@ end
 function ctx.missingVisual()
     local tracker = CurrentTracker()
     if tracker then return SAU().MissingVisualFor(tracker) end
-    return (session and session.draft.content.missingVisual) or "none"
+    local c = session and session.draft.content
+    if not (c and c.kind and c.shape) then return "none" end
+    return SAU().CoerceMissingVisual(c.kind, c.shape, c.missingVisual) or "none"
 end
 
 function ctx.refresh()
@@ -173,6 +175,7 @@ local function TryMaterialize()
         onlyInCombat = c.onlyInCombat,
         onlyInInstances = c.onlyInInstances,
         missingVisual = c.missingVisual,
+        maxStacks = c.maxStacks,
     })
     if not id then
         session.statusOverride = err or "Could not create the tracker."
@@ -564,12 +567,14 @@ local function InitializeFrame()
     topLeft:SetSize(TOP_LEFT_W, TOP_H)
     widgets.topLeft = topLeft
 
-    -- Selector block host: fixed width, centered horizontally and pinned to
-    -- the top of the quadrant. The builder's Finalize() sets its height, so
-    -- the progressive reveal (and per-kind extra fields) grows downward.
+    -- Selector block host: fixed width, pinned to the top of the quadrant.
+    -- The builder's Finalize() sets its height, so the progressive reveal
+    -- (and per-kind extra fields) grows downward. It sits 40 px right of
+    -- center: the fields anchor to its right edge, and that moves them into
+    -- the room left before the preview divider.
     local selectorsHost = CreateFrame("Frame", nil, topLeft)
     selectorsHost:SetSize(640, 100)
-    selectorsHost:SetPoint("TOP", topLeft, "TOP", 0, -SELECTORS_TOP_GAP)
+    selectorsHost:SetPoint("TOP", topLeft, "TOP", 40, -SELECTORS_TOP_GAP)
     widgets.selectorsHost = selectorsHost
 
     local topRight = CreateFrame("Frame", nil, frame)
@@ -749,11 +754,16 @@ end
 -- Dynamic regions
 --------------------------------------------------------------------------------
 
+-- The duration kinds and the stacks kinds read as two measures of one aura.
 local KIND_LABELS = {
-    buff = "a Buff", debuff = "a Debuff", missingbuff = "a Missing Buff", classpower = "my Class Power",
+    buff = "a Buff's duration", debuff = "a Debuff's duration",
+    buffstacks = "the stacks of a Buff", debuffstacks = "the stacks of a Debuff",
+    missingbuff = "a Missing Buff", classpower = "my Class Power",
     classresource = "my Class Resource",
 }
-local KIND_ORDER = { "buff", "debuff", "missingbuff", "classpower", "classresource" }
+local KIND_ORDER = {
+    "buff", "debuff", "buffstacks", "debuffstacks", "missingbuff", "classpower", "classresource",
+}
 -- What the spell region says for a kind that tracks no spell.
 local KIND_NOTES = {
     classpower = "Class Power tracks the resource your character runs on: Energy, Rage, Mana, Focus, "
@@ -779,9 +789,16 @@ local MISSING_SHAPE_ORDER = { "icon", "text", "icontext" }
 -- A Class Power tracker is the bar, or the number alone (the "text" token).
 local CLASS_POWER_SHAPE_LABELS = { bar = "a Bar", text = "a Number" }
 local CLASS_POWER_SHAPE_ORDER = { "bar", "text" }
--- A Class Resource tracker is a segmented bar, or one icon per point.
-local CLASS_RESOURCE_SHAPE_LABELS = { bar = "a Bar", icons = "a Group of Icons" }
+-- A Class Resource tracker is a segmented bar, or one shape per point. "Shapes",
+-- since an icon in this editor is the aura's own art.
+local CLASS_RESOURCE_SHAPE_LABELS = { bar = "a Bar", icons = "a Group of Shapes" }
 local CLASS_RESOURCE_SHAPE_ORDER = { "bar", "icons" }
+-- A stacks tracker is the icon carrying the count, the segmented bar, one
+-- shape per stack (stacks.lua), or the count alone.
+local STACK_SHAPE_LABELS = {
+    icon = "an Icon", bar = "a Bar", icons = "a Group of Shapes", text = "a Floating Number",
+}
+local STACK_SHAPE_ORDER = { "icon", "bar", "icons", "text" }
 -- Shared by both missing-buff gate rows.
 local YES_NO_LABELS = { yes = "Yes", no = "No" }
 local YES_NO_ORDER = { "yes", "no" }
@@ -810,6 +827,14 @@ local MISSING_VISUAL_LABELS_SHAPE = {
     blinkdesat = "a Blinking, Desaturated Shape",
 }
 local MISSING_VISUAL_ORDER_SHAPE = { "none", "desat", "blink", "blinkdesat" }
+-- "When stacks are 0, show..." per shape on the stacks kinds: Nothing, or the
+-- shape at 0, which is the default (core.lua STACK_MISSING_VISUALS_BY_SHAPE).
+local STACK_MISSING_VISUALS = {
+    icon  = { values = { none = "Nothing", desat = "a Desaturated Icon" }, order = { "none", "desat" } },
+    bar   = { values = { none = "Nothing", emptybar = "an Empty Bar" }, order = { "none", "emptybar" } },
+    icons = { values = { none = "Nothing", desatpips = "Desaturated Shapes" }, order = { "none", "desatpips" } },
+    text  = { values = { none = "Nothing", zero = "a Gray \"0\"" }, order = { "none", "zero" } },
+}
 
 -- Sub-options for one missing-state visual, opened by the gear that sits
 -- inside the "When it's missing, show..." field
@@ -908,9 +933,91 @@ local function ClassPowerShapeGear()
     }
 end
 
+-- The stacks tracker as ResolveMaxStacks reads it: the live record, or the
+-- draft's spell and override.
+local function StackTrackerView()
+    local tracker = CurrentTracker()
+    if tracker then return tracker end
+    local c = session and session.draft and session.draft.content
+    return {
+        kind = c and c.kind,
+        spellId = session and session.validated and session.validated.spellId or nil,
+        maxStacks = c and c.maxStacks,
+    }
+end
+
+-- Writes the segment count without re-rendering the selectors, which would
+-- destroy the gear the fly-out hangs from. A value equal to the detected one
+-- clears the override, so the tracker follows the spell again.
+local function SetMaxStacks(v)
+    if not session then return end
+    v = math.floor(tonumber(v) or SAU().DEFAULT_MAX_STACKS)
+    local detected = SAU().DetectMaxStacks(StackTrackerView().spellId)
+    local stored = (detected and v == detected) and false or v
+    if session.trackerId then
+        SAU().SetTrackerContent(session.trackerId, { maxStacks = stored })
+    else
+        session.draft.content.maxStacks = stored or nil
+    end
+    ctx.refreshPreview()
+end
+
+-- Sub-option for the stacks kinds' segmented shapes, opened by the gear
+-- inside the "Shown as..." field: how many segments or shapes stand for a
+-- full stack count. The spell says, where it can (core.lua DetectMaxStacks).
+local MAX_STACKS_PAGE = {
+    tooltip = "Options for the stack count",
+    -- Wider than the opacity page: "Max Stacks" needs the room before the
+    -- slider, which keeps the same width.
+    width = 350,
+    height = 112,
+    build = function(page)
+        local Controls = addon.UI.Controls
+        local theme = addon.UI.Theme
+        local slider = Controls:CreateSlider({
+            parent = page,
+            label = "Max Stacks",
+            min = 1, max = SAU().MAX_STACK_PIPS, step = 1,
+            width = 110,
+            inputWidth = 40,
+            minLabel = "1",
+            maxLabel = tostring(SAU().MAX_STACK_PIPS),
+            get = function() return (SAU().ResolveMaxStacks(StackTrackerView())) end,
+            set = SetMaxStacks,
+        })
+        if not slider then return end
+        slider:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+        slider:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 0)
+
+        local hint = page:CreateFontString(nil, "OVERLAY")
+        theme:ApplyFont(hint, "value", 11)
+        hint:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", 12, -2)
+        hint:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", -12, -2)
+        hint:SetJustifyH("LEFT")
+        hint:SetWordWrap(true)
+        local detected = SAU().DetectMaxStacks(StackTrackerView().spellId)
+        hint:SetText(detected
+            and ("Detected from the spell: " .. detected .. ".")
+            or "Not detected from the spell; set it by hand.")
+        local dimR, dimG, dimB = theme:GetDimTextColor()
+        hint:SetTextColor(dimR, dimG, dimB, 1)
+    end,
+}
+
+local function StackShapeGear()
+    return {
+        direction = "DOWN", gap = 8,
+        pages = { bar = MAX_STACKS_PAGE, icons = MAX_STACKS_PAGE },
+    }
+end
+
 -- Kinds whose shape options carry an in-field gear; a kind without a row
 -- shows none.
-local SHAPE_GEAR_BY_KIND = { classpower = ClassPowerShapeGear }
+local SHAPE_GEAR_BY_KIND = {
+    classpower = ClassPowerShapeGear,
+    buffstacks = StackShapeGear,
+    debuffstacks = StackShapeGear,
+}
 
 local function ContentValue(field)
     local tracker = CurrentTracker()
@@ -933,11 +1040,6 @@ local function SetContent(field, value)
         -- Yes default; an explicit choice already made is left alone.
         if field == "unit" and value == "group" and c.onlyInCombat == nil then
             c.onlyInCombat = false
-        end
-        -- "Nothing" is stored as absence, the reading every saved tracker
-        -- without the field already has.
-        if field == "missingVisual" and value == "none" then
-            c.missingVisual = nil
         end
         -- A kind flip can strand the chosen unit or shape; force a re-choose.
         if field == "kind" then
@@ -971,15 +1073,19 @@ local function SetContent(field, value)
             if c.shape and not (shapes and shapes[c.shape]) then
                 c.shape = nil
             end
-            if c.missingVisual and not SAU().KindSupportsMissingVisual(value) then
-                c.missingVisual = nil
+            if not SAU().KindTracksStacks(value) then
+                c.maxStacks = nil
             end
         end
-        -- A shape flip can strand the missing-state token (bar tokens on an
-        -- icon shape); cleared rather than re-chosen, Nothing is the default.
-        if field == "shape" and c.missingVisual then
-            local valid = SAU().VALID_MISSING_VISUALS_BY_SHAPE[value]
-            if not valid or not valid[c.missingVisual] then
+        -- The missing-state token follows the write path's rule (core.lua
+        -- CoerceMissingVisual): "Nothing" is absence on a duration kind and
+        -- a stored "none" on a stacks kind; a kind or shape flip that
+        -- strands the token clears it, or falls to the stacks shape's default.
+        if field == "kind" or field == "shape" or field == "missingVisual" then
+            if c.kind and c.shape then
+                c.missingVisual = SAU().CoerceMissingVisual(c.kind, c.shape, c.missingVisual)
+            elseif c.missingVisual == "none"
+                or (c.kind and not SAU().KindSupportsMissingVisual(c.kind)) then
                 c.missingVisual = nil
             end
         end
@@ -1006,7 +1112,9 @@ local function UnitOptions(kind)
 end
 
 local function ShapeOptions(kind)
-    if kind == "missingbuff" then
+    if SAU().KindTracksStacks(kind) then
+        return STACK_SHAPE_LABELS, STACK_SHAPE_ORDER
+    elseif kind == "missingbuff" then
         return MISSING_SHAPE_LABELS, MISSING_SHAPE_ORDER
     elseif kind == "classpower" then
         return CLASS_POWER_SHAPE_LABELS, CLASS_POWER_SHAPE_ORDER
@@ -1016,7 +1124,11 @@ local function ShapeOptions(kind)
     return SHAPE_LABELS, SHAPE_ORDER
 end
 
-local function MissingVisualOptions(shape)
+local function MissingVisualOptions(kind, shape)
+    if SAU().KindTracksStacks(kind) then
+        local set = STACK_MISSING_VISUALS[shape] or STACK_MISSING_VISUALS.icon
+        return set.values, set.order
+    end
     if shape == "bar" then
         return MISSING_VISUAL_LABELS_BAR, MISSING_VISUAL_ORDER_BAR
     elseif shape == "shape" then
@@ -1028,6 +1140,11 @@ end
 -- One selector with an unset state: draft selectors start on "Choose".
 -- opts.disabledOptions lists keys that are shown but inert; opts.gear is an
 -- in-field gear config (ui/v2/controls/SelectorGear.lua).
+-- Rows queue here and FlushChoiceSelectors adds them, so every field takes
+-- the width the widest one needs: a field sizes itself to its longest option
+-- (and its gear), and one wider field breaks the column the labels align to.
+local pendingSelectors = {}
+
 local function AddChoiceSelector(builder, label, valueMap, order, current, onSet, opts)
     local values = {}
     for k, v in pairs(valueMap) do values[k] = v end
@@ -1038,12 +1155,12 @@ local function AddChoiceSelector(builder, label, valueMap, order, current, onSet
     end
     for _, k in ipairs(order) do table.insert(fullOrder, k) end
 
-    builder:AddSelector({
+    table.insert(pendingSelectors, {
         label = label,
         labelAlign = "field",
         noBottomBorder = true,
-        width = 340,
-        sizeScale = 1.3,
+        width = 290,
+        sizeScale = 1.1,
         values = values,
         order = fullOrder,
         disabledOptions = opts and opts.disabledOptions or nil,
@@ -1053,6 +1170,23 @@ local function AddChoiceSelector(builder, label, valueMap, order, current, onSet
             if v ~= "choose" then onSet(v) end
         end,
     })
+end
+
+local function FlushChoiceSelectors(builder)
+    local Controls = addon.UI.Controls
+    local width = 0
+    for _, spec in ipairs(pendingSelectors) do
+        local S = spec.sizeScale
+        width = math.max(width, (Controls.FieldNeed("selector", spec.values, {
+            order = spec.order, floor = spec.width, scale = S,
+            size = math.floor(12 * S + 0.5), gear = spec.gear ~= nil,
+        })))
+    end
+    for _, spec in ipairs(pendingSelectors) do
+        spec.width = width
+        builder:AddSelector(spec)
+    end
+    pendingSelectors = {}
 end
 
 local function RenderSelectors()
@@ -1091,8 +1225,9 @@ local function RenderSelectors()
 
     if kind and unit then
         local sValues, sOrder = ShapeOptions(kind)
-        -- Class Power's shapes carry the gear with the percent toggle; a kind
-        -- without a row in SHAPE_GEAR_BY_KIND shows none.
+        -- Class Power's shapes carry the gear with the percent toggle, and a
+        -- stacks kind's segmented shapes the max stacks; a kind without a row
+        -- in SHAPE_GEAR_BY_KIND shows none.
         local gearFn = SHAPE_GEAR_BY_KIND[kind]
         AddChoiceSelector(selBuilder, "Shown as...",
             sValues, sOrder, shape,
@@ -1100,19 +1235,17 @@ local function RenderSelectors()
             { gear = gearFn and gearFn() or nil })
     end
 
-    -- Missing-state visual, buff and debuff kinds. Options follow the shape;
-    -- the row always carries a value, so it never sits on "Choose".
+    -- Missing-state visual, on the kinds that show one aura's state. Options
+    -- follow the kind and the shape; the row always carries a value, so it
+    -- never sits on "Choose". A stacks kind asks about a count of 0.
     if kind and unit and shape and SAU().KindSupportsMissingVisual(kind) then
-        local mValues, mOrder = MissingVisualOptions(shape)
-        local missingCurrent
-        if session and session.trackerId then
-            -- The resolver, not the raw field, so a stale token reads Nothing
-            -- here exactly as it renders.
-            missingCurrent = SAU().MissingVisualFor(CurrentTracker())
-        else
-            missingCurrent = ContentValue("missingVisual") or "none"
-        end
-        AddChoiceSelector(selBuilder, "When it's missing, show...",
+        local mValues, mOrder = MissingVisualOptions(kind, shape)
+        -- The resolver, not the raw field, so a stale token reads as it
+        -- renders.
+        local missingCurrent = ctx.missingVisual()
+        local missingLabel = SAU().KindTracksStacks(kind)
+            and "When stacks are 0, show..." or "When it's missing, show..."
+        AddChoiceSelector(selBuilder, missingLabel,
             mValues, mOrder, missingCurrent,
             function(v) SetContent("missingVisual", v) end,
             { gear = MissingVisualGear(mOrder) })
@@ -1146,6 +1279,7 @@ local function RenderSelectors()
             function(v) SetContent("onlyInInstances", v == "yes") end)
     end
 
+    FlushChoiceSelectors(selBuilder)
     selBuilder:Finalize()
 end
 
@@ -1289,6 +1423,7 @@ local function RenderClassResourcePreview(shape)
             pipCount = PREVIEW_PIP_COUNT,
             pipFilled = pipColors and PREVIEW_PIP_FILLED_TAIL or PREVIEW_PIP_FILLED,
             pipAtlas = SAU()._AtlasFromShapeKey(key) or "SquareMask",
+            pipBorderWidth = SAU().Pips.BorderWidth(key, tonumber(ctx.get("pipSize")) or 16),
             pipColor = fill,
             pipColors = pipColors,
             pipBackdropColor = { tint[1] or 0, tint[2] or 0, tint[3] or 0, opacity },
@@ -1329,10 +1464,134 @@ local function RenderClassResourcePreview(shape)
     prevBuilder:Finalize()
 end
 
+-- The stacks preview: the count one short of the maximum, as the number on
+-- the icon, the segmented bar, or the shape row. Shapes and a bar fill read
+-- the class color or a tint, resolved here and handed over as Custom.
+local function StackFill(mode, tintKey)
+    if mode == "custom" then
+        local c = ctx.get(tintKey) or { 1, 1, 1, 1 }
+        return { c[1] or 1, c[2] or 1, c[3] or 1, 1 }
+    end
+    local r, g, b = addon.GetClassColorRGB("player")
+    return r and { r, g, b, 1 } or { 1, 1, 1, 1 }
+end
+
+-- The stack count drawn through the preview's duration-text slot.
+local STACK_TEXT_KEYS = {
+    _showCAText = true,
+    textFont = "stackTextFont", textStyle = "stackTextStyle", textSize = "stackTextSize",
+    textColor = "stackTextColor", textPosition = "stackTextPosition",
+    textInnerAnchor = "stackTextInnerAnchor", textOuterAnchor = "stackTextOuterAnchor",
+    textOffsetX = "stackTextOffsetX", textOffsetY = "stackTextOffsetY", hideText = "hideStackText",
+}
+
+local function RenderStacksPreview(shape)
+    local componentId = session and session.trackerId
+        and SAU().GetComponentId(session.trackerId) or "scootAuraDraft"
+    local n = SAU().ResolveMaxStacks(StackTrackerView())
+    local sample = math.max(1, n - 1)
+    if shape == "icons" then
+        local key = ctx.get("pipStyle") or "border:SquareMask"
+        local tint = ctx.get("pipBackdropTint") or { 0, 0, 0, 1 }
+        local opacity = (tonumber(ctx.get("pipBackdropOpacity")) or 100) / 100
+        prevBuilder:AddPreview({
+            componentId = componentId,
+            mode = "pips",
+            pipShape = "icons",
+            pipCount = n,
+            pipFilled = sample,
+            pipAtlas = SAU()._AtlasFromShapeKey(key) or "SquareMask",
+            pipBorderWidth = SAU().Pips.BorderWidth(key, tonumber(ctx.get("pipSize")) or 16),
+            pipColor = StackFill(ctx.get("pipColorMode"), "pipTint"),
+            pipBackdropColor = { tint[1] or 0, tint[2] or 0, tint[3] or 0, opacity },
+            rowHeight = 200,
+            previewScale = 1,
+            maxRowHeight = 340,
+            getSetting = function(key2)
+                -- The live row floors spacing at 0 (stacks.lua).
+                if key2 == "pipSpacing" then
+                    return math.max(0, tonumber(ctx.get("pipSpacing")) or 2)
+                end
+                return ctx.get(key2)
+            end,
+            noBottomBorder = true,
+            noHover = true,
+            noLabel = true,
+        })
+    elseif shape == "bar" then
+        local fill = StackFill(ctx.get("barForegroundColorMode"), "barForegroundTint")
+        prevBuilder:AddPreview({
+            componentId = componentId,
+            mode = "pips",
+            pipShape = "bar",
+            pipCount = n,
+            pipFilled = sample,
+            rowHeight = 200,
+            previewScale = 1,
+            maxRowHeight = 340,
+            getSetting = function(key2)
+                if key2 == "barForegroundColorMode" then return "custom" end
+                if key2 == "barForegroundTint" then return fill end
+                if key2 == "barShowIcon" then return false end
+                if key2 == "hideNameText" or key2 == "hideStackText" then return true end
+                return ctx.get(key2)
+            end,
+            noBottomBorder = true,
+            noHover = true,
+            noLabel = true,
+        })
+    elseif shape == "text" then
+        -- The Floating Number: the count alone, always shown (layout.lua).
+        prevBuilder:AddPreview({
+            componentId = componentId,
+            mode = "text",
+            settingKeys = STACK_TEXT_KEYS,
+            caTextSource = "applications",
+            caTextLiteral = tostring(sample),
+            rowHeight = 200,
+            previewScale = 1,
+            maxRowHeight = 340,
+            getSetting = function(key2)
+                if key2 == "hideStackText" then return false end
+                return ctx.get(key2)
+            end,
+            noBottomBorder = true,
+            noHover = true,
+            noLabel = true,
+        })
+    else
+        local tracker = CurrentTracker()
+        local iconTexture
+        if session and session.validated then
+            iconTexture = session.validated.icon
+        elseif tracker then
+            iconTexture = PlainSpellTexture(tracker.spellId)
+        end
+        prevBuilder:AddPreview({
+            componentId = componentId,
+            mode = "icon",
+            iconTexture = iconTexture,
+            settingKeys = STACK_TEXT_KEYS,
+            caTextSource = "applications",
+            caTextLiteral = tostring(sample),
+            rowHeight = 200,
+            previewScale = 1,
+            maxRowHeight = 340,
+            getSetting = ctx.get,
+            noBottomBorder = true,
+            noHover = true,
+            noLabel = true,
+        })
+    end
+    prevBuilder:Finalize()
+end
+
 -- Kinds that draw their own preview instead of the generic aura one.
 local KIND_PREVIEWS = {
     classpower = RenderClassPowerPreview,
     classresource = RenderClassResourcePreview,
+    buffstacks = RenderStacksPreview,
+    debuffstacks = RenderStacksPreview,
 }
 
 local function RenderPreview()

@@ -22,7 +22,7 @@ local NAME_MAX = 64
 -- migration markers stay home: the importer assigns them.
 local TRACKER_FIELDS = {
     "kind", "spellId", "unit", "shape", "name", "enabled",
-    "onlyInCombat", "onlyInInstances", "missingVisual", "specs", "homeSpec",
+    "onlyInCombat", "onlyInInstances", "missingVisual", "maxStacks", "specs", "homeSpec",
 }
 
 -- Read at call time: core/importexport.lua loads after this file.
@@ -208,9 +208,15 @@ local function ValidateTrackerRecord(rec, label, exact, known)
     if kind == "missingbuff" then
         clean.onlyInInstances = rec.onlyInInstances == true
     end
-    local missingValid = SAU.KindSupportsMissingVisual(kind) and SAU.VALID_MISSING_VISUALS_BY_SHAPE[shape]
-    if missingValid and type(rec.missingVisual) == "string" and missingValid[rec.missingVisual] then
-        clean.missingVisual = rec.missingVisual
+    -- nil on a duration kind for Nothing or a stranded token; a stacks kind
+    -- keeps a stored "none" and falls to its shape's default otherwise.
+    local token = (type(rec.missingVisual) == "string") and rec.missingVisual or nil
+    clean.missingVisual = SAU.CoerceMissingVisual(kind, shape, token)
+    if SAU.KindTracksStacks(kind) then
+        local n = tonumber(rec.maxStacks)
+        if n and n >= 1 then
+            clean.maxStacks = math.min(math.floor(n), SAU.MAX_STACK_PIPS)
+        end
     end
 
     clean.specs = SAU._NormalizeSpecs(rec.specs)
@@ -351,6 +357,7 @@ local function WriteTrackerRecord(store, clean, groupId)
         onlyInCombat = clean.onlyInCombat,
         onlyInInstances = clean.onlyInInstances,
         missingVisual = clean.missingVisual,
+        maxStacks = clean.maxStacks,
         specs = clean.specs,
         homeSpec = clean.homeSpec,
         groupId = groupId,

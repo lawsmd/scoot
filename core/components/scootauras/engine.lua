@@ -509,6 +509,12 @@ function Engine.ApplyAll(trackerId)
     end
     SAU._ApplyTextStyling(trackerId, tracker, state)
     SAU._LayoutElements(trackerId, tracker, state)
+    -- The stacks kinds' ticks and shape row (stacks.lua): pieces inside the
+    -- button tree, laid out from the geometry the layout just settled, so
+    -- they ride this gate like the bindings.
+    if SAU.Stacks then
+        SAU.Stacks.Paint(trackerId, tracker, state)
+    end
     Record("applied", "t" .. trackerId)
 end
 

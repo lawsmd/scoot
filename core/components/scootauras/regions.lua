@@ -279,6 +279,12 @@ function Engine.WireButton(trackerId, tracker, state, entry, button)
     -- drives it through SetDurationCooldown.
     table.insert(elements, DrainElement(button))
 
+    -- The stacks kinds' ticks, shape row and its clip (stacks.lua); every
+    -- other kind drops the pieces an earlier occupant left on the entry.
+    if SAU.Stacks then
+        SAU.Stacks.OnWire(entry, button, tracker, elements)
+    end
+
     state.elements = elements
 end
 
@@ -403,6 +409,13 @@ function Engine.BindForMode(trackerId, tracker, state)
         return
     end
 
+    -- A stacks kind binds the application bar where a duration kind binds
+    -- the duration bar, and hands the count text a formatter so 1 shows
+    -- (stacks.lua). The engine holds one application bar per button, so the
+    -- Bar shape's own fill and the shape row's StatusBar never both bind.
+    local stacksKind = SAU.KindTracksStacks(tracker.kind)
+    local appBarOptions = stacksKind and SAU.Stacks and SAU.Stacks.BarOptions(tracker) or nil
+
     for _, elem in ipairs(state.elements or {}) do
         if elem.type == "texture" then
             if tracker.shape == "shape" then
@@ -448,7 +461,8 @@ function Engine.BindForMode(trackerId, tracker, state)
                 end
             elseif source == "applications" then
                 if vis.showStacks then
-                    CallBinding(trackerId, button, "SetApplicationCount", elem.widget)
+                    local options = stacksKind and SAU.Stacks and SAU.Stacks.CountOptions() or nil
+                    CallBinding(trackerId, button, "SetApplicationCount", elem.widget, options)
                 else
                     CallBinding(trackerId, button, "ClearApplicationCount")
                 end
@@ -464,7 +478,7 @@ function Engine.BindForMode(trackerId, tracker, state)
             -- Cadence lock geometry (see CreateBarElement). The lock bar is
             -- outside the tree; only its fill texture is referenced here, and
             -- only under the gate, so re-anchoring the in-tree clips is legal.
-            local lockBar = (vis.showBar and db.barLockCadence == true) and state.lockBar or nil
+            local lockBar = (vis.showBar and not stacksKind and db.barLockCadence == true) and state.lockBar or nil
             local lockTex = lockBar and lockBar:GetStatusBarTexture() or nil
             state.cadenceGeometry = lockTex and (fillMode and "fill-lock" or "deplete-lock") or "neutral"
             if elem.barClip then
@@ -490,14 +504,20 @@ function Engine.BindForMode(trackerId, tracker, state)
                     elem.lockClip:SetAllPoints(elem.inner)
                 end
             end
-            if vis.showBar then
+            if vis.showBar and stacksKind and appBarOptions then
+                -- The engine ranges and fills this bar from the count.
+                CallBinding(trackerId, button, "ClearDurationBar")
+                CallBinding(trackerId, button, "SetApplicationBar", elem.barFill, appBarOptions)
+            elseif vis.showBar then
                 local direction = fillMode and DIR_ELAPSED or DIR_REMAINING
+                CallBinding(trackerId, button, "ClearApplicationBar")
                 -- Cadence.Configure (right after this pass) asks this bar for
                 -- the duration object it was just timed with, so the binding
                 -- must precede it.
                 CallBinding(trackerId, button, "SetDurationBar", elem.barFill, { direction = direction })
             else
                 CallBinding(trackerId, button, "ClearDurationBar")
+                CallBinding(trackerId, button, "ClearApplicationBar")
             end
         elseif elem.type == "cooldown" then
             local shapeDrain = tracker.shape == "shape" and db.shapeShowDrain ~= false
@@ -508,6 +528,15 @@ function Engine.BindForMode(trackerId, tracker, state)
                 pcall(elem.widget.Clear, elem.widget)
             end
         end
+    end
+
+    -- The Group of Shapes: the row's transparent StatusBar takes the
+    -- application bar (the bar branch above cleared it, since the bar
+    -- element is hidden on this shape); the clip anchored to its fill
+    -- reveals the glyphs (stacks.lua).
+    if stacksKind and appBarOptions and tracker.shape == "icons"
+        and entry.stacks and entry.stacks.stackBar then
+        CallBinding(trackerId, button, "SetApplicationBar", entry.stacks.stackBar, appBarOptions)
     end
 end
 
@@ -648,10 +677,20 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
     pv:ClearAllPoints()
     pv:SetAllPoints(state.container)
 
+    -- A stacks kind previews its segments at one short of the maximum, and
+    -- its count text at that number, on pieces built once per preview set.
+    local stacksKind = SAU.KindTracksStacks(tracker.kind)
+    local maxStacks, stackSample
+    if stacksKind then
+        maxStacks = SAU.ResolveMaxStacks(tracker)
+        stackSample = math.max(1, maxStacks - 1)
+        if SAU.Stacks then SAU.Stacks.EnsureSetPieces(preview) end
+    end
+
     -- The chain reads exactly these three state fields. The REAL entry rides
     -- along so SetHostSize writes hostW/hostH where the group layout reads
     -- them (idempotent with the live pass: same db, same numbers).
-    local shim = { container = pv, elements = preview.elements, entry = entry }
+    local shim = { container = pv, elements = preview.elements, entry = entry, stacks = preview.stacks }
 
     -- The preview stands in for the missing-state underlay too; its gate
     -- reads the Edit Mode flag and hides it (underlay.lua).
@@ -698,15 +737,25 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
 
     -- Sample content before layout: the outside-text path measures string
     -- width, so the duration text must carry its widest value in its final
-    -- font. Stacks are excluded from the preview on purpose: most tracked
-    -- auras never stack, and a sample count on them reads as a bug.
+    -- font. Stacks are excluded from a duration tracker's preview on
+    -- purpose: most tracked auras never stack, and a sample count on them
+    -- reads as a bug. A stacks tracker is about the count, so it shows one.
     local tenths = db.textDecimal == true
     durationFS:SetText(tenths and "15.0" or "15")
     nameFS:SetText(tracker.name or "Aura Tracker")
-    stacksFS:SetText("")
-    stacksFS:SetShown(false)
+    if stacksKind then
+        stacksFS:SetText(tostring(stackSample))
+        stacksFS:SetShown(vis.showStacks)
+    else
+        stacksFS:SetText("")
+        stacksFS:SetShown(false)
+    end
 
     SAU._LayoutElements(trackerId, tracker, shim)
+
+    if stacksKind and SAU.Stacks then
+        SAU.Stacks.PaintSet(shim, tracker, db, maxStacks, stackSample)
+    end
 
     local wantDrain = ((tracker.shape == "shape") and (db.shapeShowDrain ~= false))
         or SAU.WantsIconSwipe(tracker, db, vis)
@@ -714,7 +763,8 @@ function Engine.ShowEditModePreview(trackerId, tracker, state)
         pcall(drainCD.Clear, drainCD)
     end
     RegisterPreviewAnimation(entry, {
-        fill = (vis.showBar and barFill) or nil,
+        -- A stacks bar holds its sample; the countdown is a duration thing.
+        fill = (vis.showBar and not stacksKind and barFill) or nil,
         invertFill = (db.barFillMode == "fill"),
         text = (vis.showText and durationFS) or nil,
         tenths = tenths,

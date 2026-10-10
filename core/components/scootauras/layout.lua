@@ -93,10 +93,29 @@ function SAU.ResolveVisibility(tracker, db)
     local showIcon
     if shape == "bar" then
         showIcon = db and db.barShowIcon or false
+    elseif shape == "icons" or shape == "text" then
+        -- The Group of Shapes (stacks.lua) and the Floating Number carry no
+        -- aura icon.
+        showIcon = false
     else
         -- "icon" shows the spell icon; "shape" shows the atlas art in the same
         -- texture element.
         showIcon = not (db and db.iconMode == "hidden")
+    end
+    if SAU.KindTracksStacks(tracker.kind) then
+        -- The count is the display: the number on the icon, the engine-fed
+        -- segments of the bar, the shape row (stacks.lua), or the number
+        -- alone, which can never be hidden. No duration text, swipe or drain
+        -- on any shape.
+        return {
+            shape = shape,
+            stacks = true,
+            showIcon = showIcon,
+            showBar = (shape == "bar"),
+            showText = false,
+            showStacks = (shape == "text") or not (db and db.hideStackText),
+            showName = (shape == "bar") and not (db and db.hideNameText),
+        }
     end
     return {
         shape = shape,
@@ -146,6 +165,24 @@ local function LayoutElements(trackerId, tracker, state)
 
     local function SetHostSize(w, h)
         SAU.Engine.SetHostSize(state, math.max(w, 1), math.max(h, 1))
+    end
+
+    -- Stack count: inside 9-way or outside flush-corner 8-way, on `host`.
+    local function PlaceStackText(host)
+        if not stacksElem then return end
+        local w = stacksElem.widget
+        w:ClearAllPoints()  -- required: the wire-time corner anchor is otherwise permanent
+        local sxOff = tonumber(db and db.stackTextOffsetX) or 0
+        local syOff = tonumber(db and db.stackTextOffsetY) or 0
+        if ((db and db.stackTextPosition) or "inside") == "outside" then
+            local anchor = (db and db.stackTextOuterAnchor) or "TOPRIGHT"
+            local m = OUTSIDE_ANCHORS[anchor] or OUTSIDE_ANCHORS.TOPRIGHT
+            w:SetPoint(m[1], host, anchor, m[2] + sxOff, m[3] + syOff)
+        else
+            local anchor = (db and db.stackTextInnerAnchor) or "BOTTOMRIGHT"
+            local offsets = INSIDE_OFFSETS[anchor] or { 0, 0 }
+            w:SetPoint(anchor, host, anchor, offsets[1] + sxOff, offsets[2] + syOff)
+        end
     end
 
     -- Icon dimensions from settings only.
@@ -314,6 +351,60 @@ local function LayoutElements(trackerId, tracker, state)
             w, h = SAU.ClassResource.IconsHostSize(state.entry, db)
         end
         SetHostSize(w, h)
+        return
+    end
+
+    if vis.stacks and vis.shape == "icons" then
+        -- The stacks kinds' Group of Shapes (stacks.lua): one shape per
+        -- stack, laid out by the module on the container. The host is the
+        -- row's extent from the segment count and the two sliders; the count
+        -- text is the one element here that may show, on the row.
+        if texElem then texElem.widget:Hide() end
+        if nameElem then nameElem.widget:Hide() end
+        if textElem then textElem.widget:Hide() end
+        if barElem then barElem.widget:Hide() end
+        local w, h = 32, 16
+        if SAU.Stacks and SAU.Stacks.IconsHostSize then
+            w, h = SAU.Stacks.IconsHostSize(tracker, db)
+        end
+        SetHostSize(w, h)
+        PlaceStackText(state.container)
+        return
+    end
+
+    if vis.stacks and vis.shape == "text" then
+        -- The Floating Number: the count alone, centered on the host with its
+        -- offsets. The count is engine-written and secret, so the host is a
+        -- ruler measure of fixed samples (stacks.lua), never of the string,
+        -- and a count change never re-lays out.
+        if texElem then texElem.widget:Hide() end
+        if nameElem then nameElem.widget:Hide() end
+        if textElem then textElem.widget:Hide() end
+        if barElem then barElem.widget:Hide() end
+        local sxOff = tonumber(db and db.stackTextOffsetX) or 0
+        local syOff = tonumber(db and db.stackTextOffsetY) or 0
+        local textW, textH = 0, 0
+        if stacksElem then
+            local fs = stacksElem.widget
+            fs:ClearAllPoints()
+            fs:SetWidth(0)
+            fs:SetWordWrap(false)
+            fs:SetJustifyH("CENTER")
+            fs:SetPoint("CENTER", state.container, "CENTER", sxOff, syOff)
+            fs:Show()
+            local w, h
+            if SAU.Stacks and SAU.Stacks.MeasureNumber then
+                w, h = SAU.Stacks.MeasureNumber(db)
+            end
+            local fontSize = tonumber(db and db.stackTextSize) or 14
+            -- A thick outline draws past the measured advance, by more at a
+            -- larger size; the host keeps it inside the drag box.
+            local slack = math.ceil(fontSize * 0.2)
+            if type(w) == "number" then textW = math.ceil(w) + 2 * slack end
+            if type(h) == "number" then textH = math.ceil(h) end
+            textH = math.max(textH, math.ceil(fontSize * 1.4))
+        end
+        SetHostSize(textW + 2 * math.abs(sxOff), textH + 2 * math.abs(syOff))
         return
     end
 
@@ -507,24 +598,9 @@ local function LayoutElements(trackerId, tracker, state)
         textElem.widget:Show()
     end
 
-    -- Stack count: inside 9-way or outside flush-corner 8-way. The bar hosts
-    -- it for bar shape, the icon/host rect otherwise.
-    if stacksElem then
-        local w = stacksElem.widget
-        w:ClearAllPoints()  -- required: the wire-time corner anchor is otherwise permanent
-        local host = (vis.shape == "bar" and barElem and vis.showBar) and barElem.widget or state.container
-        local sxOff = tonumber(db and db.stackTextOffsetX) or 0
-        local syOff = tonumber(db and db.stackTextOffsetY) or 0
-        if ((db and db.stackTextPosition) or "inside") == "outside" then
-            local anchor = (db and db.stackTextOuterAnchor) or "TOPRIGHT"
-            local m = OUTSIDE_ANCHORS[anchor] or OUTSIDE_ANCHORS.TOPRIGHT
-            w:SetPoint(m[1], host, anchor, m[2] + sxOff, m[3] + syOff)
-        else
-            local anchor = (db and db.stackTextInnerAnchor) or "BOTTOMRIGHT"
-            local offsets = INSIDE_OFFSETS[anchor] or { 0, 0 }
-            w:SetPoint(anchor, host, anchor, offsets[1] + sxOff, offsets[2] + syOff)
-        end
-    end
+    -- Stack count: the bar hosts it for bar shape, the icon/host rect
+    -- otherwise.
+    PlaceStackText((vis.shape == "bar" and barElem and vis.showBar) and barElem.widget or state.container)
 
     -- Aura name text, anchored to the bar.
     if nameElem then

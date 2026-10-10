@@ -112,7 +112,9 @@ local state = {
 }
 
 local KIND_LABELS = {
-    buff = "Buff", debuff = "Debuff", missingbuff = "Missing Buff",
+    buff = "Buff Duration", debuff = "Debuff Duration",
+    buffstacks = "Buff Stacks", debuffstacks = "Debuff Stacks",
+    missingbuff = "Missing Buff",
     classpower = "Class Power", classresource = "Class Resource",
 }
 local UNIT_LABELS = {
@@ -125,8 +127,12 @@ local SHAPE_LABELS = {
 -- A Class Power tracker's two shapes read as the editor names them, and a
 -- Class Resource tracker's likewise.
 local CLASS_POWER_SHAPE_LABELS = { bar = "Bar", text = "Number" }
-local CLASS_RESOURCE_SHAPE_LABELS = { bar = "Bar", icons = "Group of Icons" }
-local SHAPE_LABELS_BY_KIND = { classpower = CLASS_POWER_SHAPE_LABELS, classresource = CLASS_RESOURCE_SHAPE_LABELS }
+local CLASS_RESOURCE_SHAPE_LABELS = { bar = "Bar", icons = "Group of Shapes" }
+local STACK_SHAPE_LABELS = { icon = "Icon", bar = "Bar", icons = "Group of Shapes", text = "Floating Number" }
+local SHAPE_LABELS_BY_KIND = {
+    classpower = CLASS_POWER_SHAPE_LABELS, classresource = CLASS_RESOURCE_SHAPE_LABELS,
+    buffstacks = STACK_SHAPE_LABELS, debuffstacks = STACK_SHAPE_LABELS,
+}
 
 -- One descriptor for every surface: the tracker row's meta line and the group
 -- icon's hover tooltip. A kind with one possible unit (Class Power) drops the
@@ -209,6 +215,19 @@ end
 -- Cleanup (invoked from UIPanel:ClearContent through the registered slot)
 --------------------------------------------------------------------------------
 
+-- The add buttons sit under the shared scroll viewport, outside it, so a long
+-- list never scrolls them away. This page lifts the viewport's bottom edge to
+-- make room and drops it back to the stock inset (settingspanel/core.lua) when
+-- the page is left.
+local function SetAddBarInset(contentPane, on)
+    local scrollFrame = contentPane and contentPane._scrollFrame
+    if not scrollFrame then return end
+    local M = addon.UI.Controls.Metrics()
+    local bottom = M.paneInset + (on and (ADD_ROW_H + M.paneInset) or 0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", contentPane, "BOTTOMRIGHT",
+        -(M.scrollBar.margin + M.scrollBar.width + M.paneInset), bottom)
+end
+
 local function Cleanup(panel)
     if Drag.active then EndDrag(true) end
     -- The spec and gear fly-outs outlive the page (one instance each,
@@ -253,6 +272,7 @@ local function Cleanup(panel)
     local contentPane = panel.frame and panel.frame._contentPane
     if contentPane then
         contentPane._onResize = nil
+        SetAddBarInset(contentPane, false)
         if contentPane._scootAuraImportBtn then
             contentPane._scootAuraImportBtn:Hide()
         end
@@ -1196,6 +1216,7 @@ RenderList = function(panel, scrollContent, corrective)
         if contentPane and contentPane._scootAuraSearch then
             contentPane._scootAuraSearch:Hide()
         end
+        SetAddBarInset(contentPane, false)
         local builder = SettingsBuilder:CreateFor(scrollContent)
         panel._currentBuilder = builder
         builder:AddDescription(
@@ -1261,6 +1282,10 @@ RenderList = function(panel, scrollContent, corrective)
 
     local query = SearchQuery(contentPane)
     local searching = query ~= ""
+
+    -- Before the viewport height is read below. On the first render the new
+    -- edge resolves a frame late; the stale-height re-render corrects it.
+    SetAddBarInset(contentPane, true)
 
     -- Pane split: fixed offsets from the measured content width, divider
     -- between them with clearance on both sides.
@@ -1362,12 +1387,12 @@ RenderList = function(panel, scrollContent, corrective)
         yR = yR + PlaceholderLine(rightPane, yR, "No matches", theme)
     end
 
-    -- Content height: enough for the longer list plus the add buttons, but
-    -- never shorter than the viewport, so the add buttons and the divider sit
-    -- at the pane bottom even when the lists are short.
+    -- Content height: enough for the longer list, but never shorter than the
+    -- viewport, so the divider runs to the add buttons even when the lists
+    -- are short.
     local scrollFrame = scrollContent:GetParent()
     local viewH = (scrollFrame and scrollFrame:GetHeight()) or 0
-    local contentH = math.max(yL, yR) + ADD_ROW_H + 16
+    local contentH = math.max(yL, yR) + 16
     if viewH > 0 then
         contentH = math.max(contentH, viewH - 2)
     end
@@ -1375,20 +1400,32 @@ RenderList = function(panel, scrollContent, corrective)
     leftPane:SetHeight(contentH)
     rightPane:SetHeight(contentH)
 
-    -- Add buttons, statically centered at the bottom of their panes.
-    local addAura = CreateAddRow(leftPane, "+ Add Aura", function()
+    -- Add buttons under the viewport (SetAddBarInset made the room), lined up
+    -- with their panes, so they stay on screen however far the lists scroll.
+    local barParent = contentPane or scrollFrame
+    local barGap = addon.UI.Controls.Metrics().paneInset
+    local addAura = CreateAddRow(barParent, "+ Add Aura", function()
         if addon.ShowScootAuraEditor then addon.ShowScootAuraEditor(nil) end
     end)
-    addAura:SetPoint("BOTTOMLEFT", leftPane, "BOTTOMLEFT", 0, 4)
-    addAura:SetPoint("BOTTOMRIGHT", leftPane, "BOTTOMRIGHT", 0, 4)
+    addAura:SetPoint("TOPLEFT", scrollFrame, "BOTTOMLEFT", 0, -barGap)
+    addAura:SetWidth(leftW - DIVIDER_CLEAR_L)
     table.insert(state.rows, addAura)
 
-    local addGroup = CreateAddRow(rightPane, "+ Add Group", function()
+    local addGroup = CreateAddRow(barParent, "+ Add Group", function()
         if SAU.CreateGroup(nil) then Refresh() end
     end)
-    addGroup:SetPoint("BOTTOMLEFT", rightPane, "BOTTOMLEFT", 0, 4)
-    addGroup:SetPoint("BOTTOMRIGHT", rightPane, "BOTTOMRIGHT", 0, 4)
+    addGroup:SetPoint("TOPLEFT", scrollFrame, "BOTTOMLEFT", rightX, -barGap)
+    addGroup:SetWidth(rightW)
     table.insert(state.rows, addGroup)
+
+    -- The divider carries on between the two buttons.
+    local barSep = CreateFrame("Frame", nil, barParent)
+    barSep:SetSize(1, ADD_ROW_H + barGap)
+    barSep:SetPoint("TOP", scrollFrame, "BOTTOMLEFT", leftW, 0)
+    local barSepTex = barSep:CreateTexture(nil, "BORDER")
+    barSepTex:SetAllPoints()
+    barSepTex:SetColorTexture(ar, ag, ab, 0.2)
+    table.insert(state.rows, barSep)
 
     -- Divider, full pane height regardless of list length.
     local sep = CreateFrame("Frame", nil, scrollContent)

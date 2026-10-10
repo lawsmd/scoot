@@ -40,45 +40,45 @@ local ANIM_ICON_PREVIEW_SIZE = 28
 
 local SIMPLE_ICONS = {
     -- Special: use the spell's own icon
-    { key = "spell" },
+    { key = "spell", label = "Spell Icon" },
     -- Circles
-    { key = "CircleMask" },
-    { key = "border:CircleMask" },
-    { key = "common-radiobutton-circle" },
-    { key = "common-radiobutton-dot" },
+    { key = "CircleMask", label = "Circle" },
+    { key = "border:CircleMask", label = "Circle (Bordered)" },
+    { key = "common-radiobutton-circle", label = "Radio Ring" },
+    { key = "common-radiobutton-dot", label = "Radio Dot" },
     -- Squares
-    { key = "SquareMask" },
-    { key = "border:SquareMask" },
-    { key = "talents-node-square-gray" },
-    { key = "wide:talents-node-square-gray" },
-    { key = "UI-Frame-IconMask" },
+    { key = "SquareMask", label = "Square" },
+    { key = "border:SquareMask", label = "Square (Bordered)" },
+    { key = "talents-node-square-gray", label = "Talent Square" },
+    { key = "wide:talents-node-square-gray", label = "Talent Square (Wide)" },
+    { key = "UI-Frame-IconMask", label = "Icon Mask" },
     -- Diamonds
-    { key = "activities-complete-diamond" },
-    { key = "activities-incomplete-diamond" },
+    { key = "activities-complete-diamond", label = "Diamond" },
+    { key = "activities-incomplete-diamond", label = "Diamond (Incomplete)" },
     -- Stars
-    { key = "Bonus-Objective-Star" },
-    { key = "ChallengeMode-SpikeyStar" },
-    { key = "campcollection-icon-star" },
+    { key = "Bonus-Objective-Star", label = "Bonus Star" },
+    { key = "ChallengeMode-SpikeyStar", label = "Spiky Star" },
+    { key = "campcollection-icon-star", label = "Collection Star" },
     -- Plus / Cross
-    { key = "common-icon-plus" },
+    { key = "common-icon-plus", label = "Plus" },
     -- Rings
-    { key = "Azerite-CenterTrait-Ring" },
+    { key = "Azerite-CenterTrait-Ring", label = "Azerite Ring" },
     -- Coins (from Blizzard tooltip system)
-    { key = "coin-gold" },
-    { key = "coin-silver" },
-    { key = "coin-copper" },
+    { key = "coin-gold", label = "Gold Coin" },
+    { key = "coin-silver", label = "Silver Coin" },
+    { key = "coin-copper", label = "Copper Coin" },
     -- Crafting Quality Tiers
-    { key = "Professions-ChatIcon-Quality-Tier1" },
-    { key = "Professions-ChatIcon-Quality-Tier2" },
-    { key = "Professions-ChatIcon-Quality-Tier3" },
-    { key = "Professions-ChatIcon-Quality-Tier4" },
-    { key = "Professions-ChatIcon-Quality-Tier5" },
+    { key = "Professions-ChatIcon-Quality-Tier1", label = "Quality Tier 1" },
+    { key = "Professions-ChatIcon-Quality-Tier2", label = "Quality Tier 2" },
+    { key = "Professions-ChatIcon-Quality-Tier3", label = "Quality Tier 3" },
+    { key = "Professions-ChatIcon-Quality-Tier4", label = "Quality Tier 4" },
+    { key = "Professions-ChatIcon-Quality-Tier5", label = "Quality Tier 5" },
     -- Misc Atlas
-    { key = "bags-glow-white" },
-    { key = "wide:bags-glow-white" },
-    { key = "checkmark-minimal" },
-    { key = "waypoint-mappin-minimap-tracked" },
-    { key = "levelup-dot-gold" },
+    { key = "bags-glow-white", label = "Bag Glow" },
+    { key = "wide:bags-glow-white", label = "Bag Glow (Wide)" },
+    { key = "checkmark-minimal", label = "Checkmark" },
+    { key = "waypoint-mappin-minimap-tracked", label = "Map Pin" },
+    { key = "levelup-dot-gold", label = "Gold Dot" },
 }
 
 -- Animated icons (built lazily from AnimEngine registry)
@@ -496,6 +496,18 @@ end
 
 function addon.CloseIconPicker()
     CloseIconPicker()
+end
+
+--- The display name of a picker key, or the key itself when it has none.
+function addon.IconPickerLabel(key)
+    if type(key) ~= "string" then return nil end
+    BuildAnimatedIconList()
+    for _, tabData in ipairs(TABS) do
+        for _, iconData in ipairs(tabData.icons) do
+            if iconData.key == key then return iconData.label or key end
+        end
+    end
+    return key
 end
 
 -- Backward compatibility aliases

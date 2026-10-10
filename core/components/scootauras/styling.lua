@@ -59,6 +59,12 @@ local function AtlasFromShapeKey(key)
 end
 
 SAU._AtlasFromShapeKey = AtlasFromShapeKey
+
+--- Whether a picker key asks for the bordered variant: a black copy of the
+-- shape behind it, the shape inset inside.
+function SAU._ShapeKeyIsBordered(key)
+    return type(key) == "string" and key:sub(1, 7) == "border:"
+end
 -- The underlay's desaturated-shape variant grays this resolved tint.
 SAU._ResolveShapeColor = ResolveShapeColor
 
@@ -214,7 +220,8 @@ end
 -- the Edit Mode preview ask the same question.
 function SAU.WantsIconSwipe(tracker, db, vis)
     if not (tracker and db and vis and vis.showIcon) then return false end
-    return (tracker.kind == "buff" or tracker.kind == "debuff")
+    -- The swipe is the duration; a stacks tracker's icon carries the count.
+    return SAU.KindMeasure(tracker.kind) == "duration"
         and tracker.shape == "icon"
         and (db.iconMode or "default") == "default"
         and db.iconShowSwipe ~= false
@@ -545,6 +552,10 @@ local function ResolveBarFill(tracker, db, powerColor)
     elseif tracker.kind == "classresource" and fgColorMode ~= "custom" and fgColorMode ~= "class" then
         -- Power Color, Class Color or Custom on this kind.
         fgColorMode = "power"
+    elseif SAU.KindTracksStacks(tracker.kind) and fgColorMode ~= "custom" then
+        -- Class Color or Custom on the stacks kinds; a duration bar's
+        -- Texture Original left by a kind flip reads as Class Color.
+        fgColorMode = "class"
     end
     local fgR, fgG, fgB, fgA = 1, 1, 1, 1
     if fgColorMode == "power" then
@@ -701,7 +712,10 @@ end
 -- over the engine-sized container (missing.lua, Missing.UpdateGate), and that
 -- mechanism stays its sole owner. A Class Power or Class Resource tracker has
 -- no container at all, so the frame is the only thing there is to hide.
-local SHELL_GATED_KINDS = { buff = true, debuff = true, classpower = true, classresource = true }
+local SHELL_GATED_KINDS = {
+    buff = true, debuff = true, buffstacks = true, debuffstacks = true,
+    classpower = true, classresource = true,
+}
 
 -- Grouped visuals live under the group frame; the shell stays hidden and
 -- scale/opacity/shown apply to the visual itself. The flag is physical (set by

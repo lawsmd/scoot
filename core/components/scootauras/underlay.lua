@@ -74,14 +74,16 @@ end
 local function PaintVariant(trackerId, tracker, u, traits)
     local db = SAU.GetDB(trackerId)
 
-    local texElem, barElem
+    local texElem, barElem, stacksElem
     for _, elem in ipairs(u.elements) do
         if elem.type == "texture" then
             texElem = elem
         elseif elem.type == "bar" then
             barElem = elem
         elseif elem.type == "text" then
-            -- The reveal carries no duration, name, or stacks.
+            -- The reveal carries no duration, name, or stacks; the gray 0
+            -- below brings the count back on the Floating Number.
+            if elem.def.source == "applications" then stacksElem = elem end
             elem.widget:Hide()
         elseif elem.type == "cooldown" then
             -- No duration exists while missing; the swipe never runs here.
@@ -104,6 +106,31 @@ local function PaintVariant(trackerId, tracker, u, traits)
         if texElem then
             texElem.widget:Hide()
             if texElem.borderFrame then texElem.borderFrame:Hide() end
+        end
+    elseif traits.art == "pips" then
+        -- The shape row's backdrops alone (stacks.lua paints them below);
+        -- the bar element and the aura icon have no place on this shape.
+        if barElem then barElem.widget:Hide() end
+        if texElem then
+            texElem.widget:Hide()
+            if texElem.borderFrame then texElem.borderFrame:Hide() end
+        end
+    elseif traits.art == "zero" then
+        -- The Floating Number at 0: the count string, where the layout put
+        -- it, holding a Scoot-written 0 in the gray of its color. This set
+        -- is never engine-bound, so the text is plain.
+        if barElem then barElem.widget:Hide() end
+        if texElem then
+            texElem.widget:Hide()
+            if texElem.borderFrame then texElem.borderFrame:Hide() end
+        end
+        if stacksElem then
+            local c = (db and db.stackTextColor) or { 1, 1, 1, 1 }
+            local gray = Luminance(c[1], c[2], c[3])
+            local fs = stacksElem.widget
+            fs:SetText("0")
+            fs:SetTextColor(gray, gray, gray, c[4] or 1)
+            fs:Show()
         end
     elseif traits.art == "baricon" then
         -- The bar frame is hidden (its borders are its children and vanish
@@ -145,6 +172,19 @@ local function PaintVariant(trackerId, tracker, u, traits)
             end
         end
     end
+
+    -- The stacks kinds' segments at 0 (stacks.lua): the ticks across an
+    -- Empty Bar, the backdrops alone on a shape row, nothing on the icon
+    -- shape. Any other kind on an entry that once hosted one hides them.
+    if SAU.Stacks then
+        if SAU.KindTracksStacks(tracker.kind) then
+            SAU.Stacks.EnsureSetPieces(u)
+            local n = SAU.ResolveMaxStacks(tracker)
+            SAU.Stacks.PaintSet({ container = u.root, elements = u.elements, stacks = u.stacks }, tracker, db, n, 0)
+        elseif u.stacks then
+            SAU.Stacks.HideSet(u.stacks)
+        end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -178,13 +218,16 @@ function Underlay.Restyle(trackerId, tracker, state)
     -- The chain reads exactly these state fields. The REAL entry rides along
     -- so SetHostSize writes hostW/hostH where the group layout reads them
     -- (idempotent with the live pass: same db, same numbers). No lockBar: the
-    -- live pass owns its placement. Text styling is skipped; nothing textual
-    -- ever shows here.
+    -- live pass owns its placement. Text styling runs only for the gray 0,
+    -- the one reveal that shows text.
     local shim = { container = u.root, elements = u.elements, entry = entry }
     SAU._ApplyIconMode(trackerId, tracker, shim)
     SAU._ApplyShapeStyling(trackerId, tracker, shim)
     SAU._ApplyBorders(trackerId, tracker, shim)
     SAU._ApplyBarStyling(trackerId, tracker, shim)
+    if traits.art == "zero" then
+        SAU._ApplyTextStyling(trackerId, tracker, shim)
+    end
     SAU._LayoutElements(trackerId, tracker, shim)
     PaintVariant(trackerId, tracker, u, traits)
     Underlay.UpdateGate(trackerId)

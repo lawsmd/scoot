@@ -266,6 +266,11 @@ local function CreatePip(cr)
     bar:SetValue(0)
     bar:Hide()
 
+    -- A bordered key's ring: anchored outside the gate, which the layout
+    -- insets by the border, so the fill and the cooldown keep the bar's rect.
+    local ring = bar:CreateTexture(nil, "BACKGROUND", nil, -1)
+    ring:Hide()
+
     local backdrop = bar:CreateTexture(nil, "BACKGROUND")
     backdrop:SetAllPoints(bar)
     backdrop:Hide()
@@ -297,7 +302,7 @@ local function CreatePip(cr)
         if ok then dur = obj end
     end
 
-    return { bar = bar, backdrop = backdrop, fg = fg, cooldown = cooldown, tick = tick, dur = dur }
+    return { bar = bar, ring = ring, backdrop = backdrop, fg = fg, cooldown = cooldown, tick = tick, dur = dur }
 end
 
 -- Pips are never destroyed: a count that shrinks hides the extras, and a
@@ -346,7 +351,7 @@ function ClassResource.IconsHostSize(entry, db)
     if n < 1 then n = PLACEHOLDER_COUNT end
     local size = tonumber(db and db.pipSize) or 16
     local gap = tonumber(db and db.pipSpacing) or 2
-    return n * size + (n - 1) * gap, size
+    return SAU.Pips.RowWidth(n, size, gap), size
 end
 
 --------------------------------------------------------------------------------
@@ -437,13 +442,12 @@ local function LayoutBarPips(cr, db, barElem, tracker, resolved)
     local tickColor = (db and db.tickColor) or { 0, 0, 0, 1 }
     local fgPath, r, g, b, a = SAU._ResolveBarFill(tracker, db, { PowerColor(resolved) })
     local varied = VariedTail(db, resolved)
-    local segW = (barW - (n - 1) * tick) / n
-    if segW < 1 then segW = 1 end
     local host = barElem.inner or barElem.widget
     for i = 1, n do
         local pip = cr.pips[i]
-        local x0 = math.floor((i - 1) * (segW + tick) + 0.5)
-        local x1 = math.floor(i * segW + (i - 1) * tick + 0.5)
+        -- The shared segment geometry (pips.lua), so this bar and a stacks
+        -- bar tile the same way.
+        local x0, x1 = SAU.Pips.SegmentEdges(barW, n, tick, i)
         local bar = pip.bar
         bar:ClearAllPoints()
         bar:SetPoint("TOPLEFT", host, "TOPLEFT", x0, 0)
@@ -452,6 +456,7 @@ local function LayoutBarPips(cr, db, barElem, tracker, resolved)
         local sr, sg, sb = PipColorAt(varied, i, n, r, g, b)
         bar:SetStatusBarColor(sr, sg, sb, a)
         bar:Show()
+        pip.ring:Hide()
         pip.backdrop:Hide()
         pip.fg:Hide()
         pcall(pip.cooldown.SetDrawSwipe, pip.cooldown, false)
@@ -479,6 +484,8 @@ local function LayoutIconPips(cr, db, resolved)
     local size = math.max(1, tonumber(db and db.pipSize) or 16)
     local gap = tonumber(db and db.pipSpacing) or 2
     local atlas = SAU._AtlasFromShapeKey(db and db.pipStyle) or "SquareMask"
+    local bw = SAU.Pips.BorderWidth(db and db.pipStyle, size)
+    local inner = math.max(1, size - 2 * bw)
     local pr, pg, pb = PipColor(db, resolved)
     local varied = VariedTail(db, resolved)
     local bd = (db and db.pipBackdropTint) or { 0, 0, 0, 1 }
@@ -490,12 +497,18 @@ local function LayoutIconPips(cr, db, resolved)
         local pip = cr.pips[i]
         local bar = pip.bar
         bar:ClearAllPoints()
-        bar:SetPoint("LEFT", cr.root, "LEFT", (i - 1) * (size + gap), 0)
-        bar:SetSize(size, size)
+        bar:SetPoint("LEFT", cr.root, "LEFT", (i - 1) * (size + gap) + bw, 0)
+        bar:SetSize(inner, inner)
         bar:SetStatusBarTexture(WHITE8x8)
         bar:SetStatusBarColor(1, 1, 1, 0)
         bar:Show()
         pip.tick:Hide()
+
+        local ring = pip.ring
+        ring:ClearAllPoints()
+        ring:SetPoint("TOPLEFT", bar, "TOPLEFT", -bw, bw)
+        ring:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", bw, -bw)
+        SAU.Pips.PaintRing(ring, atlas, bw)
 
         local backdrop = pip.backdrop
         if pcall(backdrop.SetAtlas, backdrop, atlas) then

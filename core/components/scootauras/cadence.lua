@@ -363,7 +363,10 @@ function Cadence.Configure(trackerId, tracker, state)
     rec.mode = fillMode and "fill" or "deplete"
     rec.unit = tracker and tracker.unit or nil
     local vis = tracker and db and SAU.ResolveVisibility(tracker, db) or nil
-    rec.enabled = (vis and vis.showBar and db.barLockCadence == true) and true or false
+    -- A stacks tracker's bar is the engine's application bar, which carries
+    -- no duration to lock; a lock setting left by a kind flip stays inert.
+    local stacksKind = SAU.KindTracksStacks and SAU.KindTracksStacks(tracker and tracker.kind)
+    rec.enabled = (vis and vis.showBar and db.barLockCadence == true and not stacksKind) and true or false
     if not rec.enabled then
         Deactivate(entry, rec)
         return
