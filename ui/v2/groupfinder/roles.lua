@@ -30,20 +30,13 @@ local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER" }
 -- The icon's alpha by state; a hovered open role comes up toward chosen
 local ALPHA = { on = 1, off = 0.45, hover = 0.7, locked = 0.18 }
 
-local function Controls()
-    return addon.UI.Controls
-end
-
 local function Theme()
     return addon.UI.Theme
 end
 
-local function M()
-    return addon.UI.Controls.Metrics()
-end
-
 local column
 local holder
+local holderWidth
 local icons = {}        -- role -> its button
 local available = {}    -- role -> the class can fill it
 local chosen = {}       -- role -> chosen, as last read or clicked
@@ -105,39 +98,39 @@ local function MakeIcon(tray, role, index)
     return button
 end
 
--- The column down the box's right edge, inside its border: a rule on its
--- left, the icons stacked and centred in its top two-thirds, the note's
--- holder across the bottom third. The split is taken from the window's
--- measures, since the column's own height resolves after the build
+-- The column down the box's right edge, outside the results' border: the
+-- icons stacked in its top two-thirds, the note's holder across the bottom
+-- third from noteGap off the border to the box's right edge, under the
+-- Filter button's edge; the icons centre on the holder. The split is
+-- taken from the window's measures, since the column's own height
+-- resolves after the build
 -- opts.onChange  called after a click changed the choice
 function Roles.Build(box, opts)
     opts = opts or {}
-    local C = Controls()
     local L = LAYOUT.search.roles
-    local m = M().collapsible or {}
-    local bw = m.borderWidth or 1
     onChange = opts.onChange
 
     column = CreateFrame("Frame", nil, box)
     column:SetWidth(L.width)
-    column:SetPoint("TOPRIGHT", box, "TOPRIGHT", -bw, -bw)
-    column:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -bw, bw)
-    column._rule = C.CreateBorder(column, { sides = { "LEFT" }, thickness = bw, alpha = m.borderAlpha or 0.6 })
+    column:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, 0)
+    column:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", 0, 0)
+    local shift = L.noteGap / 2
+    holderWidth = L.width - L.noteGap
 
     local boxHeight = LAYOUT.panelHeight - LAYOUT.search.boxTop - LAYOUT.panel.boxBottom
     local noteTop = math.floor(boxHeight * L.noteSplit + 0.5)
 
     local tray = CreateFrame("Frame", nil, column)
     tray:SetSize(L.iconSize, #ROLE_ORDER * L.iconSize + (#ROLE_ORDER - 1) * L.iconGap)
-    tray:SetPoint("CENTER", column, "TOP", 0, -noteTop / 2)
+    tray:SetPoint("CENTER", column, "TOP", shift, -noteTop / 2)
     for i, role in ipairs(ROLE_ORDER) do
         MakeIcon(tray, role, i)
     end
 
     holder = CreateFrame("Frame", nil, column)
-    Host.DressHolder(holder)
-    holder:SetPoint("TOPLEFT", column, "TOPLEFT", L.noteInset, -noteTop)
-    holder:SetPoint("BOTTOMRIGHT", column, "BOTTOMRIGHT", -L.noteInset, L.noteInset)
+    Host.DressHolder(holder, UI.FieldFill())
+    holder:SetPoint("TOPLEFT", column, "TOPLEFT", L.noteGap, -noteTop)
+    holder:SetPoint("BOTTOMRIGHT", column, "BOTTOMRIGHT", 0, 0)
 
     PaintAll()
     return column
@@ -200,7 +193,7 @@ function Roles:TakeNote()
         editBox = dialog.Description.EditBox,
         artKeys = Host.SCROLL_BOX_ART,
         inset = { left = pad, right = pad, top = pad, bottom = pad },
-        editBoxWidth = L.width - 2 * (L.noteInset + pad) - L.noteTextInset,
+        editBoxWidth = holderWidth - 2 * pad - L.noteTextInset,
         fontSize = L.noteFont,
         scrollBarScale = L.noteBarScale,
     })

@@ -181,26 +181,35 @@ local function Build(parent)
     local pad = (M().collapsible or {}).contentPadding or 12
     local formWidth = LAYOUT.panelWidth - boxX * 2 - pad * 2
     local half = math.floor((formWidth - L.gap) / 2)
+    local rightX = half + L.gap + L.columnPad
+    local rightWidth = formWidth - rightX
+    local rightRows = 5
+    local detailsHeight = rightRows * L.rowHeight + (rightRows - 1) * L.rowGap
+        - L.captionHeight - L.captionGap - L.gap - L.rowHeight
 
     panel._heading = UI.MakeHeading(panel, "")
     panel._heading:SetPoint("RIGHT", panel, "RIGHT", -boxX, 0)
     panel._heading:SetWordWrap(false)
+    -- The box without its gray or its border; the fields carry the gray
     local box = UI.MakeBox(panel)
+    box._bg:Hide()
+    for _, edge in pairs(box._border) do edge:Hide() end
     panel._box = box
 
-    -- The form's rows stack inside the box's padding; Flow lays the shown
-    -- ones one under the other
+    -- The form's rows stack inside the box's padding: the rows across the
+    -- width, then the two columns under them; Flow lays the shown ones of
+    -- each one under the other
     local form = CreateFrame("Frame", nil, box)
     form:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
     form:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
     panel._form = form
-    panel._rows = {}
+    panel._rows, panel._left, panel._right = {}, {}, {}
 
-    local function Row(height, gap)
+    local function Row(list, height, gap)
         local row = CreateFrame("Frame", nil, form)
         row:SetHeight(height)
         row._gap = gap or L.gap
-        panel._rows[#panel._rows + 1] = row
+        list[#list + 1] = row
         return row
     end
 
@@ -208,7 +217,7 @@ local function Build(parent)
     -- name in their place while editing. A dropdown reads its value as it
     -- is made, before the panel's readers below exist, so each getter
     -- tests for its reader first.
-    local pick = Row(L.rowHeight)
+    local pick = Row(panel._rows, L.rowHeight)
     panel._pick = pick
     pick._group = C:CreateDropdown({
         parent = pick, width = half, height = L.rowHeight, values = {}, order = {}, placeholder = "",
@@ -222,6 +231,8 @@ local function Build(parent)
         set = function(key) panel:PickActivity(key) end,
     })
     pick._activity:SetPoint("TOPRIGHT", pick, "TOPRIGHT", 0, 0)
+    UI.ShadeField(pick._group)
+    UI.ShadeField(pick._activity)
     pick._line = UI.PrimaryText(pick, "label")
     pick._line:SetPoint("LEFT", pick, "LEFT", 0, 0)
     pick._line:SetPoint("RIGHT", pick, "RIGHT", 0, 0)
@@ -229,63 +240,61 @@ local function Build(parent)
     pick._line:Hide()
 
     -- A caption over a hosted box
-    local function Field(caption, height)
-        local row = Row(L.captionHeight + L.captionGap + height)
+    local function Field(list, caption, height)
+        local row = Row(list, L.captionHeight + L.captionGap + height)
         row._caption = UI.MakeCaption(row, caption)
         row._caption:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
         local holder = CreateFrame("Frame", nil, row)
-        Host.DressHolder(holder)
+        Host.DressHolder(holder, UI.FieldFill())
         holder:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -(L.captionHeight + L.captionGap))
         holder:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
         row._holder = holder
         return row
     end
-    panel._name = Field(Str("LFG_LIST_TITLE", "Title"), L.rowHeight)
-    panel._details = Field(Str("LFG_LIST_DETAILS", "Details"), L.detailsHeight)
+    panel._name = Field(panel._rows, Str("LFG_LIST_TITLE", "Title"), L.rowHeight)
+    panel._details = Field(panel._left, Str("LFG_LIST_DETAILS", "Details"), detailsHeight)
 
     -- The playstyle, required
-    local style = Row(L.rowHeight)
+    local style = Row(panel._left, L.rowHeight)
     local P = Enum.LFGEntryGeneralPlaystyle
     local styleOrder = P and { P.Learning, P.FunRelaxed, P.FunSerious, P.Expert } or {}
     local styleValues = {}
     for _, v in ipairs(styleOrder) do styleValues[v] = GF.GeneralPlaystyleString(v) end
     style._dropdown = C:CreateDropdown({
-        parent = style, width = formWidth, height = L.rowHeight, values = styleValues, order = styleOrder,
+        parent = style, width = half, height = L.rowHeight, values = styleValues, order = styleOrder,
         placeholder = Str("GROUP_FINDER_PLAYSTYLE_REQUIRED", "Playstyle"),
         get = function() return panel.Playstyle and panel:Playstyle() or nil end,
         set = function(v) panel:PickPlaystyle(v) end,
     })
     style._dropdown:SetPoint("TOPLEFT", style, "TOPLEFT", 0, 0)
+    UI.ShadeField(style._dropdown)
     panel._style = style
 
-    -- A requirement: the check, the label, and an input or the hosted voice
-    -- box at the right. The check follows the value; a click on it focuses
-    -- the box or clears the input.
+    -- A requirement: the label, and an input or the hosted voice box at the
+    -- right. The input stands inset in from the row's edge, since its border
+    -- sits outside the box, so the voice holder and the inputs end level.
     local function Requirement(withInput)
-        local row = Row(L.rowHeight, L.rowGap)
-        row._check = C.CreateCheckBox(row, { clickable = true, onClick = function() panel:ToggleRequirement(row) end })
-        row._check:SetPoint("LEFT", row, "LEFT", 0, 0)
+        local row = Row(panel._right, L.rowHeight, L.rowGap)
         row._label = UI.PrimaryText(row, "desc")
-        row._label:SetPoint("LEFT", row._check, "RIGHT", L.checkGap, 0)
+        row._label:SetPoint("LEFT", row, "LEFT", 0, 0)
         row._label:SetWordWrap(false)
         if withInput then
             row._input = C.CreateNumericInput(row, {
-                width = L.inputWidth, height = L.inputHeight, inset = L.inputInset, fontSize = L.inputFont,
+                width = L.fieldWidth, height = L.inputHeight, inset = L.inputInset, fontSize = L.inputFont,
                 min = 0, max = L.inputMax,
-                onChange = function() panel:OnRequirementChanged(row) end,
+                onChange = function() panel:RefreshValid() end,
             })
-            row._input:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-            -- A zero is no requirement: the box stays empty for it, and the
-            -- check follows the value the focus leaves behind
+            row._input:SetPoint("RIGHT", row, "RIGHT", -L.inputInset, 0)
+            UI.ShadeField(row._input)
+            -- A zero is no requirement: the box stays empty for it
             row._input:HookScript("OnEditFocusLost", function(input)
                 if input:GetValue() == 0 then input:SetText("") end
-                row._check:SetChecked(input:GetValue() > 0)
             end)
             row._label:SetPoint("RIGHT", row._input, "LEFT", -L.gap, 0)
         else
             local holder = CreateFrame("Frame", nil, row)
-            Host.DressHolder(holder)
-            holder:SetSize(L.voiceWidth, L.inputHeight)
+            Host.DressHolder(holder, UI.FieldFill())
+            holder:SetSize(L.fieldWidth + 2 * L.inputInset, L.inputHeight + 2 * L.inputInset)
             holder:SetPoint("RIGHT", row, "RIGHT", 0, 0)
             row._holder = holder
             row._label:SetPoint("RIGHT", holder, "LEFT", -L.gap, 0)
@@ -297,19 +306,23 @@ local function Build(parent)
     panel._voice = Requirement(false)
     panel._voice._label:SetText(Str("LFG_LIST_VOICE_CHAT", "Voice chat"))
 
-    -- The two options on one line: own faction only, and private
-    local options = Row(L.rowHeight, 0)
-    local function Option(x)
-        local check = C.CreateCheckBox(options, { clickable = true, onClick = function(self) panel:ToggleOption(self) end })
-        check:SetPoint("LEFT", options, "LEFT", x, 0)
-        local label = UI.PrimaryText(options, "desc")
-        label:SetPoint("LEFT", check, "RIGHT", L.checkGap, 0)
+    -- The two options under the requirements, a row each: own faction
+    -- only, and private, the label where a requirement's is and the check
+    -- at the right edge the fields end on
+    local function Option()
+        local row = Row(panel._right, L.rowHeight, L.rowGap)
+        local check = C.CreateCheckBox(row, { clickable = true, onClick = function(self) panel:ToggleOption(self) end })
+        check:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        local label = UI.PrimaryText(row, "desc")
+        label:SetPoint("LEFT", row, "LEFT", 0, 0)
+        label:SetPoint("RIGHT", check, "LEFT", -L.gap, 0)
+        label:SetJustifyH("LEFT")
         label:SetWordWrap(false)
         check._label = label
+        check._row = row
         return check
     end
-    options._cross = Option(0)
-    options._private = Option(L.optionColumn)
+    local options = { _cross = Option(), _private = Option() }
     options._private._label:SetText(Str("LFG_LIST_PRIVATE", "Private group"))
     panel._options = options
 
@@ -357,17 +370,25 @@ local function Build(parent)
     -- Layout and mode
     ----------------------------------------------------------------------------
 
-    -- The shown rows one under the other
-    function panel:Flow()
-        local y = 0
-        for _, row in ipairs(self._rows) do
+    -- A list's shown rows one under the other from y, x in and width wide;
+    -- returns the y under the last
+    local function Stack(rows, x, width, y)
+        for _, row in ipairs(rows) do
             if row:IsShown() then
                 row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", form, "TOPLEFT", 0, -y)
-                row:SetPoint("TOPRIGHT", form, "TOPRIGHT", 0, -y)
+                row:SetPoint("TOPLEFT", form, "TOPLEFT", x, -y)
+                row:SetWidth(width)
                 y = y + row:GetHeight() + row._gap
             end
         end
+        return y
+    end
+
+    -- The rows across the width, then the two columns side by side under them
+    function panel:Flow()
+        local y = Stack(self._rows, 0, formWidth, 0) + L.columnTop
+        Stack(self._left, 0, half, y)
+        Stack(self._right, rightX, rightWidth, y)
     end
 
     function panel:IsEditing()
@@ -654,23 +675,29 @@ local function Build(parent)
         local ec = EC()
         if not ec then return end
         local textInset = (M().field or {}).textInset or 8
+        local detailsPad = L.detailsPad
         if ec.Name then
             Host.Take("name", ec.Name, self._name._holder, {
                 artKeys = BOX_ART, artFrames = LOCK_FRAMES, textInsets = { textInset, textInset, 0, 0 },
+                instructionsInsets = { textInset, textInset, 0, 0 },
                 fallbackPoints = { { "TOPLEFT", ec.NameLabel, "BOTTOMLEFT", 5, -5 } },
             })
         end
         if ec.Description then
             Host.Take("description", ec.Description, self._details._holder, {
                 editBox = ec.Description.EditBox, artKeys = Host.SCROLL_BOX_ART, artFrames = LOCK_FRAMES,
-                editBoxWidth = formWidth - L.detailsInset,
+                inset = { left = detailsPad, right = detailsPad, top = detailsPad, bottom = detailsPad },
+                editBoxWidth = half - 2 * detailsPad - L.detailsInset,
                 fallbackPoints = { { "TOPLEFT", ec.DescriptionLabel, "BOTTOMLEFT", 5, -10 } },
             })
         end
         local voice = ec.VoiceChat and ec.VoiceChat.EditBox
         if voice then
             Host.Take("voice", voice, self._voice._holder, {
-                artKeys = BOX_ART, artFrames = LOCK_FRAMES, textInsets = { textInset, textInset, 0, 0 },
+                artKeys = BOX_ART, artFrames = LOCK_FRAMES,
+                textInsets = { L.voiceInset, L.voiceInset, 0, 0 },
+                instructionsInsets = { L.voiceInset, L.voiceInset, 0, 0 },
+                fontSize = L.voiceFont,
                 fallbackPoints = { { "RIGHT", ec.VoiceChat, "RIGHT", -5, 0 } },
             })
         end
@@ -678,7 +705,7 @@ local function Build(parent)
     end
 
     -- The hooks go on once: the validity follows the title and the details,
-    -- the voice check its text, and Tab moves among the three hosted boxes
+    -- and Tab moves among the three hosted boxes
     -- after Blizzard's own handler has moved it into a box of the hidden
     -- panel
     function panel:HookBoxes(ec)
@@ -700,23 +727,11 @@ local function Build(parent)
         details:HookScript("OnTextChanged", function()
             if panel:IsShown() then panel:RefreshValid() end
         end)
-        voice:HookScript("OnTextChanged", function()
-            if panel:IsShown() then panel:RefreshVoiceCheck() end
-        end)
     end
 
     function panel:NameText()
         local ec = EC()
         return string.match(BoxText(ec and ec.Name), "^%s*(.-)%s*$")
-    end
-
-    function panel:VoiceText()
-        local ec = EC()
-        return BoxText(ec and ec.VoiceChat and ec.VoiceChat.EditBox)
-    end
-
-    function panel:RefreshVoiceCheck()
-        self._voice._check:SetChecked(self:VoiceText() ~= "")
     end
 
     ----------------------------------------------------------------------------
@@ -726,7 +741,6 @@ local function Build(parent)
     local function SetRequirement(row, n)
         row._input:SetValue(n or 0)
         if row._input:GetValue() == 0 then row._input:SetText("") end
-        row._check:SetChecked(row._input:GetValue() > 0)
     end
 
     -- A check in the accent, or dim while it cannot change
@@ -752,35 +766,6 @@ local function Build(parent)
             r, g, b = Theme():GetPrimaryTextColor()
         end
         row._input:SetTextColor(r, g, b, 1)
-    end
-
-    function panel:ToggleRequirement(row)
-        if row._input then
-            if row._check:IsChecked() then
-                SetRequirement(row, 0)
-                self:RefreshValid()
-            else
-                row._check:SetChecked(true)
-                row._input:SetFocus()
-            end
-            return
-        end
-        -- The voice box's text cannot be cleared from here; the check
-        -- follows its text, and the click moves the focus
-        local ec = EC()
-        local voice = ec and ec.VoiceChat and ec.VoiceChat.EditBox
-        if not voice then return end
-        if self:VoiceText() ~= "" then
-            voice:ClearFocus()
-            self:RefreshVoiceCheck()
-        else
-            voice:SetFocus()
-        end
-    end
-
-    function panel:OnRequirementChanged(row)
-        row._check:SetChecked(row._input:GetValue() > 0)
-        self:RefreshValid()
     end
 
     function panel:ToggleOption(check)
@@ -833,6 +818,7 @@ local function Build(parent)
         cross._label:SetText(string.format(Str("LFG_LIST_CROSS_FACTION", "%s only"), faction or ""))
         cross:SetShown(showCross)
         cross._label:SetShown(showCross)
+        cross._row:SetShown(showCross)
         cross._inert = inertCross and true or false
         if inertCross then cross:SetChecked(true) end
         PaintCheck(cross, inertCross)
@@ -861,7 +847,6 @@ local function Build(parent)
                 if not inertCross then cross:SetChecked(false) end
             end
         end
-        self:RefreshVoiceCheck()
         self._style._dropdown:Refresh()
         if editing then
             self._list:SetText(Str("DONE_EDITING", "Done Editing"))

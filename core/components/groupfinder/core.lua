@@ -199,7 +199,14 @@ end
 function GF.ActivityName(info)
     local activityID = GF.ActivityID(info)
     if not activityID then return nil end
-    local ok, name = pcall(C_LFGList.GetActivityFullName, activityID, nil, plainBool(info.isWarMode))
+    return GF.ShortActivityName(activityID, plainBool(info.isWarMode))
+end
+
+-- The same for an activity by id, as a saved search names the one its
+-- text began with
+function GF.ShortActivityName(activityID, isWarMode)
+    if not activityID then return nil end
+    local ok, name = pcall(C_LFGList.GetActivityFullName, activityID, nil, isWarMode)
     if not ok or type(name) ~= "string" then return nil end
     if plain(name) == nil then return name end
     local activity = GF.ActivityInfo(activityID)
@@ -771,12 +778,16 @@ addon:RegisterComponentInitializer(function(self)
         settings = {
             slashCommand = { type = "addon", default = true },
             widgetLaunch = { type = "addon", default = true },
+            pveButton = { type = "addon", default = true },
+            queueEye = { type = "addon", default = true },
         },
     })
     self:RegisterComponent(component)
     GF.component = component
     GF.state.lockdown = ReadLockdown()
     InstallOpenPaths()
+    if GF.PVEButton then GF.PVEButton.Install() end
+    if GF.QueueEye then GF.QueueEye.Install() end
 
     component:On("LFG_LIST_AVAILABILITY_UPDATE", function() GF.Notify("categories") end)
     component:On("LFG_LIST_SEARCH_RESULTS_RECEIVED", OnResultsReceived)

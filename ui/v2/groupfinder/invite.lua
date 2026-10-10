@@ -19,10 +19,6 @@ local Str = GF.Str
 local Invite = {}
 UI.Invite = Invite
 
-local function Controls()
-    return addon.UI.Controls
-end
-
 local dialog
 local parts = {}
 
@@ -34,18 +30,24 @@ local function SetTextSafe(fs, value)
     end
 end
 
+-- A line of the stack, the holder's width, centred and on one line
+local function StackLine(fs, anchor, gap)
+    fs:SetPoint("TOPLEFT", anchor, anchor == parts.holder and "TOPLEFT" or "BOTTOMLEFT", 0, -gap)
+    fs:SetPoint("RIGHT", parts.holder, "RIGHT", 0, 0)
+    fs:SetJustifyH("CENTER")
+    fs:SetWordWrap(false)
+    return fs
+end
+
 local function Build()
-    local C = Controls()
     local L = LAYOUT.invite
-    local titleHeight = LAYOUT.titleHeight
+    local S = L.sizes
     dialog = addon.UI.WindowShell.Create({
         name = addon.Brand .. "GroupFinderInvite",
         width = L.width,
-        height = L.height + titleHeight,
+        height = L.height,
         role = "dialog",
-        title = "INVITE",
-        titleFontRole = "label",
-        titleHeight = titleHeight,
+        titleHeight = L.padTop,
         movable = false,
         escape = false,
         closeButton = false,
@@ -55,34 +57,16 @@ local function Build()
     dialog:Hide()
 
     local padX = L.padX
-    local y = -(titleHeight + L.padTop)
+    -- The text's holder, sized and centred by Layout
+    parts.holder = CreateFrame("Frame", nil, dialog)
+    parts.holder:SetWidth(L.width - 2 * padX)
 
-    parts.label = UI.DimText(dialog, "desc")
-    parts.label:SetPoint("TOPLEFT", dialog, "TOPLEFT", padX, y)
-    parts.label:SetPoint("RIGHT", dialog, "RIGHT", -padX, 0)
-    parts.label:SetJustifyH("CENTER")
-
-    parts.name = UI.PrimaryText(dialog, "label")
-    parts.name:SetPoint("TOPLEFT", parts.label, "BOTTOMLEFT", 0, -L.gap)
-    parts.name:SetPoint("RIGHT", dialog, "RIGHT", -padX, 0)
-    parts.name:SetJustifyH("CENTER")
-    parts.name:SetWordWrap(false)
-
-    parts.activity = UI.DimText(dialog, "desc")
-    parts.activity:SetPoint("TOPLEFT", parts.name, "BOTTOMLEFT", 0, -L.lineGap)
-    parts.activity:SetPoint("RIGHT", dialog, "RIGHT", -padX, 0)
-    parts.activity:SetJustifyH("CENTER")
-    parts.activity:SetWordWrap(false)
-
-    -- The role: the caption, then the mark and the word side by side
-    parts.roleCaption = UI.DimText(dialog, "miniLabel")
-    parts.roleCaption:SetPoint("TOP", parts.activity, "BOTTOM", 0, -L.gap)
-    parts.roleCaption:SetJustifyH("CENTER")
+    parts.label = StackLine(UI.DimText(dialog, "desc", S.label), parts.holder, 0)
+    parts.name = StackLine(UI.PrimaryText(dialog, "label", S.name), parts.label, L.gap)
+    parts.activity = StackLine(UI.DimText(dialog, "desc", S.activity), parts.name, L.lineGap)
+    parts.roleCaption = StackLine(UI.DimText(dialog, "miniLabel", S.caption), parts.activity, L.gap)
     parts.roleCaption:SetText(Str("YOUR_ROLE", "Your role"))
-    parts.marks = C.CreateRoleMarks(dialog, { mode = "display", size = L.roleSize })
-    parts.marks:SetPoint("TOPRIGHT", parts.roleCaption, "BOTTOM", -L.roleGap, -L.lineGap)
-    parts.role = UI.PrimaryText(dialog, "label")
-    parts.role:SetPoint("TOPLEFT", parts.roleCaption, "BOTTOM", L.roleGap, -L.lineGap)
+    parts.role = StackLine(UI.PrimaryText(dialog, "label", S.role), parts.roleCaption, L.lineGap)
 
     parts.offline = UI.DimText(dialog, "desc")
     parts.offline:SetPoint("BOTTOMLEFT", dialog, "BOTTOMLEFT", padX, L.offlineY)
@@ -125,23 +109,11 @@ function Invite:Open()
         if ok then name = text end
     end
     SetTextSafe(parts.name, name)
-    local activityID = info and GF.ActivityID(info)
-    local activity
-    if activityID then
-        local ok, full = pcall(C_LFGList.GetActivityFullName, activityID, nil, GF.plainBool(info.isWarMode))
-        if ok and type(full) == "string" then activity = full end
-    end
-    parts.activity:SetText(activity or "")
-    if type(role) == "string" then
-        parts.marks:SetSlots({ { role = role, filled = true } })
-        parts.role:SetText(Str(role, role))
-        parts.marks:Show()
-        parts.roleCaption:Show()
-    else
-        parts.marks:Hide()
-        parts.role:SetText("")
-        parts.roleCaption:Hide()
-    end
+    SetTextSafe(parts.activity, info and GF.ActivityName(info))
+    local hasRole = type(role) == "string"
+    parts.role:SetText(hasRole and Str(role, role) or "")
+    parts.role:SetShown(hasRole)
+    parts.roleCaption:SetShown(hasRole)
     parts.accept:SetShown(not informational)
     parts.decline:SetShown(not informational)
     parts.ok:SetShown(informational)
@@ -158,7 +130,6 @@ end
 function Invite:RefreshOffline()
     if not dialog then return end
     local L = LAYOUT.invite
-    local titleHeight = LAYOUT.titleHeight
     local offline = not self.informational and GroupHasOfflineMember
         and GroupHasOfflineMember(LE_PARTY_CATEGORY_HOME)
     if offline then self.sawOffline = true end
@@ -169,11 +140,30 @@ function Invite:RefreshOffline()
             parts.offline:SetText(Str("LFG_LIST_OFFLINE_MEMBER_NOTICE_GONE", "Every member of your group is online"))
         end
         parts.offline:Show()
-        dialog:SetHeight(L.tallHeight + titleHeight)
+        dialog:SetHeight(L.tallHeight)
     else
         parts.offline:Hide()
-        dialog:SetHeight(L.height + titleHeight)
+        dialog:SetHeight(L.height)
     end
+    self:Layout()
+end
+
+-- The stack's height from its sizes and gaps, never from the text, which
+-- may be secret; the holder centred between the dialog's top and the
+-- buttons, or the notice while it shows
+function Invite:Layout()
+    local L = LAYOUT.invite
+    local S = L.sizes
+    local height = S.label + L.gap + S.name + L.lineGap + S.activity
+    if parts.role:IsShown() then
+        height = height + L.gap + S.caption + L.lineGap + S.role
+    end
+    parts.holder:SetHeight(height)
+    local bottom = L.buttonY + parts.accept:GetHeight()
+    if parts.offline:IsShown() then bottom = bottom + (L.tallHeight - L.height) end
+    local room = dialog:GetHeight() - L.padTop - bottom
+    parts.holder:ClearAllPoints()
+    parts.holder:SetPoint("TOP", dialog, "TOP", 0, -(L.padTop + math.max(0, (room - height) / 2)))
 end
 
 -- Blizzard's own handlers with its frame: they act, hide it and look for

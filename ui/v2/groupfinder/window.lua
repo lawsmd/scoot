@@ -20,6 +20,9 @@
 -- hands them. The window shows the Blizzard panel whose boxes it hosts,
 -- keeps its view, and ends the view when Blizzard moves its own panel,
 -- or opens the search view when Blizzard moves to its search panel.
+-- The saved searches' tray (saved.lua) hangs under the panels through
+-- UI.trayBuilder, shows on the home page and the search view while the
+-- character has a saved search, and the window grows by its height.
 -- The parts every panel draws, a heading, a bordered box and a button, are
 -- the helpers at the end. A button that is off says why in its tooltip, as
 -- Blizzard's do; no panel carries a line of text under its box.
@@ -58,7 +61,6 @@ local LAYOUT = {
     panelWidth = 578,
     panelHeight = 480,
     titleHeight = 36,
-    categoryRow = 46,
     buttonWidth = 135,
     -- The parked panel shares the window's strata, and its frame border
     -- stands at level 500 with the mouse on, so the window and its dialog
@@ -71,9 +73,20 @@ local LAYOUT = {
         boxTop = 40, boxBottom = 44, boxX = 4,
         buttonX = 4, buttonY = 6,
     },
-    -- The category rows: the label stands in from the row's bar
+    -- A text field's fill on a page without the gray box: the box's gray
+    -- at this share of its brightness
+    fieldShade = 0.6,
+    -- The home page's tree, centred in the window and filling most of it:
+    -- the root's and the rows' text sizes, a row's height, the room each
+    -- side of a name inside the box its hover and selection fill, the gaps
+    -- under the root, above the buttons and between them, the trunk's x and
+    -- the branch's length (the nav's own are drawn for its narrow column),
+    -- and the buttons' size
     categories = {
-        labelX = 6,
+        rootSize = 28, labelSize = 20, rowHeight = 46,
+        boxPad = 14, rootGap = 10, treeGap = 34, buttonGap = 20,
+        treeLineX = 14, treeLineLength = 20,
+        buttonWidth = 190, buttonHeight = 36, buttonFont = 16,
     },
     -- The search panel's row of box, refresh and filter, the column the
     -- rows keep on the right for the roster or the status, the lines
@@ -131,12 +144,16 @@ local LAYOUT = {
         -- The drawer is wide for the Dungeons filter's two columns and
         -- narrow for the language rows
         filterDrawerWidth = 500, languageDrawerWidth = 220, filterListFont = 11,
+        -- The drawer's section names a size over its rows' captions, with
+        -- room above each one under the rule
+        filterCaptionSize = 13, filterCaptionTop = 8,
         -- Start a Group under the no-results message
         startGroupY = 16,
-        -- The role column at the pane's right: the icons stacked down the
-        -- top two-thirds of the column (noteSplit), enlarged from the
-        -- roster's, and the note's holder across the bottom third, inset
-        -- from the column's edges. The note box stands in from the holder's
+        -- The role column at the pane's right, outside the results'
+        -- border: the icons stacked down the top two-thirds of the column
+        -- (noteSplit), enlarged from the roster's, and the note's holder
+        -- across the bottom third, noteGap off the border and flush with
+        -- the box's right and bottom edges. The note box stands in from the holder's
         -- border by notePad on every side, so typed text clears the border;
         -- the text region inside the box is narrower than the box by
         -- Blizzard's own margin (noteTextInset); its text is a size under
@@ -144,31 +161,57 @@ local LAYOUT = {
         -- for a dialog's wide box
         roles = {
             width = 150, iconSize = 52, iconGap = 22, noteSplit = 2 / 3,
-            noteInset = 12, notePad = 6, noteTextInset = 18, noteFont = 11, noteBarScale = 0.75,
+            noteGap = 10, notePad = 6, noteTextInset = 18, noteFont = 10, noteBarScale = 0.75,
         },
     },
-    -- The listing form: the dropdowns' row, the captioned title and details
-    -- boxes, the playstyle, the requirement rows with an input or the voice
-    -- box at their right, and the two options on one line, stacked with a
-    -- gap; the details box's text region is narrower than its frame by
-    -- Blizzard's own margin plus the holder's inset
+    -- The listing form, on the panel with no box drawn: the dropdowns' row
+    -- and the captioned title across the width, then two columns columnTop
+    -- under them, each as wide as the dropdown above it: the details box
+    -- and the playstyle at the left, the requirement rows and the two
+    -- options at the right, that column standing columnPad in from the
+    -- details box. A right row is its label at the left and its field or
+    -- check at the right, the three fields fieldWidth wide so they stand in
+    -- one column; the voice box's text at voiceFont, voiceInset in from its
+    -- sides, so its placeholder fits that width on one line. The details
+    -- box is as tall as the right column's five rows leave it, and stands
+    -- detailsPad inside its holder as the note does, so the text clears
+    -- the border; its text region is narrower than the box by Blizzard's
+    -- own margin
     -- The requirement inputs stand under the row's height, on the holder's
     -- one-point border, with clear room between the rows
     create = {
-        rowHeight = 22, detailsHeight = 46, captionHeight = 12, captionGap = 3,
-        gap = 8, rowGap = 6,
-        inputWidth = 64, inputHeight = 18, inputInset = 1, inputFont = 11,
-        voiceWidth = 110, checkGap = 6, optionColumn = 200,
+        rowHeight = 26, captionHeight = 12, captionGap = 4,
+        gap = 14, rowGap = 22, columnTop = 10, columnPad = 16,
+        fieldWidth = 96, inputHeight = 22, inputInset = 1, inputFont = 11, voiceFont = 7,
+        voiceInset = 6, detailsPad = 6,
+        checkGap = 6,
         inputMax = 9999, detailsInset = 20, finderRows = 12, coverAlpha = 0.85,
     },
-    -- Your listing: the info block, as tall as its lines or the party's
-    -- grid at its right, the column names over a rule, and a band per
-    -- applicant with a line per member; the columns from the right, the
-    -- name taking the rest; the actions column holds the status word,
-    -- Invite and the x, small so they do not crowd the line
+    -- Your listing, two columns on the panel with no gray. The left is a
+    -- third of the width: the name and the activity centred, the party's
+    -- grid under them (the search row's grid, sized up for the column),
+    -- then the details, the requirement, auto-accept and the tags. The
+    -- right is the applicants inside the page's one border, the only part
+    -- that scrolls: the column names over a rule, and a band per applicant
+    -- with a line per member; the columns from the right, the name taking
+    -- the rest; the actions column holds the status word, Invite and the
+    -- x, small so they do not crowd the line. Both columns start top under
+    -- the panel's top and end bottom over its foot, buttonsBottom while
+    -- the leader's buttons show
     viewer = {
+        leftShare = 1 / 3, columnGap = 8, top = 8, bottom = 8, buttonsBottom = 44,
+        leftPad = 8, activitySize = 12, activityGap = 4, gridGap = 18, extrasGap = 14,
+        roster = {
+            lines = 5, lineHeight = 18, fontSize = 12, width = 150,
+            glyphWidth = 16, gap = 6, iconSize = 14,
+            markWidth = 10, markHeight = 7, markY = 1,
+        },
+        counts = {
+            lines = 3, lineHeight = 22, fontSize = 14,
+            glyphWidth = 20, gap = 6, iconSize = 17, width = 70,
+        },
         subSize = 10, lineHeight = 12, lineGap = 1, autoGap = 6, headerGap = 8,
-        tagGap = 4, tagTop = 2,
+        tagGap = 4,
         columns = { role = 56, ilvl = 44, rating = 56, actions = 70 },
         memberLine = 20, rowPad = 6, roleIcon = 14, roleGap = 2, nameSize = 11,
         inviteWidth = 48, declineWidth = 18, actionGap = 4, buttonHeight = 18, actionFont = 10,
@@ -176,14 +219,42 @@ local LAYOUT = {
         -- does not glare against the band
         actionBorder = 1, actionBorderAlpha = 0.45,
     },
-    -- The invite dialog: Blizzard's size, taller with the offline notice
+    -- The invite dialog: no title bar, taller with the offline notice. The
+    -- text stands centred in the room over the buttons (over the notice
+    -- while it shows), at the sizes below
     invite = {
-        width = 314, height = 210, tallHeight = 250,
-        padX = 16, padTop = 10, gap = 10, lineGap = 2,
-        roleSize = 16, roleGap = 4, offlineY = 48, buttonWidth = 100, buttonY = 10,
+        width = 330, height = 200, tallHeight = 240,
+        padX = 16, padTop = 12, gap = 14, lineGap = 4,
+        offlineY = 48, buttonWidth = 110, buttonY = 16,
+        sizes = { label = 13, name = 20, activity = 14, caption = 11, role = 16 },
+    },
+    -- The saved searches' tray under the panels: a bordered box boxTop
+    -- under the panels and boxBottom off the window's foot, the caption
+    -- inside it, then a band per saved search; the x at the row's right end
+    -- takes search.action
+    saved = {
+        boxTop = 4, boxBottom = 6, boxPad = 4,
+        captionTop = 6, captionHeight = 12, captionGap = 4,
+        -- Every row one height, room for four column lines and rowPad over
+        -- and under them. The title stands centred at the left over the
+        -- line under it; the columns start titleGap right of the widest
+        -- title in the tray, which takes at most titleShare of the row and
+        -- gives up room, down to titleMin, to a row's columns
+        rowHeight = 56, titleGap = 24, titleShare = 0.4, titleMin = 90,
+        subSize = 9, subGap = 2,
+        colSize = 9, colMinSize = 7, colGap = 18, lineHeight = 11, colLines = 4,
+        keySize = 13, keyHeight = 26, keyPadX = 14, keyGap = 12,
+        -- The triangles between the keys and the light that runs through
+        -- them: each brightens chaseStep after the one before
+        triSize = 11, triGap = 3, triDim = 0.25,
+        chaseUp = 0.15, chaseDown = 0.35, chaseStep = 0.12, chaseRest = 0.3,
     },
 }
 UI.LAYOUT = LAYOUT
+
+-- The title bar's text, which the home page's tree takes as its root
+local WINDOW_TITLE = "GROUP FINDER"
+UI.WINDOW_TITLE = WINDOW_TITLE
 
 -- The leader's crown and the role column's icons, drawn on a result row and
 -- on the listing's own grid: the addon's flat crown tinted the class color,
@@ -214,6 +285,11 @@ end
 local frame
 local content
 local panels = {}
+local tray, trayPanel
+local trayHeight = 0
+
+-- The pages the tray shows under: the home page and the search view
+local TRAY_KEYS = { categories = true, search = true }
 
 -- Strings on the accent, repainted together
 local accentStrings = setmetatable({}, { __mode = "k" })
@@ -251,8 +327,45 @@ function UI:SyncPanel()
         panel:SetShown(k == key)
     end
     self.activeKey = key
+    -- The home page's tree names the window at its root
+    frame:SetShellTitle(key == "categories" and "" or WINDOW_TITLE)
     local panel = panels[key]
     if panel and panel.Refresh then panel:Refresh() end
+    self:SyncTray()
+end
+
+-- The tray shows under the pages that take it while the character has a
+-- saved search; its Refresh sets the window's height through SetTrayHeight
+function UI:SyncTray()
+    if not (frame and tray) then return end
+    local shown = trayPanel ~= nil and TRAY_KEYS[self.activeKey] == true
+        and GF.Saved ~= nil and GF.Saved.Count() > 0
+    if shown then
+        tray:Show()
+        trayPanel:Refresh()
+    else
+        tray:Hide()
+        self:SetTrayHeight(0)
+    end
+end
+
+-- The window's height is the title bar, the panels and the inset, plus the
+-- tray's. The top edge stays where it is: the shell anchors by its centre
+-- until the first change, so the frame is anchored by its top-left corner
+-- first, at the place it stands (a UIParent child at scale 1, so the
+-- corner's coordinates and the point's offsets agree)
+function UI:SetTrayHeight(h)
+    if not (frame and tray) then return end
+    h = math.max(0, h or 0)
+    if h == trayHeight then return end
+    local left, top = frame:GetLeft(), frame:GetTop()
+    if left and top then
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    end
+    trayHeight = h
+    tray:SetHeight(math.max(1, h))
+    frame:SetHeight(LAYOUT.panelHeight + LAYOUT.titleHeight + (M().windowInset or 3) + h)
 end
 
 function UI:SetView(view)
@@ -326,7 +439,7 @@ local function Build()
         width = width,
         height = height,
         role = "window",
-        title = "GROUP FINDER",
+        title = WINDOW_TITLE,
         titleFontRole = "header",
         titleSize = 15,
         titleAlign = "center",
@@ -339,10 +452,21 @@ local function Build()
     frame:Hide()
     frame._skinName = addon.UI.Skin.ActiveName()
 
+    -- The panels' frame is the panel's size and hangs off the top; the tray
+    -- under it takes the rest of the window while it shows
     content = CreateFrame("Frame", nil, frame)
     content:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -LAYOUT.titleHeight)
-    content:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
+    content:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -inset, -LAYOUT.titleHeight)
+    content:SetHeight(LAYOUT.panelHeight)
     frame._content = content
+
+    tray = CreateFrame("Frame", nil, frame)
+    tray:SetPoint("TOPLEFT", content, "BOTTOMLEFT", 0, 0)
+    tray:SetPoint("TOPRIGHT", content, "BOTTOMRIGHT", 0, 0)
+    tray:SetHeight(1)
+    tray:Hide()
+    trayHeight = 0
+    frame._tray = tray
 
     frame:HookScript("OnHide", function() UI:Close("hide") end)
 
@@ -351,6 +475,7 @@ local function Build()
     for key, builder in pairs(UI.panelBuilders) do
         panels[key] = builder(content)
     end
+    trayPanel = UI.trayBuilder and UI.trayBuilder(tray) or nil
 
     -- The window outlives accent changes and skin switches; the strings
     -- follow the accent, and a new skin drops the frame for a rebuild on
@@ -371,11 +496,13 @@ function UI:Destroy()
     for _, panel in pairs(panels) do
         if panel.Cleanup then panel:Cleanup() end
     end
+    if trayPanel and trayPanel.Cleanup then trayPanel:Cleanup() end
     frame:CleanupShell()
     frame:Hide()
     frame:SetParent(nil)
     frame = nil
     content = nil
+    tray, trayPanel, trayHeight = nil, nil, 0
     panels = {}
 end
 
@@ -483,13 +610,33 @@ function UI.MakeBox(panel, top)
     return box
 end
 
+-- The fill a text field takes where the page draws no gray box, so the
+-- field still stands out from the window's near black: a darker gray than
+-- the box's
+function UI.FieldFill()
+    local r, g, b = Theme():GetCollapsibleBgColor()
+    local f = LAYOUT.fieldShade
+    return { (r or 0) * f, (g or 0) * f, (b or 0) * f, 1 }
+end
+
+-- A framework control's own fill at FieldFill: a dropdown's backdrop, a
+-- value input's box. A skin that draws the control from art has neither,
+-- and the control keeps its look
+function UI.ShadeField(control)
+    local bg = (control._backdrop and control._backdrop.bg) or control._bg
+    if bg then bg:SetColorTexture(unpack(UI.FieldFill())) end
+end
+
 -- tooltip: a string or a function returning one, shown while the button is
--- off as well, which is where a button says why it is off
-function UI.MakeButton(parent, text, onClick, width, tooltip)
+-- off as well, which is where a button says why it is off; size, optional,
+-- carries a height and a fontSize over the skin's
+function UI.MakeButton(parent, text, onClick, width, tooltip, size)
     return Controls():CreateButton({
         parent = parent,
         text = text,
         width = width,
+        height = size and size.height,
+        fontSize = size and size.fontSize,
         onClick = onClick,
         tooltip = tooltip,
     })

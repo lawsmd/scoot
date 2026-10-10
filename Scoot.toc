@@ -247,6 +247,7 @@ core/components/bosswarnings/core.lua
 ## ui/v2/groupfinder/ and loads with the framework.
 core/components/groupfinder/core.lua
 core/components/groupfinder/host.lua
+core/components/groupfinder/saved.lua
 core/debug/export.lua
 # >>> SCOOT-DEV-ONLY
 # Development tooling. The export script (docs/scripts/export-curseforge.ps1)
@@ -350,9 +351,12 @@ ui/v2/groupfinder/window.lua
 ui/v2/groupfinder/categories.lua
 ui/v2/groupfinder/roles.lua
 ui/v2/groupfinder/search.lua
+ui/v2/groupfinder/saved.lua
 ui/v2/groupfinder/create.lua
 ui/v2/groupfinder/viewer.lua
 ui/v2/groupfinder/invite.lua
+ui/v2/groupfinder/pvebutton.lua
+ui/v2/groupfinder/queueeye.lua
 ui/v2/Navigation.lua
 ui/v2/settings/NavModel.lua
 ui/v2/settings/HeaderModel.lua

@@ -520,6 +520,8 @@ files["core/components/groupfinder/"] = {
         "LFGListUtil_GetActiveQueueMessage", "LFGListUtil_IsAppEmpowered", "LFGListUtil_IsEntryEmpowered",
         "PVEFrame", "PVEFrame_ShowFrame", "LFGListApplicationDialog", "LFGListInviteDialog", "LFGListFrame",
         "C_SocialRestrictions", "UnitIsGroupLeader", "bit",
+        -- The saved searches' summary and the dungeon groups it reads
+        "LFGListUtil_GetDecoratedCategoryName", "PlayerUtil", "PlayerIsTimerunning",
     },
 }
 files["ui/v2/groupfinder/"] = {
@@ -527,6 +529,8 @@ files["ui/v2/groupfinder/"] = {
         "C_LFGList", "C_LFGInfo", "C_SocialRestrictions", "IsRestrictedAccount", "bit",
         "GetLFGRoles", "SetLFGRoles", "GameRulesUtil", "PlayerUtil", "ChatFrameUtil", "SecondsToTime",
         "PlayerIsTimerunning", "LOCALIZED_CLASS_NAMES_MALE",
+        -- A saved search's paste: the key the copy waits for
+        "IsMacClient", "IsMetaKeyDown",
         "LFGListFrame", "LFGListApplicationDialog",
         "LFGListUtil_GetDecoratedCategoryName", "LFGListUtil_IsAppEmpowered",
         "LFGListUtil_SortActivitiesByRelevancy", "LFGListCanChangeLanguages",
@@ -551,5 +555,11 @@ files["ui/v2/groupfinder/"] = {
         -- The invite dialog: Blizzard's own, parked, and its three handlers
         "LFGListInviteDialog", "LFGListInviteDialog_Accept", "LFGListInviteDialog_Decline",
         "LFGListInviteDialog_Acknowledge", "GroupHasOfflineMember",
+        -- The search-entry tooltip, Blizzard's builder ported line for line
+        "LFGListSearchEntryUtil_GetFriendList", "FACTION_STRINGS", "PLAYER_FACTION_GROUP", "PVPUtil",
+        "CreateAtlasMarkup", "GameTooltip_AddHighlightLine", "GameTooltip_AddColoredLine",
+        "GameTooltip_AddNormalLine", "GameTooltip_AddBlankLineToTooltip", "GameTooltip_AddErrorLine",
+        "RED_FONT_COLOR", "GREEN_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "LIGHTBLUE_FONT_COLOR",
+        "LFG_LIST_COMMENT_FONT_COLOR",
     },
 }

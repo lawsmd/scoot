@@ -1,6 +1,7 @@
--- viewer.lua - Your listing: its name, activity, details and requirement
--- with the party's own grid, the applicants in bands under their column
--- names, and Delist, Edit and Browse Groups under them.
+-- viewer.lua - Your listing in two columns: at the left its name, activity,
+-- the party's own grid, details and requirement; at the right the
+-- applicants in bands under their column names, inside the page's one
+-- border; Delist, Edit and Browse Groups under both.
 --
 -- Blizzard's hidden viewer stays its active panel and keeps acting on its
 -- own: it refreshes the applicants on its show and drops a stale one for a
@@ -76,96 +77,92 @@ local function Build(parent)
     local panel = UI.MakePanel(parent)
     local C = Controls()
     local V = LAYOUT.viewer
-    local R = LAYOUT.search.roster
-    local Cn = LAYOUT.search.counts
-    local boxX = LAYOUT.panel.boxX
+    local R = V.roster
+    local Cn = V.counts
     local pad = (M().collapsible or {}).contentPadding or 12
     local padX = (M().listRow or {}).padX or 8
 
-    -- The heading is the listing's name; the tags stand at its right, off
-    -- the panel's corner, and the heading ends at the leftmost shown one
-    panel._heading = UI.MakeHeading(panel, "")
-    panel._heading:SetWordWrap(false)
-    panel._private = C.CreateTag(panel, { text = "PRIVATE", tone = "dim" })
-    panel._private:Hide()
-    panel._voice = C.CreateTag(panel, { text = "VOICE", tone = "dim" })
-    panel._voice:Hide()
-
-    -- The shown tags from the corner leftward, then the heading's right
-    -- edge; the heading depends on the tags and never the other way
-    function panel:PlaceTags()
-        local last
-        for _, tag in ipairs({ self._private, self._voice }) do
-            if tag:IsShown() then
-                tag:ClearAllPoints()
-                if last then
-                    tag:SetPoint("RIGHT", last, "LEFT", -V.tagGap, 0)
-                else
-                    tag:SetPoint("TOPRIGHT", self, "TOPRIGHT", -boxX, -(LAYOUT.panel.headingY + V.tagTop))
-                end
-                last = tag
-            end
-        end
-        self._heading:ClearAllPoints()
-        self._heading:SetPoint("TOPLEFT", self, "TOPLEFT", LAYOUT.panel.headingX, -LAYOUT.panel.headingY)
-        if last then
-            self._heading:SetPoint("RIGHT", last, "LEFT", -V.tagGap, 0)
-        else
-            self._heading:SetPoint("RIGHT", self, "RIGHT", -boxX, 0)
-        end
-    end
-    panel:PlaceTags()
-
-    local box = UI.MakeBox(panel)
+    -- The box without its gray or its border; the queue at its right
+    -- carries the border
+    local box = UI.MakeBox(panel, V.top)
+    box._bg:Hide()
+    for _, edge in pairs(box._border) do edge:Hide() end
     panel._box = box
 
-    -- The info block: the activity, the details, the requirement and
-    -- auto-accept stacked at the left, the party's grid at the right; as
-    -- tall as the taller of the two, placed on each refresh
+    local leftWidth = math.floor((LAYOUT.panelWidth - 2 * LAYOUT.panel.boxX) * V.leftShare)
     local info = CreateFrame("Frame", nil, box)
-    info:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
-    info:SetPoint("TOPRIGHT", box, "TOPRIGHT", -pad, -pad)
-    info:SetHeight(V.lineHeight)
+    info:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0)
+    info:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT", 0, 0)
+    info:SetWidth(leftWidth)
     panel._info = info
 
+    -- The left column's parts hang top down off this frame, which stands
+    -- centred on the column's height and is sized to them once laid out
+    local stack = CreateFrame("Frame", nil, info)
+    stack:SetPoint("LEFT", info, "LEFT", 0, 0)
+    stack:SetPoint("RIGHT", info, "RIGHT", 0, 0)
+    stack:SetHeight(1)
+
+    local queue = CreateFrame("Frame", nil, box)
+    queue:SetPoint("TOPLEFT", info, "TOPRIGHT", V.columnGap, 0)
+    queue:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", 0, 0)
+    queue._border = C.CreateBorder(queue, {
+        thickness = (M().collapsible or {}).borderWidth or 1,
+        alpha = (M().collapsible or {}).borderAlpha or 0.6,
+        corners = "overlap",
+    })
+    panel._queue = queue
+
+    -- A string centred across the left column, wrapping onto as many lines
+    -- as it needs; the stack places it
+    local function Centred(fs)
+        fs:SetJustifyH("CENTER")
+        fs:SetWordWrap(true)
+        if fs.SetNonSpaceWrap then fs:SetNonSpaceWrap(true) end
+        return fs
+    end
+
+    panel._heading = Centred(UI.AccentText(info, "header"))
+    panel._activity = Centred(UI.DimText(info, "desc", V.activitySize))
+    local lr, lg, lb = Theme():GetDimTextLightColor()
+    panel._activity:SetTextColor(lr, lg, lb, 1)
+
     panel._roster = C.CreateRoster(info, {
-        lines = R.lines, lineHeight = R.lineHeight, width = LAYOUT.search.rightColumn, fontSize = R.fontSize,
+        lines = R.lines, lineHeight = R.lineHeight, width = R.width, fontSize = R.fontSize,
         glyphWidth = R.glyphWidth, gap = R.gap, markWidth = R.markWidth, markHeight = R.markHeight,
         markY = R.markY, iconSize = R.iconSize, icons = UI.RoleIcons(), leaderMark = UI.LEADER_MARK,
     })
-    panel._roster:SetPoint("TOPRIGHT", info, "TOPRIGHT", 0, 0)
     panel._counts = C.CreateRoster(info, {
         lines = Cn.lines, lineHeight = Cn.lineHeight, width = Cn.width, fontSize = Cn.fontSize,
         glyphWidth = Cn.glyphWidth, gap = Cn.gap, iconSize = Cn.iconSize, icons = UI.RoleIcons(),
     })
-    panel._counts:SetPoint("TOPRIGHT", info, "TOPRIGHT", 0, 0)
 
-    -- The lines at the left end short of the grid; each is placed on
-    -- refresh, since a line that is empty leaves no room
-    local function Line()
-        local fs = UI.DimText(info, "desc", V.subSize)
-        fs:SetPoint("RIGHT", panel._roster, "LEFT", -LAYOUT.search.columnGap, 0)
-        fs:SetWordWrap(false)
-        return fs
-    end
-    panel._activity = Line()
-    panel._comment = Line()
-    local lr, lg, lb = Theme():GetDimTextLightColor()
+    panel._comment = Centred(UI.DimText(info, "desc", V.subSize))
     panel._comment:SetTextColor(lr, lg, lb, 1)
-    panel._ilvl = Line()
+    panel._ilvl = Centred(UI.DimText(info, "desc", V.subSize))
 
-    panel._auto = C.CreateCheckBox(info, { clickable = true, onClick = function() panel:ToggleAutoAccept() end })
-    panel._autoLabel = UI.PrimaryText(info, "desc", V.subSize)
+    -- Auto-accept and the tags each stand on a row sized to its parts, so
+    -- the row centres in the column
+    panel._autoRow = CreateFrame("Frame", nil, info)
+    panel._auto = C.CreateCheckBox(panel._autoRow, { clickable = true, onClick = function() panel:ToggleAutoAccept() end })
+    panel._auto:SetPoint("LEFT", panel._autoRow, "LEFT", 0, 0)
+    panel._autoLabel = UI.PrimaryText(panel._autoRow, "desc", V.subSize)
     panel._autoLabel:SetPoint("LEFT", panel._auto, "RIGHT", LAYOUT.create.checkGap, 0)
     panel._autoLabel:SetText(Str("LFG_LIST_AUTO_ACCEPT", "Auto accept"))
     panel._autoLabel:SetWordWrap(false)
+
+    panel._tags = CreateFrame("Frame", nil, info)
+    panel._private = C.CreateTag(panel._tags, { text = "PRIVATE", tone = "dim" })
+    panel._private:Hide()
+    panel._voice = C.CreateTag(panel._tags, { text = "VOICE", tone = "dim" })
+    panel._voice:Hide()
 
     -- The column names over a rule, kept off the scroll bar's gutter so
     -- the names stand over the rows' cells
     local sb = M().scrollBar or {}
     local gutter = (sb.width or 0) + (sb.margin or 0) + (sb.gap or 0)
     panel._header = C.CreateColumnHeader({
-        parent = box,
+        parent = queue,
         plain = true,
         columns = {
             { key = "name", label = Str("NAME", "Name") },
@@ -175,8 +172,8 @@ local function Build(parent)
             { key = "actions", label = "", width = V.columns.actions },
         },
     })
-    panel._header:SetPoint("TOPLEFT", info, "BOTTOMLEFT", 0, -V.headerGap)
-    panel._header:SetPoint("TOPRIGHT", info, "BOTTOMRIGHT", -gutter, -V.headerGap)
+    panel._header:SetPoint("TOPLEFT", queue, "TOPLEFT", pad, -pad)
+    panel._header:SetPoint("TOPRIGHT", queue, "TOPRIGHT", -(pad + gutter), -pad)
 
     -- A header cell's place and width inside a member line, read off the
     -- header's own layout, so the rows' cells stand under the names
@@ -441,7 +438,7 @@ local function Build(parent)
     end
 
     local list = C.CreateScrollList({
-        parent = box,
+        parent = queue,
         rowHeight = function(item) return V.memberLine * math.max(1, item.numMembers or 1) + V.rowPad end,
         wheelStep = V.memberLine + V.rowPad,
         createRow = CreateRow,
@@ -451,20 +448,19 @@ local function Build(parent)
         onLeave = function() GameTooltip:Hide() end,
     })
     list.frame:SetPoint("TOPLEFT", panel._header, "BOTTOMLEFT", 0, 0)
-    list.frame:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -pad, pad)
+    list.frame:SetPoint("BOTTOMRIGHT", queue, "BOTTOMRIGHT", -pad, pad)
     panel._list = list
 
-    panel._empty = C.CreateEmptyState({ parent = box, text = Str("LFG_LIST_NO_APPLICANTS", "No applicants") })
+    panel._empty = C.CreateEmptyState({ parent = queue, text = Str("LFG_LIST_NO_APPLICANTS", "No applicants") })
     panel._empty:SetAllPoints(list.frame)
     panel._empty:Hide()
 
-    -- The cover for a member who may not act on the listing
-    local cover = CreateFrame("Frame", nil, box)
+    -- The cover for a member who may not act on the listing: the message
+    -- in place of the rows, which hide under it, with no fill of its own
+    local cover = CreateFrame("Frame", nil, queue)
     cover:SetAllPoints(list.frame)
     cover:SetFrameLevel(list.frame:GetFrameLevel() + 20)
     cover:EnableMouse(true)
-    C.AddBackground(cover, { color = "collapsible" })
-    cover:SetAlpha(LAYOUT.create.coverAlpha)
     cover._empty = C.CreateEmptyState({ parent = cover, text = "" })
     cover._empty:SetAllPoints(cover)
     cover:Hide()
@@ -752,29 +748,86 @@ local function Build(parent)
         return Cn.lines * Cn.lineHeight
     end
 
-    -- The shown lines one under the other at the block's left, auto-accept
-    -- last, and the block as tall as the lines or the grid
+    -- The left column top down, the whole stack centred on the column's
+    -- height, each part centred and hung off the bottom
+    -- of the one before: the name and the activity, the grid gridGap under
+    -- them, then the details, the requirement, auto-accept and the tags.
+    -- A string's height follows its text; the grid stands its filled
+    -- lines' height, so a party of two leaves no blank lines over the rest
     function panel:PlaceInfo(gridHeight)
-        local y = 0
-        for _, fs in ipairs({ self._activity, self._comment, self._ilvl }) do
-            fs:ClearAllPoints()
-            fs:SetPoint("TOPLEFT", info, "TOPLEFT", 0, -y)
-            fs:SetPoint("RIGHT", self._roster, "LEFT", -LAYOUT.search.columnGap, 0)
-            if fs:IsShown() then y = y + V.lineHeight + V.lineGap end
+        local prev, gap
+        local function Stack(region, wide, nextGap)
+            if not region:IsShown() then return end
+            region:ClearAllPoints()
+            if prev then
+                region:SetPoint("TOP", prev, "BOTTOM", 0, -gap)
+            else
+                region:SetPoint("TOP", stack, "TOP", 0, 0)
+            end
+            if wide then region:SetWidth(leftWidth - 2 * V.leftPad) end
+            prev, gap = region, nextGap
         end
-        if self._auto:IsShown() then
-            if y > 0 then y = y + V.autoGap - V.lineGap end
-            self._auto:ClearAllPoints()
-            self._auto:SetPoint("TOPLEFT", info, "TOPLEFT", 0, -y)
-            y = y + V.lineHeight
+
+        Stack(self._heading, true, V.activityGap)
+        Stack(self._activity, true, V.gridGap)
+
+        local grid = self._roster:IsShown() and self._roster or self._counts
+        if grid:IsShown() then
+            grid:ClearAllPoints()
+            if prev then
+                grid:SetPoint("TOP", prev, "BOTTOM", 0, -gap)
+            else
+                grid:SetPoint("TOP", stack, "TOP", 0, 0)
+            end
+            -- The next part hangs off the grid's filled height
+            prev, gap = grid, V.extrasGap - (grid:GetHeight() - (gridHeight or 0))
         end
-        info:SetHeight(math.max(y, gridHeight or 0, V.lineHeight))
+
+        Stack(self._comment, true, V.lineGap)
+        Stack(self._ilvl, true, V.autoGap)
+
+        local labelWidth = self._autoLabel:GetStringWidth() or 0
+        self._autoRow:SetSize(self._auto:GetWidth() + LAYOUT.create.checkGap + labelWidth, V.lineHeight)
+        self._autoRow:SetShown(self._auto:IsShown())
+        Stack(self._autoRow, false, V.autoGap)
+
+        local width, last = 0, nil
+        for _, tag in ipairs({ self._private, self._voice }) do
+            if tag:IsShown() then
+                tag:ClearAllPoints()
+                if last then
+                    tag:SetPoint("LEFT", last, "RIGHT", V.tagGap, 0)
+                    width = width + V.tagGap
+                else
+                    tag:SetPoint("LEFT", self._tags, "LEFT", 0, 0)
+                end
+                width = width + tag:GetWidth()
+                last = tag
+            end
+        end
+        self._tags:SetSize(math.max(1, width), math.max(1, last and last:GetHeight() or 1))
+        self._tags:SetShown(last ~= nil)
+        Stack(self._tags, false, 0)
+
+        -- The stack as tall as its parts reach, read off the laid-out rects
+        -- once wrapped strings have their height; the grid's last part is
+        -- its filled lines
+        local last2 = prev
+        local function Measure()
+            local top = stack:GetTop()
+            local bottom = last2 and last2:GetBottom()
+            if not (top and bottom) then return end
+            if last2 == grid then bottom = bottom + (grid:GetHeight() - (gridHeight or 0)) end
+            stack:SetHeight(math.max(1, top - bottom))
+        end
+        Measure()
+        C_Timer.After(0, Measure)
     end
 
     function panel:RefreshInfo()
         local entry = GF.ActiveEntry()
         local theme = Theme()
-        theme:ApplyFont(self._activity, "desc", V.subSize)
+        theme:ApplyFont(self._activity, "desc", V.activitySize)
         theme:ApplyFont(self._comment, "desc", V.subSize)
         theme:ApplyFont(self._ilvl, "desc", V.subSize)
         if not entry then
@@ -786,7 +839,6 @@ local function Build(parent)
             self._ilvl:Hide()
             self._private:Hide()
             self._voice:Hide()
-            self:PlaceTags()
             self._roster:SetLines({})
             self._counts:SetLines({})
             self._auto:Hide()
@@ -806,7 +858,6 @@ local function Build(parent)
         SetTextSafe(self._heading, entry.name)
         self._private:SetShown(GF.plainBool(entry.privateGroup) == true)
         self._voice:SetShown(NonEmpty(entry.voiceChat))
-        self:PlaceTags()
         SetTextSafe(self._activity, GF.ActivityName(entry))
         self._activity:Show()
         local questID = GF.plainNumber(entry.questID)
@@ -883,6 +934,7 @@ local function Build(parent)
         self._list:SetItems(items)
         self._empty:SetShown(canAct and #items == 0)
         self._cover:SetShown(not canAct)
+        self._list.frame:SetShown(canAct)
         self._cover._empty:SetBusy(not canAct, Str("LFG_LIST_GROUP_FORMING", "Waiting for the leader"))
     end
 
@@ -903,6 +955,8 @@ local function Build(parent)
         self._delist:SetShown(leader)
         self._edit:SetShown(leader)
         self._browse:SetShown(leader)
+        -- The columns end over the buttons while they show, else at the foot
+        box:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -LAYOUT.panel.boxX, leader and V.buttonsBottom or V.bottom)
         local restricted = IsRestrictedAccount and IsRestrictedAccount()
         self._editReason = restricted and Str("ERR_RESTRICTED_ACCOUNT_LFG_LIST_TRIAL", "Not on this account") or nil
         self._edit:SetEnabled(not restricted)

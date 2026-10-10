@@ -1,7 +1,8 @@
 -- search.lua - the Search panel: the category's name, the filter list, the
 -- hosted search box with its auto-complete, the refresh, the results with
 -- a sign-up button on each row and the role column at their right
--- (roles.lua), and Back under them.
+-- (roles.lua), and Back and Save Search under them (the saved searches'
+-- tray and the save itself are saved.lua).
 --
 -- The search box is Blizzard's own, hosted in a Scoot holder, so its Enter
 -- and its clear button run Blizzard's handlers and the C side reads its
@@ -10,9 +11,9 @@
 -- and never made the active panel, so its own row handlers never run on
 -- the window's searches. Refresh runs Blizzard's DoSearch from its click;
 -- an auto-complete row runs Blizzard's own fill, which puts the activity's
--- full name in the box, and the search once the cooldown allows it, so
--- text typed after the name narrows the search as it does in Blizzard's
--- own box. The results are the component's copy, one row
+-- full name in the box, and the search from the same click when the
+-- cooldown allows it, so text typed after the name narrows the search as
+-- it does in Blizzard's own box. The results are the component's copy, one row
 -- per id, each row read afresh from the API on render as Blizzard's row
 -- is. The filter list writes the client's advanced or language filter and
 -- redraws the rows; it stands in a drawer out of the window's right edge,
@@ -92,6 +93,26 @@ local function NonEmpty(value)
     return ok and result == true
 end
 
+-- The tooltip's role icons, a local table in Blizzard's file
+local ROLE_ATLASES_BORDERLESS = {
+    TANK = "groupfinder-icon-role-micro-tank",
+    HEALER = "groupfinder-icon-role-micro-heal",
+    DAMAGER = "groupfinder-icon-role-micro-dps",
+}
+
+-- A best run as Blizzard's tooltip writes it: a plus per level of the
+-- upgrade, the level in white, the dungeon in its score's rarity color.
+-- MakeRunLevelWithIncrement is a local in Blizzard's file
+local function RunLevelText(run)
+    local pluses = ""
+    for _ = 1, GF.plainNumber(run.bestLevelIncrement) or 0 do
+        pluses = pluses .. Str("GROUPFINDER_PLUS", "+")
+    end
+    local level = HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(run.bestRunLevel)
+    local color = C_ChallengeMode.GetSpecificDungeonOverallScoreRarityColor(run.bestRunLevel) or HIGHLIGHT_FONT_COLOR
+    return pluses .. level .. " " .. color:WrapTextInColorCode(run.mapName)
+end
+
 --------------------------------------------------------------------------------
 -- The way in: the search view over Blizzard's search panel
 --------------------------------------------------------------------------------
@@ -103,7 +124,10 @@ UI.Search = Search
 -- cleared, the category set, the panel shown for its box, the view up,
 -- and the one search, which the host's hook notes. The search panel's own
 -- show builds rows only from results, and there are none after the clear.
-function Search:Open(categoryID, filters, baseFilters)
+-- beforeSearch(sp), optional, runs between the category and the search,
+-- where a saved search fills the box (saved.lua); false from it leaves the
+-- search unrun, for the player's Enter.
+function Search:Open(categoryID, filters, baseFilters, beforeSearch)
     local lf, sp = LFGListFrame, SearchPanel()
     if not (lf and sp and categoryID) then return false end
     if not (LFGListSearchPanel_Clear and LFGListSearchPanel_SetCategory and LFGListSearchPanel_DoSearch) then
@@ -111,9 +135,13 @@ function Search:Open(categoryID, filters, baseFilters)
     end
     if not GF.SearchAllowed() then return false end
     LFGListSearchPanel_Clear(sp)
+    -- SetCategory writes the box's own prompt, so a ghost from the last
+    -- saved search is gone with it
     LFGListSearchPanel_SetCategory(sp, categoryID, filters or 0, baseFilters or GF.plainNumber(lf.baseFilters) or 0)
+    Search.ghost = false
     sp:Show()
     UI:SetView("search")
+    if beforeSearch and beforeSearch(sp) == false then return true end
     LFGListSearchPanel_DoSearch(sp)
     return true
 end
@@ -123,9 +151,33 @@ end
 -- box in the window's holder on the next view; the caller syncs the window
 function Search:Close()
     local lf, sp = LFGListFrame, SearchPanel()
+    if sp and Search.ghost then Search.RestorePrompt(sp) end
     if sp and lf and SS.plainFrame(lf.activePanel) ~= sp then sp:Hide() end
     Host.Release("search")
     if UI.view == "search" then UI.view = nil end
+end
+
+-- A saved search's text as the box's prompt while the box is empty, where
+-- the box would not take the text itself: Blizzard shows the prompt only
+-- while the text is empty, so it stands until the player types
+function Search.SetGhost(sp, text)
+    local instructions = sp and sp.SearchBox and sp.SearchBox.Instructions
+    if not instructions then return end
+    instructions:SetText(text or "")
+    Search.ghost = true
+end
+
+-- The category's own prompt back, as SetCategory writes it, since the host
+-- gives the box back with its text and prompt as they stand
+function Search.RestorePrompt(sp)
+    Search.ghost = false
+    local instructions = sp and sp.SearchBox and sp.SearchBox.Instructions
+    if not instructions then return end
+    local categoryID = GF.plainNumber(sp.categoryID)
+    local info = categoryID and C_LFGList.GetLfgCategoryInfo(categoryID)
+    local prompt = type(info) == "table" and type(info.searchPromptOverride) == "string"
+        and info.searchPromptOverride or Str("FILTER", "Filter")
+    instructions:SetText(prompt)
 end
 
 local function Timer(row)
@@ -538,7 +590,7 @@ local function Build(parent)
 
     -- The hosted box's holder, and the x over Blizzard's clear button
     local holder = CreateFrame("Frame", nil, panel)
-    Host.DressHolder(holder)
+    Host.DressHolder(holder, UI.FieldFill())
     holder:SetHeight(L.rowHeight)
     holder:SetPoint("TOPLEFT", panel, "TOPLEFT", boxX, -L.rowY)
     holder:SetPoint("RIGHT", panel._refresh, "LEFT", -L.gap, 0)
@@ -548,9 +600,22 @@ local function Build(parent)
     panel._clear:SetAlpha(0.75)
     panel._clear:Hide()
 
-    -- The results
+    -- The results. The box draws neither its gray nor its border: the
+    -- fields carry the gray, and the border closes round the results alone,
+    -- with the role column outside it at the box's right
     local box = UI.MakeBox(panel, L.boxTop)
+    box._bg:Hide()
+    for _, edge in pairs(box._border) do edge:Hide() end
     panel._box = box
+    local results = CreateFrame("Frame", nil, box)
+    results:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0)
+    results:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -L.roles.width, 0)
+    results._border = C.CreateBorder(results, {
+        thickness = (M().collapsible or {}).borderWidth or 1,
+        alpha = (M().collapsible or {}).borderAlpha or 0.6,
+        corners = "overlap",
+    })
+    panel._results = results
     local list = C.CreateScrollList({
         parent = box,
         rowHeight = R.top + R.lines * R.lineHeight + R.bottom,
@@ -567,7 +632,7 @@ local function Build(parent)
             PaintRow(row)
         end,
     })
-    -- The rows end short of the role column at the box's right
+    -- The rows end short of the results' border, left of the role column
     local rightPad = pad + L.roles.width
     list.frame:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -pad)
     list.frame:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -rightPad, pad)
@@ -594,9 +659,15 @@ local function Build(parent)
     -- The role column: the roles and the note every application carries
     panel._roles = UI.Roles.Build(box, { onChange = function() panel:RefreshButtons() end })
 
-    -- The bottom edge: Back, or Back to Group
+    -- The bottom edge: Back, or Back to Group, and Save Search across from
+    -- it, which puts the search as it stands into the tray's list
+    -- (saved.lua), off with the reason in its tooltip
     panel._back = UI.MakeButton(panel, Str("BACK", "Back"), function() panel:Back() end, LAYOUT.buttonWidth)
     panel._back:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
+
+    panel._save = UI.MakeButton(panel, "Save Search", function() panel:SaveSearch() end, LAYOUT.buttonWidth,
+        function() return panel._saveReason end)
+    panel._save:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -LAYOUT.panel.buttonX, LAYOUT.panel.buttonY)
 
     -- The lists: the filter in its drawer, the auto-complete, the row
     -- menu. A list reads the labels before the keys, so every getter
@@ -621,6 +692,8 @@ local function Build(parent)
         embed = panel._drawer.content,
         multiSelect = true,
         fontSize = L.filterListFont,
+        captionSize = L.filterCaptionSize,
+        captionTop = L.filterCaptionTop,
         getKeys = function() return (panel:FilterItems()) end,
         getValues = function() return select(2, panel:FilterItems()) end,
         getSections = function() return select(3, panel:FilterItems()) end,
@@ -683,6 +756,9 @@ local function Build(parent)
         editBox:HookScript("OnTextChanged", function()
             if clearButton then self._clear:SetShown(clearButton:IsShown()) end
             self:RefreshAuto()
+            -- The text is part of what Save Search would save and what the
+            -- tray marks as the current search
+            GF.Notify("filter")
         end)
         if clearButton then
             -- The x comes up under the cursor, as the button's own icon would
@@ -745,34 +821,25 @@ local function Build(parent)
 
     -- An auto-complete row: Blizzard's own fill, SetSearchToActivity,
     -- which puts the activity's full name in the box as Blizzard's row
-    -- does (LFGListSearchAutoCompleteButton_OnClick), and the search as
-    -- soon as the cooldown allows it. The focus goes first, so the text
-    -- change the fill raises closes the list in place of reopening it
-    -- under the cursor. The box's text is what the server searches, so
-    -- text typed after the name narrows the search, as Blizzard's key
-    -- range tip says. A pick inside the three seconds after a search is
-    -- kept: the arrow's tooltip counts the wait down, and the search runs
-    -- as it ends unless another ran first.
+    -- does (LFGListSearchAutoCompleteButton_OnClick), and the search from
+    -- the same click. The focus goes first, so the text change the fill
+    -- raises closes the list in place of reopening it under the cursor.
+    -- The box's text is what the server searches, so text typed after the
+    -- name narrows the search, as Blizzard's key range tip says. A pick
+    -- inside the three seconds after a search fills the box and leaves the
+    -- search to the arrow or Enter, whose tooltip counts the wait down:
+    -- Search is restricted, and a timer's call has no click behind it.
     function panel:PickActivity(key)
         if key == "more" then return end
         local sp = SearchPanel()
         if not (sp and LFGListSearchPanel_DoSearch) then return end
         if sp.SearchBox then sp.SearchBox:ClearFocus() end
         C_LFGList.SetSearchToActivity(key)
-        self:SearchWhenAllowed()
-    end
-
-    function panel:SearchWhenAllowed()
         if GF.SearchAllowed() then
             self:DoSearch()
-            return
+        else
+            self:RefreshButtons()
         end
-        local last = GF.state.lastSearchAt
-        C_Timer.After(GF.SearchCooldownLeft() + 0.05, function()
-            if self:IsShown() and GF.state.lastSearchAt == last then
-                self:DoSearch()
-            end
-        end)
     end
 
     ----------------------------------------------------------------------------
@@ -807,6 +874,22 @@ local function Build(parent)
         else
             self._back:SetText(Str("BACK", "Back"))
         end
+    end
+
+    -- Save Search: the search as it stands into the character's list; the
+    -- tray takes it from there. Off with the reason in its tooltip: the
+    -- list is full, or the same search is saved already
+    function panel:SaveSearch()
+        if not UI.Saved or UI.Saved:SaveBlock() then return end
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        UI.Saved:SaveCurrent()
+        self:RefreshSave()
+    end
+
+    function panel:RefreshSave()
+        local reason = UI.Saved and UI.Saved:SaveBlock() or nil
+        self._saveReason = reason
+        self._save:SetEnabled(UI.Saved ~= nil and reason == nil)
     end
 
     function panel:Back()
@@ -902,31 +985,8 @@ local function Build(parent)
         return LFGListCanChangeLanguages and LFGListCanChangeLanguages() or false
     end
 
-    -- The dungeons the filter lists, as Blizzard's menu lists them: this
-    -- season's, the expansion's others, and the Timerunning set when the
-    -- character is one; three lists of group ids, and all of them in one
-    local function DungeonGroups()
-        local F = Enum and Enum.LFGListFilter
-        local season, expansion, timerunning = {}, {}, {}
-        if not (F and C_LFGList.GetAvailableActivityGroups) then
-            return season, expansion, timerunning, {}
-        end
-        local function fill(into, filters)
-            local groups = C_LFGList.GetAvailableActivityGroups(GF.DUNGEONS_CATEGORY, filters)
-            for _, id in ipairs(type(groups) == "table" and groups or {}) do into[#into + 1] = id end
-        end
-        local pve = F.PvE or 0
-        fill(season, bit.bor(F.CurrentSeason or 0, pve))
-        fill(expansion, bit.bor(F.CurrentExpansion or 0, F.NotCurrentSeason or 0, pve))
-        if F.Timerunning and PlayerIsTimerunning and PlayerIsTimerunning() then
-            fill(timerunning, bit.bor(F.Timerunning, pve))
-        end
-        local all = {}
-        for _, part in ipairs({ season, expansion, timerunning }) do
-            for _, id in ipairs(part) do all[#all + 1] = id end
-        end
-        return season, expansion, timerunning, all
-    end
+    -- The dungeons the filter lists are GF.DungeonGroups (the component's
+    -- saved.lua), shared with the saved searches' summary and replay
 
     local function IsGroupKey(key)
         return string.sub(key, 1, #GROUP_PREFIX) == GROUP_PREFIX
@@ -989,7 +1049,7 @@ local function Build(parent)
             -- The dungeons: the two buttons, this season's in two columns,
             -- then the expansion's others and any Timerunning set, each a
             -- block of its own after a line of space
-            local season, expansion, timerunning = DungeonGroups()
+            local season, expansion, timerunning = GF.DungeonGroups()
             local dungeons = Section(Str("DUNGEONS", "Dungeons"))
             dungeons.buttons = {
                 { label = Str("CHECK_ALL", "Select all"), onClick = function() panel:SetAllDungeons(true) end },
@@ -1062,7 +1122,7 @@ local function Build(parent)
             local enabled = C_LFGList.GetAdvancedFilter()
             if type(enabled) ~= "table" then return end
             if IsGroupKey(key) then
-                local _, _, _, ids = DungeonGroups()
+                local _, _, _, ids = GF.DungeonGroups()
                 local set, n = GroupSet(enabled)
                 if n == 0 and not self._dungeonsCleared then
                     for _, id in ipairs(ids) do set[id] = true end
@@ -1083,12 +1143,14 @@ local function Build(parent)
             end
             C_LFGList.SaveAdvancedFilter(enabled)
             self._list:Refresh()
+            GF.Notify("filter")
             return
         end
         if not C_LFGList.SaveLanguageSearchFilter then return end
         local enabled = C_LFGList.GetLanguageSearchFilter and C_LFGList.GetLanguageSearchFilter() or {}
         enabled[key] = checked and true or false
         C_LFGList.SaveLanguageSearchFilter(enabled)
+        GF.Notify("filter")
     end
 
     -- Select all writes every dungeon; Unselect all writes none, which the
@@ -1097,12 +1159,13 @@ local function Build(parent)
     function panel:SetAllDungeons(on)
         local enabled = C_LFGList.GetAdvancedFilter()
         if type(enabled) ~= "table" then return end
-        local _, _, _, ids = DungeonGroups()
+        local _, _, _, ids = GF.DungeonGroups()
         enabled.activities = on and ids or {}
         self._dungeonsCleared = not on
         C_LFGList.SaveAdvancedFilter(enabled)
         self._list:Refresh()
         self._filterList:Refresh()
+        GF.Notify("filter")
     end
 
     -- The mode is settled by the items, so they are read first, and the
@@ -1139,60 +1202,204 @@ local function Build(parent)
         end
     end
 
+    -- Blizzard's search-entry tooltip, LFGListUtil_SetSearchEntryTooltip
+    -- (LFGList.lua) line for line in its order and colors. The builder itself
+    -- cannot be called: it asks the protected GetPlaystyleString for the
+    -- playstyle, which the enum's own strings answer here. Each block runs
+    -- in its own pcall, so a field that is secret under the chat lockdown
+    -- drops its block and the rest still draws.
     function panel:ShowTooltip(row, id)
         local info = GF.ResultInfo(id)
         if not info then return end
-        local theme = Theme()
-        local dr, dg, db = theme:GetDimTextColor()
-        GameTooltip:SetOwner(row, "ANCHOR_RIGHT", 25, 0)
-        GameTooltip:ClearLines()
+        local tooltip = GameTooltip
+        tooltip:SetOwner(row, "ANCHOR_RIGHT", 25, 0)
+        tooltip:ClearLines()
+
+        local activityID = GF.ActivityID(info)
+        local isWarMode = GF.plainBool(info.isWarMode)
+        local okA, activity = pcall(C_LFGList.GetActivityInfoTable, activityID, nil, isWarMode)
+        if not okA or type(activity) ~= "table" then activity = {} end
+        local censored = GF.plainBool(info.censored) == true
+        local crossFaction = GF.plainBool(info.crossFactionListing) == true
+        local numMembers = GF.plainNumber(info.numMembers) or 0
+        local factionString = FACTION_STRINGS and FACTION_STRINGS[GF.plainNumber(info.leaderFactionGroup) or -1]
+
+        local allowsCrossFaction = false
         pcall(function()
-            if type(info.name) == "string" then GameTooltip:AddLine(info.name) end
-            local activity = GF.ActivityName(info)
-            if activity then GameTooltip:AddLine(activity, dr, dg, db) end
-            if GF.plainBool(info.isDelisted) then
-                GameTooltip:AddLine(Str("LFG_LIST_ENTRY_DELISTED", "This group is no longer listed"),
-                    RED[1], RED[2], RED[3], true)
-            end
-            if NonEmpty(info.comment) then GameTooltip:AddLine(info.comment, 1, 1, 1, true) end
-            local ilvl = GF.plainNumber(info.requiredItemLevel) or 0
-            if ilvl > 0 then
-                GameTooltip:AddLine(string.format(Str("LFG_LIST_TOOLTIP_ILVL", "Item level %d+"), ilvl))
-            end
-            if NonEmpty(info.voiceChat) then
-                GameTooltip:AddLine(string.format(Str("LFG_LIST_TOOLTIP_VOICE_CHAT", "Voice: %s"), info.voiceChat), nil, nil, nil, true)
-            end
-            -- The leader by name, spec and class in the class color, with the
-            -- rating: the spec the row's leader line stands in for
-            local leader = SS.plainString(info.leaderName)
-            if leader then
-                local lr, lg, lb = 1, 1, 1
-                local members = GF.Members(id, GF.plainNumber(info.numMembers) or 0)
-                for _, m in ipairs(members) do
-                    if m.leader then
-                        local who = (m.spec and m.className and (m.spec .. " " .. m.className)) or m.className
-                        if who then leader = leader .. ", " .. who end
-                        local cr, cg, cb
-                        if m.class then cr, cg, cb = addon.GetClassColorRGB(m.class) end
-                        if cr then lr, lg, lb = cr, cg, cb end
-                        break
-                    end
-                end
-                local rating = GF.LeaderRating(info, GF.ActivityInfo(GF.ActivityID(info)))
-                if rating then leader = leader .. "  " .. rating end
-                GameTooltip:AddLine(leader, lr, lg, lb)
-            end
-            local counts = GF.MemberCounts(id)
-            if counts then
-                GameTooltip:AddLine(string.format("%d T  %d H  %d D", GF.plainNumber(counts.TANK) or 0,
-                    GF.plainNumber(counts.HEALER) or 0, GF.plainNumber(counts.DAMAGER) or 0), dr, dg, db)
-            end
-            local age = GF.plainNumber(info.age)
-            if age and SecondsToTime then
-                GameTooltip:AddLine(string.format(Str("LFG_LIST_TOOLTIP_AGE", "Age: %s"), SecondsToTime(age)), dr, dg, db)
+            local category = activity.categoryID and C_LFGList.GetLfgCategoryInfo(activity.categoryID)
+            allowsCrossFaction = (category and category.allowCrossFaction and activity.allowCrossFaction) and true or false
+        end)
+        local showFaction = not crossFaction and allowsCrossFaction and factionString
+
+        -- Name, activity, playstyle
+        pcall(function()
+            if censored then
+                GameTooltip_AddHighlightLine(tooltip, RED_FONT_COLOR:WrapTextInColorCode(Str("CENSORED_LFG_GROUP_NAME")), true)
+            elseif type(info.name) == "string" then
+                GameTooltip_AddHighlightLine(tooltip, info.name, true)
             end
         end)
-        GameTooltip:Show()
+        pcall(function()
+            if type(activity.fullName) == "string" then tooltip:AddLine(activity.fullName) end
+        end)
+        pcall(function()
+            local playstyle = GF.GeneralPlaystyleString(GF.plainNumber(info.generalPlaystyle))
+            if showFaction then
+                GameTooltip_AddColoredLine(tooltip, Str("GROUP_FINDER_CROSS_FACTION_LISTING_WITH_PLAYSTLE"):format(playstyle, factionString), GREEN_FONT_COLOR)
+                GameTooltip_AddColoredLine(tooltip, Str("GROUP_FINDER_CROSS_FACTION_LISTING_WITHOUT_PLAYSTLE"):format(factionString), GREEN_FONT_COLOR)
+            else
+                GameTooltip_AddColoredLine(tooltip, playstyle, GREEN_FONT_COLOR)
+            end
+        end)
+
+        -- The comment, or the quest's description when a quest group has none
+        pcall(function()
+            local c = LFG_LIST_COMMENT_FONT_COLOR
+            if censored then
+                tooltip:AddLine(Str("CENSORED_LFG_COMMENT"), c.r, c.g, c.b, true)
+                return
+            end
+            local comment = info.comment
+            if type(comment) ~= "string" or GF.plain(comment) == nil then return end
+            -- A kstring comment does not compare, so it counts as written
+            local readable = pcall(function() return comment == "" end)
+            local questID = GF.plainNumber(info.questID)
+            if readable and comment == "" and questID and LFGListUtil_GetQuestDescription then
+                comment = LFGListUtil_GetQuestDescription(questID)
+                if not NonEmpty(comment) then return end
+            elseif readable and not NonEmpty(comment) then
+                return
+            end
+            -- The format may refuse a kstring; then the comment draws as it is
+            local okF, text = pcall(string.format, Str("LFG_LIST_COMMENT_FORMAT", "\"%s\""), comment)
+            tooltip:AddLine(okF and text or comment, c.r, c.g, c.b, true)
+        end)
+
+        -- Requirements and voice chat, with a blank after them when any drew
+        tooltip:AddLine(" ")
+        pcall(function()
+            local score = GF.plainNumber(info.requiredDungeonScore) or 0
+            local pvp = GF.plainNumber(info.requiredPvpRating) or 0
+            local ilvl = GF.plainNumber(info.requiredItemLevel) or 0
+            local honor = activity.useHonorLevel and (GF.plainNumber(info.requiredHonorLevel) or 0) or 0
+            local voice = NonEmpty(info.voiceChat)
+            if score > 0 then tooltip:AddLine(Str("GROUP_FINDER_MYTHIC_RATING_REQ_TOOLTIP"):format(score)) end
+            if pvp > 0 then tooltip:AddLine(Str("GROUP_FINDER_PVP_RATING_REQ_TOOLTIP"):format(pvp)) end
+            if ilvl > 0 then
+                local key = activity.isPvpActivity and "LFG_LIST_TOOLTIP_ILVL_PVP" or "LFG_LIST_TOOLTIP_ILVL"
+                tooltip:AddLine(Str(key):format(ilvl))
+            end
+            if honor > 0 then tooltip:AddLine(Str("LFG_LIST_TOOLTIP_HONOR_LEVEL"):format(honor)) end
+            if voice then tooltip:AddLine(string.format(Str("LFG_LIST_TOOLTIP_VOICE_CHAT"), info.voiceChat), nil, nil, nil, true) end
+            if score > 0 or pvp > 0 or ilvl > 0 or honor > 0 or voice then tooltip:AddLine(" ") end
+        end)
+
+        -- The leader, with the Mythic+ score block or the rated PvP line
+        local leaderName = SS.plainString(info.leaderName)
+        pcall(function()
+            if not leaderName then return end
+            local leaderString = leaderName
+            local myFaction = UnitFactionGroup("player")
+            local leaderFaction = PLAYER_FACTION_GROUP and PLAYER_FACTION_GROUP[GF.plainNumber(info.leaderFactionGroup) or -1]
+            if factionString and myFaction ~= leaderFaction then
+                leaderString = Str("LFG_LIST_TOOLTIP_LEADER_FACTION"):format(leaderName, factionString)
+            end
+            local overall = GF.plainNumber(info.leaderOverallDungeonScore)
+            if activity.isMythicPlusActivity and overall then
+                local overallColor = C_ChallengeMode.GetDungeonScoreRarityColor(overall) or HIGHLIGHT_FONT_COLOR
+                tooltip:AddDoubleLine(leaderString, overallColor:WrapTextInColorCode(overall))
+                local scores = info.leaderDungeonScoreInfo
+                local forDungeon = type(scores) == "table" and scores[1]
+                if type(forDungeon) == "table" then
+                    tooltip:AddDoubleLine(Str("LFG_LIST_BEST_FOR_DUNGEON"), RunLevelText(forDungeon))
+                end
+                if type(info.leaderBestDungeonScoreInfo) == "table" then
+                    tooltip:AddDoubleLine(Str("LFG_LIST_BEST_RUN"), RunLevelText(info.leaderBestDungeonScoreInfo))
+                end
+            else
+                tooltip:AddLine(leaderString)
+            end
+        end)
+        pcall(function()
+            local ratings = info.leaderPvpRatingInfo
+            if not activity.isRatedPvpActivity or type(ratings) ~= "table" or #ratings == 0 then return end
+            local r = ratings[1]
+            GameTooltip_AddNormalLine(tooltip, Str("PVP_RATING_GROUP_FINDER"):format(r.activityName, r.rating, PVPUtil.GetTierName(r.tier)))
+        end)
+        if leaderName or (GF.plainNumber(info.age) or 0) > 0 then tooltip:AddLine(" ") end
+
+        -- The members one per line, as Blizzard lists them only when every
+        -- member answers with a role; else the counts
+        local groupHasLeaver = false
+        pcall(function()
+            local members, complete = {}, false
+            local displayType = activity.displayType
+            local D = Enum.LFGListDisplayType
+            if displayType == D.ClassEnumerate or displayType == D.RoleEnumerate then
+                members, complete = GF.Members(id, numMembers)
+            end
+            for _, m in ipairs(members) do
+                if m.leaver then groupHasLeaver = true end
+            end
+            if complete then
+                tooltip:AddLine(Str("MEMBERS_COLON"))
+                local leaderIcon = CreateAtlasMarkup("groupfinder-icon-leader", 14, 9, 0, 0)
+                for _, m in ipairs(members) do
+                    local r, g, b = NORMAL_FONT_COLOR:GetRGB()
+                    if m.class then
+                        local cr, cg, cb = addon.GetClassColorRGB(m.class)
+                        if cr then r, g, b = cr, cg, cb end
+                    end
+                    local roleIcon = CreateAtlasMarkup(ROLE_ATLASES_BORDERLESS[m.role] or "", 13, 13, 0, 0)
+                    local text = roleIcon .. " " .. string.format(Str("LFG_LIST_TOOLTIP_CLASS_ROLE"), m.className or "", m.spec or "")
+                    if m.leader then text = text .. " " .. leaderIcon end
+                    if m.leaver then text = text .. " " .. CreateAtlasMarkup("groupfinder-icon-leaver", 12, 12, 0, 0) end
+                    tooltip:AddLine(text, r, g, b)
+                end
+            else
+                local counts = GF.MemberCounts(id) or {}
+                tooltip:AddLine(string.format(Str("LFG_LIST_TOOLTIP_MEMBERS"), numMembers,
+                    GF.plainNumber(counts.TANK) or 0, GF.plainNumber(counts.HEALER) or 0,
+                    GF.plainNumber(counts.DAMAGER) or 0))
+            end
+        end)
+
+        -- Friends, bosses defeated, auto-accept, delisted, the leaver warning
+        pcall(function()
+            local friends = (GF.plainNumber(info.numBNetFriends) or 0) + (GF.plainNumber(info.numCharFriends) or 0)
+                + (GF.plainNumber(info.numGuildMates) or 0)
+            if friends > 0 then
+                tooltip:AddLine(" ")
+                tooltip:AddLine(Str("LFG_LIST_TOOLTIP_FRIENDS_IN_GROUP"))
+                tooltip:AddLine(LFGListSearchEntryUtil_GetFriendList(id), 1, 1, 1, true)
+            end
+        end)
+        pcall(function()
+            local encounters = C_LFGList.GetSearchResultEncounterInfo(id)
+            if type(encounters) ~= "table" or #encounters == 0 then return end
+            tooltip:AddLine(" ")
+            tooltip:AddLine(Str("LFG_LIST_BOSSES_DEFEATED"))
+            for i = 1, #encounters do
+                tooltip:AddLine(encounters[i], RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b)
+            end
+        end)
+        pcall(function()
+            if GF.plainBool(info.autoAccept) then
+                tooltip:AddLine(" ")
+                tooltip:AddLine(Str("LFG_LIST_TOOLTIP_AUTO_ACCEPT"), LIGHTBLUE_FONT_COLOR:GetRGB())
+            end
+            if GF.plainBool(info.isDelisted) then
+                tooltip:AddLine(" ")
+                tooltip:AddLine(Str("LFG_LIST_ENTRY_DELISTED"), RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b, true)
+            end
+            if groupHasLeaver then
+                GameTooltip_AddBlankLineToTooltip(tooltip)
+                GameTooltip_AddErrorLine(tooltip, Str("MYTHIC_PLUS_DESERTER_GROUP_WARNING"))
+            end
+        end)
+
+        tooltip:Show()
+        if addon.Tooltip and addon.Tooltip.StyleDirect then addon.Tooltip.StyleDirect() end
     end
 
     ----------------------------------------------------------------------------
@@ -1329,6 +1536,7 @@ local function Build(parent)
     function panel:RefreshButtons()
         self._start:SetEnabled(GF.StartGroupBlock() == nil)
         self:RefreshBack()
+        self:RefreshSave()
         local allowed = GF.SearchAllowed()
         self._refresh:SetEnabled(allowed)
         if not allowed then
@@ -1414,6 +1622,13 @@ local function Build(parent)
     end)
     GF.Listen("lockdown", function()
         if panel:IsShown() then panel:RefreshList() end
+    end)
+    -- A filter toggle or the box's text: what Save Search would save changed
+    GF.Listen("filter", function()
+        if panel:IsShown() then panel:RefreshSave() end
+    end)
+    GF.Listen("saved", function()
+        if panel:IsShown() then panel:RefreshSave() end
     end)
 
     return panel

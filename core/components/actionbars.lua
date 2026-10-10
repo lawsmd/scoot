@@ -574,11 +574,14 @@ local function ApplyMicroBarStyling(self)
 
     -- Keep the QueueStatusButton ("LFG eye") fully visible even when the Micro Bar opacity is reduced.
     -- This button is effectively "part of" the Micro Bar area and can inherit parent alpha.
+    -- The Group Finder's own eye draws as its child and fades with the bar instead.
     local function ensureQueueStatusButtonFullAlpha()
         local qsb = _G.QueueStatusButton
         if not qsb then return end
+        local GF = addon.GroupFinder
+        local scootEye = GF and GF.QueueEye and GF.QueueEye.IsActive and GF.QueueEye.IsActive()
         if qsb.SetIgnoreParentAlpha then
-            pcall(qsb.SetIgnoreParentAlpha, qsb, true)
+            pcall(qsb.SetIgnoreParentAlpha, qsb, not scootEye)
         end
         if qsb.SetAlpha then
             pcall(qsb.SetAlpha, qsb, 1)

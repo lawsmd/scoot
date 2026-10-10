@@ -275,6 +275,11 @@ local function ApplyStylingForDirectGameTooltip()
     ApplyBorderTint(GameTooltip, db)
 end
 
+-- The Group Finder window builds the same tooltip without Blizzard's builder,
+-- so it calls the styling itself
+addon.Tooltip = addon.Tooltip or {}
+addon.Tooltip.StyleDirect = ApplyStylingForDirectGameTooltip
+
 local function InstallLFGSearchEntryHook()
     if type(_G.LFGListUtil_SetSearchEntryTooltip) ~= "function" then
         return false

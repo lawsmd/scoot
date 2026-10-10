@@ -285,9 +285,10 @@ end
 -- The holder: the single-line edit box's flat look around a hosted box
 --------------------------------------------------------------------------------
 
-function Host.DressHolder(holder)
+-- fill, optional: AddBackground's color, the edit box's near black if nil
+function Host.DressHolder(holder, fill)
     local C = Controls()
-    holder._bg = C.AddBackground(holder, { inset = 1 })
+    holder._bg = C.AddBackground(holder, { inset = 1, color = fill })
     holder._border = C.CreateBorder(holder, {
         thickness = 1,
         alpha = 0.6,
@@ -307,22 +308,36 @@ end
 -- Take and release
 --------------------------------------------------------------------------------
 
--- The points, strata and level the box had, read under pcall; a value that
--- comes back secret is dropped and the caller's fallback points stand in
-local function Capture(box)
-    local rec = { points = {}, regions = {} }
-    local okN, n = pcall(box.GetNumPoints, box)
+-- A region's points, read under pcall; a point that comes back secret is
+-- dropped
+local function CapturePoints(region)
+    local points = {}
+    local okN, n = pcall(region.GetNumPoints, region)
     if okN and type(n) == "number" then
         for i = 1, n do
-            local ok, point, rel, relPoint, x, y = pcall(box.GetPoint, box, i)
+            local ok, point, rel, relPoint, x, y = pcall(region.GetPoint, region, i)
             point = ok and SS.plainString(point) or nil
             if point then
-                rec.points[#rec.points + 1] = {
+                points[#points + 1] = {
                     point, SS.plainFrame(rel), SS.plainString(relPoint), SS.safeOffset(x), SS.safeOffset(y),
                 }
             end
         end
     end
+    return points
+end
+
+local function RestorePoints(region, points)
+    region:ClearAllPoints()
+    for _, p in ipairs(points) do
+        region:SetPoint(p[1], p[2], p[3], p[4] or 0, p[5] or 0)
+    end
+end
+
+-- The points, strata and level the box had, read under pcall; a value that
+-- comes back secret is dropped and the caller's fallback points stand in
+local function Capture(box)
+    local rec = { points = CapturePoints(box), regions = {} }
     local okS, strata = pcall(box.GetFrameStrata, box)
     if okS then rec.strata = SS.plainString(strata) end
     local okL, level = pcall(box.GetFrameLevel, box)
@@ -447,6 +462,22 @@ local function Style(rec, opts)
         theme:ApplyFont(instructions, "value", opts.fontSize, "NONE")
         local dr, dg, db = theme:GetDimTextColor()
         instructions:SetTextColor(dr, dg, db, 0.7)
+        -- A box whose template lays the instructions over its whole rect
+        -- (the finder's single-line boxes) gets them inset as its text is,
+        -- on one line
+        if opts.instructionsInsets then
+            local points = CapturePoints(instructions)
+            if #points > 0 then
+                rec.instructionsPoints = points
+                local okW, wrap = pcall(instructions.GetWordWrap, instructions)
+                rec.instructionsWrap = okW and GF.plainBool(wrap) or nil
+            end
+            local left, right, top, bottom = unpack(opts.instructionsInsets)
+            instructions:ClearAllPoints()
+            instructions:SetPoint("TOPLEFT", editBox, "TOPLEFT", left, -top)
+            instructions:SetPoint("BOTTOMRIGHT", editBox, "BOTTOMRIGHT", -right, bottom)
+            instructions:SetWordWrap(false)
+        end
     end
 end
 
@@ -474,6 +505,9 @@ end
 -- opts.artKeys      region keys on box to put at alpha 0
 -- opts.artFrames    child frame keys whose textures go to alpha 0
 -- opts.textInsets   { left, right, top, bottom } for SetTextInsets
+-- opts.instructionsInsets  { left, right, top, bottom }: the instructions
+--                   line anchored this far inside the box, unwrapped; its
+--                   own points and wrap come back on release
 -- opts.fontSize     the text's size in the value face, in place of the role's
 -- opts.editBoxWidth the width for the text region inside a ScrollFrame box,
 --                   which takes its width once at load and not from its
@@ -573,7 +607,12 @@ function Host.Release(key)
     end
     RestoreText(rec.editBox, rec.font, rec.textColor)
     if rec.editBox then
-        RestoreText(rec.editBox.Instructions, rec.instructionsFont, rec.instructionsColor)
+        local instructions = rec.editBox.Instructions
+        RestoreText(instructions, rec.instructionsFont, rec.instructionsColor)
+        if instructions and rec.instructionsPoints then
+            RestorePoints(instructions, rec.instructionsPoints)
+            if rec.instructionsWrap ~= nil then instructions:SetWordWrap(rec.instructionsWrap) end
+        end
         if rec.textInsets and rec.editBox.SetTextInsets then
             rec.editBox:SetTextInsets(unpack(rec.textInsets))
         end
@@ -710,6 +749,11 @@ addon:RegisterDebugCommand({
                 push("    %d: activities=%s name=%s status=%s", id, list,
                     tostring(info and GF.ActivityName(info)), tostring(status))
             end
+        end
+        -- The saved searches and which rung of the text fill held last
+        if GF.Saved then
+            push("")
+            push("saved searches=%d autoSearch=%s", GF.Saved.Count(), tostring(GF.Saved.autoSearch))
         end
         addon.DebugShowWindow("Group Finder host", lines)
     end,
