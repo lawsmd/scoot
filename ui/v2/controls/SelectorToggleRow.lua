@@ -126,7 +126,7 @@ function Controls:CreateSelectorToggleRow(options)
         description = description,
         dimColor = { dimR, dimG, dimB },
         slots = {
-            { kind = "selector" },
+            { kind = "selector", need = Controls.MiniSelectorNeed(selectorOpts) },
             { kind = "toggle", label = toggleLabel },
         },
     })

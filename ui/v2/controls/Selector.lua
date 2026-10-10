@@ -88,6 +88,12 @@ function Controls:CreateSelector(options)
         selectorWidth = math.floor(selectorWidth * S + 0.5)
     end
     local function sc(v) return math.floor(v * S + 0.5) end
+    -- The field grows past the caller's width to show its longest option in
+    -- full, in steps of field.widthStep up to field.popupMaxWidth.
+    selectorWidth = (Controls.FieldNeed("selector", values, {
+        order = orderKeys, floor = selectorWidth, scale = S, size = sc(12),
+        gear = options.gear ~= nil,
+    }))
     local emphPadY = (emphArt and rowWidth and emphM.padY) or 0
     local fieldInset = (emphArt and emphM.padX) or sc(SELECTOR_PADDING)
 
@@ -310,6 +316,12 @@ function Controls:CreateSelector(options)
     dropIndicator:SetText("▼")
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
     valueBtn._dropIndicator = Controls.AddFieldIndicator(valueBtn, dropIndicator)
+    -- A field with a gear leaves its text to SelectorGear's clamp, which
+    -- keeps the text clear of the gear as well.
+    local refitText
+    if not options.gear then
+        refitText = Controls.BoundFieldText(valueBtn, valueText, Controls.FieldTextReserve(S))
+    end
 
     selector._leftArrow = leftArrow
     selector._rightArrow = rightArrow
@@ -342,6 +354,7 @@ function Controls:CreateSelector(options)
         local currentKey = row._currentKey
         local displayText = row._values[currentKey] or currentKey or "—"
         valueText:SetText(displayText)
+        if refitText then refitText() end
         -- One hook covering every path that changes the value: both arrows, the
         -- dropdown, SetValue and Refresh all land here.
         if row._onDisplayChanged then

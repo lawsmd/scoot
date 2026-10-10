@@ -120,6 +120,7 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
     dropIndicator:SetText("\226\150\188")  -- ▼
     dropIndicator:SetTextColor(dimR, dimG, dimB, 0.7)
     valueBtn._dropIndicator = Controls.AddFieldIndicator(valueBtn, dropIndicator)
+    local refitText = Controls.BoundFieldText(valueBtn, valueText, Controls.FieldTextReserve())
 
     selector._leftArrow = leftArrow
     selector._rightArrow = rightArrow
@@ -148,6 +149,7 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
         local currentKey = selector._currentKey
         local displayText = selector._values[currentKey] or currentKey or "\226\128\148"  -- —
         valueText:SetText(displayText)
+        refitText()
     end
     selector._updateDisplay = UpdateDisplay
 
@@ -332,9 +334,8 @@ function Controls:CreateDualSelector(options)
     row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
 
     -- Chrome and the two selector slots. Two wide slots overflow the maximum
-    -- cluster width, so BuildSlotRow shrinks both to share it: about 200 each
-    -- on tui. A plain selector slot (140) clips labels such as "Inside the
-    -- Icon" under the arrows.
+    -- cluster width, so BuildSlotRow shrinks both to share it, about 200 each
+    -- on tui, and never below the width their options need.
     local maxClusterWidth
     if options.wideSlots and not (description and description ~= "") then
         local m = Controls.Metrics()
@@ -349,8 +350,10 @@ function Controls:CreateDualSelector(options)
         dimColor = { dimR, dimG, dimB },
         maxClusterWidth = maxClusterWidth,
         slots = {
-            { kind = "selectorWide", label = selectorAOpts.caption },
-            { kind = "selectorWide", label = selectorBOpts.caption },
+            { kind = "selectorWide", label = selectorAOpts.caption,
+                need = Controls.MiniSelectorNeed(selectorAOpts) },
+            { kind = "selectorWide", label = selectorBOpts.caption,
+                need = Controls.MiniSelectorNeed(selectorBOpts) },
         },
     })
     row._dualSelectorContainer = dualContainer

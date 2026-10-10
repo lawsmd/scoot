@@ -83,7 +83,7 @@ end
 -- FieldNeed
 --------------------------------------------------------------------------------
 
--- The pixels around a selector's value text: border insets, both arrows with
+-- The pixels around a selector's value text: border insets, both arrows with their gaps,
 -- their separators, and on each side the text inset plus the drop indicator's
 -- room, so centered text stays centered. A gear or token icon adds its width
 -- on both sides for the same reason.
@@ -91,7 +91,7 @@ function Controls.FieldChrome(opts)
     opts = opts or {}
     local f = Controls.Metrics().field
     local scale = opts.scale or 1
-    local chrome = (2 * f.arrowWidth + 4) * scale
+    local chrome = (2 * f.arrowWidth + 2 + 2 * (f.arrowGap or 1)) * scale
         + 2 * (f.textInset + f.indicatorWidth + f.indicatorGap) * scale
     if opts.gear then
         chrome = chrome + 2 * f.gearWidth
@@ -107,7 +107,7 @@ local function WidestLabel(values, order, size)
     local widest, widestText = 0, nil
     local function consider(label)
         if type(label) ~= "string" then return true end
-        local w = Controls.MeasureText("value", label, size)
+        local w = Controls.MeasureText(Controls.Metrics().field.fontRole or "value", label, size)
         if not w then return false end
         if w > widest then
             widest, widestText = w, label
@@ -130,7 +130,8 @@ end
 -- of the floor and the chrome plus the widest label, rounded up to the skin's
 -- width step. kind names the floor in metrics.slots; opts.floor overrides it.
 --
--- opts: order, floor, scale, size (value text size), gear, tokenIcon
+-- opts: order, floor, scale, size (value text size), gear, tokenIcon, cap
+-- (the most the field grows to; default field.popupMaxWidth at the scale)
 --
 -- Returns need, widest label width, widest label text. An unmeasurable label
 -- returns the floor.
@@ -146,7 +147,44 @@ function Controls.FieldNeed(kind, values, opts)
     local step = m.field.widthStep
     local raw = Controls.FieldChrome(opts) + widest
     local need = math.ceil(raw / step) * step
-    return math.max(floor, need), widest, widestText
+    local cap = opts.cap or math.floor(m.field.popupMaxWidth * (opts.scale or 1))
+    return math.max(floor, math.min(need, cap)), widest, widestText
+end
+
+-- The slot width a mini selector needs to show every option in full, for
+-- BuildSlotRow's need; nil when the options are not a table.
+function Controls.MiniSelectorNeed(selectorOpts)
+    if type(selectorOpts) ~= "table" or type(selectorOpts.values) ~= "table" then return nil end
+    return (Controls.FieldNeed("selector", selectorOpts.values,
+        { order = selectorOpts.order, floor = 0, size = 12 }))
+end
+
+-- Keeps a field's centered value text inside its button: text wider than the
+-- button less reserve on each side truncates with an ellipsis, so it never
+-- draws under the arrows or the drop indicator. Fields size themselves to
+-- their options; this holds for options set later and for a field a row had
+-- to shrink. Returns the refit function, to call after each SetText.
+function Controls.BoundFieldText(valueBtn, textFS, reserve)
+    textFS:SetWordWrap(false)
+    local function Refit()
+        textFS:SetWidth(0)
+        local okB, btnW = pcall(valueBtn.GetWidth, valueBtn)
+        if not okB or type(btnW) ~= "number" or btnW <= 0 then return end
+        local room = math.floor(btnW - 2 * reserve)
+        local okT, textW = pcall(textFS.GetUnboundedStringWidth, textFS)
+        if okT and type(textW) == "number" and room > 0 and textW > room then
+            textFS:SetWidth(room)
+        end
+    end
+    valueBtn:HookScript("OnSizeChanged", Refit)
+    return Refit
+end
+
+-- The room BoundFieldText keeps on each side of a selector's value text: the
+-- text inset plus the drop indicator and its gap, at the field's scale.
+function Controls.FieldTextReserve(scale)
+    local f = Controls.Metrics().field
+    return (f.textInset + f.indicatorWidth + f.indicatorGap) * (scale or 1)
 end
 
 --------------------------------------------------------------------------------

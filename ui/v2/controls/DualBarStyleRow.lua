@@ -43,6 +43,23 @@ local function GetTextureDisplayName(key)
     return key or "Default"
 end
 
+-- The texture slot's need: the widest built-in texture name, or the global
+-- token's name with its info icon, past the value text's insets (8 left, 20
+-- right, 8 more beside the icon). Shared-media names can run longer; those
+-- truncate.
+local function TextureSlotNeed()
+    if not (addon.Media and addon.Media.BarTextureKeys) then return nil end
+    local role = Controls.Metrics().field.fontRole or "value"
+    local function measure(text) return Controls.MeasureText(role, text, 12) or 0 end
+    local widest = measure("Default")
+    for _, key in ipairs(addon.Media.BarTextureKeys()) do
+        widest = math.max(widest, measure(GetTextureDisplayName(key)))
+    end
+    local raw = math.max(widest + 28, measure(GetTextureDisplayName(addon.MediaTokens and addon.MediaTokens.BAR_TEXTURE)) + 36)
+    local step = Controls.Metrics().field.widthStep
+    return math.ceil(raw / step) * step
+end
+
 --------------------------------------------------------------------------------
 -- Helper: CreateTextureMini
 --------------------------------------------------------------------------------
@@ -567,8 +584,12 @@ function Controls:CreateDualBarStyleRow(options)
         description = description,
         dimColor = { dimR, dimG, dimB },
         slots = {
-            { kind = "selector", label = "Texture" },
-            { kind = "selectorWide", label = "Color" },
+            { kind = "selector", label = "Texture", need = TextureSlotNeed() },
+            { kind = "selectorWide", label = "Color",
+                need = (Controls.FieldNeed("selector", options.colorValues, {
+                    order = options.colorOrder, floor = 0, size = 12,
+                    gear = options.colorGear ~= nil,
+                })) },
         },
     })
     row._dualContainer = dualContainer

@@ -223,6 +223,14 @@ function addon.Media.GetBarTextureDisplayName(key)
 	return BAR_DISPLAY_NAMES[key] or key or ""
 end
 
+-- The built-in bar texture keys in dropdown order, a copy; a settings field
+-- sizes itself to their display names
+function addon.Media.BarTextureKeys()
+	local keys = {}
+	for i, key in ipairs(BAR_TEXTURE_ORDER) do keys[i] = key end
+	return keys
+end
+
 -- Accessor for other modules (e.g., cooldowns.lua) to get the background texture
 -- without reading directly from the Blizzard frame table
 function addon.Media.GetBarFrameState(barFrame)

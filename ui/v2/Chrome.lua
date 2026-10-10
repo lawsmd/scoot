@@ -900,7 +900,8 @@ end
 --   inset                  the horizontal content inset the parts take
 -- opts: variant ("parent" or "child", the navRow color maps), label (a
 -- FontString the handle colors by state), inset (an override), header (the
--- band a card's hover fill covers, in pixels from the top).
+-- band a card's hover fill covers, in pixels from the top), rule (false
+-- drops a flat list row's rule, for a row that stands alone).
 --
 -- The flat parts reproduce the framework's own draw for each role. The
 -- atlas kind shows one texture per declared state and falls back to normal.
@@ -1158,7 +1159,7 @@ Flat.listRow = function(h, frame, spec)
         hoverBg:SetShown(h.hover and not h.disabled)
         selectBg:SetShown(h.selected and not h.disabled)
         bar:SetShown(h.selected and not h.disabled)
-        rule:Show()
+        rule:SetShown(not h.noRule)
     end
 end
 
@@ -1452,7 +1453,7 @@ function Chrome.Backdrop(role, frame, opts)
     local h = setmetatable({
         role = role, frame = frame, spec = spec, label = opts.label, header = opts.header,
         hover = false, selected = false, disabled = false, open = false,
-        inset = 0, hoverWins = false, hoverOverOpen = true,
+        inset = 0, hoverWins = false, hoverOverOpen = true, noRule = opts.rule == false,
     }, BackdropMT)
 
     local flat = Chrome.FLAT[role] or {}

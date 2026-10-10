@@ -77,6 +77,8 @@ end
 --                   a row of small buttons under the caption, separator
 --                   "rule" (default), "space" or "none" above a section
 --                   after the first
+--   captionSize     the captions' point size over the miniLabel role's
+--   captionTop      extra room above a caption that follows a separator
 --   getSelectedKey  function() -> the current key, for the highlight
 --   isInert         function(key) -> true lists the option dimmed, with hover
 --                   and click ignored
@@ -124,7 +126,9 @@ function Controls.CreatePopupList(opts)
     local filterHeight = pm.filterHeight or 22
     -- A sectioned list's caption row, the room around a rule, the rule's
     -- alpha on the dim text color, and a section's buttons
-    local captionHeight = pm.captionHeight or 18
+    local captionSize = opts.captionSize
+    local captionHeight = math.max(pm.captionHeight or 18, (captionSize or 0) + 6)
+    local captionTop = opts.captionTop or 0
     local sectionGap = pm.sectionGap or 4
     local ruleAlpha = pm.ruleAlpha or 0.25
     local buttonHeight = pm.buttonHeight or 22
@@ -289,7 +293,7 @@ function Controls.CreatePopupList(opts)
             fs:SetWordWrap(false)
             popup._captions[index] = fs
         end
-        theme:ApplyFont(fs, "miniLabel")
+        theme:ApplyFont(fs, "miniLabel", captionSize)
         local dr, dg, dbl = theme:GetDimTextColor()
         fs:SetTextColor(dr, dg, dbl, 1)
         fs:ClearAllPoints()
@@ -347,6 +351,7 @@ function Controls.CreatePopupList(opts)
         optText:SetPoint("LEFT", optBtn, "LEFT", geometry.textLeftOffset + geometry.checkWidth, 0)
         optText:SetPoint("RIGHT", optBtn, "RIGHT", -textInset, 0)
         optText:SetJustifyH("LEFT")
+        optText:SetWordWrap(false)
         optText:SetText(label)
         optBtn._text = optText
         optBtn._key = key
@@ -448,6 +453,7 @@ function Controls.CreatePopupList(opts)
             end
             local labels = section.labels or (section.label and { section.label }) or nil
             if labels then
+                if s > 1 and (section.separator or "rule") ~= "none" then top = top + captionTop end
                 for c = 1, cols do
                     if labels[c] then
                         captions = captions + 1
@@ -526,6 +532,7 @@ function Controls.CreatePopupList(opts)
     -- Where the list stands: under the anchor with room below it, above it
     -- otherwise; or at a point, its top-left corner there, lifted when it
     -- would run off the bottom
+    local widened = false
     local function Place(totalHeight, at)
         popup:ClearAllPoints()
         if at then
@@ -539,12 +546,31 @@ function Controls.CreatePopupList(opts)
         local anchorBottom = select(2, anchor:GetCenter()) - (anchor:GetHeight() / 2)
         local scale = UIParent:GetEffectiveScale()
         local spaceBelow = anchorBottom * scale
-        local side = align == "right" and "RIGHT" or "LEFT"
+        local side = (align == "right" or widened) and "RIGHT" or "LEFT"
         if spaceBelow > totalHeight + 10 then
             popup:SetPoint("TOP" .. side, anchor, "BOTTOM" .. side, 0, -gap)
         else
             popup:SetPoint("BOTTOM" .. side, anchor, "TOP" .. side, 0, gap)
         end
+    end
+
+    -- The width the flat list's longest option takes in one line: the text's
+    -- insets, the info icon's or check box's room, and the frame's padding,
+    -- up to field.popupMaxWidth
+    local function ListNeed()
+        local vMap = getValues() or {}
+        local widest = 0
+        for _, key in ipairs(getKeys() or {}) do
+            local label = vMap[key] or key
+            if type(label) == "string" then
+                widest = math.max(widest, Controls.MeasureText(fontRole, label, fontSize) or 0)
+            end
+        end
+        local left = (infoIcons and next(infoIcons)) and 28 or textInset
+        local check = multi and (fontSize - 1 + textInset) or 0
+        local need = math.ceil(widest + left + check + textInset + padL + padR)
+        local cap = Controls.Metrics().field.popupMaxWidth
+        return cap and math.min(need, cap) or need
     end
 
     local function OpenWith(at)
@@ -556,6 +582,16 @@ function Controls.CreatePopupList(opts)
             local source = embed or anchor
             width = source and source:GetWidth() or 0
             if width < 60 then width = 150 end
+            -- A field narrower than its longest option opens a wider list,
+            -- standing on the field's right edge so it grows toward the label
+            widened = false
+            if not embed and not getSections and not at then
+                local need = ListNeed()
+                if need > width then
+                    width = need
+                    widened = true
+                end
+            end
         end
         popup:SetWidth(width)
         filterText = ""

@@ -23,6 +23,26 @@ local FONT_SELECTOR_WIDTH = 200
 local FONT_SELECTOR_PADDING = 12
 local FONT_SELECTOR_BORDER_ALPHA = 0.6
 
+-- The field width that shows every built-in font's name in its own face: the
+-- value text's insets (8 left, 24 right, 10 more beside a token's info icon),
+-- in steps of field.widthStep up to field.popupMaxWidth. Measured per field
+-- built, since a face read before it loads measures short; shared-media
+-- names can run longer and truncate.
+local function FontFieldNeed()
+    local names = addon.FontDisplayNames
+    if not (names and addon.MeasureTextWidth and addon.ResolveFontFace) then return 0 end
+    local raw = 0
+    for key, text in pairs(names) do
+        local face = addon.ResolveFontFace(key)
+        local w = face and addon.MeasureTextWidth(text, face, 12)
+        if not w then return 0 end
+        local chrome = (addon.IsFontToken and addon.IsFontToken(key)) and 42 or 32
+        raw = math.max(raw, w + chrome)
+    end
+    local f = Controls.Metrics().field
+    return math.min(math.ceil(raw / f.widthStep) * f.widthStep, f.popupMaxWidth)
+end
+
 --------------------------------------------------------------------------------
 -- FontSelector: Font selection row with popup picker
 --------------------------------------------------------------------------------
@@ -40,7 +60,7 @@ function Controls:CreateFontSelector(options)
     local description = options.description
     local getValue = options.get or function() return "FRIZQT__" end
     local setValue = options.set or function() end
-    local selectorWidth = options.width or FONT_SELECTOR_WIDTH
+    local selectorWidth = math.max(options.width or FONT_SELECTOR_WIDTH, FontFieldNeed())
     local selectorHeight = options.selectorHeight or FONT_SELECTOR_HEIGHT
     local name = options.name
 

@@ -24,6 +24,28 @@ end
 -- maximum cluster width; toggle, swatch, and custom keep their widths.
 local FLEXIBLE = { slider = true, selector = true, selectorWide = true, input = true }
 
+-- Shrinks the flexible slots, each in proportion to its room above lower[i],
+-- until the slots and gaps total at most limit or every flexible slot stands
+-- on its bound.
+local function ShrinkTo(widths, slots, lower, gaps, limit)
+    local total, slack = gaps, 0
+    for i, w in ipairs(widths) do
+        total = total + w
+        if FLEXIBLE[slots[i].kind] then
+            slack = slack + math.max(0, w - lower[i])
+        end
+    end
+    local excess = total - limit
+    if excess <= 0 or slack <= 0 then return end
+    local frac = math.min(1, excess / slack)
+    for i, s in ipairs(slots) do
+        if FLEXIBLE[s.kind] then
+            local room = math.max(0, widths[i] - lower[i])
+            widths[i] = math.floor(widths[i] - room * frac + 0.5)
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- BuildSlotRow: chrome plus a right-aligned cluster of fixed-width slots
 --------------------------------------------------------------------------------
@@ -33,9 +55,10 @@ local FLEXIBLE = { slider = true, selector = true, selectorWide = true, input = 
 --   label        : Row label; nil or "" builds a slot-only row
 --   description  : Optional explainer under the label, measured synchronously
 --   dimColor     : {r,g,b} for the description and the mini-labels
---   slots        : Array of { kind, label, width }. kind picks the metric
---                  slot width (toggle, slider, selector, swatch, input);
---                  width overrides it and is required for kind "custom".
+--   slots        : Array of { kind, label, width, need }. kind picks the
+--                  metric slot width (toggle, slider, selector, swatch,
+--                  input); width overrides it and is required for kind
+--                  "custom". need widens the slot to fit its content.
 --                  label puts a mini-label above the slot; a label wider
 --                  than its slot pushes the slots apart and widens the
 --                  cluster, never the slot.
@@ -54,30 +77,34 @@ function Controls.BuildSlotRow(row, opts)
     local slots = opts.slots or {}
     local dim = opts.dimColor
 
-    local widths = {}
-    local total, flexTotal = 0, 0
+    -- A slot is its metric width, or its need when that is wider: the room
+    -- its control's content takes (Controls.MiniSelectorNeed for a selector).
+    local widths, needs, floors = {}, {}, {}
     for i, s in ipairs(slots) do
         local w = s.width or (m.slots and m.slots[s.kind]) or m.slots.selector
-        widths[i] = w
-        total = total + w
-        if FLEXIBLE[s.kind] then
-            flexTotal = flexTotal + w
-        end
+        floors[i] = w
+        needs[i] = s.need or 0
+        widths[i] = math.max(w, needs[i])
     end
     local gaps = (#slots - 1) * m.slotGap
-    local clusterWidth = total + gaps
-    local maxClusterWidth = opts.maxClusterWidth or m.maxClusterWidth
 
-    -- Clamp to the maximum cluster width by shrinking the flexible kinds in
-    -- proportion.
-    if clusterWidth > maxClusterWidth and flexTotal > 0 then
-        local excess = clusterWidth - maxClusterWidth
-        local scale = math.max(0, (flexTotal - excess) / flexTotal)
-        for i, s in ipairs(slots) do
-            if FLEXIBLE[s.kind] then
-                widths[i] = math.floor(widths[i] * scale + 0.5)
-            end
+    -- The maximum cluster width is a soft cap: the flexible kinds shrink in
+    -- proportion to their room above their need, never below it.
+    ShrinkTo(widths, slots, needs, gaps, opts.maxClusterWidth or m.maxClusterWidth)
+
+    -- The row's own width is the hard cap: the cluster stops a gap short of
+    -- the label, and slots grown past their metric width give the room back
+    -- first. Below that the field truncates its text.
+    if (opts.rowWidth or 0) > 0 then
+        local labelWidth = 0
+        if opts.label and opts.label ~= "" then
+            labelWidth = math.ceil(Controls.MeasureText(Controls.RowLabelFontRole(), opts.label) or 0)
+                + m.slotGap
         end
+        local limit = opts.rowWidth - m.rowPadding * 2 - labelWidth
+        local lower = {}
+        for i = 1, #slots do lower[i] = math.min(floors[i], widths[i]) end
+        ShrinkTo(widths, slots, lower, gaps, limit)
     end
 
     -- Mini-labels are measured, and slots move apart until neighbouring labels
@@ -118,7 +145,7 @@ function Controls.BuildSlotRow(row, opts)
         slotRight = x + w
         labelRight = math.max(slotRight, x + labelLeft + lw)
     end
-    clusterWidth = slotRight
+    local clusterWidth = slotRight
 
     local clusterHeight = m.controlHeight
         + (hasMiniLabels and (m.miniLabelHeight + m.miniLabelGap) or 0)

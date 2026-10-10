@@ -50,7 +50,12 @@ function Controls:CreateSelectorColorPicker(options)
     local setColor = options.setColor or function() end
     local customValue = options.customValue or "custom"
     local hasAlpha = options.hasAlpha or false
-    local selectorWidth = options.width or SELECTOR_DEFAULT_WIDTH
+    -- The field grows past the caller's width to show its longest option in
+    -- full, in steps of field.widthStep up to field.popupMaxWidth.
+    local selectorWidth = (Controls.FieldNeed("selector", values, {
+        order = orderKeys, floor = options.width or SELECTOR_DEFAULT_WIDTH, size = 12,
+        gear = options.gear ~= nil,
+    }))
     local name = options.name
     local syncCooldown = options.syncCooldown
     local isDisabledFn = options.isDisabled or options.disabled or function() return false end

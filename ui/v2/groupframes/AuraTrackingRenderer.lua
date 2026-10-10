@@ -765,7 +765,8 @@ function AuraTrackingUI.Render(panel, scrollContent)
                                 and tabBuilder._rowWidth or (tabContent:GetWidth() or 0),
                             dimColor = { dimR, dimG, dimB },
                             slots = {
-                                { kind = "custom", width = 190, label = "Anchor" },
+                                { kind = "custom", label = "Anchor", width = math.max(190,
+                                    Controls.MiniSelectorNeed({ values = GF.anchorValues, order = GF.anchorOrder }) or 0) },
                                 { kind = "custom", width = 240 },
                             },
                         })

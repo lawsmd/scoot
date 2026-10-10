@@ -922,6 +922,7 @@ function Controls.CreateValueInput(parent, opts)
     bg:SetPoint("TOPLEFT", -inset, inset)
     bg:SetPoint("BOTTOMRIGHT", inset, -inset)
     bg:SetColorTexture(bgR, bgG, bgB, bgA)
+    box._bg = bg
     box._artLeft = 0
     box._setFocusLook = function(focused) border:SetAlpha(focused and 1 or 0.6) end
     return box
