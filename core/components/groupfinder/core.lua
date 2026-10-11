@@ -41,6 +41,7 @@ GF.state = {
     applicants = {},     -- the sorted applicants of the player's listing, { id, numMembers }
     totalResults = 0,
     declines = {},       -- partyGUID -> the declined status, as LFGListFrame keeps it
+    dismissed = {},      -- result id -> true, a finished application the player's x took off the list
     searching = false,
     searchFailed = false,
     failReason = nil,
@@ -354,16 +355,36 @@ function GF.MatchesFilter(info, counts)
     return true
 end
 
+-- Why a result cannot take an application, past an application of its own,
+-- or nil: the client has let the result go, the group is delisted, or it
+-- declined the player. A row's sign-up button and its click both test this,
+-- so a button that is lit always applies
+function GF.SelectBlock(id)
+    local info = GF.ResultInfo(id)
+    if not info then return Str("LFG_LIST_SEARCH_AGAIN", "Search again") end
+    if plainBool(info.isDelisted) then
+        return Str("LFG_LIST_ENTRY_DELISTED", "This group is no longer listed")
+    end
+    local guid = plain(info.partyGUID)
+    if guid and GF.state.declines[guid] then return Str("LFG_LIST_APP_DECLINED", "Declined") end
+    return nil
+end
+
 -- The four conditions of Blizzard's own CanSelectResult
 function GF.CanSelect(id)
     local _, status, pending = GF.Application(id)
     if status ~= "none" or pending ~= nil then return false end
-    local info = GF.ResultInfo(id)
-    if not info then return false end
-    if plainBool(info.isDelisted) then return false end
-    local guid = plain(info.partyGUID)
-    if guid and GF.state.declines[guid] then return false end
-    return true
+    return GF.SelectBlock(id) == nil
+end
+
+-- The x on a finished application takes its row off the list for the
+-- session: the client keeps a finished application and has no call to
+-- clear it, so every rebuild leaves the id out
+function GF.Dismiss(id)
+    if not id then return end
+    GF.state.dismissed[id] = true
+    GF.RebuildResults()
+    GF.Notify("results")
 end
 
 -- The reason an application is off, in the order Blizzard's Sign Up tests
@@ -602,7 +623,9 @@ function GF.RebuildResults()
     local roleKey = RoleRemainingKey()
     local warModeDesired = C_PvP and C_PvP.IsWarModeDesired and C_PvP.IsWarModeDesired() or false
 
+    -- A dismissed id counts as seen, so neither loop adds it
     local records, seen = {}, {}
+    for id in pairs(GF.state.dismissed) do seen[id] = true end
     for _, id in ipairs(ids) do
         local plainID = plainNumber(id)
         if plainID and not seen[plainID] then
@@ -718,6 +741,10 @@ end
 local function OnApplicationStatus(_, id, newStatus)
     id = plainNumber(id)
     newStatus = plain(newStatus)
+    -- A live application brings a dismissed group back
+    if id and newStatus and not GF.IsStatusInactive(newStatus) then
+        GF.state.dismissed[id] = nil
+    end
     if GF.IsDeclined(newStatus) then
         local info = GF.ResultInfo(id)
         local guid = info and plain(info.partyGUID)

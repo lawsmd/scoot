@@ -216,26 +216,23 @@ local function ClearRosters(row)
 end
 
 -- The row's sign-up button: hidden for a delisted group and under an
--- application's status, else on when Blizzard's chain allows an
--- application, a role is chosen and the group has not declined the
--- player; the tooltip names the reason, or Sign Up, with the deserter
+-- application's status, else on when the result can take an application
+-- (the test the click makes), Blizzard's chain allows one and a role is
+-- chosen; the tooltip names the reason, or Sign Up, with the deserter
 -- line for a Mythic+ group while the player is flagged
 local function SetQuick(row)
     if row._quickHidden then
         row._quick:Hide()
         return
     end
-    row._quick:SetEnabled(not row._declined and GF.SignUpBlock() == nil and UI.Roles:HasRole())
+    row._quick:SetEnabled(GF.SelectBlock(row._resultID) == nil and GF.SignUpBlock() == nil
+        and UI.Roles:HasRole())
     row._quick:Show()
 end
 
 local function QuickTip(row)
-    local text
-    if row._declined then
-        text = Str("LFG_LIST_APP_DECLINED", "Declined")
-    else
-        text = GF.SignUpBlock() or UI.Roles:Block() or Str("SIGN_UP", "Sign Up")
-    end
+    local text = GF.SelectBlock(row._resultID) or GF.SignUpBlock() or UI.Roles:Block()
+        or Str("SIGN_UP", "Sign Up")
     if row._resultID and GF.IsLeaverFlagged(row._resultID) then
         text = text .. "\n" .. Str("MYTHIC_PLUS_DESERTER_FLAGGED_SHORT", "You are flagged as a leaver")
     end
@@ -306,9 +303,14 @@ local function CreateRow(panel, row)
     row._cancel = C:CreateButton({
         parent = row, text = "x", width = A.size, height = A.size, fontSize = A.font,
         borderWidth = A.border, borderAlpha = A.borderAlpha, labelAlpha = A.labelAlpha,
+        -- A live application is cancelled; a finished one's row is taken
+        -- off the list, since the client has nothing left to cancel
         onClick = function()
-            if row._resultID then
-                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+            if not row._resultID then return end
+            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+            if row._finished then
+                GF.Dismiss(row._resultID)
+            else
                 C_LFGList.CancelApplication(row._resultID)
             end
         end,
@@ -459,7 +461,8 @@ local function RenderRow(panel, row, item)
 
     local _, appStatus, pendingStatus, appDuration = GF.Application(id)
     local isApplication = appStatus ~= "none" or pendingStatus ~= nil
-    local isAppFinished = isApplication and GF.IsStatusInactive(appStatus)
+    local isAppFinished = isApplication
+        and (GF.IsStatusInactive(appStatus) or GF.IsStatusInactive(pendingStatus))
     local guid = GF.plain(info.partyGUID)
     local isDeclined = GF.IsDeclined(appStatus) or (guid ~= nil and GF.state.declines[guid] ~= nil)
     local isDelisted = GF.plainBool(info.isDelisted) == true
@@ -496,7 +499,7 @@ local function RenderRow(panel, row, item)
     -- else the composition with the sign-up button past it
     local text, lit, pending = GF.StatusLine(appStatus, pendingStatus)
     local right = -padX
-    row._declined = isDeclined
+    row._finished = (isAppFinished or isDeclined) and true or false
     if text then
         ClearRosters(row)
         SetNameColumn(row, LAYOUT.search.rightColumn)
@@ -505,7 +508,9 @@ local function RenderRow(panel, row, item)
         local showCancel = pendingStatus ~= "applied"
         row._cancel:SetShown(showCancel)
         if showCancel then
-            row._cancel:SetEnabled((LFGListUtil_IsAppEmpowered and LFGListUtil_IsAppEmpowered()) and true or false)
+            -- The dismissal of a finished row is the window's own, open to any member
+            local empowered = LFGListUtil_IsAppEmpowered and LFGListUtil_IsAppEmpowered()
+            row._cancel:SetEnabled((row._finished or empowered) and true or false)
             row._cancel:ClearAllPoints()
             row._cancel:SetPoint("RIGHT", row, "RIGHT", right, 0)
             right = right - LAYOUT.search.action.size - LAYOUT.search.action.gap
@@ -907,9 +912,17 @@ local function Build(parent)
 
     -- The one protected call, from the row's click: the roles the column
     -- holds, and the note the C side reads from the hosted box. The row
-    -- redraws as the application's status lands.
+    -- redraws as the application's status lands. A click the result can no
+    -- longer take turns the buttons off instead, with the reason in their
+    -- tooltips; the row redraws while the client still holds the result,
+    -- since a result it has let go would draw blank.
     function panel:Apply(id)
-        if not id or not GF.CanSelect(id) then return end
+        if not id then return end
+        if not GF.CanSelect(id) then
+            if GF.ResultInfo(id) then self:RefreshRow(id) end
+            self:RefreshQuick()
+            return
+        end
         if GF.SignUpBlock() or not UI.Roles:HasRole() then return end
         local tank, healer, damage = UI.Roles:GetRoles()
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
