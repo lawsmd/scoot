@@ -1,13 +1,14 @@
 --------------------------------------------------------------------------------
 -- forever/minimap.lua
--- Camelot's side of the minimap: the button's store seam, the square border's
--- art, and the ring the addon buttons wear. The icon is the identity file's,
--- forever/camelot.lua.
+-- Camelot's side of the minimap button: its store seam. The icon is the
+-- identity file's, forever/camelot.lua. The minimap itself is the replica
+-- under forever/minimap/, which holds its own art constants; until 11
+-- October 2026 this file also set the square border and button ring seams
+-- the X component read.
 --
 -- The button itself is core/minimap.lua, listed on both TOCs. It reads the
--- store seam set here at login, and the minimap component reads the border
--- seam at apply time, so this file's place in the load order does not
--- matter.
+-- store seam set here at login, so this file's place in the load order does
+-- not matter.
 --
 -- Storage is a document. LibDBIcon writes minimapPos, hide and lock into the
 -- table it was registered with, and `documents` is the container CamelotDB
@@ -21,28 +22,6 @@ local addonName, addon = ...
 local DOCUMENT = "minimapButton"
 
 local DEFAULT_POSITION = 220
-
--- The square border. core/components/minimap/core.lua draws this file around
--- a square map unless the player picks the custom border or none. It is
--- Forever's own tipless ring, ui-hud-minimap-frame-circle-c60-2x, unwrapped
--- into a mitred square by docs/tools/minimapsquare.py and shipped as it came;
--- Scoot's fallback is the same cut of retail's silver ring. `band` is the
--- overhang in pixels outside the 198 px Minimap that puts the band's inner
--- edge on the map edge (the file's band is 0.0488 of its opening).
-addon.MinimapSquareBorder = {
-    texture = addon.MediaPath .. "forever\\media\\minimap\\square-border.png",
-    band = 10,
-}
-
--- The ring on every addon's minimap button under the Default border style
--- (core/components/minimap/buttons.lua). It is the day-night dial's own ring,
--- UI-HUD-Minimap-Frame-Cycle, drawn straight from Blizzard's atlas and
--- centred on the button at `size`, which puts its opening where LibDBIcon's
--- retail ring has its own. Scoot has no seam value and keeps LibDBIcon's ring.
-addon.MinimapButtonRing = {
-    atlas = "UI-HUD-Minimap-Frame-Cycle",
-    size = 32,
-}
 
 -- Called at login and again on every profile change, so it creates the
 -- document for a profile that has never carried one.

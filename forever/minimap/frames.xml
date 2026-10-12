@@ -1,0 +1,79 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\..\..\FrameXML\UI.xsd">
+	<!--
+	forever/minimap/frames.xml
+	Camelot's minimap: the holder that takes Blizzard's Minimap widget on a
+	lease, and the cluster's header in its image. The widget itself is an
+	engine singleton and is never declared here; display.lua re-parents it
+	into the holder at build. Every piece below is the line Blizzard writes
+	for MinimapCluster (Blizzard_Minimap/Mainline/Minimap.xml) or the clock
+	(Blizzard_TimeManager.xml), renamed and re-anchored to the map, except
+	where a comment says otherwise. Scripts are wired in Lua, so no mixin
+	global is named.
+	-->
+
+	<!-- The holder is the Minimap widget's own rect, 198 by 198, the size the
+	widget keeps on every client. The cluster's children that stay behind
+	when the cluster is parked are rebuilt as its children. -->
+	<Frame name="CamelotMinimap" parent="UIParent" hidden="true" frameStrata="LOW">
+		<Size x="198" y="198"/>
+		<Frames>
+			<!-- The header: BorderTop's 175 by 16 plate, anchored by display.lua
+			TOP of the map at the cluster's offset (Style.HeaderOffset), since
+			the distance depends on the client's ring height. Dock Hide hides
+			this frame. -->
+			<Frame parentKey="Header">
+				<Size x="175" y="16"/>
+				<Frames>
+					<Frame parentKey="Plate" inherits="NineSliceCodeTemplate" setAllPoints="true">
+						<KeyValues>
+							<KeyValue key="layoutType" value="UniqueCornersLayout" type="string"/>
+							<KeyValue key="layoutTextureKit" value="ui-hud-minimap-button" type="string"/>
+						</KeyValues>
+					</Frame>
+				</Frames>
+			</Frame>
+
+			<!-- ZoneTextButton, a child of the holder rather than of the header
+			so a nine-point position survives Dock Hide. The dock anchor below
+			is Blizzard's; text.lua re-anchors it for the other positions. -->
+			<Button parentKey="ZoneTextButton">
+				<Size x="135" y="12"/>
+				<Anchors>
+					<Anchor point="LEFT" relativeKey="$parent.Header" x="4" y="0"/>
+				</Anchors>
+				<Layers>
+					<Layer level="OVERLAY">
+						<FontString parentKey="Text" inherits="GameFontNormal" nonspacewrap="true" justifyH="LEFT" justifyV="MIDDLE">
+							<Size x="130" y="12"/>
+							<Anchors>
+								<Anchor point="CENTER" x="0" y="1"/>
+							</Anchors>
+						</FontString>
+					</Layer>
+				</Layers>
+			</Button>
+
+			<!-- TimeManagerClockButton, 40 by 16 at the plate's right. The alarm
+			texture is left out: Blizzard's stopwatch flashes its own button. -->
+			<Button parentKey="Clock">
+				<Size x="40" y="16"/>
+				<Anchors>
+					<Anchor point="TOPRIGHT" relativeKey="$parent.Header" x="-4" y="0"/>
+				</Anchors>
+				<HitRectInsets>
+					<AbsInset left="8" right="5" top="3" bottom="3"/>
+				</HitRectInsets>
+				<Layers>
+					<Layer level="ARTWORK">
+						<FontString parentKey="Ticker" inherits="WhiteNormalNumberFont">
+							<Anchors>
+								<Anchor point="CENTER" x="3" y="1"/>
+							</Anchors>
+						</FontString>
+					</Layer>
+				</Layers>
+			</Button>
+		</Frames>
+	</Frame>
+</Ui>

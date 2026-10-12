@@ -142,23 +142,15 @@ core/dynamiclayouts/view.lua
 ## the settings table behind component.db and the apply pass; the host answers
 ## that table from forever/db.lua through addon.ComponentStore and owns the
 ## module gate (docs/sharing.md, "The seams"). The host registers Features rows
-## at file scope, so it precedes forever/menu.lua. The components after it
-## register an initializer at file scope and run on both clients. minimap/core
-## creates the namespace its siblings read at file scope, and reads
-## addon.Enforce there; minimap/offscreenunlock reads addon.OffscreenUnlock.
+## at file scope, so it precedes forever/menu.lua. The component after it
+## registers an initializer at file scope and runs on both clients. The
+## minimap left this block 11 October 2026 for the replica under
+## forever/minimap/ below; Scoot.toc still lists the X component.
 core/components/base/core.lua
 forever/components.lua
 ## The Dynamic Layouts host: the store seam, the defaults, the Features row
 ## and the profile step (docs above the engine's block).
 forever/dynamiclayouts/host.lua
-core/components/minimap/core.lua
-core/components/minimap/zonetext.lua
-core/components/minimap/coordinates.lua
-core/components/minimap/clock.lua
-core/components/minimap/buttons.lua
-core/components/minimap/dial.lua
-core/components/minimap/offscreenunlock.lua
-core/components/minimap/overlay.lua
 core/components/tooltip.lua
 ## The HUD, the unit frames and the cast bar, is Forever's alone. Retail loads
 ## this TOC too, through the AddOns\Camelot junction, for the settings panel,
@@ -295,6 +287,27 @@ forever/personalresourcedisplay/display.lua [ExcludeLoadGameType standard]
 forever/personalresourcedisplay/editmode.lua [ExcludeLoadGameType standard]
 forever/personalresourcedisplay/dynamic.lua [ExcludeLoadGameType standard]
 
+## The minimap: Blizzard's Minimap widget, an engine singleton, leased into a
+## Camelot-owned holder, MinimapCluster parked, the cluster's header rebuilt
+## around it (docs/minimap/replica.md). style.lua holds the module, its
+## switch on the path the components host used to register, its settings
+## and the apply, and loads on retail too for the page below; frames.xml
+## declares the holder and the header's plate, zone text and clock from
+## Blizzard's XML under Camelot names, scripts wired in Lua, so no mixin
+## file; display.lua leases the widget, parks the cluster, applies the shape,
+## size, border and header, and registers /camelot map; text.lua the zone
+## text, coordinates, clock and system data; editmode.lua the positionable
+## and the dialog mirror; dynamic.lua the Dynamic Layouts adapter. Stands on
+## nativeframe, events, petbattle, colors, fonts, borders, catalogs,
+## editmode/positionables, dynamiclayouts/engine, forever/db.lua,
+## forever/features.lua and forever/profiles.lua.
+forever/minimap/style.lua
+forever/minimap/frames.xml [ExcludeLoadGameType standard]
+forever/minimap/display.lua [ExcludeLoadGameType standard]
+forever/minimap/text.lua [ExcludeLoadGameType standard]
+forever/minimap/editmode.lua [ExcludeLoadGameType standard]
+forever/minimap/dynamic.lua [ExcludeLoadGameType standard]
+
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
 ## and a registration error aborts the chunk, so the order is load-bearing.
@@ -393,13 +406,13 @@ ui/v2/settings/profiles/ImportExportRenderer.lua
 ui/v2/settings/applyall/ApplyAllRenderer.lua
 
 ## The accessor factories and the builder's composite blocks (AddTextStyleBlock,
-## AddOffsetPair and the rest), then the two Interface pages that use them.
+## AddOffsetPair and the rest), then the Tooltip page that uses them.
 ## Helpers reads addon.FontStyles and addon.Catalogs at file scope,
-## BuilderComposites reads Helpers, and the Minimap page reads both; the pages
-## register at file scope after settingspanel/renderers.lua.
+## BuilderComposites reads Helpers; the page registers at file scope after
+## settingspanel/renderers.lua. The Minimap page is the replica's own,
+## forever/minimap/page.lua below.
 ui/v2/settings/Helpers.lua
 ui/v2/settings/BuilderComposites.lua
-ui/v2/settings/interface/MinimapRenderer.lua
 ui/v2/settings/interface/TooltipRenderer.lua
 
 ## Camelot's page tree, the minimap button's icon and storage, then the
@@ -411,6 +424,7 @@ forever/unitframes/page.lua
 forever/objectivetracker/page.lua
 forever/objectivetracker/currentpage.lua
 forever/personalresourcedisplay/page.lua
+forever/minimap/page.lua
 forever/actionbars/page.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
 forever/gallery.lua

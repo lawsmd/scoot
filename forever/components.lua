@@ -29,14 +29,14 @@ local DB = addon.DB
 -- The features this host offers
 --------------------------------------------------------------------------------
 
--- component id -> the category its Features switch carries
+-- component id -> the category its Features switch carries. The minimap left
+-- this list 11 October 2026: Camelot's minimap is the replica under
+-- forever/minimap/, whose style.lua registers its own row on the same path.
 local CATEGORY = {
-    minimapStyle = "minimap",
     tooltip = "tooltip",
 }
 
 local FEATURES = {
-    { category = "minimap", label = "Minimap" },
     { category = "tooltip", label = "Tooltip" },
 }
 

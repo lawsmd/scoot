@@ -83,13 +83,15 @@ Navigation.NavModel = {
         },
     },
     -- `module` is the Features switch in forever/components.lua: the row greys
-    -- out while its feature is off.
+    -- out while its feature is off. The minimap has none: its switch is
+    -- registered by forever/minimap/style.lua, the replica's, not by the
+    -- components host the gate reads.
     {
         key = "interface",
         label = "Interface",
         collapsible = true,
         children = {
-            { key = "minimap", label = "Minimap", module = "minimap" },
+            { key = "minimap", label = "Minimap" },
             { key = "tooltip", label = "Tooltip", module = "tooltip" },
             -- No `module`: the switch is registered by forever/objectivetracker/
             -- tracker.lua, not by the components host the gate reads.
