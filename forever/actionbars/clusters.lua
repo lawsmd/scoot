@@ -54,7 +54,7 @@ end
 local SPACING = 4
 
 Clusters.DEFAULTS = {
-    { id = 1, axis = "vertical", spacing = SPACING, endCaps = true,
+    { id = 1, axis = "vertical", spacing = SPACING, endCaps = true, endCapScale = 100,
       members = {
           member("bar1", { barArt = true, pageArrows = true }),
           member("bar2"), member("bar3"), member("bar4"),
@@ -317,6 +317,7 @@ local CLUSTER_FIELDS = {
     axis = function(v) return AXES[v] and v or nil end,
     spacing = function(v) return clamp(v, 0, 40) end,
     endCaps = flag,
+    endCapScale = function(v) return clamp(v, 50, 200) end,
 }
 
 local MEMBER_FIELDS = {
@@ -336,7 +337,7 @@ local function commit(doc)
     return true
 end
 
---- Write one of axis, spacing and endCaps.
+--- Write one of axis, spacing, endCaps and endCapScale.
 function Clusters.SetClusterField(id, field, value)
     local accept = CLUSTER_FIELDS[field]
     if not accept then return false end
@@ -422,7 +423,7 @@ function Clusters.NewCluster(token)
     local id = tonumber(DB.Get(NEXT_ID)) or 6
     DB.Set(NEXT_ID, id + 1)
     doc[#doc + 1] = {
-        id = id, axis = "vertical", spacing = SPACING, endCaps = false,
+        id = id, axis = "vertical", spacing = SPACING, endCaps = false, endCapScale = 100,
         members = { member(token, { buttons = memberCount(token) }) },
     }
     commit(doc)
@@ -657,6 +658,9 @@ local function LayoutCluster(cluster)
     end
 
     rows.size = string.format("%.0fx%.0f", container:GetWidth(), container:GetHeight())
+    if ActionBars.EndCaps then
+        rows.members[#rows.members + 1] = ActionBars.EndCaps.Apply(cluster, container)
+    end
     CaptureDefault(container, cluster.id)
     Place(cluster, container, rows)
 end

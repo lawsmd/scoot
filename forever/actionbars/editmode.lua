@@ -91,6 +91,7 @@ EditMode.RANGES = {
     spacing = { min = 0, max = 40, step = 1 },
     iconSize = { min = 50, max = 200, step = 5 },
     iconPadding = { min = 2, max = 10, step = 1 },
+    endCapScale = { min = 50, max = 200, step = 5 },
 }
 
 local ALIGN_LABELS = {
@@ -169,7 +170,8 @@ end
 -- release, so a slider may rebuild too. A row whose write would be refused
 -- is absent. Remove is the strips' alone, on the owner's call: a strip
 -- stands on the bar it removes, where a button in the box acted on
--- whichever member the box showed. End Caps waits for the art.
+-- whichever member the box showed. End Cap Scale is absent while End Caps
+-- is off, so the toggle rebuilds.
 
 local function selector(label, values, order, get, set, rebuild)
     return { kind = "selector", label = label, values = values, order = order,
@@ -218,6 +220,14 @@ local function Mirror(id)
         rows[#rows + 1] = slider("Spacing", EditMode.RANGES.spacing,
             clusterField(id, "spacing", 4),
             function(v) Clusters.SetClusterField(id, "spacing", v) end)
+        rows[#rows + 1] = { kind = "toggle", label = "End Caps",
+            get = function() return clusterField(id, "endCaps", false)() and true or false end,
+            set = function(v) Clusters.SetClusterField(id, "endCaps", v) end, rebuild = true }
+        if cluster.endCaps then
+            rows[#rows + 1] = slider("End Cap Scale", EditMode.RANGES.endCapScale,
+                clusterField(id, "endCapScale", 100),
+                function(v) Clusters.SetClusterField(id, "endCapScale", v) end)
+        end
 
         local members = cluster.members or {}
         local subject = EditMode.Subject(id)

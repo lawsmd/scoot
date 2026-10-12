@@ -7,8 +7,7 @@
 -- and a write that changes which rows exist re-renders the page. Configure
 -- on a cluster's box opens this page with that cluster's section expanded:
 -- the section keys are the brand's. The presentation pages of the later
--- phase join the same group. Bar Art, Page Arrows and End Caps wait for
--- the art.
+-- phase join the same group. Bar Art and Page Arrows wait for the art.
 --------------------------------------------------------------------------------
 
 local _, addon = ...
@@ -164,6 +163,29 @@ local function clusterSection(builder, cluster)
                 set = function(v)
                     edit(builder, function() Clusters.SetClusterField(id, "spacing", v) end)
                 end })
+
+            -- End Cap Scale shows only with End Caps on, so the toggle re-renders.
+            inner:AddToggle({ label = "End Caps",
+                get = function()
+                    local cc = Clusters.Find(id)
+                    return cc and cc.endCaps and true or false
+                end,
+                set = function(v)
+                    edit(builder, function() Clusters.SetClusterField(id, "endCaps", v) end, true)
+                end })
+            if c.endCaps then
+                local capScale = EditMode.RANGES.endCapScale
+                inner:AddSlider({ label = "End Cap Scale", min = capScale.min, max = capScale.max,
+                    step = capScale.step, precision = 0,
+                    minLabel = capScale.min .. "%", maxLabel = capScale.max .. "%", displaySuffix = "%",
+                    get = function()
+                        local cc = Clusters.Find(id)
+                        return cc and cc.endCapScale or 100
+                    end,
+                    set = function(v)
+                        edit(builder, function() Clusters.SetClusterField(id, "endCapScale", v) end)
+                    end })
+            end
 
             for index, m in ipairs(c.members or {}) do
                 memberBlock(inner, frame, builder, id, index, m, labels)
