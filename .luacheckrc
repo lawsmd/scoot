@@ -488,6 +488,9 @@ files["forever/actionbars/mixins.lua"] = {
         "RANGE_INDICATOR", "ACTIONBAR_HOTKEY_FONT_COLOR",
     },
 }
+files["forever/actionbars/text.lua"] = {
+    read_globals = { "ACTIONBAR_HOTKEY_FONT_COLOR", "RED_FONT_COLOR" },
+}
 files["forever/actionbars/paging.lua"] = {
     read_globals = {
         "C_ActionBar", "MainActionBar", "RegisterAttributeDriver", "SecureCmdOptionParse",

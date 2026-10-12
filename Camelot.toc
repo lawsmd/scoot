@@ -251,11 +251,14 @@ forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 ## selected cluster, and dynamic.lua gives it its Dynamic Layouts adapter,
 ## all after clusters.lua, which they hang off; suppression.lua parks
 ## Blizzard's bars; bars.lua builds on world entry and registers /camelot
-## actionbars. page.lua, the Clusters page, sits in the page block below.
+## actionbars. text.lua holds the keybind text settings and their pass, before
+## frames.xml, since a button's load runs it. page.lua, the Clusters page,
+## and textpage.lua, the Text page, sit in the page block below.
 ## Stands on nativeframe, events, strata, editmode/positionables,
 ## dynamiclayouts, forever/db.lua and forever/features.lua. Every line is
 ## Forever's alone, style.lua included.
 forever/actionbars/style.lua [ExcludeLoadGameType standard]
+forever/actionbars/text.lua [ExcludeLoadGameType standard]
 forever/actionbars/events.lua [ExcludeLoadGameType standard]
 forever/actionbars/mixins.lua [ExcludeLoadGameType standard]
 forever/actionbars/frames.xml [ExcludeLoadGameType standard]
@@ -426,6 +429,7 @@ forever/objectivetracker/currentpage.lua
 forever/personalresourcedisplay/page.lua
 forever/minimap/page.lua
 forever/actionbars/page.lua [ExcludeLoadGameType standard]
+forever/actionbars/textpage.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
 forever/gallery.lua
 forever/debug.lua

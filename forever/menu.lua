@@ -70,7 +70,7 @@ Navigation.NavModel = {
             { key = "resourceDisplayPower", label = "Power Bar" },
         },
     },
-    -- The action bars' cluster surface. No `module`: forever/actionbars/
+    -- The action bars' cluster surface and their text. No `module`: forever/actionbars/
     -- style.lua registers the switch, not the components host the gate
     -- reads. The files load on Forever alone, so on any other client the
     -- page draws the placeholder, as the Cast Bars page does.
@@ -80,6 +80,7 @@ Navigation.NavModel = {
         collapsible = true,
         children = {
             { key = "actionBarClusters", label = "Clusters" },
+            { key = "actionBarText", label = "Text" },
         },
     },
     -- `module` is the Features switch in forever/components.lua: the row greys

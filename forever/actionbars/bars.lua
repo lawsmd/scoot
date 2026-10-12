@@ -130,6 +130,13 @@ local function Build()
     end
 
     ActionBars.Events.Install()
+    -- The hotkey text was set once, at the XML parse, possibly before the
+    -- bindings loaded, and the login UPDATE_BINDINGS went to Blizzard's
+    -- buttons alone: the forwarder did not exist yet. Every later one
+    -- reaches these through it.
+    for _, button in ipairs(ActionBars.Buttons) do
+        button:UpdateHotkeys(button.buttonType)
+    end
     ActionBars.Paging.Register()
     ActionBars.Clusters.Build()
     ActionBars.Suppression.Apply()
@@ -244,6 +251,18 @@ function ActionBars.Dump()
     if micro then
         push("  MicroMenuContainer %.0fx%.0f at %s, left %s bottom %s", micro:GetWidth(), micro:GetHeight(),
             frameName(micro:GetParent()), tostring(micro:GetLeft()), tostring(micro:GetBottom()))
+    end
+    push("")
+
+    push("keybind text, button 1 of each bar:")
+    for _, token in ipairs(ActionBars.POOL_ORDER) do
+        local frame = ActionBars.Frames[token]
+        local button = frame and frame.actionButtons[1]
+        if button and button.HotKey then
+            local hotkey = button.HotKey
+            push("  %-6s %-26s text %-8s shown %-5s alpha %.2f", token, tostring(button.bindingAction),
+                tostring(hotkey:GetText()), tostring(hotkey:IsShown()), hotkey:GetAlpha())
+        end
     end
     push("")
 

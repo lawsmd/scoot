@@ -25,6 +25,10 @@ local function Events()
     return addon.ActionBars.Events
 end
 
+local function Text()
+    return addon.ActionBars.Text
+end
+
 local function queue(fn, key)
     addon.Events.RunOutOfCombat(fn, key)
 end
@@ -212,6 +216,7 @@ function CamelotActionButtonMixin:Update()
             hotkey:Hide()
         else
             hotkey:SetVertexColor(ACTIONBAR_HOTKEY_FONT_COLOR:GetRGB())
+            Text().HotkeyColor(self, false)
         end
     end
 
@@ -290,11 +295,23 @@ function CamelotActionButtonMixin:OnEvent(event, ...)
         if GameTooltip:GetOwner() == self then
             self:SetTooltip()
         end
+    elseif event == "ACTION_RANGE_CHECK_UPDATE" then
+        ActionBarActionButtonMixin.OnEvent(self, event, ...)
+        local _, inRange, checksRange = ...
+        Text().HotkeyColor(self, plainTrue(checksRange) and not plainTrue(inRange))
     else
         ActionBarActionButtonMixin.OnEvent(self, event, ...)
     end
 end
 CamelotActionButtonMixin.ActionBarActionButtonDerivedMixin_OnEvent = CamelotActionButtonMixin.OnEvent
+
+-- Extends ActionBarActionButtonMixin:UpdateHotkeys, which sets the string's
+-- text, size and anchor on every call: the keybind text settings draw after
+-- it (text.lua).
+function CamelotActionButtonMixin:UpdateHotkeys(actionButtonType)
+    ActionBarActionButtonMixin.UpdateHotkeys(self, actionButtonType)
+    Text().Hotkey(self)
+end
 
 -- Replaces ActionBarButtonMixin:ActionBarButtonMixin_OnEnter and the leave
 -- half. Blizzard's write a tooltipOwner field on its two event frames and
