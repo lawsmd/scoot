@@ -78,6 +78,7 @@ Skin.Register("tui", {
         scrollBar     = { kind = "flat" },
         tab           = { kind = "flat", labelColors = { normal = "accent", hover = "accent", selected = "black" } },
         tabBody       = { kind = "flat", fill = { 0, 0, 0, 0.15 } },
+        subPanel      = { kind = "flat", fill = { 0, 0, 0, 0.25 } },
         sectionHeader = { kind = "flat", background = "collapsible",
                           glyphs = { expanded = "\226\150\188", collapsed = "\226\150\182" } },
         sectionBody   = { kind = "flat", background = "collapsible" },

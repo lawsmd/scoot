@@ -362,6 +362,12 @@ Skin.Register("forever", {
         -- other way first. Drawn in one color the two read as a frame inside
         -- a frame, and drawn not at all the tabbed area had no edge.
         tabBody = { kind = "flat", fill = "background" },
+        -- The boxed panel inside a section holds one subject's rows, and its
+        -- ground is a third one: cooler than the section face (#1d1611) and
+        -- lighter than the tab body (#0d0805), so a panel inside a section
+        -- and a tab body inside a panel both read as a step in. #15121a, a
+        -- first value for the beta to tune; the box is the tab body's.
+        subPanel = { kind = "flat", fill = { 0.082, 0.071, 0.102, 0.96 } },
         -- List-row art under section headers and nav rows. The client face
         -- has no triangle characters, so the indicator is the stepper's
         -- arrow, turned a quarter clockwise while the section is open. edge

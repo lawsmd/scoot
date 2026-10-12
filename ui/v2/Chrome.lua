@@ -90,7 +90,7 @@ local Chrome = addon.UI.Chrome
 
 Chrome.ROLES = {
     "window", "picker", "dialog", "dialogTitle", "titleBar", "closeButton", "button", "resizeGrip", "scrollBar",
-    "tab", "tabBody", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider", "listRow",
+    "tab", "tabBody", "subPanel", "sectionHeader", "sectionBody", "navRow", "navCard", "navDivider", "listRow",
     "dropdown", "arrowButton", "field", "popupList", "infoIcon", "tooltip", "slider", "input", "toggle",
     "emphasis",
     "editSelection", "editDialog",
@@ -130,6 +130,10 @@ Chrome.FLAT = {
     scrollBar     = { kind = "flat" },
     tab           = { kind = "flat", labelColors = { normal = "accent", hover = "accent", selected = "black" } },
     tabBody       = { kind = "flat", fill = { 0, 0, 0, 0.15 } },
+    -- The boxed panel inside a section (Builder:AddSubPanel): one subject's
+    -- rows under a header that names or picks the subject. Drawn as the tab
+    -- body is, on a ground of its own.
+    subPanel      = { kind = "flat", fill = { 0, 0, 0, 0.25 } },
     sectionHeader = { kind = "flat", background = "collapsible",
                       glyphs = { expanded = "\226\150\188", collapsed = "\226\150\182" } },
     sectionBody   = { kind = "flat", background = "collapsible" },
@@ -1051,6 +1055,10 @@ Flat.tabBody = function(h, frame, spec)
     h.inset = width + m.contentPadding
     h.paint = function() end
 end
+
+-- The sub-panel is the tab body's box on a fill of its own: the same border
+-- and fill specs, the same inset.
+Flat.subPanel = Flat.tabBody
 
 -- spec.border gives the section's box an alpha and a color of its own, as
 -- tabBody's does. The header and the body draw the same box in two pieces, so

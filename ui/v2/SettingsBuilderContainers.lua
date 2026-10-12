@@ -299,3 +299,114 @@ function Builder:AddTabbedSection(options)
 
     return section
 end
+
+--------------------------------------------------------------------------------
+-- AddSubPanel: a boxed panel for one subject's rows
+--------------------------------------------------------------------------------
+-- A frame on the subPanel chrome role, with a header that names the subject
+-- or picks it, and an inner builder below the header. The panel answers the
+-- calls a nested row or tabbed section makes on a parent collapsible
+-- (SetContentHeight, _contentHeight, _outerOnRefresh), so growth inside it
+-- reaches the section around it.
+--
+-- Options:
+--   componentId, sectionKey : identity for search (required)
+--   title        : header text when there is nothing to pick
+--   header       : { values, order, get, set, width } draws a dropdown in the
+--                  title's place; set usually ends in DeferredRefreshAll
+--   buildContent : function(contentFrame, innerBuilder)
+--------------------------------------------------------------------------------
+
+function Builder:AddSubPanel(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+    if not options.componentId or not options.sectionKey then return self end
+
+    if Builder._scanMode then
+        table.insert(Builder._scanSectionStack, {
+            title = options.title or self._parentSectionTitle,
+            componentId = options.componentId,
+            sectionKey = options.sectionKey,
+        })
+        if options.buildContent then
+            options.buildContent(scrollContent, self)
+        end
+        table.remove(Builder._scanSectionStack)
+        return self
+    end
+
+    local Chrome = addon.UI.Chrome
+    local Theme = addon.UI.Theme
+    local panel = CreateFrame("Frame", nil, scrollContent)
+    panel:SetHeight(1)
+    local backdrop = Chrome.Backdrop("subPanel", panel)
+    local inset = backdrop.inset or 0
+    local gap = Controls.Metrics().itemSpacing
+
+    local headerHeight = 0
+    local header
+    if options.header then
+        local h = options.header
+        header = Controls:CreateDropdown({
+            parent = panel, values = h.values, order = h.order, get = h.get, set = h.set,
+            width = h.width or 240,
+        })
+        if header then
+            header:SetPoint("TOPLEFT", panel, "TOPLEFT", inset, -inset)
+            headerHeight = inset + (header:GetHeight() or 0) + gap
+        end
+    elseif options.title then
+        header = panel:CreateFontString(nil, "OVERLAY")
+        Theme:ApplyFont(header, "label")
+        header:SetPoint("TOPLEFT", panel, "TOPLEFT", inset, -inset)
+        header:SetText(options.title)
+        header:SetTextColor(Theme:GetAccentColor())
+        headerHeight = inset + (header:GetStringHeight() or 0) + gap
+    end
+
+    local content = CreateFrame("Frame", nil, panel)
+    content:SetPoint("TOPLEFT", panel, "TOPLEFT", inset, -headerHeight)
+    content:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -inset, -headerHeight)
+    content:SetHeight(1)
+
+    local outerCollapsible = self._parentCollapsible
+    local outer = self
+    panel._contentHeight = 0
+    panel._outerOnRefresh = self._onRefresh
+    function panel:SetContentHeight(h)
+        local delta = h - (self._contentHeight or 0)
+        self._contentHeight = h
+        content:SetHeight(math.max(1, h))
+        self:SetHeight(headerHeight + h + inset)
+        if delta ~= 0 and outerCollapsible then
+            outerCollapsible:SetContentHeight(outerCollapsible._contentHeight + delta)
+        end
+        outer:_MarkDirty()
+    end
+
+    local inner
+    if options.buildContent then
+        inner = Builder:CreateFor(content, { availWidth = math.max(0, self._rowWidth - 2 * inset) })
+        inner._useLightDim = self._useLightDim
+        inner._parentSectionTitle = options.title or self._parentSectionTitle
+        inner._parentCollapsible = panel
+        inner._parentBuilder = self
+        inner._onRefresh = self._onRefresh
+        options.buildContent(content, inner)
+    end
+    -- Set before placement, with no outer delta: PlaceCustom counts the
+    -- panel's height into the builder, and the section measures that.
+    panel._contentHeight = inner and inner:GetHeight() or 0
+    content:SetHeight(math.max(1, panel._contentHeight))
+    panel:SetHeight(headerHeight + panel._contentHeight + inset)
+
+    function panel:Cleanup()
+        if inner then inner:Cleanup() end
+        if header and header.Cleanup then header:Cleanup() end
+        backdrop:Destroy()
+    end
+
+    self:PlaceCustom(panel, { gapAfter = 0 })
+    if inner then inner:_ScheduleRemeasure() end
+    return self
+end
