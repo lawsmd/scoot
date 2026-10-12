@@ -503,8 +503,25 @@ files["forever/actionbars/clusters.lua"] = {
 files["forever/actionbars/suppression.lua"] = {
     read_globals = { "MainActionBar" },
 }
+files["forever/actionbars/micro.lua"] = {
+    read_globals = {
+        "CharacterMicroButton", "GuildMicroButton", "MainMenuMicroButton",
+        "GetFileStreamingStatus", "GetBackgroundLoadingStatus", "MainMenuBarPerformanceBarFrame_OnEnter",
+        "GameTooltip_SetTitle", "FEATURE_NOT_AVAILBLE_PANDAREN", "FEATURE_BECOMES_AVAILABLE_AT_LEVEL",
+        "GetValueOrCallFunction", "RED_FONT_COLOR", "MainMenuMicroButton_AreAlertsEnabled",
+        "UIFrameFlash", "UIFrameFlashStop",
+    },
+}
+files["forever/actionbars/bagbar.lua"] = {
+    read_globals = {
+        "GetInventorySlotInfo", "C_ActionBar", "GetInventoryItemTexture", "GetBindingText",
+        "GameTooltip_SetTitle", "BACKPACK_TOOLTIP", "NUM_FREE_SLOTS", "KEYRING", "HIGHLIGHT_FONT_COLOR",
+        "ContainerFrame_IsReagentBag", "EQUIP_CONTAINER_REAGENT", "EQUIP_CONTAINER", "PickupBagFromSlot",
+        "PutItemInBackpack", "CursorHasItem", "PutKeyInKeyRing", "PutItemInBag",
+    },
+}
 files["forever/actionbars/bars.lua"] = {
-    read_globals = { "C_ActionBar", "MicroMenuContainer", "issecurevariable" },
+    read_globals = { "C_ActionBar", "issecurevariable" },
 }
 -- The Personal Resource Display (forever/personalresourcedisplay/). mixins.lua
 -- owns the one global frames.xml names in a mixin= attribute; the other

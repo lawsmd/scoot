@@ -250,7 +250,10 @@ forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 ## Mode with the dialog's rows, overlays.lua draws the member strips on a
 ## selected cluster, and dynamic.lua gives it its Dynamic Layouts adapter,
 ## all after clusters.lua, which they hang off; suppression.lua parks
-## Blizzard's bars; bars.lua builds on world entry and registers /camelot
+## Blizzard's bars; microbags.lua holds the micro menu and bag bar's
+## settings, holders, layout and Edit Mode anchors, and micro.lua and
+## bagbar.lua, which hang off it, build their secure click twins of
+## Blizzard's buttons; bars.lua builds on world entry and registers /camelot
 ## actionbars. text.lua holds the keybind text settings and their pass, before
 ## frames.xml, since a button's load runs it. page.lua, the Clusters page,
 ## and textpage.lua, the Text page, sit in the page block below.
@@ -269,6 +272,9 @@ forever/actionbars/editmode.lua [ExcludeLoadGameType standard]
 forever/actionbars/overlays.lua [ExcludeLoadGameType standard]
 forever/actionbars/dynamic.lua [ExcludeLoadGameType standard]
 forever/actionbars/suppression.lua [ExcludeLoadGameType standard]
+forever/actionbars/microbags.lua [ExcludeLoadGameType standard]
+forever/actionbars/micro.lua [ExcludeLoadGameType standard]
+forever/actionbars/bagbar.lua [ExcludeLoadGameType standard]
 forever/actionbars/bars.lua [ExcludeLoadGameType standard]
 
 ## The Personal Resource Display: Forever's PRD on a Camelot-owned frame

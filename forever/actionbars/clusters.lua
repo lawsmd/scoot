@@ -63,10 +63,6 @@ Clusters.DEFAULTS = {
       members = { member("pet", { buttons = 10 }) } },
     { id = 3, axis = "vertical", spacing = SPACING, endCaps = false,
       members = { member("stance", { buttons = 10 }) } },
-    { id = 4, axis = "horizontal", spacing = SPACING, endCaps = false,
-      members = { { identity = "microMenu", align = "center" } } },
-    { id = 5, axis = "horizontal", spacing = SPACING, endCaps = false,
-      members = { { identity = "bags", align = "center" } } },
 }
 
 -- Where each default cluster stands until Edit Mode stores a position. The
@@ -74,14 +70,11 @@ Clusters.DEFAULTS = {
 -- member 55 units up: the owner's call after the first look, the bars
 -- being the one place Camelot departs from the stock arrangement on
 -- purpose. The pet and stance clusters take Blizzard's bottom stacking rule
--- when they are built; the two leased clusters keep Forever's own anchors
--- for the micro menu and the bags until their lease is built and new
--- defaults are found. A cluster with no row here, a new one, stands at the
--- screen center.
+-- when they are built. A cluster with no row here, a new one, stands at the
+-- screen center. The micro menu and the bags are not clusters: they are
+-- anchors of their own (microbags.lua).
 Clusters.DEFAULT_ANCHOR = {
     [1] = { point = "BOTTOM", relativeTo = "UIParent", relativePoint = "BOTTOM", x = 0, y = 55 },
-    [4] = { point = "BOTTOM", relativeTo = "UIParent", relativePoint = "BOTTOM", x = 116.5, y = 6 },
-    [5] = { point = "BOTTOMLEFT", relativeTo = "MicroMenuContainer", relativePoint = "BOTTOMRIGHT", x = 7, y = -4 },
 }
 
 --- The layout key a cluster's Edit Mode positions and its dynamic record
@@ -225,7 +218,7 @@ function Clusters.IdentityLabel(token)
 end
 
 -- Whether an identity's frame exists: the eight action bars are built, and
--- pet, stance and the leased kinds come with their phases. Until then a
+-- pet and stance come with their phases. Until then a
 -- member of those kinds is skipped by the layout, its cluster has no
 -- container, and the surfaces list neither.
 local function isBuilt(token)
@@ -705,8 +698,33 @@ function Clusters.Rebuild()
 end
 
 --- The first pass, from the bars' build. The caller runs out of combat.
+-- A document written while the micro menu and the bags were pool members
+-- still lists them, in the old default clusters 4 and 5 or wherever the
+-- player put them. They are anchors of their own now: drop the members, and
+-- a cluster they leave empty.
+local function DropRetiredMembers()
+    local doc = DB.GetDocument(DOCUMENT)
+    if type(doc) ~= "table" then return end
+    local changed = false
+    for i = #doc, 1, -1 do
+        local members = doc[i].members or {}
+        for j = #members, 1, -1 do
+            if not (ActionBars.POOL and ActionBars.POOL[members[j].identity]) then
+                table.remove(members, j)
+                changed = true
+            end
+        end
+        if #members == 0 and doc[i].id ~= Clusters.PRIMARY then
+            table.remove(doc, i)
+            changed = true
+        end
+    end
+    if changed then DB.SetDocument(DOCUMENT, doc) end
+end
+
 function Clusters.Build()
     if built then return end
+    DropRetiredMembers()
     Clusters.Rebuild()
 end
 
@@ -729,5 +747,6 @@ end
 -- frames yet, and a resync pass keeps the profile it had.
 addon.Profiles.RegisterApplyStep("camelotActionBars", function(_, ctx)
     if ctx.initial or ctx.resync or not built then return end
+    DropRetiredMembers()
     Clusters.Rebuild()
 end, 30)

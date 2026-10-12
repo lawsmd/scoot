@@ -8,8 +8,10 @@
 -- are children of the main bar and dim with it.
 --
 -- Nothing is released: the Features switch lands at reload, and a feature
--- off at login never claims. The pet bar, the stance bar, the micro menu
--- and the bags stay Blizzard's in this phase.
+-- off at login never claims. The pet bar and the stance bar stay
+-- Blizzard's in this phase. The micro menu and the bag bar are parked whole:
+-- Camelot's twins click Blizzard's buttons inside them, and Click reaches a
+-- hidden button.
 --------------------------------------------------------------------------------
 
 local _, addon = ...
@@ -29,6 +31,9 @@ local BLIZZARD_FRAME = {
     { name = "MultiBar5",          method = "park" },
     { name = "MultiBar6",          method = "park" },
     { name = "MultiBar7",          method = "park" },
+    -- The micro and bag twins click these buttons where they are parked.
+    { name = "MicroMenuContainer", method = "park" },
+    { name = "BagsBar",            method = "park" },
 }
 
 local applied = false

@@ -45,13 +45,11 @@ ActionBars.POOL = {
              label = "Action Bar 8", blizzard = "MultiBar7" },
     pet = { kind = "pet", command = "BONUSACTIONBUTTON", label = "Pet Bar", blizzard = "PetActionBar" },
     stance = { kind = "stance", command = "SHAPESHIFTBUTTON", label = "Stance Bar", blizzard = "StanceBar" },
-    microMenu = { kind = "leased", label = "Micro Menu", blizzard = "MicroMenuContainer" },
-    bags = { kind = "leased", label = "Bags", blizzard = "BagsBar" },
 }
 
 ActionBars.POOL_ORDER = {
     "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8",
-    "pet", "stance", "microMenu", "bags",
+    "pet", "stance",
 }
 
 -- token -> frame, for the built identities; every Camelot button; and each
@@ -139,6 +137,7 @@ local function Build()
     end
     ActionBars.Paging.Register()
     ActionBars.Clusters.Build()
+    ActionBars.MicroBags.Build()
     ActionBars.Suppression.Apply()
     HookPresses()
     built = true
@@ -247,11 +246,8 @@ function ActionBars.Dump()
     local unassigned = ActionBars.Clusters.Unassigned()
     push("  unassigned: %s", #unassigned > 0 and table.concat(unassigned, ", ") or "none")
     push("  main bar buttons mouse off: %s", tostring(ActionBars.Suppression.IsMouseOff()))
-    local micro = MicroMenuContainer
-    if micro then
-        push("  MicroMenuContainer %.0fx%.0f at %s, left %s bottom %s", micro:GetWidth(), micro:GetHeight(),
-            frameName(micro:GetParent()), tostring(micro:GetLeft()), tostring(micro:GetBottom()))
-    end
+    push("")
+    ActionBars.MicroBags.Report(push)
     push("")
 
     push("keybind text, button 1 of each bar:")

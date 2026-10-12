@@ -2,8 +2,10 @@
 -- forever/actionbars/page.lua
 -- The Clusters page: the whole cluster surface in the Camelot menu, under
 -- the Action Bars group. Create New Cluster, then one collapsible section per
--- cluster on screen with the dialog's rows, a block per member, Add Bar and
--- Delete Cluster. Every control writes through the edits in clusters.lua,
+-- cluster on screen in the dialog's shape: the cluster's rows, a boxed panel
+-- whose header picks the member it edits (the dialog's subject, so the two
+-- surfaces follow each other), Add Bar and Delete Cluster. Below the
+-- clusters, the micro menu and bag bar's section. Every control writes through the edits in clusters.lua,
 -- and a write that changes which rows exist re-renders the page. Configure
 -- on a cluster's box opens this page with that cluster's section expanded:
 -- the section keys are the brand's. The presentation pages of the later
@@ -73,7 +75,7 @@ end
 -- One member
 --------------------------------------------------------------------------------
 
-local function memberBlock(inner, frame, builder, id, index, m, labels)
+local function memberRows(inner, frame, builder, id, index, m, labels)
     local count = Clusters.ButtonCount(m.identity)
     local function field(name, default)
         return function()
@@ -89,8 +91,6 @@ local function memberBlock(inner, frame, builder, id, index, m, labels)
             edit(builder, function() Clusters.SetMemberField(id, index, name, v) end, structural)
         end
     end
-
-    inner:AddLabel(Clusters.IdentityLabel(m.identity))
 
     local choices = Clusters.Choices(id, index)
     inner:AddSelector({ label = "Identity",
@@ -163,7 +163,6 @@ local function clusterSection(builder, cluster)
                 set = function(v)
                     edit(builder, function() Clusters.SetClusterField(id, "spacing", v) end)
                 end })
-
             -- End Cap Scale shows only with End Caps on, so the toggle re-renders.
             inner:AddToggle({ label = "End Caps",
                 get = function()
@@ -187,14 +186,41 @@ local function clusterSection(builder, cluster)
                     end })
             end
 
-            for index, m in ipairs(c.members or {}) do
-                memberBlock(inner, frame, builder, id, index, m, labels)
+            local members = c.members or {}
+            local subject = EditMode.Subject(id)
+            local m = subject and members[subject]
+            if m then
+                local panel = { componentId = NAV_KEY, sectionKey = "cluster" .. id .. "Member",
+                    buildContent = function(panelFrame, panelInner)
+                        memberRows(panelInner, panelFrame, builder, id, subject, m, labels)
+                        panelInner:Finalize()
+                    end }
+                if #members > 1 then
+                    local values, order = {}, {}
+                    for i, mm in ipairs(members) do
+                        values[tostring(i)] = Clusters.IdentityLabel(mm.identity)
+                        order[#order + 1] = tostring(i)
+                    end
+                    panel.header = { values = values, order = order,
+                        get = function() return tostring(EditMode.Subject(id)) end,
+                        set = function(v)
+                            EditMode.SetSubject(id, v)
+                            builder:DeferredRefreshAll()
+                        end }
+                else
+                    panel.title = Clusters.IdentityLabel(m.identity)
+                end
+                inner:AddSubPanel(panel)
             end
 
             local buttons = {}
             if #Clusters.Placeable() > 0 then
                 buttons[#buttons + 1] = { text = "Add Bar", onClick = function()
-                    edit(builder, function() Clusters.AddMember(id) end, true)
+                    edit(builder, function()
+                        Clusters.AddMember(id)
+                        local cc = Clusters.Find(id)
+                        EditMode.SetSubject(id, cc and cc.members and #cc.members)
+                    end, true)
                 end }
             end
             if Clusters.CanDelete(id) then
@@ -208,6 +234,97 @@ local function clusterSection(builder, cluster)
             if #buttons > 0 then
                 AddButtons(inner, frame, buttons)
             end
+            inner:Finalize()
+        end,
+    })
+end
+
+--------------------------------------------------------------------------------
+-- The micro menu and the bag bar
+--------------------------------------------------------------------------------
+-- One section under the clusters: the Style above a tab per bar and per bag
+-- slot. A Style or orientation write changes which rows apply, so it
+-- re-renders; the bag bar's rows stand disabled under the combined style,
+-- where the micro menu's rows lay out the whole row.
+
+local function microBagsSection(builder)
+    local MicroBags = ActionBars.MicroBags
+    if not MicroBags then return end
+    local function get(field) return function() return MicroBags.Get(field) end end
+    local function set(field, structural)
+        return function(v)
+            edit(builder, function() MicroBags.Set(field, v) end, structural)
+        end
+    end
+    local function combined() return MicroBags.Style() == "combined" end
+
+    local tabs = {
+        { key = "micro", label = "Micro Menu" },
+        { key = "bags", label = "Bag Bar" },
+    }
+    local content = {}
+
+    content.micro = function(_, tab)
+        tab:AddSelector({ label = "Orientation", values = MicroBags.ORIENTATION_VALUES,
+            order = MicroBags.ORIENTATION_ORDER, get = get("micro.orientation"), set = set("micro.orientation") })
+        tab:AddSelector({ label = "Order", values = MicroBags.ORDER_VALUES, order = MicroBags.ORDER_ORDER,
+            get = get("micro.order"), set = set("micro.order") })
+        local r = MicroBags.RANGES.microSize
+        tab:AddSlider({ label = "Size", min = r.min, max = r.max, step = r.step, precision = 0,
+            minLabel = r.min .. "%", maxLabel = r.max .. "%", displaySuffix = "%",
+            get = get("micro.size"), set = set("micro.size") })
+        tab:Finalize()
+    end
+
+    content.bags = function(_, tab)
+        if combined() then
+            tab:AddDescription("The Camelot (Combined) style lays the bags out after the micro buttons, by the Micro Menu tab's rows.")
+        end
+        local vertical = MicroBags.Get("bags.orientation") == "vertical"
+        local dirValues, dirOrder = MicroBags.DirectionChoices(vertical)
+        tab:AddSelector({ label = "Orientation", values = MicroBags.ORIENTATION_VALUES,
+            order = MicroBags.ORIENTATION_ORDER, isDisabled = combined,
+            get = get("bags.orientation"), set = set("bags.orientation", true) })
+        tab:AddSelector({ label = "Direction", values = dirValues, order = dirOrder, isDisabled = combined,
+            get = get("bags.direction"), set = set("bags.direction") })
+        local size = MicroBags.RANGES.bagsSize
+        tab:AddSlider({ label = "Size", min = size.min, max = size.max, step = size.step, precision = 0,
+            minLabel = size.min .. "%", maxLabel = size.max .. "%", displaySuffix = "%", isDisabled = combined,
+            get = get("bags.size"), set = set("bags.size") })
+        local pad = MicroBags.RANGES.padding
+        tab:AddSlider({ label = "Bag Slot Padding", min = pad.min, max = pad.max, step = pad.step, precision = 0,
+            isDisabled = combined, get = get("bags.padding"), set = set("bags.padding") })
+        tab:Finalize()
+    end
+
+    local Bags = MicroBags.Bags
+    for _, slot in ipairs(Bags and Bags.SLOTS or {}) do
+        tabs[#tabs + 1] = { key = slot.key, label = slot.label }
+        content[slot.key] = function(_, tab)
+            if slot.keyring and not Bags.HasKeyring() then
+                tab:AddDescription("This character's client draws no keyring.")
+            end
+            tab:AddToggle({ label = "Show " .. slot.label,
+                get = function() return MicroBags.SlotShown(slot.key) end,
+                set = set("slots." .. slot.key .. ".shown") })
+            if slot.key == "backpack" then
+                tab:AddToggle({ label = "Show Free Slots",
+                    get = function() return MicroBags.Get("slots.backpack.freeSlots") ~= false end,
+                    set = set("slots.backpack.freeSlots") })
+            end
+            tab:Finalize()
+        end
+    end
+
+    builder:AddCollapsibleSection({
+        title = "Micro & Bag Bar", componentId = NAV_KEY, sectionKey = MicroBags.SECTION_KEY,
+        defaultExpanded = false,
+        buildContent = function(_, inner)
+            inner:AddSelector({ label = "Style", emphasized = true,
+                values = MicroBags.STYLE_VALUES, order = MicroBags.STYLE_ORDER,
+                get = get("style"), set = set("style", true) })
+            inner:AddTabbedSection({ tabs = tabs, componentId = NAV_KEY,
+                sectionKey = MicroBags.SECTION_KEY .. "Tabs", buildContent = content })
             inner:Finalize()
         end,
     })
@@ -243,6 +360,7 @@ local function Render(panel, scrollContent)
             clusterSection(builder, cluster)
         end
     end
+    microBagsSection(builder)
 
     builder:Finalize()
 end
