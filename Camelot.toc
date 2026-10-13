@@ -1,4 +1,4 @@
-## Interface: 120100, 16001
+## Interface: 120105, 16001
 ## Title: Camelot
 ## Notes: Classic-look unit frames for Forever. Development build, not released.
 ## Author: Scooter
@@ -7,7 +7,7 @@
 ## SlashCmd: /camelot
 ## Dependencies: Blizzard_ObjectiveTracker, Blizzard_ActionBar
 
-## Two interface numbers, one TOC. 120100 is retail 12.1.0 and 16001 is
+## Two interface numbers, one TOC. 120105 is retail 12.1.5 and 16001 is
 ## Forever build 1.60.1; each client takes the number from the list that
 ## matches its own, and neither asks for the out-of-date tick. Forever picks
 ## no game-level flavor suffix, so both clients read this plain Camelot.toc
