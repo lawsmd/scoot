@@ -38,11 +38,27 @@ local function applyCustomRoleIcon(frame)
     local okR, roleIcon = pcall(function() return frame.roleIcon end)
     if not okR or not roleIcon then return end
 
+    -- Shown state, read once. From 12.1.5 UnitFrameUtil.UpdateUnitFrameRoleIcon
+    -- sets it with a secret-wrapped boolean while the unit's identity is secret,
+    -- and a boolean test on the secret throws. The positioning and visibility
+    -- blocks below skip while it is unknown; the atlas swap and scale still run.
+    local shownKnown, shown = false, false
+    do
+        local okS, s = pcall(roleIcon.IsShown, roleIcon)
+        if okS and type(s) == "boolean" and not issecretvalue(s) then
+            shownKnown, shown = true, s
+        end
+    end
+
     -- Kept off addon.Enforce: restyle hook; re-applies atlas, scale, and position, not just a hide.
     -- Install Show hook (once per roleIcon) to re-apply after Blizzard atlas resets.
-    -- Blizzard's CompactUnitFrame_UpdateRoleIcon calls SetAtlas(default) then Show()
-    -- then SetSize(secret) which errors, so the post-hook never fires. This Show hook
-    -- fires BEFORE the SetSize error, so the custom atlas is applied reliably.
+    -- On 12.1.0 CompactUnitFrame_UpdateRoleIcon called SetAtlas(default), Show(),
+    -- then SetSize(secret), which errored before the function returned, so the
+    -- global post-hook below never fired and this hook carried the re-apply. From
+    -- 12.1.5 the work is in UnitFrameUtil.UpdateUnitFrameRoleIcon, which shows the
+    -- icon through SetShown on a copied texture metatable (this hook never fires)
+    -- and wraps the secret size, so the function completes and the global
+    -- post-hook carries the re-apply. Kept as the belt for an older client.
     _roleIconToFrame[roleIcon] = frame
     if not _hookedRoleIcons[roleIcon] then
         _hookedRoleIcons[roleIcon] = true
@@ -71,7 +87,7 @@ local function applyCustomRoleIcon(frame)
     -- B) Custom positioning (independent of icon set)
     do
         local anchor = rawget(cfg, "roleIconAnchor")
-        if anchor and anchor ~= "default" and roleIcon.IsShown and roleIcon:IsShown() then
+        if anchor and anchor ~= "default" and shownKnown and shown then
             local offsetX = tonumber(rawget(cfg, "roleIconOffsetX")) or 0
             local offsetY = tonumber(rawget(cfg, "roleIconOffsetY")) or 0
             pcall(roleIcon.ClearAllPoints, roleIcon)
@@ -82,7 +98,7 @@ local function applyCustomRoleIcon(frame)
     -- B2) Visibility filtering (no early returns — B3 and C must always run)
     do
         local vis = rawget(cfg, "roleIconVisibility")
-        if vis and roleIcon.IsShown and roleIcon:IsShown() then
+        if vis and shownKnown and shown then
             if vis == "hideAll" then
                 pcall(roleIcon.SetAlpha, roleIcon, 0)
             elseif vis == "hideDPS" then
@@ -183,10 +199,11 @@ if not addon._RoleIconVisibilityHookInstalled then
 end
 
 -- Safety net: re-apply custom role icons on roster/role events
--- Needed because Blizzard's CompactUnitFrame_UpdateRoleIcon may error on
--- tainted roleIcon widgets (secret value from GetHeight), causing the
--- post-hook to never fire. This directly applies without going through
--- Blizzard's function.
+-- On 12.1.0 Blizzard's CompactUnitFrame_UpdateRoleIcon could error on a
+-- tainted roleIcon widget (secret value from GetHeight), so the post-hook
+-- above never fired; from 12.1.5 it completes. This net applies directly,
+-- without going through Blizzard's function, on the events that change a
+-- role.
 if not addon._RoleIconSafetyNetInstalled then
     addon._RoleIconSafetyNetInstalled = true
     local safetyNetTimer = nil
