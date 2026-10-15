@@ -287,6 +287,7 @@ local content
 local panels = {}
 local tray, trayPanel
 local trayHeight = 0
+local betaChip
 
 -- The pages the tray shows under: the home page and the search view
 local TRAY_KEYS = { categories = true, search = true }
@@ -327,8 +328,18 @@ function UI:SyncPanel()
         panel:SetShown(k == key)
     end
     self.activeKey = key
-    -- The home page's tree names the window at its root
-    frame:SetShellTitle(key == "categories" and "" or WINDOW_TITLE)
+    -- The home page's tree names the window at its root, and the beta chip
+    -- follows the name
+    local home = key == "categories"
+    frame:SetShellTitle(home and "" or WINDOW_TITLE)
+    if betaChip then
+        local name = home and panels.categories and panels.categories._root or frame._title
+        betaChip:ClearAllPoints()
+        if name then
+            betaChip:SetPoint("LEFT", name, "RIGHT", 6, 0)
+        end
+        betaChip:SetShown(name ~= nil)
+    end
     local panel = panels[key]
     if panel and panel.Refresh then panel:Refresh() end
     self:SyncTray()
@@ -477,6 +488,28 @@ local function Build()
     end
     trayPanel = UI.trayBuilder and UI.trayBuilder(tray) or nil
 
+    -- The settings nav's red "beta" chip, so the window says what its page
+    -- says; above the panels, since it sits beside the home page's root
+    local Controls = addon.UI.Controls
+    if Controls and Controls.CreateInfoIcon then
+        betaChip = Controls:CreateInfoIcon({
+            parent = frame,
+            tooltipTitle = "Beta Feature",
+            tooltipText = "This feature is new and may need additional testing. Please report any issues you encounter.",
+            size = 18,
+            width = 32,
+            iconType = "info",
+            customText = "beta",
+            colorOverride = { 0.9, 0.2, 0.2 },
+        })
+        if betaChip then
+            betaChip:SetFrameLevel(content:GetFrameLevel() + 20)
+            local fs = betaChip._iconText
+            local fontPath = fs and fs:GetFont()
+            if fontPath then pcall(fs.SetFont, fs, fontPath, 8, "OUTLINE") end
+        end
+    end
+
     -- The window outlives accent changes and skin switches; the strings
     -- follow the accent, and a new skin drops the frame for a rebuild on
     -- the next open
@@ -503,6 +536,7 @@ function UI:Destroy()
     frame = nil
     content = nil
     tray, trayPanel, trayHeight = nil, nil, 0
+    betaChip = nil
     panels = {}
 end
 
