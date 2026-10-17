@@ -1,0 +1,64 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\..\..\FrameXML\UI.xsd">
+	<!--
+	forever/statusbars/frames.xml
+	Camelot's status bars: Blizzard's StatusTrackingBarContainerTemplate twice
+	under Camelot names, each in a holder of its own, and a manager on
+	Blizzard's StatusTrackingManagerMixin that fills them. The lines are
+	Blizzard_StatusTrackingBar/[Family]/StatusTrackingBar.xml's with the Edit
+	Mode system templates left out: the holders are Camelot positionables.
+
+	The holder is what Edit Mode and Dynamic Layouts move and fade. The
+	container keeps Blizzard's own fade animations on its alpha, which would
+	overwrite an adapter's opacity if the two shared a frame. display.lua sizes
+	each holder to its container.
+	-->
+
+	<Frame name="CamelotStatusBar1" parent="UIParent" frameStrata="MEDIUM" hidden="true">
+		<Size x="1192" y="17"/>
+		<Anchors>
+			<Anchor point="BOTTOM" y="0"/>
+		</Anchors>
+		<Frames>
+			<Frame parentKey="Container" inherits="StatusTrackingBarContainerTemplate" mixin="CamelotStatusTrackingContainerMixin" hidden="true">
+				<KeyValues>
+					<KeyValue key="barIndex" value="1" type="number"/>
+				</KeyValues>
+				<Anchors>
+					<Anchor point="CENTER"/>
+				</Anchors>
+			</Frame>
+		</Frames>
+	</Frame>
+
+	<Frame name="CamelotStatusBar2" parent="UIParent" frameStrata="MEDIUM" hidden="true">
+		<Size x="1192" y="17"/>
+		<Anchors>
+			<Anchor point="BOTTOM" y="17"/>
+		</Anchors>
+		<Frames>
+			<Frame parentKey="Container" inherits="StatusTrackingBarContainerTemplate" mixin="CamelotStatusTrackingContainerMixin" hidden="true">
+				<KeyValues>
+					<KeyValue key="barIndex" value="2" type="number"/>
+				</KeyValues>
+				<Anchors>
+					<Anchor point="CENTER"/>
+				</Anchors>
+			</Frame>
+		</Frames>
+	</Frame>
+
+	<!-- After the holders, so its OnLoad finds both containers. No art and no
+	mouse: it registers Blizzard's events and decides which bar each
+	container shows. With the feature off, display.lua unregisters its events
+	and the holders stay hidden. -->
+	<Frame name="CamelotStatusTrackingBarManager" parent="UIParent" mixin="StatusTrackingManagerMixin, CamelotStatusTrackingManagerMixin">
+		<Anchors>
+			<Anchor point="BOTTOM"/>
+		</Anchors>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+			<OnEvent method="OnEvent"/>
+		</Scripts>
+	</Frame>
+</Ui>
