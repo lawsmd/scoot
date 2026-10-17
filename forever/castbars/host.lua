@@ -20,8 +20,9 @@ local DB = addon.DB
 DB.RegisterModule("castBars", true)
 DB.RegisterDefaults({
     ["castBars.player.enabled"]      = true,
-    ["castBars.player.barWidth"]     = 195,
-    ["castBars.player.barHeight"]    = 13,
+    -- barWidth and barHeight carry no default: unset is the look's own size,
+    -- 195 x 13 on Classic and 208 x 11 on Modern, so a style switch with no
+    -- size stored lands on Blizzard's.
     ["castBars.player.scale"]        = 100,
     ["castBars.player.positionMode"] = "free",
     ["castBars.player.frameStyle"]   = "classic",
@@ -40,6 +41,10 @@ DB.RegisterDefaults({
     ["castBars.castTimeOffsetY"]     = 0,
     ["castBars.player.castTimeSide"] = "right",
 })
+-- The presets: the bar Blizzard ships on this client is Modern's; both draw
+-- Blizzard's silver.
+DB.RegisterPreset("modern", { ["castBars.player.frameStyle"] = "modern" })
+DB.RegisterStock({ ["castBars.player.frameColor"] = "classic" })
 
 -- What the readout falls back to with no Font Style stored, the same style
 -- painter.lua gives the spell name. Cast Bar Z keeps its own house default.

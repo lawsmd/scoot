@@ -402,7 +402,7 @@ function CBZSettings.Render(panel, scrollContent)
 
     -- No per-unit badges anywhere on this page: since the per-unit split every
     -- setting applies to the selected unit alone, and the header names it.
-    builder:AddCollapsibleSection({ title = "Bar", componentId = "castBarZ", sectionKey = "bar", defaultExpanded = true,
+    builder:AddCollapsibleSection({ title = "Bar", componentId = "castBarZ", sectionKey = "bar", defaultExpanded = false,
         buildContent = function(_, inner)
             inner:AddSlider({ label = "Bar Width", min = 100, max = 500, step = 5,
                 get = function() return getUnit("barWidth", 260) end,

@@ -10,6 +10,7 @@
 local addonName, addon = ...
 
 local CBZ = addon.CastBarZ
+local Art = addon.CastBarArt
 local DB = addon.DB
 local SettingsBuilder = addon.UI.SettingsBuilder
 
@@ -21,8 +22,8 @@ local SNAP_LABELS = {
     left = "Left of Frame", right = "Right of Frame",
 }
 
-local FRAME_STYLE_LABELS = { classic = "Classic" }
-local FRAME_STYLE_ORDER = { "classic" }
+local FRAME_STYLE_LABELS = { classic = "Classic", modern = "Modern" }
+local FRAME_STYLE_ORDER = { "classic", "modern" }
 
 local FRAME_COLOR_LABELS = { forever = "Forever", classic = "Classic" }
 local FRAME_COLOR_ORDER = { "forever", "classic" }
@@ -61,12 +62,22 @@ local function Render(panel, scrollContent)
     end
 
     -- On and off is the Features page (forever/features.lua). The three rows
-    -- below sit on the page itself, above the sections.
-    builder:AddDualSelector({ label = "Cast Bar Style", wideSlots = true,
+    -- below sit on the page itself, above the sections; the first is the
+    -- page's emphasized row, the treatment the Style row has on Current
+    -- Objectives. Frame Color dresses the Classic border alone: on Modern,
+    -- which draws the client's own frame as shipped, its field greys and the
+    -- greying says enough. A style change re-renders the page, for that field
+    -- and for the size sliders' stock values below.
+    local look = Art.LookForStyle(cfg.frameStyle)
+    builder:AddDualSelector({ label = "Cast Bar Style", wideSlots = true, emphasized = true,
         selectorA = { caption = "Frame Style", values = FRAME_STYLE_LABELS, order = FRAME_STYLE_ORDER,
             get = function() return FRAME_STYLE_LABELS[cfg.frameStyle] and cfg.frameStyle or "classic" end,
-            set = function(v) setUnit("frameStyle", v) end },
+            set = function(v)
+                setUnit("frameStyle", v)
+                builder:DeferredRefreshAll()
+            end },
         selectorB = { caption = "Frame Color", values = FRAME_COLOR_LABELS, order = FRAME_COLOR_ORDER,
+            disabled = function() return Art.LookForStyle(cfg.frameStyle).recolor == false end,
             get = function() return cfg.frameColor == "classic" and "classic" or "forever" end,
             set = function(v) setUnit("frameColor", v) end } })
 
@@ -76,12 +87,15 @@ local function Render(panel, scrollContent)
         set = function(v) setUnit("scale", v) end })
 
     -- Kept off Builder:AddOffsetPair: width and height are sizes with different ranges, and BuilderComposites.lua is not on Camelot.toc.
+    -- A size left unset is the look's own: 195 x 13 on Classic, 208 x 11 on
+    -- Modern, so a bar switched to Modern with no size stored draws at
+    -- Blizzard's.
     builder:AddDualSlider({ label = "Cast Bar Size",
         sliderA = { axisLabel = "W", min = 100, max = 500, step = 5,
-            get = function() return tonumber(cfg.barWidth) or 195 end,
+            get = function() return tonumber(cfg.barWidth) or look.width end,
             set = function(v) setUnit("barWidth", v) end },
         sliderB = { axisLabel = "H", min = 8, max = 40, step = 1,
-            get = function() return tonumber(cfg.barHeight) or 13 end,
+            get = function() return tonumber(cfg.barHeight) or look.height end,
             set = function(v) setUnit("barHeight", v) end } })
 
     -- Kept off Builder:AddTextStyleBlock: ui/v2/settings/BuilderComposites.lua and Helpers.lua are not on Camelot.toc.

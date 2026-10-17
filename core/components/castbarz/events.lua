@@ -226,20 +226,20 @@ end
 
 function CBZ._StartCast(bar, channelled)
     local unit = bar.unit
-    -- `_` declared local on purpose: the two return lists below discard six and
-    -- seven fields respectively, and without this every one of those discards is a
-    -- write to the global `_`.
+    -- `_` declared local on purpose: every field the two return lists below
+    -- discard is written to `_`, and without this each of those writes is to the
+    -- global `_`.
     local _
-    local name, displayName, notInterruptible, isEmpowered, numEmpowerStages
+    local name, displayName, isTradeSkill, notInterruptible, isEmpowered, numEmpowerStages
 
     if channelled then
         -- Return list: name, displayName, textureID, startTimeMs, endTimeMs,
         -- isTradeskill, notInterruptible, spellID, isEmpowered, numEmpowerStages,
         -- castBarID (UnitDocumentation.lua:869-879).
-        name, displayName, _, _, _, _, notInterruptible, _, isEmpowered, numEmpowerStages =
+        name, displayName, _, _, _, isTradeSkill, notInterruptible, _, isEmpowered, numEmpowerStages =
             UnitChannelInfo(unit)
     else
-        name, displayName, _, _, _, _, _, notInterruptible = UnitCastingInfo(unit)
+        name, displayName, _, _, _, isTradeSkill, _, notInterruptible = UnitCastingInfo(unit)
     end
 
     if type(name) == "nil" then
@@ -262,6 +262,14 @@ function CBZ._StartCast(bar, channelled)
     -- is safe on a shielded boss and a targeted Evoker alike. Everything Phase 3
     -- draws hangs off that one guarantee.
     bar.empowered = (channelled and isEmpowered == true) or false
+
+    -- A profession's cast, for a painter with a look for one (Camelot's Modern
+    -- bar). Plain on the player and the pet; on a restricted unit it may be
+    -- secret, and a secret reads as false: type() first, because it answers on
+    -- a secret, then issecretvalue(), then the test (PickColor).
+    bar.tradeSkill = type(isTradeSkill) == "boolean"
+        and not (issecretvalue and issecretvalue(isTradeSkill))
+        and isTradeSkill or false
 
     -- The painter resolves this cast's colors once, here, and caches them for the
     -- life of the cast, so they cannot shift under a bar mid-cast and the unit is
@@ -359,6 +367,7 @@ function CBZ._FinishCast(bar, reason)
     bar.casting = false
     bar.channelled = false
     bar.empowered = false
+    bar.tradeSkill = false
 
     if addon.EditMode.IsEditing() then
         -- Edit Mode keeps the bar parked and visible for positioning.
@@ -625,6 +634,7 @@ function CBZ._ResetBar(bar)
     bar.casting = false
     bar.channelled = false
     bar.empowered = false
+    bar.tradeSkill = false
     bar.pendingStop = nil
     bar.pendingReason = nil
 
