@@ -36,8 +36,8 @@ local CHANNELS = { "opacity", "scale", "position" }
 local CHANNEL_SET = { opacity = true, scale = true, position = true }
 local TIERS = { plain = true, protected = true }
 
--- The player's slider runs this range in quarter-second steps; the read
--- clamps a stored value into it.
+-- The player's two sliders, one per direction, run this range in
+-- quarter-second steps; the read clamps a stored value into it.
 local SPEED_MIN, SPEED_MAX, SPEED_DEFAULT = 0.25, 2.0, 0.5
 DL.SPEED_MIN, DL.SPEED_MAX, DL.SPEED_DEFAULT = SPEED_MIN, SPEED_MAX, SPEED_DEFAULT
 
@@ -53,6 +53,7 @@ local ANCHORS = {
 
 local adapters = {}   -- id -> state record
 local registered = {} -- ids in registration order
+local groups = {}     -- participation key -> { label, order }
 local forced = nil    -- "base" | "dynamic" | nil, session only
 local view = nil      -- true while the dynamic view of Edit Mode holds
 local viewEnd = nil   -- the view's callback when the engine ends it at combat entry
@@ -71,13 +72,32 @@ local function record(id)
     return store and store.GetRecord(id) or nil
 end
 
-local function speed()
+--- The key a frame takes part under: its group's, or its own id. One
+--- checkbox in the view stands for every frame that shares a key.
+local function participationKey(id)
+    local st = adapters[id]
+    return (st and st.def.group) or id
+end
+
+local function participating(id)
     local store = Store()
-    local value = store and store.GetSpeed and store.GetSpeed()
+    if not (store and store.GetParticipating) then return false end
+    return store.GetParticipating(participationKey(id)) == true
+end
+
+--- The duration of a tween in `direction`: "in", toward the dynamic state,
+--- or "out", toward the base. Each is its own per-profile setting.
+local function speed(direction)
+    local store = Store()
+    local value = store and store.GetSpeed and store.GetSpeed(direction)
     value = tonumber(value) or SPEED_DEFAULT
     if value < SPEED_MIN then value = SPEED_MIN end
     if value > SPEED_MAX then value = SPEED_MAX end
     return value
+end
+
+local function directionTo(state)
+    return state == "dynamic" and "in" or "out"
 end
 
 local function frameOf(st)
@@ -102,20 +122,18 @@ local DEFAULT_APPLY = {
 -- Decisions and values
 --------------------------------------------------------------------------------
 
---- What this adapter should be in: the dynamic view (every enabled record is
---- dynamic while it holds; the resolver's answer is base under Edit Mode),
---- then the forced override, then the resolver's answer, with dynamic only
---- for a record that says enabled. nil before the first resolution.
+--- What this adapter should be in: the dynamic view (every participating
+--- frame is dynamic while it holds; the resolver's answer is base under Edit
+--- Mode), then the forced override, then the resolver's answer, with dynamic
+--- only for a participating frame. nil before the first resolution.
 local function decide(id)
     if view then
-        local rec = record(id)
-        return (rec and rec.enabled) and "dynamic" or "base"
+        return participating(id) and "dynamic" or "base"
     end
     if forced then return forced end
     local answer = Resolver.Answer()
     if answer ~= "dynamic" then return answer end
-    local rec = record(id)
-    return (rec and rec.enabled) and "dynamic" or "base"
+    return participating(id) and "dynamic" or "base"
 end
 
 local function plainNumber(v)
@@ -158,13 +176,73 @@ local function dynamicValue(id, channel)
     return plainNumber(rec[channel])
 end
 
+local EDGES = { TOP = true, BOTTOM = true, LEFT = true, RIGHT = true }
+-- Units past the edge, so a glow or a shadow hanging off the frame goes too.
+local OFFSCREEN_PAD = 24
+
+--- The edge a frame's record sends it off by, or nil.
+local function offscreenEdge(id)
+    local rec = record(id)
+    local edge = rec and rec.offscreen
+    return EDGES[edge] and edge or nil
+end
+
+--- The frame's center in its regular layout, relative to the screen center in
+--- UI units, and the base scale it was computed at.
+local function baseCenter(st)
+    local EM = addon.EditMode
+    local frame = frameOf(st)
+    local b = baseValue(st, "position")
+    if not (EM and EM.CenterFromRecord and frame and b) then return nil end
+    local bs = st.channelSet and st.channelSet.scale and baseValue(st, "scale") or nil
+    if not (bs and bs > 0) then
+        local ok, s = pcall(frame.GetScale, frame)
+        bs = (ok and plainNumber(s) and s > 0) and s or 1
+    end
+    local cx, cy = EM.CenterFromRecord(frame, b.point, b.x, b.y, bs)
+    if not cx then return nil end
+    return cx, cy, bs
+end
+
+--- The off-screen position, as a CENTER record in the frame's own scale. The
+--- frame keeps its regular layout's coordinate along the edge and goes fully
+--- past the edge at its dynamic scale, computed at apply time so it holds at
+--- any resolution or UI scale.
+local function offscreenValue(st, edge)
+    local frame = frameOf(st)
+    local cx, cy, bs = baseCenter(st)
+    if not cx then return nil end
+    local ds = st.channelSet.scale and dynamicValue(st.def.id, "scale") or nil
+    if not (ds and ds > 0) then ds = bs end
+    local ok, w, h = pcall(frame.GetSize, frame)
+    w, h = ok and plainNumber(w), ok and plainNumber(h)
+    if not (w and h) then return nil end
+    local W, H = UIParent:GetSize()
+    if edge == "LEFT" then
+        cx = -W / 2 - w * ds / 2 - OFFSCREEN_PAD
+    elseif edge == "RIGHT" then
+        cx = W / 2 + w * ds / 2 + OFFSCREEN_PAD
+    elseif edge == "TOP" then
+        cy = H / 2 + h * ds / 2 + OFFSCREEN_PAD
+    else
+        cy = -H / 2 - h * ds / 2 - OFFSCREEN_PAD
+    end
+    return { point = "CENTER", x = cx / ds, y = cy / ds }
+end
+
 --- Target value and whether it is the base. A dynamic state whose record is
 --- silent on a channel targets the base for that channel, with one
 --- re-expression: a silent position under a dynamic scale keeps the anchor
 --- point on its screen spot, so the frame scales in place. Offsets are in the
 --- frame's own scale, so the base pair is multiplied by base over dynamic.
+--- An off-screen edge outranks the record's own position.
 local function valueFor(st, channel, state)
     if state == "dynamic" then
+        if channel == "position" then
+            local edge = offscreenEdge(st.def.id)
+            local value = edge and offscreenValue(st, edge)
+            if value then return value, false end
+        end
         local value = dynamicValue(st.def.id, channel)
         if value ~= nil then return value, false end
         if channel == "position" and st.channelSet.scale then
@@ -200,6 +278,23 @@ local function applier(st, channel)
     return DEFAULT_APPLY[channel]
 end
 
+--- A frame clamped to the screen cannot go off it, so the clamp comes off
+--- while a slide heads off-screen, and goes back on once a position lands
+--- anywhere else. A protected frame takes the write out of lockdown only,
+--- where its position channel is legal anyway.
+local function releaseClamp(st, frame)
+    if st.clampKept or not frame.IsClampedToScreen then return end
+    local ok, clamped = pcall(frame.IsClampedToScreen, frame)
+    if ok and clamped == true and pcall(frame.SetClampedToScreen, frame, false) then
+        st.clampKept = true
+    end
+end
+
+local function restoreClamp(st, frame)
+    if not st.clampKept then return end
+    if pcall(frame.SetClampedToScreen, frame, true) then st.clampKept = nil end
+end
+
 --- The final write for a channel, through the adapter's applier.
 local function writeFinal(st, channel, value, isBase)
     local frame = frameOf(st)
@@ -210,7 +305,10 @@ local function writeFinal(st, channel, value, isBase)
     else
         ok, err = pcall(applier(st, channel), frame, value)
     end
-    if channel == "position" then st.centered = nil end
+    if channel == "position" then
+        st.centered = nil
+        if ok and not st.offscreenTarget then restoreClamp(st, frame) end
+    end
     if not ok then
         st.lastError = channel .. ": " .. tostring(err)
         return false
@@ -324,6 +422,10 @@ applyState = function(st, state, mode, only)
             end
         end
     end
+    if plan.position then
+        st.offscreenTarget = state == "dynamic" and offscreenEdge(id) ~= nil or nil
+        if st.offscreenTarget and channelLegal(st, "position") then releaseClamp(st, frame) end
+    end
 
     local tweenChannels = nil
     for _, ch in ipairs(CHANNELS) do
@@ -385,7 +487,7 @@ applyState = function(st, state, mode, only)
     if next(spec.channels) == nil then return end
 
     spec.frame = frame
-    spec.duration = speed()
+    spec.duration = speed(directionTo(state))
     spec.scale = frameScale
     spec.legal = function(ch) return channelLegal(st, ch) end
     spec.write = function(ch, a, b) writeTick(st, ch, a, b) end
@@ -415,6 +517,8 @@ end
 ---   base     = { [channel] = function() -> value }; position returns point, x, y,
 ---   apply    = { [channel] = function(frame, ...) }, optional final writers,
 ---   queue    = function(channel, reapply), optional, the protected tier's slot,
+---   group    = string, optional, a key from DL.RegisterGroup: the frame takes
+---              part when the group does, under one checkbox,
 --- }
 --- Re-registering an id replaces the def and keeps the state. A bad def
 --- leaves the adapter inert with its reason in lastError.
@@ -518,6 +622,85 @@ function DL.Definitions()
     return out
 end
 
+--- Drop an adapter whose frame is gone for good (a deleted action bar
+--- cluster). Its tweens stop where they are; a regen closure filed for it
+--- finds no adapter and returns.
+function DL.Unregister(id)
+    local st = adapters[id]
+    if not st then return end
+    Tween.Cancel(id)
+    adapters[id] = nil
+    for i = #registered, 1, -1 do
+        if registered[i] == id then table.remove(registered, i) end
+    end
+    for i, known in ipairs(registered) do
+        adapters[known].order = i
+    end
+end
+
+--- A participation key several adapters share through `group` in their
+--- definitions, with the label its checkbox reads and its place in the list.
+function DL.RegisterGroup(key, label, order)
+    if type(key) ~= "string" then return end
+    groups[key] = { label = label or key, order = tonumber(order) or 100 }
+end
+
+DL.ParticipationKey = participationKey
+DL.IsParticipating = participating
+
+--- The view's checkbox list: one entry per participation key with at least
+--- one live adapter, as { key, label, ids }, registered groups first in their
+--- order, then single frames in registration order.
+function DL.Groups()
+    local byKey, out = {}, {}
+    for _, id in ipairs(registered) do
+        local st = adapters[id]
+        if not st.inert then
+            local key = participationKey(id)
+            local entry = byKey[key]
+            if not entry then
+                local g = groups[key]
+                entry = {
+                    key = key,
+                    label = g and g.label or st.def.label or id,
+                    sort = g and g.order or (1000 + st.order),
+                    ids = {},
+                }
+                byKey[key] = entry
+                out[#out + 1] = entry
+            end
+            entry.ids[#entry.ids + 1] = id
+        end
+    end
+    table.sort(out, function(a, b) return a.sort < b.sort end)
+    return out
+end
+
+--- Join or leave every frame under a key; each tweens to its new state.
+function DL.SetParticipating(key, on)
+    local store = Store()
+    if not (store and store.SetParticipating) then return end
+    store.SetParticipating(key, on and true or false)
+    for _, id in ipairs(registered) do
+        if participationKey(id) == key then DL.Refresh(id, "tween") end
+    end
+end
+
+--- The edge a frame's dynamic record sends it off by, or nil.
+function DL.OffscreenEdge(id)
+    if not adapters[id] then return nil end
+    return offscreenEdge(id)
+end
+
+--- The frame's center in its regular layout, relative to the screen center
+--- in UI units: where its off-screen tab stands along the edge.
+function DL.BaseCenter(id)
+    local st = adapters[id]
+    if not st or st.inert then return nil end
+    local cx, cy = baseCenter(st)
+    return cx, cy
+end
+
 --- One channel's base value from the adapter's getter (position as a
 --- record), or nil; and the record's own value for it, or nil.
 function DL.BaseValue(id, channel)
@@ -531,9 +714,10 @@ function DL.DynamicValue(id, channel)
     return dynamicValue(id, channel)
 end
 
---- The transition duration the next tween takes, clamped.
-function DL.Speed()
-    return speed()
+--- The transition duration the next tween in `direction` takes, clamped:
+--- "in" toward the dynamic state, "out" toward the base.
+function DL.Speed(direction)
+    return speed(direction)
 end
 
 --- Re-run the decision for one adapter. mode: "snap" or "tween".
@@ -733,8 +917,9 @@ end
 
 local function section(push)
     local store = Store()
-    push("adapters (%d registered, speed %.2fs, force %s, view %s, store %s)",
-        #registered, speed(), forced or "off", view and "on" or "off", store and "set" or "MISSING")
+    push("adapters (%d registered, speed in %.2fs out %.2fs, force %s, view %s, store %s)",
+        #registered, speed("in"), speed("out"), forced or "off", view and "on" or "off",
+        store and "set" or "MISSING")
     if #registered == 0 then
         push("  (none)")
         return
@@ -742,14 +927,14 @@ local function section(push)
     for _, id in ipairs(registered) do
         local st = adapters[id]
         local def = st.def
-        local rec = record(id)
         if st.inert then
             push("  [%s] %s  INERT: %s", id, tostring(def.label), st.inert)
         else
             local edge = st.lastEdge
-            push("  [%s] %s  %s  enabled %s  channels %s  target %s  edge %s",
+            push("  [%s] %s  %s  joined %s (%s)  offscreen %s  channels %s  target %s  edge %s",
                 id, tostring(def.label), def.tier,
-                (rec and rec.enabled) and "on" or "off",
+                participating(id) and "on" or "off", participationKey(id),
+                offscreenEdge(id) or "-",
                 table.concat(def.channels, ","),
                 st.target or "(none)",
                 edge and string.format("%s %s/%s", edge.wall, edge.origin, edge.mode) or "-")
@@ -810,9 +995,10 @@ local function enableVerb(id, state)
     local on = onOff(state)
     local store = Store()
     if not (id and on ~= nil and store) then return addon.Commands.USAGE end
-    store.SetRecord(id, { enabled = on })
-    DL.Refresh(id, "tween")
+    DL.SetParticipating(participationKey(id), on)
 end
+
+local OFFSCREEN_WORDS = { up = "TOP", down = "BOTTOM", left = "LEFT", right = "RIGHT" }
 
 local function valueVerb(id, field, raw)
     id = resolveId(id)
@@ -823,7 +1009,8 @@ local function valueVerb(id, field, raw)
     if string.lower(tostring(raw or "")) == "off" then
         -- The store merges, so false is how a field clears; the readers
         -- type-check and read it as absent.
-        if not (field == "opacity" or field == "scale" or field == "x" or field == "y" or field == "point") then
+        if not (field == "opacity" or field == "scale" or field == "x" or field == "y"
+                or field == "point" or field == "offscreen") then
             return addon.Commands.USAGE
         end
         fields = { [field] = false }
@@ -843,6 +1030,10 @@ local function valueVerb(id, field, raw)
         local point = string.upper(tostring(raw or ""))
         if not ANCHORS[point] then return addon.Commands.USAGE end
         fields = { point = point }
+    elseif field == "offscreen" then
+        local edge = OFFSCREEN_WORDS[string.lower(tostring(raw or ""))]
+        if not edge then return addon.Commands.USAGE end
+        fields = { offscreen = edge }
     else
         return addon.Commands.USAGE
     end
@@ -850,13 +1041,24 @@ local function valueVerb(id, field, raw)
     DL.Refresh(id, "tween")
 end
 
-local function speedVerb(raw)
-    local v = tonumber(raw)
+local DIRECTIONS = { ["in"] = true, out = true }
+
+-- `speed <seconds>` sets both directions; `speed <in|out> <seconds>` one.
+local function speedVerb(a, b)
     local store = Store()
-    if not (v and store and store.SetSpeed) then return addon.Commands.USAGE end
+    if not (store and store.SetSpeed) then return addon.Commands.USAGE end
+    local word = string.lower(tostring(a or ""))
+    local direction = DIRECTIONS[word] and word or nil
+    local v = tonumber(direction and b or a)
+    if not v or (not direction and b ~= nil) then return addon.Commands.USAGE end
     if v < SPEED_MIN then v = SPEED_MIN end
     if v > SPEED_MAX then v = SPEED_MAX end
-    store.SetSpeed(v)
+    if direction then
+        store.SetSpeed(direction, v)
+    else
+        store.SetSpeed("in", v)
+        store.SetSpeed("out", v)
+    end
 end
 
 local function forceVerb(state)
@@ -872,11 +1074,11 @@ end
 
 local verbs = DL.DebugVerbs
 verbs[#verbs + 1] = { word = "enable", usage = "enable <id> <on|off>",
-    help = "let a frame take its dynamic state; ids are the window's adapter rows", fn = enableVerb }
-verbs[#verbs + 1] = { word = "value", usage = "value <id> <opacity|scale|x|y|point> <value|off>",
-    help = "set one field of a frame's dynamic record (opacity 0..1, scale 0.25..4); off clears it", fn = valueVerb }
-verbs[#verbs + 1] = { word = "speed", usage = "speed <0.25..2>",
-    help = "the transition duration in seconds, per profile", fn = speedVerb }
+    help = "let a frame's group take its dynamic state; ids are the window's adapter rows", fn = enableVerb }
+verbs[#verbs + 1] = { word = "value", usage = "value <id> <opacity|scale|x|y|point|offscreen> <value|off>",
+    help = "set one field of a frame's dynamic record (opacity 0..1, scale 0.25..4, offscreen up|down|left|right); off clears it", fn = valueVerb }
+verbs[#verbs + 1] = { word = "speed", usage = "speed [in|out] <0.25..2>",
+    help = "the transition duration in seconds, per profile: into the dynamic layout, out of it, or both", fn = speedVerb }
 verbs[#verbs + 1] = { word = "force", usage = "force <base|dynamic|off>",
     help = "hold a state regardless of the triggers, this session; Edit Mode clears it", fn = forceVerb }
 

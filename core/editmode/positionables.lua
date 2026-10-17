@@ -285,10 +285,15 @@ end
 
 --- The dialog's rows while the dynamic view holds: the position row over the
 --- live center, then Opacity and Scale over the frame's dynamic record, each
---- only for a channel the adapter carries. A slider write snaps, so the
+--- only for a channel the adapter carries and each reading the base value
+--- until the record holds one. Opacity is the frame's own alpha, the whole
+--- element. A slider write snaps, so the
 --- frame follows the thumb. A scale write re-expresses a stored position at
 --- the new scale, since offsets are in the frame's own scale and the anchor
 --- point would otherwise drift.
+local OFFSCREEN_LABELS = { TOP = "Up", BOTTOM = "Down", LEFT = "Left", RIGHT = "Right" }
+local OFFSCREEN_ORDER = { "TOP", "BOTTOM", "LEFT", "RIGHT" }
+
 local function dynamicRows(entry, frame)
     local DL = addon.DynamicLayouts
     local store = addon.DynamicLayoutsStore
@@ -315,6 +320,23 @@ local function dynamicRows(entry, frame)
             label = "Position",
             get   = function() return liveCenter(frame) end,
             set   = function(p) commitPosition(entry, frame, p) end,
+            -- Move Off Screen: an edge the frame leaves by, over its X and Y.
+            -- The frame slides out at the player's speed, and the view's tab
+            -- for it comes and goes with the edge.
+            offscreen = {
+                label = "Move Off Screen?",
+                values = OFFSCREEN_LABELS,
+                order = OFFSCREEN_ORDER,
+                get = function()
+                    local edge = rec().offscreen
+                    return OFFSCREEN_LABELS[edge] and edge or nil
+                end,
+                set = function(edge)
+                    store.SetRecord(id, { offscreen = OFFSCREEN_LABELS[edge] and edge or false })
+                    DL.Refresh(id, "tween")
+                    if DL.View and DL.View.NotifyRecord then DL.View.NotifyRecord(id) end
+                end,
+            },
         }
     end
     if channels.opacity then
@@ -322,7 +344,8 @@ local function dynamicRows(entry, frame)
             kind = "slider", label = "Opacity", min = 0, max = 100, step = 1, precision = 0,
             get = function()
                 local v = rec().opacity
-                return percent(type(v) == "number" and v or 1)
+                if type(v) ~= "number" then v = DL.BaseValue(id, "opacity") or 1 end
+                return percent(v)
             end,
             set = function(v) write({ opacity = v / 100 }) end,
         }
@@ -474,6 +497,17 @@ function EM.RegisterPositionable(frame, opts)
     return entry.selection
 end
 
+--- Re-fits a registered frame's selection over new art. For a frame whose
+--- art changes shape after registration (Camelot's cast bar, whose Cast Bar
+--- Style swaps the border around one frame); `reach` as RegisterPositionable
+--- takes it, and nil puts the selection back on the frame's own rect. A frame
+--- the registry does not know is left alone.
+function EM.UpdateReach(frame, reach)
+    local entry = registry[frame]
+    if not (entry and entry.selection) then return end
+    coverReach(entry.selection, frame, type(reach) == "table" and reach or {})
+end
+
 --- Re-applies the stored position (or the default, when the frame opted in).
 --- layoutName defaults to the active layout; nil layout or unknown frame: no-op.
 function EM.RestorePositionable(frame, layoutName)
@@ -553,6 +587,8 @@ function EM.MatchBase(frame)
     if not (id and store) then return end
     store.SetRecord(id, { opacity = false, scale = false, point = false, x = false, y = false, offscreen = false })
     addon.DynamicLayouts.Refresh(id, "tween")
+    local View = addon.DynamicLayouts.View
+    if View and View.NotifyRecord then View.NotifyRecord(id) end
 end
 
 --------------------------------------------------------------------------------

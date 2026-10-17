@@ -4,8 +4,8 @@
 -- that ui/v2/editmode/DynamicView.lua draws. While the view holds, every
 -- participating frame sits in its dynamic state, its selection box writes
 -- the dynamic record, and the resolver's answer waits under Edit Mode. Entry
--- and exit play the real transition at the player's speed, and input is held
--- off for that window. The view ends three ways: Done plays the transition
+-- and exit play the real transition at the player's speed for that direction,
+-- and input is held off for that window. The view ends three ways: Done plays the transition
 -- back; Edit Mode closing under it tears down at once and lets the exit
 -- resolution decide the state; combat entry ends it inside the engine's
 -- regen-disabled handler, where the base snap is still legal, and the
@@ -105,10 +105,15 @@ function View.CanEnter()
         and not inCombat()
 end
 
+--- Whether a frame takes part: its group's checkbox, or its own.
 function View.IsParticipating(id)
+    return DL.IsParticipating(id) and true or false
+end
+
+--- Whether a participation key's checkbox is on.
+function View.IsKeyParticipating(key)
     local store = Store()
-    local rec = store and store.GetRecord(id)
-    return (rec and rec.enabled) and true or false
+    return (store and store.GetParticipating and store.GetParticipating(key)) and true or false
 end
 
 function View.GetTrigger(name)
@@ -123,17 +128,18 @@ function View.SetTrigger(name, on)
     DL.PersistTrigger(name, on)
 end
 
-function View.GetSpeed()
-    return DL.Speed()
+--- direction: "in", the transition into the dynamic layout, or "out".
+function View.GetSpeed(direction)
+    return DL.Speed(direction)
 end
 
-function View.SetSpeed(seconds)
+function View.SetSpeed(direction, seconds)
     local store = Store()
     local v = tonumber(seconds)
     if not (store and store.SetSpeed and v) then return end
     if v < DL.SPEED_MIN then v = DL.SPEED_MIN end
     if v > DL.SPEED_MAX then v = DL.SPEED_MAX end
-    store.SetSpeed(v)
+    store.SetSpeed(direction, v)
 end
 
 --------------------------------------------------------------------------------
@@ -231,12 +237,13 @@ local function releaseLock()
     end
 end
 
-local function lock()
+-- `direction` is the transition the lock covers: "in" on entry, "out" on Done.
+local function lock(direction)
     lockToken = lockToken + 1
     local token = lockToken
     locked = true
     call("onLock", true)
-    C_Timer.After(DL.Speed() + LOCK_PAD, function() unlock(token) end)
+    C_Timer.After(DL.Speed(direction) + LOCK_PAD, function() unlock(token) end)
 end
 
 --------------------------------------------------------------------------------
@@ -270,7 +277,7 @@ function View.Enter()
     -- The drawing side builds its shield on the first entry, so it goes
     -- before the lock that raises it.
     call("onEnter")
-    lock()
+    lock("in")
     DL.SetView(true, nil, View.End)
     recolorBoxes()
     return true
@@ -280,22 +287,27 @@ end
 function View.Exit()
     if not active then return end
     hideLibraryDialog()
-    lock()
+    lock("out")
     DL.SetView(false, "tween")
     finish("done")
 end
 
---- A frame joins or leaves the dynamic layout from the panel's checkbox. Its
---- box shows or fades with it, and the frame tweens to the state it now has.
-function View.SetParticipating(id, on)
-    local store = Store()
-    if not (store and active) then return end
+--- A group of frames joins or leaves the dynamic layout from the panel's
+--- checkbox. Their boxes show or fade with it, and each frame tweens to the
+--- state it now has.
+function View.SetParticipating(key, on)
+    if not (Store() and active) then return end
     on = on and true or false
-    store.SetRecord(id, { enabled = on })
+    DL.SetParticipating(key, on)
     if not on then hideLibraryDialog() end
     arrangeBoxes()
-    DL.Refresh(id, "tween")
-    call("onParticipation", id, on)
+    call("onParticipation", key, on)
+end
+
+--- A record write from the dialog that the drawing side shows off the frame
+--- (the off-screen tabs).
+function View.NotifyRecord(id)
+    call("onRecord", id)
 end
 
 -- Edit Mode closing under the view: no transition of the view's own. The

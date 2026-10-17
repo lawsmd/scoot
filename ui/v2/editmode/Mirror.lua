@@ -120,6 +120,16 @@ local POS_HALF_GAP    = 16   -- between the X half and the Y half
 local POS_PAD_BOTTOM  = 4
 local POS_ROW_H       = 46   -- label line + box line
 local POS_MAX_LETTERS = 6    -- "-12345" is wider than any screen and still fits the box
+-- The dynamic view's row, when the spec carries `offscreen`: the label over
+-- the left half and the X and Y boxes stacked under it, Move Off Screen and
+-- its direction picker in the right half, level with the two boxes.
+local POS_LABEL_H     = 22   -- the label's line, over the first box
+local POS_STACK_GAP   = 6    -- between the X box and the Y box
+local POS_STACK_ROW_H = 76   -- label line + two boxes + the gap + the pad
+local POS_PAIR_SHIFT  = 8    -- moves box and tag right, so the pair centers
+local POS_CHECK_FIT   = 24   -- the checkbox's box, at most
+local POS_DIR_W       = 140  -- the direction picker, inside the half
+local POS_DIMMED      = 0.4  -- the boxes and tags while Move Off Screen holds
 
 --------------------------------------------------------------------------------
 -- State
@@ -172,7 +182,19 @@ local BUILDERS = {
 
     position = function(Controls, parent, spec, set)
         local row = CreateFrame("Frame", nil, parent)
-        row:SetHeight(POS_ROW_H)
+        local stacked = type(spec.offscreen) == "table"
+        row:SetHeight(stacked and POS_STACK_ROW_H or POS_ROW_H)
+
+        -- The stacked row's two halves, split at the row's center line.
+        local leftHalf, rightHalf = row, nil
+        if stacked then
+            leftHalf = CreateFrame("Frame", nil, row)
+            leftHalf:SetPoint("TOPLEFT", row, "TOPLEFT")
+            leftHalf:SetPoint("BOTTOMRIGHT", row, "BOTTOM")
+            rightHalf = CreateFrame("Frame", nil, row)
+            rightHalf:SetPoint("TOPLEFT", row, "TOP")
+            rightHalf:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT")
+        end
 
         local theme = addon.UI and addon.UI.Theme
 
@@ -187,7 +209,7 @@ local BUILDERS = {
         local label = row:CreateFontString(nil, "OVERLAY")
         styleLabel(label)
         label:SetJustifyH("CENTER")
-        label:SetPoint("TOP", row, "TOP", 0, -2)
+        label:SetPoint("TOP", leftHalf, "TOP", 0, -2)
         label:SetText(spec.label or "")
 
         -- The pair get() last returned: a committed box supplies one
@@ -219,12 +241,63 @@ local BUILDERS = {
         local xBox = makeBox()
         local reach = xBox._artLeft or 0
         local boxH = xBox:GetHeight()
-        xBox:SetPoint("BOTTOMRIGHT", row, "BOTTOM", -POS_HALF_GAP / 2, POS_PAD_BOTTOM)
-        makeTag("X"):SetPoint("RIGHT", xBox, "LEFT", -(4 + reach), 0)
+        local xTag = makeTag("X")
         local yTag = makeTag("Y")
-        yTag:SetPoint("LEFT", row, "BOTTOM", POS_HALF_GAP / 2, POS_PAD_BOTTOM + boxH / 2)
         local yBox = makeBox()
-        yBox:SetPoint("LEFT", yTag, "RIGHT", 4 + reach, 0)
+        if stacked then
+            -- Stacked in the left half, each tag left of its box.
+            xBox:SetPoint("TOP", leftHalf, "TOP", POS_PAIR_SHIFT, -POS_LABEL_H)
+            yBox:SetPoint("TOP", xBox, "BOTTOM", 0, -POS_STACK_GAP)
+            xTag:SetPoint("RIGHT", xBox, "LEFT", -(4 + reach), 0)
+            yTag:SetPoint("RIGHT", yBox, "LEFT", -(4 + reach), 0)
+        else
+            xBox:SetPoint("BOTTOMRIGHT", row, "BOTTOM", -POS_HALF_GAP / 2, POS_PAD_BOTTOM)
+            xTag:SetPoint("RIGHT", xBox, "LEFT", -(4 + reach), 0)
+            yTag:SetPoint("LEFT", row, "BOTTOM", POS_HALF_GAP / 2, POS_PAD_BOTTOM + boxH / 2)
+            yBox:SetPoint("LEFT", yTag, "RIGHT", 4 + reach, 0)
+        end
+
+        -- Move Off Screen: the checkbox and its name level with the X box,
+        -- centered in the right half; the direction picker under it, level
+        -- with the Y box, shown while the box is checked. Checked, the
+        -- frame's position is its edge's, so the X and Y boxes dim and take
+        -- no input until it is unchecked.
+        local check, dirPick
+        if stacked then
+            local off = spec.offscreen
+            local function toggle()
+                if InCombatLockdown() then return end
+                off.set(off.get() == nil and "BOTTOM" or false)
+                row:Refresh()
+            end
+            check = Controls.CreateToggleIndicator(rightHalf, {
+                clickable = true, fit = POS_CHECK_FIT, onClick = toggle,
+            })
+            local caption = rightHalf:CreateFontString(nil, "OVERLAY")
+            styleLabel(caption)
+            caption:SetText(off.label or "Move Off Screen?")
+            local pairW = check.width + 6 + caption:GetStringWidth()
+            check.frame:SetPoint("LEFT", rightHalf, "TOP", -pairW / 2, -(POS_LABEL_H + boxH / 2))
+            caption:SetPoint("LEFT", check.frame, "RIGHT", 6, 0)
+            -- The name takes the click too, as a checkbox's label does.
+            local hit = CreateFrame("Button", nil, rightHalf)
+            hit:SetAllPoints(caption)
+            hit:SetScript("OnClick", toggle)
+
+            dirPick = Controls:CreateDropdown({
+                parent = rightHalf,
+                values = off.values,
+                order  = off.order,
+                width  = POS_DIR_W,
+                get    = off.get,
+                set    = function(edge)
+                    if InCombatLockdown() then return end
+                    off.set(edge)
+                    row:Refresh()
+                end,
+            })
+            dirPick:SetPoint("TOP", rightHalf, "TOP", 0, -(POS_LABEL_H + boxH + POS_STACK_GAP))
+        end
 
         local function paint(box, v)
             if box:HasFocus() then return end
@@ -288,9 +361,17 @@ local BUILDERS = {
             lastX, lastY = cx, cy
             paint(xBox, cx)
             paint(yBox, cy)
-            local enabled = (cx ~= nil) and not InCombatLockdown()
+            local edge = stacked and spec.offscreen.get() or nil
+            local enabled = (cx ~= nil) and edge == nil and not InCombatLockdown()
             xBox:SetEnabled(enabled)
             yBox:SetEnabled(enabled)
+            if stacked then
+                local alpha = (edge == nil) and 1 or POS_DIMMED
+                for _, region in ipairs({ xBox, yBox, xTag, yTag }) do region:SetAlpha(alpha) end
+                check:SetState(edge ~= nil, InCombatLockdown())
+                dirPick:SetShown(edge ~= nil)
+                if edge ~= nil then dirPick:Refresh() end
+            end
         end
 
         local function repaintBoth()

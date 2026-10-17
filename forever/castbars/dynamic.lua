@@ -45,6 +45,7 @@ local function definition(bar, row, m)
     return {
         id = row.layoutKey,
         label = (CBZ.UNIT_LABELS[row.unitKey] or row.unitKey) .. " Cast Bar",
+        group = "castBars",
         frame = bar,
         tier = "plain",
         channels = m == "free" and FREE or SNAPPED,

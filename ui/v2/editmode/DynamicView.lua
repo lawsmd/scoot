@@ -22,8 +22,9 @@
 -- ClearSelectedSystem, which the library calls on every click of an
 -- addon-owned box, so a post-hook on it runs the hide again at once. The strip grows
 -- down from the box's top edge into the panel, wider than the box by an
--- outset each side for the two columns of frames: the requirements, the
--- transition speed, the frames that take part, and Done. Done puts every
+-- outset each side for the two columns of frames: the requirements at the
+-- left with the two transition speeds (into the dynamic layout, out of it)
+-- stacked at the right, the frames that take part, and Done. Done puts every
 -- Blizzard piece back at once. The other ends of the view put the alphas back
 -- and re-show the selections only if Edit Mode still holds a frame later,
 -- since Blizzard's own exit has hidden them for good by then.
@@ -61,10 +62,10 @@ local BTN_H        = 26
 local BUTTON_W     = 200
 local DONE_W       = 120
 local ROW_H        = 36    -- Controls:CreateToggle's row
-local SLIDER_ROW_H = 40    -- Controls:CreateSlider's row
+local SPEED_ROW_H  = 44    -- a speed slider's row: its label over its track
+local SPEED_W      = 140   -- a speed slider's track, cut so the arrows and the value box fit a column
 local GLOW_IN      = 4     -- the halo's inset from the button's edge, inside its border
 local PANEL_OUTSET = 45    -- the panel's reach past each side of the box
-local NOTE_W       = 300   -- the requirements sentence's wrap width, two lines over the checkboxes
 local BORDER_W     = 4
 local FADE         = 0.3
 
@@ -117,6 +118,12 @@ local reshowOwed = false         -- a re-show that waited for lockdown to end
 local function Chrome() return addon.UI and addon.UI.Chrome end
 local function Controls() return addon.UI and addon.UI.Controls end
 local function Theme() return addon.UI and addon.UI.Theme end
+
+-- The off-screen tabs (DynamicTabs.lua).
+local function SyncTabs()
+    local tabs = addon.EditMode and addon.EditMode.DynamicTabs
+    if tabs then tabs.Sync() end
+end
 
 local function View()
     local DL = addon.DynamicLayouts
@@ -513,7 +520,6 @@ local function BuildPanel()
     req:SetTextColor(PrimaryColor())
     req:SetJustifyH("CENTER")
     req:SetWordWrap(true)
-    req:SetWidth(NOTE_W)
     req:SetText("Switch to the dynamic layout when every checked requirement is met")
     panel.requirements = req
 
@@ -544,19 +550,40 @@ local function BuildPanel()
         panel.triggers[#panel.triggers + 1] = row
     end
 
-    panel.speed = Ctl:CreateSlider({
-        parent = content, label = "Transition speed",
-        min = 0.25, max = 2, step = 0.25, precision = 2, displaySuffix = "s",
-        width = 180, inputWidth = 48,
-        get = function()
-            local V = View()
-            return V and V.GetSpeed() or 0.5
-        end,
-        set = function(v)
-            local V = View()
-            if V then V.SetSpeed(v) end
-        end,
-    })
+    -- The two speed sliders, one per direction, each with its label centered
+    -- over its track in place of the row's left-anchored label beside it.
+    local function StackSliderRow(row)
+        local label, cluster = row._label, row._sliderContainer
+        if label then
+            label:ClearAllPoints()
+            label:SetWidth(0)
+            label:SetJustifyH("CENTER")
+            label:SetPoint("TOP", row, "TOP", 0, 0)
+        end
+        if cluster then
+            cluster:ClearAllPoints()
+            cluster:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
+        end
+        row:SetHeight(SPEED_ROW_H)
+        return row
+    end
+    local function SpeedSlider(direction, label)
+        return StackSliderRow(Ctl:CreateSlider({
+            parent = content, label = label,
+            min = 0.25, max = 2, step = 0.25, precision = 2, displaySuffix = "s",
+            width = SPEED_W, inputWidth = 48,
+            get = function()
+                local V = View()
+                return V and V.GetSpeed(direction) or 0.5
+            end,
+            set = function(v)
+                local V = View()
+                if V then V.SetSpeed(direction, v) end
+            end,
+        }))
+    end
+    panel.speedIn = SpeedSlider("in", "Transition Speed INTO Dynamic Layout")
+    panel.speedOut = SpeedSlider("out", "Transition Speed OUT OF Dynamic Layout")
 
     local frames = content:CreateFontString(nil, "OVERLAY")
     ApplyFont(frames, "header", SECTION_SIZE)
@@ -575,8 +602,10 @@ local function BuildPanel()
     return panel
 end
 
--- One checkbox per live adapter, in registration order. Rebuilt on every
--- entry: an adapter can register between two openings of Edit Mode.
+-- One checkbox per participation key: a group (every unit frame, every
+-- action bar cluster) or a frame of its own, in the engine's group order.
+-- Rebuilt on every entry: an adapter can register or leave between two
+-- openings of Edit Mode.
 local function BuildFrameRows()
     for _, row in ipairs(frameRows) do
         if row.Cleanup then pcall(row.Cleanup, row) end
@@ -586,18 +615,18 @@ local function BuildFrameRows()
     end
     wipe(frameRows)
     local DL, Ctl = addon.DynamicLayouts, Controls()
-    if not (DL and DL.Definitions and Ctl) then return end
-    for _, def in ipairs(DL.Definitions()) do
-        local id = def.id
+    if not (DL and DL.Groups and Ctl) then return end
+    for _, group in ipairs(DL.Groups()) do
+        local key = group.key
         frameRows[#frameRows + 1] = Ctl:CreateToggle({
-            parent = strip._content, label = def.label,
+            parent = strip._content, label = group.label,
             get = function()
                 local V = View()
-                return (V and V.IsParticipating(id)) and true or false
+                return (V and V.IsKeyParticipating(key)) and true or false
             end,
             set = function(v)
                 local V = View()
-                if V then V.SetParticipating(id, v) end
+                if V then V.SetParticipating(key, v) end
             end,
         })
     end
@@ -605,10 +634,11 @@ end
 
 -- The three requirement rows as one block: the widest label, the checkbox
 -- and the row's own padding each side set the block's width, and each row is
--- that wide and centered, so the labels, right-aligned against their
--- checkboxes, and the checkboxes stand as one centered column pair. The
--- padding is read off the checkbox's anchor, the row's own number.
-local function LayoutRequirementRows(content, W, y)
+-- that wide and centered in the column at colX of width colW, so the labels,
+-- right-aligned against their checkboxes, and the checkboxes stand as one
+-- centered column pair. The padding is read off the checkbox's anchor, the
+-- row's own number.
+local function LayoutRequirementRows(content, colX, colW, y)
     local labelW, boxW, pad = 0, 0, PAD
     for _, row in ipairs(panel.triggers) do
         local label, box = row._label, row._indicator
@@ -623,7 +653,7 @@ local function LayoutRequirementRows(content, W, y)
         end
     end
     local rowW = pad + math.ceil(labelW) + GAP + boxW + pad
-    local left = (W - rowW) / 2
+    local left = colX + (colW - rowW) / 2
     for _, row in ipairs(panel.triggers) do
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
@@ -636,11 +666,12 @@ end
 --- Lay the panel out from the strip's top edge down; returns the height it
 --- needs. The width is the box's own plus the outset each side, read off the
 --- box rather than off the strip, whose rect follows its anchors a frame
---- later. The title is centered; the requirements sentence and its rows are
---- a centered block under it; the frames run in two columns, each wide
---- enough for the longest label and its checkbox. Idempotent, and run again a
---- frame after the entry: the sentence's wrapped height reads as one line
---- until it has drawn once.
+--- later. The title is centered; under it two columns, the requirements
+--- sentence and its rows a centered block in the left one and the two speed
+--- sliders a stack in the right, centered against the block; the frames run
+--- in two columns of the same width, each wide enough for the longest label
+--- and its checkbox. Idempotent, and run again a frame after the entry: the
+--- sentence's wrapped height reads as one line until it has drawn once.
 LayoutPanel = function()
     if not panel then return STRIP_H end
     local mgr, content = Manager(), strip._content
@@ -654,29 +685,41 @@ LayoutPanel = function()
     AnchorPortrait(panel.title)
     y = y - TITLE_SIZE - 6 - GAP * 2
 
+    -- Two columns under the title, the Frames columns' width: the
+    -- requirements block in the left one, the two speed sliders stacked in
+    -- the right and centered against the block's height.
+    local colW = (W - PAD * 3) / 2
+    local rightX = left + colW + PAD
+    local top = y
+
     -- The sentence, at least its two lines tall, close over its rows.
     local req = panel.requirements
     req:ClearAllPoints()
-    req:SetPoint("TOP", content, "TOP", 0, y)
+    req:SetWidth(colW - 2 * GAP)
+    req:SetPoint("TOP", content, "TOPLEFT", left + colW / 2, y)
     local lineH = TEXT_SIZE + 4
     local noteH = 2 * lineH
     local okH, h = pcall(req.GetStringHeight, req)
     if okH and type(h) == "number" and h > noteH then noteH = h end
     y = y - noteH - 4
 
-    y = LayoutRequirementRows(content, W, y)
-    y = y - GAP
+    y = LayoutRequirementRows(content, left, colW, y)
+    local leftH = top - y
 
-    panel.speed:ClearAllPoints()
-    panel.speed:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
-    panel.speed:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, y)
-    y = y - SLIDER_ROW_H - GAP
+    local rightH = 2 * SPEED_ROW_H + GAP
+    local sy = top - math.max(0, (leftH - rightH) / 2)
+    for _, row in ipairs({ panel.speedIn, panel.speedOut }) do
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", rightX, sy)
+        row:SetWidth(colW)
+        sy = sy - SPEED_ROW_H - GAP
+    end
+    y = top - math.max(leftH, rightH) - GAP
 
     panel.framesTitle:ClearAllPoints()
     panel.framesTitle:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
     y = y - SECTION_SIZE - 6 - 2
 
-    local colW = (W - PAD * 3) / 2
     for i, row in ipairs(frameRows) do
         local col = (i - 1) % 2
         local line = math.floor((i - 1) / 2)
@@ -703,7 +746,9 @@ local function RefreshPanel()
     for _, row in ipairs(panel.triggers) do
         if row.Refresh then pcall(row.Refresh, row) end
     end
-    if panel.speed.Refresh then pcall(panel.speed.Refresh, panel.speed) end
+    for _, row in ipairs({ panel.speedIn, panel.speedOut }) do
+        if row.Refresh then pcall(row.Refresh, row) end
+    end
     for _, row in ipairs(frameRows) do
         if row.Refresh then pcall(row.Refresh, row) end
     end
@@ -809,6 +854,7 @@ local function OnEnter()
     RefreshPanel()
     strip:Show()
     ShowBorder()
+    SyncTabs()
     -- The second pass, once the sentence has drawn (LayoutPanel).
     C_Timer.After(0, function()
         if alphaHeld and strip and strip._content:IsShown() then AnchorStrip(true) end
@@ -816,6 +862,7 @@ local function OnEnter()
 end
 
 local function OnExit(reason)
+    SyncTabs()
     RaiseLibraryDialog(false)
     ReleaseBlizzardAlpha()
     ReleaseHolds()
@@ -834,9 +881,16 @@ local function OnExit(reason)
     if reason ~= "done" and shield then shield:Hide() end
 end
 
--- A frame joined or left: its box faded or came back, so the holds follow.
+-- A group joined or left: its boxes faded or came back, so the holds
+-- follow, and its off-screen frames gain or lose their tabs.
 local function OnParticipation()
     SyncHolds()
+    SyncTabs()
+end
+
+-- A record write from a dialog: an edge chosen or cleared.
+local function OnRecord()
+    SyncTabs()
 end
 
 --------------------------------------------------------------------------------
@@ -872,6 +926,8 @@ local function OnClearSelectedSystem()
     if not alphaHeld then return end
     HoldSelections()
     SyncHolds()
+    local tabs = addon.EditMode and addon.EditMode.DynamicTabs
+    if tabs then C_Timer.After(0, tabs.Repaint) end
 end
 
 -- One shot on the first world entry, as Dialog.lua installs its own hook:
@@ -899,6 +955,7 @@ end)
 do
     local V = View()
     if V and V.SetHost then
-        V.SetHost({ onEnter = OnEnter, onExit = OnExit, onLock = OnLock, onParticipation = OnParticipation })
+        V.SetHost({ onEnter = OnEnter, onExit = OnExit, onLock = OnLock,
+            onParticipation = OnParticipation, onRecord = OnRecord })
     end
 end

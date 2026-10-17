@@ -446,9 +446,36 @@ end
 -- has no band to clear, so it can sit close.
 local attachedSide         -- side the box was last anchored on, nil when unanchored
 
+-- A frame the dynamic view has sent off-screen is stood in for by its edge
+-- tab (ui/v2/editmode/DynamicTabs.lua), and the box goes beside the tab on
+-- the side facing into the screen: above a tab on the bottom edge, below
+-- one on the top, right of one on the left, left of one on the right.
+local TAB_ANCHORS = {
+    BOTTOM = { "BOTTOM", "TOP", 0, 1 },
+    TOP    = { "TOP", "BOTTOM", 0, -1 },
+    LEFT   = { "LEFT", "RIGHT", 1, 0 },
+    RIGHT  = { "RIGHT", "LEFT", -1, 0 },
+}
+
+local function AttachToTab(dialog, selection, attach, onlyOnFlip)
+    local Tabs = addon.EditMode.DynamicTabs
+    local tab, edge = nil, nil
+    if Tabs and Tabs.For then tab, edge = Tabs.For(selection) end
+    local a = tab and TAB_ANCHORS[edge]
+    if not a then return false end
+    local side = "tab" .. edge
+    if onlyOnFlip and side == attachedSide then return true end
+    attachedSide = side
+    local gap = attach.gap or 8
+    dialog:ClearAllPoints()
+    dialog:SetPoint(a[1], tab, a[2], a[3] * gap, a[4] * gap)
+    return true
+end
+
 local function AttachToSelection(dialog, selection, attach, onlyOnFlip)
     local frame = selection and selection.parent
     if not frame then return end
+    if AttachToTab(dialog, selection, attach, onlyOnFlip) then return end
 
     local side = "RIGHT"
     local ok, centerX = pcall(selection.GetCenter, selection)

@@ -1,15 +1,20 @@
 --------------------------------------------------------------------------------
 -- forever/dynamiclayouts/host.lua
 -- The host side of Dynamic Layouts on Camelot: the Features row, where the
--- dynamic records and the per-profile trigger set and speed live in
--- CamelotDB, and the profile pass that feeds the resolver's mask. The engine
+-- dynamic records, the per-profile trigger set and the two transition speeds
+-- (into the dynamic layout, out of it) live in CamelotDB, and the profile
+-- pass that feeds the resolver's mask. The engine
 -- (core/dynamiclayouts/) reads addon.DynamicLayoutsStore at call time and
 -- never touches the database itself, so the other addon sets a store of its
 -- own.
 --
 -- A frame's record sits beside its Edit Mode positions:
 --   layout[key] = { positions = { [layoutName] = { point, x, y } },
---                   dynamic = { enabled, point, x, y, scale, opacity, offscreen } }
+--                   dynamic = { point, x, y, scale, opacity, offscreen } }
+-- Whether a frame takes part is not in its record: it is one setting per
+-- participation key, dynamicLayouts.participating.<key>, the key being the
+-- frame's group (registered below) or its own id. One checkbox in the view
+-- stands for every frame under a key.
 -- A profile is one Edit Mode layout, so the record needs no layout key. x and
 -- y are in the frame's own scale, what SetPoint takes; an editor writing them
 -- at the dynamic scale stores what GetPoint reports there. A missing field
@@ -29,18 +34,34 @@ local Resolver = DL.Resolver
 
 local FEATURE_PATH = "dynamicLayouts.enabled"
 local TRIGGERS = { "inCombat", "targetAcquired", "insideInstance" }
-local SPEED_PATH = "dynamicLayouts.speed"
+-- One duration per direction; forever/db.lua's migration 3 seeds both from
+-- the one speed that preceded them.
+local SPEED_PATHS = { ["in"] = "dynamicLayouts.speedIn", out = "dynamicLayouts.speedOut" }
 
 local function triggerPath(name)
     return "dynamicLayouts.trigger." .. name
 end
+
+local function participatingPath(key)
+    return "dynamicLayouts.participating." .. key
+end
+
+-- The view's checkboxes for frames that come in families, in list order.
+-- forever/db.lua's migration 2 maps the old per-frame records onto these keys.
+DL.RegisterGroup("unitFrames", "Unit Frames", 10)
+DL.RegisterGroup("castBars", "Cast Bars", 20)
+DL.RegisterGroup("actionBarClusters", "Action Bar Clusters", 30)
+DL.RegisterGroup("microBags", "Micro & Bag Bar", 40)
+DL.RegisterGroup("objectiveTracker", "Objective Tracker", 50)
+DL.RegisterGroup("statusBars", "Status Bars", 60)
 
 DB.RegisterDefaults({
     [FEATURE_PATH] = true,
     [triggerPath("inCombat")] = true,
     [triggerPath("targetAcquired")] = true,
     [triggerPath("insideInstance")] = true,
-    [SPEED_PATH] = DL.SPEED_DEFAULT,
+    [SPEED_PATHS["in"]] = DL.SPEED_DEFAULT,
+    [SPEED_PATHS.out] = DL.SPEED_DEFAULT,
 })
 
 -- Listed after components.lua in the TOC, so the row follows Minimap and
@@ -59,8 +80,16 @@ addon.DynamicLayoutsStore = {
         local entry = DB.GetLayout(id)
         return entry and entry.dynamic or nil
     end,
+    GetParticipating = function(key)
+        if not enabled() or type(key) ~= "string" then return false end
+        return DB.Get(participatingPath(key)) == true
+    end,
+    SetParticipating = function(key, on)
+        if type(key) ~= "string" then return false end
+        return DB.Set(participatingPath(key), on and true or nil)
+    end,
     --- Merge fields into the record, creating it. A nil in `fields` cannot
-    --- clear a field; pass false for enabled.
+    --- clear a field; pass false to clear one.
     SetRecord = function(id, fields)
         if type(id) ~= "string" or type(fields) ~= "table" then return false end
         local entry = DB.GetLayout(id) or {}
@@ -76,11 +105,15 @@ addon.DynamicLayoutsStore = {
     SetTrigger = function(name, on)
         return DB.Set(triggerPath(name), on and true or false)
     end,
-    GetSpeed = function()
-        return DB.Get(SPEED_PATH)
+    --- direction: "in", the transition into the dynamic layout, or "out".
+    GetSpeed = function(direction)
+        local path = SPEED_PATHS[direction]
+        return path and DB.Get(path) or nil
     end,
-    SetSpeed = function(seconds)
-        return DB.Set(SPEED_PATH, seconds)
+    SetSpeed = function(direction, seconds)
+        local path = SPEED_PATHS[direction]
+        if not path then return false end
+        return DB.Set(path, seconds)
     end,
 }
 

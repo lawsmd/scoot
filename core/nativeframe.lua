@@ -234,6 +234,10 @@ end
 --- so the caller has to re-assert per cast; Reapply(frame) is that seam. Deferred
 --- for ordering: Blizzard's write is driven by the same event the caller hears and
 --- inter-frame event order is undefined, so re-asserting inline is a coin flip.
+---
+--- A dimmed system frame keeps its selection box, which ignores the parent's
+--- alpha, so the box goes the same way a parked frame's does (Camelot's
+--- MainActionBar left an empty "Action Bar 1" box in Edit Mode).
 local function Dim(frame)
     local d = State(frame)
     if d.restoreAlpha == nil then
@@ -243,6 +247,7 @@ local function Dim(frame)
     C_Timer.After(0, function()
         if State(frame).parked then frame:SetAlpha(0) end
     end)
+    ApplySelection(frame, true)
 end
 
 local function Undim(frame)
@@ -250,6 +255,7 @@ local function Undim(frame)
     d.parked = false
     frame:SetAlpha(d.restoreAlpha or 1)
     d.restoreAlpha = nil
+    ApplySelection(frame, false)
 end
 
 --- Silence the events a claim's quiet list names, and hide what it asks for.

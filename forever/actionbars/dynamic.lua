@@ -44,6 +44,7 @@ function Dynamic.Register(cluster, container)
     DL.Register({
         id = Clusters.Key(id),
         label = Clusters.Label(cluster),
+        group = "actionBarClusters",
         frame = container,
         tier = "protected",
         channels = { "opacity", "scale", "position" },
@@ -54,6 +55,15 @@ function Dynamic.Register(cluster, container)
         },
     })
     return true
+end
+
+--- The cluster is gone from the document: its adapter leaves the engine, so
+--- nothing lists it, refreshes it or writes a record for it. A later layout
+--- that holds the id again registers it afresh.
+function Dynamic.Unregister(id)
+    if not registered[id] then return end
+    registered[id] = nil
+    if DL and DL.Unregister then DL.Unregister(Clusters.Key(id)) end
 end
 
 --- The base geometry was just re-landed (a positionable restore): put a

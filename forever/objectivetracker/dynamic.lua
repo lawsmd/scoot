@@ -55,15 +55,20 @@ function Dynamic.Register(pane, frame)
     DL.Register({
         id = pane.key,
         label = PANEL_LABELS[pane.key] or pane.name,
+        group = "objectiveTracker",
         frame = frame,
         tier = "protected",
         channels = { "opacity", "scale", "position" },
         base = {
-            opacity = function() return 1 end,
+            opacity = function() return Style.FrameOpacity(Style[pane.styleKey]) end,
             scale = function() return Style.Scale(Style[pane.styleKey]) end,
             position = function() return basePosition(pane) end,
         },
         apply = {
+            opacity = function(f, a)
+                f:SetAlpha(a)
+                if OT.Items then OT.Items.SyncAlpha() end
+            end,
             scale = function(f, s)
                 f:SetScale(s)
                 replaceItems()
@@ -75,6 +80,14 @@ function Dynamic.Register(pane, frame)
             end,
         },
     })
+end
+
+--- Whether the engine holds a pane's dynamic state, so its alpha is the
+--- engine's to write.
+function Dynamic.IsDynamic(frame)
+    local DL = addon.DynamicLayouts
+    local pane = paneByFrame[frame]
+    return (pane and DL and DL.IsDynamic and DL.IsDynamic(pane.key)) or false
 end
 
 --- After a component pass re-landed a base: one pane's frame, or every pane.
