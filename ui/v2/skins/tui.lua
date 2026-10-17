@@ -102,6 +102,13 @@ Skin.Register("tui", {
         rowHeight = 36,
         rowHeightField = 42,
         rowHeightEmphasized = 72,
+        -- The emphasized row's other numbers (Controls.ResolveEmphasis): the
+        -- name's size, the flat accent bar's width, what a plain row grows
+        -- by, and the description's size
+        emphasisLabelSize = 14,
+        emphasisBar = 3,
+        emphasisGrowth = 12,
+        emphasisDescSize = 12,
         dualRowHeight = 53,
         -- Room under a captioned cluster. The caption band lifts the controls
         -- toward the row's top, so the row grows by this and the cluster

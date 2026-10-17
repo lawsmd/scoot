@@ -94,7 +94,7 @@ function General.Render(panel, scrollContent)
         title = "Display",
         componentId = "prdGlobal",
         sectionKey = "display",
-        defaultExpanded = true,
+        defaultExpanded = false,
         infoIcon = {
             tooltipTitle = "Edit Mode Settings",
             tooltipText = "These are Blizzard's Edit Mode settings for the Personal Resource Display. Changing them here or inside Edit Mode keeps both in step.",

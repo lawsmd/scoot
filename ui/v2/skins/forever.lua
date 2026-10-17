@@ -696,6 +696,30 @@ Skin.Register("forever", {
             accent = DYNAMIC,
             fallback = { kind = "flat", accent = DYNAMIC },
         },
+        -- The tab on the screen's edge that stands in for a frame the dynamic
+        -- view has sent off-screen (ui/v2/editmode/DynamicTabs.lua). Flat,
+        -- since the Dialog layout's corners outgrow a tab's height: a black
+        -- fill, a copper edge, and the ember drawn additive in two bands
+        -- outside it, held lit, brighter than any box. The arrow and the name
+        -- take `text`. The glow's alpha per state: rest, hover, selected.
+        editTab = {
+            kind = "flat",
+            fill = { 0, 0, 0, 0.85 },
+            edge = DYNAMIC_METAL,
+            accent = DYNAMIC,
+            glow = { rest = 0.7, hover = 0.9, selected = 1,
+                     bands = { { out = 2, alpha = 0.9 }, { out = 5, alpha = 0.35 } } },
+            text = { 1, 0.86, 0.7 },
+            textSize = 13,
+            -- The tab's box: height, the name's padding each side, the arrow
+            -- and its gap after the name, the copper edge's width, and the
+            -- standoff from the screen's edge, which clears the view's border.
+            metrics = { height = 28, padX = 12, arrow = 16, gap = 6, edge = 2, inset = 4 },
+            -- DIALOG strata, over the participating boxes (1000) and the
+            -- screen border, under the strip (2000) and the library's dialog,
+            -- which rises a strata in the view.
+            level = 1100,
+        },
     },
 
     -- How opaque each piece of the art above draws, 0 to 1. A border and the
@@ -771,6 +795,13 @@ Skin.Register("forever", {
         rowHeight = 36,
         rowHeightField = 42,
         rowHeightEmphasized = 72,
+        -- The emphasized row's other numbers (Controls.ResolveEmphasis): the
+        -- name's size, the flat accent bar's width, what a plain row grows
+        -- by, and the description's size
+        emphasisLabelSize = 14,
+        emphasisBar = 3,
+        emphasisGrowth = 12,
+        emphasisDescSize = 12,
         dualRowHeight = 53,
         -- Room under a captioned cluster. The caption band lifts the controls
         -- toward the row's top, so the row grows by this and the cluster

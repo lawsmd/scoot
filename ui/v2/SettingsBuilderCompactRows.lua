@@ -70,6 +70,8 @@ end
 --   key         : Optional unique key for dynamic updates
 --   disabled    : Function returning disabled state (optional)
 --   wideSlots   : true gives a row with no description wider selectors
+--   emphasized  : the hero treatment, as AddSelector's: the row stands on the
+--                 skin's emphasis chrome with the larger name
 --
 -- Selector A/B options:
 --   caption     : Optional mini-label above the selector
@@ -92,6 +94,7 @@ function Builder:AddDualSelector(options)
         selectorA = options.selectorA,
         selectorB = options.selectorB,
         wideSlots = options.wideSlots,
+        emphasized = options.emphasized,
         useLightDim = self._useLightDim,
         disabled = options.disabled,
         isDisabled = options.isDisabled,
@@ -271,6 +274,47 @@ function Builder:AddMultiToggleRow(options)
     })
 
     self:_PlaceRow(multiToggle, options)
+
+    return self
+end
+
+--------------------------------------------------------------------------------
+-- AddCheckboxGrid: Labelled checkboxes in a grid under one row label
+--------------------------------------------------------------------------------
+-- Options:
+--   label       : Row label text
+--   columns     : Cells per grid row (default 4)
+--   items       : Array of { key, label, get, set, isDisabled }
+--   disabled / isDisabled : Function returning the whole row's disabled state
+--   key         : Optional unique key for dynamic updates
+--------------------------------------------------------------------------------
+
+function Builder:AddCheckboxGrid(options)
+    local scrollContent = self._scrollContent
+    if not scrollContent then return self end
+
+    if Builder._scanMode and options.label then
+        -- As AddMultiToggleRow: a search for one item finds the row.
+        local names = {}
+        for _, def in ipairs(options.items or {}) do
+            if def.label and def.label ~= "" then names[#names + 1] = def.label end
+        end
+        self:_ScanRecord("checkbox grid", options.label, table.concat(names, " "))
+        return self
+    end
+
+    local grid = Controls:CreateCheckboxGrid({
+        rowWidth = (self._rowWidth and self._rowWidth > 0) and self._rowWidth or nil,
+        parent = scrollContent,
+        label = options.label,
+        columns = options.columns,
+        items = options.items,
+        disabled = options.disabled,
+        isDisabled = options.isDisabled,
+        name = options.name,
+    })
+
+    self:_PlaceRow(grid, options)
 
     return self
 end

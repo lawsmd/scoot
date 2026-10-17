@@ -650,6 +650,8 @@ end
 
 -- Defaults Reset Map
 -- Maps nav keys to their reset strategy. Categories NOT listed get no Defaults button.
+-- A host that sets addon.DefaultsModel answers both questions itself and this map
+-- is never read: { Has(key), Click(key, title), tooltipTitle, tooltipText }.
 
 local DEFAULTS_RESET_MAP = {
     -- CDM components
@@ -713,7 +715,17 @@ function UIPanel:UpdateDefaultsButton()
     if not defaultsBtn then return end
 
     local key = self._currentCategoryKey
-    local resetInfo = key and DEFAULTS_RESET_MAP[key]
+    local model = addon.DefaultsModel
+    local resetInfo
+    if model then
+        resetInfo = key and model.Has(key)
+        if defaultsInfoIcon and model.tooltipText then
+            defaultsInfoIcon:SetTooltipTitle(model.tooltipTitle)
+            defaultsInfoIcon:SetTooltipText(model.tooltipText)
+        end
+    else
+        resetInfo = key and DEFAULTS_RESET_MAP[key]
+    end
 
     if not resetInfo then
         defaultsBtn:Hide()
@@ -753,6 +765,12 @@ function UIPanel:HandleDefaultsClick()
 
     local key = self._currentCategoryKey
     if not key then return end
+
+    local model = addon.DefaultsModel
+    if model then
+        if model.Has(key) then model.Click(key, self:GetCategoryTitle(key)) end
+        return
+    end
 
     local resetInfo = DEFAULTS_RESET_MAP[key]
     if not resetInfo then return end

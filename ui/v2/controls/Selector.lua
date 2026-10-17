@@ -24,11 +24,9 @@ local SELECTOR_ROW_HEIGHT_WITH_DESC = 80
 local SELECTOR_PADDING = 12
 local SELECTOR_BORDER_ALPHA = 0.5
 
--- Emphasized (hero) styling constants
+-- Emphasized (hero) row heights; the rest is Controls.ResolveEmphasis
 local EMPHASIZED_ROW_HEIGHT = 48
 local EMPHASIZED_ROW_HEIGHT_WITH_DESC = 90
-local EMPHASIZED_LABEL_SIZE = 14
-local EMPHASIZED_BORDER_WIDTH = 3
 
 -- Dynamic height constants
 local DESC_PADDING_TOP = 2        -- Space between label and description
@@ -68,6 +66,13 @@ function Controls:CreateSelector(options)
     -- edge (for description-less selectors; the description anchors to the
     -- label and would follow it rightward).
     local labelAlign = options.labelAlign
+    -- centered = true draws the field alone, centered in its row: no label,
+    -- emphasis, hover band or divider under it. For a picker whose subject is
+    -- plain from what follows it (the Camelot Clusters page's bar). The label
+    -- still names the row for the search index. Pair it with sizeScale and a
+    -- width for a larger field.
+    local centered = options.centered or false
+    if centered then emphasized = false end
     -- sizeScale scales the whole control (fonts, field height, arrows, row
     -- height). Field width stays the caller's `width`. Not supported together
     -- with description or emphasized rows.
@@ -79,12 +84,12 @@ function Controls:CreateSelector(options)
     -- An emphasized row on a skin that draws the emphasis role as art stands
     -- on that art instead of the accent bar, and metrics.emphasis scales its
     -- contents, the field's width included. Width-driven rows only: the
-    -- legacy height table has no room for a larger label.
-    local emphSpec = emphasized and addon.UI.Chrome.Spec("emphasis") or nil
-    local emphArt = emphSpec ~= nil and emphSpec.kind ~= "flat"
-    local emphM = (emphArt and Controls.Metrics().emphasis) or {}
-    if emphArt and rowWidth and emphM.scale then
-        S = emphM.scale
+    -- legacy height table has no room for a larger label. The numbers and
+    -- the backdrop are Controls.ResolveEmphasis and AddEmphasisChrome.
+    local emph = Controls.ResolveEmphasis(emphasized, rowWidth)
+    local emphArt = emph ~= nil and emph.art
+    if emphArt and emph.scale ~= 1 then
+        S = emph.scale
         selectorWidth = math.floor(selectorWidth * S + 0.5)
     end
     local function sc(v) return math.floor(v * S + 0.5) end
@@ -94,8 +99,8 @@ function Controls:CreateSelector(options)
         order = orderKeys, floor = selectorWidth, scale = S, size = sc(12),
         gear = options.gear ~= nil,
     }))
-    local emphPadY = (emphArt and rowWidth and emphM.padY) or 0
-    local fieldInset = (emphArt and emphM.padX) or sc(SELECTOR_PADDING)
+    local emphPadY = emph and emph.padY or 0
+    local fieldInset = (emphArt and emph.padX) or sc(SELECTOR_PADDING)
 
     -- Width-driven rows take the base height from the metrics; the chrome
     -- measure grows description rows synchronously. Direct callers without a
@@ -110,8 +115,8 @@ function Controls:CreateSelector(options)
     end
 
     -- Use appropriate sizes for emphasized vs normal
-    local labelFontSize = sc(emphasized and EMPHASIZED_LABEL_SIZE or 13)
-    local leftBorderWidth = (emphasized and not emphArt) and EMPHASIZED_BORDER_WIDTH or 0
+    local labelFontSize = emph and emph.labelFontSize or sc(13)
+    local leftBorderWidth = emph and emph.leftBorderWidth or 0
 
     -- Build ordered key list
     local keyList = {}
@@ -144,70 +149,15 @@ function Controls:CreateSelector(options)
     -- Row hover background, inside the emphasis art's border where there is one
     row._hoverBg = Controls.AddHoverFill(row, {
         sublevel = emphArt and Controls.SUBLEVEL_HOVER or Controls.SUBLEVEL_BG,
-        inset = emphArt and emphM.inner or nil })
+        inset = emphArt and emph.inner or nil })
 
     -- The divider under a row is builder-drawn; the row keeps only the
-    -- emphasized left accent bar.
+    -- emphasis backdrop, the left accent bar and wash or the skin's art.
     row._emphasized = emphasized
-    if emphasized and leftBorderWidth > 0 then
-        -- Kept off builder divider: left accent bar, not a row divider.
-        row._rowBorder = Controls.CreateBorder(row, {
-            sides = { "LEFT" },
-            thickness = { LEFT = leftBorderWidth },
-            alpha = 1,
-        })
-    end
-
-    if emphasized and leftBorderWidth > 0 then
-        -- Faint background highlight for emphasized
-        local emphBg = row:CreateTexture(nil, "BACKGROUND", nil, -7)
-        emphBg:SetPoint("TOPLEFT", leftBorderWidth, 0)
-        emphBg:SetPoint("BOTTOMRIGHT", 0, 0)
-        emphBg:SetColorTexture(ar, ag, ab, 0.03)
-        row._emphBg = emphBg
-    end
-
-    if emphArt then
-        local art = addon.UI.Chrome.SlicedAtlas(row, emphSpec, "BACKGROUND", -8)
-        if art then
-            local pieces = emphSpec.pieces or {}
-            art:ApplyOpacity(pieces.border or "cardBorder", pieces.fill or "cardFill")
-            row._emphArt = art
-            -- A fill replaces the art's own face, laid over the art's inner
-            -- margin up to the border band: a color token, or a rect of an
-            -- atlas member (in its own pixels) with a token to fall back on
-            local fillSpec = emphSpec.fill
-            if fillSpec then
-                for _, t in ipairs(art.center) do t:Hide() end
-                local fill = row:CreateTexture(nil, "BACKGROUND", nil, -7)
-                local inset = emphM.fillInset or 0
-                fill:SetPoint("TOPLEFT", inset, -inset)
-                fill:SetPoint("BOTTOMRIGHT", -inset, inset)
-                local Chrome = addon.UI.Chrome
-                local file, w, h, L, R, T, B
-                if type(fillSpec) == "table" and fillSpec.atlas then
-                    file, w, h, L, R, T, B = Chrome.AtlasSource(fillSpec)
-                end
-                if file then
-                    local rect = fillSpec.rect or {}
-                    local du, dv = (R - L) / w, (B - T) / h
-                    fill:SetTexture(file)
-                    fill:SetTexCoord(L + (rect.left or 0) * du, L + (rect.right or w) * du,
-                        T + (rect.top or 0) * dv, T + (rect.bottom or h) * dv)
-                    if fillSpec.piece then Chrome.ApplyOpacity(fillSpec.piece, fill) end
-                else
-                    local token = type(fillSpec) == "table" and fillSpec.fallback or fillSpec
-                    fill:SetColorTexture(Chrome.Color(token))
-                end
-                row._emphFill = fill
-            end
-        end
-        -- The art closes the row, so the builder's divider under it goes
-        row._noDividerAfter = true
-    end
+    Controls.AddEmphasisChrome(row, emph)
 
     -- Calculate label padding (account for left border on emphasized)
-    local labelLeftPad = (emphArt and emphM.padX) or (sc(SELECTOR_PADDING) + leftBorderWidth)
+    local labelLeftPad = (emphArt and emph.padX) or (sc(SELECTOR_PADDING) + leftBorderWidth)
 
     -- Label and description
     local chromeOpts
@@ -217,7 +167,7 @@ function Controls:CreateSelector(options)
             baseHeight = rowHeight,
             label = label,
             labelFontSize = (emphasized or S ~= 1) and labelFontSize or nil,
-            labelFontRole = emphArt and emphM.labelFontRole or nil,
+            labelFontRole = emph and emph.labelFontRole or nil,
             scale = S,
             padY = emphPadY,
             padLeft = labelLeftPad,
@@ -245,7 +195,11 @@ function Controls:CreateSelector(options)
     -- width-driven rows)
     local selector = CreateFrame("Frame", nil, row)
     selector:SetSize(selectorWidth, sc(SELECTOR_HEIGHT))
-    if rowWidth then
+    if centered then
+        selector:SetPoint("CENTER", row, "CENTER", 0, 0)
+        labelFS:Hide()
+        row._noDividerAfter = true
+    elseif rowWidth then
         Controls.AnchorCluster(row, selector, { x = -fieldInset })
     else
         selector:SetPoint("RIGHT", row, "RIGHT", -sc(SELECTOR_PADDING), 0)
@@ -514,16 +468,18 @@ function Controls:CreateSelector(options)
         dropdown:Toggle()
     end)
 
-    -- Row hover
+    -- Row hover, which a centered field goes without
     row:EnableMouse(true)
-    row:SetScript("OnEnter", function(self)
-        self._hoverBg:Show()
-    end)
-    row:SetScript("OnLeave", function(self)
-        -- The in-field gear is a descendant, so entering it leaves the row.
-        if self._gear and self._gear:IsMouseOver() then return end
-        self._hoverBg:Hide()
-    end)
+    if not centered then
+        row:SetScript("OnEnter", function(self)
+            self._hoverBg:Show()
+        end)
+        row:SetScript("OnLeave", function(self)
+            -- The in-field gear is a descendant, so entering it leaves the row.
+            if self._gear and self._gear:IsMouseOver() then return end
+            self._hoverBg:Hide()
+        end)
+    end
 
     -- Theme subscription
     local subscribeKey = "Selector_" .. (name or tostring(row))

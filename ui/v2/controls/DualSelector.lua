@@ -134,6 +134,27 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
     selector._syncCooldown = syncCooldown
     selector._syncLockTimer = nil
 
+    -- A field of its own may be inert while the row stays live: opts.disabled
+    -- (a function or a boolean) greys the field and its caption and ignores
+    -- its clicks. The row's SetDisabled still covers both fields; a field
+    -- disabled on its own dims itself, since the row dims its whole cluster
+    -- when it is the one disabled.
+    local disabledFn = opts.disabled
+    if type(disabledFn) ~= "function" then
+        local flag = disabledFn and true or false
+        disabledFn = function() return flag end
+    end
+    selector._disabledFn = disabledFn
+    local function ApplyDisabled(rowDisabled)
+        local own = disabledFn() and true or false
+        selector._isDisabled = (rowDisabled or own) and true or false
+        local alpha = (own and not rowDisabled) and 0.35 or 1
+        selector:SetAlpha(alpha)
+        local slot = selector:GetParent()
+        if slot and slot._miniLabel then slot._miniLabel:SetAlpha(alpha) end
+    end
+    selector._applyDisabled = ApplyDisabled
+
     -- Find index of key in keyList
     local function getKeyIndex(key)
         for i, k in ipairs(selector._keyList) do
@@ -259,10 +280,11 @@ local function CreateMiniSelector(opts, parentContainer, theme, useLightDim)
 
     -- Value button click (show dropdown)
     valueBtn:SetScript("OnClick", function(btn, mouseButton)
-        if selector._syncLocked then return end
+        if selector._isDisabled or selector._syncLocked then return end
         dropdown:Toggle()
     end)
 
+    ApplyDisabled(false)
     return selector
 end
 
@@ -290,6 +312,9 @@ Controls._CreateMiniSelector = CreateMiniSelector
 --   wideSlots   : true lets the two selectors take the room a description
 --                 would, up to their full slot width (ignored with a
 --                 description)
+--   emphasized  : the hero treatment: the row stands on the skin's emphasis
+--                 chrome with the larger name (Controls.ResolveEmphasis,
+--                 Controls.AddEmphasisChrome). The two fields keep their size
 --
 -- Selector A/B options:
 --   caption     : Optional mini-label above the selector
@@ -298,6 +323,10 @@ Controls._CreateMiniSelector = CreateMiniSelector
 --   get         : Function returning current key
 --   set         : Function(newKey) to save value
 --   syncCooldown: Optional cooldown for sync lock
+--   disabled    : Optional; a function or a boolean. True greys this field
+--                 and its caption and ignores its clicks while the row and
+--                 the other field stay live; the greying says enough, so no
+--                 explainer goes with it. Re-read on row:Refresh()
 --------------------------------------------------------------------------------
 
 function Controls:CreateDualSelector(options)
@@ -319,6 +348,8 @@ function Controls:CreateDualSelector(options)
 
     -- Builder rows always pass rowWidth; the parent width is the fallback.
     local rowWidth = options.rowWidth or (parent:GetWidth() or 0)
+    local emph = Controls.ResolveEmphasis(options.emphasized, rowWidth)
+    local emphArt = emph ~= nil and emph.art
 
     local dimR, dimG, dimB
     if useLightDim then
@@ -330,18 +361,25 @@ function Controls:CreateDualSelector(options)
     -- Create the row frame
     local row = CreateFrame("Frame", name, parent)
 
-    -- Row hover background
-    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
+    -- Row hover background, inside the emphasis art's border where there is one
+    row._hoverBg = Controls.AddHoverFill(row, {
+        sublevel = emphArt and Controls.SUBLEVEL_HOVER or Controls.SUBLEVEL_BG,
+        inset = emphArt and emph.inner or nil })
+    Controls.AddEmphasisChrome(row, emph)
 
     -- Chrome and the two selector slots. Two wide slots overflow the maximum
     -- cluster width, so BuildSlotRow shrinks both to share it, about 200 each
-    -- on tui, and never below the width their options need.
+    -- on tui, and never below the width their options need. An emphasized
+    -- row's name is measured in its own role and size, and its side padding
+    -- is the art's.
     local maxClusterWidth
     if options.wideSlots and not (description and description ~= "") then
         local m = Controls.Metrics()
-        local labelWidth = Controls.MeasureText(Controls.RowLabelFontRole(), label or "") or 0
+        local labelWidth = Controls.MeasureText(emph and emph.labelFontRole or Controls.RowLabelFontRole(),
+            label or "", emph and emph.labelFontSize or nil) or 0
+        local padSide = emphArt and emph.padX or m.rowPadding
         maxClusterWidth = math.max(m.maxClusterWidth,
-            rowWidth - m.rowPadding * 2 - math.ceil(labelWidth) - m.slotGap * 2)
+            rowWidth - padSide * 2 - math.ceil(labelWidth) - m.slotGap * 2)
     end
     local dualContainer, slotFrames = Controls.BuildSlotRow(row, {
         rowWidth = rowWidth,
@@ -349,6 +387,7 @@ function Controls:CreateDualSelector(options)
         description = description,
         dimColor = { dimR, dimG, dimB },
         maxClusterWidth = maxClusterWidth,
+        emphasis = emph,
         slots = {
             { kind = "selectorWide", label = selectorAOpts.caption,
                 need = Controls.MiniSelectorNeed(selectorAOpts) },
@@ -380,7 +419,7 @@ function Controls:CreateDualSelector(options)
 
     -- Re-wire value button clicks to use cross-wired show functions
     miniSelectorA._valueBtn:SetScript("OnClick", function(btn, mouseButton)
-        if miniSelectorA._syncLocked then return end
+        if miniSelectorA._isDisabled or miniSelectorA._syncLocked then return end
         if miniSelectorA._dropdown:IsShown() then
             miniSelectorA._closeDropdown()
         else
@@ -388,7 +427,7 @@ function Controls:CreateDualSelector(options)
         end
     end)
     miniSelectorB._valueBtn:SetScript("OnClick", function(btn, mouseButton)
-        if miniSelectorB._syncLocked then return end
+        if miniSelectorB._isDisabled or miniSelectorB._syncLocked then return end
         if miniSelectorB._dropdown:IsShown() then
             miniSelectorB._closeDropdown()
         else
@@ -491,6 +530,12 @@ function Controls:CreateDualSelector(options)
                 self:SetDisabled(newDisabled)
             end
         end
+        -- A field's own disabled function is re-read too
+        for _, miniSel in ipairs({self._selectorA, self._selectorB}) do
+            if miniSel and miniSel._applyDisabled then
+                miniSel._applyDisabled(self._isDisabled)
+            end
+        end
     end
 
     function row:SetDisabled(disabled)
@@ -499,10 +544,14 @@ function Controls:CreateDualSelector(options)
         local acR, acG, acB = theme:GetAccentColor()
         local dR, dG, dB = theme:GetDimTextColor()
 
-        -- Propagate to mini selectors
+        -- Propagate to mini selectors; a field disabled on its own stays so
         for _, miniSel in ipairs({self._selectorA, self._selectorB}) do
             if miniSel then
-                miniSel._isDisabled = self._isDisabled
+                if miniSel._applyDisabled then
+                    miniSel._applyDisabled(self._isDisabled)
+                else
+                    miniSel._isDisabled = self._isDisabled
+                end
             end
         end
 

@@ -87,7 +87,7 @@ local function AddUnitSection(builder, opts)
             title = "Layout",
             componentId = opts.componentId,
             sectionKey = "layout",
-            defaultExpanded = true,
+            defaultExpanded = false,
             buildContent = function(contentFrame, inner)
                 inner:AddSelector({
                     label = "Number Position",

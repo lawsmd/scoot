@@ -64,6 +64,11 @@ end
 --                  cluster, never the slot.
 --   maxClusterWidth: Overrides the metric clamp, for a row with no description
 --                  that gives the room to its slots.
+--   emphasis     : The table Controls.ResolveEmphasis returned for an
+--                  emphasized row, or nil. The row takes the emphasized band
+--                  with the art's padding above and below, its name the
+--                  emphasis role and size, and its cluster the art's side
+--                  padding; the slots keep their widths.
 --
 -- Returns the cluster container and the array of slot frames, left to right.
 -- Each slot frame is control-height, bottom-aligned in the cluster, and
@@ -92,16 +97,24 @@ function Controls.BuildSlotRow(row, opts)
     -- proportion to their room above their need, never below it.
     ShrinkTo(widths, slots, needs, gaps, opts.maxClusterWidth or m.maxClusterWidth)
 
+    -- An emphasized row stands inside the skin's emphasis art, so its side
+    -- padding is the art's padX and its name takes the emphasis role and size.
+    local emph = opts.emphasis
+    local emphArt = emph ~= nil and emph.art
+    local padSide = emphArt and emph.padX or m.rowPadding
+    local labelRole = emph and emph.labelFontRole or Controls.RowLabelFontRole()
+    local labelSize = emph and emph.labelFontSize or nil
+
     -- The row's own width is the hard cap: the cluster stops a gap short of
     -- the label, and slots grown past their metric width give the room back
     -- first. Below that the field truncates its text.
     if (opts.rowWidth or 0) > 0 then
         local labelWidth = 0
         if opts.label and opts.label ~= "" then
-            labelWidth = math.ceil(Controls.MeasureText(Controls.RowLabelFontRole(), opts.label) or 0)
+            labelWidth = math.ceil(Controls.MeasureText(labelRole, opts.label, labelSize) or 0)
                 + m.slotGap
         end
-        local limit = opts.rowWidth - m.rowPadding * 2 - labelWidth
+        local limit = opts.rowWidth - padSide * 2 - labelWidth
         local lower = {}
         for i = 1, #slots do lower[i] = math.min(floors[i], widths[i]) end
         ShrinkTo(widths, slots, lower, gaps, limit)
@@ -151,9 +164,19 @@ function Controls.BuildSlotRow(row, opts)
         + (hasMiniLabels and (m.miniLabelHeight + m.miniLabelGap) or 0)
     -- A captioned cluster is centered in the dual-row band and the row runs
     -- dualRowPadBottom past it, so the fields stand off the divider under
-    -- them by more than the caption stands off the row's top.
-    local band = hasMiniLabels and m.dualRowHeight or m.rowHeight
-    local baseHeight = band + (hasMiniLabels and (m.dualRowPadBottom or 0) or 0)
+    -- them by more than the caption stands off the row's top. An emphasized
+    -- row takes the emphasized band with the art's padY above and below in
+    -- place of that bottom pad, and centers its cluster in the whole of it,
+    -- as the selector centers its field; the name's own top pad carries padY.
+    local band, baseHeight
+    if emph then
+        band = hasMiniLabels and m.rowHeightEmphasized or (m.rowHeight + m.emphasisGrowth)
+        baseHeight = band + emph.padY * 2
+        band = baseHeight
+    else
+        band = hasMiniLabels and m.dualRowHeight or m.rowHeight
+        baseHeight = band + (hasMiniLabels and (m.dualRowPadBottom or 0) or 0)
+    end
 
     if opts.label and opts.label ~= "" then
         Controls.AddRowChrome(row, {
@@ -161,9 +184,14 @@ function Controls.BuildSlotRow(row, opts)
             baseHeight = baseHeight,
             band = band,
             label = opts.label,
-            padLeft = m.rowPadding,
+            labelFontSize = labelSize,
+            labelFontRole = emph and emph.labelFontRole or nil,
+            scale = emph and emph.scale or nil,
+            padY = emph and emph.padY or nil,
+            padLeft = emph and (emphArt and emph.padX or (m.rowPadding + emph.leftBorderWidth)) or m.rowPadding,
             description = opts.description,
-            controlReserve = m.rowPadding + clusterWidth + m.slotGap,
+            descFontSize = emph and math.floor(m.emphasisDescSize * emph.scale + 0.5) or nil,
+            controlReserve = padSide + clusterWidth + m.slotGap,
             dimColor = dim,
         })
     else
@@ -172,7 +200,7 @@ function Controls.BuildSlotRow(row, opts)
 
     local container = CreateFrame("Frame", nil, row)
     container:SetSize(clusterWidth, clusterHeight)
-    Controls.AnchorCluster(row, container, { x = -m.rowPadding, band = band })
+    Controls.AnchorCluster(row, container, { x = -padSide, band = band })
     row._slotContainer = container
 
     local frames = {}

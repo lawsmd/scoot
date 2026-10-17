@@ -27,10 +27,14 @@ local TOGGLE_PADDING = 12
 local DESC_PADDING_TOP = 2        -- Space between label and description
 local DESC_PADDING_TOP_EMPH = 4   -- Space for emphasized controls
 
--- Emphasized toggle constants (Hero Toggle styling)
-local EMPHASIZED_HEIGHT = 72
+-- The hero toggle. Its backdrop and most of its numbers are
+-- Controls.ResolveEmphasis and AddEmphasisChrome (Emphasis.lua) and the
+-- metrics behind them; it keeps a larger state box, and on a flat skin a name
+-- two above metrics.emphasisLabelSize, since this row heads a page where an
+-- emphasized selector names a choice. Where the emphasis role is art, the
+-- name takes the art's role and size. The legacy height serves callers
+-- without a rowWidth.
 local EMPHASIZED_HEIGHT_WITH_DESC = 92
-local EMPHASIZED_BORDER_WIDTH = 3
 local EMPHASIZED_LABEL_SIZE = 16
 local EMPHASIZED_INDICATOR_WIDTH = 70
 local EMPHASIZED_INDICATOR_HEIGHT = 26
@@ -260,11 +264,14 @@ function Controls:CreateToggle(options)
     -- Width-driven rows take the base height from the metrics; the chrome
     -- measure grows description rows synchronously. Direct callers without a
     -- rowWidth keep the fixed height table until they convert.
+    local m = Controls.Metrics()
+    local emph = Controls.ResolveEmphasis(emphasized, rowWidth)
+    local emphArt = emph ~= nil and emph.art
     local height
     if rowWidth then
-        height = emphasized and EMPHASIZED_HEIGHT or Controls.Metrics().rowHeight
+        height = emph and (m.rowHeightEmphasized + emph.padY * 2) or m.rowHeight
     elseif emphasized then
-        height = hasDesc and EMPHASIZED_HEIGHT_WITH_DESC or EMPHASIZED_HEIGHT
+        height = hasDesc and EMPHASIZED_HEIGHT_WITH_DESC or m.rowHeightEmphasized
     else
         height = hasDesc and TOGGLE_HEIGHT_WITH_DESC or TOGGLE_HEIGHT
     end
@@ -272,8 +279,8 @@ function Controls:CreateToggle(options)
     -- Use appropriate sizes for emphasized vs normal
     local indicatorWidth = emphasized and EMPHASIZED_INDICATOR_WIDTH or TOGGLE_INDICATOR_WIDTH
     local indicatorHeight = emphasized and EMPHASIZED_INDICATOR_HEIGHT or TOGGLE_INDICATOR_HEIGHT
-    local labelFontSize = emphasized and EMPHASIZED_LABEL_SIZE or 13
-    local leftBorderWidth = emphasized and EMPHASIZED_BORDER_WIDTH or 0
+    local labelFontSize = emph and (emphArt and emph.labelFontSize or EMPHASIZED_LABEL_SIZE) or 13
+    local leftBorderWidth = emph and emph.leftBorderWidth or 0
 
     -- Create the row frame
     local row = CreateFrame("Button", name, parent)
@@ -282,7 +289,6 @@ function Controls:CreateToggle(options)
     row:RegisterForClicks("AnyUp")
 
     -- Get theme colors
-    local ar, ag, ab = theme:GetAccentColor()
     local dimR, dimG, dimB
     if options.useLightDim then
         dimR, dimG, dimB = theme:GetDimTextLightColor()
@@ -290,32 +296,21 @@ function Controls:CreateToggle(options)
         dimR, dimG, dimB = theme:GetDimTextColor()
     end
 
-    -- Row hover background (hidden by default)
-    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
+    -- Row hover background (hidden by default), inside the emphasis art's
+    -- border where there is one
+    row._hoverBg = Controls.AddHoverFill(row, {
+        sublevel = emphArt and Controls.SUBLEVEL_HOVER or Controls.SUBLEVEL_BG,
+        inset = emphArt and emph.inner or nil })
 
     -- The divider under a row is builder-drawn; the row keeps only the
-    -- emphasized left accent bar.
-    if emphasized and leftBorderWidth > 0 then
-        -- Kept off builder divider: left accent bar, not a row divider.
-        row._rowBorder = Controls.CreateBorder(row, {
-            sides = { "LEFT" },
-            thickness = { LEFT = leftBorderWidth },
-            alpha = 1,
-        })
-    end
-
-    if emphasized and leftBorderWidth > 0 then
-        -- Faint background highlight for emphasized
-        local emphBg = row:CreateTexture(nil, "BACKGROUND", nil, -7)
-        emphBg:SetPoint("TOPLEFT", leftBorderWidth, 0)
-        emphBg:SetPoint("BOTTOMRIGHT", 0, 0)
-        emphBg:SetColorTexture(ar, ag, ab, 0.03)
-        row._emphBg = emphBg
-    end
+    -- emphasis backdrop, the left accent bar and wash or the skin's art.
     row._emphasized = emphasized
+    Controls.AddEmphasisChrome(row, emph)
 
-    -- Calculate label padding (account for left border on emphasized)
-    local labelLeftPad = TOGGLE_PADDING + leftBorderWidth
+    -- The name stands inside the art's padding, or past the accent bar; the
+    -- state box keeps the same distance from the right edge
+    local labelLeftPad = (emphArt and emph.padX) or (TOGGLE_PADDING + leftBorderWidth)
+    local clusterPad = (emphArt and emph.padX) or TOGGLE_PADDING
 
     -- State tracking
     row._value = false
@@ -355,11 +350,14 @@ function Controls:CreateToggle(options)
             rowWidth = rowWidth,
             baseHeight = height,
             label = label,
-            labelFontSize = emphasized and EMPHASIZED_LABEL_SIZE or nil,
+            labelFontSize = emph and labelFontSize or nil,
+            labelFontRole = emph and emph.labelFontRole or nil,
+            scale = emph and emph.scale or nil,
+            padY = emph and emph.padY or nil,
             padLeft = labelLeftPad,
             description = description,
-            descFontSize = emphasized and 12 or nil,
-            controlReserve = indicator.width + TOGGLE_PADDING * 2,
+            descFontSize = emph and math.floor(m.emphasisDescSize * emph.scale + 0.5) or nil,
+            controlReserve = indicator.width + TOGGLE_PADDING + clusterPad,
             dimColor = { dimR, dimG, dimB },
         }
     else
@@ -369,7 +367,7 @@ function Controls:CreateToggle(options)
             labelYOffset = hasDesc and (emphasized and 12 or 6) or 0,
             padLeft = labelLeftPad,
             description = description,
-            descFontSize = emphasized and 12 or 11,
+            descFontSize = emph and m.emphasisDescSize or 11,
             padAbove = emphasized and DESC_PADDING_TOP_EMPH or DESC_PADDING_TOP,
             reserve = indicator.width + TOGGLE_PADDING * 2,
             dimColor = { dimR, dimG, dimB },
@@ -379,7 +377,7 @@ function Controls:CreateToggle(options)
 
     -- Centered in the top band on width-driven rows
     if rowWidth then
-        Controls.AnchorCluster(row, indicator.frame, { x = -TOGGLE_PADDING })
+        Controls.AnchorCluster(row, indicator.frame, { x = -clusterPad })
     else
         indicator.frame:SetPoint("RIGHT", row, "RIGHT", -TOGGLE_PADDING, 0)
     end
@@ -438,12 +436,9 @@ function Controls:CreateToggle(options)
     local subscribeKey = "Toggle_" .. (name or tostring(row))
     row._subscribeKey = subscribeKey
 
-    -- Subscribe to theme updates (hover fill and row border retint via Utils)
-    theme:Subscribe(subscribeKey, function(r, g, b)
-        -- Update emphasized background
-        if row._emphBg then
-            row._emphBg:SetColorTexture(r, g, b, 0.03)
-        end
+    -- Subscribe to theme updates (the hover fill, the accent bar and the
+    -- emphasis wash retint via Utils)
+    theme:Subscribe(subscribeKey, function()
         -- Re-run visual update to apply new accent color
         UpdateVisual()
     end)

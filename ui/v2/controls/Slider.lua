@@ -55,10 +55,9 @@ local SLIDER_ROW_HEIGHT_WITH_BOTH = 80
 local SLIDER_PADDING = 12
 local SLIDER_END_LABEL_FONT_SIZE = 9
 
--- Emphasized (hero) styling constants
-local EMPHASIZED_EXTRA_HEIGHT = 12
-local EMPHASIZED_LABEL_SIZE = 14
-local EMPHASIZED_BORDER_WIDTH = 3
+-- An emphasized slider grows by metrics.emphasisGrowth and takes its name
+-- size, accent bar and backdrop from Controls.ResolveEmphasis and
+-- AddEmphasisChrome (Emphasis.lua); the track keeps its size.
 
 
 -- Slider: Numeric slider with arrows, text input, and optional end labels
@@ -110,9 +109,11 @@ function Controls:CreateSlider(options)
     -- adding the mini-label band; the chrome measure grows description rows
     -- synchronously. Direct callers without a rowWidth keep the fixed height
     -- table until they convert.
+    local m = Controls.Metrics()
+    local emph = Controls.ResolveEmphasis(emphasized, rowWidth)
+    local emphArt = emph ~= nil and emph.art
     local rowHeight
     if rowWidth then
-        local m = Controls.Metrics()
         rowHeight = m.rowHeight + (hasEndLabels and m.miniLabelHeight or 0)
     else
         rowHeight = SLIDER_ROW_HEIGHT
@@ -124,12 +125,16 @@ function Controls:CreateSlider(options)
             rowHeight = SLIDER_ROW_HEIGHT_WITH_LABELS
         end
     end
-    if emphasized then
-        rowHeight = rowHeight + EMPHASIZED_EXTRA_HEIGHT
+    if emph then
+        rowHeight = rowHeight + m.emphasisGrowth + emph.padY * 2
     end
 
-    local labelFontSize = emphasized and EMPHASIZED_LABEL_SIZE or 13
-    local leftBorderWidth = emphasized and EMPHASIZED_BORDER_WIDTH or 0
+    local labelFontSize = emph and emph.labelFontSize or 13
+    local leftBorderWidth = emph and emph.leftBorderWidth or 0
+    -- The name stands inside the art's padding, or past the accent bar; the
+    -- cluster keeps the same distance from the right edge
+    local labelLeftPad = (emphArt and emph.padX) or (SLIDER_PADDING + leftBorderWidth)
+    local clusterPad = (emphArt and emph.padX) or SLIDER_PADDING
 
     -- Get theme colors
     local ar, ag, ab = theme:GetAccentColor()
@@ -144,26 +149,15 @@ function Controls:CreateSlider(options)
     local row = CreateFrame("Frame", name, parent)
     row:SetHeight(rowHeight)
 
-    -- Row hover background
-    row._hoverBg = Controls.AddHoverFill(row, { sublevel = Controls.SUBLEVEL_BG })
+    -- Row hover background, inside the emphasis art's border where there is one
+    row._hoverBg = Controls.AddHoverFill(row, {
+        sublevel = emphArt and Controls.SUBLEVEL_HOVER or Controls.SUBLEVEL_BG,
+        inset = emphArt and emph.inner or nil })
 
+    -- The divider under a row is builder-drawn; the row keeps only the
+    -- emphasis backdrop, the left accent bar and wash or the skin's art.
     row._emphasized = emphasized
-
-    -- Left accent border + faint background highlight for emphasized sliders
-    if emphasized then
-        local leftAccent = row:CreateTexture(nil, "BORDER", nil, -1)
-        leftAccent:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-        leftAccent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-        leftAccent:SetWidth(leftBorderWidth)
-        leftAccent:SetColorTexture(ar, ag, ab, 1)
-        row._leftAccent = leftAccent
-
-        local emphBg = row:CreateTexture(nil, "BACKGROUND", nil, -7)
-        emphBg:SetPoint("TOPLEFT", leftBorderWidth, 0)
-        emphBg:SetPoint("BOTTOMRIGHT", 0, 0)
-        emphBg:SetColorTexture(ar, ag, ab, 0.03)
-        row._emphBg = emphBg
-    end
+    Controls.AddEmphasisChrome(row, emph)
 
     -- Calculate total slider area width
     local totalSliderAreaWidth = SLIDER_ARROW_WIDTH + sliderWidth + SLIDER_ARROW_WIDTH + 8 + inputWidth + Controls.ValueInputReach()
@@ -183,11 +177,14 @@ function Controls:CreateSlider(options)
             rowWidth = rowWidth,
             baseHeight = rowHeight,
             label = label,
-            labelFontSize = emphasized and EMPHASIZED_LABEL_SIZE or nil,
-            padLeft = SLIDER_PADDING + leftBorderWidth,
+            labelFontSize = emph and labelFontSize or nil,
+            labelFontRole = emph and emph.labelFontRole or nil,
+            scale = emph and emph.scale or nil,
+            padY = emph and emph.padY or nil,
+            padLeft = labelLeftPad,
             description = description,
-            descFontSize = emphasized and 12 or nil,
-            controlReserve = totalSliderAreaWidth + SLIDER_PADDING * 2,
+            descFontSize = emph and math.floor(m.emphasisDescSize * emph.scale + 0.5) or nil,
+            controlReserve = totalSliderAreaWidth + SLIDER_PADDING + clusterPad,
             dimColor = { dimR, dimG, dimB },
         }
     else
@@ -195,9 +192,9 @@ function Controls:CreateSlider(options)
             label = label,
             labelFontSize = labelFontSize,
             labelYOffset = labelYOffset,
-            padLeft = SLIDER_PADDING + leftBorderWidth,
+            padLeft = labelLeftPad,
             description = description,
-            descFontSize = emphasized and 12 or 11,
+            descFontSize = emph and m.emphasisDescSize or 11,
             padAbove = emphasized and 4 or 2,
             measureReserve = sliderWidth + (SLIDER_ARROW_WIDTH * 2) + inputWidth + (SLIDER_PADDING * 3) + leftBorderWidth,
             dimColor = { dimR, dimG, dimB },
@@ -211,7 +208,7 @@ function Controls:CreateSlider(options)
     sliderContainer:SetSize(totalSliderAreaWidth, SLIDER_HEIGHT + (hasEndLabels and 14 or 0))
     if rowWidth then
         Controls.AnchorCluster(row, sliderContainer, {
-            x = -SLIDER_PADDING,
+            x = -clusterPad,
             y = hasEndLabels and -4 or 0,
         })
     else
@@ -714,13 +711,6 @@ function Controls:CreateSlider(options)
         -- Update label
         if row._label then
             row._label:SetTextColor(r, g, b, 1)
-        end
-        -- Update emphasized accents
-        if row._leftAccent then
-            row._leftAccent:SetColorTexture(r, g, b, 1)
-        end
-        if row._emphBg then
-            row._emphBg:SetColorTexture(r, g, b, 0.03)
         end
         -- Update arrows
         if leftArrow and leftArrow._text then

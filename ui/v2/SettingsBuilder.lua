@@ -377,6 +377,7 @@ end
 -- Options:
 --   text   : Description text
 --   dim    : Use dim color (default true)
+--   justify: Horizontal justification (default "LEFT")
 --------------------------------------------------------------------------------
 
 function Builder:AddDescription(text, options)
@@ -404,7 +405,7 @@ function Builder:AddDescription(text, options)
     descFS:SetFont(fontPath, options.fontSize or 12, "")
     descFS:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     descFS:SetText(text or "")
-    descFS:SetJustifyH("LEFT")
+    descFS:SetJustifyH(options.justify or "LEFT")
     descFS:SetWordWrap(true)
 
     -- Color (use lighter dim for collapsible section interiors)

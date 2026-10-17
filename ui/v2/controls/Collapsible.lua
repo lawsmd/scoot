@@ -50,13 +50,12 @@ end
 
 addon.UI._sectionStates = addon.UI._sectionStates or {}
 
-local function GetSectionState(componentId, sectionKey, defaultVal)
+-- A section starts collapsed, always (the owner's rule, 17 October 2026):
+-- rows a page needs open on arrival stand outside any section. Only the
+-- session's own clicks and a deep link's seed open one.
+local function GetSectionState(componentId, sectionKey)
     addon.UI._sectionStates[componentId] = addon.UI._sectionStates[componentId] or {}
-    local state = addon.UI._sectionStates[componentId][sectionKey]
-    if state == nil then
-        return defaultVal or false
-    end
-    return state
+    return addon.UI._sectionStates[componentId][sectionKey] or false
 end
 
 local function SetSectionState(componentId, sectionKey, expanded)
@@ -77,7 +76,7 @@ end
 --   title         : Section title text (string, required)
 --   componentId   : Component identifier for state key (string, required)
 --   sectionKey    : Unique key within component (string, required)
---   defaultExpanded : Initial expanded state (boolean, default false)
+--   (defaultExpanded is ignored: every section starts collapsed)
 --   contentHeight : Fixed content area height (number, optional)
 --   parent        : Parent frame (required)
 --   name          : Global frame name (optional)
@@ -98,13 +97,12 @@ function Controls:CreateCollapsibleSection(options)
     local title = options.title or "Section"
     local componentId = options.componentId or "unknown"
     local sectionKey = options.sectionKey or "default"
-    local defaultExpanded = options.defaultExpanded or false
     local contentHeight = options.contentHeight or 100
     local name = options.name
     local onToggle = options.onToggle
 
     -- Get initial state from session storage
-    local expanded = GetSectionState(componentId, sectionKey, defaultExpanded)
+    local expanded = GetSectionState(componentId, sectionKey)
 
     -- Get theme colors
     local ar, ag, ab = theme:GetAccentColor()

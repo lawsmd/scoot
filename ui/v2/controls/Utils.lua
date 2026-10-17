@@ -993,6 +993,17 @@ end
 -- UpdateTabs, UpdateTabVisuals, SetTitleInset, ScrollFrame, _scrollBar,
 -- _scrollInsetRight, Content, and the _accentR/_accentG/_accentB fields the
 -- populate passes read.
+-- Shown picker frames and their close routines. A floating popup list closes
+-- them on open (Controls.ClosePickers), so a dropdown never draws over a
+-- picker left standing.
+local openPickers = {}
+
+function Controls.ClosePickers()
+    for _, close in pairs(CopyTable(openPickers)) do
+        close()
+    end
+end
+
 function Controls.CreatePickerShell(opts)
     local theme = GetTheme()
     local Chrome = addon.UI.Chrome
@@ -1232,20 +1243,26 @@ function Controls.CreatePickerShell(opts)
         onClose()
     end)
 
-    -- Click outside to close
+    -- Click outside to close. GLOBAL_MOUSE_DOWN rather than a per-frame
+    -- IsMouseButtonDown poll, which misses a click shorter than one frame.
     frame:SetScript("OnShow", function(self)
-        self:SetScript("OnUpdate", function(f)
-            if not f:IsMouseOver() and IsMouseButtonDown("LeftButton") then
-                C_Timer.After(0.05, function()
-                    if frame:IsShown() and not frame:IsMouseOver() then
-                        onClose()
-                    end
-                end)
-            end
+        openPickers[self] = onClose
+        if self._outsideClick then self._outsideClick:Off() end
+        self._outsideClick = addon.Events.On(opts.name, "GLOBAL_MOUSE_DOWN", function()
+            if frame:IsMouseOver() then return end
+            C_Timer.After(0.05, function()
+                if frame:IsShown() and not frame:IsMouseOver() then
+                    onClose()
+                end
+            end)
         end)
     end)
     frame:SetScript("OnHide", function(self)
-        self:SetScript("OnUpdate", nil)
+        openPickers[self] = nil
+        if self._outsideClick then
+            self._outsideClick:Off()
+            self._outsideClick = nil
+        end
         if opts.onHide then
             opts.onHide(self)
         end

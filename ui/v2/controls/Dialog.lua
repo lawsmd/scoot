@@ -410,6 +410,29 @@ local function CreateDialogFrame()
         parent = f, text = NO or "No", width = m.buttonMinWidth, height = buttonHeight,
         onClick = cancel,
     })
+    -- More affirmative choices between the two, made the first time a show
+    -- passes extraButtons (or altText, the one-entry form) and reused after.
+    -- The X and Escape stay the cancel.
+    f._extraBtns = {}
+    f._extras = {}
+    function f._extraButton(i)
+        local btn = f._extraBtns[i]
+        if btn then return btn end
+        btn = Controls:CreateButton({
+            parent = f, text = "", width = m.buttonMinWidth, height = buttonHeight,
+            onClick = function()
+                f:Hide()
+                modalBackdrop:Hide()
+                local extra = f._extras[i]
+                if extra and extra.onClick then
+                    extra.onClick(f._data)
+                end
+            end,
+        })
+        btn:Hide()
+        f._extraBtns[i] = btn
+        return btn
+    end
 
     -- ESC to close (via OnKeyDown)
     f:SetScript("OnKeyDown", function(self, key)
@@ -541,17 +564,48 @@ function Controls:ShowDialog(name, options)
     -- Position buttons
     f._acceptBtn:ClearAllPoints()
     f._cancelBtn:ClearAllPoints()
+    for _, btn in ipairs(f._extraBtns) do
+        btn:ClearAllPoints()
+        btn:Hide()
+    end
+
+    local extras = {}
+    if not infoOnly then
+        local list = options.extraButtons or def.extraButtons
+        local altText = options.altText or def.altText
+        if type(list) == "table" then
+            for _, extra in ipairs(list) do extras[#extras + 1] = extra end
+        elseif altText then
+            extras[1] = { text = altText, width = options.altWidth or def.altWidth, onClick = options.onAlt }
+        end
+    end
+    f._extras = extras
 
     if infoOnly then
         -- Single centered button
         f._acceptBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, pad)
         f._cancelBtn:Hide()
     else
-        -- Two buttons side by side, centered. The affirmative action is always
-        -- the left button, across every dialog in the addon.
+        -- Side by side and centered: the accept, any extra choices, the
+        -- cancel. The affirmative action is always the left button, across
+        -- every dialog in the addon.
         local totalWidth = acceptWidth + cancelWidth + m.buttonGap
+        for i, extra in ipairs(extras) do
+            local btn = f._extraButton(i)
+            local width = extra.width or m.buttonMinWidth
+            btn:SetText(extra.text or "")
+            btn:SetSize(width, buttonHeight)
+            totalWidth = totalWidth + width + m.buttonGap
+        end
         f._acceptBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", -totalWidth/2, pad)
-        f._cancelBtn:SetPoint("BOTTOMLEFT", f._acceptBtn, "BOTTOMRIGHT", m.buttonGap, 0)
+        local previous = f._acceptBtn
+        for i = 1, #extras do
+            local btn = f._extraBtns[i]
+            btn:SetPoint("BOTTOMLEFT", previous, "BOTTOMRIGHT", m.buttonGap, 0)
+            btn:Show()
+            previous = btn
+        end
+        f._cancelBtn:SetPoint("BOTTOMLEFT", previous, "BOTTOMRIGHT", m.buttonGap, 0)
         f._cancelBtn:Show()
     end
 

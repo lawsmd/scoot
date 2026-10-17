@@ -89,6 +89,7 @@ function Builder:AddSelector(options)
         useLightDim = self._useLightDim,
         emphasized = options.emphasized,
         labelAlign = options.labelAlign,
+        centered = options.centered,
         sizeScale = options.sizeScale,
         disabled = options.disabled,
         isDisabled = options.isDisabled,

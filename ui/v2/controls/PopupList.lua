@@ -605,6 +605,7 @@ function Controls.CreatePopupList(opts)
             return totalHeight
         end
         Place(totalHeight, at)
+        Controls.ClosePickers()
 
         dismiss:Show()
         dismiss:SetFrameLevel(popup:GetFrameLevel() - 1)

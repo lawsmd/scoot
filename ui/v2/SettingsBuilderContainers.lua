@@ -17,7 +17,7 @@ local Controls = addon.UI.Controls
 --   title         : Section title text (required)
 --   componentId   : Component identifier for state persistence (required)
 --   sectionKey    : Unique key within component (required)
---   defaultExpanded : Initial expanded state (default false)
+--   (defaultExpanded is ignored: every section starts collapsed)
 --   buildContent  : function(contentFrame, innerBuilder) to populate content
 --   onToggle      : Optional callback when expand/collapse changes
 --------------------------------------------------------------------------------
@@ -62,7 +62,6 @@ function Builder:AddCollapsibleSection(options)
         title = options.title,
         componentId = options.componentId,
         sectionKey = options.sectionKey,
-        defaultExpanded = options.defaultExpanded,
         contentHeight = 100,  -- Placeholder, will be updated by inner builder
         infoIcon = options.infoIcon,  -- Pass through info icon options
         onToggle = function(expanded)

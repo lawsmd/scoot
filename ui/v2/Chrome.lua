@@ -163,10 +163,12 @@ Chrome.FLAT = {
     -- an atlas kind is a skin's box over rows of colored text, with a
     -- highlight laid over the row under the cursor.
     popupList     = { kind = "flat" },
-    -- The backdrop of an emphasized (hero) row, so far the selector's
-    -- (ui/v2/controls/Selector.lua). Flat is the accent bar down the row's
-    -- left edge over a faint accent wash; a sliced kind is a skin's art
-    -- around the whole row, and metrics.emphasis scales what the row holds.
+    -- The backdrop of an emphasized (hero) row, read through
+    -- Controls.ResolveEmphasis and AddEmphasisChrome (ui/v2/controls/
+    -- Emphasis.lua) by the selector and the dual selector. Flat is the accent
+    -- bar down the row's left edge over a faint accent wash; a sliced kind is
+    -- a skin's art around the whole row, and metrics.emphasis scales what the
+    -- row holds.
     emphasis      = { kind = "flat" },
     -- The help icon a label, a tab or a header button carries, and the box
     -- its text opens in (ui/v2/controls/InfoIcon.lua). Flat draws the
