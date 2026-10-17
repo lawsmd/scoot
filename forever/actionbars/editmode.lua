@@ -25,8 +25,7 @@ local EditMode = {}
 ActionBars.EditMode = EditMode
 
 -- The settings page Configure opens: the Clusters page under the Action
--- Bars group (page.lua). It is the collapsible sections' component id too,
--- so the brand's section key expands that cluster's section.
+-- Bars group (page.lua), on the bar the subject names (Follow below).
 local NAV_KEY = "actionBarClusters"
 EditMode.NAV_KEY = NAV_KEY
 
@@ -91,7 +90,6 @@ EditMode.RANGES = {
     spacing = { min = 0, max = 40, step = 1 },
     iconSize = { min = 50, max = 200, step = 5 },
     iconPadding = { min = 2, max = 10, step = 1 },
-    endCapScale = { min = 50, max = 200, step = 5 },
 }
 
 local ALIGN_LABELS = {
@@ -125,9 +123,24 @@ function EditMode.Subject(id)
     return math.max(1, math.min(n, subjects[id] or 1))
 end
 
+--- A deleted cluster's pick goes with it, so a new cluster that reuses the
+--- id starts on its first member.
+function EditMode.ForgetSubject(id)
+    subjects[id] = nil
+end
+
 local function RefreshDialog()
     local Dialog = addon.EditMode and addon.EditMode.Dialog
     if Dialog and Dialog.RefreshMirror then Dialog.RefreshMirror() end
+end
+
+-- Point the settings page at the subject's bar, so Configure opens on it.
+local function Follow(id)
+    local Page = ActionBars.Page
+    local cluster = Clusters.Find(id)
+    local index = EditMode.Subject(id)
+    local m = index and cluster and cluster.members[index]
+    if Page and Page.Follow and m then Page.Follow(m.identity) end
 end
 
 --- Pick the subject, from a strip or the box's header. The dialog re-lists
@@ -137,6 +150,7 @@ function EditMode.SetSubject(id, index)
     index = tonumber(index)
     if not index then return end
     subjects[id] = index
+    Follow(id)
     if ActionBars.Overlays then ActionBars.Overlays.Refresh() end
     C_Timer.After(0, RefreshDialog)
 end
@@ -170,8 +184,8 @@ end
 -- release, so a slider may rebuild too. A row whose write would be refused
 -- is absent. Remove is the strips' alone, on the owner's call: a strip
 -- stands on the bar it removes, where a button in the box acted on
--- whichever member the box showed. End Cap Scale is absent while End Caps
--- is off, so the toggle rebuilds.
+-- whichever member the box showed. The end caps have boxes and rows of
+-- their own (endcaps.lua).
 
 local function selector(label, values, order, get, set, rebuild)
     return { kind = "selector", label = label, values = values, order = order,
@@ -220,14 +234,6 @@ local function Mirror(id)
         rows[#rows + 1] = slider("Spacing", EditMode.RANGES.spacing,
             clusterField(id, "spacing", 4),
             function(v) Clusters.SetClusterField(id, "spacing", v) end)
-        rows[#rows + 1] = { kind = "toggle", label = "End Caps",
-            get = function() return clusterField(id, "endCaps", false)() and true or false end,
-            set = function(v) Clusters.SetClusterField(id, "endCaps", v) end, rebuild = true }
-        if cluster.endCaps then
-            rows[#rows + 1] = slider("End Cap Scale", EditMode.RANGES.endCapScale,
-                clusterField(id, "endCapScale", 100),
-                function(v) Clusters.SetClusterField(id, "endCapScale", v) end)
-        end
 
         local members = cluster.members or {}
         local subject = EditMode.Subject(id)
@@ -294,7 +300,7 @@ function EditMode.Register(cluster, container)
         store = store,
         apply = ApplyPosition,
         brand = {
-            navKey = NAV_KEY, componentId = NAV_KEY, sectionKey = "cluster" .. id,
+            navKey = NAV_KEY, componentId = NAV_KEY,
             mirror = Mirror(id),
         },
     })
@@ -303,6 +309,7 @@ function EditMode.Register(cluster, container)
     -- select or deselect callbacks, and these are the methods it calls.
     if selection then
         hooksecurefunc(selection, "ShowSelected", function()
+            Follow(id)
             if ActionBars.Overlays then ActionBars.Overlays.Attach(id) end
         end)
         hooksecurefunc(selection, "ShowHighlighted", function()

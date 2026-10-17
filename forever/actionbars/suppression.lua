@@ -5,7 +5,9 @@
 -- parked under the hidden holder. The main bar is dimmed instead: it is the
 -- native keybind target, so it stays in Blizzard's parent chain, and Edit
 -- Mode's layout pass re-parents system frames in combat. Forever's end caps
--- are children of the main bar and dim with it.
+-- are children of the main bar, but each is an Edit Mode system whose
+-- selection box ignores its parent's alpha, so the dimmed bar left two empty
+-- boxes in Edit Mode; both caps are parked.
 --
 -- Nothing is released: the Features switch lands at reload, and a feature
 -- off at login never claims. The pet bar and the stance bar stay
@@ -34,7 +36,17 @@ local BLIZZARD_FRAME = {
     -- The micro and bag twins click these buttons where they are parked.
     { name = "MicroMenuContainer", method = "park" },
     { name = "BagsBar",            method = "park" },
+    -- MainActionBar.EndCaps, from the client's MainMenuBarEndCaps template;
+    -- the caps have no global names. Camelot draws its own (endcaps.lua).
+    { name = "MainActionBar.EndCaps.LeftEndCap",  method = "park", key = "LeftEndCap", optional = true },
+    { name = "MainActionBar.EndCaps.RightEndCap", method = "park", key = "RightEndCap", optional = true },
 }
+
+local function Resolve(row)
+    if not row.key then return _G[row.name] end
+    local caps = MainActionBar and MainActionBar.EndCaps
+    return caps and caps[row.key] or nil
+end
 
 local applied = false
 local mouseOff = false
@@ -54,17 +66,18 @@ local function MouseOff()
 end
 
 --- Claim every frame in the table, once. A frame that does not exist yet is
---- skipped and the next pass tries again.
+--- skipped and the next pass tries again; an optional one, absent from a
+--- client that ships no such frame, holds nothing up.
 function Suppression.Apply()
     if not ActionBars.IsEnabled() then return end
     local all = true
     for _, row in ipairs(BLIZZARD_FRAME) do
-        local frame = _G[row.name]
+        local frame = Resolve(row)
         if frame then
             if not addon.NativeFrame:IsSuppressed(frame) then
                 addon.NativeFrame:Suppress(frame, OWNER, row.method)
             end
-        else
+        elseif not row.optional then
             all = false
         end
     end
@@ -88,7 +101,7 @@ function Suppression.IsApplied()
 end
 
 --- The rows /camelot actionbars prints: each frame's parent, alpha, level and
---- shown state, plus the end cap frames the client hangs off the main bar.
+--- shown state; the end caps' rows read their parent from the table.
 function Suppression.Report(push)
     local function row(label, frame)
         if not frame then
@@ -101,12 +114,6 @@ function Suppression.Report(push)
             frame:GetFrameLevel(), tostring(frame:IsShown()), tostring(frame:IsVisible()))
     end
     for _, r in ipairs(BLIZZARD_FRAME) do
-        row(r.name .. " (" .. r.method .. ")", _G[r.name])
-    end
-    local caps = MainActionBar and MainActionBar.EndCaps
-    row("MainActionBar.EndCaps", caps)
-    if caps then
-        row("  LeftEndCap", caps.LeftEndCap)
-        row("  RightEndCap", caps.RightEndCap)
+        row((r.key or r.name) .. " (" .. r.method .. ")", Resolve(r))
     end
 end

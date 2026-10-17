@@ -1,15 +1,27 @@
 --------------------------------------------------------------------------------
 -- forever/actionbars/page.lua
--- The Clusters page: the whole cluster surface in the Camelot menu, under
--- the Action Bars group. Create New Cluster, then one collapsible section per
--- cluster on screen in the dialog's shape: the cluster's rows, a boxed panel
--- whose header picks the member it edits (the dialog's subject, so the two
--- surfaces follow each other), Add Bar and Delete Cluster. Below the
--- clusters, the micro menu and bag bar's section. Every control writes through the edits in clusters.lua,
--- and a write that changes which rows exist re-renders the page. Configure
--- on a cluster's box opens this page with that cluster's section expanded:
--- the section keys are the brand's. The presentation pages of the later
--- phase join the same group. Bar Art and Page Arrows wait for the art.
+-- The Action Bars 1-8 page under the Action Bars group (nav key
+-- actionBarClusters, labelled Clusters until 17 October 2026): the settings
+-- for one of Blizzard's eight action bars at a time, past what the Edit Mode
+-- dialog holds. One line points at Edit Mode for the clusters; a centered
+-- Action Bar selector, with no label, picks the bar;
+-- under it a tabbed
+-- section holds Layout/Sizing, Cooldown Text and Keybind Text. A cluster's
+-- own rows (Axis, Spacing, End Caps) and every edit that makes, fills or
+-- empties a cluster stay in Edit Mode. The Layout/Sizing rows write the
+-- bar's member in whichever cluster holds it, through the edits in
+-- clusters.lua; a bar no cluster holds still takes its text settings.
+--
+-- The selected bar follows the Edit Mode subject (editmode.lua calls
+-- Page.Follow), so Configure on a cluster's box opens this page on the bar
+-- the dialog was editing, and a pick here moves the subject the same way.
+-- The micro menu and bag bar have their own page (microbagspage.lua).
+--
+-- The text styles are the unpaired list: Blizzard's code writes the keybind
+-- string with SetText, Show and Hide, and the engine writes the countdown,
+-- so a Deep Shadow copy would follow neither. While nothing is stored the
+-- controls show the font object's or the countdown string's own values,
+-- which are what the button draws (text.lua).
 --------------------------------------------------------------------------------
 
 local _, addon = ...
@@ -17,7 +29,10 @@ local _, addon = ...
 local ActionBars = addon.ActionBars
 local Clusters = ActionBars.Clusters
 local EditMode = ActionBars.EditMode
+local Text = ActionBars.Text
+local DB = addon.DB
 local SettingsBuilder = addon.UI.SettingsBuilder
+local Helpers = addon.UI.Settings.Helpers
 
 local Page = {}
 ActionBars.Page = Page
@@ -25,9 +40,21 @@ ActionBars.Page = Page
 local NAV_KEY = EditMode.NAV_KEY
 Page.NAV_KEY = NAV_KEY
 
-local BUTTON_HEIGHT = 26
-local BUTTON_GAP = 8
+-- The bar picker: a field a quarter larger than a row's, and wider.
+local PICKER_SCALE = 1.25
+local PICKER_WIDTH = 340
 
+local BARS = { "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8" }
+local BAR_SET = {}
+for _, token in ipairs(BARS) do BAR_SET[token] = true end
+
+local TABS = {
+    { key = "layout", label = "Layout/Sizing" },
+    { key = "cooldown", label = "Cooldown Text" },
+    { key = "keybind", label = "Keybind Text" },
+}
+
+local selected = "bar1" -- the bar the page edits, for the session
 local activeBuilder -- the page's builder while it is drawn
 local quiet = false -- a page control is mid-edit
 
@@ -43,40 +70,36 @@ local function edit(builder, fn, structural)
     if structural then builder:DeferredRefreshAll() end
 end
 
--- A row of buttons, built by hand since the builder has no button row, and
--- skipped under the search index's scan, which runs every renderer without
--- drawing.
-local function AddButtons(builder, parent, specs)
-    if SettingsBuilder._scanMode then return end
-    local Controls = addon.UI.Controls
-    if not (Controls and Controls.CreateButton) then return end
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(BUTTON_HEIGHT)
-    local last
-    for _, spec in ipairs(specs) do
-        local btn = Controls:CreateButton({
-            parent = row, text = spec.text, height = BUTTON_HEIGHT, fontSize = 11,
-            onClick = spec.onClick,
-        })
-        if btn then
-            if last then
-                btn:SetPoint("LEFT", last, "RIGHT", BUTTON_GAP, 0)
-            else
-                btn:SetPoint("LEFT", row, "LEFT", 0, 0)
-            end
-            builder:Adopt(btn)
-            last = btn
-        end
+-- The cluster holding a bar and the bar's index in it, or nil.
+local function placement(token)
+    local id = Clusters.Owner(token)
+    local cluster = id and Clusters.Find(id)
+    for i, m in ipairs(cluster and cluster.members or {}) do
+        if m.identity == token then return id, i, cluster end
     end
-    builder:PlaceCustom(row)
+    return nil
+end
+
+--- Select the bar the page edits; editmode.lua calls this when the subject
+--- changes. A token outside the eight action bars is ignored.
+function Page.Follow(token)
+    if BAR_SET[token] then selected = token end
 end
 
 --------------------------------------------------------------------------------
--- One member
+-- Layout/Sizing
 --------------------------------------------------------------------------------
 
-local function memberRows(inner, frame, builder, id, index, m, labels)
-    local count = Clusters.ButtonCount(m.identity)
+local function layoutTab(tab, builder, token)
+    local id, index, cluster = placement(token)
+    if not id then
+        tab:AddDescription(Clusters.IdentityLabel(token) .. " is in no cluster. Edit Mode places it.")
+        tab:Finalize()
+        return
+    end
+    local m = cluster.members[index]
+    local labels = EditMode.Labels(cluster.axis ~= "horizontal")
+    local count = Clusters.ButtonCount(token)
     local function field(name, default)
         return function()
             local c = Clusters.Find(id)
@@ -92,242 +115,81 @@ local function memberRows(inner, frame, builder, id, index, m, labels)
         end
     end
 
-    local choices = Clusters.Choices(id, index)
-    inner:AddSelector({ label = "Identity",
-        values = choices.values, order = choices.order,
-        disabledOptions = choices.disabledOptions,
-        get = field("identity"),
-        set = function(v)
-            edit(builder, function() Clusters.SetIdentity(id, index, v) end, true)
-        end })
     -- The next row's maximum follows this one, so the write re-renders.
-    inner:AddSlider({ label = "Buttons", min = 1, max = count, step = 1, precision = 0,
+    tab:AddSlider({ label = "Buttons", min = 1, max = count, step = 1, precision = 0,
         get = field("buttons", count), set = write("buttons", true) })
-    inner:AddSlider({ label = labels.lines, min = 1, max = m.buttons or count, step = 1, precision = 0,
+    tab:AddSlider({ label = labels.lines, min = 1, max = m.buttons or count, step = 1, precision = 0,
         get = field("lines", 1), set = write("lines") })
-    inner:AddSelector({ label = "Alignment", values = labels.align, order = EditMode.ALIGN_ORDER,
+    tab:AddSelector({ label = "Alignment", values = labels.align, order = EditMode.ALIGN_ORDER,
         get = field("align", "center"), set = write("align") })
     local size = EditMode.RANGES.iconSize
-    inner:AddSlider({ label = "Icon Size", min = size.min, max = size.max, step = size.step, precision = 0,
+    tab:AddSlider({ label = "Icon Size", min = size.min, max = size.max, step = size.step, precision = 0,
         minLabel = size.min .. "%", maxLabel = size.max .. "%", displaySuffix = "%",
         get = field("iconSize", 100), set = write("iconSize") })
     local padding = EditMode.RANGES.iconPadding
-    inner:AddSlider({ label = "Icon Padding", min = padding.min, max = padding.max, step = padding.step,
+    tab:AddSlider({ label = "Icon Padding", min = padding.min, max = padding.max, step = padding.step,
         precision = 0, get = field("iconPadding", 2), set = write("iconPadding") })
-    inner:AddToggle({ label = "Always Show Buttons",
+    tab:AddToggle({ label = "Show Empty Buttons",
         get = function() return field("alwaysShowButtons", true)() and true or false end,
         set = write("alwaysShowButtons") })
-    if Clusters.CanRemove(id, index) then
-        AddButtons(inner, frame, {
-            { text = "Remove", onClick = function()
-                edit(builder, function() Clusters.RemoveMember(id, index) end, true)
-            end },
-        })
-    end
+    tab:Finalize()
 end
 
 --------------------------------------------------------------------------------
--- One cluster
+-- Cooldown Text and Keybind Text
 --------------------------------------------------------------------------------
 
-local function clusterSection(builder, cluster)
-    local id = cluster.id
-    builder:AddCollapsibleSection({
-        title = Clusters.Label(cluster), componentId = NAV_KEY, sectionKey = "cluster" .. id,
-        defaultExpanded = true,
-        buildContent = function(frame, inner)
-            local c = Clusters.Find(id)
-            if not c then
-                inner:Finalize()
-                return
-            end
-            local vertical = c.axis ~= "horizontal"
-            local labels = EditMode.Labels(vertical)
-
-            -- The member rows are labelled by the axis, so the write re-renders.
-            inner:AddSelector({ label = "Axis", values = EditMode.AXIS_VALUES, order = EditMode.AXIS_ORDER,
-                get = function()
-                    local cc = Clusters.Find(id)
-                    return cc and cc.axis or "vertical"
-                end,
-                set = function(v)
-                    edit(builder, function() Clusters.SetClusterField(id, "axis", v) end, true)
-                end })
-            local spacing = EditMode.RANGES.spacing
-            inner:AddSlider({ label = "Spacing", min = spacing.min, max = spacing.max, step = spacing.step,
-                precision = 0,
-                get = function()
-                    local cc = Clusters.Find(id)
-                    return cc and cc.spacing or 4
-                end,
-                set = function(v)
-                    edit(builder, function() Clusters.SetClusterField(id, "spacing", v) end)
-                end })
-            -- End Cap Scale shows only with End Caps on, so the toggle re-renders.
-            inner:AddToggle({ label = "End Caps",
-                get = function()
-                    local cc = Clusters.Find(id)
-                    return cc and cc.endCaps and true or false
-                end,
-                set = function(v)
-                    edit(builder, function() Clusters.SetClusterField(id, "endCaps", v) end, true)
-                end })
-            if c.endCaps then
-                local capScale = EditMode.RANGES.endCapScale
-                inner:AddSlider({ label = "End Cap Scale", min = capScale.min, max = capScale.max,
-                    step = capScale.step, precision = 0,
-                    minLabel = capScale.min .. "%", maxLabel = capScale.max .. "%", displaySuffix = "%",
-                    get = function()
-                        local cc = Clusters.Find(id)
-                        return cc and cc.endCapScale or 100
-                    end,
-                    set = function(v)
-                        edit(builder, function() Clusters.SetClusterField(id, "endCapScale", v) end)
-                    end })
-            end
-
-            local members = c.members or {}
-            local subject = EditMode.Subject(id)
-            local m = subject and members[subject]
-            if m then
-                local panel = { componentId = NAV_KEY, sectionKey = "cluster" .. id .. "Member",
-                    buildContent = function(panelFrame, panelInner)
-                        memberRows(panelInner, panelFrame, builder, id, subject, m, labels)
-                        panelInner:Finalize()
-                    end }
-                if #members > 1 then
-                    local values, order = {}, {}
-                    for i, mm in ipairs(members) do
-                        values[tostring(i)] = Clusters.IdentityLabel(mm.identity)
-                        order[#order + 1] = tostring(i)
-                    end
-                    panel.header = { values = values, order = order,
-                        get = function() return tostring(EditMode.Subject(id)) end,
-                        set = function(v)
-                            EditMode.SetSubject(id, v)
-                            builder:DeferredRefreshAll()
-                        end }
-                else
-                    panel.title = Clusters.IdentityLabel(m.identity)
-                end
-                inner:AddSubPanel(panel)
-            end
-
-            local buttons = {}
-            if #Clusters.Placeable() > 0 then
-                buttons[#buttons + 1] = { text = "Add Bar", onClick = function()
-                    edit(builder, function()
-                        Clusters.AddMember(id)
-                        local cc = Clusters.Find(id)
-                        EditMode.SetSubject(id, cc and cc.members and #cc.members)
-                    end, true)
-                end }
-            end
-            if Clusters.CanDelete(id) then
-                buttons[#buttons + 1] = { text = "Delete Cluster", onClick = function()
-                    local label = Clusters.Label(Clusters.Find(id) or cluster)
-                    addon.Dialogs:Confirm("Delete " .. label .. "?", function()
-                        edit(builder, function() Clusters.DeleteCluster(id) end, true)
-                    end)
-                end }
-            end
-            if #buttons > 0 then
-                AddButtons(inner, frame, buttons)
-            end
-            inner:Finalize()
-        end,
-    })
+-- The composite's field names are the stored field names, one to one.
+local IDENTITY_MAP = {}
+for _, f in ipairs({ "hidden", "fontFace", "style", "size", "color", "offsetX", "offsetY" }) do
+    IDENTITY_MAP[f] = f
 end
 
---------------------------------------------------------------------------------
--- The micro menu and the bag bar
---------------------------------------------------------------------------------
--- One section under the clusters: the Style above a tab per bar and per bag
--- slot. A Style or orientation write changes which rows apply, so it
--- re-renders; the bag bar's rows stand disabled under the combined style,
--- where the micro menu's rows lay out the whole row.
-
-local function microBagsSection(builder)
-    local MicroBags = ActionBars.MicroBags
-    if not MicroBags then return end
-    local function get(field) return function() return MicroBags.Get(field) end end
-    local function set(field, structural)
-        return function(v)
-            edit(builder, function() MicroBags.Set(field, v) end, structural)
-        end
+-- What the keybind controls show while nothing is stored: the template's
+-- font object, Arial Narrow on every client the font families list.
+local function keybindDefaults()
+    local _, size = Text.FontObjectFont()
+    local color = { 1, 1, 1, 1 }
+    local fontObject = _G[Text.FONT_OBJECT]
+    if fontObject then
+        local r, g, b = fontObject:GetTextColor()
+        color = { r, g, b, 1 }
     end
-    local function combined() return MicroBags.Style() == "combined" end
-
-    local tabs = {
-        { key = "micro", label = "Micro Menu" },
-        { key = "bags", label = "Bag Bar" },
+    return {
+        fontFace = "ARIALN",
+        size = size and math.floor(size + 0.5) or 12,
+        style = Text.FontObjectStyle(),
+        color = color,
     }
-    local content = {}
+end
 
-    content.micro = function(_, tab)
-        tab:AddSelector({ label = "Orientation", values = MicroBags.ORIENTATION_VALUES,
-            order = MicroBags.ORIENTATION_ORDER, get = get("micro.orientation"), set = set("micro.orientation") })
-        tab:AddSelector({ label = "Order", values = MicroBags.ORDER_VALUES, order = MicroBags.ORDER_ORDER,
-            get = get("micro.order"), set = set("micro.order") })
-        local r = MicroBags.RANGES.microSize
-        tab:AddSlider({ label = "Size", min = r.min, max = r.max, step = r.step, precision = 0,
-            minLabel = r.min .. "%", maxLabel = r.max .. "%", displaySuffix = "%",
-            get = get("micro.size"), set = set("micro.size") })
-        tab:Finalize()
-    end
+-- What the cooldown controls show while nothing is stored: the countdown
+-- string's own size and outline, in Friz Quadrata, the client's default.
+local function cooldownDefaults()
+    local _, size, flags = Text.CooldownFont()
+    return {
+        fontFace = "FRIZQT__",
+        size = size and math.floor(size + 0.5) or 16,
+        style = Text.StyleOf(flags),
+        color = { 1, 1, 1, 1 },
+    }
+end
 
-    content.bags = function(_, tab)
-        if combined() then
-            tab:AddDescription("The Camelot (Combined) style lays the bags out after the micro buttons, by the Micro Menu tab's rows.")
-        end
-        local vertical = MicroBags.Get("bags.orientation") == "vertical"
-        local dirValues, dirOrder = MicroBags.DirectionChoices(vertical)
-        tab:AddSelector({ label = "Orientation", values = MicroBags.ORIENTATION_VALUES,
-            order = MicroBags.ORIENTATION_ORDER, isDisabled = combined,
-            get = get("bags.orientation"), set = set("bags.orientation", true) })
-        tab:AddSelector({ label = "Direction", values = dirValues, order = dirOrder, isDisabled = combined,
-            get = get("bags.direction"), set = set("bags.direction") })
-        local size = MicroBags.RANGES.bagsSize
-        tab:AddSlider({ label = "Size", min = size.min, max = size.max, step = size.step, precision = 0,
-            minLabel = size.min .. "%", maxLabel = size.max .. "%", displaySuffix = "%", isDisabled = combined,
-            get = get("bags.size"), set = set("bags.size") })
-        local pad = MicroBags.RANGES.padding
-        tab:AddSlider({ label = "Bag Slot Padding", min = pad.min, max = pad.max, step = pad.step, precision = 0,
-            isDisabled = combined, get = get("bags.padding"), set = set("bags.padding") })
-        tab:Finalize()
-    end
-
-    local Bags = MicroBags.Bags
-    for _, slot in ipairs(Bags and Bags.SLOTS or {}) do
-        tabs[#tabs + 1] = { key = slot.key, label = slot.label }
-        content[slot.key] = function(_, tab)
-            if slot.keyring and not Bags.HasKeyring() then
-                tab:AddDescription("This character's client draws no keyring.")
-            end
-            tab:AddToggle({ label = "Show " .. slot.label,
-                get = function() return MicroBags.SlotShown(slot.key) end,
-                set = set("slots." .. slot.key .. ".shown") })
-            if slot.key == "backpack" then
-                tab:AddToggle({ label = "Show Free Slots",
-                    get = function() return MicroBags.Get("slots.backpack.freeSlots") ~= false end,
-                    set = set("slots.backpack.freeSlots") })
-            end
-            tab:Finalize()
-        end
-    end
-
-    builder:AddCollapsibleSection({
-        title = "Micro & Bag Bar", componentId = NAV_KEY, sectionKey = MicroBags.SECTION_KEY,
-        defaultExpanded = false,
-        buildContent = function(_, inner)
-            inner:AddSelector({ label = "Style", emphasized = true,
-                values = MicroBags.STYLE_VALUES, order = MicroBags.STYLE_ORDER,
-                get = get("style"), set = set("style", true) })
-            inner:AddTabbedSection({ tabs = tabs, componentId = NAV_KEY,
-                sectionKey = MicroBags.SECTION_KEY .. "Tabs", buildContent = content })
-            inner:Finalize()
-        end,
+local function textTab(tab, token, part, hideLabel, defaults)
+    local get, set = Helpers.CreateFlatAccessors(
+        function(f) return DB.Get(Text.Path(token, part, f)) end,
+        function(f, value) DB.Set(Text.Path(token, part, f), value) end,
+        IDENTITY_MAP)
+    tab:AddTextStyleBlock({
+        get = get, set = set, apply = function() Text.Refresh(token) end,
+        defaults = defaults,
+        hideToggle = { label = hideLabel },
+        style = { order = Helpers.fontStyleOrder },
+        size = { min = 6, max = 32, minLabel = "6", maxLabel = "32" },
+        color = { kind = "plain" },
+        offset = { range = 50, minLabel = "-50", maxLabel = "+50" },
     })
+    tab:Finalize()
 end
 
 --------------------------------------------------------------------------------
@@ -347,20 +209,36 @@ local function Render(panel, scrollContent)
         return
     end
 
-    if Clusters.FreeActionBar() then
-        AddButtons(builder, scrollContent, {
-            { text = "Create New Cluster", onClick = function()
-                edit(builder, function() Clusters.NewCluster() end, true)
-            end },
-        })
-    end
+    builder:AddDescription("To control your Camelot Action Bar Clusters, select them in Edit Mode.",
+        { justify = "CENTER" })
 
-    for _, cluster in ipairs(Clusters.Get()) do
-        if Clusters.OnScreen(cluster) then
-            clusterSection(builder, cluster)
-        end
-    end
-    microBagsSection(builder)
+    local values = {}
+    for _, token in ipairs(BARS) do values[token] = Clusters.IdentityLabel(token) end
+    builder:AddSelector({ label = "Action Bar", centered = true, sizeScale = PICKER_SCALE,
+        width = PICKER_WIDTH, values = values, order = BARS,
+        get = function() return selected end,
+        set = function(v)
+            Page.Follow(v)
+            local id, index = placement(v)
+            if id then EditMode.SetSubject(id, index) end
+            builder:DeferredRefreshAll()
+        end })
+
+    local token = selected
+    builder:AddTabbedSection({
+        tabs = TABS,
+        componentId = NAV_KEY,
+        sectionKey = "barTabs",
+        buildContent = {
+            layout = function(_, tab) layoutTab(tab, builder, token) end,
+            cooldown = function(_, tab)
+                textTab(tab, token, "cooldown", "Hide Cooldown Text", cooldownDefaults())
+            end,
+            keybind = function(_, tab)
+                textTab(tab, token, "hotkey", "Hide Keybind Text", keybindDefaults())
+            end,
+        },
+    })
 
     builder:Finalize()
 end

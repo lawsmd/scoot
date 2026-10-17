@@ -30,8 +30,10 @@ local PATH = "actionBars.microBags."
 
 -- The Edit Mode and Dynamic Layouts keys, one per anchor.
 MicroBags.KEYS = { micro = "microMenu", bags = "bagBar", combined = "microBags" }
--- The Clusters page's section, which Configure opens.
-MicroBags.SECTION_KEY = "microBags"
+-- The Micro & Bag page, and the section on it Configure opens per anchor;
+-- the combined anchor opens the page at its top.
+MicroBags.NAV_KEY = "actionBarMicroBags"
+MicroBags.SECTION_KEYS = { micro = "microMenu", bags = "bagBar" }
 
 MicroBags.STYLE_VALUES = { forever = "Forever", combined = "Camelot (Combined)" }
 MicroBags.STYLE_ORDER = { "forever", "combined" }
@@ -64,10 +66,8 @@ for _, key in ipairs(SLOT_KEYS) do
 end
 DB.RegisterDefaults(defaults)
 
--- The gap between the micro buttons and the bags in the combined style, in
--- the micro menu's units, and Forever's frame art around each bar
--- (its Camelot MainMenuBarMicroMenu.xml and MainMenuBarBagButtons.xml).
-local COMBINED_GAP = 6
+-- Forever's frame art around each bar (its Camelot MainMenuBarMicroMenu.xml
+-- and MainMenuBarBagButtons.xml).
 local FRAME_ATLAS = "UI-HUD-ActionBar-Frame"
 local MICRO_BACKGROUND_ATLAS = "UI-HUD-ActionBar-IconFrame-Background"
 -- The default anchors: the bottom right corner, the micro menu to the bag
@@ -294,13 +294,16 @@ local function Layout()
         micro:ClearAllPoints()
         bags:ClearAllPoints()
         micro:SetPoint("TOPLEFT", holder, "TOPLEFT")
+        -- The joint between the strips is the micro buttons' own padding, so
+        -- the line reads as one bar.
+        local gap = MicroBags.Micro.PADDING
         if microVertical then
-            bags:SetPoint("TOPLEFT", micro, "BOTTOMLEFT", 0, -COMBINED_GAP)
+            bags:SetPoint("TOPLEFT", micro, "BOTTOMLEFT", 0, -gap)
             holder:SetSize(math.max(micro:GetWidth(), bags:GetWidth()) * microScale,
-                (micro:GetHeight() + COMBINED_GAP + bags:GetHeight()) * microScale)
+                (micro:GetHeight() + gap + bags:GetHeight()) * microScale)
         else
-            bags:SetPoint("TOPLEFT", micro, "TOPRIGHT", COMBINED_GAP, 0)
-            holder:SetSize((micro:GetWidth() + COMBINED_GAP + bags:GetWidth()) * microScale,
+            bags:SetPoint("TOPLEFT", micro, "TOPRIGHT", gap, 0)
+            holder:SetSize((micro:GetWidth() + gap + bags:GetWidth()) * microScale,
                 math.max(micro:GetHeight(), bags:GetHeight()) * microScale)
         end
         holders.combined:Show()
@@ -342,7 +345,7 @@ function MicroBags.Apply()
     if not built then return end
     addon.Events.RunOutOfCombat(Layout, "camelotActionBars.microBags.layout")
     if MicroBags.Bags then MicroBags.Bags.ApplyCount() end
-    if ActionBars.Page and ActionBars.Page.Refresh then ActionBars.Page.Refresh() end
+    if MicroBags.Page and MicroBags.Page.Refresh then MicroBags.Page.Refresh() end
 end
 
 --------------------------------------------------------------------------------
@@ -418,7 +421,7 @@ MicroBags.LABELS = LABELS
 
 local function Register()
     if not (addon.EditMode and addon.EditMode.RegisterPositionable) then return end
-    local NAV_KEY = ActionBars.EditMode.NAV_KEY
+    local NAV_KEY = MicroBags.NAV_KEY
     for _, key in ipairs({ "micro", "bags", "combined" }) do
         local holder = holders[key]
         keyByHolder[holder] = key
@@ -429,7 +432,7 @@ local function Register()
             store = store,
             apply = ApplyPosition,
             brand = {
-                navKey = NAV_KEY, componentId = NAV_KEY, sectionKey = MicroBags.SECTION_KEY,
+                navKey = NAV_KEY, componentId = NAV_KEY, sectionKey = MicroBags.SECTION_KEYS[key],
                 mirror = MIRRORS[key],
             },
         })
@@ -455,6 +458,7 @@ function Dynamic.Register(key, holder)
     DL.Register({
         id = id,
         label = LABELS[key],
+        group = "microBags",
         frame = holder,
         tier = "protected",
         channels = { "opacity", "scale", "position" },

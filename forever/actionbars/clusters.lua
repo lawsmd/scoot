@@ -54,7 +54,7 @@ end
 local SPACING = 4
 
 Clusters.DEFAULTS = {
-    { id = 1, axis = "vertical", spacing = SPACING, endCaps = true, endCapScale = 100,
+    { id = 1, axis = "vertical", spacing = SPACING, endCaps = true, endCapStyle = "standing", endCapScale = 100,
       members = {
           member("bar1", { barArt = true, pageArrows = true }),
           member("bar2"), member("bar3"), member("bar4"),
@@ -310,6 +310,7 @@ local CLUSTER_FIELDS = {
     axis = function(v) return AXES[v] and v or nil end,
     spacing = function(v) return clamp(v, 0, 40) end,
     endCaps = flag,
+    endCapStyle = function(v) return (v == "standing" or v == "sitting") and v or nil end,
     endCapScale = function(v) return clamp(v, 50, 200) end,
 }
 
@@ -330,7 +331,8 @@ local function commit(doc)
     return true
 end
 
---- Write one of axis, spacing, endCaps and endCapScale.
+--- Write one of axis, spacing, endCaps, endCapStyle and endCapScale. The
+--- end cap fields draw on cluster 1 only (endcaps.lua).
 function Clusters.SetClusterField(id, field, value)
     local accept = CLUSTER_FIELDS[field]
     if not accept then return false end
@@ -666,8 +668,10 @@ local built = false
 
 --- Every cluster in the document, out of combat; a pass asked for in a
 --- fight is queued once for regen. Identities no cluster holds are parked
---- and the containers of clusters no longer in the document are hidden
---- before the layouts run.
+--- and the containers of clusters no longer in the document are hidden,
+--- their Dynamic Layouts adapters dropped and their subjects forgotten,
+--- before the layouts run. One place covers a removed last member, a
+--- retired member and a profile switch.
 function Clusters.Rebuild()
     if InCombatLockdown() then
         addon.Events.RunOutOfCombat(Clusters.Rebuild, REBUILD_KEY)
@@ -686,7 +690,11 @@ function Clusters.Rebuild()
         if not assigned[token] then Park(frame) end
     end
     for id, container in pairs(containers) do
-        if not live[id] then container:Hide() end
+        if not live[id] then
+            container:Hide()
+            if ActionBars.Dynamic then ActionBars.Dynamic.Unregister(id) end
+            if ActionBars.EditMode then ActionBars.EditMode.ForgetSubject(id) end
+        end
     end
     for _, cluster in ipairs(doc) do
         LayoutCluster(cluster)
@@ -715,6 +723,7 @@ local function DropRetiredMembers()
             end
         end
         if #members == 0 and doc[i].id ~= Clusters.PRIMARY then
+            DB.SetLayout(Clusters.Key(doc[i].id), nil)
             table.remove(doc, i)
             changed = true
         end

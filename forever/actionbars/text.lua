@@ -1,13 +1,19 @@
 --------------------------------------------------------------------------------
 -- forever/actionbars/text.lua
--- The keybind text on a Camelot action button: its stored settings per bar
--- and the pass that draws them over Blizzard's own.
+-- The keybind and cooldown text on a Camelot action button: their stored
+-- settings per bar and the passes that draw them over Blizzard's own.
 --
 -- Blizzard's code owns the string. UpdateHotkeys sets its text, size and
 -- anchor; Update and the range check set its colour and show or hide it.
 -- The pass here runs after each of those (the overrides in mixins.lua) and
 -- changes only what a setting names. With nothing stored it changes
 -- nothing, so a new profile draws Blizzard's text exactly.
+--
+-- The cooldown text is the engine's countdown string on button.cooldown
+-- (Cooldown:GetCountdownFontString). No Blizzard Lua writes it, so its pass
+-- runs after each swipe the button sets (mixins.lua) and on a settings
+-- change. The client draws it only while the game's cooldown numbers option
+-- is on.
 --
 -- Loads before frames.xml: a button's load runs UpdateHotkeys, which calls
 -- in here. The bar is not wired yet then (ActionBar_OnLoad writes
@@ -28,13 +34,18 @@ ActionBars.Text = Text
 Text.FONT_OBJECT = "NumberFontNormalSmallGray"
 local ANCHOR_X, ANCHOR_Y = -4, -5
 
---- The dotted path of a keybind text setting: Text.Path("bar2", "size").
-function Text.Path(token, field)
-    return "actionBars.text." .. token .. ".hotkey." .. field
+--- The dotted path of a text setting, part "hotkey" or "cooldown":
+--- Text.Path("bar2", "hotkey", "size").
+function Text.Path(token, part, field)
+    return "actionBars.text." .. token .. "." .. part .. "." .. field
 end
 
 local function get(token, field)
-    return DB.Get(Text.Path(token, field))
+    return DB.Get(Text.Path(token, "hotkey", field))
+end
+
+local function getCooldown(token, field)
+    return DB.Get(Text.Path(token, "cooldown", field))
 end
 
 -- button -> its bar token, read once from the name.
@@ -63,11 +74,16 @@ function Text.FontObjectFont()
 end
 
 --- The style key that matches the font object's outline flags.
-function Text.FontObjectStyle()
-    local _, _, flags = Text.FontObjectFont()
+--- The style key that matches a font's outline flags.
+function Text.StyleOf(flags)
     if flags and flags:find("THICK") then return "THICKOUTLINE" end
     if flags and flags:find("OUTLINE") then return "OUTLINE" end
     return "NONE"
+end
+
+function Text.FontObjectStyle()
+    local _, _, flags = Text.FontObjectFont()
+    return Text.StyleOf(flags)
 end
 
 local function applyFont(button, token, hotkey)
@@ -145,12 +161,96 @@ function Text.HotkeyColor(button, outOfRangeNow)
     applyColor(button, token, button.HotKey)
 end
 
---- Redraw one bar's keybind text from Blizzard's pass up, so a cleared
---- anchor or size goes back to Blizzard's.
+--------------------------------------------------------------------------------
+-- Cooldown text
+--------------------------------------------------------------------------------
+
+-- The countdown string's own font, colour and anchor, read before the pass
+-- first changes it, so a cleared setting puts them back.
+local cooldownOriginal = setmetatable({}, { __mode = "k" })
+
+local COOLDOWN_FIELDS = { "fontFace", "size", "style", "color", "offsetX", "offsetY" }
+
+local function cooldownString(button)
+    local cooldown = button.cooldown
+    return cooldown and cooldown.GetCountdownFontString and cooldown:GetCountdownFontString() or nil
+end
+
+--- The countdown string's face, point size and flags, from the first
+--- button that has one: what the page shows while nothing is stored.
+function Text.CooldownFont()
+    local frame = ActionBars.Frames and ActionBars.Frames.bar1
+    local button = frame and frame.actionButtons and frame.actionButtons[1]
+    local fs = button and cooldownString(button)
+    if not fs then return end
+    local original = cooldownOriginal[button]
+    if original then return original.face, original.size, original.flags end
+    return fs:GetFont()
+end
+
+local function captureCooldown(button, fs)
+    if cooldownOriginal[button] then return cooldownOriginal[button] end
+    local face, size, flags = fs:GetFont()
+    local r, g, b, a = fs:GetTextColor()
+    local point, _, relPoint, x, y = fs:GetPoint(1)
+    local original = { face = face, size = size, flags = flags, color = { r, g, b, a },
+        point = point, relPoint = relPoint, x = x, y = y }
+    cooldownOriginal[button] = original
+    return original
+end
+
+--- The cooldown pass on one button.
+function Text.Cooldown(button)
+    local token = tokenOf(button)
+    local fs = token and cooldownString(button)
+    if not fs then return end
+    local stored = false
+    for _, field in ipairs(COOLDOWN_FIELDS) do
+        if getCooldown(token, field) ~= nil then stored = true break end
+    end
+    -- Alpha, as the keybind's: touched only once Hide has been set.
+    local hidden = getCooldown(token, "hidden")
+    if hidden or fs:GetAlpha() < 1 then fs:SetAlpha(hidden and 0 or 1) end
+    local original = cooldownOriginal[button]
+    if not stored then
+        if original then
+            if original.face then fs:SetFont(original.face, original.size, original.flags) end
+            fs:SetTextColor(unpack(original.color))
+            fs:ClearAllPoints()
+            fs:SetPoint(original.point or "CENTER", button.cooldown, original.relPoint or "CENTER",
+                original.x or 0, original.y or 0)
+            cooldownOriginal[button] = nil
+        end
+        return
+    end
+    original = captureCooldown(button, fs)
+
+    local fontFace, size, style = getCooldown(token, "fontFace"), tonumber(getCooldown(token, "size")),
+        getCooldown(token, "style")
+    local face = (fontFace and addon.ResolveFontFace(fontFace)) or original.face
+        or addon.ResolveFontFace("FRIZQT__")
+    addon.ApplyFontStyle(fs, face, size or original.size or 16, style or Text.StyleOf(original.flags))
+
+    local c = getCooldown(token, "color")
+    if type(c) == "table" then
+        fs:SetTextColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+    else
+        fs:SetTextColor(unpack(original.color))
+    end
+
+    local x, y = tonumber(getCooldown(token, "offsetX")) or 0, tonumber(getCooldown(token, "offsetY")) or 0
+    fs:ClearAllPoints()
+    fs:SetPoint(original.point or "CENTER", button.cooldown, original.relPoint or "CENTER",
+        (original.x or 0) + x, (original.y or 0) + y)
+end
+
+--- Redraw one bar's text: the keybind from Blizzard's pass up, so a cleared
+--- anchor or size goes back to Blizzard's, then the cooldown text.
 function Text.Refresh(token)
     local frame = ActionBars.Frames and ActionBars.Frames[token]
     if not frame or not frame.actionButtons then return end
     for _, button in ipairs(frame.actionButtons) do
         button:UpdateHotkeys(button.buttonType)
+        Text.Cooldown(button)
     end
 end

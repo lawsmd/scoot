@@ -267,6 +267,7 @@ function CamelotActionButtonMixin:UpdateCooldownFromDurations()
     else
         self.cooldown:Clear()
     end
+    Text().Cooldown(self)
 end
 
 -- Replaces ActionBarActionButtonMixin:CheckNeedsUpdate: the Camelot tick

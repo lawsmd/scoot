@@ -50,11 +50,11 @@ Bags.REAGENT_FRAME = "UI-HUD-ActionBar-IconFrame"
 Bags.KEYRING_FRAME = "UI-HUD-ActionBar-IconFrame-Small"
 Bags.MASK = "UI-HUD-ActionBar-IconFrame-Mask"
 Bags.BACKPACK_ICON = "Interface\\Icons\\ui-hud-actionbar-bag"
--- The Combined rectangle: the micro button's background, and around the
--- icon the small slot frame. A first choice for the beta to judge.
+-- The Combined rectangle: the micro button's background at its atlas size,
+-- which carries the frame, and the icon inside it. The slot frame is not
+-- drawn: over the background it made a second border.
 Bags.COMBINED_BG = "UI-HUD-MicroMenu-ButtonBG-Up"
 Bags.COMBINED_BG_DOWN = "UI-HUD-MicroMenu-ButtonBG-Down"
-Bags.COMBINED_FRAME = "UI-HUD-ActionBar-IconFrame-Small"
 Bags.COMBINED_ICON_INSET = 5
 
 local buttons = {}   -- in Bags.SLOTS order
@@ -100,9 +100,18 @@ end
 
 -- The open-bag highlight Blizzard's slot carries; read off it, a frame after
 -- the container frame's callback has set it.
+-- The Combined look shows an open bag as a micro button shows an open panel,
+-- on the pushed background.
 local function SyncHighlight(btn)
     local blizzHighlight = btn.blizz and btn.blizz.SlotHighlightTexture
-    btn.SlotHighlight:SetShown(blizzHighlight and blizzHighlight:IsShown() or false)
+    local open = blizzHighlight and blizzHighlight:IsShown() or false
+    if btn.look == "combined" then
+        btn.SlotHighlight:Hide()
+        btn.Background:SetShown(not open)
+        btn.PushedBackground:SetShown(open)
+    else
+        btn.SlotHighlight:SetShown(open)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -178,6 +187,11 @@ local function Twin(parent, slot)
     local bg = btn:CreateTexture(nil, "BACKGROUND")
     bg:SetPoint("CENTER")
     btn.Background = bg
+    local pushedBg = btn:CreateTexture(nil, "BACKGROUND")
+    pushedBg:SetAtlas(Bags.COMBINED_BG_DOWN, true)
+    pushedBg:SetPoint("CENTER")
+    pushedBg:Hide()
+    btn.PushedBackground = pushedBg
 
     local icon = btn:CreateTexture(nil, "BORDER")
     btn.icon = icon
@@ -216,30 +230,39 @@ function Bags.ApplyLook(look, vertical)
         local slot = btn.slot
         local normal, pushed = btn:GetNormalTexture(), btn:GetPushedTexture()
         local hl = btn:GetHighlightTexture()
+        btn.look = look
         btn.icon:ClearAllPoints()
         btn.Count:ClearAllPoints()
         if look == "combined" then
             btn:SetSize(Micro.WIDTH, Micro.HEIGHT)
-            btn.Background:SetAtlas(Bags.COMBINED_BG)
-            btn.Background:SetAllPoints()
+            -- The micro button's own draw: the background at its atlas size,
+            -- centered, as MainMenuBarMicroButtons.xml has it.
+            btn.Background:SetAtlas(Bags.COMBINED_BG, true)
+            btn.Background:ClearAllPoints()
+            btn.Background:SetPoint("CENTER")
             btn.Background:Show()
-            for _, t in ipairs({ normal, pushed, hl }) do
-                t:SetAtlas(Bags.COMBINED_FRAME)
-                t:ClearAllPoints()
-                t:SetAllPoints()
-                t:SetRotation(0)
-            end
+            normal:SetAlpha(0)
+            pushed:SetAlpha(0)
+            hl:SetAtlas(Bags.COMBINED_BG, true)
+            hl:ClearAllPoints()
+            hl:SetPoint("CENTER")
+            hl:SetRotation(0)
+            local info = C_Texture.GetAtlasInfo(Bags.COMBINED_BG)
+            local bgW = info and info.width or Micro.WIDTH
+            local bgH = info and info.height or Micro.HEIGHT
             local inset = Bags.COMBINED_ICON_INSET
-            btn.icon:SetPoint("TOPLEFT", inset, -inset)
-            btn.icon:SetPoint("BOTTOMRIGHT", -inset, inset)
+            local w, h = bgW - 2 * inset, bgH - 2 * inset
+            btn.icon:SetPoint("CENTER")
+            btn.icon:SetSize(w, h)
             -- A square icon in a tall rectangle: crop the sides to its aspect.
-            local w, h = Micro.WIDTH - 2 * inset, Micro.HEIGHT - 2 * inset
             local crop = (1 - w / h) / 2
             btn.icon:SetTexCoord(crop, 1 - crop, 0, 1)
             btn.IconMask:SetSize(w, h)
-            btn.SlotHighlight:SetAtlas(Bags.COMBINED_FRAME)
             btn.Count:SetPoint("BOTTOM", 0, 3)
         else
+            btn.PushedBackground:Hide()
+            normal:SetAlpha(1)
+            pushed:SetAlpha(1)
             local frame = slot.key == "reagent" and Bags.REAGENT_FRAME
                 or slot.keyring and Bags.KEYRING_FRAME or Bags.BAG_FRAME
             local width = slot.keyring and Bags.KEYRING_WIDTH or Bags.SLOT_SIZE
@@ -275,6 +298,7 @@ function Bags.ApplyLook(look, vertical)
         hl:SetBlendMode("ADD")
         hl:SetAlpha(0.4)
         SetIcon(btn)
+        SyncHighlight(btn)
     end
 end
 
