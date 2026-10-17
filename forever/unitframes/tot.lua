@@ -58,9 +58,11 @@ Frame.Define({
     },
     paintState = applyDead,
 
+    -- A parked instance (the other style's on screen) costs the tick one
+    -- boolean.
     build = function(inst)
         C_Timer.NewTicker(POLL_SECONDS, function()
-            if inst.frame:IsShown() and not inst.previewStandIn then
+            if inst.enabled and inst.frame:IsShown() and not inst.previewStandIn then
                 Frame.Paint(inst)
                 applyDead(inst)
                 -- No UNIT_AURA reaches the container for this unit either.

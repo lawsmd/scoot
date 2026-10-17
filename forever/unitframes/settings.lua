@@ -80,9 +80,37 @@ function Settings.Health(key, ...)
     return DB.Get(Settings.HealthPath(key, ...))
 end
 
+--------------------------------------------------------------------------------
+-- Style
+--------------------------------------------------------------------------------
+-- Which shape a frame draws: Camelot, the Classic rebuild, or Modern, retail's
+-- frame. One setting per unit key, read by Frame.Build and reconciled by
+-- UF.ApplyAll where the HUD is loaded; on retail the pages write it and
+-- nothing reads it.
+
+UF.STYLES = { camelot = "Camelot", modern = "Modern" }
+UF.STYLE_ORDER = { "camelot", "modern" }
+
+function UF.StyleOf(key)
+    local style = DB.Get(Text.Path(key, "style"))
+    return UF.STYLES[style] and style or "camelot"
+end
+
+--- The page's write. The reconcile swaps the frame where the HUD is loaded;
+--- on retail the stored value is the whole effect.
+function UF.SetStyle(key, style)
+    if not UF.STYLES[style] then return false end
+    DB.Set(Text.Path(key, "style"), style)
+    if UF.ApplyAll then UF.ApplyAll() end
+    return true
+end
+
 do
     local map = {}
     for _, key in ipairs(UF.ORDER) do
+        -- The Classic rebuild is the Camelot look; a start from the Modern
+        -- preset, below, takes the shape Blizzard draws on this client.
+        map[Text.Path(key, "style")] = "camelot"
         local d = Settings.AURA_DEFAULTS[key]
         local function set(value, ...) map[Settings.AuraPath(key, ...)] = value end
         set(d.enabled, "enabled")
@@ -144,6 +172,12 @@ do
         end
     end
     DB.RegisterDefaults(map)
+
+    local stock = {}
+    for _, key in ipairs(UF.ORDER) do
+        stock[Text.Path(key, "style")] = "modern"
+    end
+    DB.RegisterPreset("modern", stock)
 end
 
 --- Re-apply one frame's aura rows, or every frame's. The page's apply.

@@ -123,6 +123,22 @@ do
         map[Text.Path(key, "stripOpacity")] = Text.STRIP_OPACITY
     end
     DB.RegisterDefaults(map)
+
+    -- Blizzard Default: vanilla's values for every departure above. false on
+    -- the level's face is the font object's own, which nil cannot say over
+    -- the bold.
+    local stock = {}
+    for _, key in ipairs(UF.ORDER) do
+        for _, slot in ipairs({ "name", "level" }) do
+            stock[Text.Path(key, slot, "style")] = "SHADOW"
+            stock[Text.Path(key, slot, "colorMode")] = "default"
+        end
+        stock[Text.Path(key, "level", "fontFace")] = false
+        stock[Text.Path(key, "name", "fit")] = false
+        stock[Text.Path(key, "backdrop", "enabled")] = false
+        stock[Text.Path(key, "stripOpacity")] = 100
+    end
+    DB.RegisterStock(stock)
 end
 
 --------------------------------------------------------------------------------
@@ -173,6 +189,36 @@ function Text.FitsName(key)
     return Text.SURFACE[key].fit and Text.Get(key, "name", "fit") ~= false
 end
 
+-- Whether the profile holds a value at path, as against the default
+-- answering for it.
+local function isStored(path)
+    for _, key in ipairs(DB.StoredKeys("settings")) do
+        if key == path then return true end
+    end
+    return false
+end
+
+--- The name box's width: the stored value where the player set one, else
+--- the spec's own box. One default serves both styles of a frame, and the
+--- boxes differ: 100 on the Classic frames, retail's 96, 90 and 68 on the
+--- Modern ones, so the spec answers until the player writes a number.
+function Text.NameWidth(inst)
+    local def = inst.spec.Text.name
+    local path = Text.Path(inst.key, "name", "width")
+    if isStored(path) then return tonumber(DB.Get(path)) or def.w end
+    return def.w
+end
+
+--- The name's alignment the same way: the stored value, else the spec's
+--- justify where it names one (the Modern frames read left), else the
+--- registered default.
+function Text.NameJustify(inst)
+    local def = inst.spec.Text.name
+    local path = Text.Path(inst.key, "name", "alignment")
+    if isStored(path) then return DB.Get(path) end
+    return def.justifyH or DB.Get(path)
+end
+
 --- Draw a string in its font at a given size.
 function Text.ApplyFont(fs, face, size, flags, style)
     if face and style then
@@ -190,10 +236,16 @@ local function applyString(inst, slot, fs, def)
     local key = inst.key
     local host = inst.artFrame
 
+    local justifyH = def.justifyH
     if def.w then
-        fs:SetSize(Text.Get(key, slot, "width") or def.w, def.h)
+        if slot == "name" then
+            fs:SetSize(Text.NameWidth(inst), def.h)
+            justifyH = Text.NameJustify(inst)
+        else
+            fs:SetSize(Text.Get(key, slot, "width") or def.w, def.h)
+            justifyH = Text.Get(key, slot, "alignment") or justifyH
+        end
     end
-    local justifyH = def.w and Text.Get(key, slot, "alignment") or def.justifyH
     if justifyH then fs:SetJustifyH(justifyH) end
     if def.justifyV then fs:SetJustifyV(def.justifyV) end
 

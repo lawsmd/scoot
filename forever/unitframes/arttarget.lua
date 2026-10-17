@@ -194,5 +194,5 @@ end
 -- (96, 40, 10, 9), which suits a frame whose bars are mouse-enabled children
 -- of their own. Here the click child is the one thing that takes a click, so
 -- it covers the art.
-Art.Frames.target = build({ left = 19, right = 21, top = 12, bottom = 15 })
-Art.Frames.focus = build({ left = 19, right = 21, top = 12, bottom = 15 })
+Art.Frames.camelot.target = build({ left = 19, right = 21, top = 12, bottom = 15 })
+Art.Frames.camelot.focus = build({ left = 19, right = 21, top = 12, bottom = 15 })

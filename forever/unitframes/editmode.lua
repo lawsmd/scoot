@@ -55,11 +55,13 @@ local function ApplyPosition(frame, point, x, y, reason)
     frame:ClearAllPoints()
     frame:SetPoint(point, x, y)
     -- A restore lands the base position; if Dynamic Layouts holds the
-    -- dynamic state, it puts its own position and scale back on top.
+    -- dynamic state, it puts its own position and scale back on top. Only
+    -- the active instance of a unit asks: both styles' frames restore from
+    -- one store, and the parked one must not re-snap the one on screen.
     if reason == "restore" then
         local DL = addon.DynamicLayouts
         local inst = instByFrame[frame]
-        if DL and DL.Reassert and inst then
+        if DL and DL.Reassert and inst and addon.UnitFrames.Frames[inst.key] == inst then
             DL.Reassert(inst.key)
         end
     end

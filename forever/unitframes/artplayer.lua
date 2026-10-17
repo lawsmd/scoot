@@ -18,7 +18,7 @@ local spec = {
     -- Built on the base frame, under the bars. Everything else goes on artFrame.
     onBase = { flash = true, background = true, nameBackdrop = true, portrait = true },
 }
-Art.Frames.player = spec
+Art.Frames.camelot.player = spec
 
 -- The level disc, the small ring at the portrait's lower left. Vanilla's own
 -- anchors miss it: measured off UI-TargetingFrame as the border draws it, the

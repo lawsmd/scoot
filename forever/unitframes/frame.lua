@@ -38,9 +38,16 @@ UF.Frame = Frame
 -- UF.ORDER, the build and reconcile order, is text.lua's: the first unit frame
 -- file, and the one that loads on retail.
 
--- key -> instance, for every frame built this session.
+-- key -> the instance on screen for the unit, whichever style it draws.
+-- Every reader of a unit's frame (the cast bar snap, the pages' refreshes,
+-- Edit Mode enter and exit) takes this one.
 UF.Frames = {}
 
+-- key -> style -> instance, every instance built this session. The one not
+-- in UF.Frames is parked: hidden, disabled, with no unit watch.
+UF.Instances = {}
+
+-- key -> style -> definition.
 local defs = {}
 
 --------------------------------------------------------------------------------
@@ -65,6 +72,11 @@ do
         map["unitFrames." .. key .. ".scale"] = 1
     end
     DB.RegisterDefaults(map)
+    -- Blizzard Default: no bar numbers, Blizzard's silver.
+    DB.RegisterStock({
+        ["unitFrames.showBarText"] = false,
+        ["unitFrames.borderStyle"] = "stock",
+    })
 end
 
 -- The Features page rows (forever/features.lua).
@@ -89,6 +101,8 @@ end
 
 --- def = {
 ---     key, unit, label, frameName,
+---     style,                                 "camelot" (the default) or "modern":
+---                                            which shape this definition draws
 ---     default = { point, relPoint, x, y },   one table per frame, never shared:
 ---                                            Edit Mode keeps it by reference
 ---     strataLevel,
@@ -101,21 +115,46 @@ end
 ---     paintState = fn(inst),                 everything but bars and identity
 --- }
 function Frame.Define(def)
-    defs[def.key] = def
+    def.style = def.style or "camelot"
+    defs[def.key] = defs[def.key] or {}
+    defs[def.key][def.style] = def
 end
 
 --------------------------------------------------------------------------------
 -- Widget construction
 --------------------------------------------------------------------------------
 
+-- A bar's fill is a file (the Classic specs) or an atlas member by name (the
+-- Modern ones): SetStatusBarTexture takes either, as Blizzard's own power bar
+-- update passes it a name, and keeps one fill texture object, so the heal
+-- prediction anchored to that object (healprediction.lua) and the mask added
+-- to it below survive every later write. A name this client lacks falls to
+-- the vanilla fill and is recorded for /camelot state.
 local function buildBar(parent, def, level)
     local bar = CreateFrame("StatusBar", nil, parent)
     bar:SetSize(def.w, def.h)
     bar:SetPoint(def.point, parent, def.point, def.x, def.y)
-    bar:SetStatusBarTexture(def.texture)
+    if def.atlas and Art.AtlasResolves(def.atlas) then
+        bar:SetStatusBarTexture(def.atlas)
+    else
+        bar:SetStatusBarTexture(def.texture or Art.Paths.statusBar)
+        bar.camelotAtlasMissing = def.atlas
+    end
     bar:SetFrameLevel(level)
     if def.color then
         bar:SetStatusBarColor(def.color[1], def.color[2], def.color[3])
+    end
+    local fill = bar:GetStatusBarTexture()
+    if def.snap == false then
+        fill:SetTexelSnappingBias(0)
+        fill:SetSnapToPixelGrid(false)
+    end
+    -- The mask that rounds the fill, anchored to the bar and never to the
+    -- fill, so it inherits no secret anchor; on the bar for the segments that
+    -- share it.
+    if def.mask then
+        bar.camelotMask = Art.BuildMask(parent, bar, def.mask)
+        if bar.camelotMask then fill:AddMaskTexture(bar.camelotMask) end
     end
     -- A sane range before the first feed. A bar still ranged (0, 1) when a real
     -- maximum arrives clamps to full for one frame, which reads as a flash.
@@ -249,10 +288,15 @@ local function buildBorderLight(host, def)
     return Art.BuildRegion(host, copy)
 end
 
-function Frame.Build(key)
-    if UF.Frames[key] then return UF.Frames[key] end
-    local def = defs[key]
-    local spec = Art.Frames[key]
+--- One instance per unit key and style, built the first time the pair is
+--- asked for and returned on every later call. Building does not put the
+--- instance on screen: UF.ApplyAll activates the stored style's instance.
+function Frame.Build(key, style)
+    style = style or UF.StyleOf(key)
+    local built = UF.Instances[key] and UF.Instances[key][style]
+    if built then return built end
+    local def = defs[key] and defs[key][style]
+    local spec = Art.Frames[style] and Art.Frames[style][key]
     if not (def and spec) then return nil end
 
     local inst = Harness.New({
@@ -294,6 +338,10 @@ function Frame.Build(key)
 
     inst.healthBar = buildBar(base, spec.Bars.health, level + 1)
     inst.powerBar = buildBar(base, spec.Bars.power, level + 1)
+    -- The Modern bars' masks, which the heal prediction segments and the
+    -- cost segment share; nil on a Classic bar.
+    inst.healthMask = inst.healthBar.camelotMask
+    inst.powerMask = inst.powerBar.camelotMask
 
     local artFrame = CreateFrame("Frame", nil, base)
     artFrame:SetAllPoints(base)
@@ -310,9 +358,13 @@ function Frame.Build(key)
         end
     end
 
+    -- A pulse breathes a region's alpha; a flipbook runs its sheet. Both sit
+    -- in inst.pulses, started and stopped by Frame.SetPulsed.
     for name, regionDef in pairs(spec.Regions) do
         if regionDef.pulse then
             inst.pulses[name] = attachPulse(inst.regions[name])
+        elseif regionDef.flipbook then
+            inst.pulses[name] = inst.regions[name].flipbook
         end
     end
 
@@ -341,6 +393,12 @@ function Frame.Build(key)
         inst.texts.dead:SetText(_G.DEAD or "Dead")
         inst.texts.dead:Hide()
     end
+    -- Retail's second static string at the dead text's spot, shown by the
+    -- Modern target's dead check where the client can say unconscious.
+    if inst.texts.unconscious then
+        inst.texts.unconscious:SetText(_G.UNCONSCIOUS or "Unconscious")
+        inst.texts.unconscious:Hide()
+    end
     Text.ApplyStyle(inst)
     Text.ApplyBarTexts(inst)
     Text.ApplyBackdrop(inst)
@@ -353,7 +411,9 @@ function Frame.Build(key)
     UF.Auras.Apply(inst)
     UF.HealPrediction.Apply(inst)
 
-    UF.Frames[key] = inst
+    inst.style = style
+    UF.Instances[key] = UF.Instances[key] or {}
+    UF.Instances[key][style] = inst
     Frame.WireEvents(inst)
 
     -- def.default is where the frame sits until Edit Mode restores a stored
@@ -392,7 +452,7 @@ local function paintStandIn(inst, hold)
         inst.levelText:SetShown(not inst.textHidden.level)
     end
     if inst.portrait then
-        pcall(SetPortraitTexture, inst.portrait, "player")
+        Values.ApplyPortrait(inst, "player")
         inst.portrait:SetVertexColor(1, 1, 1)
     end
     inst.healthBar:SetStatusBarColor(Values.HealthColor(inst, "player"))
@@ -400,7 +460,13 @@ local function paintStandIn(inst, hold)
     inst.healthBar:SetValue(0.72)
     inst.powerBar:SetMinMaxValues(0, 1)
     inst.powerBar:SetValue(0.45)
-    inst.powerBar:SetStatusBarColor(0, 0, 1.0, 1)
+    -- Mana: the XML's blue on a Classic bar, the family's mana fill on a
+    -- Modern one.
+    if inst.spec.Bars.power.atlasPrefix then
+        Values.ApplyPowerAtlas(inst, nil, "MANA")
+    else
+        inst.powerBar:SetStatusBarColor(0, 0, 1.0, 1)
+    end
     inst.powerState = nil
     inst.powerBar:Show()
     Text.ApplyBarTextColors(inst)
@@ -612,16 +678,75 @@ end
 -- The set
 --------------------------------------------------------------------------------
 
---- Reconcile every frame against the database: build what is enabled, show or
---- hide it, repaint it, and park or release Blizzard's frame for the unit.
+--- Re-land every base an instance may have missed while parked: the
+--- UF.Refresh* passes iterate UF.Frames, so a setting changed while the other
+--- style was on screen never reached it.
+function Frame.Redress(inst)
+    Text.ApplyStyle(inst)
+    Text.ApplyBarTexts(inst)
+    Text.ApplyBackdrop(inst)
+    Values.ApplyHealthStyle(inst)
+    inst.frame:SetAlpha(1)
+    inst.frame:SetScale(DB.Get("unitFrames." .. inst.key .. ".scale") or 1)
+    if addon.EditMode.RestorePositionable then
+        addon.EditMode.RestorePositionable(inst.frame)
+    end
+end
+
+-- Put the stored style's instance on screen for a unit, retiring the one
+-- there. Out of combat only: the retire, the show and the re-land are all
+-- protected work. Returns the instance on screen and whether a swap happened.
+local function activate(key, style)
+    local fresh = not (UF.Instances[key] and UF.Instances[key][style])
+    local new = Frame.Build(key, style)
+    local old = UF.Frames[key]
+    -- No definition for the pair on this build: the current instance and the
+    -- stored setting both stay.
+    if not new then return old, false end
+    if old == new then return new, false end
+
+    if old then
+        old.enabled = false
+        old.previewActive = nil
+        old.previewStandIn = nil
+        old.hovered = nil
+        -- wantWatch needs enabled, so this unregisters the watch and hides.
+        Harness.UpdateVisibility(old)
+        if old.hoverFrame and GameTooltip:IsOwned(old.hoverFrame) then
+            GameTooltip:Hide()
+        end
+    end
+
+    UF.Frames[key] = new
+    if not fresh then Frame.Redress(new) end
+    -- The adapter drives the active frame through a getter; snap any held
+    -- dynamic channel onto the new one, over the base just re-landed.
+    if UF.Dynamic and UF.Dynamic.Resync then
+        UF.Dynamic.Resync(key)
+    end
+    return new, old ~= nil
+end
+
+--- Reconcile every frame against the database: build what is enabled, in the
+--- stored style, show or hide it, repaint it, and park or release Blizzard's
+--- frame for the unit. A style swap retires the instance on screen and puts
+--- the other style's in its place; in lockdown that is protected work, so the
+--- whole pass waits for regen with the old instance up.
 function UF.ApplyAll()
     local editing = addon.EditMode.IsEditing and addon.EditMode.IsEditing()
+    local swappedAny = false
 
     for _, key in ipairs(UF.ORDER) do
         local enabled = UF.IsEnabled(key)
+        local style = UF.StyleOf(key)
         local inst = UF.Frames[key]
-        if enabled and not inst then
-            inst = Frame.Build(key)
+        local swapped = false
+        if enabled and (not inst or inst.style ~= style) then
+            if InCombatLockdown() then
+                addon.Events.RunOutOfCombat(UF.ApplyAll, "camelotUnitFrames:apply")
+            else
+                inst, swapped = activate(key, style)
+            end
         end
         if inst then
             inst.enabled = enabled
@@ -633,16 +758,26 @@ function UF.ApplyAll()
             if enabled and editing then
                 Frame.ShowPreview(inst)
             end
+            -- Idempotent; a click child activated while Edit Mode is open
+            -- has to yield the mouse as the others did on enter.
+            Harness.ApplyClickShown(inst)
             Art.ApplyBorder(inst)
             UF.Auras.Apply(inst)
             UF.HealPrediction.Apply(inst)
             -- A settings pass on the same unit: the name holds. A frame this
-            -- pass showed was already painted fresh by its OnShow.
-            Frame.PaintAll(inst, false)
+            -- pass showed was already painted fresh by its OnShow; one it
+            -- swapped in is a new subject.
+            Frame.PaintAll(inst, swapped)
         end
+        swappedAny = swappedAny or swapped
     end
 
     Suppression.Apply()
+    -- A cast bar snapped to the retired frame re-anchors to the new one.
+    if swappedAny then
+        local CBZ = addon.CastBarZ
+        if CBZ and CBZ._Reconcile then CBZ._Reconcile() end
+    end
 end
 
 --- The profile engine's repaint entry point (forever/profiles.lua).

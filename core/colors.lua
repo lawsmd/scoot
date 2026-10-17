@@ -144,6 +144,33 @@ function addon.GetPowerColorRGB(unitOrPower)
 	return 1, 1, 1
 end
 
+-- The atlas member a power names, from the same table as its colour. Blizzard's
+-- row carries atlasElementName, the partial name (Mana, Rage, Focus, Energy,
+-- RunicPower) that its unit frame completes with the frame's family, or atlas,
+-- a whole member for the powers whose fill has no family (astral power and the
+-- like). This map answers when the table lacks the row.
+addon.PowerAtlasElements = {
+	MANA = "Mana",
+	RAGE = "Rage",
+	FOCUS = "Focus",
+	ENERGY = "Energy",
+	RUNIC_POWER = "RunicPower",
+}
+
+-- Returns element, whole: one of the two, or neither when the unit's power
+-- token is secret or unknown.
+function addon.GetPowerAtlasElement(unit)
+	if not UnitPowerType then return nil end
+	local ok, _, token = pcall(UnitPowerType, unit)
+	if not ok or type(token) ~= "string" or issecretvalue(token) then return nil end
+	local info = _G.PowerBarColor and _G.PowerBarColor[token]
+	if type(info) == "table" then
+		if type(info.atlasElementName) == "string" then return info.atlasElementName, nil end
+		if type(info.atlas) == "string" then return nil, info.atlas end
+	end
+	return addon.PowerAtlasElements[token], nil
+end
+
 -- Player class never changes during a session; cache at load time (untainted context).
 -- From tainted addon context UnitExists() can return nil, causing GetClassColorRGB
 -- to misinterpret "player" as a class token (which doesn't exist in the color tables).

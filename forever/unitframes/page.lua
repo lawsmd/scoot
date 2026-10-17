@@ -326,17 +326,34 @@ local function Render(panel, scrollContent, key, navKey)
     builder:SetOnRefresh(function() Render(panel, scrollContent, key, navKey) end)
 
     local surface = Text.SURFACE[key]
+    local style = UF.StyleOf(key)
     local function apply() UF.RefreshText(key) end
     local function getNumber(path, fallback)
         return tonumber(DB.Get(path)) or fallback
     end
+
+    -- First on the page: which shape this frame draws. The swap lands at
+    -- once where the HUD is loaded, and the sections below redraw for the
+    -- style.
+    builder:AddSelector({
+        label = "Style", emphasized = true,
+        description = "Modern is retail's frame. Camelot is the Classic rebuild.",
+        values = UF.STYLES, order = UF.STYLE_ORDER,
+        get = function() return UF.StyleOf(key) end,
+        set = function(v)
+            UF.SetStyle(key, v)
+            builder:DeferredRefreshAll()
+        end,
+    })
 
     buildHealthSection(builder, key, navKey)
     buildAuraSection(builder, key, navKey)
 
     local tabs, content = {}, {}
 
-    if surface.backdrop then
+    -- The leather and the thinned reaction strip are the Camelot look's own;
+    -- retail's frame has neither.
+    if surface.backdrop and style == "camelot" then
         tabs[#tabs + 1] = { key = "backdrop", label = "Backdrop" }
         content.backdrop = function(_, tab)
             local enabledPath = Text.Path(key, "backdrop", "enabled")

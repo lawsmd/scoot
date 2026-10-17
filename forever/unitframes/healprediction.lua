@@ -100,21 +100,37 @@ end
 --       glowParent = frame,          where the two edge glows are drawn
 --       show = function(field),      the four switches
 --       standIn = function(),        true while an Edit Mode stand-in shows
+--       fill = { atlas } | { texture },  the segments' fill; absent is UI-StatusBar
+--       mask = MaskTexture,          laid over every piece; absent is none
 --   }
+--
+-- The Modern bars end in a rounded shape under a mask, and retail masks every
+-- segment and glow with it; a square segment would stand past the bar's
+-- end. The unit frame host hands over the bar's own mask and the family's
+-- status fill, the -Bar-Health-Status member its spec names; a Classic host
+-- hands over neither, so the Classic frames and the Personal Resource
+-- Display draw as before.
 
 HP.HostSeam = true
 
 local function unitFrameHost(inst)
+    local s = inst.spec.Bars.health
     return {
         surface = Settings.SURFACE[inst.key].health == true,
         size = function()
-            local s = inst.spec.Bars.health
             return s.w, s.h
         end,
         glowParent = inst.artFrame,
         show = function(field) return Settings.Health(inst.key, field) ~= false end,
         standIn = function() return inst.previewStandIn end,
+        fill = s.predictionAtlas and { atlas = s.predictionAtlas } or nil,
+        mask = inst.healthMask,
     }
+end
+
+local function masked(tex, host)
+    if host.mask then tex:AddMaskTexture(host.mask) end
+    return tex
 end
 
 local function hostOf(inst)
@@ -133,7 +149,14 @@ local function buildSegment(inst, host, name, reverse)
     -- The host's size, not a read of the health bar: a StatusBar fed a secret
     -- can throw on its own geometry getters.
     bar:SetSize(host.size())
-    bar:SetStatusBarTexture(FILL)
+    local fill = host.fill
+    local Art = UF.Art
+    if fill and fill.atlas and Art and Art.AtlasResolves(fill.atlas) then
+        bar:SetStatusBarTexture(fill.atlas)
+    else
+        bar:SetStatusBarTexture(fill and fill.texture or FILL)
+    end
+    masked(bar:GetStatusBarTexture(), host)
     bar:SetStatusBarColor(fillColor(name))
     bar:SetReverseFill(reverse and true or false)
     bar:SetMinMaxValues(0, 1)
@@ -167,7 +190,7 @@ local function build(inst)
     parts.absorb:SetPoint("LEFT", parts.otherHeal:GetStatusBarTexture(), "RIGHT")
 
     local absorbFill = parts.absorb:GetStatusBarTexture()
-    local overlay = parts.absorb:CreateTexture(nil, "ARTWORK")
+    local overlay = masked(parts.absorb:CreateTexture(nil, "ARTWORK"), host)
     overlay:SetTexture(SHIELD_OVERLAY, "REPEAT", "REPEAT")
     overlay:SetHorizTile(true)
     overlay:SetVertTile(true)
@@ -177,7 +200,7 @@ local function build(inst)
     -- Backwards from the health edge, over the fill.
     parts.healAbsorb = buildSegment(inst, host, "healAbsorb", true)
     parts.healAbsorb:SetPoint("RIGHT", fill, "RIGHT")
-    local edge = parts.healAbsorb:CreateTexture(nil, "ARTWORK")
+    local edge = masked(parts.healAbsorb:CreateTexture(nil, "ARTWORK"), host)
     edge:SetTexture(ABSORB_EDGE)
     edge:SetWidth(8)
     local healAbsorbFill = parts.healAbsorb:GetStatusBarTexture()
@@ -186,10 +209,10 @@ local function build(inst)
     parts.healAbsorbEdge = edge
 
     -- UnitFrame_Initialize's anchors.
-    parts.overAbsorbGlow = buildGlow(host, SHIELD_GLOW)
+    parts.overAbsorbGlow = masked(buildGlow(host, SHIELD_GLOW), host)
     parts.overAbsorbGlow:SetPoint("TOPLEFT", health, "TOPRIGHT", -7, 0)
     parts.overAbsorbGlow:SetPoint("BOTTOMLEFT", health, "BOTTOMRIGHT", -7, 0)
-    parts.overHealAbsorbGlow = buildGlow(host, HEAL_ABSORB_GLOW)
+    parts.overHealAbsorbGlow = masked(buildGlow(host, HEAL_ABSORB_GLOW), host)
     parts.overHealAbsorbGlow:SetPoint("BOTTOMRIGHT", health, "BOTTOMLEFT", 7, 0)
     parts.overHealAbsorbGlow:SetPoint("TOPRIGHT", health, "TOPLEFT", 7, 0)
 

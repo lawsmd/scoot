@@ -20,7 +20,7 @@ local spec = {
     hitInsets = { left = 7, right = 66, top = 6, bottom = 7 },
     onBase = { portrait = true },
 }
-Art.Frames.pet = spec
+Art.Frames.camelot.pet = spec
 
 -- The happiness face's three cells on UI-PetHappiness, by GetPetHappiness value.
 spec.HappinessCoords = {

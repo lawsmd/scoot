@@ -1,17 +1,22 @@
 --------------------------------------------------------------------------------
 -- forever/unitframes/art.lua
--- What every Classic unit frame's art shares: the texture paths, the region
--- format and its reader, and the border style. One spec per frame shape lives
--- beside this file (artplayer, arttarget, arttot, artpet) and registers into
--- Art.Frames.
+-- What every unit frame's art shares: the texture paths, the region format
+-- and its reader, and the border style. One spec per frame shape lives beside
+-- this file (artplayer, arttarget, arttot, artpet) and registers into
+-- Art.Frames under the Camelot style; the Modern specs under modern/ register
+-- under the other.
 --
--- Every number in a spec is Blizzard's own, read out of the vanilla XML rather
--- than measured off a screenshot, so the rebuild is a transcription. The source
--- is the classic_era branch of the UI source mirror:
+-- Every number in a spec is Blizzard's own, read out of the XML rather than
+-- measured off a screenshot, so the rebuild is a transcription. The Classic
+-- source is the classic_era branch of the UI source mirror:
 --
 --   git show origin/classic_era:Interface/AddOns/Blizzard_UnitFrame/Classic/<file>.xml
 --
--- Every stock path below resolves by name in a 12.x client.
+-- and the Modern source its live branch, the 12.1.5 build Forever inherits.
+--
+-- Every stock path below resolves by name in a 12.x client. The Modern specs
+-- name no file: their art is atlas members by retail's names, which Forever
+-- ships its own bronze behind.
 --
 -- Two conventions carried over from the XML:
 --
@@ -30,8 +35,9 @@ local addonName, addon = ...
 local Art = {}
 addon.UnitFrames.Art = Art
 
--- key -> spec, filled by the art*.lua files.
-Art.Frames = {}
+-- style -> key -> spec, filled by the art*.lua files: the Classic specs under
+-- camelot, the Modern ones under modern (the modern/ folder beside them).
+Art.Frames = { camelot = {}, modern = {} }
 
 --------------------------------------------------------------------------------
 -- Paths
@@ -130,16 +136,92 @@ local function applyAtlasCrop(tex, atlas)
     return true
 end
 
+--- Whether this client has an atlas member by that name. A Modern spec's art
+--- is all names, and Forever's sheets may lack some of retail's.
+function Art.AtlasResolves(name)
+    if type(name) ~= "string" or not (C_Texture and C_Texture.GetAtlasInfo) then return false end
+    local ok, info = pcall(C_Texture.GetAtlasInfo, name)
+    return ok and info ~= nil
+end
+
+--- An atlas member by name on a texture Camelot owns, at the member's own
+--- size unless useAtlasSize is false. A name this client lacks is skipped and
+--- recorded on the texture, so the region draws nothing and /camelot state
+--- names it: the flat fallback the crop form draws would stand as a block
+--- the size of the art. Returns whether the name resolved.
+function Art.SetAtlas(tex, name, useAtlasSize)
+    tex.camelotAtlas = name
+    if Art.AtlasResolves(name) then
+        tex:SetAtlas(name, useAtlasSize ~= false)
+        tex.camelotAtlasMissing = nil
+        return true
+    end
+    tex.camelotAtlasMissing = true
+    pcall(tex.SetTexture, tex, nil)
+    return false
+end
+
+-- A looping flipbook over the region's sheet (the Modern player's rest
+-- animation). Frame.SetPulsed starts and stops it as it does a glow, so the
+-- painter files it in inst.pulses. A client without the animation type
+-- leaves the region a still frame, hidden.
+local function attachFlipbook(tex, fb)
+    local group = tex:CreateAnimationGroup()
+    group:SetLooping("REPEAT")
+    local ok, anim = pcall(group.CreateAnimation, group, "FlipBook")
+    if not (ok and anim) then return nil end
+    anim:SetFlipBookRows(fb.rows)
+    anim:SetFlipBookColumns(fb.columns)
+    anim:SetFlipBookFrames(fb.frames)
+    anim:SetFlipBookFrameWidth(0)
+    anim:SetFlipBookFrameHeight(0)
+    anim:SetDuration(fb.duration)
+    anim:SetOrder(1)
+    return group
+end
+
+--- A MaskTexture on host over the rect of anchorTo, from def = { atlas |
+--- file, point, relPoint, x, y, w, h }: with a point it anchors that point
+--- to anchorTo at the offset (the bar masks, which stand off their bar), and
+--- without one it covers anchorTo (a region's own mask). An atlas mask takes
+--- the member's size, then the def's own where it names one, since Blizzard's
+--- Lua resizes the player's bar masks at load. Returns the mask, or nil when
+--- an atlas does not resolve, so the texture draws unmasked rather than
+--- behind a mask of nothing.
+function Art.BuildMask(host, anchorTo, def)
+    local mask = host:CreateMaskTexture()
+    if def.atlas then
+        if not Art.SetAtlas(mask, def.atlas, true) then return nil end
+    else
+        mask:SetTexture(def.file or def[1])
+    end
+    if def.point then
+        mask:SetPoint(def.point, anchorTo, def.relPoint or def.point, def.x or 0, def.y or 0)
+    else
+        mask:SetAllPoints(anchorTo)
+    end
+    if def.w then mask:SetWidth(def.w) end
+    if def.h then mask:SetHeight(def.h) end
+    return mask
+end
+
 -- This file defines the region format, so it owns the one function that turns a
--- def into a texture.
+-- def into a texture. `atlas` is a crop as a table and a whole member as a
+-- string; `mask` a file as a string and a BuildMask def as a table.
 function Art.BuildRegion(host, def)
     local tex = host:CreateTexture(nil, def.layer, nil, def.sublevel)
     if def.path then tex:SetTexture(def.path) end
-    if def.atlas and not applyAtlasCrop(tex, def.atlas) then
+    if type(def.atlas) == "string" then
+        Art.SetAtlas(tex, def.atlas, def.useAtlasSize)
+    elseif def.atlas and not applyAtlasCrop(tex, def.atlas) then
         local fb = def.fallback or Art.BACKDROP_FALLBACK
         tex:SetColorTexture(fb[1], fb[2], fb[3], fb[4] or 1)
     end
-    tex:SetSize(def.w, def.h)
+    if def.w then tex:SetSize(def.w, def.h) end
+    if def.snap == false then
+        tex:SetTexelSnappingBias(0)
+        tex:SetSnapToPixelGrid(false)
+    end
     local nudge = def.nudge
     tex:SetPoint(def.point, host, def.relPoint or def.point,
         (def.x or 0) + (nudge and nudge.x or 0), (def.y or 0) + (nudge and nudge.y or 0))
@@ -153,12 +235,17 @@ function Art.BuildRegion(host, def)
     if def.vertex then
         tex:SetVertexColor(def.vertex[1], def.vertex[2], def.vertex[3], def.vertex[4] or 1)
     end
-    if def.mask then
+    if type(def.mask) == "string" then
         local mask = host:CreateMaskTexture()
         mask:SetTexture(def.mask)
         mask:SetAllPoints(tex)
         tex:AddMaskTexture(mask)
+    elseif def.mask then
+        local mask = Art.BuildMask(host, tex, def.mask)
+        if mask then tex:AddMaskTexture(mask) end
+        tex.camelotMask = mask
     end
+    if def.flipbook then tex.flipbook = attachFlipbook(tex, def.flipbook) end
     if def.hidden then tex:Hide() end
     if def.lift then
         local copy = {}
@@ -171,6 +258,20 @@ function Art.BuildRegion(host, def)
         tex.lift = Art.BuildRegion(host, copy)
     end
     return tex
+end
+
+--- Swap a region's art by state, for a def that carries `atlasByState = {
+--- key = name }` beside its `atlas`: a key takes that state's member, nil
+--- the def's own. The size follows the member, since the states differ in
+--- size (the Modern target's rare and minus frames). A name this client
+--- lacks blanks the region, as at build.
+function Art.ApplyRegionAtlas(inst, region, stateKey)
+    local tex = inst.regions and inst.regions[region]
+    local def = inst.spec.Regions[region]
+    if not (tex and def) then return end
+    local name = stateKey and def.atlasByState and def.atlasByState[stateKey] or def.atlas
+    if type(name) ~= "string" or tex.camelotAtlas == name then return end
+    Art.SetAtlas(tex, name, def.useAtlasSize)
 end
 
 --------------------------------------------------------------------------------

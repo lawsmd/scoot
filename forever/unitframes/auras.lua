@@ -38,8 +38,14 @@ local STEALABLE_GLOW = "Interface\\TargetingFrame\\UI-TargetingFrame-Stealable"
 -- The glow is 24 on a 21 icon in TargetBuffFrameTemplate.
 local STEALABLE_SCALE = 24 / 21
 -- TargetBuffFrameTemplate puts the count 3 past the icon's corner and the
--- debuff template 5, which clears its border.
+-- debuff template 5, which clears its border. A spec with other numbers
+-- carries them as Auras.countX.
 local COUNT_X = { Buffs = 3, Debuffs = 5 }
+
+local function countX(inst, group)
+    local own = inst.spec.Auras.countX
+    return own and own[group] or COUNT_X[group]
+end
 
 local UnitIsFriend = _G.UnitIsFriend
 
@@ -184,7 +190,7 @@ local function styleCount(inst, fs)
     local group = fs.camelotGroup
     fs:ClearAllPoints()
     fs:SetPoint("BOTTOMRIGHT", fs:GetParent(), "BOTTOMRIGHT",
-        COUNT_X[group] + (tonumber(Settings.Aura(key, "count", "offsetX")) or 0),
+        countX(inst, group) + (tonumber(Settings.Aura(key, "count", "offsetX")) or 0),
         tonumber(Settings.Aura(key, "count", "offsetY")) or 0)
 end
 
@@ -269,7 +275,7 @@ local function styleAll(inst)
     for group, row in pairs(inst.auraRows or {}) do
         for _, button in ipairs(row.buttons) do
             local ok, err = pcall(styleButton, inst, group, button)
-            if not ok then AuraRow.results[inst.key .. ".style"] = tostring(err) end
+            if not ok then AuraRow.results[inst.frameName .. ".style"] = tostring(err) end
         end
     end
 end
@@ -360,13 +366,16 @@ end
 -- Build (tier 2)
 --------------------------------------------------------------------------------
 
+-- The row tag and the deferred-work keys carry the frame's name rather than
+-- the unit key: a unit has an instance per style, and two must never share
+-- a slot.
 local function build(inst)
     inst.auraRows = inst.auraRows or {}
     local w, h = iconDims(inst)
     for _, group in ipairs(groupsOf(inst)) do
         if not inst.auraRows[group] then
             local row = AuraRow.Build(inst.frame, {
-                tag = inst.key .. "." .. group,
+                tag = inst.frameName .. "." .. group,
                 unit = inst.unit,
                 group = group,
                 filter = rowFilter(inst, group),
@@ -392,7 +401,7 @@ function Auras.Apply(inst)
     if not complete(inst) then
         if not get(inst, "enabled") then return end
         -- The deferred build finishes the pass itself, now or at the lift.
-        AuraRow.Defer("camelotAuras.build." .. inst.key, function()
+        AuraRow.Defer("camelotAuras.build." .. inst.frameName, function()
             build(inst)
             if complete(inst) then Auras.Apply(inst) end
         end)
@@ -400,7 +409,7 @@ function Auras.Apply(inst)
     end
     layout(inst)
     configure(inst)
-    AuraRow.Defer("camelotAuras.style." .. inst.key, function() styleAll(inst) end)
+    AuraRow.Defer("camelotAuras.style." .. inst.frameName, function() styleAll(inst) end)
 end
 
 --- A new subject, a show, or the Edit Mode stand-in coming or going: re-order

@@ -22,7 +22,7 @@ local spec = {
     borderKey = "borderToT",
     onBase = { background = true, nameBackdrop = true, portrait = true },
 }
-Art.Frames.targettarget = spec
+Art.Frames.camelot.targettarget = spec
 
 spec.Regions = {
     background = {

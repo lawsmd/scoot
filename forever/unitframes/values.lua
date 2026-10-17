@@ -70,10 +70,13 @@ function Values.HealthColor(inst, unit)
 end
 
 -- The bar's texture from its setting, and the Hide the Bar but not its Text
--- switch. The texture goes onto the fill texture object rather than through
--- SetStatusBarTexture, so the heal prediction anchored to that object
--- (healprediction.lua) keeps its anchor. The alpha is the texture's own: the
--- vertex alpha is what the colour writes.
+-- switch. On a Classic bar the texture goes onto the fill texture object
+-- rather than through SetStatusBarTexture, so the heal prediction anchored
+-- to that object (healprediction.lua) keeps its anchor. A Modern bar, whose
+-- spec names an atlas, goes through SetStatusBarTexture for the file and
+-- the atlas alike: the bar then crops within the member's rect, and it
+-- keeps the one fill object, so the anchors and the mask on it stand. The
+-- alpha is the texture's own: the vertex alpha is what the colour writes.
 function Values.ApplyHealthStyle(inst)
     local bar = inst.healthBar
     if not (bar and inst.key) then return end
@@ -83,8 +86,21 @@ function Values.ApplyHealthStyle(inst)
     if textureKey and textureKey ~= "default" and addon.Media and addon.Media.ResolveBarTexturePath then
         path = addon.Media.ResolveBarTexturePath(textureKey)
     end
+    local spec = inst.spec.Bars.health
     local fill = bar:GetStatusBarTexture()
-    fill:SetTexture(path or inst.spec.Bars.health.texture)
+    if spec.atlas then
+        local Art = addon.UnitFrames.Art
+        if path then
+            bar:SetStatusBarTexture(path)
+        elseif Art.AtlasResolves(spec.atlas) then
+            bar:SetStatusBarTexture(spec.atlas)
+        else
+            bar:SetStatusBarTexture(spec.texture or Art.Paths.statusBar)
+        end
+        inst.healthFillIsAtlas = not path and Art.AtlasResolves(spec.atlas) or nil
+    else
+        fill:SetTexture(path or spec.texture)
+    end
     fill:SetAlpha(Settings.Bar(inst.key, "health", "hideTextureOnly") == true and 0 or 1)
 end
 
@@ -136,6 +152,46 @@ function Values.ApplyPower(inst)
     end
 end
 
+--- UnitFrameManaBar_UpdateType's atlas branch, for a bar whose spec names an
+--- atlasPrefix: the fill is the power's own member of the frame's family,
+--- drawn white, since the colour is in the art. A power the table has no
+--- member for, or a member this client lacks, falls to the family's mana
+--- fill. A disconnected unit's bar is grey as the Classic one is; a dead
+--- player's fill is desaturated at half alpha. token stands in for the
+--- unit's power when the Edit Mode stand-in paints.
+function Values.ApplyPowerAtlas(inst, state, token)
+    local bar = inst.powerBar
+    local spec = inst.spec.Bars.power
+    local Art = addon.UnitFrames.Art
+    local element, whole
+    if token then
+        element = addon.PowerAtlasElements and addon.PowerAtlasElements[token]
+    else
+        element, whole = addon.GetPowerAtlasElement(inst.unit)
+    end
+    local name = whole or (spec.atlasPrefix .. (element or "Mana"))
+    if not Art.AtlasResolves(name) then name = spec.atlasPrefix .. "Mana" end
+    if inst.powerFillAtlas ~= name then
+        if Art.AtlasResolves(name) then
+            bar:SetStatusBarTexture(name)
+            inst.powerFillAtlasMissing = nil
+        else
+            bar:SetStatusBarTexture(spec.texture or Art.Paths.statusBar)
+            inst.powerFillAtlasMissing = true
+        end
+        inst.powerFillAtlas = name
+    end
+    if state == "offline" then
+        bar:SetStatusBarColor(0.5, 0.5, 0.5, 1)
+    else
+        bar:SetStatusBarColor(1, 1, 1, 1)
+    end
+    local fill = bar:GetStatusBarTexture()
+    local dead = state == "dead"
+    fill:SetDesaturated(dead)
+    fill:SetAlpha(dead and 0.5 or 1)
+end
+
 -- The resolver handles the unit-to-token step and both lookup tables, and it is
 -- the one place the colour tables are read. It returns white when it cannot
 -- resolve, which on this frame would read as a bug, so an unresolved power
@@ -146,6 +202,10 @@ function Values.ApplyPowerColor(inst)
 
     local state = powerState(inst.unit)
     inst.powerState = state
+    if inst.spec.Bars.power.atlasPrefix then
+        Values.ApplyPowerAtlas(inst, state)
+        return
+    end
     if state == "offline" then
         bar:SetStatusBarColor(0.5, 0.5, 0.5, 1)
         return
@@ -380,10 +440,10 @@ function Values.FitName(inst, name, hold)
     local def = inst.spec.Text.name
     local minSize = tonumber(Text.Get(inst.key, "name", "fitMin")) or Text.FIT_MIN
     addon.RunBlindFit(name, {
-        poolKey  = "camelotName:" .. inst.key,
+        poolKey  = "camelotName:" .. inst.frameName,
         facePath = face,
         style    = style,
-        width    = tonumber(Text.Get(inst.key, "name", "width")) or def.w,
+        width    = Text.NameWidth(inst),
         height   = def.h,
         maxLines = 1,
         minSize  = math.min(minSize, ceiling),
@@ -471,7 +531,15 @@ end
 --
 -- Two arguments, so disableMasking stays false and the engine applies its own
 -- circular mask. That is the vanilla call: Classic Era passes two as well.
-function Values.ApplyPortrait(inst)
+-- A portrait def marked disableMasking passes true, which is retail's player
+-- frame: its atlas mask alone shapes the face. unit stands in for inst.unit
+-- when the Edit Mode stand-in paints the player's own.
+function Values.ApplyPortrait(inst, unit)
     if not inst.portrait then return end
-    pcall(SetPortraitTexture, inst.portrait, inst.unit)
+    local def = inst.spec.Regions.portrait
+    if def and def.disableMasking then
+        pcall(SetPortraitTexture, inst.portrait, unit or inst.unit, true)
+    else
+        pcall(SetPortraitTexture, inst.portrait, unit or inst.unit)
+    end
 end
