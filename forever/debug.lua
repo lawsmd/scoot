@@ -21,21 +21,49 @@ local Harness = addon.UnitFrames.Harness
 -- state
 --------------------------------------------------------------------------------
 
+local pushBuilt
+
 local function pushInstance(push, key)
     local UF = addon.UnitFrames
-    local inst = UF.Frames[key]
     local blizzard = UF.Suppression.FrameName(key)
 
     push("[%s]", key)
     push("  setting enabled:  %s", tostring(UF.IsEnabled(key)))
+    push("  style setting:    %s", tostring(UF.StyleOf and UF.StyleOf(key)))
     push("  Blizzard frame:   %s, suppressed %s",
         tostring(blizzard), tostring(UF.Suppression.IsSuppressed(key)))
-    if not inst then
-        push("  not built")
-        push("")
+
+    -- One instance per style this session built; the active one is the
+    -- unit's frame on screen, the other is parked hidden.
+    local built = UF.Instances and UF.Instances[key]
+    if not built then
+        local inst = UF.Frames[key]
+        if not inst then
+            push("  not built")
+            push("")
+            return
+        end
+        pushBuilt(push, key, inst, true)
         return
     end
+    local any = false
+    for _, style in ipairs(UF.STYLE_ORDER or { "camelot", "modern" }) do
+        local inst = built[style]
+        if inst then
+            any = true
+            push("  [%s]%s", style, UF.Frames[key] == inst and " (active)" or " (parked)")
+            pushBuilt(push, key, inst, UF.Frames[key] == inst)
+        end
+    end
+    if not any then
+        push("  not built")
+        push("")
+    end
+end
 
+function pushBuilt(push, key, inst)
+    local UF = addon.UnitFrames
+    push("  frame:            %s", tostring(inst.frameName))
     push("  unit:             %s", tostring(inst.unit))
     push("  enabled:          %s", tostring(inst.enabled))
     push("  frame shown:      %s", tostring(inst.frame:IsShown()))
@@ -66,6 +94,31 @@ local function pushInstance(push, key)
     push("  preview:          %s, stand-in %s",
         tostring(inst.previewActive), tostring(inst.previewStandIn))
     push("  border file:      %s", tostring(inst.borderKey))
+
+    -- The Modern art: each region's atlas and mask, and each bar's fill and
+    -- mask, with whether this client has the name. A Classic instance names
+    -- none and prints nothing here.
+    local function atlasLine(kind, name, atlas, missing)
+        push("  %-5s %-12s %s%s", kind, name, tostring(atlas), missing and "  UNRESOLVED" or "")
+    end
+    for _, name in ipairs(inst.spec.DrawOrder) do
+        local def, tex = inst.spec.Regions[name], inst.regions[name]
+        if tex and (type(def.atlas) == "string" or tex.camelotAtlas) then
+            atlasLine("atlas", name, tex.camelotAtlas, tex.camelotAtlasMissing)
+        end
+        if tex and type(def.mask) == "table" then
+            atlasLine("mask", name, def.mask.atlas, not tex.camelotMask)
+        end
+    end
+    for _, bar in ipairs({ "health", "power" }) do
+        local def, b = inst.spec.Bars[bar], inst[bar .. "Bar"]
+        if def.atlas then
+            local atlas = bar == "power" and inst.powerFillAtlas or def.atlas
+            local missing = b.camelotAtlasMissing ~= nil or (bar == "power" and inst.powerFillAtlasMissing)
+            atlasLine("fill", bar, atlas, missing)
+            if def.mask then atlasLine("mask", bar, def.mask.atlas, not b.camelotMask) end
+        end
+    end
 
     local w, h = inst.frame:GetSize()
     push("  rect:             %.1f x %.1f at scale %.2f", w, h, inst.frame:GetScale())
@@ -175,6 +228,16 @@ local function dumpState(sub)
         push("  %-18s %s", key, id and ("file " .. id) or "UNRESOLVED")
     end
 
+    -- The Modern specs' atlas names, each with this client's answer.
+    local Modern = Art.Modern
+    if Modern then
+        push("")
+        push("Modern atlases")
+        for _, row in ipairs(Modern.Report()) do
+            push("  %-60s %s", row.name, row.resolved and "ok" or "UNRESOLVED")
+        end
+    end
+
     push("")
     push("Bars are fed secrets and never read back, so no value appears above.")
 
@@ -191,8 +254,13 @@ local swatchFrame
 
 local function showArt()
     if not swatchFrame then
+        -- The Classic files down the left; the Modern atlas names, when the
+        -- Modern specs are loaded, down the right.
+        local Modern = Art.Modern
+        local atlasRows = Modern and Modern.Report() or {}
         local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
-        f:SetSize(420, 80 + #Art.ManifestOrder * 30)
+        f:SetSize(#atlasRows > 0 and 960 or 420,
+            80 + math.max(#Art.ManifestOrder * 30, #atlasRows * 22))
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
         f:SetMovable(true)
@@ -221,6 +289,22 @@ local function showArt()
             label:SetText(("%s  |cff888888%s|r"):format(key, id and ("file " .. id) or "UNRESOLVED"))
 
             y = y - 30
+        end
+
+        -- A name this client lacks leaves its swatch blank and says so.
+        local y2 = -36
+        for _, row in ipairs(atlasRows) do
+            local tex = f:CreateTexture(nil, "ARTWORK")
+            tex:SetSize(48, 18)
+            tex:SetPoint("TOPLEFT", 440, y2)
+            if row.resolved then tex:SetAtlas(row.name) end
+
+            local label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            label:SetPoint("TOPLEFT", 500, y2 - 2)
+            label:SetJustifyH("LEFT")
+            label:SetText(("%s  |cff888888%s|r"):format(row.name, row.resolved and "atlas" or "UNRESOLVED"))
+
+            y2 = y2 - 22
         end
 
         swatchFrame = f

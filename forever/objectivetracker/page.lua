@@ -169,6 +169,12 @@ function Page.AddLookSections(builder, pane, navKey, noun, opts)
     builder:AddCollapsibleSection({ title = "Visibility", componentId = navKey,
         sectionKey = "visibility", defaultExpanded = false,
         buildContent = function(_, inner)
+            inner:AddSlider({ label = "Opacity",
+                min = Style.FRAME_OPACITY.min, max = Style.FRAME_OPACITY.max, step = Style.FRAME_OPACITY.step,
+                minLabel = "0%", maxLabel = "100%",
+                debounceKey = debounce .. "frameOpacity", debounceDelay = 0.2,
+                get = function() return Page.GetNumber(pane, "frameOpacity", Style.FRAME_OPACITY) end,
+                set = function(v) Page.SetNumber(pane, "frameOpacity", Style.FRAME_OPACITY, v) end })
             inner:AddSlider({ label = "Background Opacity",
                 description = "The opacity of the background behind the whole " .. noun .. ".",
                 min = Style.OPACITY.min, max = Style.OPACITY.max, step = Style.OPACITY.step,

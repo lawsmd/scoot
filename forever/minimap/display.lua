@@ -212,6 +212,22 @@ end
 -- the map edge lies on the opaque band at every phase.
 local ART_BORDER_TUCK = 3
 
+-- The file's outer edge fades too: alpha 0 at the edge, opaque from texel 7
+-- of the 512 (measured off square-border.png). Camelot's default position
+-- hangs that fade off the screen, so the opaque metal meets the screen edge;
+-- one texel more covers a physical pixel's rounding.
+local ART_BORDER_FILE_SIZE = 512
+local ART_BORDER_OUTER_FADE = 8
+
+--- How far in from the screen edge the map's own rect stands, in the
+--- holder's units, when the art border's opaque edge lies on the screen edge.
+--- The border is the holder's child, so the answer holds at every Map Size.
+function Display.ArtBorderFlushInset()
+    local outside = (tonumber(Style.SQUARE_BORDER.band) or 10) - ART_BORDER_TUCK
+    local span = Style.MAP_SIZE_PX + outside * 2
+    return outside - ART_BORDER_OUTER_FADE * span / ART_BORDER_FILE_SIZE
+end
+
 local function ensureArtBorder(holder)
     local container = overlays.artBorder
     if not container then

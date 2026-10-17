@@ -118,7 +118,7 @@ local function Render(panel, scrollContent)
     })
 
     builder:AddCollapsibleSection({ title = "Behaviour", componentId = NAV_KEY,
-        sectionKey = "behaviour", defaultExpanded = true,
+        sectionKey = "behaviour", defaultExpanded = false,
         buildContent = function(_, inner)
             addToggle(inner, "Enable",
                 "Draw a second pane that takes a tracked quest out of the tracker while it is the one you are working on. Off, every quest stays in the tracker.",

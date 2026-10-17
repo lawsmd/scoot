@@ -388,6 +388,7 @@ function Profiles:Initialize()
     self._specChangeLockUntil = nil
     self._initialized = true
     Debug("Initialize")
+    self:InstallOriginHooks()
 
     if self.db.RegisterCallback then
         self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileChanged")
@@ -604,6 +605,121 @@ function Profiles:DefaultPresetName()
     return self._sortedPresetLayouts and self._sortedPresetLayouts[1] or nil
 end
 
+--------------------------------------------------------------------------------
+-- Where a new profile comes from. Every new layout made in Blizzard's Edit Mode
+-- passes through EditModeManagerFrame:ShowNewLayoutDialog(source): nil from
+-- "New Layout" and from Save on an edited preset, the layout itself from the
+-- gear's copy. Post-hooks record the source, and the next profile a sync
+-- creates consumes it. The hooks call no manager method.
+--
+-- An origin is { kind = "new" | "preset" | "copy" | "rename" | "import" },
+-- with preset = the preset's name, or source = the copied or renamed layout.
+-- A profile with no copy or rename source copies the last active profile, as
+-- it always has; a host's create hook decides what else to do with it.
+--------------------------------------------------------------------------------
+
+local createHooks, renameHooks = {}, {}
+
+-- fn(name, origin, profileTable) runs once on each profile the engine creates,
+-- before it is activated. A host fills a new profile here.
+function Profiles.RegisterCreateHook(name, fn)
+    if type(name) ~= "string" or type(fn) ~= "function" then return false end
+    createHooks[name] = fn
+    return true
+end
+
+-- fn(profileTable, oldName, newName) runs on a profile copied or renamed from
+-- another layout, for data the host keys by layout name.
+function Profiles.RegisterRenameHook(name, fn)
+    if type(name) ~= "string" or type(fn) ~= "function" then return false end
+    renameHooks[name] = fn
+    return true
+end
+
+local function runRenameHooks(profileTable, oldName, newName)
+    if type(profileTable) ~= "table" or not oldName or oldName == newName then return end
+    for _, fn in pairs(renameHooks) do
+        fn(profileTable, oldName, newName)
+    end
+end
+Profiles._runRenameHooks = runRenameHooks
+
+local pendingOrigin
+
+-- The active layout's name when it is a preset. activeLayout indexes the
+-- presets-prepended list, so an index inside the offset is a preset.
+local function activePresetName()
+    local info = C_EditMode and C_EditMode.GetLayouts and C_EditMode.GetLayouts()
+    local index = info and info.activeLayout
+    if not index or index > presetLayoutOffset() then return nil end
+    local manager = _G.EditModePresetLayoutManager
+    local presets = manager and manager.GetCopyOfPresetLayouts and manager:GetCopyOfPresetLayouts()
+    return presets and presets[index] and presets[index].layoutName or nil
+end
+
+function Profiles:InstallOriginHooks()
+    local mgr = _G.EditModeManagerFrame
+    if self._originHooked or not mgr then return end
+    self._originHooked = true
+    local presetType = Enum and Enum.EditModeLayoutType and Enum.EditModeLayoutType.Preset
+    hooksecurefunc(mgr, "ShowNewLayoutDialog", function(_, source)
+        if type(source) == "table" and source.layoutName then
+            if source.layoutType == presetType then
+                pendingOrigin = { kind = "preset", preset = source.layoutName }
+            else
+                pendingOrigin = { kind = "copy", source = source.layoutName }
+            end
+        else
+            pendingOrigin = { kind = "new" }
+        end
+    end)
+    -- Runs after the ShowNewLayoutDialog call inside it: Save on an edited
+    -- preset opens the same dialog as "New Layout", and copies that preset.
+    hooksecurefunc(mgr, "SaveLayoutChanges", function()
+        if pendingOrigin and pendingOrigin.kind == "new" then
+            local preset = activePresetName()
+            if preset then pendingOrigin = { kind = "preset", preset = preset } end
+        end
+    end)
+    hooksecurefunc(mgr, "ShowRenameLayoutDialog", function(_, _, layoutInfo)
+        pendingOrigin = layoutInfo and layoutInfo.layoutName
+            and { kind = "rename", source = layoutInfo.layoutName } or nil
+    end)
+    hooksecurefunc(mgr, "ShowImportLayoutDialog", function()
+        pendingOrigin = { kind = "import" }
+    end)
+    -- A record no create consumed (a cancelled dialog) dies with Edit Mode.
+    -- The delay lets the SaveLayouts passes of a layout made on the way out
+    -- consume it first.
+    hooksecurefunc(mgr, "ExitEditMode", function()
+        C_Timer.After(1, function() pendingOrigin = nil end)
+    end)
+    if EventRegistry and EventRegistry.RegisterCallback then
+        EventRegistry:RegisterCallback("EditMode.NewLayoutCancel", function() pendingOrigin = nil end, Profiles)
+    end
+end
+
+-- Creates profileKey from origin and runs the create hooks. The one place a
+-- profile is born, for the engine's own create paths and for the sync.
+function Profiles:_createProfile(profileKey, origin, fallbackCopyFrom)
+    local source = origin and (origin.kind == "copy" or origin.kind == "rename") and origin.source or nil
+    local copyFrom = source or fallbackCopyFrom
+    local template
+    if copyFrom and self.db.profiles[copyFrom] then
+        template = deepCopy(self.db.profiles[copyFrom])
+    else
+        template = deepCopy(self._profileTemplate)
+    end
+    self.db.profiles[profileKey] = template
+    if source then runRenameHooks(template, source, profileKey) end
+    for _, fn in pairs(createHooks) do
+        fn(profileKey, origin, template)
+    end
+    Debug("Profile created", profileKey, "origin=" .. tostring(origin and origin.kind),
+        tostring(origin and (origin.preset or origin.source) or copyFrom or ""))
+    return template
+end
+
 function Profiles:EnsureProfileExists(profileKey, opts)
     if not profileKey or not self.db or not self.db.profiles then
         return
@@ -616,19 +732,22 @@ function Profiles:EnsureProfileExists(profileKey, opts)
         return
     end
 
-    local template
-    if opts and opts.copyFrom and self.db.profiles[opts.copyFrom] then
-        template = deepCopy(self.db.profiles[opts.copyFrom])
-    else
-        template = deepCopy(self._profileTemplate)
+    local origin
+    if opts and opts.preset then
+        -- A preset's own mirror profile starts as that preset.
+        origin = { kind = "preset", preset = profileKey, mirror = true }
+    elseif opts and opts.origin then
+        origin = opts.origin
+    elseif pendingOrigin then
+        -- An import is Blizzard's own string and starts as the copy it always was.
+        if pendingOrigin.kind ~= "import" then origin = pendingOrigin end
+        pendingOrigin = nil
     end
 
+    local template = self:_createProfile(profileKey, origin, opts and opts.copyFrom)
     if opts and opts.preset then
         template.__preset = true
     end
-
-    self.db.profiles[profileKey] = template
-    Debug("EnsureProfileExists created", profileKey, opts and opts.preset and "(preset)" or "", opts and opts.copyFrom and ("copy=" .. tostring(opts.copyFrom)) or "")
 end
 
 function Profiles:_setActiveProfile(profileKey, opts)

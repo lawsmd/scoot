@@ -45,6 +45,17 @@ local function pathFor(group, id)
     return paths[group] and paths[group][id]
 end
 
+--- Whether a settings path is a Features page switch. A page's Defaults reset
+--- keeps these (forever/defaults.lua).
+function Features.IsSwitchPath(path)
+    for _, rows in pairs(paths) do
+        for _, p in pairs(rows) do
+            if p == path then return true end
+        end
+    end
+    return false
+end
+
 --- The model the renderer reads. forever/menu.lua assigns it once the settings
 --- panel exists; the tables fill as owners register.
 function Features.BuildModel()

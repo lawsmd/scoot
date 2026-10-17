@@ -126,74 +126,111 @@ function Style.Set(key, value)
     DB.Set(Style.Path(key), value)
 end
 
+-- Camelot's minimap is the owner's own setup of 17 October 2026: a square map
+-- at 140 percent in the top right corner with the art border flush to the
+-- screen edges, no header plate, the zone name and coordinates over the top
+-- of the map, the clock and the frame rate in its bottom corners, all four in
+-- a thick shadowed outline. Each departure's Blizzard value is in the stock
+-- map after the defaults, which Blizzard Default writes.
 do
     local map = {}
     local function set(key, value) map[Style.Path(key)] = value end
     set("enabled", true)
 
     -- Map Style
-    set("mapShape", "default")            -- "default" (round) | "square"
-    set("mapSize", Style.MAP_SIZE.default)
+    set("mapShape", "square")             -- "default" (round) | "square"
+    set("mapSize", 140)
     set("borderEnabled", false)           -- square: the solid custom border instead of the art border
     set("borderHidden", false)            -- square: no border at all
     set("borderTintEnabled", false)
     set("borderColor", { 0, 0, 0, 1 })
     set("borderThickness", Style.BORDER_THICKNESS.default)
 
+    -- The default position: "camelot" puts a square map's art border flush
+    -- with the top right corner of the screen, "blizzard" is the spot
+    -- Blizzard's cluster held (editmode.lua, SyncDefault). No page writes it.
+    set("defaultAnchor", "camelot")
+
     -- Dock: the header plate and, with phase 2, its buttons
-    set("dockHide", false)
+    set("dockHide", true)
 
     -- Zone Text
     set("zoneTextHide", false)
-    set("zoneTextPosition", "dock")       -- "dock" is the header plate; else one of the nine points
+    set("zoneTextPosition", "TOP")        -- "dock" is the header plate; else one of the nine points
     set("zoneTextColorMode", "pvp")       -- "pvp" | "custom"
     set("zoneTextCustomColor", { 1, 0.82, 0, 1 })
     set("zoneTextFont", "FRIZQT__")
-    set("zoneTextFontSize", 12)
-    set("zoneTextFontStyle", "OUTLINE")
+    set("zoneTextFontSize", 16)
+    set("zoneTextFontStyle", "SHADOWTHICKOUTLINESLUG")
     set("zoneTextOffsetX", 0)
     set("zoneTextOffsetY", 0)
 
     -- Coordinates. coordsEnabled and coordsTenths are read only on a client
-    -- without the minimapShowPlayerCoords and coordsByTenths CVars.
+    -- without the minimapShowPlayerCoords and coordsByTenths CVars; where the
+    -- client has them, whether the readout shows is the player's own
+    -- Blizzard option and neither default touches it.
     set("coordsEnabled", false)
     set("coordsTenths", true)
-    set("coordsPosition", "default")      -- "default" is Blizzard's spot below the map
+    set("coordsPosition", "TOP")          -- "default" is Blizzard's spot below the map
     set("coordsFont", "FRIZQT__")
     set("coordsFontSize", 10)
-    set("coordsFontStyle", "SHADOW")
+    set("coordsFontStyle", "SHADOWTHICKOUTLINESLUG")
     set("coordsColorMode", "default")
     set("coordsCustomColor", { 1, 1, 1, 1 })
     set("coordsOffsetX", 0)
-    set("coordsOffsetY", 0)
+    set("coordsOffsetY", -15)             -- under the zone name
 
     -- Clock
     set("clockHide", false)
-    set("clockPosition", "dock")
+    set("clockPosition", "BOTTOMLEFT")
     set("clockTimeSource", "local")       -- "local" | "server"
     set("clockUse24Hour", false)
     set("clockFont", "FRIZQT__")
     set("clockFontSize", 12)
-    set("clockFontStyle", "OUTLINE")
+    set("clockFontStyle", "SHADOWTHICKOUTLINESLUG")
     set("clockColorMode", "default")
     set("clockCustomColor", { 1, 1, 1, 1 })
     set("clockOffsetX", 0)
     set("clockOffsetY", 0)
 
     -- System Data
-    set("systemDataShowFPS", false)
+    set("systemDataShowFPS", true)
     set("systemDataShowLatency", false)
     set("systemDataLatencySource", "home") -- "home" | "world"
     set("systemDataFont", "FRIZQT__")
     set("systemDataFontSize", 11)
-    set("systemDataFontStyle", "OUTLINE")
+    set("systemDataFontStyle", "SHADOWTHICKOUTLINESLUG")
     set("systemDataColorMode", "default")
     set("systemDataCustomColor", { 1, 1, 1, 1 })
-    set("systemDataAnchor", "BOTTOM")
+    set("systemDataAnchor", "BOTTOMRIGHT")
     set("systemDataOffsetX", 0)
-    set("systemDataOffsetY", -18)
+    set("systemDataOffsetY", 0)
 
     DB.RegisterDefaults(map)
+
+    -- Blizzard Default: the round map at its own size and spot, the header
+    -- plate with the zone name and the clock in it, the coordinates at
+    -- Blizzard's spot below the map, no frame rate. The zone name is
+    -- GameFontNormal and the clock WhiteNormalNumberFont, both shadowed.
+    local stock = {}
+    local function blizzard(key, value) stock[Style.Path(key)] = value end
+    blizzard("mapShape", "default")
+    blizzard("mapSize", Style.MAP_SIZE.default)
+    blizzard("defaultAnchor", "blizzard")
+    blizzard("dockHide", false)
+    blizzard("zoneTextPosition", "dock")
+    blizzard("zoneTextFontSize", 12)
+    blizzard("zoneTextFontStyle", "SHADOW")
+    blizzard("coordsPosition", "default")
+    blizzard("coordsFontStyle", "SHADOW")
+    blizzard("coordsOffsetY", 0)
+    blizzard("clockPosition", "dock")
+    blizzard("clockFontStyle", "SHADOW")
+    blizzard("systemDataShowFPS", false)
+    blizzard("systemDataFontStyle", "SHADOW")
+    blizzard("systemDataAnchor", "BOTTOM")
+    blizzard("systemDataOffsetY", -18)
+    DB.RegisterStock(stock)
 end
 
 --------------------------------------------------------------------------------
@@ -276,6 +313,9 @@ function Style.Apply()
     Display.ApplyShape()
     Display.ApplySize()
     Display.ApplyBorder()
+    -- The default position follows the shape and the border; a map on its
+    -- default takes the new one at its next restore.
+    if MR.EditMode then MR.EditMode.SyncDefault() end
     Display.ApplyHeader()
     if Text then
         Text.ApplyZoneText()

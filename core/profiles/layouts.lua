@@ -5,7 +5,6 @@ local LEO = LibStub and LibStub("LibEditModeOverride-1.0")
 
 -- Aliases for internals promoted by core.lua
 local Debug = addon.Profiles._Debug
-local deepCopy = addon.Profiles._deepCopy
 local ensureLayoutsLoaded = addon.Profiles._ensureLayoutsLoaded
 local isCombatLocked = addon.Profiles._isCombatLocked
 local normalizeName = addon.Profiles._normalizeName
@@ -242,7 +241,7 @@ function Profiles:ClonePresetLayout(data, rawName)
 
     -- Create AceDB profile with defaults
     addLayoutToCache(self, newName)
-    self.db.profiles[newName] = deepCopy(self._profileTemplate)
+    self:_createProfile(newName, { kind = "preset", preset = presetName })
 
     -- Defer the profile switch to avoid taint from happening in the same call stack as the copy
     if C_Timer and C_Timer.After then
@@ -270,6 +269,7 @@ function Profiles:RenameProfileData(oldName, newName)
     if self.db.profiles[oldName] then
         self.db.profiles[newName] = CopyTable(self.db.profiles[oldName])
         self.db.profiles[oldName] = nil
+        self._runRenameHooks(self.db.profiles[newName], oldName, newName)
     end
 
     local sv = rawget(self.db, "sv")
@@ -464,10 +464,9 @@ function Profiles:PerformCopyLayout(sourceName, rawNewName)
     end
 
     -- Copy AceDB profile data
-    if self.db and self.db.profiles and self.db.profiles[sourceName] then
-        self.db.profiles[newName] = CopyTable(self.db.profiles[sourceName])
-    else
-        self.db.profiles[newName] = deepCopy(self._profileTemplate)
+    -- Over any profile a sync made first from the last active layout.
+    if self.db and self.db.profiles then
+        self:_createProfile(newName, { kind = "copy", source = sourceName })
     end
 
     -- Update the internal caches
@@ -605,7 +604,7 @@ function Profiles:PerformCreateLayout(rawNewName)
 
     -- Create AceDB profile using template defaults (Zero‑Touch template is empty)
     addLayoutToCache(self, name)
-    self.db.profiles[name] = deepCopy(self._profileTemplate)
+    self:_createProfile(name, { kind = "new" })
 
     -- Hand off to the standard switch/reload prompt rather than reloading inline. This
     -- keeps ReloadUI() on a hardware event and puts a frame boundary plus a user click

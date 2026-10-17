@@ -90,7 +90,7 @@ local function RenderGlobal(panel, scrollContent)
     local navKey = NAV_KEYS.global
 
     builder:AddCollapsibleSection({ title = "Display", componentId = navKey,
-        sectionKey = "display", defaultExpanded = true,
+        sectionKey = "display", defaultExpanded = false,
         buildContent = function(_, inner)
             inner:AddSelector({ label = "Visibility",
                 values = Catalogs.Visibility.values, order = Catalogs.Visibility.order,
@@ -116,7 +116,7 @@ local function RenderGlobal(panel, scrollContent)
 
     -- The Classic unit frames' four switches, on the health bar.
     builder:AddCollapsibleSection({ title = "Heal Prediction", componentId = navKey,
-        sectionKey = "healPrediction", defaultExpanded = true,
+        sectionKey = "healPrediction", defaultExpanded = false,
         buildContent = function(_, inner)
             local function healthToggle(label, field, disabledBy)
                 addToggle(inner, label, Style.Path("health", field), {

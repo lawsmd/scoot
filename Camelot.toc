@@ -5,7 +5,8 @@
 ## Version: 0.0.1
 ## SavedVariables: CamelotDB
 ## SlashCmd: /camelot
-## Dependencies: Blizzard_ObjectiveTracker, Blizzard_ActionBar
+## Dependencies: Blizzard_ObjectiveTracker, Blizzard_ActionBar, Blizzard_ChatFrameBase
+## OptionalDeps: Blizzard_StatusTrackingBar
 
 ## Two interface numbers, one TOC. 120105 is retail 12.1.5 and 16001 is
 ## Forever build 1.60.1; each client takes the number from the list that
@@ -181,11 +182,19 @@ forever/unitframes/player.lua [ExcludeLoadGameType standard]
 forever/unitframes/target.lua [ExcludeLoadGameType standard]
 forever/unitframes/tot.lua [ExcludeLoadGameType standard]
 forever/unitframes/pet.lua [ExcludeLoadGameType standard]
+## The Modern style of each unit frame: retail's shape on the same painter,
+## one spec and one definition per frame under modern/, after art.lua (they
+## write Art.Frames.modern) and frame.lua (they call Frame.Define). art.lua
+## here holds the names the specs share and the atlas manifest.
+forever/unitframes/modern/art.lua [ExcludeLoadGameType standard]
+forever/unitframes/modern/artplayer.lua [ExcludeLoadGameType standard]
+forever/unitframes/modern/player.lua [ExcludeLoadGameType standard]
 
 ## Cast bars. The engine is Cast Bar Z's, shared: engine.lua creates the
-## namespace, the host fills it from forever/db.lua, the painter draws the
-## Classic bar, and the engine files after them read both at the moment of
-## use. Stands on events, strata, nativeframe, fonts, editmode/positionables,
+## namespace, the host fills it from forever/db.lua, the painters draw the
+## two looks (art.lua the data, painter.lua the frame and the Classic look,
+## modern.lua the Modern look), and the engine files after them read both at
+## the moment of use. Stands on events, strata, nativeframe, fonts, editmode/positionables,
 ## profiles, forever/db.lua and the region reader in forever/unitframes/art.lua.
 ## casttime.lua is an optional module: the painter creates bar.castTimeText and
 ## that file owns it. empowered.lua draws on Cast Bar Z's line and caps, so it
@@ -196,6 +205,7 @@ core/components/castbarz/engine.lua [ExcludeLoadGameType standard]
 forever/castbars/host.lua [ExcludeLoadGameType standard]
 forever/castbars/art.lua [ExcludeLoadGameType standard]
 forever/castbars/painter.lua [ExcludeLoadGameType standard]
+forever/castbars/modern.lua [ExcludeLoadGameType standard]
 core/components/castbarz/casttime.lua [ExcludeLoadGameType standard]
 core/components/castbarz/anchoring.lua [ExcludeLoadGameType standard]
 core/components/castbarz/suppression.lua [ExcludeLoadGameType standard]
@@ -254,9 +264,9 @@ forever/objectivetracker/dynamic.lua [ExcludeLoadGameType standard]
 ## settings, holders, layout and Edit Mode anchors, and micro.lua and
 ## bagbar.lua, which hang off it, build their secure click twins of
 ## Blizzard's buttons; bars.lua builds on world entry and registers /camelot
-## actionbars. text.lua holds the keybind text settings and their pass, before
-## frames.xml, since a button's load runs it. page.lua, the Clusters page,
-## and textpage.lua, the Text page, sit in the page block below.
+## actionbars. text.lua holds the keybind and cooldown text settings and
+## their passes, before frames.xml, since a button's load runs it. page.lua,
+## the Clusters page, and microbagspage.lua sit in the page block below.
 ## Stands on nativeframe, events, strata, editmode/positionables,
 ## dynamiclayouts, forever/db.lua and forever/features.lua. Every line is
 ## Forever's alone, style.lua included.
@@ -318,6 +328,49 @@ forever/minimap/text.lua [ExcludeLoadGameType standard]
 forever/minimap/editmode.lua [ExcludeLoadGameType standard]
 forever/minimap/dynamic.lua [ExcludeLoadGameType standard]
 
+## The status bars: Blizzard's status tracking container template twice
+## under Camelot names, each in a holder of its own, filled by a Camelot
+## manager on Blizzard's StatusTrackingManagerMixin, StatusTrackingBarManager
+## parked (docs/databars/replica.md). The templates come from Forever's
+## Blizzard_StatusTrackingBar, named on the OptionalDeps line above, which
+## retail does not have. style.lua holds the module, its switch, its settings
+## and the apply, and loads on retail too for the page below; mixins.lua the
+## two globals frames.xml names; display.lua the build, the park, the applies
+## and /camelot statusbars; editmode.lua the two positionables; dynamic.lua
+## the two Dynamic Layouts adapters.
+forever/statusbars/style.lua
+forever/statusbars/mixins.lua [ExcludeLoadGameType standard]
+forever/statusbars/frames.xml [ExcludeLoadGameType standard]
+forever/statusbars/display.lua [ExcludeLoadGameType standard]
+forever/statusbars/editmode.lua [ExcludeLoadGameType standard]
+forever/statusbars/dynamic.lua [ExcludeLoadGameType standard]
+
+## The chat: Blizzard's windows parked through NativeFrame with every event
+## still registered, so Blizzard's secure formatter keeps filling them, and
+## one Camelot message frame per window fed by a hook on its AddMessage;
+## Blizzard's edit box kept and re-anchored, since the secure slash commands
+## live in a table private to Blizzard's chat addon (docs/chat/replica.md).
+## style.lua holds the module, its switch, its settings and the apply, and
+## loads on retail too for the page below; frames.xml declares the holder,
+## its chrome and strip, and the window and tab templates from Blizzard's
+## regions-only templates, scripts wired in Lua, so no mixin file; lines.lua
+## the secret-gated line transforms; display.lua the twins, the bridge, the
+## park and /camelot chat; tabs.lua the strip; editbox.lua Blizzard's box;
+## editmode.lua the positionable and the dialog mirror; dynamic.lua the
+## Dynamic Layouts adapter. Stands on nativeframe, events, petbattle, fonts,
+## editmode/positionables, dynamiclayouts/engine, forever/db.lua,
+## forever/features.lua and forever/profiles.lua, and on
+## Blizzard_ChatFrameBase for the templates.
+forever/chat/style.lua
+forever/chat/frames.xml [ExcludeLoadGameType standard]
+forever/chat/lines.lua [ExcludeLoadGameType standard]
+forever/chat/display.lua [ExcludeLoadGameType standard]
+forever/chat/tabs.lua [ExcludeLoadGameType standard]
+forever/chat/menu.lua [ExcludeLoadGameType standard]
+forever/chat/editbox.lua [ExcludeLoadGameType standard]
+forever/chat/editmode.lua [ExcludeLoadGameType standard]
+forever/chat/dynamic.lua [ExcludeLoadGameType standard]
+
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
 ## and a registration error aborts the chunk, so the order is load-bearing.
@@ -330,6 +383,7 @@ ui/v2/SettingPatterns.lua
 ui/v2/skins/tui.lua
 ui/v2/skins/forever.lua
 ui/v2/controls/Utils.lua
+ui/v2/controls/Emphasis.lua
 ui/v2/controls/ScrollBar.lua
 ui/v2/controls/ScrollList.lua
 ui/v2/controls/ColumnHeader.lua
@@ -357,6 +411,7 @@ ui/v2/controls/SelectorToggleRow.lua
 ui/v2/controls/ToggleSliderRow.lua
 ui/v2/controls/ToggleColorRow.lua
 ui/v2/controls/MultiToggleRow.lua
+ui/v2/controls/CheckboxGrid.lua
 ui/v2/controls/Tabbed.lua
 ui/v2/controls/FontSelector.lua
 ui/v2/controls/InfoIcon.lua
@@ -398,8 +453,10 @@ ui/v2/editmode/Tooltip.lua
 ui/v2/editmode/Mirror.lua
 ui/v2/editmode/Dialog.lua
 ## The Dynamic Layouts strip on the Edit Mode box and the dynamic view's
-## panel, shield and border, over core/dynamiclayouts/view.lua. Camelot only
-## until Scoot adopts the feature.
+## panel, shield and border, over core/dynamiclayouts/view.lua, and the tabs
+## that stand in for a frame sent off-screen. Camelot only until Scoot adopts
+## the feature.
+ui/v2/editmode/DynamicTabs.lua
 ui/v2/editmode/DynamicView.lua
 ui/v2/GameMenu.lua
 
@@ -425,8 +482,9 @@ ui/v2/settings/Helpers.lua
 ui/v2/settings/BuilderComposites.lua
 ui/v2/settings/interface/TooltipRenderer.lua
 
-## Camelot's page tree, the minimap button's icon and storage, then the
-## slash entry, which binds the word last.
+## Camelot's page tree, the minimap button's icon and storage, the Defaults
+## button's scopes (defaults.lua), then the slash entry, which binds the word
+## last.
 forever/menu.lua
 ui/v2/settings/StartHereRenderer.lua
 forever/castbars/page.lua [ExcludeLoadGameType standard]
@@ -435,8 +493,12 @@ forever/objectivetracker/page.lua
 forever/objectivetracker/currentpage.lua
 forever/personalresourcedisplay/page.lua
 forever/minimap/page.lua
+forever/statusbars/page.lua
+forever/chat/page.lua
 forever/actionbars/page.lua [ExcludeLoadGameType standard]
-forever/actionbars/textpage.lua [ExcludeLoadGameType standard]
+forever/actionbars/microbagspage.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
+forever/defaults.lua
+forever/startingpoints.lua
 forever/gallery.lua
 forever/debug.lua

@@ -59,6 +59,8 @@ local OWNER = "camelotObjectiveTrackerStyle"
 Style.HEIGHT = { min = 400, max = 1000, step = 10, default = 800 }
 Style.PANE_HEIGHT = { min = 100, max = 600, step = 10, default = 300 }
 Style.OPACITY = { min = 0, max = 100, step = 1, default = 0 }
+-- The whole pane's alpha, background, text and item buttons together.
+Style.FRAME_OPACITY = { min = 0, max = 100, step = 1, default = 100 }
 Style.TEXT_SIZE = { min = 12, max = 20, step = 1, default = 12 }
 Style.SCALE = { min = 0.5, max = 1.5, step = 0.05, default = 1 }
 Style.HOLD = { min = 5, max = 300, step = 5, default = 90 }
@@ -123,6 +125,7 @@ do
     for _, pane in ipairs(Style.PANES) do
         map[Style.PanePath(pane, "height")] = pane.heightRange.default
         map[Style.PanePath(pane, "opacity")] = Style.OPACITY.default
+        map[Style.PanePath(pane, "frameOpacity")] = Style.FRAME_OPACITY.default
         map[Style.PanePath(pane, "textSize")] = Style.TEXT_SIZE.default
         map[Style.PanePath(pane, "scale")] = Style.SCALE.default
         map[Style.PanePath(pane, "hideHeaderBackgrounds")] = false
@@ -166,6 +169,8 @@ do
         map[Style.PanePath(cards, key, "color")] = { 1, 1, 1, 1 }
     end
     DB.RegisterDefaults(map)
+    -- Blizzard Default: Blizzard's tracker has no current pane.
+    DB.RegisterStock({ [Style.Path("current", "enabled")] = false })
 end
 
 --------------------------------------------------------------------------------
@@ -195,6 +200,11 @@ end
 --- The alpha a pane's background draws at.
 function Style.BackgroundAlpha(pane)
     return clamp(Style.PaneGet(pane or Style.MAIN, "opacity"), Style.OPACITY) / 100
+end
+
+--- The alpha the whole pane draws at, 0 to 1.
+function Style.FrameOpacity(pane)
+    return clamp(Style.PaneGet(pane or Style.MAIN, "frameOpacity"), Style.FRAME_OPACITY) / 100
 end
 
 --- The seconds a quest stays in the current pane after progress on it.
@@ -289,6 +299,19 @@ function Style.ApplyBackgroundAlpha()
     eachPane(function(pane, c)
         c:SetBackgroundAlpha(Style.BackgroundAlpha(pane))
     end)
+end
+
+--- The container's own alpha. Dynamic Layouts replaces alpha rather than
+--- multiplying it, so while a pane holds its dynamic state the alpha is the
+--- engine's and the base stays off it (dynamic.lua reads the base from here).
+function Style.ApplyFrameOpacity()
+    eachPane(function(pane, c)
+        if not (OT.Dynamic and OT.Dynamic.IsDynamic(c)) then
+            c:SetAlpha(Style.FrameOpacity(pane))
+        end
+    end)
+    -- The quest item buttons stand outside the tree and copy the alpha.
+    if OT.Items then OT.Items.SyncAlpha() end
 end
 
 -- The name of the font family the line font object stands on, which
@@ -526,6 +549,7 @@ function Style.Apply()
     Style.ApplyHeight()
     Style.ApplyScale()
     Style.ApplyBackgroundAlpha()
+    Style.ApplyFrameOpacity()
     Style.ApplyTextSize()
     Style.ApplyHeaders()
     Style.ApplyText()
@@ -598,7 +622,7 @@ function Style.EditModeMirror(pane)
         return {
             sliderSpec(pane, "Height", pane.heightRange, "height"),
             sliderSpec(pane, "Scale", Style.SCALE, "scale", 100),
-            sliderSpec(pane, "Opacity", Style.OPACITY, "opacity"),
+            sliderSpec(pane, "Opacity", Style.FRAME_OPACITY, "frameOpacity"),
             sliderSpec(pane, "Text Size", Style.TEXT_SIZE, "textSize"),
         }
     end

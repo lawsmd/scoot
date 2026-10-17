@@ -486,7 +486,8 @@ local function registerEditMode()
     if DL and DL.Register then
         DL.Register({
             id = KEY,
-            label = "Current Objectives (Camelot)",  -- the dynamic view's panel lists both styles
+            label = "Current Objectives (Camelot)",
+            group = "objectiveTracker",
             frame = container,
             tier = "plain",
             channels = { "opacity", "scale", "position" },

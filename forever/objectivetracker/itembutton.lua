@@ -50,6 +50,7 @@ end, function(button)
     button.questID = nil
     button.ownerModule = nil
     button.slot = nil
+    button.placed = nil
     button:SetAlpha(1)
 end)
 
@@ -98,8 +99,9 @@ local function bindNow(slot)
     button:SetAttribute("type", "item")
     button:SetAttribute("item", link)
     button:SetUp(questLogIndex)
-    if place(button, slot) then
-        button:SetAlpha(1)
+    button.placed = place(button, slot)
+    if button.placed then
+        button:SetAlpha(slot:GetEffectiveAlpha())
         button:Show()
     else
         button:SetAlpha(0)
@@ -159,6 +161,19 @@ function Items.Reposition(now)
         return
     end
     schedulePass()
+end
+
+--- After a write to a container's own alpha: the Opacity setting, or a
+--- Dynamic Layouts opacity write. The buttons sit on a holder outside the
+--- tracker's tree, so each copies its slot's effective alpha. SetAlpha is not
+--- protected, so this runs in combat too. A button whose slot has gone, or
+--- that never found its slot's rect, stays at 0.
+function Items.SyncAlpha()
+    for slot, button in pairs(buttonBySlot) do
+        if button.placed and slot:IsVisible() then
+            button:SetAlpha(slot:GetEffectiveAlpha())
+        end
+    end
 end
 
 --------------------------------------------------------------------------------

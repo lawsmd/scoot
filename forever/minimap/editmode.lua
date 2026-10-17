@@ -60,10 +60,26 @@ local store = {
 }
 EditMode.Store = store
 
---- The captured default in the current base scale, written into the record
---- the library and the restore read.
+--- Whether the default is Camelot's corner: the setting asks for it and the
+--- map wears the art border it is measured against.
+local function camelotCorner()
+    return Style.Get("defaultAnchor") ~= "blizzard" and Style.IsSquare()
+        and Style.Get("borderHidden") ~= true and Style.Get("borderEnabled") ~= true
+        and MR.Display and MR.Display.ArtBorderFlushInset
+end
+
+--- The default in the current base scale, written into the record the
+--- library and the restore read: Camelot's corner, in the holder's own units
+--- already, or the captured Blizzard spot, in UIParent's.
 function EditMode.SyncDefault()
     local d = MR.Display and MR.Display.CaptureDefault()
+    if camelotCorner() then
+        local inset = MR.Display.ArtBorderFlushInset()
+        DEFAULT.point = "TOPRIGHT"
+        DEFAULT.x = -inset
+        DEFAULT.y = -inset
+        return
+    end
     if not d then return end
     local scale = baseScale()
     if scale == 0 then scale = 1 end

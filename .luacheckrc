@@ -110,6 +110,11 @@ read_globals = {
     "GetRaidTargetIndex",
     "SetRaidTargetIconTexture",
     "GetPetHappiness",
+    -- The Modern player frame's state reads (forever/unitframes/modern/
+    -- player.lua), screened the same way.
+    "HasLFGRestrictions",
+    "UnitGroupRolesAssignedEnum",
+    "UnitIsMercenary",
     -- The Classic frames' dead, ghost and auto-attack art (values.lua,
     -- player.lua), screened the same way, and the unit tooltip (frame.lua).
     "UnitIsDead",
@@ -528,6 +533,19 @@ files["forever/actionbars/bars.lua"] = {
 -- files reach the frame through _G by name.
 files["forever/personalresourcedisplay/mixins.lua"] = {
     globals = { "CamelotPersonalResourceDisplayMixin" },
+}
+-- The status bars (forever/statusbars/). mixins.lua owns the two globals
+-- frames.xml names and reads Blizzard_StatusTrackingBar's; display.lua reads
+-- the client's frames and constants.
+files["forever/statusbars/mixins.lua"] = {
+    globals = { "CamelotStatusTrackingManagerMixin", "CamelotStatusTrackingContainerMixin" },
+    read_globals = { "StatusTrackingManagerMixin", "StatusTrackingBarContainerMixin", "StatusTrackingBarInfo" },
+}
+files["forever/statusbars/display.lua"] = {
+    read_globals = {
+        "StatusTrackingBarManager", "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer",
+        "StatusTrackingBarInfo", "CamelotStatusTrackingBarManager",
+    },
 }
 -- The Group Finder (core/components/groupfinder/, ui/v2/groupfinder/): the
 -- Premade Groups API, Blizzard's frames the host stands on, and the handler
