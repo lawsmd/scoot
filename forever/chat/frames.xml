@@ -1,0 +1,88 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\..\..\FrameXML\UI.xsd">
+	<!--
+	forever/chat/frames.xml
+	Camelot's chat: the holder, its chrome, its tab strip and its scroll-to-bottom
+	button, and the two templates display.lua and tabs.lua instantiate once per
+	Blizzard window. Every piece is the line Blizzard writes for its own chat
+	frame (Blizzard_ChatFrameBase/Mainline/FloatingChatFrame.xml), renamed,
+	except where a comment says otherwise. Scripts are wired in Lua, so no
+	mixin global is named, and no Blizzard mixin runs on a Camelot frame.
+	-->
+
+	<!-- The holder is the window's text rect, 430 by 170 by default, the Edit
+	Mode preset's size. The scroll bar stands in a gutter at its right; the
+	chrome's background reaches over the gutter (display.lua, ApplyChrome). -->
+	<Frame name="CamelotChat" parent="UIParent" hidden="true" frameStrata="LOW">
+		<Size x="430" y="170"/>
+		<Frames>
+			<!-- FloatingBorderedFrame's background and eight border textures, on
+			an inner frame so the idle fade never touches the holder's alpha,
+			which the Dynamic Layouts adapter owns. -->
+			<Frame parentKey="Chrome" inherits="FloatingBorderedFrame" setAllPoints="true"/>
+
+			<!-- The tab row: GeneralDockManager's place, 3 above the window. -->
+			<Frame parentKey="Strip">
+				<Size y="32"/>
+				<Anchors>
+					<Anchor point="BOTTOMLEFT" relativePoint="TOPLEFT" x="0" y="3"/>
+					<Anchor point="BOTTOMRIGHT" relativePoint="TOPRIGHT" x="0" y="3"/>
+				</Anchors>
+			</Frame>
+
+			<!-- FloatingChatFrameTemplate's ScrollToBottomButton (FloatingChatFrame.xml:511-539),
+			anchored to the holder's corner instead of the resize button, which
+			the replica does not carry. The click is wired in Lua. -->
+			<Button parentKey="ScrollToBottomButton" alpha="0">
+				<Size x="17" y="15"/>
+				<Anchors>
+					<Anchor point="BOTTOMRIGHT" x="15" y="2"/>
+				</Anchors>
+				<Layers>
+					<Layer level="OVERLAY">
+						<Texture parentKey="Flash" atlas="minimal-scrollbar-arrow-returntobottom" useAtlasSize="true" alphaMode="ADD" hidden="true">
+							<Animations>
+								<AnimationGroup parentKey="FlashAnim" looping="REPEAT">
+									<Alpha parentKey="FadeIn" order="1" duration="0.1" fromAlpha="0" toAlpha="1"/>
+									<Alpha parentKey="FadeOut" order="2" duration="0.1" fromAlpha="1" toAlpha="0"/>
+								</AnimationGroup>
+							</Animations>
+						</Texture>
+					</Layer>
+				</Layers>
+				<NormalTexture atlas="minimal-scrollbar-arrow-returntobottom" useAtlasSize="true"/>
+				<PushedTexture atlas="minimal-scrollbar-arrow-returntobottom-down" useAtlasSize="true"/>
+				<HighlightTexture atlas="minimal-scrollbar-arrow-returntobottom-over" useAtlasSize="true"/>
+				<DisabledTexture atlas="minimal-scrollbar-arrow-returntobottom" useAtlasSize="true"/>
+			</Button>
+		</Frames>
+	</Frame>
+
+	<!-- One per Blizzard window: ChatFrameTemplate's intrinsic and its scroll
+	bar (ChatFrame.xml:3-11) with no mixin and no scripts, so the frame's
+	AddMessage is the engine's own barrier. display.lua anchors the scroll bar
+	as FloatingChatFrameMixin:OnLoad does. -->
+	<ScrollingMessageFrame name="CamelotChatWindowTemplate" hidden="true" virtual="true">
+		<Frames>
+			<EventFrame parentKey="ScrollBar" inherits="MinimalScrollBar">
+				<Anchors>
+					<Anchor point="TOPRIGHT"/>
+					<Anchor point="BOTTOMRIGHT"/>
+				</Anchors>
+			</EventFrame>
+		</Frames>
+	</ScrollingMessageFrame>
+
+	<!-- One per window on the strip: ChatTabArtTemplate's regions with
+	ChatTabTemplate's text (FloatingChatFrame.xml:414-420); the scripts and
+	the sizing are tabs.lua's. -->
+	<Button name="CamelotChatTabTemplate" inherits="ChatTabArtTemplate" virtual="true">
+		<ButtonText parentKey="Text">
+			<Size x="50" y="8"/>
+			<Anchors>
+				<Anchor point="CENTER" x="0" y="-5"/>
+			</Anchors>
+		</ButtonText>
+		<NormalFont style="GameFontNormalSmall"/>
+	</Button>
+</Ui>
