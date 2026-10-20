@@ -2,7 +2,8 @@
 -- forever/chat/tabs.lua
 -- The chat replica's tab strip: one Camelot tab per Blizzard window on the
 -- holder's Strip, named from the chat cache, in Blizzard's dock order, with
--- Blizzard's tab art and alphas, the unread flash, and Show Tabs on mouseover.
+-- Blizzard's tab art and alphas, the unread flash, and Show Tabs on mouseover;
+-- before them the social tab (social.lua), Blizzard's friends button as a tab.
 -- Selection is Camelot's own: it shows one twin and hides the rest, and never
 -- touches Blizzard's dock, whose selected-window field the send path reads.
 --
@@ -53,6 +54,7 @@ local function alphas()
         normalIdle = alphaConstant("CHAT_FRAME_TAB_NORMAL_NOMOUSE_ALPHA", 0.2),
     }
 end
+Tabs.Alphas = alphas
 
 --------------------------------------------------------------------------------
 -- Names and order
@@ -81,7 +83,7 @@ local function windowOrder()
     if ok and type(docked) == "table" then
         for _, frame in ipairs(docked) do
             local entry = Display.EntryFor(frame)
-            if entry and not seen[entry] then
+            if entry and not seen[entry] and not entry.closed then
                 seen[entry] = true
                 list[#list + 1] = entry
             end
@@ -90,7 +92,7 @@ local function windowOrder()
     for _, entry in ipairs(entries) do
         if not seen[entry] then
             local _, _, _, _, _, _, shown, _, docked2 = Style.Cache(entry.id)
-            if entry.id == 1 or (shown == true and docked2 ~= true) then
+            if not entry.closed and (entry.id == 1 or (shown == true and docked2 ~= true)) then
                 seen[entry] = true
                 list[#list + 1] = entry
             end
@@ -119,6 +121,7 @@ local function updateColors(tab, isSelected)
         if region then region:SetVertexColor(color.r, color.g, color.b) end
     end
 end
+Tabs.UpdateColors = updateColors
 
 local function updateAlpha(tab, entry)
     local a = alphas()
@@ -153,12 +156,24 @@ local function startFlash(tab)
     end
 end
 
+local function label(global, fallback)
+    local s = _G[global]
+    if type(s) == "string" and s ~= "" then return s end
+    return fallback
+end
+
+-- Blizzard's tab tooltip (FloatingChatFrame.xml, the tab's OnEnter): the
+-- name as a title and the right-click hint in green.
 local function onEnter(tab)
     if not GameTooltip then return end
     local name = tab.windowName
     if type(name) ~= "string" then return end
     GameTooltip:SetOwner(tab, "ANCHOR_RIGHT")
-    GameTooltip:SetText(name)
+    local ok, title = pcall(string.format, label("CHAT_TAB_NAME", "%s Tab"), name)
+    GameTooltip:SetText(ok and title or name)
+    local green = _G.GREEN_FONT_COLOR
+    GameTooltip:AddLine(label("CHAT_TAB_RIGHT_CLICK", "<Right click for Tab Settings>"),
+        green and green.r or 0.1, green and green.g or 1, green and green.b or 0.1)
     GameTooltip:Show()
 end
 
@@ -199,8 +214,9 @@ end
 -- Layout and selection
 --------------------------------------------------------------------------------
 
+--- The window tabs in a row after the social tab, when it is built.
 local function layout()
-    local previous
+    local previous = CR.Social and CR.Social.Tab()
     for _, entry in ipairs(ordered) do
         local tab = tabs[entry.source]
         tab:ClearAllPoints()
@@ -259,6 +275,12 @@ function Tabs.Selected()
     return selected
 end
 
+--- The entries in strip order, the one dock the menu's Make Noninteractive
+--- reaches across.
+function Tabs.Ordered()
+    return ordered
+end
+
 --- Colors and alphas for every shown tab, and the strip's own visibility.
 function Tabs.UpdateState()
     local anyAlert = false
@@ -270,6 +292,7 @@ function Tabs.UpdateState()
             if tab.alerting then anyAlert = true end
         end
     end
+    if CR.Social then CR.Social.UpdateState(mouseOver) end
     if strip then
         local always = Style.Get("showTabs") ~= "mouseover"
         strip:SetShown(always or mouseOver or anyAlert)
@@ -278,14 +301,21 @@ end
 
 --- A line landed in a window's twin. An unselected window's tab flashes by
 --- the Flash Tabs setting; `event` is the chat event the line came from.
+--- Every Window flashes for a player's message (Config.IsPlayerMessage) and
+--- never for a combat, loot, tradeskill or system line, so the combat log's
+--- tab, which carries nothing else, stays still; Whispers Only is Blizzard's
+--- own rule (ChatFrameUtil.FlashTabIfNotShown). A line with no event
+--- (print) or a secret one flashes nothing.
 function Tabs.OnLine(source, event)
     local entry = CR.Display and CR.Display.EntryFor(source)
     if not entry or entry == selected then return end
     local mode = Style.Get("tabFlash") or "all"
     if mode == "never" then return end
+    if type(event) ~= "string" or isSecret(event) then return end
     if mode == "whispers" then
-        if type(event) ~= "string" or isSecret(event) then return end
         if event ~= "CHAT_MSG_WHISPER" and event ~= "CHAT_MSG_BN_WHISPER" then return end
+    elseif CR.Config and not CR.Config.IsPlayerMessage(event) then
+        return
     end
     local tab = tabs[source]
     if not tab then return end
@@ -306,13 +336,14 @@ function Tabs.Apply()
     Tabs.UpdateState()
 end
 
---- Build the strip on the holder, then the tabs from the windows the display
---- already twinned; selects window 1.
+--- Build the strip on the holder, the social tab first, then the tabs from
+--- the windows the display already twinned; selects window 1.
 function Tabs.Build(holder)
     if built then return end
     strip = holder.Strip
     strip:SetHeight(Style.TAB_HEIGHT)
     built = true
+    if CR.Social then CR.Social.Build(strip) end
     Tabs.Refresh()
 end
 
@@ -328,4 +359,5 @@ function Tabs.Describe(push)
             secret and "<secret name>" or tostring(name), entry == selected and " (selected)" or "",
             tab and tab:GetWidth() or 0, tostring(tab and tab.alerting or false))
     end
+    if CR.Social then CR.Social.Describe(push) end
 end

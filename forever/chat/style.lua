@@ -25,12 +25,14 @@ addon.ChatReplica = addon.ChatReplica or {}
 local CR = addon.ChatReplica
 
 -- The owner string every claim, event and Edit Mode registration carries; the
--- key of the layout store and the Dynamic Layouts adapter; the page's nav key,
--- the Interface group's Chat row (forever/menu.lua); the global frames.xml
--- declares.
+-- key of the layout store and the Dynamic Layouts adapter; the two pages' nav
+-- keys under the Chat group (forever/menu.lua): Customize, this file's
+-- settings (page.lua), and Settings, Blizzard's Chat Config window rebuilt
+-- (config.lua, configpage.lua); the global frames.xml declares.
 CR.OWNER = "camelotChat"
 CR.KEY = "chat"
-CR.NAV_KEY = "chat"
+CR.NAV_KEY = "chatCustomize"
+CR.CONFIG_NAV_KEY = "chatSettings"
 CR.FRAME_NAME = "CamelotChat"
 
 local Style = {}
@@ -65,7 +67,13 @@ Style.WIDTH = { min = 250, max = 1200, step = 10, default = 430 }
 Style.HEIGHT = { min = 120, max = 800, step = 10, default = 170 }
 Style.SCALE = { min = 50, max = 200, step = 5, default = 100 }
 Style.FONT_SIZE = { min = 8, max = 24 }
+--- The key the Font row shows at stock: Arial Narrow, ChatFontNormal's own
+--- face (Style.ObjectFace). The setting itself registers no default.
+Style.STOCK_FONT_KEY = "ARIALN"
 Style.BACKGROUND_OPACITY = { min = 0, max = 100, step = 5 }
+-- Blizzard's inactive edit box sits at 0.35 in the im chat style
+-- (ChatFrameEditBox.lua:551), the stock value; 0 leaves it invisible.
+Style.EDIT_BOX_OPACITY = { min = 0, max = 100, step = 5, default = 35 }
 Style.TIME_VISIBLE = { min = 10, max = 600, step = 10, default = 120 }
 Style.IDLE_FADE_DELAY = { min = 1, max = 60, step = 1, default = 10 }
 
@@ -91,9 +99,16 @@ Style.SCROLL_GUTTER = 15
 Style.XML_ANCHOR = { point = "BOTTOMLEFT", x = 32, y = 95 }
 Style.XML_SIZE = { width = 430, height = 170 }
 
+-- Camelot's default spot, the owner's (19 October 2026): the window's bottom
+-- left 16 in from the screen's left and 36 up, which leaves the edit box
+-- below it 2 above the screen's bottom. In the holder's own units, as the
+-- store keeps a pair at scale 100.
+Style.CAMELOT_ANCHOR = { point = "BOTTOMLEFT", x = 16, y = 36 }
+
 Style.CLASS_COLOR_CVAR = "chatClassColorOverride"
 Style.TIMESTAMP_CVAR = "showTimestamps"
 Style.MOUSE_SCROLL_CVAR = "chatMouseScroll"
+Style.CHAT_STYLE_CVAR = "chatStyle"
 
 --- The dotted path of a setting: Style.Path("width").
 function Style.Path(key)
@@ -115,34 +130,43 @@ function Style.Color(key, fallback)
     return c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1
 end
 
--- Vanilla's chat window where it has a value: Blizzard's font object at the
--- window's own size from the chat cache, 120 seconds visible with the fade,
--- the tabs always shown, the box below. A width, height, size or background
--- opacity below zero means the value Blizzard's ChatFrame1 had at the first
--- build (display.lua, CaptureDefault), so a fresh install lands exactly where
--- the player's layout had the chat. The departures are the owner's
--- quality-of-life layers, each with its Blizzard value in the stock map.
+-- The owner's setup (19 October 2026), with vanilla's chat window where the
+-- owner kept it: Blizzard's font object at the window's own size from the
+-- chat cache, 120 seconds visible with the fade, the box below. A width,
+-- height or size of 0, or a background opacity of -1, means the value
+-- Blizzard's ChatFrame1 had at the first build (display.lua, CaptureDefault).
+-- Every departure has its Blizzard value in the stock map, which the Modern
+-- and Classic starts write.
 do
     local map = {}
     local function set(key, value) map[Style.Path(key)] = value end
     set("enabled", true)
 
     -- Window
-    set("width", 0)                   -- 0: ChatFrame1's width at the first build
-    set("height", 0)                  -- 0: its height
+    set("width", 500)                 -- vanilla: ChatFrame1's width at the first build
+    set("height", 250)                -- vanilla: its height
     set("scale", Style.SCALE.default)
-    set("backgroundOpacity", -1)      -- -1: the window's own alpha from the chat cache
+    set("backgroundOpacity", 0)       -- vanilla: the window's own alpha from the chat cache
+    -- "camelot" is Style.CAMELOT_ANCHOR, "blizzard" where ChatFrame1 stood
+    -- (editmode.lua, SyncDefault). No page writes it.
+    set("defaultAnchor", "camelot")
+
+    -- Edit box
     set("editBoxPosition", "below")   -- "below" | "above"
+    set("editBoxOpacity", 0)          -- vanilla: Blizzard's 0.35 while nothing is typed
 
     -- Text
-    set("fontFace", "FRIZQT__")       -- ChatFontNormal's face
+    -- fontFace registers no default: nil is ChatFontNormal's own face, read
+    -- off the object (Style.FontFace), which the Font row shows as Arial Narrow.
     set("fontSize", 0)                -- 0: the window's own size from the chat cache
-    set("fontStyle", "SHADOW")        -- ChatFontNormal's own shadow
+    -- Crisp Shadow Thick Outline; renders as SHADOWTHICKOUTLINE on a client
+    -- without the SLUG flag (core/fonts.lua).
+    set("fontStyle", "SHADOWTHICKOUTLINESLUG") -- vanilla: ChatFontNormal's own shadow
     set("fadeLines", true)
     set("timeVisible", Style.TIME_VISIBLE.default)
 
     -- Tabs
-    set("showTabs", "always")         -- "always" | "mouseover"
+    set("showTabs", "mouseover")      -- "always" | "mouseover"; vanilla: always
     set("tabFlash", "all")            -- "never" | "all" | "whispers"
 
     -- Chrome
@@ -152,7 +176,7 @@ do
     -- Formatting and alerts: vanilla's chat has none of these
     set("shortLabels", true)
     set("mentionHighlight", true)
-    set("mentionSound", false)
+    set("mentionSound", true)
     set("colorTimestamps", true)
     set("timestampColor", { 0.6, 0.6, 0.6, 1 })
     set("urlLinks", true)
@@ -163,10 +187,20 @@ do
 
     DB.RegisterDefaults(map)
 
-    -- Blizzard Default: the long channel labels, no highlight, no stamp
-    -- color and no links for addresses.
+    -- Blizzard Default: ChatFrame1's own size, spot and alpha, the inactive
+    -- box at 0.35, the font's shadow alone, the tabs always shown, the long
+    -- channel labels, no highlight or sound, no stamp color and no links for
+    -- addresses.
     local stock = {}
     local function blizzard(key, value) stock[Style.Path(key)] = value end
+    blizzard("width", 0)
+    blizzard("height", 0)
+    blizzard("backgroundOpacity", -1)
+    blizzard("defaultAnchor", "blizzard")
+    blizzard("editBoxOpacity", Style.EDIT_BOX_OPACITY.default)
+    blizzard("fontStyle", "SHADOW")
+    blizzard("showTabs", "always")
+    blizzard("mentionSound", false)
     blizzard("shortLabels", false)
     blizzard("mentionHighlight", false)
     blizzard("colorTimestamps", false)
@@ -236,6 +270,38 @@ local function cache(id)
 end
 Style.Cache = cache
 
+--- The client's count of cached chat windows, and of the reserved ones at
+--- the front (General and the combat log), Blizzard's own constants; a
+--- whisper pop-out is numbered past the count and keeps its state on its
+--- frame.
+function Style.MaxWindows()
+    local c = _G.Constants
+    local n = c and c.ChatFrameConstants and c.ChatFrameConstants.MaxChatWindows
+    if type(n) == "number" then return n end
+    return tonumber(_G.NUM_CHAT_WINDOWS) or 10
+end
+
+function Style.ReservedWindows()
+    local api = _G.C_ChatInfo
+    local ok, n = pcall(function() return api and api.GetNumReservedChatWindows and api.GetNumReservedChatWindows() end)
+    if ok and type(n) == "number" then return n end
+    return 2
+end
+
+--- Whether a window's links take no click (Make Noninteractive): the
+--- cache's flag for a cached window; a pop-out's is the flag the menu set
+--- on its entry, else the one on its frame, a plain read.
+function Style.Uninteractable(entry)
+    if type(entry) ~= "table" then return false end
+    if type(entry.id) == "number" and entry.id <= Style.MaxWindows() then
+        local _, _, _, _, _, _, _, _, _, off = cache(entry.id)
+        return off == true
+    end
+    if entry.uninteractable ~= nil then return entry.uninteractable == true end
+    local ok, off = pcall(function() return entry.source and entry.source.isUninteractable end)
+    return ok and off == true
+end
+
 --- A window id for a cache read: the argument when it is a number, else 1.
 local function windowId(id)
     if type(id) == "number" then return id end
@@ -280,8 +346,24 @@ function Style.FontSize(id)
     return clamp(v, Style.FONT_SIZE)
 end
 
+--- ChatFontNormal's own face: NumberFont_Shadow_Med's roman member,
+--- Fonts\ARIALN.TTF on an English client, read off the object so a client in
+--- another locale draws its own file, the rule for every font object here.
+function Style.ObjectFace()
+    local ok, face = pcall(function() return (ChatFontNormal:GetFont()) end)
+    if ok and type(face) == "string" and face ~= "" then return face end
+    return (addon.Fonts and addon.Fonts.ARIALN) or "Fonts\\ARIALN.TTF"
+end
+
+--- The face of every line and of the edit box: the Font row's pick, or the
+--- object's face at stock. Arial Narrow is the one stock face with Cyrillic
+--- glyphs on an English client; the engine draws a line its face cannot shape
+--- in the client's fallback font whole, so a log of Latin and Cyrillic names
+--- on Friz Quadrata shows two fonts (seen on the beta, 18 October 2026).
 function Style.FontFace()
-    return addon.ResolveFontFace(Style.Get("fontFace") or "FRIZQT__")
+    local key = Style.Get("fontFace")
+    if type(key) ~= "string" or key == "" then return Style.ObjectFace() end
+    return addon.ResolveFontFace(key)
 end
 
 --- The lines are engine-fed FontStrings the message frame pools, so a Deep
@@ -300,6 +382,17 @@ end
 
 function Style.EditBoxAbove()
     return Style.Get("editBoxPosition") == "above"
+end
+
+--- The box's alpha while nothing is typed, 0 to 1.
+function Style.EditBoxOpacity()
+    return clamp(Style.Get("editBoxOpacity"), Style.EDIT_BOX_OPACITY) / 100
+end
+
+--- Blizzard's classic chat style hides the inactive box
+--- (ChatFrameEditBox.lua:545), so an opacity has nothing to draw on there.
+function Style.ChatStyleClassic()
+    return GetCVar(Style.CHAT_STYLE_CVAR) == "classic"
 end
 
 --------------------------------------------------------------------------------
@@ -380,6 +473,7 @@ function Style.Apply()
     Display.ApplyScale()
     Display.ApplyChrome()
     Display.ApplyText()
+    Display.ApplyInteractable()
     if CR.Tabs then CR.Tabs.Apply() end
     if CR.EditBox then CR.EditBox.Apply() end
     if CR.EditMode then CR.EditMode.SyncDefault() end

@@ -57,9 +57,15 @@ local store = {
 EditMode.Store = store
 
 --- The default in the current base scale, written into the record the
---- library and the restore read: where Blizzard's ChatFrame1 stood, in
---- UIParent's units, over the holder's scale.
+--- library and the restore read: Camelot's spot, in the holder's own units
+--- already, or where Blizzard's ChatFrame1 stood, in UIParent's units, over
+--- the holder's scale.
 function EditMode.SyncDefault()
+    if Style.Get("defaultAnchor") ~= "blizzard" then
+        local a = Style.CAMELOT_ANCHOR
+        DEFAULT.point, DEFAULT.x, DEFAULT.y = a.point, a.x, a.y
+        return
+    end
     local d = CR.Display and CR.Display.CaptureDefault()
     if not d then return end
     local scale = baseScale()

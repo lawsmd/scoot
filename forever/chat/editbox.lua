@@ -7,13 +7,19 @@
 -- to ChatFrame1's bottom edge; this file re-anchors it to the holder, puts
 -- the Text settings' font on it and scales it with the holder.
 --
+-- One more write, the inactive box's alpha, the Inactive Opacity row:
+-- Blizzard writes 1.0 on every activate and 0.35 on every deactivate in the
+-- im chat style, and hides the inactive box in the classic style, so
+-- Camelot's value goes on after each deactivate through post-hooks on
+-- ChatFrameUtil.DeactivateChat and SetLastActiveWindow, the two callers of
+-- the box's Deactivate: plain table hooks, never one on the box. At 0 the
+-- box is invisible until Enter, though it still takes a click.
+--
 -- Nothing else touches the box. No HookScript on it, no hook on UpdateHeader
 -- or AddHistoryLine, no SetAttribute, no SetText: the chat-state functions
 -- write the box's chatType attribute after they dispatch its scripts, every
 -- send reads that attribute back, and a tainted write there makes every
--- later send a tainted caller that a chat messaging lockdown swallows. No
--- alpha write either: Blizzard writes the box's alpha on every activate and
--- deactivate, and the idle box is hidden in the classic chat style.
+-- later send a tainted caller that a chat messaging lockdown swallows.
 --
 -- The EventRegistry callbacks the box fires run through securecallfunction
 -- on 12.1.5, but an earlier build showed a callback tainting its dispatch
@@ -34,10 +40,17 @@ CR.EditBox = EditBox
 local LEFT_INSET = -5
 local RIGHT_INSET = 8
 
-local state = { shown = nil, focused = nil, sends = 0, callbacks = false }
+local state = { shown = nil, focused = nil, sends = 0, callbacks = false, hooked = false }
 
 local function box()
     return _G.ChatFrame1EditBox
+end
+
+--- Whether the box is the one being typed in: Blizzard's own global
+--- (ChatFrameUtil.lua:525, :551), a plain read.
+local function active(b)
+    local ok, is = pcall(function() return _G.ACTIVE_CHAT_EDIT_BOX == b end)
+    return ok and is == true
 end
 
 --- The anchors: the holder's bottom corners, or the strip's top corners when
@@ -77,12 +90,41 @@ function EditBox.SetScale(scale)
     pcall(b.SetScale, b, scale)
 end
 
+--- Camelot's alpha on the inactive box; the active box keeps Blizzard's 1.0.
+--- A newcomer's channel hint (UpdateNewcomerEditBoxHint) raises the box to
+--- 1.0 on its own and is left to it.
+function EditBox.ApplyOpacity()
+    local b = box()
+    if not b or active(b) then return end
+    pcall(b.SetAlpha, b, Style.EditBoxOpacity())
+end
+
+--- Post-hooks on the two callers of the box's Deactivate
+--- (ChatFrameUtil.lua:549-554, :570-586), so Camelot's alpha lands after
+--- Blizzard's 0.35. SetLastActiveWindow also opens every activate, where
+--- the box is already the active one and the write is skipped. Once.
+local function hookDeactivate()
+    if state.hooked then return end
+    local util = _G.ChatFrameUtil
+    if type(util) ~= "table" then return end
+    state.hooked = true
+    for _, name in ipairs({ "DeactivateChat", "SetLastActiveWindow" }) do
+        if type(util[name]) == "function" then
+            pcall(hooksecurefunc, util, name, function(editBox)
+                if editBox == box() then EditBox.ApplyOpacity() end
+            end)
+        end
+    end
+end
+
 function EditBox.Apply()
     local holder = Style.Frame()
     if not (box() and holder) then return end
+    hookDeactivate()
     EditBox.Anchor()
     EditBox.ApplyFont()
     EditBox.SetScale(holder:GetScale())
+    EditBox.ApplyOpacity()
     EditBox.ApplyCallbacks()
 end
 
@@ -133,4 +175,8 @@ function EditBox.Describe(push)
     push("  edit box protected: %s", okP and string.format("%s (explicit %s)", tostring(isProtected), tostring(explicitly)) or "unreadable")
     push("  edit box callbacks: %s; shown %s, focused %s, sends %d", tostring(state.callbacks),
         tostring(state.shown), tostring(state.focused), state.sends)
+    local okA, alpha = pcall(b.GetAlpha, b)
+    push("  edit box opacity: inactive %d%%, alpha now %s, active %s, chat style %s, hooks %s",
+        math.floor(Style.EditBoxOpacity() * 100 + 0.5), okA and string.format("%.2f", alpha) or "unreadable",
+        tostring(active(b)), tostring(GetCVar(Style.CHAT_STYLE_CVAR)), tostring(state.hooked))
 end

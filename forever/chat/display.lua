@@ -37,7 +37,7 @@ local entries = {}         -- in twin creation order: { source, twin, id, name }
 local bySource = {}        -- source -> entry
 local pendingResync = {}   -- source -> true
 local parked = {}          -- frame -> label
-local counts = { mirrored = 0, secret = 0, resyncs = 0, scans = 0, hooks = 0 }
+local counts = { mirrored = 0, secret = 0, hidden = 0, resyncs = 0, scans = 0, hooks = 0 }
 local blocked = {}
 local MAX_BLOCKED = 8
 local captured
@@ -141,11 +141,19 @@ end
 -- The bridge
 --------------------------------------------------------------------------------
 
+--- One line into the twin, or not: the Settings page's filter asks first
+--- whether the window shows the line's group or channel, on the event name
+--- and the packed payload Blizzard's formatter passes (config.lua, Shows).
+--- Returns the event and whether the line went in.
 local function mirrorLine(entry, text, r, g, b, ...)
     local event = select(4, ...)
+    if CR.Config and not CR.Config.Shows(entry, event, (select(5, ...))) then
+        counts.hidden = counts.hidden + 1
+        return event, false
+    end
     local t, rr, gg, bb = CR.Lines.Transform(text, r, g, b, event)
     entry.twin:AddMessage(t, rr, gg, bb, ...)
-    return event
+    return event, true
 end
 
 --- The twin rebuilt from the source's own buffer: Blizzard's copy loop
@@ -189,8 +197,11 @@ local function installHooks(entry)
     hooksecurefunc(source, "AddMessage", function(_, text, r, g, b, ...)
         counts.mirrored = counts.mirrored + 1
         if isSecret(text) then counts.secret = counts.secret + 1 end
-        local event = mirrorLine(entry, text, r, g, b, ...)
-        if CR.Tabs then CR.Tabs.OnLine(source, event) end
+        -- A closed pop-out's lines land in the first window, where
+        -- Blizzard's close would have sent them (CloseWindow)
+        local target = entry.redirect or entry
+        local event, shown = mirrorLine(target, text, r, g, b, ...)
+        if shown and CR.Tabs then CR.Tabs.OnLine(target.source, event) end
     end)
     counts.hooks = counts.hooks + 1
     for _, method in ipairs(MUTATORS) do
@@ -278,6 +289,33 @@ function Display.OnSelect(entry, previous)
     end
     if entry and entry.source == combatLog then
         pcall(api.SetFilteredEventsEnabled, true)
+    end
+end
+
+--- The menu closed a window: its twin and tab go. A cached window closes
+--- in the chat cache too, and Blizzard's login pass finishes it (menu.lua);
+--- a pop-out's later lines are sent on to the first window, since Blizzard's
+--- parked frame keeps them from the first window while it stands.
+function Display.CloseWindow(entry, redirect)
+    if not entry or entry.closed then return end
+    entry.closed = true
+    entry.twin:Hide()
+    if redirect then
+        for _, e in ipairs(entries) do
+            if e.id == 1 and e ~= entry then
+                entry.redirect = e
+                break
+            end
+        end
+    end
+    if CR.Tabs then CR.Tabs.Refresh() end
+end
+
+--- Make Noninteractive: a window's links take no click, the one thing
+--- FCF_SetUninteractable changes on the frame; each twin follows its flag.
+function Display.ApplyInteractable()
+    for _, entry in ipairs(entries) do
+        entry.twin:SetHyperlinksEnabled(not Style.Uninteractable(entry))
     end
 end
 
@@ -452,6 +490,7 @@ end
 -- Every read is on a Camelot frame.
 
 local FADE_IN, FADE_OUT = 0.15, 2.0
+local STRIP_REACH = 35
 
 local function fadeChrome(chrome, target)
     local fadeIn, fadeOut = _G.UIFrameFadeIn, _G.UIFrameFadeOut
@@ -470,7 +509,9 @@ end
 local function tick()
     local h = holder()
     if not (h and h:IsShown()) then return end
-    local over = h:IsMouseOver() or (h.Strip:IsShown() and h.Strip:IsMouseOver())
+    -- The hit rect reaches up over the strip's place (32 high, 3 above, frames.xml)
+    -- so the mouse where the tabs stand shows them while they are hidden.
+    local over = h:IsMouseOver(STRIP_REACH, 0, 0, 0)
     local now = GetTime()
     if over then lastMouse = now end
 
@@ -581,6 +622,8 @@ function Display.Build()
     -- the two still reaches a twin; the park before the positionable, so
     -- Blizzard's own selection box is gone when Edit Mode next opens.
     Display.Scan("build")
+    -- What each window listens to at login, for the Settings page's reload rule
+    if CR.Config then CR.Config.Snapshot() end
     Display.Claim()
     h:Show()
     if CR.Tabs then CR.Tabs.Build(h) end
@@ -650,13 +693,13 @@ function Display.Dump()
     frameLine(push, "GeneralDockManager", _G.GeneralDockManager)
     push("  ChatFrame1 protected: %s; edit box protected: %s", protectedLine(_G.ChatFrame1), protectedLine(_G.ChatFrame1EditBox))
     push("  ChatFrame1.AddMessage secure: %s; tellTimer secure: %s", secureLine(_G.ChatFrame1, "AddMessage"), secureLine(_G.ChatFrame1, "tellTimer"))
-    push("  lines mirrored %d (secret %d), resyncs %d, scans %d (last %s), hooks %d",
-        counts.mirrored, counts.secret, counts.resyncs, counts.scans, tostring(counts.lastScan), counts.hooks)
+    push("  lines mirrored %d (secret %d, hidden by the Settings page %d), resyncs %d, scans %d (last %s), hooks %d",
+        counts.mirrored, counts.secret, counts.hidden, counts.resyncs, counts.scans, tostring(counts.lastScan), counts.hooks)
     local d = captured
     push("  default position: %s", d and string.format("%s (%.1f, %.1f) %.0f x %.0f from %s", d.point, d.x, d.y, d.width, d.height, d.source) or "not captured")
     push("  settings: width %d, height %d, scale %d%%, background %.2f, box %s, font %s %d %s, show tabs %s, flash %s",
         Style.Width(), Style.Height(), Style.ScalePercent(), Style.BackgroundOpacity(),
-        Style.EditBoxAbove() and "above" or "below", tostring(Style.Get("fontFace")), Style.FontSize(), tostring(Style.FontStyle()),
+        Style.EditBoxAbove() and "above" or "below", Style.FontFace(), Style.FontSize(), tostring(Style.FontStyle()),
         tostring(Style.Get("showTabs")), tostring(Style.Get("tabFlash")))
     push("  cvars: %s %s, %s %s, chatStyle %s, whisperMode %s",
         Style.CLASS_COLOR_CVAR, tostring(GetCVar(Style.CLASS_COLOR_CVAR)),
@@ -667,10 +710,11 @@ function Display.Dump()
         local ok, text = pcall(function()
             local parent = entry.source:GetParent()
             local _, size, cr, cg, cb, ca = Style.Cache(entry.id)
-            return string.format("%s: parent %s, %d lines; twin %d lines, max %d, %s; cache size %s, color %s %s %s, alpha %s",
+            return string.format("%s: parent %s, %d lines; twin %d lines, max %d, %s; cache size %s, color %s %s %s, alpha %s, links %s%s",
                 entry.name, parent and parent:GetName() or tostring(parent), entry.source:GetNumMessages(),
                 entry.twin:GetNumMessages(), entry.twin:GetMaxLines(), entry.twin:IsShown() and "shown" or "hidden",
-                tostring(size), tostring(cr), tostring(cg), tostring(cb), tostring(ca))
+                tostring(size), tostring(cr), tostring(cg), tostring(cb), tostring(ca),
+                entry.twin:IsHyperlinksEnabled() and "on" or "off", entry.closed and ", closed" or "")
         end)
         push("    %s", ok and text or (tostring(entry.name) .. ": unreadable"))
     end
@@ -682,6 +726,7 @@ function Display.Dump()
     push("  ChatAlertFrame held: %s", tostring(alertHosts))
     if CR.Tabs then CR.Tabs.Describe(push) end
     if CR.Menu then CR.Menu.Describe(push) end
+    if CR.Config then CR.Config.Describe(push) end
     if CR.EditBox then CR.EditBox.Describe(push) end
     if CR.Dynamic then push("  dynamic layouts: %s", CR.Dynamic.Describe()) end
     push("  blocked actions naming the chat (%d):", #blocked)

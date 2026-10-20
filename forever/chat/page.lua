@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
 -- forever/chat/page.lua
--- The Chat page, under Interface in forever/menu.lua: the window, its text,
--- its tabs, the fade, the formatting switches and the alerts. Loads on
+-- The Customize page under Chat in forever/menu.lua: the window, the edit
+-- box, the text, the tabs, the fade, the formatting switches and the alerts; Blizzard's own
+-- chat settings are the Settings page beside it (configpage.lua). Loads on
 -- retail too, where no holder is built: the controls still draw and write.
 --------------------------------------------------------------------------------
 
@@ -95,17 +96,39 @@ local function Render(panel, scrollContent)
             })
             inner:AddSlider({
                 label = "Background Opacity",
-                description = "The window's background and border. The game's own window alpha is the starting value.",
+                description = "The window's background and border.",
                 min = Style.BACKGROUND_OPACITY.min, max = Style.BACKGROUND_OPACITY.max, step = Style.BACKGROUND_OPACITY.step,
                 get = function() return math.floor(Style.BackgroundOpacity() * 100 + 0.5) end,
                 set = function(v) setSetting("backgroundOpacity", Style.Clamp(v, Style.BACKGROUND_OPACITY)) end,
                 minLabel = "0%", maxLabel = "100%",
             })
+            inner:Finalize()
+        end,
+    })
+
+    ----------------------------------------------------------------------------
+    -- Edit box
+    ----------------------------------------------------------------------------
+    builder:AddCollapsibleSection({
+        title = "Edit Box",
+        componentId = NAV_KEY,
+        sectionKey = "editBox",
+        defaultExpanded = false,
+        buildContent = function(_, inner)
             inner:AddSelector({
-                label = "Edit Box Position",
+                label = "Position",
                 values = EDIT_BOX_POSITION.values, order = EDIT_BOX_POSITION.order,
                 get = function() return Style.EditBoxAbove() and "above" or "below" end,
                 set = function(v) setSetting("editBoxPosition", v == "above" and "above" or "below") end,
+            })
+            inner:AddSlider({
+                label = "Inactive Opacity",
+                description = "The box while nothing is typed; the game's own value is 35%, and 0 leaves it out of sight until Enter. The classic chat style hides the inactive box instead.",
+                min = Style.EDIT_BOX_OPACITY.min, max = Style.EDIT_BOX_OPACITY.max, step = Style.EDIT_BOX_OPACITY.step,
+                get = function() return math.floor(Style.EditBoxOpacity() * 100 + 0.5) end,
+                set = function(v) setSetting("editBoxOpacity", Style.Clamp(v, Style.EDIT_BOX_OPACITY)) end,
+                minLabel = "0%", maxLabel = "100%",
+                isDisabled = Style.ChatStyleClassic,
             })
             inner:Finalize()
         end,
@@ -133,7 +156,7 @@ local function Render(panel, scrollContent)
                     return get(field)
                 end,
                 set = set, apply = apply,
-                defaults = { fontFace = "FRIZQT__", style = "SHADOW", size = Style.FontSize() },
+                defaults = { fontFace = Style.STOCK_FONT_KEY, style = "SHADOW", size = Style.FontSize() },
                 font = { description = "The font of every line, and of the edit box." },
                 style = { order = addon.FontStyles.order },
                 size = { min = Style.FONT_SIZE.min, max = Style.FONT_SIZE.max,
@@ -180,7 +203,7 @@ local function Render(panel, scrollContent)
             })
             inner:AddSelector({
                 label = "Flash Tabs",
-                description = "Flash a tab when a line lands in a window that is not selected.",
+                description = "Flash a tab when a player's message lands in a window that is not selected; combat, loot and system lines never flash.",
                 values = TAB_FLASH.values, order = TAB_FLASH.order,
                 get = function() return getSetting("tabFlash") or "all" end,
                 set = function(v) setSetting("tabFlash", v) end,
