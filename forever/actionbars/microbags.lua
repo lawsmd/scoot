@@ -16,6 +16,12 @@
 --
 -- The twins are secure buttons, so every holder is implicitly protected:
 -- the layout, a style switch and a position wait for regen in a fight.
+--
+-- Each holder carries a Face, the frame that holds its art and strips. The
+-- Visibility settings (visibility.lua) show, hide and fade the Face, and the
+-- Dynamic Layouts adapter writes the holder, so the two never share a frame
+-- and the Edit Mode box, parented to the holder, stays put while the Face is
+-- hidden.
 --------------------------------------------------------------------------------
 
 local _, addon = ...
@@ -29,7 +35,11 @@ ActionBars.MicroBags = MicroBags
 local PATH = "actionBars.microBags."
 
 -- The Edit Mode and Dynamic Layouts keys, one per anchor.
+-- The same keys are the anchors' Visibility tokens.
 MicroBags.KEYS = { micro = "microMenu", bags = "bagBar", combined = "microBags" }
+MicroBags.ORDER = { "micro", "bags", "combined" }
+local keyByToken = {}
+for key, token in pairs(MicroBags.KEYS) do keyByToken[token] = key end
 -- The Micro & Bag page, and the section on it Configure opens per anchor;
 -- the combined anchor opens the page at its top.
 MicroBags.NAV_KEY = "actionBarMicroBags"
@@ -125,19 +135,35 @@ local function Holder(name, label)
     f:SetFrameStrata("MEDIUM")
     f:SetFrameLevel(50)
     f.editModeName = label
+    f.Face = CreateFrame("Frame", nil, f)
+    f.Face:SetAllPoints(f)
     return f
+end
+
+--- The frame the Visibility settings write for a token, or nil.
+function MicroBags.Face(token)
+    local holder = holders[keyByToken[token]]
+    return holder and holder.Face or nil
+end
+
+--- Whether a token's holder draws in the style in use.
+function MicroBags.IsActive(token)
+    local key = keyByToken[token]
+    if not (built and key) then return false end
+    if MicroBags.Style() == "combined" then return key == "combined" end
+    return key ~= "combined"
 end
 
 -- Forever's art around a bar: the action bar frame, and under the micro
 -- menu the icon frame background.
 local function AddFrameArt(holder, inset, background)
-    local border = holder:CreateTexture(nil, "BACKGROUND", nil, -3)
+    local border = holder.Face:CreateTexture(nil, "BACKGROUND", nil, -3)
     border:SetAtlas(FRAME_ATLAS)
     border:SetPoint("TOPLEFT", -inset.left, inset.top)
     border:SetPoint("BOTTOMRIGHT", inset.right, -inset.bottom)
     holder.BorderArt = border
     if background then
-        local bg = holder:CreateTexture(nil, "BACKGROUND", nil, -4)
+        local bg = holder.Face:CreateTexture(nil, "BACKGROUND", nil, -4)
         bg:SetAtlas(MICRO_BACKGROUND_ATLAS)
         bg:SetPoint("TOPLEFT", border, "TOPLEFT", -13, 0)
         bg:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", 14, 4)
@@ -287,8 +313,8 @@ local function Layout()
         -- bar side by side.
         LayoutBags(microVertical, microVertical and "up" or "left", MicroBags.Micro.PADDING, "combined")
         local micro, bags, holder = strips.micro, strips.bags, holders.combined
-        micro:SetParent(holder)
-        bags:SetParent(holder)
+        micro:SetParent(holder.Face)
+        bags:SetParent(holder.Face)
         micro:SetScale(microScale)
         bags:SetScale(microScale)
         micro:ClearAllPoints()
@@ -315,8 +341,8 @@ local function Layout()
         local direction = MicroBags.Get("bags.direction") or (bagsVertical and "up" or "left")
         local padding = tonumber(MicroBags.Get("bags.padding")) or 2
         LayoutBags(bagsVertical, direction, padding, "forever")
-        strips.micro:SetParent(holders.micro)
-        strips.bags:SetParent(holders.bags)
+        strips.micro:SetParent(holders.micro.Face)
+        strips.bags:SetParent(holders.bags.Face)
         for _, key in ipairs({ "micro", "bags" }) do
             strips[key]:ClearAllPoints()
             strips[key]:SetPoint("TOPLEFT", holders[key], "TOPLEFT")
@@ -333,9 +359,14 @@ local function Layout()
 
     local EM = addon.EditMode
     if EM and EM.RestorePositionable then
-        for _, key in ipairs({ "micro", "bags", "combined" }) do
+        for _, key in ipairs(MicroBags.ORDER) do
             if holders[key]:IsShown() then EM.RestorePositionable(holders[key]) end
         end
+    end
+
+    -- A style switch moves the driver and the fade to the holders in use.
+    for _, key in ipairs(MicroBags.ORDER) do
+        ActionBars.Visibility.Apply(MicroBags.KEYS[key])
     end
 end
 
@@ -422,7 +453,7 @@ MicroBags.LABELS = LABELS
 local function Register()
     if not (addon.EditMode and addon.EditMode.RegisterPositionable) then return end
     local NAV_KEY = MicroBags.NAV_KEY
-    for _, key in ipairs({ "micro", "bags", "combined" }) do
+    for _, key in ipairs(MicroBags.ORDER) do
         local holder = holders[key]
         keyByHolder[holder] = key
         addon.EditMode.RegisterPositionable(holder, {
@@ -495,8 +526,8 @@ function MicroBags.Build()
     AddFrameArt(holders.micro, { left = 8, right = 8, top = 8, bottom = 8 }, true)
     AddFrameArt(holders.bags, { left = 6, right = 5, top = 6, bottom = 5 }, false)
 
-    strips.micro = CreateFrame("Frame", nil, holders.micro)
-    strips.bags = CreateFrame("Frame", nil, holders.bags)
+    strips.micro = CreateFrame("Frame", nil, holders.micro.Face)
+    strips.bags = CreateFrame("Frame", nil, holders.bags.Face)
     strips.micro:SetSize(1, 1)
     strips.bags:SetSize(1, 1)
 
@@ -507,7 +538,7 @@ function MicroBags.Build()
     Register()
     -- The layout's restore found nothing registered yet; now each holder
     -- lands on its stored or default spot.
-    for _, key in ipairs({ "micro", "bags", "combined" }) do
+    for _, key in ipairs(MicroBags.ORDER) do
         addon.EditMode.RestorePositionable(holders[key])
     end
 
@@ -520,16 +551,26 @@ function MicroBags.IsBuilt()
     return built
 end
 
+-- After a profile switch the style, the layout rows and the positions come
+-- from the new profile; the layout reads all three. Runs after the clusters'
+-- step at 30. The initial pass has no frames yet, and a resync pass keeps the
+-- profile it had.
+addon.Profiles.RegisterApplyStep("camelotMicroBags", function(_, ctx)
+    if ctx.initial or ctx.resync or not built then return end
+    MicroBags.Apply()
+end, 31)
+
 --- The rows /camelot actionbars prints.
 function MicroBags.Report(push)
     push("micro menu and bag bar: built %s, style %s", tostring(built), MicroBags.Style())
     if not built then return end
-    for _, key in ipairs({ "micro", "bags", "combined" }) do
+    for _, key in ipairs(MicroBags.ORDER) do
         local h = holders[key]
         local point, _, _, x, y = h:GetPoint(1)
         push("  %-8s %-18s shown %-5s %.0fx%.0f at %s %.1f %.1f protected %s", key, h:GetName(),
             tostring(h:IsShown()), h:GetWidth(), h:GetHeight(), tostring(point), x or 0, y or 0,
             tostring((h:IsProtected())))
+        push("  %-8s %s", "", ActionBars.Visibility.Describe(MicroBags.KEYS[key]))
     end
     push("  micro twins:")
     MicroBags.Micro.Report(push)

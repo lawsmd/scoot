@@ -97,12 +97,22 @@ local ALIGN_LABELS = {
     horizontal = { start = "Top", center = "Middle", ["end"] = "Bottom" },
 }
 
---- The member rows' labels for a cluster's axis: the lines row's name and
---- the alignment values.
+-- Compact Filled Buttons packs along the buttons' own run, the other axis:
+-- a vertical cluster's rows run left to right, a horizontal cluster's
+-- columns top to bottom.
+local COMPACT_LABELS = {
+    vertical = { start = "Left", center = "Middle", ["end"] = "Right" },
+    horizontal = { start = "Top", center = "Middle", ["end"] = "Bottom" },
+}
+
+--- The member rows' labels for a cluster's axis: the lines row's name, the
+--- alignment values and the compaction values.
 function EditMode.Labels(vertical)
+    local axis = vertical and "vertical" or "horizontal"
     return {
         lines = vertical and "Rows" or "Columns",
-        align = ALIGN_LABELS[vertical and "vertical" or "horizontal"],
+        align = ALIGN_LABELS[axis],
+        compact = COMPACT_LABELS[axis],
     }
 end
 

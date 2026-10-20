@@ -90,7 +90,9 @@ end
 -- Every conditional the design leans on, with a plain oracle where one
 -- exists, so a row reads "cond=parsed/expected". A conditional that parses
 -- 1 against an oracle of 0 outside the state it names is one the parser
--- does not know. "bogus" is the control: it should read 1 on this client.
+-- does not know; question 22's control measured that an unknown one reads
+-- 1 here. The control is not in the list: the client prints "Unknown macro
+-- option" to the chat on every parse of one.
 local OBSERVED = {
     { "vehicleui",   function() return C_ActionBar.HasVehicleActionBar() end },
     { "overridebar", function() return C_ActionBar.HasOverrideActionBar() end },
@@ -109,7 +111,6 @@ local OBSERVED = {
     { "bonusbar:3",  function() return C_ActionBar.HasBonusActionBar() and C_ActionBar.GetBonusBarOffset() == 3 end },
     { "bonusbar:4",  function() return C_ActionBar.HasBonusActionBar() and C_ActionBar.GetBonusBarOffset() == 4 end },
     { "bonusbar:5",  function() return C_ActionBar.HasBonusActionBar() and C_ActionBar.GetBonusBarOffset() == 5 end },
-    { "bogus",       function() return false end },
 }
 
 -- The events after which the controller re-pages the main bar, plus the

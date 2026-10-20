@@ -6,7 +6,10 @@
 -- window or at regen through the engine's keyed closure, while opacity is
 -- legal always. The engine's own writers apply the three channels on the
 -- container, and every member inherits them. The base values are 1, 1 and
--- the stored position or the cluster's captured default.
+-- the stored position or the cluster's captured default. A cluster takes a
+-- drop from the cursor, so while the clusters take part a held spell, item
+-- or macro brings the whole layout back for the placement
+-- (core/dynamiclayouts/resolver.lua, holdingAction).
 --------------------------------------------------------------------------------
 
 local _, addon = ...
@@ -45,6 +48,7 @@ function Dynamic.Register(cluster, container)
         id = Clusters.Key(id),
         label = Clusters.Label(cluster),
         group = "actionBarClusters",
+        dropTarget = true,
         frame = container,
         tier = "protected",
         channels = { "opacity", "scale", "position" },

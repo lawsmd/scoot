@@ -6,6 +6,11 @@
 -- bar's layout rows stand disabled under the combined style, where the micro
 -- menu's rows lay out the whole line. Configure on an anchor's box opens
 -- this page with that bar's section expanded (microbags.lua, the brand).
+--
+-- The Visibility section holds the action bars' Visibility rows (page.lua)
+-- for the holders the style draws: a tab each for the micro menu and the bag
+-- bar under Forever, one set for the line under Combined. Each holder keeps
+-- its own values, so a style switch brings back what was set for it.
 --------------------------------------------------------------------------------
 
 local _, addon = ...
@@ -115,6 +120,32 @@ local function Render(panel, scrollContent)
             inner:AddToggle({ label = "Show Free Slots",
                 get = function() return MicroBags.Get("slots.backpack.freeSlots") ~= false end,
                 set = set("slots.backpack.freeSlots") })
+            inner:Finalize()
+        end,
+    })
+
+    local VisibilityRows = ActionBars.Page.VisibilityRows
+    local KEYS = MicroBags.KEYS
+    builder:AddCollapsibleSection({
+        title = "Visibility", componentId = NAV_KEY, sectionKey = "visibility",
+        defaultExpanded = false,
+        buildContent = function(_, inner)
+            if combined() then
+                VisibilityRows(inner, KEYS.combined)
+                return
+            end
+            inner:AddTabbedSection({
+                tabs = {
+                    { key = "micro", label = MicroBags.LABELS.micro },
+                    { key = "bags", label = MicroBags.LABELS.bags },
+                },
+                componentId = NAV_KEY,
+                sectionKey = "visibilityTabs",
+                buildContent = {
+                    micro = function(_, tab) VisibilityRows(tab, KEYS.micro) end,
+                    bags = function(_, tab) VisibilityRows(tab, KEYS.bags) end,
+                },
+            })
             inner:Finalize()
         end,
     })

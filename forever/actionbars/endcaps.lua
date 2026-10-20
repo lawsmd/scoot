@@ -211,6 +211,11 @@ local function Lay(pair, container, style, faction, scale)
         pair.front:SetFrameLevel(container:GetFrameLevel() + FRONT_LEVELS)
         left:SetParent(pair.front)
         right:SetParent(pair.front)
+        -- SetAtlas keeps the texture coordinates the standing style set and
+        -- reads them inside the atlas rect: left in place they cut the base
+        -- off and flip the right cap back. Cleared first.
+        left:SetTexCoord(0, 1, 0, 1)
+        right:SetTexCoord(0, 1, 0, 1)
         left:SetAtlas(art.left)
         right:SetAtlas(art.right)
         left:SetPoint("BOTTOMRIGHT", container, "BOTTOMLEFT", inset, 0)

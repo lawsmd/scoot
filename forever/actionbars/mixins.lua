@@ -29,6 +29,12 @@ local function Text()
     return addon.ActionBars.Text
 end
 
+-- compact.lua loads after the XML, and the bar's load runs its shown pass
+-- before then; the lookup is lazy and a nil answer skips the compaction.
+local function Compact()
+    return addon.ActionBars.Compact
+end
+
 local function queue(fn, key)
     addon.Events.RunOutOfCombat(fn, key)
 end
@@ -70,6 +76,13 @@ end
 -- protected Show on the main bar. The Camelot event frame forwards the same
 -- events. UpdateAction stays: the bar's OnLoad reads HasAction on every
 -- button right after they exist.
+-- One attribute is added, useOnKeyDown false. The secure template's OnClick
+-- runs without the isSecureAction flag Blizzard's own OnClick passes, so it
+-- reads a mouse press as a key press and, with ActionButtonUseKeyDown on,
+-- fires the action on the press. Blizzard's path fires a mouse click on the
+-- release. The attribute stands in for the flag: a press fires nothing, a
+-- drag with the pickup modifier moves the action without casting it, and
+-- the release after a drag lands off the button.
 function CamelotActionButtonMixin:ActionBarButtonMixin_OnLoad()
     BaseActionButtonMixin.BaseActionButtonMixin_OnLoad(self)
 
@@ -83,6 +96,7 @@ function CamelotActionButtonMixin:ActionBarButtonMixin_OnLoad()
     self:SetAttribute("checkselfcast", true)
     self:SetAttribute("checkfocuscast", true)
     self:SetAttribute("checkmouseovercast", true)
+    self:SetAttribute("useOnKeyDown", false)
     self:RegisterForDrag("LeftButton", "RightButton")
     self:RegisterForClicks("AnyUp", "LeftButtonDown", "RightButtonDown")
     if self.SpellCastAnimFrame then
@@ -343,7 +357,10 @@ CamelotActionBarMixin = {}
 -- Replaces ActionBarMixin:UpdateShownButtons. SetShown on a button or its
 -- container is blocked in lockdown, both being protected, so a pass that
 -- lands in a fight changes alpha instead and the pass queued here puts the
--- real shown state back at regen.
+-- real shown state back at regen. Out of combat the pass is bracketed by
+-- compact.lua: the pickup and spellbook bits are written from the bar's own
+-- record first, so a grid call that landed in a fight counts, and the
+-- compaction runs last over the shown state.
 function CamelotActionBarMixin:UpdateShownButtons()
     if InCombatLockdown() then
         for _, actionButton in pairs(self.actionButtons) do
@@ -355,6 +372,9 @@ function CamelotActionBarMixin:UpdateShownButtons()
         queue(function() self:UpdateShownButtons() end, "camelotActionBars.shown." .. self:GetName())
         return
     end
+
+    local compact = Compact()
+    if compact then compact.SyncBits(self) end
 
     wipe(self.shownButtonContainers)
     for i, actionButton in pairs(self.actionButtons) do
@@ -374,6 +394,8 @@ function CamelotActionBarMixin:UpdateShownButtons()
     if self.UpdateDividers then
         self:UpdateDividers()
     end
+
+    if compact then compact.Apply(self) end
 end
 
 -- Replaces ActionBarMixin:UpdateFrameStrata, a SetFrameStrata the grid path
@@ -382,4 +404,18 @@ end
 function CamelotActionBarMixin:UpdateFrameStrata(showGrid, reason)
     if InCombatLockdown() then return end
     ActionBarMixin.UpdateFrameStrata(self, showGrid, reason)
+end
+
+-- Replaces ActionBarMixin:SetShowGrid. Blizzard's writes a button's showgrid
+-- attribute only from secure code, so the bit the reason names is written
+-- by compact.lua before Blizzard's pass reads it, for every reason: the
+-- cluster layout's CVAR bit, a pickup's EVENT bit, the spellbook's and this
+-- addon's own Edit Mode bit. In a fight the call is replayed at regen.
+function CamelotActionBarMixin:SetShowGrid(showGrid, reason)
+    local compact = Compact()
+    if compact then
+        compact.ShowGrid(self, showGrid, reason)
+    else
+        ActionBarMixin.SetShowGrid(self, showGrid, reason)
+    end
 end

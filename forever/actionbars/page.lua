@@ -6,7 +6,8 @@
 -- dialog holds. One line points at Edit Mode for the clusters; a centered
 -- Action Bar selector, with no label, picks the bar;
 -- under it a tabbed
--- section holds Layout/Sizing, Cooldown Text and Keybind Text. A cluster's
+-- section holds Layout/Sizing, Cooldown Text, Keybind Text and Visibility
+-- (visibility.lua). A cluster's
 -- own rows (Axis, Spacing, End Caps) and every edit that makes, fills or
 -- empties a cluster stay in Edit Mode. The Layout/Sizing rows write the
 -- bar's member in whichever cluster holds it, through the edits in
@@ -52,6 +53,7 @@ local TABS = {
     { key = "layout", label = "Layout/Sizing" },
     { key = "cooldown", label = "Cooldown Text" },
     { key = "keybind", label = "Keybind Text" },
+    { key = "visibility", label = "Visibility" },
 }
 
 local selected = "bar1" -- the bar the page edits, for the session
@@ -129,9 +131,21 @@ local function layoutTab(tab, builder, token)
     local padding = EditMode.RANGES.iconPadding
     tab:AddSlider({ label = "Icon Padding", min = padding.min, max = padding.max, step = padding.step,
         precision = 0, get = field("iconPadding", 2), set = write("iconPadding") })
-    tab:AddToggle({ label = "Show Empty Buttons",
-        get = function() return field("alwaysShowButtons", true)() and true or false end,
-        set = write("alwaysShowButtons") })
+    -- With the empty buttons hidden, the filled ones can pack toward one
+    -- end or the middle of the bar; the pair greys out while they show.
+    tab:AddToggleGateRow({ label = "Show Empty Buttons",
+        gate = {
+            get = function() return field("alwaysShowButtons", true)() and true or false end,
+            set = write("alwaysShowButtons"),
+        },
+        toggle = { label = "Compact Filled Buttons",
+            get = function() return field("compact", false)() and true or false end,
+            set = write("compact"),
+        },
+        selector = { values = labels.compact, order = EditMode.ALIGN_ORDER,
+            get = field("compactAlign", "center"), set = write("compactAlign"),
+        },
+    })
     tab:Finalize()
 end
 
@@ -193,6 +207,50 @@ local function textTab(tab, token, part, hideLabel, defaults)
 end
 
 --------------------------------------------------------------------------------
+-- Visibility
+--------------------------------------------------------------------------------
+
+-- Out of combat with no target the bar is at full opacity and the dynamic
+-- layout decides, so the block has no Out of Combat slider.
+local OPACITY_TOOLTIP = {
+    tooltipTitle = "Opacity Priority",
+    tooltipText = "In Combat takes precedence over With Target. With neither, the bar is at "
+        .. "full opacity and the Dynamic Layout decides.",
+}
+
+--- The Visibility rows for one token, an action bar or a micro and bag
+--- holder; the Micro & Bag page draws them too (microbagspage.lua).
+function Page.VisibilityRows(tab, token)
+    local Visibility = ActionBars.Visibility
+    local function apply() Visibility.Apply(token) end
+
+    tab:AddSelector({ label = "Bar Visible", values = Visibility.MODE_LABELS, order = Visibility.MODE_ORDER,
+        get = function() return Visibility.Mode(token) end,
+        set = function(v)
+            DB.Set(Visibility.Path(token, "visible"), v ~= "always" and v or nil)
+            apply()
+        end })
+
+    local get, set = Helpers.CreateFlatAccessors(
+        function(key) return DB.Get(Visibility.Path(token, key)) end,
+        function(key, value)
+            if tonumber(value) == 100 then value = nil end
+            DB.Set(Visibility.Path(token, key), value)
+        end,
+        Visibility.OPACITY_KEYS)
+    tab:AddStateOpacityBlock({ get = get, set = set, apply = apply, min = 0, ooc = false,
+        infoIcon = OPACITY_TOOLTIP })
+
+    tab:AddToggle({ label = "Mouseover Mode",
+        get = function() return DB.Get(Visibility.Path(token, "mouseoverMode")) == true end,
+        set = function(v)
+            DB.Set(Visibility.Path(token, "mouseoverMode"), v and true or nil)
+            apply()
+        end })
+    tab:Finalize()
+end
+
+--------------------------------------------------------------------------------
 -- The page
 --------------------------------------------------------------------------------
 
@@ -237,6 +295,7 @@ local function Render(panel, scrollContent)
             keybind = function(_, tab)
                 textTab(tab, token, "hotkey", "Hide Keybind Text", keybindDefaults())
             end,
+            visibility = function(_, tab) Page.VisibilityRows(tab, token) end,
         },
     })
 

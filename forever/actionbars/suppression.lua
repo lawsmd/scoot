@@ -1,13 +1,16 @@
 --------------------------------------------------------------------------------
 -- forever/actionbars/suppression.lua
 -- Which Blizzard bar each Camelot bar stands in for, and how it is taken off
--- screen, through addon.NativeFrame under one owner. The seven multibars are
--- parked under the hidden holder. The main bar is dimmed instead: it is the
--- native keybind target, so it stays in Blizzard's parent chain, and Edit
--- Mode's layout pass re-parents system frames in combat. Forever's end caps
--- are children of the main bar, but each is an Edit Mode system whose
--- selection box ignores its parent's alpha, so the dimmed bar left two empty
--- boxes in Edit Mode; both caps are parked.
+-- screen, through addon.NativeFrame under one owner. The main bar and the
+-- seven multibars are dimmed, never parked. Parking a shown bar hides it
+-- inside Camelot's call, so every button's OnHide runs tainted and writes
+-- needsUpdate and the range, usable and update frames' entries for it; the
+-- next untainted ACTIONBAR_SLOT_CHANGED reads them, and in combat the
+-- button's SetAttribute("pressAndHoldAction") was blocked (19 October 2026).
+-- Alpha runs no handler. Forever's end caps are children of the main bar,
+-- but each is an Edit Mode system whose selection box ignores its parent's
+-- alpha, so the dimmed bar left two empty boxes in Edit Mode; both caps are
+-- parked.
 --
 -- Nothing is released: the Features switch lands at reload, and a feature
 -- off at login never claims. The pet bar and the stance bar stay
@@ -26,13 +29,13 @@ local OWNER = ActionBars.OWNER
 
 local BLIZZARD_FRAME = {
     { name = "MainActionBar",      method = "alpha" },
-    { name = "MultiBarBottomLeft", method = "park" },
-    { name = "MultiBarBottomRight", method = "park" },
-    { name = "MultiBarRight",      method = "park" },
-    { name = "MultiBarLeft",       method = "park" },
-    { name = "MultiBar5",          method = "park" },
-    { name = "MultiBar6",          method = "park" },
-    { name = "MultiBar7",          method = "park" },
+    { name = "MultiBarBottomLeft", method = "alpha" },
+    { name = "MultiBarBottomRight", method = "alpha" },
+    { name = "MultiBarRight",      method = "alpha" },
+    { name = "MultiBarLeft",       method = "alpha" },
+    { name = "MultiBar5",          method = "alpha" },
+    { name = "MultiBar6",          method = "alpha" },
+    { name = "MultiBar7",          method = "alpha" },
     -- The micro and bag twins click these buttons where they are parked.
     { name = "MicroMenuContainer", method = "park" },
     { name = "BagsBar",            method = "park" },
@@ -51,16 +54,18 @@ end
 local applied = false
 local mouseOff = false
 
--- The dimmed main bar keeps its twelve buttons, and alpha leaves them
--- clickable under a cluster that has moved away. The native keys never
+-- A dimmed bar keeps its buttons, and alpha leaves them clickable and
+-- showing tooltips wherever Blizzard placed them. The native keys never
 -- click them: the binding functions call the secure click handler on the
 -- button directly, so mouse off costs nothing there. A write on a
 -- protected frame, so out of combat only, and once.
 local function MouseOff()
-    local bar = MainActionBar
-    if mouseOff or not bar then return end
-    for _, button in ipairs(bar.actionButtons or {}) do
-        button:EnableMouse(false)
+    if mouseOff then return end
+    for _, row in ipairs(BLIZZARD_FRAME) do
+        local bar = row.method == "alpha" and Resolve(row)
+        for _, button in ipairs(bar and bar.actionButtons or {}) do
+            button:EnableMouse(false)
+        end
     end
     mouseOff = true
 end

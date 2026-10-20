@@ -169,6 +169,11 @@ end
 -- first changes it, so a cleared setting puts them back.
 local cooldownOriginal = setmetatable({}, { __mode = "k" })
 
+-- The buttons whose countdown string the pass set to alpha 0. The engine
+-- owns the string and its alpha reads secret in a fight, so the pass never
+-- reads it: it writes 1 back only where it wrote the 0.
+local cooldownHidden = setmetatable({}, { __mode = "k" })
+
 local COOLDOWN_FIELDS = { "fontFace", "size", "style", "color", "offsetX", "offsetY" }
 
 local function cooldownString(button)
@@ -188,15 +193,33 @@ function Text.CooldownFont()
     return fs:GetFont()
 end
 
-local function captureCooldown(button, fs)
-    if cooldownOriginal[button] then return cooldownOriginal[button] end
+local function plain(...)
+    for i = 1, select("#", ...) do
+        if issecretvalue and issecretvalue((select(i, ...))) then return false end
+    end
+    return true
+end
+
+-- The string is the engine's, so a read in a fight can come back secret, and
+-- a secret kept here would throw on every later pass. A read that is not
+-- plain throughout leaves no record; the next pass out of combat takes it.
+local function readOriginal(fs)
     local face, size, flags = fs:GetFont()
     local r, g, b, a = fs:GetTextColor()
     local point, _, relPoint, x, y = fs:GetPoint(1)
-    local original = { face = face, size = size, flags = flags, color = { r, g, b, a },
+    if not plain(face, size, flags, r, g, b, a, point, relPoint, x, y) then return nil end
+    return { face = face, size = size, flags = flags, color = { r, g, b, a },
         point = point, relPoint = relPoint, x = x, y = y }
-    cooldownOriginal[button] = original
-    return original
+end
+
+local function captureCooldown(button, fs)
+    local original = cooldownOriginal[button]
+    if original then return original end
+    local ok, read = pcall(readOriginal, fs)
+    if ok and read then
+        cooldownOriginal[button] = read
+        return read
+    end
 end
 
 --- The cooldown pass on one button.
@@ -208,9 +231,15 @@ function Text.Cooldown(button)
     for _, field in ipairs(COOLDOWN_FIELDS) do
         if getCooldown(token, field) ~= nil then stored = true break end
     end
-    -- Alpha, as the keybind's: touched only once Hide has been set.
-    local hidden = getCooldown(token, "hidden")
-    if hidden or fs:GetAlpha() < 1 then fs:SetAlpha(hidden and 0 or 1) end
+    -- Alpha, as the keybind's: written to 0 where Hide is set, and back to 1
+    -- only where this pass wrote the 0.
+    if getCooldown(token, "hidden") then
+        fs:SetAlpha(0)
+        cooldownHidden[button] = true
+    elseif cooldownHidden[button] then
+        fs:SetAlpha(1)
+        cooldownHidden[button] = nil
+    end
     local original = cooldownOriginal[button]
     if not stored then
         if original then
@@ -224,6 +253,7 @@ function Text.Cooldown(button)
         return
     end
     original = captureCooldown(button, fs)
+    if not original then return end
 
     local fontFace, size, style = getCooldown(token, "fontFace"), tonumber(getCooldown(token, "size")),
         getCooldown(token, "style")

@@ -137,6 +137,8 @@ local function Build()
     end
     ActionBars.Paging.Register()
     ActionBars.Clusters.Build()
+    ActionBars.Compact.Install()
+    ActionBars.Visibility.ApplyAll()
     ActionBars.MicroBags.Build()
     ActionBars.Suppression.Apply()
     HookPresses()
@@ -162,9 +164,17 @@ addon.Events.OnWorldEntered(function()
     if not ActionBars.IsEnabled() then return end
     ActionBars.Build()
     addon.EditMode.OnEditMode(OWNER, {
-        enter = function() ActionBars.Suppression.Reassert() end,
+        enter = function()
+            ActionBars.Suppression.Reassert()
+            -- A compact bar shows every slot while Edit Mode is open.
+            ActionBars.Compact.OnEditMode(true)
+            -- Every bar shows at full opacity while Edit Mode is open.
+            ActionBars.Visibility.OnEditMode(true)
+        end,
         exit = function()
             ActionBars.Suppression.Reassert()
+            ActionBars.Compact.OnEditMode(false)
+            ActionBars.Visibility.OnEditMode(false)
             -- The member strips never outlive Edit Mode.
             if ActionBars.Overlays then ActionBars.Overlays.Detach() end
         end,
@@ -219,11 +229,12 @@ function ActionBars.Dump()
         local frame = ActionBars.Frames[token]
         if frame then
             local first = frame.actionButtons[1]
-            push("  %-10s %-18s parent %-28s shown %-5s visible %-5s level %3d  %2d/%2d buttons  page %-4s %.0fx%.0f",
+            push("  %-10s %-18s parent %-28s shown %-5s visible %-5s level %3d  %2d/%2d buttons  page %-4s %.0fx%.0f  %s",
                 token, row.frame, frameName(frame:GetParent()), tostring(frame:IsShown()),
                 tostring(frame:IsVisible()), frame:GetFrameLevel(), frame.numButtonsShowable or 0,
                 frame.numButtons or 0, tostring(first and first:GetAttribute("actionpage")),
-                frame:GetWidth(), frame:GetHeight())
+                frame:GetWidth(), frame:GetHeight(), ActionBars.Compact.Describe(frame))
+            push("  %-10s %s", "", ActionBars.Visibility.Describe(token))
         else
             push("  %-10s %-18s not built (%s)", token, row.frame or row.label, row.kind)
         end
@@ -245,7 +256,7 @@ function ActionBars.Dump()
     end
     local unassigned = ActionBars.Clusters.Unassigned()
     push("  unassigned: %s", #unassigned > 0 and table.concat(unassigned, ", ") or "none")
-    push("  main bar buttons mouse off: %s", tostring(ActionBars.Suppression.IsMouseOff()))
+    push("  dimmed bar buttons mouse off: %s", tostring(ActionBars.Suppression.IsMouseOff()))
     push("")
     ActionBars.MicroBags.Report(push)
     push("")

@@ -41,7 +41,8 @@ local BUTTON_COUNT = { action = 12, pet = 10, stance = 10 }
 local function member(identity, extra)
     local m = {
         identity = identity, buttons = 12, lines = 1, align = "center",
-        iconSize = 100, iconPadding = 2, alwaysShowButtons = true, barArt = false,
+        iconSize = 100, iconPadding = 2, alwaysShowButtons = true,
+        compact = false, compactAlign = "center", barArt = false,
     }
     if extra then
         for k, v in pairs(extra) do m[k] = v end
@@ -64,6 +65,16 @@ Clusters.DEFAULTS = {
     { id = 3, axis = "vertical", spacing = SPACING, endCaps = false,
       members = { member("stance", { buttons = 10 }) } },
 }
+
+-- A profile started from Blizzard's Modern or Classic preset wears Blizzard's
+-- own sitting end caps.
+DB.RegisterStockDocument(DOCUMENT, function()
+    local doc = CopyTable(Clusters.DEFAULTS)
+    for _, cluster in ipairs(doc) do
+        if cluster.endCapStyle then cluster.endCapStyle = "sitting" end
+    end
+    return doc
+end)
 
 -- Where each default cluster stands until Edit Mode stores a position. The
 -- main cluster is centered at the bottom of the screen with its bottom
@@ -321,6 +332,8 @@ local MEMBER_FIELDS = {
     iconSize = function(v) return clamp(v, 50, 200) end,
     iconPadding = function(v) return clamp(v, 2, 10) end,
     alwaysShowButtons = flag,
+    compact = flag,
+    compactAlign = function(v) return ALIGNS[v] and v or nil end,
     barArt = flag,
     pageArrows = flag,
 }
@@ -441,26 +454,14 @@ end
 -- The members
 --------------------------------------------------------------------------------
 
--- The grid bit Edit Mode's Always Show Buttons handler sets on Blizzard's
--- buttons. A button's SetShowGrid writes its showgrid attribute only from
--- secure code, and a call from this file is not, so the bit is written here
--- and the bar's own SetShowGrid then runs its strata and shown-buttons
--- passes over it. Out of combat only: the caller queues the build.
-local function SetGridBit(bar, show)
-    local reason = ACTION_BUTTON_SHOW_GRID_REASON_CVAR
-    for _, button in ipairs(bar.actionButtons) do
-        local current = button:GetAttribute("showgrid") or 0
-        local wanted = show and bit.bor(current, reason) or bit.band(current, bit.bnot(reason))
-        if wanted ~= current then
-            button:SetAttribute("showgrid", wanted)
-        end
-    end
-end
-
 -- The member's fields, written through the same fields Blizzard's Edit Mode
 -- handlers write on its own bars (Blizzard_EditMode/Shared/
 -- EditModeSystemTemplates.lua): the axis decides the orientation, the icon
--- size scales the button containers, and the grid is rebuilt after.
+-- size scales the button containers, and the grid is rebuilt after. Show
+-- Empty Buttons is the grid's CVAR reason, whose bit the bar's SetShowGrid
+-- override writes on the buttons (compact.lua), since a button's own
+-- SetShowGrid writes it only from secure code. Out of combat only: the
+-- caller queues the build.
 local function ApplyMember(bar, m, vertical)
     bar.isHorizontal = vertical
     bar.addButtonsToRight = true
@@ -474,20 +475,24 @@ local function ApplyMember(bar, m, vertical)
         button.container:SetScale(scale)
     end
 
-    local showGrid = m.alwaysShowButtons ~= false
-    SetGridBit(bar, showGrid)
-    bar:SetShowGrid(showGrid, ACTION_BUTTON_SHOW_GRID_REASON_CVAR)
+    local Compact = ActionBars.Compact
+    Compact.Prepare(bar, m)
+    bar:SetShowGrid(m.alwaysShowButtons ~= false, ACTION_BUTTON_SHOW_GRID_REASON_CVAR)
     -- The grid cache reads clean after the load-time pass, and the container
     -- scale is not in it, so the grid is forced and its own Layout follows.
     bar.oldGridSettings = nil
     bar:UpdateGridLayout()
     bar:Layout()
+    -- The shown pass packed the buttons at the old padding; once more over
+    -- the laid-out grid.
+    Compact.Apply(bar)
 end
 
 -- An identity no cluster holds draws nowhere.
 local function Park(frame)
     local parked = CamelotActionBarsParked
     if not parked or frame:GetParent() == parked then return end
+    if ActionBars.Visibility then ActionBars.Visibility.Release(frame) end
     frame:SetParent(parked)
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", parked, "CENTER", 0, 0)
@@ -619,7 +624,18 @@ local function LayoutCluster(cluster)
         e.bar:SetPoint("CENTER", container, "CENTER", 0, 0)
         ApplyMember(e.bar, e.m, vertical)
         e.w, e.h = e.bar:GetWidth(), e.bar:GetHeight()
-        rows.members[#rows.members + 1] = string.format("%s built %.0fx%.0f", e.m.identity, e.w, e.h)
+        -- A bar its visibility driver hides keeps its slot, so it is measured
+        -- shown when the hidden pass reads no size. The pass runs out of
+        -- combat, so the show and the hide after it are legal.
+        local Visibility = ActionBars.Visibility
+        if (e.w <= 1 or e.h <= 1) and Visibility and Visibility.IsHiding(e.m.identity) then
+            e.bar:Show()
+            ApplyMember(e.bar, e.m, vertical)
+            e.w, e.h = e.bar:GetWidth(), e.bar:GetHeight()
+            e.bar:Hide()
+        end
+        rows.members[#rows.members + 1] = string.format("%s built %.0fx%.0f, %s", e.m.identity, e.w, e.h,
+            ActionBars.Compact.Describe(e.bar))
         if vertical then
             along = along + e.h
             across = math.max(across, e.w)
@@ -658,6 +674,10 @@ local function LayoutCluster(cluster)
     end
     CaptureDefault(container, cluster.id)
     Place(cluster, container, rows)
+    -- The bar's own shown state, opacity and hover, after its adoption.
+    if ActionBars.Visibility then
+        for _, e in ipairs(built) do ActionBars.Visibility.Apply(e.m.identity) end
+    end
 end
 
 --------------------------------------------------------------------------------
