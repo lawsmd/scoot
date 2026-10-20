@@ -13,9 +13,10 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 -- DB Helpers
 --------------------------------------------------------------------------------
 
-local function getQoL()
-    local profile = addon and addon.db and addon.db.profile
-    return profile and profile.qol
+-- Each addon sets addon.QoLHost in its own host file (core/qolhost.lua,
+-- forever/qualityoflife/host.lua); the setter is addon.SmallFixes.
+local function getSetting(key)
+    return addon.QoLHost.Get(key)
 end
 
 local MODIFIER_SETTING = {
@@ -25,8 +26,7 @@ local MODIFIER_SETTING = {
 }
 
 local function getModifier(mod)
-    local q = getQoL()
-    return (q and q[MODIFIER_SETTING[mod]]) or false
+    return getSetting(MODIFIER_SETTING[mod]) or false
 end
 
 local function setModifier(mod, value)
@@ -49,7 +49,7 @@ function SmallFixes.Render(panel, scrollContent)
         label = "Modifier + Left-Click Targeting",
         description = "Restores targeting when you hold Shift, Ctrl or Alt and left-click a unit frame. "
             .. "Game patch 12.0.7 stopped routing modified left-clicks to targeting. "
-            .. "Covers Blizzard unit frames and Scoot unit frames, not nameplates. Changes apply out of combat.",
+            .. "Covers Blizzard unit frames and " .. addon.Brand .. " unit frames, not nameplates. Changes apply out of combat.",
         toggles = {
             {
                 key = "shift",

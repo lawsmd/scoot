@@ -13,15 +13,14 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 -- DB Helpers
 --------------------------------------------------------------------------------
 
-local function getQoL()
-    local profile = addon and addon.db and addon.db.profile
-    return profile and profile.qol
+-- Each addon sets addon.QoLHost in its own host file (core/qolhost.lua,
+-- forever/qualityoflife/host.lua).
+local function getSetting(key)
+    return addon.QoLHost.Get(key)
 end
 
-local function ensureQoL()
-    if not (addon and addon.db and addon.db.profile) then return nil end
-    addon.db.profile.qol = addon.db.profile.qol or {}
-    return addon.db.profile.qol
+local function setSetting(key, value)
+    addon.QoLHost.Set(key, value)
 end
 
 --------------------------------------------------------------------------------
@@ -38,13 +37,10 @@ function EditMode.Render(panel, scrollContent)
         label = "Show Nudge Arrows",
         description = "Display clickable arrow buttons on the edges of selected Edit Mode frames for pixel-by-pixel positioning. Shift+click moves 10px.",
         get = function()
-            local q = getQoL()
-            return (q and q.editModeNudgeArrows) or false
+            return getSetting("editModeNudgeArrows") or false
         end,
         set = function(value)
-            local q = ensureQoL()
-            if not q then return end
-            q.editModeNudgeArrows = value
+            setSetting("editModeNudgeArrows", value)
             if addon.EditMode and addon.EditMode.SetNudgeArrowsEnabled then
                 addon.EditMode.SetNudgeArrowsEnabled(value)
             end
@@ -55,13 +51,10 @@ function EditMode.Render(panel, scrollContent)
         label = "Enable Sub-Grid",
         description = "When Blizzard's Show Grid is active, display a finer 10x10 sub-grid within each grid block for precise alignment.",
         get = function()
-            local q = getQoL()
-            return (q and q.editModeSubGrid) or false
+            return getSetting("editModeSubGrid") or false
         end,
         set = function(value)
-            local q = ensureQoL()
-            if not q then return end
-            q.editModeSubGrid = value
+            setSetting("editModeSubGrid", value)
             if addon.EditMode and addon.EditMode.SetSubGridEnabled then
                 addon.EditMode.SetSubGridEnabled(value)
             end

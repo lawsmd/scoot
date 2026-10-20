@@ -5,9 +5,10 @@ local addonName, addon = ...
 -- DB Helpers
 --------------------------------------------------------------------------------
 
-local function getQoL()
-    local profile = addon and addon.db and addon.db.profile
-    return profile and profile.qol
+-- Read at the moment of use: each addon sets addon.QoLHost in its own host
+-- file (core/qolhost.lua, forever/qualityoflife/host.lua).
+local function setting(key)
+    return addon.QoLHost.Get(key)
 end
 
 --------------------------------------------------------------------------------
@@ -15,11 +16,8 @@ end
 --------------------------------------------------------------------------------
 
 local function onMerchantShow()
-    local qol = getQoL()
-    if not qol then return end
-
     -- Sell grey items
-    if qol.sellGreyItems then
+    if setting("sellGreyItems") then
         for bag = 0, 4 do
             local ok, numSlots = pcall(C_Container.GetContainerNumSlots, bag)
             if ok and numSlots then
@@ -34,11 +32,12 @@ local function onMerchantShow()
     end
 
     -- Auto repair
-    if qol.autoRepairMode and qol.autoRepairMode ~= "off" then
+    local repairMode = setting("autoRepairMode")
+    if repairMode and repairMode ~= "off" then
         if CanMerchantRepair() then
             local cost, canRepair = GetRepairAllCost()
             if canRepair and cost > 0 then
-                local useGuild = (qol.autoRepairMode == "guild")
+                local useGuild = (repairMode == "guild")
                 if useGuild then
                     -- Try guild repair first, fall back to personal
                     local guildOk = pcall(RepairAllItems, true)
@@ -58,8 +57,7 @@ end
 --------------------------------------------------------------------------------
 
 local function onLootReady(autoLoot)
-    local qol = getQoL()
-    if not qol or not qol.quickLoot then return end
+    if not setting("quickLoot") then return end
 
     -- Ensure auto loot CVar is enabled
     if C_CVar and C_CVar.GetCVar then
@@ -135,8 +133,7 @@ end
 local function updateQuestCount()
     if not questCountLabel then return end
 
-    local qol = getQoL()
-    if not qol or not qol.showQuestLogCount then
+    if not setting("showQuestLogCount") then
         questCountLabel:Hide()
         return
     end
@@ -220,8 +217,7 @@ local function initMapCoordinates()
     mapCoordsInitialized = true
 
     scrollContainer:HookScript("OnUpdate", function(self)
-        local qol = getQoL()
-        if not qol or not qol.showMapCoordinates then
+        if not setting("showMapCoordinates") then
             if mapCoordsLabel:IsShown() then mapCoordsLabel:Hide() end
             return
         end
@@ -248,8 +244,7 @@ end
 
 function addon.QoL.updateMapCoordinates()
     if not mapCoordsInitialized then return end
-    local qol = getQoL()
-    if not qol or not qol.showMapCoordinates then
+    if not setting("showMapCoordinates") then
         if mapCoordsLabel then mapCoordsLabel:Hide() end
     end
 end

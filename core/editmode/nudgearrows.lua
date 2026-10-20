@@ -37,9 +37,7 @@ local dialogHooked = false  -- set once the LibEditMode dialog hook is installed
 --------------------------------------------------------------------------------
 
 local function isEnabled()
-    local profile = addon and addon.db and addon.db.profile
-    local qol = profile and profile.qol
-    return qol and qol.editModeNudgeArrows
+    return addon.QoLHost.Get("editModeNudgeArrows")
 end
 
 --------------------------------------------------------------------------------
@@ -75,7 +73,7 @@ local function nudge(dx, dy)
             addon.EditMode.SaveOnly()
         end
     else
-        -- Custom Scoot frame (ScootAuras, Custom Groups): use LibEditMode
+        -- The addon's own frame (auras, custom groups, the Camelot HUD): use LibEditMode
         if not LEM then
             LEM = addon._LEM or (LibStub and LibStub("LibEditMode", true))
         end
@@ -132,7 +130,7 @@ end
 local function ensureOverlay()
     if overlay then return end
 
-    overlay = CreateFrame("Frame", "ScootNudgeArrowOverlay", UIParent)
+    overlay = CreateFrame("Frame", addon.Brand .. "NudgeArrowOverlay", UIParent)
     overlay:SetFrameStrata("DIALOG")
     overlay:SetFrameLevel(500)
     overlay:Hide()
@@ -205,7 +203,7 @@ local function onNativeSystemSelected(_, systemFrame)
 end
 
 --------------------------------------------------------------------------------
--- Selection Detection: Custom Scoot frames (LibEditMode)
+-- Selection Detection: the addon's own frames (LibEditMode)
 --------------------------------------------------------------------------------
 
 local function onCustomFrameSelected(selection)

@@ -9,15 +9,10 @@ local SS = addon.SecretSafe
 -- DB Helpers
 --------------------------------------------------------------------------------
 
-local function getQoL()
-    local profile = addon and addon.db and addon.db.profile
-    return profile and profile.qol
-end
-
-local function ensureQoL()
-    if not (addon and addon.db and addon.db.profile) then return nil end
-    addon.db.profile.qol = addon.db.profile.qol or {}
-    return addon.db.profile.qol
+-- Read at the moment of use: each addon sets addon.QoLHost in its own host
+-- file (core/qolhost.lua, forever/qualityoflife/host.lua).
+local function setting(key)
+    return addon.QoLHost.Get(key)
 end
 
 --------------------------------------------------------------------------------
@@ -49,12 +44,13 @@ local SETTING_KEY = {
     alt   = "modifierTargetAlt",
 }
 
--- Weak keys throughout: state for frames Scoot does not own lives here, never as
+-- Weak keys throughout: state for frames the addon does not own lives here, never as
 -- fields written onto the frames themselves.
 local targetProxies = setmetatable({}, { __mode = "k" })
 local attachedFrames = setmetatable({}, { __mode = "k" })
 
 local hooksInstalled = false
+local clickRefreshers = {}
 
 local UNIT_FRAME_NAME_PATTERNS = {
     "^PlayerFrame$",
@@ -74,9 +70,7 @@ local UNIT_FRAME_NAME_PATTERNS = {
 }
 
 local function IsModifierEnabled(mod)
-    local qol = getQoL()
-    if not qol then return false end
-    return qol[SETTING_KEY[mod]] and true or false
+    return setting(SETTING_KEY[mod]) and true or false
 end
 
 local function AnyModifierEnabled()
@@ -205,7 +199,7 @@ local function GetTargetProxy(button)
     return proxy
 end
 
--- True when the modifier is currently routed through a Scoot-created delegate.
+-- True when the modifier is currently routed through a delegate the addon created.
 local function ModifierIsOurs(button, mod)
     local proxy = targetProxies[button]
     if not proxy then return false end
@@ -263,7 +257,7 @@ local function ApplyModifiersToButton(button)
                 touched = true
             end
         elseif ModifierIsOurs(button, mod) then
-            -- Only ever clear routing Scoot installed.
+            -- Only ever clear routing the addon installed.
             DetachModifier(button, mod)
             touched = true
         end
@@ -312,7 +306,9 @@ local function ApplyCoreFrames()
     TryGlobal("FocusFrame")
     TryGlobal("FocusFrameToT")
     TryGlobal("PetFrame")
-    for i = 1, addon.NUM_BOSS_FRAMES do
+    -- core/frames.lua sets the count in Scoot only.
+    local numBoss = addon.NUM_BOSS_FRAMES or 5
+    for i = 1, numBoss do
         TryGlobal("Boss" .. i .. "TargetFrame")
     end
 end
@@ -355,7 +351,7 @@ end
 -- Public API
 --------------------------------------------------------------------------------
 
---- Applies the delegate to a secure unit button Scoot created itself. Callers
+--- Applies the delegate to a secure unit button the addon created itself. Callers
 --- own the eligibility decision; the combat guard is handled here.
 function SmallFixes.ApplyModifierProxies(button)
     if not button or not button.SetAttribute then return false end
@@ -425,20 +421,25 @@ function SmallFixes.EnsureHooks()
     addon.Events.On("SmallFixes", "ARENA_OPPONENT_UPDATE", onRosterEvent)
 end
 
+--- Registers a function that re-applies the modifier delegates to the secure
+--- unit buttons the addon draws itself, run after every change to a modifier.
+--- Unit Frames Z registers in Scoot and the Classic unit frames in Camelot.
+function SmallFixes.RegisterClickRefresher(fn)
+    clickRefreshers[#clickRefreshers + 1] = fn
+end
+
 --- Setter used by the settings renderer. mod is "shift", "ctrl" or "alt".
 function SmallFixes.SetModifierTargetEnabled(mod, enabled)
     local key = SETTING_KEY[mod]
     if not key then return end
 
-    local qol = ensureQoL()
-    if not qol then return end
-    qol[key] = enabled and true or false
+    addon.QoLHost.Set(key, enabled and true or false)
 
     SmallFixes.EnsureHooks()
     SmallFixes.ApplyAll()
 
-    if addon.UnitFramesZ and addon.UnitFramesZ._RefreshClickModifiers then
-        addon.UnitFramesZ._RefreshClickModifiers()
+    for _, refresh in ipairs(clickRefreshers) do
+        refresh()
     end
 end
 

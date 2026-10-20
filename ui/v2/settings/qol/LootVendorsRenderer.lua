@@ -13,15 +13,14 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 -- DB Helpers
 --------------------------------------------------------------------------------
 
-local function getQoL()
-    local profile = addon and addon.db and addon.db.profile
-    return profile and profile.qol
+-- Each addon sets addon.QoLHost in its own host file (core/qolhost.lua,
+-- forever/qualityoflife/host.lua).
+local function getSetting(key)
+    return addon.QoLHost.Get(key)
 end
 
-local function ensureQoL()
-    if not (addon and addon.db and addon.db.profile) then return nil end
-    addon.db.profile.qol = addon.db.profile.qol or {}
-    return addon.db.profile.qol
+local function setSetting(key, value)
+    addon.QoLHost.Set(key, value)
 end
 
 --------------------------------------------------------------------------------
@@ -45,13 +44,10 @@ function LootVendors.Render(panel, scrollContent)
         },
         order = { "off", "personal", "guild" },
         get = function()
-            local q = getQoL()
-            return (q and q.autoRepairMode) or "off"
+            return getSetting("autoRepairMode") or "off"
         end,
         set = function(value)
-            local q = ensureQoL()
-            if not q then return end
-            q.autoRepairMode = value
+            setSetting("autoRepairMode", value)
         end,
     })
 
@@ -60,13 +56,10 @@ function LootVendors.Render(panel, scrollContent)
         label = "Automatically Sell Grey Items",
         description = "Sell all poor-quality (grey) items when visiting a merchant.",
         get = function()
-            local q = getQoL()
-            return (q and q.sellGreyItems) or false
+            return getSetting("sellGreyItems") or false
         end,
         set = function(value)
-            local q = ensureQoL()
-            if not q then return end
-            q.sellGreyItems = value
+            setSetting("sellGreyItems", value)
         end,
     })
 
@@ -79,13 +72,10 @@ function LootVendors.Render(panel, scrollContent)
             tooltipText = "Enables Blizzard's auto loot and adds a quick retry to pick up any items the game misses on the first pass.",
         },
         get = function()
-            local q = getQoL()
-            return (q and q.quickLoot) or false
+            return getSetting("quickLoot") or false
         end,
         set = function(value)
-            local q = ensureQoL()
-            if not q then return end
-            q.quickLoot = value
+            setSetting("quickLoot", value)
         end,
     })
 

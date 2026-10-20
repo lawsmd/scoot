@@ -13,15 +13,14 @@ local SettingsBuilder = addon.UI.SettingsBuilder
 -- DB Helpers
 --------------------------------------------------------------------------------
 
-local function getQoL()
-    local profile = addon and addon.db and addon.db.profile
-    return profile and profile.qol
+-- Each addon sets addon.QoLHost in its own host file (core/qolhost.lua,
+-- forever/qualityoflife/host.lua).
+local function getSetting(key)
+    return addon.QoLHost.Get(key)
 end
 
-local function ensureQoL()
-    if not (addon and addon.db and addon.db.profile) then return nil end
-    addon.db.profile.qol = addon.db.profile.qol or {}
-    return addon.db.profile.qol
+local function setSetting(key, value)
+    addon.QoLHost.Set(key, value)
 end
 
 --------------------------------------------------------------------------------
@@ -38,13 +37,10 @@ function Quests.Render(panel, scrollContent)
         label = "Show Coordinates on Map",
         description = "Display cursor coordinates on the World Map when hovering over the map area.",
         get = function()
-            local q = getQoL()
-            return (q and q.showMapCoordinates) or false
+            return getSetting("showMapCoordinates") or false
         end,
         set = function(value)
-            local q = ensureQoL()
-            if not q then return end
-            q.showMapCoordinates = value
+            setSetting("showMapCoordinates", value)
             if addon.QoL and addon.QoL.updateMapCoordinates then
                 addon.QoL.updateMapCoordinates()
             end
@@ -59,13 +55,10 @@ function Quests.Render(panel, scrollContent)
             tooltipText = "Shows a count like \"12 / 35\" next to the gear icon in the Quest Log header. The text turns yellow when you have 3 or fewer slots remaining and red when you've reached the cap. World quests and bonus objectives do not count toward the cap.",
         },
         get = function()
-            local q = getQoL()
-            return (q and q.showQuestLogCount) or false
+            return getSetting("showQuestLogCount") or false
         end,
         set = function(value)
-            local q = ensureQoL()
-            if not q then return end
-            q.showQuestLogCount = value
+            setSetting("showQuestLogCount", value)
             if addon.QoL and addon.QoL.updateQuestCount then
                 addon.QoL.updateQuestCount()
             end

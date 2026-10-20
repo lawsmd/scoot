@@ -25,9 +25,7 @@ local cachedSpacing  -- last known grid spacing from SetGridSpacing hook
 --------------------------------------------------------------------------------
 
 local function isEnabled()
-    local profile = addon and addon.db and addon.db.profile
-    local qol = profile and profile.qol
-    return qol and qol.editModeSubGrid
+    return addon.QoLHost.Get("editModeSubGrid")
 end
 
 --------------------------------------------------------------------------------
@@ -37,7 +35,7 @@ end
 local function ensureSubGrid()
     if subGridFrame then return end
 
-    subGridFrame = CreateFrame("Frame", "ScootSubGridOverlay", UIParent)
+    subGridFrame = CreateFrame("Frame", addon.Brand .. "SubGridOverlay", UIParent)
     subGridFrame:SetFrameStrata("BACKGROUND")
     subGridFrame:SetAllPoints(UIParent)
     subGridFrame:Hide()
