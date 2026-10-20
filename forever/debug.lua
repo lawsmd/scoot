@@ -30,6 +30,19 @@ local function pushInstance(push, key)
     push("[%s]", key)
     push("  setting enabled:  %s", tostring(UF.IsEnabled(key)))
     push("  style setting:    %s", tostring(UF.StyleOf and UF.StyleOf(key)))
+    -- A frame that can hang off another: the setting, the host, the offsets,
+    -- and whether the anchor is on the host right now.
+    local attach = UF.Settings and UF.Settings.ATTACH and UF.Settings.ATTACH[key]
+    if attach then
+        local x, y = UF.AttachOffsets(key)
+        local anchored = UF.EditMode and UF.EditMode.IsAttached and UF.EditMode.IsAttached(key)
+        push("  attach setting:   %s, to %s at %s, %s%s", tostring(UF.IsAttachOn(key)),
+            attach.to, tostring(x), tostring(y), anchored and " (anchored)" or "")
+    end
+    -- Every setting the page writes sits under the style's own prefix.
+    if UF.Text and UF.Text.Path then
+        push("  settings under:   %s", UF.Text.Path(key, ""))
+    end
     push("  Blizzard frame:   %s, suppressed %s",
         tostring(blizzard), tostring(UF.Suppression.IsSuppressed(key)))
 
@@ -68,6 +81,10 @@ function pushBuilt(push, key, inst)
     push("  enabled:          %s", tostring(inst.enabled))
     push("  frame shown:      %s", tostring(inst.frame:IsShown()))
     push("  click shown:      %s", tostring(inst.clickButton:IsShown()))
+    if UF.Settings and UF.Settings.HIDE_WHEN_SELF and UF.Settings.HIDE_WHEN_SELF[key] then
+        push("  hide when self:   %s%s", tostring(UF.HideWhenSelf(key)),
+            inst.selfHidden and " (the target is the player, alpha 0)" or "")
+    end
     -- Who holds the mouse: the click child, the tooltip frame over it, and the
     -- art frame over both. Clicks reach the child only through the two above.
     local click = inst.clickButton
@@ -204,6 +221,14 @@ function pushBuilt(push, key, inst)
     end
     push("  auras:            %s", UF.Auras.Describe(inst))
     push("  heal prediction:  %s", UF.HealPrediction.Describe(inst))
+    local loss, cost = UF.BarSegments.Describe(inst)
+    push("  max health loss:  %s", loss)
+    push("  mana cost:        %s", cost)
+    local combo = UF.ComboPoints.Describe(inst)
+    if combo then push("  combo points:     %s", combo) end
+    if inst.readyCheck then
+        push("  ready check:      %s", inst.readyCheck:IsShown() and tostring(inst.readyCheck.state) or "hidden")
+    end
     push("")
 end
 

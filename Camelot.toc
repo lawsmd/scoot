@@ -3,6 +3,7 @@
 ## Notes: Classic-look unit frames for Forever. Development build, not released.
 ## Author: Scooter
 ## Version: 0.0.1
+## IconTexture: Interface\AddOns\Camelot\forever\media\CamelotLogoBronze.png
 ## SavedVariables: CamelotDB
 ## SlashCmd: /camelot
 ## Dependencies: Blizzard_ObjectiveTracker, Blizzard_ActionBar, Blizzard_ChatFrameBase
@@ -57,6 +58,19 @@ core/petbattle.lua
 core/catalogs.lua
 core/borders.lua
 
+## The aura tracker's primitives, listed as they are (docs/scootauras/
+## sahosts.md, "The promoted primitives"). auraids registers its catalog
+## events at file scope, so after events.lua above; specs stands on nothing;
+## opacity holds the state-opacity resolver and the component walk that
+## forever/components.lua below runs from the combat and target edges;
+## iconborders and abbrev give the shared builder blocks their definers.
+## None reads addon.db.
+core/auraids.lua
+core/specs.lua
+core/opacity.lua
+core/iconborders.lua
+core/abbrev.lua
+
 ## What the settings framework stands on. commands before fonts and before
 ## any ui/v2 file, since both register debug commands at file scope; media
 ## before fonts, which reads addon.MediaTokens at file scope; pool before
@@ -83,6 +97,10 @@ core/apply_all.lua
 ## Keeps a region hidden that Blizzard re-shows. After commands.lua, because it
 ## registers a debug command at file scope; after framestate and secretsafe.
 core/enforce.lua
+
+## The mouseover reveal. After commands.lua, because it registers a debug
+## command at file scope; the action bars read it at call time.
+core/hoverfade.lua
 
 ## The minimap button. One file for both addons: it reads its icon off
 ## addon.MinimapIcon, set above, and its storage off addon.MinimapButtonStore,
@@ -124,7 +142,29 @@ core/debug/export.lua
 forever/db.lua
 forever/features.lua
 forever/profiles.lua
+## The aura tracker's host: the store under CamelotDB.global, the editor
+## window's position and the two saved-key tokens, which the shared files in
+## the component block read at the moment of use. Before
+## forever/components.lua, which reads the category for its Features row at
+## file scope.
+forever/auras/host.lua
 forever/recolor.lua
+
+## Quality of Life shared with Scoot (docs/qualityoflife/qualityoflife.md).
+## host.lua is addon.QoLHost, the store every file below reads through; it
+## stands on forever/db.lua above and comes first, because qol.lua reads a
+## setting while it loads (OnAddonLoaded runs at once for a Blizzard addon
+## already loaded, as after a /reload). The nudge arrows and the sub-grid
+## stand on editmode/persist (SaveOnly) and LibEditMode; qol (repair, grey
+## selling, faster loot, the quest log count, map coordinates) and smallfixes
+## (modifier click targeting) on secretsafe, events and fonts. smallfixes
+## loads before forever/unitframes/harness.lua, which registers a click
+## refresher with it at file scope.
+forever/qualityoflife/host.lua
+core/editmode/nudgearrows.lua
+core/editmode/subgrid.lua
+core/qol.lua
+core/smallfixes.lua
 
 ## Dynamic Layouts: resolver publishes base-or-dynamic edges; tween is the
 ## OnUpdate driver; engine holds the adapter registry and reads the store seam
@@ -148,11 +188,40 @@ core/dynamiclayouts/view.lua
 ## minimap left this block 11 October 2026 for the replica under
 ## forever/minimap/ below; Scoot.toc still lists the X component.
 core/components/base/core.lua
+## Icon borders on a component's icons; reads ComponentsUtil at file scope.
+core/components/base/iconborders.lua
 forever/components.lua
 ## The Dynamic Layouts host: the store seam, the defaults, the Features row
 ## and the profile step (docs above the engine's block).
 forever/dynamiclayouts/host.lua
 core/components/tooltip.lua
+## The aura tracker, shared whole, CamelotAuras here (docs/scootauras/
+## sahosts.md): one file set both TOCs list, in the other TOC's order. core
+## defines the namespace every file after it aliases at file scope; engine
+## precedes events, which aliases the engine table; every file reads
+## addon.AurasHost above at the moment of use and addon.Specs, addon.AuraIds,
+## addon.Opacity and the icon border helpers from the blocks above.
+## core/debug/scootauras.lua is development tooling, stripped from a release
+## the way forever/debug.lua is. No game-type gate: the trackers own their
+## frames and ask both clients the same questions, so retail runs
+## CamelotAuras beside the other addon's copy, as it does the Tooltip.
+core/components/scootauras/core.lua
+core/components/scootauras/layout.lua
+core/components/scootauras/styling.lua
+core/components/scootauras/engine.lua
+core/components/scootauras/cadence.lua
+core/components/scootauras/groups.lua
+core/components/scootauras/rearrange.lua
+core/components/scootauras/regions.lua
+core/components/scootauras/missing.lua
+core/components/scootauras/underlay.lua
+core/components/scootauras/classpower.lua
+core/components/scootauras/pips.lua
+core/components/scootauras/classresource.lua
+core/components/scootauras/stacks.lua
+core/components/scootauras/events.lua
+core/components/scootauras/importexport.lua
+core/debug/scootauras.lua
 ## The HUD, the unit frames and the cast bar, is Forever's alone. Retail loads
 ## this TOC too, through the AddOns\Camelot junction, for the settings panel,
 ## so every HUD line carries [ExcludeLoadGameType standard]: retail's game type
@@ -177,6 +246,8 @@ forever/unitframes/dynamic.lua [ExcludeLoadGameType standard]
 forever/unitframes/suppression.lua [ExcludeLoadGameType standard]
 forever/unitframes/auras.lua [ExcludeLoadGameType standard]
 forever/unitframes/healprediction.lua [ExcludeLoadGameType standard]
+forever/unitframes/barsegments.lua [ExcludeLoadGameType standard]
+forever/unitframes/combopoints.lua [ExcludeLoadGameType standard]
 forever/unitframes/frame.lua [ExcludeLoadGameType standard]
 forever/unitframes/player.lua [ExcludeLoadGameType standard]
 forever/unitframes/target.lua [ExcludeLoadGameType standard]
@@ -189,6 +260,12 @@ forever/unitframes/pet.lua [ExcludeLoadGameType standard]
 forever/unitframes/modern/art.lua [ExcludeLoadGameType standard]
 forever/unitframes/modern/artplayer.lua [ExcludeLoadGameType standard]
 forever/unitframes/modern/player.lua [ExcludeLoadGameType standard]
+forever/unitframes/modern/arttarget.lua [ExcludeLoadGameType standard]
+forever/unitframes/modern/target.lua [ExcludeLoadGameType standard]
+forever/unitframes/modern/arttot.lua [ExcludeLoadGameType standard]
+forever/unitframes/modern/tot.lua [ExcludeLoadGameType standard]
+forever/unitframes/modern/artpet.lua [ExcludeLoadGameType standard]
+forever/unitframes/modern/pet.lua [ExcludeLoadGameType standard]
 
 ## Cast bars. The engine is Cast Bar Z's, shared: engine.lua creates the
 ## namespace, the host fills it from forever/db.lua, the painters draw the
@@ -276,6 +353,8 @@ forever/actionbars/events.lua [ExcludeLoadGameType standard]
 forever/actionbars/mixins.lua [ExcludeLoadGameType standard]
 forever/actionbars/frames.xml [ExcludeLoadGameType standard]
 forever/actionbars/paging.lua [ExcludeLoadGameType standard]
+forever/actionbars/compact.lua [ExcludeLoadGameType standard]
+forever/actionbars/visibility.lua [ExcludeLoadGameType standard]
 forever/actionbars/endcaps.lua [ExcludeLoadGameType standard]
 forever/actionbars/clusters.lua [ExcludeLoadGameType standard]
 forever/actionbars/editmode.lua [ExcludeLoadGameType standard]
@@ -296,16 +375,22 @@ forever/actionbars/bars.lua [ExcludeLoadGameType standard]
 ## no Blizzard template inherited; display.lua feeds the bars from the player
 ## unit, parks Blizzard's frame and registers /camelot prd; editmode.lua the
 ## positionable and the dialog mirror; dynamic.lua the Dynamic Layouts
-## adapter. Stands on nativeframe, events, strata, colors, fonts, borders,
-## barborders, editmode/positionables, dynamiclayouts/engine, forever/db.lua,
-## forever/features.lua, forever/profiles.lua and the unit frames' values.lua
-## and healprediction.lua above.
+## adapter; castbar.lua the cast bar on the display, one more row on the cast
+## bar engine above with a look and a painter of its own and the seams a
+## hosted row needs; combopoints.lua the combo point row, the unit frames'
+## row in a line under the frame. Stands on nativeframe, events, strata, colors, fonts,
+## borders, barborders, editmode/positionables, dynamiclayouts/engine,
+## forever/db.lua, forever/features.lua, forever/profiles.lua, the unit
+## frames' values.lua, healprediction.lua and combopoints.lua above, and the
+## cast bars' files.
 forever/personalresourcedisplay/style.lua
 forever/personalresourcedisplay/mixins.lua [ExcludeLoadGameType standard]
 forever/personalresourcedisplay/frames.xml [ExcludeLoadGameType standard]
 forever/personalresourcedisplay/display.lua [ExcludeLoadGameType standard]
 forever/personalresourcedisplay/editmode.lua [ExcludeLoadGameType standard]
 forever/personalresourcedisplay/dynamic.lua [ExcludeLoadGameType standard]
+forever/personalresourcedisplay/castbar.lua [ExcludeLoadGameType standard]
+forever/personalresourcedisplay/combopoints.lua [ExcludeLoadGameType standard]
 
 ## The minimap: Blizzard's Minimap widget, an engine singleton, leased into a
 ## Camelot-owned holder, MinimapCluster parked, the cluster's header rebuilt
@@ -355,21 +440,40 @@ forever/statusbars/dynamic.lua [ExcludeLoadGameType standard]
 ## its chrome and strip, and the window and tab templates from Blizzard's
 ## regions-only templates, scripts wired in Lua, so no mixin file; lines.lua
 ## the secret-gated line transforms; display.lua the twins, the bridge, the
-## park and /camelot chat; tabs.lua the strip; editbox.lua Blizzard's box;
+## park and /camelot chat; tabs.lua the strip and social.lua the social tab
+## before its window tabs; editbox.lua Blizzard's box;
 ## editmode.lua the positionable and the dialog mirror; dynamic.lua the
 ## Dynamic Layouts adapter. Stands on nativeframe, events, petbattle, fonts,
 ## editmode/positionables, dynamiclayouts/engine, forever/db.lua,
 ## forever/features.lua and forever/profiles.lua, and on
 ## Blizzard_ChatFrameBase for the templates.
 forever/chat/style.lua
+forever/chat/config.lua
 forever/chat/frames.xml [ExcludeLoadGameType standard]
 forever/chat/lines.lua [ExcludeLoadGameType standard]
 forever/chat/display.lua [ExcludeLoadGameType standard]
 forever/chat/tabs.lua [ExcludeLoadGameType standard]
+forever/chat/social.lua [ExcludeLoadGameType standard]
 forever/chat/menu.lua [ExcludeLoadGameType standard]
 forever/chat/editbox.lua [ExcludeLoadGameType standard]
 forever/chat/editmode.lua [ExcludeLoadGameType standard]
 forever/chat/dynamic.lua [ExcludeLoadGameType standard]
+
+## Quality of life: conveniences on Blizzard's own elements, no Camelot frame
+## behind them (docs/qualityoflife/misc.md). messages.lua holds the two
+## settings for the place of Blizzard's error and quest progress text and the
+## row the Misc page and the Current Objectives page both draw, and loads on
+## retail too for the pages; messagesdisplay.lua moves the frame. Stands on
+## events, forever/db.lua and forever/profiles.lua.
+forever/qualityoflife/messages.lua
+forever/qualityoflife/messagesdisplay.lua [ExcludeLoadGameType standard]
+
+## The Animations page's overhead bars (docs/qualityoflife/animations.md).
+## animations.lua holds the three settings and loads on retail too for the
+## page; animationsdisplay.lua draws the bars on the Personal Resource
+## Display's bar template, so it loads after frames.xml.
+forever/qualityoflife/animations.lua
+forever/qualityoflife/animationsdisplay.lua [ExcludeLoadGameType standard]
 
 ## The settings framework, in Scoot.toc order. Skin.lua defines the registry
 ## the skins register into, controls/Utils.lua the facade the controls read,
@@ -409,6 +513,7 @@ ui/v2/controls/DualSelector.lua
 ui/v2/controls/RankSelector.lua
 ui/v2/controls/SelectorToggleRow.lua
 ui/v2/controls/ToggleSliderRow.lua
+ui/v2/controls/ToggleGateRow.lua
 ui/v2/controls/ToggleColorRow.lua
 ui/v2/controls/MultiToggleRow.lua
 ui/v2/controls/CheckboxGrid.lua
@@ -482,6 +587,20 @@ ui/v2/settings/Helpers.lua
 ui/v2/settings/BuilderComposites.lua
 ui/v2/settings/interface/TooltipRenderer.lua
 
+## The aura tracker's settings surface: the editor's tabs, picker, fly-outs,
+## carousel and window, then the Aura List page, which registers its renderer
+## at file scope after settingspanel/renderers.lua. Every file reads
+## addon.ScootAuras at call time; the controls they stand on (Flyout, Preview,
+## IconPicker, Window) and BuilderComposites are above.
+ui/v2/settings/scootauras/EditorTabs.lua
+ui/v2/settings/scootauras/CDMPicker.lua
+ui/v2/settings/scootauras/SpecFlyout.lua
+ui/v2/settings/scootauras/GearFlyout.lua
+ui/v2/settings/scootauras/TitleCarousel.lua
+ui/v2/settings/scootauras/EditorWindow.lua
+ui/v2/settings/scootauras/AuraListDrag.lua
+ui/v2/settings/scootauras/AuraListRenderer.lua
+
 ## Camelot's page tree, the minimap button's icon and storage, the Defaults
 ## button's scopes (defaults.lua), then the slash entry, which binds the word
 ## last.
@@ -495,6 +614,13 @@ forever/personalresourcedisplay/page.lua
 forever/minimap/page.lua
 forever/statusbars/page.lua
 forever/chat/page.lua
+forever/chat/configpage.lua
+ui/v2/settings/qol/EditModeRenderer.lua
+ui/v2/settings/qol/LootVendorsRenderer.lua
+ui/v2/settings/qol/QuestsRenderer.lua
+ui/v2/settings/qol/SmallFixesRenderer.lua
+forever/qualityoflife/miscpage.lua
+forever/qualityoflife/animationspage.lua
 forever/actionbars/page.lua [ExcludeLoadGameType standard]
 forever/actionbars/microbagspage.lua [ExcludeLoadGameType standard]
 forever/minimap.lua
@@ -502,3 +628,8 @@ forever/defaults.lua
 forever/startingpoints.lua
 forever/gallery.lua
 forever/debug.lua
+# >>> CAMELOT-LOCAL
+# Local-only tooling in the gitignored doc base (docs/debugging/local/local.md).
+# A clone without docs/ skips the line; a Camelot release strips the block.
+docs/debugging/local/camelot.lua
+# <<< CAMELOT-LOCAL

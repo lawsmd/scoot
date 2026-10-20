@@ -46,8 +46,10 @@ core/abbrev.lua
 core/catalogs.lua
 core/pool.lua
 core/aurarow.lua
+core/auraids.lua
 core/refresh.lua
 core/opacity.lua
+core/hoverfade.lua
 core/enforce.lua
 core/colorramp.lua
 core/blindfit.lua
@@ -74,6 +76,7 @@ core/profiles/cvars.lua
 core/profiles/layouts.lua
 core/profiles/spec.lua
 core/profiles/restyle.lua
+core/specs.lua
 core/rules.lua
 core/apply_all.lua
 core/iconratio.lua
@@ -190,6 +193,11 @@ core/components/castbarz/effects.lua
 core/components/castbarz/look.lua
 core/components/castbarz/events.lua
 core/components/castbarz/editmode.lua
+## Quality of Life. qolhost is Scoot's store for the shared QoL files; smallfixes
+## loads before Unit Frames Z, which registers a click refresher with it at file scope.
+core/qolhost.lua
+core/qol.lua
+core/smallfixes.lua
 ## Unit Frames Z (Text — Scoot-owned frames, the promoted health-text engine)
 core/components/unitframesz/core.lua
 core/components/unitframesz/engine.lua
@@ -217,8 +225,6 @@ core/components/minimap/offscreenunlock.lua
 core/components/minimap/overlay.lua
 core/components/tooltip.lua
 core/components/notes.lua
-core/qol.lua
-core/smallfixes.lua
 core/components/widget/core.lua
 core/reports/core.lua
 core/reports/groupanalysis.lua
@@ -322,6 +328,7 @@ ui/v2/controls/DualSelector.lua
 ui/v2/controls/RankSelector.lua
 ui/v2/controls/SelectorToggleRow.lua
 ui/v2/controls/ToggleSliderRow.lua
+ui/v2/controls/ToggleGateRow.lua
 ui/v2/controls/ToggleColorRow.lua
 ui/v2/controls/MultiToggleRow.lua
 ui/v2/controls/CheckboxGrid.lua

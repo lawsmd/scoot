@@ -49,8 +49,6 @@ Navigation.NavModel = {
             { key = "minimap", label = "Minimap" },
             -- No `module`: the switch is registered by forever/statusbars/style.lua.
             { key = "statusBars", label = "Status Bars" },
-            -- No `module`: the switch is registered by forever/chat/style.lua.
-            { key = "chat", label = "Chat" },
             { key = "tooltip", label = "Tooltip", module = "tooltip" },
             -- No `module`: the switch is registered by forever/objectivetracker/
             -- tracker.lua, not by the components host the gate reads.
@@ -78,6 +76,19 @@ Navigation.NavModel = {
             { key = "castBarPlayer", label = "Player" },
         },
     },
+    -- The aura tracker, the shared system under this addon's name. `module`
+    -- is the Features switch forever/components.lua registers from the
+    -- category forever/auras/host.lua names, so the row greys out while the
+    -- feature is off. No beta badge: the framework draws one only where a nav
+    -- model sets it.
+    {
+        key = "auras",
+        label = addon.Brand .. "Auras",
+        collapsible = true,
+        children = {
+            { key = "auraList", label = "Aura List", module = addon.AurasHost.moduleCategory },
+        },
+    },
     -- The Personal Resource Display, named short for the width. No `module`:
     -- forever/personalresourcedisplay/style.lua registers the switch, not the
     -- components host the gate reads.
@@ -89,6 +100,8 @@ Navigation.NavModel = {
             { key = "resourceDisplayGlobal", label = "Global" },
             { key = "resourceDisplayHealth", label = "Health Bar" },
             { key = "resourceDisplayPower", label = "Power Bar" },
+            { key = "resourceDisplayResource", label = "Resource" },
+            { key = "resourceDisplayCastBar", label = "Cast Bar" },
         },
     },
     -- The action bars' cluster surface and their text. No `module`: forever/actionbars/
@@ -102,6 +115,42 @@ Navigation.NavModel = {
         children = {
             { key = "actionBarClusters", label = "Action Bars 1-8" },
             { key = "actionBarMicroBags", label = "Micro & Bag" },
+        },
+    },
+    -- Blizzard's chat as a Camelot replica, the last of the elements on
+    -- purpose: Customize is the replica's own settings, Settings is Blizzard's
+    -- Chat Config window rebuilt (forever/chat/configpage.lua). No `module`:
+    -- forever/chat/style.lua registers the switch, not the components host
+    -- the gate reads.
+    {
+        key = "chat",
+        label = "Chat",
+        collapsible = true,
+        children = {
+            { key = "chatCustomize", label = "Customize" },
+            { key = "chatSettings", label = "Settings" },
+        },
+    },
+    -- Quality of life, at the bottom: conveniences on Blizzard's own elements
+    -- with no Camelot frame behind them. Animations, first, is the overhead
+    -- bars while eating, drinking and at a campfire (animations.lua), on by
+    -- default since they are Camelot's own frame. The next four are Scoot's
+    -- pages, shared (ui/v2/settings/qol/, storage
+    -- forever/qualityoflife/host.lua); Misc holds Camelot's own ones too small
+    -- for a page, today the place of Blizzard's error and quest progress text
+    -- (forever/qualityoflife/messages.lua). No `module`: each page's rows are
+    -- their own switches.
+    {
+        key = "qol",
+        label = "Quality of Life",
+        collapsible = true,
+        children = {
+            { key = "qolAnimations", label = "Animations" },
+            { key = "qolEditMode", label = "Edit Mode" },
+            { key = "qolLootVendors", label = "Loot & Vendors" },
+            { key = "qolQuests", label = "Map & Quests" },
+            { key = "qolSmallFixes", label = "Small Fixes" },
+            { key = "qolMisc", label = "Misc" },
         },
     },
 }

@@ -191,6 +191,9 @@ read_globals = {
     -- Player class probe (core/catalogs.lua)
     "UnitClass",
 
+    -- Dynamic Layouts' friendly target probe (core/dynamiclayouts/resolver.lua)
+    "UnitIsFriend",
+
     -- C_ namespaces read across the components (census 2026-09-03)
     "C_ChallengeMode",
     "C_Container",
@@ -503,7 +506,15 @@ files["forever/actionbars/paging.lua"] = {
     },
 }
 files["forever/actionbars/clusters.lua"] = {
-    read_globals = { "ACTION_BUTTON_SHOW_GRID_REASON_CVAR", "bit", "CamelotActionBarsParked" },
+    read_globals = { "ACTION_BUTTON_SHOW_GRID_REASON_CVAR", "CamelotActionBarsParked" },
+}
+files["forever/actionbars/compact.lua"] = {
+    read_globals = {
+        "ActionBarMixin", "C_ActionBar", "bit", "NUM_ACTIONBAR_BUTTONS",
+        "ACTION_BUTTON_SHOW_GRID_REASON_EVENT", "ACTION_BUTTON_SHOW_GRID_REASON_SPELLCOLLECTION",
+        "KeybindFrames_InQuickKeybindMode", "InputUtil",
+        "MultiActionBar_ShowAllGrids", "MultiActionBar_HideAllGrids",
+    },
 }
 files["forever/actionbars/suppression.lua"] = {
     read_globals = { "MainActionBar" },
@@ -600,4 +611,10 @@ files["ui/v2/groupfinder/"] = {
         "RED_FONT_COLOR", "GREEN_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "LIGHTBLUE_FONT_COLOR",
         "LFG_LIST_COMMENT_FONT_COLOR",
     },
+}
+
+-- Camelot's quality of life (forever/qualityoflife/): the Blizzard frame the
+-- display file moves.
+files["forever/qualityoflife/messagesdisplay.lua"] = {
+    read_globals = { "UIErrorsFrame" },
 }

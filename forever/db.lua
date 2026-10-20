@@ -287,6 +287,12 @@ function DB.Initialize()
     -- the getter fallbacks in apply_all.lua, so nil still reads as never set.
     addon.db.global.media = addon.db.global.media or {}
 
+    -- The aura tracker's account-wide store (forever/auras/host.lua): every
+    -- tracker, group, styling table and position on the account, the one
+    -- nested table in global. Created empty; the tracker fills its sub-tables
+    -- on the first write.
+    addon.db.global.auras = addon.db.global.auras or {}
+
     local watcher = {}
     local function onProfile()
         ensureContainers(addon.db.profile)

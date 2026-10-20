@@ -43,16 +43,36 @@ end
 local SCOPES = {
     tooltip = { prefixes = { "tooltip." } },
     minimap = { prefixes = { "minimap." }, layouts = { "minimap" } },
-    chat = { prefixes = { "chat." }, layouts = { "chat" } },
+    chatCustomize = { prefixes = { "chat." }, layouts = { "chat" } },
     objectiveTracker = {
         prefixes = { "objectiveTracker." },
         exclude = { "objectiveTracker.current." },
         layouts = { "objectiveTracker" },
         shared = "the fade in instanced combat, which Current Objectives shares",
     },
+    -- The Quest Progress Text row is Quality of Life > Misc's over the same
+    -- two keys (forever/qualityoflife/messages.lua), so the page resets them.
     currentObjectives = {
         prefixes = { "objectiveTracker.current." },
+        paths = { "qol.messagesOffsetX", "qol.messagesOffsetY" },
         layouts = { "currentObjectives", "currentObjectivesCards" },
+        shared = "the place of the error and quest text, which Quality of Life > Misc shares",
+    },
+    -- Quality of Life: Scoot's four shared pages (forever/qualityoflife/host.lua
+    -- holds their keys) and Misc, each over its own keys under qol.
+    qolEditMode = { paths = { "qol.editModeNudgeArrows", "qol.editModeSubGrid" } },
+    qolLootVendors = { paths = { "qol.autoRepairMode", "qol.sellGreyItems", "qol.quickLoot" } },
+    qolQuests = { paths = { "qol.showMapCoordinates", "qol.showQuestLogCount" } },
+    qolSmallFixes = {
+        paths = { "qol.modifierTargetShift", "qol.modifierTargetCtrl", "qol.modifierTargetAlt" },
+    },
+    qolMisc = {
+        paths = { "qol.messagesOffsetX", "qol.messagesOffsetY" },
+        shared = "the place of the error and quest text, which Current Objectives shares",
+    },
+    qolAnimations = {
+        paths = { "qol.animFood", "qol.animDrink", "qol.animCampfire" },
+        layouts = { "qolAnimations" },
     },
     ufPlayer = unitScope("player"),
     ufTarget = unitScope("target"),
@@ -67,11 +87,14 @@ local SCOPES = {
     },
     resourceDisplayGlobal = {
         prefixes = { "personalResourceDisplay." },
-        exclude = { "personalResourceDisplay.health.", "personalResourceDisplay.power." },
+        exclude = { "personalResourceDisplay.health.", "personalResourceDisplay.power.",
+                    "personalResourceDisplay.castBar.", "personalResourceDisplay.classResource." },
         layouts = { "personalResourceDisplay" },
     },
     resourceDisplayHealth = { prefixes = { "personalResourceDisplay.health." } },
     resourceDisplayPower = { prefixes = { "personalResourceDisplay.power." } },
+    resourceDisplayResource = { prefixes = { "personalResourceDisplay.classResource." } },
+    resourceDisplayCastBar = { prefixes = { "personalResourceDisplay.castBar." } },
     actionBarClusters = {
         prefixes = { "actionBars.text." },
         paths = { "actionBars.nextClusterId" },

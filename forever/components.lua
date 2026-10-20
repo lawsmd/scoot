@@ -36,8 +36,13 @@ local CATEGORY = {
     tooltip = "tooltip",
 }
 
+-- A row sits under Interface unless it names a group of its own. The aura
+-- tracker's row reads its category off the host table, so
+-- forever/auras/host.lua precedes this file on the TOC.
 local FEATURES = {
     { category = "tooltip", label = "Tooltip" },
+    { category = addon.AurasHost.moduleCategory, label = addon.Brand .. "Auras",
+      group = "auras", groupLabel = "Auras" },
 }
 
 local function switchPath(category)
@@ -49,7 +54,7 @@ end
 -- turned on. Stand-in; the value that goes back is false.
 for _, row in ipairs(FEATURES) do
     DB.RegisterDefaults({ [switchPath(row.category)] = true })
-    addon.Features.Register({ group = "interface", groupLabel = "Interface",
+    addon.Features.Register({ group = row.group or "interface", groupLabel = row.groupLabel or "Interface",
         id = row.category, label = row.label, path = switchPath(row.category) })
 end
 
@@ -57,8 +62,17 @@ end
 -- The module gate
 --------------------------------------------------------------------------------
 
+-- A tracker component's id is the host's prefix and a number, one per
+-- tracker, so the exact lookup falls back to the prefix.
 function addon:GetComponentCategory(componentId)
-    return CATEGORY[componentId]
+    local category = CATEGORY[componentId]
+    if category then return category end
+    local host = addon.AurasHost
+    if host and type(componentId) == "string"
+        and componentId:sub(1, #host.componentPrefix) == host.componentPrefix then
+        return host.moduleCategory
+    end
+    return nil
 end
 
 -- Held for the session: the Features page changes it at the reload. A category
@@ -185,4 +199,22 @@ end, 30)
 
 addon.Events.OnWorldEntered(function()
     addon:ApplyStyles()
+    addon.Opacity.RefreshComponents()
 end)
+
+-- The state opacity of a component (in combat, with a target, out of combat)
+-- is re-read on the edges the other addon's entry file uses: the pull one
+-- frame late so the state reads settle, the regen a tenth of a second late,
+-- the target change at once, and the world entry above. SetAlpha is
+-- unprotected, so the combat edge runs in combat.
+local function refreshOpacity()
+    addon.Opacity.RefreshComponents()
+end
+
+addon.Events.On("Components", "PLAYER_REGEN_DISABLED", function()
+    C_Timer.After(0, refreshOpacity)
+end)
+addon.Events.On("Components", "PLAYER_REGEN_ENABLED", function()
+    C_Timer.After(0.1, refreshOpacity)
+end)
+addon.Events.On("Components", "PLAYER_TARGET_CHANGED", refreshOpacity)
