@@ -77,7 +77,8 @@ end
 
 --- Sizing, Style, Text and Visibility over a pane's keys. `noun` names the
 --- frame in the descriptions: "tracker" or "pane". The main page's Visibility
---- section also carries the instance combat fade, one setting for both.
+--- section also carries the combat fade, main tracker only, and the instance
+--- combat fade, one setting for both.
 function Page.AddLookSections(builder, pane, navKey, noun, opts)
     opts = opts or {}
     local debounce = "UI_camelotObjectiveTracker_" .. pane.key .. "_"
@@ -183,6 +184,15 @@ function Page.AddLookSections(builder, pane, navKey, noun, opts)
                 get = function() return Page.GetNumber(pane, "opacity", Style.OPACITY) end,
                 set = function(v) Page.SetNumber(pane, "opacity", Style.OPACITY, v) end })
             if opts.combatFade then
+                inner:AddSlider({ label = "Opacity In-Combat",
+                    description = "The tracker's opacity in combat outside a dungeon or raid. The Current Objectives pane keeps its opacity.",
+                    min = 0, max = 100, step = 1,
+                    minLabel = "0%", maxLabel = "100%",
+                    get = function() return Style.Clamp(Style.Get("opacityInCombat"), Style.OPACITY) end,
+                    set = function(v)
+                        DB.Set(Style.Path("opacityInCombat"), tonumber(v) or 100)
+                        apply()
+                    end })
                 inner:AddSlider({ label = "Opacity In-Instance-Combat",
                     description = "The tracker's and the Current Objectives pane's opacity in combat inside a dungeon or raid. The dungeon's own progress block keeps full opacity.",
                     min = 0, max = 100, step = 1,

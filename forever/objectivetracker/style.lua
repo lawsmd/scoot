@@ -2,8 +2,8 @@
 -- forever/objectivetracker/style.lua
 -- The objective tracker's settings, their defaults, and what applies them to
 -- the Camelot containers: height, scale, the background's alpha, the text
--- size, the header backgrounds, the three text styles, and the fade in
--- instance combat.
+-- size, the header backgrounds, the three text styles, and the fades in
+-- combat and in instance combat.
 --
 -- Two panes, one code path. The main tracker (CamelotObjectiveTracker) and
 -- the Current Objectives pane (CamelotCurrentObjectiveTracker, current.lua) are
@@ -144,6 +144,9 @@ do
     -- 100 is no fade. Scoot stores nil for the same state. One setting for
     -- both panes.
     map[Style.Path("opacityInInstanceCombat")] = 100
+    -- Combat outside a dungeon or raid: the main tracker only, so the
+    -- Current Objectives pane stays readable.
+    map[Style.Path("opacityInCombat")] = 100
     -- The current pane's behaviour (current.lua). Camelot ships on.
     map[Style.Path("current", "enabled")] = true
     map[Style.Path("current", "onEnterArea")] = true
@@ -512,21 +515,25 @@ local function inDungeonOrRaid()
     return inInstance == true and (instanceType == "party" or instanceType == "raid")
 end
 
--- Kept off addon.Opacity.Resolve: one override with a compound gate (combat in a dungeon or raid), else 1, and core/opacity.lua is not on this TOC.
---- The alpha the instance-combat fade holds the headers and modules at now.
-function Style.CombatAlpha()
-    if UnitAffectingCombat("player") and inDungeonOrRaid() then
+-- Kept off addon.Opacity.Resolve: two overrides with a compound gate (combat in a dungeon or raid, else combat on the main tracker), else 1, and core/opacity.lua is not on this TOC.
+--- The alpha the combat fade holds a pane's headers and modules at now.
+function Style.CombatAlpha(pane)
+    if not UnitAffectingCombat("player") then return 1 end
+    if inDungeonOrRaid() then
         return clamp(Style.Get("opacityInInstanceCombat"), Style.OPACITY) / 100
+    end
+    if (pane or Style.MAIN) == Style.MAIN then
+        return clamp(Style.Get("opacityInCombat"), Style.OPACITY) / 100
     end
     return 1
 end
 
---- The fade in instance combat, on the header and on each module but the
---- Scenario module, so the dungeon's own progress stays readable. Never the
---- container itself: alpha multiplies down the tree. One setting, both panes.
+--- The fade in combat, on the header and on each module but the Scenario
+--- module, so the dungeon's own progress stays readable. Never the
+--- container itself: alpha multiplies down the tree.
 function Style.ApplyCombatOpacity()
-    local alpha = Style.CombatAlpha()
-    eachPane(function(_, c)
+    eachPane(function(pane, c)
+        local alpha = Style.CombatAlpha(pane)
         if c.Header then c.Header:SetAlpha(alpha) end
         c:ForEachModule(function(module)
             if module ~= ScenarioObjectiveTracker then

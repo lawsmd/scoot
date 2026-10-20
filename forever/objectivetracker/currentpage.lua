@@ -14,6 +14,7 @@ local Style = OT.Style
 local Page = OT.Page
 local DB = addon.DB
 local SettingsBuilder = addon.UI.SettingsBuilder
+local Messages = addon.QualityOfLife.Messages
 
 local NAV_KEY = "currentObjectives"
 local PANE = Style.CURRENT
@@ -152,6 +153,15 @@ local function Render(panel, scrollContent)
                     apply()
                 end })
             addToggle(inner, "Flash Progress", nil, "flashProgress")
+            inner:Finalize()
+        end })
+
+    -- Blizzard's quest progress text shares the top of the screen with the
+    -- cards. The row is Quality of Life > Misc's over the same two keys.
+    builder:AddCollapsibleSection({ title = "Quest Progress Text", componentId = NAV_KEY,
+        sectionKey = "messages", defaultExpanded = false,
+        buildContent = function(_, inner)
+            Messages.AddPositionRow(inner, { other = "Quality of Life > Misc" })
             inner:Finalize()
         end })
 

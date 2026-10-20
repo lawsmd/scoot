@@ -12,6 +12,13 @@
 	container keeps Blizzard's own fade animations on its alpha, which would
 	overwrite an adapter's opacity if the two shared a frame. display.lua sizes
 	each holder to its container.
+
+	The container carries a name because the template's three fade
+	animations target "$parent" by name, and Blizzard instantiates the
+	template on named frames only. On a nameless container the name resolved
+	to the nearest named ancestor, the holder: the fade drove the holder's
+	alpha to 1 over the Opacity setting and left the container at 0 (seen 19
+	October 2026 in /camelot statusbars after a reload).
 	-->
 
 	<Frame name="CamelotStatusBar1" parent="UIParent" frameStrata="MEDIUM" hidden="true">
@@ -20,7 +27,7 @@
 			<Anchor point="BOTTOM" y="0"/>
 		</Anchors>
 		<Frames>
-			<Frame parentKey="Container" inherits="StatusTrackingBarContainerTemplate" mixin="CamelotStatusTrackingContainerMixin" hidden="true">
+			<Frame name="$parentContainer" parentKey="Container" inherits="StatusTrackingBarContainerTemplate" mixin="CamelotStatusTrackingContainerMixin" hidden="true">
 				<KeyValues>
 					<KeyValue key="barIndex" value="1" type="number"/>
 				</KeyValues>
@@ -37,7 +44,7 @@
 			<Anchor point="BOTTOM" y="17"/>
 		</Anchors>
 		<Frames>
-			<Frame parentKey="Container" inherits="StatusTrackingBarContainerTemplate" mixin="CamelotStatusTrackingContainerMixin" hidden="true">
+			<Frame name="$parentContainer" parentKey="Container" inherits="StatusTrackingBarContainerTemplate" mixin="CamelotStatusTrackingContainerMixin" hidden="true">
 				<KeyValues>
 					<KeyValue key="barIndex" value="2" type="number"/>
 				</KeyValues>

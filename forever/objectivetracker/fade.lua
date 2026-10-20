@@ -154,7 +154,7 @@ end
 
 -- A module's header, and for the pane its background too, while the module
 -- holds no settled quest: the highest alpha among the quests it draws, over
--- the bases the instance-combat fade and Background Opacity give them. So
+-- the bases the combat fades and Background Opacity give them. So
 -- the pane comes in with its first quest and goes with its last, and the
 -- tracker's Quests header goes with the last quest that leaves it.
 local function hold(maxByModule)
@@ -162,7 +162,8 @@ local function hold(maxByModule)
     for _, name in ipairs(MODULES) do
         local module, factor = _G[name], maxByModule[name]
         if module and module.Header and factor and factor < 1 then
-            module.Header:SetAlpha(Style.CombatAlpha() * factor)
+            local pane = name == PANE_MODULE and Style.CURRENT or Style.MAIN
+            module.Header:SetAlpha(Style.CombatAlpha(pane) * factor)
             held[name] = true
         elseif held[name] then
             held[name] = nil

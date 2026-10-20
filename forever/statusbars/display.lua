@@ -74,12 +74,14 @@ function Display.ApplyWidth(index)
     c:UpdateBarTick()
 end
 
---- The holder's alpha. The Dynamic Layouts engine replaces alpha, so while the
---- dynamic state holds the adapter owns it.
+--- The holder's alpha. The Dynamic Layouts engine replaces alpha, so while it
+--- holds the channel (a dynamic opacity of the bar's own, or a fade in flight)
+--- the adapter owns it; a dynamic state silent on opacity reads this setting
+--- as its target, and the engine never writes it, so the apply lands it here.
 function Display.ApplyOpacity(index)
     local holder = Style.Holder(index)
     if not holder then return end
-    if SB.Dynamic and SB.Dynamic.IsDynamic(index) then return end
+    if SB.Dynamic and SB.Dynamic.HoldsOpacity(index) then return end
     holder:SetAlpha(Style.Opacity(index) / 100)
 end
 
@@ -160,13 +162,20 @@ local function onBlocked(event, addonNameBlocked, action)
     if #blocked > MAX_BLOCKED then table.remove(blocked) end
 end
 
--- A container that took its bar while its holder was hidden ran its fade on
--- a frame that drew nothing; show the bar at full alpha.
+local function fading(c)
+    return c.FadeInAnimation:IsPlaying() or c.FadeOutAnimation:IsPlaying()
+        or c.MaxLevelFadeOutAnimation:IsPlaying()
+end
+
+-- A container that shows a bar at less than full alpha with no fade in
+-- flight fades in now. The guard reads the fade groups, not IsAnimating,
+-- which also counts the bar's own value animation and would leave the
+-- container dark behind a fill that is still ticking.
 local function settleFades()
     for index = 1, 2 do
         local c = container(index)
         if c and c.shownBarIndex ~= StatusTrackingBarInfo.BarsEnum.None
-            and not c:IsAnimating() and c:GetAlpha() < 1 then
+            and not fading(c) and c:GetAlpha() < 1 then
             c.FadeInAnimation:Restart()
         end
     end
@@ -174,12 +183,10 @@ end
 
 function Display.Build()
     local m = manager()
-    if not SB.IsEnabled() then
-        -- The frames exist on Forever whatever the switch says; a feature off
-        -- keeps them hidden and quiet.
-        if m then m:UnregisterAllEvents() end
-        return
-    end
+    -- The frames exist on Forever whatever the switch says. A feature off
+    -- never registers the manager's events (mixins.lua, RegisterEvents), so
+    -- the holders stay hidden and the containers empty.
+    if not SB.IsEnabled() then return end
     if built then return end
     if not (m and container(1) and container(2)) then return end
 
@@ -194,6 +201,9 @@ function Display.Build()
         holder:Show()
     end
     Style.Apply()
+    -- The first fill, with the holders drawing: the fade lands on a visible
+    -- container, as Blizzard's does under its always-visible manager.
+    m:RegisterBlizzardEvents()
     if UnitExists("player") then m:UpdateBarsShown() end
     settleFades()
     for index = 1, 2 do
@@ -266,9 +276,10 @@ function Display.Dump()
         frameLine(push, "holder", Style.Holder(index))
         frameLine(push, "container", c)
         if c then
-            push("    shows %s, pending %s, animating %s",
+            push("    shows %s, pending %s, animating %s, fade in %s, fade out %s, in Edit Mode %s",
                 barName(c.shownBarIndex), tostring(c.pendingBarToShowIndex and barName(c.pendingBarToShowIndex)),
-                tostring(c:IsAnimating()))
+                tostring(c:IsAnimating()), tostring(c.FadeInAnimation:IsPlaying()),
+                tostring(c.FadeOutAnimation:IsPlaying()), tostring(c.isInEditMode))
         end
         if SB.Dynamic then push("    dynamic layouts: %s", SB.Dynamic.Describe(index)) end
     end

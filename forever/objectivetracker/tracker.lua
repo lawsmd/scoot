@@ -586,8 +586,8 @@ local function dumpTracker()
         if ObjectiveTrackerLineFont then
             lineSize = select(2, ObjectiveTrackerLineFont:GetFont())
         end
-        push("line font at %s; instance combat opacity %s", tostring(lineSize),
-            tostring(Style.Get("opacityInInstanceCombat")))
+        push("line font at %s; combat opacity %s; instance combat opacity %s", tostring(lineSize),
+            tostring(Style.Get("opacityInCombat")), tostring(Style.Get("opacityInInstanceCombat")))
         pushSettings(push, Style, Style.MAIN, "tracker")
         pushSettings(push, Style, Style.CURRENT, "pane")
     end

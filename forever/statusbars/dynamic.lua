@@ -7,8 +7,14 @@
 -- and the stored position.
 --
 -- The engine replaces alpha rather than multiplying it, so display.lua leaves
--- a holder's alpha alone while its dynamic state holds. Blizzard's fades run
--- on the container inside, so the two never write the same frame.
+-- a holder's alpha alone while the engine holds the opacity channel: a
+-- dynamic record with an opacity of its own, or a fade in flight. A record
+-- silent on opacity targets the Opacity setting, which the engine never
+-- writes, so the setting's own apply must land it even while the dynamic
+-- state holds (HoldsOpacity, not IsDynamic; the first build gated on
+-- IsDynamic and the slider was dead for as long as the layout was dynamic).
+-- Blizzard's fades run on the container inside, so the two never write the
+-- same frame.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -67,7 +73,17 @@ function Dynamic.IsDynamic(index)
     return registered[index] and DL and DL.IsDynamic and DL.IsDynamic(SB.KEYS[index]) or false
 end
 
+--- Whether the engine owns a bar's alpha now, so the Opacity setting's apply
+--- leaves it.
+function Dynamic.HoldsOpacity(index)
+    return registered[index] and DL and DL.HoldsChannel and DL.HoldsChannel(SB.KEYS[index], "opacity") or false
+end
+
 function Dynamic.Describe(index)
     if not registered[index] then return "not registered" end
-    return Dynamic.IsDynamic(index) and "dynamic" or "base"
+    local state = Dynamic.IsDynamic(index) and "dynamic" or "base"
+    if Dynamic.HoldsOpacity(index) then
+        return state .. ", the engine holds the opacity"
+    end
+    return state .. ", the Opacity setting holds"
 end

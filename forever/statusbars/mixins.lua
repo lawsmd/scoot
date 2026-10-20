@@ -16,6 +16,11 @@
 --   run tainted, and neither positions a Camelot bar.
 -- * GetExpectedWidth multiplies the client's width by the bar's Width setting,
 --   which InitializeBars, CheckForLayoutChange and the dividers all read.
+-- * RegisterEvents waits for the build. Blizzard's manager draws from its
+--   OnLoad, so its first fill fades a visible container in; the Camelot
+--   holders are hidden until display.lua shows them, and a fill before that
+--   would run the fade on a frame that draws nothing. With the feature off
+--   the events are never registered and the holders stay hidden and quiet.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -29,6 +34,15 @@ function CamelotStatusTrackingManagerMixin:OnLoad()
         self.barContainers[index] = holder and holder.Container
     end
     StatusTrackingManagerMixin.OnLoad(self)
+end
+
+-- Blizzard's OnLoad calls this; the build calls RegisterBlizzardEvents once
+-- the holders draw.
+function CamelotStatusTrackingManagerMixin:RegisterEvents()
+end
+
+function CamelotStatusTrackingManagerMixin:RegisterBlizzardEvents()
+    StatusTrackingManagerMixin.RegisterEvents(self)
 end
 
 CamelotStatusTrackingContainerMixin = {}
