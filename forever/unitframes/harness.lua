@@ -201,8 +201,27 @@ function Harness.ApplyClickAttributes(inst)
     -- togglemenu resolves the right unit menu on its own and opens it, so no
     -- menu-function attribute is needed.
     click:SetAttribute("*type2", "togglemenu")
+    -- *type1 = "target" is the value the 12.0.7 guard in SecureUnitButton_OnClick
+    -- refuses while a modifier is held; Small Fixes routes a modified left click
+    -- through a delegate. No-op unless the player turned a modifier on.
+    if addon.SmallFixes and addon.SmallFixes.ApplyModifierProxies then
+        addon.SmallFixes.ApplyModifierProxies(click)
+    end
 end
 regenActions.click = function(inst) Harness.ApplyClickAttributes(inst) end
+
+-- Every instance this file made, both styles of every unit, parked or not.
+local allInstances = setmetatable({}, { __mode = "k" })
+
+-- A Small Fixes toggle re-applies the delegates on every click child; a write
+-- in combat queues through ApplyClickAttributes like any other.
+if addon.SmallFixes and addon.SmallFixes.RegisterClickRefresher then
+    addon.SmallFixes.RegisterClickRefresher(function()
+        for inst in pairs(allInstances) do
+            Harness.ApplyClickAttributes(inst)
+        end
+    end)
+end
 
 --- The click child yields the mouse to the Edit Mode selection for as long as
 --- Edit Mode is open, so a drag wins over a target click. Edit Mode opens and
@@ -266,6 +285,7 @@ function Harness.New(def)
         click:SetHitRectInsets(h.left, h.right, h.top, h.bottom)
     end
     inst.clickButton = click
+    allInstances[inst] = true
 
     Harness.ApplyClickAttributes(inst)
 

@@ -4,7 +4,8 @@
 -- and its reader, and the border style. One spec per frame shape lives beside
 -- this file (artplayer, arttarget, arttot, artpet) and registers into
 -- Art.Frames under the Camelot style; the Modern specs under modern/ register
--- under the other.
+-- under theirs, and the Classic style reads a copy of the Camelot ones
+-- (Art.Spec).
 --
 -- Every number in a spec is Blizzard's own, read out of the XML rather than
 -- measured off a screenshot, so the rebuild is a transcription. The Classic
@@ -37,7 +38,28 @@ addon.UnitFrames.Art = Art
 
 -- style -> key -> spec, filled by the art*.lua files: the Classic specs under
 -- camelot, the Modern ones under modern (the modern/ folder beside them).
-Art.Frames = { camelot = {}, modern = {} }
+-- The classic set is copied from the camelot one on first use.
+Art.Frames = { camelot = {}, classic = {}, modern = {} }
+
+-- The Classic style draws the Camelot specs as vanilla placed them: a copy
+-- with every nudge taken out, the level disc's among them (artplayer.lua,
+-- DISC_NUDGE), so each region and string sits on Blizzard's own anchor.
+local function withoutNudges(value)
+    if type(value) ~= "table" then return value end
+    local copy = {}
+    for field, v in pairs(value) do
+        if field ~= "nudge" and field ~= "DiscNudge" then copy[field] = withoutNudges(v) end
+    end
+    return copy
+end
+
+--- The spec a style draws a frame from, or nil.
+function Art.Spec(style, key)
+    if style == "classic" and not Art.Frames.classic[key] and Art.Frames.camelot[key] then
+        Art.Frames.classic[key] = withoutNudges(Art.Frames.camelot[key])
+    end
+    return Art.Frames[style] and Art.Frames[style][key]
+end
 
 --------------------------------------------------------------------------------
 -- Paths
@@ -136,23 +158,43 @@ local function applyAtlasCrop(tex, atlas)
     return true
 end
 
---- Whether this client has an atlas member by that name. A Modern spec's art
---- is all names, and Forever's sheets may lack some of retail's.
-function Art.AtlasResolves(name)
-    if type(name) ~= "string" or not (C_Texture and C_Texture.GetAtlasInfo) then return false end
+local function atlasKnown(name)
     local ok, info = pcall(C_Texture.GetAtlasInfo, name)
     return ok and info ~= nil
+end
+
+--- The name this client answers to for an atlas member, or nil. Forever
+--- keeps its own art set behind retail's names, and a member that exists in
+--- that set alone is listed under the set's "-c60" suffix with no plain
+--- name beside it (the unit frames' level circle), while Blizzard's own XML
+--- names it plain; so the plain name is tried first and the suffixed one
+--- second. The resolved name is what SetAtlas and SetStatusBarTexture take.
+function Art.ResolveAtlasName(name)
+    if type(name) ~= "string" or not (C_Texture and C_Texture.GetAtlasInfo) then return nil end
+    if atlasKnown(name) then return name end
+    local suffixed = name .. "-c60"
+    if atlasKnown(suffixed) then return suffixed end
+    return nil
+end
+
+--- Whether this client has an atlas member by that name, under the name or
+--- its suffixed form. A Modern spec's art is all names, and Forever's sheets
+--- may lack some of retail's.
+function Art.AtlasResolves(name)
+    return Art.ResolveAtlasName(name) ~= nil
 end
 
 --- An atlas member by name on a texture Camelot owns, at the member's own
 --- size unless useAtlasSize is false. A name this client lacks is skipped and
 --- recorded on the texture, so the region draws nothing and /camelot state
 --- names it: the flat fallback the crop form draws would stand as a block
---- the size of the art. Returns whether the name resolved.
+--- the size of the art. The texture remembers the name as asked, so a state
+--- write compares against the spec's own. Returns whether the name resolved.
 function Art.SetAtlas(tex, name, useAtlasSize)
     tex.camelotAtlas = name
-    if Art.AtlasResolves(name) then
-        tex:SetAtlas(name, useAtlasSize ~= false)
+    local resolved = Art.ResolveAtlasName(name)
+    if resolved then
+        tex:SetAtlas(resolved, useAtlasSize ~= false)
         tex.camelotAtlasMissing = nil
         return true
     end
@@ -207,8 +249,13 @@ end
 
 -- This file defines the region format, so it owns the one function that turns a
 -- def into a texture. `atlas` is a crop as a table and a whole member as a
--- string; `mask` a file as a string and a BuildMask def as a table.
-function Art.BuildRegion(host, def)
+-- string; `mask` a file as a string and a BuildMask def as a table. A def
+-- that names a region in `relTo` anchors to that region of the instance
+-- rather than to its host, as a text slot does (the Modern target's skull at
+-- its level circle's centre, its icons at its portrait's edges); regions is
+-- the instance's table so far, and the painter builds in DrawOrder, so the
+-- named region comes first.
+function Art.BuildRegion(host, def, regions)
     local tex = host:CreateTexture(nil, def.layer, nil, def.sublevel)
     if def.path then tex:SetTexture(def.path) end
     if type(def.atlas) == "string" then
@@ -222,8 +269,12 @@ function Art.BuildRegion(host, def)
         tex:SetTexelSnappingBias(0)
         tex:SetSnapToPixelGrid(false)
     end
+    -- A texture's own scale, as the XML's scale attribute sets it: the
+    -- member's size and the anchor offsets both scale with it.
+    if def.scale then tex:SetScale(def.scale) end
     local nudge = def.nudge
-    tex:SetPoint(def.point, host, def.relPoint or def.point,
+    local rel = def.relTo and regions and regions[def.relTo] or host
+    tex:SetPoint(def.point, rel, def.relPoint or def.point,
         (def.x or 0) + (nudge and nudge.x or 0), (def.y or 0) + (nudge and nudge.y or 0))
     if def.coords then
         tex:SetTexCoord(def.coords[1], def.coords[2], def.coords[3], def.coords[4])
@@ -255,7 +306,7 @@ function Art.BuildRegion(host, def)
         copy.blend = "ADD"
         local lift = addon.UnitFrames.Text.BACKDROP_LIFT
         copy.vertex = { lift[1], lift[2], lift[3], def.vertex and def.vertex[4] or 1 }
-        tex.lift = Art.BuildRegion(host, copy)
+        tex.lift = Art.BuildRegion(host, copy, regions)
     end
     return tex
 end
@@ -334,7 +385,8 @@ function Art.ApplyBorder(inst, pathKey)
     pathKey = pathKey or inst.borderKey or (inst.spec and inst.spec.borderKey) or "border"
     inst.borderKey = pathKey
 
-    local style = currentStyle()
+    -- The Classic style wears Blizzard's silver whatever the module's look.
+    local style = inst.style == "classic" and "stock" or currentStyle()
     local path = Art.Paths[pathKey]
     if style == "bronze" and BRONZE_FILES[pathKey] then
         path = BRONZE_ROOT .. BRONZE_FILES[pathKey]

@@ -53,8 +53,10 @@ local defs = {}
 --------------------------------------------------------------------------------
 -- Defaults
 --------------------------------------------------------------------------------
--- The frame-level values. The text settings are text.lua's, and the pages in
--- page.lua write those; nothing writes these yet.
+-- The frame-level values. The text settings are text.lua's. The pages write
+-- the scale and the border style; the Features page writes the enable switch.
+-- Nothing writes showBarText: each bar string's Show Text setting took its
+-- place, and the strings are built only while it is on.
 
 DB.RegisterModule("unitFrames", true)
 
@@ -72,10 +74,11 @@ do
         map["unitFrames." .. key .. ".scale"] = 1
     end
     DB.RegisterDefaults(map)
-    -- Blizzard Default: no bar numbers, Blizzard's silver.
-    DB.RegisterStock({
+    -- The Modern start: no bar numbers. The Classic start's are the Classic
+    -- style's own (settings.lua), on mouseover, and its silver too (art.lua,
+    -- Art.ApplyBorder), so that start leaves both module keys alone.
+    DB.RegisterPreset("modern", {
         ["unitFrames.showBarText"] = false,
-        ["unitFrames.borderStyle"] = "stock",
     })
 end
 
@@ -102,7 +105,8 @@ end
 --- def = {
 ---     key, unit, label, frameName,
 ---     style,                                 "camelot" (the default) or "modern":
----                                            which shape this definition draws
+---                                            which shape this definition draws;
+---                                            a Camelot one defines Classic too
 ---     default = { point, relPoint, x, y },   one table per frame, never shared:
 ---                                            Edit Mode keeps it by reference
 ---     strataLevel,
@@ -113,11 +117,25 @@ end
 ---     events = { EVENT = fn(inst, ...) },    plain events, this unit's own
 ---     build = fn(inst),                      widgets beyond the spec
 ---     paintState = fn(inst),                 everything but bars and identity
+---     alphaRule = fn(inst, alpha) -> handled, the frame's own say over the
+---                                            outer alpha (Frame.ApplyAlpha)
 --- }
 function Frame.Define(def)
     def.style = def.style or "camelot"
     defs[def.key] = defs[def.key] or {}
     defs[def.key][def.style] = def
+    -- The Classic style is the Camelot frame with Blizzard's values: the same
+    -- definition under a frame name of its own and a default table of its
+    -- own, which Edit Mode keeps by reference.
+    if def.style == "camelot" then
+        local classic = {}
+        for field, value in pairs(def) do classic[field] = value end
+        classic.style = "classic"
+        classic.frameName = (def.frameName:gsub("^Camelot", "CamelotClassic"))
+        local d = def.default
+        classic.default = { point = d.point, relPoint = d.relPoint, x = d.x, y = d.y }
+        defs[def.key].classic = classic
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -134,8 +152,9 @@ local function buildBar(parent, def, level)
     local bar = CreateFrame("StatusBar", nil, parent)
     bar:SetSize(def.w, def.h)
     bar:SetPoint(def.point, parent, def.point, def.x, def.y)
-    if def.atlas and Art.AtlasResolves(def.atlas) then
-        bar:SetStatusBarTexture(def.atlas)
+    local atlas = def.atlas and Art.ResolveAtlasName(def.atlas)
+    if atlas then
+        bar:SetStatusBarTexture(atlas)
     else
         bar:SetStatusBarTexture(def.texture or Art.Paths.statusBar)
         bar.camelotAtlasMissing = def.atlas
@@ -169,12 +188,15 @@ end
 -- (forever/castbars/painter.lua does the same). A Deep Shadow style builds a
 -- black copy of the string behind it, kept in step by hooks on SetText,
 -- ClearText, the show calls and SetTextColor, and the copy takes a secret
--- string, so the feeds in values.lua stay as they are.
-local function buildText(host, def)
+-- string, so the feeds in values.lua stay as they are. A def that names a
+-- region in relTo anchors to that region rather than the host (the Modern
+-- level in its circle), and every region is built before any string.
+local function buildText(inst, host, def)
     local fs = host:CreateFontString(nil, def.layer, def.font)
     if def.w then fs:SetSize(def.w, def.h) end
     local nudge = def.nudge
-    fs:SetPoint(def.point, host, def.relPoint or def.point,
+    local rel = def.relTo and inst.regions[def.relTo] or host
+    fs:SetPoint(def.point, rel, def.relPoint or def.point,
         (def.x or 0) + (nudge and nudge.x or 0), (def.y or 0) + (nudge and nudge.y or 0))
     if def.justifyH then fs:SetJustifyH(def.justifyH) end
     if def.justifyV then fs:SetJustifyV(def.justifyV) end
@@ -230,7 +252,8 @@ end
 -- no clicks: a click passes through it to the child.
 local function showTooltip(hover)
     local inst = hover.inst
-    if inst.previewStandIn or addon.EditMode.IsEditing() then return end
+    -- selfHidden: the target of target at alpha 0 (tot.lua), an empty spot.
+    if inst.previewStandIn or inst.selfHidden or addon.EditMode.IsEditing() then return end
     GameTooltip_SetDefaultAnchor(GameTooltip, hover)
     if pcall(GameTooltip.SetUnit, GameTooltip, inst.unit) then
         hover.UpdateTooltip = showTooltip
@@ -296,7 +319,7 @@ function Frame.Build(key, style)
     local built = UF.Instances[key] and UF.Instances[key][style]
     if built then return built end
     local def = defs[key] and defs[key][style]
-    local spec = Art.Frames[style] and Art.Frames[style][key]
+    local spec = Art.Spec(style, key)
     if not (def and spec) then return nil end
 
     local inst = Harness.New({
@@ -315,7 +338,9 @@ function Frame.Build(key, style)
     inst.key = key
     inst.def = def
     inst.spec = spec
-    inst.frame:SetScale(DB.Get("unitFrames." .. key .. ".scale") or 1)
+    -- Before the border is dressed, which reads it.
+    inst.style = style
+    inst.frame:SetScale(UF.GetScale(key))
 
     local base = inst.frame
     local level = base:GetFrameLevel()
@@ -332,7 +357,7 @@ function Frame.Build(key, style)
     -- and an additive glow has to land on top of the icon it covers.
     for _, name in ipairs(spec.DrawOrder) do
         if onBase[name] then
-            inst.regions[name] = Art.BuildRegion(base, spec.Regions[name])
+            inst.regions[name] = Art.BuildRegion(base, spec.Regions[name], inst.regions)
         end
     end
 
@@ -351,7 +376,7 @@ function Frame.Build(key, style)
     for _, name in ipairs(spec.DrawOrder) do
         if not onBase[name] then
             local regionDef = spec.Regions[name]
-            inst.regions[name] = Art.BuildRegion(artFrame, regionDef)
+            inst.regions[name] = Art.BuildRegion(artFrame, regionDef, inst.regions)
             if regionDef.border then
                 inst.borderLight = buildBorderLight(artFrame, regionDef)
             end
@@ -372,14 +397,14 @@ function Frame.Build(key, style)
     for name, textDef in pairs(spec.Text) do
         local isBarText = name == "healthValue" or name == "powerValue"
         if showBarText or not isBarText then
-            inst.texts[name] = buildText(artFrame, textDef)
+            inst.texts[name] = buildText(inst, artFrame, textDef)
         end
     end
     -- Each bar's percent string, on its value string's def (text.lua, "Bar
     -- texts"). The target's dead text shares the health value's spot.
     for _, names in pairs(Text.BAR_TEXT_STRINGS) do
         if inst.texts[names.value] then
-            inst.texts[names.percent] = buildText(artFrame, spec.Text[names.def])
+            inst.texts[names.percent] = buildText(inst, artFrame, spec.Text[names.def])
         end
     end
     inst.portrait = inst.regions.portrait
@@ -409,9 +434,10 @@ function Frame.Build(key, style)
     -- Both build what the frame's settings ask for and nothing more
     -- (auras.lua, healprediction.lua).
     UF.Auras.Apply(inst)
+    UF.BarSegments.Build(inst)
+    UF.ComboPoints.Apply(inst)
     UF.HealPrediction.Apply(inst)
 
-    inst.style = style
     UF.Instances[key] = UF.Instances[key] or {}
     UF.Instances[key][style] = inst
     Frame.WireEvents(inst)
@@ -444,11 +470,13 @@ local GOLD_R, GOLD_G, GOLD_B = 1.0, 0.82, 0
 local function paintStandIn(inst, hold)
     if inst.nameText then
         Values.SetName(inst, inst.def.label, hold)
-        inst.nameText:SetTextColor(Text.Color(inst, "name", GOLD_R, GOLD_G, GOLD_B, "player"))
+        local r, g, b = Text.DefaultColor(inst, "name", GOLD_R, GOLD_G, GOLD_B)
+        inst.nameText:SetTextColor(Text.Color(inst, "name", r, g, b, "player"))
     end
     if inst.levelText then
         inst.levelText:SetText(UnitLevel("player"))
-        inst.levelText:SetTextColor(Text.Color(inst, "level", GOLD_R, GOLD_G, GOLD_B, "player"))
+        local r, g, b = Text.DefaultColor(inst, "level", GOLD_R, GOLD_G, GOLD_B)
+        inst.levelText:SetTextColor(Text.Color(inst, "level", r, g, b, "player"))
         inst.levelText:SetShown(not inst.textHidden.level)
     end
     if inst.portrait then
@@ -480,6 +508,7 @@ function Frame.Paint(inst)
     Values.ApplyHealth(inst)
     Values.ApplyPower(inst)
     Values.ApplyBarText(inst)
+    UF.BarSegments.Update(inst)
     UF.HealPrediction.Update(inst)
 end
 
@@ -507,14 +536,16 @@ end
 -- unit, and the name holds.
 function Frame.PaintAll(inst, newSubject)
     if not inst.frame:IsShown() then return end
-    -- The aura rows re-show and re-read for the new subject, or hide for the
-    -- stand-in, which has no auras to show.
+    -- The aura rows and the combo points re-show and re-read for the new
+    -- subject, or hide for the stand-in, which has neither to show.
     UF.Auras.Refresh(inst)
+    UF.ComboPoints.Apply(inst)
     if inst.previewStandIn then
         -- The label goes up, so the next unit is new whoever it is.
         inst.paintedGUID = nil
         if inst.def.paintState then inst.def.paintState(inst) end
         paintStandIn(inst, not newSubject)
+        UF.BarSegments.Update(inst)
         UF.HealPrediction.Hide(inst)
         return
     end
@@ -564,12 +595,25 @@ function Frame.WireEvents(inst)
             pcall(frame.RegisterUnitEvent, frame, event, inst.unit)
         end
     end
+    -- The max health loss falls through to Frame.Paint; the cast events
+    -- repaint the cost alone (barsegments.lua).
+    if inst.healthLoss then
+        for _, event in ipairs(UF.BarSegments.LOSS_EVENTS) do
+            pcall(frame.RegisterUnitEvent, frame, event, inst.unit)
+        end
+    end
+    if inst.manaCost then
+        for _, event in ipairs(UF.BarSegments.COST_EVENTS) do
+            pcall(frame.RegisterUnitEvent, frame, event, inst.unit)
+        end
+    end
 
     -- Kept off addon.Events: RegisterUnitEvent filters in C to this unit, which
     -- the shared dispatcher cannot do. The plain events below use it.
     frame:SetScript("OnEvent", function(_, event)
         if inst.previewStandIn then return end
         if def.onUnitEvent and def.onUnitEvent(inst, event) then return end
+        if UF.BarSegments.OnEvent(inst, event) then return end
         if event == "UNIT_DISPLAYPOWER" then
             Values.ApplyPowerColor(inst)
             Values.ApplyPower(inst)
@@ -678,6 +722,21 @@ end
 -- The set
 --------------------------------------------------------------------------------
 
+--- The one writer of the outer frame's alpha. Dynamic Layouts' opacity
+--- channel (dynamic.lua) and the redress below call it with a value, which
+--- it keeps, so a definition's alphaRule(inst, alpha) can fold a rule of its
+--- own into the write (tot.lua: 0 while the target is the player) and
+--- re-apply it with no argument from its own events. A rule that writes the
+--- frame answers true. Edit Mode's grab target is never dimmed by a rule.
+function Frame.ApplyAlpha(inst, alpha)
+    if alpha ~= nil then inst.wantedAlpha = alpha end
+    alpha = inst.wantedAlpha or 1
+    local rule = inst.def.alphaRule
+    if rule and not inst.previewActive and rule(inst, alpha) then return end
+    inst.selfHidden = nil
+    inst.frame:SetAlpha(alpha)
+end
+
 --- Re-land every base an instance may have missed while parked: the
 --- UF.Refresh* passes iterate UF.Frames, so a setting changed while the other
 --- style was on screen never reached it.
@@ -686,8 +745,8 @@ function Frame.Redress(inst)
     Text.ApplyBarTexts(inst)
     Text.ApplyBackdrop(inst)
     Values.ApplyHealthStyle(inst)
-    inst.frame:SetAlpha(1)
-    inst.frame:SetScale(DB.Get("unitFrames." .. inst.key .. ".scale") or 1)
+    Frame.ApplyAlpha(inst, 1)
+    inst.frame:SetScale(UF.GetScale(inst.key))
     if addon.EditMode.RestorePositionable then
         addon.EditMode.RestorePositionable(inst.frame)
     end
@@ -772,6 +831,9 @@ function UF.ApplyAll()
         swappedAny = swappedAny or swapped
     end
 
+    -- A frame hanging off another re-lands on the host this pass put up,
+    -- swapped, enabled or disabled (editmode.lua, "Attach").
+    if UF.EditMode.ReapplyAttached then UF.EditMode.ReapplyAttached() end
     Suppression.Apply()
     -- A cast bar snapped to the retired frame re-anchors to the new one.
     if swappedAny then
@@ -794,14 +856,35 @@ function UF.SetEnabled(key, on)
     return true
 end
 
---- "stock", "tint" or "bronze" (art.lua, "The border style").
-function UF.SetBorderStyle(style)
-    if not Art.BORDER_STYLES[style] then return false end
-    DB.Set("unitFrames.borderStyle", style)
+--- Re-dress every built border after a border style write (settings.lua,
+--- UF.SetBorderStyle).
+function UF.ApplyBorders()
     for _, inst in pairs(UF.Frames) do
         Art.ApplyBorder(inst)
     end
-    return true
+end
+
+--- Land a scale write (settings.lua, UF.SetScale) on both styles' instances.
+--- The frame carries a secure click child, so in combat it lands at regen.
+--- The stored position is in the frame's own scale, so the restore re-lands
+--- it, and a held Dynamic Layouts scale snaps back over the new base.
+function UF.ApplyScale(key)
+    local function land()
+        local n = UF.GetScale(key)
+        for _, inst in pairs(UF.Instances[key] or {}) do
+            inst.frame:SetScale(n)
+            if addon.EditMode.RestorePositionable then
+                addon.EditMode.RestorePositionable(inst.frame)
+            end
+        end
+        if UF.EditMode.ReapplyAttached then UF.EditMode.ReapplyAttached() end
+        if UF.Dynamic and UF.Dynamic.Resync then UF.Dynamic.Resync(key) end
+    end
+    if InCombatLockdown() then
+        addon.Events.RunOutOfCombat(land, "camelotUnitFrames:scale:" .. key)
+    else
+        land()
+    end
 end
 
 -- The definitions register at file scope below this file on the TOC, and the

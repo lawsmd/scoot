@@ -47,6 +47,23 @@ local function applyHappiness(inst)
     end
 end
 
+-- Registering an event the client does not know throws, and whether Forever
+-- knows this one is the open question, so the registration is under pcall
+-- and only where the client still has the mechanic.
+local function watchHappiness(inst)
+    if GetPetHappiness then
+        pcall(inst.frame.RegisterUnitEvent, inst.frame, "UNIT_HAPPINESS", inst.unit)
+    end
+end
+
+-- The reads the Modern pet frame shares (modern/pet.lua): both specs name
+-- the face and carry its cells, and the client's own pet frame keeps the
+-- face in both styles.
+addon.UnitFrames.PetState = {
+    ApplyHappiness = applyHappiness,
+    WatchHappiness = watchHappiness,
+}
+
 local function paintState(inst)
     applyPowerSlot(inst)
     applyHappiness(inst)
@@ -83,12 +100,5 @@ Frame.Define({
         PET_ATTACK_STOP = function(inst) Frame.SetPulsed(inst, "attackMode", false) end,
     },
     paintState = paintState,
-
-    build = function(inst)
-        -- Registering an event the client does not know throws, and whether
-        -- Forever knows this one is the open question.
-        if GetPetHappiness then
-            pcall(inst.frame.RegisterUnitEvent, inst.frame, "UNIT_HAPPINESS", inst.unit)
-        end
-    end,
+    build = watchHappiness,
 })

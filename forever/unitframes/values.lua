@@ -90,14 +90,15 @@ function Values.ApplyHealthStyle(inst)
     local fill = bar:GetStatusBarTexture()
     if spec.atlas then
         local Art = addon.UnitFrames.Art
+        local atlas = Art.ResolveAtlasName(spec.atlas)
         if path then
             bar:SetStatusBarTexture(path)
-        elseif Art.AtlasResolves(spec.atlas) then
-            bar:SetStatusBarTexture(spec.atlas)
+        elseif atlas then
+            bar:SetStatusBarTexture(atlas)
         else
             bar:SetStatusBarTexture(spec.texture or Art.Paths.statusBar)
         end
-        inst.healthFillIsAtlas = not path and Art.AtlasResolves(spec.atlas) or nil
+        inst.healthFillIsAtlas = not path and atlas ~= nil or nil
     else
         fill:SetTexture(path or spec.texture)
     end
@@ -172,8 +173,9 @@ function Values.ApplyPowerAtlas(inst, state, token)
     local name = whole or (spec.atlasPrefix .. (element or "Mana"))
     if not Art.AtlasResolves(name) then name = spec.atlasPrefix .. "Mana" end
     if inst.powerFillAtlas ~= name then
-        if Art.AtlasResolves(name) then
-            bar:SetStatusBarTexture(name)
+        local atlas = Art.ResolveAtlasName(name)
+        if atlas then
+            bar:SetStatusBarTexture(atlas)
             inst.powerFillAtlasMissing = nil
         else
             bar:SetStatusBarTexture(spec.texture or Art.Paths.statusBar)
@@ -202,7 +204,8 @@ function Values.ApplyPowerColor(inst)
 
     local state = powerState(inst.unit)
     inst.powerState = state
-    if inst.spec.Bars.power.atlasPrefix then
+    local power = inst.spec.Bars and inst.spec.Bars.power
+    if power and power.atlasPrefix then
         Values.ApplyPowerAtlas(inst, state)
         return
     end
@@ -374,17 +377,18 @@ end
 
 -- The name on every frame; the level on the player frame alone, because the
 -- target's level colour is the difficulty read target.lua applies after this.
--- Each string's colour mode is its setting (text.lua), with the gold as the
--- default and IdentityColor as the class answer. SetTextColor rather than
+-- Each string's colour mode is its setting (text.lua), with the spec's own
+-- colour as the default, the gold where it names none (Text.DefaultColor),
+-- and IdentityColor as the class answer. SetTextColor rather than
 -- SetVertexColor: it is the call the Deep Shadow copy hooks to shade itself
 -- against.
 local function applyIdentityColor(inst)
     local Text = addon.UnitFrames.Text
     if inst.nameText then
-        inst.nameText:SetTextColor(Text.Color(inst, "name", GOLD_R, GOLD_G, GOLD_B))
+        inst.nameText:SetTextColor(Text.Color(inst, "name", Text.DefaultColor(inst, "name", GOLD_R, GOLD_G, GOLD_B)))
     end
     if inst.levelText and inst.unit == "player" then
-        inst.levelText:SetTextColor(Text.Color(inst, "level", GOLD_R, GOLD_G, GOLD_B))
+        inst.levelText:SetTextColor(Text.Color(inst, "level", Text.DefaultColor(inst, "level", GOLD_R, GOLD_G, GOLD_B)))
     end
 end
 

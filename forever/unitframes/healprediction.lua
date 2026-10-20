@@ -117,8 +117,10 @@ local function unitFrameHost(inst)
     local s = inst.spec.Bars.health
     return {
         surface = Settings.SURFACE[inst.key].health == true,
+        -- The bar's width, which the max health loss narrows
+        -- (barsegments.lua).
         size = function()
-            return s.w, s.h
+            return inst.healthWidth or s.w, s.h
         end,
         glowParent = inst.artFrame,
         show = function(field) return Settings.Health(inst.key, field) ~= false end,
@@ -151,8 +153,9 @@ local function buildSegment(inst, host, name, reverse)
     bar:SetSize(host.size())
     local fill = host.fill
     local Art = UF.Art
-    if fill and fill.atlas and Art and Art.AtlasResolves(fill.atlas) then
-        bar:SetStatusBarTexture(fill.atlas)
+    local atlas = fill and fill.atlas and Art and Art.ResolveAtlasName(fill.atlas)
+    if atlas then
+        bar:SetStatusBarTexture(atlas)
     else
         bar:SetStatusBarTexture(fill and fill.texture or FILL)
     end

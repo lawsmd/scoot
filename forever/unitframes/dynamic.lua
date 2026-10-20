@@ -5,9 +5,12 @@
 -- channels, whose base state is re-derived from the same sources the frame
 -- is built from. The frame it drives is whichever style's instance is on
 -- screen (UF.Frames), read through a getter, so a style swap re-registers the
--- same id and snaps. Opacity is legal in every state; a position or scale that
--- misses the regen-disabled window pays at regen through the harness's
--- `dynamic` slot, which runs the engine's re-derive closures in channel order.
+-- same id and snaps. The dynamic layout ignores the frame's attach
+-- (editmode.lua): a frame hanging off another keeps a place of its own there,
+-- its regular spot until its record says otherwise, and hangs off its host
+-- again at base. Opacity is legal in every state; a position or scale that misses the
+-- regen-disabled window pays at regen through the harness's `dynamic` slot,
+-- which runs the engine's re-derive closures in channel order.
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -20,6 +23,8 @@ local Dynamic = {}
 UF.Dynamic = Dynamic
 
 local GEOMETRY = { "scale", "position" }
+
+local CHANNELS = { "opacity", "scale", "position" }
 
 -- The engine's re-derive closures owed per instance, by channel. The harness
 -- keeps flags only; a closure re-reads everything at drain time, which is the
@@ -62,11 +67,25 @@ function Dynamic.Register(inst)
             return a and a.frame or nil
         end,
         tier = "protected",
-        channels = { "opacity", "scale", "position" },
+        channels = CHANNELS,
+        -- The player frame alone offers "even when targeting Friendly Units",
+        -- on by default, the owner's call of 19 October 2026.
+        friendlyUnits = key == "player",
+        attach = function()
+            return UF.EditMode.AttachSpec(key)
+        end,
+        reattach = function()
+            UF.EditMode.Reattach(key)
+        end,
+        -- The painter's alpha writer, so a frame's own rule (the target of
+        -- target off while the target is the player) holds under a state.
+        apply = {
+            opacity = function(_, a) UF.Frame.ApplyAlpha(active(key, inst), a) end,
+        },
         base = {
             opacity = function() return 1 end,
             scale = function()
-                return DB.Get("unitFrames." .. key .. ".scale") or 1
+                return UF.GetScale(key)
             end,
             -- The stored position for the active layout, else the active
             -- style's default: what the positionable restore applies

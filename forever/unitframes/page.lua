@@ -25,25 +25,48 @@ for _, field in ipairs({ "hidden", "fontFace", "style", "size", "colorMode", "co
     IDENTITY_MAP[field] = field
 end
 
--- The font object each string is built on (the art specs), for the size the
--- Size slider shows while none is stored.
-local FONT_OBJECTS = { name = "GameFontNormalSmall", level = "GameNormalNumberFont" }
+-- The font object each string is built on (the art specs), per style, for
+-- the size and the style the controls show while none is stored: the Modern
+-- level sits in its circle on the client's own large number font.
+local FONT_OBJECTS = {
+    camelot = { name = "GameFontNormalSmall", level = "GameNormalNumberFont" },
+    classic = { name = "GameFontNormalSmall", level = "GameNormalNumberFont" },
+    modern = { name = "GameFontNormalSmall", level = "WhiteLargeNumberFont" },
+}
 
-local function fontObjectSize(slot)
-    local fontObject = _G[FONT_OBJECTS[slot]]
+local function fontObjectSize(style, slot)
+    local fontObject = _G[FONT_OBJECTS[style][slot]]
     if not fontObject then return 12 end
     local _, size = fontObject:GetFont()
     return size and math.floor(size + 0.5) or 12
 end
 
-local function addTextBlock(tab, key, slot, opts)
+-- The style key a font object's own flags and shadow decode to, so the Style
+-- selector shows the drawn look while nothing is stored.
+local function fontObjectStyle(style, slot)
+    local fontObject = _G[FONT_OBJECTS[style][slot]]
+    if not fontObject then return "NONE" end
+    local _, _, flags = fontObject:GetFont()
+    local sx, sy = fontObject:GetShadowOffset()
+    local outline = ""
+    if flags and flags:find("THICK") then
+        outline = "THICKOUTLINE"
+    elseif flags and flags:find("OUTLINE") then
+        outline = "OUTLINE"
+    end
+    local shadow = ((sx or 0) ~= 0 or (sy or 0) ~= 0) and "SHADOW" or ""
+    local key = shadow .. outline
+    return key ~= "" and key or "NONE"
+end
+
+local function addTextBlock(tab, key, style, slot, opts)
     local get, set = Helpers.CreateFlatAccessors(
         function(field) return DB.Get(Text.Path(key, slot, field)) end,
         function(field, value) DB.Set(Text.Path(key, slot, field), value) end,
         IDENTITY_MAP)
     tab:AddTextStyleBlock({
         get = get, set = set, apply = function() UF.RefreshText(key) end,
-        defaults = { size = fontObjectSize(slot) },
+        defaults = { size = fontObjectSize(style, slot), style = fontObjectStyle(style, slot) },
         hideToggle = { label = opts.hideLabel },
         -- The paired order offers Deep Shadow: these strings are Camelot's own
         -- and fed through SetText, which the copy hooks.
@@ -337,7 +360,7 @@ local function Render(panel, scrollContent, key, navKey)
     -- style.
     builder:AddSelector({
         label = "Style", emphasized = true,
-        description = "Modern is retail's frame. Camelot is the Classic rebuild.",
+        description = "Camelot is the Classic frame with Camelot's changes. Classic is the frame as Blizzard made it. Modern is retail's frame.",
         values = UF.STYLES, order = UF.STYLE_ORDER,
         get = function() return UF.StyleOf(key) end,
         set = function(v)
@@ -346,14 +369,64 @@ local function Render(panel, scrollContent, key, navKey)
         end,
     })
 
+    -- The target of target's own rule, vanilla's: no frame while the target
+    -- is the player.
+    if Settings.HIDE_WHEN_SELF[key] then
+        builder:AddToggle({ label = "Hide When Targeting Yourself",
+            description = "You are your own target's target then, so the frame would show you.",
+            get = function() return UF.HideWhenSelf(key) end,
+            set = function(v) UF.SetHideWhenSelf(key, v) end })
+    end
+
+    -- The frame's size, whatever style it draws. A write in combat lands at
+    -- regen.
+    builder:AddSlider({ label = "Scale", min = UF.SCALE_MIN * 100, max = UF.SCALE_MAX * 100, step = 5,
+        minLabel = (UF.SCALE_MIN * 100) .. "%", maxLabel = (UF.SCALE_MAX * 100) .. "%",
+        get = function() return math.floor(UF.GetScale(key) * 100 + 0.5) end,
+        set = function(v) UF.SetScale(key, (tonumber(v) or 100) / 100) end })
+
+    if Settings.COMBO_POINTS[key] then
+        builder:AddToggle({ label = "Combo Points",
+            get = function() return UF.ShowComboPoints(key) end,
+            set = function(v) UF.SetComboPoints(key, v) end })
+    end
+
+    -- Where the frame sits: hanging off another frame, or placed in Edit
+    -- Mode. The frame's Edit Mode dialog carries the same rows.
+    local attach = Settings.ATTACH[key]
+    if attach then
+        local range = Settings.ATTACH_OFFSET_RANGE
+        local function offsetSlider(inner, label, axis, pick)
+            inner:AddSlider({ label = label, min = -range, max = range, step = 1,
+                minLabel = tostring(-range), maxLabel = "+" .. range,
+                disabled = function() return not UF.IsAttachOn(key) end,
+                get = function() return pick(UF.AttachOffsets(key)) end,
+                set = function(v) UF.SetAttachOffset(key, axis, v) end })
+        end
+        builder:AddCollapsibleSection({ title = "Position", componentId = navKey,
+            sectionKey = "position", defaultExpanded = false,
+            buildContent = function(_, inner)
+                inner:AddToggle({ label = attach.label,
+                    description = "The frame hangs off the " .. attach.hostName .. "'s right side and follows it. Off, it is placed in Edit Mode.",
+                    get = function() return UF.IsAttachOn(key) end,
+                    set = function(v)
+                        UF.SetAttach(key, v)
+                        inner:RefreshControls()
+                    end })
+                offsetSlider(inner, "Offset X", "x", function(x) return x end)
+                offsetSlider(inner, "Offset Y", "y", function(_, y) return y end)
+                inner:Finalize()
+            end })
+    end
+
     buildHealthSection(builder, key, navKey)
     buildAuraSection(builder, key, navKey)
 
     local tabs, content = {}, {}
 
-    -- The leather and the thinned reaction strip are the Camelot look's own;
-    -- retail's frame has neither.
-    if surface.backdrop and style == "camelot" then
+    -- The leather and the thinned reaction strip are the Camelot look's own,
+    -- which the Classic style starts without; retail's frame has neither.
+    if surface.backdrop and style ~= "modern" then
         tabs[#tabs + 1] = { key = "backdrop", label = "Backdrop" }
         content.backdrop = function(_, tab)
             local enabledPath = Text.Path(key, "backdrop", "enabled")
@@ -380,10 +453,10 @@ local function Render(panel, scrollContent, key, navKey)
 
     tabs[#tabs + 1] = { key = "nameText", label = "Name Text" }
     content.nameText = function(_, tab)
-        addTextBlock(tab, key, "name", {
+        addTextBlock(tab, key, style, "name", {
             hideLabel = "Disable Name Text",
             alignment = surface.width and {
-                kind = "align", default = key == "targettarget" and "LEFT" or "CENTER",
+                kind = "align", default = DB.Default(Text.Path(key, "name", "alignment")) or "CENTER",
             } or nil,
         })
         if surface.surname then
@@ -410,10 +483,12 @@ local function Render(panel, scrollContent, key, navKey)
         end
         if surface.width then
             local widthPath = Text.Path(key, "name", "width")
+            local box = tonumber(DB.Default(widthPath)) or 100
             tab:AddSlider({ label = "Name Width", min = 60, max = 160, step = 1,
-                description = "The box the name is cut to. Vanilla's is 100.",
-                get = function() return getNumber(widthPath, 100) end,
-                set = function(v) DB.Set(widthPath, tonumber(v) or 100); apply() end })
+                description = string.format("The box the name is cut to. %s is %d.",
+                    style == "modern" and "Blizzard's" or "Vanilla's", box),
+                get = function() return getNumber(widthPath, box) end,
+                set = function(v) DB.Set(widthPath, tonumber(v) or box); apply() end })
         end
         tab:Finalize()
     end
@@ -421,7 +496,7 @@ local function Render(panel, scrollContent, key, navKey)
     if surface.level then
         tabs[#tabs + 1] = { key = "levelText", label = "Level Text" }
         content.levelText = function(_, tab)
-            addTextBlock(tab, key, "level", {
+            addTextBlock(tab, key, style, "level", {
                 hideLabel = "Disable Level Text",
                 colorDescription = key ~= "player" and "Default is the level's difficulty color." or nil,
             })

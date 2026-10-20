@@ -1,8 +1,10 @@
 --------------------------------------------------------------------------------
 -- forever/unitframes/text.lua
--- The name and level text settings of the Classic unit frames, and what
--- applies them: each string's face, size and style, its box and offset, its
--- colour, and the leather backdrops behind it.
+-- The name and level text settings of the unit frames, one set per style of
+-- each frame, and what applies them: each string's face, size and style, its
+-- box and offset, its colour, and the leather backdrops behind it. The style
+-- itself, and the paths every unit frame setting takes, are here too, since
+-- this is the first unit frame file.
 --
 -- First of the unit frame files, and on both clients. Retail loads Camelot.toc
 -- for the settings panel and excludes the HUD, and the page (page.lua) has to
@@ -74,69 +76,135 @@ Text.FIT_MIN = 7
 --------------------------------------------------------------------------------
 -- Paths and defaults
 --------------------------------------------------------------------------------
+-- Every setting a unit frame page writes belongs to one style of the frame:
+-- the Camelot style's keys sit at unitFrames.<key>.<setting>, where they
+-- always were, the Classic style's at unitFrames.<key>.classic.<setting>,
+-- and the Modern style's at unitFrames.<key>.modern.<setting>, so a value
+-- set on one style never reaches another, and each style's defaults are its
+-- own. Classic is the Camelot frame with Blizzard's values: its defaults are
+-- vanilla's wherever Camelot's depart. The keys the frame keeps whatever shape it draws
+-- take no prefix: the style itself, the enable switch, the scale, the attach
+-- to another frame with its two offsets, which belong with the position
+-- (settings.lua, "Attach"), and the target of target's hide while the target
+-- is the player (settings.lua, "Hide when targeting yourself").
 
---- The dotted path of a unit frame text setting: Text.Path("player", "name",
---- "size"), or Text.Path("target", "stripOpacity").
+UF.STYLES = { camelot = "Camelot", classic = "Classic", modern = "Modern" }
+UF.STYLE_ORDER = { "camelot", "classic", "modern" }
+
+Text.STYLE_PREFIX = { camelot = "", classic = "classic.", modern = "modern." }
+Text.SHARED = { style = true, enabled = true, scale = true,
+                attach = true, attachX = true, attachY = true,
+                hideWhenSelf = true }
+
+--- The dotted path of one style's setting: Text.StylePath("player",
+--- "modern", "name", "size").
+function Text.StylePath(key, style, ...)
+    local first = ...
+    local prefix = Text.SHARED[first] and "" or Text.STYLE_PREFIX[style] or ""
+    return "unitFrames." .. key .. "." .. prefix .. table.concat({ ... }, ".")
+end
+
+--- Which style a frame draws, from its stored setting: "camelot", "classic"
+--- or "modern", anything else read as camelot.
+function UF.StyleOf(key)
+    local style = DB.Get(Text.StylePath(key, "camelot", "style"))
+    return UF.STYLES[style] and style or "camelot"
+end
+
+--- The dotted path of a unit frame setting for the style the frame is on:
+--- Text.Path("player", "name", "size"), or Text.Path("target", "stripOpacity").
 function Text.Path(key, ...)
-    return "unitFrames." .. key .. "." .. table.concat({ ... }, ".")
+    return Text.StylePath(key, UF.StyleOf(key), ...)
 end
 
 function Text.Get(key, ...)
     return DB.Get(Text.Path(key, ...))
 end
 
+-- The Modern style's name box per frame: the box the client's own frame
+-- gives the name, read off the Forever build. The specs under modern/ carry
+-- the same numbers; they are here because this file registers the defaults
+-- and loads where no spec does.
+Text.MODERN_NAME = {
+    player = { width = 116, alignment = "CENTER" },
+    target = { width = 117, alignment = "CENTER" },
+    focus = { width = 117, alignment = "CENTER" },
+    targettarget = { width = 68, alignment = "CENTER" },
+    pet = { width = 68, alignment = "CENTER" },
+}
+
 do
     local map = {}
-    local function registerString(key, slot, colorMode, fontFace)
-        local p = Text.Path(key, slot) .. "."
+    -- A nil face, size or style reads the font object as it is, and the page
+    -- shows that number.
+    local function registerString(style, key, slot, colorMode, fontFace, fontStyle)
+        local p = Text.StylePath(key, style, slot) .. "."
         map[p .. "hidden"] = false
-        -- Nil reads the font object's own face, which is vanilla's and the
-        -- name's; the level takes the bold.
         map[p .. "fontFace"] = fontFace
-        -- Vanilla's is the font object's own shadow.
-        map[p .. "style"] = "DEEPSHADOWTHICKOUTLINE"
-        -- No size: nil is the font object's own, and the page shows that number.
-        -- Vanilla colours no name: "default" is the gold.
+        map[p .. "style"] = fontStyle
         map[p .. "colorMode"] = colorMode
         map[p .. "color"] = GOLD
         map[p .. "offsetX"] = 0
         map[p .. "offsetY"] = 0
     end
     for _, key in ipairs(UF.ORDER) do
-        registerString(key, "name", "class", nil)
-        -- The target's level keeps vanilla's difficulty colour; the player's
-        -- has no such read and wears the class colour beside the name.
-        registerString(key, "level", key == "player" and "class" or "default", "FRIZQUAD_BOLD")
+        local function set(style, value, ...) map[Text.StylePath(key, style, ...)] = value end
+
+        -- Camelot: the first screenshots' look (the file header). The name's
+        -- face is the font object's own, vanilla's; the level takes the
+        -- bold. Vanilla's style is the font object's own shadow, and vanilla
+        -- colours no name: "default" is the gold. The target's level keeps
+        -- vanilla's difficulty colour; the player's has no such read and
+        -- wears the class colour beside the name.
+        registerString("camelot", key, "name", "class", nil, "DEEPSHADOWTHICKOUTLINE")
+        registerString("camelot", key, "level", key == "player" and "class" or "default",
+            "FRIZQUAD_BOLD", "DEEPSHADOWTHICKOUTLINE")
         -- The name box as the XML has it: 100 wide, centred, left on the small frame.
-        map[Text.Path(key, "name", "alignment")] = key == "targettarget" and "LEFT" or "CENTER"
-        map[Text.Path(key, "name", "width")] = 100
-        -- Read only where the surface has `surname`. Vanilla had no surnames.
-        map[Text.Path(key, "name", "hideSurname")] = false
-        -- Read only where the surface has `fit`. Vanilla truncates a long
-        -- name at the font object's size.
-        map[Text.Path(key, "name", "fit")] = true
-        map[Text.Path(key, "name", "fitMin")] = Text.FIT_MIN
-        -- Vanilla draws nothing where the leather goes.
-        map[Text.Path(key, "backdrop", "enabled")] = true
-        map[Text.Path(key, "backdrop", "opacity")] = Text.BACKDROP_OPACITY
-        -- Vanilla's strip is opaque.
-        map[Text.Path(key, "stripOpacity")] = Text.STRIP_OPACITY
+        set("camelot", key == "targettarget" and "LEFT" or "CENTER", "name", "alignment")
+        set("camelot", 100, "name", "width")
+        -- Vanilla draws nothing where the leather goes, and its strip is opaque.
+        set("camelot", true, "backdrop", "enabled")
+        set("camelot", Text.BACKDROP_OPACITY, "backdrop", "opacity")
+        set("camelot", Text.STRIP_OPACITY, "stripOpacity")
+
+        -- Classic: the same frame as vanilla draws it. The font objects
+        -- answer for the face, the size and the shadow, "default" is the gold
+        -- and the target's difficulty colour, the box is the XML's, no
+        -- leather, and the strip opaque.
+        registerString("classic", key, "name", "default", nil, nil)
+        registerString("classic", key, "level", "default", nil, nil)
+        set("classic", key == "targettarget" and "LEFT" or "CENTER", "name", "alignment")
+        set("classic", 100, "name", "width")
+        set("classic", false, "backdrop", "enabled")
+        set("classic", Text.BACKDROP_OPACITY, "backdrop", "opacity")
+        set("classic", 100, "stripOpacity")
+
+        -- Modern: the strings as the client's own frame draws them, so the
+        -- font objects answer for the face, the size and the style, and
+        -- "default" is each one's own colour. The name box is the client's.
+        registerString("modern", key, "name", "default", nil, nil)
+        registerString("modern", key, "level", "default", nil, nil)
+        set("modern", Text.MODERN_NAME[key].alignment, "name", "alignment")
+        set("modern", Text.MODERN_NAME[key].width, "name", "width")
+
+        for _, style in ipairs(UF.STYLE_ORDER) do
+            -- Read only where the surface has `surname`. Vanilla had no surnames.
+            set(style, false, "name", "hideSurname")
+            -- Read only where the surface has `fit`: Camelot's shrink, on but
+            -- in the Classic style; Blizzard truncates a long name at the
+            -- font's size.
+            set(style, style ~= "classic", "name", "fit")
+            set(style, Text.FIT_MIN, "name", "fitMin")
+        end
     end
     DB.RegisterDefaults(map)
 
-    -- Blizzard Default: vanilla's values for every departure above. false on
-    -- the level's face is the font object's own, which nil cannot say over
-    -- the bold.
+    -- Blizzard Default: each preset start draws a style of its own
+    -- (settings.lua, "Style"), Classic or Modern, so no key here has a
+    -- preset value. The Modern keys depart from the client on the fit alone.
     local stock = {}
     for _, key in ipairs(UF.ORDER) do
-        for _, slot in ipairs({ "name", "level" }) do
-            stock[Text.Path(key, slot, "style")] = "SHADOW"
-            stock[Text.Path(key, slot, "colorMode")] = "default"
-        end
-        stock[Text.Path(key, "level", "fontFace")] = false
-        stock[Text.Path(key, "name", "fit")] = false
-        stock[Text.Path(key, "backdrop", "enabled")] = false
-        stock[Text.Path(key, "stripOpacity")] = 100
+        stock[Text.StylePath(key, "modern", "name", "fit")] = false
     end
     DB.RegisterStock(stock)
 end
@@ -157,6 +225,16 @@ function Text.Color(inst, slot, dr, dg, db, unit)
     end
     local r, g, b = addon.ResolveColorRGBA(colorMode, Text.Get(inst.key, slot, "color"),
         { fbR = dr, fbG = dg, fbB = db, fbA = 1 })
+    return r, g, b
+end
+
+--- The colour a string's "default" mode draws: the spec's own where the slot
+--- names one (the Modern level is white in its circle), else the caller's,
+--- the gold for a name.
+function Text.DefaultColor(inst, slot, r, g, b)
+    local def = inst.spec and inst.spec.Text and inst.spec.Text[slot]
+    local c = def and def.defaultColor
+    if c then return c[1], c[2], c[3] end
     return r, g, b
 end
 
@@ -189,34 +267,16 @@ function Text.FitsName(key)
     return Text.SURFACE[key].fit and Text.Get(key, "name", "fit") ~= false
 end
 
--- Whether the profile holds a value at path, as against the default
--- answering for it.
-local function isStored(path)
-    for _, key in ipairs(DB.StoredKeys("settings")) do
-        if key == path then return true end
-    end
-    return false
-end
-
---- The name box's width: the stored value where the player set one, else
---- the spec's own box. One default serves both styles of a frame, and the
---- boxes differ: 100 on the Classic frames, retail's 96, 90 and 68 on the
---- Modern ones, so the spec answers until the player writes a number.
+--- The name box's width: the style's own setting, whose default is the
+--- shape's box (100 on the Classic frames, the client's on the Modern ones,
+--- Text.MODERN_NAME), with the spec's box behind it.
 function Text.NameWidth(inst)
-    local def = inst.spec.Text.name
-    local path = Text.Path(inst.key, "name", "width")
-    if isStored(path) then return tonumber(DB.Get(path)) or def.w end
-    return def.w
+    return tonumber(Text.Get(inst.key, "name", "width")) or inst.spec.Text.name.w
 end
 
---- The name's alignment the same way: the stored value, else the spec's
---- justify where it names one (the Modern frames read left), else the
---- registered default.
+--- The name's alignment the same way, with the spec's justify behind it.
 function Text.NameJustify(inst)
-    local def = inst.spec.Text.name
-    local path = Text.Path(inst.key, "name", "alignment")
-    if isStored(path) then return DB.Get(path) end
-    return def.justifyH or DB.Get(path)
+    return Text.Get(inst.key, "name", "alignment") or inst.spec.Text.name.justifyH or "CENTER"
 end
 
 --- Draw a string in its font at a given size.
@@ -250,8 +310,10 @@ local function applyString(inst, slot, fs, def)
     if def.justifyV then fs:SetJustifyV(def.justifyV) end
 
     local nudge = def.nudge
+    -- A string whose def names a region hangs off that region, as at build.
+    local rel = def.relTo and inst.regions[def.relTo] or host
     fs:ClearAllPoints()
-    fs:SetPoint(def.point, host, def.relPoint or def.point,
+    fs:SetPoint(def.point, rel, def.relPoint or def.point,
         (def.x or 0) + (nudge and nudge.x or 0) + (tonumber(Text.Get(key, slot, "offsetX")) or 0),
         (def.y or 0) + (nudge and nudge.y or 0) + (tonumber(Text.Get(key, slot, "offsetY")) or 0))
 

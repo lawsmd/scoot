@@ -302,7 +302,10 @@ end
 -- The target's two blocks: the first at vanilla's start, the second anchored
 -- beyond the first container. A container is never measured; its rect is
 -- secret. An empty container lays out at no size, so the second block then
--- sits where the first would have.
+-- sits where the first would have. A spec that names a region in relTo
+-- hangs the first block off that region rather than the frame: the client's
+-- own target frame anchors its rows to the frame art, which changes size by
+-- classification, and the Modern target follows it.
 local function layoutFull(inst)
     local spec, rows = inst.spec.Auras, inst.auraRows
     local w, h = iconDims(inst)
@@ -320,13 +323,14 @@ local function layoutFull(inst)
     for _, group in ipairs({ "Buffs", "Debuffs" }) do
         AuraRow.SetLayout(rows[group], layoutOpts(inst, w, h, anchorPoint, growY, width))
     end
+    local rel = spec.relTo and inst.regions[spec.relTo] or inst.frame
     if above then
-        AuraRow.SetPoint(rows[first], "BOTTOMLEFT", inst.frame, "TOPLEFT", spec.x, spec.mirrorY)
+        AuraRow.SetPoint(rows[first], "BOTTOMLEFT", rel, "TOPLEFT", spec.x, spec.mirrorY)
         if second then
             AuraRow.SetPoint(rows[second], "BOTTOMLEFT", rows[first].container, "TOPLEFT", 0, spec.blockGap)
         end
     else
-        AuraRow.SetPoint(rows[first], "TOPLEFT", inst.frame, "BOTTOMLEFT", spec.x, spec.y)
+        AuraRow.SetPoint(rows[first], "TOPLEFT", rel, "BOTTOMLEFT", spec.x, spec.y)
         if second then
             AuraRow.SetPoint(rows[second], "TOPLEFT", rows[first].container, "BOTTOMLEFT", 0, -spec.blockGap)
         end

@@ -11,7 +11,9 @@
 -- and the player cast bar while it is locked to the player frame. Parking
 -- TargetFrame takes TargetFrameToT and the target cast bar. The pet and
 -- target-of-target rows below cover the case where Camelot draws the small
--- frame and Blizzard still draws the large one.
+-- frame and Blizzard still draws the large one. ComboFrame is its own
+-- top-level frame anchored to TargetFrame, so it goes with the target's row
+-- (combopoints.lua draws the points).
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
@@ -27,7 +29,7 @@ local OWNER = "camelotUnitFrames"
 -- layout pass never re-parents them and none needs a quiet list.
 local BLIZZARD_FRAME = {
     player       = { name = "PlayerFrame", method = "park" },
-    target       = { name = "TargetFrame", method = "park" },
+    target       = { name = "TargetFrame", method = "park", also = { "ComboFrame" } },
     focus        = { name = "FocusFrame", method = "park" },
     targettarget = { name = "TargetFrameToT", method = "alpha" },
     pet          = { name = "PetFrame", method = "alpha" },
@@ -75,6 +77,14 @@ function Suppression.Apply()
                     addon.NativeFrame:Suppress(frame, OWNER, row.method)
                 else
                     addon.NativeFrame:Release(frame, OWNER)
+                end
+                for _, name in ipairs(row.also or {}) do
+                    local other = _G[name]
+                    if other and want then
+                        addon.NativeFrame:Suppress(other, OWNER, "park")
+                    elseif other then
+                        addon.NativeFrame:Release(other, OWNER)
+                    end
                 end
                 suppressed[key] = want or nil
             end

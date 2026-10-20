@@ -196,6 +196,15 @@ local function applyIcons(inst)
     end
 end
 
+-- The reads the Modern target frame shares (modern/target.lua): the level
+-- or the skull, and the portrait's tint. Both frames name the same regions
+-- and strings, and the client's own frame makes the same reads in both
+-- styles.
+addon.UnitFrames.TargetState = {
+    ApplyLevel = applyLevel,
+    ApplyPortraitTint = applyPortraitTint,
+}
+
 local function paintState(inst)
     applyClassification(inst)
     applyLevel(inst)

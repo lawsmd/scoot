@@ -1,10 +1,11 @@
 --------------------------------------------------------------------------------
 -- forever/unitframes/modern/player.lua
--- The Modern player frame: retail's PlayerFrame as a second style of the
--- player unit frame, on the painter in frame.lua over the art in
--- artplayer.lua beside this file. This file is the state PlayerFrame.lua
--- keeps: the rested and in-combat art, the rest loop, the leader or guide
--- icon, the role icon, the PvP badge, and the raid group indicator.
+-- The Modern player frame: the player frame this client draws itself, as a
+-- second style of the player unit frame, on the painter in frame.lua over
+-- the art in artplayer.lua beside this file. This file is the state
+-- PlayerFrame.lua keeps under the client's override layer: the rested and
+-- in-combat art, the rest loop, the leader or guide icon, the PvP badge, the
+-- raid group indicator and the ready check.
 --
 -- Every read below that decides something goes through plain(), which hands
 -- back nil for a secret or a missing API, and a nil leaves the resting look.
@@ -14,16 +15,17 @@
 -- Left out, as the Classic frame leaves them out: the vehicle art and the
 -- pet-to-player swap, the hit indicator, the animated health loss, the power
 -- feedback and full-power pulses, the prestige portrait and the PvP timer,
--- the play-time icon, the class bar container. The threat flash region is
--- built hidden and nothing drives it yet. The ready check and the max-health
--- loss are the parity phase's.
+-- the play-time icon, the class bar container. The role icon is left out
+-- because the client's override never shows one on this frame. The threat
+-- flash region is built hidden and nothing drives it yet. The max health
+-- loss and the mana cost are the bars' own (barsegments.lua, beside the
+-- painter).
 --------------------------------------------------------------------------------
 
 local addonName, addon = ...
 
 local Frame = addon.UnitFrames.Frame
 local Art = addon.UnitFrames.Art
-local Shared = Art.Modern.Shared
 
 local function plain(fn, ...)
     if not fn then return nil end
@@ -36,23 +38,16 @@ end
 -- State art
 --------------------------------------------------------------------------------
 
--- PlayerFrame_UpdateStatus, in its order: resting, then auto-attacking
--- (PLAYER_ENTER_COMBAT), then on the hate list (PLAYER_REGEN_DISABLED),
--- which shows the swords alone. Retail's hate-list branch leaves the glow as
--- it was; this one hides it, as the Classic frame does. The two vertex
--- colours are Blizzard's. The corner embellishment and the attack icon sit
--- on the same spot, and one of them shows.
+-- PlayerFrame_UpdateStatus in the client's own order: auto-attacking
+-- (PLAYER_ENTER_COMBAT) first, then on the hate list (PLAYER_REGEN_DISABLED),
+-- which shows the swords alone, then resting. Blizzard's hate-list branch
+-- leaves the glow as it was; this one hides it, as the Classic frame does.
+-- The two vertex colours are Blizzard's. The corner embellishment and the
+-- attack icon sit on the same spot, and one of them shows.
 local function applyStateArt(inst)
     local r = inst.regions
-    local resting = IsResting()
 
-    if resting then
-        r.statusTexture:SetVertexColor(1.0, 0.88, 0.25, 1.0)
-        Frame.SetPulsed(inst, "statusTexture", true)
-        Frame.SetPulsed(inst, "restLoop", true)
-        r.attackIcon:Hide()
-        r.cornerIcon:Show()
-    elseif inst.autoAttacking then
+    if inst.autoAttacking then
         r.statusTexture:SetVertexColor(1.0, 0.0, 0.0, 1.0)
         Frame.SetPulsed(inst, "statusTexture", true)
         Frame.SetPulsed(inst, "restLoop", false)
@@ -63,6 +58,12 @@ local function applyStateArt(inst)
         Frame.SetPulsed(inst, "restLoop", false)
         r.attackIcon:Show()
         r.cornerIcon:Hide()
+    elseif IsResting() then
+        r.statusTexture:SetVertexColor(1.0, 0.88, 0.25, 1.0)
+        Frame.SetPulsed(inst, "statusTexture", true)
+        Frame.SetPulsed(inst, "restLoop", true)
+        r.attackIcon:Hide()
+        r.cornerIcon:Show()
     else
         Frame.SetPulsed(inst, "statusTexture", false)
         Frame.SetPulsed(inst, "restLoop", false)
@@ -100,7 +101,7 @@ local function buildGroupIndicator(inst)
     local art = inst.artFrame
     local plate = CreateFrame("Frame", nil, art)
     plate:SetSize(10, 16)
-    plate:SetPoint("BOTTOMRIGHT", inst.frame, "TOPLEFT", 210, -29)
+    plate:SetPoint("BOTTOMRIGHT", inst.frame, "TOPLEFT", 210, -29 + (inst.spec.lift or 0))
     plate:SetFrameLevel(art:GetFrameLevel())
 
     local left = plate:CreateTexture(nil, "BACKGROUND")
@@ -147,50 +148,47 @@ local function applyGroupIndicator(inst)
     end
 end
 
--- PlayerFrame_UpdateRolesAssigned: the role icon inside an instance, and
--- the level hidden while it shows, since both sit on the same spot. Retail
--- reads the enum; the string form stands in where the enum reader is
--- missing.
-local ROLE_ATLAS = {
-    TANK = Shared.roleTank,
-    HEALER = Shared.roleHealer,
-    DAMAGER = Shared.roleDamage,
-}
+--------------------------------------------------------------------------------
+-- Ready check
+--------------------------------------------------------------------------------
 
-local function roleToken()
-    local role = plain(UnitGroupRolesAssignedEnum, "player")
-    if type(role) == "number" and Enum.LFGRole then
-        if role == Enum.LFGRole.Tank then return "TANK" end
-        if role == Enum.LFGRole.Healer then return "HEALER" end
-        if role == Enum.LFGRole.Damage then return "DAMAGER" end
-        return nil
-    end
-    role = plain(UnitGroupRolesAssigned, "player")
-    return ROLE_ATLAS[role] and role or nil
+-- PlayerFrame_UpdateReadyCheck: the client's icon over the portrait, 40 by
+-- 40 and two levels over the art, on ReadyCheck.lua's own functions, which
+-- write only the frame they are handed. A client without the template or
+-- the functions builds none.
+local function buildReadyCheck(inst)
+    if type(_G.ReadyCheck_Start) ~= "function" then return end
+    local ok, frame = pcall(CreateFrame, "Frame", nil, inst.artFrame, "ReadyCheckStatusTemplate")
+    if not ok or not frame then return end
+    frame:SetSize(40, 40)
+    frame:SetPoint("CENTER", inst.regions.portrait, "CENTER")
+    frame:SetFrameLevel(inst.artFrame:GetFrameLevel() + 2)
+    frame:Hide()
+    inst.readyCheck = frame
 end
 
-local function inInstance()
-    local ok, _, instanceType = pcall(GetInstanceInfo)
-    if not ok or type(instanceType) ~= "string" or issecretvalue(instanceType) then return false end
-    return instanceType ~= "none"
-end
-
-local function applyRole(inst)
-    local icon = inst.regions.roleIcon
-    local atlas
-    if not inst.previewStandIn and inInstance() then
-        local token = roleToken()
-        atlas = token and ROLE_ATLAS[token] or nil
-    end
-    if atlas and Art.AtlasResolves(atlas) then
-        if icon.camelotAtlas ~= atlas then Art.SetAtlas(icon, atlas, false) end
-        icon:Show()
+-- Not part of paintState: after the check ends the status reads nil while
+-- the icon fades, and a repaint would cut the fade short.
+local function applyReadyCheck(inst)
+    local frame = inst.readyCheck
+    if not frame then return end
+    local status = not inst.previewStandIn and plain(_G.GetReadyCheckStatus, "player") or nil
+    if status == "ready" then
+        pcall(_G.ReadyCheck_Confirm, frame, 1)
+    elseif status == "notready" then
+        pcall(_G.ReadyCheck_Confirm, frame, 0)
+    elseif status then
+        pcall(_G.ReadyCheck_Start, frame)
     else
-        atlas = nil
-        icon:Hide()
+        frame:Hide()
     end
-    if inst.levelText then
-        inst.levelText:SetShown(not atlas and not inst.textHidden.level)
+end
+
+local function finishReadyCheck(inst)
+    local frame = inst.readyCheck
+    if not frame then return end
+    if not pcall(_G.ReadyCheck_Finish, frame, _G.DEFAULT_READY_CHECK_STAY_TIME or 10) then
+        frame:Hide()
     end
 end
 
@@ -198,44 +196,11 @@ end
 -- PvP
 --------------------------------------------------------------------------------
 
--- PlayerFrame_UpdatePvPStatus. Blizzard's own writer first, on a texture
--- Camelot owns: behind a secure delegate it reads the faction, the
--- free-for-all flag and the honor badge, and writes the atlas and the shown
--- state, secret-wrapped where the unit's identity is. Only the badge is
--- handed over, no prestige pieces, which the writer tolerates. A client
--- without the writer, or a refusal, takes the plain path below with the same
--- three names, as the Classic target frame does with the vanilla files.
+-- PlayerFrame_UpdatePvPStatus, through the badge writer the Modern frames
+-- share (art.lua in this folder, Modern.ApplyPvP); the player's own frame
+-- checks for a mercenary, as the client's call does.
 local function applyPvP(inst)
-    local icon = inst.regions.pvpIcon
-    if inst.previewStandIn then
-        icon:Hide()
-        return
-    end
-    local util = _G.UnitFrameUtil
-    if type(util) == "table" and util.UpdateUnitPvPIndicator then
-        if pcall(util.UpdateUnitPvPIndicator, { pvpIcon = icon }, inst.unit, true) then
-            return
-        end
-    end
-
-    local name
-    if plain(UnitIsPVPFreeForAll, inst.unit) == true then
-        name = Shared.pvpFFA
-    else
-        local faction = plain(UnitFactionGroup, inst.unit)
-        if (faction == "Horde" or faction == "Alliance") and plain(UnitIsPVP, inst.unit) == true then
-            if plain(UnitIsMercenary, inst.unit) == true then
-                faction = faction == "Horde" and "Alliance" or "Horde"
-            end
-            name = faction == "Horde" and Shared.pvpHorde or Shared.pvpAlliance
-        end
-    end
-    if name and Art.AtlasResolves(name) then
-        if icon.camelotAtlas ~= name then Art.SetAtlas(icon, name, true) end
-        icon:Show()
-    else
-        icon:Hide()
-    end
+    Art.Modern.ApplyPvP(inst, true)
 end
 
 --------------------------------------------------------------------------------
@@ -245,7 +210,6 @@ end
 local function paintState(inst)
     applyStateArt(inst)
     applyLeader(inst)
-    applyRole(inst)
     applyPvP(inst)
     applyGroupIndicator(inst)
 end
@@ -253,6 +217,7 @@ end
 local function applyGroup(inst)
     applyLeader(inst)
     applyGroupIndicator(inst)
+    applyReadyCheck(inst)
 end
 
 local function onUnitEvent(inst, event)
@@ -285,6 +250,7 @@ Frame.Define({
         local ok, on = pcall(IsCurrentSpell, 6603)
         inst.autoAttacking = ok and on == true
         buildGroupIndicator(inst)
+        buildReadyCheck(inst)
     end,
 
     paintState = paintState,
@@ -295,19 +261,18 @@ Frame.Define({
         PLAYER_REGEN_ENABLED = applyStateArt,
         PLAYER_ENTER_COMBAT = setAutoAttacking(true),
         PLAYER_LEAVE_COMBAT = setAutoAttacking(false),
-        -- Retail re-reads the role on entering the world, which is also the
-        -- edge into and out of an instance.
         PLAYER_ENTERING_WORLD = function(inst)
             inst.autoAttacking = false
             applyStateArt(inst)
-            applyRole(inst)
         end,
         PLAYER_DEAD = Frame.Paint,
         PLAYER_ALIVE = Frame.Paint,
         PLAYER_UNGHOST = Frame.Paint,
         PARTY_LEADER_CHANGED = applyGroup,
         GROUP_ROSTER_UPDATE = applyGroup,
-        PLAYER_ROLES_ASSIGNED = applyRole,
         HONOR_LEVEL_UPDATE = applyPvP,
+        READY_CHECK = applyReadyCheck,
+        READY_CHECK_CONFIRM = applyReadyCheck,
+        READY_CHECK_FINISHED = finishReadyCheck,
     },
 })
