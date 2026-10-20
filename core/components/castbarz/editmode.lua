@@ -39,6 +39,14 @@ CBZ._ApplyBarPosition = ApplyBarPosition
 function CBZ._RestorePosition(bar)
     CBZ._RefreshEditModeName(bar)
 
+    -- A hosted bar has no position of its own: the host's frame places it
+    -- (engine.lua, "hosted"), and it was never registered as a positionable.
+    local row = CBZ._RowForBarKey(bar.barKey)
+    if row and row.hosted then
+        if CBZ._ApplyHostedPosition then CBZ._ApplyHostedPosition(bar, row) end
+        return
+    end
+
     -- Ahead of the layout check on purpose: a snapped bar is positioned by its
     -- anchor, so it must not sit unplaced in the window before the first layout
     -- callback the way a free-positioned one has no choice but to.

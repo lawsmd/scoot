@@ -119,6 +119,17 @@ function Util.BuildText(host, bar, def)
     return text
 end
 
+-- The fill's color, under pcall because _PickColor's components are secret on
+-- a restricted unit, and whether SetStatusBarColor takes them is unmeasured.
+-- The player's own casts, every bar today, are always plain.
+function Util.SetFill(bar, color)
+    local pb = bar.progressBar
+    if not pcall(pb.SetStatusBarColor, pb, color[1], color[2], color[3]) then
+        local c = bar.startColor or COLORS.cast
+        pb:SetStatusBarColor(c[1], c[2], c[3])
+    end
+end
+
 -- An alpha ramp owned by the texture it lights, held at the end: the engine's
 -- fade takes the whole bar down under it, so there is no OnUpdate.
 function Util.BuildFadeIn(texture, duration)
@@ -226,14 +237,20 @@ end
 function CBZ._CreateBar(row)
     local look = ResolveLook(row.unitKey)
 
-    local bar = CreateFrame("Frame", row.frameName, UIParent)
+    -- A hosted bar is a child of the frame that places it (engine.lua,
+    -- "hosted"), so it inherits that frame's scale, alpha, shown state and
+    -- strata; a free bar stands on UIParent at the HUD strata.
+    local parent = row.hosted and row.parent and row.parent() or UIParent
+    local bar = CreateFrame("Frame", row.frameName, parent)
     bar:SetSize(look.width, look.height)
     bar:SetPoint("CENTER")
-    -- Reset Position applies the default in the bar's own units, which a scale
-    -- above 100% can carry past the screen edge.
-    bar:SetClampedToScreen(true)
     bar:Hide()
-    addon.Strata.ApplyHUD(bar)
+    if not row.hosted then
+        -- Reset Position applies the default in the bar's own units, which a
+        -- scale above 100% can carry past the screen edge.
+        bar:SetClampedToScreen(true)
+        addon.Strata.ApplyHUD(bar)
+    end
 
     bar.barKey = row.barKey
     bar.unitKey = row.unitKey
@@ -310,12 +327,15 @@ local function ApplyFrameColor(bar)
 end
 
 -- A font setting left unset keeps the look's font object, which is what makes
--- the stock bar exact: GameFontHighlight carries its own shadow.
+-- the stock bar exact: GameFontHighlight carries its own shadow. The Resource
+-- Display's row answers size and style from its own font object, so its text
+-- always takes the lower path.
 local function ApplyFont(bar)
-    local face = CBZ._GetSetting("fontFace")
-    local size = tonumber(CBZ._GetSetting("fontSize"))
-    local style = CBZ._GetSetting("fontStyle")
     local text = bar.set.text
+
+    local face = CBZ._GetSetting("fontFace", bar.unitKey)
+    local size = tonumber(CBZ._GetSetting("fontSize", bar.unitKey))
+    local style = CBZ._GetSetting("fontStyle", bar.unitKey)
 
     if face == nil and size == nil and style == nil then
         text:SetFontObject(bar.look.text.fontObject)
@@ -387,8 +407,11 @@ function CBZ._SetSparkShown(bar, shown)
     if painter.sparkShown then painter.sparkShown(bar, bar.set, shown) end
 end
 
+-- A look whose spark is part of its art (the Resource Display's pip) keeps it
+-- on whatever the Show Spark row says.
 function CBZ._RefreshSparkVisibility(bar)
-    CBZ._SetSparkShown(bar, CBZ._GetSetting("showSpark") ~= false)
+    local shown = bar.look.sparkAlways == true or CBZ._GetSetting("showSpark", bar.unitKey) ~= false
+    CBZ._SetSparkShown(bar, shown)
 end
 
 --------------------------------------------------------------------------------
@@ -496,16 +519,7 @@ function Classic.layout(bar, set, look, barW, barH, growW, growH)
     Util.AnchorSpark(set.spark, bar.progressBar, look.spark.y * sparkRatio)
 end
 
--- pcall because _PickColor's components are secret on a restricted unit, and
--- whether SetStatusBarColor takes them is unmeasured. The player's own casts,
--- the only bar today, are always plain.
-local function SetFill(bar, color)
-    local pb = bar.progressBar
-    if not pcall(pb.SetStatusBarColor, pb, color[1], color[2], color[3]) then
-        local c = bar.startColor or COLORS.cast
-        pb:SetStatusBarColor(c[1], c[2], c[3])
-    end
-end
+local SetFill = Util.SetFill
 
 function Classic.setFill(bar, set)
     bar.progressBar:SetStatusBarTexture(Art.Paths.fill)

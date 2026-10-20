@@ -82,14 +82,22 @@ for i = 1, CBZ.NUM_BOSS_BARS do
     }
 end
 
--- Which bars Z currently owns. Nothing is ever released that was not suppressed
--- first: zero-touch means a profile that never enabled Z must not see this file
--- touch a Blizzard frame in either direction.
+-- Which Blizzard bars Z currently owns, keyed by BLIZZARD_BAR's keys. Nothing
+-- is ever released that was not suppressed first: zero-touch means a profile
+-- that never enabled Z must not see this file touch a Blizzard frame in
+-- either direction.
 local suppressed = {}
 
-local function ResolveFrame(barKey)
-    local row = BLIZZARD_BAR[barKey]
+local function ResolveFrame(key)
+    local row = BLIZZARD_BAR[key]
     return row and _G[row.name] or nil
+end
+
+-- The Blizzard bar a row claims: its own key, or the unit it stands in for
+-- (engine.lua, "hosted"): Camelot's Resource Display bar keeps the player's
+-- Blizzard bar parked while the player's own Camelot bar is off.
+local function BlizzardKeyFor(row)
+    return row.standsInFor or row.barKey
 end
 
 --- Re-hide one Blizzard bar that has just un-hidden itself.
@@ -99,8 +107,10 @@ end
 --- cast. A parked frame ignores alpha entirely and falls through harmlessly.
 --- Called from _StartCast, so one seam covers casts, channels and empowers.
 function CBZ._ReassertSuppression(barKey)
-    if not suppressed[barKey] then return end
-    local frame = ResolveFrame(barKey)
+    local row = CBZ._RowForBarKey(barKey)
+    local key = row and BlizzardKeyFor(row) or barKey
+    if not suppressed[key] then return end
+    local frame = ResolveFrame(key)
     if frame then addon.NativeFrame:Reapply(frame) end
 end
 
@@ -126,23 +136,32 @@ end
 function CBZ._ApplySuppression()
     local moduleOn = CBZ._IsModuleEnabled()
 
-    for _, row in ipairs(CBZ.BARS) do
-        local barKey = row.barKey
-        local want = (moduleOn
-            and CBZ._IsUnitEnabled(row.unitKey)
-            and BLIZZARD_BAR[barKey] ~= nil) or false
+    -- Every claim first, then the transitions: two rows can claim one Blizzard
+    -- bar (a unit's own row and a hosted row standing in for it), and judging
+    -- them one at a time would release the frame and re-park it on the same
+    -- pass, two re-parents through Blizzard's layout handlers for a state that
+    -- has not moved. Aggregated, a switch between the two rows is a no-op here.
+    local want = {}
+    if moduleOn then
+        for _, row in ipairs(CBZ.BARS) do
+            if CBZ._IsUnitEnabled(row.unitKey) then
+                want[BlizzardKeyFor(row)] = true
+            end
+        end
+    end
 
-        if want ~= (suppressed[barKey] == true) then
-            local frame = ResolveFrame(barKey)
+    for key, bar in pairs(BLIZZARD_BAR) do
+        local w = want[key] == true
+        if w ~= (suppressed[key] == true) then
+            local frame = ResolveFrame(key)
             if frame then
-                if want then
-                    local bar = BLIZZARD_BAR[barKey]
+                if w then
                     addon.NativeFrame:Suppress(frame, OWNER, bar.method, bar.quiet and bar.quiet(frame))
                 else
                     addon.NativeFrame:Release(frame, OWNER)
                 end
             end
-            suppressed[barKey] = want or nil
+            suppressed[key] = w or nil
         end
     end
 end

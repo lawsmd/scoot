@@ -153,16 +153,23 @@ end
 --- Anchoring is LIVE: the bar follows its unit frame when that frame is moved in
 --- Edit Mode, with no position math and no re-sync. The requirement is met by
 --- construction rather than by watching for changes.
-function CBZ._ApplySnap(bar)
+--- The snap this bar renders with right now: the anchor frame, the bar's
+--- point, the anchor's point, and the offsets in UI units. nil when the bar
+--- is free or its anchor does not exist.
+function CBZ._SnapSpec(bar)
     local pair = SNAP_ANCHORS[CBZ._GetPositionMode(bar.unitKey)]
-    if not pair then return false end
+    if not pair then return nil end
 
     local anchor = CBZ._ResolveAnchorFrame(bar)
-    if not anchor then return false end
+    if not anchor then return nil end
 
     local ox, oy = CBZ._GetSnapOffsets(bar.unitKey)
-    ox = CBZ._SnapToPixels(ox)
-    oy = CBZ._SnapToPixels(oy)
+    return anchor, pair.barPoint, pair.anchorPoint, CBZ._SnapToPixels(ox), CBZ._SnapToPixels(oy)
+end
+
+function CBZ._ApplySnap(bar)
+    local anchor, barPoint, anchorPoint, ox, oy = CBZ._SnapSpec(bar)
+    if not anchor then return false end
 
     -- A frame's scale multiplies its own offsets. The bar is addon-owned, so
     -- the read is plain; a host that never scales its bars divides by 1.
@@ -170,7 +177,7 @@ function CBZ._ApplySnap(bar)
     ox, oy = ox / scale, oy / scale
 
     bar:ClearAllPoints()
-    bar:SetPoint(pair.barPoint, anchor, pair.anchorPoint, ox, oy)
+    bar:SetPoint(barPoint, anchor, anchorPoint, ox, oy)
     return true
 end
 

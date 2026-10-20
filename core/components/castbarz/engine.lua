@@ -8,7 +8,19 @@
 --
 -- Host (core.lua here, forever/castbars/host.lua there):
 --   CBZ.BARS, CBZ.NUM_BOSS_BARS     one row per bar; rows may carry frameName,
---                                   defaultPosition and pageState
+--                                   defaultPosition and pageState. A row may
+--                                   also be `hosted`: another frame of the
+--                                   host's places its bar (Camelot's Personal
+--                                   Resource Display), so the engine registers
+--                                   no positionable for it and calls the host's
+--                                   CBZ._ApplyHostedPosition(bar, row) where it
+--                                   would restore a position. Such a row may
+--                                   name a `standsInFor` unit whose Blizzard bar
+--                                   it keeps parked (suppression.lua); the host
+--                                   turns that unit's own bar off while the
+--                                   hosted one is on. The host may route a
+--                                   hosted row's `config` and `settings` through
+--                                   functions on the row.
 --   CBZ._IsModuleEnabled()          the feature's master switch
 --   CBZ._IsUnitEnabled(unitKey)
 --   CBZ._GetUnitConfig(unitKey)     a table: enabled, barWidth, positionMode, ...
@@ -162,7 +174,11 @@ function CBZ._EnsureBar(barKey)
     CBZ._bars[barKey] = bar
 
     CBZ._RegisterBarEvents(bar, row)
-    CBZ._RegisterBarEditMode(bar, row)
+    -- A hosted bar is placed by the frame that hosts it, which has the Edit
+    -- Mode box; a second box inside it would be one the drag springs out of.
+    if not row.hosted then
+        CBZ._RegisterBarEditMode(bar, row)
+    end
 
     -- The unit may already be casting -- enabling a bar mid-cast is the obvious way
     -- to test one. Deferred so the caller's _ApplyBar has laid the frame out first;

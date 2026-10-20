@@ -52,6 +52,15 @@ local function Render(panel, scrollContent)
 
     local cfg = CBZ._GetUnitConfig(UNIT)
 
+    -- While the Resource Display's cast bar is on it is the player's only
+    -- Camelot cast bar, and this one stays hidden
+    -- (forever/personalresourcedisplay/castbar.lua).
+    local PRD = addon.PersonalResourceDisplay
+    if PRD and PRD.CastBar and PRD.CastBar.IsOn() then
+        builder:AddDescription("The Personal Resource Display is drawing the player's casts. "
+            .. "This bar stays hidden until its cast bar is turned off under Resource Display.")
+    end
+
     local function setSetting(key, value)
         DB.Set("castBars." .. key, value)
         CBZ._Reconcile()

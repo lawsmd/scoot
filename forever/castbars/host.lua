@@ -82,9 +82,13 @@ function CBZ._IsModuleEnabled()
     return DB.IsModuleEnabled("castBars")
 end
 
--- The unitKey the contract allows is ignored: this host has one unit, so its
--- dotted castBars.* keys are already that unit's own.
-function CBZ._GetSetting(key, _unitKey)
+-- The Player's keys are the dotted castBars.* keys, which page.lua reads with
+-- no unit. A hosted row (the Resource Display's bar,
+-- forever/personalresourcedisplay/castbar.lua) answers through the `settings`
+-- function on the row, so its fixed look never follows the Player's rows.
+function CBZ._GetSetting(key, unitKey)
+    local row = unitKey and CBZ._RowForUnitKey(unitKey)
+    if row and row.settings then return row.settings(key) end
     return DB.Get("castBars." .. key)
 end
 
@@ -95,7 +99,10 @@ local unitConfigs = {}
 function CBZ._GetUnitConfig(unitKey)
     local cfg = unitConfigs[unitKey]
     if cfg then return cfg end
-    if not CBZ._RowForUnitKey(unitKey) then return nil end
+    local row = CBZ._RowForUnitKey(unitKey)
+    if not row then return nil end
+    -- A hosted row's config is its host frame's own settings.
+    if row.config then return row.config() end
 
     local prefix = "castBars." .. unitKey:lower() .. "."
     cfg = setmetatable({}, {
@@ -106,9 +113,25 @@ function CBZ._GetUnitConfig(unitKey)
     return cfg
 end
 
--- Held for the session: the Features page changes it at the reload.
+-- Whether a hosted row standing in for this unit is on: the Resource
+-- Display's cast bar is the player's only Camelot cast bar while it is.
+local function hostedStandIn(unitKey)
+    for _, row in ipairs(CBZ.BARS) do
+        if row.hosted and row.standsInFor == unitKey and row.enabled and row.enabled() then
+            return true
+        end
+    end
+    return false
+end
+
+-- Held for the session: the Features page changes it at the reload. A hosted
+-- row answers for itself, live, since its switch is a setting rather than a
+-- Features row; a unit a hosted row stands in for is off while that row is on.
 function CBZ._IsUnitEnabled(unitKey)
-    if not CBZ._RowForUnitKey(unitKey) then return false end
+    local row = CBZ._RowForUnitKey(unitKey)
+    if not row then return false end
+    if row.hosted then return (row.enabled and row.enabled()) == true end
+    if hostedStandIn(unitKey) then return false end
     return DB.SessionGet("castBars." .. unitKey:lower() .. ".enabled") == true
 end
 

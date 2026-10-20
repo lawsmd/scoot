@@ -386,9 +386,12 @@ function CBZ._LayoutCastTime(bar)
     -- Unpaired: the binding writes this string engine-side, so a Deep Shadow
     -- companion is never fed and keeps whatever the Edit Mode placeholder last
     -- wrote through SetText -- a black ghost behind a live number. The shared
-    -- style still reaches the readout, as its base style.
+    -- style still reaches the readout, as its base style, unless the host
+    -- answers castTimeStyle: a readout styled on its own (Camelot's Resource
+    -- Display bar). Neither of the two pages' hosts stores that key.
     local style = addon.FontStyles.Unpaired(
-        tostring(CBZ._GetSetting("fontStyle", bar.unitKey) or CBZ.CAST_TIME_FALLBACK_STYLE or "SHADOWTHICKOUTLINE"))
+        tostring(CBZ._GetSetting("castTimeStyle", bar.unitKey) or CBZ._GetSetting("fontStyle", bar.unitKey)
+            or CBZ.CAST_TIME_FALLBACK_STYLE or "SHADOWTHICKOUTLINE"))
     addon.ApplyFontStyle(fs, face, size, style)
     -- Off for the same reason the bands turn it off: nothing scales this text, and
     -- smooth scaling only costs sharpness under a fractional UI scale.
