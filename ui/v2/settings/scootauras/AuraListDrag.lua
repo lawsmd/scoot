@@ -7,11 +7,21 @@ local addonName, addon = ...
 addon.ScootAurasUI = addon.ScootAurasUI or {}
 
 -- One color for the whole drag language: the insertion line, the outline every
--- zone wears while a drag can land in it, and the wash on the one under the
--- cursor. Anything green on this page means "the aura goes here".
--- Kept off Theme accent: drop-target cue. A red accent would make "drop here"
--- read as forbidden.
-local DROP_R, DROP_G, DROP_B = 0.3, 0.9, 0.3
+-- zone wears while a drag can land in it, the wash on the one under the
+-- cursor, and the ghost's frame and label. The skin names it,
+-- metrics.auraList.colors.drop: a literal (tui's green, kept off the accent so
+-- a red accent cannot make "drop here" read as forbidden) or a Chrome.Color
+-- token (forever's "accent"). Read at paint time, so the accent's changes
+-- reach it.
+local function DropSpec()
+    local m = addon.UI.Skin.Metrics()
+    local c = m and m.auraList and m.auraList.colors and m.auraList.colors.drop
+    return c or "accent"
+end
+
+local function DropRGB()
+    return addon.UI.Chrome.Color(DropSpec())
+end
 
 -- deps:
 --   state     the renderer's page-state table. Read through `state.` at call
@@ -51,13 +61,14 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
 
         local fill = frame:CreateTexture(nil, "BACKGROUND", nil, -7)
         fill:SetAllPoints()
-        fill:SetColorTexture(DROP_R, DROP_G, DROP_B, 0.10)
         fill:Hide()
 
+        -- A token leaves the color unset, which follows the accent.
+        local spec = DropSpec()
         local border = addon.UI.Controls.CreateBorder(frame, {
             layer = "OVERLAY",
             sublevel = 3,
-            color = { DROP_R, DROP_G, DROP_B },
+            color = type(spec) == "table" and spec or nil,
         })
 
         -- nil: no drag, or nothing can land here. "armed": a live drag could land
@@ -65,6 +76,10 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
         function zone:SetState(dropState)
             border:SetShown(dropState ~= nil)
             border:SetAlpha(dropState == "hot" and 0.95 or 0.3)
+            if dropState == "hot" then
+                local r, g, b = DropRGB()
+                fill:SetColorTexture(r, g, b, 0.10)
+            end
             fill:SetShown(dropState == "hot")
         end
 
@@ -72,13 +87,13 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
         return zone
     end
 
-    -- The ghost under the cursor: the spell icon in a green frame, and a line
+    -- The ghost under the cursor: the spell icon in a drop-colored frame, and a line
     -- naming what a drop does here. Over dead space the line is hidden, so the
     -- absence of a label reads as "this drop does nothing".
     local function GetDragCursor()
         if Drag.cursor then return Drag.cursor end
         local theme = addon.UI.Theme
-        local f = CreateFrame("Frame", "ScootAuraListDragCursor", UIParent)
+        local f = CreateFrame("Frame", addon.Brand .. "AuraListDragCursor", UIParent)
         f:SetSize(ICON_SIZE, ICON_SIZE)
         f:SetFrameStrata("TOOLTIP")
         f:SetFrameLevel(100)
@@ -88,9 +103,10 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
         tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         f._tex = tex
 
+        f._edges = {}
         local function edge(p1, p2, w, h)
             local e = f:CreateTexture(nil, "OVERLAY")
-            e:SetColorTexture(DROP_R, DROP_G, DROP_B, 0.9)
+            f._edges[#f._edges + 1] = e
             e:SetPoint(p1, 0, 0)
             e:SetPoint(p2, 0, 0)
             if w then e:SetWidth(w) end
@@ -110,7 +126,6 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
         local label = hint:CreateFontString(nil, "OVERLAY")
         label:SetFont(theme:GetFont("LABEL"), 10, "")
         label:SetPoint("CENTER", 0, 0)
-        label:SetTextColor(DROP_R, DROP_G, DROP_B, 1)
         hint:Hide()
         f._hint, f._hintLabel = hint, label
 
@@ -140,7 +155,7 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
         f:SetFrameLevel(99)
         local tex = f:CreateTexture(nil, "OVERLAY")
         tex:SetAllPoints()
-        tex:SetColorTexture(DROP_R, DROP_G, DROP_B, 1)
+        f._tex = tex
         f:Hide()
         Drag.marker = f
         return f
@@ -193,6 +208,8 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
             else
                 marker:SetPoint("LEFT", anchorFrame, "RIGHT", 1, 0)
             end
+            local r, g, b = DropRGB()
+            marker._tex:SetColorTexture(r, g, b, 1)
             marker:Show()
         end
     end
@@ -268,6 +285,9 @@ function addon.ScootAurasUI.CreateAuraListDrag(deps)
         local cursor = GetDragCursor()
         -- A file id or a class crest atlas (SAU.TrackerIcon).
         addon.ScootAuras.PaintTrackerIcon(cursor._tex, texture)
+        local r, g, b = DropRGB()
+        for _, e in ipairs(cursor._edges) do e:SetColorTexture(r, g, b, 0.9) end
+        cursor._hintLabel:SetTextColor(r, g, b, 1)
         cursor:SetAlpha(0.85)
         SetDragHint(nil)
         cursor:Show()

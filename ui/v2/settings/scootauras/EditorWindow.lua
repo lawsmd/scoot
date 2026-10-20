@@ -266,15 +266,19 @@ end
 -- Window construction (once)
 --------------------------------------------------------------------------------
 
+-- The position is saved through the tracker core, which knows where each
+-- host keeps it.
 local function SavePosition()
-    if not (addon.db and addon.db.global and frame) then return end
+    local SAU = addon.ScootAuras
+    if not (frame and SAU and SAU.SetEditorPosition) then return end
     local point, _, relPoint, x, y = frame:GetPoint()
-    addon.db.global.scootAuraEditorPosition = { point = point, relPoint = relPoint, x = x, y = y }
+    SAU.SetEditorPosition({ point = point, relPoint = relPoint, x = x, y = y })
 end
 
 local function RestorePosition()
     frame:ClearAllPoints()
-    local pos = addon.db and addon.db.global and addon.db.global.scootAuraEditorPosition
+    local SAU = addon.ScootAuras
+    local pos = SAU and SAU.GetEditorPosition and SAU.GetEditorPosition()
     if pos and pos.point and pos.x and pos.y then
         frame:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x, pos.y)
     else
@@ -341,34 +345,62 @@ local function InitializeFrame()
     TOP_LEFT_W = math.floor(WINDOW_W * 0.55)
     BOTTOM_LEFT_W = math.floor(WINDOW_W * 0.46)
 
-    -- Modal dim behind the editor, dialog-style: DIALOG 200 darkens and
-    -- mouse-blocks everything below, the editor at 210 floats above it. The
-    -- settings panel is DIALOG 100 and its widgets climb from there (the
-    -- shared button control adds 15, info icons another 10), so the dim has
-    -- to clear the whole panel tree, header buttons included.
-    local dim = CreateFrame("Frame", "ScootAuraEditorDim", UIParent)
+    -- Modal dim behind the editor, dialog-style: the dim darkens and
+    -- mouse-blocks everything below, the editor floats ten levels above it,
+    -- both in the DIALOG strata under the fly-outs, the popup lists, the
+    -- pickers and the modal dialog on FULLSCREEN_DIALOG. The settings panel
+    -- is DIALOG 100 and its widgets climb from there (the shared button
+    -- control adds 15, info icons another 10); a skin that draws the panel
+    -- on a Blizzard template puts its border and title plate on child
+    -- frames five hundred levels up, with the toolbar standing on the
+    -- border. The panel's overlay level is the step over whichever art the
+    -- skin drew, so the dim clears the whole tree from there: 200 on the
+    -- flat panel, past 690 on the template.
+    local panel = addon.UI.SettingsPanel
+    local panelFrame = panel and panel.frame
+    local overlay = panelFrame and panelFrame.GetOverlayLevel and panelFrame:GetOverlayLevel() or 110
+    local dimLevel = overlay + 90
+    local dim = CreateFrame("Frame", addon.Brand .. "AuraEditorDim", UIParent)
     dim:SetFrameStrata("DIALOG")
-    dim:SetFrameLevel(200)
+    dim:SetFrameLevel(dimLevel)
     dim:SetAllPoints(UIParent)
     dim:EnableMouse(true)
     dim:Hide()
     local dimTex = dim:CreateTexture(nil, "BACKGROUND")
     dimTex:SetAllPoints()
     dimTex:SetColorTexture(0, 0, 0, 0.80)
+    -- The wash is the modal dialog's piece, so a skin tunes both at once.
+    addon.UI.Chrome.ApplyOpacity("dialogDimmer", dimTex)
     widgets.dim = dim
 
-    frame = Window:Create("ScootAuraEditorFrame", UIParent, WINDOW_W, WINDOW_H)
-    frame:SetFrameLevel(210)
+    -- The surface is the subWindow role: the panel's own flat window on a
+    -- skin that draws windows flat, and the skin's panel template at the
+    -- editor's size where it has one, the title on the plate and the close
+    -- button in the template's corner.
+    frame = Window:Create(addon.Brand .. "AuraEditorFrame", UIParent, WINDOW_W, WINDOW_H,
+        { role = "subWindow", template = true })
+    frame:SetFrameLevel(dimLevel + 10)
+    local onTemplate = frame._chromeSpec ~= nil and frame._chromeSpec.kind == "template"
     frame:HookScript("OnShow", function() dim:Show() end)
     frame:HookScript("OnHide", function() dim:Hide() end)
     frame:Hide()
     RestorePosition()
 
-    -- Title bar: drag surface + name + rename + close
+    -- Title bar: drag surface + name + rename + close. On a template the
+    -- bar is the title plate's own band, so the name, the carousel and the
+    -- rename box land on the plate, and it sits a level over the border
+    -- art the template draws on a child frame of its own; the template's
+    -- close button keeps its corner above it.
     local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetHeight(TITLE_H)
-    titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    if onTemplate and frame.TitleContainer then
+        titleBar:SetPoint("TOPLEFT", frame.TitleContainer, "TOPLEFT", 0, 0)
+        titleBar:SetPoint("BOTTOMRIGHT", frame.TitleContainer, "BOTTOMRIGHT", 0, 0)
+        titleBar:SetFrameLevel(frame:GetOverlayLevel())
+    else
+        titleBar:SetHeight(TITLE_H)
+        titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    end
     titleBar:EnableMouse(true)
     titleBar:RegisterForDrag("LeftButton")
     titleBar:SetScript("OnDragStart", function() frame:StartMoving() end)
@@ -533,33 +565,52 @@ local function InitializeFrame()
         end
     end)
 
-    -- Close X
-    local closeBtn = CreateFrame("Button", nil, frame)
-    closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -8)
-    closeBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
-    closeBtn:RegisterForClicks("AnyUp")
-    local closeBg = closeBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
-    closeBg:SetAllPoints()
-    addon.UI.Controls.RegisterThemedFill(closeBg, 1)
-    closeBg:Hide()
-    local closeTxt = closeBtn:CreateFontString(nil, "OVERLAY")
-    closeTxt:SetFont(theme:GetFont("BUTTON"), 14, "")
-    closeTxt:SetPoint("CENTER", 0, 0)
-    closeTxt:SetText("X")
-    closeTxt:SetTextColor(ar, ag, ab, 1)
-    closeBtn:SetScript("OnEnter", function()
-        closeBg:Show()
-        closeTxt:SetTextColor(0, 0, 0, 1)
-    end)
-    closeBtn:SetScript("OnLeave", function()
+    -- Close X: on a template, the one the closeButton role gives (the
+    -- template's own in its corner, or the role's fallback placed at the
+    -- skin's corner offsets); the house X otherwise.
+    local closeBtn, closeTxt
+    if onTemplate then
+        local btn, closeSpec = addon.UI.Controls:CreateCloseButton({
+            parent = frame,
+            onClick = function() Editor.Close() end,
+        })
+        if btn then
+            if not (closeSpec and closeSpec.kind == "window") then
+                local corner = addon.UI.Controls.Metrics().closeButton
+                btn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", corner.x, corner.y)
+                btn:SetFrameLevel(frame:GetOverlayLevel())
+            end
+            closeBtn = btn
+        end
+    end
+    if not closeBtn then
+        closeBtn = CreateFrame("Button", nil, frame)
+        closeBtn:SetSize(24, 24)
+        closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -8)
+        closeBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
+        closeBtn:RegisterForClicks("AnyUp")
+        local closeBg = closeBtn:CreateTexture(nil, "BACKGROUND", nil, -7)
+        closeBg:SetAllPoints()
+        addon.UI.Controls.RegisterThemedFill(closeBg, 1)
         closeBg:Hide()
-        -- Read here rather than closing over the color the window was built
-        -- with: the accent can change between the two.
-        local r, g, b = addon.GetAccentColorRGB()
-        closeTxt:SetTextColor(r, g, b, 1)
-    end)
-    closeBtn:SetScript("OnClick", function() Editor.Close() end)
+        closeTxt = closeBtn:CreateFontString(nil, "OVERLAY")
+        closeTxt:SetFont(theme:GetFont("BUTTON"), 14, "")
+        closeTxt:SetPoint("CENTER", 0, 0)
+        closeTxt:SetText("X")
+        closeTxt:SetTextColor(ar, ag, ab, 1)
+        closeBtn:SetScript("OnEnter", function()
+            closeBg:Show()
+            closeTxt:SetTextColor(0, 0, 0, 1)
+        end)
+        closeBtn:SetScript("OnLeave", function()
+            closeBg:Hide()
+            -- Read here rather than closing over the color the window was
+            -- built with: the accent can change between the two.
+            local r, g, b = addon.GetAccentColorRGB()
+            closeTxt:SetTextColor(r, g, b, 1)
+        end)
+        closeBtn:SetScript("OnClick", function() Editor.Close() end)
+    end
 
     -- Region frames
     local topLeft = CreateFrame("Frame", nil, frame)
@@ -643,6 +694,9 @@ local function InitializeFrame()
     sepTitle:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TITLE_H + 2)
     sepTitle:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -TITLE_H + 2)
     sepTitle:SetHeight(1)
+    -- A template's plate and the streak band under it already part the
+    -- title from the quadrants.
+    if onTemplate then sepTitle:Hide() end
 
     -- Spell region statics in the bottom-left quadrant (built once; an
     -- EditBox must survive re-renders)
@@ -739,8 +793,9 @@ local function InitializeFrame()
         renameBtn._tex:SetVertexColor(r, g, b)
         duplicateBtn._tex:SetVertexColor(r, g, b)
         previewLabel:SetTextColor(r, g, b, 1)
-        -- The X is black under the pointer; OnLeave picks up the new color.
-        if not closeBtn:IsMouseOver() then
+        -- The house X is black under the pointer; OnLeave picks up the new
+        -- color. A template's X is the client's own art.
+        if closeTxt and not closeBtn:IsMouseOver() then
             closeTxt:SetTextColor(r, g, b, 1)
         end
         widgets.carousel:SetAccent(r, g, b)
@@ -1288,7 +1343,8 @@ local function RenderTabs()
     local SettingsBuilder = addon.UI.SettingsBuilder
     local child = widgets.tabsChild
     local w = widgets.tabsScroll:GetWidth()
-    child:SetWidth((w and w > 0) and w or (WINDOW_W - BOTTOM_LEFT_W - PAD * 3 - 1))
+    w = (w and w > 0) and w or (WINDOW_W - BOTTOM_LEFT_W - PAD * 3 - 1)
+    child:SetWidth(w - (widgets.tabsScroll._barReserve or 0))
 
     tabsBuilder = SettingsBuilder:CreateFor(child)
     tabsBuilder:SetOnRefresh(function() Editor.DeferredRefresh() end)
@@ -1747,6 +1803,20 @@ local function PositionChip()
     widgets.chipIcon:SetPoint("TOPLEFT", widgets.bottomLeft, "TOP", -pairW / 2, -46)
 end
 
+-- Centers the explainer and the ID box as a pair over the pane; a pair wider
+-- than the pane starts at its left inset instead.
+local function PositionSpellPrompt()
+    local paneW = widgets.bottomLeft:GetWidth() or BOTTOM_LEFT_W
+    local textW = widgets.spellExplainer:GetStringWidth() or 0
+    local pairW = textW + 8 + (widgets.spellBox:GetWidth() or 0)
+    widgets.spellExplainer:ClearAllPoints()
+    if textW <= 0 or pairW > paneW - 16 then
+        widgets.spellExplainer:SetPoint("TOPLEFT", widgets.bottomLeft, "TOPLEFT", 8, -20)
+    else
+        widgets.spellExplainer:SetPoint("TOPLEFT", widgets.bottomLeft, "TOP", -pairW / 2, -20)
+    end
+end
+
 -- The spell region (explainer, ID box, chip, status, catalog) serves the
 -- kinds that track a spell; a kind without one shows its note in its place.
 local function SetSpellRegionShown(shown)
@@ -1759,6 +1829,10 @@ local function SetSpellRegionShown(shown)
         widgets.chipName:Hide()
     end
     widgets.kindNote:SetShown(not shown)
+    if shown then
+        PositionSpellPrompt()
+        C_Timer.After(0, PositionSpellPrompt)
+    end
 end
 
 local function UpdateSpellRegion()

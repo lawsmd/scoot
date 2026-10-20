@@ -1,4 +1,4 @@
--- SpecFlyout.lua - "Load in..." fly-out on the Aura List page
+-- SpecFlyout.lua - "Load on..." fly-out on the Aura List page
 --
 -- Auras are account-wide, so this lists every specialization in the game, not
 -- just the player's own class: a Priest's aura is used on a Shaman by checking
@@ -93,7 +93,8 @@ local function AcquireSpecRow(content, index)
     return panel._rows:Get(index, content)
 end
 
-local function PaintRow(row, isOn)
+-- onR, onG, onB color the name while checked; white when absent.
+local function PaintRow(row, isOn, onR, onG, onB)
     local theme = GetTheme()
     local ar, ag, ab = theme:GetAccentColor()
     local dr, dg, db = theme:GetDimTextColor()
@@ -101,7 +102,11 @@ local function PaintRow(row, isOn)
     row._paint = function()
         if isOn then
             row._check:SetColorTexture(ar, ag, ab, 1)
-            row._name:SetTextColor(1, 1, 1, 1)
+            if onR then
+                row._name:SetTextColor(onR, onG, onB, 1)
+            else
+                row._name:SetTextColor(1, 1, 1, 1)
+            end
         else
             row._check:SetColorTexture(0.25, 0.25, 0.25, 1)
             row._name:SetTextColor(dr, dg, db, 1)
@@ -154,9 +159,9 @@ end
 -- The player's own class first, then alphabetical: the common edit is a spec of
 -- the class you are on.
 local function OrderedBuckets()
-    local Rules = addon.Rules
-    if not (Rules and Rules.GetSpecBuckets) then return {} end
-    local ok, buckets = pcall(Rules.GetSpecBuckets, Rules)
+    local Specs = addon.Specs
+    if not (Specs and Specs.Buckets) then return {} end
+    local ok, buckets = pcall(Specs.Buckets)
     if not ok or type(buckets) ~= "table" then return {} end
 
     local mine = addon.GetClassTokenForUnit and addon.GetClassTokenForUnit("player") or nil
@@ -185,7 +190,7 @@ local function Rebuild()
     if panel._rows then panel._rows:HideFrom(1) end
     if panel._headers then panel._headers:HideFrom(1) end
 
-    panel._title:SetText(opts.title or "Load in...")
+    panel._title:SetText(opts.title or "Load on...")
 
     local buckets = OrderedBuckets()
 
@@ -202,10 +207,54 @@ local function Rebuild()
     panel._empty:Hide()
     panel._scroll:Show()
 
-    local colWidth = math.floor((WIDTH - 2 * INSET) / SPECS_PER_ROW)
+    -- One spec per class (Forever, where the spec is named after its class):
+    -- a header would repeat the row under it, so each class is one row in the
+    -- grid, its name in the class color while checked.
+    local compact = true
+    for _, classEntry in ipairs(buckets) do
+        if #classEntry.specs ~= 1 then compact = false break end
+    end
+    local width = WIDTH
+    local colWidth = math.floor((width - 2 * INSET) / SPECS_PER_ROW)
     local y, specIndex, classIndex = 0, 0, 0
 
-    for _, classEntry in ipairs(buckets) do
+    if compact then
+        -- Columns fit the widest class name, and the panel fits the columns.
+        local nameW = 0
+        for index, classEntry in ipairs(buckets) do
+            local spec = classEntry.specs[1]
+            local row = AcquireSpecRow(content, index)
+            row._name:SetText(classEntry.name or spec.name or ("Spec " .. tostring(spec.specID)))
+            nameW = math.max(nameW, row._name:GetStringWidth() or 0)
+        end
+        colWidth = math.ceil(CHECK_SIZE + ICON_SIZE + 8 + nameW + CLASS_GAP * 2)
+        width = math.max(colWidth * SPECS_PER_ROW, panel._title:GetStringWidth() or 0) + 2 * INSET
+
+        local col = 0
+        for _, classEntry in ipairs(buckets) do
+            local spec = classEntry.specs[1]
+            local specID = spec.specID
+            specIndex = specIndex + 1
+            local row = AcquireSpecRow(content, specIndex)
+            row:ClearAllPoints()
+            row:SetWidth(colWidth)
+            row:SetPoint("TOPLEFT", content, "TOPLEFT", col * colWidth, -y)
+            row._icon:SetTexture(spec.icon)
+            row._onClick = function()
+                if opts.toggle then opts.toggle(specID) end
+            end
+            PaintRow(row, selected[specID] == true, addon.GetClassColorRGB(classEntry.file))
+            row:Show()
+            col = col + 1
+            if col >= SPECS_PER_ROW then
+                col = 0
+                y = y + ROW_H
+            end
+        end
+        if col > 0 then y = y + ROW_H end
+    end
+
+    for _, classEntry in ipairs(compact and {} or buckets) do
         classIndex = classIndex + 1
         local header = AcquireClassRow(content, classIndex)
         header:ClearAllPoints()
@@ -266,7 +315,7 @@ local function Rebuild()
     content:SetHeight(math.max(1, y))
     local listH = math.min(MAX_LIST_H, y)
     panel._scroll:SetHeight(listH)
-    panel:SetFlyoutSize(WIDTH, TITLE_H + listH + 2 * INSET + 4)
+    panel:SetFlyoutSize(width, TITLE_H + listH + 2 * INSET + 4)
     if panel._scroll.UpdateThumb then panel._scroll.UpdateThumb() end
 end
 
@@ -285,7 +334,7 @@ local function Create(anchorBtn)
         height = 200,
         padding = PADDING,
         gap = GAP,
-        name = "ScootAuraSpecFlyout",
+        name = addon.Brand .. "AuraSpecFlyout",
         onShow = function()
             Rebuild()
         end,

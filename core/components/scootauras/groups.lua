@@ -154,7 +154,7 @@ end
 
 local function CreateEntry()
     local index = #pool + 1
-    local frame = CreateFrame("Frame", "ScootAuraGroup" .. index, UIParent)
+    local frame = CreateFrame("Frame", addon.Brand .. "AuraGroup" .. index, UIParent)
     addon.Strata.ApplyHUD(frame, 25)
     frame:SetSize(32, 32)
     frame:SetMovable(true)

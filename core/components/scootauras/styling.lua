@@ -198,7 +198,7 @@ end
 -- point to full width at 55% of its length, then even out to the edge: a
 -- wide icon's top and bottom sit near halfway along it. The Cooldown turns
 -- it with the swipe and tints it.
-local SWIPE_LINE_TEXTURE = "Interface\\AddOns\\" .. addonName .. "\\media\\scootauras\\swipe-line.png"
+local SWIPE_LINE_TEXTURE = addon.MediaPath .. "media\\scootauras\\swipe-line.png"
 
 SAU.SWIPE_LINE_TEXTURE = SWIPE_LINE_TEXTURE
 
@@ -464,6 +464,7 @@ local function ApplyBorders(trackerId, tracker, state)
     -- Borders apply to the spell-icon texture only; shape art carries its own
     -- silhouette edge.
     local wantBorder = (tracker.shape ~= "shape")
+    local iconW, iconH = SAU.IconDimensions(db, SAU.ResolveVisibility(tracker, db))
 
     for _, elem in ipairs(state.elements or {}) do
         if elem.type == "texture" and elem.borderFrame then
@@ -477,6 +478,7 @@ local function ApplyBorders(trackerId, tracker, state)
                     addon.Borders.HideAll(bf)
                 end
                 bf:Hide()
+                addon.ClearIconMask(elem.widget)
             else
                 bf:Show()
                 local insetH = tonumber(db.borderInsetH) or 0
@@ -501,6 +503,14 @@ local function ApplyBorders(trackerId, tracker, state)
                     simpleTint = true,
                     styleAdjusts = true,
                     expandClamp = 12,
+                    -- The tracker owns its icon: a rounded style (Blizzard
+                    -- Default, the action button frame) rounds it to match.
+                    -- The mask lives on the icon's own frame.
+                    maskTarget = elem.widget,
+                    maskOwner = elem.widget:GetParent(),
+                    -- From the settings: the bound icon reads its size secret.
+                    maskWidth = iconW,
+                    maskHeight = iconH,
                 })
             end
 
@@ -536,7 +546,8 @@ local function ApplyBorders(trackerId, tracker, state)
 end
 
 -- The fill's texture path and color for one bar: fgPath (nil when the key
--- resolves to no file), then r, g, b, a. `powerColor` is the { r, g, b } the
+-- resolves to no file, an atlas key among them: painters go through
+-- addon.Media.ApplyBarFill), then r, g, b, a. `powerColor` is the { r, g, b } the
 -- power mode takes (the Class Resource kind passes its resource's color);
 -- without one the mode reads the display power.
 local function ResolveBarFill(tracker, db, powerColor)
@@ -588,12 +599,9 @@ local function ApplyBarStyling(trackerId, tracker, state)
             local h = tonumber(db.barHeight) or 12
             elem.widget:SetSize(w, h)
 
-            local fgPath, fgR, fgG, fgB, fgA = ResolveBarFill(tracker, db, nil)
-            if fgPath then
-                elem.barFill:SetStatusBarTexture(fgPath)
-            else
-                elem.barFill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
-            end
+            local fgKey = db.barForegroundTexture or "bevelled"
+            local _, fgR, fgG, fgB, fgA = ResolveBarFill(tracker, db, nil)
+            addon.Media.ApplyBarFill(elem.barFill, fgKey)
             local fillTex = elem.barFill:GetStatusBarTexture()
             if fillTex then
                 fillTex:SetVertexColor(fgR, fgG, fgB, fgA)
@@ -601,18 +609,13 @@ local function ApplyBarStyling(trackerId, tracker, state)
             -- Fill-mode cadence overlay: same art as the fill (BindForMode
             -- shows/hides it).
             if elem.lockOverlay then
-                if fgPath then
-                    elem.lockOverlay:SetTexture(fgPath)
-                else
-                    elem.lockOverlay:SetTexture("Interface\\Buttons\\WHITE8x8")
-                end
+                addon.Media.ApplyBarFillTexture(elem.lockOverlay, fgKey)
                 elem.lockOverlay:SetVertexColor(fgR, fgG, fgB, fgA)
             end
 
-            local bgPath = addon.Media.ResolveBarTexturePath(db.barBackgroundTexture or "bevelled")
-            if bgPath then
-                elem.barBg:SetTexture(bgPath)
-            else
+            -- An atlas background draws past the inner rect by its own outset
+            -- (addon.Media.ApplyBarBackground), the frame it carries.
+            if not addon.Media.ApplyBarBackground(elem.barBg, db.barBackgroundTexture or "bevelled", elem.inner) then
                 elem.barBg:SetColorTexture(0.1, 0.1, 0.1, 1)
             end
             -- Kept off addon.ResolveColorRGBA: two-mode dialect, custom default with an original option the resolver lacks.

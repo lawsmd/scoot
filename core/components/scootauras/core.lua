@@ -1,12 +1,13 @@
 -- scootauras/core.lua - User-built aura trackers: store, settings, CRUD, reconcile
 --
--- Auras are account-wide. One store, db.global.scootAuras, holds content
--- (spell, kind, unit, shape, name, enabled, grouping, specs), styling keyed by
--- component id, and positions keyed t<id>/g<gid> then by Edit Mode layout. Every
+-- Auras are account-wide. One store holds content (spell, kind, unit, shape,
+-- name, enabled, grouping, specs), styling keyed by component id, and positions
+-- keyed t<id>/g<gid> then by Edit Mode layout: db.global.scootAuras under
+-- Scoot, the table the host names under Camelot (addon.AurasHost below). Every
 -- character sees every aura; the spec list on each record decides where it
 -- loads. Content writes go through the API here so engine consequences route
 -- through the structural gate; styling writes go through the normal component
--- setAndApply path, which reaches the global table through the component's
+-- setAndApply path, which reaches the store through the component's
 -- GetContainer hook.
 local addonName, addon = ...
 
@@ -16,9 +17,35 @@ local SAU = addon.ScootAuras
 local Component = addon.ComponentPrototype
 local CopyTable = _G.CopyTable
 
-SAU.COMPONENT_PREFIX = "scootAura_"
-SAU.MODULE_CATEGORY = "scootAuras"
-SAU.NAV_KEY = "scootAurasList"
+-- The settings page's nav key. A plain constant: it is never persisted, so
+-- both hosts' nav models use the one value.
+SAU.NAV_KEY = "auraList"
+
+--------------------------------------------------------------------------------
+-- The host
+--------------------------------------------------------------------------------
+-- Both addons list this file. What differs by host is the store, the editor
+-- window's saved position and the two saved-key tokens, and nothing else.
+-- addon.AurasHost is optional and read at the moment of use: nil means this
+-- addon's own keys on db.global (the addon.ComponentStore convention), so
+-- Scoot has no host file. A host file holds values and nothing else.
+
+local function Host()
+    local host = addon.AurasHost
+    return type(host) == "table" and host or nil
+end
+
+--- The component id prefix: "<prefix><trackerId>" keys a tracker's styling.
+function SAU.ComponentPrefix()
+    local host = Host()
+    return host and host.componentPrefix or "scootAura_"
+end
+
+--- The module category: the Features switch and the moduleEnabled key.
+function SAU.ModuleCategory()
+    local host = Host()
+    return host and host.moduleCategory or "scootAuras"
+end
 
 -- [trackerId] = { container = visualFrame, shell = shellFrame, elements, textFrame }
 -- Same table shape the styling/layout layer expects; container is the visual
@@ -31,17 +58,29 @@ SAU._activeStates = {}
 
 -- Read-only: never materializes tables (zero-touch).
 function SAU.GetStore()
+    local host = Host()
+    if host and host.GetStore then
+        local store = host.GetStore(false)
+        return type(store) == "table" and store or nil
+    end
     local global = addon.db and addon.db.global
     return global and rawget(global, "scootAuras") or nil
 end
 
 function SAU.EnsureStore()
-    local global = addon.db and addon.db.global
-    if not global then return nil end
-    local store = rawget(global, "scootAuras")
-    if type(store) ~= "table" then
-        store = { nextId = 1, trackers = {}, groups = {}, styling = {}, positions = {} }
-        global.scootAuras = store
+    local store
+    local host = Host()
+    if host and host.GetStore then
+        store = host.GetStore(true)
+        if type(store) ~= "table" then return nil end
+    else
+        local global = addon.db and addon.db.global
+        if not global then return nil end
+        store = rawget(global, "scootAuras")
+        if type(store) ~= "table" then
+            store = {}
+            global.scootAuras = store
+        end
     end
     store.trackers = store.trackers or {}
     store.groups = store.groups or {}
@@ -51,6 +90,29 @@ function SAU.EnsureStore()
     -- Left behind by the first cadence-lock build; nothing reads it.
     store.learnedDurations = nil
     return store
+end
+
+--- The editor window's saved position, { point, relPoint, x, y } or nil.
+function SAU.GetEditorPosition()
+    local host = Host()
+    local pos
+    if host and host.GetEditorPosition then
+        pos = host.GetEditorPosition()
+    else
+        local global = addon.db and addon.db.global
+        pos = global and global.scootAuraEditorPosition
+    end
+    return type(pos) == "table" and pos or nil
+end
+
+function SAU.SetEditorPosition(pos)
+    local host = Host()
+    if host and host.SetEditorPosition then
+        host.SetEditorPosition(pos)
+        return
+    end
+    local global = addon.db and addon.db.global
+    if global then global.scootAuraEditorPosition = pos end
 end
 
 --- The table holding every tracker component's settings, handed to the base
@@ -155,7 +217,7 @@ function SAU.SortedGroups()
 end
 
 function SAU.GetComponentId(trackerId)
-    return SAU.COMPONENT_PREFIX .. trackerId
+    return SAU.ComponentPrefix() .. trackerId
 end
 
 function SAU.GetDB(trackerId)
@@ -164,7 +226,12 @@ function SAU.GetDB(trackerId)
 end
 
 function SAU.IsModuleActive()
-    return addon:IsModuleEnabled(SAU.MODULE_CATEGORY)
+    return addon:IsModuleEnabled(SAU.ModuleCategory())
+end
+
+--- The message every write path returns while the module is off.
+function SAU.ModuleOffMessage()
+    return addon.Brand .. "Auras is turned off. Enable it on the Features page, then reload."
 end
 
 --------------------------------------------------------------------------------
@@ -181,52 +248,32 @@ end
 
 local specNameCache = {}
 
+-- The three readers below sit on addon.Specs (core/specs.lua), the one class
+-- and spec catalog, so the gate, the fly-out and the Rules page agree.
+
 --- This character's current spec ID, nil before the talent data loads.
--- Delegates rather than adding a third GetSpecialization idiom to the addon.
 function SAU.CurrentSpecID()
-    local get = addon.Profiles and addon.Profiles._getCurrentSpecID
-    if type(get) ~= "function" then return nil end
-    local ok, specID = pcall(get)
+    local Specs = addon.Specs
+    if not (Specs and Specs.CurrentSpecID) then return nil end
+    local ok, specID = pcall(Specs.CurrentSpecID)
     if ok and type(specID) == "number" and specID > 0 then return specID end
     return nil
 end
 
---- The class token a spec belongs to ("PRIEST" for 258), from the same Rules
--- spec buckets SpecIDsForClassToken walks the other way.
+--- The class token a spec belongs to ("PRIEST" for 258), or nil.
 function SAU.ClassTokenForSpec(specID)
-    if type(specID) ~= "number" then return nil end
-    local Rules = addon.Rules
-    if not (Rules and Rules.GetSpecBuckets) then return nil end
-    local ok, buckets = pcall(Rules.GetSpecBuckets, Rules)
-    if not ok or type(buckets) ~= "table" then return nil end
-    for _, classEntry in ipairs(buckets) do
-        for _, spec in ipairs(classEntry.specs or {}) do
-            if spec.specID == specID then return classEntry.file end
-        end
-    end
-    return nil
+    local Specs = addon.Specs
+    if not (Specs and Specs.ClassTokenForSpec) then return nil end
+    local ok, token = pcall(Specs.ClassTokenForSpec, specID)
+    return (ok and type(token) == "string") and token or nil
 end
 
---- Spec IDs for a class token ("PRIEST"), in Blizzard's own order. Sits on the
--- Rules spec buckets so the addon keeps one enumeration of every class's specs.
+--- Spec IDs for a class token ("PRIEST"), in Blizzard's own order.
 function SAU.SpecIDsForClassToken(token)
-    local out = {}
-    if type(token) ~= "string" then return out end
-    local Rules = addon.Rules
-    if not (Rules and Rules.GetSpecBuckets) then return out end
-    local ok, buckets = pcall(Rules.GetSpecBuckets, Rules)
-    if not ok or type(buckets) ~= "table" then return out end
-    for _, classEntry in ipairs(buckets) do
-        if classEntry.file == token then
-            for _, spec in ipairs(classEntry.specs or {}) do
-                if type(spec.specID) == "number" then
-                    table.insert(out, spec.specID)
-                end
-            end
-            break
-        end
-    end
-    return out
+    local Specs = addon.Specs
+    if not (Specs and Specs.SpecIDsForClass) then return {} end
+    local ok, ids = pcall(Specs.SpecIDsForClass, token)
+    return (ok and type(ids) == "table") and ids or {}
 end
 
 --- Every spec of the player's own class, stamped onto records at create.
@@ -1091,11 +1138,18 @@ SAU.StackNumberStartingValues = {
 }
 
 -- The stamps a tracker of this kind and shape carries, in the order they are
--- read: the bar shape's, then the kind's, then the kind's for the shape. The
+-- read: the host's, then the bar shape's, then the kind's, then the kind's
+-- for the shape. A stamp writes only keys still unwritten, so the first to
+-- name a key wins, and the host's look (AurasHost.StartingValues) leads. The
 -- editor walks the same list for a draft, so its controls and preview show
 -- what materialization writes.
 function SAU.StartingValueStamps(kind, shape)
     local stamps = {}
+    local h = addon.AurasHost
+    local hostStamps = h and h.StartingValues and h.StartingValues(kind, shape)
+    if type(hostStamps) == "table" then
+        for _, values in ipairs(hostStamps) do stamps[#stamps + 1] = values end
+    end
     if shape == "bar" then
         stamps[#stamps + 1] = SAU.BarShapeStartingValues
     end
@@ -1404,10 +1458,10 @@ function SAU.RegisterTrackerComponent(trackerId)
     end
     local comp = Component:New({
         id = componentId,
-        name = "ScootAura: " .. trackerId,
+        name = addon.Brand .. "Aura: " .. trackerId,
         settings = SAU.DefaultSettings(),
         -- Auras are account-wide, so their styling lives beside their content in
-        -- db.global.scootAuras rather than in profile.components.
+        -- the store (SAU.GetStylingContainer) rather than in profile.components.
         GetContainer = SAU.GetStylingContainer,
         ApplyStyling = function()
             local tracker = SAU.GetTracker(trackerId)
@@ -1427,11 +1481,15 @@ function SAU.RegisterTrackerComponent(trackerId)
 end
 
 -- Registered at init so LinkComponentsToDB picks up persisted styling tables.
+-- Gated inline rather than by category: the category is a host token, and a
+-- read of it at file scope would force the host file's load order (the
+-- unitFramesZ pattern, core/modules.lua).
 addon:RegisterComponentInitializer(function(self)
+    if not SAU.IsModuleActive() then return end
     for trackerId in pairs(SAU.AllTrackers()) do
         SAU.RegisterTrackerComponent(trackerId)
     end
-end, SAU.MODULE_CATEGORY)
+end)
 
 --------------------------------------------------------------------------------
 -- CRUD (content writes)
@@ -1441,7 +1499,7 @@ end, SAU.MODULE_CATEGORY)
 -- instance restrictions block structural work). Returns trackerId or nil, err.
 function SAU.CreateTracker(spec)
     if not SAU.IsModuleActive() then
-        return nil, "ScootAuras module is disabled (enable it on the Features page, then reload)"
+        return nil, SAU.ModuleOffMessage()
     end
     local kind = spec and spec.kind or "buff"
     local spellId = SAU.KindNeedsSpell(kind) and tonumber(spec and spec.spellId) or nil
@@ -1806,16 +1864,30 @@ end
 
 SAU.GROUP_SETTING_DEFAULTS = { spacing = 4, grow = "RIGHT", scale = 100 }
 
+-- A new group's name: the first "Aura Group N" no group on the account holds,
+-- counting from 1. Group ids share the trackers' id space, so naming by the id
+-- (as the first build did) skipped every number a tracker had taken.
+local function NextGroupName(store)
+    local taken = {}
+    for _, group in pairs(store.groups or {}) do
+        if type(group.name) == "string" then taken[group.name] = true end
+    end
+    local n = 1
+    while taken["Aura Group " .. n] do n = n + 1 end
+    return "Aura Group " .. n
+end
+
 function SAU.CreateGroup(name)
     if not SAU.IsModuleActive() then
-        return nil, "ScootAuras module is disabled (enable it on the Features page, then reload)"
+        return nil, SAU.ModuleOffMessage()
     end
     local store = SAU.EnsureStore()
     if not store then return nil, "profile not ready" end
 
+    local defaultName = NextGroupName(store)
     local gid = AllocateId(store)
     store.groups[gid] = {
-        name = (type(name) == "string" and name ~= "") and name or ("Aura Group " .. gid),
+        name = (type(name) == "string" and name ~= "") and name or defaultName,
         settings = CopyTable(SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},
         specs = SAU.DefaultSpecsForPlayer(),
@@ -1998,7 +2070,7 @@ function SAU.DuplicateGroup(gid)
 
     local newGid = AllocateId(store)
     local newGroup = {
-        name = (source.name or ("Aura Group " .. gid)) .. " copy",
+        name = (source.name or NextGroupName(store)) .. " copy",
         enabled = source.enabled ~= false,
         settings = CopyTable(source.settings or SAU.GROUP_SETTING_DEFAULTS),
         memberOrder = {},

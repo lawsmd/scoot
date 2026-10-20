@@ -233,7 +233,7 @@ end
 
 local function CreateEntry()
     local index = #pool + 1
-    local shell = CreateFrame("Frame", "ScootAuraShell" .. index, UIParent)
+    local shell = CreateFrame("Frame", addon.Brand .. "AuraShell" .. index, UIParent)
     addon.Strata.ApplyHUD(shell, 25)
     shell:SetSize(32, 32)
     shell:SetMovable(true)
@@ -461,7 +461,7 @@ function Engine.ApplyAll(trackerId)
         UpdateFlushTicker()
         entry.button = nil
         entry.wired = true
-        SetResult("wire.t" .. trackerId, "no container (Scoot-owned kind)")
+        SetResult("wire.t" .. trackerId, "no container (the addon draws this kind)")
         Record("applied", "t" .. trackerId)
         return
     end

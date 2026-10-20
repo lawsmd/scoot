@@ -27,7 +27,13 @@ local BTN_SIZE = 16      -- group box action buttons
 local BTN_GAP = 8
 local ROW_BTN_SIZE = 13  -- tracker row action buttons (smaller rows)
 local ROW_BTN_GAP = 6
-local IND_W = 27         -- ON/OFF indicator width; the row textClear and box reserve math read it
+local IND_W = 27         -- the ON/OFF pill's width; IndW is what the reserve math reads
+-- The width the indicator draws at on the active skin: the pill's, or the
+-- toggle role's box on a skin whose toggles are buttons. Read at build and
+-- never at load, since a skin switch changes it.
+local function IndW()
+    return addon.UI.Controls.OnOffIndicatorWidth(IND_W)
+end
 -- A group member is a cell: the icon on the left, its two buttons stacked on the
 -- icon's right edge, and a hover highlight wrapping both. The grid reserves the
 -- column's room at rest, so the highlight never crosses a neighbour and the cell
@@ -56,13 +62,25 @@ local MEMBER_GEAR_GLYPH_SCALE = 2
 -- filter, and the ON/OFF pill. The header reserves this much of its row for
 -- it, with air on the left since the gear glyph is drawn at twice its
 -- button; the name and the spec line under it both stop there, so the line
--- wraps before it reaches the pill.
-local BOX_CLUSTER_W = BOX_PAD + 3 * (BTN_SIZE + BTN_GAP) + IND_W
-local BOX_BTN_RESERVE = BOX_CLUSTER_W + 58
+-- wraps before it reaches the pill. Functions, since the pill's width is the
+-- skin's.
+local function BoxClusterW()
+    return BOX_PAD + 3 * (BTN_SIZE + BTN_GAP) + IndW()
+end
+local function BoxBtnReserve()
+    return BoxClusterW() + 58
+end
 
--- The page header: the how-to line hangs under the title at an explicit
--- width, and the search box and Import button sit on the divider line at
--- the header's bottom-right.
+-- The page header. With the header in the content pane (the skin's
+-- contentHeader.placement "pane") the how-to line hangs under the title at
+-- an explicit width, and the search box and Import button sit on the
+-- divider line at the header's bottom-right. With the header in the title
+-- band ("band") the title line has no room under it: the two widgets stand
+-- at the line's right end, where the other pages' action buttons go, and
+-- the how-to text is the tooltip of an info icon beside the title.
+local HOW_TO = "Auras are shared by every character on your account and load in the specializations you pick. "
+    .. "Click a tracker to edit it. Drag trackers into groups; drag a group's icons to reorder or remove them. "
+    .. "Position frames in Edit Mode."
 local HEADER_SIDE = 16           -- header inset, title and widgets alike
 local SUBTITLE_TOP = 36          -- header top to the how-to line
 local SUBTITLE_BOTTOM = 6        -- how-to line to the header bottom
@@ -86,11 +104,16 @@ local IMPORT_PREVIEW_KEY = "ScootAuraListImportPreview"
 local SEARCH_DIM_ALPHA = 0.3     -- a group member the search did not match
 -- The nav key this page renders under; Cleanup reads it to tell a re-render
 -- from leaving the page.
-local PAGE_KEY = "scootAurasList"
+local PAGE_KEY = "auraList"
 
 -- The spec restriction button. A funnel says "narrow this down", which is
 -- what it does; the flat glyph matches the delete and gear art beside it.
 local SPEC_ATLAS = "ui-questtrackerbutton-filter"
+
+-- The delete glyph: the trash can where the client has it, and the gold X
+-- where it does not (gold, as the gear is, so the two gray to the same light). Forever ships no common-icon-delete and no other lone
+-- trash can; its one can is baked into the red delete button's face.
+local DELETE_ATLAS = { "common-icon-delete", "common-icon-yellowx" }
 
 -- The left column holds single rows; the right holds group boxes and earns
 -- the wider share.
@@ -183,7 +206,7 @@ local function OpenSpecFlyout(anchor, kind, id)
     local SAU = addon.ScootAuras
     local isTracker = kind == "t"
     SpecFlyout.OpenFor(anchor, {
-        title = isTracker and "Load this aura in..." or "Load this group in...",
+        title = isTracker and "Load this aura on..." or "Load this group on...",
         key = kind .. tostring(id),
         get = function()
             local rec = isTracker and SAU.GetTracker(id) or SAU.GetGroup(id)
@@ -276,6 +299,9 @@ local function Cleanup(panel)
         if contentPane._scootAuraImportBtn then
             contentPane._scootAuraImportBtn:Hide()
         end
+        if contentPane._scootAuraInfoIcon then
+            contentPane._scootAuraInfoIcon:Hide()
+        end
         -- The pasted text stays: a user who left mid-paste gets it back.
         if contentPane._scootAuraImportFlyout then
             contentPane._scootAuraImportFlyout:Close()
@@ -317,7 +343,7 @@ local function EnsureImportFlyout(contentPane, importBtn)
         height = IMPORT_BOX_H + IMPORT_ROW_GAP + IMPORT_BTN_H + 2 * IMPORT_INSET,
         padding = IMPORT_INSET - 1,
         gap = IMPORT_GAP,
-        name = "ScootAuraImportFlyout",
+        name = addon.Brand .. "AuraImportFlyout",
     })
     if not flyout then return nil end
     local content = flyout:GetContent()
@@ -326,7 +352,7 @@ local function EnsureImportFlyout(contentPane, importBtn)
         parent = content,
         width = IMPORT_W - 2 * IMPORT_INSET,
         height = IMPORT_BOX_H,
-        placeholder = "Paste a Scoot aura string...",
+        placeholder = "Paste a " .. addon.Brand .. " aura string...",
         fontSize = 11,
     })
     pasteBox:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
@@ -433,12 +459,12 @@ local function EnsureHeaderWidgets(contentPane)
     if not contentPane or not contentPane._header then return end
     if contentPane._scootAuraImportBtn then return end
     local Controls = addon.UI.Controls
-    if not Controls or not Controls.CreateButton or not Controls.CreateSingleLineEditBox then return end
+    if not Controls or not Controls.CreateButton or not Controls.CreateSearchBox then return end
     local header = contentPane._header
 
     local importBtn = Controls:CreateButton({
         parent = header,
-        name = "ScootAuraImportBtn",
+        name = addon.Brand .. "AuraImportBtn",
         text = "Import",
         height = 17,
         fontSize = 10,
@@ -450,15 +476,38 @@ local function EnsureHeaderWidgets(contentPane)
             if flyout then flyout:Toggle() end
         end,
     })
-    importBtn:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -HEADER_SIDE, 8)
+    local hdr = addon.UI.Controls.Metrics().contentHeader
+    if hdr.placement == "band" then
+        importBtn:SetPoint("RIGHT", header, "RIGHT", -(hdr.padRight or HEADER_SIDE), 0)
+    else
+        importBtn:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -HEADER_SIDE, 8)
+    end
     importBtn:Hide()
     contentPane._scootAuraImportBtn = importBtn
     EnsureImportFlyout(contentPane, importBtn)
 
+    -- The band's title line has no room for the how-to line, so it hangs on
+    -- an info icon beside the page name.
+    if hdr.placement == "band" and contentPane._headerTitle and Controls.CreateInfoIcon then
+        local info = Controls:CreateInfoIcon({
+            parent = header,
+            tooltipTitle = "Aura List",
+            tooltipText = HOW_TO,
+            size = 16,
+        })
+        if info then
+            info:SetPoint("LEFT", contentPane._headerTitle, "RIGHT", 8, 0)
+            info:Hide()
+            contentPane._scootAuraInfoIcon = info
+        end
+    end
+
     -- The search box filters both panes as the user types. RenderList reads
     -- the query straight from it, so the text is the one source of truth and
     -- survives every rebuild by construction.
-    local search = Controls:CreateSingleLineEditBox({
+    -- The skin's search box: the flat edit box on a flat skin, Blizzard's
+    -- search bar with its glass and clear button where the skin names it.
+    local search = Controls:CreateSearchBox({
         parent = header,
         width = SEARCH_W,
         height = SEARCH_H,
@@ -483,6 +532,12 @@ local function EnsureHeaderWidgets(contentPane)
         search:SetText("")
         search:ClearFocus()
         if had then Refresh() end
+    end)
+    -- The clear button empties the box with no userInput, so the hook above
+    -- misses it; the list rebuilds from here instead.
+    search:SetOnClear(function()
+        Controls.CancelDebounce(SEARCH_DEBOUNCE_KEY)
+        Refresh()
     end)
     contentPane._scootAuraSearch = search
 end
@@ -616,7 +671,7 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
 
     -- Text stops short of the button cluster, so a long name or meta line
     -- never runs under it. Four buttons: delete, gear, spec, ON.
-    local textClear = PAD + IND_W + 3 * (ROW_BTN_SIZE + ROW_BTN_GAP) + 6
+    local textClear = PAD + IndW() + 3 * (ROW_BTN_SIZE + ROW_BTN_GAP) + 6
 
     local textLeft = PAD + ROW_ICON + 6
     local textW = math.max(40, (paneW or 240) - textLeft - textClear)
@@ -662,7 +717,7 @@ local function CreateTrackerRow(pane, trackerId, tracker, paneW, loaded)
     -- (Duplicate and Export in its fly-out), spec filter, ON/OFF pill, the
     -- group box's cluster at the row's smaller size.
     local Controls = addon.UI.Controls
-    local deleteBtn = Controls:CreateGlyphButton({ parent = row, atlas = "common-icon-delete",
+    local deleteBtn = Controls:CreateGlyphButton({ parent = row, atlas = DELETE_ATLAS,
         tooltip = "Delete", size = ROW_BTN_SIZE })
     deleteBtn:SetPoint("TOPRIGHT", row, "TOPRIGHT", -PAD, ROW_BTN_Y)
     local gearBtn = Controls:CreateGlyphButton({ parent = row, atlas = "GM-icon-settings",
@@ -805,7 +860,7 @@ local function AddGroupSpecLine(box, group, boxW, theme)
     local specFS = box:CreateFontString(nil, "OVERLAY")
     specFS:SetFont(theme:GetFont("LABEL"), 7, "")
     specFS:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD, -(BOX_HEADER_H - 6))
-    specFS:SetWidth(math.max(40, boxW - BOX_BTN_RESERVE))
+    specFS:SetWidth(math.max(40, boxW - BoxBtnReserve()))
     specFS:SetJustifyH("LEFT")
     specFS:SetWordWrap(true)
     specFS:SetText(groupSpecs)
@@ -846,7 +901,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded, keepSet)
     nameFS:SetPoint("LEFT", 0, 0)
     nameFS:SetText(group.name or ("Aura Group " .. gid))
     nameFS:SetTextColor(0.92, 0.92, 0.92, 1)
-    nameBtn:SetWidth(math.max(20, math.min(nameFS:GetStringWidth() + 6, boxW - BOX_BTN_RESERVE)))
+    nameBtn:SetWidth(math.max(20, math.min(nameFS:GetStringWidth() + 6, boxW - BoxBtnReserve())))
 
     local pencilBtn = CreateFrame("Button", nil, box)
     pencilBtn:SetSize(12, 12)
@@ -865,7 +920,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded, keepSet)
     renameBox:SetPoint("TOPLEFT", box, "TOPLEFT", BOX_PAD + 6, -4)
     -- Stops short of the cluster, which stays revealed while the pointer is
     -- in the box.
-    renameBox:SetPoint("TOPRIGHT", box, "TOPRIGHT", -(BOX_CLUSTER_W + 18), -4)
+    renameBox:SetPoint("TOPRIGHT", box, "TOPRIGHT", -(BoxClusterW() + 18), -4)
     renameBox:SetAutoFocus(false)
     renameBox:SetFontObject("GameFontHighlightSmall")
     renameBox:Hide()
@@ -909,7 +964,7 @@ local function CreateGroupBox(pane, gid, group, boxW, loaded, keepSet)
     -- controls, which describe a group on screen, hide themselves inside the
     -- panel.
     local Controls = addon.UI.Controls
-    local deleteBtn = Controls:CreateGlyphButton({ parent = box, atlas = "common-icon-delete",
+    local deleteBtn = Controls:CreateGlyphButton({ parent = box, atlas = DELETE_ATLAS,
         tooltip = "Delete Group", size = BTN_SIZE })
     deleteBtn:SetPoint("TOPRIGHT", box, "TOPRIGHT", -BOX_PAD, -5)
     local layoutBtn = Controls:CreateGlyphButton({ parent = box, atlas = "GM-icon-settings",
@@ -1210,6 +1265,9 @@ RenderList = function(panel, scrollContent, corrective)
         if contentPane and contentPane._scootAuraImportBtn then
             contentPane._scootAuraImportBtn:Hide()
         end
+        if contentPane and contentPane._scootAuraInfoIcon then
+            contentPane._scootAuraInfoIcon:Hide()
+        end
         if contentPane and contentPane._scootAuraImportFlyout then
             contentPane._scootAuraImportFlyout:Close()
         end
@@ -1220,7 +1278,7 @@ RenderList = function(panel, scrollContent, corrective)
         local builder = SettingsBuilder:CreateFor(scrollContent)
         panel._currentBuilder = builder
         builder:AddDescription(
-            "ScootAuras is turned off. Enable it on the Features page, then reload.",
+            addon.Brand .. "Auras is turned off. Enable it on the Features page, then reload.",
             { color = { 1, 0.82, 0 }, fontSize = 13, topPadding = 8 })
         builder:Finalize()
         return
@@ -1242,22 +1300,27 @@ RenderList = function(panel, scrollContent, corrective)
     if contentPane and contentPane._scootAuraImportBtn then
         contentPane._scootAuraImportBtn:Show()
     end
+    if contentPane and contentPane._scootAuraInfoIcon then
+        contentPane._scootAuraInfoIcon:Show()
+    end
     if contentPane and contentPane._scootAuraSearch then
         contentPane._scootAuraSearch:Show()
     end
 
-    -- The how-to line rides the page header as its subtitle: gray like the
-    -- row meta text, hung under the title at an explicit width that ends
-    -- before the search box, so it wraps instead of running under it. The
-    -- stock header leaves 26px under the title, two lines at most, so the
-    -- header grows to what the wrapped line needs. Cleanup restores the
-    -- stock look through UIPanel:ResetHeaderSubtitle before another page
-    -- reuses the FontString; the flag keeps the theme subscription from
-    -- recoloring it to accent.
-    if contentPane and contentPane._headerSubtitle and contentPane._header then
+    -- The how-to line. With the header in the content pane it rides the
+    -- header as its subtitle: gray like the row meta text, hung under the
+    -- title at an explicit width that ends before the search box, so it
+    -- wraps instead of running under it. The stock header leaves 26px under
+    -- the title, two lines at most, so the header grows to what the wrapped
+    -- line needs. Cleanup restores the stock look through
+    -- UIPanel:ResetHeaderSubtitle before another page reuses the FontString;
+    -- the flag keeps the theme subscription from recoloring it to accent.
+    -- With the header in the title band the line is the info icon's tooltip
+    -- (EnsureHeaderWidgets) and the panes start at the top of the content.
+    local inBand = addon.UI.Controls.Metrics().contentHeader.placement == "band"
+    if not inBand and contentPane and contentPane._headerSubtitle and contentPane._header then
         local sub = contentPane._headerSubtitle
-        sub:SetText(
-            "Auras are shared by every character on your account and load in the specializations you pick. Click a tracker to edit it. Drag trackers into groups; drag a group's icons to reorder or remove them. Position frames in Edit Mode.")
+        sub:SetText(HOW_TO)
         sub:ClearAllPoints()
         sub:SetPoint("TOPLEFT", contentPane._header, "TOPLEFT", HEADER_SIDE, -SUBTITLE_TOP)
         sub:SetFont(theme:GetFont("LABEL"), 10, "")
@@ -1525,6 +1588,6 @@ function addon.ScootAurasUI.CloseFlyouts()
     if import then import:Close() end
 end
 
-addon.UI.SettingsPanel:RegisterRenderer("scootAurasList", function(panel, scrollContent)
+addon.UI.SettingsPanel:RegisterRenderer("auraList", function(panel, scrollContent)
     RenderList(panel, scrollContent)
 end)

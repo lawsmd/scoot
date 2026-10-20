@@ -24,6 +24,11 @@
 
 local addonName, addon = ...
 
+-- Both addons list this file: window titles and messages carry the host's
+-- name, and the help text its slash word.
+local function Title(s) return addon.Brand .. "Auras " .. s end
+local SLASH = "/" .. addon.SlashToken .. " debug sa"
+
 local issecretvalue = _G.issecretvalue
 local debugprofilestop = _G.debugprofilestop
 
@@ -190,7 +195,7 @@ local function CreateProbe(spellId, unit, kind)
     SA.count = SA.count + 1
     local id = "p" .. SA.count
 
-    local frame = CreateFrame("Frame", "ScootAurasProbe" .. SA.count, UIParent)
+    local frame = CreateFrame("Frame", addon.Brand .. "AurasProbe" .. SA.count, UIParent)
     frame:SetSize(44, 44)
     local column = math.floor((SA.count - 1) / PROBES_PER_COLUMN)
     local row = (SA.count - 1) % PROBES_PER_COLUMN
@@ -336,7 +341,7 @@ end
 local function DumpState()
     local lines, push = addon.DebugLines()
 
-    push("=== ScootAuras Probe Battery ===")
+    push("=== " .. Title("Probe Battery") .. " ===")
     push("")
     push("In combat: " .. tostring(InCombatLockdown()))
     local secretNow = addon.AurasSecretNow and addon.AurasSecretNow()
@@ -344,7 +349,7 @@ local function DumpState()
     push("")
 
     if #SA.order == 0 then
-        push("No probes. Start with: /scoot debug sa create <spellId> [unit] [buff|debuff]")
+        push("No probes. Start with: " .. SLASH .. " create <spellId> [unit] [buff|debuff]")
     end
     for _, id in ipairs(SA.order) do
         local probe = SA.probes[id]
@@ -373,7 +378,7 @@ local function DumpState()
     end
     push("")
 
-    addon.DebugShowWindow("ScootAuras Probes", lines)
+    addon.DebugShowWindow(Title("Probes"), lines)
 end
 
 local function DumpLog()
@@ -382,7 +387,7 @@ local function DumpLog()
         table.insert(lines, ("%.2f #%d [%s] %s"):format(e.t or 0, e.seq, e.tag, e.detail))
     end
     if #lines == 0 then lines[1] = "(empty)" end
-    addon.DebugShowWindow("ScootAuras Probe Log", lines)
+    addon.DebugShowWindow(Title("Probe Log"), lines)
 end
 
 --------------------------------------------------------------------------------
@@ -393,7 +398,7 @@ local function LifecycleDump()
     local SAU = addon.ScootAuras
     local lines, push = addon.DebugLines()
 
-    push("=== ScootAuras Lifecycle ===")
+    push("=== " .. Title("Lifecycle") .. " ===")
     push("")
     push("Module enabled: " .. tostring(SAU.IsModuleActive()))
     push("In combat: " .. tostring(InCombatLockdown()))
@@ -406,7 +411,7 @@ local function LifecycleDump()
     local store = SAU.GetStore()
     local rows = SAU.SortedTrackers()
     if not store or not next(store.trackers or {}) then
-        push("No trackers. Start with: /scoot debug sa add <spellId> [unit] [buff|debuff] [icon|bar|shape]")
+        push("No trackers. Start with: " .. SLASH .. " add <spellId> [unit] [buff|debuff] [icon|bar|shape]")
     else
         local loaded, notLoaded = 0, 0
         push("--- Trackers (account-wide) ---")
@@ -422,7 +427,7 @@ local function LifecycleDump()
                 tostring(SAU.MissingVisualFor(t)), pand,
                 tostring(SAU.Engine.IsWired(row.id)), tostring(active)))
         end
-        push(("(%d loaded / %d not loaded; see /scoot debug sa specs)"):format(loaded, notLoaded))
+        push(("(%d loaded / %d not loaded; see " .. SLASH .. " specs)"):format(loaded, notLoaded))
     end
     push("")
 
@@ -477,17 +482,130 @@ local function LifecycleDump()
     end
     push("")
 
-    addon.DebugShowWindow("ScootAuras Lifecycle", lines)
+    addon.DebugShowWindow(Title("Lifecycle"), lines)
 end
 
 -- Why a tracker does or does not load in the current spec. This mirrors
 -- SpecAllows branch by branch, so the two must move together.
+-- The host in effect and what the client answers for the questions the port
+-- asks of it: which addon, the tokens, where the store is and its counts, the
+-- specialization axis, the Cooldown Manager, the aura restrictions and the
+-- raw saved variable.
+local function HostDump()
+    local SAU = addon.ScootAuras
+    local lines, push = addon.DebugLines()
+
+    push("=== " .. Title("Host") .. " ===")
+    push("")
+    local host = addon.AurasHost
+    push("Brand: " .. tostring(addon.Brand))
+    push("Host table: " .. (type(host) == "table" and "set" or "none (the fallback keys)"))
+    push("Component prefix: " .. tostring(SAU.ComponentPrefix()))
+    push("Module category: " .. tostring(SAU.ModuleCategory()))
+    push("Module enabled: " .. tostring(SAU.IsModuleActive()))
+    push("")
+
+    push("--- Store ---")
+    local store = SAU.GetStore()
+    if store then
+        local function count(t)
+            local n = 0
+            for _ in pairs(type(t) == "table" and t or {}) do n = n + 1 end
+            return n
+        end
+        push("Found through: " .. (host and "the host table" or "db.global"))
+        push(("trackers=%d groups=%d styling=%d positions=%d nextId=%s"):format(
+            count(store.trackers), count(store.groups), count(store.styling),
+            count(store.positions), tostring(store.nextId)))
+    else
+        push("No store yet")
+    end
+    local pos = SAU.GetEditorPosition()
+    if pos then
+        push(("Editor position: %s %s %s %s"):format(
+            tostring(pos[1]), tostring(pos[2]), tostring(pos[3]), tostring(pos[4])))
+    else
+        push("Editor position: unset")
+    end
+    push("")
+
+    push("--- Specialization ---")
+    local Specs = addon.Specs
+    push("Spec axis: " .. tostring(Specs and Specs.HasSpecAxis()))
+    push("Current spec: " .. tostring(Specs and Specs.CurrentSpecID()))
+    local getSpec = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization or GetSpecialization
+    if type(getSpec) == "function" then
+        local ok, index = pcall(getSpec)
+        push("GetSpecialization(): " .. (ok and SafeToString(index) or "error"))
+    else
+        push("GetSpecialization: absent")
+    end
+    local _, _, classID = UnitClass("player")
+    local numForClass = C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializationsForClassID
+        or _G.GetNumSpecializationsForClassID
+    if type(numForClass) == "function" and classID then
+        local ok, n = pcall(numForClass, classID)
+        push(("GetNumSpecializationsForClassID(%d): %s"):format(classID, ok and SafeToString(n) or "error"))
+    else
+        push("GetNumSpecializationsForClassID: absent")
+    end
+    local classes = Specs and Specs.Buckets() or {}
+    local specCount = 0
+    for _, entry in ipairs(classes) do specCount = specCount + #(entry.specs or {}) end
+    push(("Specs.Buckets(): %d classes, %d specs"):format(#classes, specCount))
+    push("")
+
+    push("--- Cooldown Manager ---")
+    push("C_CooldownViewer: " .. tostring(C_CooldownViewer ~= nil))
+    local available = _G.IsCooldownViewerAvailable
+    if type(available) == "function" then
+        local ok, v = pcall(available)
+        push("IsCooldownViewerAvailable(): " .. (ok and SafeToString(v) or "error"))
+    else
+        push("IsCooldownViewerAvailable: absent")
+    end
+    local enum = Enum and Enum.CooldownViewerCategory
+    if enum and C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCategorySet then
+        local entries, categories = 0, 0
+        for _, category in pairs(enum) do
+            if type(category) == "number" then
+                categories = categories + 1
+                local ok, ids = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, category, true)
+                if ok and type(ids) == "table" and not (issecretvalue and issecretvalue(ids)) then
+                    entries = entries + #ids
+                end
+            end
+        end
+        push(("Catalog: %d entries over %d categories"):format(entries, categories))
+    else
+        push("Catalog: no category set API")
+    end
+    push("")
+
+    push("--- Client state ---")
+    push("Aura restrictions active: " .. tostring(addon.AurasSecretNow and addon.AurasSecretNow()))
+    push("In combat: " .. tostring(InCombatLockdown()))
+    push("")
+
+    push("--- Saved variables ---")
+    local svName = addon.Brand .. "DB"
+    local sv = _G[svName]
+    if type(sv) == "table" then
+        local version = sv.schemaVersion ~= nil and (", schemaVersion " .. tostring(sv.schemaVersion)) or ""
+        push(svName .. ": present" .. version)
+    else
+        push(svName .. ": absent")
+    end
+
+    addon.DebugShowWindow(Title("Host"), lines)
+end
+
 local function SpecsDump()
     local SAU = addon.ScootAuras
     local lines, push = addon.DebugLines()
 
     local current = SAU.CurrentSpecID()
-    push("=== ScootAuras Spec Gate ===")
+    push("=== " .. Title("Spec Gate") .. " ===")
     push("")
     push("Current spec: " .. tostring(current)
         .. (current and (" (" .. SAU.SpecName(current) .. ")") or ""))
@@ -537,7 +655,7 @@ local function SpecsDump()
             #(g.memberOrder or {})))
     end
 
-    addon.DebugShowWindow("ScootAuras Spec Gate", lines)
+    addon.DebugShowWindow(Title("Spec Gate"), lines)
 end
 
 -- Binding-method inventory on a live tracker's engine button; gates the Shape
@@ -560,7 +678,7 @@ local function DumpButtonMethods(trackerId)
     for _, n in ipairs(names) do
         table.insert(lines, n .. " = " .. type(entry.button[n]))
     end
-    addon.DebugShowWindow("ScootAuras Button Methods", lines)
+    addon.DebugShowWindow(Title("Button Methods"), lines)
 end
 
 --------------------------------------------------------------------------------
@@ -659,7 +777,7 @@ local function SpellDump(arg)
         spellId = n
     end
 
-    push("=== ScootAuras spell resolution ===")
+    push("=== " .. Title("spell resolution") .. " ===")
     push("")
     push("In combat: " .. tostring(InCombatLockdown())
         .. "  aura restrictions: " .. tostring(addon.AurasSecretNow and addon.AurasSecretNow())
@@ -671,8 +789,8 @@ local function SpellDump(arg)
             trackerId, tostring(tracker.name), tostring(spellId), tostring(tracker.kind), tostring(tracker.unit),
             tostring(tracker.shape), tostring(tracker.enabled), tostring(tracker.owner)))
         if not spellId then
-            push("This kind tracks no spell. See /scoot debug sa power " .. trackerId)
-            addon.DebugShowWindow("ScootAuras Spell Resolution", lines)
+            push("This kind tracks no spell. See " .. SLASH .. " power " .. trackerId)
+            addon.DebugShowWindow(Title("Spell Resolution"), lines)
             return
         end
         push("Filter string: " .. tostring(SAU.FilterForKind(tracker.kind)))
@@ -797,7 +915,7 @@ local function SpellDump(arg)
         end
     end
 
-    addon.DebugShowWindow("ScootAuras Spell Resolution", lines)
+    addon.DebugShowWindow(Title("Spell Resolution"), lines)
 end
 
 local function CatalogDump()
@@ -806,7 +924,7 @@ local function CatalogDump()
         addon:Print("CDM picker not loaded.")
         return
     end
-    local lines = { "=== ScootAuras CDM picker catalog (as the grid shows it) ===", "" }
+    local lines = { "=== " .. Title("CDM picker catalog (as the grid shows it)") .. " ===", "" }
     local cells = Picker.BuildCatalog()
     for _, c in ipairs(cells) do
         local notes = {}
@@ -821,7 +939,7 @@ local function CatalogDump()
     end
     table.insert(lines, "")
     table.insert(lines, #cells .. " cells")
-    addon.DebugShowWindow("ScootAuras Catalog", lines)
+    addon.DebugShowWindow(Title("Catalog"), lines)
 end
 
 --------------------------------------------------------------------------------
@@ -842,7 +960,7 @@ local function lc(s) return string.lower(s or "") end
 local function setTrackerEnabled(word, a1)
     local trackerId = tonumber(a1)
     local ok, err = addon.ScootAuras.SetTrackerEnabled(trackerId or -1, word == "enable")
-    addon:Print(ok and ("ScootAuras t" .. trackerId .. " " .. word .. "d.") or (word .. " failed: " .. tostring(err)))
+    addon:Print(ok and (Title("t") .. trackerId .. " " .. word .. "d.") or (word .. " failed: " .. tostring(err)))
 end
 
 -- The last string `sa export` produced. Chat input caps at 255 characters,
@@ -868,7 +986,7 @@ local function exportRecord(a1)
     else
         push("Export failed: %s", tostring(err))
     end
-    addon.DebugShowWindow("ScootAuras Export " .. key, lines)
+    addon.DebugShowWindow(Title("Export ") .. key, lines)
 end
 
 local function importRecord(a1)
@@ -889,7 +1007,7 @@ local function importRecord(a1)
     else
         push("Import failed: %s", tostring(err))
     end
-    addon.DebugShowWindow("ScootAuras Import", lines)
+    addon.DebugShowWindow(Title("Import"), lines)
 end
 
 local function setGroupEnabled(a1, a2)
@@ -899,7 +1017,7 @@ local function setGroupEnabled(a1, a2)
     local ok, err = addon.ScootAuras.SetGroupEnabled(gid, word == "on")
     local lines, push = addon.DebugLines()
     push(ok and ("g%d switched %s"):format(gid, word) or ("genable failed: " .. tostring(err)))
-    addon.DebugShowWindow("ScootAuras Group Enable", lines)
+    addon.DebugShowWindow(Title("Group Enable"), lines)
 end
 
 local function createProbes(times, a1, a2, a3)
@@ -911,9 +1029,9 @@ local function createProbes(times, a1, a2, a3)
     for _ = 1, times do
         local probe, err = CreateProbe(spellId, unit, kind)
         if probe then
-            addon:Print(("ScootAuras probe %s: spell %d on %s (%s)"):format(probe.id, spellId, unit, kind))
+            addon:Print((Title("probe %s: spell %d on %s (%s)")):format(probe.id, spellId, unit, kind))
         else
-            addon:Print("ScootAuras probe failed: " .. tostring(err))
+            addon:Print(Title("probe failed: ") .. tostring(err))
             return
         end
     end
@@ -921,8 +1039,8 @@ end
 
 local function setProbeEnabled(word, a1)
     local probe = ResolveProbe(lc(a1))
-    if not probe then addon:Print("Unknown probe. See /scoot debug sa state") return end
-    addon:Print("ScootAuras " .. word .. " " .. probe.id .. ": " .. SetProbeEnabled(probe, word == "revive"))
+    if not probe then addon:Print("Unknown probe. See " .. SLASH .. " state") return end
+    addon:Print(Title(word) .. " " .. probe.id .. ": " .. SetProbeEnabled(probe, word == "revive"))
 end
 
 -- Cadence lock probes: dump the record, force the lock bar's value
@@ -945,8 +1063,8 @@ local function cadence(a1, a2, a3)
             end
         end
         if #ids == 0 then
-            addon:Print("ScootAuras cadence: no tracker with id " .. trackerId
-                .. " and no bar tracker on spell " .. trackerId .. " (ids: /scoot debug sa)")
+            addon:Print(Title("cadence: no tracker with id ") .. trackerId
+                .. " and no bar tracker on spell " .. trackerId .. " (ids: " .. SLASH .. ")")
             return
         end
     end
@@ -961,7 +1079,7 @@ local function cadence(a1, a2, a3)
             if comp and comp.ApplyStyling then
                 C_Timer.After(0, function() comp:ApplyStyling() end)
             end
-            addon:Print(("ScootAuras cadence t%d barLockCadence=%s%s"):format(
+            addon:Print((Title("cadence t%d barLockCadence=%s%s")):format(
                 id, tostring(want), db and "" or " (no db)"))
         end
         return
@@ -969,7 +1087,7 @@ local function cadence(a1, a2, a3)
     if a2 == "set" or a2 == "alpha" or a2 == "mirror" then
         for _, id in ipairs(ids) do
             local ok, err = Cadence.DebugSet(id, a2, a3)
-            addon:Print(ok and ("ScootAuras cadence t" .. id .. " " .. a2 .. " " .. tostring(a3))
+            addon:Print(ok and (Title("cadence t") .. id .. " " .. a2 .. " " .. tostring(a3))
                 or ("cadence t" .. id .. " " .. a2 .. " failed: " .. tostring(err)))
         end
         return
@@ -990,18 +1108,19 @@ local function cadence(a1, a2, a3)
         end
         table.insert(out, "")
     end
-    addon.DebugShowWindow("ScootAuras Cadence", out)
+    addon.DebugShowWindow(Title("Cadence"), out)
 end
 
 -- Verb functions receive the raw tokens after the word, nil when absent;
 -- lc() lowercases only the ones compared against a word list.
 addon:RegisterDebugCommand({
-    name = "scootauras", aliases = { "sa" }, help = "ScootAuras lifecycle commands and probes",
+    name = "scootauras", aliases = { "sa", "auras" }, help = Title("lifecycle commands and probes"),
     default = "state",
     verbs = {
         { word = "state", help = "probe battery and recorded results", fn = DumpState },
         { word = "list", help = "lifecycle dump of trackers and groups", fn = LifecycleDump },
         { word = "specs", help = "per record: stored specs, current spec, gate verdict", fn = SpecsDump },
+        { word = "host", help = "the host in effect: brand, tokens, store, spec axis, Cooldown Manager, saved variable", fn = HostDump },
         { word = "catalog", help = "every picker cell: shown name, stored base", fn = CatalogDump },
         { word = "log", help = "probe log", fn = DumpLog },
         { word = "add", usage = "add <spellId|classpower|classresource> [player|group|target|focus] [buff|debuff|buffstacks|debuffstacks|missingbuff] [icon|bar|shape|text|icontext|icons]",
@@ -1024,19 +1143,19 @@ addon:RegisterDebugCommand({
                 onlyInCombat = false,
             })
             if trackerId then
-                addon:Print(("ScootAuras t%d created: spell %s (%s on %s as %s)"):format(
+                addon:Print((Title("t%d created: spell %s (%s on %s as %s)")):format(
                     trackerId, tostring(spellId), kind, unit, shape))
                 if not addon.ScootAuras.Engine.CanDoStructuralWork() then
                     addon:Print("Wiring queued; it applies when combat or instance restrictions end.")
                 end
             else
-                addon:Print("ScootAuras add failed: " .. tostring(err))
+                addon:Print(Title("add failed: ") .. tostring(err))
             end
         end },
         { word = "del", usage = "del <id>", help = "delete a tracker", fn = function(a1)
             local trackerId = tonumber(a1)
             local ok, err = addon.ScootAuras.DeleteTracker(trackerId or -1)
-            addon:Print(ok and ("ScootAuras t" .. trackerId .. " deleted.") or ("Delete failed: " .. tostring(err)))
+            addon:Print(ok and (Title("t") .. trackerId .. " deleted.") or ("Delete failed: " .. tostring(err)))
         end },
         { word = "enable", usage = "enable <id>", help = "enable a tracker", fn = function(a1) setTrackerEnabled("enable", a1) end },
         { word = "disable", usage = "disable <id>", help = "disable a tracker", fn = function(a1) setTrackerEnabled("disable", a1) end },
@@ -1049,31 +1168,31 @@ addon:RegisterDebugCommand({
                 return
             end
             if not addon.ScootAuras.IsModuleActive() then
-                addon:Print("ScootAuras module is disabled (enable it on the Features page, then reload).")
+                addon:Print(Title("module is disabled (enable it on the Features page, then reload)."))
                 return
             end
             local trackerId = tonumber(a1)
             addon.ShowScootAuraEditor(trackerId)
-            addon:Print(trackerId and ("ScootAuras editor opened for t" .. trackerId)
-                or "ScootAuras editor opened with a fresh draft.")
+            addon:Print(trackerId and (Title("editor opened for t") .. trackerId)
+                or Title("editor opened with a fresh draft."))
         end },
         { word = "gadd", usage = "gadd [name]", help = "create a group", fn = function(a1, a2, a3)
             local name = a1 or ""
             if a2 then name = name .. " " .. a2 end
             if a3 then name = name .. " " .. a3 end
             local gid, err = addon.ScootAuras.CreateGroup(name)
-            addon:Print(gid and ("ScootAuras g" .. gid .. " created.") or ("Group add failed: " .. tostring(err)))
+            addon:Print(gid and (Title("g") .. gid .. " created.") or ("Group add failed: " .. tostring(err)))
         end },
         { word = "gdel", usage = "gdel <gid>", help = "delete a group and its members", fn = function(a1)
             local gid = tonumber(a1)
             local ok, err = addon.ScootAuras.DeleteGroup(gid or -1)
-            addon:Print(ok and ("ScootAuras g" .. gid .. " deleted with its members.") or ("Group delete failed: " .. tostring(err)))
+            addon:Print(ok and (Title("g") .. gid .. " deleted with its members.") or ("Group delete failed: " .. tostring(err)))
         end },
         { word = "join", usage = "join <id> <gid> [index]", help = "move a tracker into a group", fn = function(a1, a2, a3)
             local trackerId, gid = tonumber(a1), tonumber(a2)
             if not trackerId or not gid then return Commands.USAGE end
             local ok, err = addon.ScootAuras.SetTrackerGroup(trackerId, gid, tonumber(a3))
-            addon:Print(ok and ("ScootAuras t" .. trackerId .. " joined g" .. gid .. ".") or ("Join failed: " .. tostring(err)))
+            addon:Print(ok and (Title("t") .. trackerId .. " joined g" .. gid .. ".") or ("Join failed: " .. tostring(err)))
             if ok and not addon.ScootAuras.Engine.CanDoStructuralWork() then
                 addon:Print("The move applies when combat or instance restrictions end.")
             end
@@ -1081,15 +1200,15 @@ addon:RegisterDebugCommand({
         { word = "leave", usage = "leave <id>", help = "take a tracker out of its group", fn = function(a1)
             local trackerId = tonumber(a1)
             local ok, err = addon.ScootAuras.SetTrackerGroup(trackerId or -1, nil)
-            addon:Print(ok and ("ScootAuras t" .. trackerId .. " left its group.") or ("Leave failed: " .. tostring(err)))
+            addon:Print(ok and (Title("t") .. trackerId .. " left its group.") or ("Leave failed: " .. tostring(err)))
         end },
         { word = "reconcile", help = "run the active-profile reconcile", fn = function()
             addon.ScootAuras.ReconcileForActiveProfile("debug")
-            addon:Print("ScootAuras reconcile ran. See /scoot debug sa list")
+            addon:Print(Title("reconcile ran. See " .. SLASH .. " list"))
         end },
         { word = "flush", help = "attempt an engine flush; a no-op while the structural window is closed", fn = function()
             addon.ScootAuras.Engine.TryFlush("debug")
-            addon:Print("ScootAuras flush attempted (no-op while the structural window is closed).")
+            addon:Print(Title("flush attempted (no-op while the structural window is closed)."))
         end },
         { word = "methods", usage = "methods <id>", help = "button binding inventory", fn = function(a1)
             local trackerId = tonumber(a1)
@@ -1105,25 +1224,25 @@ addon:RegisterDebugCommand({
             local SAU = addon.ScootAuras
             local trackerId = tonumber(a1)
             if not trackerId or not SAU.Missing then return Commands.USAGE end
-            addon.DebugShowWindow("ScootAuras Missing Buff t" .. trackerId, SAU.Missing.DebugInfo(trackerId))
+            addon.DebugShowWindow(Title("Missing Buff t") .. trackerId, SAU.Missing.DebugInfo(trackerId))
         end },
         { word = "power", usage = "power <id>", help = "class power tracker: display power, secrecy, reads, colors, last paint", fn = function(a1)
             local SAU = addon.ScootAuras
             local trackerId = tonumber(a1)
             if not trackerId or not SAU.ClassPower then return Commands.USAGE end
-            addon.DebugShowWindow("ScootAuras Class Power t" .. trackerId, SAU.ClassPower.DebugInfo(trackerId))
+            addon.DebugShowWindow(Title("Class Power t") .. trackerId, SAU.ClassPower.DebugInfo(trackerId))
         end },
         { word = "stacks", usage = "stacks <id>", help = "stacks tracker: max stacks and its source, the per-id reads, the pieces, the bind results", fn = function(a1)
             local trackerId = tonumber(a1)
             local SAU = addon.ScootAuras
             if not trackerId or not SAU.Stacks then return Commands.USAGE end
-            addon.DebugShowWindow("ScootAuras Stacks t" .. trackerId, SAU.Stacks.DebugInfo(trackerId))
+            addon.DebugShowWindow(Title("Stacks t") .. trackerId, SAU.Stacks.DebugInfo(trackerId))
         end },
         { word = "resource", usage = "resource <id>", help = "class resource tracker: resolved resource, secrecy, reads, pip count, rune order, last paint", fn = function(a1)
             local SAU = addon.ScootAuras
             local trackerId = tonumber(a1)
             if not trackerId or not SAU.ClassResource then return Commands.USAGE end
-            addon.DebugShowWindow("ScootAuras Class Resource t" .. trackerId, SAU.ClassResource.DebugInfo(trackerId))
+            addon.DebugShowWindow(Title("Class Resource t") .. trackerId, SAU.ClassResource.DebugInfo(trackerId))
         end },
         { word = "cadence", usage = "cadence <id|spellId> [on|off|set <0..1>|alpha <0..1>|mirror <y|off>]",
           help = "cadence lock record and probes", fn = cadence },
@@ -1141,35 +1260,35 @@ addon:RegisterDebugCommand({
             a3, a4 = lc(a3), lc(a4)
             local unit = VALID_UNITS[a3] and a3 or "player"
             local kind = (a4 == "debuff" or a3 == "debuff") and "debuff" or "buff"
-            addon:Print("ScootAuras fresh " .. probe.id .. ": " .. FreshContainer(probe, spellId, unit, kind))
+            addon:Print(Title("fresh ") .. probe.id .. ": " .. FreshContainer(probe, spellId, unit, kind))
         end },
         { word = "repoint", usage = "repoint <n> <spellId>", help = "point the probe's container at another spell", fn = function(a1, a2)
             local probe = ResolveProbe(lc(a1))
             local spellId = tonumber(a2)
             if not probe or not spellId then return Commands.USAGE end
-            addon:Print("ScootAuras repoint " .. probe.id .. ": " .. RepointSpell(probe, spellId))
+            addon:Print(Title("repoint ") .. probe.id .. ": " .. RepointSpell(probe, spellId))
         end },
         { word = "parkfilter", usage = "parkfilter <n>", help = "set a filter string the slot can never match", fn = function(a1)
             local probe = ResolveProbe(lc(a1))
-            if not probe then addon:Print("Unknown probe. See /scoot debug sa state") return end
-            addon:Print("ScootAuras parkfilter " .. probe.id .. ": " .. ParkFilter(probe))
+            if not probe then addon:Print("Unknown probe. See " .. SLASH .. " state") return end
+            addon:Print(Title("parkfilter ") .. probe.id .. ": " .. ParkFilter(probe))
         end },
         { word = "setunit", usage = "setunit <n> <player|target|focus>", help = "SetUnit on the probe's container", fn = function(a1, a2)
             local probe = ResolveProbe(lc(a1))
             a2 = lc(a2)
             if not probe or not VALID_UNITS[a2] then return Commands.USAGE end
-            addon:Print("ScootAuras setunit " .. probe.id .. ": " .. ReUnit(probe, a2))
+            addon:Print(Title("setunit ") .. probe.id .. ": " .. ReUnit(probe, a2))
         end },
         { word = "budget", usage = "budget <count> <spellId>", help = "time the creation of N probe containers", fn = function(a1, a2)
             local count = tonumber(a1)
             local spellId = tonumber(a2)
             if not count or not spellId then return Commands.USAGE end
             local summary, err = RunBudget(count, spellId)
-            addon:Print("ScootAuras budget: " .. tostring(summary or err))
+            addon:Print(Title("budget: ") .. tostring(summary or err))
         end },
         { word = "clear", help = "park and hide every probe; reload to remove them", fn = function()
             ClearAll()
-            addon:Print("ScootAuras probes cleared (parked + hidden; reload to fully remove).")
+            addon:Print(Title("probes cleared (parked + hidden; reload to fully remove)."))
         end },
     },
 })

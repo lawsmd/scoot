@@ -29,6 +29,38 @@ function Picker.CreateScrollRegion(parent)
     child:SetSize(1, 1)
     scrollFrame:SetScrollChild(child)
 
+    -- A template scrollBar role puts the client's scrollbar inside the
+    -- region's right edge, and the content narrows to clear it. The flat
+    -- draw is the thin track and thumb below.
+    local bar
+    if addon.UI.Chrome.Spec("scrollBar").kind == "template" then
+        bar = addon.UI.Controls.CreateScrollBar({ parent = parent, scrollFrame = scrollFrame })
+    end
+    if bar then
+        local reserve = (bar:GetWidth() or 0) + 4
+        scrollFrame._barReserve = reserve
+        bar:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 0, 0)
+        bar:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 0, 0)
+        bar:SetFrameLevel(scrollFrame:GetFrameLevel() + 10)
+        scrollFrame:SetScript("OnSizeChanged", function(_, w)
+            if w and w > 0 then child:SetWidth(math.max(1, w - reserve)) end
+            bar:Sync()
+        end)
+        scrollFrame:EnableMouseWheel(true)
+        scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+            local maxScroll = math.max(0, (child:GetHeight() or 0) - (self:GetHeight() or 0))
+            local target = math.min(maxScroll, math.max(0, (self:GetVerticalScroll() or 0) - delta * 44))
+            self:SetVerticalScroll(target)
+            bar:Sync()
+        end)
+        scrollFrame.ResetScroll = function()
+            scrollFrame:SetVerticalScroll(0)
+            bar:Sync()
+        end
+        scrollFrame.UpdateThumb = function() bar:Sync() end
+        return scrollFrame, child
+    end
+
     local track = scrollFrame:CreateTexture(nil, "OVERLAY", nil, 1)
     track:SetWidth(4)
     track:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", -1, 0)

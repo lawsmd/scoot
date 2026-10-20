@@ -225,6 +225,7 @@ local function AddBarStyleAndBorderBlocks(tabBuilder, ctx, foreground, mapFillMo
 
     tabBuilder:AddBarStyleBlock({
         get = barGet, set = barSet,
+        atlases = true,
         foreground = foreground,
         background = {
             values = { custom = "Custom", original = "Texture Original" },

@@ -71,7 +71,7 @@ local SIDE = {
 local function EnsureFrames()
     if container then return end
 
-    container = CreateFrame("Frame", "ScootAuraRearrangeOverlay", UIParent)
+    container = CreateFrame("Frame", addon.Brand .. "AuraRearrangeOverlay", UIParent)
     container:SetFrameStrata("DIALOG")
     container:SetFrameLevel(100)
     container:EnableMouse(false)

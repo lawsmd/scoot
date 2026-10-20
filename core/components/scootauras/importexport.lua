@@ -279,15 +279,22 @@ local function DecodeAuraString(str)
     if str == "" then return nil, "No import string provided." end
     local profilePrefix = codec.PREFIX_PROFILE
     if profilePrefix and str:sub(1, #profilePrefix) == profilePrefix then
-        return nil, "That is a Scoot profile string. Import it under Profiles > Import/Export."
+        return nil, "That is a " .. addon.Brand .. " profile string. Import it under Profiles > Import/Export."
     end
     local ok, envelope = codec:DecodeEnvelope(str, codec.PREFIX_AURA, "aura")
     if not ok then return nil, envelope end
+    -- The other addon's string is refused as the profile importer refuses
+    -- its profiles: the record shape is the same, the spell universe is not.
+    local writer = codec.WriterOf and codec.WriterOf(envelope) or addon.Brand
+    if writer ~= addon.Brand then
+        return nil, "That is a " .. tostring(writer) .. " aura string. " .. addon.Brand
+            .. " auras are separate and cannot import it."
+    end
     if envelope.version == nil then
         return nil, "Import data is missing version information."
     end
     if type(envelope.version) ~= "number" or envelope.version > SAU.EXPORT_VERSION then
-        return nil, "This aura string was made by a newer version of Scoot. Please update your addon."
+        return nil, "This aura string was made by a newer version of " .. addon.Brand .. ". Please update your addon."
     end
     local known = KnownStylingKeys()
     local payload = {
@@ -404,7 +411,7 @@ end
 -- frame anchors, and structural work queues behind the engine gate.
 function SAU.ImportString(str)
     if not SAU.IsModuleActive() then
-        return nil, "ScootAuras module is disabled (enable it on the Features page, then reload)"
+        return nil, SAU.ModuleOffMessage()
     end
     local payload, err = DecodeAuraString(str)
     if not payload then return nil, err end

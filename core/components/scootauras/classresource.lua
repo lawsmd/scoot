@@ -15,10 +15,12 @@
 --        |  outer bar on the Bar shape (size, background and border from the
 --        |  shared chain); its own fill is never fed. Icon, texts and the
 --        |  drain stay hidden.
---        +- pip[i] StatusBar, the gate                  level root+2
+--        +- pip[i] StatusBar, the gate (fill invisible) level root+2
 --        |   +- backdrop  Texture, SetAllPoints(pip)               Icons shape
 --        |   +- fg        Texture, SetAllPoints(the pip's fill)    Icons shape
 --        |   +- cooldown  Cooldown, reverse swipe        Icons shape; runes, essence
+--        |   +- clip      Frame, SetAllPoints(the pip's fill), clips   Bar shape
+--        |       +- span  Texture, SetAllPoints(pip): the pip's slice of one fill
 --        +- tick[i] Texture on the outer bar, between pip i and i+1   Bar shape
 --
 -- Runes and the recharging essence ride timers: SetTimerDuration on a bar
@@ -255,10 +257,11 @@ local function EnsureVisual(entry)
     return cr
 end
 
--- One pip: the gate StatusBar and everything that rides it. Every frame here
--- is Scoot's, so creation is legal in combat.
-local function CreatePip(cr)
-    local root = cr.root
+--- One pip: the gate StatusBar and everything that rides it, on `root`, with
+--- its tick on `tickHost`. Every frame here is the addon's, so creation is
+--- legal in combat. Public for a bar drawn outside a tracker (the Camelot
+--- Personal Resource Display's combo points), with LayoutSegments.
+function ClassResource.CreateSegment(root, tickHost)
     local bar = CreateFrame("StatusBar", nil, root)
     bar:SetFrameLevel(root:GetFrameLevel() + 2)
     bar:SetStatusBarTexture(WHITE8x8)
@@ -290,9 +293,23 @@ local function CreatePip(cr)
     cooldown:SetReverse(true)
     cooldown:SetDrawSwipe(false)
 
-    -- On the outer bar, so it hides with it on the Icons shape.
-    local barElem = FindBarElem(cr.elements)
-    local tickHost = barElem and barElem.widget or root
+    -- Bar shape: the gate's fill is invisible and the art is `span`, this
+    -- segment's slice of one fill across the whole bar, so the segments
+    -- shade as one bar. The clip follows the fill's rect, so a partial
+    -- segment (a recharging rune, a shard fragment) is cut, never squeezed.
+    local clip = CreateFrame("Frame", nil, bar)
+    clip:SetClipsChildren(true)
+    clip:Hide()
+    local span = clip:CreateTexture(nil, "ARTWORK")
+    span:SetAllPoints(bar)
+    -- The same slice added on top at the host's segmentBrighten alpha: a tint
+    -- only darkens, and a grey fill (the Cooldown Manager's) dulls a pale
+    -- color such as the Rogue's.
+    local lift = clip:CreateTexture(nil, "ARTWORK", nil, 1)
+    lift:SetAllPoints(bar)
+    lift:SetBlendMode("ADD")
+    lift:Hide()
+
     local tick = tickHost:CreateTexture(nil, "ARTWORK")
     tick:Hide()
 
@@ -302,7 +319,16 @@ local function CreatePip(cr)
         if ok then dur = obj end
     end
 
-    return { bar = bar, ring = ring, backdrop = backdrop, fg = fg, cooldown = cooldown, tick = tick, dur = dur }
+    return {
+        bar = bar, ring = ring, backdrop = backdrop, fg = fg, cooldown = cooldown,
+        clip = clip, span = span, lift = lift, tick = tick, dur = dur,
+    }
+end
+
+-- The tick on the outer bar, so it hides with it on the Icons shape.
+local function CreatePip(cr)
+    local barElem = FindBarElem(cr.elements)
+    return ClassResource.CreateSegment(cr.root, barElem and barElem.widget or cr.root)
 end
 
 -- Pips are never destroyed: a count that shrinks hides the extras, and a
@@ -425,26 +451,26 @@ end
 --------------------------------------------------------------------------------
 
 -- Bar shape: N segments tiling the outer bar's inner rect exactly (the rect
--- inside the Square border's reach, regions.lua CreateBarElement), a tick of
--- the configured thickness between neighbours, each segment carrying the
--- fill texture and color the shared chain resolves for a bar, the last two
--- in the tail colors where the resource offers them.
-local function LayoutBarPips(cr, db, barElem, tracker, resolved)
-    local n = cr.count
-    local barW = tonumber(db and db.barWidth) or 120
-    local barH = tonumber(db and db.barHeight) or 12
-    local inset = barElem.fillInset
-    if inset then
-        barW = math.max(1, barW - (inset.left or 0) - (inset.right or 0))
-        barH = math.max(1, barH - (inset.top or 0) - (inset.bottom or 0))
-    end
-    local tick = math.max(0, math.floor(tonumber(db and db.tickThickness) or 2))
-    local tickColor = (db and db.tickColor) or { 0, 0, 0, 1 }
-    local fgPath, r, g, b, a = SAU._ResolveBarFill(tracker, db, { PowerColor(resolved) })
-    local varied = VariedTail(db, resolved)
-    local host = barElem.inner or barElem.widget
+-- inside the Square border's reach, regions.lua CreateBarElement), a tick
+-- between neighbours, each segment its slice of the fill texture in the
+-- color the shared chain resolves for a bar, the last two in the tail colors
+-- where the resource offers them.
+--- Segments 1..n of `segments` (from CreateSegment) across `host`, a rect of
+--- look.width by look.height: the edges, the fill slices in r, g, b, a, the
+--- tail colors when `varied`, and the ticks. `look` holds width, height,
+--- tickThickness, tickColor, and the foreground and background texture keys.
+function ClassResource.LayoutSegments(segments, n, host, look, r, g, b, a, varied)
+    local barW, barH = look.width, look.height
+    local tick = math.max(0, math.floor(tonumber(look.tickThickness) or 2))
+    local tickColor = look.tickColor or { 0, 0, 0, 1 }
+    -- A framed background's bottom rim lies inside the rect; ticks stop at it.
+    local tickTop, tickBottom = addon.Media.BarInteriorInsets(look.background, barH)
+    local tickH = math.max(1, barH - tickTop - tickBottom)
+    local aurasHost = addon.AurasHost
+    local brighten = tonumber(aurasHost and aurasHost.segmentBrighten) or 0
+    local fgKey = look.foreground or "bevelled"
     for i = 1, n do
-        local pip = cr.pips[i]
+        local pip = segments[i]
         -- The shared segment geometry (pips.lua), so this bar and a stacks
         -- bar tile the same way.
         local x0, x1 = SAU.Pips.SegmentEdges(barW, n, tick, i)
@@ -452,9 +478,21 @@ local function LayoutBarPips(cr, db, barElem, tracker, resolved)
         bar:ClearAllPoints()
         bar:SetPoint("TOPLEFT", host, "TOPLEFT", x0, 0)
         bar:SetSize(math.max(1, x1 - x0), barH)
-        bar:SetStatusBarTexture(fgPath or WHITE8x8)
+        bar:SetStatusBarTexture(WHITE8x8)
+        bar:SetStatusBarColor(1, 1, 1, 0)
+        pip.clip:SetAllPoints(bar:GetStatusBarTexture())
+        addon.Media.ApplyBarFillSlice(pip.span, fgKey, x0 / barW, x1 / barW, WHITE8x8)
         local sr, sg, sb = PipColorAt(varied, i, n, r, g, b)
-        bar:SetStatusBarColor(sr, sg, sb, a)
+        pip.span:SetVertexColor(sr, sg, sb, a)
+        if brighten > 0 then
+            addon.Media.ApplyBarFillSlice(pip.lift, fgKey, x0 / barW, x1 / barW, WHITE8x8)
+            pip.lift:SetBlendMode("ADD")
+            pip.lift:SetVertexColor(sr, sg, sb, brighten * (a or 1))
+            pip.lift:Show()
+        else
+            pip.lift:Hide()
+        end
+        pip.clip:Show()
         bar:Show()
         pip.ring:Hide()
         pip.backdrop:Hide()
@@ -463,14 +501,30 @@ local function LayoutBarPips(cr, db, barElem, tracker, resolved)
         local t = pip.tick
         if i < n and tick > 0 then
             t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", host, "TOPLEFT", x1, 0)
-            t:SetSize(tick, barH)
+            t:SetPoint("TOPLEFT", host, "TOPLEFT", x1, -tickTop)
+            t:SetSize(tick, tickH)
             t:SetColorTexture(tickColor[1] or 0, tickColor[2] or 0, tickColor[3] or 0, tickColor[4] or 1)
             t:Show()
         else
             t:Hide()
         end
     end
+end
+
+local function LayoutBarPips(cr, db, barElem, tracker, resolved)
+    local barW = tonumber(db and db.barWidth) or 120
+    local barH = tonumber(db and db.barHeight) or 12
+    local inset = barElem.fillInset
+    if inset then
+        barW = math.max(1, barW - (inset.left or 0) - (inset.right or 0))
+        barH = math.max(1, barH - (inset.top or 0) - (inset.bottom or 0))
+    end
+    local _, r, g, b, a = SAU._ResolveBarFill(tracker, db, { PowerColor(resolved) })
+    ClassResource.LayoutSegments(cr.pips, cr.count, barElem.inner or barElem.widget, {
+        width = barW, height = barH,
+        tickThickness = db and db.tickThickness, tickColor = db and db.tickColor,
+        foreground = db and db.barForegroundTexture, background = db and db.barBackgroundTexture,
+    }, r, g, b, a, VariedTail(db, resolved))
 end
 
 -- Icons shape: a row of glyphs. The gate's own fill is invisible; the
@@ -502,6 +556,7 @@ local function LayoutIconPips(cr, db, resolved)
         bar:SetStatusBarTexture(WHITE8x8)
         bar:SetStatusBarColor(1, 1, 1, 0)
         bar:Show()
+        pip.clip:Hide()
         pip.tick:Hide()
 
         local ring = pip.ring

@@ -114,7 +114,7 @@ end
 
 -- A fully transparent mask file: added to the live icon, it hides the icon
 -- wherever the mask is visible.
-local MASK_EMPTY = "Interface\\AddOns\\" .. addonName .. "\\media\\scootauras\\mask-empty"
+local MASK_EMPTY = addon.MediaPath .. "media\\scootauras\\mask-empty"
 
 -- Drain swipe host: a native Cooldown inside a clip frame. On the live
 -- button the engine drives it through SetDurationCooldown, and the swipe

@@ -1,10 +1,11 @@
 -- GearFlyout.lua - The gear fly-out on the Aura List page
 --
 -- One panel serves every tracker row, group member cell, and group box. A
--- tracker gets a two-row menu (Duplicate, Export); a group gets the same two
--- rows and then the layout controls (Spacing, Group Scale, Grow Direction)
--- while the group is loaded. Export swaps the panel to a page holding the
--- string, selected for Ctrl+C. The lifecycle is the spec fly-out's: OpenFor
+-- tracker gets a three-row menu (Rename, Duplicate, Export); a group gets
+-- Duplicate and Export and then the layout controls (Spacing, Group Scale,
+-- Grow Direction) while the group is loaded. Export swaps the panel to a
+-- page holding the string, selected for Ctrl+C; Rename swaps it to a page
+-- holding the name in an input box, focused. A group renames on its box. The lifecycle is the spec fly-out's: OpenFor
 -- re-targets the one instance, and RenderList brackets its rebuild with
 -- BeginReanchor/EndReanchor, so a re-render under an open panel hands it its
 -- replacement trigger.
@@ -58,6 +59,7 @@ local function ShowPage(name)
     panel._page = name
     panel._menu:SetShown(name == "menu")
     panel._export:SetShown(name == "export")
+    panel._rename:SetShown(name == "rename")
 end
 
 --------------------------------------------------------------------------------
@@ -194,6 +196,55 @@ local function ShowExport()
 end
 
 --------------------------------------------------------------------------------
+-- Rename page
+--------------------------------------------------------------------------------
+
+-- Enter and focus loss both commit (the box's own contract); Escape puts the
+-- name back first, so it commits the unchanged name, which renames nothing.
+-- Either way the panel closes. The page check drops the commit the close's
+-- own focus loss fires.
+local function CommitRename(text)
+    if panel._page ~= "rename" then return end
+    panel._page = nil
+    local SAU = GetSAU()
+    local tracker = SAU and SAU.GetTracker(panel._id)
+    local name = strtrim(text or "")
+    local changed = tracker and name ~= "" and name ~= SAU.DisplayName(tracker)
+    if changed then SAU.RenameTracker(panel._id, name) end
+    panel:Close()
+    if changed then RefreshList() end
+end
+
+local function EnsureRenamePage()
+    if panel._renameBox then return end
+    local box = GetControls():CreateSingleLineEditBox({
+        parent = panel._rename,
+        width = EXPORT_W - 2 * INSET,
+        maxLetters = 64,
+    })
+    box:SetPoint("TOPLEFT", panel._rename, "TOPLEFT", 0, 0)
+    box:SetOnChange(CommitRename)
+    panel._renameBox = box
+end
+
+local function ShowRename()
+    local SAU = GetSAU()
+    local tracker = SAU and panel._kind == "t" and SAU.GetTracker(panel._id)
+    if not tracker then return end
+    EnsureRenamePage()
+    ShowPage("rename")
+    local box = panel._renameBox
+    box:SetText(SAU.DisplayName(tracker) or "")
+    SizePanel(EXPORT_W, box:GetHeight())
+    C_Timer.After(0, function()
+        if panel:IsOpen() and panel._page == "rename" then
+            box:SetFocus()
+            box._editBox:HighlightText()
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
 -- Group layout controls
 --------------------------------------------------------------------------------
 
@@ -305,7 +356,8 @@ local function Rebuild()
         -- Copies the tracker; inside a group, directly after itself. The
         -- editor's own duplicate then edits the copy; here the user is
         -- browsing the list, so the copy stays put.
-        local dup = AcquireRow(1, opts.inGroup and "Duplicate in Group" or "Duplicate", function()
+        local rename = AcquireRow(1, "Rename", ShowRename, true)
+        local dup = AcquireRow(2, opts.inGroup and "Duplicate in Group" or "Duplicate", function()
             local newId
             if opts.inGroup then
                 newId = SAU.DuplicateTrackerInGroup(id)
@@ -316,13 +368,16 @@ local function Rebuild()
             panel:Close()
             if newId then RefreshList() end
         end, true)
-        local export = AcquireRow(2, "Export", ShowExport, true)
+        local export = AcquireRow(3, "Export", ShowExport, true)
         SetLayoutShown(false)
-        -- As wide as the longer label wants, at least the minimum: a row's
+        -- As wide as the longest label wants, at least the minimum: a row's
         -- menu says Duplicate, a member cell's says Duplicate in Group.
-        local textW = math.max(dup._text:GetStringWidth() or 0, export._text:GetStringWidth() or 0)
+        local textW = 0
+        for _, row in ipairs({ rename, dup, export }) do
+            textW = math.max(textW, row._text:GetStringWidth() or 0)
+        end
         local w = math.max(MENU_W_TRACKER_MIN, math.ceil(textW) + 2 * (ROW_TEXT_INSET + INSET))
-        SizePanel(w, 2 * ROW_H)
+        SizePanel(w, 3 * ROW_H)
         return
     end
 
@@ -363,11 +418,12 @@ local function Create(anchorBtn)
         height = 100,
         padding = PADDING,
         gap = DEFAULT_GAP,
-        name = "ScootAuraGearFlyout",
+        name = addon.Brand .. "AuraGearFlyout",
         onShow = function() Rebuild() end,
         onHide = function(self)
-            if self._exportBox then self._exportBox:ClearFocus() end
             self._page = nil
+            if self._exportBox then self._exportBox:ClearFocus() end
+            if self._renameBox then self._renameBox:ClearFocus() end
         end,
     })
     if not p then return nil end
@@ -382,6 +438,10 @@ local function Create(anchorBtn)
     export:SetAllPoints(content)
     export:Hide()
     p._export = export
+    local rename = CreateFrame("Frame", nil, content)
+    rename:SetAllPoints(content)
+    rename:Hide()
+    p._rename = rename
 
     return p
 end

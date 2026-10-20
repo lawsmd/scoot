@@ -254,3 +254,16 @@ C_Timer.NewTicker(0.25, function()
         if SAU.Missing then SAU.Missing.RefreshGates() end
     end
 end)
+
+-- The profile-switch reconcile, as a registered step so it runs under either
+-- host (core/profiles/restyle.lua, which called it before, is Scoot's file).
+-- Order 35: after Scoot's step at 10 and Camelot's component step at 30,
+-- before Camelot's Dynamic Layouts step at 40, so the adapters land on
+-- re-applied positions. The Initialize pass is skipped as the Scoot step
+-- skipped it: the engine is not initialized yet, and the world pass covers it.
+if addon.Profiles and addon.Profiles.RegisterApplyStep then
+    addon.Profiles.RegisterApplyStep("auras", function(reason, ctx)
+        if ctx and ctx.initial then return end
+        SAU.ReconcileForActiveProfile(reason)
+    end, 35)
+end

@@ -207,12 +207,16 @@ local function LayoutTicks(s, db, barElem, n)
     local host = s.tickHost
     if not host then return end
     local barW = tonumber(db and db.barWidth) or 120
+    local barH = tonumber(db and db.barHeight) or 12
     local inset = barElem.fillInset
     if inset then
         barW = math.max(1, barW - (inset.left or 0) - (inset.right or 0))
+        barH = math.max(1, barH - (inset.top or 0) - (inset.bottom or 0))
     end
     local tick = math.max(0, math.floor(tonumber(db and db.tickThickness) or 2))
     local color = (db and db.tickColor) or { 0, 0, 0, 1 }
+    -- A framed background's bottom rim lies inside the rect; ticks stop at it.
+    local tickTop, tickBottom = addon.Media.BarInteriorInsets(db and db.barBackgroundTexture, barH)
     host:Show()
     for i = 1, n - 1 do
         local tex = s.ticks[i]
@@ -223,8 +227,8 @@ local function LayoutTicks(s, db, barElem, n)
         if tick > 0 then
             local _, x1 = SAU.Pips.SegmentEdges(barW, n, tick, i)
             tex:ClearAllPoints()
-            tex:SetPoint("TOP", host, "TOP", 0, 0)
-            tex:SetPoint("BOTTOM", host, "BOTTOM", 0, 0)
+            tex:SetPoint("TOP", host, "TOP", 0, -tickTop)
+            tex:SetPoint("BOTTOM", host, "BOTTOM", 0, tickBottom)
             tex:SetPoint("LEFT", host, "LEFT", x1, 0)
             tex:SetWidth(tick)
             tex:SetColorTexture(color[1] or 0, color[2] or 0, color[3] or 0, color[4] or 1)
