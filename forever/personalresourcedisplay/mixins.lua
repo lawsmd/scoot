@@ -10,11 +10,13 @@
 -- instead. The alternate power bar and the class container are not in the
 -- Camelot tree, so their branches are gone too.
 --
--- Two departures from the transcription. Where Blizzard reads a bar's
+-- Three departures from the transcription. Where Blizzard reads a bar's
 -- height back, this keeps the number it set: a StatusBar fed a secret can
--- throw on its own geometry getters. And each bar lives in a plain
--- container the setters size and fills it on both anchors, so a border
--- anchored to the container reads plain geometry (style.lua, "Borders").
+-- throw on its own geometry getters. Each bar lives in a plain container
+-- the setters size and fills it on both anchors, so a border anchored to
+-- the container reads plain geometry (style.lua, "Borders"). And
+-- classBarHeight is room over the power bar for the combo point bar joined
+-- to its top (combopoints.lua), 0 otherwise.
 --------------------------------------------------------------------------------
 
 CamelotPersonalResourceDisplayMixin = {}
@@ -30,6 +32,7 @@ function CamelotPersonalResourceDisplayMixin:OnLoad()
     self.healthBarHeight = self.HealthBarsContainer:GetHeight()
     self.powerBarHeight = self.PowerBarContainer:GetHeight()
     self.barPadding = 0
+    self.classBarHeight = 0
 
     -- Blizzard's SetupHealthBar: the loss bar over the container's width.
     local container = self.HealthBarsContainer
@@ -69,12 +72,22 @@ function CamelotPersonalResourceDisplayMixin:SetPowerBarHeight(barHeight)
 end
 
 function CamelotPersonalResourceDisplayMixin:UpdatePowerBarAnchor()
+    local classBar = self.classBarHeight or 0
     self.PowerBarContainer:ClearAllPoints()
     if self.hideHealth then
-        self.PowerBarContainer:SetPoint("TOP", self, "TOP", 0, 0)
+        self.PowerBarContainer:SetPoint("TOP", self, "TOP", 0, -classBar)
     else
-        self.PowerBarContainer:SetPoint("TOP", self.HealthBarsContainer, "BOTTOM", 0, -self:GetBarPadding())
+        self.PowerBarContainer:SetPoint("TOP", self.HealthBarsContainer, "BOTTOM", 0,
+            -(self:GetBarPadding() + classBar))
     end
+end
+
+function CamelotPersonalResourceDisplayMixin:SetClassBarHeight(height)
+    height = height or 0
+    if self.classBarHeight == height then return end
+    self.classBarHeight = height
+    self:UpdatePowerBarAnchor()
+    self:UpdateFrameHeight()
 end
 
 function CamelotPersonalResourceDisplayMixin:SetBarPadding(padding)
@@ -105,7 +118,7 @@ function CamelotPersonalResourceDisplayMixin:UpdateFrameHeight()
         if not self.hideHealth then
             totalHeight = totalHeight + self:GetBarPadding()
         end
-        totalHeight = totalHeight + (self.powerBarHeight or 0)
+        totalHeight = totalHeight + (self.powerBarHeight or 0) + (self.classBarHeight or 0)
     end
     self:SetHeight(math.max(totalHeight, MINIMUM_FRAME_HEIGHT))
 end

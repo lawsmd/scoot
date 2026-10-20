@@ -89,21 +89,12 @@ local function refreshMaxHealthLoss()
     if not ok then loss:Hide() end
 end
 
--- The spell being cast and its cost in the displayed power: both plain, and
--- anything else reads as no cost.
+-- The spell being cast and its cost in the displayed power, the read the
+-- Modern player frame's cost segment makes (unit frames, barsegments.lua).
 local function readCost()
-    local spellID = plain(function() return select(9, UnitCastingInfo("player")) end)
-    if type(spellID) ~= "number" then return 0 end
-    local powerType = plain(UnitPowerType, "player")
-    if type(powerType) ~= "number" then return 0 end
-    local costs = plain(C_Spell.GetSpellPowerCost, spellID)
-    if type(costs) ~= "table" then return 0 end
-    for _, info in pairs(costs) do
-        if type(info) == "table" and info.type == powerType and type(info.cost) == "number" then
-            return info.cost
-        end
-    end
-    return 0
+    local Segments = addon.UnitFrames and addon.UnitFrames.BarSegments
+    if not Segments then return 0 end
+    return Segments.ReadCost("player")
 end
 
 --- The mana cost segment: ranged to the power's max and fed the cost, in
@@ -253,9 +244,19 @@ local function onUnitEvent(_, event)
     elseif kind == "displaypower" then
         Style.ApplyPowerColor()
         Display.RefreshPower()
+        Display.RefreshComboPoints()
     elseif kind == "cost" then
         Display.RefreshCost()
     end
+end
+
+--- The combo point row's shown state and place: a shapeshift into or out
+--- of Cat Form, a spec change, Edit Mode's enter and exit. The box re-fits
+--- over it.
+function Display.RefreshComboPoints()
+    if not (built and PRD.Combo) then return end
+    PRD.Combo.Apply()
+    if PRD.EditMode and PRD.EditMode.UpdateReach then PRD.EditMode.UpdateReach() end
 end
 
 local function onVehicle()
@@ -333,6 +334,8 @@ function Display.Build()
     healthBar:SetMinMaxValues(0, 1)
     powerBar:SetMinMaxValues(0, 1)
     inst.cost = buildCost(powerBar)
+    -- Before the adapters register, so the row's has a frame from the start.
+    if PRD.Combo then PRD.Combo.Build(frame) end
 
     wireHover(frame)
     wireEvents(frame)
@@ -445,6 +448,8 @@ function Display.Dump()
     local HP = addon.UnitFrames and addon.UnitFrames.HealPrediction
     push("  heal prediction: %s", (HP and HP.HostSeam and inst) and HP.Describe(inst) or "seam not present")
     push("  last mana cost read: %s; hide %s", tostring(lastCost), tostring(Style.Get("power", "hideManaCostPrediction")))
+    if PRD.CastBar then PRD.CastBar.Describe(push) else push("  cast bar: no cast bar file loaded") end
+    if PRD.Combo then PRD.Combo.Describe(push) else push("  combo points: no combo file loaded") end
     for _, name in ipairs(POWER_TYPES) do
         push("  secrecy of %s: %s", name, secrecy(name))
     end

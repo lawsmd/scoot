@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 -- forever/personalresourcedisplay/page.lua
--- The Resource Display pages, Global, Health Bar and Power Bar, their own
--- section of the nav (forever/menu.lua).
+-- The Resource Display pages, Global, Health Bar, Power Bar, Resource and
+-- Cast Bar, their own section of the nav (forever/menu.lua).
 --
 -- Laid out after Scoot's pages (ui/v2/settings/prd/), so a setting both
 -- products have sits on the same page in the same section under the same
@@ -50,10 +50,10 @@ local function accessors(base, map)
         map)
 end
 
-local function addSlider(inner, label, range, path, minLabel, maxLabel)
+local function addSlider(inner, label, range, path, minLabel, maxLabel, disabled)
     inner:AddSlider({ label = label,
         min = range.min, max = range.max, step = range.step, precision = 0,
-        minLabel = minLabel, maxLabel = maxLabel,
+        minLabel = minLabel, maxLabel = maxLabel, disabled = disabled,
         get = function() return Style.Clamp(DB.Get(path), range) end,
         set = function(v)
             DB.Set(path, Style.Clamp(v, range))
@@ -61,6 +61,9 @@ local function addSlider(inner, label, range, path, minLabel, maxLabel)
         end })
 end
 
+-- `refresh` re-reads the rows of the same builder, for a switch that greys
+-- its neighbors; `rerender` redraws the page, for one whose dependents sit
+-- in a section or a tab of their own.
 local function addToggle(inner, label, path, opts)
     opts = opts or {}
     inner:AddToggle({ label = label, description = opts.description, emphasized = opts.emphasized,
@@ -69,7 +72,11 @@ local function addToggle(inner, label, path, opts)
         set = function(v)
             DB.Set(path, v and true or false)
             apply()
-            if opts.refresh then inner:RefreshControls() end
+            if opts.rerender then
+                inner:DeferredRefreshAll()
+            elseif opts.refresh then
+                inner:RefreshControls()
+            end
         end })
 end
 
@@ -101,7 +108,7 @@ local function RenderGlobal(panel, scrollContent)
                 end })
             addSlider(inner, "Scale", Style.SCALE, Style.Path("scale"), "70%", "150%")
             addSlider(inner, "Bar Width", Style.BAR_WIDTH, Style.Path("barWidth"), "50%", "150%")
-            addSlider(inner, "Bar Spacing", Style.PADDING, Style.Path("padding"), "0", "10")
+            addSlider(inner, "Bar Spacing", Style.PADDING, Style.Path("padding"), "0", "15")
             addSlider(inner, "Opacity", Style.OPACITY, Style.Path("opacity"), "50%", "100%")
             -- Blizzard's one switch over the four texts; each text's own
             -- show mode is on its bar page.
@@ -259,9 +266,133 @@ local function RenderPower(panel, scrollContent)
 end
 
 --------------------------------------------------------------------------------
+-- Resource
+--------------------------------------------------------------------------------
+-- The class resource under the bars, a Camelot addition (combopoints.lua):
+-- combo points, switched per spec of the classes that have them. The specs
+-- are read at render, after the class data has loaded.
+
+local RESOURCE_COLUMNS = 4
+
+local function RenderResource(panel, scrollContent)
+    local builder = beginPage(panel, scrollContent, RenderResource)
+    local items = {}
+    for _, spec in ipairs(Style.ResourceSpecs()) do
+        local path = Style.ResourcePath(spec.specID)
+        items[#items + 1] = {
+            key = tostring(spec.specID), label = spec.name,
+            get = function() return Style.ResourceOn(spec.specID) end,
+            set = function(v)
+                DB.Set(path, v and true or false)
+                apply()
+            end,
+        }
+    end
+    if #items > 0 then
+        builder:AddCheckboxGrid({ label = "Show Combo Points", columns = RESOURCE_COLUMNS, items = items })
+        local function retail() return not Style.ResourceAurasStyle() end
+        addToggle(builder, "Use CamelotAuras style for Combo Points", Style.Path("classResource", "aurasStyle"),
+            { refresh = true })
+        addToggle(builder, "Attach to Bottom of Energy Bar", Style.Path("classResource", "attachBottom"),
+            { disabled = retail })
+        addSlider(builder, "Spacing", Style.RESOURCE_SPACING, Style.Path("classResource", "spacing"), "0", "20",
+            Style.ResourceAurasStyle)
+    end
+    builder:Finalize()
+end
+
+--------------------------------------------------------------------------------
+-- Cast Bar
+--------------------------------------------------------------------------------
+-- A Camelot addition on the cast bar engine (castbar.lua) with a fixed bar:
+-- the switch, the edge it hangs off and its height, flat on the page, then
+-- its two strings on tabs under Text with the bars' text controls. Anything
+-- more is the Cast Bars page's, on the Player bar.
+
+-- One of the cast bar's strings: the bars' text block over castBar.<slot>.*.
+-- The timer's block takes the unpaired style order: the readout is written
+-- engine-side and cannot carry the Deep Shadow copy (castbarz/casttime.lua).
+local function addCastBarTextTab(tab, slot, disabled, styleOrder)
+    local get, set = accessors(Style.Path("castBar", slot), TEXT_MAP)
+    local _, fontSize = Style.FontObjectFont()
+    tab:AddTextStyleBlock({ get = get, set = set, apply = apply, disabled = disabled,
+        defaults = { fontFace = "FRIZQT__", size = fontSize, style = "OUTLINE" },
+        style = { order = styleOrder },
+        size = { min = Style.TEXT_SIZE.min, max = Style.TEXT_SIZE.max,
+                 minLabel = tostring(Style.TEXT_SIZE.min), maxLabel = tostring(Style.TEXT_SIZE.max) },
+        color = { values = Catalogs.ColorMode.Text.values, order = Catalogs.ColorMode.Text.order },
+        alignment = { kind = "align", label = "Text Alignment", default = Style.CAST_BAR_TEXT_ALIGN[slot],
+                      order = Style.CAST_BAR_ALIGN_ORDER },
+        offset = false })
+end
+
+local function RenderCastBar(panel, scrollContent)
+    local builder = beginPage(panel, scrollContent, RenderCastBar)
+    local navKey = NAV_KEYS.castBar
+    local function off() return not Style.CastBarOn() end
+    local function timerOff() return off() or Style.Get("castBar", "castTime") ~= true end
+
+    addToggle(builder, "Show Cast Bar", Style.Path("castBar", "enabled"), {
+        emphasized = true, rerender = true,
+        description = "While on, this is the player's only Camelot cast bar: the Player bar under "
+            .. "Cast Bars stays hidden, and casts show only while the display does.",
+    })
+    builder:AddSelector({ label = "Position",
+        values = Style.CAST_BAR_POSITION.values, order = Style.CAST_BAR_POSITION.order,
+        disabled = off,
+        get = Style.CastBarPosition,
+        set = function(v)
+            DB.Set(Style.Path("castBar", "position"), v)
+            apply()
+        end })
+    addSlider(builder, "Bar Height", Style.HEIGHT, Style.Path("castBar", "height"), "10", "30", off)
+
+    -- Spell Name and Timer Text, the bars' Text shape. The timer's switch
+    -- heads its tab and greys the rows under it while off; its alignment is
+    -- also its place inside the bar.
+    builder:AddCollapsibleSection({ title = "Text", componentId = navKey,
+        sectionKey = "text", defaultExpanded = false,
+        buildContent = function(_, inner)
+            inner:AddTabbedSection({
+                tabs = {
+                    { key = "spellName", label = "Spell Name" },
+                    { key = "timer", label = "Timer Text" },
+                },
+                componentId = navKey,
+                sectionKey = "textTabs",
+                buildContent = {
+                    spellName = function(_, tab)
+                        addCastBarTextTab(tab, "spellName", off, Helpers.fontStyleOrderOutlineFirstPaired)
+                        tab:Finalize()
+                    end,
+                    timer = function(_, tab)
+                        addToggle(tab, "Show Timer Text", Style.Path("castBar", "castTime"),
+                            { disabled = off, refresh = true })
+                        tab:AddSelector({ label = "Readout",
+                            values = Style.CAST_BAR_READOUT.values, order = Style.CAST_BAR_READOUT.order,
+                            disabled = timerOff,
+                            get = Style.CastBarReadout,
+                            set = function(v)
+                                DB.Set(Style.Path("castBar", "timer", "readout"), v)
+                                apply()
+                            end })
+                        addCastBarTextTab(tab, "timer", timerOff, Helpers.fontStyleOrderOutlineFirst)
+                        tab:Finalize()
+                    end,
+                },
+            })
+            inner:Finalize()
+        end })
+
+    builder:Finalize()
+end
+
+--------------------------------------------------------------------------------
 -- Registration
 --------------------------------------------------------------------------------
 
 addon.UI.SettingsPanel:RegisterRenderer(NAV_KEYS.global, RenderGlobal)
 addon.UI.SettingsPanel:RegisterRenderer(NAV_KEYS.health, RenderHealth)
 addon.UI.SettingsPanel:RegisterRenderer(NAV_KEYS.power, RenderPower)
+addon.UI.SettingsPanel:RegisterRenderer(NAV_KEYS.resource, RenderResource)
+addon.UI.SettingsPanel:RegisterRenderer(NAV_KEYS.castBar, RenderCastBar)

@@ -20,6 +20,16 @@ PRD.EditMode = EditMode
 -- the atlas, which the frame's own rect leaves out on every side.
 local ART_REACH = { left = 2, right = 6, top = 3, bottom = 7 }
 
+--- The selection box's reach: the background's overhang, grown over the
+--- combo point row while it shows (combopoints.lua) and over the cast bar on
+--- the side it hangs while it is on (castbar.lua).
+function EditMode.Reach()
+    local reach = ART_REACH
+    if PRD.Combo then reach = PRD.Combo.Reach(reach) end
+    if PRD.CastBar and PRD.CastBar.Reach then reach = PRD.CastBar.Reach(reach) end
+    return reach
+end
+
 --------------------------------------------------------------------------------
 -- Store
 --------------------------------------------------------------------------------
@@ -75,10 +85,13 @@ function EditMode.Register(frame)
         key = PRD.KEY,
         default = Style.DEFAULT_POSITION,
         restoreDefault = true,
-        reach = ART_REACH,
+        reach = EditMode.Reach(),
         store = store,
         apply = ApplyPosition,
-        brand = { navKey = PRD.NAV_KEY, componentId = PRD.NAV_KEY, mirror = Style.EditModeMirror() },
+        -- Wider than the default 340: the dialog lays the four bar sections
+        -- in two columns under Display (Style.EditModeMirror).
+        brand = { navKey = PRD.NAV_KEY, componentId = PRD.NAV_KEY, mirror = Style.EditModeMirror(),
+            dialogWidth = 520 },
     })
 
     -- Both callbacks run inside the window in which NativeFrame refuses to
@@ -89,10 +102,21 @@ function EditMode.Register(frame)
         enter = function()
             addon.NativeFrame:Reapply()
             PRD.Display.UpdateShownState()
+            PRD.Display.RefreshComboPoints()
         end,
         exit = function()
             addon.NativeFrame:Reapply()
             PRD.Display.UpdateShownState()
+            PRD.Display.RefreshComboPoints()
         end,
     })
+end
+
+--- Re-fit the box after the cast bar is switched, flipped or resized. A
+--- no-op before registration.
+function EditMode.UpdateReach()
+    local frame = Style.Frame()
+    if registered and frame and addon.EditMode.UpdateReach then
+        addon.EditMode.UpdateReach(frame, EditMode.Reach())
+    end
 end

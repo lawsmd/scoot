@@ -26,7 +26,7 @@ addon.PersonalResourceDisplay = addon.PersonalResourceDisplay or {}
 local PRD = addon.PersonalResourceDisplay
 
 -- The owner string every claim, event and Edit Mode registration carries;
--- the key of the layout store and the Dynamic Layouts adapter; the three
+-- the key of the layout store and the Dynamic Layouts adapter; the
 -- pages' nav keys, their own Resource Display section (forever/menu.lua),
 -- with the Global page the one the Edit Mode dialog's Configure button
 -- opens; and the global frames.xml declares.
@@ -36,6 +36,8 @@ PRD.NAV_KEYS = {
     global = "resourceDisplayGlobal",
     health = "resourceDisplayHealth",
     power = "resourceDisplayPower",
+    resource = "resourceDisplayResource",
+    castBar = "resourceDisplayCastBar",
 }
 PRD.NAV_KEY = PRD.NAV_KEYS.global
 PRD.FRAME_NAME = "CamelotPersonalResourceDisplay"
@@ -71,8 +73,13 @@ end
 Style.SCALE = { min = 70, max = 150, step = 1, default = 100 }
 Style.BAR_WIDTH = { min = 50, max = 150, step = 1, default = 100 }
 Style.HEIGHT = { min = 10, max = 30, step = 1, default = 15 }
-Style.PADDING = { min = 0, max = 10, step = 1, default = 0 }
+-- Blizzard's Padding stops at 10; Camelot's runs to 15 by owner decision,
+-- 19 October 2026.
+Style.PADDING = { min = 0, max = 15, step = 1, default = 0 }
 Style.OPACITY = { min = 50, max = 100, step = 1, default = 100 }
+-- Camelot's own: the gap between combo points, retail's class bar's 4 by
+-- default.
+Style.RESOURCE_SPACING = { min = 0, max = 20, step = 1, default = 4 }
 -- Camelot's own: the background atlas draws at full alpha on Blizzard's frame.
 Style.BACKGROUND_OPACITY = { min = 0, max = 100, step = 1, default = 100 }
 Style.TEXT_SIZE = { min = 6, max = 36, step = 1 }
@@ -94,6 +101,8 @@ Style.TEXT_ALIGN = { value = "RIGHT", percent = "LEFT" }
 
 Style.BAR_ATLAS = "UI-HUD-CoolDownManager-Bar"
 Style.BACKGROUND_ATLAS = "UI-HUD-CoolDownManager-Bar-BG"
+-- The same art by its addon.Media key, which knows the background's reach.
+Style.BACKGROUND_KEY = "blizzardCooldownManager"
 Style.FONT_OBJECT = "TextStatusBarText"
 
 -- The show modes of a bar's text. Blizzard's TextStatusBar had the same three
@@ -101,6 +110,28 @@ Style.FONT_OBJECT = "TextStatusBarText"
 Style.SHOW_TEXT = {
     values = { always = "Always", hover = "On Hover", never = "Never" },
     order = { "always", "hover", "never" },
+}
+
+-- Where the cast bar hangs off the frame (castbar.lua). `short` is for the
+-- Edit Mode dialog's narrow value field.
+Style.CAST_BAR_POSITION = {
+    values = { above = "Above the Bars", below = "Below the Bars" },
+    short = { above = "Above", below = "Below" },
+    order = { "above", "below" },
+}
+
+-- The cast bar's two strings, the spell name across the bar and the timer
+-- readout inside it, each under castBar.<slot>. with the bars' text keys, and
+-- the side each starts on. The timer's alignment is also its place: the
+-- engine's three inside positions (castbar.lua).
+Style.CAST_BAR_TEXTS = { "spellName", "timer" }
+Style.CAST_BAR_TEXT_ALIGN = { spellName = "LEFT", timer = "RIGHT" }
+Style.CAST_BAR_ALIGN_ORDER = { "LEFT", "CENTER", "RIGHT" }
+
+-- What the timer counts (castbarz/casttime.lua, the readout modes).
+Style.CAST_BAR_READOUT = {
+    values = { remaining = "Remaining", elapsed = "Elapsed", both = "Elapsed / Total" },
+    order = { "remaining", "elapsed", "both" },
 }
 
 --- The dotted path of a setting: Style.Path("scale"), Style.Path("health",
@@ -150,6 +181,26 @@ do
         end
     end
     map[Style.Path("power", "hideManaCostPrediction")] = false
+    -- The cast bar, a Camelot addition and so off: Blizzard's PRD has none.
+    -- Its bar is fixed (castbar.lua); its two strings take the bars' text
+    -- keys. No fontFace, size or style: nil keeps the font object's own.
+    map[Style.Path("castBar", "enabled")] = false
+    map[Style.Path("castBar", "position")] = "above"
+    map[Style.Path("castBar", "height")] = Style.HEIGHT.default
+    map[Style.Path("castBar", "castTime")] = false
+    for _, slot in ipairs(Style.CAST_BAR_TEXTS) do
+        map[Style.Path("castBar", slot, "colorMode")] = "default"
+        map[Style.Path("castBar", slot, "color")] = { 1, 1, 1, 1 }
+        map[Style.Path("castBar", slot, "alignment")] = Style.CAST_BAR_TEXT_ALIGN[slot]
+    end
+    map[Style.Path("castBar", "timer", "readout")] = "remaining"
+    -- The combo points are a switch per spec, on until a spec is switched
+    -- off: an unstored spec reads on (Style.ResourceOn), so they show at the
+    -- first load. They draw as a CamelotAuras Class Resource bar joined to the
+    -- power bar's top; the retail row's spacing is one value for every spec.
+    map[Style.Path("classResource", "spacing")] = Style.RESOURCE_SPACING.default
+    map[Style.Path("classResource", "aurasStyle")] = true
+    map[Style.Path("classResource", "attachBottom")] = false
     -- The Classic unit frames' four switches, on the PRD's health bar.
     for _, field in ipairs({ "incomingHeals", "absorb", "overAbsorbGlow", "healAbsorb" }) do
         map[Style.Path("health", field)] = true
@@ -171,6 +222,18 @@ Style.Clamp = clamp
 function Style.Scale() return clamp(Style.Get("scale"), Style.SCALE) end
 function Style.Opacity() return clamp(Style.Get("opacity"), Style.OPACITY) end
 function Style.Padding() return clamp(Style.Get("padding"), Style.PADDING) end
+function Style.ResourceSpacing()
+    return clamp(Style.Get("classResource", "spacing"), Style.RESOURCE_SPACING)
+end
+--- The combo points as a CamelotAuras bar joined to the power bar, or the
+--- retail row.
+function Style.ResourceAurasStyle()
+    return Style.Get("classResource", "aurasStyle") ~= false
+end
+--- The bar joined under the power bar, else over it.
+function Style.ResourceAttachBottom()
+    return Style.Get("classResource", "attachBottom") == true
+end
 function Style.BarWidthPercent() return clamp(Style.Get("barWidth"), Style.BAR_WIDTH) end
 
 --- The bars' width in the frame's own units.
@@ -195,6 +258,78 @@ function Style.TextShow(bar, slot)
     local v = Style.Get(bar, "text", slot, "show")
     if v == "always" or v == "hover" then return v end
     return "never"
+end
+
+--- The cast bar's switch, the setting alone; castbar.lua folds in the
+--- feature switch and the frame.
+function Style.CastBarOn()
+    return Style.Get("castBar", "enabled") == true
+end
+
+-- The classes whose resource the display draws: combo points, a Rogue's and
+-- a Druid's in Cat Form, vanilla's one class resource counted in points.
+Style.RESOURCE_CLASSES = { "ROGUE", "DRUID" }
+
+--- The path of one spec's combo point switch.
+function Style.ResourcePath(specID)
+    return Style.Path("classResource", "specs", tostring(specID))
+end
+
+--- One spec's combo point switch, the setting alone; combopoints.lua folds
+--- in the feature switch and the form. On until stored off; false for a nil
+--- spec.
+function Style.ResourceOn(specID)
+    return specID ~= nil and DB.Get(Style.ResourcePath(specID)) ~= false
+end
+
+--- The specs of the classes with a resource, in class then Blizzard's order:
+--- { specID, class, name }. On Forever one spec per class, named after it.
+function Style.ResourceSpecs()
+    local out = {}
+    local Specs = addon.Specs
+    if not Specs then return out end
+    local _, byId = Specs.Buckets()
+    for _, class in ipairs(Style.RESOURCE_CLASSES) do
+        for _, specID in ipairs(Specs.SpecIDsForClass(class)) do
+            local entry = byId and byId[specID]
+            out[#out + 1] = { specID = specID, class = class, name = entry and entry.name or tostring(specID) }
+        end
+    end
+    return out
+end
+
+--- The player's spec when the class draws a resource, else nil; nil too
+--- before the talent data loads.
+function Style.CurrentResourceSpec()
+    local _, class = UnitClass("player")
+    if class ~= "ROGUE" and class ~= "DRUID" then return nil end
+    return addon.Specs and addon.Specs.CurrentSpecID()
+end
+
+--- "above" or "below": the frame edge the cast bar hangs off.
+function Style.CastBarPosition()
+    return Style.Get("castBar", "position") == "below" and "below" or "above"
+end
+
+--- "LEFT", "CENTER" or "RIGHT" for one of the cast bar's strings,
+--- "spellName" or "timer".
+function Style.CastBarTextAlignment(slot)
+    local v = Style.Get("castBar", slot, "alignment")
+    if v == "LEFT" or v == "CENTER" or v == "RIGHT" then return v end
+    return Style.CAST_BAR_TEXT_ALIGN[slot]
+end
+
+--- One of the cast bar's strings' color, resolved: r, g, b, a.
+function Style.CastBarTextColor(slot)
+    return addon.ResolveColorRGBA(Style.Get("castBar", slot, "colorMode"),
+        Style.Get("castBar", slot, "color"), { unitForClass = "player" })
+end
+
+--- "remaining", "elapsed" or "both": what the timer counts.
+function Style.CastBarReadout()
+    local v = Style.Get("castBar", "timer", "readout")
+    if Style.CAST_BAR_READOUT.values[v] then return v end
+    return "remaining"
 end
 
 --- The frame, or nil: on retail none is built.
@@ -247,13 +382,26 @@ function Style.ApplyScale()
     f:SetScale(Style.Scale() / 100)
 end
 
--- The engine replaces alpha rather than multiplying it, so while a dynamic
--- state holds the frame's alpha is the engine's and the base stays off it.
+-- On the bars, not the frame: each bar has its own Dynamic Layouts opacity
+-- (dynamic.lua), and the engine replaces alpha rather than multiplying it,
+-- so a bar whose alpha the engine holds keeps the engine's; the combo point
+-- row is one more such part. The cast bar takes the setting through the cast
+-- engine's resting seam, written here only while it shows.
 function Style.ApplyOpacity()
     local f = Style.Frame()
     if not f then return end
-    if PRD.Dynamic and PRD.Dynamic.IsDynamic() then return end
-    f:SetAlpha(Style.Opacity() / 100)
+    f:SetAlpha(1)
+    local a = Style.Opacity() / 100
+    local Dynamic = PRD.Dynamic
+    for _, key in ipairs({ "health", "power" }) do
+        if not (Dynamic and Dynamic.HoldsOpacity(key)) then Style.Container(f, key):SetAlpha(a) end
+    end
+    local combo = PRD.Combo and PRD.Combo.Row()
+    if combo and not (Dynamic and Dynamic.HoldsOpacity("comboPoints")) then combo:SetAlpha(a) end
+    local castBar = PRD.CastBar and PRD.CastBar.Bar()
+    if castBar and castBar:IsShown() and not (Dynamic and Dynamic.HoldsOpacity("castBar")) then
+        castBar:SetAlpha(a)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -275,18 +423,46 @@ local function applyFill(bar, key)
     end
 end
 
-local function applyBackground(bar, key)
-    local bg = bar.Background
-    if not bg then return end
-    local path = texturePath(Style.Get(key, "backgroundTexture"))
-    if path then
-        bg:SetTexture(path)
-    else
-        bg:SetAtlas(Style.BACKGROUND_ATLAS)
-    end
+--- Whether a bar's background is the framed atlas and drawn, the one the
+--- combo point bar joins with a shared edge (combopoints.lua).
+function Style.BackgroundFramed(key)
+    return texturePath(Style.Get(key, "backgroundTexture")) == nil
+        and Style.Get(key, "hideTextureOnly") ~= true
+        and Style.Get(key, "hideBackground") ~= true
+end
+
+--- A bar's background color and opacity, r, g, b, a: its own frame's, and
+--- the frame the combo point bar draws around both when it joins that bar.
+function Style.BackgroundColor(key)
     local r, g, b = addon.ResolveColorRGBA(Style.Get(key, "backgroundColorMode"),
         Style.Get(key, "backgroundTint"), {})
-    bg:SetVertexColor(r, g, b, clamp(Style.Get(key, "backgroundOpacity"), Style.BACKGROUND_OPACITY) / 100)
+    return r, g, b, clamp(Style.Get(key, "backgroundOpacity"), Style.BACKGROUND_OPACITY) / 100
+end
+
+-- On the bar's plain container, which the bar fills: the frames.xml anchors.
+-- Drawn clear while the combo point bar draws this bar's frame around both
+-- (combopoints.lua), or while hidden by the bar's settings.
+local function applyBackground(f, key)
+    local bar = Style.Bar(f, key)
+    local bg = bar.Background
+    if not bg then return end
+    local Media = addon.Media
+    local rect = Style.Container(f, key)
+    local path = texturePath(Style.Get(key, "backgroundTexture"))
+    if path then
+        local o = Media.ResolveBarTextureAtlas(Style.BACKGROUND_KEY).outset
+        bg:ClearAllPoints()
+        bg:SetPoint("TOPLEFT", rect, "TOPLEFT", -o.left, o.top)
+        bg:SetPoint("BOTTOMRIGHT", rect, "BOTTOMRIGHT", o.right, -o.bottom)
+        bg:SetTexCoord(0, 1, 0, 1)
+        bg:SetTexture(path)
+    else
+        Media.ApplyBarBackground(bg, Style.BACKGROUND_KEY, rect)
+    end
+    bg:SetVertexColor(Style.BackgroundColor(key))
+    local joined = PRD.Combo and PRD.Combo.Joins and PRD.Combo.Joins(key)
+    local hidden = Style.Get(key, "hideTextureOnly") == true or Style.Get(key, "hideBackground") == true
+    bg:SetAlpha((joined or hidden) and 0 or 1)
 end
 
 --- The power bar's color: a custom tint, else the power color through the
@@ -306,6 +482,14 @@ function Style.ApplyPowerColor()
     end
 end
 
+--- Both bars' backgrounds; again from combopoints.lua when the bar it joins
+--- changes.
+function Style.ApplyBackgrounds()
+    local f = Style.Frame()
+    if not f then return end
+    for _, key in ipairs(Style.BARS) do applyBackground(f, key) end
+end
+
 --- Textures, colors and the two hide switches of both bars.
 function Style.ApplyBars()
     local f = Style.Frame()
@@ -319,20 +503,16 @@ function Style.ApplyBars()
     health:SetStatusBarColor(r, g, b)
     -- The feed restores this color on every tick (values.lua, ApplyHealth).
     if inst then inst.spec.Bars.health.color = { r, g, b } end
-    applyBackground(health, "health")
 
     applyFill(Style.Bar(f, "power"), "power")
     Style.ApplyPowerColor()
-    applyBackground(Style.Bar(f, "power"), "power")
+    Style.ApplyBackgrounds()
 
     for _, key in ipairs(Style.BARS) do
         local bar = Style.Bar(f, key)
         local textureOnly = Style.Get(key, "hideTextureOnly") == true
         -- The texture's own alpha: the vertex alpha is what the feed rewrites.
         bar:GetStatusBarTexture():SetAlpha(textureOnly and 0 or 1)
-        if bar.Background then
-            bar.Background:SetAlpha((textureOnly or Style.Get(key, "hideBackground") == true) and 0 or 1)
-        end
     end
 end
 
@@ -345,14 +525,17 @@ end
 -- fills on both anchors. The square style is core/borders.lua's edges on the
 -- bar itself, whose reads are guarded.
 
-local function applyBorder(f, key)
-    local bar = Style.Bar(f, key)
+--- The border stored under `key` on `bar`, its holder anchored to
+--- `anchorTarget`, the bar's plain container; `off` clears it. The two bars
+--- read their own keys; the cast bar (castbar.lua) wears the health bar's,
+--- so a border set there covers all three bars.
+function Style.ApplyBorderTo(bar, anchorTarget, key, off)
     local BarBorders, Borders = addon.BarBorders, addon.Borders
     if BarBorders and BarBorders.ClearBarFrame then BarBorders.ClearBarFrame(bar) end
     if Borders and Borders.HideAll then Borders.HideAll(bar) end
 
     local styleKey = Style.Get(key, "borderStyle")
-    if Style.Get(key, "hideTextureOnly") == true then styleKey = "none" end
+    if off then styleKey = "none" end
     if styleKey == nil or styleKey == "none" then return end
 
     local tintEnabled = Style.Get(key, "borderTintEnabled") == true
@@ -377,7 +560,7 @@ local function applyBorder(f, key)
             color = tintEnabled and tint or { 1, 1, 1, 1 },
             thickness = thickness,
             levelOffset = 1,
-            anchorTarget = Style.Container(f, key),
+            anchorTarget = anchorTarget,
         })
     end
 end
@@ -385,7 +568,10 @@ end
 function Style.ApplyBorders()
     local f = Style.Frame()
     if not f then return end
-    for _, key in ipairs(Style.BARS) do applyBorder(f, key) end
+    for _, key in ipairs(Style.BARS) do
+        Style.ApplyBorderTo(Style.Bar(f, key), Style.Container(f, key), key,
+            Style.Get(key, "hideTextureOnly") == true)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -503,6 +689,14 @@ function Style.Apply()
     Style.ApplyBorders()
     Style.ApplyText()
     Style.ApplyHealPrediction()
+    -- The combo point row before the cast bar, which hangs under it when set
+    -- Below. Nil on retail, where no combo file loads.
+    if PRD.Combo then PRD.Combo.Apply() end
+    -- The cast bar: the engine's reconcile builds, lays out and places it, or
+    -- hides it, then the box re-fits over it. Both are nil on retail, where no
+    -- cast bar file loads.
+    if PRD.CastBar then PRD.CastBar.Apply() end
+    if PRD.EditMode and PRD.EditMode.UpdateReach then PRD.EditMode.UpdateReach() end
     if PRD.Display then
         PRD.Display.Refresh()
         PRD.Display.UpdateShownState()
@@ -573,8 +767,12 @@ end
 -- the page it lives on: Display, Health Bar, Power Bar. Three of Blizzard's
 -- fourteen have no part here and are absent rather than greyed: Hide
 -- Alternate Power and the two Hide Class Info rows, which Blizzard's own
--- dialog greys on this client, whose PRD loads no class frame. Labels only:
--- the dialog has no room for descriptions.
+-- dialog greys on this client, whose PRD loads no class frame. A fourth
+-- header, Cast Bar, is Camelot's own addition (castbar.lua), as is Resource
+-- before it, the current spec's combo point switch, drawn for a class with
+-- points alone (combopoints.lua). Display spans the dialog; the sections
+-- after it stand two to a line (Mirror.lua, "columns"). Labels only: the
+-- dialog has no room for descriptions.
 
 local function header(label)
     return { kind = "header", label = label }
@@ -617,7 +815,7 @@ end
 function Style.EditModeMirror()
     return function()
         local Visibility = addon.Catalogs.Visibility
-        return {
+        local list = {
             header("Display"),
             {
                 kind = "selector", label = "Visibility",
@@ -633,6 +831,7 @@ function Style.EditModeMirror()
             sliderSpec("Bar Spacing", Style.PADDING, "padding"),
             sliderSpec("Opacity", Style.OPACITY, "opacity"),
             toggleSpec("Show Bar Text", Style.BarTextShown, Style.SetBarTextShown),
+            { kind = "columns", count = 2 },
             header("Health Bar"),
             hideSpec("Hide Health Bar", "health"),
             sliderSpec("Height", Style.HEIGHT, "health", "height"),
@@ -641,5 +840,40 @@ function Style.EditModeMirror()
             hideSpec("Hide Power Bar", "power"),
             sliderSpec("Height", Style.HEIGHT, "power", "height"),
         }
+        local spec = Style.CurrentResourceSpec()
+        if spec then
+            list[#list + 1] = header("Resource")
+            list[#list + 1] = toggleSpec("Show Combo Points",
+                function() return Style.ResourceOn(spec) end,
+                function(v) DB.Set(Style.ResourcePath(spec), v) end)
+            local aurasStyle = toggleSpec("CamelotAuras Style", Style.ResourceAurasStyle,
+                function(v) DB.Set(Style.Path("classResource", "aurasStyle"), v) end)
+            aurasStyle.rebuild = true
+            list[#list + 1] = aurasStyle
+            if Style.ResourceAurasStyle() then
+                list[#list + 1] = toggleSpec("Attach to Bottom", Style.ResourceAttachBottom,
+                    function(v) DB.Set(Style.Path("classResource", "attachBottom"), v) end)
+            else
+                list[#list + 1] = sliderSpec("Spacing", Style.RESOURCE_SPACING, "classResource", "spacing")
+            end
+        end
+        for _, row in ipairs({
+            header("Cast Bar"),
+            toggleSpec("Show Cast Bar", Style.CastBarOn,
+                function(v) DB.Set(Style.Path("castBar", "enabled"), v) end),
+            {
+                kind = "selector", label = "Position",
+                values = Style.CAST_BAR_POSITION.short, order = Style.CAST_BAR_POSITION.order,
+                get = Style.CastBarPosition,
+                set = function(v)
+                    DB.Set(Style.Path("castBar", "position"), v)
+                    Style.Apply()
+                end,
+            },
+            sliderSpec("Height", Style.HEIGHT, "castBar", "height"),
+        }) do
+            list[#list + 1] = row
+        end
+        return list
     end
 end
