@@ -12,9 +12,10 @@
 -- engine calls back here to tear the surface down.
 --
 -- The boxes: a participating frame's selection box is raised into the
--- shield's strata over the shield the drawing side holds, at its template's
--- level and with its top-level raise off, so it can be dragged and stays
--- under the panel; another frame's box goes to alpha 0 with its mouse off,
+-- holds' strata over the holds the drawing side keeps, at its template's
+-- level, whatever a click's raise left it at before the view, and with its
+-- top-level raise off, so it can be dragged and stays under the edge tabs
+-- and the panel; another frame's box goes to alpha 0 with its mouse off,
 -- since the library re-shows every box whenever its dialog hides and a Hide
 -- would not hold, and an invisible box must not take a click. Both are
 -- undone on exit. The drawing side asks for the faded boxes to hold their
@@ -31,9 +32,11 @@ local View = {}
 DL.View = View
 
 local OWNER = "dynamicLayoutsView"
--- The shield's strata (ui/v2/editmode/DynamicView.lua holds its levels): the
--- box goes there at no less than its template's level, which stands over the
--- shield's hold and under the panel.
+-- The holds' strata (ui/v2/editmode/DynamicView.lua holds its levels): the
+-- box goes there at its template's level, over the holds and under the edge
+-- tabs; the panel stands a strata up. The level is set, not floored: the
+-- template is top-level, so a click before the view leaves the box at the
+-- top of its strata, and a floor carried that into the view.
 local RAISED_STRATA = "DIALOG"
 local RAISED_LEVEL = 1000
 local LOCK_PAD = 0.1   -- past the tween's duration, so its finish lands first
@@ -142,6 +145,34 @@ function View.SetSpeed(direction, seconds)
     store.SetSpeed(direction, v)
 end
 
+--- The delay before a return to the dynamic layout, in seconds.
+function View.GetDelay()
+    return DL.Delay()
+end
+
+function View.SetDelay(seconds)
+    local store = Store()
+    local v = tonumber(seconds)
+    if not (store and store.SetDelay and v) then return end
+    if v < DL.DELAY_MIN then v = DL.DELAY_MIN end
+    if v > DL.DELAY_MAX then v = DL.DELAY_MAX end
+    store.SetDelay(v)
+end
+
+--- The target rule: the requirement counts only an NPC the player can attack.
+function View.GetTargetAttackableNPCs()
+    return DL.TargetAttackableNPCs()
+end
+
+function View.SetTargetAttackableNPCs(on)
+    local store = Store()
+    if not (store and store.SetTargetAttackableNPCs) then return end
+    store.SetTargetAttackableNPCs(on and true or false)
+    -- The probe reads the rule, so a change outside Edit Mode re-resolves;
+    -- inside it the exit's own resolution reads the new value.
+    if Resolver and Resolver.Rearm then Resolver.Rearm("TARGET_RULE") end
+end
+
 --------------------------------------------------------------------------------
 -- Boxes
 --------------------------------------------------------------------------------
@@ -158,7 +189,7 @@ local function raiseBox(selection)
         toplevel = top,
     }
     selection:SetFrameStrata(RAISED_STRATA)
-    if level < RAISED_LEVEL then selection:SetFrameLevel(RAISED_LEVEL) end
+    selection:SetFrameLevel(RAISED_LEVEL)
     if top and selection.SetToplevel then selection:SetToplevel(false) end
 end
 

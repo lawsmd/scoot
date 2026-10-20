@@ -1,9 +1,10 @@
 --------------------------------------------------------------------------------
 -- forever/dynamiclayouts/host.lua
 -- The host side of Dynamic Layouts on Camelot: the Features row, where the
--- dynamic records, the per-profile trigger set and the two transition speeds
--- (into the dynamic layout, out of it) live in CamelotDB, and the profile
--- pass that feeds the resolver's mask. The engine
+-- dynamic records, the per-profile trigger set, the two transition speeds
+-- (into the dynamic layout, out of it), the delay before the return to it
+-- and the target rule live in CamelotDB, and the profile pass that feeds the
+-- resolver's mask. The engine
 -- (core/dynamiclayouts/) reads addon.DynamicLayoutsStore at call time and
 -- never touches the database itself, so the other addon sets a store of its
 -- own.
@@ -37,6 +38,12 @@ local TRIGGERS = { "inCombat", "targetAcquired", "insideInstance" }
 -- One duration per direction; forever/db.lua's migration 3 seeds both from
 -- the one speed that preceded them.
 local SPEED_PATHS = { ["in"] = "dynamicLayouts.speedIn", out = "dynamicLayouts.speedOut" }
+-- Seconds the return to the dynamic layout waits after the last requirement
+-- is met; a file from before it reads the default, 0.
+local DELAY_PATH = "dynamicLayouts.delay"
+-- The target requirement counts only an NPC the player can attack while
+-- this is on; a file from before it reads the default, on.
+local TARGET_RULE_PATH = "dynamicLayouts.targetAttackableNPCs"
 
 local function triggerPath(name)
     return "dynamicLayouts.trigger." .. name
@@ -62,6 +69,8 @@ DB.RegisterDefaults({
     [triggerPath("insideInstance")] = true,
     [SPEED_PATHS["in"]] = DL.SPEED_DEFAULT,
     [SPEED_PATHS.out] = DL.SPEED_DEFAULT,
+    [DELAY_PATH] = DL.DELAY_DEFAULT,
+    [TARGET_RULE_PATH] = DL.TARGET_ATTACKABLE_NPCS_DEFAULT,
 })
 
 -- Listed after components.lua in the TOC, so the row follows Minimap and
@@ -114,6 +123,18 @@ addon.DynamicLayoutsStore = {
         local path = SPEED_PATHS[direction]
         if not path then return false end
         return DB.Set(path, seconds)
+    end,
+    GetDelay = function()
+        return DB.Get(DELAY_PATH)
+    end,
+    SetDelay = function(seconds)
+        return DB.Set(DELAY_PATH, seconds)
+    end,
+    GetTargetAttackableNPCs = function()
+        return DB.Get(TARGET_RULE_PATH) and true or false
+    end,
+    SetTargetAttackableNPCs = function(on)
+        return DB.Set(TARGET_RULE_PATH, on and true or false)
     end,
 }
 

@@ -41,6 +41,17 @@ local TIERS = { plain = true, protected = true }
 local SPEED_MIN, SPEED_MAX, SPEED_DEFAULT = 0.25, 2.0, 0.5
 DL.SPEED_MIN, DL.SPEED_MAX, DL.SPEED_DEFAULT = SPEED_MIN, SPEED_MAX, SPEED_DEFAULT
 
+-- The delay before a return to the dynamic layout, in whole seconds: the
+-- resolver (resolver.lua) keeps its answer at base for this long after the
+-- last requirement is met. 0 switches at once.
+local DELAY_MIN, DELAY_MAX, DELAY_DEFAULT = 0, 30, 0
+DL.DELAY_MIN, DL.DELAY_MAX, DL.DELAY_DEFAULT = DELAY_MIN, DELAY_MAX, DELAY_DEFAULT
+
+-- The target rule: on, the target trigger counts only an NPC the player can
+-- attack, the panel's "Only Neutral/Enemy NPCs", the owner's default.
+local TARGET_ATTACKABLE_NPCS_DEFAULT = true
+DL.TARGET_ATTACKABLE_NPCS_DEFAULT = TARGET_ATTACKABLE_NPCS_DEFAULT
+
 local ANCHORS = {
     TOPLEFT = true, TOP = true, TOPRIGHT = true,
     LEFT = true, CENTER = true, RIGHT = true,
@@ -100,6 +111,26 @@ local function directionTo(state)
     return state == "dynamic" and "in" or "out"
 end
 
+--- The delay in seconds the resolver waits before it answers dynamic, a
+--- per-profile setting.
+local function delay()
+    local store = Store()
+    local value = store and store.GetDelay and store.GetDelay()
+    value = tonumber(value) or DELAY_DEFAULT
+    if value < DELAY_MIN then value = DELAY_MIN end
+    if value > DELAY_MAX then value = DELAY_MAX end
+    return value
+end
+
+--- The target rule, a per-profile setting; the default before the store.
+local function targetAttackableNPCs()
+    local store = Store()
+    if not (store and store.GetTargetAttackableNPCs) then
+        return TARGET_ATTACKABLE_NPCS_DEFAULT
+    end
+    return store.GetTargetAttackableNPCs() == true
+end
+
 local function frameOf(st)
     local frame = st.def.frame
     if type(frame) == "function" then
@@ -122,16 +153,34 @@ local DEFAULT_APPLY = {
 -- Decisions and values
 --------------------------------------------------------------------------------
 
---- What this adapter should be in: the dynamic view (every participating
---- frame is dynamic while it holds; the resolver's answer is base under Edit
---- Mode), then the forced override, then the resolver's answer, with dynamic
---- only for a participating frame. nil before the first resolution.
+--- Whether a frame offering the friendly unit rule has it on: its record's
+--- friendlyUnits, on until the player unchecks it.
+local function friendlyUnits(id)
+    local st = adapters[id]
+    if not (st and st.def.friendlyUnits) then return false end
+    local rec = record(id)
+    return not (rec and rec.friendlyUnits == false)
+end
+
+--- The resolver lane a frame follows: "wide", which also counts a friendly
+--- NPC target, under its rule, else "main".
+local function laneOf(id)
+    return friendlyUnits(id) and "wide" or "main"
+end
+
+--- What this adapter should be in: the answer is dynamic under the dynamic
+--- view (the resolver's own answer is base under Edit Mode), else the forced
+--- state, else the resolver's in the frame's lane; and dynamic lands only on
+--- a participating frame, whatever the answer's source, so a forced dynamic
+--- never marks a frame outside the layout as the engine's. nil before the
+--- first resolution.
 local function decide(id)
+    local answer
     if view then
-        return participating(id) and "dynamic" or "base"
+        answer = "dynamic"
+    else
+        answer = forced or Resolver.Answer(laneOf(id))
     end
-    if forced then return forced end
-    local answer = Resolver.Answer()
     if answer ~= "dynamic" then return answer end
     return participating(id) and "dynamic" or "base"
 end
@@ -142,9 +191,16 @@ local function plainNumber(v)
     return v
 end
 
+local attachedBase
+
 --- The base value for a channel, from the adapter's getter. nil on a throw or
---- a value of the wrong shape.
-local function baseValue(st, channel)
+--- a value of the wrong shape. A frame hanging off another has its spot
+--- computed from its anchor's instead (attachedBase).
+local function baseValue(st, channel, depth)
+    if channel == "position" then
+        local rec = attachedBase(st, depth)
+        if rec then return rec end
+    end
     local getter = st.def.base and st.def.base[channel]
     if type(getter) ~= "function" then return nil end
     local ok, a, b, c = pcall(getter)
@@ -189,10 +245,10 @@ end
 
 --- The frame's center in its regular layout, relative to the screen center in
 --- UI units, and the base scale it was computed at.
-local function baseCenter(st)
+local function baseCenter(st, depth)
     local EM = addon.EditMode
     local frame = frameOf(st)
-    local b = baseValue(st, "position")
+    local b = baseValue(st, "position", depth)
     if not (EM and EM.CenterFromRecord and frame and b) then return nil end
     local bs = st.channelSet and st.channelSet.scale and baseValue(st, "scale") or nil
     if not (bs and bs > 0) then
@@ -202,6 +258,74 @@ local function baseCenter(st)
     local cx, cy = EM.CenterFromRecord(frame, b.point, b.x, b.y, bs)
     if not cx then return nil end
     return cx, cy, bs
+end
+
+--- The adapter's attach answer, when the frame hangs off another right now:
+--- the anchor frame, the frame's point, the anchor's point, and the offsets
+--- in UI units. nil while the frame is placed by its own position.
+local function attachOf(st)
+    local attach = st.def.attach
+    if type(attach) ~= "function" then return nil end
+    local ok, anchor, point, relPoint, dx, dy = pcall(attach)
+    if not (ok and type(anchor) == "table") then return nil end
+    return anchor, point, relPoint, dx, dy
+end
+
+-- A chain of attaches deeper than this is a loop.
+local ATTACH_DEPTH = 4
+
+--- The anchor's center relative to the screen center and its size, in UI
+--- units, in its regular layout: from its own adapter when the engine drives
+--- it, else live, since nothing here moves it.
+local function anchorRect(anchor, depth)
+    local hostId = DL.IdForFrame(anchor)
+    local host = hostId and adapters[hostId]
+    local ok, w, h = pcall(anchor.GetSize, anchor)
+    w, h = ok and plainNumber(w), ok and plainNumber(h)
+    if not (w and h) then return nil end
+    if host and not host.inert then
+        local cx, cy, s = baseCenter(host, depth)
+        if not cx then return nil end
+        return cx, cy, w * s, h * s
+    end
+    local okC, cx, cy = pcall(anchor.GetCenter, anchor)
+    cx, cy = okC and plainNumber(cx), okC and plainNumber(cy)
+    local okS, es = pcall(anchor.GetEffectiveScale, anchor)
+    es = okS and plainNumber(es)
+    if not (cx and cy and es) then return nil end
+    local r = es / UIParent:GetEffectiveScale()
+    local ux, uy = UIParent:GetCenter()
+    return cx * r - ux, cy * r - uy, w * r, h * r
+end
+
+--- Where a frame hanging off another sits in the regular layout, as a CENTER
+--- record in its own scale, computed from the anchor's regular spot so it
+--- holds while the anchor is somewhere else. nil when the frame is not
+--- attached or a rect cannot be read.
+attachedBase = function(st, depth)
+    depth = (depth or 0) + 1
+    if depth > ATTACH_DEPTH then return nil end
+    local anchor, point, relPoint, dx, dy = attachOf(st)
+    if not anchor then return nil end
+    local EM = addon.EditMode
+    local frame = frameOf(st)
+    local pf = EM and EM.AnchorFraction and EM.AnchorFraction(point)
+    local rf = EM and EM.AnchorFraction and EM.AnchorFraction(relPoint)
+    dx, dy = plainNumber(dx), plainNumber(dy)
+    if not (frame and pf and rf and dx and dy) then return nil end
+    local hcx, hcy, hw, hh = anchorRect(anchor, depth)
+    if not hcx then return nil end
+    local fs = st.channelSet and st.channelSet.scale and baseValue(st, "scale") or nil
+    if not (fs and fs > 0) then
+        local okS, s = pcall(frame.GetScale, frame)
+        fs = (okS and plainNumber(s) and s > 0) and s or 1
+    end
+    local ok, fw, fh = pcall(frame.GetSize, frame)
+    fw, fh = ok and plainNumber(fw), ok and plainNumber(fh)
+    if not (fw and fh) then return nil end
+    local cx = hcx + (rf[1] - 0.5) * hw + dx - (pf[1] - 0.5) * fw * fs
+    local cy = hcy + (rf[2] - 0.5) * hh + dy - (pf[2] - 0.5) * fh * fs
+    return { point = "CENTER", x = cx / fs, y = cy / fs }
 end
 
 --- The off-screen position, as a CENTER record in the frame's own scale. The
@@ -235,7 +359,9 @@ end
 --- re-expression: a silent position under a dynamic scale keeps the anchor
 --- point on its screen spot, so the frame scales in place. Offsets are in the
 --- frame's own scale, so the base pair is multiplied by base over dynamic.
---- An off-screen edge outranks the record's own position.
+--- An off-screen edge outranks the record's own position. A frame hanging
+--- off another is pinned to its regular spot when its record is silent, so
+--- its anchor's move in the dynamic layout never carries it along.
 local function valueFor(st, channel, state)
     if state == "dynamic" then
         if channel == "position" then
@@ -251,6 +377,10 @@ local function valueFor(st, channel, state)
             if b and bs and ds and bs ~= ds and bs > 0 and ds > 0 then
                 return { point = b.point, x = b.x * bs / ds, y = b.y * bs / ds }, false
             end
+        end
+        if channel == "position" and attachOf(st) then
+            local b = baseValue(st, "position")
+            if b then return b, false end
         end
     end
     return baseValue(st, channel), true
@@ -301,7 +431,14 @@ local function writeFinal(st, channel, value, isBase)
     if not frame then return false end
     local ok, err
     if channel == "position" then
-        ok, err = pcall(applier(st, channel), frame, value.point, value.x, value.y)
+        -- Home for a frame hanging off another is its anchor, not the spot
+        -- computed from it, so it follows its anchor again at base.
+        local reattach = st.def.reattach
+        if isBase and type(reattach) == "function" and attachOf(st) then
+            ok, err = pcall(reattach, frame)
+        else
+            ok, err = pcall(applier(st, channel), frame, value.point, value.x, value.y)
+        end
     else
         ok, err = pcall(applier(st, channel), frame, value)
     end
@@ -341,7 +478,10 @@ local function writeTick(st, channel, a, b)
         local s = frameScaleOf(frame)
         st.applied.position = { center = { a * s, b * s } }
     elseif channel == "opacity" then
-        frame:SetAlpha(a)
+        -- Through the definition's writer when it has one, as the final write
+        -- is, so a writer that folds a rule of its own into the alpha holds
+        -- through a tween.
+        applier(st, "opacity")(frame, a)
         st.applied.opacity = a
     else
         frame:SetScale(a)
@@ -519,6 +659,21 @@ end
 ---   queue    = function(channel, reapply), optional, the protected tier's slot,
 ---   group    = string, optional, a key from DL.RegisterGroup: the frame takes
 ---              part when the group does, under one checkbox,
+---   dropTarget = boolean, optional: the frame takes a drop from the cursor,
+---              so a held action brings the layout back while the frame takes
+---              part (resolver.lua, holdingAction),
+---   attach   = function() -> anchor, point, relPoint, dx, dy, optional: the
+---              frame another one hangs off right now, the two points and the
+---              offsets in UI units; nil while it is placed by its own
+---              position. The dynamic layout ignores the attach: the frame
+---              keeps its own place there, its regular spot until its record
+---              says otherwise, and its anchor's move never carries it,
+---   reattach = function(frame), required with attach: the write that hangs
+---              the frame back off its anchor when it lands at base,
+---   friendlyUnits = boolean, optional: the frame offers the rule that a
+---              friendly unit as target brings it back too, over the target
+---              rule's attackable NPCs only; on until its record's
+---              friendlyUnits is false (resolver.lua, the wide lane),
 --- }
 --- Re-registering an id replaces the def and keeps the state. A bad def
 --- leaves the adapter inert with its reason in lastError.
@@ -709,6 +864,13 @@ function DL.BaseValue(id, channel)
     return baseValue(st, channel)
 end
 
+--- Whether the adapter can hang off another frame, which the dynamic view's
+--- drop and Position row ignore.
+function DL.Detaches(id)
+    local st = adapters[id]
+    return (st and not st.inert and type(st.def.attach) == "function") or false
+end
+
 function DL.DynamicValue(id, channel)
     if not adapters[id] then return nil end
     return dynamicValue(id, channel)
@@ -718,6 +880,49 @@ end
 --- "in" toward the dynamic state, "out" toward the base.
 function DL.Speed(direction)
     return speed(direction)
+end
+
+--- The delay before a return to the dynamic layout, clamped; the resolver
+--- reads it at the moment a requirement is met.
+function DL.Delay()
+    return delay()
+end
+
+--- Whether the target trigger counts only an NPC the player can attack; the
+--- resolver reads it on every target change.
+function DL.TargetAttackableNPCs()
+    return targetAttackableNPCs()
+end
+
+--- Whether the frame offers the friendly unit rule, and whether it is on.
+function DL.OffersFriendlyUnits(id)
+    local st = adapters[id]
+    return (st and not st.inert and st.def.friendlyUnits) and true or false
+end
+
+function DL.FriendlyUnits(id)
+    return friendlyUnits(id)
+end
+
+--- Turn the frame's friendly unit rule on or off; it moves to its new lane's
+--- answer.
+function DL.SetFriendlyUnits(id, on)
+    local store = Store()
+    if not (store and store.SetRecord and DL.OffersFriendlyUnits(id)) then return end
+    store.SetRecord(id, { friendlyUnits = on and true or false })
+    DL.Refresh(id, "tween")
+end
+
+--- Whether any frame that takes a drop from the cursor takes part, which is
+--- when a held action brings the layout back (resolver.lua, holdingAction).
+function DL.DropTargetParticipating()
+    for _, id in ipairs(registered) do
+        local st = adapters[id]
+        if st and not st.inert and st.def.dropTarget and participating(id) then
+            return true
+        end
+    end
+    return false
 end
 
 --- Re-run the decision for one adapter. mode: "snap" or "tween".
@@ -769,6 +974,19 @@ end
 function DL.IsDynamic(id)
     local st = adapters[id]
     return st and st.target == "dynamic" or false
+end
+
+--- Whether the engine has a hand on one channel of a frame: written off
+--- base, in flight, or owed at regen. A component writes its own base value
+--- for a channel (its Opacity setting, say) only while this is false. The
+--- target alone is the wrong gate: a dynamic state whose record is silent on
+--- the channel targets the base, which the engine never writes unheld, so a
+--- component that waits on IsDynamic leaves the setting unapplied for as
+--- long as the dynamic layout holds.
+function DL.HoldsChannel(id, channel)
+    local st = adapters[id]
+    if not st or st.inert then return false end
+    return (isHeld(st, channel) or st.deferred[channel]) and true or false
 end
 
 --- The forced state, session only: "base", "dynamic" or nil.
@@ -826,7 +1044,7 @@ end
 local function landAll(edge)
     for _, id in ipairs(registered) do
         local st = adapters[id]
-        if not st.inert then
+        if not st.inert and not (edge and edge.lane and edge.lane ~= laneOf(id)) then
             if edge then st.lastEdge = edge end
             applyState(st, decide(id), "snap")
             Tween.Cancel(id)
@@ -846,14 +1064,16 @@ Resolver.Subscribe(OWNER, function(_, info)
     if info.origin == "editmode" then
         forced = nil
     end
-    local edge = { wall = info.wall, origin = info.origin, answer = info.answer, mode = mode }
+    -- Each lane publishes its own edges; a frame hears only its lane's.
+    local lane = info.lane or "main"
+    local edge = { wall = info.wall, origin = info.origin, answer = info.answer, mode = mode, lane = lane }
     if mode == "snap" then
         landAll(edge)
         return
     end
     for _, id in ipairs(registered) do
         local st = adapters[id]
-        if not st.inert then
+        if not st.inert and laneOf(id) == lane then
             st.lastEdge = edge
             applyState(st, decide(id), mode)
         end
@@ -917,8 +1137,8 @@ end
 
 local function section(push)
     local store = Store()
-    push("adapters (%d registered, speed in %.2fs out %.2fs, force %s, view %s, store %s)",
-        #registered, speed("in"), speed("out"), forced or "off", view and "on" or "off",
+    push("adapters (%d registered, speed in %.2fs out %.2fs, delay %.1fs, force %s, view %s, store %s)",
+        #registered, speed("in"), speed("out"), delay(), forced or "off", view and "on" or "off",
         store and "set" or "MISSING")
     if #registered == 0 then
         push("  (none)")
@@ -931,9 +1151,9 @@ local function section(push)
             push("  [%s] %s  INERT: %s", id, tostring(def.label), st.inert)
         else
             local edge = st.lastEdge
-            push("  [%s] %s  %s  joined %s (%s)  offscreen %s  channels %s  target %s  edge %s",
+            push("  [%s] %s  %s  joined %s (%s)  lane %s  offscreen %s  channels %s  target %s  edge %s",
                 id, tostring(def.label), def.tier,
-                participating(id) and "on" or "off", participationKey(id),
+                participating(id) and "on" or "off", participationKey(id), laneOf(id),
                 offscreenEdge(id) or "-",
                 table.concat(def.channels, ","),
                 st.target or "(none)",
@@ -1061,6 +1281,15 @@ local function speedVerb(a, b)
     end
 end
 
+local function delayVerb(raw)
+    local store = Store()
+    local v = tonumber(raw)
+    if not (store and store.SetDelay and v) then return addon.Commands.USAGE end
+    if v < DELAY_MIN then v = DELAY_MIN end
+    if v > DELAY_MAX then v = DELAY_MAX end
+    store.SetDelay(v)
+end
+
 local function forceVerb(state)
     local lowered = string.lower(tostring(state or ""))
     if lowered == "base" or lowered == "dynamic" then
@@ -1079,7 +1308,9 @@ verbs[#verbs + 1] = { word = "value", usage = "value <id> <opacity|scale|x|y|poi
     help = "set one field of a frame's dynamic record (opacity 0..1, scale 0.25..4, offscreen up|down|left|right); off clears it", fn = valueVerb }
 verbs[#verbs + 1] = { word = "speed", usage = "speed [in|out] <0.25..2>",
     help = "the transition duration in seconds, per profile: into the dynamic layout, out of it, or both", fn = speedVerb }
+verbs[#verbs + 1] = { word = "delay", usage = "delay <0..30>",
+    help = "seconds the return to the dynamic layout waits after the last requirement is met, per profile", fn = delayVerb }
 verbs[#verbs + 1] = { word = "force", usage = "force <base|dynamic|off>",
-    help = "hold a state regardless of the triggers, this session; Edit Mode clears it", fn = forceVerb }
+    help = "hold a state in place of the triggers' answer, this session; a frame still needs its checkbox; Edit Mode clears it", fn = forceVerb }
 
 DL.DebugSections[#DL.DebugSections + 1] = section

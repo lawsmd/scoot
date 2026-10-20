@@ -22,9 +22,11 @@
 -- ClearSelectedSystem, which the library calls on every click of an
 -- addon-owned box, so a post-hook on it runs the hide again at once. The strip grows
 -- down from the box's top edge into the panel, wider than the box by an
--- outset each side for the two columns of frames: the requirements at the
--- left with the two transition speeds (into the dynamic layout, out of it)
--- stacked at the right, the frames that take part, and Done. Done puts every
+-- outset each side for its two boxed sections: the requirements at the left,
+-- a gear beside the Target row opening its rule's one checkbox in a flyout,
+-- with three sliders at the right (the speed into the regular layout, the
+-- delay before the dynamic one, the speed into it, each labeled with the
+-- checked requirements), then the frames that take part; and Done. Done puts every
 -- Blizzard piece back at once. The other ends of the view put the alphas back
 -- and re-show the selections only if Edit Mode still holds a frame later,
 -- since Blizzard's own exit has hidden them for good by then.
@@ -33,9 +35,10 @@
 -- view has taken off the screen and nowhere else, so the world stays free
 -- for the camera: the invisible box and Blizzard's invisible dialog, every
 -- Blizzard selection box the view hid that was visible, and every addon-owned
--- box it faded. They stand in the DIALOG strata under the view's boxes, the
--- branded dialog (raised a strata for the view) and the strip. The shield is
--- one full-screen frame over everything, up for the transition window only.
+-- box it faded. They stand in the DIALOG strata under the view's boxes; the
+-- strip and the branded dialog rise a strata for the view, over any box. The
+-- shield is one full-screen frame over everything, up for the transition
+-- window only.
 -- The border is four lines in the view's color around the screen.
 local addonName, addon = ...
 
@@ -57,13 +60,24 @@ local PAD          = 14
 local GAP          = 8
 local TITLE_SIZE   = 19    -- the panel's title
 local SECTION_SIZE = 15    -- the panel's section headers
-local TEXT_SIZE    = 13
+local TEXT_SIZE    = 13    -- a slider's label
+local REQ_TEXT_SIZE  = 15  -- the sentence over the requirement rows, two over the labels under it
+local REQ_LABEL_SIZE = 12  -- a requirement row's label, one under the control's own
+local REQ_BOX_SCALE  = 0.85 -- a requirement row's checkbox, against the frame rows' full size
+local REQ_ROW_H      = 30  -- a requirement row, cut from the control's 36
+local GEAR_SIZE      = 16  -- the Target row's gear, the glyph button's box; the requirement block moves half its width and a gap left to make its room
+local GEAR_GLYPH     = 1.35 -- the glyph over the box, as the selector gear draws it
+local TARGET_FLYOUT_PAD = 8   -- the gear's flyout, its content's inset; the width follows the row (FitTargetFlyout)
 local BTN_H        = 26
 local BUTTON_W     = 200
 local DONE_W       = 120
 local ROW_H        = 36    -- Controls:CreateToggle's row
-local SPEED_ROW_H  = 44    -- a speed slider's row: its label over its track
-local SPEED_W      = 140   -- a speed slider's track, cut so the arrows and the value box fit a column
+local SLIDER_GAP   = 6     -- a slider's label to its track
+local SPEED_W      = 140   -- a slider's track, cut so the arrows and the value box fit a column
+local SECTION_PAD  = 24    -- a boxed section's inset, each side: the OptionsFrame corners draw their line some 14 inside the frame rect (the second look's screenshot), and the content keeps 10 inside the line
+local SECTION_GROWTH = 1.5 -- the first section's height over its taller column's, air between the sliders
+local SLIDER_INSET = 12    -- the slider column's extra air at the section's top and bottom, taken out of the air between the rows (the third look: the end rows sat too near the line)
+local DIM_ALPHA    = 0.35  -- the Frames title while no requirement is checked, the controls' own dim
 local GLOW_IN      = 4     -- the halo's inset from the button's edge, inside its border
 local PANEL_OUTSET = 45    -- the panel's reach past each side of the box
 local BORDER_W     = 4
@@ -75,21 +89,49 @@ local FADE         = 0.3
 -- collapsed strip stands in the HIGH strata, over every selection box and
 -- under the box itself, whose help plate and close button sit on the corners
 -- the strip's art runs over. In the view the holds stand over the box and
--- Blizzard's dialog; the participating boxes keep their template's 1000 over
--- them (core/dynamiclayouts/view.lua), the library's dialog rises a strata
--- (Dialog.SetRaised), the strip goes over the boxes, and for the transition
--- the shield rises over all of it.
-local STRIP_STRATA     = "HIGH"
-local STRIP_LEVEL      = 50
-local STRIP_LEVEL_VIEW = 2000
+-- Blizzard's dialog; the participating boxes take their template's 1000 over
+-- them (core/dynamiclayouts/view.lua) and the edge tabs 1100; the strip rises
+-- to FULLSCREEN_DIALOG, under the flyouts (100) and the library's dialog,
+-- which rises there too with its 200 (Dialog.SetRaised), so no box level
+-- reaches it: at 2000 in the boxes' strata, a box a click had raised to the
+-- top of that strata before the view drew over the panel (the owner's
+-- screenshot of 19 October 2026). For the transition the shield rises over
+-- all of it.
+local STRIP_STRATA      = "HIGH"
+local STRIP_LEVEL       = 50
+local STRIP_STRATA_VIEW = "FULLSCREEN_DIALOG"
+local STRIP_LEVEL_VIEW  = 50
 local HOLD_LEVEL       = 250
 local BORDER_LEVEL     = 255
 local SHIELD_LEVEL     = 900   -- FULLSCREEN_DIALOG
 
+-- Blizzard's yellow (NORMAL_FONT_COLOR) on the requirement's word, Combat,
+-- Target or Instance, in its row and in the sliders' labels, which marks the
+-- word as the one that moves between them. The owner's call of 18 October 2026.
+local WORD_COLOR = "|cffffd100"
+local function Yellow(word)
+    return WORD_COLOR .. word .. "|r"
+end
+
+-- `word` is what each requirement adds to the sliders' labels while it is
+-- checked.
 local TRIGGER_ROWS = {
-    { name = "inCombat",       label = "Not in combat" },
-    { name = "targetAcquired", label = "Do not have a target" },
-    { name = "insideInstance", label = "Not in an instance" },
+    { name = "inCombat",       label = "Not in " .. Yellow("Combat"),        word = "Combat" },
+    { name = "targetAcquired", label = "Do not have a " .. Yellow("Target"), word = "Target" },
+    { name = "insideInstance", label = "Not in an " .. Yellow("Instance"),   word = "Instance" },
+}
+
+-- The three sliders of the right column, top to bottom; %s takes the checked
+-- requirements' words. "Going into Combat" is the move to the regular layout,
+-- so that row reads the out-of speed, and "when leaving Combat" the move back,
+-- the into speed, with the delay before that move between them.
+local SLIDER_ROWS = {
+    { key = "speedOut", direction = "out", label = "Transition speed going into %s:",
+      min = 0.25, max = 2, step = 0.25, precision = 2 },
+    { key = "delay", label = "Wait this long after %s before transitioning:",
+      min = 0, max = 30, step = 1, precision = 0 },
+    { key = "speedIn", direction = "in", label = "Transition speed when leaving %s:",
+      min = 0.25, max = 2, step = 0.25, precision = 2 },
 }
 
 -- The pieces of the box's border the strip stands in for while it stands on
@@ -428,7 +470,7 @@ local function BuildStrip()
     return strip
 end
 
-local LayoutPanel
+local LayoutPanel, RefreshPanel
 
 local function AnchorPortrait(beside)
     local portrait = strip and strip._portrait
@@ -459,7 +501,7 @@ local function AnchorStrip(expanded)
     strip:SetPoint("TOPRIGHT", mgr, "TOPRIGHT", outset, STRIP_H)
     fill:SetPoint("TOPLEFT", art, "TOPLEFT", inset, -inset)
     if expanded then
-        strip:SetFrameStrata("DIALOG")
+        strip:SetFrameStrata(STRIP_STRATA_VIEW)
         strip:SetFrameLevel(STRIP_LEVEL_VIEW)
         strip:SetHeight(LayoutPanel())
         art:SetAllPoints(strip)
@@ -500,10 +542,126 @@ end
 -- The panel
 --------------------------------------------------------------------------------
 
+-- A bordered section of the panel, on the editDialog role's `section`
+-- descriptor, the one the dialog's mirror draws its option groups with
+-- (Mirror.lua): the thin line the client's Edit Mode window draws around
+-- them, or the flat border at one unit. At the content's level, so the rows,
+-- a level up, draw over it.
+local function SectionBox(content)
+    local box = CreateFrame("Frame", nil, content)
+    box:SetFrameLevel(content:GetFrameLevel())
+    local C, Ctl = Chrome(), Controls()
+    local dialog = C and C.Spec and C.Spec("editDialog")
+    local spec = (dialog and C.Resolve) and C.Resolve(dialog.section, nil) or { kind = "flat" }
+    if spec.kind == "nineSlice" and C.NineSlice then
+        box._art = C.NineSlice(box, spec)
+    elseif Ctl and Ctl.CreateBorder then
+        box._border = Ctl.CreateBorder(box, { thickness = 1 })
+    end
+    return box
+end
+
+-- The checked requirements' words, "Combat/Target/Instance", in yellow, for
+-- the sliders' labels. All three, plain, while none is checked: the labels
+-- stay legible and say what will appear, and the gray-out's dim is a text
+-- color a colored word would ignore.
+local function RequirementWords()
+    local V, parts = View(), {}
+    for _, t in ipairs(TRIGGER_ROWS) do
+        if V and V.GetTrigger(t.name) then parts[#parts + 1] = Yellow(t.word) end
+    end
+    if #parts == 0 then
+        for _, t in ipairs(TRIGGER_ROWS) do parts[#parts + 1] = t.word end
+    end
+    return table.concat(parts, "/")
+end
+
+-- With no requirement checked the layout can never switch, so the sliders
+-- and the frame rows gray out until one is; the requirement rows never do.
+local function NoRequirementChecked()
+    local V = View()
+    if not V then return true end
+    for _, t in ipairs(TRIGGER_ROWS) do
+        if V.GetTrigger(t.name) then return false end
+    end
+    return true
+end
+
+-- The flyout's size from its one row: the label, the gap, the scaled
+-- checkbox, and the flyout's inset each side. The label's width is read once
+-- the string is shown, and again a frame later, when the client has laid it
+-- out (a FontString measures late on its first show).
+local function FitTargetFlyout(flyout, row)
+    local label, box = row and row._label, row and row._indicator
+    if not (label and box) then return end
+    local inset = flyout._inset or TARGET_FLYOUT_PAD
+    local wide = (label.GetUnboundedStringWidth and label:GetUnboundedStringWidth())
+        or label:GetStringWidth() or 0
+    local w = math.ceil(wide + GAP + (box:GetWidth() or 0) * REQ_BOX_SCALE) + 2 * inset
+    flyout:SetFlyoutSize(w, REQ_ROW_H + 2 * inset)
+end
+
+-- The target rule's flyout under its gear, built on first use: one toggle,
+-- "Only Neutral/Enemy NPCs", on by default (core/dynamiclayouts/resolver.lua,
+-- the target probe), laid out as the requirement rows above it are, its label
+-- hanging off its checkbox. It lives on UIParent, so OnExit closes it.
+local function EnsureTargetFlyout(gear)
+    if panel.targetFlyout then return panel.targetFlyout end
+    local Ctl = Controls()
+    if not (Ctl and Ctl.CreateFlyout) then return nil end
+    local row, flyout
+    flyout = Ctl:CreateFlyout({
+        anchor = gear, direction = "DOWN",
+        width = 200, height = REQ_ROW_H + 2 * TARGET_FLYOUT_PAD,
+        padding = TARGET_FLYOUT_PAD,
+        onShow = function()
+            if not row then return end
+            if row.Refresh then pcall(row.Refresh, row) end
+            FitTargetFlyout(flyout, row)
+            C_Timer.After(0, function() FitTargetFlyout(flyout, row) end)
+        end,
+    })
+    if not flyout then return nil end
+    local content = flyout:GetContent()
+    row = Ctl:CreateToggle({
+        parent = content, label = "Only Neutral/Enemy NPCs", indicatorRole = "checkbox",
+        get = function()
+            local V = View()
+            return (V and V.GetTargetAttackableNPCs()) and true or false
+        end,
+        set = function(v)
+            local V = View()
+            if V then V.SetTargetAttackableNPCs(v) end
+        end,
+    })
+    if row then
+        local label, box = row._label, row._indicator
+        if label and box then
+            ApplyFont(label, (Ctl.RowLabelFontRole and Ctl.RowLabelFontRole()) or "label", REQ_LABEL_SIZE)
+            box:SetScale(REQ_BOX_SCALE)
+            box:ClearAllPoints()
+            box:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+            label:ClearAllPoints()
+            label:SetWidth(0)
+            label:SetJustifyH("RIGHT")
+            label:SetPoint("RIGHT", box, "LEFT", -GAP, 0)
+        end
+        row:SetHeight(REQ_ROW_H)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+        row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
+    end
+    panel.targetFlyout = flyout
+    return flyout
+end
+
 local function BuildPanel()
     if panel then return panel end
     local Ctl, content = Controls(), strip._content
     panel = {}
+
+    -- The two boxed sections, under the rows: the requirements and the
+    -- sliders in one, the frames in the other.
+    panel.boxes = { SectionBox(content), SectionBox(content) }
 
     local title = content:CreateFontString(nil, "OVERLAY")
     ApplyFont(title, "header", TITLE_SIZE)
@@ -512,25 +670,29 @@ local function BuildPanel()
     title:SetText("Dynamic Layout")
     panel.title = title
 
-    -- The sentence over the checkboxes, wrapped and centered so it reads as
-    -- theirs: at the third run it ran the panel's width on one line and read
-    -- as the title's.
+    -- The sentence over the checkboxes, wrapped to their block's width and
+    -- centered so it reads as theirs: at the third run it ran the panel's
+    -- width on one line and read as the title's.
     local req = content:CreateFontString(nil, "OVERLAY")
-    ApplyFont(req, "label", TEXT_SIZE)
+    ApplyFont(req, "label", REQ_TEXT_SIZE)
     req:SetTextColor(PrimaryColor())
     req:SetJustifyH("CENTER")
     req:SetWordWrap(true)
-    req:SetText("Switch to the dynamic layout when every checked requirement is met")
+    req:SetText("Switch to the dynamic layout when every checked requirement is met:")
     panel.requirements = req
 
-    -- The three rows' labels hang off their checkboxes, right-aligned, in
-    -- place of the row's own left-anchored label, which at the third run
-    -- stood a panel's width from its checkbox.
+    -- The three rows, a size down from the control's own in label and
+    -- checkbox, with the labels hanging off their checkboxes, right-aligned,
+    -- in place of the row's left-anchored label, which at the third run
+    -- stood a panel's width from its checkbox. The control has no size
+    -- option, so the caller that re-anchors also scales.
+    local labelRole = (Ctl.RowLabelFontRole and Ctl.RowLabelFontRole()) or "label"
     panel.triggers = {}
+    panel.triggerRows = {}
     for _, t in ipairs(TRIGGER_ROWS) do
         local name = t.name
         local row = Ctl:CreateToggle({
-            parent = content, label = t.label,
+            parent = content, label = t.label, indicatorRole = "checkbox",
             get = function()
                 local V = View()
                 return (V and V.GetTrigger(name)) and true or false
@@ -538,58 +700,85 @@ local function BuildPanel()
             set = function(v)
                 local V = View()
                 if V then V.SetTrigger(name, v) end
+                -- The sliders' labels and the gray-out follow the mask.
+                RefreshPanel()
             end,
         })
         local label, box = row._label, row._indicator
         if label and box then
+            ApplyFont(label, labelRole, REQ_LABEL_SIZE)
             label:ClearAllPoints()
             label:SetWidth(0)
             label:SetJustifyH("RIGHT")
             label:SetPoint("RIGHT", box, "LEFT", -GAP, 0)
+            box:SetScale(REQ_BOX_SCALE)
         end
+        row:SetHeight(REQ_ROW_H)
         panel.triggers[#panel.triggers + 1] = row
+        panel.triggerRows[name] = row
     end
 
-    -- The two speed sliders, one per direction, each with its label centered
-    -- over its track in place of the row's left-anchored label beside it.
-    local function StackSliderRow(row)
-        local label, cluster = row._label, row._sliderContainer
-        if label then
-            label:ClearAllPoints()
-            label:SetWidth(0)
-            label:SetJustifyH("CENTER")
-            label:SetPoint("TOP", row, "TOP", 0, 0)
-        end
-        if cluster then
-            cluster:ClearAllPoints()
-            cluster:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
-        end
-        row:SetHeight(SPEED_ROW_H)
-        return row
+    -- The Target row's gear, right of its checkbox: a child of the content,
+    -- not of the row, so it keeps full scale and its click never toggles the
+    -- row. It shows while that requirement is checked (RefreshPanel).
+    local targetRow = panel.triggerRows.targetAcquired
+    if targetRow and targetRow._indicator and Ctl.CreateGlyphButton then
+        local gear = Ctl:CreateGlyphButton({
+            parent = content, atlas = "GM-icon-settings", tooltip = "Target options",
+            size = GEAR_SIZE, glyphScale = GEAR_GLYPH, shown = true,
+        })
+        gear:SetFrameLevel(targetRow:GetFrameLevel() + 2)
+        gear:SetPoint("LEFT", targetRow._indicator, "RIGHT", GAP, 0)
+        gear:RegisterForClicks("AnyUp")
+        gear:SetScript("OnClick", function()
+            local flyout = EnsureTargetFlyout(gear)
+            if flyout then flyout:Toggle() end
+        end)
+        panel.targetGear = gear
     end
-    local function SpeedSlider(direction, label)
-        return StackSliderRow(Ctl:CreateSlider({
-            parent = content, label = label,
-            min = 0.25, max = 2, step = 0.25, precision = 2, displaySuffix = "s",
-            width = SPEED_W, inputWidth = 48,
+
+    -- The three sliders, each with the control's label over its track at the
+    -- row's left edge in place of the label beside it. The label wraps at
+    -- the column's width and the row's height follows it (LayoutPanel).
+    panel.sliders = {}
+    for _, entry in ipairs(SLIDER_ROWS) do
+        local direction = entry.direction
+        local row = Ctl:CreateSlider({
+            parent = content, label = string.format(entry.label, RequirementWords()),
+            min = entry.min, max = entry.max, step = entry.step, precision = entry.precision,
+            displaySuffix = "s", width = SPEED_W, inputWidth = 48,
+            disabled = NoRequirementChecked,
             get = function()
                 local V = View()
-                return V and V.GetSpeed(direction) or 0.5
+                if not V then return entry.min end
+                if direction then return V.GetSpeed(direction) end
+                return V.GetDelay()
             end,
             set = function(v)
                 local V = View()
-                if V then V.SetSpeed(direction, v) end
+                if not V then return end
+                if direction then V.SetSpeed(direction, v) else V.SetDelay(v) end
             end,
-        }))
+        })
+        local label, cluster = row._label, row._sliderContainer
+        if label then
+            label:ClearAllPoints()
+            label:SetJustifyH("LEFT")
+            label:SetWordWrap(true)
+            label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        end
+        if cluster then
+            cluster:ClearAllPoints()
+            cluster:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+        end
+        panel.sliders[#panel.sliders + 1] = row
     end
-    panel.speedIn = SpeedSlider("in", "Transition Speed INTO Dynamic Layout")
-    panel.speedOut = SpeedSlider("out", "Transition Speed OUT OF Dynamic Layout")
 
     local frames = content:CreateFontString(nil, "OVERLAY")
     ApplyFont(frames, "header", SECTION_SIZE)
     frames:SetTextColor(PrimaryColor())
-    frames:SetJustifyH("LEFT")
-    frames:SetText("Frames")
+    frames:SetJustifyH("CENTER")
+    frames:SetText("Frames that will use Dynamic Layout")
     panel.framesTitle = frames
 
     panel.done = Ctl:CreateButton({
@@ -620,6 +809,7 @@ local function BuildFrameRows()
         local key = group.key
         frameRows[#frameRows + 1] = Ctl:CreateToggle({
             parent = strip._content, label = group.label,
+            disabled = NoRequirementChecked,
             get = function()
                 local V = View()
                 return (V and V.IsKeyParticipating(key)) and true or false
@@ -632,13 +822,19 @@ local function BuildFrameRows()
     end
 end
 
--- The three requirement rows as one block: the widest label, the checkbox
--- and the row's own padding each side set the block's width, and each row is
--- that wide and centered in the column at colX of width colW, so the labels,
--- right-aligned against their checkboxes, and the checkboxes stand as one
--- centered column pair. The padding is read off the checkbox's anchor, the
--- row's own number.
-local function LayoutRequirementRows(content, colX, colW, y)
+-- A wrapped string's height once it has drawn, else the floor: the wrapped
+-- height reads as one line until the first draw, which is why the layout
+-- runs again a frame after a change.
+local function StringHeight(fs, floor)
+    local ok, h = pcall(fs.GetStringHeight, fs)
+    if ok and type(h) == "number" and h > floor then return h end
+    return floor
+end
+
+-- The three requirement rows' width as one block: the widest label, the
+-- checkbox at its scale, and the row's own padding each side, read off the
+-- checkbox's anchor in the checkbox's scale.
+local function RequirementBlockWidth()
     local labelW, boxW, pad = 0, 0, PAD
     for _, row in ipairs(panel.triggers) do
         local label, box = row._label, row._indicator
@@ -647,18 +843,25 @@ local function LayoutRequirementRows(content, colX, colW, y)
             if ok and type(w) == "number" and w > labelW then labelW = w end
         end
         if box then
-            boxW = box:GetWidth()
+            local scale = box:GetScale() or 1
+            boxW = box:GetWidth() * scale
             local _, _, _, x = box:GetPoint(1)
-            if type(x) == "number" then pad = -x end
+            if type(x) == "number" then pad = -x * scale end
         end
     end
-    local rowW = pad + math.ceil(labelW) + GAP + boxW + pad
+    return pad + math.ceil(labelW) + GAP + boxW + pad
+end
+
+-- The rows, each rowW wide and centered in the column at colX of width colW,
+-- so the labels, right-aligned against their checkboxes, and the checkboxes
+-- stand as one centered column pair.
+local function LayoutRequirementRows(content, colX, colW, rowW, y)
     local left = colX + (colW - rowW) / 2
     for _, row in ipairs(panel.triggers) do
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
         row:SetWidth(rowW)
-        y = y - ROW_H
+        y = y - REQ_ROW_H
     end
     return y
 end
@@ -666,18 +869,19 @@ end
 --- Lay the panel out from the strip's top edge down; returns the height it
 --- needs. The width is the box's own plus the outset each side, read off the
 --- box rather than off the strip, whose rect follows its anchors a frame
---- later. The title is centered; under it two columns, the requirements
---- sentence and its rows a centered block in the left one and the two speed
---- sliders a stack in the right, centered against the block; the frames run
---- in two columns of the same width, each wide enough for the longest label
---- and its checkbox. Idempotent, and run again a frame after the entry: the
---- sentence's wrapped height reads as one line until it has drawn once.
+--- later. The title is centered; under it two boxed sections of two columns
+--- of one width. The first holds the requirements sentence and its rows, a
+--- centered block in the left column, and the three sliders in the right,
+--- and stands half again as tall as its taller column, the left column
+--- centered in it and the sliders spread over it; the second holds the
+--- frames, each column wide enough for the longest label and its checkbox.
+--- Idempotent, and run again a frame after any change: a wrapped string's
+--- height reads as one line until it has drawn once.
 LayoutPanel = function()
     if not panel then return STRIP_H end
     local mgr, content = Manager(), strip._content
     local ok, W = pcall(mgr.GetWidth, mgr)
     W = ((ok and type(W) == "number" and W > 0) and W or 510) + 2 * PANEL_OUTSET
-    local left = PAD
     local y = -PAD
 
     panel.title:ClearAllPoints()
@@ -685,49 +889,93 @@ LayoutPanel = function()
     AnchorPortrait(panel.title)
     y = y - TITLE_SIZE - 6 - GAP * 2
 
-    -- Two columns under the title, the Frames columns' width: the
-    -- requirements block in the left one, the two speed sliders stacked in
-    -- the right and centered against the block's height.
-    local colW = (W - PAD * 3) / 2
-    local rightX = left + colW + PAD
+    -- The boxes, PAD in from the panel's edges, their content SECTION_PAD
+    -- inside them.
+    local boxX, boxW = PAD, W - 2 * PAD
+    local innerX = boxX + SECTION_PAD
+    local colW = (boxW - 2 * SECTION_PAD - PAD) / 2
+    local rightX = innerX + colW + PAD
+
+    local function OpenBox(index)
+        local box = panel.boxes[index]
+        box:ClearAllPoints()
+        box:SetPoint("TOPLEFT", content, "TOPLEFT", boxX, y)
+        box:SetWidth(boxW)
+        box._top = y
+        y = y - SECTION_PAD
+    end
+    local function CloseBox(index)
+        local box = panel.boxes[index]
+        y = y - SECTION_PAD
+        box:SetHeight(box._top - y)
+        y = y - GAP
+    end
+
+    OpenBox(1)
     local top = y
 
-    -- The sentence, at least its two lines tall, close over its rows.
+    -- The left column's height: the sentence, wrapped to the block's width
+    -- and a gap each side and at least two lines tall, then the rows.
+    local rowW = RequirementBlockWidth()
     local req = panel.requirements
+    req:SetWidth(math.min(colW, rowW + 2 * GAP))
+    local reqH = StringHeight(req, 2 * (REQ_TEXT_SIZE + 4))
+    local leftH = reqH + 4 + #panel.triggers * REQ_ROW_H
+
+    -- The right column's: each slider's label at the column's width, at
+    -- least one line, then the gap and the track; the rows a gap apart.
+    local rowsH, n = 0, #panel.sliders
+    for _, row in ipairs(panel.sliders) do
+        local label, cluster = row._label, row._sliderContainer
+        local labelH = TEXT_SIZE + 4
+        if label then
+            label:SetWidth(colW)
+            labelH = StringHeight(label, labelH)
+        end
+        row:SetHeight(labelH + SLIDER_GAP + (cluster and cluster:GetHeight() or 20))
+        rowsH = rowsH + row:GetHeight()
+    end
+    local rightH = rowsH + math.max(0, n - 1) * GAP
+
+    -- The section half again as tall as its taller column, the owner's room
+    -- of 18 October 2026 after the first look came up cramped: the left
+    -- column centers in it, and the sliders spread over it, SLIDER_INSET
+    -- off its top and bottom, with the slack between the rows.
+    local H = math.max(leftH, rightH) * SECTION_GROWTH
+    local ly = top - (H - leftH) / 2
+    -- The sentence and the rows stand half the gear and its gap left of the
+    -- column's center, the room the Target row's gear takes at its right.
+    local shift = (GAP + GEAR_SIZE) / 2
     req:ClearAllPoints()
-    req:SetWidth(colW - 2 * GAP)
-    req:SetPoint("TOP", content, "TOPLEFT", left + colW / 2, y)
-    local lineH = TEXT_SIZE + 4
-    local noteH = 2 * lineH
-    local okH, h = pcall(req.GetStringHeight, req)
-    if okH and type(h) == "number" and h > noteH then noteH = h end
-    y = y - noteH - 4
+    req:SetPoint("TOP", content, "TOPLEFT", innerX + colW / 2 - shift, ly)
+    LayoutRequirementRows(content, innerX - shift, colW, rowW, ly - reqH - 4)
 
-    y = LayoutRequirementRows(content, left, colW, y)
-    local leftH = top - y
-
-    local rightH = 2 * SPEED_ROW_H + GAP
-    local sy = top - math.max(0, (leftH - rightH) / 2)
-    for _, row in ipairs({ panel.speedIn, panel.speedOut }) do
+    local gap = n > 1 and math.max(GAP, (H - 2 * SLIDER_INSET - rowsH) / (n - 1)) or 0
+    local sy = n > 1 and top - SLIDER_INSET or top - (H - rowsH) / 2
+    for _, row in ipairs(panel.sliders) do
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", content, "TOPLEFT", rightX, sy)
         row:SetWidth(colW)
-        sy = sy - SPEED_ROW_H - GAP
+        sy = sy - row:GetHeight() - gap
     end
-    y = top - math.max(leftH, rightH) - GAP
 
+    y = top - H
+    CloseBox(1)
+
+    OpenBox(2)
     panel.framesTitle:ClearAllPoints()
-    panel.framesTitle:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
+    panel.framesTitle:SetPoint("TOP", content, "TOPLEFT", boxX + boxW / 2, y)
     y = y - SECTION_SIZE - 6 - 2
 
     for i, row in ipairs(frameRows) do
         local col = (i - 1) % 2
         local line = math.floor((i - 1) / 2)
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", content, "TOPLEFT", left + col * (colW + PAD), y - line * ROW_H)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", innerX + col * (colW + PAD), y - line * ROW_H)
         row:SetWidth(colW)
     end
-    y = y - math.ceil(#frameRows / 2) * ROW_H - GAP
+    y = y - math.ceil(#frameRows / 2) * ROW_H
+    CloseBox(2)
 
     panel.done:ClearAllPoints()
     panel.done:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, y)
@@ -741,17 +989,46 @@ local function SetPanelShown(on)
     strip._content:SetShown(on)
 end
 
-local function RefreshPanel()
+-- The layout now, and again a frame later once the wrapped strings have
+-- drawn (LayoutPanel), while the panel shows.
+local function Relayout()
+    if not (strip and strip._content:IsShown()) then return end
+    AnchorStrip(true)
+    C_Timer.After(0, function()
+        if alphaHeld and strip and strip._content:IsShown() then AnchorStrip(true) end
+    end)
+end
+
+-- The sliders' labels from the checked requirements, every row's value and
+-- disabled state, the Frames title's dim, then the layout, since a label's
+-- wrap can change a row's height.
+RefreshPanel = function()
     if not panel then return end
+    local words = RequirementWords()
+    for i, row in ipairs(panel.sliders) do
+        if row.SetLabel then row:SetLabel(string.format(SLIDER_ROWS[i].label, words)) end
+    end
     for _, row in ipairs(panel.triggers) do
         if row.Refresh then pcall(row.Refresh, row) end
     end
-    for _, row in ipairs({ panel.speedIn, panel.speedOut }) do
+    -- The gear stands only while its requirement is checked; its flyout
+    -- closes with it.
+    if panel.targetGear then
+        local V = View()
+        local on = (V and V.GetTrigger("targetAcquired")) and true or false
+        panel.targetGear:SetShown(on)
+        if not on and panel.targetFlyout and panel.targetFlyout:IsOpen() then
+            panel.targetFlyout:Close()
+        end
+    end
+    for _, row in ipairs(panel.sliders) do
         if row.Refresh then pcall(row.Refresh, row) end
     end
     for _, row in ipairs(frameRows) do
         if row.Refresh then pcall(row.Refresh, row) end
     end
+    panel.framesTitle:SetAlpha(NoRequirementChecked() and DIM_ALPHA or 1)
+    Relayout()
 end
 
 --------------------------------------------------------------------------------
@@ -849,16 +1126,13 @@ local function OnEnter()
     HoldBlizzardPieces()
     SyncHolds()
     RaiseLibraryDialog(true)
-    AnchorStrip(true)
     SetPanelShown(true)
+    -- The labels, the values and the gray-out, then the layout, now and
+    -- again once the wrapped strings have drawn.
     RefreshPanel()
     strip:Show()
     ShowBorder()
     SyncTabs()
-    -- The second pass, once the sentence has drawn (LayoutPanel).
-    C_Timer.After(0, function()
-        if alphaHeld and strip and strip._content:IsShown() then AnchorStrip(true) end
-    end)
 end
 
 local function OnExit(reason)
@@ -866,6 +1140,11 @@ local function OnExit(reason)
     RaiseLibraryDialog(false)
     ReleaseBlizzardAlpha()
     ReleaseHolds()
+    -- The target rule's flyout lives on UIParent, so the panel's hide would
+    -- leave it standing.
+    if panel and panel.targetFlyout and panel.targetFlyout:IsOpen() then
+        panel.targetFlyout:Close()
+    end
     if reason == "done" then
         ReshowSelections()
     else
